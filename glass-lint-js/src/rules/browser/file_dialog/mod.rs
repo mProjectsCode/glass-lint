@@ -14,8 +14,8 @@ pub fn rule() -> Rule {
         .category(Category::new("browser/file-dialog").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .declaration(MatcherDecl::from_object_flow(
-            &ObjectFlowMatcher::builder("file input element")
+        .object_flow(
+            ObjectFlowMatcher::builder("file input element")
                 .source(
                     ObjectSourceMatcher::returned_by("document.createElement")
                         .arg(0, ValueMatcher::static_string().equals("input")),
@@ -33,7 +33,7 @@ pub fn rule() -> Rule {
                 .complete_at(FlowCompletion::configuration())
                 .build()
                 .unwrap(),
-        ))
+        )
         .declaration(
             MatcherDecl::builder()
                 .member_call_rooted("showOpenFilePicker")

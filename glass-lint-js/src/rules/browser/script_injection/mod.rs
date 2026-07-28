@@ -14,8 +14,8 @@ pub fn rule() -> Rule {
         .category(Category::new("browser/dom").unwrap())
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
-        .declaration(MatcherDecl::from_object_flow(
-            &ObjectFlowMatcher::builder("script-element")
+        .object_flow(
+            ObjectFlowMatcher::builder("script-element")
                 .source(
                     ObjectSourceMatcher::returned_by("document.createElement")
                         .arg(0, ValueMatcher::static_string().equals("script")),
@@ -34,7 +34,7 @@ pub fn rule() -> Rule {
                 ]))
                 .build()
                 .unwrap(),
-        ))
+        )
         .declaration(
             MatcherDecl::builder()
                 .member_call_rooted("document.write")

@@ -9,6 +9,7 @@ mod decl;
 mod error;
 pub mod matcher;
 mod module;
+pub mod query;
 mod taxonomy;
 
 pub use decl::MatcherDecl;
@@ -37,6 +38,8 @@ pub struct Rule {
     confidence: Confidence,
     /// Matcher declarations retained until catalog compilation.
     decls: Vec<MatcherDecl>,
+    /// Object-flow matcher declarations.
+    flows: Vec<ObjectFlowMatcher>,
 }
 
 impl Rule {
@@ -54,6 +57,7 @@ impl Rule {
             severity: None,
             confidence: None,
             decls: Vec::new(),
+            flows: Vec::new(),
             duplicate_field: None,
         }
     }
@@ -93,6 +97,12 @@ impl Rule {
     pub fn declarations(&self) -> &[MatcherDecl] {
         &self.decls
     }
+
+    #[must_use]
+    /// Borrow object-flow matcher declarations.
+    pub fn flow_matchers(&self) -> &[ObjectFlowMatcher] {
+        &self.flows
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -104,6 +114,7 @@ pub struct RuleBuilder {
     severity: Option<Severity>,
     confidence: Option<Confidence>,
     decls: Vec<MatcherDecl>,
+    flows: Vec<ObjectFlowMatcher>,
     duplicate_field: Option<&'static str>,
 }
 
@@ -112,6 +123,13 @@ impl RuleBuilder {
     /// Add one matcher declaration.
     pub fn declaration(mut self, decl: MatcherDecl) -> Self {
         self.decls.push(decl);
+        self
+    }
+
+    #[must_use]
+    /// Add an object-flow matcher declaration.
+    pub fn object_flow(mut self, flow: ObjectFlowMatcher) -> Self {
+        self.flows.push(flow);
         self
     }
 
@@ -179,13 +197,14 @@ impl RuleBuilder {
             severity,
             confidence,
             decls: self.decls,
+            flows: self.flows,
         })
     }
 }
 
 impl Rule {
     pub(crate) fn validate_and_normalize(self) -> Result<Self, MatcherBuildError> {
-        if self.decls.is_empty() {
+        if self.decls.is_empty() && self.flows.is_empty() {
             return Err(MatcherBuildError::MissingRequired);
         }
         Ok(self)

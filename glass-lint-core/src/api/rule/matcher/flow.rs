@@ -501,14 +501,10 @@ impl ObjectFlowMatcher {
     /// Validate that the matcher is complete and well-formed.
     pub(crate) fn validate(&self) -> Result<(), MatcherBuildError> {
         if self.sources.is_empty() {
-            return Err(MatcherBuildError::Generic(
-                "at least one source is required".into(),
-            ));
+            return Err(MatcherBuildError::MissingFlowSource);
         }
         if self.completion.is_none() {
-            return Err(MatcherBuildError::Generic(
-                "completion mode is required".into(),
-            ));
+            return Err(MatcherBuildError::MissingFlowCompletion);
         }
         Ok(())
     }
@@ -580,8 +576,8 @@ impl ObjectFlowMatcherBuilder {
 
     /// Build and validate the object-flow matcher.
     pub fn build(self) -> Result<ObjectFlowMatcher, MatcherBuildError> {
-        if let Some(error) = self.invalid_operation {
-            return Err(MatcherBuildError::Generic(error.into()));
+        if let Some(op) = self.invalid_operation {
+            return Err(MatcherBuildError::DuplicateFlowOperation(op));
         }
         let matcher = ObjectFlowMatcher {
             symbol: self.symbol,

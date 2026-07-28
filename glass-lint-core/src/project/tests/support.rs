@@ -119,8 +119,8 @@ pub fn flow_linter() -> crate::Linter {
         .category(Category::new("flow").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::from_object_flow(
-            &ObjectFlowMatcher::builder("script insertion")
+        .object_flow(
+            ObjectFlowMatcher::builder("script insertion")
                 .source(
                     ObjectSourceMatcher::returned_by("document.createElement")
                         .arg(0, ValueMatcher::static_string().equals("script")),
@@ -135,7 +135,7 @@ pub fn flow_linter() -> crate::Linter {
                 )]))
                 .build()
                 .unwrap(),
-        ))
+        )
         .build()
         .unwrap();
     let mut environment = crate::Environment::default();

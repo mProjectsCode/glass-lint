@@ -1,8 +1,8 @@
 //! Browser remote-DOM-resource flow rule definition.
 
 use glass_lint_core::rules::{
-    Category, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, MatcherDecl,
-    ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
+    Category, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, ObjectEventMatcher,
+    ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
 };
 
 /// Detects a script or image created by `document.createElement`, configured
@@ -16,51 +16,31 @@ pub fn rule() -> Rule {
         .category(Category::new("browser/dom").unwrap())
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
-        .declaration(MatcherDecl::from_object_flow(&remote_element_flow(
+        .object_flow(remote_element_flow(
             "remote script element",
             "script",
             "src",
-        )))
-        .declaration(MatcherDecl::from_object_flow(&remote_element_flow(
-            "remote image element",
-            "img",
-            "src",
-        )))
-        .declaration(MatcherDecl::from_object_flow(&remote_element_flow(
-            "remote link element",
-            "link",
-            "href",
-        )))
-        .declaration(MatcherDecl::from_object_flow(&remote_element_flow(
+        ))
+        .object_flow(remote_element_flow("remote image element", "img", "src"))
+        .object_flow(remote_element_flow("remote link element", "link", "href"))
+        .object_flow(remote_element_flow(
             "remote iframe element",
             "iframe",
             "src",
-        )))
-        .declaration(MatcherDecl::from_object_flow(&remote_element_flow(
-            "remote audio element",
-            "audio",
-            "src",
-        )))
-        .declaration(MatcherDecl::from_object_flow(&remote_element_flow(
-            "remote video element",
-            "video",
-            "src",
-        )))
-        .declaration(MatcherDecl::from_object_flow(&remote_element_flow(
+        ))
+        .object_flow(remote_element_flow("remote audio element", "audio", "src"))
+        .object_flow(remote_element_flow("remote video element", "video", "src"))
+        .object_flow(remote_element_flow(
             "remote source element",
             "source",
             "src",
-        )))
-        .declaration(MatcherDecl::from_object_flow(&remote_element_flow(
+        ))
+        .object_flow(remote_element_flow(
             "remote object element",
             "object",
             "data",
-        )))
-        .declaration(MatcherDecl::from_object_flow(&remote_element_flow(
-            "remote embed element",
-            "embed",
-            "src",
-        )))
+        ))
+        .object_flow(remote_element_flow("remote embed element", "embed", "src"))
         .build()
         .unwrap()
 }

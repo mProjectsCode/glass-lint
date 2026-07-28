@@ -28,10 +28,26 @@ pub enum MatcherBuildError {
     InvalidModuleSpecifier(String),
     EmptyChain,
     InvalidArgumentIndex(usize),
+    /// A required field is missing (identity, event, or declaration).
     MissingRequired,
     ConflictingProvenance,
-    #[doc(hidden)]
-    Generic(String),
+    /// Argument constraints require a call-bearing event.
+    ConstraintsOnNonCallEvent,
+    /// A lowered query clause failed validation.
+    InvalidLoweredQuery(String),
+    /// Object-flow compiled symbol is empty.
+    EmptyFlowSymbol,
+    /// Object-flow compiled plan has no sources.
+    EmptyFlowSources,
+    /// Object-flow compiled plan has no condition when
+    /// all_requirements_required is set.
+    MissingFlowCondition,
+    /// Object flow has no source matchers.
+    MissingFlowSource,
+    /// Object flow has no completion mode.
+    MissingFlowCompletion,
+    /// A flow operation was specified more than once.
+    DuplicateFlowOperation(&'static str),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,24 +88,27 @@ impl fmt::Display for MatcherBuildError {
             }
             Self::MissingRequired => formatter.write_str("required field is missing"),
             Self::ConflictingProvenance => formatter.write_str("conflicting provenance modes"),
-            Self::Generic(value) => formatter.write_str(value),
+            Self::ConstraintsOnNonCallEvent => {
+                formatter.write_str("argument constraints require a call event")
+            }
+            Self::InvalidLoweredQuery(msg) => {
+                write!(formatter, "invalid lowered query: {msg}")
+            }
+            Self::EmptyFlowSymbol => formatter.write_str("object flow symbol must not be empty"),
+            Self::EmptyFlowSources => formatter.write_str("object flow plan has no sources"),
+            Self::MissingFlowCondition => formatter.write_str("object flow plan has no condition"),
+            Self::MissingFlowSource => {
+                formatter.write_str("object flow must have at least one source")
+            }
+            Self::MissingFlowCompletion => {
+                formatter.write_str("object flow must have a completion mode")
+            }
+            Self::DuplicateFlowOperation(op) => write!(formatter, "duplicate flow operation: {op}"),
         }
     }
 }
 
 impl Error for MatcherBuildError {}
-
-impl From<String> for MatcherBuildError {
-    fn from(value: String) -> Self {
-        Self::Generic(value)
-    }
-}
-
-impl From<&str> for MatcherBuildError {
-    fn from(value: &str) -> Self {
-        Self::Generic(value.to_owned())
-    }
-}
 
 impl fmt::Display for CompiledCatalogError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -10,44 +10,27 @@ use smol_str::SmolStr;
 
 use crate::api::{
     classification::MatchKind,
-    compiler::rule::{
-        EventPredicate, EvidenceDescriptor, IdentityConstraint, IdentityStrength, QueryClause,
-        QueryConstraint, SubjectConstraint,
-    },
     rule::{
         ArgumentConstraint, ArgumentMatcher, MatcherBuildError, ModuleSpecifierPattern,
-        ValueMatcher, matcher::ObjectFlowMatcher,
+        ValueMatcher,
+        query::{EventSpec, IdentitySpec, SubjectSpec},
     },
 };
 
 /// One validated matcher declaration. Constructed exclusively through
-/// [`MatcherDecl::builder`] or one of the convenience constructors.
+/// [`MatcherDecl::builder`].
+///
+/// This type represents ordinary (clause-based) matching. Object flow matching
+/// uses [`crate::api::rule::ObjectFlowMatcher`] directly through
+/// [`RuleBuilder::object_flow`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MatcherDecl {
-    pub(crate) identity: IdentityConstraint,
-    pub(crate) event: EventPredicate,
-    pub(crate) subject: SubjectConstraint,
-    pub(crate) constraints: Vec<QueryConstraint>,
+    pub(crate) identity: IdentitySpec,
+    pub(crate) event: EventSpec,
+    pub(crate) subject: SubjectSpec,
+    pub(crate) constraints: Vec<ArgumentConstraint>,
     pub(crate) evidence_kind: MatchKind,
     pub(crate) evidence_symbol: String,
-    /// Raw object flow matcher; compiled at the catalog boundary.
-    pub(crate) object_flow: Option<ObjectFlowMatcher>,
-}
-
-impl MatcherDecl {
-    /// Convert to an internal query clause for compilation.
-    pub(crate) fn to_query_clause(&self) -> QueryClause {
-        QueryClause {
-            identity: self.identity.clone(),
-            event: self.event.clone(),
-            subject: self.subject.clone(),
-            constraints: self.constraints.clone().into_boxed_slice(),
-            evidence: EvidenceDescriptor {
-                kind: self.evidence_kind,
-                symbol: self.evidence_symbol.clone(),
-            },
-        }
-    }
 }
 
 impl MatcherDecl {
@@ -55,20 +38,17 @@ impl MatcherDecl {
     #[must_use]
     pub fn with_arg(mut self, index: usize, matcher: impl Into<ArgumentMatcher>) -> Self {
         self.constraints
-            .push(QueryConstraint::Argument(ArgumentConstraint::new(
-                index, matcher,
-            )));
+            .push(ArgumentConstraint::new(index, matcher));
         self
     }
 
     /// Return a new declaration with a static-string argument constraint.
     #[must_use]
     pub fn with_arg_static_string(mut self, index: usize) -> Self {
-        self.constraints
-            .push(QueryConstraint::Argument(ArgumentConstraint::new(
-                index,
-                ValueMatcher::static_string(),
-            )));
+        self.constraints.push(ArgumentConstraint::new(
+            index,
+            ValueMatcher::static_string(),
+        ));
         self
     }
 
@@ -79,11 +59,10 @@ impl MatcherDecl {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.constraints
-            .push(QueryConstraint::Argument(ArgumentConstraint::new(
-                index,
-                ValueMatcher::static_string().equals_any(values),
-            )));
+        self.constraints.push(ArgumentConstraint::new(
+            index,
+            ValueMatcher::static_string().equals_any(values),
+        ));
         self
     }
 
@@ -93,11 +72,10 @@ impl MatcherDecl {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.constraints
-            .push(QueryConstraint::Argument(ArgumentConstraint::new(
-                index,
-                ValueMatcher::static_string().contains_any(values),
-            )));
+        self.constraints.push(ArgumentConstraint::new(
+            index,
+            ValueMatcher::static_string().contains_any(values),
+        ));
         self
     }
 
@@ -107,11 +85,10 @@ impl MatcherDecl {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.constraints
-            .push(QueryConstraint::Argument(ArgumentConstraint::new(
-                index,
-                ArgumentMatcher::object_keys(keys),
-            )));
+        self.constraints.push(ArgumentConstraint::new(
+            index,
+            ArgumentMatcher::object_keys(keys),
+        ));
         self
     }
 }
@@ -136,10 +113,10 @@ impl MatcherDecl {
 /// [`build`]: MatcherDeclBuilder::build
 #[derive(Debug)]
 pub struct MatcherDeclBuilder {
-    identity: Option<IdentityConstraint>,
-    event: Option<EventPredicate>,
-    subject: SubjectConstraint,
-    constraints: Vec<QueryConstraint>,
+    identity: Option<IdentitySpec>,
+    event: Option<EventSpec>,
+    subject: SubjectSpec,
+    constraints: Vec<ArgumentConstraint>,
     evidence_kind: Option<MatchKind>,
     evidence_symbol: Option<String>,
     validation_error: Option<MatcherBuildError>,
@@ -150,7 +127,7 @@ impl MatcherDeclBuilder {
         Self {
             identity: None,
             event: None,
-            subject: SubjectConstraint::Direct,
+            subject: SubjectSpec::Direct,
             constraints: Vec::new(),
             evidence_kind: None,
             evidence_symbol: None,
@@ -165,25 +142,24 @@ impl MatcherDeclBuilder {
             || chain.ends_with('.')
     }
 
-    fn set_identity_event(
-        &mut self,
-        identity: IdentityConstraint,
-        event: EventPredicate,
-        symbol: String,
-    ) {
+    fn evidence_kind_for_event(event: &EventSpec) -> MatchKind {
+        match event {
+            EventSpec::Call => MatchKind::Call,
+            EventSpec::Construct => MatchKind::Constructor,
+            EventSpec::MemberCall { .. } => MatchKind::MemberCall,
+            EventSpec::MemberRead { .. } => MatchKind::MemberRead,
+            EventSpec::ClassReference => MatchKind::Class,
+            EventSpec::Import => MatchKind::Import,
+            EventSpec::StringReference => MatchKind::StringContains,
+        }
+    }
+
+    fn set_identity_event(&mut self, identity: IdentitySpec, event: EventSpec, symbol: String) {
         if self.identity.is_some() {
             self.validation_error = Some(MatcherBuildError::ConflictingProvenance);
             return;
         }
-        self.evidence_kind = Some(match &event {
-            EventPredicate::Call => MatchKind::Call,
-            EventPredicate::Construct => MatchKind::Constructor,
-            EventPredicate::MemberCall { .. } => MatchKind::MemberCall,
-            EventPredicate::MemberRead { .. } => MatchKind::MemberRead,
-            EventPredicate::ClassReference => MatchKind::Class,
-            EventPredicate::Import => MatchKind::Import,
-            EventPredicate::StringReference => MatchKind::StringContains,
-        });
+        self.evidence_kind = Some(Self::evidence_kind_for_event(&event));
         self.evidence_symbol = Some(symbol);
         self.identity = Some(identity);
         self.event = Some(event);
@@ -197,11 +173,8 @@ impl MatcherDeclBuilder {
             return self;
         }
         self.set_identity_event(
-            IdentityConstraint::Global {
-                name: name.clone(),
-                strength: IdentityStrength::Strict,
-            },
-            EventPredicate::Call,
+            IdentitySpec::Global { name: name.clone() },
+            EventSpec::Call,
             name.to_string(),
         );
         self
@@ -215,11 +188,8 @@ impl MatcherDeclBuilder {
             return self;
         }
         self.set_identity_event(
-            IdentityConstraint::Any {
-                name: name.clone(),
-                strength: IdentityStrength::Heuristic,
-            },
-            EventPredicate::Call,
+            IdentitySpec::Heuristic { name: name.clone() },
+            EventSpec::Call,
             name.to_string(),
         );
         self
@@ -234,11 +204,11 @@ impl MatcherDeclBuilder {
             return self;
         }
         self.set_identity_event(
-            IdentityConstraint::ModuleExport {
+            IdentitySpec::ModuleExport {
                 module: module.clone(),
                 export: export.clone(),
             },
-            EventPredicate::Call,
+            EventSpec::Call,
             format!("{module}.{export}"),
         );
         self
@@ -250,11 +220,11 @@ impl MatcherDeclBuilder {
             Ok(module) => {
                 let sym = module.to_string();
                 self.set_identity_event(
-                    IdentityConstraint::PackageModuleExport {
+                    IdentitySpec::PackageModuleExport {
                         module,
                         export: export.clone(),
                     },
-                    EventPredicate::Call,
+                    EventSpec::Call,
                     format!("{sym}.{export}"),
                 );
             }
@@ -272,8 +242,8 @@ impl MatcherDeclBuilder {
         }
         let path = SymbolPath::from(chain_str.as_str());
         self.set_identity_event(
-            IdentityConstraint::Rooted { path: path.clone() },
-            EventPredicate::MemberCall { member: path },
+            IdentitySpec::Rooted { path: path.clone() },
+            EventSpec::MemberCall { member: path },
             chain_str,
         );
         self
@@ -289,11 +259,8 @@ impl MatcherDeclBuilder {
         let path = SymbolPath::from(chain_str.as_str());
         let name: SmolStr = chain_str.as_str().into();
         self.set_identity_event(
-            IdentityConstraint::Any {
-                name,
-                strength: IdentityStrength::Heuristic,
-            },
-            EventPredicate::MemberCall { member: path },
+            IdentitySpec::Heuristic { name },
+            EventSpec::MemberCall { member: path },
             chain_str,
         );
         self
@@ -313,10 +280,10 @@ impl MatcherDeclBuilder {
         }
         let path = SymbolPath::from(member_str.as_str());
         self.set_identity_event(
-            IdentityConstraint::ModuleNamespace {
+            IdentitySpec::ModuleNamespace {
                 module: module.clone(),
             },
-            EventPredicate::MemberCall { member: path },
+            EventSpec::MemberCall { member: path },
             format!("{module}.{member_str}"),
         );
         self
@@ -337,18 +304,18 @@ impl MatcherDeclBuilder {
             self.validation_error = Some(MatcherBuildError::EmptyChain);
             return self;
         }
-        let constructor = IdentityConstraint::ModuleExport {
+        let constructor = IdentitySpec::ModuleExport {
             module: module.clone(),
             export: export.clone(),
         };
         self.set_identity_event(
             constructor.clone(),
-            EventPredicate::MemberCall {
+            EventSpec::MemberCall {
                 member: SymbolPath::from(member.as_str()),
             },
             format!("{module}:{export}.{member}"),
         );
-        self.subject = SubjectConstraint::InstanceOf {
+        self.subject = SubjectSpec::InstanceOf {
             constructor: Box::new(constructor),
         };
         self
@@ -369,8 +336,8 @@ impl MatcherDeclBuilder {
             Ok(module) => {
                 let sym = module.to_string();
                 self.set_identity_event(
-                    IdentityConstraint::PackageModuleNamespace { module },
-                    EventPredicate::MemberCall { member: path },
+                    IdentitySpec::PackageModuleNamespace { module },
+                    EventSpec::MemberCall { member: path },
                     format!("{sym}.{member_str}"),
                 );
             }
@@ -388,8 +355,8 @@ impl MatcherDeclBuilder {
         }
         let path = SymbolPath::from(chain_str.as_str());
         self.set_identity_event(
-            IdentityConstraint::Rooted { path: path.clone() },
-            EventPredicate::MemberRead { member: path },
+            IdentitySpec::Rooted { path: path.clone() },
+            EventSpec::MemberRead { member: path },
             chain_str,
         );
         self
@@ -409,10 +376,10 @@ impl MatcherDeclBuilder {
         }
         let path = SymbolPath::from(member_str.as_str());
         self.set_identity_event(
-            IdentityConstraint::ModuleNamespace {
+            IdentitySpec::ModuleNamespace {
                 module: module.clone(),
             },
-            EventPredicate::MemberRead { member: path },
+            EventSpec::MemberRead { member: path },
             format!("{module}.{member_str}"),
         );
         self
@@ -430,17 +397,17 @@ impl MatcherDeclBuilder {
             self.validation_error = Some(MatcherBuildError::EmptyChain);
             return self;
         }
-        let producer = IdentityConstraint::Rooted {
+        let producer = IdentitySpec::Rooted {
             path: SymbolPath::from(source.as_str()),
         };
         self.set_identity_event(
             producer.clone(),
-            EventPredicate::MemberCall {
+            EventSpec::MemberCall {
                 member: SymbolPath::from(member.as_str()),
             },
             format!("{source}.{member}"),
         );
-        self.subject = SubjectConstraint::ReturnedFrom {
+        self.subject = SubjectSpec::ReturnedFrom {
             producer: Box::new(producer),
         };
         self
@@ -458,17 +425,17 @@ impl MatcherDeclBuilder {
             self.validation_error = Some(MatcherBuildError::EmptyChain);
             return self;
         }
-        let producer = IdentityConstraint::Rooted {
+        let producer = IdentitySpec::Rooted {
             path: SymbolPath::from(source.as_str()),
         };
         self.set_identity_event(
             producer.clone(),
-            EventPredicate::MemberRead {
+            EventSpec::MemberRead {
                 member: SymbolPath::from(member.as_str()),
             },
             format!("{source}.{member}"),
         );
-        self.subject = SubjectConstraint::ReturnedFrom {
+        self.subject = SubjectSpec::ReturnedFrom {
             producer: Box::new(producer),
         };
         self
@@ -489,8 +456,8 @@ impl MatcherDeclBuilder {
             Ok(module) => {
                 let sym = module.to_string();
                 self.set_identity_event(
-                    IdentityConstraint::PackageModuleNamespace { module },
-                    EventPredicate::MemberRead { member: path },
+                    IdentitySpec::PackageModuleNamespace { module },
+                    EventSpec::MemberRead { member: path },
                     format!("{sym}.{member_str}"),
                 );
             }
@@ -507,10 +474,10 @@ impl MatcherDeclBuilder {
             return self;
         }
         self.set_identity_event(
-            IdentityConstraint::LiteralString {
+            IdentitySpec::LiteralString {
                 predicate: module_str.clone(),
             },
-            EventPredicate::Import,
+            EventSpec::Import,
             module_str,
         );
         self
@@ -521,8 +488,8 @@ impl MatcherDeclBuilder {
         match ModuleSpecifierPattern::package(module) {
             Ok(pattern) => {
                 let sym = pattern.to_string();
-                self.identity = Some(IdentityConstraint::PackageSpecifier { pattern });
-                self.event = Some(EventPredicate::Import);
+                self.identity = Some(IdentitySpec::PackageSpecifier { pattern });
+                self.event = Some(EventSpec::Import);
                 self.evidence_kind = Some(MatchKind::Import);
                 self.evidence_symbol = Some(sym);
             }
@@ -539,10 +506,10 @@ impl MatcherDeclBuilder {
             return self;
         }
         self.set_identity_event(
-            IdentityConstraint::LiteralString {
+            IdentitySpec::LiteralString {
                 predicate: value_str.clone(),
             },
-            EventPredicate::StringReference,
+            EventSpec::StringReference,
             value_str,
         );
         self
@@ -556,11 +523,8 @@ impl MatcherDeclBuilder {
             return self;
         }
         self.set_identity_event(
-            IdentityConstraint::Any {
-                name: name.clone(),
-                strength: IdentityStrength::Heuristic,
-            },
-            EventPredicate::ClassReference,
+            IdentitySpec::Heuristic { name: name.clone() },
+            EventSpec::ClassReference,
             name.to_string(),
         );
         self
@@ -575,11 +539,11 @@ impl MatcherDeclBuilder {
             return self;
         }
         self.set_identity_event(
-            IdentityConstraint::ModuleExport {
+            IdentitySpec::ModuleExport {
                 module: module.clone(),
                 export: export.clone(),
             },
-            EventPredicate::ClassReference,
+            EventSpec::ClassReference,
             format!("{module}.{export}"),
         );
         self
@@ -593,11 +557,8 @@ impl MatcherDeclBuilder {
             return self;
         }
         self.set_identity_event(
-            IdentityConstraint::Global {
-                name: name.clone(),
-                strength: IdentityStrength::Strict,
-            },
-            EventPredicate::Construct,
+            IdentitySpec::Global { name: name.clone() },
+            EventSpec::Construct,
             name.to_string(),
         );
         self
@@ -611,11 +572,8 @@ impl MatcherDeclBuilder {
             return self;
         }
         self.set_identity_event(
-            IdentityConstraint::Any {
-                name: name.clone(),
-                strength: IdentityStrength::Heuristic,
-            },
-            EventPredicate::Construct,
+            IdentitySpec::Heuristic { name: name.clone() },
+            EventSpec::Construct,
             name.to_string(),
         );
         self
@@ -634,50 +592,29 @@ impl MatcherDeclBuilder {
             return self;
         }
         self.set_identity_event(
-            IdentityConstraint::ModuleExport {
+            IdentitySpec::ModuleExport {
                 module: module.clone(),
                 export: export.clone(),
             },
-            EventPredicate::Construct,
+            EventSpec::Construct,
             format!("{module}.{export}"),
         );
-        self
-    }
-
-    /// Set the subject to [`SubjectConstraint::ReturnedFrom`].
-    #[allow(dead_code)]
-    pub(crate) fn returned_from(mut self, producer: IdentityConstraint) -> Self {
-        self.subject = SubjectConstraint::ReturnedFrom {
-            producer: Box::new(producer),
-        };
-        self
-    }
-
-    /// Set the subject to [`SubjectConstraint::InstanceOf`].
-    #[allow(dead_code)]
-    pub(crate) fn instance_of(mut self, constructor: IdentityConstraint) -> Self {
-        self.subject = SubjectConstraint::InstanceOf {
-            constructor: Box::new(constructor),
-        };
         self
     }
 
     /// Add an argument predicate.
     pub fn arg(mut self, index: usize, matcher: impl Into<ArgumentMatcher>) -> Self {
         self.constraints
-            .push(QueryConstraint::Argument(ArgumentConstraint::new(
-                index, matcher,
-            )));
+            .push(ArgumentConstraint::new(index, matcher));
         self
     }
 
     /// Add a static-string argument constraint.
     pub fn arg_static_string(mut self, index: usize) -> Self {
-        self.constraints
-            .push(QueryConstraint::Argument(ArgumentConstraint::new(
-                index,
-                ValueMatcher::static_string(),
-            )));
+        self.constraints.push(ArgumentConstraint::new(
+            index,
+            ValueMatcher::static_string(),
+        ));
         self
     }
 
@@ -687,11 +624,10 @@ impl MatcherDeclBuilder {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.constraints
-            .push(QueryConstraint::Argument(ArgumentConstraint::new(
-                index,
-                ValueMatcher::static_string().equals_any(values),
-            )));
+        self.constraints.push(ArgumentConstraint::new(
+            index,
+            ValueMatcher::static_string().equals_any(values),
+        ));
         self
     }
 
@@ -700,11 +636,10 @@ impl MatcherDeclBuilder {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.constraints
-            .push(QueryConstraint::Argument(ArgumentConstraint::new(
-                index,
-                ValueMatcher::static_string().contains_any(values),
-            )));
+        self.constraints.push(ArgumentConstraint::new(
+            index,
+            ValueMatcher::static_string().contains_any(values),
+        ));
         self
     }
 
@@ -714,11 +649,10 @@ impl MatcherDeclBuilder {
         property: impl Into<String>,
         value: ValueMatcher,
     ) -> Self {
-        self.constraints
-            .push(QueryConstraint::Argument(ArgumentConstraint::new(
-                index,
-                ArgumentMatcher::object_property_value(property, value),
-            )));
+        self.constraints.push(ArgumentConstraint::new(
+            index,
+            ArgumentMatcher::object_property_value(property, value),
+        ));
         self
     }
 
@@ -727,11 +661,10 @@ impl MatcherDeclBuilder {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.constraints
-            .push(QueryConstraint::Argument(ArgumentConstraint::new(
-                index,
-                ArgumentMatcher::object_keys(keys),
-            )));
+        self.constraints.push(ArgumentConstraint::new(
+            index,
+            ArgumentMatcher::object_keys(keys),
+        ));
         self
     }
 
@@ -747,33 +680,22 @@ impl MatcherDeclBuilder {
         if let Some(error) = self.validation_error {
             return Err(error);
         }
-        let identity = self
-            .identity
-            .ok_or_else(|| MatcherBuildError::Generic("missing identity constraint".into()))?;
-        let event = self
-            .event
-            .ok_or_else(|| MatcherBuildError::Generic("missing event predicate".into()))?;
+        let identity = self.identity.ok_or(MatcherBuildError::MissingRequired)?;
+        let event = self.event.ok_or(MatcherBuildError::MissingRequired)?;
         let evidence_kind = self.evidence_kind.unwrap_or(MatchKind::Call);
         let evidence_symbol = self
             .evidence_symbol
-            .unwrap_or_else(|| format!("{identity:?}"));
-        // Basic validation
+            .unwrap_or_else(|| identity.display_name());
         let constraints = self.constraints;
         if !constraints.is_empty()
-            && !matches!(
-                event,
-                EventPredicate::Call | EventPredicate::MemberCall { .. }
-            )
+            && !matches!(event, EventSpec::Call | EventSpec::MemberCall { .. })
         {
-            return Err(MatcherBuildError::Generic(
-                "argument constraints require a call event".into(),
-            ));
+            return Err(MatcherBuildError::ConstraintsOnNonCallEvent);
         }
         // Validate argument index bounds
         for c in &constraints {
-            let QueryConstraint::Argument(a) = c;
-            if a.index() > 1_000_000 {
-                return Err(MatcherBuildError::InvalidArgumentIndex(a.index()));
+            if c.index() > 1_000_000 {
+                return Err(MatcherBuildError::InvalidArgumentIndex(c.index()));
             }
         }
         Ok(MatcherDecl {
@@ -783,28 +705,6 @@ impl MatcherDeclBuilder {
             constraints,
             evidence_kind,
             evidence_symbol,
-            object_flow: None,
         })
-    }
-}
-
-impl MatcherDecl {
-    /// Create a declaration from an ObjectFlowMatcher.
-    /// Compilation to [`CompiledObjectFlow`] is deferred to the catalog
-    /// boundary.
-    pub fn from_object_flow(flow: &ObjectFlowMatcher) -> Self {
-        let sym: String = flow.symbol().to_owned();
-        Self {
-            identity: IdentityConstraint::Any {
-                name: smol_str::SmolStr::new(sym.as_str()),
-                strength: crate::api::compiler::rule::IdentityStrength::Heuristic,
-            },
-            event: EventPredicate::Call,
-            subject: SubjectConstraint::Direct,
-            constraints: Vec::new(),
-            evidence_kind: MatchKind::Call,
-            evidence_symbol: sym,
-            object_flow: Some(flow.clone()),
-        }
     }
 }

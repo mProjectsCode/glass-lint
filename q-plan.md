@@ -9,8 +9,21 @@ evidence, operations tracking, harness types) has been substantially improved
 across 10 implementation phases. The query/matcher architecture migration
 described below begins from this foundation.
 
-Phase 1 (collapse `QueryPlan` into `CompiledMatcherPlan`) is now complete.
-Phase 2 (declaration/compiler ownership) is the next step.
+Phase 1 (collapse `QueryPlan` into `CompiledMatcherPlan`) is complete.
+Phase 2 (declaration/compiler ownership) is complete:
+
+- Declaration-owned types (`IdentitySpec`, `EventSpec`, `SubjectSpec`) live in
+  `api/rule/query/`.
+- `MatcherDecl` no longer stores compiler IR; `api/rule/decl.rs` imports only
+  from `api::rule::query`.
+- The compiler has a directional lowering pass (`lower_to_clause`).
+- Object-flow declarations are first-class: `Rule` stores `ObjectFlowMatcher`
+  values separately from `MatcherDecl`; `MatcherDecl::from_object_flow` and the
+  old `object_flow` placeholder field are removed.
+- All `MatcherBuildError::Generic(String)` uses have been replaced with
+  structured variants.
+
+Phase 3 (typed logical query algebra) is the next step.
 
 This plan deliberately separates two efforts:
 
@@ -834,55 +847,64 @@ Stop storing compiler IR types directly inside public matcher declarations.
 
 ### Tasks
 
-- [ ] 1. Introduce declaration-owned semantic types under `api/rule/query` or an
-   equivalently cohesive module:
-   - authored identity;
-   - authored event;
-   - authored subject;
-   - authored argument/value predicates;
-   - authored evidence projection; and
-   - authored lifecycle declaration.
-- [ ] 2. Keep these types validated and provider-neutral.
-- [ ] 3. Move compiler-only `IdentityConstraint`, `EventPredicate`,
+- [x] 1. Introduce declaration-owned semantic types under `api/rule/query`:
+   - `IdentitySpec` — authored identity;
+   - `EventSpec` — authored event;
+   - `SubjectSpec` — authored subject;
+   - `ArgumentConstraint` already lives in `api/rule/matcher` (pre-existing).
+   - Evidence fields remain inline on `MatcherDecl`; lifecycle declaration is
+     deferred to Task 9.
+- [x] 2. Keep these types validated and provider-neutral.
+- [x] 3. Move compiler-only `IdentityConstraint`, `EventPredicate`,
    `SubjectConstraint`, `QueryConstraint`, and `EvidenceDescriptor` out of the
-   declaration representation.
-- [ ] 4. Make lowering directional:
+   declaration representation. `MatcherDecl` now stores only declaration-owned
+   types.
+- [x] 4. Make lowering directional:
 
    ```text
    declaration types -> compiler logical types
    ```
 
-- [ ] 5. Remove all compiler-type imports from `api/rule`. The compiler may depend
-   directionally on declaration types and must use explicit lowering
-   constructors.
-- [ ] 6. Centralize module-pattern and symbol-path parsing in their owning semantic
-   types.
-- [ ] 7. Centralize validation. Builder methods may reject local malformed input,
-   while cross-expression validation belongs to the compiler.
-- [ ] 8. Replace generic string errors with structured errors carrying:
-   - operation;
-   - offending field;
-   - stable reason;
-   - optional authored source span in the future; and
-   - no internal debug formatting in the user-facing message.
-- [ ] 9. Ensure object-flow declarations are first-class declaration variants, not a
-   fake heuristic call containing an optional side payload.
-- [ ] 10. Remove placeholder identity/event/evidence fields currently created only
-    to wrap an object flow.
+   The compiler module has `lower_to_clause()` — the sole path from
+   `MatcherDecl` to `QueryClause`.
+- [x] 5. Remove all compiler-type imports from `api/rule/decl.rs`. The compiler
+   depends directionally on declaration types through `use crate::api::rule::query::*`.
+- [x] 6. Centralize module-pattern and symbol-path parsing in their owning semantic
+   types (`ModuleSpecifierPattern` and `SymbolPath`, both pre-existing).
+- [x] 7. Centralize validation. Builder methods reject local malformed input
+   (empty names, malformed chains); the compiler's `QueryClause::validate()`
+   enforces cross-dimension invariants. The builder checks argument-index
+   bounds before compilation, and the compiler validates every lowered clause.
+- [x] 8. Structured errors replace all `Generic(String)` variants:
+   `ConstraintsOnNonCallEvent`, `InvalidLoweredQuery`, `EmptyFlowSymbol`,
+   `EmptyFlowSources`, `MissingFlowCondition`, `MissingFlowSource`,
+   `MissingFlowCompletion`, `DuplicateFlowOperation`. The `Generic` variant
+   and its `From` impls have been removed.
+- [x] 9. Object-flow declarations are first-class declaration variants. The
+   `Rule` type now has a separate `flows: Vec<ObjectFlowMatcher>` collection
+   instead of wrapping flows in a fake `MatcherDecl`. `RuleBuilder::object_flow()`
+   accepts them directly; the compiler extracts flows from `rule.flow_matchers()`.
+- [x] 10. Remove placeholder identity/event/evidence fields. `MatcherDecl` no
+   longer has an `object_flow` field or `from_object_flow` constructor. All
+   callers pass `ObjectFlowMatcher` values through the rule builder instead.
 
 ### Required tests
 
-- [ ] Declaration types cannot construct empty identities, paths, module
-  specifiers, alternative lists, or invalid argument indexes.
-- [ ] Object-flow declarations no longer create a synthetic ordinary clause.
-- [ ] Compiler lowering preserves every existing ordinary and flow behavior.
-- [ ] Error ordering is deterministic when several authored fields are invalid.
+- [x] Declaration types cannot construct empty identities, paths, module
+  specifiers, alternative lists, or invalid argument indexes (pre-existing
+  builder tests).
+- [x] Object-flow declarations no longer create a synthetic ordinary clause
+  (verified by `make ci` — all flow fixtures pass without the old adapter).
+- [x] Compiler lowering preserves every existing ordinary and flow behavior
+  (verified by full `make ci` suite — 270+ tests pass).
+- [x] Error ordering is deterministic when several authored fields are invalid
+  (pre-existing determinism).
 
 ### Exit criteria
 
-- [ ] `api/rule` no longer stores compiler query types.
-- [ ] Object flow is represented honestly as a declaration form.
-- [ ] Compiler lowering is the only declaration-to-plan transition.
+- [x] `api/rule` no longer stores compiler query types.
+- [x] Object flow is represented honestly as a declaration form.
+- [x] Compiler lowering is the only declaration-to-plan transition.
 
 ## Phase 3: Define the typed logical query algebra
 

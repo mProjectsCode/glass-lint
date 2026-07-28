@@ -34,24 +34,22 @@ impl Classification {
 }
 
 /// Construct the multi-step flow used by source/configuration/sink tests.
-fn script_insertion_flow() -> MatcherDecl {
-    MatcherDecl::from_object_flow(
-        &ObjectFlowMatcher::builder("script insertion")
-            .source(
-                ObjectSourceMatcher::returned_by("document.createElement")
-                    .arg(0, ValueMatcher::static_string().equals("script")),
-            )
-            .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
-                "src",
-                ValueMatcher::any_value(),
-            )))
-            .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
-                "document.head.appendChild",
-                0,
-            )]))
-            .build()
-            .unwrap(),
-    )
+fn script_insertion_flow() -> ObjectFlowMatcher {
+    ObjectFlowMatcher::builder("script insertion")
+        .source(
+            ObjectSourceMatcher::returned_by("document.createElement")
+                .arg(0, ValueMatcher::static_string().equals("script")),
+        )
+        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+            "src",
+            ValueMatcher::any_value(),
+        )))
+        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+            "document.head.appendChild",
+            0,
+        )]))
+        .build()
+        .unwrap()
 }
 
 /// Lint one source with exactly the supplied rules and record matched IDs.
@@ -915,7 +913,7 @@ fn projects_const_object_aliases_into_destructured_parameters() {
 #[test]
 fn tracks_configured_values_into_later_member_sinks() {
     let rules = [rule("test.flow")
-        .declaration(script_insertion_flow())
+        .object_flow(script_insertion_flow())
         .build()
         .unwrap()];
     let result = classify(

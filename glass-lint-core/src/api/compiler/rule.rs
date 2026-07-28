@@ -4,6 +4,8 @@
 //! Selection only filters catalog indexes; it never changes the semantic facts
 //! constructed for a source file.
 
+use std::fmt;
+
 use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
@@ -15,6 +17,7 @@ use crate::{
         compiler::object_flow::CompiledObjectFlow,
         rule::{
             ArgumentConstraint, Confidence, MatcherBuildError, MatcherDecl, ModuleSpecifierPattern,
+            query::{EventSpec, IdentitySpec, SubjectSpec},
         },
     },
 };
@@ -152,12 +155,111 @@ pub(crate) struct EvidenceDescriptor {
     pub(crate) symbol: String,
 }
 
+// ── Lowering: declaration types → compiler IR ────────────────────────────
+
+fn lower_identity(spec: &IdentitySpec) -> IdentityConstraint {
+    match spec {
+        IdentitySpec::Global { name } => IdentityConstraint::Global {
+            name: name.clone(),
+            strength: IdentityStrength::Strict,
+        },
+        IdentitySpec::Heuristic { name } => IdentityConstraint::Any {
+            name: name.clone(),
+            strength: IdentityStrength::Heuristic,
+        },
+        IdentitySpec::ModuleExport { module, export } => IdentityConstraint::ModuleExport {
+            module: module.clone(),
+            export: export.clone(),
+        },
+        IdentitySpec::PackageModuleExport { module, export } => {
+            IdentityConstraint::PackageModuleExport {
+                module: module.clone(),
+                export: export.clone(),
+            }
+        }
+        IdentitySpec::ModuleNamespace { module } => IdentityConstraint::ModuleNamespace {
+            module: module.clone(),
+        },
+        IdentitySpec::PackageModuleNamespace { module } => {
+            IdentityConstraint::PackageModuleNamespace {
+                module: module.clone(),
+            }
+        }
+        IdentitySpec::Rooted { path } => IdentityConstraint::Rooted { path: path.clone() },
+        IdentitySpec::LiteralString { predicate } => IdentityConstraint::LiteralString {
+            predicate: predicate.clone(),
+        },
+        IdentitySpec::PackageSpecifier { pattern } => IdentityConstraint::PackageSpecifier {
+            pattern: pattern.clone(),
+        },
+    }
+}
+
+fn lower_event(spec: &EventSpec) -> EventPredicate {
+    match spec {
+        EventSpec::Call => EventPredicate::Call,
+        EventSpec::Construct => EventPredicate::Construct,
+        EventSpec::MemberCall { member } => EventPredicate::MemberCall {
+            member: member.clone(),
+        },
+        EventSpec::MemberRead { member } => EventPredicate::MemberRead {
+            member: member.clone(),
+        },
+        EventSpec::ClassReference => EventPredicate::ClassReference,
+        EventSpec::Import => EventPredicate::Import,
+        EventSpec::StringReference => EventPredicate::StringReference,
+    }
+}
+
+fn lower_subject(spec: &SubjectSpec) -> SubjectConstraint {
+    match spec {
+        SubjectSpec::Direct => SubjectConstraint::Direct,
+        SubjectSpec::ReturnedFrom { producer } => SubjectConstraint::ReturnedFrom {
+            producer: Box::new(lower_identity(producer)),
+        },
+        SubjectSpec::InstanceOf { constructor } => SubjectConstraint::InstanceOf {
+            constructor: Box::new(lower_identity(constructor)),
+        },
+    }
+}
+
+fn lower_to_clause(decl: &MatcherDecl) -> QueryClause {
+    QueryClause {
+        identity: lower_identity(&decl.identity),
+        event: lower_event(&decl.event),
+        subject: lower_subject(&decl.subject),
+        constraints: decl
+            .constraints
+            .iter()
+            .cloned()
+            .map(QueryConstraint::Argument)
+            .collect(),
+        evidence: EvidenceDescriptor {
+            kind: decl.evidence_kind,
+            symbol: decl.evidence_symbol.clone(),
+        },
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) enum InvalidQueryClause {
     /// The identity/event/subject dimensions cannot select a semantic fact.
     ImpossibleDimensions,
     /// Argument predicates require a call-bearing event.
     ConstraintsRequireCallEvent,
+}
+
+impl fmt::Display for InvalidQueryClause {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ImpossibleDimensions => {
+                f.write_str("identity/event/subject dimensions cannot select a semantic fact")
+            }
+            Self::ConstraintsRequireCallEvent => {
+                f.write_str("argument constraints require a call-bearing event")
+            }
+        }
+    }
 }
 
 impl QueryClause {
@@ -237,27 +339,20 @@ impl QueryClause {
 }
 
 /// Shared declaration compilation: convert each declaration to a clause,
-/// collect object flows, sort and deduplicate clauses, then validate every
-/// clause. Package-pattern and flow-field validation are left to the caller.
-fn collect_clauses_and_flows(
-    decls: &[MatcherDecl],
-) -> Result<(Vec<QueryClause>, Vec<CompiledObjectFlow>), MatcherBuildError> {
+/// sort and deduplicate clauses, then validate every clause.
+fn collect_clauses(decls: &[MatcherDecl]) -> Result<Vec<QueryClause>, MatcherBuildError> {
     let mut clauses: Vec<QueryClause> = Vec::new();
-    let mut flows: Vec<CompiledObjectFlow> = Vec::new();
     for decl in decls {
-        clauses.push(decl.to_query_clause());
-        if let Some(matcher) = &decl.object_flow {
-            flows.push(CompiledObjectFlow::from_matcher(matcher));
-        }
+        clauses.push(lower_to_clause(decl));
     }
     clauses.sort();
     clauses.dedup();
     for clause in &clauses {
-        clause.validate().map_err(|error| {
-            MatcherBuildError::Generic(format!("invalid lowered matcher query: {error:?}"))
-        })?;
+        clause
+            .validate()
+            .map_err(|error| MatcherBuildError::InvalidLoweredQuery(error.to_string()))?;
     }
-    Ok((clauses, flows))
+    Ok(clauses)
 }
 
 impl CompiledMatcherPlan {
@@ -269,35 +364,45 @@ impl CompiledMatcherPlan {
         &self.flows
     }
 
-    /// Compile declarations into clauses and extract flows.
-    /// Used by both production catalog construction and test helpers.
+    /// Compile declarations into clauses.
+    /// Used by test helpers.
+    #[cfg(test)]
     pub(crate) fn compile_decls(decls: &[MatcherDecl]) -> Result<Self, MatcherBuildError> {
-        let (clauses, flows) = collect_clauses_and_flows(decls)?;
-        for flow in &flows {
-            if flow.symbol.trim().is_empty() {
-                return Err(MatcherBuildError::Generic(
-                    "object flow symbol must not be empty".into(),
-                ));
-            }
-            if flow.sources.is_empty() {
-                return Err(MatcherBuildError::Generic(
-                    "object flow must have at least one source".into(),
-                ));
-            }
-            if flow.requirements.is_empty() && !flow.all_requirements_required {
-                return Err(MatcherBuildError::Generic(
-                    "object flow must have a condition".into(),
-                ));
-            }
-            if flow.sinks.is_empty() && !flow.emit_on_requirements {
-                return Err(MatcherBuildError::Generic(
-                    "object flow must have a completion mode".into(),
-                ));
-            }
-        }
+        let clauses = collect_clauses(decls)?;
         Ok(Self {
             clauses: clauses.into_boxed_slice(),
-            flows: flows.into_boxed_slice(),
+            flows: Box::new([]),
+        })
+    }
+
+    /// Compile declarations and object flows into a complete plan.
+    pub(crate) fn compile_decls_and_flows(
+        decls: &[MatcherDecl],
+        flows: &[crate::api::rule::ObjectFlowMatcher],
+    ) -> Result<Self, MatcherBuildError> {
+        let clauses = collect_clauses(decls)?;
+        let compiled_flows: Vec<CompiledObjectFlow> = flows
+            .iter()
+            .map(|flow| {
+                let compiled = CompiledObjectFlow::from_matcher(flow);
+                if compiled.symbol.trim().is_empty() {
+                    return Err(MatcherBuildError::EmptyFlowSymbol);
+                }
+                if compiled.sources.is_empty() {
+                    return Err(MatcherBuildError::EmptyFlowSources);
+                }
+                if compiled.requirements.is_empty() && !compiled.all_requirements_required {
+                    return Err(MatcherBuildError::MissingFlowCondition);
+                }
+                if compiled.sinks.is_empty() && !compiled.emit_on_requirements {
+                    return Err(MatcherBuildError::MissingFlowCompletion);
+                }
+                Ok(compiled)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self {
+            clauses: clauses.into_boxed_slice(),
+            flows: compiled_flows.into_boxed_slice(),
         })
     }
 }
@@ -357,9 +462,12 @@ pub(crate) struct CompiledRuleRecord {
 }
 
 impl CompiledRuleRecord {
-    /// Compile a rule's declarations into one record.
+    /// Compile a rule's declarations and flows into one record.
     pub(crate) fn new(rule: &crate::api::rule::Rule) -> Result<Self, MatcherBuildError> {
-        let plan = CompiledMatcherPlan::compile_decls(rule.declarations())?;
+        let plan = CompiledMatcherPlan::compile_decls_and_flows(
+            rule.declarations(),
+            rule.flow_matchers(),
+        )?;
         Ok(Self {
             description: rule.description().to_owned(),
             severity: rule.severity(),

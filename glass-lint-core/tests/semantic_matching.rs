@@ -429,58 +429,84 @@ fn tracks_object_argument_keys_through_member_function_aliases() {
 }
 
 /// Build the source/configuration/sink flow used by flow-provenance tests.
-fn script_insertion_matcher() -> MatcherDecl {
-    MatcherDecl::from_object_flow(
-        &ObjectFlowMatcher::builder("script insertion")
-            .source(
-                ObjectSourceMatcher::returned_by("document.createElement")
-                    .arg(0, ValueMatcher::static_string().equals("script")),
-            )
-            .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
-                "src",
-                ValueMatcher::any_value(),
-            )))
-            .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
-                "document.head.appendChild",
-                0,
-            )]))
-            .build()
-            .unwrap(),
-    )
+fn script_insertion_flow() -> ObjectFlowMatcher {
+    ObjectFlowMatcher::builder("script insertion")
+        .source(
+            ObjectSourceMatcher::returned_by("document.createElement")
+                .arg(0, ValueMatcher::static_string().equals("script")),
+        )
+        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+            "src",
+            ValueMatcher::any_value(),
+        )))
+        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+            "document.head.appendChild",
+            0,
+        )]))
+        .build()
+        .unwrap()
+}
+
+/// Execute one flow matcher through a fresh strict catalog and return its
+/// count.
+fn findings_for_flow(source: &str, flow: ObjectFlowMatcher) -> usize {
+    let rule = support::rule("semantic.match")
+        .object_flow(flow)
+        .build()
+        .unwrap();
+    let environment = support::test_environment();
+    let catalog = glass_lint_core::RuleCatalog::new("test", vec![rule]).unwrap();
+    let (_, _, files, _, _, _) = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
+        vec![catalog],
+        environment,
+    ))
+    .unwrap()
+    .lint_snippet(source, "semantic-matching.js")
+    .unwrap()
+    .into_parts();
+    files[0].findings().len()
 }
 
 #[test]
 fn tracks_flow_configuration_through_a_source_alias() {
-    assert_matches(
-        "const script = document.createElement('script'); const alias = script; alias.src = url; document.head.appendChild(script);",
-        script_insertion_matcher(),
+    assert_eq!(
+        findings_for_flow(
+            "const script = document.createElement('script'); const alias = script; alias.src = url; document.head.appendChild(script);",
+            script_insertion_flow(),
+        ),
         1,
     );
 }
 
 #[test]
 fn tracks_flow_configuration_through_static_computed_properties() {
-    assert_matches(
-        "const script = document.createElement('script'); script['src'] = url; document.head.appendChild(script);",
-        script_insertion_matcher(),
+    assert_eq!(
+        findings_for_flow(
+            "const script = document.createElement('script'); script['src'] = url; document.head.appendChild(script);",
+            script_insertion_flow(),
+        ),
         1,
     );
 }
 
 #[test]
 fn tracks_flow_sinks_through_rooted_member_aliases() {
-    assert_matches(
-        "const append = document.head.appendChild; const script = document.createElement('script'); script.src = url; append(script);",
-        script_insertion_matcher(),
+    assert_eq!(
+        findings_for_flow(
+            "const append = document.head.appendChild; const script = document.createElement('script'); script.src = url; append(script);",
+            script_insertion_flow(),
+        ),
         1,
     );
 }
 
 #[test]
 fn tracks_flow_sinks_through_optional_chains() {
-    assert_matches(
-        "const script = document.createElement('script'); script.src = url; document.head?.appendChild?.(script);",
-        script_insertion_matcher(),
+    assert_eq!(
+        findings_for_flow(
+            "const script = document.createElement('script'); script.src = url; document.head?.appendChild?.(script);",
+            script_insertion_flow(),
+        ),
         1,
     );
 }
