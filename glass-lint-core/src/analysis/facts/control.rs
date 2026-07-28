@@ -152,15 +152,25 @@ impl FactBuilder<'_, '_> {
         let region = self.next_control_region();
         self.emit_control(stmt.span(), ControlKind::TryStart, region);
         stmt.block.visit_with(self);
+        let try_origins = self.instance_origins.clone();
+        self.instance_origins = incoming.clone();
         if let Some(handler) = &stmt.handler {
             self.emit_control(handler.span(), ControlKind::CatchStart, region);
             handler.visit_with(self);
+            if stmt.finalizer.is_some() {
+                let handler_origins = std::mem::take(&mut self.instance_origins);
+                self.instance_origins = try_origins;
+                self.retain_common_instance_origins(&handler_origins);
+            }
+        } else if stmt.finalizer.is_some() {
+            self.instance_origins = try_origins;
+            self.retain_common_instance_origins(&incoming);
         }
         if let Some(finalizer) = &stmt.finalizer {
             self.emit_control(finalizer.span(), ControlKind::FinallyStart, region);
             finalizer.visit_with(self);
+            self.instance_origins = incoming;
         }
-        self.instance_origins = incoming;
         self.class_origins = incoming_classes;
         self.emit_control(stmt.span(), ControlKind::TryEnd, region);
     }
@@ -190,5 +200,130 @@ impl FactBuilder<'_, '_> {
     ) {
         self.instance_origins
             .retain(|value, origin| other.get(value) == Some(origin));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::analysis::{
+        facts::{FactBuilder, FactPayload, Frozen},
+        resolution::Resolver,
+    };
+
+    fn build_facts(src: &str, filename: &str) -> crate::analysis::facts::FactStream<Frozen> {
+        let parsed = crate::parse(src, filename).expect("source should parse");
+        let mut resolver = Resolver::collect(&parsed.program, src);
+        let mut builder = FactBuilder::new(&mut resolver);
+        swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
+        builder.into_stream()
+    }
+
+    fn count_instance_calls(stream: &crate::analysis::facts::FactStream<Frozen>) -> usize {
+        stream
+            .facts()
+            .iter()
+            .filter(|f| {
+                matches!(
+                    &f.payload,
+                    FactPayload::Call {
+                        instance_class: Some(_),
+                        ..
+                    }
+                )
+            })
+            .count()
+    }
+
+    /// Construction in try is visible to a call inside try.
+    #[test]
+    fn construction_inside_try_is_visible_there() {
+        let src = r"
+            import { Foo } from 'lib';
+            function test() {
+                try {
+                    let x = new Foo();
+                    x.method();
+                } catch (e) {}
+            }
+        ";
+        let stream = build_facts(src, "try-inside.js");
+        assert!(
+            count_instance_calls(&stream) > 0,
+            "x.method() after new Foo() inside try should have instance_class"
+        );
+    }
+
+    /// A value constructed inside try (and copied through a local that the
+    /// prepass cannot prove is always constructed) must NOT carry its instance
+    /// origin into the catch handler, because the throw may have occurred
+    /// before the assignment.
+    #[test]
+    fn try_origin_does_not_leak_into_catch_handler() {
+        let src = r"
+            import { Foo } from 'lib';
+            function test() {
+                let y;
+                try {
+                    let x = new Foo();
+                    y = x;
+                } catch (e) {
+                    y.method();
+                }
+            }
+        ";
+        let stream = build_facts(src, "try-catch-leak.js");
+        assert_eq!(
+            count_instance_calls(&stream),
+            0,
+            "y.method() in catch should not see instance origin from try"
+        );
+    }
+
+    /// A value constructed only in the try path must not carry its instance
+    /// origin into the finalizer, because the throw may have prevented the
+    /// assignment.
+    #[test]
+    fn try_only_origin_does_not_leak_into_finally() {
+        let src = r"
+            import { Foo } from 'lib';
+            function test() {
+                let y;
+                try {
+                    let x = new Foo();
+                    y = x;
+                } catch (e) {
+                } finally {
+                    y.method();
+                }
+            }
+        ";
+        let stream = build_facts(src, "try-only-finally.js");
+        assert_eq!(
+            count_instance_calls(&stream),
+            0,
+            "y.method() in finally should not see instance origin from only the try path"
+        );
+    }
+
+    /// A value constructed before the try/catch retains its instance origin
+    /// in the finalizer (it is part of the incoming state).
+    #[test]
+    fn pre_try_origin_is_visible_in_finally() {
+        let src = r"
+            import { Foo } from 'lib';
+            function test() {
+                let y = new Foo();
+                try {
+                } catch (e) {
+                } finally {
+                    y.method();
+                }
+            }
+        ";
+        let stream = build_facts(src, "pre-try-finally.js");
+        assert!(
+            count_instance_calls(&stream) > 0,
+            "y.method() in finally should see instance origin when y was constructed before try"
+        );
     }
 }

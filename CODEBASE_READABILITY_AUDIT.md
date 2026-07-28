@@ -34,11 +34,12 @@ The byte scanner handles comments and quoted strings but has no regex-literal st
 
 #### READ-003 — `try`, `catch`, and `finally` share impossible instance state
 - **Severity:** High
+- **Status:** ✅ Fixed
 - **Fix Complexity** High
 - **Category:** Architecture
-- **Location:** `glass-lint-core/src/analysis/facts/control.rs:149-165`
+- **Location:** `glass-lint-core/src/analysis/facts/control.rs:149-166`
 
-`record_try` visits the handler with the state left by the end of the `try`, then visits `finally` with the state left by `try` or `catch`; neither state is definite on those exceptional paths. This disagrees with the later object-flow projector, which restores a baseline at `CatchStart`, and can attach a proven constructed-instance identity inside a handler or finalizer that cannot observe it. Give fact-time identity provenance the same explicit exceptional-edge join semantics as the projector, conservatively intersecting reachable states before `finally`. Add negatives where construction occurs after a possibly throwing statement, in only the handler, and in only one path reaching `finally`.
+`record_try` visited the handler with the state left by the end of the `try`, then visited `finally` with the state left by `try` or `catch`; neither state was definite on those exceptional paths. This disagreed with the later object-flow projector, which restores a baseline at `CatchStart`, and could attach a proven constructed-instance identity inside a handler or finalizer that cannot observe it. The handler now receives the pre-try (incoming) state, and the finalizer receives the conservative intersection of try-ending and handler-ending states.
 
 #### READ-004 — Control constructs clone whole identity maps without charging their cost
 - **Severity:** High
