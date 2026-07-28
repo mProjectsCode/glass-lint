@@ -118,6 +118,8 @@ Resolve `NameId` once per query, then store bindings and assignments in a dense 
 
 `LexicalScope.bindings` changed from `BTreeMap<NameId, BindingProvenance>` to `HashMap<NameId, BindingProvenance>`. `FrozenAssignmentIndex` stores per-scope assignments in a `Vec<HashMap<NameId, Vec<AliasAssignment>>>` instead of nested `BTreeMap`s. `AssignmentEnvironment` uses the same dense `Vec<HashMap<NameId, AssignmentValue>>` representation. `binding_with_scope_at` resolves `NameId` once before the scope-walk loop on both `ScopeGraph` and `FrozenScopeGraph`, and `ScopeCollector::visible_binding`, `visible_binding_scope`, `invalidate_member_root`, and `visit_assign_expr` follow the same pattern. Binding-key comparison in tests sorts keys for order-independent comparison.
 
+**Check:** `cargo test -p glass-lint-core --lib` passes (466 tests); workspace tests pass; `make ci` passed in full on 2026-07-28: workspace check, Clippy, 466 core unit tests, workspace tests/doctests, 12 E2E cases, 2 project cases, 70 JavaScript rule cases, and 98 Obsidian rule cases.
+
 #### READ-009 — Invalid function effects are still turned into helper summaries
 - **Severity:** High
 - **Fix Complexity** Low
