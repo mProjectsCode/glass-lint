@@ -259,6 +259,26 @@ fn compile_declarations(decls: &[MatcherDecl]) -> Result<PhysicalPlan, MatcherBu
     Ok(physical_plan)
 }
 
+/// Compile a single flow matcher into a physical plan, routed through the
+/// validate→normalize→plan pipeline.
+fn compile_single_flow(
+    flow: &crate::api::rule::ObjectFlowMatcher,
+) -> Result<PhysicalPlan, MatcherBuildError> {
+    flow.validate()?;
+
+    let query = QueryDecl::from_flow_matcher(flow, VarId::new(0));
+    validate_query_decl(&query).map_err(|e| {
+        MatcherBuildError::InvalidLoweredQuery(format!("{}: {}", e.diagnostic_name(), e))
+    })?;
+
+    let (normalized, requirements) = normalize::normalize_query_decl(&query);
+    validate_normalized_decl(&normalized).map_err(|e| {
+        MatcherBuildError::InvalidLoweredQuery(format!("{}: {}", e.diagnostic_name(), e))
+    })?;
+
+    Ok(physical::plan_normalized(&normalized, requirements))
+}
+
 impl CompiledMatcherPlan {
     pub(crate) fn flows(&self) -> &[CompiledObjectFlow] {
         &self.flows
@@ -284,35 +304,45 @@ impl CompiledMatcherPlan {
     }
 
     /// Compile declarations and object flows into a complete plan.
+    ///
+    /// Flow matchers are lowered to [`QueryDecl`] lifecycle queries,
+    /// validated, normalized, and planned through the same pipeline as
+    /// ordinary declarations.  The resulting lifecycle roots embed
+    /// [`CompiledObjectFlow`] values directly.
     pub(crate) fn compile_decls_and_flows(
         decls: &[MatcherDecl],
         flows: &[crate::api::rule::ObjectFlowMatcher],
     ) -> Result<Self, MatcherBuildError> {
-        let mut physical_plan = compile_declarations(decls)?;
-        let compiled_flows: Vec<CompiledObjectFlow> = flows
-            .iter()
-            .map(|flow| {
-                let compiled = CompiledObjectFlow::from_matcher(flow);
-                if compiled.symbol.trim().is_empty() {
-                    return Err(MatcherBuildError::EmptyFlowSymbol);
-                }
-                if compiled.sources.is_empty() {
-                    return Err(MatcherBuildError::EmptyFlowSources);
-                }
-                if compiled.requirements.is_empty() && !compiled.all_requirements_required {
-                    return Err(MatcherBuildError::MissingFlowCondition);
-                }
-                if compiled.sinks.is_empty() && !compiled.emit_on_requirements {
-                    return Err(MatcherBuildError::MissingFlowCompletion);
-                }
-                Ok(compiled)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let physical_plan = compile_declarations(decls)?;
+        let mut all_roots: Vec<physical::PhysicalRoot> = physical_plan.roots().to_vec();
+        let mut merged_requirements = physical_plan.requirements().clone();
 
-        // Patch lifecycle flow indices now that we know the flow count.
-        physical::patch_lifecycle_flow_indices(&mut physical_plan, compiled_flows.len());
-        physical::validate_physical_plan(&physical_plan, compiled_flows.len())
+        for flow in flows {
+            let flow_plan = compile_single_flow(flow)?;
+            all_roots.extend(flow_plan.roots().iter().cloned());
+            merged_requirements.merge_from(flow_plan.requirements());
+        }
+
+        // Sort and deduplicate for deterministic order.
+        all_roots.sort();
+        all_roots.dedup();
+        let physical_plan = PhysicalPlan::new(all_roots.into_boxed_slice(), merged_requirements);
+        physical::validate_physical_plan(&physical_plan, 0)
             .map_err(|e| MatcherBuildError::InvalidLoweredQuery(e.to_string()))?;
+
+        // Extract compiled flows from lifecycle roots for analysis
+        // consumer compatibility.
+        let compiled_flows: Vec<CompiledObjectFlow> = physical_plan
+            .roots()
+            .iter()
+            .filter_map(|root| {
+                if let physical::PhysicalRoot::Lifecycle { flow } = root {
+                    Some(flow.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
 
         Ok(Self {
             physical_plan,

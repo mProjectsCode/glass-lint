@@ -2,12 +2,14 @@ use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
 use crate::api::rule::{
-    ArgumentConstraint, FlowSinkMatcher, ObjectEventMatcher, ObjectFlowMatcher,
-    ObjectSourceMatcher, ValueMatcher,
+    ArgumentConstraint, FlowSinkMatcher, ObjectEventMatcher, ValueMatcher,
     matcher::{FlowCompletionKind, FlowConditionKind, FlowSinkMatcherKind, ObjectEventMatcherKind},
+    query::LifecycleQuery,
 };
+#[cfg(test)]
+use crate::api::rule::{ObjectFlowMatcher, ObjectSourceMatcher};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct CompiledObjectFlow {
     pub(crate) symbol: String,
     pub(crate) sources: Vec<CompiledObjectSource>,
@@ -30,6 +32,52 @@ impl CompiledObjectFlow {
         }
     }
 
+    /// Build a compiled flow from a [`LifecycleQuery`] and evidence symbol.
+    pub fn from_lifecycle_query(lc: &LifecycleQuery, symbol: &str) -> Self {
+        let (requirements, all_requirements_required) = lc.condition.as_ref().map_or_else(
+            || (Vec::new(), false),
+            |cond| match cond.kind() {
+                FlowConditionKind::AnyOf(events) => (
+                    events
+                        .iter()
+                        .map(CompiledObjectRequirement::from_matcher)
+                        .collect(),
+                    false,
+                ),
+                FlowConditionKind::AllOf(events) => (
+                    events
+                        .iter()
+                        .map(CompiledObjectRequirement::from_matcher)
+                        .collect(),
+                    true,
+                ),
+            },
+        );
+        let (sinks, emit_on_requirements) = lc.completion.as_ref().map_or_else(
+            || (Vec::new(), false),
+            |comp| match comp.kind() {
+                FlowCompletionKind::Configuration => (Vec::new(), true),
+                FlowCompletionKind::AnySink(sinks) => (
+                    sinks.iter().map(CompiledObjectSink::from_matcher).collect(),
+                    false,
+                ),
+            },
+        );
+        Self {
+            symbol: symbol.to_owned(),
+            sources: lc
+                .sources
+                .iter()
+                .map(CompiledObjectSource::from_event_query)
+                .collect(),
+            requirements,
+            sinks,
+            all_requirements_required,
+            emit_on_requirements,
+        }
+    }
+
+    #[cfg(test)]
     pub fn from_matcher(flow: &ObjectFlowMatcher) -> Self {
         let (requirements, all_requirements_required) = flow.condition().map_or_else(
             || (Vec::new(), false),
@@ -75,7 +123,7 @@ impl CompiledObjectFlow {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct CompiledObjectSource {
     pub(crate) member_call: SymbolPath,
     pub(crate) arguments: Vec<ArgumentConstraint>,
@@ -83,6 +131,7 @@ pub(crate) struct CompiledObjectSource {
 }
 
 impl CompiledObjectSource {
+    #[cfg(test)]
     fn from_matcher(source: &ObjectSourceMatcher) -> Self {
         Self {
             member_call: SymbolPath::from(source.chain()),
@@ -90,9 +139,21 @@ impl CompiledObjectSource {
             is_rooted: true,
         }
     }
+
+    fn from_event_query(eq: &crate::api::rule::query::EventQuery) -> Self {
+        let member_call = match &eq.event {
+            crate::api::rule::query::EventSpec::MemberCall { member } => member.clone(),
+            _ => SymbolPath::default(),
+        };
+        Self {
+            member_call,
+            arguments: eq.constraints.clone(),
+            is_rooted: true,
+        }
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum CompiledObjectRequirement {
     PropertyWrite {
         property: SmolStr,
@@ -119,7 +180,7 @@ impl CompiledObjectRequirement {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum CompiledObjectSinkArguments {
     Any,
     Indices(Vec<usize>),
@@ -138,7 +199,7 @@ impl CompiledObjectSinkArguments {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct CompiledObjectSink {
     pub(crate) member_calls: Vec<SymbolPath>,
     pub(crate) args: CompiledObjectSinkArguments,

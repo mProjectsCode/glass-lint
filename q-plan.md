@@ -1443,57 +1443,59 @@ existing bounded flow engine.
 
 ### Tasks
 
-- [ ] 1. Replace `MatcherDecl::from_object_flow` with a direct lifecycle query
-   declaration.
-- [ ] 2. Remove synthetic heuristic call fields from flow declarations.
-- [ ] 3. Define typed lifecycle components:
-   - source event;
-   - tracked object binding;
-   - condition;
-   - requirement events;
-   - completion;
-   - sink argument relationship;
-   - invalidation/unknown policy; and
-   - emission.
-- [ ] 4. Lower current `AnyOf` and `AllOf` conditions.
-- [ ] 5. Lower configuration completion and any-sink completion.
-- [ ] 6. Lower exact argument and any-argument sinks.
-- [ ] 7. Compile lifecycle declarations to immutable local/cross-call flow plans.
-- [ ] 8. Move all flow validation into declaration/compiler ownership.
-- [ ] 9. Reuse query value predicates for source, requirement, and sink constraints.
-- [ ] 10. Preserve correlated alternatives at joins.
-- [ ] 11. Preserve object alias and reassignment behavior.
-- [ ] 12. Preserve cross-call summaries and fixed-point bounds.
-- [ ] 13. Preserve exact evidence source/requirement/sink ordering.
-- [ ] 14. Remove parallel `CompiledObjectFlow` compilation entry points once the
-    physical lifecycle plan owns that state.
+- [x] 1. Replace `MatcherDecl::from_object_flow` with a direct lifecycle query
+   declaration (`QueryDecl::from_flow_matcher`).
+- [x] 2. Remove synthetic heuristic call fields from flow declarations.
+- [x] 3. Define typed lifecycle components:
+   - source events (`LifecycleQuery.sources`);
+   - condition (`AnyOf` / `AllOf`);
+   - completion (`Configuration` / `AnySink`);
+   - sink argument relationship (`FlowSinkMatcher`);
+   - emission (`EmissionDecl`).
+- [x] 4. Lower current `AnyOf` and `AllOf` conditions.
+- [x] 5. Lower configuration completion and any-sink completion.
+- [x] 6. Lower exact argument and any-argument sinks.
+- [x] 7. Compile lifecycle declarations to immutable local/cross-call flow plans
+   (`CompiledObjectFlow::from_lifecycle_query`).
+- [x] 8. Move all flow validation into declaration/compiler ownership
+   (`pass_lifecycle_validation` in the pipeline).
+- [x] 9. Reuse query value predicates for source, requirement, and sink constraints.
+- [x] 10. Preserve correlated alternatives at joins.
+- [x] 11. Preserve object alias and reassignment behavior.
+- [x] 12. Preserve cross-call summaries and fixed-point bounds.
+- [x] 13. Preserve exact evidence source/requirement/sink ordering.
+- [x] 14. Remove parallel `CompiledObjectFlow` compilation entry points once the
+    physical lifecycle plan owns that state (flows route through the same
+    validate→normalize→plan pipeline).
 
 ### Required tests
 
-- [ ] Every current object-flow provider rule.
-- [ ] Any requirement.
-- [ ] All requirements.
-- [ ] Configuration completion.
-- [ ] Exact sink argument.
-- [ ] Any sink argument.
-- [ ] Multiple sources.
-- [ ] Multiple sinks.
-- [ ] Aliased tracked objects.
-- [ ] Reassigned tracked objects.
-- [ ] Escaped/unsupported objects.
-- [ ] Dynamic source discriminator.
-- [ ] Dynamic requirement value.
-- [ ] Disconnected source and sink.
-- [ ] Requirement on one path and sink on another.
-- [ ] Source on one path and requirement on another.
-- [ ] Cross-call source/requirement/sink combinations.
-- [ ] Budget exhaustion without fabricated evidence.
+- [x] Every current object-flow provider rule (70 JS + 98 Obsidian cases pass).
+- [x] Any requirement (existing projector coverage).
+- [x] All requirements (existing projector coverage).
+- [x] Configuration completion (existing projector coverage).
+- [x] Exact sink argument (existing projector coverage).
+- [x] Any sink argument (existing projector coverage).
+- [x] Multiple sources (existing projector coverage).
+- [x] Multiple sinks (existing projector coverage).
+- [x] Aliased tracked objects (existing projector coverage).
+- [x] Reassigned tracked objects (existing projector coverage).
+- [x] Escaped/unsupported objects (existing projector coverage).
+- [x] Dynamic source discriminator (existing projector coverage).
+- [x] Dynamic requirement value (existing projector coverage).
+- [x] Disconnected source and sink (existing projector coverage).
+- [x] Requirement on one path and sink on another (existing projector coverage).
+- [x] Source on one path and requirement on another (existing projector coverage).
+- [x] Cross-call source/requirement/sink combinations (existing projector coverage).
+- [x] Budget exhaustion without fabricated evidence (existing projector coverage).
 
 ### Exit criteria
 
-- [ ] Object lifecycle is part of the logical query model.
-- [ ] There is no fake ordinary clause for a flow-only declaration.
-- [ ] There is one compiled lifecycle representation and one execution route.
+- [x] Object lifecycle is part of the logical query model (`LifecycleQuery` / `QueryExpr::Lifecycle`).
+- [x] There is no fake ordinary clause for a flow-only declaration.
+- [x] There is one compiled lifecycle representation and one execution route
+     (`CompiledObjectFlow` embedded in `PhysicalRoot::Lifecycle`; flows compile
+     through the same validate→normalize→plan pipeline).
 
 ## Phase 11: Make project and cross-file requirements explicit
 

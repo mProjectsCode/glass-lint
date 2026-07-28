@@ -94,7 +94,10 @@ fn requires_project_overlay(expr: &QueryExpr) -> bool {
         ),
         QueryExpr::Any(any) => any.branches.iter().any(requires_project_overlay),
         QueryExpr::All(all) => all.branches.iter().any(requires_project_overlay),
-        QueryExpr::Lifecycle(lc) => requires_project_overlay(&QueryExpr::Event(lc.source.clone())),
+        QueryExpr::Lifecycle(lc) => lc
+            .sources
+            .iter()
+            .any(|src| requires_project_overlay(&QueryExpr::Event(src.clone()))),
     }
 }
 
@@ -196,11 +199,20 @@ fn compare_exprs(a: &QueryExpr, b: &QueryExpr) -> std::cmp::Ordering {
 
     match (a, b) {
         (QueryExpr::Event(ae), QueryExpr::Event(be)) => compare_event_fields(ae, be),
-        (QueryExpr::Lifecycle(la), QueryExpr::Lifecycle(lb)) => {
-            compare_event_fields(&la.source, &lb.source)
-                .then_with(|| la.condition.is_some().cmp(&lb.condition.is_some()))
-                .then_with(|| la.completion.is_some().cmp(&lb.completion.is_some()))
-        }
+        (QueryExpr::Lifecycle(la), QueryExpr::Lifecycle(lb)) => la
+            .sources
+            .len()
+            .cmp(&lb.sources.len())
+            .then_with(|| {
+                la.sources
+                    .iter()
+                    .zip(lb.sources.iter())
+                    .fold(std::cmp::Ordering::Equal, |acc, (a, b)| {
+                        acc.then_with(|| compare_event_fields(a, b))
+                    })
+            })
+            .then_with(|| la.condition.is_some().cmp(&lb.condition.is_some()))
+            .then_with(|| la.completion.is_some().cmp(&lb.completion.is_some())),
         (QueryExpr::Any(aa), QueryExpr::Any(ba)) => {
             compare_branch_slices(&aa.branches, &ba.branches)
         }
@@ -282,7 +294,11 @@ fn collect_vars_preorder(expr: &QueryExpr, vars: &mut Vec<VarId>) {
                 collect_vars_preorder(b, vars);
             }
         }
-        QueryExpr::Lifecycle(lc) => vars.push(lc.source.var),
+        QueryExpr::Lifecycle(lc) => {
+            for src in &lc.sources {
+                vars.push(src.var);
+            }
+        }
     }
 }
 
@@ -312,15 +328,16 @@ fn remap_vars(expr: &QueryExpr, var_map: &BTreeMap<VarId, VarId>) -> QueryExpr {
             QueryExpr::All(AllExpr { branches })
         }
         QueryExpr::Lifecycle(lc) => {
-            let source = EventQuery {
-                var: var_map
-                    .get(&lc.source.var)
-                    .copied()
-                    .unwrap_or(lc.source.var),
-                ..lc.source.clone()
-            };
+            let sources: Vec<EventQuery> = lc
+                .sources
+                .iter()
+                .map(|src| EventQuery {
+                    var: var_map.get(&src.var).copied().unwrap_or(src.var),
+                    ..src.clone()
+                })
+                .collect();
             QueryExpr::Lifecycle(LifecycleQuery {
-                source,
+                sources,
                 condition: lc.condition.clone(),
                 completion: lc.completion.clone(),
             })
@@ -650,7 +667,7 @@ mod tests {
             constraints: vec![],
         };
         let lc = QueryExpr::Lifecycle(LifecycleQuery {
-            source,
+            sources: vec![source],
             condition: Some(crate::api::rule::FlowCondition::event(
                 crate::api::rule::ObjectEventMatcher::property_write(
                     "type",

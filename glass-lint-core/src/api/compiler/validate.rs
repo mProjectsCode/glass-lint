@@ -291,7 +291,11 @@ fn collect_vars_rec(expr: &QueryExpr, ids: &mut Vec<VarId>) {
                 collect_vars_rec(b, ids);
             }
         }
-        QueryExpr::Lifecycle(lc) => ids.push(lc.source.var),
+        QueryExpr::Lifecycle(lc) => {
+            for src in &lc.sources {
+                ids.push(src.var);
+            }
+        }
     }
 }
 
@@ -301,7 +305,7 @@ fn expr_contains_var(expr: &QueryExpr, target: VarId) -> bool {
         QueryExpr::Event(eq) => eq.var == target,
         QueryExpr::Any(any) => any.branches.iter().any(|b| expr_contains_var(b, target)),
         QueryExpr::All(all) => all.branches.iter().any(|b| expr_contains_var(b, target)),
-        QueryExpr::Lifecycle(lc) => lc.source.var == target,
+        QueryExpr::Lifecycle(lc) => lc.sources.iter().any(|src| src.var == target),
     }
 }
 
@@ -327,7 +331,9 @@ pub(crate) fn pass_well_formedness(decl: &QueryDecl) -> Result<(), QueryCompileE
             }
         }
         QueryExpr::Lifecycle(lc) => {
-            validate_event_query(&lc.source)?;
+            for src in &lc.sources {
+                validate_event_query(src)?;
+            }
         }
     }
     Ok(())
@@ -348,7 +354,12 @@ fn pass_well_formedness_inner(expr: &QueryExpr) -> Result<(), QueryCompileError>
             }
             Ok(())
         }
-        QueryExpr::Lifecycle(lc) => validate_event_query(&lc.source),
+        QueryExpr::Lifecycle(lc) => {
+            for src in &lc.sources {
+                validate_event_query(src)?;
+            }
+            Ok(())
+        }
     }
 }
 
@@ -408,10 +419,12 @@ fn collect_and_check(expr: &QueryExpr, seen: &mut Vec<VarId>) -> Result<(), Quer
             }
         }
         QueryExpr::Lifecycle(lc) => {
-            if seen.contains(&lc.source.var) {
-                return Err(QueryCompileError::DuplicateBinding { var: lc.source.var });
+            for src in &lc.sources {
+                if seen.contains(&src.var) {
+                    return Err(QueryCompileError::DuplicateBinding { var: src.var });
+                }
+                seen.push(src.var);
             }
-            seen.push(lc.source.var);
         }
     }
     Ok(())
@@ -665,7 +678,12 @@ fn check_relation_scope(expr: &QueryExpr) -> Result<(), QueryCompileError> {
             }
             Ok(())
         }
-        QueryExpr::Lifecycle(lc) => check_relation_scope(&QueryExpr::Event(lc.source.clone())),
+        QueryExpr::Lifecycle(lc) => {
+            for src in &lc.sources {
+                check_relation_scope(&QueryExpr::Event(src.clone()))?;
+            }
+            Ok(())
+        }
     }
 }
 
@@ -682,28 +700,37 @@ pub(crate) fn pass_lifecycle_validation(decl: &QueryDecl) -> Result<(), QueryCom
 }
 
 fn validate_lifecycle(lc: &LifecycleQuery) -> Result<(), QueryCompileError> {
-    // Source must be valid.
-    validate_event_query(&lc.source)?;
+    // Sources must be non-empty.
+    if lc.sources.is_empty() {
+        return Err(QueryCompileError::InvalidLifecycle {
+            detail: "lifecycle must have at least one source".into(),
+        });
+    }
+
+    // Each source must be valid.
+    for src in &lc.sources {
+        validate_event_query(src)?;
+
+        // Source event must be a member call (the tracked object is produced
+        // by a member call returning an object).
+        if !matches!(src.event, EventSpec::MemberCall { .. }) {
+            return Err(QueryCompileError::InvalidLifecycle {
+                detail: "lifecycle source event must be a member call".into(),
+            });
+        }
+
+        // Source identity must be rooted for object tracking.
+        if !matches!(src.identity, IdentitySpec::Rooted { .. }) {
+            return Err(QueryCompileError::InvalidLifecycle {
+                detail: "lifecycle source identity must be rooted".into(),
+            });
+        }
+    }
 
     // Lifecycle must have at least one of condition or completion.
     if lc.condition.is_none() && lc.completion.is_none() {
         return Err(QueryCompileError::InvalidLifecycle {
             detail: "lifecycle must have at least a condition or completion".into(),
-        });
-    }
-
-    // Source event must be a member call (the tracked object is produced
-    // by a member call returning an object).
-    if !matches!(lc.source.event, EventSpec::MemberCall { .. }) {
-        return Err(QueryCompileError::InvalidLifecycle {
-            detail: "lifecycle source event must be a member call".into(),
-        });
-    }
-
-    // Source identity must be rooted for object tracking.
-    if !matches!(lc.source.identity, IdentitySpec::Rooted { .. }) {
-        return Err(QueryCompileError::InvalidLifecycle {
-            detail: "lifecycle source identity must be rooted".into(),
         });
     }
 
@@ -1251,7 +1278,7 @@ mod tests {
             constraints: vec![],
         };
         let lc = LifecycleQuery {
-            source,
+            sources: vec![source],
             condition: Some(crate::api::rule::FlowCondition::event(
                 crate::api::rule::ObjectEventMatcher::property_write(
                     "type",
@@ -1292,7 +1319,7 @@ mod tests {
             constraints: vec![],
         };
         let lc = LifecycleQuery {
-            source,
+            sources: vec![source],
             condition: Some(crate::api::rule::FlowCondition::event(
                 crate::api::rule::ObjectEventMatcher::property_write(
                     "type",
@@ -1332,7 +1359,7 @@ mod tests {
             constraints: vec![],
         };
         let lc = LifecycleQuery {
-            source,
+            sources: vec![source],
             condition: Some(crate::api::rule::FlowCondition::event(
                 crate::api::rule::ObjectEventMatcher::property_write(
                     "type",

@@ -32,6 +32,7 @@ use crate::api::{
     classification::MatchKind,
     compiler::{
         normalize::PlanRequirements,
+        object_flow::CompiledObjectFlow,
         rule::{
             EventPredicate, EvidenceDescriptor, IdentityConstraint, InvalidQueryClause,
             lower_event, lower_identity,
@@ -39,7 +40,10 @@ use crate::api::{
     },
     rule::{
         ArgumentConstraint,
-        query::{AllExpr, EventQuery, EventSpec, QueryDecl, QueryExpr, QuerySet, SubjectSpec},
+        query::{
+            AllExpr, EventQuery, EventSpec, LifecycleQuery, QueryDecl, QueryExpr, QuerySet,
+            SubjectSpec,
+        },
     },
 };
 
@@ -92,8 +96,8 @@ pub(crate) enum PhysicalRoot {
         member: SymbolPath,
         evidence: EvidenceDescriptor,
     },
-    /// Reference to a compiled lifecycle flow plan.
-    Lifecycle { flow_index: usize },
+    /// Compiled lifecycle flow plan.
+    Lifecycle { flow: CompiledObjectFlow },
 }
 
 // PhysicalRoot derives PartialOrd/Ord through its fields, which gives
@@ -160,7 +164,7 @@ impl PhysicalPlan {
                 PhysicalRoot::ConstrainedScan { .. } => constrained += 1,
                 PhysicalRoot::ReturnedSubject { .. } => returned += 1,
                 PhysicalRoot::InstanceSubject { .. } => instance += 1,
-                PhysicalRoot::Lifecycle { .. } => lifecycle += 1,
+                PhysicalRoot::Lifecycle { flow: _ } => lifecycle += 1,
             }
         }
         format!(
@@ -253,12 +257,8 @@ fn plan_expression(expr: &QueryExpr, kind: MatchKind, symbol: &str) -> Vec<Physi
             roots
         }
         QueryExpr::All(all) => plan_all_expression(all, kind, symbol),
-        QueryExpr::Lifecycle(_lc) => {
-            // Lifecycles are compiled to flow plans.  The flow index is
-            // resolved when the plan is combined with compiled flows.
-            // For the physical plan, we emit a placeholder that the
-            // caller patches during final assembly.
-            vec![PhysicalRoot::Lifecycle { flow_index: 0 }]
+        QueryExpr::Lifecycle(lc) => {
+            vec![plan_lifecycle(lc, kind, symbol)]
         }
     }
 }
@@ -371,31 +371,12 @@ pub(crate) fn plan_query_set(set: &QuerySet, requirements: &[PlanRequirements]) 
     PhysicalPlan::new(all_roots.into_boxed_slice(), merged_requirements)
 }
 
-/// Patch lifecycle flow indices in a physical plan.
-///
-/// Lifecycle roots are emitted with `flow_index: 0` as a placeholder.
-/// This function assigns the correct index based on the flow's position
-/// in the compiled flows array.
-pub(crate) fn patch_lifecycle_flow_indices(plan: &mut PhysicalPlan, flow_count: usize) {
-    // Lifecycle roots should have sequential flow indices starting
-    // from 0.  If there are more lifecycle roots than compiled flows,
-    // they share the last index (fallback).
-    let mut lifecycle_seen = 0usize;
-    let roots = std::mem::take(&mut plan.roots);
-    let roots: Vec<PhysicalRoot> = roots
-        .into_vec()
-        .into_iter()
-        .map(|root| {
-            if matches!(&root, PhysicalRoot::Lifecycle { .. }) {
-                let idx = lifecycle_seen.min(flow_count.saturating_sub(1));
-                lifecycle_seen += 1;
-                PhysicalRoot::Lifecycle { flow_index: idx }
-            } else {
-                root
-            }
-        })
-        .collect();
-    plan.roots = roots.into_boxed_slice();
+/// Plan a lifecycle query into a [`PhysicalRoot::Lifecycle`] with an
+/// embedded [`CompiledObjectFlow`].
+fn plan_lifecycle(lc: &LifecycleQuery, _kind: MatchKind, symbol: &str) -> PhysicalRoot {
+    PhysicalRoot::Lifecycle {
+        flow: CompiledObjectFlow::from_lifecycle_query(lc, symbol),
+    }
 }
 
 // ── Validation ──────────────────────────────────────────────────────────
@@ -407,10 +388,10 @@ pub(crate) fn patch_lifecycle_flow_indices(plan: &mut PhysicalPlan, flow_count: 
 /// - `ConstrainedScan` roots have a call-bearing event.
 /// - `ReturnedSubject` roots have a member-call or member-read event.
 /// - `InstanceSubject` roots have a member-call event.
-/// - Lifecycle flow index is within bounds (if flow_count is provided).
+/// - Lifecycle has non-empty sources.
 pub(crate) fn validate_physical_plan(
     plan: &PhysicalPlan,
-    flow_count: usize,
+    _flow_count: usize,
 ) -> Result<(), InvalidQueryClause> {
     for root in plan.roots() {
         match root {
@@ -450,8 +431,8 @@ pub(crate) fn validate_physical_plan(
                     return Err(InvalidQueryClause::ImpossibleDimensions);
                 }
             }
-            PhysicalRoot::Lifecycle { flow_index } => {
-                if *flow_index >= flow_count {
+            PhysicalRoot::Lifecycle { flow } => {
+                if flow.sources.is_empty() {
                     return Err(InvalidQueryClause::ImpossibleDimensions);
                 }
             }

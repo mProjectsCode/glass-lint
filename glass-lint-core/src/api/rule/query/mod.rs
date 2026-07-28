@@ -32,6 +32,7 @@ use crate::api::{
     classification::MatchKind,
     rule::{
         ArgumentConstraint, FlowCompletion, FlowCondition, MatcherDecl, ModuleSpecifierPattern,
+        ObjectFlowMatcher,
     },
 };
 
@@ -253,7 +254,11 @@ impl QueryExpr {
                     b.collect_vars(ids);
                 }
             }
-            Self::Lifecycle(l) => ids.push(l.source.var),
+            Self::Lifecycle(l) => {
+                for src in &l.sources {
+                    ids.push(src.var);
+                }
+            }
         }
     }
 }
@@ -295,8 +300,8 @@ impl fmt::Display for QueryExpr {
             Self::Lifecycle(l) => {
                 write!(
                     f,
-                    "lifecycle source={} condition={} completion={}",
-                    l.source.var,
+                    "lifecycle sources={} condition={} completion={}",
+                    l.sources.len(),
                     l.condition.is_some(),
                     l.completion.is_some()
                 )
@@ -356,16 +361,16 @@ impl AllExpr {
     }
 }
 
-/// Object lifecycle: source event, condition, and completion.
+/// Object lifecycle: source events, condition, and completion.
 ///
-/// Represents a bounded state machine tracking an object from its source
+/// Represents a bounded state machine tracking an object from its sources
 /// (production), through configuration (requirements), to completion (sink or
 /// self-configuration). The compiler validates stages and compiles to the
 /// existing local/cross-call flow engine.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LifecycleQuery {
-    /// The event that produces the tracked object.
-    pub source: EventQuery,
+    /// Events that produce the tracked object.
+    pub sources: Vec<EventQuery>,
     /// Optional configuration condition (requirements).
     pub condition: Option<FlowCondition>,
     /// Optional completion mode (sink or configuration).
@@ -425,6 +430,45 @@ impl QueryDecl {
             primary_var: var_id,
             kind: decl.evidence_kind,
             symbol: decl.evidence_symbol.clone(),
+        };
+        Self {
+            expression,
+            emission,
+        }
+    }
+
+    /// Lower an [`ObjectFlowMatcher`] into a logical [`QueryDecl`] with a
+    /// [`LifecycleQuery`] expression.
+    ///
+    /// Each source matcher becomes a source event query; the condition and
+    /// completion are carried through as-is.  The emission kind is
+    /// [`MatchKind::CallArgument`] and the symbol is the flow's symbol.
+    pub fn from_flow_matcher(flow: &ObjectFlowMatcher, _var_id: VarId) -> Self {
+        let sources: Vec<EventQuery> = flow
+            .sources()
+            .iter()
+            .map(|src| EventQuery {
+                var: VarId::new(0),
+                event: EventSpec::MemberCall {
+                    member: SymbolPath::from(src.chain()),
+                },
+                identity: IdentitySpec::Rooted {
+                    path: SymbolPath::from(src.chain()),
+                },
+                subject: SubjectSpec::Direct,
+                constraints: src.arguments().to_vec(),
+            })
+            .collect();
+
+        let expression = QueryExpr::Lifecycle(LifecycleQuery {
+            sources,
+            condition: flow.condition().cloned(),
+            completion: flow.completion().cloned(),
+        });
+        let emission = EmissionDecl {
+            primary_var: VarId::new(0),
+            kind: MatchKind::CallArgument,
+            symbol: flow.symbol().to_owned(),
         };
         Self {
             expression,
