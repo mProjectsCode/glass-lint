@@ -2,7 +2,7 @@
 
 ## Summary
 
-This audit covers all Rust production modules and the relevant tests in `glass-lint-core`, `glass-lint-datastructures`, and `glass-lint-project` (about 50,000 lines total). It found 32 actionable issues: 16 High, 15 Medium, and 1 Low severity. 18 have been fixed (5 High, 12 Medium, 1 Low), leaving 14 open (11 High, 3 Medium). The most important remaining correctness risks are control-insensitive assignment provenance, exceptional-path identity leakage, and tsconfig inheritance being rebased to the wrong directory. The most important remaining boundedness risks are an unbounded function-summary pass and public dense-ID structures that can be driven into enormous sparse allocations.
+This audit covers all Rust production modules and the relevant tests in `glass-lint-core`, `glass-lint-datastructures`, and `glass-lint-project` (about 50,000 lines total). It found 32 actionable issues: 16 High, 15 Medium, and 1 Low severity. 21 have been fixed (6 High, 14 Medium, 1 Low), leaving 10 open (9 High, 1 Medium). The most important remaining correctness risks are control-insensitive assignment provenance, exceptional-path identity leakage, and tsconfig inheritance being rebased to the wrong directory. The most important remaining boundedness risks are an unbounded function-summary pass and public dense-ID structures that can be driven into enormous sparse allocations.
 
 The existing `profile.json.gz` was also inspected against its matching profiling binary. It is supporting rather than dispositive evidence because it does not carry a reproducible workload manifest, but roughly half of the main worker's samples include `FactBuilder` statement traversal, with resolver/name operations prominent below it. That agrees with the static conclusion that lowering work inside `FactBuilder`, interning, and resolver-owned indexes deserves priority.
 
@@ -156,7 +156,6 @@ Return and argument analysis push destination keys into adjacency vectors withou
 #### READ-017 — Outside-path normalization corrupts absolute parents and accepts drive paths
 - **Severity:** High
 - **Fix Complexity** Medium
-- **Status:** ✅ Fixed
 - **Category:** Newtype
 - **Location:** `glass-lint-core/src/project/input.rs:23-79`
 
@@ -219,6 +218,7 @@ Package-based `extends` returns `None` by design, nonexistent relative parents a
 #### READ-024 — Shared extends ancestors are reparsed and charged repeatedly
 - **Severity:** Medium
 - **Fix Complexity** High
+- **Status:** ✅ Fixed
 - **Category:** Complexity
 - **Location:** `glass-lint-project/src/discovery.rs:159-258`
 
