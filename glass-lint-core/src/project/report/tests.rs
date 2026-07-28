@@ -6,7 +6,7 @@ use crate::{
     api::rule::{Category, Confidence, MatcherDecl, Rule, Severity as RuleSeverity},
     project::{
         AnalysisDiagnostic, AnalysisOperationCounts, Diagnostic, Evidence, FileReport, Finding,
-        ProjectRelativePath, SourceFile, SourceLocation,
+        MatchCertainty, ProjectRelativePath, SourceFile, SourceLocation,
     },
 };
 
@@ -45,6 +45,7 @@ fn finding() -> Finding {
         ]
         .into_iter()
         .collect(),
+        MatchCertainty::Definite,
     )
 }
 
@@ -307,6 +308,41 @@ fn report_is_source_free_and_not_serialized() {
 
     let json = serde_json::to_value(&file).unwrap();
     assert!(json.get("source").is_none());
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn match_certainty_serializes_as_stable_spellings() {
+    let definite = serde_json::to_value(MatchCertainty::Definite).unwrap();
+    let possible = serde_json::to_value(MatchCertainty::Possible).unwrap();
+    assert_eq!(definite, "definite");
+    assert_eq!(possible, "possible");
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn finding_serialization_includes_certainty() {
+    let finding = Finding::new(
+        RuleId::parse("js:network.request").unwrap(),
+        "test".into(),
+        Severity::Warning,
+        SourceLocation::new(ProjectRelativePath::new("main.js").unwrap(), range(1, 1, 2)),
+        Vec::new().into_iter().collect(),
+        MatchCertainty::Definite,
+    );
+    let json = serde_json::to_value(&finding).unwrap();
+    assert_eq!(json["certainty"], "definite");
+
+    let possible = Finding::new(
+        RuleId::parse("js:network.request").unwrap(),
+        "test".into(),
+        Severity::Warning,
+        SourceLocation::new(ProjectRelativePath::new("main.js").unwrap(), range(1, 1, 2)),
+        Vec::new().into_iter().collect(),
+        MatchCertainty::Possible,
+    );
+    let json = serde_json::to_value(&possible).unwrap();
+    assert_eq!(json["certainty"], "possible");
 }
 
 #[cfg(feature = "serde")]

@@ -17,8 +17,8 @@ pub use tables::EvidenceList;
 pub use types::{
     AnalysisDiagnostic, AnalysisOperationCounts, AnalysisReport, AnalysisReportSummary,
     BuiltinModuleName, Diagnostic, DiagnosticCode, Evidence, FileReport, Finding,
-    LinkedModuleTarget, LocalExecutionError, ModuleId, NormalizedOutsidePath, PackageSpecifier,
-    ProjectInputError, ProjectRelativePath, ReportCompletion, ResolutionRequest,
+    LinkedModuleTarget, LocalExecutionError, MatchCertainty, ModuleId, NormalizedOutsidePath,
+    PackageSpecifier, ProjectInputError, ProjectRelativePath, ReportCompletion, ResolutionRequest,
     ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, SourceFile, SourceLocation,
     SourceText, is_internal_module_request,
 };

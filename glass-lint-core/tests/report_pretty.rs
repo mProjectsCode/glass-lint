@@ -5,7 +5,7 @@
 
 use glass_lint_core::{
     PrettyFile, PrettyOptions, PrettyReport, PrettyReports, RuleId, Severity,
-    project::{Evidence, FileReport, Finding, ProjectRelativePath, SourceLocation},
+    project::{Evidence, FileReport, Finding, MatchCertainty, ProjectRelativePath, SourceLocation},
 };
 use glass_lint_datastructures::{Position, SourceRange};
 
@@ -52,6 +52,7 @@ fn groups_by_rule_then_sorts_evidence_by_file_and_location() {
             )]
             .into_iter()
             .collect(),
+            MatchCertainty::Definite,
         )
     };
     let report_a = file(vec![finding(2), finding(1)]);
@@ -104,6 +105,7 @@ fn can_hide_source_excerpts_for_evidence_rows() {
             )]
             .into_iter()
             .collect(),
+            MatchCertainty::Definite,
         )],
         vec![],
     );
@@ -158,6 +160,7 @@ fn renders_terminal_controls_visibly() {
             Severity::Warning,
             location(range(1, 1, 2)),
             Vec::new().into_iter().collect(),
+            MatchCertainty::Definite,
         )],
         vec![],
     );
@@ -184,6 +187,7 @@ fn bounds_long_excerpt() {
             Severity::Warning,
             location(range(1, 201, 206)),
             Vec::new().into_iter().collect(),
+            MatchCertainty::Definite,
         )],
         vec![],
     );
@@ -218,6 +222,7 @@ fn renders_tabs_and_wide_unicode_within_the_display_budget() {
             Severity::Info,
             location(range(1, 9, 12)),
             Vec::new().into_iter().collect(),
+            MatchCertainty::Definite,
         )],
         vec![],
     );
@@ -252,6 +257,7 @@ fn renders_missing_source_lines_without_panicking() {
             Severity::Error,
             location(range(99, 1, 2)),
             Vec::new().into_iter().collect(),
+            MatchCertainty::Definite,
         )],
         vec![],
     );
@@ -278,6 +284,7 @@ fn renders_colored_findings_when_enabled() {
             Severity::Error,
             location(range(1, 1, 2)),
             Vec::new().into_iter().collect(),
+            MatchCertainty::Definite,
         )],
         vec![],
     );

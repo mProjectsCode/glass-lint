@@ -316,7 +316,10 @@ fn deep_nesting_under_limit_produces_possible_not_definite() {
     use std::fmt::Write;
     let mut source = String::from("let api = host.files;\n");
     for i in 0..100 {
-        let _ = writeln!(source, "if (flag{i}) api = host.files; else {{ api = local.files; return; }}");
+        let _ = writeln!(
+            source,
+            "if (flag{i}) api = host.files; else {{ api = local.files; return; }}"
+        );
     }
     source.push_str("api.read();");
     assert_count(&source, rooted_read_rule(), 1);
@@ -413,8 +416,8 @@ fn abrupt_branch_exit_does_not_poison_the_reachable_join() {
 /// certainty quantification when they do not reach the occurrence.
 ///
 /// Under future possible-path semantics:
-/// - Only the non-throwing/non-returning path reaches the sink, so a match
-///   on that path is Definite.
+/// - Only the non-throwing/non-returning path reaches the sink, so a match on
+///   that path is Definite.
 #[test]
 fn throw_exit_excludes_unreachable_path_from_certainty() {
     assert_count(

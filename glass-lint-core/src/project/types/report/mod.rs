@@ -12,6 +12,6 @@ pub use code::{DiagnosticCode, DiagnosticKind};
 pub use diagnostic::{AnalysisDiagnostic, Diagnostic};
 pub use evidence::Evidence;
 pub use file_report::FileReport;
-pub use finding::Finding;
+pub use finding::{Finding, MatchCertainty};
 pub use location::SourceLocation;
 pub use operations::AnalysisOperationCounts;

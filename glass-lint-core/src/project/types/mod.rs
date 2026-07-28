@@ -16,8 +16,8 @@ pub use input::{
 };
 pub use report::{
     AnalysisDiagnostic, AnalysisOperationCounts, AnalysisReport, AnalysisReportSummary, Diagnostic,
-    DiagnosticCode, DiagnosticKind, Evidence, FileReport, Finding, ReportCompletion,
-    SourceLocation,
+    DiagnosticCode, DiagnosticKind, Evidence, FileReport, Finding, MatchCertainty,
+    ReportCompletion, SourceLocation,
 };
 
 /// Whether a module request uses syntax that denotes an authored/internal

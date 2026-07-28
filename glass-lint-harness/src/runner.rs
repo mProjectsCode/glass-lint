@@ -122,6 +122,9 @@ impl FindingExpectation {
                 .path
                 .as_ref()
                 .is_none_or(|path| finding.location().path() == path)
+            && self
+                .certainty
+                .is_none_or(|certainty| finding.certainty() == certainty)
     }
 }
 
@@ -198,6 +201,7 @@ mod tests {
                 .unwrap(),
             ),
             Vec::new().into_iter().collect(),
+            glass_lint_core::project::MatchCertainty::Definite,
         )
     }
 
@@ -213,6 +217,7 @@ mod tests {
                 line: None,
                 column: None,
                 message: None,
+                certainty: None,
             }],
             vec![],
         )
@@ -244,6 +249,7 @@ mod tests {
                 line: None,
                 column: None,
                 message: None,
+                certainty: None,
             }],
         )
         .unwrap();

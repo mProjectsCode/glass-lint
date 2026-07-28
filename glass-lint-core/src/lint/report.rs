@@ -9,8 +9,8 @@ use crate::{
     diagnostic::SourceLineIndex,
     lint::catalog::RuleCatalog,
     project::{
-        AnalysisReport, Diagnostic, EvidenceList, FileReport, Finding, ModuleId, ProjectInputError,
-        ProjectRelativePath, SourceFile, SourceLocation,
+        AnalysisReport, Diagnostic, EvidenceList, FileReport, Finding, MatchCertainty, ModuleId,
+        ProjectInputError, ProjectRelativePath, SourceFile, SourceLocation,
     },
 };
 
@@ -226,6 +226,7 @@ impl<'a> ReportAssembly<'a> {
                     severity,
                     SourceLocation::new(path.clone(), range),
                     local_evidence,
+                    MatchCertainty::Definite,
                 )
             })
             .collect()

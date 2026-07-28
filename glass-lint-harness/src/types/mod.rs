@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use glass_lint_core::{
     RuleId, Severity,
     project::{
-        BuiltinModuleName, Finding, NormalizedOutsidePath, PackageSpecifier, ProjectRelativePath,
-        ResolutionRequestKind, ResolverOutcome,
+        BuiltinModuleName, Finding, MatchCertainty, NormalizedOutsidePath, PackageSpecifier,
+        ProjectRelativePath, ResolutionRequestKind, ResolverOutcome,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -261,6 +261,8 @@ pub struct FindingExpectation {
     pub(crate) column: Option<u32>,
     /// Optional rendered-message constraint.
     pub(crate) message: Option<String>,
+    /// Optional match certainty constraint.
+    pub(crate) certainty: Option<MatchCertainty>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -284,6 +286,7 @@ impl FindingExpectation {
             line: None,
             column: None,
             message: None,
+            certainty: None,
         })
     }
 
@@ -319,6 +322,12 @@ impl FindingExpectation {
     #[must_use]
     pub fn with_message(mut self, message: impl Into<String>) -> Self {
         self.message = Some(message.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_certainty(mut self, certainty: MatchCertainty) -> Self {
+        self.certainty = Some(certainty);
         self
     }
 }
@@ -464,6 +473,7 @@ impl<'de> serde::Deserialize<'de> for AdapterResponse {
             message: String,
             severity: Severity,
             location: AdapterSourceLocation,
+            certainty: Option<MatchCertainty>,
         }
         #[derive(Deserialize)]
         struct AdapterSourceLocation {
@@ -490,6 +500,7 @@ impl<'de> serde::Deserialize<'de> for AdapterResponse {
                 fp.severity,
                 glass_lint_core::project::SourceLocation::new(path, fp.location.range),
                 std::iter::empty().collect(),
+                fp.certainty.unwrap_or(MatchCertainty::Definite),
             ));
         }
         Ok(Self {
