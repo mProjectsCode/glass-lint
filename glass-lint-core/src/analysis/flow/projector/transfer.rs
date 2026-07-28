@@ -11,7 +11,7 @@ use crate::analysis::flow::{
     projector::{CallArgInfo, FactId, FlowState, ObjectFlowProjector, ObjectId, ValueId},
 };
 
-impl ObjectFlowProjector<'_, '_> {
+impl ObjectFlowProjector<'_, '_, '_> {
     /// Transfer a source/result alias into object-flow state.
     pub(super) fn assign(&mut self, target: ValueId, source: ValueId) {
         if target == ValueId::UNKNOWN {

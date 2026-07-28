@@ -21,12 +21,14 @@ use crate::{
         model::flow::FlowLimits,
         module::ModuleInterface,
         project::model::ExportResolution,
+        trace::TraceArena,
         value::{ValueId, ValueTable},
     },
     api::{
         classification::RuleIndex,
         compiler::{CompiledRuleSelection, object_flow::CompiledObjectFlow, rule::QueryClause},
     },
+    project::ModuleId,
 };
 
 mod arguments;
@@ -450,6 +452,7 @@ impl SemanticFacts {
     /// Projects constrained-clause and flow evidence after linking.
     /// Returns projected evidence alongside a [`LocalFlowProjectionOutcome`]
     /// so callers can observe exhaustion without guessing from evidence shape.
+    #[allow(clippy::too_many_arguments)]
     pub(in crate::analysis) fn project(
         &self,
         effects: &FunctionEffects,
@@ -458,6 +461,8 @@ impl SemanticFacts {
         result_identities: Option<&BTreeMap<ValueId, ExportResolution>>,
         overlay: Option<&LinkedOccurrenceView<'_>>,
         flow_limits: FlowLimits,
+        module_id: ModuleId,
+        trace_arena: &mut TraceArena,
     ) -> (
         Vec<Vec<crate::api::classification::ClassificationEvidence>>,
         LocalFlowProjectionOutcome,
@@ -481,6 +486,8 @@ impl SemanticFacts {
             &plan.flow_matchers,
             &mut projected_evidence,
             flow_limits,
+            module_id,
+            trace_arena,
         );
         (projected_evidence, outcome)
     }

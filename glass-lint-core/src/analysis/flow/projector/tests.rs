@@ -1,11 +1,31 @@
 use super::*;
 use crate::{
-    analysis::resolution::Resolver,
+    analysis::{resolution::Resolver, trace::TraceArena},
     api::rule::{
         FlowCompletion, FlowCondition, FlowSinkMatcher, ObjectEventMatcher, ObjectFlowMatcher,
         ObjectSourceMatcher, ValueMatcher,
     },
+    project::ModuleId,
 };
+
+fn collect_with_limits_test(
+    stream: &FactStream<Frozen>,
+    effects: &FunctionEffects,
+    rules: &[(RuleIndex, usize, &CompiledObjectFlow)],
+    rule_count: usize,
+    limits: FlowLimits,
+) -> (Vec<Vec<ClassificationEvidence>>, LocalFlowProjectionOutcome) {
+    let mut arena = TraceArena::new(4096);
+    collect_with_limits(
+        stream,
+        effects,
+        rules,
+        rule_count,
+        limits,
+        ModuleId::new(0),
+        &mut arena,
+    )
+}
 
 fn collect_source(source: &str, flow: &ObjectFlowMatcher) -> Vec<Vec<ClassificationEvidence>> {
     let parsed = crate::parse(source, "fact-flow.js").expect("source should parse");
@@ -13,7 +33,7 @@ fn collect_source(source: &str, flow: &ObjectFlowMatcher) -> Vec<Vec<Classificat
     let stream = crate::analysis::facts::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
     let flow = CompiledObjectFlow::from_matcher(flow);
-    let (evidence, _outcome) = collect_with_limits(
+    let (evidence, _outcome) = collect_with_limits_test(
         &stream,
         &effects,
         &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],
@@ -252,7 +272,7 @@ fn flow_evidence_is_anchored_at_the_sink_event() {
         })
         .expect("sink call should be present");
     let flow = CompiledObjectFlow::from_matcher(&script_flow());
-    let (evidence, _outcome) = collect_with_limits(
+    let (evidence, _outcome) = collect_with_limits_test(
         &stream,
         &effects,
         &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],
@@ -290,7 +310,7 @@ fn requirement_only_evidence_is_anchored_at_the_configuration_event() {
         })
         .expect("configuration write should be present");
     let flow = CompiledObjectFlow::from_matcher(&flow);
-    let (evidence, _outcome) = collect_with_limits(
+    let (evidence, _outcome) = collect_with_limits_test(
         &stream,
         &effects,
         &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],
@@ -312,7 +332,7 @@ fn object_limit_exhaustion_returns_exhausted_outcome() {
     let effects = FunctionEffects::collect(&stream, usize::MAX);
     let flow = CompiledObjectFlow::from_matcher(&flow);
     let limits = FlowLimits::test_new(1, 262_144, 65_536, 4096);
-    let (evidence, outcome) = collect_with_limits(
+    let (evidence, outcome) = collect_with_limits_test(
         &stream,
         &effects,
         &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],
@@ -341,7 +361,7 @@ fn mutation_log_exhaustion_returns_exhausted_outcome() {
     let effects = FunctionEffects::collect(&stream, usize::MAX);
     let flow = CompiledObjectFlow::from_matcher(&flow);
     let limits = FlowLimits::test_new(65_536, 262_144, 65_536, 1);
-    let (_evidence, outcome) = collect_with_limits(
+    let (_evidence, outcome) = collect_with_limits_test(
         &stream,
         &effects,
         &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],
@@ -362,7 +382,7 @@ fn state_limit_exhaustion_returns_exhausted_outcome() {
     let effects = FunctionEffects::collect(&stream, usize::MAX);
     let flow = CompiledObjectFlow::from_matcher(&flow);
     let limits = FlowLimits::test_new(65_536, 0, 65_536, 4096);
-    let (_evidence, outcome) = collect_with_limits(
+    let (_evidence, outcome) = collect_with_limits_test(
         &stream,
         &effects,
         &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],
@@ -383,7 +403,7 @@ fn emission_limit_exhaustion_returns_exhausted_outcome() {
     let effects = FunctionEffects::collect(&stream, usize::MAX);
     let flow = CompiledObjectFlow::from_matcher(&flow);
     let limits = FlowLimits::test_new(65_536, 262_144, 0, 4096);
-    let (_evidence, outcome) = collect_with_limits(
+    let (_evidence, outcome) = collect_with_limits_test(
         &stream,
         &effects,
         &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],

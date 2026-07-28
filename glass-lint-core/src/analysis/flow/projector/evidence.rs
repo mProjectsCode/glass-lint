@@ -8,22 +8,24 @@ use glass_lint_datastructures::NamePath;
 
 use crate::{
     analysis::{
-        facts::{FactStream, Frozen},
         flow::{
-            planning::BoundFlowPlan,
             projector::{
-                CallArgInfo, ClassificationEvidence, CompiledObjectFlow, FactId, FlowState,
-                FlowStateTable, MatchKind, ObjectFlowProjector, ObjectId, ValueId,
-                history::ReportEvidenceKey, state::FlowEvidence,
+                CallArgInfo, ClassificationEvidence, FactId, FlowState, MatchKind,
+                ObjectFlowProjector, ObjectId, ValueId, history::ReportEvidenceKey,
             },
             summary::SummaryPathStore,
         },
-        model::flow::{FlowId, FlowLimits, FlowStateKey},
+        model::flow::{FlowId, FlowStateKey},
+        trace::QualifiedEvent,
     },
-    api::compiler::{CompiledObjectRequirement, CompiledObjectSinkArguments},
+    api::{
+        classification::ClassificationEvidenceOccurrence,
+        compiler::{CompiledObjectRequirement, CompiledObjectSinkArguments},
+    },
+    project::EvidenceRole,
 };
 
-impl ObjectFlowProjector<'_, '_> {
+impl ObjectFlowProjector<'_, '_, '_> {
     /// Apply member-call requirements to live object states.
     pub(super) fn record_configuration(
         &mut self,
@@ -69,16 +71,7 @@ impl ObjectFlowProjector<'_, '_> {
                     }
                 }
                 drop(state);
-                emit_if_ready(
-                    &mut self.flow_evidence,
-                    &self.flow_state,
-                    &self.plan,
-                    &self.limits,
-                    self.stream,
-                    key.flow,
-                    key.object,
-                    event,
-                );
+                self.emit_if_ready(key.flow, key.object, event);
             }
         }
     }
@@ -94,6 +87,7 @@ impl ObjectFlowProjector<'_, '_> {
         let Some(flow_ids) = self.plan.sink_ids(chain) else {
             return;
         };
+        let flow_ids: Vec<FlowId> = flow_ids.to_vec();
         for (argument_index, argument) in args.iter().enumerate() {
             let Some(object) = self.flow_state.object_for(argument.value) else {
                 continue;
@@ -122,17 +116,18 @@ impl ObjectFlowProjector<'_, '_> {
                         }
                 });
                 if matches {
-                    let Some(state) = self.flow_state.state(key.object, key.flow) else {
+                    let state = self.flow_state.state(key.object, key.flow).cloned();
+                    let Some(state) = state else {
                         continue;
                     };
-                    emit_state(
-                        &mut self.flow_evidence,
-                        self.stream,
-                        &self.limits,
-                        state,
-                        flow,
-                        sink_fact,
-                    );
+                    let ready = self
+                        .plan
+                        .get(flow_id)
+                        .is_some_and(|flow| state.is_ready(flow));
+                    if !ready {
+                        continue;
+                    }
+                    self.emit_state(&state, sink_fact);
                 }
             }
         }
@@ -178,87 +173,129 @@ impl ObjectFlowProjector<'_, '_> {
             })
             .collect();
         for (object, flow_id) in ready {
-            let Some(state) = self.flow_state.state(object, flow_id) else {
+            let state = self.flow_state.state(object, flow_id).cloned();
+            let Some(state) = state else {
                 continue;
             };
-            let Some(flow) = self.plan.get(flow_id) else {
+            let ready = self
+                .plan
+                .get(flow_id)
+                .is_some_and(|flow| state.is_ready(flow));
+            if !ready {
                 continue;
-            };
-            emit_state(
-                &mut self.flow_evidence,
-                self.stream,
-                &self.limits,
-                state,
-                flow,
-                sink_fact,
-            );
+            }
+            self.emit_state(&state, sink_fact);
         }
     }
-}
 
-/// Emit a requirement-only match when its state is complete.
-#[allow(clippy::too_many_arguments)]
-pub(super) fn emit_if_ready(
-    evidence: &mut FlowEvidence,
-    flow_state: &FlowStateTable,
-    plan: &BoundFlowPlan<'_>,
-    limits: &FlowLimits,
-    stream: &FactStream<Frozen>,
-    flow: FlowId,
-    object: ObjectId,
-    event: FactId,
-) {
-    let Some(state) = flow_state.state(object, flow) else {
-        return;
-    };
-    let Some(matcher) = plan.get(flow) else {
-        return;
-    };
-    if matcher.emit_on_requirements {
-        emit_state(evidence, stream, limits, state, matcher, event);
+    /// Emit a requirement-only match when its state is complete.
+    pub(super) fn emit_if_ready(&mut self, flow: FlowId, object: ObjectId, event: FactId) {
+        let state = self.flow_state.state(object, flow).cloned();
+        let Some(state) = state else {
+            return;
+        };
+        let ready = self
+            .plan
+            .get(flow)
+            .is_some_and(|f| f.emit_on_requirements && state.is_ready(f));
+        if !ready {
+            return;
+        }
+        self.emit_state(&state, event);
     }
-}
 
-/// Emit one bounded, source-anchored evidence item for a ready state.
-fn emit_state(
-    evidence: &mut FlowEvidence,
-    stream: &FactStream<Frozen>,
-    limits: &FlowLimits,
-    state: &FlowState,
-    flow: &CompiledObjectFlow,
-    match_fact: FactId,
-) {
-    if !state.is_ready(flow) {
-        return;
-    }
-    debug_assert!(state.source_event() <= match_fact);
-    let key = ReportEvidenceKey::new(
-        state.flow_id().rule_index().get(),
-        state.flow_id().flow_index(),
-        state.object_id(),
-        match_fact,
-    );
-    if evidence.try_insert(key, limits.emission_limit()) {
+    /// Emit one bounded, source-anchored evidence item for a ready state,
+    /// with an interned trace chain: Source → Requirements → Sink.
+    fn emit_state(&mut self, state: &FlowState, match_fact: FactId) {
+        debug_assert!(state.source_event() <= match_fact);
+        let key = ReportEvidenceKey::new(
+            state.flow_id().rule_index().get(),
+            state.flow_id().flow_index(),
+            state.object_id(),
+            match_fact,
+        );
+
+        // Extract the flow symbol before the mutable borrow of self.
+        let flow_symbol = self
+            .plan
+            .get(state.flow_id())
+            .map(crate::api::compiler::object_flow::CompiledObjectFlow::evidence_symbol)
+            .unwrap_or_default();
+
+        if !self
+            .flow_evidence
+            .try_insert(key, self.limits.emission_limit(), 256)
+        {
+            return;
+        }
+
         let anchor = match_fact;
-        evidence.record(
+        let span = self
+            .stream
+            .fact(anchor)
+            .map_or(glass_lint_datastructures::ByteRange::empty(), |fact| {
+                fact.span
+            });
+
+        // Build the trace chain: Source → Requirements (in declaration order) → Sink.
+        let trace_head = self.build_flow_trace(state, match_fact);
+
+        self.flow_evidence.record(
             state.flow_id().rule_index().get(),
             ClassificationEvidence {
                 kind: MatchKind::CallArgument,
-                symbol: flow.evidence_symbol(),
+                symbol: flow_symbol,
                 count: 1,
                 truncated: false,
-                occurrences: vec![
-                    crate::api::classification::ClassificationEvidenceOccurrence {
-                        span: stream
-                            .fact(anchor)
-                            .map_or(glass_lint_datastructures::ByteRange::empty(), |fact| {
-                                fact.span
-                            }),
-                        fact: Some(anchor.0),
-                        trace: None,
-                    },
-                ],
+                occurrences: vec![ClassificationEvidenceOccurrence {
+                    span,
+                    fact: Some(anchor.0),
+                    trace: trace_head,
+                }],
             },
         );
+    }
+
+    /// Build an interned trace chain for a flow finding:
+    /// Source → Requirement[0] → Requirement[1] → ... → Sink.
+    /// Returns `None` if the trace arena is exhausted.
+    fn build_flow_trace(
+        &mut self,
+        state: &FlowState,
+        sink_fact: FactId,
+    ) -> Option<crate::api::classification::TraceNodeId> {
+        // 1. Source node (first in execution order, no parent)
+        let source_node = self.trace_arena.intern(
+            None,
+            QualifiedEvent::new(self.module_id, state.source_event()),
+            EvidenceRole::Source,
+        )?;
+
+        // 2. Requirement nodes (declaration order by index)
+        let mut tail: Option<crate::api::classification::TraceNodeId> = Some(source_node);
+        for (_index, values) in state.requirement_keys() {
+            // Use the first (deterministic) value per requirement key for the trace.
+            let first_val = match values.first() {
+                Some(v) => *v,
+                None => continue,
+            };
+            let next = self.trace_arena.intern(
+                tail,
+                QualifiedEvent::new(self.module_id, first_val),
+                EvidenceRole::Requirement,
+            );
+            #[allow(clippy::question_mark)]
+            if next.is_none() {
+                return None;
+            }
+            tail = next;
+        }
+
+        // 3. Sink node (last in execution order, becomes the trace head)
+        self.trace_arena.intern(
+            tail,
+            QualifiedEvent::new(self.module_id, sink_fact),
+            EvidenceRole::Sink,
+        )
     }
 }

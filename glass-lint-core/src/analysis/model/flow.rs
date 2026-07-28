@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     hash::{Hash, Hasher},
     sync::Arc,
 };
@@ -93,13 +93,15 @@ impl FlowId {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
-pub struct RequirementSet<K = FactId>(Arc<BTreeMap<usize, K>>);
+pub struct RequirementSet<K = FactId>(Arc<BTreeMap<usize, BTreeSet<K>>>);
 
 impl<K: Hash> Hash for RequirementSet<K> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        for (k, v) in self.0.iter() {
+        for (k, vals) in self.0.iter() {
             k.hash(state);
-            v.hash(state);
+            for v in vals {
+                v.hash(state);
+            }
         }
     }
 }
@@ -110,9 +112,12 @@ impl<K> Default for RequirementSet<K> {
     }
 }
 
-impl<K: Clone> RequirementSet<K> {
+impl<K: Clone + Ord> RequirementSet<K> {
     pub fn insert(&mut self, parameter: usize, value: K) {
-        Arc::make_mut(&mut self.0).insert(parameter, value);
+        Arc::make_mut(&mut self.0)
+            .entry(parameter)
+            .or_default()
+            .insert(value);
     }
 
     pub fn remove(&mut self, parameter: usize) {
@@ -128,12 +133,21 @@ impl<K: Clone> RequirementSet<K> {
     }
 
     pub fn values(&self) -> impl Iterator<Item = &K> {
-        self.0.values()
+        self.0.values().flatten()
+    }
+
+    pub fn iter_by_key(&self) -> impl Iterator<Item = (usize, &BTreeSet<K>)> {
+        self.0.iter().map(|(k, v)| (*k, v))
     }
 
     pub fn intersect_keys(&mut self, other: &Self) {
         let map = Arc::make_mut(&mut self.0);
-        map.retain(|parameter, _| other.0.contains_key(parameter));
+        map.retain(|parameter, values| {
+            other.0.get(parameter).is_some_and(|other_values| {
+                values.extend(other_values.iter().cloned());
+                true
+            })
+        });
     }
 }
 
@@ -208,6 +222,10 @@ impl FlowState {
 
     pub fn requirement_count(&self) -> usize {
         self.requirements.len()
+    }
+
+    pub fn requirement_keys(&self) -> impl Iterator<Item = (usize, &BTreeSet<FactId>)> {
+        self.requirements.iter_by_key()
     }
 }
 
@@ -294,7 +312,19 @@ mod tests {
     }
 
     #[test]
-    fn requirement_set_intersect_keys_keeps_common_parameters() {
+    fn requirement_set_insert_duplicate_key_appends_value() {
+        let mut set: RequirementSet = RequirementSet::default();
+        set.insert(0, FactId(10));
+        set.insert(0, FactId(20));
+        let values: Vec<_> = set.values().copied().collect();
+        assert_eq!(values.len(), 2);
+        assert!(values.contains(&FactId(10)));
+        assert!(values.contains(&FactId(20)));
+        assert_eq!(set.len(), 1);
+    }
+
+    #[test]
+    fn requirement_set_intersect_keys_unions_values_for_common_keys() {
         let mut a: RequirementSet = RequirementSet::default();
         a.insert(0, FactId(1));
         a.insert(1, FactId(2));
@@ -306,7 +336,9 @@ mod tests {
         a.intersect_keys(&b);
         assert_eq!(a.len(), 2);
         assert!(a.values().any(|&v| v == FactId(1)));
+        assert!(a.values().any(|&v| v == FactId(10)));
         assert!(a.values().any(|&v| v == FactId(3)));
+        assert!(a.values().any(|&v| v == FactId(30)));
     }
 
     #[test]

@@ -15,7 +15,7 @@ use crate::analysis::{
     },
 };
 
-impl ObjectFlowProjector<'_, '_> {
+impl ObjectFlowProjector<'_, '_, '_> {
     /// Apply one balanced control marker to the current environment.
     pub(super) fn transfer_control(&mut self, kind: ControlKind, region: ControlRegionId) {
         // Control markers are consumed in the same order they were emitted;

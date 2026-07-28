@@ -65,6 +65,7 @@ impl ProjectSemanticModel {
         let flow_limits = FlowLimits::from_flow_operations(self.flow_limit());
         let mut local_exhausted = false;
         let mut session = LinkingSession::new(self.flow_limit());
+        let mut arena = self.trace_arena.lock().unwrap();
         let projections: BTreeMap<ModuleId, ProjectModuleProjection<'project>> = self
             .modules
             .values()
@@ -80,6 +81,8 @@ impl ProjectSemanticModel {
                     Some(&result_identities),
                     Some(&overlay),
                     flow_limits,
+                    module.id(),
+                    &mut arena,
                 );
                 if local_outcome.exhausted {
                     local_exhausted = true;
@@ -95,10 +98,8 @@ impl ProjectSemanticModel {
             })
             .collect();
 
-        let (cross, cross_exhausted, projection_count) = {
-            let mut arena = self.trace_arena.lock().unwrap();
-            flow::cross::collect(self, &matchers, &mut session, &mut arena)
-        };
+        let (cross, cross_exhausted, projection_count) =
+            { flow::cross::collect(self, &matchers, &mut session, &mut arena) };
         let exhausted = local_exhausted || cross_exhausted;
         let outcome = ProjectionOutcome {
             flow_exhausted: exhausted,

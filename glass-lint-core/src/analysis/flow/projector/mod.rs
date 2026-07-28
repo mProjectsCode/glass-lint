@@ -31,12 +31,14 @@ use crate::{
             summary::FunctionSummaries,
         },
         model::flow::{FlowLimits, FlowState},
+        trace::TraceArena,
         value::{ObjectId, ValueId},
     },
     api::{
         classification::{ClassificationEvidence, MatchKind, RuleIndex},
         compiler::{CompiledObjectFlow, CompiledObjectRequirement},
     },
+    project::ModuleId,
 };
 
 /// Exhaustion state and bounded counters returned by local flow projection.
@@ -58,6 +60,8 @@ pub(in crate::analysis) fn collect_into(
     rules: &[(RuleIndex, usize, &CompiledObjectFlow)],
     evidence: &mut [Vec<ClassificationEvidence>],
     limits: FlowLimits,
+    module_id: ModuleId,
+    trace_arena: &mut TraceArena,
 ) -> LocalFlowProjectionOutcome {
     let names = stream.names();
     let plan = BoundFlowPlan::new(rules, names);
@@ -71,6 +75,8 @@ pub(in crate::analysis) fn collect_into(
         evidence,
         limits,
         summary_budget.exhausted(),
+        module_id,
+        trace_arena,
     );
     for fact in stream.facts() {
         projector.transfer(fact);
@@ -85,14 +91,24 @@ pub(super) fn collect_with_limits(
     rules: &[(RuleIndex, usize, &CompiledObjectFlow)],
     rule_count: usize,
     limits: FlowLimits,
+    module_id: ModuleId,
+    trace_arena: &mut TraceArena,
 ) -> (Vec<Vec<ClassificationEvidence>>, LocalFlowProjectionOutcome) {
     let mut evidence = vec![Vec::new(); rule_count];
-    let outcome = collect_into(stream, effects, rules, &mut evidence, limits);
+    let outcome = collect_into(
+        stream,
+        effects,
+        rules,
+        &mut evidence,
+        limits,
+        module_id,
+        trace_arena,
+    );
     (evidence, outcome)
 }
 
 #[derive(Debug)]
-struct ObjectFlowProjector<'rules, 'stream> {
+struct ObjectFlowProjector<'rules, 'stream, 'arena> {
     /// The canonical facts are the projector's only input. In particular, it
     /// must never inspect the AST or reconstruct resolution decisions.
     stream: &'stream FactStream<Frozen>,
@@ -118,9 +134,14 @@ struct ObjectFlowProjector<'rules, 'stream> {
     reachable: bool,
     /// Summary construction exhausted its budget.
     summary_exhausted: bool,
+    /// Shared trace arena for interning evidence trace nodes.
+    trace_arena: &'arena mut TraceArena,
+    /// Module being projected, used to qualify trace events.
+    module_id: ModuleId,
 }
 
-impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
+impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         stream: &'stream FactStream<Frozen>,
         names: &'stream NameTable,
@@ -129,6 +150,8 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
         evidence: &'stream mut [Vec<ClassificationEvidence>],
         limits: FlowLimits,
         summary_exhausted: bool,
+        module_id: ModuleId,
+        trace_arena: &'arena mut TraceArena,
     ) -> Self {
         let calls_by_result = stream
             .facts()
@@ -151,6 +174,8 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             control: Vec::new(),
             reachable: true,
             summary_exhausted,
+            module_id,
+            trace_arena,
         }
     }
 
@@ -293,16 +318,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                 }
             }
             drop(state);
-            evidence::emit_if_ready(
-                &mut self.flow_evidence,
-                &self.flow_state,
-                &self.plan,
-                &self.limits,
-                self.stream,
-                key.flow,
-                key.object,
-                event,
-            );
+            self.emit_if_ready(key.flow, key.object, event);
         }
     }
 

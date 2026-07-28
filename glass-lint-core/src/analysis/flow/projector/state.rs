@@ -6,7 +6,7 @@
 //! leaking after a control-flow merge.
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     ops::{Deref, DerefMut},
 };
 
@@ -399,23 +399,42 @@ fn merge_state_delta(
 pub(super) struct FlowEvidence<'a> {
     /// Evidence grouped by selected rule index, owned by the caller.
     items: &'a mut [Vec<ClassificationEvidence>],
-    /// `(rule, flow, object, event)` identities already emitted.
-    emitted: BTreeSet<ReportEvidenceKey>,
+    /// `(rule, flow, object, event)` identities with emission count per key.
+    /// Multiple traces may be emitted for the same key (e.g., different
+    /// requirement events from distinct branches).
+    emitted: BTreeMap<ReportEvidenceKey, u32>,
+    /// Maximum evidence items emitted (sum of all counts).
+    total_emitted: usize,
 }
 
 impl<'a> FlowEvidence<'a> {
     pub(super) fn new(evidence: &'a mut [Vec<ClassificationEvidence>]) -> Self {
         Self {
             items: evidence,
-            emitted: BTreeSet::new(),
+            emitted: BTreeMap::new(),
+            total_emitted: 0,
         }
     }
 
-    pub(super) fn try_insert(&mut self, key: ReportEvidenceKey, limit: usize) -> bool {
-        if !self.emitted.contains(&key) && self.emitted.len() >= limit {
+    /// Reserve a slot for an evidence item. Returns true when the caller
+    /// may emit. Allows multiple emissions per key up to `max_per_key`,
+    /// and caps the total across all keys to `limit`.
+    pub(super) fn try_insert(
+        &mut self,
+        key: ReportEvidenceKey,
+        limit: usize,
+        max_per_key: u32,
+    ) -> bool {
+        let count = self.emitted.entry(key).or_insert(0);
+        if *count >= max_per_key {
             return false;
         }
-        self.emitted.insert(key)
+        if *count == 0 && self.total_emitted >= limit {
+            return false;
+        }
+        *count += 1;
+        self.total_emitted += 1;
+        true
     }
 
     pub(super) fn record(&mut self, rule_index: usize, evidence: ClassificationEvidence) {
@@ -423,7 +442,7 @@ impl<'a> FlowEvidence<'a> {
     }
 
     pub(super) fn emitted_count(&self) -> usize {
-        self.emitted.len()
+        self.total_emitted
     }
 }
 
