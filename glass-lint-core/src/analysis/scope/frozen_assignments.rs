@@ -1,6 +1,5 @@
-use std::collections::BTreeMap;
-
 use glass_lint_datastructures::NameId;
+use hashbrown::HashMap;
 use swc_common::{BytePos, Span};
 
 use crate::analysis::{
@@ -21,33 +20,35 @@ pub(in crate::analysis) enum AssignmentAt<'a> {
 /// invariant is established during construction and never violated.
 #[derive(Debug, Clone)]
 pub(in crate::analysis) struct FrozenAssignmentIndex {
-    inner: BTreeMap<ScopeId, BTreeMap<NameId, Vec<AliasAssignment>>>,
+    inner: Vec<HashMap<NameId, Vec<AliasAssignment>>>,
 }
 
 impl FrozenAssignmentIndex {
     /// Build from a flat, unsorted assignment stream.
     /// Sorts and groups by (scope, name) during construction.
     pub(in crate::analysis) fn from_assignments(assignments: Vec<AliasAssignment>) -> Self {
-        let mut inner: BTreeMap<ScopeId, BTreeMap<NameId, Vec<AliasAssignment>>> = BTreeMap::new();
+        let max_scope = assignments
+            .iter()
+            .map(|a| a.scope.index())
+            .max()
+            .unwrap_or(0);
+        let mut inner: Vec<HashMap<NameId, Vec<AliasAssignment>>> =
+            vec![HashMap::new(); max_scope + 1];
         for assignment in assignments {
-            inner
-                .entry(assignment.scope)
-                .or_default()
+            inner[assignment.scope.index()]
                 .entry(assignment.name)
                 .or_default()
                 .push(assignment);
         }
-        for scope_entries in inner.values_mut() {
-            for binding_assignments in scope_entries.values_mut() {
-                binding_assignments.sort_by_key(|a| a.span.lo);
-            }
+        for binding_assignments in inner.iter_mut().flat_map(|m| m.values_mut()) {
+            binding_assignments.sort_by_key(|a| a.span.lo);
         }
         Self { inner }
     }
 
     /// Retrieve the sorted slice for one scope/name pair, if it exists.
     fn get(&self, scope: ScopeId, name: NameId) -> Option<&[AliasAssignment]> {
-        self.inner.get(&scope)?.get(&name).map(Vec::as_slice)
+        self.inner.get(scope.index())?.get(&name).map(Vec::as_slice)
     }
 
     /// Find the index of the latest assignment at or before `span.lo`.

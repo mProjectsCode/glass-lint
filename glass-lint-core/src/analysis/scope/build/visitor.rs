@@ -166,9 +166,13 @@ impl ScopePass for ScopeCollector<'_> {
         match &assignment.left {
             AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {
                 let provenance = assignment_provenance(self, &assignment.right);
+                let Some(name_id) = self.name_id(ident.id.sym.as_ref()) else {
+                    return;
+                };
                 if let Some((scope, ())) = self.stack.iter().rev().find_map(|scope| {
-                    self.name_id(ident.id.sym.as_ref())
-                        .is_some_and(|name| self.scopes[*scope].bindings.contains_key(&name))
+                    self.scopes[*scope]
+                        .bindings
+                        .contains_key(&name_id)
                         .then_some((ScopeId::from(*scope), ()))
                 }) {
                     self.record_assignment(

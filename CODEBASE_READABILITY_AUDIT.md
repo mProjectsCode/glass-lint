@@ -110,10 +110,13 @@ A semantic artifact cache hit still constructs `LocatedSourceContext`, scans the
 - **Fix Complexity** Medium
 - **Category:** Complexity
 - **Location:** `glass-lint-core/src/analysis/model/scope.rs:90-99`, `glass-lint-core/src/analysis/scope/frozen_assignments.rs:11-43`, `glass-lint-core/src/analysis/scope/build/history.rs:13-54`, `glass-lint-core/src/analysis/scope/query/bindings.rs:120-135`
+- **Status:** Fixed
 
 Bindings and assignment indexes use nested `BTreeMap`s in lookup-heavy local analysis, and `binding_with_scope_at` calls `name_id` once per ancestor rather than once per query. Deterministic output does not consume these maps directly, so logarithmic pointer-heavy lookup is being paid for internal state whose keys are dense IDs.
 
 Resolve `NameId` once per query, then store bindings and assignments in a dense scope-indexed vector whose per-scope map is keyed by `NameId`; sort keys only when freezing or producing observable output. Keep the working representation private to the scope model so deterministic ordering remains an output concern. Recommendation: benchmark deep scopes and minified repeated identifiers against the current index and require equivalent lookup results before replacing it.
+
+`LexicalScope.bindings` changed from `BTreeMap<NameId, BindingProvenance>` to `HashMap<NameId, BindingProvenance>`. `FrozenAssignmentIndex` stores per-scope assignments in a `Vec<HashMap<NameId, Vec<AliasAssignment>>>` instead of nested `BTreeMap`s. `AssignmentEnvironment` uses the same dense `Vec<HashMap<NameId, AssignmentValue>>` representation. `binding_with_scope_at` resolves `NameId` once before the scope-walk loop on both `ScopeGraph` and `FrozenScopeGraph`, and `ScopeCollector::visible_binding`, `visible_binding_scope`, `invalidate_member_root`, and `visit_assign_expr` follow the same pattern. Binding-key comparison in tests sorts keys for order-independent comparison.
 
 #### READ-009 — Invalid function effects are still turned into helper summaries
 - **Severity:** High

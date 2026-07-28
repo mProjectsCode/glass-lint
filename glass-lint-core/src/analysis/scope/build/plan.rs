@@ -4,9 +4,8 @@
 //! every scope-forming node. It deliberately does not record assignments,
 //! aliases, calls, or other source-order facts.
 
-use std::collections::BTreeMap;
-
 use glass_lint_datastructures::NameTable;
+use hashbrown::HashMap;
 use smol_str::SmolStr;
 use swc_ecma_ast::{
     ArrowExpr, ClassDecl, FnDecl, Function, Ident, ImportDecl, MemberExpr, Pat, PropName, VarDecl,
@@ -82,7 +81,7 @@ impl ScopePlanner<'_> {
                 depth: 0,
                 kind: ScopeKind::Program,
                 parent: None,
-                bindings: BTreeMap::new(),
+                bindings: HashMap::new(),
             }],
             stack: vec![0],
             scope_shapes: ScopeShapeTable::new(),
@@ -145,7 +144,7 @@ impl ScopePlanner<'_> {
             depth: self.stack.len(),
             kind,
             parent: Some(parent),
-            bindings: BTreeMap::new(),
+            bindings: HashMap::new(),
         });
         self.scope_shapes.record(ScopeShape {
             scope_id: ScopeId::from(index),

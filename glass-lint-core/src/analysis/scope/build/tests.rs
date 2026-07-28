@@ -32,14 +32,21 @@ fn scope_fingerprint(collector: &ScopeCollector) -> Vec<String> {
         .scopes
         .iter()
         .map(|scope| {
+            let mut bindings: Vec<_> = scope.bindings.iter().collect();
+            bindings.sort_by_key(|(id, _)| *id);
+            let binding_str = bindings
+                .iter()
+                .map(|(id, prov)| format!("{id:?}: {prov:?}"))
+                .collect::<Vec<_>>()
+                .join(", ");
             format!(
-                "parent={:?} depth={} kind={:?} span=({}, {}) bindings={:?}",
+                "parent={:?} depth={} kind={:?} span=({}, {}) bindings={{{}}}",
                 scope.parent,
                 scope.depth,
                 scope.kind,
                 scope.span.lo.0,
                 scope.span.hi.0,
-                scope.bindings
+                binding_str,
             )
         })
         .collect()
@@ -377,11 +384,11 @@ fn predeclare_and_collect_phases_produce_identical_scopes() {
         );
         assert_eq!(a.depth, b.depth, "scope {i} depth differs");
         assert_eq!(a.parent, b.parent, "scope {i} parent differs");
-        assert_eq!(
-            a.bindings.keys().collect::<Vec<_>>(),
-            b.bindings.keys().collect::<Vec<_>>(),
-            "scope {i} binding keys differ",
-        );
+        let mut a_keys: Vec<_> = a.bindings.keys().collect();
+        a_keys.sort();
+        let mut b_keys: Vec<_> = b.bindings.keys().collect();
+        b_keys.sort();
+        assert_eq!(a_keys, b_keys, "scope {i} binding keys differ");
     }
 }
 

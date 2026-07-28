@@ -95,17 +95,15 @@ impl ScopeCollector<'_> {
     }
 
     pub(super) fn visible_binding(&self, name: &str) -> Option<&BindingProvenance> {
+        let name_id = self.name_id(name)?;
         for scope in self.stack.iter().rev().copied().map(ScopeId::from) {
-            if let Some(assignment) = self.assignment_environment.get(&self.names, scope, name) {
+            if let Some(assignment) = self.assignment_environment.get_by_id(scope, name_id) {
                 return match assignment {
                     AssignmentValue::Known(provenance) => Some(provenance),
                     AssignmentValue::Unknown => Some(&self.unknown_provenance),
                 };
             }
-            if let Some(binding) = self
-                .name_id(name)
-                .and_then(|name| self.scopes[scope.index()].bindings.get(&name))
-            {
+            if let Some(binding) = self.scopes[scope.index()].bindings.get(&name_id) {
                 return Some(binding);
             }
         }
@@ -113,17 +111,15 @@ impl ScopeCollector<'_> {
     }
 
     pub(super) fn visible_binding_scope(&self, name: &str) -> Option<ScopeId> {
+        let name_id = self.name_id(name)?;
         self.stack
             .iter()
             .rev()
             .copied()
             .map(ScopeId::from)
             .find(|scope| {
-                self.assignment_environment
-                    .contains(&self.names, *scope, name)
-                    || self
-                        .name_id(name)
-                        .is_some_and(|name| self.scopes[scope.index()].bindings.contains_key(&name))
+                self.assignment_environment.contains_by_id(*scope, name_id)
+                    || self.scopes[scope.index()].bindings.contains_key(&name_id)
             })
     }
 
@@ -423,10 +419,15 @@ impl ScopeCollector<'_> {
         ) {
             return;
         }
-        let Some(scope) = self.stack.iter().rev().find(|scope| {
-            self.name_id(root.sym.as_ref())
-                .is_some_and(|name| self.scopes[**scope].bindings.contains_key(&name))
-        }) else {
+        let Some(root_id) = self.name_id(root.sym.as_ref()) else {
+            return;
+        };
+        let Some(scope) = self
+            .stack
+            .iter()
+            .rev()
+            .find(|scope| self.scopes[**scope].bindings.contains_key(&root_id))
+        else {
             return;
         };
         self.record_assignment(

@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use glass_lint_datastructures::{NameId, NamePath, SymbolPath};
+use hashbrown::HashMap;
 use smol_str::SmolStr;
 use swc_common::Span;
 
@@ -95,7 +96,7 @@ pub struct LexicalScope {
     pub depth: usize,
     pub kind: ScopeKind,
     pub parent: Option<ScopeId>,
-    pub bindings: BTreeMap<NameId, BindingProvenance>,
+    pub bindings: HashMap<NameId, BindingProvenance>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

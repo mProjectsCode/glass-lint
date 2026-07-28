@@ -4,9 +4,8 @@
 //! use-position queries distinguish a declaration's initial provenance from a
 //! later reassignment without mutating the declaration map.
 
-use std::collections::{BTreeMap, BTreeSet};
-
-use glass_lint_datastructures::{NameId, NameTable};
+use glass_lint_datastructures::NameId;
+use hashbrown::{HashMap, HashSet};
 
 use crate::analysis::scope::{BindingProvenance, ScopeId};
 
@@ -19,21 +18,27 @@ pub(super) enum AssignmentValue {
 #[derive(Debug, Clone)]
 /// Most recent assignment provenance for each scope-local binding.
 pub(super) struct AssignmentEnvironment {
-    assignments: BTreeMap<ScopeId, BTreeMap<NameId, AssignmentValue>>,
+    assignments: Vec<HashMap<NameId, AssignmentValue>>,
 }
 
 impl AssignmentEnvironment {
     pub(super) fn new() -> Self {
         Self {
-            assignments: BTreeMap::new(),
+            assignments: Vec::new(),
         }
+    }
+
+    fn ensure_scope(&mut self, scope: ScopeId) -> &mut HashMap<NameId, AssignmentValue> {
+        let idx = scope.index();
+        if idx >= self.assignments.len() {
+            self.assignments.resize_with(idx + 1, HashMap::new);
+        }
+        &mut self.assignments[idx]
     }
 
     /// Replace the latest assignment for one scope/name pair.
     pub(super) fn record_unknown(&mut self, scope: ScopeId, name: NameId) {
-        self.assignments
-            .entry(scope)
-            .or_default()
+        self.ensure_scope(scope)
             .insert(name, AssignmentValue::Unknown);
     }
 
@@ -43,67 +48,58 @@ impl AssignmentEnvironment {
         name: NameId,
         provenance: BindingProvenance,
     ) {
-        self.assignments
-            .entry(scope)
-            .or_default()
+        self.ensure_scope(scope)
             .insert(name, AssignmentValue::Known(provenance));
     }
 
-    /// Return the latest assignment visible in one lexical scope.
-    pub(super) fn get(
-        &self,
-        names: &NameTable,
-        scope: ScopeId,
-        name: &str,
-    ) -> Option<&AssignmentValue> {
-        let name = names.lookup(name)?;
-        self.assignments
-            .get(&scope)
-            .and_then(|assignments| assignments.get(&name))
-    }
-
-    /// Whether an assignment has been recorded for the scope/name pair.
-    pub(super) fn contains(&self, names: &NameTable, scope: ScopeId, name: &str) -> bool {
-        self.get(names, scope, name).is_some()
-    }
-
     pub(super) fn get_by_id(&self, scope: ScopeId, name: NameId) -> Option<&AssignmentValue> {
-        self.assignments.get(&scope)?.get(&name)
+        self.assignments.get(scope.index())?.get(&name)
+    }
+
+    pub(super) fn contains_by_id(&self, scope: ScopeId, name: NameId) -> bool {
+        self.get_by_id(scope, name).is_some()
     }
 
     /// Join path environments. Missing entries mean that the incoming value
     /// reaches that path unchanged; disagreement is retained as unknown.
     pub(super) fn join(paths: &[&Self]) -> Self {
-        let mut keys = BTreeMap::<ScopeId, BTreeSet<NameId>>::new();
-        for path in paths {
-            for (scope, assignments) in &path.assignments {
-                let names = keys.entry(*scope).or_default();
-                for name in assignments.keys() {
-                    names.insert(*name);
+        let max_scope = paths
+            .iter()
+            .flat_map(|p| {
+                p.assignments
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, m)| !m.is_empty())
+                    .map(|(i, _)| i)
+            })
+            .max()
+            .unwrap_or(0);
+
+        let mut joined: Vec<HashMap<NameId, AssignmentValue>> = vec![HashMap::new(); max_scope + 1];
+
+        for (scope_idx, result_map) in joined.iter_mut().enumerate() {
+            let scope = ScopeId::from(scope_idx);
+            let mut all_names = HashSet::new();
+            for path in paths {
+                if let Some(map) = path.assignments.get(scope_idx) {
+                    all_names.extend(map.keys());
                 }
             }
-        }
-
-        let mut joined = BTreeMap::new();
-        for (scope, names) in keys {
-            let mut assignments = BTreeMap::new();
-            for name in names {
+            for &name in &all_names {
                 let first = paths[0].get_by_id(scope, name);
                 if paths
                     .iter()
                     .all(|path| path.get_by_id(scope, name) == first)
                 {
                     if let Some(value) = first {
-                        assignments.insert(name, value.clone());
+                        result_map.insert(name, value.clone());
                     }
                 } else {
-                    assignments.insert(name, AssignmentValue::Unknown);
+                    result_map.insert(name, AssignmentValue::Unknown);
                 }
             }
-            if !assignments.is_empty() {
-                joined.insert(scope, assignments);
-            }
         }
+
         Self {
             assignments: joined,
         }

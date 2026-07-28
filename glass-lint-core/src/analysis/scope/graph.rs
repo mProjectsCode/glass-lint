@@ -118,11 +118,6 @@ impl ScopeGraph {
         self.scopes.scope_parent(scope)
     }
 
-    pub(super) fn scope_binding(&self, scope: ScopeId, name: &str) -> Option<&BindingProvenance> {
-        let name = self.name_id(name)?;
-        self.scopes.scope_binding(scope, name)
-    }
-
     pub(in crate::analysis) fn scope_at(&self, span: Span) -> ScopeId {
         self.scopes.scope_at(span, self.scope_shape_valid)
     }
@@ -247,9 +242,10 @@ impl ScopeGraph {
         name: &str,
         span: Span,
     ) -> Option<(ScopeId, &BindingProvenance)> {
+        let name_id = self.name_id(name)?;
         let mut scope = self.scope_at(span);
         loop {
-            if let Some(binding) = self.scope_binding(scope, name) {
+            if let Some(binding) = self.scopes.scope_binding(scope, name_id) {
                 return Some((scope, binding));
             }
             scope = self.scope_parent(scope)?;

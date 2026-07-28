@@ -129,11 +129,10 @@ impl FrozenScopeGraph {
         name: &str,
         span: Span,
     ) -> Option<(ScopeId, &BindingProvenance)> {
+        let name_id = self.name_id(name)?;
         let mut scope = self.scope_at(span);
         loop {
-            if let Some(name) = self.name_id(name)
-                && let Some(binding) = self.scope_binding(scope, name)
-            {
+            if let Some(binding) = self.scope_binding(scope, name_id) {
                 return Some((scope, binding));
             }
             scope = self.scope_parent(scope)?;
