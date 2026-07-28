@@ -2,7 +2,7 @@
 
 ## Summary
 
-This audit covers all Rust production modules and the relevant tests in `glass-lint-core`, `glass-lint-datastructures`, and `glass-lint-project` (about 50,000 lines total). It found 32 actionable issues: 16 High, 15 Medium, and 1 Low severity. 26 have been fixed (10 High, 15 Medium, 1 Low), leaving 5 open (5 High). The most important remaining correctness risks are control-insensitive assignment provenance and exceptional-path identity leakage. The most important remaining boundedness risk is public dense-ID structures that can be driven into enormous sparse allocations.
+This audit covers all Rust production modules and the relevant tests in `glass-lint-core`, `glass-lint-datastructures`, and `glass-lint-project` (about 50,000 lines total). It found 32 actionable issues: 16 High, 15 Medium, and 1 Low severity. 27 have been fixed (11 High, 15 Medium, 1 Low), leaving 4 open (4 High). The most important remaining correctness risks are control-insensitive assignment provenance and exceptional-path identity leakage. The most important remaining boundedness risk is public dense-ID structures that can be driven into enormous sparse allocations.
 
 The existing `profile.json.gz` was also inspected against its matching profiling binary. It is supporting rather than dispositive evidence because it does not carry a reproducible workload manifest, but roughly half of the main worker's samples include `FactBuilder` statement traversal, with resolver/name operations prominent below it. That agrees with the static conclusion that lowering work inside `FactBuilder`, interning, and resolver-owned indexes deserves priority.
 
@@ -44,10 +44,13 @@ The byte scanner handles comments and quoted strings but has no regex-literal st
 #### READ-004 — Control constructs clone whole identity maps without charging their cost
 - **Severity:** High
 - **Fix Complexity** High
+- **Status:** ✅ Fixed
 - **Category:** Complexity
 - **Location:** `glass-lint-core/src/analysis/facts/control.rs:37-193`
 
 Every branch, loop, switch, conditional, and `try` clones the full `instance_origins` and `class_origins` maps, and a switch clones the incoming instance map once per case. This makes control-heavy or minified input approach O(live identities × control regions) allocation and tree-copy work, while the semantic budget charges only nearby events rather than the number of copied entries. Use rollback logs, persistent snapshots, or dense copy-on-write state keyed by `ValueId`, with budget charges proportional to changed entries. Preserve deterministic joins and validate the change with nested-control stress cases and a lowering benchmark containing many live instances.
+
+**Fix:** Replaced the bare `HashMap` fields with an `OriginMap` newtype (`origin_map.rs`) that wraps `HashMap` with a change log. `checkpoint()` records the current log length (O(1)), and `rollback()` undoes entries modified since that checkpoint (O(changed entries) instead of O(total entries)). All control-flow methods in `control.rs` now use checkpoint/rollback; the largest win is `record_switch`, which previously cloned the entire map once per case. `snapshot()` (a full clone) is retained only for the join points in `record_if` and `record_try` where one branch's complete state must be intersected with another's. The `retain_common_instance_origins` helper was updated to use `iter()` + `remove()` to work with the new type. All existing behavioural tests pass unchanged.
 
 #### READ-005 — Name interning constructs an owned key before checking for a hit
 - **Severity:** Medium

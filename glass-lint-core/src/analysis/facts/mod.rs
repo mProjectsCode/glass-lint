@@ -38,12 +38,14 @@ mod functions;
 mod instance;
 mod interface;
 mod model;
+mod origin_map;
 mod state;
 mod stream;
 mod visitor;
 
 use glass_lint_datastructures::{ByteRange, NamePath, PathId, PathSegmentInput, SymbolPath};
 pub(in crate::analysis) use model::*;
+pub(in crate::analysis) use origin_map::OriginMap;
 use smol_str::SmolStr;
 pub(in crate::analysis) use stream::FactStream;
 use swc_common::{Span, Spanned};
@@ -84,12 +86,13 @@ pub struct FactBuilder<'builder, 'resolver> {
     call_results: call_results::CallResultTable,
     /// Proven callable members extracted from the current module instance.
     instance_callables: HashMap<ValueId, InstanceCallable>,
-    /// Proven module/export identity of constructed object values. This is
-    /// traversal state, not a matcher-specific index: aliases use the same
-    /// value IDs and binding versions as the rest of the fact builder.
-    instance_origins: HashMap<ValueId, (SmolStr, SmolStr)>,
-    /// Local class values whose superclass is a proven module export.
-    class_origins: HashMap<ValueId, (SmolStr, SmolStr)>,
+    /// Proven module/export identity of constructed object values, with
+    /// checkpoint/rollback so that control-flow branching does not clone the
+    /// entire map.
+    instance_origins: OriginMap<(SmolStr, SmolStr)>,
+    /// Local class values whose superclass is a proven module export, with
+    /// checkpoint/rollback.
+    class_origins: OriginMap<(SmolStr, SmolStr)>,
     /// Module requests and export slots collected during the same canonical
     /// walk as the semantic facts, owned by a focused interface builder.
     interface: interface::ModuleInterfaceBuilder,
@@ -123,8 +126,8 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
             traversal: state::TraversalState::default(),
             call_results: call_results::CallResultTable::default(),
             instance_callables: HashMap::new(),
-            instance_origins: HashMap::new(),
-            class_origins: HashMap::new(),
+            instance_origins: OriginMap::new(),
+            class_origins: OriginMap::new(),
             interface: interface::ModuleInterfaceBuilder::new(),
         }
     }

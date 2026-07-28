@@ -168,7 +168,7 @@ impl FactBuilder<'_, '_> {
         match expr {
             Expr::New(new_expr) => {
                 let value = self.resolver.resolve_expr_id(expr);
-                if let Some(origin) = self.instance_origins.get(&value).cloned() {
+                if let Some(origin) = self.instance_origins.get(value).cloned() {
                     return Some(origin);
                 }
                 let origin = self.instance_origin_for_constructor(&new_expr.callee)?;
@@ -178,7 +178,7 @@ impl FactBuilder<'_, '_> {
             Expr::Ident(ident) => {
                 let value = self.resolver.resolve_ident_id(ident);
                 self.instance_origins
-                    .get(&value)
+                    .get(value)
                     .cloned()
                     .or_else(|| self.resolver.constructed_instance_provenance(ident))
             }
@@ -209,7 +209,7 @@ impl FactBuilder<'_, '_> {
         self.resolver.class_provenance(constructor).or_else(|| {
             let value = self.resolver.resolve_expr_id(constructor);
             self.class_origins
-                .get(&value)
+                .get(value)
                 .cloned()
                 .or_else(|| match constructor {
                     Expr::Class(class_expr) => class_expr

@@ -56,8 +56,8 @@ impl FactBuilder<'_, '_> {
         assignment.right.visit_with(self);
         let target = self.resolver.resolve_ident_id(&ident.id);
         self.instance_callables.remove(&target);
-        self.instance_origins.remove(&target);
-        self.class_origins.remove(&target);
+        self.instance_origins.remove(target);
+        self.class_origins.remove(target);
         if let Some(callable) = self.instance_callable_for_expr(&assignment.right) {
             self.instance_callables.insert(target, callable);
         }

@@ -3,7 +3,16 @@
 //! A region brackets each branch, loop, switch, or exception path. The
 //! projector uses those markers to invalidate or merge state at control-flow
 //! joins without unrolling unbounded execution.
+//!
+//! # Performance note
+//!
+//! Identity maps use [`OriginMap`] with checkpoint/rollback so that branching
+//! only pays for entries actually modified inside a branch, not for every live
+//! entry. `snapshot()` (a full clone) is used only at join points where the
+//! state of one branch must be compared against another.
 
+use hashbrown::HashMap;
+use smol_str::SmolStr;
 use swc_common::Spanned;
 use swc_ecma_ast::{
     CondExpr, DoWhileStmt, ForInStmt, ForOfStmt, ForStmt, IfStmt, SwitchStmt, TryStmt, WhileStmt,
@@ -11,7 +20,7 @@ use swc_ecma_ast::{
 use swc_ecma_visit::VisitWith;
 
 use crate::analysis::{
-    facts::{ControlKind, ControlRegionId, FactBuilder, FactKind, FactPayload, Span},
+    facts::{ControlKind, ControlRegionId, FactBuilder, FactKind, FactPayload, OriginMap, Span},
     value::ValueId,
 };
 
@@ -35,23 +44,21 @@ impl FactBuilder<'_, '_> {
     }
 
     pub(super) fn record_if(&mut self, stmt: &IfStmt) {
-        let incoming = self.instance_origins.clone();
-        let incoming_classes = self.class_origins.clone();
+        let cp = self.instance_origins.checkpoint();
+        let cp_classes = self.class_origins.checkpoint();
         let region = self.next_control_region();
         self.emit_control(stmt.span(), ControlKind::BranchStart, region);
         stmt.test.visit_with(self);
         self.emit_control(stmt.cons.span(), ControlKind::BranchThen, region);
         stmt.cons.visit_with(self);
-        let then_origins = self.instance_origins.clone();
-        self.instance_origins = incoming.clone();
+        let then_origins = self.instance_origins.snapshot();
+        self.instance_origins.rollback(cp);
         if let Some(alt) = &stmt.alt {
             self.emit_control(alt.span(), ControlKind::BranchElse, region);
             alt.visit_with(self);
             self.retain_common_instance_origins(&then_origins);
-        } else {
-            self.instance_origins = incoming;
         }
-        self.class_origins = incoming_classes;
+        self.class_origins.rollback(cp_classes);
         self.emit_control(stmt.span(), ControlKind::BranchEnd, region);
     }
 
@@ -59,8 +66,8 @@ impl FactBuilder<'_, '_> {
         if let Some(init) = &stmt.init {
             init.visit_with(self);
         }
-        let incoming = self.instance_origins.clone();
-        let incoming_classes = self.class_origins.clone();
+        let cp = self.instance_origins.checkpoint();
+        let cp_classes = self.class_origins.checkpoint();
         let region = self.next_control_region();
         self.emit_control(
             stmt.span(),
@@ -75,8 +82,8 @@ impl FactBuilder<'_, '_> {
             self.emit_control(stmt.span(), ControlKind::LoopUpdate, region);
             update.visit_with(self);
         }
-        self.instance_origins = incoming;
-        self.class_origins = incoming_classes;
+        self.instance_origins.rollback(cp);
+        self.class_origins.rollback(cp_classes);
         self.emit_control(stmt.span(), ControlKind::LoopEnd, region);
     }
 
@@ -111,22 +118,19 @@ impl FactBuilder<'_, '_> {
     }
 
     fn record_loop(&mut self, span: Span, guaranteed: bool, visit_body: impl FnOnce(&mut Self)) {
-        // Each loop receives one region so flow can invalidate state at the
-        // back edge without pretending that an arbitrary number of iterations
-        // was unrolled.
-        let incoming = self.instance_origins.clone();
-        let incoming_classes = self.class_origins.clone();
+        let cp = self.instance_origins.checkpoint();
+        let cp_classes = self.class_origins.checkpoint();
         let region = self.next_control_region();
         self.emit_control(span, ControlKind::LoopStart { guaranteed }, region);
         visit_body(self);
-        self.instance_origins = incoming;
-        self.class_origins = incoming_classes;
+        self.instance_origins.rollback(cp);
+        self.class_origins.rollback(cp_classes);
         self.emit_control(span, ControlKind::LoopEnd, region);
     }
 
     pub(super) fn record_switch(&mut self, stmt: &SwitchStmt) {
-        let incoming = self.instance_origins.clone();
-        let incoming_classes = self.class_origins.clone();
+        let cp = self.instance_origins.checkpoint();
+        let cp_classes = self.class_origins.checkpoint();
         let region = self.next_control_region();
         self.emit_control(stmt.span(), ControlKind::SwitchStart, region);
         stmt.discriminant.visit_with(self);
@@ -139,67 +143,68 @@ impl FactBuilder<'_, '_> {
                 region,
             );
             case.visit_with(self);
-            self.instance_origins = incoming.clone();
+            self.instance_origins.rollback(cp);
         }
-        self.instance_origins = incoming;
-        self.class_origins = incoming_classes;
+        self.class_origins.rollback(cp_classes);
         self.emit_control(stmt.span(), ControlKind::SwitchEnd, region);
     }
 
     pub(super) fn record_try(&mut self, stmt: &TryStmt) {
-        let incoming = self.instance_origins.clone();
-        let incoming_classes = self.class_origins.clone();
+        let cp = self.instance_origins.checkpoint();
+        let incoming_snapshot = self.instance_origins.snapshot();
+        let cp_classes = self.class_origins.checkpoint();
         let region = self.next_control_region();
         self.emit_control(stmt.span(), ControlKind::TryStart, region);
         stmt.block.visit_with(self);
-        let try_origins = self.instance_origins.clone();
-        self.instance_origins = incoming.clone();
+        let try_origins = self.instance_origins.snapshot();
+        self.instance_origins.rollback(cp);
         if let Some(handler) = &stmt.handler {
             self.emit_control(handler.span(), ControlKind::CatchStart, region);
             handler.visit_with(self);
             if stmt.finalizer.is_some() {
-                let handler_origins = std::mem::take(&mut self.instance_origins);
-                self.instance_origins = try_origins;
+                let handler_origins = std::mem::take(&mut self.instance_origins).snapshot();
+                self.instance_origins = OriginMap::from(try_origins);
                 self.retain_common_instance_origins(&handler_origins);
             }
         } else if stmt.finalizer.is_some() {
-            self.instance_origins = try_origins;
-            self.retain_common_instance_origins(&incoming);
+            self.instance_origins = OriginMap::from(try_origins);
+            self.retain_common_instance_origins(&incoming_snapshot);
         }
         if let Some(finalizer) = &stmt.finalizer {
             self.emit_control(finalizer.span(), ControlKind::FinallyStart, region);
             finalizer.visit_with(self);
-            self.instance_origins = incoming;
+            self.instance_origins = OriginMap::from(incoming_snapshot);
         }
-        self.class_origins = incoming_classes;
+        self.class_origins.rollback(cp_classes);
         self.emit_control(stmt.span(), ControlKind::TryEnd, region);
     }
 
     pub(super) fn record_conditional(&mut self, expr: &CondExpr) {
-        let incoming = self.instance_origins.clone();
-        let incoming_classes = self.class_origins.clone();
+        let cp = self.instance_origins.checkpoint();
+        let cp_classes = self.class_origins.checkpoint();
         let region = self.next_control_region();
         self.emit_control(expr.span(), ControlKind::BranchStart, region);
         expr.test.visit_with(self);
         self.emit_control(expr.cons.span(), ControlKind::BranchThen, region);
         expr.cons.visit_with(self);
-        self.instance_origins = incoming.clone();
+        self.instance_origins.rollback(cp);
         self.emit_control(expr.alt.span(), ControlKind::BranchElse, region);
         expr.alt.visit_with(self);
-        self.instance_origins = incoming;
-        self.class_origins = incoming_classes;
+        self.instance_origins.rollback(cp);
+        self.class_origins.rollback(cp_classes);
         self.emit_control(expr.span(), ControlKind::BranchEnd, region);
     }
 
-    fn retain_common_instance_origins(
-        &mut self,
-        other: &hashbrown::HashMap<
-            crate::analysis::value::ValueId,
-            (smol_str::SmolStr, smol_str::SmolStr),
-        >,
-    ) {
-        self.instance_origins
-            .retain(|value, origin| other.get(value) == Some(origin));
+    fn retain_common_instance_origins(&mut self, other: &HashMap<ValueId, (SmolStr, SmolStr)>) {
+        let to_remove: Vec<ValueId> = self
+            .instance_origins
+            .iter()
+            .filter(|(value, origin)| other.get(*value) != Some(*origin))
+            .map(|(value, _)| *value)
+            .collect();
+        for key in to_remove {
+            self.instance_origins.remove(key);
+        }
     }
 }
 
