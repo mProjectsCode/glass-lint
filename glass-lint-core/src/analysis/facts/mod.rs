@@ -523,7 +523,7 @@ mod tests {
     use super::*;
     use crate::{
         analysis::{resolution::Resolver, syntax::SymbolCallProvenance, value::FunctionId},
-        api::{compiler::rule::CompiledMatcherPlan, rule::MatcherDecl},
+        api::{compiler::rule::CompiledMatcherPlan, rule::QueryDecl},
     };
 
     fn test_fact(id: u32, kind: FactKind, span: ByteRange) -> SemanticFact {
@@ -637,15 +637,11 @@ mod tests {
     fn catalog_selection_and_order_cannot_change_fact_index() {
         let source = "fetch('/api'); document.createElement('script');";
         let parsed = crate::parse(source, "catalog-fingerprint.js").expect("source should parse");
-        let first = CompiledMatcherPlan::compile_decls(&[MatcherDecl::builder()
-            .call_global("fetch")
-            .build()
-            .expect("valid matcher declaration")])
-        .unwrap();
-        let second = CompiledMatcherPlan::compile_decls(&[MatcherDecl::builder()
-            .member_call_heuristic("document.createElement")
-            .build()
-            .unwrap()])
+        let first =
+            CompiledMatcherPlan::compile_queries(&[QueryDecl::call_global("fetch")]).unwrap();
+        let second = CompiledMatcherPlan::compile_queries(&[QueryDecl::member_call_heuristic(
+            "document.createElement",
+        )])
         .unwrap();
         let build = |matchers: Vec<&crate::api::compiler::rule::CompiledMatcherPlan>,
                      selected: &[usize]| {

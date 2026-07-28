@@ -33,9 +33,11 @@ pub use report::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports, visible
 pub use rule_id::RuleId;
 pub mod rules {
     pub use crate::api::rule::{
-        ArgumentMatcher, Category, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher,
-        MatcherDecl, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule,
-        RuleBuildError, RuleBuilder as Builder, Severity, ValueMatcher,
+        AllExpr, AnyExpr, ArgumentMatcher, Category, Confidence, EmissionDecl, EventQuery,
+        EventSpec, FlowCompletion, FlowCondition, FlowSinkMatcher, IdentitySpec, LifecycleQuery,
+        MatcherDecl, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, QueryBuildError,
+        QueryDecl, QueryExpr, QuerySet, Rule, RuleBuildError, RuleBuilder as Builder, Severity,
+        SubjectSpec, ValueMatcher, VarId,
     };
 }
 

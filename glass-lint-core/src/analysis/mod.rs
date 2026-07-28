@@ -49,7 +49,7 @@ mod tests {
         api::{
             classification::RuleIndex,
             compiler::{CompiledRuleRecord, CompiledRuleSelection, rule::CompiledMatcherPlan},
-            rule::{Confidence, MatcherDecl},
+            rule::{Confidence, QueryDecl},
         },
         project::{SourceFile, SourceText},
     };
@@ -85,11 +85,8 @@ mod tests {
                 .facts()
         );
 
-        let fetch_plan = CompiledMatcherPlan::compile_decls(&[MatcherDecl::builder()
-            .call_global("fetch")
-            .build()
-            .expect("valid matcher declaration")])
-        .unwrap();
+        let fetch_plan =
+            CompiledMatcherPlan::compile_queries(&[QueryDecl::call_global("fetch")]).unwrap();
         let selected = [RuleIndex::new(0)];
         let fetch_rule = CompiledRuleRecord {
             description: "fetch".into(),
@@ -101,11 +98,11 @@ mod tests {
         let (_model, _outcome) =
             project.project(CompiledRuleSelection::new(&fetch_rules, &selected));
 
-        let member_plan = CompiledMatcherPlan::compile_decls(&[MatcherDecl::builder()
-            .member_call_heuristic("document.createElement")
-            .build()
-            .unwrap()])
-        .unwrap();
+        let member_plan =
+            CompiledMatcherPlan::compile_queries(&[QueryDecl::member_call_heuristic(
+                "document.createElement",
+            )])
+            .unwrap();
         let member_rule = CompiledRuleRecord {
             description: "member".into(),
             severity: Severity::Warning,

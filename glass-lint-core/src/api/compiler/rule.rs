@@ -21,7 +21,7 @@ use crate::{
             validate::{validate_normalized_decl, validate_query_decl},
         },
         rule::{
-            Confidence, MatcherBuildError, MatcherDecl, ModuleSpecifierPattern,
+            Confidence, MatcherBuildError, ModuleSpecifierPattern,
             query::{EventSpec, IdentitySpec, QueryDecl, VarId},
         },
     },
@@ -216,26 +216,23 @@ impl fmt::Display for InvalidQueryClause {
     }
 }
 
-/// Compile declarations into a physical plan.
+/// Compile query declarations into a physical plan.
 ///
-/// Each declaration is converted to a logical query, validated, normalized,
-/// and planned into physical roots.  Roots are sorted for deterministic
-/// execution order across equivalent queries.
-fn compile_declarations(decls: &[MatcherDecl]) -> Result<PhysicalPlan, MatcherBuildError> {
+/// Each declaration is validated, normalized, and planned into physical roots.
+/// Roots are sorted for deterministic execution order across equivalent
+/// queries.
+fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildError> {
     let mut all_roots = Vec::new();
     let mut merged_requirements = normalize::PlanRequirements::default();
 
-    for (i, decl) in decls.iter().enumerate() {
-        let var_id = VarId::new(u32::try_from(i).unwrap_or(u32::MAX));
-
-        // Phase 4: Validate each declaration as a logical QueryDecl.
-        let query = QueryDecl::from_matcher(decl, var_id);
-        validate_query_decl(&query).map_err(|e| {
+    for query in queries {
+        // Phase 4: Validate the logical QueryDecl.
+        validate_query_decl(query).map_err(|e| {
             MatcherBuildError::InvalidLoweredQuery(format!("{}: {}", e.diagnostic_name(), e))
         })?;
 
         // Phase 5: Normalize the logical query into canonical form.
-        let (normalized, requirements) = normalize::normalize_query_decl(&query);
+        let (normalized, requirements) = normalize::normalize_query_decl(query);
         validate_normalized_decl(&normalized).map_err(|e| {
             MatcherBuildError::InvalidLoweredQuery(format!("{}: {}", e.diagnostic_name(), e))
         })?;
@@ -298,27 +295,27 @@ impl CompiledMatcherPlan {
         self.physical_plan.requirements().needs_project_overlay
     }
 
-    /// Compile declarations into a physical plan.  Used by test helpers.
+    /// Compile queries into a physical plan.  Used by test helpers.
     #[cfg(test)]
-    pub(crate) fn compile_decls(decls: &[MatcherDecl]) -> Result<Self, MatcherBuildError> {
-        let physical_plan = compile_declarations(decls)?;
+    pub(crate) fn compile_queries(queries: &[QueryDecl]) -> Result<Self, MatcherBuildError> {
+        let physical_plan = compile_queries(queries)?;
         Ok(Self {
             physical_plan,
             flows: Box::new([]),
         })
     }
 
-    /// Compile declarations and object flows into a complete plan.
+    /// Compile queries and object flows into a complete plan.
     ///
     /// Flow matchers are lowered to [`QueryDecl`] lifecycle queries,
     /// validated, normalized, and planned through the same pipeline as
     /// ordinary declarations.  The resulting lifecycle roots embed
     /// [`CompiledObjectFlow`] values directly.
     pub(crate) fn compile_decls_and_flows(
-        decls: &[MatcherDecl],
+        queries: &[QueryDecl],
         flows: &[crate::api::rule::ObjectFlowMatcher],
     ) -> Result<Self, MatcherBuildError> {
-        let physical_plan = compile_declarations(decls)?;
+        let physical_plan = compile_queries(queries)?;
         let mut all_roots: Vec<physical::PhysicalRoot> = physical_plan.roots().to_vec();
         let mut merged_requirements = physical_plan.requirements().clone();
 
@@ -411,12 +408,10 @@ pub(crate) struct CompiledRuleRecord {
 }
 
 impl CompiledRuleRecord {
-    /// Compile a rule's declarations and flows into one record.
+    /// Compile a rule's queries and flows into one record.
     pub(crate) fn new(rule: &crate::api::rule::Rule) -> Result<Self, MatcherBuildError> {
-        let plan = CompiledMatcherPlan::compile_decls_and_flows(
-            rule.declarations(),
-            rule.flow_matchers(),
-        )?;
+        let plan =
+            CompiledMatcherPlan::compile_decls_and_flows(rule.queries(), rule.flow_matchers())?;
         Ok(Self {
             description: rule.description().to_owned(),
             severity: rule.severity(),
@@ -433,70 +428,34 @@ mod tests {
     use super::*;
     use crate::api::{
         classification::MatchKind,
-        rule::{MatcherDecl, ValueMatcher},
+        rule::{QueryDecl, ValueMatcher},
     };
 
     #[test]
     fn every_declaration_compiles_into_one_plan() {
-        let decls = vec![
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-            MatcherDecl::builder()
-                .member_call_rooted("window.open")
-                .build()
-                .expect("valid matcher declaration"),
-            MatcherDecl::builder()
-                .member_read_rooted("window.location")
-                .build()
-                .expect("valid matcher declaration"),
-            MatcherDecl::builder()
-                .import_exact("node:fs")
-                .build()
-                .expect("valid matcher declaration"),
-            MatcherDecl::builder()
-                .import_package("@scope/pkg")
-                .build()
-                .expect("valid matcher declaration"),
-            MatcherDecl::builder()
-                .string_contains("https://")
-                .build()
-                .expect("valid matcher declaration"),
-            MatcherDecl::builder()
-                .class_heuristic("Worker")
-                .build()
-                .expect("valid matcher declaration"),
-            MatcherDecl::builder()
-                .constructor_global("URL")
-                .build()
-                .expect("valid matcher declaration"),
-            MatcherDecl::builder()
-                .member_call_returned("create", "send")
-                .build()
-                .expect("valid matcher declaration"),
-            MatcherDecl::builder()
-                .member_read_returned("create", "token")
-                .build()
-                .expect("valid matcher declaration"),
-            MatcherDecl::builder()
-                .member_call_instance("pkg", "Client", "send")
-                .build()
-                .expect("valid matcher declaration"),
+        let queries = vec![
+            QueryDecl::call_global("fetch"),
+            QueryDecl::member_call_rooted("window.open"),
+            QueryDecl::member_read_rooted("window.location"),
+            QueryDecl::import_exact("node:fs"),
+            QueryDecl::import_package("@scope/pkg"),
+            QueryDecl::string_contains("https://"),
+            QueryDecl::class_heuristic("Worker"),
+            QueryDecl::constructor_global("URL"),
+            QueryDecl::member_call_returned("create", "send"),
+            QueryDecl::member_read_returned("create", "token"),
+            QueryDecl::member_call_instance("pkg", "Client", "send"),
         ];
-        let plan = CompiledMatcherPlan::compile_decls(&decls).unwrap();
+        let plan = CompiledMatcherPlan::compile_queries(&queries).unwrap();
         assert!(!plan.physical_roots().is_empty());
     }
 
     #[test]
     fn argument_matcher_compiles_to_constrained_scan() {
-        let decl = MatcherDecl::builder()
-            .call_global("fetch")
-            .arg(0, ValueMatcher::static_string())
-            .evidence(MatchKind::CallArgument, "fetch")
-            .build()
-            .unwrap();
-        let plan = CompiledMatcherPlan::compile_decls(&[decl]).unwrap();
+        let query = QueryDecl::call_global("fetch")
+            .with_arg(0, ValueMatcher::static_string())
+            .with_evidence(MatchKind::CallArgument, "fetch");
+        let plan = CompiledMatcherPlan::compile_queries(&[query]).unwrap();
         let roots = plan.physical_roots();
         assert_eq!(roots.len(), 1);
         match &roots[0] {
@@ -513,72 +472,33 @@ mod tests {
     }
 
     #[test]
-    fn invalid_declarations_return_a_compile_error() {
-        // Missing identity + event should cause a build error
-        let decl = MatcherDecl::builder()
-            .evidence(MatchKind::Call, "test")
-            .build();
-        assert!(decl.is_err());
-    }
-
-    #[test]
     fn equivalent_declarations_compile_to_identical_queries() {
         let first = vec![
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-            MatcherDecl::builder()
-                .member_read_rooted("location.href")
-                .build()
-                .expect("valid matcher declaration"),
+            QueryDecl::call_global("fetch"),
+            QueryDecl::member_read_rooted("location.href"),
         ];
         let second = vec![
-            MatcherDecl::builder()
-                .member_read_rooted("location.href")
-                .build()
-                .expect("valid matcher declaration"),
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
+            QueryDecl::member_read_rooted("location.href"),
+            QueryDecl::call_global("fetch"),
         ];
 
-        let first = CompiledMatcherPlan::compile_decls(&first).unwrap();
-        let second = CompiledMatcherPlan::compile_decls(&second).unwrap();
+        let first = CompiledMatcherPlan::compile_queries(&first).unwrap();
+        let second = CompiledMatcherPlan::compile_queries(&second).unwrap();
         assert_eq!(format!("{first:?}"), format!("{second:?}"));
     }
 
     #[test]
     fn query_plan_compiles_declarations_into_physical_roots() {
         let roots = {
-            let decls = vec![
-                MatcherDecl::builder()
-                    .call_global("fetch")
-                    .build()
-                    .expect("valid matcher declaration"),
-                MatcherDecl::builder()
-                    .member_call_rooted("window.open")
-                    .build()
-                    .expect("valid matcher declaration"),
-                MatcherDecl::builder()
-                    .member_read_returned("create", "token")
-                    .build()
-                    .expect("valid matcher declaration"),
-                MatcherDecl::builder()
-                    .member_call_instance("pkg", "Client", "send")
-                    .build()
-                    .expect("valid matcher declaration"),
-                MatcherDecl::builder()
-                    .import_exact("node:fs")
-                    .build()
-                    .expect("valid matcher declaration"),
-                MatcherDecl::builder()
-                    .string_contains("https://")
-                    .build()
-                    .expect("valid matcher declaration"),
+            let queries = vec![
+                QueryDecl::call_global("fetch"),
+                QueryDecl::member_call_rooted("window.open"),
+                QueryDecl::member_read_returned("create", "token"),
+                QueryDecl::member_call_instance("pkg", "Client", "send"),
+                QueryDecl::import_exact("node:fs"),
+                QueryDecl::string_contains("https://"),
             ];
-            let plan = CompiledMatcherPlan::compile_decls(&decls).unwrap();
+            let plan = CompiledMatcherPlan::compile_queries(&queries).unwrap();
             plan.physical_roots().to_vec()
         };
         assert!(roots.iter().any(|root| matches!(
@@ -616,27 +536,15 @@ mod tests {
     #[test]
     fn query_plan_normalization_is_idempotent_and_order_independent() {
         let first = vec![
-            MatcherDecl::builder()
-                .call_heuristic("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-            MatcherDecl::builder()
-                .member_read_rooted("location.href")
-                .build()
-                .expect("valid matcher declaration"),
+            QueryDecl::call_heuristic("fetch"),
+            QueryDecl::member_read_rooted("location.href"),
         ];
         let second = vec![
-            MatcherDecl::builder()
-                .member_read_rooted("location.href")
-                .build()
-                .expect("valid matcher declaration"),
-            MatcherDecl::builder()
-                .call_heuristic("fetch")
-                .build()
-                .expect("valid matcher declaration"),
+            QueryDecl::member_read_rooted("location.href"),
+            QueryDecl::call_heuristic("fetch"),
         ];
-        let first = CompiledMatcherPlan::compile_decls(&first).unwrap();
-        let second = CompiledMatcherPlan::compile_decls(&second).unwrap();
+        let first = CompiledMatcherPlan::compile_queries(&first).unwrap();
+        let second = CompiledMatcherPlan::compile_queries(&second).unwrap();
         assert_eq!(
             format!("{:?}", first.physical_roots()),
             format!("{:?}", second.physical_roots())
@@ -645,13 +553,10 @@ mod tests {
 
     #[test]
     fn decl_with_argument_constraint_keeps_call_kind() {
-        let decl = MatcherDecl::builder()
-            .call_global("fetch")
-            .arg(0, ValueMatcher::static_string())
-            .evidence(MatchKind::CallArgument, "fetch")
-            .build()
-            .unwrap();
-        let plan = CompiledMatcherPlan::compile_decls(&[decl]).unwrap();
+        let query = QueryDecl::call_global("fetch")
+            .with_arg(0, ValueMatcher::static_string())
+            .with_evidence(MatchKind::CallArgument, "fetch");
+        let plan = CompiledMatcherPlan::compile_queries(&[query]).unwrap();
         let roots = plan.physical_roots();
         assert_eq!(roots.len(), 1);
         assert!(matches!(

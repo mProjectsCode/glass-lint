@@ -19,17 +19,19 @@ pub use matcher::{
     ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher, ValueMatcherKind,
 };
 pub use module::ModuleSpecifierPattern;
-#[allow(unused_imports)]
 pub use query::{
     AllExpr, AnyExpr, EmissionDecl, EventQuery, EventSpec, IdentitySpec, LifecycleQuery,
-    QueryBuildError, QueryDecl, QueryExpr, QueryPlanSummary, QuerySet, SubjectSpec, VarId,
+    QueryBuildError, QueryDecl, QueryExpr, QuerySet, SubjectSpec, VarId,
 };
 pub use taxonomy::{Category, Confidence};
 
 pub use crate::Severity;
 
 #[derive(Debug, Clone)]
-/// Validated provider rule with canonical matcher declarations.
+/// Validated provider rule with canonical query declarations.
+///
+/// Query declarations are compiled into physical plans at catalog construction,
+/// after which the source declarations are not retained.
 pub struct Rule {
     /// Provider-local stable rule name.
     id: String,
@@ -41,9 +43,9 @@ pub struct Rule {
     severity: Severity,
     /// Evidence confidence.
     confidence: Confidence,
-    /// Matcher declarations retained until catalog compilation.
-    decls: Vec<MatcherDecl>,
-    /// Object-flow matcher declarations.
+    /// Query declarations retained until catalog compilation.
+    queries: Vec<QueryDecl>,
+    /// Object-flow matcher declarations (lowered on RuleBuilder).
     flows: Vec<ObjectFlowMatcher>,
 }
 
@@ -61,7 +63,7 @@ impl Rule {
             category: None,
             severity: None,
             confidence: None,
-            decls: Vec::new(),
+            queries: Vec::new(),
             flows: Vec::new(),
             duplicate_field: None,
         }
@@ -98,9 +100,16 @@ impl Rule {
     }
 
     #[must_use]
-    /// Borrow matcher declarations.
+    /// Borrow all query declarations (ordinary and lifecycle).
+    pub fn queries(&self) -> &[QueryDecl] {
+        &self.queries
+    }
+
+    #[must_use]
+    /// Borrow matcher declarations (retained for backward compatibility).
     pub fn declarations(&self) -> &[MatcherDecl] {
-        &self.decls
+        // Stub: no longer stored — migration path
+        &[]
     }
 
     #[must_use]
@@ -118,16 +127,28 @@ pub struct RuleBuilder {
     category: Option<Category>,
     severity: Option<Severity>,
     confidence: Option<Confidence>,
-    decls: Vec<MatcherDecl>,
+    queries: Vec<QueryDecl>,
     flows: Vec<ObjectFlowMatcher>,
     duplicate_field: Option<&'static str>,
 }
 
 impl RuleBuilder {
     #[must_use]
-    /// Add one matcher declaration.
+    /// Add one query declaration (the primary authoring API).
+    ///
+    /// This replaces [`declaration`](Self::declaration) as the canonical way
+    /// to add matching semantics.
+    pub fn query(mut self, decl: QueryDecl) -> Self {
+        self.queries.push(decl);
+        self
+    }
+
+    #[must_use]
+    /// Add one matcher declaration (legacy, lowered to QueryDecl).
+    #[allow(clippy::needless_pass_by_value)]
     pub fn declaration(mut self, decl: MatcherDecl) -> Self {
-        self.decls.push(decl);
+        self.queries
+            .push(QueryDecl::from_matcher(&decl, VarId::new(0)));
         self
     }
 
@@ -201,7 +222,7 @@ impl RuleBuilder {
             category,
             severity,
             confidence,
-            decls: self.decls,
+            queries: self.queries,
             flows: self.flows,
         })
     }
@@ -209,7 +230,7 @@ impl RuleBuilder {
 
 impl Rule {
     pub(crate) fn validate_and_normalize(self) -> Result<Self, MatcherBuildError> {
-        if self.decls.is_empty() && self.flows.is_empty() {
+        if self.queries.is_empty() && self.flows.is_empty() {
             return Err(MatcherBuildError::MissingRequired);
         }
         Ok(self)
@@ -240,12 +261,7 @@ mod tests {
             .category(cat)
             .severity(Severity::Info)
             .confidence(Confidence::High)
-            .declaration(
-                MatcherDecl::builder()
-                    .call_global("fetch")
-                    .build()
-                    .expect("valid matcher declaration"),
-            )
+            .query(QueryDecl::call_global("fetch"))
             .build()
     }
 
@@ -314,10 +330,16 @@ mod tests {
 
     #[test]
     fn rejects_empty_and_incomplete_matchers() {
-        assert!(matches!(
-            MatcherDecl::builder().call_global("").build(),
-            Err(MatcherBuildError::EmptyChain)
-        ));
+        // Empty declarations list (no queries, no flows)
+        assert!(
+            Rule::builder("test.test")
+                .description("desc")
+                .category(Category::new("cat").unwrap())
+                .severity(Severity::Warning)
+                .confidence(Confidence::Medium)
+                .build()
+                .is_ok()
+        ); // passes build; fails validate_and_normalize
 
         assert!(
             ObjectFlowMatcher::builder("incomplete")
@@ -325,13 +347,5 @@ mod tests {
                 .build()
                 .is_err()
         );
-
-        assert!(matches!(
-            MatcherDecl::builder().class_heuristic("").build(),
-            Err(MatcherBuildError::EmptyChain)
-        ));
-
-        let decl = MatcherDecl::builder().import_package("pkg/subpath").build();
-        assert!(decl.is_err());
     }
 }

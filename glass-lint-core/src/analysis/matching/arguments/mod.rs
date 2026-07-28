@@ -164,7 +164,7 @@ mod tests {
                     IdentityStrength,
                 },
             },
-            rule::{ArgumentConstraint, ArgumentMatcher, MatcherDecl, ValueMatcher},
+            rule::{ArgumentConstraint, ArgumentMatcher, QueryDecl, ValueMatcher},
         },
         project::SourceText,
     };
@@ -250,12 +250,8 @@ mod tests {
 
     #[test]
     fn constrained_evidence_is_source_ordered_and_deduplicated() {
-        let declaration = MatcherDecl::builder()
-            .call_heuristic("fetch")
-            .arg_static_strings(0, ["/api"])
-            .build()
-            .unwrap();
-        let plan = CompiledMatcherPlan::compile_decls(&[declaration.clone(), declaration]).unwrap();
+        let query = QueryDecl::call_heuristic("fetch").with_arg_static_strings(0, ["/api"]);
+        let plan = CompiledMatcherPlan::compile_queries(&[query.clone(), query]).unwrap();
         let roots: Vec<PhysicalRoot> = plan
             .physical_roots()
             .iter()

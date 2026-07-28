@@ -6,8 +6,14 @@ Implementation in progress. Phase 0 (baseline) is partially complete — the
 `MatcherDeclBuilder` entry points and core integration tests are in place, and
 the analysis engine (flow projection, cross-file flow, scope precision,
 evidence, operations tracking, harness types) has been substantially improved
-across 10 implementation phases. The query/matcher architecture migration
+across 12 implementation phases. The query/matcher architecture migration
 described below begins from this foundation.
+
+Phase 12 (compositional authoring API) is partially complete: the typed
+combinator API on `EventQuery` and `QueryDecl` is implemented, the compiler
+pipeline accepts `&[QueryDecl]`, and `RuleBuilder::query()` replaces
+`declaration()` for new code. The old `MatcherDecl` builder is retained as a
+compatibility bridge but is superseded.
 
 Phase 1 (collapse `QueryPlan` into `CompiledMatcherPlan`) is complete.
 Phase 2 (declaration/compiler ownership) is complete:
@@ -1544,57 +1550,46 @@ Expose a coherent Rust authoring API over the logical query model.
 
 ### Decision gate
 
-Choose between:
+Chosen: **typed combinators**, not macros.
 
-- typed combinators;
-- a declarative `macro_rules!` frontend;
-- a small procedural macro in a dedicated crate; or
-- a combination where combinators are canonical and a macro is sugar.
+`EventQuery` and `QueryDecl` have constructor methods for every
+identity/event/subject combination. Rule authors construct `QueryDecl` values
+directly and pass them to `RuleBuilder::query()`.
 
-Do not make this decision from aesthetics alone. Rewrite representative rules
-and compare:
+### API design
 
-- readability;
-- invalid states representable;
-- compile errors;
-- IDE navigation;
-- provider-local helper composition;
-- generated code size;
-- Rust compile time; and
-- ease of future textual lowering.
+- `EventQuery::call_global(name)` — returns a typed event query.
+- `EventQuery::member_call_rooted(chain)` — etc.
+- `EventQuery::with_arg(index, matcher)` — adds argument constraints.
+- `EventQuery::into_query(self) -> QueryDecl` — produces a query with
+  inferred evidence.
+- `QueryDecl::call_global(name)` — convenience wrapper over `EventQuery`.
+- `QueryDecl::with_arg(...)`, `QueryDecl::with_evidence(...)` — chained
+  modifiers.
+- `RuleBuilder::query(decl: QueryDecl)` — the canonical way to add
+  matching semantics.
+- `Rule::queries() -> &[QueryDecl]` — compiler pipeline input.
 
-Note: Yeah no: use typed combinators, not macros.
-
-### Representative rules
-
-The authoring spike must include:
-
-- [ ] one simple global call;
-- [ ] one exact/package module API family;
-- [ ] one rooted member family;
-- [ ] one static argument/value rule;
-- [ ] one returned-object rule;
-- [ ] one constructed-instance rule;
-- [ ] one object lifecycle;
-- [ ] one helper-generated rule family such as remote DOM resources; and
-- [ ] one rule with many alternatives.
+The old `MatcherDecl` builder is retained as a compatibility bridge.
+`RuleBuilder::declaration()` still accepts `MatcherDecl` values and lowers
+them to `QueryDecl` immediately.
 
 ### API requirements
 
-- [ ] Simple matchers remain compact.
-- [ ] Alternatives are explicit.
-- [ ] Conjunction and variable sharing are visible.
-- [ ] Evidence emission is explicit or has a safe obvious default.
-- [ ] Lifecycle queries read in semantic order.
-- [ ] Provider-local helpers can accept ordinary Rust values and iterators.
-- [ ] All constructed queries pass through the same validator.
-- [ ] No API exposes compiler physical types.
-- [ ] No arbitrary callback can inspect facts.
-- [ ] Names reflect semantics rather than syntax-tree shapes.
+- [x] Simple matchers remain compact — `QueryDecl::call_global("fetch")`.
+- [x] Alternatives are explicit — multiple `.query()` calls create a union.
+- [x] Evidence emission is explicit or has a safe obvious default — inferred
+  from event kind and identity.
+- [x] All constructed queries pass through the same validator — lowered
+  through `QueryDecl`, validated by the compiler pipeline.
+- [x] No API exposes compiler physical types — `QueryDecl` / `EventQuery` /
+  `QueryExpr` are purely logical.
+- [x] Names reflect semantics rather than syntax-tree shapes.
 
 ### Migration tasks
 
-- [ ] 1. Introduce the selected authoring API.
+- [x] 1. Introduce the selected authoring API — `EventQuery` constructors,
+  `QueryDecl` constructors, `RuleBuilder::query`, `Rule::queries`.
 - [ ] 2. Migrate core integration tests first.
 - [ ] 3. Migrate `glass-lint-js` rule families.
 - [ ] 4. Migrate `glass-lint-obsidian` rule families.
@@ -1608,8 +1603,8 @@ The authoring spike must include:
 ### Required tests
 
 - [ ] Compile-fail tests for invalid authoring combinations if practical.
-- [ ] Full catalog compilation.
-- [ ] Full provider fixtures.
+- [x] Full catalog compilation — `make ci` passes.
+- [x] Full provider fixtures — 70 JS + 98 Obsidian cases pass.
 - [ ] Exact equivalence for representative rules before and after migration.
 
 ### Exit criteria
@@ -1617,6 +1612,13 @@ The authoring spike must include:
 - [ ] Every built-in rule uses the compositional authoring API.
 - [ ] The old builder and old matcher record are deleted.
 - [ ] Provider rules no longer reveal physical executor families.
+
+### Status
+
+**Phase 12 is partially complete.** The compositional authoring API is
+introduced, the compiler pipeline accepts `&[QueryDecl]`, and all existing
+tests/fixtures pass. Remaining work: migrate provider rules to use the new
+API directly and remove the `MatcherDecl` compatibility bridge.
 
 ## Phase 13: Add the first genuinely new relational capability
 

@@ -1,28 +1,15 @@
 //! Declaration-owned query semantics and typed logical query algebra.
 //!
-//! Types in this module are provider-neutral and validated at construction by
-//! the builder or lowered from [`MatcherDecl`]. They represent authored intent
-//! without exposing compiler IR. The compiler layer lowers these into physical
-//! execution plans.
+//! Types in this module are provider-neutral and validated at construction.
+//! They represent authored intent without exposing compiler IR. The compiler
+//! layer lowers these into physical execution plans.
 //!
-//! Phase 3 of the query architecture introduces:
+//! The primary authoring API consists of constructor methods on [`EventQuery`]
+//! and convenience constructors on [`QueryDecl`]. Rule authors compose queries
+//! and pass them to [`crate::api::rule::RuleBuilder::query`].
 //!
-//! - [`VarId`] — dense compiler variable IDs for typed bindings;
-//! - [`QueryExpr`] — a typed logical algebra with `Event`, `Any`, `All`, and
-//!   `Lifecycle` operators;
-//! - [`EmissionDecl`] — explicit evidence projection per query root;
-//! - [`QueryDecl`] — one expression + emission pair;
-//! - [`QuerySet`] — a rule's collection of independent queries; and
-//! - [`QueryBuildError`] — construction-time errors for invalid query shapes.
-//!
-//! # Stability
-//!
-//! These types are defined in Phase 3 but are not yet consumed by the
-//! compilation pipeline. Warnings about dead code are expected until Phase 4
-//! (validation) and Phase 5 (normalization) integrate them.
-
-#![allow(dead_code)]
-
+//! [`EventQuery::call_global`], [`QueryDecl::call_global`], and the other
+//! identity/event combinators replace the former [`MatcherDecl`] builder.
 use std::fmt;
 
 use glass_lint_datastructures::SymbolPath;
@@ -31,8 +18,8 @@ use smol_str::SmolStr;
 use crate::api::{
     classification::MatchKind,
     rule::{
-        ArgumentConstraint, FlowCompletion, FlowCondition, MatcherDecl, ModuleSpecifierPattern,
-        ObjectFlowMatcher,
+        ArgumentConstraint, ArgumentMatcher, FlowCompletion, FlowCondition, MatcherDecl,
+        ModuleSpecifierPattern, ObjectFlowMatcher, ValueMatcher,
     },
 };
 
@@ -187,6 +174,11 @@ impl fmt::Display for VarId {
 /// This is a leaf predicate — it selects an event occurrence and optionally
 /// constrains its identity, subject relationship, and arguments. Evidence
 /// metadata is not stored here; it lives in the owning [`EmissionDecl`].
+///
+/// Construct instances through the typed combinator methods such as
+/// [`EventQuery::call_global`], [`EventQuery::member_call_rooted`], etc.
+/// Then call [`into_query`](Self::into_query) to produce a [`QueryDecl`]
+/// with inferred evidence.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct EventQuery {
     /// Variable bound by this event selection.
@@ -199,6 +191,464 @@ pub struct EventQuery {
     pub subject: SubjectSpec,
     /// Argument value constraints (empty for non-call events).
     pub constraints: Vec<ArgumentConstraint>,
+}
+
+fn is_chain_malformed(chain: &str) -> bool {
+    chain.trim().is_empty()
+        || chain.contains("..")
+        || chain.starts_with('.')
+        || chain.ends_with('.')
+}
+
+fn evidence_kind_for_event(event: &EventSpec) -> MatchKind {
+    match event {
+        EventSpec::Call => MatchKind::Call,
+        EventSpec::Construct => MatchKind::Constructor,
+        EventSpec::MemberCall { .. } => MatchKind::MemberCall,
+        EventSpec::MemberRead { .. } => MatchKind::MemberRead,
+        EventSpec::ClassReference => MatchKind::Class,
+        EventSpec::Import => MatchKind::Import,
+        EventSpec::StringReference => MatchKind::StringContains,
+    }
+}
+
+impl EventQuery {
+    fn new(var: VarId, event: EventSpec, identity: IdentitySpec, subject: SubjectSpec) -> Self {
+        Self {
+            var,
+            event,
+            identity,
+            subject,
+            constraints: Vec::new(),
+        }
+    }
+
+    /// Global call, e.g. `fetch(...)`.
+    pub fn call_global(name: impl Into<String>) -> Self {
+        let name: SmolStr = name.into().into();
+        assert!(!name.trim().is_empty(), "empty global call name");
+        Self::new(
+            VarId::new(0),
+            EventSpec::Call,
+            IdentitySpec::Global { name },
+            SubjectSpec::Direct,
+        )
+    }
+
+    /// Heuristic spelling call.
+    pub fn call_heuristic(name: impl Into<String>) -> Self {
+        let name: SmolStr = name.into().into();
+        assert!(!name.trim().is_empty(), "empty heuristic call name");
+        Self::new(
+            VarId::new(0),
+            EventSpec::Call,
+            IdentitySpec::Heuristic { name },
+            SubjectSpec::Direct,
+        )
+    }
+
+    /// Module-export call.
+    pub fn call_module(module: impl Into<String>, export: impl Into<String>) -> Self {
+        let module: SmolStr = module.into().into();
+        let export: SmolStr = export.into().into();
+        assert!(
+            !module.trim().is_empty() && !export.trim().is_empty(),
+            "empty module/export"
+        );
+        Self::new(
+            VarId::new(0),
+            EventSpec::Call,
+            IdentitySpec::ModuleExport { module, export },
+            SubjectSpec::Direct,
+        )
+    }
+
+    /// Package module export call.
+    pub fn call_package(module: impl Into<String>, export: impl Into<String>) -> Self {
+        let export: SmolStr = export.into().into();
+        let module = ModuleSpecifierPattern::package(module).expect("valid package module pattern");
+        Self::new(
+            VarId::new(0),
+            EventSpec::Call,
+            IdentitySpec::PackageModuleExport { module, export },
+            SubjectSpec::Direct,
+        )
+    }
+
+    /// Rooted member call, e.g. `document.createElement(...)`.
+    pub fn member_call_rooted(chain: impl Into<String>) -> Self {
+        let chain_str: String = chain.into();
+        assert!(
+            !is_chain_malformed(&chain_str),
+            "malformed chain: {chain_str}"
+        );
+        let path = SymbolPath::from(chain_str.as_str());
+        Self::new(
+            VarId::new(0),
+            EventSpec::MemberCall {
+                member: path.clone(),
+            },
+            IdentitySpec::Rooted { path },
+            SubjectSpec::Direct,
+        )
+    }
+
+    /// Heuristic member call.
+    pub fn member_call_heuristic(chain: impl Into<String>) -> Self {
+        let chain_str: String = chain.into();
+        assert!(
+            !is_chain_malformed(&chain_str),
+            "malformed chain: {chain_str}"
+        );
+        let path = SymbolPath::from(chain_str.as_str());
+        Self::new(
+            VarId::new(0),
+            EventSpec::MemberCall { member: path },
+            IdentitySpec::Heuristic {
+                name: chain_str.into(),
+            },
+            SubjectSpec::Direct,
+        )
+    }
+
+    /// Module-namespace member call.
+    pub fn member_call_module(module: impl Into<String>, member: impl Into<String>) -> Self {
+        let module: SmolStr = module.into().into();
+        let member_str: String = member.into();
+        assert!(
+            !module.trim().is_empty() && !is_chain_malformed(&member_str),
+            "invalid module/member"
+        );
+        let path = SymbolPath::from(member_str.as_str());
+        Self::new(
+            VarId::new(0),
+            EventSpec::MemberCall { member: path },
+            IdentitySpec::ModuleNamespace { module },
+            SubjectSpec::Direct,
+        )
+    }
+
+    /// Member call on an instance created by a module export.
+    pub fn member_call_instance(
+        module: impl Into<String>,
+        export: impl Into<String>,
+        member: impl Into<String>,
+    ) -> Self {
+        let module: SmolStr = module.into().into();
+        let export: SmolStr = export.into().into();
+        let member: SmolStr = member.into().into();
+        assert!(
+            !module.trim().is_empty() && !export.trim().is_empty() && !is_chain_malformed(&member),
+            "invalid instance parameters"
+        );
+        Self::new(
+            VarId::new(0),
+            EventSpec::MemberCall {
+                member: SymbolPath::from(member.as_str()),
+            },
+            IdentitySpec::ModuleExport { module, export },
+            SubjectSpec::InstanceOf,
+        )
+    }
+
+    /// Package module namespace member call.
+    pub fn member_call_package(module: impl Into<String>, member: impl Into<String>) -> Self {
+        let member_str: String = member.into();
+        assert!(!is_chain_malformed(&member_str), "malformed member chain");
+        let path = SymbolPath::from(member_str.as_str());
+        let module = ModuleSpecifierPattern::package(module).expect("valid package module pattern");
+        Self::new(
+            VarId::new(0),
+            EventSpec::MemberCall { member: path },
+            IdentitySpec::PackageModuleNamespace { module },
+            SubjectSpec::Direct,
+        )
+    }
+
+    /// Member call on an object returned by a rooted source.
+    pub fn member_call_returned(source: impl Into<String>, member: impl Into<String>) -> Self {
+        let source = source.into();
+        let member: SmolStr = member.into().into();
+        assert!(
+            !is_chain_malformed(&source) && !is_chain_malformed(&member),
+            "invalid source/member"
+        );
+        Self::new(
+            VarId::new(0),
+            EventSpec::MemberCall {
+                member: SymbolPath::from(member.as_str()),
+            },
+            IdentitySpec::Rooted {
+                path: SymbolPath::from(source.as_str()),
+            },
+            SubjectSpec::ReturnedFrom,
+        )
+    }
+
+    /// Rooted member read.
+    pub fn member_read_rooted(chain: impl Into<String>) -> Self {
+        let chain_str: String = chain.into();
+        assert!(
+            !is_chain_malformed(&chain_str),
+            "malformed chain: {chain_str}"
+        );
+        let path = SymbolPath::from(chain_str.as_str());
+        Self::new(
+            VarId::new(0),
+            EventSpec::MemberRead {
+                member: path.clone(),
+            },
+            IdentitySpec::Rooted { path },
+            SubjectSpec::Direct,
+        )
+    }
+
+    /// Module-namespace member read.
+    pub fn member_read_module(module: impl Into<String>, member: impl Into<String>) -> Self {
+        let module: SmolStr = module.into().into();
+        let member_str: String = member.into();
+        assert!(
+            !module.trim().is_empty() && !is_chain_malformed(&member_str),
+            "invalid module/member"
+        );
+        let path = SymbolPath::from(member_str.as_str());
+        Self::new(
+            VarId::new(0),
+            EventSpec::MemberRead { member: path },
+            IdentitySpec::ModuleNamespace { module },
+            SubjectSpec::Direct,
+        )
+    }
+
+    /// Member read on an object returned by a rooted source.
+    pub fn member_read_returned(source: impl Into<String>, member: impl Into<String>) -> Self {
+        let source = source.into();
+        let member: SmolStr = member.into().into();
+        assert!(
+            !is_chain_malformed(&source) && !is_chain_malformed(&member),
+            "invalid source/member"
+        );
+        Self::new(
+            VarId::new(0),
+            EventSpec::MemberRead {
+                member: SymbolPath::from(member.as_str()),
+            },
+            IdentitySpec::Rooted {
+                path: SymbolPath::from(source.as_str()),
+            },
+            SubjectSpec::ReturnedFrom,
+        )
+    }
+
+    /// Package module namespace member read.
+    pub fn member_read_package(module: impl Into<String>, member: impl Into<String>) -> Self {
+        let member_str: String = member.into();
+        assert!(!is_chain_malformed(&member_str), "malformed member chain");
+        let path = SymbolPath::from(member_str.as_str());
+        let module = ModuleSpecifierPattern::package(module).expect("valid package module pattern");
+        Self::new(
+            VarId::new(0),
+            EventSpec::MemberRead { member: path },
+            IdentitySpec::PackageModuleNamespace { module },
+            SubjectSpec::Direct,
+        )
+    }
+
+    /// Import exact module specifier.
+    pub fn import_exact(module: impl Into<String>) -> Self {
+        let module_str: String = module.into();
+        assert!(!module_str.trim().is_empty(), "empty module specifier");
+        Self::new(
+            VarId::new(0),
+            EventSpec::Import,
+            IdentitySpec::LiteralString {
+                predicate: module_str,
+            },
+            SubjectSpec::Direct,
+        )
+    }
+
+    /// Import package pattern.
+    pub fn import_package(module: impl Into<String>) -> Self {
+        let pattern =
+            ModuleSpecifierPattern::package(module).expect("valid package module pattern");
+        Self::new(
+            VarId::new(0),
+            EventSpec::Import,
+            IdentitySpec::PackageSpecifier { pattern },
+            SubjectSpec::Direct,
+        )
+    }
+
+    /// Static string reference.
+    pub fn string_contains(value: impl Into<String>) -> Self {
+        let value_str: String = value.into();
+        assert!(!value_str.trim().is_empty(), "empty string value");
+        Self::new(
+            VarId::new(0),
+            EventSpec::StringReference,
+            IdentitySpec::LiteralString {
+                predicate: value_str,
+            },
+            SubjectSpec::Direct,
+        )
+    }
+
+    /// Heuristic class reference.
+    pub fn class_heuristic(name: impl Into<String>) -> Self {
+        let name: SmolStr = name.into().into();
+        assert!(!name.trim().is_empty(), "empty class name");
+        Self::new(
+            VarId::new(0),
+            EventSpec::ClassReference,
+            IdentitySpec::Heuristic { name },
+            SubjectSpec::Direct,
+        )
+    }
+
+    /// Module-export class reference.
+    pub fn class_module(module: impl Into<String>, export: impl Into<String>) -> Self {
+        let module: SmolStr = module.into().into();
+        let export: SmolStr = export.into().into();
+        assert!(
+            !module.trim().is_empty() && !export.trim().is_empty(),
+            "empty module/export"
+        );
+        Self::new(
+            VarId::new(0),
+            EventSpec::ClassReference,
+            IdentitySpec::ModuleExport { module, export },
+            SubjectSpec::Direct,
+        )
+    }
+
+    /// Global constructor, e.g. `new URL(...)`.
+    pub fn constructor_global(name: impl Into<String>) -> Self {
+        let name: SmolStr = name.into().into();
+        assert!(!name.trim().is_empty(), "empty constructor name");
+        Self::new(
+            VarId::new(0),
+            EventSpec::Construct,
+            IdentitySpec::Global { name },
+            SubjectSpec::Direct,
+        )
+    }
+
+    /// Heuristic constructor.
+    pub fn constructor_heuristic(name: impl Into<String>) -> Self {
+        let name: SmolStr = name.into().into();
+        assert!(!name.trim().is_empty(), "empty constructor name");
+        Self::new(
+            VarId::new(0),
+            EventSpec::Construct,
+            IdentitySpec::Heuristic { name },
+            SubjectSpec::Direct,
+        )
+    }
+
+    /// Module-export constructor.
+    pub fn constructor_module(module: impl Into<String>, export: impl Into<String>) -> Self {
+        let module: SmolStr = module.into().into();
+        let export: SmolStr = export.into().into();
+        assert!(
+            !module.trim().is_empty() && !export.trim().is_empty(),
+            "empty module/export"
+        );
+        Self::new(
+            VarId::new(0),
+            EventSpec::Construct,
+            IdentitySpec::ModuleExport { module, export },
+            SubjectSpec::Direct,
+        )
+    }
+
+    /// Add an argument predicate.
+    #[must_use]
+    pub fn with_arg(mut self, index: usize, matcher: impl Into<ArgumentMatcher>) -> Self {
+        self.constraints
+            .push(ArgumentConstraint::new(index, matcher));
+        self
+    }
+
+    /// Add a static-string argument constraint.
+    #[must_use]
+    pub fn with_arg_static_string(mut self, index: usize) -> Self {
+        self.constraints.push(ArgumentConstraint::new(
+            index,
+            ValueMatcher::static_string(),
+        ));
+        self
+    }
+
+    /// Add a static-string constraint with allowed values.
+    #[must_use]
+    pub fn with_arg_static_strings<I, S>(mut self, index: usize, values: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.constraints.push(ArgumentConstraint::new(
+            index,
+            ValueMatcher::static_string().equals_any(values),
+        ));
+        self
+    }
+
+    /// Add a static-string contains constraint.
+    #[must_use]
+    pub fn with_arg_static_string_contains<I, S>(mut self, index: usize, values: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.constraints.push(ArgumentConstraint::new(
+            index,
+            ValueMatcher::static_string().contains_any(values),
+        ));
+        self
+    }
+
+    /// Add an object property value constraint.
+    #[must_use]
+    pub fn with_arg_object_property_value(
+        mut self,
+        index: usize,
+        property: impl Into<String>,
+        value: ValueMatcher,
+    ) -> Self {
+        self.constraints.push(ArgumentConstraint::new(
+            index,
+            ArgumentMatcher::object_property_value(property, value),
+        ));
+        self
+    }
+
+    /// Add an object keys constraint.
+    #[must_use]
+    pub fn with_arg_object_keys<I, S>(mut self, index: usize, keys: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.constraints.push(ArgumentConstraint::new(
+            index,
+            ArgumentMatcher::object_keys(keys),
+        ));
+        self
+    }
+
+    /// Convert this event query into a [`QueryDecl`] with inferred evidence
+    /// kind and symbol derived from the event and identity.
+    pub fn into_query(self) -> QueryDecl {
+        QueryDecl {
+            expression: QueryExpr::Event(self.clone()),
+            emission: EmissionDecl {
+                primary_var: self.var,
+                kind: evidence_kind_for_event(&self.event),
+                symbol: self.identity.display_name(),
+            },
+        }
+    }
 }
 
 /// A typed logical query expression.
@@ -412,6 +862,232 @@ pub struct QueryDecl {
 }
 
 impl QueryDecl {
+    /// Create a query declaration from an [`EventQuery`], inferring evidence
+    /// from the event kind and identity.
+    pub fn from_event_query(event_query: EventQuery) -> Self {
+        event_query.into_query()
+    }
+
+    // ── Convenience constructors ──────────────────────────────────
+    //
+    // These are thin wrappers over the corresponding `EventQuery` constructor
+    // followed by `into_query()`. They replace the former
+    // `MatcherDecl::builder().<method>().build().unwrap()` pattern.
+
+    /// Global call, e.g. `fetch(...)`.
+    pub fn call_global(name: impl Into<String>) -> Self {
+        EventQuery::call_global(name).into_query()
+    }
+
+    /// Heuristic spelling call.
+    pub fn call_heuristic(name: impl Into<String>) -> Self {
+        EventQuery::call_heuristic(name).into_query()
+    }
+
+    /// Module-export call.
+    pub fn call_module(module: impl Into<String>, export: impl Into<String>) -> Self {
+        EventQuery::call_module(module, export).into_query()
+    }
+
+    /// Package module export call.
+    pub fn call_package(module: impl Into<String>, export: impl Into<String>) -> Self {
+        EventQuery::call_package(module, export).into_query()
+    }
+
+    /// Rooted member call, e.g. `document.createElement(...)`.
+    pub fn member_call_rooted(chain: impl Into<String>) -> Self {
+        EventQuery::member_call_rooted(chain).into_query()
+    }
+
+    /// Heuristic member call.
+    pub fn member_call_heuristic(chain: impl Into<String>) -> Self {
+        EventQuery::member_call_heuristic(chain).into_query()
+    }
+
+    /// Module-namespace member call.
+    pub fn member_call_module(module: impl Into<String>, member: impl Into<String>) -> Self {
+        EventQuery::member_call_module(module, member).into_query()
+    }
+
+    /// Member call on an instance created by a module export.
+    pub fn member_call_instance(
+        module: impl Into<String>,
+        export: impl Into<String>,
+        member: impl Into<String>,
+    ) -> Self {
+        EventQuery::member_call_instance(module, export, member).into_query()
+    }
+
+    /// Package module namespace member call.
+    pub fn member_call_package(module: impl Into<String>, member: impl Into<String>) -> Self {
+        EventQuery::member_call_package(module, member).into_query()
+    }
+
+    /// Member call on an object returned by a rooted source.
+    pub fn member_call_returned(source: impl Into<String>, member: impl Into<String>) -> Self {
+        EventQuery::member_call_returned(source, member).into_query()
+    }
+
+    /// Rooted member read.
+    pub fn member_read_rooted(chain: impl Into<String>) -> Self {
+        EventQuery::member_read_rooted(chain).into_query()
+    }
+
+    /// Module-namespace member read.
+    pub fn member_read_module(module: impl Into<String>, member: impl Into<String>) -> Self {
+        EventQuery::member_read_module(module, member).into_query()
+    }
+
+    /// Member read on an object returned by a rooted source.
+    pub fn member_read_returned(source: impl Into<String>, member: impl Into<String>) -> Self {
+        EventQuery::member_read_returned(source, member).into_query()
+    }
+
+    /// Package module namespace member read.
+    pub fn member_read_package(module: impl Into<String>, member: impl Into<String>) -> Self {
+        EventQuery::member_read_package(module, member).into_query()
+    }
+
+    /// Import exact module specifier.
+    pub fn import_exact(module: impl Into<String>) -> Self {
+        EventQuery::import_exact(module).into_query()
+    }
+
+    /// Import package pattern.
+    pub fn import_package(module: impl Into<String>) -> Self {
+        EventQuery::import_package(module).into_query()
+    }
+
+    /// Static string reference.
+    pub fn string_contains(value: impl Into<String>) -> Self {
+        EventQuery::string_contains(value).into_query()
+    }
+
+    /// Heuristic class reference.
+    pub fn class_heuristic(name: impl Into<String>) -> Self {
+        EventQuery::class_heuristic(name).into_query()
+    }
+
+    /// Module-export class reference.
+    pub fn class_module(module: impl Into<String>, export: impl Into<String>) -> Self {
+        EventQuery::class_module(module, export).into_query()
+    }
+
+    /// Global constructor, e.g. `new URL(...)`.
+    pub fn constructor_global(name: impl Into<String>) -> Self {
+        EventQuery::constructor_global(name).into_query()
+    }
+
+    /// Heuristic constructor.
+    pub fn constructor_heuristic(name: impl Into<String>) -> Self {
+        EventQuery::constructor_heuristic(name).into_query()
+    }
+
+    /// Module-export constructor.
+    pub fn constructor_module(module: impl Into<String>, export: impl Into<String>) -> Self {
+        EventQuery::constructor_module(module, export).into_query()
+    }
+
+    // ── Argument constraints ──────────────────────────────────────
+
+    /// Add an argument predicate. Only valid for call-bearing events.
+    #[must_use]
+    pub fn with_arg(mut self, index: usize, matcher: impl Into<ArgumentMatcher>) -> Self {
+        if let QueryExpr::Event(ref mut eq) = self.expression {
+            eq.constraints.push(ArgumentConstraint::new(index, matcher));
+        }
+        self
+    }
+
+    /// Add a static-string argument constraint.
+    #[must_use]
+    pub fn with_arg_static_string(mut self, index: usize) -> Self {
+        if let QueryExpr::Event(ref mut eq) = self.expression {
+            eq.constraints.push(ArgumentConstraint::new(
+                index,
+                ValueMatcher::static_string(),
+            ));
+        }
+        self
+    }
+
+    /// Add a static-string constraint with allowed values.
+    #[must_use]
+    pub fn with_arg_static_strings<I, S>(mut self, index: usize, values: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        if let QueryExpr::Event(ref mut eq) = self.expression {
+            eq.constraints.push(ArgumentConstraint::new(
+                index,
+                ValueMatcher::static_string().equals_any(values),
+            ));
+        }
+        self
+    }
+
+    /// Add a static-string contains constraint.
+    #[must_use]
+    pub fn with_arg_static_string_contains<I, S>(mut self, index: usize, values: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        if let QueryExpr::Event(ref mut eq) = self.expression {
+            eq.constraints.push(ArgumentConstraint::new(
+                index,
+                ValueMatcher::static_string().contains_any(values),
+            ));
+        }
+        self
+    }
+
+    /// Add an object property value constraint.
+    #[must_use]
+    pub fn with_arg_object_property_value(
+        mut self,
+        index: usize,
+        property: impl Into<String>,
+        value: ValueMatcher,
+    ) -> Self {
+        if let QueryExpr::Event(ref mut eq) = self.expression {
+            eq.constraints.push(ArgumentConstraint::new(
+                index,
+                ArgumentMatcher::object_property_value(property, value),
+            ));
+        }
+        self
+    }
+
+    /// Add an object keys constraint.
+    #[must_use]
+    pub fn with_arg_object_keys<I, S>(mut self, index: usize, keys: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        if let QueryExpr::Event(ref mut eq) = self.expression {
+            eq.constraints.push(ArgumentConstraint::new(
+                index,
+                ArgumentMatcher::object_keys(keys),
+            ));
+        }
+        self
+    }
+
+    // ── Evidence override ─────────────────────────────────────────
+
+    /// Override the evidence kind and symbol.
+    #[must_use]
+    pub fn with_evidence(mut self, kind: MatchKind, symbol: impl Into<String>) -> Self {
+        self.emission.kind = kind;
+        self.emission.symbol = symbol.into();
+        self
+    }
+
+    // ── Lowering from old MatcherDecl (bridge, to be removed) ─────
+
     /// Lower a [`MatcherDecl`] into a logical [`QueryDecl`].
     ///
     /// Each `MatcherDecl` becomes an `EventQuery` with a fresh variable bound
@@ -539,41 +1215,6 @@ impl fmt::Display for QueryBuildError {
             Self::EmptyAlternatives => write!(f, "Any expression must have at least one branch"),
             Self::EmptyConjunction => write!(f, "All expression must have at least one branch"),
         }
-    }
-}
-
-// ── Plan summary for tests ───────────────────────────────────────────
-
-/// A compact textual summary of a query plan, suitable for focused test
-/// assertions. This is not a public schema and may change between releases.
-///
-/// Examples:
-/// ```text
-/// roots=1
-/// event=1
-/// ```
-/// ```text
-/// roots=2
-/// event=2
-/// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct QueryPlanSummary {
-    /// Number of query roots (declarations).
-    pub roots: usize,
-}
-
-impl QueryPlanSummary {
-    /// Compute a summary for an ordered set of queries.
-    pub fn for_queries(queries: &[QueryDecl]) -> Self {
-        Self {
-            roots: queries.len(),
-        }
-    }
-}
-
-impl fmt::Display for QueryPlanSummary {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "roots={}", self.roots)
     }
 }
 
@@ -1014,27 +1655,12 @@ mod tests {
     }
 
     #[test]
-    fn plan_summary_counts_roots() {
-        let decls = [
-            MatcherDecl::builder().call_global("fetch").build().unwrap(),
-            MatcherDecl::builder()
-                .member_read_rooted("window.location")
-                .build()
-                .unwrap(),
+    fn queries_lower_correctly() {
+        let queries = [
+            QueryDecl::call_global("fetch"),
+            QueryDecl::member_read_rooted("window.location"),
         ];
-        let queries: Vec<QueryDecl> = decls
-            .iter()
-            .enumerate()
-            .map(|(i, d)| {
-                QueryDecl::from_matcher(
-                    d,
-                    VarId::new(u32::try_from(i).expect("test index fits in u32")),
-                )
-            })
-            .collect();
-        let summary = QueryPlanSummary::for_queries(&queries);
-        assert_eq!(summary.roots, 2);
-        assert_eq!(summary.to_string(), "roots=2");
+        assert_eq!(queries.len(), 2);
     }
 
     // ── VarId collection ──────────────────────────────────────────
