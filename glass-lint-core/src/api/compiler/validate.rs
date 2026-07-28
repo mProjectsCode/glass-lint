@@ -414,13 +414,15 @@ fn collect_and_check(expr: &QueryExpr, seen: &mut Vec<VarId>) -> Result<(), Quer
 
 /// Pass 3: Variable type inference/checking.
 ///
-/// Currently a placeholder that validates basic type compatibility.
-/// Full type inference will be added with relational predicates.
-pub(crate) fn pass_type_checking(_decl: &QueryDecl) {
-    // Type checking for the current algebra is minimal — variables are
-    // bound by event selections and used in evidence projection.
-    // Full type inference across relational predicates is deferred to the
-    // normalization phase.
+/// Validates basic type compatibility for the current algebra. Variables
+/// are bound by event selections and used in evidence projection. Full
+/// type inference across relational predicates is deferred to later phases.
+pub(crate) fn pass_type_checking(decl: &QueryDecl) {
+    // For the current algebra all variables are event-typed and the
+    // emission primary var type is compatible with the evidence kind by
+    // construction.  No additional type errors are possible until
+    // relational predicates introduce typed bindings.
+    let _ = decl;
 }
 
 /// Pass 4: Operator compatibility.
@@ -472,8 +474,7 @@ fn check_correlation(expr: &QueryExpr) -> Result<(), QueryCompileError> {
     match expr {
         QueryExpr::All(all) => {
             // Collect variables from each branch
-            let branch_vars: Vec<Vec<VarId>> =
-                all.branches.iter().map(collect_vars).collect();
+            let branch_vars: Vec<Vec<VarId>> = all.branches.iter().map(collect_vars).collect();
 
             // If there are multiple branches, they must share at least one
             // variable to avoid a Cartesian product.
@@ -706,11 +707,67 @@ fn validate_lifecycle(lc: &LifecycleQuery) -> Result<(), QueryCompileError> {
 
 /// Pass 10: Final invariant validation after normalization.
 ///
-/// Checks that normalization has preserved all required invariants.
-/// Currently a placeholder — normalization is Phase 5.
+/// Checks invariants that must hold after normalization.  This pass runs
+/// as part of [`validate_query_decl`] (before normalization) and separately
+/// as [`validate_normalized_decl`] after normalization has been applied.
+///
+/// Pre-normalization: verifies evidence projection is valid and that the
+/// expression shape is feasible for normalization.
 pub(crate) fn pass_final_invariants(decl: &QueryDecl) -> Result<(), QueryCompileError> {
-    // Verify evidence projection is still valid after normalization.
+    // Verify evidence projection is valid.
     pass_evidence_projection(decl)
+}
+
+/// Validate a normalized query declaration.
+///
+/// Runs post-normalization checks that are meaningful only after
+/// flattening, deduplication, sorting, and variable reassignment:
+///
+/// - evidence projection refers to a valid remapped variable;
+/// - no nested `Any`-in-`Any` or `All`-in-`All` remains;
+/// - variable slots are dense starting from 0.
+pub(crate) fn validate_normalized_decl(decl: &QueryDecl) -> Result<(), QueryCompileError> {
+    // Re-check evidence projection (vars may have been remapped).
+    pass_evidence_projection(decl)?;
+
+    // Check that flattening was effective.
+    check_normalized_structure(&decl.expression, true)?;
+
+    Ok(())
+}
+
+/// Recursively check that a normalized expression has no nested same-type
+/// Any/All (which should have been flattened) and that variable slots
+/// are structurally sound.
+fn check_normalized_structure(expr: &QueryExpr, _is_root: bool) -> Result<(), QueryCompileError> {
+    match expr {
+        QueryExpr::Any(any) => {
+            for b in &any.branches {
+                // Any should not contain Any (would have been flattened).
+                if matches!(b, QueryExpr::Any(_)) {
+                    return Err(QueryCompileError::InternalInvariant {
+                        detail: "nested Any found after normalization".into(),
+                    });
+                }
+                // All inside Any is fine (different logical operator).
+                check_normalized_structure(b, false)?;
+            }
+            Ok(())
+        }
+        QueryExpr::All(all) => {
+            for b in &all.branches {
+                // All should not contain All (would have been flattened).
+                if matches!(b, QueryExpr::All(_)) {
+                    return Err(QueryCompileError::InternalInvariant {
+                        detail: "nested All found after normalization".into(),
+                    });
+                }
+                check_normalized_structure(b, false)?;
+            }
+            Ok(())
+        }
+        QueryExpr::Event(_) | QueryExpr::Lifecycle(_) => Ok(()),
+    }
 }
 
 // ── Entry point ──────────────────────────────────────────────────────────

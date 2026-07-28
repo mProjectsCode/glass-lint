@@ -14,7 +14,11 @@ use crate::{
     analysis::matches_global_object_alias,
     api::{
         classification::{MatchKind, RuleIndex},
-        compiler::{object_flow::CompiledObjectFlow, validate::validate_query_decl},
+        compiler::{
+            normalize,
+            object_flow::CompiledObjectFlow,
+            validate::{validate_normalized_decl, validate_query_decl},
+        },
         rule::{
             ArgumentConstraint, Confidence, MatcherBuildError, MatcherDecl, ModuleSpecifierPattern,
             query::{EventSpec, IdentitySpec, QueryDecl, SubjectSpec, VarId},
@@ -349,6 +353,15 @@ fn collect_clauses(decls: &[MatcherDecl]) -> Result<Vec<QueryClause>, MatcherBui
         validate_query_decl(&query).map_err(|e| {
             MatcherBuildError::InvalidLoweredQuery(format!("{}: {}", e.diagnostic_name(), e))
         })?;
+
+        // Phase 5: Normalize the logical query into canonical form.
+        let (normalized, _requirements) = normalize::normalize_query_decl(&query);
+        validate_normalized_decl(&normalized).map_err(|e| {
+            MatcherBuildError::InvalidLoweredQuery(format!("{}: {}", e.diagnostic_name(), e))
+        })?;
+        // The normalized form and plan requirements are reserved for
+        // Phase 6 (physical planning).  Lowering still uses the original
+        // MatcherDecl for now.
     }
 
     let mut clauses: Vec<QueryClause> = Vec::new();

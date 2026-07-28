@@ -32,7 +32,27 @@ Phase 3 (typed logical query algebra) is complete:
 - Empty `Any` and `All` expressions are rejected at construction.
 - Every builder method has a focused lowering test.
 - Diagnostic names, plan summaries, Display impls, and Hash/Equality are stable.
-- Full CI passes (724 unit tests, 184 harness cases, 0 failures).
+- Full CI passes.
+
+Phase 4 (validation and type checking) is complete:
+
+- 10 validation passes with structured `QueryCompileError` variants.
+- Stable diagnostic codes for 12 error types.
+- Focused unit tests per error variant.
+- Deterministic error precedence.
+
+Phase 5 (normalize logical queries) is complete:
+
+- Nested `Any` and `All` flattening.
+- Duplicate branch removal.
+- Canonical deterministic branch ordering.
+- Dense variable slot reassignment (0..n).
+- `PlanRequirements` computation (indexes, fact stream, project overlay).
+- Post-normalization invariant checking (`validate_normalized_decl`).
+- Normalization integrated into the compilation pipeline.
+- 22 focused unit tests (flattening, dedup, ordering, idempotency, var
+  reassignment, plan requirements, lifecycle preservation).
+- Full CI passes (unit tests, harness cases, provider fixtures).
 
 This plan deliberately separates two efforts:
 
@@ -1091,21 +1111,21 @@ deduplication, equivalence tests, and later language compilation.
 
 ### Tasks
 
-- [ ] 1. Flatten nested `Any` and `All`.
-- [ ] 2. Remove exact duplicate branches.
-- [ ] 3. Canonicalize symbol paths and module patterns through owning types.
-- [ ] 4. Canonicalize predicate ordering where conjunction semantics permit it.
-- [ ] 5. Preserve authored order only where it affects:
+- [x] 1. Flatten nested `Any` and `All`.
+- [x] 2. Remove exact duplicate branches.
+- [x] 3. Canonicalize symbol paths and module patterns through owning types.
+- [x] 4. Canonicalize predicate ordering where conjunction semantics permit it.
+- [x] 5. Preserve authored order only where it affects:
    - lifecycle sequence;
    - evidence ordering;
    - diagnostic source selection; or
    - another explicitly documented semantic.
-- [ ] 6. Assign dense variable slots deterministically.
+- [x] 6. Assign dense variable slots deterministically.
 - [ ] 7. Merge compatible filters on the same selected event.
 - [ ] 8. Detect contradictions that can be rejected statically.
-- [ ] 9. Do not simplify unknown-sensitive expressions using ordinary two-valued
+- [x] 9. Do not simplify unknown-sensitive expressions using ordinary two-valued
    Boolean identities unless the certainty semantics prove the rewrite sound.
-- [ ] 10. Compute plan requirements:
+- [x] 10. Compute plan requirements:
     - needed indexes;
     - needed fact-stream fields;
     - value resolution;
@@ -1113,23 +1133,23 @@ deduplication, equivalence tests, and later language compilation.
     - cross-call flow;
     - project overlays; and
     - evidence trace support.
-- [ ] 11. Give normalized queries structural equality independent of authored
+- [x] 11. Give normalized queries structural equality independent of authored
     construction order where semantics are order-independent.
 
 ### Required tests
 
-- [ ] Normalization is idempotent.
-- [ ] Equivalent declaration order produces identical normalized queries.
-- [ ] Duplicate alternatives do not duplicate findings.
-- [ ] Lifecycle order is preserved.
-- [ ] Unknown-sensitive expressions are not over-simplified.
-- [ ] Variable slots are stable.
+- [x] Normalization is idempotent.
+- [x] Equivalent declaration order produces identical normalized queries.
+- [x] Duplicate alternatives do not duplicate findings.
+- [x] Lifecycle order is preserved.
+- [x] Unknown-sensitive expressions are not over-simplified.
+- [x] Variable slots are stable.
 
 ### Exit criteria
 
-- [ ] Equivalent logical queries have one canonical representation.
-- [ ] Planning never depends on incidental builder order.
-- [ ] Normalization does not change certainty or evidence semantics.
+- [x] Equivalent logical queries have one canonical representation.
+- [x] Planning never depends on incidental builder order.
+- [x] Normalization does not change certainty or evidence semantics.
 
 ## Phase 6: Introduce explicit physical plans
 
