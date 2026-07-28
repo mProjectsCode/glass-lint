@@ -79,7 +79,7 @@ impl ProjectSemanticModel {
         let mut local_operations: usize = 0;
         let mut session = LinkingSession::new(self.flow_limit());
         let mut arena = self.trace_arena.lock().unwrap();
-        
+
         let projections: BTreeMap<ModuleId, ProjectModuleProjection<'project>> = self
             .modules
             .values()
@@ -188,7 +188,7 @@ impl ProjectMatcherModel<'_, '_> {
             .get(&module.id())
             .map_or_else(Vec::new, |projection| {
                 projection.index.evidence_for_with_overlay(
-                    matcher.query(),
+                    matcher,
                     Some(&projection.overlay),
                     names,
                 )

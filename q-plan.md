@@ -2,7 +2,15 @@
 
 ## Status
 
-Proposed implementation plan. No implementation has started.
+Implementation in progress. Phase 0 (baseline) is partially complete — the
+`MatcherDeclBuilder` entry points and core integration tests are in place, and
+the analysis engine (flow projection, cross-file flow, scope precision,
+evidence, operations tracking, harness types) has been substantially improved
+across 10 implementation phases. The query/matcher architecture migration
+described below begins from this foundation.
+
+Phase 1 (collapse `QueryPlan` into `CompiledMatcherPlan`) is the first
+architectural migration step and is actively being implemented.
 
 This plan deliberately separates two efforts:
 
@@ -727,8 +735,8 @@ execution paths before changing types.
 
 ### Tasks
 
-1. Enumerate every `MatcherDeclBuilder` entry point.
-2. Map each entry point to:
+- [x] 1. Enumerate every `MatcherDeclBuilder` entry point.
+- [ ] 2. Map each entry point to:
    - identity constraint;
    - event predicate;
    - subject constraint;
@@ -737,9 +745,9 @@ execution paths before changing types.
    - local physical index;
    - project overlay behavior; and
    - certainty behavior.
-3. Enumerate every `ObjectFlowMatcher` source, condition, completion, and sink
-   form.
-4. Record which rules use:
+- [ ] 3. Enumerate every `ObjectFlowMatcher` source, condition, completion, and sink
+     form.
+- [ ] 4. Record which rules use:
    - strict globals;
    - heuristic names;
    - exact modules;
@@ -751,33 +759,33 @@ execution paths before changing types.
    - object properties;
    - object flows; and
    - cross-file/project identity.
-5. Identify duplicated convenience methods and validation logic.
-6. Record all execution entry points that inspect `QueryClause` or
-   `CompiledObjectFlow`.
-7. Add or update an internal capability matrix in compiler tests or a focused
-   design appendix.
-8. Capture baseline operation counts for representative simple, constrained,
-   flow, and project queries.
-9. Run the full provider fixture suite and save a deterministic report
-   comparison suitable for development review.
+- [ ] 5. Identify duplicated convenience methods and validation logic.
+- [ ] 6. Record all execution entry points that inspect `QueryClause` or
+     `CompiledObjectFlow`.
+- [ ] 7. Add or update an internal capability matrix in compiler tests or a focused
+     design appendix.
+- [ ] 8. Capture baseline operation counts for representative simple, constrained,
+     flow, and project queries.
+- [ ] 9. Run the full provider fixture suite and save a deterministic report
+     comparison suitable for development review.
 
 ### Required tests
 
-- One public core integration case for every distinct matcher capability.
-- Focused shadowing, reassignment, alias, lookalike, dynamic-value, and
-  ambiguous-module negatives for strict identities.
-- Connected and disconnected object-flow cases.
-- An incompatible-path negative for every flow relationship that crosses a
-  join.
-- Existing minified/bundled-shape coverage.
+- [x] One public core integration case for every distinct matcher capability.
+- [x] Focused shadowing, reassignment, alias, lookalike, dynamic-value, and
+      ambiguous-module negatives for strict identities.
+- [x] Connected and disconnected object-flow cases.
+- [ ] An incompatible-path negative for every flow relationship that crosses a
+      join.
+- [x] Existing minified/bundled-shape coverage.
 
 ### Exit criteria
 
-- Every public matcher constructor is accounted for.
-- Every current execution path has a named owner.
-- No known matcher behavior exists only implicitly in provider fixtures.
-- Baseline report and operation data can detect structural migration
-  regressions.
+- [x] Every public matcher constructor is accounted for.
+- [ ] Every current execution path has a named owner.
+- [ ] No known matcher behavior exists only implicitly in provider fixtures.
+- [ ] Baseline report and operation data can detect structural migration
+      regressions.
 
 ## Phase 1: Collapse the redundant plan wrapper
 
@@ -788,32 +796,35 @@ one-field `QueryPlan` wrapper.
 
 ### Tasks
 
-1. Move clause and flow storage onto `CompiledMatcherPlan`.
-2. Move `clauses()` and `flows()` accessors onto `CompiledMatcherPlan`.
-3. Update occurrence matching, constrained projection, flow planning, project
-   projection, and tests to accept `&CompiledMatcherPlan`.
-4. Remove `.query()` calls.
-5. Remove `QueryPlan`.
-6. Consolidate test-only and production compilation paths so flow validation
-   is not accidentally bypassed by unit helpers.
-7. Keep storage private and expose only behavior needed by owning modules.
-8. Correct visibility: types in the private compiler module should not be
-   declared `pub` without a cross-crate consumer.
-9. Update compiler documentation to describe the plan as compiled physical
-   storage, not as a wrapper around another plan.
+- [x] 1. Move clause and flow storage onto `CompiledMatcherPlan`.
+- [x] 2. Move `clauses()` and `flows()` accessors onto `CompiledMatcherPlan`.
+- [x] 3. Update occurrence matching, constrained projection, flow planning,
+     project projection, and tests to accept `&CompiledMatcherPlan`.
+- [x] 4. Remove `.query()` calls.
+- [x] 5. Remove `QueryPlan`.
+- [x] 6. Consolidate test-only and production compilation paths so flow
+     validation is not accidentally bypassed by unit helpers.
+- [ ] 7. Keep storage private and expose only behavior needed by owning
+     modules. (Fields are private; accessors remain `pub(crate)` for
+     analysis-layer consumers.)
+- [ ] 8. Correct visibility: types in the private compiler module should not be
+     declared `pub` without a cross-crate consumer.
+- [x] 9. Update compiler documentation to describe the plan as compiled physical
+     storage, not as a wrapper around another plan.
 
 ### Required tests
 
-- Compilation remains order-independent.
-- Equivalent declarations deduplicate identically.
-- Invalid clauses and flows fail through the same production validator.
-- All existing matcher and provider tests remain unchanged in behavior.
+- [x] Compilation remains order-independent.
+- [x] Equivalent declarations deduplicate identically.
+- [x] Invalid clauses and flows fail through the same production validator.
+- [x] All existing matcher and provider tests remain unchanged in behavior.
 
 ### Exit criteria
 
-- There is exactly one compiled-plan type.
-- No consumer unwraps another plan to execute it.
-- Test compilation uses the same validation path as catalog compilation.
+- [x] There is exactly one compiled-plan type. (`QueryPlan` removed)
+- [x] No consumer unwraps another plan to execute it. (`.query()` removed)
+- [x] Test compilation uses the same validation path as catalog compilation.
+     (`compile` removed; all paths use `compile_decls`)
 
 ## Phase 2: Restore declaration/compiler ownership
 

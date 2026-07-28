@@ -64,7 +64,7 @@ pub(in crate::analysis) fn collect(
     // through every call site.
     let mut flows = HashMap::<FlowId, &CompiledObjectFlow>::new();
     for (rule_index, matcher) in matchers.selected_matchers() {
-        for (flow_index, flow) in matcher.query().flows().iter().enumerate() {
+        for (flow_index, flow) in matcher.flows().iter().enumerate() {
             flows.insert(FlowId::new(rule_index, flow_index), flow);
         }
     }

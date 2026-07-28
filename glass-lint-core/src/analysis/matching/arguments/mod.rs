@@ -258,7 +258,7 @@ mod tests {
             .build()
             .unwrap();
         let plan = CompiledMatcherPlan::compile_decls(&[declaration.clone(), declaration]).unwrap();
-        let clauses = plan.query().clauses();
+        let clauses = plan.clauses();
         assert_eq!(clauses.len(), 1, "equivalent clauses compile once");
 
         let stream = stream("fetch('/api');\nfetch('/api');", &Environment::default());

@@ -8,7 +8,9 @@ use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
 use crate::{
-    Severity, analysis::matches_global_object_alias, api::{
+    Severity,
+    analysis::matches_global_object_alias,
+    api::{
         classification::{MatchKind, RuleIndex},
         compiler::object_flow::CompiledObjectFlow,
         rule::{
@@ -17,19 +19,16 @@ use crate::{
     },
 };
 
-/// Canonical matcher representation consumed by analysis.  Public matcher
+/// Canonical compiled matcher plan consumed by analysis.  Public matcher
 /// declarations are compiled once while a catalog is built and never enter
 /// the per-file analysis path.
+///
+/// This is the sole compiled-plan type.  Consumers access clauses and flows
+/// through accessors; there is no separate plan wrapper.
 #[derive(Debug, Clone)]
 pub struct CompiledMatcherPlan {
-    query: QueryPlan,
-}
-
-#[derive(Debug, Clone)]
-/// Private compositional query representation consumed by semantic analysis.
-pub struct QueryPlan {
-    pub(crate) clauses: Box<[QueryClause]>,
-    pub(crate) flows: Box<[CompiledObjectFlow]>,
+    clauses: Box<[QueryClause]>,
+    flows: Box<[CompiledObjectFlow]>,
 }
 
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
@@ -261,7 +260,7 @@ fn collect_clauses_and_flows(
     Ok((clauses, flows))
 }
 
-impl QueryPlan {
+impl CompiledMatcherPlan {
     pub(crate) fn clauses(&self) -> &[QueryClause] {
         &self.clauses
     }
@@ -270,24 +269,8 @@ impl QueryPlan {
         &self.flows
     }
 
-    #[cfg(test)]
-    fn from_declarations(decls: &[MatcherDecl]) -> Result<Self, MatcherBuildError> {
-        let (clauses, flows) = collect_clauses_and_flows(decls)?;
-        Ok(Self {
-            clauses: clauses.into_boxed_slice(),
-            flows: flows.into_boxed_slice(),
-        })
-    }
-}
-
-impl CompiledMatcherPlan {
-    #[cfg(test)]
-    pub(crate) fn compile(decls: &[MatcherDecl]) -> Result<Self, MatcherBuildError> {
-        let query = QueryPlan::from_declarations(decls)?;
-        Ok(Self { query })
-    }
-
     /// Compile declarations into clauses and extract flows.
+    /// Used by both production catalog construction and test helpers.
     pub(crate) fn compile_decls(decls: &[MatcherDecl]) -> Result<Self, MatcherBuildError> {
         let (clauses, flows) = collect_clauses_and_flows(decls)?;
         for flow in &flows {
@@ -313,16 +296,9 @@ impl CompiledMatcherPlan {
             }
         }
         Ok(Self {
-            query: QueryPlan {
-                clauses: clauses.into_boxed_slice(),
-                flows: flows.into_boxed_slice(),
-            },
+            clauses: clauses.into_boxed_slice(),
+            flows: flows.into_boxed_slice(),
         })
-    }
-
-    /// Borrow the normalized query used by all semantic execution paths.
-    pub(crate) fn query(&self) -> &QueryPlan {
-        &self.query
     }
 }
 
@@ -451,8 +427,8 @@ mod tests {
                 .build()
                 .expect("valid matcher declaration"),
         ];
-        let plan = CompiledMatcherPlan::compile(&decls).unwrap();
-        assert!(!plan.query().clauses().is_empty());
+        let plan = CompiledMatcherPlan::compile_decls(&decls).unwrap();
+        assert!(!plan.clauses().is_empty());
     }
 
     #[test]
@@ -463,8 +439,8 @@ mod tests {
             .evidence(MatchKind::CallArgument, "fetch")
             .build()
             .unwrap();
-        let plan = CompiledMatcherPlan::compile(&[decl]).unwrap();
-        let clauses = plan.query().clauses();
+        let plan = CompiledMatcherPlan::compile_decls(&[decl]).unwrap();
+        let clauses = plan.clauses();
         assert_eq!(clauses.len(), 1);
         assert!(!clauses[0].constraints.is_empty());
         assert_eq!(clauses[0].evidence.kind, MatchKind::CallArgument);
@@ -502,16 +478,9 @@ mod tests {
                 .expect("valid matcher declaration"),
         ];
 
-        assert_eq!(
-            format!(
-                "{:?}",
-                CompiledMatcherPlan::compile(&first).unwrap().query()
-            ),
-            format!(
-                "{:?}",
-                CompiledMatcherPlan::compile(&second).unwrap().query()
-            )
-        );
+        let first = CompiledMatcherPlan::compile_decls(&first).unwrap();
+        let second = CompiledMatcherPlan::compile_decls(&second).unwrap();
+        assert_eq!(format!("{first:?}"), format!("{second:?}"));
     }
 
     #[test]
@@ -542,8 +511,8 @@ mod tests {
                 .build()
                 .expect("valid matcher declaration"),
         ];
-        let plan = CompiledMatcherPlan::compile(&decls).unwrap();
-        let clauses = plan.query().clauses();
+        let plan = CompiledMatcherPlan::compile_decls(&decls).unwrap();
+        let clauses = plan.clauses();
         assert!(clauses.iter().any(|clause| matches!(
             (&clause.identity, &clause.event, &clause.subject),
             (IdentityConstraint::Global { name, strength: IdentityStrength::Strict }, EventPredicate::Call, SubjectConstraint::Direct) if name == "fetch"
@@ -594,10 +563,10 @@ mod tests {
                 .build()
                 .expect("valid matcher declaration"),
         ];
-        let first = CompiledMatcherPlan::compile(&first).unwrap();
-        let second = CompiledMatcherPlan::compile(&second).unwrap();
-        assert_eq!(first.query().clauses(), second.query().clauses());
-        assert_eq!(first.query().clauses(), first.query().clauses());
+        let first = CompiledMatcherPlan::compile_decls(&first).unwrap();
+        let second = CompiledMatcherPlan::compile_decls(&second).unwrap();
+        assert_eq!(first.clauses(), second.clauses());
+        assert_eq!(first.clauses(), first.clauses());
     }
 
     #[test]
@@ -608,8 +577,8 @@ mod tests {
             .evidence(MatchKind::CallArgument, "fetch")
             .build()
             .unwrap();
-        let plan = CompiledMatcherPlan::compile(&[decl]).unwrap();
-        let clauses = plan.query().clauses();
+        let plan = CompiledMatcherPlan::compile_decls(&[decl]).unwrap();
+        let clauses = plan.clauses();
         assert_eq!(clauses.len(), 1);
         for left in clauses {
             for right in clauses {

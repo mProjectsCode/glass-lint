@@ -12,7 +12,7 @@ use crate::{
         occurrence::ReturnedMemberKey, push_owned_evidence,
     },
     api::compiler::rule::{
-        EventPredicate, IdentityConstraint, QueryClause, QueryPlan, SubjectConstraint,
+        CompiledMatcherPlan, EventPredicate, IdentityConstraint, QueryClause, SubjectConstraint,
     },
 };
 
@@ -23,14 +23,14 @@ impl OccurrenceIndexes {
     #[cfg(test)]
     pub(in crate::analysis) fn evidence_for(
         &self,
-        plan: &QueryPlan,
+        plan: &CompiledMatcherPlan,
     ) -> Vec<ClassificationEvidence> {
         self.evidence_for_with_overlay(plan, None, &self.test_names)
     }
 
     pub(in crate::analysis) fn evidence_for_with_overlay<'a>(
         &'a self,
-        plan: &QueryPlan,
+        plan: &CompiledMatcherPlan,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
         names: &NameTable,
     ) -> Vec<ClassificationEvidence> {

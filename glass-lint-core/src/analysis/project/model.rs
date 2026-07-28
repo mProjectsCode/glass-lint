@@ -22,11 +22,14 @@ use crate::{
         syntax::SymbolCallProvenance,
         trace::TraceArena,
         value::{FunctionId, ValueId},
-    }, api::{
+    },
+    api::{
         classification::{ClassificationResult, MatchedCapability, RuleIndex},
         compiler::{CompiledRuleRecord, CompiledRuleSelection},
-    }, project::{
-        AnalysisDiagnostic, LinkedModuleTarget, ModuleId, ProjectInputError, ProjectRelativePath, ResolutionRequestKey, ResolverOutcome, SourceFile, SourceLocation,
+    },
+    project::{
+        AnalysisDiagnostic, LinkedModuleTarget, ModuleId, ProjectInputError, ProjectRelativePath,
+        ResolutionRequestKey, ResolverOutcome, SourceFile, SourceLocation,
     },
 };
 
@@ -327,19 +330,12 @@ impl ProjectSemanticModel {
 
     /// Convert a module/fact identity into a source location for related
     /// evidence.
-    pub fn fact_location(
-        &self,
-        module: ModuleId,
-        fact: u32,
-    ) -> Option<SourceLocation> {
+    pub fn fact_location(&self, module: ModuleId, fact: u32) -> Option<SourceLocation> {
         let module = self.modules.get(&module)?;
         let fact = module.local().facts().stream().fact(FactId(fact))?;
         let range = module.source_context().range(fact.span).ok()?;
 
-        Some(SourceLocation::new(
-            module.path().clone(),
-            range,
-        ))
+        Some(SourceLocation::new(module.path().clone(), range))
     }
 
     /// Resolve a callable target across local or qualified module identities.
@@ -453,7 +449,7 @@ impl ProjectSemanticModel {
                     if evidence.is_empty() {
                         continue;
                     }
-                    
+
                     result.capabilities.push(MatchedCapability {
                         rule_index: *rule_index,
                         label: record.description.clone(),

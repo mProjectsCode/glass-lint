@@ -276,7 +276,7 @@ mod tests {
             .build()
             .unwrap()])
         .unwrap();
-        let evidence = facts.evidence_for(compiled.query());
+        let evidence = facts.evidence_for(&compiled);
         let reference = facts
             .members
             .calls

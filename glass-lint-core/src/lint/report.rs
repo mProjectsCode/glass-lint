@@ -3,11 +3,18 @@ use std::collections::BTreeMap;
 use glass_lint_datastructures::{Position, SourceRange};
 
 use crate::{
-    AnalysisLimits, ParseDiagnostic, REPORT_VERSION, analysis::{
+    AnalysisLimits, ParseDiagnostic, REPORT_VERSION,
+    analysis::{
         ProjectSemanticModel, ResolvedLinkInput, project::projection::ProjectionOutcome,
         trace::TraceArena,
-    }, api::classification::{ClassificationResult, MatchedCapability, RuleIndex, TraceNodeId}, diagnostic::SourceLineIndex, lint::catalog::RuleCatalog, project::{
-        AnalysisReport, Diagnostic, EvidenceRole, EvidenceStep, EvidenceTrace, EvidenceTraces, FileReport, Finding, MatchCertainty, ModuleId, ProjectInputError, ProjectRelativePath, ReportCompletion, SourceFile, SourceLocation,
+    },
+    api::classification::{ClassificationResult, MatchedCapability, RuleIndex, TraceNodeId},
+    diagnostic::SourceLineIndex,
+    lint::catalog::RuleCatalog,
+    project::{
+        AnalysisReport, Diagnostic, EvidenceRole, EvidenceStep, EvidenceTrace, EvidenceTraces,
+        FileReport, Finding, MatchCertainty, ModuleId, ProjectInputError, ProjectRelativePath,
+        ReportCompletion, SourceFile, SourceLocation,
     },
 };
 
@@ -380,7 +387,7 @@ impl<'a> ReportAssembly<'a> {
                 file.diagnostics_mut().push(Diagnostic::project(diagnostic));
             }
         }
-        
+
         let mut diagnostics = Vec::new();
         for diagnostic in project.diagnostics().iter().cloned() {
             if let Some(path) = diagnostic.location().map(|l| l.path().clone()) {

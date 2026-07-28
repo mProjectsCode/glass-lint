@@ -364,7 +364,6 @@ impl<'a> ProjectionPlan<'a> {
             .selected_matchers()
             .flat_map(|(rule_index, matcher)| {
                 matcher
-                    .query()
                     .clauses()
                     .iter()
                     .filter(|clause| !clause.constraints.is_empty())
@@ -376,7 +375,6 @@ impl<'a> ProjectionPlan<'a> {
             .selected_matchers()
             .flat_map(|(rule_index, matcher)| {
                 matcher
-                    .query()
                     .flows()
                     .iter()
                     .enumerate()
