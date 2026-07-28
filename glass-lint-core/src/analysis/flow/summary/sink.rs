@@ -66,6 +66,10 @@ impl SinkSet {
             ))
         });
     }
+
+    pub(super) fn clear(&mut self) {
+        self.set.clear();
+    }
 }
 
 impl<'a> IntoIterator for &'a SinkSet {
@@ -151,6 +155,10 @@ impl FunctionSummary {
 
     pub(super) fn sort_sinks(&mut self) {
         self.sinks.sort_and_dedup();
+    }
+
+    pub(super) fn clear_sinks(&mut self) {
+        self.sinks.clear();
     }
 }
 

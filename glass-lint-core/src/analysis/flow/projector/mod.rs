@@ -17,7 +17,7 @@ mod transfer;
 
 use std::collections::BTreeMap;
 
-use glass_lint_datastructures::NameTable;
+use glass_lint_datastructures::{Budget, NameTable};
 use state::{AbruptExit, ControlFrame, FlowEnvironment, FlowEvidence, FlowStateTable};
 
 use crate::{
@@ -61,8 +61,17 @@ pub(in crate::analysis) fn collect_into(
 ) -> LocalFlowProjectionOutcome {
     let names = stream.names();
     let plan = BoundFlowPlan::new(rules, names);
-    let helpers = FunctionSummaries::collect(stream, effects, &plan);
-    let mut projector = ObjectFlowProjector::new(stream, names, plan, helpers, evidence, limits);
+    let mut summary_budget = Budget::new(limits.emission_limit());
+    let helpers = FunctionSummaries::collect(stream, effects, &plan, &mut summary_budget);
+    let mut projector = ObjectFlowProjector::new(
+        stream,
+        names,
+        plan,
+        helpers,
+        evidence,
+        limits,
+        summary_budget.exhausted(),
+    );
     for fact in stream.facts() {
         projector.transfer(fact);
     }
@@ -104,9 +113,11 @@ struct ObjectFlowProjector<'rules, 'stream> {
     limits: FlowLimits,
     /// Nested branch/function frames used to restore environments at joins.
     control: Vec<ControlFrame>,
-    /// Facts after an unreachable branch are ignored until a join restores a
+    /// Facts after an unreachable branch are ignored until a joint restores a
     /// reachable environment.
     reachable: bool,
+    /// Summary construction exhausted its budget.
+    summary_exhausted: bool,
 }
 
 impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
@@ -117,6 +128,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
         helpers: FunctionSummaries<'stream>,
         evidence: &'stream mut [Vec<ClassificationEvidence>],
         limits: FlowLimits,
+        summary_exhausted: bool,
     ) -> Self {
         let calls_by_result = stream
             .facts()
@@ -138,6 +150,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             limits,
             control: Vec::new(),
             reachable: true,
+            summary_exhausted,
         }
     }
 
@@ -320,7 +333,8 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
 
     /// Consume the projector and produce a bounded summary of what was used.
     fn into_outcome(self) -> LocalFlowProjectionOutcome {
-        let exhausted = self.next_object_id >= self.limits.object_limit()
+        let exhausted = self.summary_exhausted
+            || self.next_object_id >= self.limits.object_limit()
             || self.flow_state.state_count() >= self.limits.state_limit()
             || self.flow_evidence.emitted_count() >= self.limits.emission_limit()
             || self.flow_state.mutation_exhausted();

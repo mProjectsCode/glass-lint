@@ -1,12 +1,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use glass_lint_datastructures::Budget;
+
 use crate::analysis::{
     facts::{CallArgInfo, FactId, FactPayload, FactStream, Frozen, ParameterBinding},
     flow::{
         effect::{EffectCall, FunctionEffects},
         planning::BoundFlowPlan,
         summary::{
-            MAX_SUMMARY_ROUNDS, SummaryPathStore,
+            MAX_SUMMARY_ROUNDS, MAX_SUMMARY_SINKS, SummaryPathStore,
             sink::{FunctionSinkSummary, FunctionSummary},
         },
     },
@@ -20,6 +22,8 @@ pub struct FunctionSummaries<'a> {
     by_id: FunctionTable<FunctionSummary>,
     paths: SummaryPathStore<'a>,
     scratch_projections: Vec<FunctionSinkSummary>,
+    exhausted: bool,
+    total_sinks: usize,
 }
 
 impl<'a> FunctionSummaries<'a> {
@@ -39,25 +43,42 @@ impl<'a> FunctionSummaries<'a> {
         stream: &'a FactStream<Frozen>,
         effects: &FunctionEffects,
         plan: &BoundFlowPlan<'_>,
+        budget: &mut Budget,
     ) -> Self {
         let mut summaries = Self {
             stream,
             by_id: FunctionTable::default(),
             paths: SummaryPathStore::new(stream.paths()),
             scratch_projections: Vec::new(),
+            exhausted: false,
+            total_sinks: 0,
         };
-        summaries.collect_facts(effects);
-        summaries.collect_direct_sinks(stream, plan);
-        summaries.propagate_sinks(stream);
-        for (_, summary) in summaries.by_id.iter_mut() {
-            summary.sort_sinks();
+        summaries.collect_facts(effects, budget);
+        if !summaries.exhausted {
+            summaries.collect_direct_sinks(stream, plan, budget);
+        }
+        if !summaries.exhausted {
+            summaries.propagate_sinks(stream, budget);
+        }
+        if summaries.exhausted {
+            for (_, summary) in summaries.by_id.iter_mut() {
+                summary.clear_sinks();
+            }
+        } else {
+            for (_, summary) in summaries.by_id.iter_mut() {
+                summary.sort_sinks();
+            }
         }
         summaries
     }
 
-    fn collect_facts(&mut self, effects: &FunctionEffects) {
+    fn collect_facts(&mut self, effects: &FunctionEffects, budget: &mut Budget) {
         for effect in effects.iter_effects() {
             if self.get(effect.id()).is_none() {
+                if !budget.try_push() {
+                    self.exhausted = true;
+                    return;
+                }
                 let params = effect.parameters(self.stream);
                 self.insert(FunctionSummary::new(
                     effect.id(),
@@ -73,25 +94,49 @@ impl<'a> FunctionSummaries<'a> {
         }
     }
 
-    fn collect_direct_sinks(&mut self, stream: &FactStream<Frozen>, plan: &BoundFlowPlan<'_>) {
+    fn collect_direct_sinks(
+        &mut self,
+        stream: &FactStream<Frozen>,
+        plan: &BoundFlowPlan<'_>,
+        budget: &mut Budget,
+    ) {
         let entries: Vec<(FunctionId, usize)> = self
             .by_id
             .iter()
             .map(|(id, summary)| (id, summary.calls().len()))
             .collect();
         for (id, count) in entries {
+            if self.exhausted {
+                return;
+            }
             let Some(summary) = self.by_id.get_mut(id) else {
                 continue;
             };
             for idx in 0..count {
+                if self.exhausted {
+                    return;
+                }
                 if let Some(call_id) = summary.calls().get(idx).copied() {
+                    let before = summary.sinks().len();
                     summary.collect_sinks_for_call(stream, plan, &mut self.paths, call_id);
+                    let added = summary.sinks().len() - before;
+                    for _ in 0..added {
+                        if !budget.try_push() {
+                            self.exhausted = true;
+                            return;
+                        }
+                    }
+                    self.total_sinks += added;
+                    if self.total_sinks > MAX_SUMMARY_SINKS {
+                        self.exhausted = true;
+                        return;
+                    }
                 }
             }
         }
     }
 
-    fn propagate_sinks(&mut self, stream: &FactStream<Frozen>) {
+    fn propagate_sinks(&mut self, stream: &FactStream<Frozen>, budget: &mut Budget) {
         let mut reverse_calls: BTreeMap<FunctionId, Vec<FunctionId>> = BTreeMap::new();
         for (caller_id, summary) in self.by_id.iter() {
             for call_id in summary.calls() {
@@ -114,6 +159,11 @@ impl<'a> FunctionSummaries<'a> {
                 break;
             }
 
+            if !budget.try_push() {
+                self.exhausted = true;
+                return;
+            }
+
             let current_round: Vec<FunctionId> = worklist.iter().copied().collect();
             worklist.clear();
 
@@ -133,10 +183,17 @@ impl<'a> FunctionSummaries<'a> {
                     else {
                         continue;
                     };
-                    if self.propagate_call_sinks(call_id, caller, stream) {
+                    if self.propagate_call_sinks(call_id, caller, stream, budget) {
                         changed.insert(caller);
                     }
+                    if self.exhausted {
+                        return;
+                    }
                 }
+            }
+
+            if self.exhausted {
+                return;
             }
 
             for &changed_id in &changed {
@@ -148,10 +205,18 @@ impl<'a> FunctionSummaries<'a> {
             for &changed_id in &changed {
                 if let Some(callers) = reverse_calls.get(&changed_id) {
                     for &c in callers {
+                        if worklist.len() >= MAX_SUMMARY_SINKS {
+                            self.exhausted = true;
+                            return;
+                        }
                         worklist.insert(c);
                     }
                 }
             }
+        }
+
+        if !worklist.is_empty() {
+            self.exhausted = true;
         }
     }
 
@@ -160,6 +225,7 @@ impl<'a> FunctionSummaries<'a> {
         call_id: FactId,
         caller: FunctionId,
         stream: &FactStream<Frozen>,
+        budget: &mut Budget,
     ) -> bool {
         let Some((target, args)) = resolve_call_target(call_id, stream) else {
             return false;
@@ -196,13 +262,24 @@ impl<'a> FunctionSummaries<'a> {
                     args,
                     &self.paths,
                 ) {
+                    if self.total_sinks >= MAX_SUMMARY_SINKS {
+                        self.exhausted = true;
+                        return false;
+                    }
                     self.scratch_projections.push(proj);
                 }
             }
         }
         let mut changed = false;
         for proj in self.scratch_projections.drain(..) {
-            changed |= caller_summary.add_sink(proj);
+            if !budget.try_push() {
+                self.exhausted = true;
+                return changed;
+            }
+            if caller_summary.add_sink(proj) {
+                self.total_sinks += 1;
+                changed = true;
+            }
         }
         changed
     }
@@ -257,6 +334,10 @@ mod tests {
         resolution::Resolver,
     };
 
+    fn unlimited_budget() -> Budget {
+        Budget::new(usize::MAX)
+    }
+
     #[test]
     fn same_name_siblings_are_keyed_by_function_id() {
         let source = "function first(x) { document.body.appendChild(x); } function second(x) { console.log(x); }";
@@ -265,7 +346,8 @@ mod tests {
         let stream = facts::build_test_stream(&parsed.program, &mut resolver);
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let plan = BoundFlowPlan::new(&[], stream.names());
-        let summaries = FunctionSummaries::collect(&stream, &effects, &plan);
+        let mut budget = unlimited_budget();
+        let summaries = FunctionSummaries::collect(&stream, &effects, &plan, &mut budget);
         assert!(summaries.by_id.len() >= 2);
         assert_eq!(
             summaries
@@ -289,7 +371,8 @@ mod tests {
         let stream = facts::build_test_stream(&parsed.program, &mut resolver);
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let plan = BoundFlowPlan::new(&[], stream.names());
-        let summaries = FunctionSummaries::collect(&stream, &effects, &plan);
+        let mut budget = unlimited_budget();
+        let summaries = FunctionSummaries::collect(&stream, &effects, &plan, &mut budget);
         let bridge = summaries
             .get(FunctionId(2))
             .expect("bridge function should have a summary");
@@ -310,7 +393,8 @@ mod tests {
         let stream = facts::build_test_stream(&parsed.program, &mut resolver);
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let plan = BoundFlowPlan::new(&[], stream.names());
-        let summaries = FunctionSummaries::collect(&stream, &effects, &plan);
+        let mut budget = unlimited_budget();
+        let summaries = FunctionSummaries::collect(&stream, &effects, &plan, &mut budget);
         assert!(
             summaries.get(FunctionId(1)).is_some(),
             "a should have a summary"
@@ -329,7 +413,8 @@ mod tests {
         let stream = facts::build_test_stream(&parsed.program, &mut resolver);
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let plan = BoundFlowPlan::new(&[], stream.names());
-        let summaries = FunctionSummaries::collect(&stream, &effects, &plan);
+        let mut budget = unlimited_budget();
+        let summaries = FunctionSummaries::collect(&stream, &effects, &plan, &mut budget);
         let f = summaries
             .get(FunctionId(1))
             .expect("f should have a summary");
@@ -353,7 +438,8 @@ mod tests {
         let stream = facts::build_test_stream(&parsed.program, &mut resolver);
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let plan = BoundFlowPlan::new(&[], stream.names());
-        let summaries = FunctionSummaries::collect(&stream, &effects, &plan);
+        let mut budget = unlimited_budget();
+        let summaries = FunctionSummaries::collect(&stream, &effects, &plan, &mut budget);
         let f = summaries
             .get(FunctionId(1))
             .expect("f should have a summary");
