@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use glass_lint_datastructures::fnv_write;
+use glass_lint_datastructures::Fingerprint;
 use smol_str::SmolStr;
 
 /// The globals and current- or foreign-realm global objects available to
@@ -300,31 +300,31 @@ impl Environment {
     }
 
     /// Hash a deterministic byte representation for cache fingerprinting
-    /// directly into the FNV-1a state. Iteration order follows
+    /// directly into the running fingerprint. Iteration order follows
     /// BTreeSet/BTreeMap keys, which is stable.
-    pub(crate) fn write_fingerprint_bytes(&self, h: &mut u64) {
+    pub(crate) fn write_fingerprint_bytes(&self, fp: &mut Fingerprint) {
         let inner = self.inner();
         // Global bindings (sorted).
-        fnv_write(h, &(inner.global_bindings.len() as u64).to_le_bytes());
+        fp.write(&(inner.global_bindings.len() as u64).to_le_bytes());
         for name in &inner.global_bindings {
-            fnv_write(h, name.as_bytes());
-            fnv_write(h, &[0u8]);
+            fp.write(name.as_bytes());
+            fp.write(&[0u8]);
         }
         // Global objects (sorted by name).
-        fnv_write(h, &(inner.global_objects.len() as u64).to_le_bytes());
+        fp.write(&(inner.global_objects.len() as u64).to_le_bytes());
         for (name, members) in &inner.global_objects {
-            fnv_write(h, name.as_bytes());
-            fnv_write(h, &[0u8]);
+            fp.write(name.as_bytes());
+            fp.write(&[0u8]);
             match members {
                 GlobalObjectMembers::ConfiguredGlobals => {
-                    fnv_write(h, &[0u8]);
+                    fp.write(&[0u8]);
                 }
                 GlobalObjectMembers::Restricted(member_set) => {
-                    fnv_write(h, &[1u8]);
-                    fnv_write(h, &(member_set.len() as u64).to_le_bytes());
+                    fp.write(&[1u8]);
+                    fp.write(&(member_set.len() as u64).to_le_bytes());
                     for member in member_set {
-                        fnv_write(h, member.as_bytes());
-                        fnv_write(h, &[0u8]);
+                        fp.write(member.as_bytes());
+                        fp.write(&[0u8]);
                     }
                 }
             }
@@ -521,11 +521,11 @@ mod tests {
         let mut b = Environment::default();
         b.add_globals(["navigator", "fetch"]).unwrap();
 
-        let mut ha = 0u64;
-        let mut hb = 0u64;
+        let mut ha = Fingerprint::init();
+        let mut hb = Fingerprint::init();
         a.write_fingerprint_bytes(&mut ha);
         b.write_fingerprint_bytes(&mut hb);
-        assert_eq!(ha, hb);
+        assert_eq!(ha.into_raw(), hb.into_raw());
     }
 
     #[test]
@@ -534,11 +534,11 @@ mod tests {
         a.add_global("fetch").unwrap();
         let b = Environment::default();
 
-        let mut ha = 0u64;
-        let mut hb = 0u64;
+        let mut ha = Fingerprint::init();
+        let mut hb = Fingerprint::init();
         a.write_fingerprint_bytes(&mut ha);
         b.write_fingerprint_bytes(&mut hb);
-        assert_ne!(ha, hb);
+        assert_ne!(ha.into_raw(), hb.into_raw());
     }
 
     #[test]

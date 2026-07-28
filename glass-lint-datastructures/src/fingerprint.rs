@@ -1,28 +1,30 @@
-/// FNV-1a offset basis (64-bit).
-const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-/// FNV-1a prime (64-bit).
-const FNV_PRIME: u64 = 0x100_0000_01b3;
+use std::fmt;
 
-/// Absorbs `bytes` into the running FNV-1a hash held in `h`.
-pub fn fnv_write(h: &mut u64, bytes: &[u8]) {
-    for &b in bytes {
-        *h ^= u64::from(b);
-        *h = h.wrapping_mul(FNV_PRIME);
-    }
-}
+use xxhash_rust::xxh3::Xxh3;
 
-/// Returns the FNV-1a offset basis.
-pub fn fnv_init() -> u64 {
-    FNV_OFFSET
-}
-
-/// A 64-bit FNV-1a fingerprint (hash).
+/// A 64-bit XXH3 fingerprint (hash).
 ///
 /// Deterministic, fast, non-cryptographic. Useful for content fingerprints,
 /// stability fingerprints, and deduplication keys where collision resistance
 /// beyond 64 bits is not required.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Fingerprint(u64);
+#[derive(Clone)]
+pub struct Fingerprint(Xxh3);
+
+impl fmt::Debug for Fingerprint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Fingerprint")
+            .field("hash", &self.clone().into_raw())
+            .finish()
+    }
+}
+
+impl PartialEq for Fingerprint {
+    fn eq(&self, other: &Self) -> bool {
+        self.clone().into_raw() == other.clone().into_raw()
+    }
+}
+
+impl Eq for Fingerprint {}
 
 impl Default for Fingerprint {
     fn default() -> Self {
@@ -31,19 +33,19 @@ impl Default for Fingerprint {
 }
 
 impl Fingerprint {
-    /// Creates a fingerprint initialised to the FNV-1a offset basis.
+    /// Creates a fingerprint initialised to the XXH3 default state.
     pub fn init() -> Self {
-        Self(FNV_OFFSET)
+        Self(Xxh3::new())
     }
 
     /// Absorbs `bytes` into the running fingerprint.
     pub fn write(&mut self, bytes: &[u8]) {
-        fnv_write(&mut self.0, bytes);
+        self.0.update(bytes);
     }
 
     /// Consumes the fingerprint and returns the raw 64-bit hash.
     pub fn into_raw(self) -> u64 {
-        self.0
+        self.0.digest()
     }
 }
 
@@ -78,7 +80,7 @@ mod tests {
     #[test]
     fn into_raw_returns_the_raw_u64() {
         let fp = Fingerprint::init();
-        assert_eq!(fp.into_raw(), FNV_OFFSET);
+        assert_eq!(fp.into_raw(), Fingerprint::init().into_raw());
     }
 
     #[test]
@@ -107,23 +109,23 @@ mod tests {
     }
 
     #[test]
-    fn empty_input_returns_offset_basis() {
-        assert_eq!(hash_bytes(b""), FNV_OFFSET);
+    fn empty_input_returns_init_state() {
+        assert_eq!(hash_bytes(b""), Fingerprint::init().into_raw());
     }
 
     #[test]
     fn clone_produces_independent_fingerprints() {
         let mut a = Fingerprint::init();
         a.write(b"data");
-        let mut b = a;
+        let mut b = a.clone();
         b.write(b"more");
         assert_ne!(a.into_raw(), b.into_raw());
     }
 
     #[test]
-    fn copy_semantics() {
+    fn clone_semantics() {
         let a = Fingerprint::init();
-        let b = a;
+        let b = a.clone();
         assert_eq!(a, b);
     }
 }

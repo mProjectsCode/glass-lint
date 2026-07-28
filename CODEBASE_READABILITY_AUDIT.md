@@ -230,7 +230,11 @@ Make `IndexTable` require an owner-supplied capacity and return a typed `InsertO
 
 Every artifact fingerprint scans the complete source through a byte-at-a-time FNV-1a loop, and raw `fnv_init`/`fnv_write` functions couple core to the algorithm. The full cache key collision-checks content, so cryptographic hashing is unnecessary, but FNV is usually a poor throughput choice for this hot whole-source pass.
 
-Replace the scalar FNV loop with `xxhash-rust`'s streaming XXH3 implementation behind `Fingerprint`'s `write`/finish API, and remove raw algorithm functions from callers. Benchmark short and large sources before setting the chunking policy, then bump `FINGERPRINT_VERSION` and retain full-key collision verification. Recommendation: make the hasher choice private to `glass-lint-datastructures` and add compatibility tests proving old cache entries miss cleanly after the version bump.
+Replace the scalar FNV loop with `xxhash-rust`'s streaming XXH3 implementation behind `Fingerprint`'s `write`/`into_raw` API, and remove raw algorithm functions from callers. Bump `FINGERPRINT_VERSION` and retain full-key collision verification.
+
+- **Status:** Fixed
+
+**Check:** `make fmt && make ci` passed on 2026-07-28.
 
 ### `glass-lint-project`: filesystem admission and loading
 

@@ -10,9 +10,7 @@ use std::{
 };
 
 use facts::SemanticFacts;
-use glass_lint_datastructures::{
-    ByteRange, InvalidSourceBoundary, SourceRange, fingerprint::fnv_write,
-};
+use glass_lint_datastructures::{ByteRange, Fingerprint, InvalidSourceBoundary, SourceRange};
 use smol_str::SmolStr;
 use syntax::SymbolCallProvenance;
 
@@ -45,16 +43,16 @@ impl From<&AnalysisLimits> for LocalLoweringConfig {
     }
 }
 
-// ---- Deterministic FNV-1a hasher for cache fingerprints -------------------
+// ---- Deterministic hasher for cache fingerprints -------------------------
 
-/// FNV-1a hash that is deterministic across processes (fixed seed).
+/// XXH3 hash that is deterministic across processes (fixed seed).
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
 pub struct ArtifactFingerprint(u64);
 
 /// Current hash version – bump when the encoding of any fingerprint
 /// dimension changes so that cached artifacts from older versions are
 /// naturally evicted.
-const FINGERPRINT_VERSION: u64 = 2;
+const FINGERPRINT_VERSION: u64 = 3;
 
 impl ArtifactFingerprint {
     /// Versioned deterministic hash of all artifact-affecting inputs.
@@ -67,24 +65,21 @@ impl ArtifactFingerprint {
         limits: &LocalLoweringConfig,
         engine_version: &str,
     ) -> Self {
-        let mut h = glass_lint_datastructures::fingerprint::fnv_init();
-        fnv_write(&mut h, &FINGERPRINT_VERSION.to_le_bytes());
-        fnv_write(&mut h, source.as_bytes());
-        fnv_write(
-            &mut h,
-            &[match language {
-                SourceLanguage::JavaScript => 0u8,
-                SourceLanguage::TypeScript => 1u8,
-            }],
-        );
-        fnv_write(&mut h, normalization_mode.as_bytes());
-        fnv_write(&mut h, &[0u8]); // separator
-        environment.write_fingerprint_bytes(&mut h);
-        fnv_write(&mut h, &limits.syntax_depth.to_le_bytes());
-        fnv_write(&mut h, &limits.semantic_operations.to_le_bytes());
-        fnv_write(&mut h, &limits.effect_operations.to_le_bytes());
-        fnv_write(&mut h, engine_version.as_bytes());
-        Self(h)
+        let mut fp = Fingerprint::init();
+        fp.write(&FINGERPRINT_VERSION.to_le_bytes());
+        fp.write(source.as_bytes());
+        fp.write(&[match language {
+            SourceLanguage::JavaScript => 0u8,
+            SourceLanguage::TypeScript => 1u8,
+        }]);
+        fp.write(normalization_mode.as_bytes());
+        fp.write(&[0u8]); // separator
+        environment.write_fingerprint_bytes(&mut fp);
+        fp.write(&limits.syntax_depth.to_le_bytes());
+        fp.write(&limits.semantic_operations.to_le_bytes());
+        fp.write(&limits.effect_operations.to_le_bytes());
+        fp.write(engine_version.as_bytes());
+        Self(fp.into_raw())
     }
 }
 

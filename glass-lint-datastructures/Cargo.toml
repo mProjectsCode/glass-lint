@@ -10,6 +10,7 @@ indexmap.workspace = true
 serde = { workspace = true, optional = true }
 smol_str.workspace = true
 smallvec.workspace = true
+xxhash-rust.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
