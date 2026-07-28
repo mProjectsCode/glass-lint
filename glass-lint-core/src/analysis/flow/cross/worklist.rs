@@ -110,10 +110,11 @@ impl ContextWorklist {
         project: &ProjectSemanticModel,
         sources: &FlowSources,
         call_graph: &QualifiedCallGraph,
+        flows: &[crate::analysis::model::flow::FlowId],
     ) -> Self {
         let mut worklist = Self::new(MAX_CONTEXTS);
         worklist.seed_from_sources(project, sources);
-        worklist.seed_from_calls(project, sources, call_graph);
+        worklist.seed_from_calls(project, sources, call_graph, flows);
         worklist
     }
 
@@ -130,10 +131,10 @@ impl ContextWorklist {
                     source_root: Some(key.value),
                     state: CrossFlowState {
                         flow: candidate.flow,
-                        source: QualifiedEvent {
+                        source: Some(QualifiedEvent {
                             module: key.module,
                             fact: candidate.fact,
-                        },
+                        }),
                         requirements: RequirementSet::default(),
                     },
                     crossed: key.value != project.source_call_result(key.module, candidate.fact),
@@ -147,6 +148,7 @@ impl ContextWorklist {
         project: &ProjectSemanticModel,
         sources: &FlowSources,
         call_graph: &QualifiedCallGraph,
+        flows: &[crate::analysis::model::flow::FlowId],
     ) {
         for module in project.modules() {
             if self.is_exhausted() {
@@ -166,26 +168,50 @@ impl ContextWorklist {
                         let root = effect
                             .value_root(argument.value())
                             .unwrap_or_else(|| argument.value());
-                        let Some(candidates) =
-                            sources.get(&SourceKey::new(module.id(), effect.id(), root))
-                        else {
-                            continue;
-                        };
-                        for candidate in candidates {
-                            let state = CrossFlowState {
-                                flow: candidate.flow,
-                                source: QualifiedEvent {
-                                    module: module.id(),
-                                    fact: candidate.fact,
-                                },
-                                requirements: RequirementSet::default(),
-                            };
+                        let source_key = SourceKey::new(module.id(), effect.id(), root);
+                        if let Some(candidates) = sources.get(&source_key) {
+                            for candidate in candidates {
+                                let state = CrossFlowState {
+                                    flow: candidate.flow,
+                                    source: Some(QualifiedEvent {
+                                        module: module.id(),
+                                        fact: candidate.fact,
+                                    }),
+                                    requirements: RequirementSet::default(),
+                                };
+                                self.enqueue_parameters(
+                                    project,
+                                    target_module,
+                                    target_function,
+                                    argument.index(),
+                                    &state,
+                                    target_module != module.id(),
+                                );
+                            }
+                        }
+
+                        // A call-site without a source candidate is still a
+                        // modeled reaching alternative. Carry it through the
+                        // same parameter/call projection with an explicit
+                        // unknown source so it can downgrade a matching
+                        // witness to Possible without contributing evidence.
+                        for &flow in flows {
+                            let has_source = sources
+                                .get(&source_key)
+                                .is_some_and(|items| items.iter().any(|item| item.flow == flow));
+                            if has_source {
+                                continue;
+                            }
                             self.enqueue_parameters(
                                 project,
                                 target_module,
                                 target_function,
                                 argument.index(),
-                                &state,
+                                &CrossFlowState {
+                                    flow,
+                                    source: None,
+                                    requirements: RequirementSet::default(),
+                                },
                                 target_module != module.id(),
                             );
                         }

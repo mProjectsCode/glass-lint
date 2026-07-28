@@ -10,7 +10,9 @@ use crate::{
         facts::FactId,
         flow::{
             cross::{
-                evidence::{ModuleEvidence, effect_use_event, emit, usage_matches_context},
+                evidence::{
+                    ModuleEvidence, effect_use_event, emit, mark_nonmatching, usage_matches_context,
+                },
                 graph::{FlowPathPlan, QualifiedCallGraph},
                 state::{CallContext, CrossFlowState, QualifiedEvent},
                 worklist::ContextWorklist,
@@ -158,20 +160,29 @@ impl UsageProjector<'_> {
                     CompiledObjectSinkArguments::Indices(indices) => indices.contains(&argument),
                 }
         });
-        if sink_matches
-            && self.flow.requirements_ready(self.state.requirements.len())
-            && self.context.crossed
-        {
-            emit(
-                self.project,
-                self.evidence,
-                self.context.module,
-                self.context.state.flow,
-                self.state,
-                event,
-                self.flow,
-                self.arena,
-            );
+        if sink_matches && self.context.crossed {
+            if self.flow.requirements_ready(self.state.requirements.len())
+                && self.state.source.is_some()
+            {
+                emit(
+                    self.project,
+                    self.evidence,
+                    self.context.module,
+                    self.context.state.flow,
+                    self.state,
+                    event,
+                    self.flow,
+                    self.arena,
+                );
+            } else {
+                mark_nonmatching(
+                    self.evidence,
+                    self.context.module,
+                    self.context.state.flow,
+                    event,
+                    self.flow,
+                );
+            }
         }
     }
 

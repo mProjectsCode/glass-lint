@@ -40,7 +40,12 @@ pub(super) struct QualifiedEvent {
 /// Monotone flow state carried through one qualified call context.
 pub(super) struct CrossFlowState {
     pub(super) flow: FlowId,
-    pub(super) source: QualifiedEvent,
+    /// The source witness carried by this context. `None` represents a
+    /// reaching call-site alternative for which this flow has no complete
+    /// source proof. Keeping that alternative is what lets cross-call
+    /// certainty distinguish `Possible` from `Definite` without inventing a
+    /// source from another call site.
+    pub(super) source: Option<QualifiedEvent>,
     pub(super) requirements: RequirementSet<QualifiedEvent>,
 }
 

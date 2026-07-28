@@ -198,6 +198,86 @@ fn project_flow_follows_a_returned_parameter() {
 }
 
 #[test]
+fn project_flow_marks_a_sink_possible_when_only_one_call_site_has_a_source() {
+    let linter = flow_linter();
+    let mut project = ProjectFixture::new(&linter);
+    project.add(
+        "helper.js",
+        "export function append(element) { element.src = url; document.head.appendChild(element); }",
+    );
+    project.add_resolved(
+        "main.js",
+        "import { append } from './helper'; const matched = document.createElement('script'); append(matched); append(localElement);",
+        [ResolverOutcome::Internal {
+            path: project_path("helper.js"),
+        }],
+    );
+
+    let report = project.finish();
+    let helper = report
+        .files()
+        .iter()
+        .find(|file| file.path().as_str() == "helper.js")
+        .expect("helper report");
+    assert_eq!(helper.findings().len(), 1);
+    assert_eq!(
+        helper.findings()[0].certainty(),
+        crate::project::MatchCertainty::Possible
+    );
+    assert_eq!(helper.findings()[0].evidence().len(), 1);
+}
+
+#[test]
+fn project_flow_keeps_all_matching_call_site_traces_definite() {
+    let linter = flow_linter();
+    let mut project = ProjectFixture::new(&linter);
+    project.add(
+        "helper.js",
+        "export function append(element) { element.src = url; document.head.appendChild(element); }",
+    );
+    project.add_resolved(
+        "main.js",
+        "import { append } from './helper'; const first = document.createElement('script'); const second = document.createElement('script'); append(first); append(second);",
+        [ResolverOutcome::Internal {
+            path: project_path("helper.js"),
+        }],
+    );
+
+    let report = project.finish();
+    let finding = report
+        .files()
+        .iter()
+        .find(|file| file.path().as_str() == "helper.js")
+        .expect("helper report")
+        .findings()
+        .first()
+        .expect("flow finding");
+    assert_eq!(
+        finding.certainty(),
+        crate::project::MatchCertainty::Definite
+    );
+    assert_eq!(finding.evidence().traces().len(), 2);
+    for trace in finding.evidence().traces() {
+        let roles: Vec<_> = trace
+            .steps()
+            .iter()
+            .map(crate::project::EvidenceStep::role)
+            .collect();
+        assert_eq!(
+            roles,
+            vec![
+                crate::project::EvidenceRole::Source,
+                crate::project::EvidenceRole::Requirement,
+                crate::project::EvidenceRole::Sink,
+            ]
+        );
+        assert_eq!(trace.steps()[0].location().path().as_str(), "main.js");
+        assert_eq!(trace.steps()[1].location().path().as_str(), "helper.js");
+        assert_eq!(trace.steps()[2].location().path().as_str(), "helper.js");
+    }
+}
+
+#[test]
 fn project_flow_fails_closed_for_unsupported_helper_control_flow() {
     let linter = flow_linter();
     let mut project = ProjectFixture::new(&linter);

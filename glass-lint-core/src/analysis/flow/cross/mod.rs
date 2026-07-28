@@ -74,7 +74,8 @@ pub(in crate::analysis) fn collect(
 
     let call_graph = QualifiedCallGraph::build(project, session);
     let (sources, return_budget_exhausted) = FlowSources::collect(project, &flows, &call_graph);
-    let mut worklist = ContextWorklist::seed(project, &sources, &call_graph);
+    let flow_ids: Vec<FlowId> = flows.keys().copied().collect();
+    let mut worklist = ContextWorklist::seed(project, &sources, &call_graph, &flow_ids);
 
     let mut flow_plan_cache: HashMap<(FlowId, ModuleId), FlowPathPlan> = HashMap::new();
 
@@ -363,10 +364,10 @@ mod tests {
             source_root: None,
             state: CrossFlowState {
                 flow: FlowId::new(RuleIndex::new(0), 0),
-                source: QualifiedEvent {
+                source: Some(QualifiedEvent {
                     module: ModuleId::new(1),
                     fact: FactId(1),
-                },
+                }),
                 requirements: RequirementSet::default(),
             },
             crossed: false,

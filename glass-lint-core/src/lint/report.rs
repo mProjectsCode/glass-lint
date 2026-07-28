@@ -229,6 +229,12 @@ impl<'a> ReportAssembly<'a> {
                         SourceLocation::new(path.clone(), range.clone()),
                     )]));
                 }
+                let mut distinct_traces = Vec::with_capacity(traces.len());
+                for trace in traces {
+                    if !distinct_traces.contains(&trace) {
+                        distinct_traces.push(trace);
+                    }
+                }
                 let truncated = groups[retained_idx]
                     .iter()
                     .any(|(ev_idx, _)| evidence_items[*ev_idx].truncated);
@@ -246,7 +252,7 @@ impl<'a> ReportAssembly<'a> {
                     label.to_string(),
                     severity,
                     SourceLocation::new(path.clone(), range),
-                    EvidenceTraces::with_truncation(traces, truncated),
+                    EvidenceTraces::with_truncation(distinct_traces, truncated),
                     certainty,
                 )
             })
