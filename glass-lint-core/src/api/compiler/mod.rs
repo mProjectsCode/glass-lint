@@ -14,5 +14,4 @@ pub(crate) use catalog::compile_records;
 pub(crate) use object_flow::{
     CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArguments,
 };
-pub use rule::CompiledRuleRecord;
-pub(crate) use rule::CompiledRuleSelection;
+pub(crate) use rule::{CompiledRuleRecord, CompiledRuleSelection};

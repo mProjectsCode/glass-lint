@@ -645,7 +645,8 @@ impl MatcherDeclBuilder {
     }
 
     /// Set the subject to [`SubjectConstraint::ReturnedFrom`].
-    pub fn returned_from(mut self, producer: IdentityConstraint) -> Self {
+    #[allow(dead_code)]
+    pub(crate) fn returned_from(mut self, producer: IdentityConstraint) -> Self {
         self.subject = SubjectConstraint::ReturnedFrom {
             producer: Box::new(producer),
         };
@@ -653,7 +654,8 @@ impl MatcherDeclBuilder {
     }
 
     /// Set the subject to [`SubjectConstraint::InstanceOf`].
-    pub fn instance_of(mut self, constructor: IdentityConstraint) -> Self {
+    #[allow(dead_code)]
+    pub(crate) fn instance_of(mut self, constructor: IdentityConstraint) -> Self {
         self.subject = SubjectConstraint::InstanceOf {
             constructor: Box::new(constructor),
         };

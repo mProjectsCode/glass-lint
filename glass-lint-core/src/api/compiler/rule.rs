@@ -26,13 +26,13 @@ use crate::{
 /// This is the sole compiled-plan type.  Consumers access clauses and flows
 /// through accessors; there is no separate plan wrapper.
 #[derive(Debug, Clone)]
-pub struct CompiledMatcherPlan {
+pub(crate) struct CompiledMatcherPlan {
     clauses: Box<[QueryClause]>,
     flows: Box<[CompiledObjectFlow]>,
 }
 
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
-pub struct QueryClause {
+pub(crate) struct QueryClause {
     pub(crate) identity: IdentityConstraint,
     pub(crate) event: EventPredicate,
     pub(crate) subject: SubjectConstraint,
@@ -41,13 +41,13 @@ pub struct QueryClause {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum IdentityStrength {
+pub(crate) enum IdentityStrength {
     Strict,
     Heuristic,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum IdentityConstraint {
+pub(crate) enum IdentityConstraint {
     Any {
         name: SmolStr,
         strength: IdentityStrength,
@@ -120,7 +120,7 @@ impl IdentityConstraint {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum EventPredicate {
+pub(crate) enum EventPredicate {
     Call,
     Construct,
     MemberCall { member: SymbolPath },
@@ -131,7 +131,7 @@ pub enum EventPredicate {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum SubjectConstraint {
+pub(crate) enum SubjectConstraint {
     Direct,
     ReturnedFrom {
         producer: Box<IdentityConstraint>,
@@ -142,18 +142,18 @@ pub enum SubjectConstraint {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum QueryConstraint {
+pub(crate) enum QueryConstraint {
     Argument(ArgumentConstraint),
 }
 
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
-pub struct EvidenceDescriptor {
+pub(crate) struct EvidenceDescriptor {
     pub(crate) kind: MatchKind,
     pub(crate) symbol: String,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum InvalidQueryClause {
+pub(crate) enum InvalidQueryClause {
     /// The identity/event/subject dimensions cannot select a semantic fact.
     ImpossibleDimensions,
     /// Argument predicates require a call-bearing event.
@@ -345,15 +345,15 @@ impl<'a> CompiledRuleSelection<'a> {
 #[derive(Debug, Clone)]
 /// Immutable compiled rule record containing metadata and the query plan.
 /// Retains no source declaration tree after construction.
-pub struct CompiledRuleRecord {
+pub(crate) struct CompiledRuleRecord {
     /// Human-readable description.
-    pub description: String,
+    pub(crate) description: String,
     /// Report severity.
-    pub severity: Severity,
+    pub(crate) severity: Severity,
     /// Evidence confidence.
-    pub confidence: Confidence,
+    pub(crate) confidence: Confidence,
     /// Compiled query plan.
-    pub matcher: CompiledMatcherPlan,
+    pub(crate) matcher: CompiledMatcherPlan,
 }
 
 impl CompiledRuleRecord {

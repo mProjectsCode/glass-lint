@@ -9,8 +9,8 @@ evidence, operations tracking, harness types) has been substantially improved
 across 10 implementation phases. The query/matcher architecture migration
 described below begins from this foundation.
 
-Phase 1 (collapse `QueryPlan` into `CompiledMatcherPlan`) is the first
-architectural migration step and is actively being implemented.
+Phase 1 (collapse `QueryPlan` into `CompiledMatcherPlan`) is now complete.
+Phase 2 (declaration/compiler ownership) is the next step.
 
 This plan deliberately separates two efforts:
 
@@ -804,10 +804,10 @@ one-field `QueryPlan` wrapper.
 - [x] 5. Remove `QueryPlan`.
 - [x] 6. Consolidate test-only and production compilation paths so flow
      validation is not accidentally bypassed by unit helpers.
-- [ ] 7. Keep storage private and expose only behavior needed by owning
+- [x] 7. Keep storage private and expose only behavior needed by owning
      modules. (Fields are private; accessors remain `pub(crate)` for
      analysis-layer consumers.)
-- [ ] 8. Correct visibility: types in the private compiler module should not be
+- [x] 8. Correct visibility: types in the private compiler module should not be
      declared `pub` without a cross-crate consumer.
 - [x] 9. Update compiler documentation to describe the plan as compiled physical
      storage, not as a wrapper around another plan.
@@ -834,7 +834,7 @@ Stop storing compiler IR types directly inside public matcher declarations.
 
 ### Tasks
 
-1. Introduce declaration-owned semantic types under `api/rule/query` or an
+- [ ] 1. Introduce declaration-owned semantic types under `api/rule/query` or an
    equivalently cohesive module:
    - authored identity;
    - authored event;
@@ -842,47 +842,47 @@ Stop storing compiler IR types directly inside public matcher declarations.
    - authored argument/value predicates;
    - authored evidence projection; and
    - authored lifecycle declaration.
-2. Keep these types validated and provider-neutral.
-3. Move compiler-only `IdentityConstraint`, `EventPredicate`,
+- [ ] 2. Keep these types validated and provider-neutral.
+- [ ] 3. Move compiler-only `IdentityConstraint`, `EventPredicate`,
    `SubjectConstraint`, `QueryConstraint`, and `EvidenceDescriptor` out of the
    declaration representation.
-4. Make lowering directional:
+- [ ] 4. Make lowering directional:
 
    ```text
    declaration types -> compiler logical types
    ```
 
-5. Remove all compiler-type imports from `api/rule`. The compiler may depend
+- [ ] 5. Remove all compiler-type imports from `api/rule`. The compiler may depend
    directionally on declaration types and must use explicit lowering
    constructors.
-6. Centralize module-pattern and symbol-path parsing in their owning semantic
+- [ ] 6. Centralize module-pattern and symbol-path parsing in their owning semantic
    types.
-7. Centralize validation. Builder methods may reject local malformed input,
+- [ ] 7. Centralize validation. Builder methods may reject local malformed input,
    while cross-expression validation belongs to the compiler.
-8. Replace generic string errors with structured errors carrying:
+- [ ] 8. Replace generic string errors with structured errors carrying:
    - operation;
    - offending field;
    - stable reason;
    - optional authored source span in the future; and
    - no internal debug formatting in the user-facing message.
-9. Ensure object-flow declarations are first-class declaration variants, not a
+- [ ] 9. Ensure object-flow declarations are first-class declaration variants, not a
    fake heuristic call containing an optional side payload.
-10. Remove placeholder identity/event/evidence fields currently created only
+- [ ] 10. Remove placeholder identity/event/evidence fields currently created only
     to wrap an object flow.
 
 ### Required tests
 
-- Declaration types cannot construct empty identities, paths, module
+- [ ] Declaration types cannot construct empty identities, paths, module
   specifiers, alternative lists, or invalid argument indexes.
-- Object-flow declarations no longer create a synthetic ordinary clause.
-- Compiler lowering preserves every existing ordinary and flow behavior.
-- Error ordering is deterministic when several authored fields are invalid.
+- [ ] Object-flow declarations no longer create a synthetic ordinary clause.
+- [ ] Compiler lowering preserves every existing ordinary and flow behavior.
+- [ ] Error ordering is deterministic when several authored fields are invalid.
 
 ### Exit criteria
 
-- `api/rule` no longer stores compiler query types.
-- Object flow is represented honestly as a declaration form.
-- Compiler lowering is the only declaration-to-plan transition.
+- [ ] `api/rule` no longer stores compiler query types.
+- [ ] Object flow is represented honestly as a declaration form.
+- [ ] Compiler lowering is the only declaration-to-plan transition.
 
 ## Phase 3: Define the typed logical query algebra
 
@@ -907,28 +907,28 @@ The initial algebra should include:
 
 ### Tasks
 
-1. Define semantic variable types and dense compiler variable IDs.
-2. Define leaf predicates independently from evidence metadata.
-3. Define explicit binding:
+- [ ] 1. Define semantic variable types and dense compiler variable IDs.
+- [ ] 2. Define leaf predicates independently from evidence metadata.
+- [ ] 3. Define explicit binding:
    - select an event into a variable;
    - bind its subject, arguments, result, or identity where supported;
    - constrain an existing variable; and
    - prevent implicit cross-domain comparisons.
-4. Define one explicit result/emission declaration per logical query root.
-5. Define `Any` as a validated non-empty domain collection.
-6. Define `All` as a validated non-empty domain collection with a legal shared
+- [ ] 4. Define one explicit result/emission declaration per logical query root.
+- [ ] 5. Define `Any` as a validated non-empty domain collection.
+- [ ] 6. Define `All` as a validated non-empty domain collection with a legal shared
    correlation.
-7. Define lifecycle as a semantic logical operator with typed source object,
+- [ ] 7. Define lifecycle as a semantic logical operator with typed source object,
    requirements, completion, and emission.
-8. Define whether a rule contains:
+- [ ] 8. Define whether a rule contains:
    - one query with alternatives; or
    - several query roots whose results are unioned.
 
    Prefer one explicit query-set abstraction rather than relying on repeated
    builder calls as an undocumented union operator.
-9. Specify equality and hashing for normalized logical nodes.
-10. Specify stable diagnostic names for every operator and predicate.
-11. Add a debug plan representation for tests. Keep it stable enough for
+- [ ] 9. Specify equality and hashing for normalized logical nodes.
+- [ ] 10. Specify stable diagnostic names for every operator and predicate.
+- [ ] 11. Add a debug plan representation for tests. Keep it stable enough for
     focused assertions but do not make raw `Debug` snapshots a public schema.
 
 ### Design constraints
@@ -970,19 +970,19 @@ The syntax above is explanatory, not a commitment to a textual grammar.
 
 ### Required tests
 
-- Every old builder method lowers to a valid logical query.
-- Semantically equivalent builder forms normalize equally.
-- Invalid variable reuse is rejected.
-- An uncorrelated multi-event `All` is rejected.
-- Evidence projection from a variable absent in one `Any` branch is rejected.
-- Empty `Any`, `All`, and lifecycle stages are rejected.
+- [ ] Every old builder method lowers to a valid logical query.
+- [ ] Semantically equivalent builder forms normalize equally.
+- [ ] Invalid variable reuse is rejected.
+- [ ] An uncorrelated multi-event `All` is rejected.
+- [ ] Evidence projection from a variable absent in one `Any` branch is rejected.
+- [ ] Empty `Any`, `All`, and lifecycle stages are rejected.
 
 ### Exit criteria
 
-- All current matcher semantics have a representation in the logical algebra.
-- Adding a new identity/event combination does not inherently require a new
+- [ ] All current matcher semantics have a representation in the logical algebra.
+- [ ] Adding a new identity/event combination does not inherently require a new
   logical operator.
-- Variables and correlation are explicit in compiler tests.
+- [ ] Variables and correlation are explicit in compiler tests.
 
 ## Phase 4: Implement validation and type checking
 
@@ -995,21 +995,21 @@ physical planning.
 
 Implement explicit passes rather than one large recursive validator:
 
-1. declaration well-formedness;
-2. symbol and variable collection;
-3. variable type inference/checking;
-4. operator compatibility;
-5. correlation and scope checking;
-6. evidence projection checking;
-7. boundedness checking;
-8. relation availability checking;
-9. lifecycle validation; and
-10. final invariant validation after normalization.
+- [ ] 1. declaration well-formedness;
+- [ ] 2. symbol and variable collection;
+- [ ] 3. variable type inference/checking;
+- [ ] 4. operator compatibility;
+- [ ] 5. correlation and scope checking;
+- [ ] 6. evidence projection checking;
+- [ ] 7. boundedness checking;
+- [ ] 8. relation availability checking;
+- [ ] 9. lifecycle validation; and
+- [ ] 10. final invariant validation after normalization.
 
 ### Tasks
 
-1. Introduce a structured `QueryCompileError`.
-2. Assign stable diagnostic codes or variants for:
+- [ ] 1. Introduce a structured `QueryCompileError`.
+- [ ] 2. Assign stable diagnostic codes or variants for:
    - missing binding;
    - duplicate binding;
    - type mismatch;
@@ -1022,33 +1022,33 @@ Implement explicit passes rather than one large recursive validator:
    - invalid module pattern;
    - invalid static-value predicate; and
    - internal lowering invariant violation.
-3. Separate authored errors from internal compiler bugs.
-4. Never panic on unsupported authored input.
-5. Validate relation scope:
+- [ ] 3. Separate authored errors from internal compiler bugs.
+- [ ] 4. Never panic on unsupported authored input.
+- [ ] 5. Validate relation scope:
    - local;
    - function/call graph;
    - module;
    - project.
-6. Validate strict versus heuristic identity requirements.
-7. Validate evidence-kind compatibility.
-8. Validate all authored collection limits before allocating large compiler
+- [ ] 6. Validate strict versus heuristic identity requirements.
+- [ ] 7. Validate evidence-kind compatibility.
+- [ ] 8. Validate all authored collection limits before allocating large compiler
    structures.
-9. Make compile errors deterministic regardless of hash or declaration order.
-10. Add compact display messages and richer internal context for tests.
+- [ ] 9. Make compile errors deterministic regardless of hash or declaration order.
+- [ ] 10. Add compact display messages and richer internal context for tests.
 
 ### Required tests
 
-- One focused unit test per error variant.
-- Stable error precedence for queries with multiple problems.
-- Fuzz or property tests for validator non-panicking behavior if a suitable
+- [ ] One focused unit test per error variant.
+- [ ] Stable error precedence for queries with multiple problems.
+- [ ] Fuzz or property tests for validator non-panicking behavior if a suitable
   existing test dependency is available.
-- Round-trip builder-to-logical validation for the full built-in catalog.
+- [ ] Round-trip builder-to-logical validation for the full built-in catalog.
 
 ### Exit criteria
 
-- The physical planner can assume a documented set of invariants.
-- No invalid query shape reaches runtime.
-- Errors identify the authored concept, not compiler enum debug output.
+- [ ] The physical planner can assume a documented set of invariants.
+- [ ] No invalid query shape reaches runtime.
+- [ ] Errors identify the authored concept, not compiler enum debug output.
 
 ## Phase 5: Normalize logical queries
 
@@ -1059,21 +1059,21 @@ deduplication, equivalence tests, and later language compilation.
 
 ### Tasks
 
-1. Flatten nested `Any` and `All`.
-2. Remove exact duplicate branches.
-3. Canonicalize symbol paths and module patterns through owning types.
-4. Canonicalize predicate ordering where conjunction semantics permit it.
-5. Preserve authored order only where it affects:
+- [ ] 1. Flatten nested `Any` and `All`.
+- [ ] 2. Remove exact duplicate branches.
+- [ ] 3. Canonicalize symbol paths and module patterns through owning types.
+- [ ] 4. Canonicalize predicate ordering where conjunction semantics permit it.
+- [ ] 5. Preserve authored order only where it affects:
    - lifecycle sequence;
    - evidence ordering;
    - diagnostic source selection; or
    - another explicitly documented semantic.
-6. Assign dense variable slots deterministically.
-7. Merge compatible filters on the same selected event.
-8. Detect contradictions that can be rejected statically.
-9. Do not simplify unknown-sensitive expressions using ordinary two-valued
+- [ ] 6. Assign dense variable slots deterministically.
+- [ ] 7. Merge compatible filters on the same selected event.
+- [ ] 8. Detect contradictions that can be rejected statically.
+- [ ] 9. Do not simplify unknown-sensitive expressions using ordinary two-valued
    Boolean identities unless the certainty semantics prove the rewrite sound.
-10. Compute plan requirements:
+- [ ] 10. Compute plan requirements:
     - needed indexes;
     - needed fact-stream fields;
     - value resolution;
@@ -1081,23 +1081,23 @@ deduplication, equivalence tests, and later language compilation.
     - cross-call flow;
     - project overlays; and
     - evidence trace support.
-11. Give normalized queries structural equality independent of authored
+- [ ] 11. Give normalized queries structural equality independent of authored
     construction order where semantics are order-independent.
 
 ### Required tests
 
-- Normalization is idempotent.
-- Equivalent declaration order produces identical normalized queries.
-- Duplicate alternatives do not duplicate findings.
-- Lifecycle order is preserved.
-- Unknown-sensitive expressions are not over-simplified.
-- Variable slots are stable.
+- [ ] Normalization is idempotent.
+- [ ] Equivalent declaration order produces identical normalized queries.
+- [ ] Duplicate alternatives do not duplicate findings.
+- [ ] Lifecycle order is preserved.
+- [ ] Unknown-sensitive expressions are not over-simplified.
+- [ ] Variable slots are stable.
 
 ### Exit criteria
 
-- Equivalent logical queries have one canonical representation.
-- Planning never depends on incidental builder order.
-- Normalization does not change certainty or evidence semantics.
+- [ ] Equivalent logical queries have one canonical representation.
+- [ ] Planning never depends on incidental builder order.
+- [ ] Normalization does not change certainty or evidence semantics.
 
 ## Phase 6: Introduce explicit physical plans
 
@@ -1130,17 +1130,17 @@ semantics.
 
 ### Tasks
 
-1. Add a planner from normalized logical roots to physical roots.
-2. Move clause/flow routing decisions from runtime consumers into the planner.
-3. Store plan-wide requirements once.
-4. Select the narrowest available index for each event/identity pair.
-5. Attach same-event value predicates directly to the scan or constrained
+- [ ] 1. Add a planner from normalized logical roots to physical roots.
+- [ ] 2. Move clause/flow routing decisions from runtime consumers into the planner.
+- [ ] 3. Store plan-wide requirements once.
+- [ ] 4. Select the narrowest available index for each event/identity pair.
+- [ ] 5. Attach same-event value predicates directly to the scan or constrained
    projection.
-6. Compile alternatives into deterministic root order.
-7. Compile lifecycles into validated flow plans.
-8. Represent project overlay needs explicitly rather than probing every plan.
-9. Add physical plan validation.
-10. Add a stable plan summary for tests/profiling, for example:
+- [ ] 6. Compile alternatives into deterministic root order.
+- [ ] 7. Compile lifecycles into validated flow plans.
+- [ ] 8. Represent project overlay needs explicitly rather than probing every plan.
+- [ ] 9. Add physical plan validation.
+- [ ] 10. Add a stable plan summary for tests/profiling, for example:
 
     ```text
     roots=3
@@ -1150,7 +1150,7 @@ semantics.
     project_overlay=module_exports
     ```
 
-11. Do not expose physical storage publicly.
+- [ ] 11. Do not expose physical storage publicly.
 
 ### Physical-plan correctness
 
@@ -1169,19 +1169,19 @@ planner change.
 
 ### Required tests
 
-- Each logical leaf selects the expected physical access path.
-- Same-event filters fuse into one constrained operator.
-- Alternatives retain deterministic order.
-- Project-independent queries do not request project overlays.
-- Planner output is stable across equivalent normalized queries.
-- A reference evaluator or focused equivalence harness compares logical
+- [ ] Each logical leaf selects the expected physical access path.
+- [ ] Same-event filters fuse into one constrained operator.
+- [ ] Alternatives retain deterministic order.
+- [ ] Project-independent queries do not request project overlays.
+- [ ] Planner output is stable across equivalent normalized queries.
+- [ ] A reference evaluator or focused equivalence harness compares logical
   meaning and physical execution on small test artifacts where practical.
 
 ### Exit criteria
 
-- Runtime execution receives physical plans only.
-- No runtime consumer branches on authored declaration types.
-- No runtime consumer independently decides whether a query is constrained,
+- [ ] Runtime execution receives physical plans only.
+- [ ] No runtime consumer branches on authored declaration types.
+- [ ] No runtime consumer independently decides whether a query is constrained,
   flow-based, or project-linked.
 
 ## Phase 7: Migrate ordinary indexed matchers
@@ -1193,53 +1193,53 @@ strings exclusively through physical query plans.
 
 ### Migration order
 
-1. exact import and package import;
-2. literal string reference;
-3. global and heuristic call;
-4. module and package-export call;
-5. global/module/heuristic construction;
-6. class reference;
-7. rooted member call/read;
-8. module/package namespace member call/read.
+- [ ] 1. exact import and package import;
+- [ ] 2. literal string reference;
+- [ ] 3. global and heuristic call;
+- [ ] 4. module and package-export call;
+- [ ] 5. global/module/heuristic construction;
+- [ ] 6. class reference;
+- [ ] 7. rooted member call/read;
+- [ ] 8. module/package namespace member call/read.
 
 This order begins with simple index scans and ends with more identity-sensitive
 member cases.
 
 ### Tasks for each family
 
-1. Add logical lowering.
-2. Add physical planning.
-3. Execute through the owning occurrence index.
-4. Preserve project overlay behavior.
-5. Preserve masking of unresolved/relinked identities.
-6. Preserve environment global-object aliases.
-7. Preserve exact evidence kind, symbol, and location.
-8. Port unit and integration tests.
-9. Remove the corresponding old clause dispatch.
+- [ ] 1. Add logical lowering.
+- [ ] 2. Add physical planning.
+- [ ] 3. Execute through the owning occurrence index.
+- [ ] 4. Preserve project overlay behavior.
+- [ ] 5. Preserve masking of unresolved/relinked identities.
+- [ ] 6. Preserve environment global-object aliases.
+- [ ] 7. Preserve exact evidence kind, symbol, and location.
+- [ ] 8. Port unit and integration tests.
+- [ ] 9. Remove the corresponding old clause dispatch.
 
 ### Required adversarial coverage
 
-- lexical shadowing;
-- reassignment before use;
-- reassignment after use;
-- local same-name lookalikes;
-- ESM aliases;
-- CommonJS aliases;
-- namespace imports;
-- destructuring;
-- interop forms;
-- package root versus lookalike prefix;
-- exact module versus package-boundary match;
-- dynamic computed members;
-- supported static computed members;
-- ambiguous project exports; and
-- minified identifier shapes.
+- [ ] lexical shadowing;
+- [ ] reassignment before use;
+- [ ] reassignment after use;
+- [ ] local same-name lookalikes;
+- [ ] ESM aliases;
+- [ ] CommonJS aliases;
+- [ ] namespace imports;
+- [ ] destructuring;
+- [ ] interop forms;
+- [ ] package root versus lookalike prefix;
+- [ ] exact module versus package-boundary match;
+- [ ] dynamic computed members;
+- [ ] supported static computed members;
+- [ ] ambiguous project exports; and
+- [ ] minified identifier shapes.
 
 ### Exit criteria
 
-- Ordinary indexed matching uses only the new physical plan executor.
-- Old event/identity dispatch for migrated families is deleted.
-- Findings and operation counts match the baseline unless explicitly updated.
+- [ ] Ordinary indexed matching uses only the new physical plan executor.
+- [ ] Old event/identity dispatch for migrated families is deleted.
+- [ ] Findings and operation counts match the baseline unless explicitly updated.
 
 ## Phase 8: Migrate value and argument constraints
 
@@ -1250,10 +1250,10 @@ the specialized constrained-event operator.
 
 ### Tasks
 
-1. Define argument binding by index.
-2. Define missing-argument behavior explicitly.
-3. Lower all current `ArgumentMatcher` and `ValueMatcher` forms.
-4. Preserve:
+- [ ] 1. Define argument binding by index.
+- [ ] 2. Define missing-argument behavior explicitly.
+- [ ] 3. Lower all current `ArgumentMatcher` and `ValueMatcher` forms.
+- [ ] 4. Preserve:
    - static string requirement;
    - equality alternatives;
    - contains alternatives;
@@ -1261,37 +1261,37 @@ the specialized constrained-event operator.
    - object keys;
    - object property values; and
    - any other current value matcher.
-5. Keep value resolution in its owning analysis layer.
-6. Compile all same-call constraints into one projection operation.
-7. Avoid evaluating static values repeatedly for separate predicates on the
+- [ ] 5. Keep value resolution in its owning analysis layer.
+- [ ] 6. Compile all same-call constraints into one projection operation.
+- [ ] 7. Avoid evaluating static values repeatedly for separate predicates on the
    same argument.
-8. Preserve fail-closed behavior for dynamic, ambiguous, unsupported, or
+- [ ] 8. Preserve fail-closed behavior for dynamic, ambiguous, unsupported, or
    exhausted values.
-9. Make value-predicate evidence explicit rather than changing it as a side
+- [ ] 9. Make value-predicate evidence explicit rather than changing it as a side
    effect of attaching an argument.
-10. Remove duplicate `with_arg_*` and `arg_*` semantics after the authoring API
+- [ ] 10. Remove duplicate `with_arg_*` and `arg_*` semantics after the authoring API
     has one canonical route.
 
 ### Required tests
 
-- Accepted static values.
-- Rejected dynamic values.
-- Aliased constants.
-- Reassigned constants.
-- Object literal keys and properties.
-- Missing argument.
-- Sparse argument positions.
-- Several constraints on one call.
-- Several constraints on one argument.
-- Constraint order independence.
-- Bounded large alternative sets.
+- [ ] Accepted static values.
+- [ ] Rejected dynamic values.
+- [ ] Aliased constants.
+- [ ] Reassigned constants.
+- [ ] Object literal keys and properties.
+- [ ] Missing argument.
+- [ ] Sparse argument positions.
+- [ ] Several constraints on one call.
+- [ ] Several constraints on one argument.
+- [ ] Constraint order independence.
+- [ ] Bounded large alternative sets.
 
 ### Exit criteria
 
-- Constrained calls are logical queries, not a special authored matcher
+- [ ] Constrained calls are logical queries, not a special authored matcher
   family.
-- Static-value semantics remain centralized.
-- The physical executor performs one bounded projection per candidate call.
+- [ ] Static-value semantics remain centralized.
+- [ ] The physical executor performs one bounded projection per candidate call.
 
 ## Phase 9: Migrate returned-object and instance relationships
 
@@ -1302,47 +1302,47 @@ than dedicated builder combinations.
 
 ### Tasks
 
-1. Model a returned subject as a relation between:
+- [ ] 1. Model a returned subject as a relation between:
    - producer identity/event;
    - returned object identity; and
    - member event.
-2. Model an instance subject as a relation between:
+- [ ] 2. Model an instance subject as a relation between:
    - constructor identity/event;
    - constructed instance identity; and
    - instance member event.
-3. Require the member event and producer/constructor to share the same object
+- [ ] 3. Require the member event and producer/constructor to share the same object
    correlation.
-4. Preserve supported chained forms and intentionally unsupported forms.
-5. Preserve strict module identity for constructed instances.
-6. Preserve rooted/environment semantics for returned objects.
-7. Compile supported shapes to existing returned and instance indexes where
+- [ ] 4. Preserve supported chained forms and intentionally unsupported forms.
+- [ ] 5. Preserve strict module identity for constructed instances.
+- [ ] 6. Preserve rooted/environment semantics for returned objects.
+- [ ] 7. Compile supported shapes to existing returned and instance indexes where
    possible.
-8. Add a keyed join only if the existing index cannot express a new supported
+- [ ] 8. Add a keyed join only if the existing index cannot express a new supported
    relationship.
-9. Remove duplicated producer/constructor identity stored in both identity and
+- [ ] 9. Remove duplicated producer/constructor identity stored in both identity and
    subject fields.
-10. Make evidence projection choose the member occurrence while optionally
+- [ ] 10. Make evidence projection choose the member occurrence while optionally
     retaining producer/constructor support.
 
 ### Required tests
 
-- Direct returned-object member use.
-- Alias of returned object.
-- Reassignment of alias.
-- Disconnected same-name object.
-- Direct and aliased constructed instance.
-- Static method lookalike.
-- Wrong constructor module.
-- Subclass behavior according to current contract.
-- Chained constructor behavior according to current contract.
-- Incompatible-branch producer/member negative.
+- [ ] Direct returned-object member use.
+- [ ] Alias of returned object.
+- [ ] Reassignment of alias.
+- [ ] Disconnected same-name object.
+- [ ] Direct and aliased constructed instance.
+- [ ] Static method lookalike.
+- [ ] Wrong constructor module.
+- [ ] Subclass behavior according to current contract.
+- [ ] Chained constructor behavior according to current contract.
+- [ ] Incompatible-branch producer/member negative.
 
 ### Exit criteria
 
-- Subject relations have one explicit correlation model.
-- Existing returned/instance convenience methods lower to that model or are
+- [ ] Subject relations have one explicit correlation model.
+- [ ] Existing returned/instance convenience methods lower to that model or are
   replaced.
-- No identity is duplicated solely to satisfy old validation.
+- [ ] No identity is duplicated solely to satisfy old validation.
 
 ## Phase 10: Unify object flow with the logical query model
 
@@ -1353,10 +1353,10 @@ existing bounded flow engine.
 
 ### Tasks
 
-1. Replace `MatcherDecl::from_object_flow` with a direct lifecycle query
+- [ ] 1. Replace `MatcherDecl::from_object_flow` with a direct lifecycle query
    declaration.
-2. Remove synthetic heuristic call fields from flow declarations.
-3. Define typed lifecycle components:
+- [ ] 2. Remove synthetic heuristic call fields from flow declarations.
+- [ ] 3. Define typed lifecycle components:
    - source event;
    - tracked object binding;
    - condition;
@@ -1365,45 +1365,45 @@ existing bounded flow engine.
    - sink argument relationship;
    - invalidation/unknown policy; and
    - emission.
-4. Lower current `AnyOf` and `AllOf` conditions.
-5. Lower configuration completion and any-sink completion.
-6. Lower exact argument and any-argument sinks.
-7. Compile lifecycle declarations to immutable local/cross-call flow plans.
-8. Move all flow validation into declaration/compiler ownership.
-9. Reuse query value predicates for source, requirement, and sink constraints.
-10. Preserve correlated alternatives at joins.
-11. Preserve object alias and reassignment behavior.
-12. Preserve cross-call summaries and fixed-point bounds.
-13. Preserve exact evidence source/requirement/sink ordering.
-14. Remove parallel `CompiledObjectFlow` compilation entry points once the
+- [ ] 4. Lower current `AnyOf` and `AllOf` conditions.
+- [ ] 5. Lower configuration completion and any-sink completion.
+- [ ] 6. Lower exact argument and any-argument sinks.
+- [ ] 7. Compile lifecycle declarations to immutable local/cross-call flow plans.
+- [ ] 8. Move all flow validation into declaration/compiler ownership.
+- [ ] 9. Reuse query value predicates for source, requirement, and sink constraints.
+- [ ] 10. Preserve correlated alternatives at joins.
+- [ ] 11. Preserve object alias and reassignment behavior.
+- [ ] 12. Preserve cross-call summaries and fixed-point bounds.
+- [ ] 13. Preserve exact evidence source/requirement/sink ordering.
+- [ ] 14. Remove parallel `CompiledObjectFlow` compilation entry points once the
     physical lifecycle plan owns that state.
 
 ### Required tests
 
-- Every current object-flow provider rule.
-- Any requirement.
-- All requirements.
-- Configuration completion.
-- Exact sink argument.
-- Any sink argument.
-- Multiple sources.
-- Multiple sinks.
-- Aliased tracked objects.
-- Reassigned tracked objects.
-- Escaped/unsupported objects.
-- Dynamic source discriminator.
-- Dynamic requirement value.
-- Disconnected source and sink.
-- Requirement on one path and sink on another.
-- Source on one path and requirement on another.
-- Cross-call source/requirement/sink combinations.
-- Budget exhaustion without fabricated evidence.
+- [ ] Every current object-flow provider rule.
+- [ ] Any requirement.
+- [ ] All requirements.
+- [ ] Configuration completion.
+- [ ] Exact sink argument.
+- [ ] Any sink argument.
+- [ ] Multiple sources.
+- [ ] Multiple sinks.
+- [ ] Aliased tracked objects.
+- [ ] Reassigned tracked objects.
+- [ ] Escaped/unsupported objects.
+- [ ] Dynamic source discriminator.
+- [ ] Dynamic requirement value.
+- [ ] Disconnected source and sink.
+- [ ] Requirement on one path and sink on another.
+- [ ] Source on one path and requirement on another.
+- [ ] Cross-call source/requirement/sink combinations.
+- [ ] Budget exhaustion without fabricated evidence.
 
 ### Exit criteria
 
-- Object lifecycle is part of the logical query model.
-- There is no fake ordinary clause for a flow-only declaration.
-- There is one compiled lifecycle representation and one execution route.
+- [ ] Object lifecycle is part of the logical query model.
+- [ ] There is no fake ordinary clause for a flow-only declaration.
+- [ ] There is one compiled lifecycle representation and one execution route.
 
 ## Phase 11: Make project and cross-file requirements explicit
 
@@ -1414,35 +1414,35 @@ requirements rather than implicit behavior in projection callers.
 
 ### Tasks
 
-1. Annotate physical plans with required project capabilities.
-2. Build overlays only for selected plans that require them.
-3. Preserve exact versus package module identity.
-4. Preserve ambiguous, missing, and unknown resolution behavior.
-5. Preserve masking when a local imported identity is remapped or unresolved.
-6. Make cross-file flow plans explicitly reference compiled lifecycle roots.
-7. Keep findings in the file containing the primary event.
-8. Keep module interfaces matcher-independent.
-9. Charge project overlay and fixed-point work deterministically.
-10. Add plan summaries showing local/project/cross-call requirements.
+- [ ] 1. Annotate physical plans with required project capabilities.
+- [ ] 2. Build overlays only for selected plans that require them.
+- [ ] 3. Preserve exact versus package module identity.
+- [ ] 4. Preserve ambiguous, missing, and unknown resolution behavior.
+- [ ] 5. Preserve masking when a local imported identity is remapped or unresolved.
+- [ ] 6. Make cross-file flow plans explicitly reference compiled lifecycle roots.
+- [ ] 7. Keep findings in the file containing the primary event.
+- [ ] 8. Keep module interfaces matcher-independent.
+- [ ] 9. Charge project overlay and fixed-point work deterministically.
+- [ ] 10. Add plan summaries showing local/project/cross-call requirements.
 
 ### Required tests
 
-- Direct external module import.
-- Re-export chain.
-- Namespace re-export.
-- CommonJS/ESM interop.
-- Ambiguous export.
-- Missing resolution.
-- Package-boundary matching.
-- Cross-file call/return flow.
-- Finding location in the sink/primary file.
-- Independent complete witness coexisting with an unknown project alternative.
+- [ ] Direct external module import.
+- [ ] Re-export chain.
+- [ ] Namespace re-export.
+- [ ] CommonJS/ESM interop.
+- [ ] Ambiguous export.
+- [ ] Missing resolution.
+- [ ] Package-boundary matching.
+- [ ] Cross-file call/return flow.
+- [ ] Finding location in the sink/primary file.
+- [ ] Independent complete witness coexisting with an unknown project alternative.
 
 ### Exit criteria
 
-- Project projection does not inspect logical predicates.
-- Queries that need no project semantics incur no project-query preparation.
-- Cross-file execution uses the same compiled plan roots as local execution.
+- [ ] Project projection does not inspect logical predicates.
+- [ ] Queries that need no project semantics incur no project-query preparation.
+- [ ] Cross-file execution uses the same compiled plan roots as local execution.
 
 ## Phase 12: Replace the authoring builder with compositional query declarations
 
@@ -1475,54 +1475,54 @@ and compare:
 
 The authoring spike must include:
 
-- one simple global call;
-- one exact/package module API family;
-- one rooted member family;
-- one static argument/value rule;
-- one returned-object rule;
-- one constructed-instance rule;
-- one object lifecycle;
-- one helper-generated rule family such as remote DOM resources; and
-- one rule with many alternatives.
+- [ ] one simple global call;
+- [ ] one exact/package module API family;
+- [ ] one rooted member family;
+- [ ] one static argument/value rule;
+- [ ] one returned-object rule;
+- [ ] one constructed-instance rule;
+- [ ] one object lifecycle;
+- [ ] one helper-generated rule family such as remote DOM resources; and
+- [ ] one rule with many alternatives.
 
 ### API requirements
 
-- Simple matchers remain compact.
-- Alternatives are explicit.
-- Conjunction and variable sharing are visible.
-- Evidence emission is explicit or has a safe obvious default.
-- Lifecycle queries read in semantic order.
-- Provider-local helpers can accept ordinary Rust values and iterators.
-- All constructed queries pass through the same validator.
-- No API exposes compiler physical types.
-- No arbitrary callback can inspect facts.
-- Names reflect semantics rather than syntax-tree shapes.
+- [ ] Simple matchers remain compact.
+- [ ] Alternatives are explicit.
+- [ ] Conjunction and variable sharing are visible.
+- [ ] Evidence emission is explicit or has a safe obvious default.
+- [ ] Lifecycle queries read in semantic order.
+- [ ] Provider-local helpers can accept ordinary Rust values and iterators.
+- [ ] All constructed queries pass through the same validator.
+- [ ] No API exposes compiler physical types.
+- [ ] No arbitrary callback can inspect facts.
+- [ ] Names reflect semantics rather than syntax-tree shapes.
 
 ### Migration tasks
 
-1. Introduce the selected authoring API.
-2. Migrate core integration tests first.
-3. Migrate `glass-lint-js` rule families.
-4. Migrate `glass-lint-obsidian` rule families.
-5. Migrate project test support and harness fixtures.
-6. Remove `MatcherDeclBuilder` methods superseded by composition.
-7. Rename `MatcherDecl` to `QueryDecl` or another final term if the new type is
+- [ ] 1. Introduce the selected authoring API.
+- [ ] 2. Migrate core integration tests first.
+- [ ] 3. Migrate `glass-lint-js` rule families.
+- [ ] 4. Migrate `glass-lint-obsidian` rule families.
+- [ ] 5. Migrate project test support and harness fixtures.
+- [ ] 6. Remove `MatcherDeclBuilder` methods superseded by composition.
+- [ ] 7. Rename `MatcherDecl` to `QueryDecl` or another final term if the new type is
    no longer meaningfully a matcher record.
-8. Remove old constructors and compatibility aliases.
-9. Update public examples and crate READMEs.
+- [ ] 8. Remove old constructors and compatibility aliases.
+- [ ] 9. Update public examples and crate READMEs.
 
 ### Required tests
 
-- Compile-fail tests for invalid authoring combinations if practical.
-- Full catalog compilation.
-- Full provider fixtures.
-- Exact equivalence for representative rules before and after migration.
+- [ ] Compile-fail tests for invalid authoring combinations if practical.
+- [ ] Full catalog compilation.
+- [ ] Full provider fixtures.
+- [ ] Exact equivalence for representative rules before and after migration.
 
 ### Exit criteria
 
-- Every built-in rule uses the compositional authoring API.
-- The old builder and old matcher record are deleted.
-- Provider rules no longer reveal physical executor families.
+- [ ] Every built-in rule uses the compositional authoring API.
+- [ ] The old builder and old matcher record are deleted.
+- [ ] Provider rules no longer reveal physical executor families.
 
 ## Phase 13: Add the first genuinely new relational capability
 
@@ -1536,46 +1536,46 @@ existing matchers.
 Add bounded multi-event correlation over one explicit semantic identity or
 value. Candidate examples:
 
-- a proven API result later passed to a second proven API;
-- two calls on the same returned or constructed object;
-- a call argument related to a later sink argument; or
-- a required event before a completion event using existing flow semantics.
+- [ ] a proven API result later passed to a second proven API;
+- [ ] two calls on the same returned or constructed object;
+- [ ] a call argument related to a later sink argument; or
+- [ ] a required event before a completion event using existing flow semantics.
 
 Choose a capability demanded by at least two real provider rules or one
 high-value rule that cannot be accurately expressed today.
 
 ### Tasks
 
-1. Write positive and adversarial negative examples before implementation.
-2. Specify the relation and correlation key.
-3. Specify certainty under joins and incomplete alternatives.
-4. Specify evidence projection.
-5. Specify physical access path and bounds.
-6. Add logical validation.
-7. Add normalization.
-8. Add physical planning.
-9. Add execution and operation accounting.
-10. Implement provider rules without callbacks or custom traversal.
-11. Profile representative projects.
+- [ ] 1. Write positive and adversarial negative examples before implementation.
+- [ ] 2. Specify the relation and correlation key.
+- [ ] 3. Specify certainty under joins and incomplete alternatives.
+- [ ] 4. Specify evidence projection.
+- [ ] 5. Specify physical access path and bounds.
+- [ ] 6. Add logical validation.
+- [ ] 7. Add normalization.
+- [ ] 8. Add physical planning.
+- [ ] 9. Add execution and operation accounting.
+- [ ] 10. Implement provider rules without callbacks or custom traversal.
+- [ ] 11. Profile representative projects.
 
 ### Required adversarial tests
 
-- same spelling, different identity;
-- correct events on different objects;
-- correct events on incompatible branches;
-- reassignment between events;
-- dynamic or unknown connecting value;
-- ambiguous module identity;
-- unsupported escape;
-- exhausted alternatives; and
-- independent complete witness alongside unknown alternatives.
+- [ ] same spelling, different identity;
+- [ ] correct events on different objects;
+- [ ] correct events on incompatible branches;
+- [ ] reassignment between events;
+- [ ] dynamic or unknown connecting value;
+- [ ] ambiguous module identity;
+- [ ] unsupported escape;
+- [ ] exhausted alternatives; and
+- [ ] independent complete witness alongside unknown alternatives.
 
 ### Exit criteria
 
-- At least one useful query is expressible without adding a family-specific
+- [ ] At least one useful query is expressible without adding a family-specific
   builder method.
-- The query compiles to bounded specialized operators.
-- No precision invariant is weakened.
+- [ ] The query compiles to bounded specialized operators.
+- [ ] No precision invariant is weakened.
 
 ## Phase 14: Query optimizer and plan quality
 
@@ -1585,18 +1585,18 @@ Improve physical plan selection only after semantic equivalence is well tested.
 
 ### Candidate optimizations
 
-- choose the narrowest identity/event index;
-- push static filters into indexed scans;
-- share repeated static-value resolution;
-- reorder commutative keyed predicates by estimated candidate count;
-- deduplicate identical scans within one rule;
-- share immutable compiled constants across rules;
-- pre-group selected physical roots by required index;
-- batch module-overlay probes;
-- fuse evidence projection with the final operator;
-- use semijoins rather than materialized joins where only existence matters;
+- [ ] choose the narrowest identity/event index;
+- [ ] push static filters into indexed scans;
+- [ ] share repeated static-value resolution;
+- [ ] reorder commutative keyed predicates by estimated candidate count;
+- [ ] deduplicate identical scans within one rule;
+- [ ] share immutable compiled constants across rules;
+- [ ] pre-group selected physical roots by required index;
+- [ ] batch module-overlay probes;
+- [ ] fuse evidence projection with the final operator;
+- [ ] use semijoins rather than materialized joins where only existence matters;
   and
-- use specialized lifecycle indexes for common source/sink shapes.
+- [ ] use specialized lifecycle indexes for common source/sink shapes.
 
 ### Constraints
 
@@ -1610,16 +1610,16 @@ Improve physical plan selection only after semantic equivalence is well tested.
 
 ### Required tests
 
-- Optimized and unoptimized reference plans produce identical results.
-- Canonical plan choice is stable.
-- Operation-count tests demonstrate the intended improvement.
-- Worst-case query shapes remain bounded.
+- [ ] Optimized and unoptimized reference plans produce identical results.
+- [ ] Canonical plan choice is stable.
+- [ ] Operation-count tests demonstrate the intended improvement.
+- [ ] Worst-case query shapes remain bounded.
 
 ### Exit criteria
 
-- Optimization is driven by measured query workloads.
-- Plan explanations show why a physical path was selected.
-- The unoptimized semantic contract remains understandable and testable.
+- [ ] Optimization is driven by measured query workloads.
+- [ ] Plan explanations show why a physical path was selected.
+- [ ] The unoptimized semantic contract remains understandable and testable.
 
 ## Phase 15: Stabilize query diagnostics, inspection, and documentation
 
@@ -1629,7 +1629,7 @@ Make the query system maintainable before considering a textual language.
 
 ### Tasks
 
-1. Add compiler documentation for:
+- [ ] 1. Add compiler documentation for:
    - logical operators;
    - semantic relation catalog;
    - certainty;
@@ -1637,24 +1637,24 @@ Make the query system maintainable before considering a textual language.
    - boundedness;
    - evidence emission; and
    - physical planning.
-2. Add an internal plan-explain facility for tests and profiling.
-3. Include compile diagnostics in catalog construction errors without leaking
+- [ ] 2. Add an internal plan-explain facility for tests and profiling.
+- [ ] 3. Include compile diagnostics in catalog construction errors without leaking
    internal IDs.
-4. Document how to add a provider-neutral relation.
-5. Document when to add a specialized physical operator.
-6. Document required tests for new query behavior.
-7. Update `ARCHITECTURE.md`, `glass-lint-core/ARCHITECTURE.md`,
+- [ ] 4. Document how to add a provider-neutral relation.
+- [ ] 5. Document when to add a specialized physical operator.
+- [ ] 6. Document required tests for new query behavior.
+- [ ] 7. Update `ARCHITECTURE.md`, `glass-lint-core/ARCHITECTURE.md`,
    `CONTRIBUTING.md`, and `TESTING.md`.
-8. Remove obsolete matcher terminology and diagrams.
-9. Add examples for every supported query capability.
-10. Audit public API size and visibility.
+- [ ] 8. Remove obsolete matcher terminology and diagrams.
+- [ ] 9. Add examples for every supported query capability.
+- [ ] 10. Audit public API size and visibility.
 
 ### Exit criteria
 
-- A contributor can add a query capability without discovering hidden
+- [ ] A contributor can add a query capability without discovering hidden
   executor routes.
-- Plan explanations are deterministic and useful in regression tests.
-- Architecture documents describe only the new path.
+- [ ] Plan explanations are deterministic and useful in regression tests.
+- [ ] Architecture documents describe only the new path.
 
 ## Part I completion gate
 
@@ -1748,19 +1748,19 @@ a clear correctness and maintenance improvement.
 
 ### Questions to answer
 
-- Who authors query files?
-- Are they trusted provider maintainers or arbitrary end users?
-- Are queries compiled into provider crates, loaded at startup, or loaded per
+- [ ] Who authors query files?
+- [ ] Are they trusted provider maintainers or arbitrary end users?
+- [ ] Are queries compiled into provider crates, loaded at startup, or loaded per
   project?
-- Are query files allowed outside an installed provider?
-- How are provider namespaces assigned?
-- Can a query define only matching semantics, or also rule metadata?
-- How are versions declared?
-- What is the compatibility policy?
-- Are compiled plans cacheable across runs?
-- How are query files discovered without moving filesystem responsibility into
+- [ ] Are query files allowed outside an installed provider?
+- [ ] How are provider namespaces assigned?
+- [ ] Can a query define only matching semantics, or also rule metadata?
+- [ ] How are versions declared?
+- [ ] What is the compatibility policy?
+- [ ] Are compiled plans cacheable across runs?
+- [ ] How are query files discovered without moving filesystem responsibility into
   core?
-- Which crate owns loading and admission?
+- [ ] Which crate owns loading and admission?
 
 ### Architectural rule
 
@@ -1770,9 +1770,9 @@ provider-neutral declarations. Core must not discover query files.
 
 ### Exit criteria
 
-- There is a written user and distribution model.
-- The need for text rather than Rust API/macros is demonstrated.
-- Crate ownership is explicit.
+- [ ] There is a written user and distribution model.
+- [ ] The need for text rather than Rust API/macros is demonstrated.
+- [ ] Crate ownership is explicit.
 
 ## Language phase L1: Design the surface grammar
 
@@ -1874,21 +1874,21 @@ two candidate syntaxes and reviewed for:
 
 ### Exit criteria
 
-- The grammar maps directly to the stable logical algebra.
-- No syntax feature exists without defined semantics, validation, and bounds.
-- Representative built-in rules are readable without hidden defaults.
+- [ ] The grammar maps directly to the stable logical algebra.
+- [ ] No syntax feature exists without defined semantics, validation, and bounds.
+- [ ] Representative built-in rules are readable without hidden defaults.
 
 ## Language phase L2: Parser and source model
 
 ### Tasks
 
-1. Choose a parser implementation based on the finalized grammar:
+- [ ] 1. Choose a parser implementation based on the finalized grammar:
    - a small hand-written recursive descent parser;
    - `winnow`;
    - another focused Rust parser library; or
    - a dedicated generated parser if diagnostics justify it.
-2. Keep the parser dependency private to core.
-3. Introduce:
+- [ ] 2. Keep the parser dependency private to core.
+- [ ] 3. Introduce:
    - query source ID;
    - byte spans;
    - line index integration;
@@ -1896,13 +1896,13 @@ two candidate syntaxes and reviewed for:
    - parsed nodes;
    - parse diagnostics; and
    - explicit source-size/nesting/token limits.
-4. Reject invalid UTF-8 at the loading boundary or define the accepted source
+- [ ] 4. Reject invalid UTF-8 at the loading boundary or define the accepted source
    encoding explicitly.
-5. Support comments and trailing separators consistently.
-6. Recover from syntax errors only where recovery cannot create misleading
+- [ ] 5. Support comments and trailing separators consistently.
+- [ ] 6. Recover from syntax errors only where recovery cannot create misleading
    secondary diagnostics.
-7. Never execute partially parsed queries.
-8. Fuzz the lexer/parser for panics, excessive allocation, and pathological
+- [ ] 7. Never execute partially parsed queries.
+- [ ] 8. Fuzz the lexer/parser for panics, excessive allocation, and pathological
    nesting.
 
 ### Parsed representation
@@ -1920,26 +1920,26 @@ rules. It must not reach physical execution.
 
 ### Exit criteria
 
-- Parser resource use is bounded.
-- Diagnostics point to precise spans.
-- Malformed queries never produce executable plans.
+- [ ] Parser resource use is bounded.
+- [ ] Diagnostics point to precise spans.
+- [ ] Malformed queries never produce executable plans.
 
 ## Language phase L3: Name resolution and type checking
 
 ### Tasks
 
-1. Resolve query names and local variables.
-2. Resolve standard predicates.
-3. Resolve provider-local helper predicates only through an explicit module
+- [ ] 1. Resolve query names and local variables.
+- [ ] 2. Resolve standard predicates.
+- [ ] 3. Resolve provider-local helper predicates only through an explicit module
    system.
-4. Infer obvious variable types.
-5. Require annotations when inference is ambiguous.
-6. Detect duplicate, unused, unbound, and shadowed names.
-7. Validate relation scope.
-8. Validate evidence projection.
-9. Preserve multiple diagnostics only when their order and independence are
+- [ ] 4. Infer obvious variable types.
+- [ ] 5. Require annotations when inference is ambiguous.
+- [ ] 6. Detect duplicate, unused, unbound, and shadowed names.
+- [ ] 7. Validate relation scope.
+- [ ] 8. Validate evidence projection.
+- [ ] 9. Preserve multiple diagnostics only when their order and independence are
    deterministic.
-10. Lower successful queries into the stable logical declaration model.
+- [ ] 10. Lower successful queries into the stable logical declaration model.
 
 ### Module system
 
@@ -1955,21 +1955,21 @@ Keep the initial module system small:
 
 ### Exit criteria
 
-- Text and Rust declarations produce equivalent normalized logical queries.
-- Type errors use authored names and spans.
-- Name resolution cannot access undeclared provider policy.
+- [ ] Text and Rust declarations produce equivalent normalized logical queries.
+- [ ] Type errors use authored names and spans.
+- [ ] Name resolution cannot access undeclared provider policy.
 
 ## Language phase L4: Versioning and persisted format
 
 ### Tasks
 
-1. Add an explicit language version.
-2. Define whether version appears per file, catalog, or package.
-3. Reject unsupported future versions.
-4. Decide whether minor additive evolution exists or every grammar change
+- [ ] 1. Add an explicit language version.
+- [ ] 2. Define whether version appears per file, catalog, or package.
+- [ ] 3. Reject unsupported future versions.
+- [ ] 4. Decide whether minor additive evolution exists or every grammar change
    increments one integer.
-5. Version any serialized compiled-plan cache independently from the language.
-6. Include:
+- [ ] 5. Version any serialized compiled-plan cache independently from the language.
+- [ ] 6. Include:
    - engine version;
    - language version;
    - provider/catalog identity;
@@ -1977,7 +1977,7 @@ Keep the initial module system small:
    - relevant analysis limits; and
    - relation schema version
    in any compiled cache key.
-7. Never treat compiled plans as a stable public interchange format unless
+- [ ] 7. Never treat compiled plans as a stable public interchange format unless
    explicitly designed and audited as one.
 
 ### Compatibility
@@ -1995,23 +1995,23 @@ Do not leave ad hoc compatibility code in the physical planner.
 
 ### Exit criteria
 
-- Query source has an explicit compatibility contract.
-- Stale compiled plans cannot be reused under changed semantics.
+- [ ] Query source has an explicit compatibility contract.
+- [ ] Stale compiled plans cannot be reused under changed semantics.
 
 ## Language phase L5: Diagnostics and author tools
 
 ### Required tools
 
-- parser/type-check command;
-- deterministic formatter;
-- normalized logical query display;
-- physical plan explanation;
-- relation/predicate reference;
-- query test harness;
-- source-span diagnostics;
-- unused binding warning;
-- unreachable/contradictory branch warning where sound; and
-- operation/limit profiling for a query against a fixture.
+- [ ] parser/type-check command;
+- [ ] deterministic formatter;
+- [ ] normalized logical query display;
+- [ ] physical plan explanation;
+- [ ] relation/predicate reference;
+- [ ] query test harness;
+- [ ] source-span diagnostics;
+- [ ] unused binding warning;
+- [ ] unreachable/contradictory branch warning where sound; and
+- [ ] operation/limit profiling for a query against a fixture.
 
 ### Integration
 
@@ -2027,35 +2027,35 @@ belongs in the owning core/project/provider layer.
 
 ### Exit criteria
 
-- Authors can parse, check, format, test, and explain a query without running a
+- [ ] Authors can parse, check, format, test, and explain a query without running a
   full production scan.
-- Tool output is deterministic and fixture-testable.
+- [ ] Tool output is deterministic and fixture-testable.
 
 ## Language phase L6: Catalog loading and security
 
 ### Tasks
 
-1. Define trusted and untrusted query sources.
-2. Validate source byte, token, nesting, declaration, alternative, predicate,
+- [ ] 1. Define trusted and untrusted query sources.
+- [ ] 2. Validate source byte, token, nesting, declaration, alternative, predicate,
    and literal limits.
-3. Compile each catalog once.
-4. Deduplicate identical normalized queries where safe.
-5. Report all catalog errors with query source locations.
-6. Keep filesystem discovery and loading out of core.
-7. Prevent query text from selecting unrestricted analysis limits.
-8. Prevent query packages from registering native callbacks.
-9. Prevent query names from escaping provider namespaces.
-10. Decide whether unsigned third-party catalogs are supported; if so, keep
+- [ ] 3. Compile each catalog once.
+- [ ] 4. Deduplicate identical normalized queries where safe.
+- [ ] 5. Report all catalog errors with query source locations.
+- [ ] 6. Keep filesystem discovery and loading out of core.
+- [ ] 7. Prevent query text from selecting unrestricted analysis limits.
+- [ ] 8. Prevent query packages from registering native callbacks.
+- [ ] 9. Prevent query names from escaping provider namespaces.
+- [ ] 10. Decide whether unsigned third-party catalogs are supported; if so, keep
     signature/distribution policy outside core matching semantics.
-11. Treat query strings and evidence symbols as untrusted display content.
-12. Bound formatter and diagnostic output.
+- [ ] 11. Treat query strings and evidence symbols as untrusted display content.
+- [ ] 12. Bound formatter and diagnostic output.
 
 ### Exit criteria
 
-- Loading untrusted malformed queries cannot panic or allocate without bound.
-- Catalog compilation produces immutable ordinary `CompiledMatcherPlan`
+- [ ] Loading untrusted malformed queries cannot panic or allocate without bound.
+- [ ] Catalog compilation produces immutable ordinary `CompiledMatcherPlan`
   values.
-- Runtime cannot distinguish whether a plan originated in Rust or text.
+- [ ] Runtime cannot distinguish whether a plan originated in Rust or text.
 
 ## Language phase L7: Representative migration
 
@@ -2067,31 +2067,31 @@ Prove authoring value before moving the entire built-in catalog.
 
 Migrate or duplicate in a non-production equivalence harness:
 
-- one simple JS global rule;
-- one Node module rule;
-- one browser rooted-member rule;
-- one Electron module/instance rule;
-- one Obsidian module rule;
-- one constrained static-value rule;
-- one object lifecycle; and
-- one large generated alternative family.
+- [ ] one simple JS global rule;
+- [ ] one Node module rule;
+- [ ] one browser rooted-member rule;
+- [ ] one Electron module/instance rule;
+- [ ] one Obsidian module rule;
+- [ ] one constrained static-value rule;
+- [ ] one object lifecycle; and
+- [ ] one large generated alternative family.
 
 ### Comparison
 
 For each pilot, compare:
 
-- source length;
-- readability;
-- duplication;
-- diagnostics;
-- compilation time;
-- normalized plan;
-- findings;
-- certainty;
-- evidence;
-- operation counts;
-- provider fixture ergonomics; and
-- ability to express provider-local shared constants/helpers.
+- [ ] source length;
+- [ ] readability;
+- [ ] duplication;
+- [ ] diagnostics;
+- [ ] compilation time;
+- [ ] normalized plan;
+- [ ] findings;
+- [ ] certainty;
+- [ ] evidence;
+- [ ] operation counts;
+- [ ] provider fixture ergonomics; and
+- [ ] ability to express provider-local shared constants/helpers.
 
 ### Decision
 
@@ -2109,30 +2109,30 @@ Do not assume full migration is automatically desirable.
 
 ### Preconditions
 
-- Pilot decision selects textual queries as canonical or materially useful.
-- Language diagnostics and tooling are production-ready.
-- Provider-local composition has a satisfactory design.
-- Query loading does not violate crate ownership.
-- Performance is acceptable.
+- [ ] Pilot decision selects textual queries as canonical or materially useful.
+- [ ] Language diagnostics and tooling are production-ready.
+- [ ] Provider-local composition has a satisfactory design.
+- [ ] Query loading does not violate crate ownership.
+- [ ] Performance is acceptable.
 
 ### Tasks
 
-1. Migrate rule families in small reviewable groups.
-2. Keep metadata ownership in provider catalogs unless intentionally redesigned.
-3. Compare every migrated rule against its previous normalized plan and
+- [ ] 1. Migrate rule families in small reviewable groups.
+- [ ] 2. Keep metadata ownership in provider catalogs unless intentionally redesigned.
+- [ ] 3. Compare every migrated rule against its previous normalized plan and
    fixtures.
-4. Remove Rust query declarations only when the language fully replaces them.
-5. Remove duplicate provider helpers made obsolete by language modules.
-6. Update documentation and contributor workflow.
-7. Retain the Rust declaration API if it remains the supported embedding API;
+- [ ] 4. Remove Rust query declarations only when the language fully replaces them.
+- [ ] 5. Remove duplicate provider helpers made obsolete by language modules.
+- [ ] 6. Update documentation and contributor workflow.
+- [ ] 7. Retain the Rust declaration API if it remains the supported embedding API;
    otherwise remove it in one clean breaking migration.
 
 ### Exit criteria
 
-- Each rule has one canonical declaration source.
-- No runtime or compiler path differs between Rust-authored and text-authored
+- [ ] Each rule has one canonical declaration source.
+- [ ] No runtime or compiler path differs between Rust-authored and text-authored
   queries.
-- Full provider, project, e2e, and comparison suites pass.
+- [ ] Full provider, project, e2e, and comparison suites pass.
 
 ## Language phase L9: Later language capabilities
 

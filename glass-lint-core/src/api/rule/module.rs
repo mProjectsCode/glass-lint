@@ -13,6 +13,7 @@ pub struct ModuleSpecifierPattern {
 
 impl ModuleSpecifierPattern {
     /// Construct an exact authored module specifier.
+    #[allow(dead_code)]
     pub fn exact(name: impl Into<String>) -> Result<Self, MatcherBuildError> {
         let name = name.into().trim().to_string();
         if name.is_empty() {
@@ -72,6 +73,7 @@ impl ModuleSpecifierPattern {
         &self.name
     }
 
+    #[allow(dead_code)]
     pub fn is_package(&self) -> bool {
         self.package
     }
