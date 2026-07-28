@@ -68,6 +68,14 @@ impl PathInterner {
     pub fn node_count(&self) -> usize {
         self.store.node_count()
     }
+
+    pub fn checked_id(&self, raw: u32) -> Option<PathId> {
+        if self.store.is_valid(raw) {
+            Some(PathId(raw))
+        } else {
+            None
+        }
+    }
 }
 
 impl Default for PathInterner {

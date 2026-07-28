@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use glass_lint_datastructures::{NameId, NameTable};
+use glass_lint_datastructures::NameTable;
 
 use super::*;
 use crate::analysis::{
@@ -135,15 +135,16 @@ fn const_value_materializes_static_object_with_mixed_values() {
 
 #[test]
 fn const_value_returns_unknown_for_unknown_name_in_object() {
-    let names = NameTable::default();
-    let scopes = ScopeGraph::create_for_test(names).freeze();
+    let mut names_with = NameTable::default();
+    let key = names_with.intern("key").unwrap();
+    let names_empty = NameTable::default();
+    let scopes = ScopeGraph::create_for_test(names_empty).freeze();
     let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
     let val_id = resolver.values.intern(Value::StaticString("v".into()));
-    let bad_name = NameId::from_raw(u32::MAX);
     let obj_id = resolver
         .values
-        .intern(Value::StaticObject(vec![(bad_name, val_id)]));
+        .intern(Value::StaticObject(vec![(key, val_id)]));
 
     let result = resolver.const_value(obj_id);
     assert_eq!(result, ConstValue::Unknown);

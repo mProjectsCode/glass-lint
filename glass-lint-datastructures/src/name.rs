@@ -14,12 +14,6 @@ pub const DEFAULT_MAX_NAMES: usize = 1 << 20;
 pub struct NameId(pub(crate) u32);
 
 impl NameId {
-    /// Construct from a raw value. Only use with IDs obtained from a store.
-    #[inline]
-    pub fn from_raw(raw: u32) -> Self {
-        Self(raw)
-    }
-
     /// Return the raw `u32` value.
     #[inline]
     pub fn as_u32(self) -> u32 {
@@ -140,6 +134,16 @@ impl NameTable {
     /// Returns `true` if no names have been interned.
     pub fn is_empty(&self) -> bool {
         self.names.is_empty()
+    }
+
+    /// Returns a `NameId` only if the raw value is within the table's range.
+    pub fn checked_id(&self, raw: u32) -> Option<NameId> {
+        let idx = usize::try_from(raw).ok()?;
+        if idx < self.names.len() {
+            Some(NameId(raw))
+        } else {
+            None
+        }
     }
 
     /// An iterator over `(id, name)` pairs in insertion order.

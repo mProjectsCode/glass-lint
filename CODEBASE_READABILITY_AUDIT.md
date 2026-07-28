@@ -168,9 +168,12 @@ For absolute paths, every `..` component is discarded instead of popping the pre
 - **Severity:** High
 - **Fix Complexity** High
 - **Category:** API
+- **Status:** ✅ Fixed
 - **Location:** `glass-lint-datastructures/src/path_trie/types.rs:5-36`
 
 `PathId::from_raw`, `NameId::from_raw`, the public link tag, and `IdIndex::from_raw` let callers forge IDs or carry them across stores, contrary to the crate architecture's store-local identity invariant. This weakens strict identity and makes downstream bounds checks responsible for repairing invalid public states. Make raw constructors and tags crate-private, and expose translation only through the store that can validate provenance and range. If serialization requires raw values, use a checked deserialization boundary tied to an owning table rather than a universally constructible ID.
+
+**Fix:** Made `PathId::from_raw`, `NameId::from_raw`, and `PathId::LINK_TAG` crate-private (`pub(crate)`). Added `PathInterner::checked_id` and `NameTable::checked_id` for validated construction. `IdIndex::from_raw` remains public on the trait because `FunctionId` (which has a `pub u32` field) implements it from the core crate, and the trait is needed for `IndexTable` iteration; the concrete forging concern is addressed by sealing the per-type constructors. All external callers updated to use store methods or `PathId::EMPTY` instead of `from_raw`.
 
 #### READ-019 — `IndexTable` can allocate billions of empty slots
 - **Severity:** High

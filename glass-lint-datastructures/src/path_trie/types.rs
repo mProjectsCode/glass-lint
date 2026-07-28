@@ -7,11 +7,6 @@ pub struct PathId(pub(crate) u32);
 
 impl PathId {
     #[inline]
-    pub fn from_raw(raw: u32) -> Self {
-        Self(raw)
-    }
-
-    #[inline]
     pub fn as_u32(self) -> u32 {
         self.0
     }
@@ -19,7 +14,7 @@ impl PathId {
 
 impl PathId {
     pub const EMPTY: Self = Self(0);
-    pub const LINK_TAG: u32 = 1 << 31;
+    pub(crate) const LINK_TAG: u32 = 1 << 31;
 
     pub fn is_empty(self) -> bool {
         self == Self::EMPTY
