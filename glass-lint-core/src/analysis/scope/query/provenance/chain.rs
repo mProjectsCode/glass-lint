@@ -90,28 +90,12 @@ impl FrozenScopeGraph {
         }
 
         let suffix = SymbolPath::from_segments(segments[1..].to_vec());
-        match self.binding_at(root.sym.as_ref(), root.span) {
-            Some(BindingProvenance::ValueAlias { target })
-                if self.rooted_path_available(target) =>
-            {
-                Some(self.symbol_path(target)?.append_path(&suffix))
-            }
-            Some(BindingProvenance::BoundCallable { target, .. })
-                if self.rooted_path_available(target) =>
-            {
-                Some(self.symbol_path(target)?.append_path(&suffix))
-            }
-            Some(BindingProvenance::ReturnedObject { source })
-                if self.rooted_path_available(source) =>
-            {
-                Some(self.symbol_path(source)?.append_path(&suffix))
-            }
-            Some(
-                BindingProvenance::ValueAlias { .. }
-                | BindingProvenance::BoundCallable { .. }
-                | BindingProvenance::ReturnedObject { .. },
-            ) => None,
-            Some(
+        let alternatives = self.binding_alternatives_at(root.sym.as_ref(), root.span);
+        for provenance in &alternatives {
+            let target = match provenance {
+                BindingProvenance::ValueAlias { target }
+                | BindingProvenance::BoundCallable { target, .. } => target,
+                BindingProvenance::ReturnedObject { source } => source,
                 BindingProvenance::Local
                 | BindingProvenance::ModuleExport { .. }
                 | BindingProvenance::ModuleNamespace { .. }
@@ -121,12 +105,18 @@ impl FrozenScopeGraph {
                 | BindingProvenance::StaticNumber(_)
                 | BindingProvenance::StaticStringArray(_)
                 | BindingProvenance::StaticObjectKeys(_)
-                | BindingProvenance::StaticObjectValues(_),
-            ) => None,
-            None if self.is_global(root.sym.as_ref()) => {
-                self.rooted_chain_available_at(syntactic_chain, member.span)
+                | BindingProvenance::StaticObjectValues(_) => continue,
+            };
+            if self.rooted_path_available(target)
+                && let Some(path) = self.symbol_path(target)
+            {
+                return Some(path.append_path(&suffix));
             }
-            None => None,
+        }
+        if alternatives.is_empty() && self.is_global(root.sym.as_ref()) {
+            self.rooted_chain_available_at(syntactic_chain, member.span)
+        } else {
+            None
         }
     }
 

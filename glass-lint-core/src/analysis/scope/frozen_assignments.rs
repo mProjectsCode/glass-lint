@@ -10,8 +10,11 @@ use crate::analysis::{
 #[derive(Debug, Clone, Copy)]
 pub(in crate::analysis) enum AssignmentAt<'a> {
     Absent,
+    /// A single known provenance.
     Known(&'a AliasAssignment),
-    Ambiguous,
+    /// A synthetic post-join assignment with multiple provenance alternatives.
+    /// The assignment carries all alternatives; at least one is non-Local.
+    Ambiguous(&'a AliasAssignment),
 }
 
 /// Source-ordered assignment history frozen after collection.
@@ -62,6 +65,7 @@ impl FrozenAssignmentIndex {
     /// A conditional textual definition is explicitly ambiguous. Callers
     /// must not fall back to declaration or parameter provenance in that case:
     /// the conditional write may have replaced the older strict identity.
+    /// When ambiguous, the assignment carries all provenance alternatives.
     pub(super) fn latest_at(&self, scope: ScopeId, name: NameId, span: Span) -> AssignmentAt<'_> {
         let Some(assignments) = self.get(scope, name) else {
             return AssignmentAt::Absent;
@@ -69,9 +73,11 @@ impl FrozenAssignmentIndex {
         let Some(pos) = Self::latest_index(assignments, span) else {
             return AssignmentAt::Absent;
         };
-        if assignments[pos].conditional {
-            AssignmentAt::Ambiguous
+        if assignments[pos].joined {
+            AssignmentAt::Ambiguous(&assignments[pos])
         } else {
+            // A branch write is precise for a use inside that branch; only
+            // the synthetic post-join assignment is ambiguous.
             AssignmentAt::Known(&assignments[pos])
         }
     }

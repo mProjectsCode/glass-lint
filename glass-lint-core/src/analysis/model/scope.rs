@@ -186,10 +186,36 @@ pub struct AliasAssignment {
     pub scope: ScopeId,
     pub name: NameId,
     pub version: BindingVersion,
-    pub provenance: BindingProvenance,
-    /// Whether this assignment is inside a conditional branch (if/else, loop
-    /// body, switch case, etc.) and therefore not definitely reachable.
-    pub conditional: bool,
+    /// One or more provenances. Multiple alternatives arise from control-flow
+    /// joins where different paths disagree. An empty vec means unknown.
+    pub alternatives: Vec<BindingProvenance>,
+    /// Whether this assignment represents an unknown alternative in addition
+    /// to the retained provenances.
+    pub unknown: bool,
+    /// Whether this is the synthetic assignment installed after a control-flow
+    /// join. A write in a branch is precise within that branch; only the
+    /// synthetic post-join value carries multiple path alternatives.
+    pub joined: bool,
+}
+
+impl AliasAssignment {
+    pub fn single(
+        span: Span,
+        scope: ScopeId,
+        name: NameId,
+        version: BindingVersion,
+        provenance: BindingProvenance,
+    ) -> Self {
+        Self {
+            span,
+            scope,
+            name,
+            version,
+            alternatives: vec![provenance],
+            unknown: false,
+            joined: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

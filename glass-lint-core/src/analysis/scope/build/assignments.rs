@@ -8,7 +8,7 @@ use crate::analysis::{
         BindingProvenance, ScopeId, ScopedName,
         build::{
             CollectorCheckpoint, ControlFlowFrame, ScopeCollector,
-            history::{AssignmentEnvironment, AssignmentValue},
+            history::{AssignmentEnvironment, ProvenanceAlternatives},
         },
         query::rooted::rooted_expr_chain_with,
     },
@@ -33,7 +33,7 @@ impl ScopeCollector<'_> {
             return;
         };
         self.intern_provenance_strings(&provenance);
-        self.record_assignment_value(span, scope, name_id, provenance, self.conditional_depth > 0);
+        self.record_assignment_value(span, scope, name_id, provenance);
     }
 
     fn record_assignment_value(
@@ -42,7 +42,6 @@ impl ScopeCollector<'_> {
         scope: ScopeId,
         name: glass_lint_datastructures::NameId,
         provenance: BindingProvenance,
-        conditional: bool,
     ) {
         let next = self.version_counters.entry((scope, name)).or_insert(0);
         *next = next.saturating_add(1);
@@ -51,14 +50,9 @@ impl ScopeCollector<'_> {
             .record_known(scope, name, provenance.clone());
         self.assignment_writes.insert(ScopedName::new(scope, name));
         self.assignments
-            .push(crate::analysis::scope::AliasAssignment {
-                span,
-                scope,
-                name,
-                version,
-                provenance,
-                conditional,
-            });
+            .push(crate::analysis::scope::AliasAssignment::single(
+                span, scope, name, version, provenance,
+            ));
     }
 
     fn record_join_assignment(
@@ -66,21 +60,16 @@ impl ScopeCollector<'_> {
         span: Span,
         scope: ScopeId,
         name: glass_lint_datastructures::NameId,
-        value: &AssignmentValue,
+        value: &ProvenanceAlternatives,
     ) {
         let next = self.version_counters.entry((scope, name)).or_insert(0);
         *next = next.saturating_add(1);
         let version = BindingVersion(*next);
-        let provenance = match value {
-            AssignmentValue::Known(provenance) => provenance.clone(),
-            AssignmentValue::Unknown => self.unknown_provenance.clone(),
-        };
-        match value {
-            AssignmentValue::Known(provenance) => {
-                self.assignment_environment
-                    .record_known(scope, name, provenance.clone());
-            }
-            AssignmentValue::Unknown => self.assignment_environment.record_unknown(scope, name),
+        if value.provenances.is_empty() {
+            self.assignment_environment.record_unknown(scope, name);
+        } else {
+            self.assignment_environment
+                .record_alternatives(scope, name, value.clone());
         }
         self.assignment_writes.insert(ScopedName::new(scope, name));
         self.assignments
@@ -89,8 +78,9 @@ impl ScopeCollector<'_> {
                 scope,
                 name,
                 version,
-                provenance,
-                conditional: self.conditional_depth > 0,
+                alternatives: value.provenances.clone(),
+                unknown: value.unknown,
+                joined: true,
             });
     }
 
@@ -98,10 +88,17 @@ impl ScopeCollector<'_> {
         let name_id = self.name_id(name)?;
         for scope in self.stack.iter().rev().copied().map(ScopeId::from) {
             if let Some(assignment) = self.assignment_environment.get_by_id(scope, name_id) {
-                return match assignment {
-                    AssignmentValue::Known(provenance) => Some(provenance),
-                    AssignmentValue::Unknown => Some(&self.unknown_provenance),
-                };
+                if assignment.joined {
+                    return assignment
+                        .provenances
+                        .iter()
+                        .find(|p| !matches!(p, BindingProvenance::Local))
+                        .or(Some(&self.unknown_provenance));
+                }
+                return assignment
+                    .provenances
+                    .first()
+                    .or(Some(&self.unknown_provenance));
             }
             if let Some(binding) = self.scopes[scope.index()].bindings.get(&name_id) {
                 return Some(binding);
@@ -161,27 +158,56 @@ impl ScopeCollector<'_> {
         self.assignment_environment = AssignmentEnvironment::join(&all_paths);
         self.reachable = true;
 
+        // Collect all names written in any path. Record a join assignment for
+        // every name touched by any path because the join may produce
+        // provenance alternatives even when the incoming also wrote to the
+        // same name (which the previous incoming-exclusion approach missed).
         let mut touched = BTreeSet::new();
         for path in paths {
             touched.extend(path.writes.iter().cloned());
         }
-        for key in &incoming.writes {
-            touched.remove(key);
-        }
         self.assignment_writes.clone_from(&incoming.writes);
         for key in touched {
-            let value = self
+            let mut value = self
                 .assignment_environment
                 .get_by_id(key.scope(), key.name())
                 .cloned()
-                .or_else(|| {
+                .unwrap_or_else(|| {
                     self.scopes[key.scope().index()]
                         .bindings
                         .get(&key.name())
                         .cloned()
-                        .map(AssignmentValue::Known)
-                })
-                .unwrap_or(AssignmentValue::Unknown);
+                        .map_or_else(
+                            ProvenanceAlternatives::unknown,
+                            ProvenanceAlternatives::single,
+                        )
+                });
+
+            // A missing branch entry means that branch retains the incoming
+            // value. The environment only stores writes, so materialize that
+            // value explicitly before recording the synthetic join. Without
+            // this, `host` followed by a conditional `local` write loses the
+            // host witness entirely.
+            if reachable_paths.iter().any(|path| {
+                path.environment
+                    .get_by_id(key.scope(), key.name())
+                    .is_none()
+            }) {
+                let incoming_value = incoming
+                    .environment
+                    .get_by_id(key.scope(), key.name())
+                    .cloned()
+                    .or_else(|| {
+                        self.scopes[key.scope().index()]
+                            .bindings
+                            .get(&key.name())
+                            .cloned()
+                            .map(ProvenanceAlternatives::single)
+                    })
+                    .unwrap_or_else(ProvenanceAlternatives::unknown);
+                value.add(&incoming_value);
+            }
+            value = value.join_value();
             self.record_join_assignment(
                 Span::new(span.hi, span.hi),
                 key.scope(),

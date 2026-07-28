@@ -21,13 +21,12 @@ impl RootedExprContext for FrozenScopeGraph {
         if self.has_dynamic_lookup_at(ident.span) {
             return None;
         }
-        match self.binding_at(ident.sym.as_ref(), ident.span) {
-            None if self.is_global(ident.sym.as_ref()) => Some(ident.sym.as_ref().into()),
-            Some(
+        let alternatives = self.binding_alternatives_at(ident.sym.as_ref(), ident.span);
+        for provenance in &alternatives {
+            let path = match provenance {
                 BindingProvenance::ValueAlias { target }
-                | BindingProvenance::BoundCallable { target, .. },
-            ) => self.symbol_path(target),
-            Some(
+                | BindingProvenance::BoundCallable { target, .. } => target,
+                BindingProvenance::ReturnedObject { source } => source,
                 BindingProvenance::BoundModuleCallable { .. }
                 | BindingProvenance::Local
                 | BindingProvenance::ModuleExport { .. }
@@ -37,10 +36,16 @@ impl RootedExprContext for FrozenScopeGraph {
                 | BindingProvenance::StaticNumber(_)
                 | BindingProvenance::StaticStringArray(_)
                 | BindingProvenance::StaticObjectKeys(_)
-                | BindingProvenance::StaticObjectValues(_),
-            )
-            | None => None,
-            Some(BindingProvenance::ReturnedObject { source }) => self.symbol_path(source),
+                | BindingProvenance::StaticObjectValues(_) => continue,
+            };
+            if let Some(path) = self.symbol_path(path) {
+                return Some(path);
+            }
+        }
+        if alternatives.is_empty() && self.is_global(ident.sym.as_ref()) {
+            Some(ident.sym.as_ref().into())
+        } else {
+            None
         }
     }
 

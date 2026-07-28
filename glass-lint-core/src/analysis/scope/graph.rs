@@ -226,12 +226,18 @@ impl ScopeGraph {
 
     // -- Query methods needed during collection (also on FrozenScopeGraph) --
 
-    /// Resolve the binding provenance visible at a use position.
+    /// Resolve one strict binding provenance visible at a use position.
+    /// Ambiguous joins are handled by callers that need to evaluate every
+    /// alternative; this compatibility query returns the first non-local
+    /// witness only.
     pub(super) fn binding_at(&self, name: &str, span: Span) -> Option<&BindingProvenance> {
         let (scope, declaration) = self.binding_with_scope_at(name, span)?;
         match self.assignment_at(scope, name, span) {
-            AssignmentAt::Known(assignment) => Some(&assignment.provenance),
-            AssignmentAt::Ambiguous => None,
+            AssignmentAt::Known(assignment) => assignment.alternatives.first(),
+            AssignmentAt::Ambiguous(assignment) => assignment
+                .alternatives
+                .iter()
+                .find(|p| !matches!(p, BindingProvenance::Local)),
             AssignmentAt::Absent => self.parameter_alias_for(scope, name).or(Some(declaration)),
         }
     }

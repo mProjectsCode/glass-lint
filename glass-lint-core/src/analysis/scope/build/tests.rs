@@ -26,7 +26,6 @@ fn collect(source: &str) -> ScopeCollector<'static> {
     );
     collector
 }
-
 fn scope_fingerprint(collector: &ScopeCollector) -> Vec<String> {
     collector
         .scopes

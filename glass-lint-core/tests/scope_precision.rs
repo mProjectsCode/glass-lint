@@ -26,7 +26,14 @@ fn assert_count(source: &str, rule: Rule, expected: usize) {
         .lint_snippet(source, "scope-precision.js")
         .unwrap();
     assert!(!report.files()[0].has_parse_diagnostics(), "{source}");
-    assert_eq!(report.files()[0].findings().len(), expected, "{source}");
+    let count = report.files()[0].findings().len();
+    if count != expected {
+        eprintln!("UNEXPECTED FINDING COUNT for source: {source}");
+        for f in report.files()[0].findings() {
+            eprintln!("  rule={:?}, certainty={:?}", f.rule_id(), f.certainty());
+        }
+    }
+    assert_eq!(count, expected, "{source}");
 }
 
 /// Create the rooted alias rule shared by lexical-scope cases.
@@ -233,31 +240,24 @@ fn dynamic_call_value_does_not_promote_to_a_strict_provenance() {
     assert_count("let value = dynamicThing(); value('/x');", rule, 0);
 }
 
-/// Initial semantic matrix for possible-path certainty.
+/// Semantic matrix for possible-path certainty.
 ///
-/// Under future possible-path semantics:
 /// - `Possible` when at least one reaching path matches, but not all.
 /// - `Definite` when every reaching path matches.
-///
-/// These cases are recorded now with current must-only expectations and
-/// ignored desired-variant copies so the test matrix exists before behavior
-/// changes. When the matching semantics are enabled, copy the expected counts
-/// from the ignored variants and add certainty/trace assertions.
 #[test]
 fn conditional_assignment_preserves_each_feasible_identity() {
     let rule = rooted_read_rule();
-    // Possible (future): host on the incoming/false path.
-    // Currently must-analysis joins disagreeing branches to Unknown → 0.
+    // Possible: host on the incoming/false path.
     assert_count(
         "let api = host.files; if (flag) api = local.files; api.read();",
         rule.clone(),
-        0,
+        1,
     );
-    // Possible (future): host on the true path.
+    // Possible: host on the true path.
     assert_count(
         "let api = local.files; if (flag) api = host.files; api.read();",
         rule.clone(),
-        0,
+        1,
     );
     // Definite: every reaching path has the same identity.
     assert_count(
@@ -267,9 +267,8 @@ fn conditional_assignment_preserves_each_feasible_identity() {
     );
 }
 
-/// Future Possible finding: host identity on the incoming (false) path only.
+/// Possible finding: host identity on the incoming (false) path only.
 #[test]
-#[ignore = "possible-path semantics not yet implemented"]
 fn possible_finding_host_on_false_path() {
     assert_count(
         "let api = host.files; if (flag) api = local.files; api.read();",
@@ -278,9 +277,8 @@ fn possible_finding_host_on_false_path() {
     );
 }
 
-/// Future Possible finding: host identity on the true path only.
+/// Possible finding: host identity on the true path only.
 #[test]
-#[ignore = "possible-path semantics not yet implemented"]
 fn possible_finding_host_on_true_path() {
     assert_count(
         "let api = local.files; if (flag) api = host.files; api.read();",
@@ -289,9 +287,22 @@ fn possible_finding_host_on_true_path() {
     );
 }
 
-/// Future Definite: every reaching modeled path has the host identity.
 #[test]
-#[ignore = "possible-path semantics not yet implemented"]
+fn branch_local_use_does_not_fall_back_to_the_incoming_alias() {
+    assert_count(
+        "let api = host.files; if (flag) { api = local.files; api.read(); }",
+        rooted_read_rule(),
+        0,
+    );
+    assert_count(
+        "let api = host.files; if (flag) api = local.files; else api = local.files; api.read();",
+        rooted_read_rule(),
+        0,
+    );
+}
+
+/// Definite: every reaching modeled path has the host identity.
+#[test]
 fn definite_all_paths_match() {
     assert_count(
         "let api = host.files; if (flag) api = host.files; else api = host.files; api.read();",
@@ -369,37 +380,43 @@ fn neither_path_has_identity() {
 }
 
 #[test]
-fn assignment_provenance_isolated_across_control_flow_paths() {
+fn assignment_provenance_preserves_alternatives_across_control_flow() {
     let rule = rooted_read_rule();
+    // Possible: host.files on the true branch, local.files on the else branch.
     assert_count(
         "let api = local.files; if (flag) api = host.files; else api = api; api.read();",
         rule.clone(),
-        0,
+        1,
     );
+    // Possible: host.files on inner(true,true), local on the others.
     assert_count(
         "let api = local.files; if (outer) { if (inner) api = host.files; } else api = api; api.read();",
         rule.clone(),
-        0,
+        1,
     );
+    // Possible: host.files on the no-entry path, local.files on the body path.
     assert_count(
         "let api = host.files; while (flag) api = local.files; api.read();",
         rule.clone(),
-        0,
+        1,
     );
+    // Possible: host.files on the body path, local.files on the no-entry path.
     assert_count(
         "let api = local.files; while (flag) api = host.files; api.read();",
         rule.clone(),
-        0,
+        1,
     );
+    // Possible: host.files on the case-0 path, local.files on the others.
     assert_count(
         "let api = local.files; switch (kind) { case 0: api = host.files; break; case 1: api = api; break; } api.read();",
         rule,
-        0,
+        1,
     );
+    // Possible: host.files on the no-entry path, local.files on the break path.
     assert_count(
         "let api = host.files; while (flag) { api = local.files; break; } api.read();",
         rooted_read_rule(),
-        0,
+        1,
     );
 }
 
@@ -427,11 +444,10 @@ fn throw_exit_excludes_unreachable_path_from_certainty() {
     );
 }
 
-/// Future Possible: break exits the loop body before reaching the
-/// occurrence, leaving only the no-entry path with the host identity.
+/// Possible: break exits the loop body, leaving only the no-entry path
+/// with the host identity.
 #[test]
-#[ignore = "possible-path semantics not yet implemented"]
-fn future_possible_break_excludes_nonmatching_loop_body() {
+fn loop_break_excludes_nonmatching_body_path() {
     assert_count(
         "let api = host.files; while (flag) { api = local.files; break; } api.read();",
         rooted_read_rule(),
@@ -439,11 +455,10 @@ fn future_possible_break_excludes_nonmatching_loop_body() {
     );
 }
 
-/// Future Possible: continue skips the rest of the iteration body,
+/// Possible: continue skips the rest of the iteration body,
 /// but the non-entry path still has the host identity.
 #[test]
-#[ignore = "possible-path semantics not yet implemented"]
-fn future_possible_continue_excludes_nonmatching_iteration() {
+fn loop_continue_excludes_nonmatching_iteration() {
     assert_count(
         "let api = host.files; let i = 0; while (i < 10) { i++; api = local.files; continue; api.read(); } api.read();",
         rooted_read_rule(),
@@ -451,9 +466,8 @@ fn future_possible_continue_excludes_nonmatching_iteration() {
     );
 }
 
-/// Future Definite: the only reaching path after return has the identity.
+/// Definite: the only reaching path after return has the identity.
 #[test]
-#[ignore = "possible-path semantics not yet implemented"]
 fn definite_abrupt_return_excludes_nonmatching_path() {
     assert_count(
         "function run(flag) { let api = local.files; if (flag) api = host.files; else return; api.read(); }",
@@ -462,9 +476,8 @@ fn definite_abrupt_return_excludes_nonmatching_path() {
     );
 }
 
-/// Future Definite: the only reaching path after throw has the identity.
+/// Definite: the only reaching path after throw has the identity.
 #[test]
-#[ignore = "possible-path semantics not yet implemented"]
 fn definite_abrupt_throw_excludes_nonmatching_path() {
     assert_count(
         "function run(flag) { let api = local.files; if (flag) api = host.files; else throw new Error(); api.read(); }",
@@ -473,34 +486,37 @@ fn definite_abrupt_throw_excludes_nonmatching_path() {
     );
 }
 
-/// When no abrupt exit removes the conflicting path, the join must not
-/// produce a finding. This is the counterpart to the abrupt-exit cases.
+/// When no abrupt exit removes the conflicting path, the finding is
+/// Possible because at least one reaching path matches.
 #[test]
-fn no_abrupt_exit_means_conflicting_path_poisons_join() {
+fn no_abrupt_exit_produces_possible_finding() {
     assert_count(
         "function run(flag) { let api = host.files; if (flag) api = local.files; api.read(); }",
         rooted_read_rule(),
-        0,
+        1,
     );
 }
 
 #[test]
 fn exceptional_edges_join_try_and_catch_assignments() {
     let rule = rooted_read_rule();
+    // Possible: host.files on the try path, local on the catch path.
     assert_count(
         "let api = local.files; try { api = host.files; } catch { api = api; } api.read();",
         rule.clone(),
-        0,
+        1,
     );
+    // Definite: both try and catch have host.files.
     assert_count(
         "let api = host.files; try { api = host.files; } catch { api = host.files; } api.read();",
         rule.clone(),
         1,
     );
+    // Possible: host.files on the catch path (unchanged), local on the try path.
     assert_count(
         "let api = host.files; try { api = local.files; } catch {} api.read();",
         rule,
-        0,
+        1,
     );
 }
 

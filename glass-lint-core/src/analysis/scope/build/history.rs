@@ -9,16 +9,54 @@ use hashbrown::{HashMap, HashSet};
 
 use crate::analysis::scope::{BindingProvenance, ScopeId};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum AssignmentValue {
-    Known(BindingProvenance),
-    Unknown,
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct ProvenanceAlternatives {
+    pub(super) provenances: Vec<BindingProvenance>,
+    pub(super) unknown: bool,
+    pub(super) joined: bool,
+    pub(super) exhausted: bool,
+}
+
+impl ProvenanceAlternatives {
+    pub(super) fn single(provenance: BindingProvenance) -> Self {
+        Self {
+            provenances: vec![provenance],
+            unknown: false,
+            joined: false,
+            exhausted: false,
+        }
+    }
+
+    pub(super) fn unknown() -> Self {
+        Self {
+            provenances: vec![],
+            unknown: true,
+            joined: false,
+            exhausted: false,
+        }
+    }
+
+    pub(super) fn join_value(mut self) -> Self {
+        self.joined = true;
+        self
+    }
+
+    pub(super) fn add(&mut self, other: &Self) {
+        self.unknown |= other.unknown;
+        self.exhausted |= other.exhausted;
+        self.joined |= other.joined;
+        for provenance in &other.provenances {
+            if !self.provenances.contains(provenance) {
+                self.provenances.push(provenance.clone());
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 /// Most recent assignment provenance for each scope-local binding.
 pub(super) struct AssignmentEnvironment {
-    assignments: HashMap<ScopeId, HashMap<NameId, AssignmentValue>>,
+    assignments: HashMap<ScopeId, HashMap<NameId, ProvenanceAlternatives>>,
 }
 
 impl AssignmentEnvironment {
@@ -28,14 +66,14 @@ impl AssignmentEnvironment {
         }
     }
 
-    fn ensure_scope(&mut self, scope: ScopeId) -> &mut HashMap<NameId, AssignmentValue> {
+    fn ensure_scope(&mut self, scope: ScopeId) -> &mut HashMap<NameId, ProvenanceAlternatives> {
         self.assignments.entry(scope).or_default()
     }
 
-    /// Replace the latest assignment for one scope/name pair.
+    /// Replace the latest assignment for one scope/name pair with unknown.
     pub(super) fn record_unknown(&mut self, scope: ScopeId, name: NameId) {
         self.ensure_scope(scope)
-            .insert(name, AssignmentValue::Unknown);
+            .insert(name, ProvenanceAlternatives::unknown());
     }
 
     pub(super) fn record_known(
@@ -45,10 +83,23 @@ impl AssignmentEnvironment {
         provenance: BindingProvenance,
     ) {
         self.ensure_scope(scope)
-            .insert(name, AssignmentValue::Known(provenance));
+            .insert(name, ProvenanceAlternatives::single(provenance));
     }
 
-    pub(super) fn get_by_id(&self, scope: ScopeId, name: NameId) -> Option<&AssignmentValue> {
+    pub(super) fn record_alternatives(
+        &mut self,
+        scope: ScopeId,
+        name: NameId,
+        alternatives: ProvenanceAlternatives,
+    ) {
+        self.ensure_scope(scope).insert(name, alternatives);
+    }
+
+    pub(super) fn get_by_id(
+        &self,
+        scope: ScopeId,
+        name: NameId,
+    ) -> Option<&ProvenanceAlternatives> {
         self.assignments.get(&scope)?.get(&name)
     }
 
@@ -57,7 +108,8 @@ impl AssignmentEnvironment {
     }
 
     /// Join path environments. Missing entries mean that the incoming value
-    /// reaches that path unchanged; disagreement is retained as unknown.
+    /// reaches that path unchanged. Collects distinct provenances from all
+    /// paths into alternatives.
     pub(super) fn join(paths: &[&Self]) -> Self {
         let mut active_scopes = paths
             .iter()
@@ -77,17 +129,18 @@ impl AssignmentEnvironment {
                 }
             }
             for name in all_names {
-                let first = paths[0].get_by_id(scope, name);
-                if paths
-                    .iter()
-                    .all(|path| path.get_by_id(scope, name) == first)
-                {
-                    if let Some(value) = first {
-                        result_map.insert(name, value.clone());
+                let mut value = ProvenanceAlternatives {
+                    provenances: Vec::new(),
+                    unknown: false,
+                    joined: true,
+                    exhausted: false,
+                };
+                for path in paths {
+                    if let Some(alt) = path.get_by_id(scope, name) {
+                        value.add(alt);
                     }
-                } else {
-                    result_map.insert(name, AssignmentValue::Unknown);
                 }
+                result_map.insert(name, value);
             }
             if !result_map.is_empty() {
                 joined.insert(scope, result_map);
@@ -107,24 +160,47 @@ mod tests {
     use super::*;
 
     #[test]
-    fn joins_equal_values_and_marks_disagreement_unknown() {
+    fn joins_equal_values_and_collects_distinct_alternatives() {
         let mut names = NameTable::default();
         let name = names.intern("value").unwrap();
         let scope = ScopeId::from(1);
         let mut first = AssignmentEnvironment::new();
         first.record_known(scope, name, BindingProvenance::Local);
         let second = first.clone();
+        let joined = AssignmentEnvironment::join(&[&first, &second]);
         assert_eq!(
-            AssignmentEnvironment::join(&[&first, &second]).get_by_id(scope, name),
-            Some(&AssignmentValue::Known(BindingProvenance::Local))
+            joined.get_by_id(scope, name).map(|a| &a.provenances[..]),
+            Some(&[BindingProvenance::Local][..])
         );
 
         let mut third = AssignmentEnvironment::new();
         third.record_unknown(scope, name);
+        let joined2 = AssignmentEnvironment::join(&[&first, &third]);
+        // Local (from first) + empty (from third) = [Local]
         assert_eq!(
-            AssignmentEnvironment::join(&[&first, &third]).get_by_id(scope, name),
-            Some(&AssignmentValue::Unknown)
+            joined2.get_by_id(scope, name).map(|a| &a.provenances[..]),
+            Some(&[BindingProvenance::Local][..])
         );
+    }
+
+    #[test]
+    fn join_unions_distinct_provenances() {
+        let mut names = NameTable::default();
+        let name = names.intern("api").unwrap();
+        let scope = ScopeId::from(1);
+        let mut path_a = AssignmentEnvironment::new();
+        path_a.record_known(
+            scope,
+            name,
+            BindingProvenance::ValueAlias {
+                target: glass_lint_datastructures::NamePath::new(),
+            },
+        );
+        let mut path_b = AssignmentEnvironment::new();
+        path_b.record_known(scope, name, BindingProvenance::Local);
+        let joined = AssignmentEnvironment::join(&[&path_a, &path_b]);
+        let alts = joined.get_by_id(scope, name).unwrap();
+        assert_eq!(alts.provenances.len(), 2);
     }
 
     #[test]
@@ -138,6 +214,11 @@ mod tests {
         let joined = AssignmentEnvironment::join(&[&first]);
 
         assert_eq!(joined.assignments.len(), 1);
-        assert_eq!(joined.get_by_id(scope, name), first.get_by_id(scope, name));
+        assert_eq!(
+            joined
+                .get_by_id(scope, name)
+                .map(|value| &value.provenances[..]),
+            Some(&[BindingProvenance::Local][..])
+        );
     }
 }

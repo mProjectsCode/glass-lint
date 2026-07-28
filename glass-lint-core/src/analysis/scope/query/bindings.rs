@@ -21,7 +21,11 @@ impl FrozenScopeGraph {
         }
     }
 
-    /// Resolve the binding provenance visible at a use position.
+    /// Resolve one strict binding provenance visible at a use position.
+    ///
+    /// For a synthetic join, returns the first non-local witness. Callers
+    /// whose identity check can distinguish alternatives should use
+    /// `binding_alternatives_at` instead.
     pub(in crate::analysis) fn binding_at(
         &self,
         name: &str,
@@ -29,8 +33,11 @@ impl FrozenScopeGraph {
     ) -> Option<&BindingProvenance> {
         let (scope, declaration) = self.binding_with_scope_at(name, span)?;
         match self.assignment_at(scope, self.name_id(name)?, span) {
-            AssignmentAt::Known(assignment) => Some(&assignment.provenance),
-            AssignmentAt::Ambiguous => None,
+            AssignmentAt::Known(assignment) => assignment.alternatives.first(),
+            AssignmentAt::Ambiguous(assignment) => assignment
+                .alternatives
+                .iter()
+                .find(|p| !matches!(p, BindingProvenance::Local)),
             AssignmentAt::Absent => self
                 .function_for_scope(scope)
                 .and_then(|function| {
@@ -38,6 +45,45 @@ impl FrozenScopeGraph {
                         .and_then(|name| self.parameter_alias_for(function, name))
                 })
                 .or(Some(declaration)),
+        }
+    }
+
+    /// Return all strict provenance alternatives visible at a use position.
+    ///
+    /// A synthetic join can also retain the declaration as the value on a
+    /// path that did not write the binding. Unknown alternatives are not
+    /// returned: callers may use the returned values as complete witnesses,
+    /// while the presence of an unknown alternative remains available on the
+    /// assignment record for certainty accounting.
+    pub(in crate::analysis) fn binding_alternatives_at(
+        &self,
+        name: &str,
+        span: Span,
+    ) -> Vec<&BindingProvenance> {
+        let Some((scope, declaration)) = self.binding_with_scope_at(name, span) else {
+            return Vec::new();
+        };
+        let Some(name_id) = self.name_id(name) else {
+            return Vec::new();
+        };
+        match self.assignment_at(scope, name_id, span) {
+            AssignmentAt::Known(assignment) => {
+                if assignment.unknown && assignment.alternatives.is_empty() {
+                    Vec::new()
+                } else {
+                    assignment.alternatives.iter().collect()
+                }
+            }
+            AssignmentAt::Ambiguous(assignment) => {
+                if assignment.unknown && assignment.alternatives.is_empty() {
+                    return Vec::new();
+                }
+                assignment.alternatives.iter().collect()
+            }
+            AssignmentAt::Absent => self
+                .function_for_scope(scope)
+                .and_then(|function| self.parameter_alias_for(function, name_id))
+                .map_or_else(|| vec![declaration], |parameter| vec![parameter]),
         }
     }
 
