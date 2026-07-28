@@ -2,7 +2,7 @@
 
 ## Summary
 
-This audit covers all Rust production modules and the relevant tests in `glass-lint-core`, `glass-lint-datastructures`, and `glass-lint-project` (about 50,000 lines total). It found 32 actionable issues: 16 High, 15 Medium, and 1 Low severity. 23 have been fixed (8 High, 14 Medium, 1 Low), leaving 8 open (7 High, 1 Medium). The most important remaining correctness risks are control-insensitive assignment provenance and exceptional-path identity leakage. The most important remaining boundedness risk is public dense-ID structures that can be driven into enormous sparse allocations.
+This audit covers all Rust production modules and the relevant tests in `glass-lint-core`, `glass-lint-datastructures`, and `glass-lint-project` (about 50,000 lines total). It found 32 actionable issues: 16 High, 15 Medium, and 1 Low severity. 26 have been fixed (10 High, 15 Medium, 1 Low), leaving 5 open (5 High). The most important remaining correctness risks are control-insensitive assignment provenance and exceptional-path identity leakage. The most important remaining boundedness risk is public dense-ID structures that can be driven into enormous sparse allocations.
 
 The existing `profile.json.gz` was also inspected against its matching profiling binary. It is supporting rather than dispositive evidence because it does not carry a reproducible workload manifest, but roughly half of the main worker's samples include `FactBuilder` statement traversal, with resolver/name operations prominent below it. That agrees with the static conclusion that lowering work inside `FactBuilder`, interning, and resolver-owned indexes deserves priority.
 
