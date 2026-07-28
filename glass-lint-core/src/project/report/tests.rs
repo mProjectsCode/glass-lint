@@ -202,6 +202,23 @@ fn combine_reports_adds_all_operation_counts() {
 }
 
 #[test]
+fn operation_counts_preserve_path_metrics_deterministically() {
+    let mut first = AnalysisOperationCounts::new(0, 0, 0, 0, 0, 0, 0);
+    first.set_path_metrics(8, 13, 5, 21, 3, 4);
+    let mut second = AnalysisOperationCounts::new(0, 0, 0, 0, 0, 0, 0);
+    second.set_path_metrics(4, 7, 2, 9, 6, 1);
+
+    first += second;
+
+    assert_eq!(first.max_live_alternatives(), 8);
+    assert_eq!(first.trace_nodes(), 20);
+    assert_eq!(first.trace_heads(), 7);
+    assert_eq!(first.coalescing_comparisons(), 30);
+    assert_eq!(first.fixed_point_iterations(), 9);
+    assert_eq!(first.rendered_traces(), 5);
+}
+
+#[test]
 fn combine_reports_rejects_schema_mismatch() {
     let first = report("a.js", ReportCompletion::Complete);
     let second = AnalysisReport::new(

@@ -43,6 +43,26 @@ fn collect_source(source: &str, flow: &ObjectFlowMatcher) -> Vec<Vec<Classificat
     evidence
 }
 
+fn collect_source_with_outcome(
+    source: &str,
+    flow: &ObjectFlowMatcher,
+    limits: FlowLimits,
+) -> LocalFlowProjectionOutcome {
+    let parsed = crate::parse(source, "flow-metrics.js").expect("source should parse");
+    let mut resolver = Resolver::collect(&parsed.program, source);
+    let stream = crate::analysis::facts::build_test_stream(&parsed.program, &mut resolver);
+    let effects = FunctionEffects::collect(&stream, usize::MAX);
+    let flow = CompiledObjectFlow::from_matcher(flow);
+    let (_evidence, outcome) = collect_with_limits_test(
+        &stream,
+        &effects,
+        &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],
+        1,
+        limits,
+    );
+    outcome
+}
+
 fn script_flow() -> ObjectFlowMatcher {
     ObjectFlowMatcher::builder("script insertion")
         .source(
@@ -68,6 +88,54 @@ fn transfers_source_configuration_and_sink_from_facts() {
         &script_flow(),
     );
     assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+}
+
+#[test]
+fn flow_metrics_charge_path_and_trace_work() {
+    let outcome = collect_source_with_outcome(
+        "const script = document.createElement('script'); script.src = url; document.head.appendChild(script);",
+        &script_flow(),
+        FlowLimits::from_flow_operations(262_144),
+    );
+    assert!(outcome.operations > 0);
+    assert!(outcome.max_live_alternatives >= 1);
+    assert!(outcome.trace_heads >= 1);
+    assert!(!outcome.exhausted);
+}
+
+#[test]
+fn equivalent_branch_paths_are_coalesced_and_counted() {
+    let outcome = collect_source_with_outcome(
+        "const script = document.createElement('script'); if (flag) { script.src = url; } else { script.src = url; } document.head.appendChild(script);",
+        &script_flow(),
+        FlowLimits::from_flow_operations(262_144),
+    );
+    assert!(outcome.coalescing_comparisons > 0);
+    assert!(outcome.max_live_alternatives >= 2);
+    assert!(!outcome.exhausted);
+}
+
+#[test]
+fn loop_fixed_point_iterations_are_bounded_and_visible() {
+    let outcome = collect_source_with_outcome(
+        "const script = document.createElement('script'); while (flag) { script.src = url; } document.head.appendChild(script);",
+        &script_flow(),
+        FlowLimits::from_flow_operations(262_144),
+    );
+    assert!(outcome.fixed_point_iterations > 0);
+    assert!(outcome.operations >= outcome.fixed_point_iterations);
+    assert!(!outcome.exhausted);
+}
+
+#[test]
+fn exhausted_flow_operation_budget_is_reported_as_incomplete() {
+    let outcome = collect_source_with_outcome(
+        "const script = document.createElement('script'); if (flag) { script.src = url; } else { script.src = other; } document.head.appendChild(script);",
+        &script_flow(),
+        FlowLimits::test_with_operation_limit(65_536, 262_144, 65_536, 4096, 1),
+    );
+    assert!(outcome.exhausted);
+    assert!(outcome.operations <= 1);
 }
 
 #[test]

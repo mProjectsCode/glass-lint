@@ -38,6 +38,10 @@ pub(super) fn report_operation_counts(report: &AnalysisReport) -> ProfileOperati
 }
 
 pub(super) fn evidence_order_digest(report: &AnalysisReport) -> String {
+    // The file DTO includes each finding's rule ID, primary location,
+    // certainty, and ordered evidence traces. Keeping those fields in the
+    // digest makes worker/profile comparisons sensitive to semantic drift,
+    // not just to finding counts.
     let encoded = serde_json::to_vec(report.files()).expect("report DTOs serialize");
     format!("{:?}", Sha256::digest(encoded))
 }

@@ -272,6 +272,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 }],
             },
         );
+        self.trace_heads = self.trace_heads.saturating_add(1);
     }
 
     /// Build an interned trace chain for a flow finding:

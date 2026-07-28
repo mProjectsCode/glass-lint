@@ -20,7 +20,8 @@ JSON, and side-by-side comparison output.
 Profiling APIs support deterministic discovery, include/exclude patterns,
 sampling, warm-up passes, repetitions, worker counts, independent-file and
 project modes, and content-verified corpus manifests. Correctness is checked
-before timing summaries are accepted.
+before timing summaries are accepted, including finding identity/certainty,
+diagnostics, completion, operation counts, and evidence-order digests.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for module ownership and
 [TESTING.md](../TESTING.md) for the fixture format.

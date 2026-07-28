@@ -25,7 +25,7 @@ use crate::{
             sources::FlowSources,
             worklist::ContextWorklist,
         },
-        model::flow::FlowId,
+        model::flow::{FlowId, FlowLimits},
         project::state::LinkingSession,
         trace::TraceArena,
     },
@@ -39,6 +39,16 @@ use crate::{
 const MAX_CONTEXTS: usize = 65_536;
 const MAX_SOURCE_REFINEMENT_ROUNDS: usize = 64;
 const MAX_PENDING: usize = 65_536;
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(in crate::analysis) struct CrossProjectionOutcome {
+    pub(in crate::analysis) exhausted: bool,
+    pub(in crate::analysis) projections: usize,
+    pub(in crate::analysis) operations: usize,
+    pub(in crate::analysis) trace_heads: usize,
+}
+
+#[allow(clippy::too_many_lines)]
 pub(in crate::analysis) fn collect(
     project: &ProjectSemanticModel,
     matchers: &CompiledRuleSelection<'_>,
@@ -46,8 +56,7 @@ pub(in crate::analysis) fn collect(
     arena: &mut TraceArena,
 ) -> (
     BTreeMap<ModuleId, Vec<Vec<ClassificationEvidence>>>,
-    bool,
-    usize,
+    CrossProjectionOutcome,
 ) {
     // Single worklist loop: setup, iteration with UsageProjector and
     // CallPropagation per context, then final exhaustion handling.
@@ -69,7 +78,7 @@ pub(in crate::analysis) fn collect(
             .into_iter()
             .map(|(id, m)| (id, m.evidence))
             .collect();
-        return (empty, false, 0);
+        return (empty, CrossProjectionOutcome::default());
     }
 
     let call_graph = QualifiedCallGraph::build(project, session);
@@ -79,7 +88,8 @@ pub(in crate::analysis) fn collect(
 
     let mut flow_plan_cache: HashMap<(FlowId, ModuleId), FlowPathPlan> = HashMap::new();
 
-    let mut step_budget = Budget::new(project.flow_limit());
+    let mut step_budget =
+        Budget::new(FlowLimits::from_flow_operations(project.flow_limit()).operation_limit());
     let mut projections = 0usize;
     while let Some(context) = worklist.pop_front() {
         projections = projections.saturating_add(1);
@@ -143,11 +153,20 @@ pub(in crate::analysis) fn collect(
             }
         }
     }
+    let trace_heads = evidence.values().map(|module| module.trace_heads).sum();
     let output = evidence
         .into_iter()
         .map(|(id, m)| (id, m.evidence))
         .collect();
-    (output, exhausted, projections)
+    (
+        output,
+        CrossProjectionOutcome {
+            exhausted,
+            projections,
+            operations: step_budget.used(),
+            trace_heads,
+        },
+    )
 }
 
 #[cfg(test)]

@@ -82,7 +82,6 @@ impl TraceArena {
         steps
     }
 
-    #[cfg(test)]
     pub fn node_count(&self) -> usize {
         self.nodes.len()
     }

@@ -121,7 +121,7 @@ fn print_aggregate_summary(report: &ProfileSummary) {
     );
     for (index, repetition) in report.repetitions.iter().enumerate() {
         println!(
-            "Repetition {}: {:.1?}, {} finding(s), {} diagnostic(s), {:?}, runs {:?}, evidence {}, operations files={} requests={} edges={} exports={} scc_rounds={} effect_projections={} evidence={}",
+            "Repetition {}: {:.1?}, {} finding(s), {} diagnostic(s), {:?}, runs {:?}, evidence {}, operations files={} requests={} edges={} exports={} scc_rounds={} effect_projections={} evidence={} alternatives={} trace_nodes={} trace_heads={} coalescing={} fixed_point={} rendered_traces={}",
             index + 1,
             repetition.duration,
             repetition.findings,
@@ -136,6 +136,12 @@ fn print_aggregate_summary(report: &ProfileSummary) {
             repetition.operation_counts.scc_rounds(),
             repetition.operation_counts.effect_projections(),
             repetition.operation_counts.evidence(),
+            repetition.operation_counts.max_live_alternatives(),
+            repetition.operation_counts.trace_nodes(),
+            repetition.operation_counts.trace_heads(),
+            repetition.operation_counts.coalescing_comparisons(),
+            repetition.operation_counts.fixed_point_iterations(),
+            repetition.operation_counts.rendered_traces(),
         );
     }
 }
@@ -150,7 +156,7 @@ fn print_phase_timings(report: &ProfileSummary) {
         report.phase_timings.linking_and_matching(),
     );
     println!(
-        "Operations: {} file(s), {} request(s), {} edge(s), {} export(s), {} SCC round(s), {} effect projection(s), {} evidence item(s)",
+        "Operations: {} file(s), {} request(s), {} edge(s), {} export(s), {} SCC round(s), {} effect projection(s), {} evidence item(s), {} max alternative(s), {} trace node(s), {} trace head(s), {} coalescing comparison(s), {} fixed-point iteration(s), {} rendered trace(s)",
         report.operation_counts.files(),
         report.operation_counts.requests(),
         report.operation_counts.edges(),
@@ -158,6 +164,12 @@ fn print_phase_timings(report: &ProfileSummary) {
         report.operation_counts.scc_rounds(),
         report.operation_counts.effect_projections(),
         report.operation_counts.evidence(),
+        report.operation_counts.max_live_alternatives(),
+        report.operation_counts.trace_nodes(),
+        report.operation_counts.trace_heads(),
+        report.operation_counts.coalescing_comparisons(),
+        report.operation_counts.fixed_point_iterations(),
+        report.operation_counts.rendered_traces(),
     );
 }
 

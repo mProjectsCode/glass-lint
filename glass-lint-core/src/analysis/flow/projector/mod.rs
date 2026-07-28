@@ -55,6 +55,16 @@ pub(in crate::analysis) struct LocalFlowProjectionOutcome {
     /// Object identities allocated.
     #[allow(dead_code)]
     pub objects_used: u32,
+    /// Charged local flow operations.
+    pub operations: usize,
+    /// Maximum number of correlated alternatives retained at one point.
+    pub max_live_alternatives: usize,
+    /// Number of semantic-state comparisons made while coalescing paths.
+    pub coalescing_comparisons: usize,
+    /// Number of loop fixed-point iterations.
+    pub fixed_point_iterations: usize,
+    /// Number of complete trace heads emitted by local flow.
+    pub trace_heads: usize,
 }
 
 /// Push flow evidence directly into an externally-owned per-rule vec,
@@ -166,6 +176,13 @@ struct ObjectFlowProjector<'rules, 'stream, 'arena> {
     trace_arena: &'arena mut TraceArena,
     /// Module being projected, used to qualify trace events.
     module_id: ModuleId,
+    /// Budget charged by every path transfer, coalescing comparison, and
+    /// fixed-point iteration in this projector.
+    operation_budget: Budget,
+    max_live_alternatives: usize,
+    coalescing_comparisons: usize,
+    fixed_point_iterations: usize,
+    trace_heads: usize,
 }
 
 impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
@@ -211,7 +228,25 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             emission_mode: EmissionMode::Emit,
             module_id,
             trace_arena,
+            operation_budget: Budget::new(limits.local_operation_limit()),
+            max_live_alternatives: 1,
+            coalescing_comparisons: 0,
+            fixed_point_iterations: 0,
+            trace_heads: 0,
         }
+    }
+
+    fn charge_operation(&mut self) -> bool {
+        if self.operation_budget.try_push() {
+            true
+        } else {
+            self.alternatives_complete = false;
+            false
+        }
+    }
+
+    fn observe_alternatives(&mut self, count: usize) {
+        self.max_live_alternatives = self.max_live_alternatives.max(count);
     }
 
     fn transfer(&mut self, fact: &crate::analysis::facts::SemanticFact) {
@@ -232,6 +267,9 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         self.active_path_count = incoming.len();
         let mut outgoing = Vec::with_capacity(incoming.len());
         for (path_index, environment) in incoming.into_iter().enumerate() {
+            if !self.charge_operation() {
+                break;
+            }
             if !self.flow_state.restore(environment) {
                 self.alternatives_complete = false;
                 continue;
@@ -244,6 +282,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             }
         }
         self.paths = outgoing;
+        self.observe_alternatives(self.paths.len());
         self.finalize_pending(fact.id);
         let paths = std::mem::take(&mut self.paths);
         self.join_paths(paths);
@@ -337,6 +376,9 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
 
         let mut seen = BTreeSet::new();
         for environment in &frontier {
+            if !self.charge_operation() {
+                break;
+            }
             if self.flow_state.restore(*environment) {
                 seen.insert(self.flow_state.semantic_snapshot());
             } else {
@@ -351,7 +393,11 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 self.alternatives_complete = false;
                 break;
             }
+            if !self.charge_operation() {
+                break;
+            }
             iterations += 1;
+            self.fixed_point_iterations = self.fixed_point_iterations.saturating_add(1);
             let break_count = self
                 .control
                 .iter()
@@ -378,6 +424,9 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
 
             let mut next_frontier = Vec::new();
             for environment in candidate {
+                if !self.charge_operation() {
+                    break;
+                }
                 if !self.flow_state.restore(environment) {
                     self.alternatives_complete = false;
                     continue;
@@ -405,6 +454,9 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         let mut unique_exits = Vec::with_capacity(exits.len());
         let mut exit_shapes = BTreeSet::new();
         for environment in exits {
+            if !self.charge_operation() {
+                break;
+            }
             if !self.flow_state.restore(environment) {
                 self.alternatives_complete = false;
                 continue;
@@ -438,6 +490,9 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         let incoming = std::mem::take(&mut self.paths);
         let mut outgoing = Vec::with_capacity(incoming.len());
         for environment in incoming {
+            if !self.charge_operation() {
+                break;
+            }
             if !self.flow_state.restore(environment) {
                 self.alternatives_complete = false;
                 continue;
@@ -492,16 +547,31 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     }
 
     pub(super) fn join_paths(&mut self, mut paths: Vec<FlowEnvironment>) {
+        self.observe_alternatives(paths.len());
         paths.retain(FlowEnvironment::is_reachable);
         let mut unique = Vec::with_capacity(paths.len());
         let mut snapshots = Vec::with_capacity(paths.len());
         for path in paths {
+            if !self.charge_operation() {
+                break;
+            }
             if !self.flow_state.restore(path) {
                 self.alternatives_complete = false;
                 continue;
             }
             let snapshot = self.flow_state.snapshot();
-            if !snapshots.contains(&snapshot) {
+            let mut duplicate = false;
+            for existing in &snapshots {
+                if !self.charge_operation() {
+                    break;
+                }
+                self.coalescing_comparisons = self.coalescing_comparisons.saturating_add(1);
+                if existing == &snapshot {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if !self.operation_budget.exhausted() && !duplicate {
                 snapshots.push(snapshot);
                 unique.push(path);
             }
@@ -512,6 +582,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             self.alternatives_complete = false;
         }
         self.paths = paths;
+        self.observe_alternatives(self.paths.len());
         self.reachable = !self.paths.is_empty();
     }
 
@@ -652,6 +723,11 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         LocalFlowProjectionOutcome {
             exhausted,
             objects_used: self.next_object_id,
+            operations: self.operation_budget.used(),
+            max_live_alternatives: self.max_live_alternatives,
+            coalescing_comparisons: self.coalescing_comparisons,
+            fixed_point_iterations: self.fixed_point_iterations,
+            trace_heads: self.trace_heads,
         }
     }
 }

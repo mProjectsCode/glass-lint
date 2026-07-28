@@ -50,6 +50,14 @@ pub struct ProjectionOutcome {
     pub effect_projections: usize,
     /// Operation count when exhaustion was reached, if applicable.
     pub flow_observed: Option<usize>,
+    /// Complete trace heads emitted by local and cross-module flow.
+    pub trace_heads: usize,
+    /// Maximum live local semantic alternatives.
+    pub max_live_alternatives: usize,
+    /// Local coalescing comparisons.
+    pub coalescing_comparisons: usize,
+    /// Local loop fixed-point iterations.
+    pub fixed_point_iterations: usize,
 }
 
 impl ProjectSemanticModel {
@@ -64,6 +72,11 @@ impl ProjectSemanticModel {
         let plan = ProjectionPlan::from_selection(&matchers);
         let flow_limits = FlowLimits::from_flow_operations(self.flow_limit());
         let mut local_exhausted = false;
+        let mut max_live_alternatives: usize = 0;
+        let mut coalescing_comparisons: usize = 0;
+        let mut fixed_point_iterations: usize = 0;
+        let mut local_trace_heads: usize = 0;
+        let mut local_operations: usize = 0;
         let mut session = LinkingSession::new(self.flow_limit());
         let mut arena = self.trace_arena.lock().unwrap();
         let projections: BTreeMap<ModuleId, ProjectModuleProjection<'project>> = self
@@ -87,6 +100,14 @@ impl ProjectSemanticModel {
                 if local_outcome.exhausted {
                     local_exhausted = true;
                 }
+                max_live_alternatives =
+                    max_live_alternatives.max(local_outcome.max_live_alternatives);
+                coalescing_comparisons =
+                    coalescing_comparisons.saturating_add(local_outcome.coalescing_comparisons);
+                fixed_point_iterations =
+                    fixed_point_iterations.saturating_add(local_outcome.fixed_point_iterations);
+                local_trace_heads = local_trace_heads.saturating_add(local_outcome.trace_heads);
+                local_operations = local_operations.saturating_add(local_outcome.operations);
                 (
                     module.id(),
                     ProjectModuleProjection {
@@ -98,14 +119,19 @@ impl ProjectSemanticModel {
             })
             .collect();
 
-        let (cross, cross_exhausted, projection_count) =
+        let (cross, cross_outcome) =
             { flow::cross::collect(self, &matchers, &mut session, &mut arena) };
-        let exhausted = local_exhausted || cross_exhausted;
+        let exhausted = local_exhausted || cross_outcome.exhausted;
+        let flow_operations = local_operations.saturating_add(cross_outcome.operations);
         let outcome = ProjectionOutcome {
             flow_exhausted: exhausted,
-            effect_projections: projection_count,
-            flow_observed: exhausted.then_some(projection_count),
+            effect_projections: cross_outcome.projections,
+            flow_observed: exhausted.then_some(flow_operations),
             local_exhausted,
+            trace_heads: local_trace_heads.saturating_add(cross_outcome.trace_heads),
+            max_live_alternatives,
+            coalescing_comparisons,
+            fixed_point_iterations,
         };
 
         let mut projections = projections;

@@ -418,9 +418,26 @@ impl<'a> ReportAssembly<'a> {
                     .sum::<usize>()
             })
             .sum();
+        let rendered_traces = files
+            .values()
+            .flat_map(crate::project::FileReport::findings)
+            .map(|finding| finding.evidence().traces().len())
+            .sum();
         let is_partial = !project.is_complete();
         let mut operations = project.operation_counts(evidence);
         operations.set_effect_projections(outcome.effect_projections);
+        let trace_nodes = project
+            .trace_arena()
+            .lock()
+            .map_or(0, |arena| arena.node_count());
+        operations.set_path_metrics(
+            outcome.max_live_alternatives,
+            trace_nodes,
+            outcome.trace_heads,
+            outcome.coalescing_comparisons,
+            outcome.fixed_point_iterations,
+            rendered_traces,
+        );
         AnalysisReport::new(
             REPORT_VERSION,
             env!("CARGO_PKG_VERSION").into(),

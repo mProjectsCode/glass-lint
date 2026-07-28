@@ -67,7 +67,8 @@ typed `ResolutionResult` records. Filesystem discovery and module resolution
 belong in `glass-lint-project`.
 
 `AnalysisReport` contains sorted file reports, structured diagnostics,
-operation counts, and `ReportCompletion`. Locations use one-based Unicode
+operation counts (including bounded alternative, trace, coalescing, and
+fixed-point metrics), and `ReportCompletion`. Locations use one-based Unicode
 display columns. Each finding includes `certainty` (`definite` or `possible`)
 and bounded, correlated evidence traces. `definite` means the strict proof
 holds on every modeled path reaching the occurrence; `possible` means a

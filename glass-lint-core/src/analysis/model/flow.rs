@@ -16,6 +16,8 @@ pub struct FlowLimits {
     emissions: usize,
     mutation: usize,
     alternatives: usize,
+    operations: usize,
+    local_operations: usize,
 }
 
 const DEFAULT_OBJECTS: u64 = 65_536;
@@ -44,6 +46,12 @@ impl FlowLimits {
                 .max(MIN_MUTATIONS),
             alternatives: ((DEFAULT_ALTERNATIVES as u64 * flow / DEFAULT_FLOW_OPERATIONS) as usize)
                 .max(MIN_ALTERNATIVES),
+            operations: flow_operations,
+            // Local projection charges path transfers and comparisons, so it
+            // receives a bounded allowance derived from the shared flow
+            // budget without changing the established cross-module limit
+            // thresholds.
+            local_operations: flow_operations.saturating_mul(16),
         }
     }
 
@@ -67,6 +75,15 @@ impl FlowLimits {
         self.alternatives
     }
 
+    /// Maximum number of charged local flow operations.
+    pub fn operation_limit(&self) -> usize {
+        self.operations
+    }
+
+    pub fn local_operation_limit(&self) -> usize {
+        self.local_operations
+    }
+
     #[cfg(test)]
     pub fn test_new(objects: u32, states: usize, emissions: usize, mutation: usize) -> Self {
         Self {
@@ -75,6 +92,27 @@ impl FlowLimits {
             emissions,
             mutation,
             alternatives: states.max(1),
+            operations: usize::MAX,
+            local_operations: usize::MAX,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn test_with_operation_limit(
+        objects: u32,
+        states: usize,
+        emissions: usize,
+        mutation: usize,
+        operations: usize,
+    ) -> Self {
+        Self {
+            objects,
+            states,
+            emissions,
+            mutation,
+            alternatives: states.max(1),
+            operations,
+            local_operations: operations,
         }
     }
 }
@@ -254,6 +292,13 @@ mod tests {
         assert_eq!(limits.state_limit(), 8192);
         assert_eq!(limits.emission_limit(), 2048);
         assert_eq!(limits.mutation_limit(), 512);
+    }
+
+    #[test]
+    fn flow_operation_limit_tracks_the_configured_budget() {
+        let limits = FlowLimits::from_flow_operations(1234);
+        assert_eq!(limits.operation_limit(), 1234);
+        assert_eq!(limits.local_operation_limit(), 1234 * 16);
     }
 
     #[test]

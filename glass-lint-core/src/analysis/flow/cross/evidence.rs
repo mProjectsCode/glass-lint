@@ -82,6 +82,7 @@ pub(super) struct ModuleEvidence {
     /// complete witness. These keys are kept separate from witness traces so
     /// no evidence can be assembled from incompatible call sites.
     pub(super) nonmatching: Vec<BTreeSet<(MatchKind, String, u32)>>,
+    pub(super) trace_heads: usize,
 }
 
 impl ModuleEvidence {
@@ -90,6 +91,7 @@ impl ModuleEvidence {
             evidence: vec![Vec::new(); rule_count],
             seen: vec![BTreeSet::new(); rule_count],
             nonmatching: vec![BTreeSet::new(); rule_count],
+            trace_heads: 0,
         }
     }
 }
@@ -221,5 +223,8 @@ pub(super) fn emit(
             certainty,
             occurrences: vec![occurrence],
         });
+    }
+    if trace_head.is_some() {
+        values.trace_heads = values.trace_heads.saturating_add(1);
     }
 }
