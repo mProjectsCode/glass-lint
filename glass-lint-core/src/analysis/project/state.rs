@@ -116,6 +116,19 @@ impl ExportTable {
 }
 
 #[derive(Debug)]
+pub(in crate::analysis) struct LinkingSession {
+    pub(super) lookup_cache: ExportLookupCache,
+}
+
+impl LinkingSession {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            lookup_cache: ExportLookupCache::new(capacity),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub(in crate::analysis) struct ExportLookupCache {
     entries: BTreeMap<ModuleId, BTreeMap<SmolStr, Option<ExportResolution>>>,
     capacity: usize,

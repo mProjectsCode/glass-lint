@@ -13,7 +13,7 @@ use crate::{
         ExportResolution, LinkedModuleTarget, ModuleId, ProjectSemanticModel,
         matching::{ModuleExportKey, ModuleIdentityMap},
         module::{ImportedBinding, ModuleRequest, ModuleRequestRole},
-        project::model::MAX_EXPORT_DEPTH,
+        project::{model::MAX_EXPORT_DEPTH, state::LinkingSession},
         syntax::SymbolCallProvenance,
     },
     project::is_internal_module_request as is_internal_request,
@@ -61,6 +61,7 @@ impl ProjectSemanticModel {
     pub(super) fn call_result_identities(
         &self,
         importer: ModuleId,
+        session: &mut LinkingSession,
     ) -> BTreeMap<crate::analysis::value::ValueId, ExportResolution> {
         let mut identities = BTreeMap::new();
         let Some(module) = self.modules.get(&importer) else {
@@ -74,7 +75,7 @@ impl ProjectSemanticModel {
                     continue;
                 };
                 let Some((target_module, target_function)) =
-                    self.qualified_function_target(importer, cref.target(), provenance)
+                    self.qualified_function_target(importer, cref.target(), provenance, session)
                 else {
                     continue;
                 };
@@ -96,7 +97,7 @@ impl ProjectSemanticModel {
                     }
                     let r = match returned.provenance() {
                         SymbolCallProvenance::ModuleExport { module, export } => {
-                            self.resolve_imported_identity(target_module, module, export)
+                            self.resolve_imported_identity(target_module, module, export, session)
                         }
                         SymbolCallProvenance::Global { name } => {
                             ExportResolution::Global { name: name.clone() }
@@ -130,7 +131,11 @@ impl ProjectSemanticModel {
     }
 
     /// Build imported and namespace-member identities for one module.
-    pub(super) fn module_identities(&self, module: ModuleId) -> ModuleIdentityMap {
+    pub(super) fn module_identities(
+        &self,
+        module: ModuleId,
+        session: &mut LinkingSession,
+    ) -> ModuleIdentityMap {
         let mut identities = ModuleIdentityMap::new();
         let Some(project_module) = self.modules.get(&module) else {
             return identities;
@@ -145,8 +150,12 @@ impl ProjectSemanticModel {
                         let Some(export) = binding.imported() else {
                             continue;
                         };
-                        let identity =
-                            self.resolve_imported_identity(module, request.specifier(), export);
+                        let identity = self.resolve_imported_identity(
+                            module,
+                            request.specifier(),
+                            export,
+                            session,
+                        );
                         identities.insert(
                             ModuleExportKey::new(request.specifier().clone(), export.clone()),
                             identity,

@@ -2,7 +2,7 @@
 //! identities remain owned by their module; the overlay stores qualified
 //! resolution results rather than merging lexical arenas.
 
-use std::{cell::RefCell, collections::BTreeMap};
+use std::collections::BTreeMap;
 
 use glass_lint_datastructures::NameTable;
 use smol_str::SmolStr;
@@ -17,7 +17,7 @@ use crate::{
         project::{
             linker::ProjectLinker,
             projection::ProjectionOutcome,
-            state::{ExportLookupCache, ExportTable},
+            state::{ExportTable, LinkingSession},
         },
         syntax::SymbolCallProvenance,
         value::{FunctionId, ValueId},
@@ -196,8 +196,6 @@ pub struct ProjectSemanticModel {
     pub(super) resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
     /// Fixed-point export identities for linked modules.
     pub(super) exports: ExportTable,
-    /// Memoized star-export lookups (including negative results).
-    pub(super) lookup_cache: RefCell<ExportLookupCache>,
     /// Number of unique internal edges between modules.
     edge_count: usize,
     /// Sum of cycle-local fixed-point rounds (0 for acyclic graphs).
@@ -235,7 +233,6 @@ impl ProjectSemanticModel {
             .collect(),
             resolutions: BTreeMap::new(),
             exports: ExportTable::default(),
-            lookup_cache: RefCell::new(ExportLookupCache::new(limits.link_operations())),
             edge_count: 0,
             link_cycle_rounds: 0,
             diagnostics: Vec::new(),
@@ -264,7 +261,6 @@ impl ProjectSemanticModel {
             modules: outcome.modules,
             resolutions: outcome.resolutions,
             exports: outcome.exports,
-            lookup_cache: RefCell::new(ExportLookupCache::new(limits.link_operations())),
             edge_count: outcome.edge_count,
             link_cycle_rounds: outcome.link_cycle_rounds,
             diagnostics: outcome.diagnostics,
@@ -347,6 +343,7 @@ impl ProjectSemanticModel {
         importer: ModuleId,
         local: Option<FunctionId>,
         provenance: &SymbolCallProvenance,
+        session: &mut LinkingSession,
     ) -> Option<(ModuleId, FunctionId)> {
         if let Some(local) = local {
             return Some((importer, local));
@@ -357,7 +354,7 @@ impl ProjectSemanticModel {
         let ExportResolution::Qualified {
             module: target,
             export: target_export,
-        } = self.resolve_imported_identity(importer, module, export)
+        } = self.resolve_imported_identity(importer, module, export, session)
         else {
             return None;
         };
@@ -452,5 +449,26 @@ impl ProjectSemanticModel {
             })
             .collect();
         (results, outcome)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The frozen semantic model must be shareable across threads so that
+    /// future multi-threaded matcher projection is safe.
+    #[test]
+    fn semantic_model_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<ProjectSemanticModel>();
+    }
+
+    /// The linking session must be sendable across threads as it owns only
+    /// Send types (ExportLookupCache).
+    #[test]
+    fn linking_session_is_send() {
+        fn assert_send<T: Send>() {}
+        assert_send::<LinkingSession>();
     }
 }

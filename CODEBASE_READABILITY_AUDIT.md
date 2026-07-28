@@ -179,10 +179,13 @@ The method documents direct exports as authoritative, inserts them first, then i
 - **Fix Complexity** Medium
 - **Category:** Encapsulation
 - **Location:** `glass-lint-core/src/analysis/project/model.rs:189-209`, `glass-lint-core/src/analysis/project/exports.rs:107-156`, `glass-lint-core/src/analysis/project/state.rs:118-147`
+- **Status:** Fixed
 
 `ProjectSemanticModel` query methods mutate `lookup_cache` through `RefCell`, making the frozen semantic model non-`Sync`, adding runtime borrow checks, and obscuring when cache state is valid. A second bounded export cache abstraction exists in linker state, so capacity and invalidation policy are split across owners.
 
 Move `lookup_cache` into an explicit mutable `LinkingSession` that owns the model version, negative entries, capacity, and eviction policy; keep `ProjectSemanticModel` immutable and `Sync`. Require every export lookup to receive that session, and invalidate the session when the linked model version changes. Recommendation: add a concurrency test proving the frozen model is shareable and a bounded-cache test proving positive and negative entries have deterministic capacity behavior.
+
+**Check:** Removed the `lookup_cache: RefCell<ExportLookupCache>` field from `ProjectSemanticModel` and the `use std::cell::RefCell` import from `model.rs`. Created `LinkingSession` in `state.rs` that owns an `ExportLookupCache` and is passed as `&mut LinkingSession` to every export lookup and identity method (`resolve_imported_identity`, `lookup_export`, `walk_star_exports`, `qualified_function_target`, `call_result_identities`, `module_identities`). The session is created in `project()` and threaded through to `flow::cross::collect` and `QualifiedCallGraph::build`. The linker at `linker/export.rs` retains its own independent `RefCell<ExportLookupCache>` since `ProjectLinker` is already mutable. Added `Send + Sync` type-level assertions for `ProjectSemanticModel` and a `Send` assertion for `LinkingSession`. All tests pass via `make ci`.
 
 #### READ-014 — Handwritten graph algorithms add avoidable complexity and quadratic edge deduplication
 - **Severity:** High

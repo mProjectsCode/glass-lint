@@ -26,6 +26,7 @@ use crate::{
             worklist::ContextWorklist,
         },
         model::flow::FlowId,
+        project::state::LinkingSession,
     },
     api::{
         classification::ClassificationEvidence,
@@ -42,6 +43,7 @@ const MAX_RELATED_EVIDENCE: usize = 8;
 pub(in crate::analysis) fn collect(
     project: &ProjectSemanticModel,
     matchers: &CompiledRuleSelection<'_>,
+    session: &mut LinkingSession,
 ) -> (
     BTreeMap<ModuleId, Vec<Vec<ClassificationEvidence>>>,
     bool,
@@ -70,7 +72,7 @@ pub(in crate::analysis) fn collect(
         return (empty, false, 0);
     }
 
-    let call_graph = QualifiedCallGraph::build(project);
+    let call_graph = QualifiedCallGraph::build(project, session);
     let (sources, return_budget_exhausted) = FlowSources::collect(project, &flows, &call_graph);
     let mut worklist = ContextWorklist::seed(project, &sources, &call_graph);
 

@@ -12,7 +12,7 @@ use crate::analysis::{
     BTreeSet, ExportResolution, LinkedModuleTarget, ModuleId, ProjectSemanticModel,
     QualifiedRequestId, module,
     module::{DEFAULT_EXPORT, ModuleRequestRole},
-    project::model::MAX_EXPORT_DEPTH,
+    project::{model::MAX_EXPORT_DEPTH, state::LinkingSession},
 };
 
 impl ProjectSemanticModel {
@@ -23,6 +23,7 @@ impl ProjectSemanticModel {
         importer: ModuleId,
         authored_module: &SmolStr,
         authored_export: &SmolStr,
+        session: &mut LinkingSession,
     ) -> ExportResolution {
         let Some(interface) = self
             .modules
@@ -52,7 +53,7 @@ impl ProjectSemanticModel {
             };
             let candidate = match self.resolutions.get(&key) {
                 Some(LinkedModuleTarget::Internal { id, .. }) => self
-                    .lookup_export(*id, authored_export, &mut BTreeSet::new())
+                    .lookup_export(*id, authored_export, &mut BTreeSet::new(), session)
                     .unwrap_or(ExportResolution::Unknown),
                 other => target_to_export_resolution(other, authored_module, authored_export),
             };
@@ -91,6 +92,7 @@ impl ProjectSemanticModel {
         module: ModuleId,
         name: &SmolStr,
         visiting: &mut std::collections::BTreeSet<(ModuleId, SmolStr)>,
+        session: &mut LinkingSession,
     ) -> Option<ExportResolution> {
         let visit_key = (module, name.clone());
 
@@ -102,7 +104,7 @@ impl ProjectSemanticModel {
 
         // Memoization cache avoids redundant star-export walks for repeated
         // lookups that were not in the export table at resolution time.
-        if let Some(cached) = self.lookup_cache.borrow().get(module, name) {
+        if let Some(cached) = session.lookup_cache.get(module, name) {
             return cached.clone();
         }
 
@@ -118,7 +120,8 @@ impl ProjectSemanticModel {
         if interface.is_unknown() {
             return Some(ExportResolution::Unknown);
         }
-        let (candidate, saw_unknown) = self.walk_star_exports(interface, module, name, visiting);
+        let (candidate, saw_unknown) =
+            self.walk_star_exports(interface, module, name, visiting, session);
         visiting.remove(&visit_key);
 
         // Re-check export table: the star-export walk may have triggered
@@ -130,8 +133,8 @@ impl ProjectSemanticModel {
         let result = if saw_unknown { None } else { candidate };
 
         // Populate cache so subsequent lookups for the same key are O(1).
-        self.lookup_cache
-            .borrow_mut()
+        session
+            .lookup_cache
             .insert(module, name.clone(), result.clone());
 
         result
@@ -145,6 +148,7 @@ impl ProjectSemanticModel {
         module: ModuleId,
         name: &SmolStr,
         visiting: &mut BTreeSet<(ModuleId, SmolStr)>,
+        session: &mut LinkingSession,
     ) -> (Option<ExportResolution>, bool) {
         let mut candidate = None;
         let mut saw_unknown = false;
@@ -160,7 +164,7 @@ impl ProjectSemanticModel {
             let resolution = self.resolutions.get(&key);
             let candidate_export = match resolution {
                 Some(LinkedModuleTarget::Internal { id, .. }) => {
-                    self.lookup_export(*id, name, visiting)
+                    self.lookup_export(*id, name, visiting, session)
                 }
                 Some(LinkedModuleTarget::External { package }) => {
                     Some(ExportResolution::External {

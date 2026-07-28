@@ -14,6 +14,7 @@ use crate::{
         lowering::status::{AnalysisComponent, IncompleteReason, StatusScope},
         matching::{LinkedOccurrenceView, OccurrenceIndexes},
         model::flow::FlowLimits,
+        project::state::LinkingSession,
     },
     api::{
         classification::{ClassificationEvidence, RuleIndex},
@@ -63,13 +64,14 @@ impl ProjectSemanticModel {
         let plan = ProjectionPlan::from_selection(&matchers);
         let flow_limits = FlowLimits::from_flow_operations(self.flow_limit());
         let mut local_exhausted = false;
+        let mut session = LinkingSession::new(self.flow_limit());
         let projections: BTreeMap<ModuleId, ProjectModuleProjection<'project>> = self
             .modules
             .values()
             .map(|module| {
                 let index = module.local().facts().matcher_index();
-                let identities = self.module_identities(module.id());
-                let result_identities = self.call_result_identities(module.id());
+                let identities = self.module_identities(module.id(), &mut session);
+                let result_identities = self.call_result_identities(module.id(), &mut session);
                 let overlay = index.module_overlay(&identities);
                 let (projected, local_outcome) = module.local().facts().project(
                     module.local().effects(),
@@ -93,7 +95,8 @@ impl ProjectSemanticModel {
             })
             .collect();
 
-        let (cross, cross_exhausted, projection_count) = flow::cross::collect(self, &matchers);
+        let (cross, cross_exhausted, projection_count) =
+            flow::cross::collect(self, &matchers, &mut session);
         let exhausted = local_exhausted || cross_exhausted;
         let outcome = ProjectionOutcome {
             flow_exhausted: exhausted,

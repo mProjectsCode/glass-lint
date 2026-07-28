@@ -3,7 +3,9 @@ use std::collections::BTreeMap;
 use glass_lint_datastructures::{NamePath, NameTable};
 
 use crate::{
-    analysis::{ProjectSemanticModel, facts::FactId, value::FunctionId},
+    analysis::{
+        ProjectSemanticModel, facts::FactId, project::state::LinkingSession, value::FunctionId,
+    },
     api::compiler::{CompiledObjectFlow, CompiledObjectRequirement},
     project::ModuleId,
 };
@@ -15,7 +17,7 @@ pub(super) struct QualifiedCallGraph {
 }
 
 impl QualifiedCallGraph {
-    pub(super) fn build(project: &ProjectSemanticModel) -> Self {
+    pub(super) fn build(project: &ProjectSemanticModel, session: &mut LinkingSession) -> Self {
         let mut targets = BTreeMap::new();
         for module in project.modules() {
             let module_id = module.id();
@@ -29,9 +31,12 @@ impl QualifiedCallGraph {
                     let Some(provenance) = cref.provenance() else {
                         continue;
                     };
-                    if let Some(target) =
-                        project.qualified_function_target(module_id, cref.target(), provenance)
-                    {
+                    if let Some(target) = project.qualified_function_target(
+                        module_id,
+                        cref.target(),
+                        provenance,
+                        session,
+                    ) {
                         targets.insert((module_id, call.event()), target);
                     }
                 }
