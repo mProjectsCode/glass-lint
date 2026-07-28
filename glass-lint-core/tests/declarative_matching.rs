@@ -6,7 +6,7 @@
 use std::collections::BTreeSet;
 
 use glass_lint_core::{
-    Environment, Linter, LinterConfig, RuleCatalog,
+    Environment, Linter, LinterConfig, MatchCertainty, RuleCatalog,
     rules::{
         ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, MatcherDecl,
         ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule, ValueMatcher,
@@ -24,6 +24,7 @@ use support::rule;
 struct Classification {
     finding_count: usize,
     rule_ids: BTreeSet<String>,
+    certainties: Vec<MatchCertainty>,
 }
 
 impl Classification {
@@ -77,6 +78,11 @@ fn classify_with_environment(
             .findings()
             .iter()
             .map(|finding| finding.rule_id().as_str().to_owned())
+            .collect(),
+        certainties: report.files()[0]
+            .findings()
+            .iter()
+            .map(glass_lint_core::project::Finding::certainty)
             .collect(),
     }
 }

@@ -25,6 +25,23 @@ fn incompatible_branch_facts_never_stitch_into_a_finding() {
 }
 
 #[test]
+fn one_arm_flow_witness_is_reported_as_possible() {
+    let rules = [rule("test.flow")
+        .declaration(script_insertion_flow())
+        .build()
+        .unwrap()];
+    let result = classify(
+        "const script = document.createElement('script'); if (flag) script.src = url; document.head.appendChild(script);",
+        &rules,
+    );
+    assert_eq!(result.finding_count, 1);
+    assert_eq!(
+        result.certainties,
+        vec![glass_lint_core::MatchCertainty::Possible]
+    );
+}
+
+#[test]
 fn flow_calls_use_effective_call_and_apply_arguments() {
     let rules = [rule("test.flow")
         .declaration(script_insertion_flow())
@@ -41,7 +58,7 @@ fn flow_calls_use_effective_call_and_apply_arguments() {
 }
 
 #[test]
-fn flow_control_boundaries_fail_closed_after_loops_try_and_destructuring() {
+fn flow_control_paths_retain_reachable_possible_witnesses() {
     let rules = [rule("test.flow")
         .declaration(script_insertion_flow())
         .build()
@@ -54,11 +71,17 @@ fn flow_control_boundaries_fail_closed_after_loops_try_and_destructuring() {
          const source = document.createElement('script'); const { node } = source; node.src = url; document.head.appendChild(node);",
         &rules,
     );
-    assert_eq!(result.finding_count, 0);
+    assert_eq!(result.finding_count, 2);
+    assert!(
+        result
+            .certainties
+            .iter()
+            .all(|certainty| *certainty == glass_lint_core::MatchCertainty::Possible)
+    );
 }
 
 #[test]
-fn flow_state_does_not_cross_conditional_branches_or_duplicate_sinks() {
+fn flow_state_keeps_correlated_paths_and_deduplicates_sinks() {
     let rules = [rule("test.flow")
         .declaration(script_insertion_flow())
         .build()
@@ -69,7 +92,7 @@ fn flow_state_does_not_cross_conditional_branches_or_duplicate_sinks() {
             &rules,
         )
         .finding_count,
-        0
+        1
     );
     assert_eq!(
         classify(

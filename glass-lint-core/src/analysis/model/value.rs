@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use glass_lint_datastructures::{FastIndexSet, NameId, NamePath, NameTable};
 use smol_str::SmolStr;
 
-use crate::analysis::model::scope::{BindingKey, FunctionId};
+use crate::analysis::model::scope::{BindingId, BindingKey, FunctionId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ValueId(pub u32);
@@ -167,6 +167,17 @@ impl ValueTable {
     pub fn resolve(&self, id: ValueId) -> Option<&Value> {
         let terminal = self.resolve_terminal(id)?;
         self.get(terminal)
+    }
+
+    pub fn resolve_id(&self, id: ValueId) -> Option<ValueId> {
+        self.resolve_terminal(id)
+    }
+
+    pub fn binding_slot(&self, id: ValueId) -> Option<(FunctionId, BindingId, NamePath)> {
+        match self.get(id)? {
+            Value::Binding { key, .. } => key.binding_slot(),
+            _ => None,
+        }
     }
 
     fn resolve_terminal(&self, id: ValueId) -> Option<ValueId> {

@@ -15,6 +15,7 @@ pub struct FlowLimits {
     states: usize,
     emissions: usize,
     mutation: usize,
+    alternatives: usize,
 }
 
 const DEFAULT_OBJECTS: u64 = 65_536;
@@ -26,6 +27,8 @@ const MIN_OBJECTS: u32 = 1024;
 const MIN_STATES: usize = 4096;
 const MIN_EMISSIONS: usize = 1024;
 const MIN_MUTATIONS: usize = 256;
+const DEFAULT_ALTERNATIVES: usize = 4096;
+const MIN_ALTERNATIVES: usize = 16;
 
 impl FlowLimits {
     pub fn from_flow_operations(flow_operations: usize) -> Self {
@@ -39,6 +42,8 @@ impl FlowLimits {
                 .max(MIN_EMISSIONS),
             mutation: ((DEFAULT_MUTATIONS * flow / DEFAULT_FLOW_OPERATIONS) as usize)
                 .max(MIN_MUTATIONS),
+            alternatives: ((DEFAULT_ALTERNATIVES as u64 * flow / DEFAULT_FLOW_OPERATIONS) as usize)
+                .max(MIN_ALTERNATIVES),
         }
     }
 
@@ -58,6 +63,10 @@ impl FlowLimits {
         self.mutation
     }
 
+    pub fn alternative_limit(&self) -> usize {
+        self.alternatives
+    }
+
     #[cfg(test)]
     pub fn test_new(objects: u32, states: usize, emissions: usize, mutation: usize) -> Self {
         Self {
@@ -65,6 +74,7 @@ impl FlowLimits {
             states,
             emissions,
             mutation,
+            alternatives: states.max(1),
         }
     }
 }
@@ -139,16 +149,6 @@ impl<K: Clone + Ord> RequirementSet<K> {
     pub fn iter_by_key(&self) -> impl Iterator<Item = (usize, &BTreeSet<K>)> {
         self.0.iter().map(|(k, v)| (*k, v))
     }
-
-    pub fn intersect_keys(&mut self, other: &Self) {
-        let map = Arc::make_mut(&mut self.0);
-        map.retain(|parameter, values| {
-            other.0.get(parameter).is_some_and(|other_values| {
-                values.extend(other_values.iter().cloned());
-                true
-            })
-        });
-    }
 }
 
 use crate::analysis::model::scope::FunctionId;
@@ -214,14 +214,6 @@ impl FlowState {
         } else {
             !self.requirements.is_empty()
         }
-    }
-
-    pub fn retain_requirement_keys(&mut self, other: &Self) {
-        self.requirements.intersect_keys(&other.requirements);
-    }
-
-    pub fn requirement_count(&self) -> usize {
-        self.requirements.len()
     }
 
     pub fn requirement_keys(&self) -> impl Iterator<Item = (usize, &BTreeSet<FactId>)> {
@@ -324,24 +316,6 @@ mod tests {
     }
 
     #[test]
-    fn requirement_set_intersect_keys_unions_values_for_common_keys() {
-        let mut a: RequirementSet = RequirementSet::default();
-        a.insert(0, FactId(1));
-        a.insert(1, FactId(2));
-        a.insert(2, FactId(3));
-        let mut b: RequirementSet = RequirementSet::default();
-        b.insert(0, FactId(10));
-        b.insert(2, FactId(30));
-
-        a.intersect_keys(&b);
-        assert_eq!(a.len(), 2);
-        assert!(a.values().any(|&v| v == FactId(1)));
-        assert!(a.values().any(|&v| v == FactId(10)));
-        assert!(a.values().any(|&v| v == FactId(3)));
-        assert!(a.values().any(|&v| v == FactId(30)));
-    }
-
-    #[test]
     fn flow_state_new_creates_unready_state() {
         let flow = FlowId::new(index(0), 0);
         let state = FlowState::new(flow, FactId(1), ObjectId(0));
@@ -369,19 +343,5 @@ mod tests {
 
         state.clear_requirement(0);
         assert_eq!(state.requirements.len(), 1);
-    }
-
-    #[test]
-    fn flow_state_retain_requirement_keys_intersects() {
-        let flow = FlowId::new(index(0), 0);
-        let mut a = FlowState::new(flow, FactId(1), ObjectId(0));
-        a.record_requirement(0, FactId(10));
-        a.record_requirement(1, FactId(20));
-
-        let mut b = FlowState::new(flow, FactId(2), ObjectId(0));
-        b.record_requirement(0, FactId(30));
-
-        a.retain_requirement_keys(&b);
-        assert_eq!(a.requirements.len(), 1);
     }
 }

@@ -86,6 +86,15 @@ impl BindingKey {
     pub fn append_segment(&mut self, segment: NameId) {
         self.path.append(segment);
     }
+
+    pub fn binding_slot(&self) -> Option<(FunctionId, BindingId, NamePath)> {
+        match self.root {
+            BindingRoot::Binding {
+                function, binding, ..
+            } => Some((function, binding, self.path.clone())),
+            BindingRoot::Global(_) => None,
+        }
+    }
 }
 
 // ── Scope data types ─────────────────────────────────────────────────────

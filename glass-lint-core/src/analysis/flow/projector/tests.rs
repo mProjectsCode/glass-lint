@@ -127,7 +127,12 @@ fn identical_branch_requirements_are_definite() {
         "const script = document.createElement('script'); if (ready) { script.src = url; } else { script.src = url; } document.head.appendChild(script);",
         &script_flow(),
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 2);
+    assert!(
+        evidence[0]
+            .iter()
+            .all(|item| item.certainty == crate::project::MatchCertainty::Definite)
+    );
 }
 
 #[test]
@@ -136,7 +141,12 @@ fn one_arm_requirement_does_not_leak_after_join() {
         "const script = document.createElement('script'); if (ready) { script.src = url; } document.head.appendChild(script);",
         &script_flow(),
     );
-    assert!(evidence[0].is_empty());
+    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert!(
+        evidence[0]
+            .iter()
+            .all(|item| item.certainty == crate::project::MatchCertainty::Possible)
+    );
 }
 
 #[test]
@@ -145,7 +155,12 @@ fn zero_iteration_loops_do_not_make_body_configuration_definite() {
         "const script = document.createElement('script'); while (ready) { script.src = url; } document.head.appendChild(script);",
         &script_flow(),
     );
-    assert!(evidence[0].is_empty());
+    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert!(
+        evidence[0]
+            .iter()
+            .all(|item| item.certainty == crate::project::MatchCertainty::Possible)
+    );
 }
 
 #[test]
@@ -163,7 +178,12 @@ fn catch_only_configuration_does_not_become_definite() {
         "const script = document.createElement('script'); try { work(); } catch (error) { script.src = url; } document.head.appendChild(script);",
         &script_flow(),
     );
-    assert!(evidence[0].is_empty());
+    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert!(
+        evidence[0]
+            .iter()
+            .all(|item| item.certainty == crate::project::MatchCertainty::Possible)
+    );
 }
 
 #[test]
@@ -190,7 +210,12 @@ fn switch_no_match_path_prevents_case_only_configuration() {
         "const script = document.createElement('script'); switch (kind) { case 1: script.src = url; break; } document.head.appendChild(script);",
         &script_flow(),
     );
-    assert!(evidence[0].is_empty());
+    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert!(
+        evidence[0]
+            .iter()
+            .all(|item| item.certainty == crate::project::MatchCertainty::Possible)
+    );
 }
 
 #[test]
@@ -199,7 +224,35 @@ fn default_case_can_make_configuration_definite() {
         "const script = document.createElement('script'); switch (kind) { case 1: script.src = url; break; default: script.src = url; } document.head.appendChild(script);",
         &script_flow(),
     );
+    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 2);
+    assert!(
+        evidence[0]
+            .iter()
+            .all(|item| item.certainty == crate::project::MatchCertainty::Definite)
+    );
+}
+
+#[test]
+fn incompatible_branch_facts_do_not_form_a_flow_witness() {
+    let evidence = collect_source(
+        "const script = document.createElement('script'); let inserted; if (ready) { script.src = url; inserted = localElement; } else { inserted = script; } document.head.appendChild(inserted);",
+        &script_flow(),
+    );
+    assert!(evidence[0].is_empty());
+}
+
+#[test]
+fn source_created_on_one_branch_can_reach_a_possible_sink_after_join() {
+    let evidence = collect_source(
+        "let script; if (ready) { script = document.createElement('script'); script.src = url; } document.head.appendChild(script);",
+        &script_flow(),
+    );
     assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert!(
+        evidence[0]
+            .iter()
+            .all(|item| item.certainty == crate::project::MatchCertainty::Possible)
+    );
 }
 
 #[test]

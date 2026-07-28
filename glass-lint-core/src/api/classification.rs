@@ -6,7 +6,7 @@
 
 use glass_lint_datastructures::ByteRange;
 
-use crate::api::rule::Severity;
+use crate::{api::rule::Severity, project::MatchCertainty};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 /// Internal index into the bounded trace arena.
@@ -50,6 +50,8 @@ pub struct ClassificationEvidence {
     pub count: u32,
     /// Whether the serialized occurrence list omits additional matches.
     pub truncated: bool,
+    /// Whether the match holds on all or only some modeled paths.
+    pub certainty: MatchCertainty,
     /// Primary occurrences with their optional canonical fact identity
     /// and trace head into the interned trace arena.
     pub occurrences: Vec<ClassificationEvidenceOccurrence>,

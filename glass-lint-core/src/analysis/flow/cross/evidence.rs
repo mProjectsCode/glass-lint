@@ -152,6 +152,7 @@ pub(super) fn emit(
         symbol: flow.evidence_symbol(),
         count: 1,
         truncated: false,
+        certainty: crate::project::MatchCertainty::Definite,
         occurrences: vec![
             crate::api::classification::ClassificationEvidenceOccurrence {
                 span,

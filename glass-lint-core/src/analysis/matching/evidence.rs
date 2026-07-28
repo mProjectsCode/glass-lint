@@ -15,6 +15,7 @@ struct EvidenceKey(MatchKind, String);
 struct EvidenceAccum {
     total_count: usize,
     occurrences_truncated: bool,
+    certainty: crate::project::MatchCertainty,
     occurrences: Vec<crate::api::classification::ClassificationEvidenceOccurrence>,
 }
 
@@ -35,8 +36,12 @@ pub(in crate::analysis) fn normalize_evidence(
         let accum = acc.entry(key).or_insert_with(|| EvidenceAccum {
             total_count: 0,
             occurrences_truncated: false,
+            certainty: crate::project::MatchCertainty::Definite,
             occurrences: Vec::new(),
         });
+        if item.certainty == crate::project::MatchCertainty::Possible {
+            accum.certainty = crate::project::MatchCertainty::Possible;
+        }
         accum.total_count = accum.total_count.saturating_add(item.count as usize);
         for occurrence in item.occurrences {
             if !occurrence.span.is_empty() {
@@ -74,6 +79,7 @@ pub(in crate::analysis) fn normalize_evidence(
             symbol: key.1,
             count: u32::try_from(accum.total_count).unwrap_or(u32::MAX),
             truncated: accum.occurrences_truncated,
+            certainty: accum.certainty,
             occurrences: accum.occurrences,
         })
         .collect();
@@ -121,6 +127,7 @@ mod tests {
             symbol: symbol.into(),
             count: u32::try_from(spans.len()).unwrap_or(u32::MAX),
             truncated: false,
+            certainty: crate::project::MatchCertainty::Definite,
             occurrences: spans
                 .iter()
                 .map(

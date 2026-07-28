@@ -35,7 +35,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
         event: FactId,
     ) {
         let objects: Vec<ObjectId> = match receiver {
-            Some(value) => self.flow_state.object_for(value).into_iter().collect(),
+            Some(value) => self.object_for(value).into_iter().collect(),
             None => self.flow_state.objects().collect(),
         };
         for object in objects {
@@ -89,7 +89,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
         };
         let flow_ids: Vec<FlowId> = flow_ids.to_vec();
         for (argument_index, argument) in args.iter().enumerate() {
-            let Some(object) = self.flow_state.object_for(argument.value) else {
+            let Some(object) = self.object_for(argument.value) else {
                 continue;
             };
             let pairs: Vec<(FlowStateKey, FlowId)> = self
@@ -140,36 +140,38 @@ impl ObjectFlowProjector<'_, '_, '_> {
         args: &[CallArgInfo],
         sink_fact: FactId,
     ) {
-        let Some(summary) = self.helpers.get(function) else {
+        let Some(summary_ref) = self.helpers.get(function) else {
             return;
         };
-        if !summary.is_invocation_compatible(self.stream, args, self.helpers.path_interner()) {
+        if !summary_ref.is_invocation_compatible(self.stream, args, self.helpers.path_interner()) {
             return;
         }
-        let paths = self.helpers.path_interner();
-        let ready: Vec<(ObjectId, FlowId)> = summary
+        let summary = summary_ref.clone();
+        let parameters = summary.parameter_bindings(self.stream).to_vec();
+        let values: Vec<(FlowId, ValueId)> = summary
             .sinks()
             .into_iter()
             .filter_map(|sink| {
-                let parameter =
-                    summary
-                        .parameter_bindings(self.stream)
-                        .iter()
-                        .find(|parameter| {
-                            parameter.parameter_index == sink.parameter_index()
-                                && (SummaryPathStore::matches_frozen(sink.path(), parameter.path)
-                                    || (parameter.rest
-                                        && paths.starts_with_frozen(sink.path(), parameter.path)))
-                        })?;
-                let value = parameter.project_argument_at(self.stream, args, paths, sink.path())?;
-                let object = self.flow_state.object_for(value)?;
-                let state = self.flow_state.state(object, sink.flow())?;
-                let flow = self.plan.get(sink.flow())?;
-                if state.is_ready(flow) {
-                    Some((object, sink.flow()))
-                } else {
-                    None
-                }
+                let value = {
+                    let paths = self.helpers.path_interner();
+                    let parameter = parameters.iter().find(|parameter| {
+                        parameter.parameter_index == sink.parameter_index()
+                            && (SummaryPathStore::matches_frozen(sink.path(), parameter.path)
+                                || (parameter.rest
+                                    && paths.starts_with_frozen(sink.path(), parameter.path)))
+                    })?;
+                    parameter.project_argument_at(self.stream, args, paths, sink.path())?
+                };
+                Some((sink.flow(), value))
+            })
+            .collect();
+        let ready: Vec<(ObjectId, FlowId)> = values
+            .into_iter()
+            .filter_map(|(flow_id, value)| {
+                let object = self.object_for(value)?;
+                let state = self.flow_state.state(object, flow_id)?;
+                let flow = self.plan.get(flow_id)?;
+                state.is_ready(flow).then_some((object, flow_id))
             })
             .collect();
         for (object, flow_id) in ready {
@@ -204,9 +206,19 @@ impl ObjectFlowProjector<'_, '_, '_> {
         self.emit_state(&state, event);
     }
 
-    /// Emit one bounded, source-anchored evidence item for a ready state,
-    /// with an interned trace chain: Source → Requirements → Sink.
+    /// Defer one ready state until every alternative reaching the fact has
+    /// been evaluated. This keeps certainty about path coverage separate from
+    /// the witness trace itself.
     fn emit_state(&mut self, state: &FlowState, match_fact: FactId) {
+        self.queue_state(state.clone(), match_fact);
+    }
+
+    pub(super) fn emit_state_final(
+        &mut self,
+        state: &FlowState,
+        match_fact: FactId,
+        certainty: crate::project::MatchCertainty,
+    ) {
         debug_assert!(state.source_event() <= match_fact);
         let key = ReportEvidenceKey::new(
             state.flow_id().rule_index().get(),
@@ -238,7 +250,9 @@ impl ObjectFlowProjector<'_, '_, '_> {
             });
 
         // Build the trace chain: Source → Requirements (in declaration order) → Sink.
-        let trace_head = self.build_flow_trace(state, match_fact);
+        let Some(trace_head) = self.build_flow_trace(state, match_fact) else {
+            return;
+        };
 
         self.flow_evidence.record(
             state.flow_id().rule_index().get(),
@@ -247,10 +261,11 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 symbol: flow_symbol,
                 count: 1,
                 truncated: false,
+                certainty,
                 occurrences: vec![ClassificationEvidenceOccurrence {
                     span,
                     fact: Some(anchor.0),
-                    trace: trace_head,
+                    trace: Some(trace_head),
                 }],
             },
         );

@@ -32,15 +32,15 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 {
                     return;
                 }
-                self.flow_state.bind(target, object);
+                self.bind_value(target, object);
                 for state in states {
                     self.flow_state.insert_state(state);
                 }
                 return;
             }
         }
-        if let Some(object) = self.flow_state.object_for(source) {
-            self.flow_state.bind(target, object);
+        if let Some(object) = self.object_for(source) {
+            self.bind_value(target, object);
         } else {
             self.unbind_value(target);
         }

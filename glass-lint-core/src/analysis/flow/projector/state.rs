@@ -1,12 +1,11 @@
 //! Control-path state and environment algebra for object-flow projection.
 //!
-//! Environments are immutable snapshots at branch boundaries. Joining two
-//! reachable environments keeps only equal aliases and common requirement
-//! keys, which is the precision boundary that prevents path-local facts from
-//! leaking after a control-flow merge.
+//! Environments are immutable snapshots at branch boundaries. The projector
+//! retains a bounded collection of these checkpoints so aliases and lifecycle
+//! requirements stay correlated across control-flow merges.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     ops::{Deref, DerefMut},
 };
 
@@ -148,6 +147,15 @@ impl FlowStateTable {
         self.states.len()
     }
 
+    pub(super) fn snapshot(
+        &self,
+    ) -> (
+        BTreeMap<ValueId, ObjectId>,
+        BTreeMap<FlowStateKey, FlowState>,
+    ) {
+        (self.aliases.clone(), self.states.clone())
+    }
+
     #[allow(dead_code)]
     pub(super) fn mutation_count(&self) -> usize {
         self.log.node_count()
@@ -193,114 +201,6 @@ impl FlowStateTable {
             false
         }
     }
-
-    pub(super) fn join_environments(&mut self, environments: &[FlowEnvironment]) -> bool {
-        let origin = self.log.checkpoint();
-        let mut reachable = environments.iter().filter(|e| e.reachable);
-
-        let Some(first) = reachable.next() else {
-            self.clear();
-            return false;
-        };
-
-        if !self.restore(*first) {
-            return false;
-        }
-
-        // Collect candidates from the first branch as flat Vecs instead of
-        // cloning the entire BTreeMap.  This avoids O(live entries) tree-structure
-        // overhead; the final result is built into a BTreeMap once we know which
-        // entries survive.
-        let mut candidate_aliases: Vec<(ValueId, ObjectId)> =
-            self.aliases.iter().map(|(k, v)| (*k, *v)).collect();
-        let mut candidate_states: Vec<(FlowStateKey, FlowState)> =
-            self.states.iter().map(|(k, v)| (*k, v.clone())).collect();
-
-        // Intersect with every remaining reachable branch.
-        for env in reachable {
-            if !self.restore(*env) {
-                return false;
-            }
-
-            // Retain aliases present in the current branch, charging the
-            // budget per comparison.
-            {
-                let mut i = 0;
-                while i < candidate_aliases.len() {
-                    if !self.log.try_charge() {
-                        return false;
-                    }
-                    let (value, object) = &candidate_aliases[i];
-                    if self.aliases.get(value) == Some(object) {
-                        i += 1;
-                    } else {
-                        candidate_aliases.swap_remove(i);
-                    }
-                }
-            }
-
-            // Retain states present in the current branch, charging the
-            // budget per comparison and per retained requirement key.
-            {
-                let mut i = 0;
-                while i < candidate_states.len() {
-                    if !self.log.try_charge() {
-                        return false;
-                    }
-                    let (key, state) = &mut candidate_states[i];
-                    match self.states.get(key) {
-                        Some(other) => {
-                            state.retain_requirement_keys(other);
-                            // Charge for each retained requirement key so the
-                            // flow limit bounds requirement-key CPU as well.
-                            let n = state.requirement_count();
-                            for _ in 0..n {
-                                if !self.log.try_charge() {
-                                    return false;
-                                }
-                            }
-                            i += 1;
-                        }
-                        None => {
-                            candidate_states.swap_remove(i);
-                        }
-                    }
-                }
-            }
-        }
-
-        if !self.restore(FlowEnvironment {
-            checkpoint: origin,
-            reachable: true,
-        }) {
-            return false;
-        }
-
-        // Build joined BTreeMaps from the surviving candidates and compute
-        // the net delta against the origin tables.
-        let old_aliases = std::mem::take(&mut self.aliases);
-        let old_states = std::mem::take(&mut self.states);
-
-        let joined_aliases: BTreeMap<ValueId, ObjectId> = candidate_aliases.into_iter().collect();
-        let joined_states: BTreeMap<FlowStateKey, FlowState> =
-            candidate_states.into_iter().collect();
-
-        merge_delta(
-            &old_aliases,
-            &joined_aliases,
-            &mut self.log,
-            &mut self.aliases,
-        );
-        merge_state_delta(&old_states, &joined_states, &mut self.log, &mut self.states);
-
-        // Rebuild reference counts from the joined alias table only.
-        self.object_refs.clear();
-        for object in self.aliases.values() {
-            *self.object_refs.entry(*object).or_insert(0) += 1;
-        }
-
-        true
-    }
 }
 
 pub(super) struct StateEdit<'a> {
@@ -337,60 +237,6 @@ impl Drop for StateEdit<'_> {
     }
 }
 
-/// Compute the net delta between `old` and `new` alias maps, writing only
-/// the entries that actually changed into the mutation log, and setting `out`
-/// to `new`.
-fn merge_delta(
-    old: &BTreeMap<ValueId, ObjectId>,
-    new: &BTreeMap<ValueId, ObjectId>,
-    log: &mut MutationLog,
-    out: &mut BTreeMap<ValueId, ObjectId>,
-) {
-    for (value, object) in old {
-        match new.get(value) {
-            None => log.record(InverseDelta::AliasRemove(*value, *object)),
-            Some(new_obj) if new_obj != object => {
-                log.record(InverseDelta::AliasUpdate(*value, *object, *new_obj));
-            }
-            Some(_) => {}
-        }
-    }
-    for (value, object) in new {
-        if !old.contains_key(value) {
-            log.record(InverseDelta::AliasInsert(*value, *object));
-        }
-    }
-    *out = new.clone();
-}
-
-/// Compute the net delta between `old` and `new` state maps.
-fn merge_state_delta(
-    old: &BTreeMap<FlowStateKey, FlowState>,
-    new: &BTreeMap<FlowStateKey, FlowState>,
-    log: &mut MutationLog,
-    out: &mut BTreeMap<FlowStateKey, FlowState>,
-) {
-    for (key, state) in old {
-        match new.get(key) {
-            None => log.record(InverseDelta::StateRemove(*key, state.clone())),
-            Some(new_state) if new_state != state => {
-                log.record(InverseDelta::StateUpdate(
-                    *key,
-                    state.clone(),
-                    new_state.clone(),
-                ));
-            }
-            Some(_) => {}
-        }
-    }
-    for (key, state) in new {
-        if !old.contains_key(key) {
-            log.record(InverseDelta::StateInsert(*key, state.clone()));
-        }
-    }
-    *out = new.clone();
-}
-
 #[derive(Debug)]
 /// Per-rule evidence with a bounded deduplication key set.
 ///
@@ -403,6 +249,7 @@ pub(super) struct FlowEvidence<'a> {
     /// Multiple traces may be emitted for the same key (e.g., different
     /// requirement events from distinct branches).
     emitted: BTreeMap<ReportEvidenceKey, u32>,
+    truncated: BTreeSet<ReportEvidenceKey>,
     /// Maximum evidence items emitted (sum of all counts).
     total_emitted: usize,
 }
@@ -412,6 +259,7 @@ impl<'a> FlowEvidence<'a> {
         Self {
             items: evidence,
             emitted: BTreeMap::new(),
+            truncated: BTreeSet::new(),
             total_emitted: 0,
         }
     }
@@ -427,9 +275,11 @@ impl<'a> FlowEvidence<'a> {
     ) -> bool {
         let count = self.emitted.entry(key).or_insert(0);
         if *count >= max_per_key {
+            self.truncated.insert(key);
             return false;
         }
         if *count == 0 && self.total_emitted >= limit {
+            self.truncated.insert(key);
             return false;
         }
         *count += 1;
@@ -439,6 +289,20 @@ impl<'a> FlowEvidence<'a> {
 
     pub(super) fn record(&mut self, rule_index: usize, evidence: ClassificationEvidence) {
         self.items[rule_index].push(evidence);
+    }
+
+    pub(super) fn mark_truncated(&mut self) {
+        for key in &self.truncated {
+            for evidence in &mut self.items[key.rule] {
+                if evidence
+                    .occurrences
+                    .iter()
+                    .any(|occurrence| occurrence.fact == Some(key.event.0))
+                {
+                    evidence.truncated = true;
+                }
+            }
+        }
     }
 
     pub(super) fn emitted_count(&self) -> usize {
@@ -451,33 +315,34 @@ impl<'a> FlowEvidence<'a> {
 pub(super) enum ControlFrame {
     Branch {
         region: ControlRegionId,
-        base: FlowEnvironment,
-        then_exit: Option<FlowEnvironment>,
+        base: Vec<FlowEnvironment>,
+        then_exit: Option<Vec<FlowEnvironment>>,
     },
     Loop {
         region: ControlRegionId,
-        baseline: FlowEnvironment,
+        baseline: Vec<FlowEnvironment>,
         guaranteed: bool,
         breaks: Vec<FlowEnvironment>,
         continues: Vec<FlowEnvironment>,
     },
     Switch {
         region: ControlRegionId,
-        baseline: FlowEnvironment,
+        baseline: Vec<FlowEnvironment>,
         breaks: Vec<FlowEnvironment>,
         has_default: bool,
     },
     Try {
         region: ControlRegionId,
-        baseline: FlowEnvironment,
-        try_exit: Option<FlowEnvironment>,
-        catch_exit: Option<FlowEnvironment>,
-        normal_exit: Option<FlowEnvironment>,
+        baseline: Vec<FlowEnvironment>,
+        try_exit: Option<Vec<FlowEnvironment>>,
+        catch_exit: Option<Vec<FlowEnvironment>>,
+        normal_exit: Option<Vec<FlowEnvironment>>,
         abrupt_exits: Vec<(AbruptExit, FlowEnvironment)>,
         has_finally: bool,
+        normal_count: usize,
     },
     Function {
-        caller: FlowEnvironment,
+        caller: Vec<FlowEnvironment>,
     },
 }
 
@@ -493,16 +358,19 @@ pub(super) enum AbruptExit {
 }
 
 impl FlowEnvironment {
-    /// Construct an unreachable environment with no usable state.
-    pub(super) fn unreachable() -> Self {
+    pub(super) fn initial() -> Self {
         Self {
             checkpoint: Checkpoint::default(),
-            reachable: false,
+            reachable: true,
         }
     }
 
     /// Whether this snapshot represents a reachable execution path.
     pub(super) fn is_reachable(&self) -> bool {
+        self.reachable
+    }
+
+    pub(super) fn reachable(&self) -> bool {
         self.reachable
     }
 }
@@ -583,23 +451,6 @@ mod tests {
         table.remove_states_for(ObjectId(1));
         assert_eq!(table.states_for(ObjectId(1)).count(), 0);
         assert_eq!(table.state_count(), 1);
-    }
-
-    #[test]
-    fn join_environments_keeps_only_common_aliases() {
-        let mut table = FlowStateTable::new(100, 100);
-        table.bind(ValueId(1), ObjectId(10));
-        table.bind(ValueId(2), ObjectId(20));
-        let env_a = table.capture(true);
-
-        table.bind(ValueId(2), ObjectId(30));
-        table.bind(ValueId(3), ObjectId(40));
-        let env_b = table.capture(true);
-
-        table.join_environments(&[env_a, env_b]);
-        assert_eq!(table.object_for(ValueId(1)), Some(ObjectId(10)));
-        assert_eq!(table.object_for(ValueId(2)), None);
-        assert_eq!(table.object_for(ValueId(3)), None);
     }
 
     #[test]

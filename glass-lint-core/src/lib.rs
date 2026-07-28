@@ -28,6 +28,7 @@ pub use lint::{
     RuleCatalog, RuleOverride, RuleSelection, RuleState,
 };
 pub use parse::{ParseDiagnostic, SourceLanguage};
+pub use project::MatchCertainty;
 pub use report::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports, visible_text};
 pub use rule_id::RuleId;
 pub mod rules {

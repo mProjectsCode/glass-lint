@@ -220,6 +220,7 @@ pub(super) fn push_owned_evidence(
         symbol,
         count: u32::try_from(occurrences.len()).unwrap_or(u32::MAX),
         truncated: false,
+        certainty: crate::project::MatchCertainty::Definite,
         occurrences,
     });
 }
