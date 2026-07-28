@@ -207,22 +207,66 @@ impl FlowStateTable {
             return false;
         }
 
-        // Compute the intersection of all reachable environments in scratch
-        // storage.
-        let mut joined_aliases = self.aliases.clone();
-        let mut joined_states = self.states.clone();
+        // Collect candidates from the first branch as flat Vecs instead of
+        // cloning the entire BTreeMap.  This avoids O(live entries) tree-structure
+        // overhead; the final result is built into a BTreeMap once we know which
+        // entries survive.
+        let mut candidate_aliases: Vec<(ValueId, ObjectId)> =
+            self.aliases.iter().map(|(k, v)| (*k, *v)).collect();
+        let mut candidate_states: Vec<(FlowStateKey, FlowState)> =
+            self.states.iter().map(|(k, v)| (*k, v.clone())).collect();
 
-        for environment in reachable {
-            if !self.restore(*environment) {
+        // Intersect with every remaining reachable branch.
+        for env in reachable {
+            if !self.restore(*env) {
                 return false;
             }
-            joined_aliases.retain(|value, object| self.aliases.get(value) == Some(object));
-            joined_states.retain(|key, state| {
-                self.states.get(key).is_some_and(|other| {
-                    state.retain_requirement_keys(other);
-                    true
-                })
-            });
+
+            // Retain aliases present in the current branch, charging the
+            // budget per comparison.
+            {
+                let mut i = 0;
+                while i < candidate_aliases.len() {
+                    if !self.log.try_charge() {
+                        return false;
+                    }
+                    let (value, object) = &candidate_aliases[i];
+                    if self.aliases.get(value) == Some(object) {
+                        i += 1;
+                    } else {
+                        candidate_aliases.swap_remove(i);
+                    }
+                }
+            }
+
+            // Retain states present in the current branch, charging the
+            // budget per comparison and per retained requirement key.
+            {
+                let mut i = 0;
+                while i < candidate_states.len() {
+                    if !self.log.try_charge() {
+                        return false;
+                    }
+                    let (key, state) = &mut candidate_states[i];
+                    match self.states.get(key) {
+                        Some(other) => {
+                            state.retain_requirement_keys(other);
+                            // Charge for each retained requirement key so the
+                            // flow limit bounds requirement-key CPU as well.
+                            let n = state.requirement_count();
+                            for _ in 0..n {
+                                if !self.log.try_charge() {
+                                    return false;
+                                }
+                            }
+                            i += 1;
+                        }
+                        None => {
+                            candidate_states.swap_remove(i);
+                        }
+                    }
+                }
+            }
         }
 
         if !self.restore(FlowEnvironment {
@@ -232,13 +276,14 @@ impl FlowStateTable {
             return false;
         }
 
-        // Replace live tables with the joined result, recording only the net
-        // delta between the origin tables and the joined tables. This avoids
-        // the old pattern of clear() + bind() / insert_state(), which
-        // unconditionally removed every entry and reinserted them through
-        // binary-search method calls.
+        // Build joined BTreeMaps from the surviving candidates and compute
+        // the net delta against the origin tables.
         let old_aliases = std::mem::take(&mut self.aliases);
         let old_states = std::mem::take(&mut self.states);
+
+        let joined_aliases: BTreeMap<ValueId, ObjectId> = candidate_aliases.into_iter().collect();
+        let joined_states: BTreeMap<FlowStateKey, FlowState> =
+            candidate_states.into_iter().collect();
 
         merge_delta(
             &old_aliases,
@@ -248,7 +293,7 @@ impl FlowStateTable {
         );
         merge_state_delta(&old_states, &joined_states, &mut self.log, &mut self.states);
 
-        // Rebuild reference counts from the merged alias table.
+        // Rebuild reference counts from the joined alias table only.
         self.object_refs.clear();
         for object in self.aliases.values() {
             *self.object_refs.entry(*object).or_insert(0) += 1;

@@ -36,6 +36,10 @@ pub(super) struct MutationLog {
     cursor: usize,
     budget_exhausted: bool,
     limit: usize,
+    /// Total charge count including mutation records and comparison charges.
+    /// Used to bound CPU work from join comparisons against the same budget
+    /// that bounds mutation-log output.
+    charges: usize,
 }
 
 impl MutationLog {
@@ -45,6 +49,7 @@ impl MutationLog {
             cursor: 0,
             budget_exhausted: false,
             limit,
+            charges: 0,
         }
     }
 
@@ -57,11 +62,23 @@ impl MutationLog {
         self.budget_exhausted
     }
 
+    /// Charge one operation against the budget (e.g. a comparison during
+    /// environment joining). Returns `false` if the budget is exhausted.
+    pub(super) fn try_charge(&mut self) -> bool {
+        if self.charges >= self.limit {
+            self.budget_exhausted = true;
+            return false;
+        }
+        self.charges += 1;
+        true
+    }
+
     pub(super) fn record(&mut self, delta: InverseDelta) {
-        if self.nodes.len() >= self.limit {
+        if self.charges >= self.limit {
             self.budget_exhausted = true;
             return;
         }
+        self.charges += 1;
         let parent = self.cursor;
         let depth = self.depth(parent) + 1;
         self.nodes.push(LogNode {

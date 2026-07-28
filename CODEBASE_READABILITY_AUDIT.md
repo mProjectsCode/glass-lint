@@ -138,10 +138,13 @@ Filter `is_invalid` effects before `FunctionSummaries::collect_facts` creates an
 - **Fix Complexity** High
 - **Category:** Complexity
 - **Location:** `glass-lint-core/src/analysis/flow/projector/state.rs:25-45`, `glass-lint-core/src/analysis/flow/projector/state.rs:174-258`
+- **Status:** Fixed
 
 `FlowEnvironment` is described as an O(1) snapshot, but `join_environments` restores branches and clones the complete alias and state maps before retaining common entries, then rebuilds reference counts. On branch-heavy flows the work is O(live state × reachable branches), independent of the mutation-log budget and in addition to ordered-map costs.
 
 Represent each `FlowEnvironment` branch as an incoming snapshot plus a bounded mutation delta, and compute `join_environments` by intersecting those deltas without cloning the complete live alias/state maps. Charge each compared entry and retained requirement key so the flow limit bounds CPU as well as output. Recommendation: add a selected-rule benchmark with many live objects across nested diamonds and require allocation and operation counts to scale with changed entries rather than total live state.
+
+`join_environments` now collects candidates from the first branch into flat `Vec<(ValueId, ObjectId)>` and `Vec<(FlowStateKey, FlowState)>` instead of cloning the entire `BTreeMap`.  Each remaining branch restores and filters the candidate Vecs with `swap_remove`, keeping only entries present in every branch.  `MutationLog` gains a `charges` counter and a `try_charge` method; every alias/state comparison and every retained requirement key charges the budget, so the flow limit bounds CPU as well as output.  Reference counts are rebuilt only from the final joined alias map.  Budget exhaustion during comparison returns `false` from `join_environments`, marking the joined path unreachable.
 
 ### `glass-lint-core`: project linking and projection
 

@@ -205,6 +205,10 @@ impl FlowState {
     pub fn retain_requirement_keys(&mut self, other: &Self) {
         self.requirements.intersect_keys(&other.requirements);
     }
+
+    pub fn requirement_count(&self) -> usize {
+        self.requirements.len()
+    }
 }
 
 #[cfg(test)]
