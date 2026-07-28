@@ -7,13 +7,13 @@ use crate::{
     Environment,
     analysis::{
         model::scope::{
-            AliasAssignment, BindingProvenance, LexicalScope, PropertyAliasFact,
-            RootedPropertyMutationFact, ScopeEffect, ScopeId, ScopeKind, ScopedName,
+            BindingProvenance, LexicalScope, PropertyAliasFact, RootedPropertyMutationFact,
+            ScopeEffect, ScopeId, ScopeKind, ScopedName,
         },
         scope::{
             binding_index::BindingIndex,
             build::{PropertyAliasAssignment, RootedPropertyMutation},
-            frozen_assignments::FrozenAssignmentIndex,
+            frozen_assignments::{AssignmentAt, FrozenAssignmentIndex},
             mutation_index::MutationIndex,
             name_env::NameEnvironment,
             scope_index::LexicalScopeIndex,
@@ -129,13 +129,10 @@ impl ScopeGraph {
 
     // -- Binding helpers on ScopeGraph --
 
-    pub(super) fn assignment_at(
-        &self,
-        scope: ScopeId,
-        name: &str,
-        span: Span,
-    ) -> Option<&AliasAssignment> {
-        let name = self.name_id(name)?;
+    pub(super) fn assignment_at(&self, scope: ScopeId, name: &str, span: Span) -> AssignmentAt<'_> {
+        let Some(name) = self.name_id(name) else {
+            return AssignmentAt::Absent;
+        };
         self.bindings.assignment_at(scope, name, span)
     }
 
@@ -237,10 +234,11 @@ impl ScopeGraph {
     /// Resolve the binding provenance visible at a use position.
     pub(super) fn binding_at(&self, name: &str, span: Span) -> Option<&BindingProvenance> {
         let (scope, declaration) = self.binding_with_scope_at(name, span)?;
-        self.assignment_at(scope, name, span)
-            .map(|assignment| &assignment.provenance)
-            .or_else(|| self.parameter_alias_for(scope, name))
-            .or(Some(declaration))
+        match self.assignment_at(scope, name, span) {
+            AssignmentAt::Known(assignment) => Some(&assignment.provenance),
+            AssignmentAt::Ambiguous => None,
+            AssignmentAt::Absent => self.parameter_alias_for(scope, name).or(Some(declaration)),
+        }
     }
 
     /// Find the nearest lexical declaration and its owning scope.
@@ -393,7 +391,7 @@ impl FrozenScopeGraph {
         scope: ScopeId,
         name: NameId,
         span: Span,
-    ) -> Option<&AliasAssignment> {
+    ) -> AssignmentAt<'_> {
         self.bindings.assignment_at(scope, name, span)
     }
 

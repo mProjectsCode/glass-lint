@@ -232,3 +232,105 @@ fn dynamic_call_value_does_not_promote_to_a_strict_provenance() {
         .unwrap();
     assert_count("let value = dynamicThing(); value('/x');", rule, 0);
 }
+
+#[test]
+fn conditional_assignment_never_falls_back_to_an_older_identity() {
+    let rule = rooted_read_rule();
+    assert_count(
+        "let api = host.files; if (flag) api = local.files; api.read();",
+        rule.clone(),
+        0,
+    );
+    assert_count(
+        "let api = local.files; if (flag) api = host.files; api.read();",
+        rule.clone(),
+        0,
+    );
+    assert_count(
+        "let api = host.files; if (flag) api = host.files; else api = host.files; api.read();",
+        rule,
+        1,
+    );
+}
+
+#[test]
+fn assignment_provenance_isolated_across_control_flow_paths() {
+    let rule = rooted_read_rule();
+    assert_count(
+        "let api = local.files; if (flag) api = host.files; else api = api; api.read();",
+        rule.clone(),
+        0,
+    );
+    assert_count(
+        "let api = local.files; if (outer) { if (inner) api = host.files; } else api = api; api.read();",
+        rule.clone(),
+        0,
+    );
+    assert_count(
+        "let api = host.files; while (flag) api = local.files; api.read();",
+        rule.clone(),
+        0,
+    );
+    assert_count(
+        "let api = local.files; while (flag) api = host.files; api.read();",
+        rule.clone(),
+        0,
+    );
+    assert_count(
+        "let api = local.files; switch (kind) { case 0: api = host.files; break; case 1: api = api; break; } api.read();",
+        rule,
+        0,
+    );
+    assert_count(
+        "let api = host.files; while (flag) { api = local.files; break; } api.read();",
+        rooted_read_rule(),
+        0,
+    );
+}
+
+#[test]
+fn abrupt_branch_exit_does_not_poison_the_reachable_join() {
+    assert_count(
+        "function run(flag) { let api = host.files; if (flag) { api = local.files; return; } api.read(); }",
+        rooted_read_rule(),
+        1,
+    );
+}
+
+#[test]
+fn exceptional_edges_join_try_and_catch_assignments() {
+    let rule = rooted_read_rule();
+    assert_count(
+        "let api = local.files; try { api = host.files; } catch { api = api; } api.read();",
+        rule.clone(),
+        0,
+    );
+    assert_count(
+        "let api = host.files; try { api = host.files; } catch { api = host.files; } api.read();",
+        rule.clone(),
+        1,
+    );
+    assert_count(
+        "let api = host.files; try { api = local.files; } catch {} api.read();",
+        rule,
+        0,
+    );
+}
+
+#[test]
+fn direct_alias_reassignment_to_local_stays_local() {
+    let rule = rule("fetch")
+        .declaration(
+            MatcherDecl::builder()
+                .call_global("fetch")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .build()
+        .unwrap();
+    assert_count(
+        "let reassignedFetch = fetch; reassignedFetch = localFetch; reassignedFetch('/local');",
+        rule,
+        0,
+    );
+}

@@ -1,8 +1,16 @@
+use std::collections::BTreeSet;
+
+use swc_common::Span;
 use swc_ecma_ast::Expr;
 
 use crate::analysis::{
     scope::{
-        BindingProvenance, ScopeId, build::ScopeCollector, query::rooted::rooted_expr_chain_with,
+        BindingProvenance, ScopeId, ScopedName,
+        build::{
+            CollectorCheckpoint, ControlFlowFrame, ScopeCollector,
+            history::{AssignmentEnvironment, AssignmentValue},
+        },
+        query::rooted::rooted_expr_chain_with,
     },
     syntax::member_root_identifier,
     value::BindingVersion,
@@ -16,22 +24,70 @@ impl ScopeCollector<'_> {
         name: &str,
         provenance: BindingProvenance,
     ) {
+        if !self.reachable {
+            return;
+        }
         self.budget.try_charge();
         let Some(name_id) = self.lookup_or_intern_name(name) else {
             self.name_exhausted = true;
             return;
         };
         self.intern_provenance_strings(&provenance);
-        let next = self.version_counters.entry((scope, name_id)).or_insert(0);
+        self.record_assignment_value(span, scope, name_id, provenance, self.conditional_depth > 0);
+    }
+
+    fn record_assignment_value(
+        &mut self,
+        span: Span,
+        scope: ScopeId,
+        name: glass_lint_datastructures::NameId,
+        provenance: BindingProvenance,
+        conditional: bool,
+    ) {
+        let next = self.version_counters.entry((scope, name)).or_insert(0);
         *next = next.saturating_add(1);
         let version = BindingVersion(*next);
-        self.latest_assignments
-            .record(&self.names, scope, name, provenance.clone());
+        self.assignment_environment
+            .record_known(scope, name, provenance.clone());
+        self.assignment_writes.insert(ScopedName::new(scope, name));
         self.assignments
             .push(crate::analysis::scope::AliasAssignment {
                 span,
                 scope,
-                name: name_id,
+                name,
+                version,
+                provenance,
+                conditional,
+            });
+    }
+
+    fn record_join_assignment(
+        &mut self,
+        span: Span,
+        scope: ScopeId,
+        name: glass_lint_datastructures::NameId,
+        value: &AssignmentValue,
+    ) {
+        let next = self.version_counters.entry((scope, name)).or_insert(0);
+        *next = next.saturating_add(1);
+        let version = BindingVersion(*next);
+        let provenance = match value {
+            AssignmentValue::Known(provenance) => provenance.clone(),
+            AssignmentValue::Unknown => self.unknown_provenance.clone(),
+        };
+        match value {
+            AssignmentValue::Known(provenance) => {
+                self.assignment_environment
+                    .record_known(scope, name, provenance.clone());
+            }
+            AssignmentValue::Unknown => self.assignment_environment.record_unknown(scope, name),
+        }
+        self.assignment_writes.insert(ScopedName::new(scope, name));
+        self.assignments
+            .push(crate::analysis::scope::AliasAssignment {
+                span,
+                scope,
+                name,
                 version,
                 provenance,
                 conditional: self.conditional_depth > 0,
@@ -40,8 +96,11 @@ impl ScopeCollector<'_> {
 
     pub(super) fn visible_binding(&self, name: &str) -> Option<&BindingProvenance> {
         for scope in self.stack.iter().rev().copied().map(ScopeId::from) {
-            if let Some(assignment) = self.latest_assignments.get(&self.names, scope, name) {
-                return Some(assignment);
+            if let Some(assignment) = self.assignment_environment.get(&self.names, scope, name) {
+                return match assignment {
+                    AssignmentValue::Known(provenance) => Some(provenance),
+                    AssignmentValue::Unknown => Some(&self.unknown_provenance),
+                };
             }
             if let Some(binding) = self
                 .name_id(name)
@@ -60,7 +119,8 @@ impl ScopeCollector<'_> {
             .copied()
             .map(ScopeId::from)
             .find(|scope| {
-                self.latest_assignments.contains(&self.names, *scope, name)
+                self.assignment_environment
+                    .contains(&self.names, *scope, name)
                     || self
                         .name_id(name)
                         .is_some_and(|name| self.scopes[scope.index()].bindings.contains_key(&name))
@@ -69,6 +129,273 @@ impl ScopeCollector<'_> {
 
     pub(super) fn is_unbound(&self, name: &str) -> bool {
         self.scope_issues.is_empty() && self.visible_binding(name).is_none()
+    }
+
+    fn checkpoint(&self) -> CollectorCheckpoint {
+        CollectorCheckpoint {
+            environment: self.assignment_environment.clone(),
+            writes: self.assignment_writes.clone(),
+            reachable: self.reachable,
+        }
+    }
+
+    fn restore(&mut self, checkpoint: &CollectorCheckpoint) {
+        self.assignment_environment = checkpoint.environment.clone();
+        self.assignment_writes.clone_from(&checkpoint.writes);
+        self.reachable = checkpoint.reachable;
+    }
+
+    fn join_paths(
+        &mut self,
+        span: Span,
+        incoming: &CollectorCheckpoint,
+        paths: &[CollectorCheckpoint],
+    ) {
+        let reachable_paths: Vec<_> = paths.iter().filter(|path| path.reachable).collect();
+        let all_paths: Vec<&AssignmentEnvironment> = reachable_paths
+            .iter()
+            .map(|path| &path.environment)
+            .collect();
+        if all_paths.is_empty() {
+            self.restore(incoming);
+            self.reachable = false;
+            return;
+        }
+
+        self.assignment_environment = AssignmentEnvironment::join(&all_paths);
+        self.reachable = true;
+
+        let mut touched = BTreeSet::new();
+        for path in paths {
+            touched.extend(path.writes.iter().cloned());
+        }
+        for key in &incoming.writes {
+            touched.remove(key);
+        }
+        self.assignment_writes.clone_from(&incoming.writes);
+        for key in touched {
+            let value = self
+                .assignment_environment
+                .get_by_id(key.scope(), key.name())
+                .cloned()
+                .or_else(|| {
+                    self.scopes[key.scope().index()]
+                        .bindings
+                        .get(&key.name())
+                        .cloned()
+                        .map(AssignmentValue::Known)
+                })
+                .unwrap_or(AssignmentValue::Unknown);
+            self.record_join_assignment(
+                Span::new(span.hi, span.hi),
+                key.scope(),
+                key.name(),
+                &value,
+            );
+        }
+    }
+
+    pub(super) fn enter_if(&mut self) {
+        self.control_flow.push(ControlFlowFrame::If {
+            incoming: self.checkpoint(),
+            consequent: None,
+        });
+        self.assignment_writes.clear();
+        self.conditional_depth = self.conditional_depth.saturating_add(1);
+    }
+
+    pub(super) fn enter_else(&mut self) {
+        let checkpoint = self.checkpoint();
+        let incoming = {
+            let Some(ControlFlowFrame::If {
+                incoming,
+                consequent,
+            }) = self.control_flow.last_mut()
+            else {
+                return;
+            };
+            *consequent = Some(checkpoint);
+            incoming.clone()
+        };
+        self.restore(&incoming);
+        self.assignment_writes.clear();
+    }
+
+    pub(super) fn exit_if(&mut self, span: Span, has_else: bool) {
+        self.conditional_depth = self.conditional_depth.saturating_sub(1);
+        let Some(ControlFlowFrame::If {
+            incoming,
+            consequent,
+        }) = self.control_flow.pop()
+        else {
+            return;
+        };
+        let consequent = consequent.unwrap_or_else(|| self.checkpoint());
+        let paths = if has_else {
+            vec![consequent, self.checkpoint()]
+        } else {
+            vec![incoming.clone(), consequent]
+        };
+        self.join_paths(span, &incoming, &paths);
+    }
+
+    pub(super) fn enter_loop(&mut self) {
+        self.control_flow.push(ControlFlowFrame::Loop {
+            incoming: self.checkpoint(),
+            breaks: Vec::new(),
+        });
+        self.assignment_writes.clear();
+        self.conditional_depth = self.conditional_depth.saturating_add(1);
+    }
+
+    pub(super) fn exit_loop(&mut self, span: Span) {
+        self.conditional_depth = self.conditional_depth.saturating_sub(1);
+        let Some(ControlFlowFrame::Loop { incoming, breaks }) = self.control_flow.pop() else {
+            return;
+        };
+        let body = self.checkpoint();
+        let mut paths = Vec::with_capacity(breaks.len() + 2);
+        paths.push(incoming.clone());
+        paths.push(body);
+        paths.extend(breaks);
+        self.join_paths(span, &incoming, &paths);
+    }
+
+    pub(super) fn enter_switch(&mut self) {
+        self.control_flow.push(ControlFlowFrame::Switch {
+            incoming: self.checkpoint(),
+            cases: Vec::new(),
+            breaks: Vec::new(),
+        });
+        self.conditional_depth = self.conditional_depth.saturating_add(1);
+    }
+
+    pub(super) fn enter_switch_case(&mut self) {
+        let Some(ControlFlowFrame::Switch { incoming, .. }) = self.control_flow.last() else {
+            return;
+        };
+        let incoming = incoming.clone();
+        self.restore(&incoming);
+        self.assignment_writes.clear();
+    }
+
+    pub(super) fn exit_switch_case(&mut self) {
+        let case = self.checkpoint();
+        if let Some(ControlFlowFrame::Switch { cases, .. }) = self.control_flow.last_mut() {
+            cases.push(case);
+        }
+    }
+
+    pub(super) fn exit_switch(&mut self, span: Span) {
+        self.conditional_depth = self.conditional_depth.saturating_sub(1);
+        let Some(ControlFlowFrame::Switch {
+            incoming,
+            cases,
+            breaks,
+        }) = self.control_flow.pop()
+        else {
+            return;
+        };
+        let mut paths = Vec::with_capacity(cases.len() + breaks.len() + 1);
+        paths.push(incoming.clone());
+        paths.extend(cases);
+        paths.extend(breaks);
+        self.join_paths(span, &incoming, &paths);
+    }
+
+    pub(super) fn enter_try(&mut self, has_handler: bool, has_finally: bool) {
+        self.control_flow.push(ControlFlowFrame::Try {
+            incoming: self.checkpoint(),
+            body: None,
+            conditional: has_handler || has_finally,
+        });
+        self.assignment_writes.clear();
+        if has_handler || has_finally {
+            self.conditional_depth = self.conditional_depth.saturating_add(1);
+        }
+    }
+
+    pub(super) fn enter_catch(&mut self) {
+        let checkpoint = self.checkpoint();
+        let incoming = {
+            let Some(ControlFlowFrame::Try { incoming, body, .. }) = self.control_flow.last_mut()
+            else {
+                return;
+            };
+            *body = Some(checkpoint);
+            incoming.clone()
+        };
+        self.restore(&incoming);
+        self.assignment_writes.clear();
+    }
+
+    pub(super) fn exit_try(&mut self, span: Span, has_handler: bool, has_finally: bool) {
+        let Some(ControlFlowFrame::Try {
+            incoming,
+            body,
+            conditional,
+        }) = self.control_flow.pop()
+        else {
+            return;
+        };
+        if conditional {
+            self.conditional_depth = self.conditional_depth.saturating_sub(1);
+        }
+        let body = body.unwrap_or_else(|| self.checkpoint());
+        let mut paths = Vec::new();
+        if has_handler {
+            paths.push(body);
+            paths.push(self.checkpoint());
+        } else if has_finally {
+            paths.push(incoming.clone());
+            paths.push(body);
+        } else {
+            paths.push(body);
+        }
+        self.join_paths(span, &incoming, &paths);
+    }
+
+    pub(super) fn mark_unreachable(&mut self) {
+        self.reachable = false;
+    }
+
+    pub(super) fn break_exit(&mut self) {
+        if self.reachable {
+            let checkpoint = self.checkpoint();
+            if let Some(frame) = self.control_flow.iter_mut().rev().find(|frame| {
+                matches!(
+                    frame,
+                    ControlFlowFrame::Loop { .. } | ControlFlowFrame::Switch { .. }
+                )
+            }) {
+                match frame {
+                    ControlFlowFrame::Loop { breaks, .. }
+                    | ControlFlowFrame::Switch { breaks, .. } => breaks.push(checkpoint),
+                    _ => unreachable!("breakable frame was checked above"),
+                }
+            }
+        }
+        self.reachable = false;
+    }
+
+    pub(super) fn enter_function(&mut self) {
+        self.function_checkpoints.push((
+            self.checkpoint(),
+            self.conditional_depth,
+            self.control_flow.len(),
+        ));
+        self.reachable = true;
+        self.assignment_writes.clear();
+    }
+
+    pub(super) fn exit_function(&mut self) {
+        let Some((checkpoint, conditional_depth, control_depth)) = self.function_checkpoints.pop()
+        else {
+            return;
+        };
+        self.control_flow.truncate(control_depth);
+        self.conditional_depth = conditional_depth;
+        self.restore(&checkpoint);
     }
 
     pub(super) fn rooted_expr_name(

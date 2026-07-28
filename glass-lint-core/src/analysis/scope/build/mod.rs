@@ -10,7 +10,7 @@
 
 use glass_lint_datastructures::{NameId, NameTable};
 use hashbrown::{HashMap, HashSet};
-use history::AssignmentHistory;
+use history::AssignmentEnvironment;
 use smol_str::SmolStr;
 use swc_common::BytePos;
 
@@ -54,8 +54,6 @@ pub(super) struct ScopeCollector<'a> {
     stack: Vec<usize>,
     /// Assignment events retain source order for use-position provenance.
     pub(super) assignments: Vec<AliasAssignment>,
-    /// Latest use-position assignment state per lexical scope.
-    latest_assignments: AssignmentHistory,
     /// Property writes retained for flow-aware rooted-member queries.
     pub(super) property_assignments: Vec<PropertyAliasAssignment>,
     /// Writes that invalidate a rooted receiver/property identity.
@@ -90,8 +88,49 @@ pub(super) struct ScopeCollector<'a> {
     /// Nesting depth of conditional branches (if/else, loops, switch cases).
     /// An assignment is conditional when depth > 0.
     conditional_depth: u32,
+    /// Path-sensitive assignment state for source-order provenance.
+    assignment_environment: AssignmentEnvironment,
+    /// Writes made since the current control-flow checkpoint.
+    assignment_writes: std::collections::BTreeSet<ScopedName>,
+    /// An explicit local value used when a path join disagrees.
+    unknown_provenance: BindingProvenance,
+    /// Active control-flow joins owned by the collector.
+    control_flow: Vec<ControlFlowFrame>,
+    /// Function-body checkpoints prevent local control flow from escaping the
+    /// function declaration into source-order collection of its parent.
+    function_checkpoints: Vec<(CollectorCheckpoint, u32, usize)>,
+    reachable: bool,
     #[cfg(test)]
     scope_lookups: usize,
+}
+
+#[derive(Debug, Clone)]
+struct CollectorCheckpoint {
+    environment: AssignmentEnvironment,
+    writes: std::collections::BTreeSet<ScopedName>,
+    reachable: bool,
+}
+
+#[derive(Debug)]
+enum ControlFlowFrame {
+    If {
+        incoming: CollectorCheckpoint,
+        consequent: Option<CollectorCheckpoint>,
+    },
+    Loop {
+        incoming: CollectorCheckpoint,
+        breaks: Vec<CollectorCheckpoint>,
+    },
+    Switch {
+        incoming: CollectorCheckpoint,
+        cases: Vec<CollectorCheckpoint>,
+        breaks: Vec<CollectorCheckpoint>,
+    },
+    Try {
+        incoming: CollectorCheckpoint,
+        body: Option<CollectorCheckpoint>,
+        conditional: bool,
+    },
 }
 
 #[cfg(test)]

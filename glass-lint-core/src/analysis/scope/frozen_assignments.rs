@@ -8,6 +8,13 @@ use crate::analysis::{
     value::BindingVersion,
 };
 
+#[derive(Debug, Clone, Copy)]
+pub(in crate::analysis) enum AssignmentAt<'a> {
+    Absent,
+    Known(&'a AliasAssignment),
+    Ambiguous,
+}
+
 /// Source-ordered assignment history frozen after collection.
 ///
 /// All inner `Vec<AliasAssignment>` values are sorted by `span.lo`; this
@@ -49,36 +56,23 @@ impl FrozenAssignmentIndex {
         idx.checked_sub(1)
     }
 
-    /// Latest unconditional (definite) assignment at or before a source
-    /// position.
+    /// Resolve the latest reaching definition at a source position.
     ///
-    /// Returns `None` when the latest textual assignment is conditional,
-    /// meaning the analysis cannot guarantee which definition reaches the
-    /// use point.  Callers fall back to the declaration provenance, which
-    /// conservatively preserves fail-closed identity.
-    pub(super) fn latest_at(
-        &self,
-        scope: ScopeId,
-        name: NameId,
-        span: Span,
-    ) -> Option<&AliasAssignment> {
-        let assignments = self.get(scope, name)?;
-        let pos = Self::latest_index(assignments, span)?;
-        if !assignments[pos].conditional {
-            return Some(&assignments[pos]);
+    /// A conditional textual definition is explicitly ambiguous. Callers
+    /// must not fall back to declaration or parameter provenance in that case:
+    /// the conditional write may have replaced the older strict identity.
+    pub(super) fn latest_at(&self, scope: ScopeId, name: NameId, span: Span) -> AssignmentAt<'_> {
+        let Some(assignments) = self.get(scope, name) else {
+            return AssignmentAt::Absent;
+        };
+        let Some(pos) = Self::latest_index(assignments, span) else {
+            return AssignmentAt::Absent;
+        };
+        if assignments[pos].conditional {
+            AssignmentAt::Ambiguous
+        } else {
+            AssignmentAt::Known(&assignments[pos])
         }
-        // The latest assignment is conditional.  Scan backwards for the
-        // latest unconditional assignment; if found, there is still a
-        // conditional assignment more recent than it (the one we started
-        // at) so the value is uncertain — return None.
-        let mut i = pos;
-        while i > 0 {
-            i -= 1;
-            if !assignments[i].conditional {
-                return None;
-            }
-        }
-        None
     }
 
     /// Binding version visible at a source position.

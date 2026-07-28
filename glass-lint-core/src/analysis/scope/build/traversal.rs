@@ -1,8 +1,9 @@
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
-    ArrowExpr, AssignExpr, BlockStmt, CallExpr, CatchClause, ClassDecl, DoWhileStmt, FnDecl,
-    ForInStmt, ForOfStmt, ForStmt, Function, Ident, IfStmt, ImportDecl, Lit, MemberExpr, Pat,
-    PropName, SwitchStmt, VarDecl, WhileStmt, WithStmt,
+    ArrowExpr, AssignExpr, BlockStmt, BreakStmt, CallExpr, CatchClause, ClassDecl, ContinueStmt,
+    DoWhileStmt, FnDecl, ForInStmt, ForOfStmt, ForStmt, Function, Ident, IfStmt, ImportDecl, Lit,
+    MemberExpr, Pat, PropName, ReturnStmt, SwitchCase, SwitchStmt, ThrowStmt, TryStmt, VarDecl,
+    WhileStmt, WithStmt,
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
@@ -30,6 +31,8 @@ pub(in crate::analysis::scope) trait ScopePass {
     fn after_function(&mut self, _func: &Function, _scope: ScopeId) {}
     /// After entering an arrow expression scope, before visiting children.
     fn after_arrow(&mut self, _arrow: &ArrowExpr, _scope: ScopeId) {}
+    fn enter_function(&mut self) {}
+    fn exit_function(&mut self) {}
 
     // === NON-SCOPE-FORMING VISIT HOOKS ===
     // Called by the traversal before visiting children. Default is no-op.
@@ -47,11 +50,20 @@ pub(in crate::analysis::scope) trait ScopePass {
     /// Called when entering a catch clause parameter pattern.
     /// The pass should register the parameter bindings in the current scope.
     fn visit_catch_param(&mut self, _pat: &Pat) {}
-    /// Called before entering a conditional branch (if/else cons/alt, loop
-    /// body, switch case, etc.).
-    fn enter_conditional(&mut self) {}
-    /// Called after leaving a conditional branch.
-    fn exit_conditional(&mut self) {}
+    fn enter_if(&mut self) {}
+    fn enter_else(&mut self) {}
+    fn exit_if(&mut self, _span: Span, _has_else: bool) {}
+    fn enter_loop(&mut self) {}
+    fn exit_loop(&mut self, _span: Span) {}
+    fn enter_switch(&mut self) {}
+    fn enter_switch_case(&mut self) {}
+    fn exit_switch_case(&mut self) {}
+    fn exit_switch(&mut self, _span: Span) {}
+    fn enter_try(&mut self, _has_handler: bool, _has_finally: bool) {}
+    fn enter_catch(&mut self) {}
+    fn exit_try(&mut self, _span: Span, _has_handler: bool, _has_finally: bool) {}
+    fn break_exit(&mut self) {}
+    fn mark_unreachable(&mut self) {}
 }
 
 /// Phase-neutral scope traversal.
@@ -124,35 +136,41 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
         self.pass
             .push_scope(decl.function.span, ScopeKind::Function);
         let scope = self.pass.current_scope();
+        self.pass.enter_function();
         self.pass.after_fn_decl(decl, scope);
         for param in &decl.function.params {
             param.pat.visit_with(self);
         }
         decl.function.decorators.visit_with(self);
         decl.function.body.visit_with(self);
+        self.pass.exit_function();
         self.pass.pop_scope();
     }
 
     fn visit_function(&mut self, func: &Function) {
         self.pass.push_scope(func.span, ScopeKind::Function);
         let scope = self.pass.current_scope();
+        self.pass.enter_function();
         self.pass.after_function(func, scope);
         for param in &func.params {
             param.pat.visit_with(self);
         }
         func.decorators.visit_with(self);
         func.body.visit_with(self);
+        self.pass.exit_function();
         self.pass.pop_scope();
     }
 
     fn visit_arrow_expr(&mut self, arrow: &ArrowExpr) {
         self.pass.push_scope(arrow.span, ScopeKind::Function);
         let scope = self.pass.current_scope();
+        self.pass.enter_function();
         self.pass.after_arrow(arrow, scope);
         for param in &arrow.params {
             param.visit_with(self);
         }
         arrow.body.visit_with(self);
+        self.pass.exit_function();
         self.pass.pop_scope();
     }
 
@@ -165,8 +183,19 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
     fn visit_switch_stmt(&mut self, stmt: &SwitchStmt) {
         stmt.discriminant.visit_with(self);
         self.pass.push_scope(stmt.span, ScopeKind::Block);
-        stmt.cases.visit_with(self);
+        self.pass.enter_switch();
+        for case in &stmt.cases {
+            self.visit_switch_case(case);
+        }
+        self.pass.exit_switch(stmt.span);
         self.pass.pop_scope();
+    }
+
+    fn visit_switch_case(&mut self, case: &SwitchCase) {
+        self.pass.enter_switch_case();
+        case.test.visit_with(self);
+        case.cons.visit_with(self);
+        self.pass.exit_switch_case();
     }
 
     fn visit_with_stmt(&mut self, stmt: &WithStmt) {
@@ -185,31 +214,45 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
         self.pass.pop_scope();
     }
 
+    fn visit_try_stmt(&mut self, stmt: &TryStmt) {
+        let has_handler = stmt.handler.is_some();
+        let has_finally = stmt.finalizer.is_some();
+        self.pass.enter_try(has_handler, has_finally);
+        stmt.block.visit_with(self);
+        if let Some(handler) = &stmt.handler {
+            self.pass.enter_catch();
+            handler.visit_with(self);
+        }
+        self.pass.exit_try(stmt.span, has_handler, has_finally);
+        if let Some(finalizer) = &stmt.finalizer {
+            finalizer.visit_with(self);
+        }
+    }
+
     // === CONDITIONAL-BRANCH OVERRIDES ===
 
     fn visit_if_stmt(&mut self, stmt: &IfStmt) {
         stmt.test.visit_with(self);
-        self.pass.enter_conditional();
+        self.pass.enter_if();
         stmt.cons.visit_with(self);
-        self.pass.exit_conditional();
         if let Some(alt) = &stmt.alt {
-            self.pass.enter_conditional();
+            self.pass.enter_else();
             alt.visit_with(self);
-            self.pass.exit_conditional();
         }
+        self.pass.exit_if(stmt.span, stmt.alt.is_some());
     }
 
     fn visit_while_stmt(&mut self, stmt: &WhileStmt) {
         stmt.test.visit_with(self);
-        self.pass.enter_conditional();
+        self.pass.enter_loop();
         stmt.body.visit_with(self);
-        self.pass.exit_conditional();
+        self.pass.exit_loop(stmt.span);
     }
 
     fn visit_do_while_stmt(&mut self, stmt: &DoWhileStmt) {
-        self.pass.enter_conditional();
+        self.pass.enter_loop();
         stmt.body.visit_with(self);
-        self.pass.exit_conditional();
+        self.pass.exit_loop(stmt.span);
         stmt.test.visit_with(self);
     }
 
@@ -218,9 +261,9 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
         stmt.init.visit_with(self);
         stmt.test.visit_with(self);
         stmt.update.visit_with(self);
-        self.pass.enter_conditional();
+        self.pass.enter_loop();
         stmt.body.visit_with(self);
-        self.pass.exit_conditional();
+        self.pass.exit_loop(stmt.span);
         self.pass.pop_scope();
     }
 
@@ -228,9 +271,9 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
         self.pass.push_scope(stmt.span, ScopeKind::Block);
         stmt.left.visit_with(self);
         stmt.right.visit_with(self);
-        self.pass.enter_conditional();
+        self.pass.enter_loop();
         stmt.body.visit_with(self);
-        self.pass.exit_conditional();
+        self.pass.exit_loop(stmt.span);
         self.pass.pop_scope();
     }
 
@@ -238,9 +281,29 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
         self.pass.push_scope(stmt.span, ScopeKind::Block);
         stmt.left.visit_with(self);
         stmt.right.visit_with(self);
-        self.pass.enter_conditional();
+        self.pass.enter_loop();
         stmt.body.visit_with(self);
-        self.pass.exit_conditional();
+        self.pass.exit_loop(stmt.span);
         self.pass.pop_scope();
+    }
+
+    fn visit_break_stmt(&mut self, stmt: &BreakStmt) {
+        self.pass.break_exit();
+        stmt.visit_children_with(self);
+    }
+
+    fn visit_continue_stmt(&mut self, stmt: &ContinueStmt) {
+        self.pass.mark_unreachable();
+        stmt.visit_children_with(self);
+    }
+
+    fn visit_return_stmt(&mut self, stmt: &ReturnStmt) {
+        stmt.visit_children_with(self);
+        self.pass.mark_unreachable();
+    }
+
+    fn visit_throw_stmt(&mut self, stmt: &ThrowStmt) {
+        stmt.visit_children_with(self);
+        self.pass.mark_unreachable();
     }
 }

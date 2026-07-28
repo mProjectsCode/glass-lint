@@ -42,12 +42,68 @@ impl ScopePass for ScopeCollector<'_> {
         self.current_scope()
     }
 
-    fn enter_conditional(&mut self) {
-        self.conditional_depth = self.conditional_depth.saturating_add(1);
+    fn enter_function(&mut self) {
+        self.enter_function();
     }
 
-    fn exit_conditional(&mut self) {
-        self.conditional_depth = self.conditional_depth.saturating_sub(1);
+    fn exit_function(&mut self) {
+        self.exit_function();
+    }
+
+    fn enter_if(&mut self) {
+        self.enter_if();
+    }
+
+    fn enter_else(&mut self) {
+        self.enter_else();
+    }
+
+    fn exit_if(&mut self, span: swc_common::Span, has_else: bool) {
+        self.exit_if(span, has_else);
+    }
+
+    fn enter_loop(&mut self) {
+        self.enter_loop();
+    }
+
+    fn exit_loop(&mut self, span: swc_common::Span) {
+        self.exit_loop(span);
+    }
+
+    fn enter_switch(&mut self) {
+        self.enter_switch();
+    }
+
+    fn enter_switch_case(&mut self) {
+        self.enter_switch_case();
+    }
+
+    fn exit_switch_case(&mut self) {
+        self.exit_switch_case();
+    }
+
+    fn exit_switch(&mut self, span: swc_common::Span) {
+        self.exit_switch(span);
+    }
+
+    fn enter_try(&mut self, has_handler: bool, has_finally: bool) {
+        self.enter_try(has_handler, has_finally);
+    }
+
+    fn enter_catch(&mut self) {
+        self.enter_catch();
+    }
+
+    fn exit_try(&mut self, span: swc_common::Span, has_handler: bool, has_finally: bool) {
+        self.exit_try(span, has_handler, has_finally);
+    }
+
+    fn mark_unreachable(&mut self) {
+        self.mark_unreachable();
+    }
+
+    fn break_exit(&mut self) {
+        self.break_exit();
     }
 
     fn visit_import_decl(&mut self, import: &ImportDecl) {

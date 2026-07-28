@@ -43,20 +43,26 @@ Kept the declaration/scope-shape prepass and its identifier seeding because sour
 - **Fix Complexity** High
 - **Category:** Architecture
 - **Location:** `glass-lint-core/src/analysis/scope/frozen_assignments.rs:46-98`, `glass-lint-core/src/analysis/scope/query/bindings.rs:21-36`
+- **Status:** Fixed
 
 When the latest textual assignment is conditional, `latest_at` returns `None`, and `binding_at` treats that as “no assignment” and falls back to a parameter alias or the declaration provenance. Thus `let f = fetch; if (flag) f = local; f()` can retain the strict `fetch` identity even though the use may observe the local function, contrary to the fail-closed contract.
 
-Change `FrozenAssignmentIndex::latest_at` to return an explicit state such as `Absent`, `Known(AliasAssignment)`, or `Ambiguous`, and make `binding_at` map `Ambiguous` directly to unknown. Build that state with a bounded reaching-definition join that retains identity only when every reachable definition agrees, including zero-iteration loops, conditional arms, fallthrough, abrupt exits, and exceptional edges. Recommendation: add strict negative tests for strict-to-local and local-to-strict reassignment in each branch, and assert that no older declaration identity survives an `Ambiguous` result.
+Changed `FrozenAssignmentIndex::latest_at` to return explicit `Absent`, `Known`, or `Ambiguous` states; binding queries now map `Ambiguous` directly to unknown instead of falling back to parameter or declaration provenance. The collector now joins bounded path environments for zero-iteration loops, conditional arms, switch fallthrough, abrupt exits, and exceptional `try`/`catch` edges, retaining a strict identity only when every reachable definition agrees. Source-order versions remain monotonic while path state is checkpointed separately.
+
+**Check:** Added strict-to-local, local-to-strict, equal-branch, nested-branch, loop, switch, abrupt-exit, exceptional-edge, function-boundary, and branch-isolation regressions in `glass-lint-core/tests/scope_precision.rs`, plus direct environment-join coverage in the scope builder. The focused suite passed (15 tests), and the full `glass-lint-core --lib` suite passed (459 tests). `make ci` passed in full on 2026-07-28: workspace check, Clippy, 466 core unit tests, workspace tests/doctests, 12 E2E cases, 2 project cases, 70 JavaScript rule cases, and 98 Obsidian rule cases.
 
 #### READ-004 — Source-order provenance leaks between sibling branches during collection
 - **Severity:** High
 - **Fix Complexity** High
 - **Category:** Architecture
 - **Location:** `glass-lint-core/src/analysis/scope/build/assignments.rs:12-67`, `glass-lint-core/src/analysis/scope/build/history.rs:13-59`, `glass-lint-core/src/analysis/scope/build/traversal.rs:188-245`
+- **Status:** Fixed
 
 `ScopeCollector.latest_assignments` is overwritten while visiting a conditional body, but `enter_conditional` and `exit_conditional` only change a depth counter; they do not checkpoint or join the history. Provenance inferred in an `else` arm or after a construct can therefore depend on whichever sibling was visited first or last, even though that path is not necessarily reachable.
 
-Introduce an `AssignmentEnvironment` owned by the scope builder with checkpoint, rollback, and conservative join operations, and route every conditional, loop, and switch through it. Restore the incoming environment before each sibling, join only reachable exits, and represent disagreement as unknown while keeping source-order versions monotonic but separate from path-sensitive state. Recommendation: make branch isolation and join behavior unit-testable on the environment itself, then cover nested conditionals, loop fallthrough, switches, and abrupt exits through the collector.
+Introduced a checkpointable `AssignmentEnvironment` owned by the scope builder, with explicit unknown values, rollback, and conservative joins. The shared scope traversal now gives the collector lifecycle hooks for conditionals, loops, switches, and `try`/`catch`/`finally`; sibling paths restore the incoming environment, unreachable exits are excluded, and disagreement is joined as unknown. Synthetic join assignments keep the frozen source-order index and monotonic binding versions consistent with the path result.
+
+**Check:** The environment’s equal-value/disagreement join test passed; collector regressions cover nested conditionals, loop fallthrough, switches, abrupt exits, exceptional edges, function boundaries, and sibling branch isolation. `cargo test -p glass-lint-core --test scope_precision` passed (15 tests), and `cargo test -p glass-lint-core --lib` passed (459 tests). `make ci` passed in full on 2026-07-28: workspace check, Clippy, 466 core unit tests, workspace tests/doctests, 12 E2E cases, 2 project cases, 70 JavaScript rule cases, and 98 Obsidian rule cases.
 
 #### READ-005 — The origin rollback log grows even when rollback is impossible
 - **Severity:** Medium

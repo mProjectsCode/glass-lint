@@ -1,8 +1,11 @@
 //! Lexical binding, scope, assignment-version, and shadowing queries.
 
-use crate::analysis::scope::query::{
-    BindingKey, BindingProvenance, BindingRoot, BindingVersion, BoundArgument, Expr,
-    FrozenScopeGraph, Ident, ScopeId, ScopeKind, Span,
+use crate::analysis::scope::{
+    frozen_assignments::AssignmentAt,
+    query::{
+        BindingKey, BindingProvenance, BindingRoot, BindingVersion, BoundArgument, Expr,
+        FrozenScopeGraph, Ident, ScopeId, ScopeKind, Span,
+    },
 };
 
 impl FrozenScopeGraph {
@@ -25,14 +28,17 @@ impl FrozenScopeGraph {
         span: Span,
     ) -> Option<&BindingProvenance> {
         let (scope, declaration) = self.binding_with_scope_at(name, span)?;
-        self.assignment_at(scope, self.name_id(name)?, span)
-            .map(|assignment| &assignment.provenance)
-            .or_else(|| {
-                let function = self.function_for_scope(scope)?;
-                let name = self.name_id(name)?;
-                self.parameter_alias_for(function, name)
-            })
-            .or(Some(declaration))
+        match self.assignment_at(scope, self.name_id(name)?, span) {
+            AssignmentAt::Known(assignment) => Some(&assignment.provenance),
+            AssignmentAt::Ambiguous => None,
+            AssignmentAt::Absent => self
+                .function_for_scope(scope)
+                .and_then(|function| {
+                    self.name_id(name)
+                        .and_then(|name| self.parameter_alias_for(function, name))
+                })
+                .or(Some(declaration)),
+        }
     }
 
     /// Resolve an expression to a stable lexical identity.  Semantic clients

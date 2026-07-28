@@ -3,8 +3,11 @@ use hashbrown::HashMap;
 use swc_common::{BytePos, Span};
 
 use crate::analysis::{
-    model::scope::{AliasAssignment, BindingProvenance, ScopeId, ScopedName},
-    scope::{frozen_assignments::FrozenAssignmentIndex, scope_index::LexicalScopeIndex},
+    model::scope::{BindingProvenance, ScopeId, ScopedName},
+    scope::{
+        frozen_assignments::{AssignmentAt, FrozenAssignmentIndex},
+        scope_index::LexicalScopeIndex,
+    },
     value::{BindingId, BindingVersion, FunctionId},
 };
 
@@ -43,7 +46,7 @@ impl BindingIndex {
         scope: ScopeId,
         name: NameId,
         span: Span,
-    ) -> Option<&AliasAssignment> {
+    ) -> AssignmentAt<'_> {
         self.assignments.latest_at(scope, name, span)
     }
 
