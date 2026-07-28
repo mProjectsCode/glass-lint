@@ -137,10 +137,6 @@ fn this_root_aliases_canonicalize_to_rooted_members() {
 
 #[test]
 fn returned_objects_follow_direct_calls_aliases_and_reassignment() {
-    let matcher = QueryDecl::builder()
-        .member_call_returned("app.workspace.getLeaf", "openFile")
-        .build()
-        .expect("valid matcher declaration");
     assert_count(
         r#"
         app.workspace.getLeaf().openFile(file);
@@ -153,7 +149,10 @@ fn returned_objects_follow_direct_calls_aliases_and_reassignment() {
         function local(app) { app.workspace.getLeaf().openFile(file); }
         localWorkspace.getLeaf().openFile(file);
         "#,
-        rule("test.returned").declaration(matcher).build().unwrap(),
+        rule("test.returned")
+            .query(QueryDecl::member_call_returned("app.workspace.getLeaf", "openFile"))
+            .build()
+            .unwrap(),
         2,
     );
 }

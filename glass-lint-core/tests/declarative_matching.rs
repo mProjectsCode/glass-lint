@@ -276,7 +276,7 @@ fn package_provenance_matches_exports_and_namespace_members_at_boundaries() {
 fn associates_static_option_properties_with_their_call_sink() {
     let rules = [rule("string-use")
         .query(QueryDecl::call_global("fetch")
-                .arg_object_property_value(
+                .with_arg_object_property_value(
                     1,
                     "url",
                     ValueMatcher::static_string().contains_any(["localhost"]),

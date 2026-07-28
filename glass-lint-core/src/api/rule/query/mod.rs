@@ -1261,203 +1261,152 @@ mod tests {
         assert_eq!(all.branches.len(), 1);
     }
 
-    // ── Lowering: every builder method → valid QueryDecl ───────────
+    // ── Construction: every convenience constructor → valid QueryDecl ──
 
-    /// Lower a QueryDecl into a QueryDecl, checking basic invariants.
-    fn lower_and_check(
-        decl: Result<QueryDecl, crate::api::rule::MatcherBuildError>,
-    ) -> QueryDecl {
-        let decl = decl.expect("valid matcher declaration");
-        let q = QueryDecl::from_matcher(&decl, VarId::new(0));
-        assert_eq!(q.emission.primary_var, VarId::new(0));
-        assert_eq!(q.emission.symbol, decl.evidence_symbol);
-        assert_eq!(q.emission.kind, decl.evidence_kind);
-        match &q.expression {
-            QueryExpr::Event(eq) => {
-                assert_eq!(eq.var, VarId::new(0));
-                assert_eq!(eq.event, decl.event);
-                assert_eq!(eq.identity, decl.identity);
-                assert_eq!(eq.subject, decl.subject);
-                assert_eq!(eq.constraints, decl.constraints);
-            }
-            _ => panic!("expected Event expression"),
-        }
-        q
+    fn assert_event_query(decl: &QueryDecl, expected_symbol: &str) {
+        assert_eq!(decl.emission.primary_var, VarId::new(0));
+        assert_eq!(decl.emission.symbol, expected_symbol);
+        assert!(matches!(decl.expression, QueryExpr::Event(_)));
     }
 
     #[test]
     fn lowers_call_global_to_query_decl() {
-        lower_and_check(QueryDecl::builder().call_global("fetch").build());
+        assert_event_query(&QueryDecl::call_global("fetch"), "fetch");
     }
 
     #[test]
     fn lowers_call_heuristic_to_query_decl() {
-        lower_and_check(QueryDecl::builder().call_heuristic("fetch").build());
+        assert_event_query(&QueryDecl::call_heuristic("fetch"), "fetch");
     }
 
     #[test]
     fn lowers_call_module_to_query_decl() {
-        lower_and_check(QueryDecl::builder().call_module("fs", "readFile").build());
+        assert_event_query(&QueryDecl::call_module("fs", "readFile"), "fs.readFile");
     }
 
     #[test]
     fn lowers_call_package_to_query_decl() {
-        lower_and_check(
-            QueryDecl::builder()
-                .call_package("@scope/pkg", "method")
-                .build(),
-        );
+        assert_event_query(&QueryDecl::call_package("@scope/pkg", "method"), "@scope/pkg.method");
     }
 
     #[test]
     fn lowers_member_call_rooted_to_query_decl() {
-        lower_and_check(
-            QueryDecl::builder()
-                .member_call_rooted("document.createElement")
-                .build(),
+        assert_event_query(
+            &QueryDecl::member_call_rooted("document.createElement"),
+            "document.createElement",
         );
     }
 
     #[test]
     fn lowers_member_call_heuristic_to_query_decl() {
-        lower_and_check(
-            QueryDecl::builder()
-                .member_call_heuristic("foo.bar")
-                .build(),
-        );
+        assert_event_query(&QueryDecl::member_call_heuristic("foo.bar"), "foo.bar");
     }
 
     #[test]
     fn lowers_member_call_module_to_query_decl() {
-        lower_and_check(
-            QueryDecl::builder()
-                .member_call_module("module", "method")
-                .build(),
-        );
+        assert_event_query(&QueryDecl::member_call_module("module", "method"), "module");
     }
 
     #[test]
     fn lowers_member_call_instance_to_query_decl() {
-        lower_and_check(
-            QueryDecl::builder()
-                .member_call_instance("pkg", "Client", "send")
-                .build(),
+        assert_event_query(
+            &QueryDecl::member_call_instance("pkg", "Client", "send"),
+            "pkg.Client",
         );
     }
 
     #[test]
     fn lowers_member_call_package_to_query_decl() {
-        lower_and_check(
-            QueryDecl::builder()
-                .member_call_package("@scope/pkg", "method")
-                .build(),
+        assert_event_query(
+            &QueryDecl::member_call_package("@scope/pkg", "method"),
+            "@scope/pkg",
         );
     }
 
     #[test]
     fn lowers_member_call_returned_to_query_decl() {
-        lower_and_check(
-            QueryDecl::builder()
-                .member_call_returned("create", "send")
-                .build(),
-        );
+        assert_event_query(&QueryDecl::member_call_returned("create", "send"), "create");
     }
 
     #[test]
     fn lowers_member_read_rooted_to_query_decl() {
-        lower_and_check(
-            QueryDecl::builder()
-                .member_read_rooted("window.location")
-                .build(),
+        assert_event_query(
+            &QueryDecl::member_read_rooted("window.location"),
+            "window.location",
         );
     }
 
     #[test]
     fn lowers_member_read_module_to_query_decl() {
-        lower_and_check(
-            QueryDecl::builder()
-                .member_read_module("module", "property")
-                .build(),
+        assert_event_query(
+            &QueryDecl::member_read_module("module", "property"),
+            "module",
         );
     }
 
     #[test]
     fn lowers_member_read_returned_to_query_decl() {
-        lower_and_check(
-            QueryDecl::builder()
-                .member_read_returned("create", "token")
-                .build(),
+        assert_event_query(
+            &QueryDecl::member_read_returned("create", "token"),
+            "create",
         );
     }
 
     #[test]
     fn lowers_member_read_package_to_query_decl() {
-        lower_and_check(
-            QueryDecl::builder()
-                .member_read_package("@scope/pkg", "property")
-                .build(),
+        assert_event_query(
+            &QueryDecl::member_read_package("@scope/pkg", "property"),
+            "@scope/pkg",
         );
     }
 
     #[test]
     fn lowers_import_exact_to_query_decl() {
-        lower_and_check(QueryDecl::builder().import_exact("node:fs").build());
+        assert_event_query(&QueryDecl::import_exact("node:fs"), "node:fs");
     }
 
     #[test]
     fn lowers_import_package_to_query_decl() {
-        lower_and_check(QueryDecl::builder().import_package("@scope/pkg").build());
+        assert_event_query(&QueryDecl::import_package("@scope/pkg"), "@scope/pkg");
     }
 
     #[test]
     fn lowers_string_contains_to_query_decl() {
-        lower_and_check(QueryDecl::builder().string_contains("https://").build());
+        assert_event_query(&QueryDecl::string_contains("https://"), "https://");
     }
 
     #[test]
     fn lowers_class_heuristic_to_query_decl() {
-        lower_and_check(QueryDecl::builder().class_heuristic("Worker").build());
+        assert_event_query(&QueryDecl::class_heuristic("Worker"), "Worker");
     }
 
     #[test]
     fn lowers_class_module_to_query_decl() {
-        lower_and_check(
-            QueryDecl::builder()
-                .class_module("module", "Klass")
-                .build(),
-        );
+        assert_event_query(&QueryDecl::class_module("module", "Klass"), "module.Klass");
     }
 
     #[test]
     fn lowers_constructor_global_to_query_decl() {
-        lower_and_check(QueryDecl::builder().constructor_global("URL").build());
+        assert_event_query(&QueryDecl::constructor_global("URL"), "URL");
     }
 
     #[test]
     fn lowers_constructor_heuristic_to_query_decl() {
-        lower_and_check(QueryDecl::builder().constructor_heuristic("Foo").build());
+        assert_event_query(&QueryDecl::constructor_heuristic("Foo"), "Foo");
     }
 
     #[test]
     fn lowers_constructor_module_to_query_decl() {
-        lower_and_check(
-            QueryDecl::builder()
-                .constructor_module("pkg", "Klass")
-                .build(),
-        );
+        assert_event_query(&QueryDecl::constructor_module("pkg", "Klass"), "pkg.Klass");
     }
 
     #[test]
     fn lowers_arg_constraints_to_query_decl() {
-        let decl = QueryDecl::builder()
-            .call_global("fetch")
-            .arg(0, ValueMatcher::static_string())
-            .arg_static_string(1)
-            .arg_static_strings(2, ["a", "b"])
-            .arg_static_string_contains(3, ["token"])
-            .build()
-            .expect("valid matcher with constraints");
-        let q = QueryDecl::from_matcher(&decl, VarId::new(0));
+        let q = QueryDecl::call_global("fetch")
+            .with_arg(0, ValueMatcher::static_string())
+            .with_arg_static_string(1)
+            .with_arg_static_strings(2, ["a", "b"])
+            .with_arg_static_string_contains(3, ["token"]);
         match &q.expression {
             QueryExpr::Event(eq) => {
                 assert_eq!(eq.constraints.len(), 4);
@@ -1468,24 +1417,18 @@ mod tests {
 
     #[test]
     fn lowers_evidence_override_to_query_decl() {
-        let decl = QueryDecl::builder()
-            .call_global("fetch")
-            .evidence(MatchKind::CallArgument, "custom.fetch")
-            .build()
-            .expect("valid matcher with evidence override");
-        let q = QueryDecl::from_matcher(&decl, VarId::new(0));
+        let q = QueryDecl::call_global("fetch")
+            .with_evidence(MatchKind::CallArgument, "custom.fetch");
         assert_eq!(q.emission.kind, MatchKind::CallArgument);
         assert_eq!(q.emission.symbol, "custom.fetch");
     }
 
-    // ── Equivalent builder forms produce equivalent lowering ──────
+    // ── Equivalent forms produce equivalent declarations ──────────
 
     #[test]
     fn semantically_equivalent_decls_lower_equally() {
-        let decl_a = QueryDecl::builder().call_global("fetch").build().unwrap();
-        let decl_b = QueryDecl::builder().call_global("fetch").build().unwrap();
-        let q_a = QueryDecl::from_matcher(&decl_a, VarId::new(0));
-        let q_b = QueryDecl::from_matcher(&decl_b, VarId::new(0));
+        let q_a = QueryDecl::call_global("fetch");
+        let q_b = QueryDecl::call_global("fetch");
         assert_eq!(q_a, q_b);
     }
 
@@ -1621,8 +1564,7 @@ mod tests {
 
     #[test]
     fn query_decl_display_includes_symbol() {
-        let decl = QueryDecl::builder().call_global("fetch").build().unwrap();
-        let q = QueryDecl::from_matcher(&decl, VarId::new(0));
+        let q = QueryDecl::call_global("fetch");
         let text = format!("{q}");
         assert!(text.contains("fetch"));
     }

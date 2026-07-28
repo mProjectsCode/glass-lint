@@ -3,12 +3,7 @@ use super::*;
 #[test]
 fn global_constructors_survive_transparent_callee_wrappers() {
     let url_constructor = rule("test.wrapped-global-constructor")
-        .declaration(
-            QueryDecl::builder()
-                .constructor_global("URL")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::constructor_global("URL"))
         .build()
         .unwrap();
     assert_count(r#"new (URL)("/wrapped")"#, url_constructor.clone(), 1);

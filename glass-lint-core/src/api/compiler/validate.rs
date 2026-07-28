@@ -842,7 +842,7 @@ mod tests {
     use crate::api::{
         classification::MatchKind,
         rule::{
-            ArgumentConstraint, MatcherBuildError, QueryDecl, ValueMatcher,
+            ArgumentConstraint, QueryDecl, ValueMatcher,
             query::{AllExpr, AnyExpr, EmissionDecl, EventQuery, LifecycleQuery},
         },
     };
@@ -865,11 +865,7 @@ mod tests {
 
     #[test]
     fn valid_rooted_member_call_passes_well_formedness() {
-        let decl = make_decl_from_builder(
-            QueryDecl::builder()
-                .member_call_rooted("document.createElement")
-                .build(),
-        );
+        let decl = QueryDecl::member_call_rooted("document.createElement");
         assert!(pass_well_formedness(&decl).is_ok());
     }
 

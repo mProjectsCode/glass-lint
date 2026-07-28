@@ -459,7 +459,7 @@ mod tests {
         compiler::{normalize::normalize_query_decl, rule::IdentityStrength},
         rule::{
             QueryDecl, ValueMatcher,
-            query::{EmissionDecl, IdentitySpec, QueryDecl, VarId},
+            query::{EmissionDecl, IdentitySpec, VarId},
         },
     };
 
@@ -481,11 +481,7 @@ mod tests {
 
     #[test]
     fn global_call_produces_indexed_scan() {
-        let decl = QueryDecl::builder()
-            .call_global("fetch")
-            .build()
-            .expect("valid matcher declaration");
-        let roots = physical_roots(&decl);
+        let roots = physical_roots(&QueryDecl::call_global("fetch"));
         assert_eq!(roots.len(), 1);
         assert!(
             matches!(&roots[0], PhysicalRoot::IndexedScan { .. }),
@@ -495,23 +491,17 @@ mod tests {
 
     #[test]
     fn heuristic_call_produces_indexed_scan() {
-        let decl = QueryDecl::builder()
-            .call_heuristic("fetch")
-            .build()
-            .expect("valid matcher declaration");
-        let roots = physical_roots(&decl);
+        let roots = physical_roots(&QueryDecl::call_heuristic("fetch"));
         assert_eq!(roots.len(), 1);
         assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
     }
 
     #[test]
     fn constrained_call_produces_constrained_scan() {
-        let decl = QueryDecl::builder()
-            .call_global("fetch")
-            .arg(0, ValueMatcher::static_string())
-            .build()
-            .expect("valid matcher declaration");
-        let roots = physical_roots(&decl);
+        let roots = physical_roots(
+            &QueryDecl::call_global("fetch")
+                .with_arg(0, ValueMatcher::static_string()),
+        );
         assert_eq!(roots.len(), 1);
         assert!(
             matches!(&roots[0], PhysicalRoot::ConstrainedScan { .. }),
@@ -521,22 +511,14 @@ mod tests {
 
     #[test]
     fn rooted_member_call_produces_indexed_scan() {
-        let decl = QueryDecl::builder()
-            .member_call_rooted("document.createElement")
-            .build()
-            .expect("valid matcher declaration");
-        let roots = physical_roots(&decl);
+        let roots = physical_roots(&QueryDecl::member_call_rooted("document.createElement"));
         assert_eq!(roots.len(), 1);
         assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
     }
 
     #[test]
     fn returned_subject_produces_returned_scan() {
-        let decl = QueryDecl::builder()
-            .member_call_returned("create", "send")
-            .build()
-            .expect("valid matcher declaration");
-        let roots = physical_roots(&decl);
+        let roots = physical_roots(&QueryDecl::member_call_returned("create", "send"));
         assert_eq!(roots.len(), 1);
         assert!(
             matches!(&roots[0], PhysicalRoot::ReturnedSubject { .. }),
@@ -546,11 +528,7 @@ mod tests {
 
     #[test]
     fn instance_subject_produces_instance_scan() {
-        let decl = QueryDecl::builder()
-            .member_call_instance("pkg", "Client", "send")
-            .build()
-            .expect("valid matcher declaration");
-        let roots = physical_roots(&decl);
+        let roots = physical_roots(&QueryDecl::member_call_instance("pkg", "Client", "send"));
         assert_eq!(roots.len(), 1);
         assert!(
             matches!(&roots[0], PhysicalRoot::InstanceSubject { .. }),
@@ -560,66 +538,42 @@ mod tests {
 
     #[test]
     fn import_exact_produces_indexed_scan() {
-        let decl = QueryDecl::builder()
-            .import_exact("node:fs")
-            .build()
-            .expect("valid matcher declaration");
-        let roots = physical_roots(&decl);
+        let roots = physical_roots(&QueryDecl::import_exact("node:fs"));
         assert_eq!(roots.len(), 1);
         assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
     }
 
     #[test]
     fn string_contains_produces_indexed_scan() {
-        let decl = QueryDecl::builder()
-            .string_contains("https://")
-            .build()
-            .expect("valid matcher declaration");
-        let roots = physical_roots(&decl);
+        let roots = physical_roots(&QueryDecl::string_contains("https://"));
         assert_eq!(roots.len(), 1);
         assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
     }
 
     #[test]
     fn class_reference_produces_indexed_scan() {
-        let decl = QueryDecl::builder()
-            .class_heuristic("Worker")
-            .build()
-            .expect("valid matcher declaration");
-        let roots = physical_roots(&decl);
+        let roots = physical_roots(&QueryDecl::class_heuristic("Worker"));
         assert_eq!(roots.len(), 1);
         assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
     }
 
     #[test]
     fn constructor_global_produces_indexed_scan() {
-        let decl = QueryDecl::builder()
-            .constructor_global("URL")
-            .build()
-            .expect("valid matcher declaration");
-        let roots = physical_roots(&decl);
+        let roots = physical_roots(&QueryDecl::constructor_global("URL"));
         assert_eq!(roots.len(), 1);
         assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
     }
 
     #[test]
     fn module_call_produces_indexed_scan() {
-        let decl = QueryDecl::builder()
-            .call_module("fs", "readFile")
-            .build()
-            .expect("valid matcher declaration");
-        let roots = physical_roots(&decl);
+        let roots = physical_roots(&QueryDecl::call_module("fs", "readFile"));
         assert_eq!(roots.len(), 1);
         assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
     }
 
     #[test]
     fn member_read_returned_produces_returned_scan() {
-        let decl = QueryDecl::builder()
-            .member_read_returned("create", "token")
-            .build()
-            .expect("valid matcher declaration");
-        let roots = physical_roots(&decl);
+        let roots = physical_roots(&QueryDecl::member_read_returned("create", "token"));
         assert_eq!(roots.len(), 1);
         assert!(
             matches!(&roots[0], PhysicalRoot::ReturnedSubject { .. }),
@@ -631,13 +585,11 @@ mod tests {
 
     #[test]
     fn multiple_constraints_on_same_call_fuse_into_one_constrained_scan() {
-        let decl = QueryDecl::builder()
-            .call_global("fetch")
-            .arg(0, ValueMatcher::static_string())
-            .arg(1, ValueMatcher::static_string().equals("/api"))
-            .build()
-            .expect("valid matcher declaration");
-        let roots = physical_roots(&decl);
+        let roots = physical_roots(
+            &QueryDecl::call_global("fetch")
+                .with_arg(0, ValueMatcher::static_string())
+                .with_arg(1, ValueMatcher::static_string().equals("/api")),
+        );
         assert_eq!(roots.len(), 1);
         match &roots[0] {
             PhysicalRoot::ConstrainedScan { constraints, .. } => {
@@ -696,64 +648,35 @@ mod tests {
 
     #[test]
     fn plan_summary_counts_roots() {
-        let decl = QueryDecl::builder()
-            .call_global("fetch")
-            .build()
-            .expect("valid matcher declaration");
-        let summary = physical_summary(&decl);
+        let summary = physical_summary(&QueryDecl::call_global("fetch"));
         assert!(summary.contains("roots=1"), "summary: {summary}");
         assert!(summary.contains("indexed_scans=1"), "summary: {summary}");
-        assert!(
-            summary.contains("constrained_scans=0"),
-            "summary: {summary}"
-        );
-        assert!(
-            summary.contains("returned_subjects=0"),
-            "summary: {summary}"
-        );
-        assert!(
-            summary.contains("instance_subjects=0"),
-            "summary: {summary}"
-        );
+        assert!(summary.contains("constrained_scans=0"), "summary: {summary}");
+        assert!(summary.contains("returned_subjects=0"), "summary: {summary}");
+        assert!(summary.contains("instance_subjects=0"), "summary: {summary}");
         assert!(summary.contains("project_overlay=no"), "summary: {summary}");
     }
 
     #[test]
     fn plan_summary_shows_constrained_scan() {
-        let decl = QueryDecl::builder()
-            .call_global("fetch")
-            .arg(0, ValueMatcher::static_string())
-            .build()
-            .expect("valid matcher declaration");
-        let summary = physical_summary(&decl);
-        assert!(summary.contains("roots=1"), "summary: {summary}");
-        assert!(
-            summary.contains("constrained_scans=1"),
-            "summary: {summary}"
+        let summary = physical_summary(
+            &QueryDecl::call_global("fetch")
+                .with_arg(0, ValueMatcher::static_string()),
         );
+        assert!(summary.contains("roots=1"), "summary: {summary}");
+        assert!(summary.contains("constrained_scans=1"), "summary: {summary}");
         assert!(summary.contains("indexed_scans=0"), "summary: {summary}");
     }
 
     #[test]
     fn plan_summary_shows_project_overlay_for_module_queries() {
-        let decl = QueryDecl::builder()
-            .call_module("fs", "readFile")
-            .build()
-            .expect("valid matcher declaration");
-        let summary = physical_summary(&decl);
-        assert!(
-            summary.contains("project_overlay=yes"),
-            "summary: {summary}"
-        );
+        let summary = physical_summary(&QueryDecl::call_module("fs", "readFile"));
+        assert!(summary.contains("project_overlay=yes"), "summary: {summary}");
     }
 
     #[test]
     fn plan_summary_shows_no_project_overlay_for_global_queries() {
-        let decl = QueryDecl::builder()
-            .call_global("fetch")
-            .build()
-            .expect("valid matcher declaration");
-        let summary = physical_summary(&decl);
+        let summary = physical_summary(&QueryDecl::call_global("fetch"));
         assert!(summary.contains("project_overlay=no"), "summary: {summary}");
     }
 
@@ -803,39 +726,22 @@ mod tests {
 
     #[test]
     fn equivalent_declarations_produce_identical_plans() {
-        let first = QueryDecl::builder()
-            .call_global("fetch")
-            .build()
-            .expect("valid matcher declaration");
-        let second = QueryDecl::builder()
-            .call_global("fetch")
-            .build()
-            .expect("valid matcher declaration");
-
-        let roots1 = physical_roots(&first);
-        let roots2 = physical_roots(&second);
+        let roots1 = physical_roots(&QueryDecl::call_global("fetch"));
+        let roots2 = physical_roots(&QueryDecl::call_global("fetch"));
         assert_eq!(roots1, roots2);
     }
 
     #[test]
     fn different_declarations_produce_different_plans() {
-        let first = QueryDecl::builder()
-            .call_global("fetch")
-            .build()
-            .expect("valid matcher declaration");
-        let second = QueryDecl::builder()
-            .call_global("navigate")
-            .build()
-            .expect("valid matcher declaration");
-        let roots1 = physical_roots(&first);
-        let roots2 = physical_roots(&second);
+        let roots1 = physical_roots(&QueryDecl::call_global("fetch"));
+        let roots2 = physical_roots(&QueryDecl::call_global("navigate"));
         assert_ne!(roots1, roots2);
     }
 
     #[test]
     fn plan_summary_is_stable_across_equal_queries() {
-        let s1 = physical_summary(&QueryDecl::builder().call_global("fetch").build().unwrap());
-        let s2 = physical_summary(&QueryDecl::builder().call_global("fetch").build().unwrap());
+        let s1 = physical_summary(&QueryDecl::call_global("fetch"));
+        let s2 = physical_summary(&QueryDecl::call_global("fetch"));
         assert_eq!(s1, s2);
     }
 }
