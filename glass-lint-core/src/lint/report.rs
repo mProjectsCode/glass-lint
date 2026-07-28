@@ -252,7 +252,7 @@ impl<'a> ReportAssembly<'a> {
                 if traces.is_empty() {
                     traces.push(EvidenceTrace::new(vec![EvidenceStep::new(
                         EvidenceRole::Occurrence,
-                        "match".into(),
+                        "evidence occurrence".into(),
                         SourceLocation::new(path.clone(), range.clone()),
                     )]));
                 }

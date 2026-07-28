@@ -123,8 +123,20 @@ impl PrettyReport<'_> {
         out: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         let total_width = cells.last().map_or(0, |cell| cell.start + cell.width);
-        let start = range.start().column().saturating_sub(1) as usize;
-        let end = (range.end().column().saturating_sub(1) as usize).max(start + 1);
+        let logical_start = range.start().column().saturating_sub(1) as usize;
+        let logical_end = range.end().column().saturating_sub(1) as usize;
+        // Source columns count characters, while the excerpt uses terminal
+        // display columns. Tabs and wide Unicode characters therefore need
+        // to be translated through the already-built cells before selecting
+        // a window or placing the caret.
+        let start = cells
+            .get(logical_start)
+            .map_or(total_width, |cell| cell.start);
+        let end_index = logical_end.max(logical_start.saturating_add(1));
+        let end = cells
+            .get(end_index)
+            .map_or(total_width, |cell| cell.start)
+            .max(start.saturating_add(1));
         let (window_start, window_end, leading, trailing) =
             Self::select_window(cells, total_width, start, width);
 
@@ -260,6 +272,84 @@ impl PrettyReports<'_> {
         )
     }
 
+    fn primary_evidence_message<'a>(
+        finding: &'a crate::project::Finding,
+        range: &SourceRange,
+    ) -> &'a str {
+        let traces = finding.evidence();
+        traces
+            .traces()
+            .iter()
+            .flat_map(crate::project::EvidenceTrace::steps)
+            .find(|step| {
+                step.location().path() == finding.location().path()
+                    && step.location().range() == *range
+            })
+            .or_else(|| {
+                traces
+                    .traces()
+                    .iter()
+                    .flat_map(crate::project::EvidenceTrace::steps)
+                    .next()
+            })
+            .map_or("evidence occurrence", |step| step.message())
+    }
+
+    fn write_trace_step(
+        &self,
+        step: &crate::project::EvidenceStep,
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
+        let location = step.location();
+        let range = location.range();
+        writeln!(
+            f,
+            "      {}:{}:{} - {}",
+            visible_text(location.path().as_str()),
+            range.start().line(),
+            range.start().column(),
+            visible_text(step.message()),
+        )?;
+        if self.options.show_evidence_source
+            && let Some(step_file) = self
+                .files
+                .iter()
+                .find(|candidate| candidate.filename == location.path().as_str())
+        {
+            PrettyReport::new_with_cache(
+                step_file.report,
+                step_file.filename,
+                step_file.source,
+                self.options,
+                &step_file.line_starts,
+                &step_file.line_cache,
+            )
+            .excerpt(&range, 8, f)?;
+        }
+        Ok(())
+    }
+
+    fn write_trace(
+        &self,
+        trace_index: usize,
+        trace: &crate::project::EvidenceTrace,
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
+        writeln!(
+            f,
+            "    {}",
+            PrettyReport::style(
+                self.options.color,
+                Style::new().dim(),
+                format!("trace {}:", trace_index + 1),
+            )
+        )?;
+        for step in trace.steps() {
+            self.write_trace_step(step, f)?;
+        }
+        Ok(())
+    }
+
     fn write_rule_group_entries(
         &self,
         entries: &[RuleGroupEntry<'_>],
@@ -267,15 +357,14 @@ impl PrettyReports<'_> {
     ) -> fmt::Result {
         for (file, finding) in entries {
             let range = finding.location().range();
-
+            let traces = finding.evidence();
             let message = format!(
                 "  {}:{}:{} - {}",
                 visible_text(file.filename),
                 range.start().line(),
                 range.start().column(),
-                "match",
+                visible_text(Self::primary_evidence_message(finding, &range)),
             );
-
             writeln!(
                 f,
                 "{}",
@@ -292,7 +381,12 @@ impl PrettyReports<'_> {
                     ),
                 )?;
             }
-            if self.options.show_evidence_source {
+            let has_detailed_traces = traces.traces().len() > 1
+                || traces
+                    .traces()
+                    .first()
+                    .is_some_and(|trace| trace.steps().len() > 1);
+            if self.options.show_evidence_source && !has_detailed_traces {
                 PrettyReport::new_with_cache(
                     file.report,
                     file.filename,
@@ -303,34 +397,9 @@ impl PrettyReports<'_> {
                 )
                 .excerpt(&range, 4, f)?;
             }
-
-            // Render traces when there are multiple or when steps have details
-            let traces = finding.evidence();
-            if traces.traces().len() > 1
-                || traces.traces().first().is_some_and(|t| t.steps().len() > 1)
-            {
-                for (trace_idx, trace) in traces.traces().iter().enumerate() {
-                    if traces.traces().len() > 1 {
-                        writeln!(
-                            f,
-                            "    {}",
-                            PrettyReport::style(
-                                self.options.color,
-                                Style::new().dim(),
-                                format!("trace {}:", trace_idx + 1),
-                            )
-                        )?;
-                    }
-                    for step in trace.steps() {
-                        let step_loc = step.location();
-                        writeln!(
-                            f,
-                            "      {}:{} - {}",
-                            visible_text(step_loc.path().as_str()),
-                            step_loc.range().start().line(),
-                            visible_text(step.message()),
-                        )?;
-                    }
+            if has_detailed_traces {
+                for (trace_index, trace) in traces.traces().iter().enumerate() {
+                    self.write_trace(trace_index, trace, f)?;
                 }
             }
             if traces.truncated() {

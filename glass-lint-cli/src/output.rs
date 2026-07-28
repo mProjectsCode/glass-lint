@@ -1,6 +1,7 @@
 //! Deterministic report aggregation for stdout.
 
 use std::{
+    collections::BTreeMap,
     io::{self, Write},
     path::Path,
 };
@@ -9,7 +10,7 @@ use anyhow::{Result, bail};
 use console::{Style, measure_text_width};
 use glass_lint_core::{
     PrettyFile, PrettyOptions, PrettyReports, RuleMetadata,
-    project::{AnalysisReport, AnalysisReportSummary},
+    project::{AnalysisReport, AnalysisReportSummary, ProjectRelativePath, SourceText},
 };
 
 use crate::config::{Config, OutputFormat};
@@ -46,9 +47,13 @@ pub fn write_report(config: &Config, files: &[FileOutput]) -> Result<()> {
 }
 
 /// Write a report produced by resolver-aware project analysis.
-pub fn write_project_report(config: &Config, report: &AnalysisReport) -> Result<()> {
+pub fn write_project_report(
+    config: &Config,
+    report: &AnalysisReport,
+    sources: &BTreeMap<ProjectRelativePath, SourceText>,
+) -> Result<()> {
     let mut stdout = stdout_writer();
-    write_project_report_to(config, report, &mut stdout)?;
+    write_project_report_to(config, report, sources, &mut stdout)?;
     stdout.flush().map_err(Into::into)
 }
 
@@ -246,6 +251,7 @@ fn write_pretty_files<W: Write>(
 fn write_project_report_to<W: Write>(
     config: &Config,
     report: &AnalysisReport,
+    sources: &BTreeMap<ProjectRelativePath, SourceText>,
     out: &mut W,
 ) -> Result<()> {
     let summary = report.summary();
@@ -254,7 +260,7 @@ fn write_project_report_to<W: Write>(
             serde_json::to_writer_pretty(&mut *out, report)?;
             writeln!(out)?;
         }
-        OutputFormat::Pretty => write_project_pretty(config, report, summary, out)?,
+        OutputFormat::Pretty => write_project_pretty(config, report, summary, sources, out)?,
     }
     Ok(())
 }
@@ -263,13 +269,22 @@ fn write_project_pretty<W: Write>(
     config: &Config,
     report: &AnalysisReport,
     summary: AnalysisReportSummary,
+    sources: &BTreeMap<ProjectRelativePath, SourceText>,
     out: &mut W,
 ) -> Result<()> {
     let options = pretty_options(config);
     let pretty_files = report
         .files()
         .iter()
-        .map(|file| PrettyFile::new(file, file.path().as_str(), ""))
+        .map(|file| {
+            PrettyFile::new(
+                file,
+                file.path().as_str(),
+                sources
+                    .get(file.path().as_str())
+                    .map_or("", SourceText::as_str),
+            )
+        })
         .collect::<Vec<_>>();
     write_pretty_files(&pretty_files, options, out)?;
 

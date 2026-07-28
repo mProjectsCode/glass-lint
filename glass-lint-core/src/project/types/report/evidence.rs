@@ -125,7 +125,7 @@ impl EvidenceTraces {
     pub fn fallback(location: SourceLocation) -> Self {
         Self::new(vec![EvidenceTrace::new(vec![EvidenceStep::new(
             EvidenceRole::Occurrence,
-            "match".into(),
+            "evidence occurrence".into(),
             location,
         )])])
     }

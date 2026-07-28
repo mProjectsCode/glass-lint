@@ -11,7 +11,7 @@ use glass_lint_core::{
     Linter,
     project::{
         AnalysisReport, ProjectRelativePath, ResolutionRequest, ResolutionRequestKey,
-        ResolutionRequestKind, ResolverOutcome,
+        ResolutionRequestKind, ResolverOutcome, SourceText,
     },
 };
 
@@ -37,6 +37,9 @@ pub struct ProjectLoadOutcome {
     /// Completed or partial report. Timeout outcomes are returned as `Err` and
     /// never contain one.
     pub report: AnalysisReport,
+    /// Source text retained from the admitted files for presentation layers.
+    /// The report itself remains source-free and serializable.
+    pub sources: BTreeMap<ProjectRelativePath, SourceText>,
     /// Recoverable boundary error that caused the partial report. Fatal
     /// errors, including timeout, are returned through the outer `Result`.
     pub partial_reason: Option<ProjectLoadError>,
@@ -45,17 +48,26 @@ pub struct ProjectLoadOutcome {
 }
 
 impl ProjectLoadOutcome {
-    fn complete(report: AnalysisReport) -> Self {
+    fn complete(
+        report: AnalysisReport,
+        sources: BTreeMap<ProjectRelativePath, SourceText>,
+    ) -> Self {
         Self {
             report,
+            sources,
             partial_reason: None,
             metrics: ProjectLoadMetrics::default(),
         }
     }
 
-    fn partial(report: AnalysisReport, reason: ProjectLoadError) -> Self {
+    fn partial(
+        report: AnalysisReport,
+        sources: BTreeMap<ProjectRelativePath, SourceText>,
+        reason: ProjectLoadError,
+    ) -> Self {
         Self {
             report: report.into_partial(&reason),
+            sources,
             partial_reason: Some(reason),
             metrics: ProjectLoadMetrics::default(),
         }
@@ -243,11 +255,14 @@ impl ProjectLoader {
         build.add_initial_paths(paths.initial_paths);
         let (expansion_result, closed) = build.close_frontier(metrics);
         match expansion_result {
-            Ok(()) => Ok(ProjectLoadOutcome::complete(closed.finish(metrics)?)),
+            Ok(()) => {
+                let (report, sources) = closed.finish(metrics)?;
+                Ok(ProjectLoadOutcome::complete(report, sources))
+            }
             Err(ProjectLoadError::Timeout) => Err(ProjectLoadError::Timeout),
             Err(error) => {
-                let report = closed.finish_partial(metrics)?;
-                Ok(ProjectLoadOutcome::partial(report, error))
+                let (report, sources) = closed.finish_partial(metrics)?;
+                Ok(ProjectLoadOutcome::partial(report, sources, error))
             }
         }
     }
@@ -431,6 +446,8 @@ struct ProjectLoadState<'a> {
     /// AdmittedSourcePath, avoiding redundant exists/classify calls when
     /// multiple importers reference the same target.
     admitted_target_cache: BTreeMap<ProjectRelativePath, AdmittedSourcePath>,
+    /// Source text retained for presentation after the core report is built.
+    sources: BTreeMap<ProjectRelativePath, SourceText>,
     deadline: Instant,
 }
 
@@ -455,6 +472,7 @@ impl<'a> ProjectLoadState<'a> {
             resolved: ResolutionCache::default(),
             progress: LoadProgress::default(),
             admitted_target_cache: BTreeMap::new(),
+            sources: BTreeMap::new(),
             deadline,
         })
     }
@@ -500,6 +518,7 @@ impl<'a> ProjectLoadState<'a> {
             session: self.session,
             resolved: self.resolved,
             diagnostics: self.diagnostics,
+            sources: self.sources,
             deadline: self.deadline,
         };
         (result, frontier)
@@ -560,6 +579,11 @@ impl<'a> ProjectLoadState<'a> {
             sources.push(source);
         }
         metrics.timings.record_reads(read_start.elapsed());
+
+        for source in &sources {
+            self.sources
+                .insert(source.path().clone(), source.source().clone());
+        }
 
         // Phase 2: analyze all sources collected so far in parallel, even if
         // a later file triggered a budget error.
@@ -643,6 +667,7 @@ struct ClosedFrontier<'a> {
     session: glass_lint_core::project::ProjectCollection<'a>,
     resolved: ResolutionCache,
     diagnostics: Vec<crate::tsconfig::TsconfigDiagnostic>,
+    sources: BTreeMap<ProjectRelativePath, SourceText>,
     deadline: Instant,
 }
 
@@ -653,7 +678,10 @@ impl ClosedFrontier<'_> {
             .ok_or(ProjectLoadError::Timeout)
     }
 
-    fn finish(self, metrics: &mut ProjectLoadMetrics) -> Result<AnalysisReport, ProjectLoadError> {
+    fn finish(
+        self,
+        metrics: &mut ProjectLoadMetrics,
+    ) -> Result<(AnalysisReport, BTreeMap<ProjectRelativePath, SourceText>), ProjectLoadError> {
         self.check_timeout()?;
         self.finish_inner(metrics)
     }
@@ -661,14 +689,15 @@ impl ClosedFrontier<'_> {
     fn finish_partial(
         self,
         metrics: &mut ProjectLoadMetrics,
-    ) -> Result<AnalysisReport, ProjectLoadError> {
+    ) -> Result<(AnalysisReport, BTreeMap<ProjectRelativePath, SourceText>), ProjectLoadError> {
         self.finish_inner(metrics)
     }
 
     fn finish_inner(
         self,
         metrics: &mut ProjectLoadMetrics,
-    ) -> Result<AnalysisReport, ProjectLoadError> {
+    ) -> Result<(AnalysisReport, BTreeMap<ProjectRelativePath, SourceText>), ProjectLoadError> {
+        let sources = self.sources;
         let local = self.session.finish_local();
         let resolved = local.resolve(self.resolved.into_iter())?;
         let result = resolved.finish_with_timings()?;
@@ -688,7 +717,7 @@ impl ClosedFrontier<'_> {
             })
             .collect();
         let report = result.report.with_project_diagnostics(&code, messages);
-        Ok(report)
+        Ok((report, sources))
     }
 }
 

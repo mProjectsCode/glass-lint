@@ -77,13 +77,13 @@ fn groups_by_rule_then_sorts_evidence_by_file_and_location() {
         .to_string(),
         concat!(
             "warning[test:fetch] (definite) Uses fetch\n",
-            "  a.js:1:1 - match\n",
+            "  a.js:1:1 - call of \"fetch\"\n",
             "    fetch('/a1');\n",
             "    ^^^^^\n",
-            "  a.js:2:1 - match\n",
+            "  a.js:2:1 - call of \"fetch\"\n",
             "    fetch('/a2');\n",
             "    ^^^^^\n",
-            "  b.js:1:1 - match\n",
+            "  b.js:1:1 - call of \"fetch\"\n",
             "    fetch('/b');\n",
             "    ^^^^^\n",
         )
@@ -121,8 +121,57 @@ fn can_hide_source_excerpts_for_evidence_rows() {
 
     assert_eq!(
         rendered,
-        "warning[test:fetch] (definite) Uses fetch\n  main.js:1:1 - match\n"
+        "warning[test:fetch] (definite) Uses fetch\n  main.js:1:1 - call of fetch\n"
     );
+}
+
+#[test]
+fn renders_flow_trace_steps_and_their_source() {
+    let sink = range(1, 1, 8);
+    let source = range(1, 1, 7);
+    let requirement = range(2, 1, 9);
+    let report = FileReport::new(
+        path("helper.js"),
+        vec![Finding::new(
+            RuleId::parse("test:flow").unwrap(),
+            "Proves a flow".into(),
+            Severity::Warning,
+            SourceLocation::new(path("helper.js"), sink.clone()),
+            EvidenceTraces::new(vec![EvidenceTrace::new(vec![
+                EvidenceStep::new(EvidenceRole::Source, "flow source".into(), location(source)),
+                EvidenceStep::new(
+                    EvidenceRole::Requirement,
+                    "flow requirement".into(),
+                    SourceLocation::new(path("helper.js"), requirement),
+                ),
+                EvidenceStep::new(
+                    EvidenceRole::Sink,
+                    "flow sink".into(),
+                    SourceLocation::new(path("helper.js"), sink),
+                ),
+            ])]),
+            MatchCertainty::Definite,
+        )],
+        vec![],
+    );
+    let source_report = FileReport::new(path("main.js"), vec![], vec![]);
+    let files = [
+        PrettyFile::new(
+            &report,
+            "helper.js",
+            "function append() {\n  element.src = url;\n}",
+        ),
+        PrettyFile::new(&source_report, "main.js", "const element = create();"),
+    ];
+
+    let rendered = PrettyReports::new(&files, PrettyOptions::default()).to_string();
+
+    assert!(rendered.contains("helper.js:1:1 - flow sink"));
+    assert!(rendered.contains("trace 1:"));
+    assert!(rendered.contains("main.js:1:1 - flow source"));
+    assert!(rendered.contains("const element = create();"));
+    assert!(rendered.contains("helper.js:2:1 - flow requirement"));
+    assert!(rendered.contains("element.src = url;"));
 }
 
 #[test]
@@ -286,6 +335,38 @@ fn renders_tabs_and_wide_unicode_within_the_display_budget() {
 }
 
 #[test]
+fn aligns_caret_after_single_tab_and_wide_character() {
+    let report = FileReport::new(
+        path("main.js"),
+        vec![Finding::new(
+            RuleId::parse("test:alignment").unwrap(),
+            "alignment".into(),
+            Severity::Info,
+            location(range(1, 2, 7)),
+            EvidenceTraces::new(vec![EvidenceTrace::new(vec![step(
+                "call of fetch",
+                range(1, 2, 7),
+            )])]),
+            MatchCertainty::Definite,
+        )],
+        vec![],
+    );
+    let source = "\tfetch('x');";
+    let rendered = PrettyReport::new(
+        &report,
+        "main.js",
+        source,
+        PrettyOptions::default(),
+        &line_starts(source),
+    )
+    .to_string();
+
+    let lines: Vec<_> = rendered.lines().collect();
+    assert_eq!(lines[2], "        fetch('x');");
+    assert_eq!(lines[3], "        ^^^^^");
+}
+
+#[test]
 fn renders_missing_source_lines_without_panicking() {
     let report = FileReport::new(
         path("main.js"),
@@ -312,7 +393,7 @@ fn renders_missing_source_lines_without_panicking() {
     )
     .to_string();
     assert!(rendered.contains("error[test:missing] (definite) missing"));
-    assert!(rendered.contains("main.js:99:1 - match"));
+    assert!(rendered.contains("main.js:99:1 - missing call"));
 }
 
 #[test]

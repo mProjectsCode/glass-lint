@@ -216,6 +216,14 @@ fn reports_project_phase_metrics_and_operation_counts() {
         )
         .unwrap();
     assert_eq!(outcome.report.files().len(), 2);
+    assert_eq!(
+        outcome.sources.get("main.js").unwrap().as_str(),
+        "import './helper';"
+    );
+    assert_eq!(
+        outcome.sources.get("helper.ts").unwrap().as_str(),
+        "export const value = 1;"
+    );
     assert_eq!(outcome.metrics.files, 2);
     assert_eq!(outcome.metrics.requests, 1);
     assert_eq!(outcome.metrics.edges, 1);
