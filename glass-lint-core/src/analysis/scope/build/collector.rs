@@ -44,6 +44,7 @@ impl ScopeCollector<'_> {
             names: plan.names,
             name_exhausted: plan.name_exhausted,
             version_counters: HashMap::new(),
+            conditional_depth: 0,
             scope_shapes: plan.scope_shapes,
             scope_issues: Vec::new(),
             budget,

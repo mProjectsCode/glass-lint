@@ -24,10 +24,13 @@ The byte scanner handles comments and quoted strings but has no regex-literal st
 #### READ-002 — Source-order assignment history confuses possible and definite provenance
 - **Severity:** High
 - **Fix Complexity** High
+- **Status:** ✅ Fixed
 - **Category:** Architecture
 - **Location:** `glass-lint-core/src/analysis/scope/frozen_assignments.rs:11-83`
 
 `latest_at` selects the last textual assignment without distinguishing an assignment that is possible from one that is definite at the use position. Consequently, `let f = local; if (flag) f = fetch; f()` can acquire strict global provenance even though the use may still observe `local`, violating the documented fail-closed identity policy. The analysis does not need exact reachability for every condition: treat both sides of an unknown condition as possible, optionally discard a side when a bounded constant evaluator proves it impossible, and join the resulting provenance states. Retain a strict identity only when all reachable definitions agree; otherwise return unknown. Keep the existing fast source-order index as a candidate index, but make the final decision path-aware enough to account for conditional aliases, zero-iteration loops, fallthrough, abrupt exits, and exceptional edges.
+
+**Fix:** Added a `conditional: bool` field to `AliasAssignment`, a `conditional_depth` counter to `ScopeCollector`, and `enter_conditional`/`exit_conditional` hooks to the traversal for `IfStmt`, `WhileStmt`, `DoWhileStmt`, `ForStmt`, `ForInStmt`, and `ForOfStmt`. `FrozenAssignmentIndex::latest_at` now returns `None` when the latest assignment is conditional (uncertain reachability), causing callers to fall back to the declaration provenance. `version_at` retains raw source-order version tracking for binding-key uniqueness. `changed_between` is unchanged.
 
 #### READ-003 — `try`, `catch`, and `finally` share impossible instance state
 - **Severity:** High

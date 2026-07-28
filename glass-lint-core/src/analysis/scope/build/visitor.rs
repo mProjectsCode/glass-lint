@@ -42,6 +42,14 @@ impl ScopePass for ScopeCollector<'_> {
         self.current_scope()
     }
 
+    fn enter_conditional(&mut self) {
+        self.conditional_depth = self.conditional_depth.saturating_add(1);
+    }
+
+    fn exit_conditional(&mut self) {
+        self.conditional_depth = self.conditional_depth.saturating_sub(1);
+    }
+
     fn visit_import_decl(&mut self, import: &ImportDecl) {
         self.insert_import(self.current_scope(), import);
     }

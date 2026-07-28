@@ -1,8 +1,8 @@
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
-    ArrowExpr, AssignExpr, BlockStmt, CallExpr, CatchClause, ClassDecl, FnDecl, ForInStmt,
-    ForOfStmt, ForStmt, Function, Ident, ImportDecl, Lit, MemberExpr, Pat, PropName, SwitchStmt,
-    VarDecl, WithStmt,
+    ArrowExpr, AssignExpr, BlockStmt, CallExpr, CatchClause, ClassDecl, DoWhileStmt, FnDecl,
+    ForInStmt, ForOfStmt, ForStmt, Function, Ident, IfStmt, ImportDecl, Lit, MemberExpr, Pat,
+    PropName, SwitchStmt, VarDecl, WhileStmt, WithStmt,
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
@@ -47,6 +47,11 @@ pub(in crate::analysis::scope) trait ScopePass {
     /// Called when entering a catch clause parameter pattern.
     /// The pass should register the parameter bindings in the current scope.
     fn visit_catch_param(&mut self, _pat: &Pat) {}
+    /// Called before entering a conditional branch (if/else cons/alt, loop
+    /// body, switch case, etc.).
+    fn enter_conditional(&mut self) {}
+    /// Called after leaving a conditional branch.
+    fn exit_conditional(&mut self) {}
 }
 
 /// Phase-neutral scope traversal.
@@ -157,31 +162,6 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
         self.pass.pop_scope();
     }
 
-    fn visit_for_stmt(&mut self, stmt: &ForStmt) {
-        self.pass.push_scope(stmt.span, ScopeKind::Block);
-        stmt.init.visit_with(self);
-        stmt.test.visit_with(self);
-        stmt.update.visit_with(self);
-        stmt.body.visit_with(self);
-        self.pass.pop_scope();
-    }
-
-    fn visit_for_in_stmt(&mut self, stmt: &ForInStmt) {
-        self.pass.push_scope(stmt.span, ScopeKind::Block);
-        stmt.left.visit_with(self);
-        stmt.right.visit_with(self);
-        stmt.body.visit_with(self);
-        self.pass.pop_scope();
-    }
-
-    fn visit_for_of_stmt(&mut self, stmt: &ForOfStmt) {
-        self.pass.push_scope(stmt.span, ScopeKind::Block);
-        stmt.left.visit_with(self);
-        stmt.right.visit_with(self);
-        stmt.body.visit_with(self);
-        self.pass.pop_scope();
-    }
-
     fn visit_switch_stmt(&mut self, stmt: &SwitchStmt) {
         stmt.discriminant.visit_with(self);
         self.pass.push_scope(stmt.span, ScopeKind::Block);
@@ -202,6 +182,65 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
             self.pass.visit_catch_param(param);
         }
         clause.body.stmts.visit_with(self);
+        self.pass.pop_scope();
+    }
+
+    // === CONDITIONAL-BRANCH OVERRIDES ===
+
+    fn visit_if_stmt(&mut self, stmt: &IfStmt) {
+        stmt.test.visit_with(self);
+        self.pass.enter_conditional();
+        stmt.cons.visit_with(self);
+        self.pass.exit_conditional();
+        if let Some(alt) = &stmt.alt {
+            self.pass.enter_conditional();
+            alt.visit_with(self);
+            self.pass.exit_conditional();
+        }
+    }
+
+    fn visit_while_stmt(&mut self, stmt: &WhileStmt) {
+        stmt.test.visit_with(self);
+        self.pass.enter_conditional();
+        stmt.body.visit_with(self);
+        self.pass.exit_conditional();
+    }
+
+    fn visit_do_while_stmt(&mut self, stmt: &DoWhileStmt) {
+        self.pass.enter_conditional();
+        stmt.body.visit_with(self);
+        self.pass.exit_conditional();
+        stmt.test.visit_with(self);
+    }
+
+    fn visit_for_stmt(&mut self, stmt: &ForStmt) {
+        self.pass.push_scope(stmt.span, ScopeKind::Block);
+        stmt.init.visit_with(self);
+        stmt.test.visit_with(self);
+        stmt.update.visit_with(self);
+        self.pass.enter_conditional();
+        stmt.body.visit_with(self);
+        self.pass.exit_conditional();
+        self.pass.pop_scope();
+    }
+
+    fn visit_for_in_stmt(&mut self, stmt: &ForInStmt) {
+        self.pass.push_scope(stmt.span, ScopeKind::Block);
+        stmt.left.visit_with(self);
+        stmt.right.visit_with(self);
+        self.pass.enter_conditional();
+        stmt.body.visit_with(self);
+        self.pass.exit_conditional();
+        self.pass.pop_scope();
+    }
+
+    fn visit_for_of_stmt(&mut self, stmt: &ForOfStmt) {
+        self.pass.push_scope(stmt.span, ScopeKind::Block);
+        stmt.left.visit_with(self);
+        stmt.right.visit_with(self);
+        self.pass.enter_conditional();
+        stmt.body.visit_with(self);
+        self.pass.exit_conditional();
         self.pass.pop_scope();
     }
 }

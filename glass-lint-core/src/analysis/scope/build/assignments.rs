@@ -34,6 +34,7 @@ impl ScopeCollector<'_> {
                 name: name_id,
                 version,
                 provenance,
+                conditional: self.conditional_depth > 0,
             });
     }
 

@@ -49,7 +49,13 @@ impl FrozenAssignmentIndex {
         idx.checked_sub(1)
     }
 
-    /// Latest assignment at or before a source position.
+    /// Latest unconditional (definite) assignment at or before a source
+    /// position.
+    ///
+    /// Returns `None` when the latest textual assignment is conditional,
+    /// meaning the analysis cannot guarantee which definition reaches the
+    /// use point.  Callers fall back to the declaration provenance, which
+    /// conservatively preserves fail-closed identity.
     pub(super) fn latest_at(
         &self,
         scope: ScopeId,
@@ -57,14 +63,38 @@ impl FrozenAssignmentIndex {
         span: Span,
     ) -> Option<&AliasAssignment> {
         let assignments = self.get(scope, name)?;
-        let idx = Self::latest_index(assignments, span)?;
-        Some(&assignments[idx])
+        let pos = Self::latest_index(assignments, span)?;
+        if !assignments[pos].conditional {
+            return Some(&assignments[pos]);
+        }
+        // The latest assignment is conditional.  Scan backwards for the
+        // latest unconditional assignment; if found, there is still a
+        // conditional assignment more recent than it (the one we started
+        // at) so the value is uncertain — return None.
+        let mut i = pos;
+        while i > 0 {
+            i -= 1;
+            if !assignments[i].conditional {
+                return None;
+            }
+        }
+        None
     }
 
     /// Binding version visible at a source position.
+    ///
+    /// Unlike [`latest_at`], this method uses the *raw* source-order
+    /// latest assignment for version tracking, so that binding keys
+    /// remain unique per textual assignment even when the provenance is
+    /// uncertain.
     pub(super) fn version_at(&self, scope: ScopeId, name: NameId, span: Span) -> BindingVersion {
-        self.latest_at(scope, name, span)
-            .map_or(BindingVersion(0), |a| a.version)
+        let Some(assignments) = self.get(scope, name) else {
+            return BindingVersion(0);
+        };
+        let Some(latest) = Self::latest_index(assignments, span) else {
+            return BindingVersion(0);
+        };
+        assignments[latest].version
     }
 
     /// Whether any assignment occurred in the half-open interval `(start,

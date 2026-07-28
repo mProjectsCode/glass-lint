@@ -87,6 +87,9 @@ pub(super) struct ScopeCollector<'a> {
     scope_issues: Vec<ScopeCollectionIssue>,
     /// Shared semantic budget charged for each name interning operation.
     budget: &'a SemanticBudget,
+    /// Nesting depth of conditional branches (if/else, loops, switch cases).
+    /// An assignment is conditional when depth > 0.
+    conditional_depth: u32,
     #[cfg(test)]
     scope_lookups: usize,
 }

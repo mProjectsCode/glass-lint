@@ -186,6 +186,9 @@ pub struct AliasAssignment {
     pub name: NameId,
     pub version: BindingVersion,
     pub provenance: BindingProvenance,
+    /// Whether this assignment is inside a conditional branch (if/else, loop
+    /// body, switch case, etc.) and therefore not definitely reachable.
+    pub conditional: bool,
 }
 
 #[derive(Debug, Clone)]
