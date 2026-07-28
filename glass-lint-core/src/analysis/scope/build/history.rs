@@ -18,22 +18,18 @@ pub(super) enum AssignmentValue {
 #[derive(Debug, Clone)]
 /// Most recent assignment provenance for each scope-local binding.
 pub(super) struct AssignmentEnvironment {
-    assignments: Vec<HashMap<NameId, AssignmentValue>>,
+    assignments: HashMap<ScopeId, HashMap<NameId, AssignmentValue>>,
 }
 
 impl AssignmentEnvironment {
     pub(super) fn new() -> Self {
         Self {
-            assignments: Vec::new(),
+            assignments: HashMap::new(),
         }
     }
 
     fn ensure_scope(&mut self, scope: ScopeId) -> &mut HashMap<NameId, AssignmentValue> {
-        let idx = scope.index();
-        if idx >= self.assignments.len() {
-            self.assignments.resize_with(idx + 1, HashMap::new);
-        }
-        &mut self.assignments[idx]
+        self.assignments.entry(scope).or_default()
     }
 
     /// Replace the latest assignment for one scope/name pair.
@@ -53,7 +49,7 @@ impl AssignmentEnvironment {
     }
 
     pub(super) fn get_by_id(&self, scope: ScopeId, name: NameId) -> Option<&AssignmentValue> {
-        self.assignments.get(scope.index())?.get(&name)
+        self.assignments.get(&scope)?.get(&name)
     }
 
     pub(super) fn contains_by_id(&self, scope: ScopeId, name: NameId) -> bool {
@@ -63,29 +59,24 @@ impl AssignmentEnvironment {
     /// Join path environments. Missing entries mean that the incoming value
     /// reaches that path unchanged; disagreement is retained as unknown.
     pub(super) fn join(paths: &[&Self]) -> Self {
-        let max_scope = paths
+        let mut active_scopes = paths
             .iter()
-            .flat_map(|p| {
-                p.assignments
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, m)| !m.is_empty())
-                    .map(|(i, _)| i)
-            })
-            .max()
-            .unwrap_or(0);
+            .flat_map(|path| path.assignments.keys().copied())
+            .collect::<Vec<_>>();
+        active_scopes.sort_unstable();
+        active_scopes.dedup();
 
-        let mut joined: Vec<HashMap<NameId, AssignmentValue>> = vec![HashMap::new(); max_scope + 1];
+        let mut joined = HashMap::new();
 
-        for (scope_idx, result_map) in joined.iter_mut().enumerate() {
-            let scope = ScopeId::from(scope_idx);
+        for scope in active_scopes {
+            let mut result_map = HashMap::new();
             let mut all_names = HashSet::new();
             for path in paths {
-                if let Some(map) = path.assignments.get(scope_idx) {
-                    all_names.extend(map.keys());
+                if let Some(map) = path.assignments.get(&scope) {
+                    all_names.extend(map.keys().copied());
                 }
             }
-            for &name in &all_names {
+            for name in all_names {
                 let first = paths[0].get_by_id(scope, name);
                 if paths
                     .iter()
@@ -97,6 +88,9 @@ impl AssignmentEnvironment {
                 } else {
                     result_map.insert(name, AssignmentValue::Unknown);
                 }
+            }
+            if !result_map.is_empty() {
+                joined.insert(scope, result_map);
             }
         }
 
@@ -131,5 +125,19 @@ mod tests {
             AssignmentEnvironment::join(&[&first, &third]).get_by_id(scope, name),
             Some(&AssignmentValue::Unknown)
         );
+    }
+
+    #[test]
+    fn sparse_scope_join_does_not_materialize_empty_scopes() {
+        let mut names = NameTable::default();
+        let name = names.intern("value").unwrap();
+        let scope = ScopeId::from(100_000);
+        let mut first = AssignmentEnvironment::new();
+        first.record_known(scope, name, BindingProvenance::Local);
+
+        let joined = AssignmentEnvironment::join(&[&first]);
+
+        assert_eq!(joined.assignments.len(), 1);
+        assert_eq!(joined.get_by_id(scope, name), first.get_by_id(scope, name));
     }
 }
