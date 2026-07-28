@@ -21,6 +21,9 @@ impl QualifiedCallGraph {
             let module_id = module.id();
             let stream = module.local().facts().stream();
             for effect in module.local().effects().iter_effects() {
+                if effect.is_invalid() {
+                    continue;
+                }
                 for call in effect.calls() {
                     let cref = call.as_ref(stream);
                     let Some(provenance) = cref.provenance() else {

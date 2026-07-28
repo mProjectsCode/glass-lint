@@ -69,11 +69,11 @@ Introduced a checkpointable `AssignmentEnvironment` owned by the scope builder, 
 - **Fix Complexity** Medium
 - **Category:** Complexity
 - **Location:** `glass-lint-core/src/analysis/facts/origin_map.rs:5-76`, `glass-lint-core/src/analysis/facts/control.rs:46-208`
+- **Status:** Fixed
 
 Every `OriginMap` insert and remove clones the old value into `log`, including long straight-line regions with no active checkpoint. Rollback truncates only to a checkpoint and never commits or discards pre-checkpoint history, so lowering retains a duplicate mutation history for the whole file and copies `SmolStr` origin payloads unnecessarily.
 
 Make `OriginMap` transaction-aware: maintain an active-checkpoint count, append inverse entries only while that count is nonzero, and commit each completed control region by discarding entries older than its surviving checkpoint. Charge every logged mutation and snapshot to the semantic budget before allocation, and preserve deterministic intersection order at joins. Recommendation: add memory-growth tests for long straight-line streams and deeply nested control, with assertions that retained storage is bounded by live state plus active deltas.
-- **Status:** Fixed
 
 `OriginMap` now tracks an `open_checkpoints` counter; `insert` and `remove` append inverse entries only while that count is nonzero, so long straight-line regions with no active checkpoint produce no log writes. `rollback` decrements the counter and clears the entire log when the count reaches zero, discarding all pre-checkpoint history at the end of each control region. Every logged mutation and snapshot charges `budget.try_charge()` before allocation. An explicit `commit` method is called after each control region's rollback to document the intent. Deterministic iteration order at joins is preserved because the underlying `HashMap` (hashbrown) is not modified during `retain_common` filtering.
 
@@ -97,9 +97,9 @@ Enforce that every binding target references an already-interned value, cache ea
 - **Fix Complexity** Medium
 - **Category:** Complexity
 - **Location:** `glass-lint-core/src/diagnostic.rs:48-134`, `glass-lint-core/src/analysis/local.rs:91-108`, `glass-lint-core/src/project/session/artifacts.rs:93-107`
+- **Status:** Fixed
 
 A semantic artifact cache hit still constructs `LocatedSourceContext`, scans the complete source for line starts, and scans every line of at least 256 bytes again to build Unicode checkpoints. Projects with unchanged large sources therefore pay O(source bytes) position-index work even when no finding needs a position.
-- **Status:** Fixed
 
 `SourceLineIndex` is now stored in `SharedSemanticArtifact` alongside the semantic model, so a cache hit reuses the previously built index without rescanning source bytes. `SourceLineIndex` uses an ASCII fast path (`source.is_ascii()` at construction time) and defers Unicode checkpoint computation to a `OnceLock`, materializing checkpoints only when the first non-ASCII position lookup occurs. Cache identity remains path-independent. A cache hit does not rescan source bytes until position mapping is requested.
 
@@ -123,10 +123,13 @@ Resolve `NameId` once per query, then store bindings and assignments in a dense 
 - **Fix Complexity** Low
 - **Category:** Architecture
 - **Location:** `glass-lint-core/src/analysis/flow/effect/mod.rs:1-10`, `glass-lint-core/src/analysis/flow/summary/summaries.rs:42-95`
+- **Status:** Fixed
 
 The effect contract says summaries invalidated by unsupported control or budget exhaustion are not used for propagation, and cross-module flow explicitly checks `is_invalid`. `FunctionSummaries::collect_facts` nevertheless iterates every effect and copies its calls into local helper summaries, allowing the local object-flow path to consume information declared incomplete.
 
 Filter `is_invalid` effects before `FunctionSummaries::collect_facts` creates any helper summary, and make the filtered collection the only input to local and cross-module propagation. Calls to or through an invalid helper must produce neither projected sinks nor return identity. Recommendation: add local/cross-module parity tests for member writes, unsupported control, and effect-budget exhaustion, including a direct assertion that no invalid summary is retained.
+
+`collect_facts` now skips effects where `is_invalid` is true, preventing invalid helper summaries from being created. `QualifiedCallGraph::build`, `FlowSources::collect_candidates`, and `FlowSources::build_adjacency` also skip invalid effects, so cross-module propagation and adjacency are built only from valid effects. Calls to or through an invalid helper produce no projected sinks via `record_helper_sink` and no return identity, because no summary exists for the invalid effect. `record_helper_sink` returns `None` on lookup, and cross-module flow's existing `is_invalid` guard in the context loop preserves fail-closed behavior.
 
 #### READ-010 — Object-flow joins clone all live aliases and states
 - **Severity:** Medium

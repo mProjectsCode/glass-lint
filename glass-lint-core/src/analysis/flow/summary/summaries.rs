@@ -74,6 +74,9 @@ impl<'a> FunctionSummaries<'a> {
 
     fn collect_facts(&mut self, effects: &FunctionEffects, budget: &mut Budget) {
         for effect in effects.iter_effects() {
+            if effect.is_invalid() {
+                continue;
+            }
             if self.get(effect.id()).is_none() {
                 if !budget.try_push() {
                     self.exhausted = true;
@@ -383,10 +386,10 @@ mod tests {
     }
 
     #[test]
-    fn collect_creates_summaries_for_all_functions() {
+    fn collect_skips_invalid_function_effects() {
         let source = "\
             function a() { return 1; }\
-            function b() { return a(); }\
+            function b(x) { return x; }\
         ";
         let parsed = crate::parse(source, "multiple-functions.js").expect("source should parse");
         let mut resolver = Resolver::collect(&parsed.program, source);
@@ -396,12 +399,12 @@ mod tests {
         let mut budget = unlimited_budget();
         let summaries = FunctionSummaries::collect(&stream, &effects, &plan, &mut budget);
         assert!(
-            summaries.get(FunctionId(1)).is_some(),
-            "a should have a summary"
+            summaries.get(FunctionId(1)).is_none(),
+            "a returns a constant and should be filtered as invalid"
         );
         assert!(
             summaries.get(FunctionId(2)).is_some(),
-            "b should have a summary"
+            "b returns a parameter and should have a summary"
         );
     }
 

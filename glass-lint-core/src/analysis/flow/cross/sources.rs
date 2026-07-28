@@ -74,6 +74,9 @@ impl FlowSources {
         for module in project.modules() {
             let stream = module.local().facts().stream();
             for effect in module.local().effects().iter_effects() {
+                if effect.is_invalid() {
+                    continue;
+                }
                 for call in effect.calls() {
                     let cref = call.as_ref(stream);
                     let Some((target_module, target_function)) =
@@ -167,6 +170,9 @@ impl FlowSources {
             // every call.
             let source_index = build_source_index(flows, names);
             for effect in module.local().effects().iter_effects() {
+                if effect.is_invalid() {
+                    continue;
+                }
                 for call in effect.calls() {
                     let cref = call.as_ref(stream);
                     let Some(chain) = cref.chain() else {
