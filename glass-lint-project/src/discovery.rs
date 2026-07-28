@@ -249,6 +249,15 @@ impl<'adm, 'opt, 'budget> ProjectDiscovery<'adm, 'opt, 'budget> {
                                 base: child_base,
                                 depth: work.depth + 1,
                             }));
+                        } else {
+                            cycle_diagnostics.push(TsconfigDiagnostic {
+                                config_path: config_path.clone(),
+                                cycle_target: None,
+                                message: format!(
+                                    "project reference does not exist: {}",
+                                    reference.path
+                                ),
+                            });
                         }
                     }
                 }

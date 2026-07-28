@@ -211,6 +211,7 @@ Inheritance merges raw `files`, `include`, `exclude`, `outDir`, and `declaration
 #### READ-023 — Missing and package-based config edges disappear silently
 - **Severity:** Medium
 - **Fix Complexity** High
+- **Status:** ✅ Fixed
 - **Category:** Other
 - **Location:** `glass-lint-project/src/tsconfig/mod.rs:339-355`
 

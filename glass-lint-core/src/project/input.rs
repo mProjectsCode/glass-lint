@@ -74,7 +74,10 @@ pub fn normalize_outside_target(path: &str) -> Result<String, ProjectInputError>
         }
         if part == ".." {
             if absolute {
-                if parts.last().is_some_and(|last| *last != ".." && !is_drive_prefix(last)) {
+                if parts
+                    .last()
+                    .is_some_and(|last| *last != ".." && !is_drive_prefix(last))
+                {
                     parts.pop();
                 }
                 continue;

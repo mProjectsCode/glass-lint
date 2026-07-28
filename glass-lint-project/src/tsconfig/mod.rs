@@ -337,9 +337,24 @@ fn parse_error(config: &Path, error: impl fmt::Display) -> ProjectLoadError {
 }
 
 /// Resolve an `extends` string relative to the config's directory.
-/// Returns None for package-based extends that should be ignored.
-fn resolve_extends(config_path: &Path, extends: &str) -> Option<PathBuf> {
+/// Returns `None` for package-based extends (emitting an unsupported
+/// diagnostic) or when the resolved path does not exist (emitting a
+/// missing-file diagnostic).
+fn resolve_extends(
+    config_path: &Path,
+    extends: &str,
+    canonical: &Path,
+    diagnostics: &mut Vec<TsconfigDiagnostic>,
+) -> Option<PathBuf> {
     if !extends.starts_with('.') && !Path::new(extends).is_absolute() {
+        diagnostics.push(TsconfigDiagnostic {
+            config_path: canonical.to_path_buf(),
+            cycle_target: None,
+            message: format!(
+                "unsupported package extends \"{extends}\" in {}",
+                config_path.display()
+            ),
+        });
         return None;
     }
     let base = config_path.parent()?;
@@ -350,6 +365,18 @@ fn resolve_extends(config_path: &Path, extends: &str) -> Option<PathBuf> {
     };
     if path.extension().is_none() {
         path.set_extension("json");
+    }
+    if !path.exists() {
+        diagnostics.push(TsconfigDiagnostic {
+            config_path: canonical.to_path_buf(),
+            cycle_target: None,
+            message: format!(
+                "extends target does not exist: {} (from {})",
+                path.display(),
+                config_path.display()
+            ),
+        });
+        return None;
     }
     Some(path)
 }
@@ -456,40 +483,37 @@ fn build_effective_config_inner(
         .clone()
         .ok()
         .and_then(|extends_str| {
-            let parent_path = resolve_extends(config_path, &extends_str)
-                .filter(|parent_path| parent_path.exists());
-            parent_path.and_then(|parent_path| {
-                // Canonicalize before cycle comparison so equivalent
-                // paths containing .. or symlink aliases are caught.
-                match realpath(&parent_path) {
-                    Ok(parent_canonical) => {
-                        if extends_chain.contains(&parent_canonical) {
-                            diagnostics.push(TsconfigDiagnostic {
-                                config_path: canonical.clone(),
-                                cycle_target: Some(parent_canonical),
-                                message: format!(
-                                    "cycle detected: {} is already in the inheritance chain",
-                                    canonical.display()
-                                ),
-                            });
-                            None
-                        } else {
-                            let result = build_effective_config_inner(
-                                &parent_canonical,
-                                &base,
-                                extends_chain,
-                                deadline,
-                                diagnostics,
-                                budget,
-                                config_count,
-                                resource_budget,
-                            );
-                            Some(result.map(|(merged, _)| merged))
-                        }
+            let parent_path = resolve_extends(config_path, &extends_str, &canonical, diagnostics)?;
+            // Canonicalize before cycle comparison so equivalent
+            // paths containing .. or symlink aliases are caught.
+            match realpath(&parent_path) {
+                Ok(parent_canonical) => {
+                    if extends_chain.contains(&parent_canonical) {
+                        diagnostics.push(TsconfigDiagnostic {
+                            config_path: canonical.clone(),
+                            cycle_target: Some(parent_canonical),
+                            message: format!(
+                                "cycle detected: {} is already in the inheritance chain",
+                                canonical.display()
+                            ),
+                        });
+                        None
+                    } else {
+                        let result = build_effective_config_inner(
+                            &parent_canonical,
+                            &base,
+                            extends_chain,
+                            deadline,
+                            diagnostics,
+                            budget,
+                            config_count,
+                            resource_budget,
+                        );
+                        Some(result.map(|(merged, _)| merged))
                     }
-                    Err(e) => Some(Err(e)),
                 }
-            })
+                Err(e) => Some(Err(e)),
+            }
         })
         .transpose()?;
 

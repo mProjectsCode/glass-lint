@@ -287,7 +287,7 @@ fn missing_config_field_returns_typed_diagnostic() {
 }
 
 #[test]
-fn extends_nonexistent_path_is_skipped_silently() {
+fn extends_nonexistent_path_emits_diagnostic() {
     let project = TempProject::new("tsconfig-missing-extends");
     project.write(
         "tsconfig.json",
@@ -309,7 +309,35 @@ fn extends_nonexistent_path_is_skipped_silently() {
     .unwrap();
 
     assert!(config.pattern_set.is_included("src/main.ts"));
-    assert!(diagnostics.is_empty());
+    assert_eq!(diagnostics.len(), 1);
+    assert!(diagnostics[0].message.contains("does not exist"));
+}
+
+#[test]
+fn extends_package_based_emits_unsupported_diagnostic() {
+    let project = TempProject::new("tsconfig-pkg-extends");
+    project.write(
+        "tsconfig.json",
+        r#"{"extends":"@typescript/foo","include":["src/**/*"]}"#,
+    );
+
+    let mut diagnostics = Vec::new();
+    let mut config_count = 0;
+    let mut resource_budget = default_resource_budget();
+    let (config, _) = build_effective_config(
+        &project.root().join("tsconfig.json"),
+        project.root(),
+        None,
+        &mut diagnostics,
+        default_budget(),
+        &mut config_count,
+        &mut resource_budget,
+    )
+    .unwrap();
+
+    assert!(config.pattern_set.is_included("src/main.ts"));
+    assert_eq!(diagnostics.len(), 1);
+    assert!(diagnostics[0].message.contains("unsupported"));
 }
 
 #[test]
