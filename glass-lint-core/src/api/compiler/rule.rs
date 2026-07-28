@@ -17,11 +17,12 @@ use crate::{
         compiler::{
             normalize,
             object_flow::CompiledObjectFlow,
+            physical::{self, PhysicalPlan},
             validate::{validate_normalized_decl, validate_query_decl},
         },
         rule::{
             ArgumentConstraint, Confidence, MatcherBuildError, MatcherDecl, ModuleSpecifierPattern,
-            query::{EventSpec, IdentitySpec, QueryDecl, SubjectSpec, VarId},
+            query::{EventSpec, IdentitySpec, QueryDecl, VarId},
         },
     },
 };
@@ -30,10 +31,14 @@ use crate::{
 /// declarations are compiled once while a catalog is built and never enter
 /// the per-file analysis path.
 ///
-/// This is the sole compiled-plan type.  Consumers access clauses and flows
-/// through accessors; there is no separate plan wrapper.
+/// This is the sole compiled-plan type.  Consumers access physical roots,
+/// clauses, and flows through accessors; there is no separate plan wrapper.
 #[derive(Debug, Clone)]
 pub(crate) struct CompiledMatcherPlan {
+    /// Physical plan (Phase 6): executable operators produced by the planner.
+    physical_plan: PhysicalPlan,
+    /// Backward-compat clause storage derived from the physical plan.
+    /// Retained while analysis layer migrates to physical roots.
     clauses: Box<[QueryClause]>,
     flows: Box<[CompiledObjectFlow]>,
 }
@@ -161,7 +166,7 @@ pub(crate) struct EvidenceDescriptor {
 
 // ── Lowering: declaration types → compiler IR ────────────────────────────
 
-fn lower_identity(spec: &IdentitySpec) -> IdentityConstraint {
+pub(crate) fn lower_identity(spec: &IdentitySpec) -> IdentityConstraint {
     match spec {
         IdentitySpec::Global { name } => IdentityConstraint::Global {
             name: name.clone(),
@@ -199,7 +204,7 @@ fn lower_identity(spec: &IdentitySpec) -> IdentityConstraint {
     }
 }
 
-fn lower_event(spec: &EventSpec) -> EventPredicate {
+pub(crate) fn lower_event(spec: &EventSpec) -> EventPredicate {
     match spec {
         EventSpec::Call => EventPredicate::Call,
         EventSpec::Construct => EventPredicate::Construct,
@@ -212,36 +217,6 @@ fn lower_event(spec: &EventSpec) -> EventPredicate {
         EventSpec::ClassReference => EventPredicate::ClassReference,
         EventSpec::Import => EventPredicate::Import,
         EventSpec::StringReference => EventPredicate::StringReference,
-    }
-}
-
-fn lower_subject(spec: &SubjectSpec) -> SubjectConstraint {
-    match spec {
-        SubjectSpec::Direct => SubjectConstraint::Direct,
-        SubjectSpec::ReturnedFrom { producer } => SubjectConstraint::ReturnedFrom {
-            producer: Box::new(lower_identity(producer)),
-        },
-        SubjectSpec::InstanceOf { constructor } => SubjectConstraint::InstanceOf {
-            constructor: Box::new(lower_identity(constructor)),
-        },
-    }
-}
-
-fn lower_to_clause(decl: &MatcherDecl) -> QueryClause {
-    QueryClause {
-        identity: lower_identity(&decl.identity),
-        event: lower_event(&decl.event),
-        subject: lower_subject(&decl.subject),
-        constraints: decl
-            .constraints
-            .iter()
-            .cloned()
-            .map(QueryConstraint::Argument)
-            .collect(),
-        evidence: EvidenceDescriptor {
-            kind: decl.evidence_kind,
-            symbol: decl.evidence_symbol.clone(),
-        },
     }
 }
 
@@ -343,31 +318,40 @@ impl QueryClause {
 }
 
 /// Shared declaration compilation: convert each declaration to a logical
-/// query, validate it, lower to a clause, then sort, deduplicate, and
-/// validate every clause.
-fn collect_clauses(decls: &[MatcherDecl]) -> Result<Vec<QueryClause>, MatcherBuildError> {
-    // Phase 4: Validate each declaration as a logical QueryDecl.
+/// query, validate it, normalize it, then produce both a physical plan and
+/// backward-compatible clauses.
+fn collect_clauses(
+    decls: &[MatcherDecl],
+) -> Result<(Vec<QueryClause>, PhysicalPlan), MatcherBuildError> {
+    let mut all_roots = Vec::new();
+    let mut merged_requirements = normalize::PlanRequirements::default();
+    let mut clauses: Vec<QueryClause> = Vec::new();
+
     for (i, decl) in decls.iter().enumerate() {
         let var_id = VarId::new(u32::try_from(i).unwrap_or(u32::MAX));
+
+        // Phase 4: Validate each declaration as a logical QueryDecl.
         let query = QueryDecl::from_matcher(decl, var_id);
         validate_query_decl(&query).map_err(|e| {
             MatcherBuildError::InvalidLoweredQuery(format!("{}: {}", e.diagnostic_name(), e))
         })?;
 
         // Phase 5: Normalize the logical query into canonical form.
-        let (normalized, _requirements) = normalize::normalize_query_decl(&query);
+        let (normalized, requirements) = normalize::normalize_query_decl(&query);
         validate_normalized_decl(&normalized).map_err(|e| {
             MatcherBuildError::InvalidLoweredQuery(format!("{}: {}", e.diagnostic_name(), e))
         })?;
-        // The normalized form and plan requirements are reserved for
-        // Phase 6 (physical planning).  Lowering still uses the original
-        // MatcherDecl for now.
+
+        // Phase 6: Plan the normalized query into physical roots.
+        let query_plan = physical::plan_normalized(&normalized, requirements);
+        all_roots.extend(query_plan.roots().iter().cloned());
+        merged_requirements.merge_from(query_plan.requirements());
+
+        // Backward-compat clause for each root in this query.
+        let root_clauses = physical::roots_to_clauses(query_plan.roots());
+        clauses.extend(root_clauses);
     }
 
-    let mut clauses: Vec<QueryClause> = Vec::new();
-    for decl in decls {
-        clauses.push(lower_to_clause(decl));
-    }
     clauses.sort();
     clauses.dedup();
     for clause in &clauses {
@@ -375,7 +359,15 @@ fn collect_clauses(decls: &[MatcherDecl]) -> Result<Vec<QueryClause>, MatcherBui
             .validate()
             .map_err(|error| MatcherBuildError::InvalidLoweredQuery(error.to_string()))?;
     }
-    Ok(clauses)
+
+    // Sort roots for deterministic order across equivalent queries.
+    let mut sorted_roots: Vec<physical::PhysicalRoot> = all_roots;
+    sorted_roots.sort();
+    let physical_plan = PhysicalPlan::new(sorted_roots.into_boxed_slice(), merged_requirements);
+    physical::validate_physical_plan(&physical_plan, 0)
+        .map_err(|e| MatcherBuildError::InvalidLoweredQuery(e.to_string()))?;
+
+    Ok((clauses, physical_plan))
 }
 
 impl CompiledMatcherPlan {
@@ -387,12 +379,22 @@ impl CompiledMatcherPlan {
         &self.flows
     }
 
-    /// Compile declarations into clauses.
+    pub(crate) fn physical_roots(&self) -> &[physical::PhysicalRoot] {
+        self.physical_plan.roots()
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn plan_summary(&self) -> String {
+        self.physical_plan.summary()
+    }
+
+    /// Compile declarations into clauses and a physical plan.
     /// Used by test helpers.
     #[cfg(test)]
     pub(crate) fn compile_decls(decls: &[MatcherDecl]) -> Result<Self, MatcherBuildError> {
-        let clauses = collect_clauses(decls)?;
+        let (clauses, physical_plan) = collect_clauses(decls)?;
         Ok(Self {
+            physical_plan,
             clauses: clauses.into_boxed_slice(),
             flows: Box::new([]),
         })
@@ -403,7 +405,7 @@ impl CompiledMatcherPlan {
         decls: &[MatcherDecl],
         flows: &[crate::api::rule::ObjectFlowMatcher],
     ) -> Result<Self, MatcherBuildError> {
-        let clauses = collect_clauses(decls)?;
+        let (clauses, mut physical_plan) = collect_clauses(decls)?;
         let compiled_flows: Vec<CompiledObjectFlow> = flows
             .iter()
             .map(|flow| {
@@ -423,7 +425,14 @@ impl CompiledMatcherPlan {
                 Ok(compiled)
             })
             .collect::<Result<Vec<_>, _>>()?;
+
+        // Patch lifecycle flow indices now that we know the flow count.
+        physical::patch_lifecycle_flow_indices(&mut physical_plan, compiled_flows.len());
+        physical::validate_physical_plan(&physical_plan, compiled_flows.len())
+            .map_err(|e| MatcherBuildError::InvalidLoweredQuery(e.to_string()))?;
+
         Ok(Self {
+            physical_plan,
             clauses: clauses.into_boxed_slice(),
             flows: compiled_flows.into_boxed_slice(),
         })

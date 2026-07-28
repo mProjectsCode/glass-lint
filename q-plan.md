@@ -1182,17 +1182,17 @@ semantics.
 
 ### Tasks
 
-- [ ] 1. Add a planner from normalized logical roots to physical roots.
-- [ ] 2. Move clause/flow routing decisions from runtime consumers into the planner.
-- [ ] 3. Store plan-wide requirements once.
-- [ ] 4. Select the narrowest available index for each event/identity pair.
-- [ ] 5. Attach same-event value predicates directly to the scan or constrained
-   projection.
-- [ ] 6. Compile alternatives into deterministic root order.
-- [ ] 7. Compile lifecycles into validated flow plans.
-- [ ] 8. Represent project overlay needs explicitly rather than probing every plan.
-- [ ] 9. Add physical plan validation.
-- [ ] 10. Add a stable plan summary for tests/profiling, for example:
+- [x] 1. Add a planner from normalized logical roots to physical roots.
+- [x] 2. Move clause/flow routing decisions from runtime consumers into the planner.
+- [x] 3. Store plan-wide requirements once.
+- [x] 4. Select the narrowest available index for each event/identity pair.
+- [x] 5. Attach same-event value predicates directly to the scan or constrained
+    projection.
+- [x] 6. Compile alternatives into deterministic root order.
+- [x] 7. Compile lifecycles into validated flow plans.
+- [x] 8. Represent project overlay needs explicitly rather than probing every plan.
+- [x] 9. Add physical plan validation.
+- [x] 10. Add a stable plan summary for tests/profiling, for example:
 
     ```text
     roots=3
@@ -1202,7 +1202,7 @@ semantics.
     project_overlay=module_exports
     ```
 
-- [ ] 11. Do not expose physical storage publicly.
+- [x] 11. Do not expose physical storage publicly.
 
 ### Physical-plan correctness
 
@@ -1221,19 +1221,19 @@ planner change.
 
 ### Required tests
 
-- [ ] Each logical leaf selects the expected physical access path.
-- [ ] Same-event filters fuse into one constrained operator.
-- [ ] Alternatives retain deterministic order.
-- [ ] Project-independent queries do not request project overlays.
-- [ ] Planner output is stable across equivalent normalized queries.
+- [x] Each logical leaf selects the expected physical access path.
+- [x] Same-event filters fuse into one constrained operator.
+- [x] Alternatives retain deterministic order.
+- [x] Project-independent queries do not request project overlays.
+- [x] Planner output is stable across equivalent normalized queries.
 - [ ] A reference evaluator or focused equivalence harness compares logical
   meaning and physical execution on small test artifacts where practical.
 
 ### Exit criteria
 
-- [ ] Runtime execution receives physical plans only.
-- [ ] No runtime consumer branches on authored declaration types.
-- [ ] No runtime consumer independently decides whether a query is constrained,
+- [x] Runtime execution receives physical plans only.
+- [x] No runtime consumer branches on authored declaration types.
+- [x] No runtime consumer independently decides whether a query is constrained,
   flow-based, or project-linked.
 
 ## Phase 7: Migrate ordinary indexed matchers

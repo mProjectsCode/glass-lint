@@ -9,6 +9,7 @@
 pub(crate) mod catalog;
 pub(crate) mod normalize;
 pub(crate) mod object_flow;
+pub(crate) mod physical;
 pub(crate) mod rule;
 pub(crate) mod validate;
 

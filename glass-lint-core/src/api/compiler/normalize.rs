@@ -29,7 +29,7 @@ use crate::api::rule::query::{
 /// These describe which execution subsystems a plan needs. Physical plan
 /// selection (Phase 6) will use these to choose operators and reserve
 /// resources.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[allow(clippy::struct_excessive_bools)]
 pub(crate) struct PlanRequirements {
     /// Whether the plan needs occurrence indexes (always true for any query).
@@ -60,6 +60,17 @@ impl PlanRequirements {
             needs_project_overlay: requires_project_overlay(&decl.expression),
             needs_evidence_trace: true,
         }
+    }
+
+    /// Merge another set of requirements into this one (union semantics).
+    pub(crate) fn merge_from(&mut self, other: &Self) {
+        self.needs_occurrence_indexes |= other.needs_occurrence_indexes;
+        self.needs_fact_stream |= other.needs_fact_stream;
+        self.needs_value_resolution |= other.needs_value_resolution;
+        self.needs_local_flow |= other.needs_local_flow;
+        self.needs_cross_call_flow |= other.needs_cross_call_flow;
+        self.needs_project_overlay |= other.needs_project_overlay;
+        self.needs_evidence_trace |= other.needs_evidence_trace;
     }
 }
 

@@ -1,6 +1,6 @@
 #[cfg(test)]
 use glass_lint_datastructures::ByteRange;
-use glass_lint_datastructures::NameTable;
+use glass_lint_datastructures::{NameTable, SymbolPath};
 #[cfg(test)]
 use smol_str::SmolStr;
 
@@ -11,8 +11,11 @@ use crate::{
         CandidateOccurrences, ClassificationEvidence, LinkedOccurrenceView, OccurrenceIndexes,
         occurrence::ReturnedMemberKey, push_owned_evidence,
     },
-    api::compiler::rule::{
-        CompiledMatcherPlan, EventPredicate, IdentityConstraint, QueryClause, SubjectConstraint,
+    api::compiler::{
+        physical::PhysicalRoot,
+        rule::{
+            CompiledMatcherPlan, EventPredicate, IdentityConstraint, QueryClause, SubjectConstraint,
+        },
     },
 };
 
@@ -35,17 +38,45 @@ impl OccurrenceIndexes {
         names: &NameTable,
     ) -> Vec<ClassificationEvidence> {
         let mut evidence = Vec::new();
-        for clause in plan.clauses() {
-            if !clause.constraints.is_empty() {
-                continue;
-            }
-            if let Some(occurrences) = self.occurrences_for_clause(clause, overlay, names) {
-                push_owned_evidence(
-                    &mut evidence,
-                    clause.evidence.kind,
-                    clause.evidence.symbol.clone(),
-                    occurrences,
-                );
+        for root in plan.physical_roots() {
+            match root {
+                PhysicalRoot::IndexedScan {
+                    identity,
+                    event,
+                    evidence: ev,
+                } => {
+                    if let Some(occurrences) =
+                        self.occurrences_for_indexed(identity, event, overlay, names)
+                    {
+                        push_owned_evidence(&mut evidence, ev.kind, ev.symbol.clone(), occurrences);
+                    }
+                }
+                PhysicalRoot::ReturnedSubject {
+                    identity,
+                    member,
+                    event,
+                    evidence: ev,
+                } => {
+                    if let Some(occurrences) =
+                        self.occurrences_for_returned(identity, member, event, overlay, names)
+                    {
+                        push_owned_evidence(&mut evidence, ev.kind, ev.symbol.clone(), occurrences);
+                    }
+                }
+                PhysicalRoot::InstanceSubject {
+                    constructor,
+                    member,
+                    evidence: ev,
+                } => {
+                    if let Some(occurrences) =
+                        self.occurrences_for_instance(constructor, member, names)
+                    {
+                        push_owned_evidence(&mut evidence, ev.kind, ev.symbol.clone(), occurrences);
+                    }
+                }
+                // Constrained scans are handled by the fact-stream projection path.
+                // Lifecycle roots are handled by the flow projection path.
+                PhysicalRoot::ConstrainedScan { .. } | PhysicalRoot::Lifecycle { .. } => {}
             }
         }
         evidence.sort_by(|left, right| {
@@ -59,6 +90,70 @@ impl OccurrenceIndexes {
         evidence
     }
 
+    /// Resolve an indexed scan (direct event lookup).
+    fn occurrences_for_indexed<'a>(
+        &'a self,
+        identity: &'a IdentityConstraint,
+        event: &'a EventPredicate,
+        overlay: Option<&'a LinkedOccurrenceView<'a>>,
+        names: &NameTable,
+    ) -> Option<CandidateOccurrences<'a>> {
+        let view = self.build_event_view(event, overlay);
+        view.resolve(identity, event, names)
+    }
+
+    /// Resolve a returned-subject scan.
+    fn occurrences_for_returned<'a>(
+        &'a self,
+        identity: &'a IdentityConstraint,
+        member: &SymbolPath,
+        event: &EventPredicate,
+        _overlay: Option<&'a LinkedOccurrenceView<'a>>,
+        names: &'a NameTable,
+    ) -> Option<CandidateOccurrences<'a>> {
+        let predicate = |key: &ReturnedMemberKey| {
+            names.resolve_path(key.source()).is_some_and(|source| {
+                identity.root_or_descendant_matches(&source, &self.environment)
+            }) && names
+                .lookup_path(member)
+                .is_some_and(|m| m == *key.member())
+        };
+        match event {
+            EventPredicate::MemberCall { .. } => self.members.returned_calls.matching(predicate),
+            EventPredicate::MemberRead { .. } => self.members.returned_reads.matching(predicate),
+            _ => None,
+        }
+    }
+
+    /// Resolve an instance-subject scan.
+    fn occurrences_for_instance<'a>(
+        &'a self,
+        constructor: &IdentityConstraint,
+        member: &SymbolPath,
+        _names: &NameTable,
+    ) -> Option<CandidateOccurrences<'a>> {
+        self.members
+            .instance_calls
+            .matching(|key| match constructor {
+                IdentityConstraint::ModuleExport {
+                    module: expected_module,
+                    export: expected_export,
+                } => {
+                    key.identity().module() == expected_module
+                        && key.identity().export() == expected_export
+                        && member.eq_chain(key.member())
+                }
+                IdentityConstraint::PackageModuleExport { module, export } => {
+                    module.matches(key.identity().module())
+                        && key.identity().export() == export
+                        && member.eq_chain(key.member())
+                }
+                _ => false,
+            })
+    }
+
+    /// Resolve a clause using the old clause-based dispatch.
+    /// Still used by the constrained evidence path.
     pub(in crate::analysis) fn occurrences_for_clause<'a>(
         &'a self,
         clause: &'a QueryClause,
