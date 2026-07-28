@@ -14,10 +14,10 @@ use crate::{
     analysis::matches_global_object_alias,
     api::{
         classification::{MatchKind, RuleIndex},
-        compiler::object_flow::CompiledObjectFlow,
+        compiler::{object_flow::CompiledObjectFlow, validate::validate_query_decl},
         rule::{
             ArgumentConstraint, Confidence, MatcherBuildError, MatcherDecl, ModuleSpecifierPattern,
-            query::{EventSpec, IdentitySpec, SubjectSpec},
+            query::{EventSpec, IdentitySpec, QueryDecl, SubjectSpec, VarId},
         },
     },
 };
@@ -338,9 +338,19 @@ impl QueryClause {
     }
 }
 
-/// Shared declaration compilation: convert each declaration to a clause,
-/// sort and deduplicate clauses, then validate every clause.
+/// Shared declaration compilation: convert each declaration to a logical
+/// query, validate it, lower to a clause, then sort, deduplicate, and
+/// validate every clause.
 fn collect_clauses(decls: &[MatcherDecl]) -> Result<Vec<QueryClause>, MatcherBuildError> {
+    // Phase 4: Validate each declaration as a logical QueryDecl.
+    for (i, decl) in decls.iter().enumerate() {
+        let var_id = VarId::new(u32::try_from(i).unwrap_or(u32::MAX));
+        let query = QueryDecl::from_matcher(decl, var_id);
+        validate_query_decl(&query).map_err(|e| {
+            MatcherBuildError::InvalidLoweredQuery(format!("{}: {}", e.diagnostic_name(), e))
+        })?;
+    }
+
     let mut clauses: Vec<QueryClause> = Vec::new();
     for decl in decls {
         clauses.push(lower_to_clause(decl));

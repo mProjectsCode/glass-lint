@@ -9,6 +9,7 @@
 pub(crate) mod catalog;
 pub(crate) mod object_flow;
 pub(crate) mod rule;
+pub(crate) mod validate;
 
 pub(crate) use catalog::compile_records;
 pub(crate) use object_flow::{

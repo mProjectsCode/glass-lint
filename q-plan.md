@@ -1003,9 +1003,9 @@ The syntax above is explanatory, not a commitment to a textual grammar.
 
 - [x] Every old builder method lowers to a valid logical query.
 - [x] Semantically equivalent builder forms normalize equally.
-- [ ] Invalid variable reuse is rejected. *(deferred to Phase 4 validation)*
-- [ ] An uncorrelated multi-event `All` is rejected. *(deferred to Phase 4 validation)*
-- [ ] Evidence projection from a variable absent in one `Any` branch is rejected.
+- [x] Invalid variable reuse is rejected. *(deferred to Phase 4 validation)*
+- [x] An uncorrelated multi-event `All` is rejected. *(deferred to Phase 4 validation)*
+- [x] Evidence projection from a variable absent in one `Any` branch is rejected.
   *(deferred to Phase 4 validation)*
 - [x] Empty `Any`, `All`, and lifecycle stages are rejected.
 
@@ -1027,21 +1027,21 @@ physical planning.
 
 Implement explicit passes rather than one large recursive validator:
 
-- [ ] 1. declaration well-formedness;
-- [ ] 2. symbol and variable collection;
-- [ ] 3. variable type inference/checking;
-- [ ] 4. operator compatibility;
-- [ ] 5. correlation and scope checking;
-- [ ] 6. evidence projection checking;
-- [ ] 7. boundedness checking;
-- [ ] 8. relation availability checking;
-- [ ] 9. lifecycle validation; and
-- [ ] 10. final invariant validation after normalization.
+- [x] 1. declaration well-formedness;
+- [x] 2. symbol and variable collection;
+- [x] 3. variable type inference/checking;
+- [x] 4. operator compatibility;
+- [x] 5. correlation and scope checking;
+- [x] 6. evidence projection checking;
+- [x] 7. boundedness checking;
+- [x] 8. relation availability checking;
+- [x] 9. lifecycle validation; and
+- [x] 10. final invariant validation after normalization.
 
 ### Tasks
 
-- [ ] 1. Introduce a structured `QueryCompileError`.
-- [ ] 2. Assign stable diagnostic codes or variants for:
+- [x] 1. Introduce a structured `QueryCompileError`.
+- [x] 2. Assign stable diagnostic codes or variants for:
    - missing binding;
    - duplicate binding;
    - type mismatch;
@@ -1054,33 +1054,33 @@ Implement explicit passes rather than one large recursive validator:
    - invalid module pattern;
    - invalid static-value predicate; and
    - internal lowering invariant violation.
-- [ ] 3. Separate authored errors from internal compiler bugs.
-- [ ] 4. Never panic on unsupported authored input.
-- [ ] 5. Validate relation scope:
+- [x] 3. Separate authored errors from internal compiler bugs.
+- [x] 4. Never panic on unsupported authored input.
+- [x] 5. Validate relation scope:
    - local;
    - function/call graph;
    - module;
    - project.
-- [ ] 6. Validate strict versus heuristic identity requirements.
-- [ ] 7. Validate evidence-kind compatibility.
-- [ ] 8. Validate all authored collection limits before allocating large compiler
+- [x] 6. Validate strict versus heuristic identity requirements.
+- [x] 7. Validate evidence-kind compatibility.
+- [x] 8. Validate all authored collection limits before allocating large compiler
    structures.
-- [ ] 9. Make compile errors deterministic regardless of hash or declaration order.
-- [ ] 10. Add compact display messages and richer internal context for tests.
+- [x] 9. Make compile errors deterministic regardless of hash or declaration order.
+- [x] 10. Add compact display messages and richer internal context for tests.
 
 ### Required tests
 
-- [ ] One focused unit test per error variant.
-- [ ] Stable error precedence for queries with multiple problems.
-- [ ] Fuzz or property tests for validator non-panicking behavior if a suitable
+- [x] One focused unit test per error variant.
+- [x] Stable error precedence for queries with multiple problems.
+- [x] Fuzz or property tests for validator non-panicking behavior if a suitable
   existing test dependency is available.
-- [ ] Round-trip builder-to-logical validation for the full built-in catalog.
+- [x] Round-trip builder-to-logical validation for the full built-in catalog.
 
 ### Exit criteria
 
-- [ ] The physical planner can assume a documented set of invariants.
-- [ ] No invalid query shape reaches runtime.
-- [ ] Errors identify the authored concept, not compiler enum debug output.
+- [x] The physical planner can assume a documented set of invariants.
+- [x] No invalid query shape reaches runtime.
+- [x] Errors identify the authored concept, not compiler enum debug output.
 
 ## Phase 5: Normalize logical queries
 
