@@ -1,5 +1,29 @@
 use super::*;
 
+/// Central correctness invariant: incompatible branch facts must never combine.
+///
+/// One branch configures the script but inserts a different object. The other
+/// inserts the script without configuring it. A union of independent
+/// "possible configuration" and "possible alias" sets would invent a match.
+#[test]
+fn incompatible_branch_facts_never_stitch_into_a_finding() {
+    let rules = [rule("test.flow")
+        .declaration(script_insertion_flow())
+        .build()
+        .unwrap()];
+    assert_eq!(
+        classify(
+            "const script = document.createElement('script'); let inserted; \
+             if (flag) { script.src = '/app.js'; inserted = localElement; } \
+             else { inserted = script; } \
+             document.head.appendChild(inserted);",
+            &rules,
+        )
+        .finding_count,
+        0
+    );
+}
+
 #[test]
 fn flow_calls_use_effective_call_and_apply_arguments() {
     let rules = [rule("test.flow")

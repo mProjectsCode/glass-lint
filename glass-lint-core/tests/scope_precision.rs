@@ -233,23 +233,135 @@ fn dynamic_call_value_does_not_promote_to_a_strict_provenance() {
     assert_count("let value = dynamicThing(); value('/x');", rule, 0);
 }
 
+/// Initial semantic matrix for possible-path certainty.
+///
+/// Under future possible-path semantics:
+/// - `Possible` when at least one reaching path matches, but not all.
+/// - `Definite` when every reaching path matches.
+///
+/// These cases are recorded now with current must-only expectations and
+/// ignored desired-variant copies so the test matrix exists before behavior
+/// changes. When the matching semantics are enabled, copy the expected counts
+/// from the ignored variants and add certainty/trace assertions.
 #[test]
-fn conditional_assignment_never_falls_back_to_an_older_identity() {
+fn conditional_assignment_preserves_each_feasible_identity() {
     let rule = rooted_read_rule();
+    // Possible (future): host on the incoming/false path.
+    // Currently must-analysis joins disagreeing branches to Unknown → 0.
     assert_count(
         "let api = host.files; if (flag) api = local.files; api.read();",
         rule.clone(),
         0,
     );
+    // Possible (future): host on the true path.
     assert_count(
         "let api = local.files; if (flag) api = host.files; api.read();",
         rule.clone(),
         0,
     );
+    // Definite: every reaching path has the same identity.
     assert_count(
         "let api = host.files; if (flag) api = host.files; else api = host.files; api.read();",
         rule,
         1,
+    );
+}
+
+/// Future Possible finding: host identity on the incoming (false) path only.
+#[test]
+#[ignore = "possible-path semantics not yet implemented"]
+fn possible_finding_host_on_false_path() {
+    assert_count(
+        "let api = host.files; if (flag) api = local.files; api.read();",
+        rooted_read_rule(),
+        1,
+    );
+}
+
+/// Future Possible finding: host identity on the true path only.
+#[test]
+#[ignore = "possible-path semantics not yet implemented"]
+fn possible_finding_host_on_true_path() {
+    assert_count(
+        "let api = local.files; if (flag) api = host.files; api.read();",
+        rooted_read_rule(),
+        1,
+    );
+}
+
+/// Future Definite: every reaching modeled path has the host identity.
+#[test]
+#[ignore = "possible-path semantics not yet implemented"]
+fn definite_all_paths_match() {
+    assert_count(
+        "let api = host.files; if (flag) api = host.files; else api = host.files; api.read();",
+        rooted_read_rule(),
+        1,
+    );
+}
+
+/// Limit-exhaustion: when analysis limits prevent a complete result,
+/// the certainty must never be Definite even if all retained alternatives
+/// happen to match. These tests will be enabled once bounded alternative
+/// environments and their explicit limits are implemented.
+///
+/// Deeply nested branches should not cause unbounded analysis and must
+/// not produce a Definite finding when the alternative cap is reached.
+#[test]
+#[ignore = "alternative limits not yet implemented"]
+fn deep_nesting_under_limit_produces_possible_not_definite() {
+    // A deeply nested if/else with matching facts, but the alternative
+    // count exceeds the configured limit. The retained match should be
+    // Possible, not Definite.
+    use std::fmt::Write;
+    let mut source = String::from("let api = host.files;\n");
+    for i in 0..100 {
+        let _ = writeln!(source, "if (flag{i}) api = host.files; else {{ api = local.files; return; }}");
+    }
+    source.push_str("api.read();");
+    assert_count(&source, rooted_read_rule(), 1);
+}
+
+/// Many distinct trace alternatives at a single occurrence must be capped.
+#[test]
+#[ignore = "trace limits not yet implemented"]
+fn many_distinct_traces_are_capped_and_marked_truncated() {
+    // When the same finding could be reached through many different
+    // trace paths, the trace count must be bounded and the finding
+    // must report truncation.
+    assert_count(
+        "let api = host.files; \
+         if (a) api = host.files; if (b) api = host.files; \
+         if (c) api = host.files; if (d) api = host.files; \
+         api.read();",
+        rooted_read_rule(),
+        1,
+    );
+}
+
+/// Exhausted alternative budget must downgrade Definite to Possible.
+#[test]
+#[ignore = "alternative limits not yet implemented"]
+fn exhausted_alternative_budget_prevents_definite() {
+    // Every retained alternative matches, but some were dropped due to
+    // the budget. The finding must be Possible, not Definite.
+    assert_count(
+        "let api = host.files; \
+         if (a) api = host.files; if (b) api = host.files; \
+         if (c) api = local; if (d) api = local; \
+         api.read();",
+        rooted_read_rule(),
+        0,
+    );
+}
+
+/// No finding: neither path has the host identity.
+#[test]
+fn neither_path_has_identity() {
+    assert_count(
+        "let api = local.files; if (flag) api = other.files; api.read();",
+        rooted_read_rule(),
+        0,
     );
 }
 
@@ -294,6 +406,78 @@ fn abrupt_branch_exit_does_not_poison_the_reachable_join() {
         "function run(flag) { let api = host.files; if (flag) { api = local.files; return; } api.read(); }",
         rooted_read_rule(),
         1,
+    );
+}
+
+/// Abrupt exits (return, throw, break, continue) must be excluded from
+/// certainty quantification when they do not reach the occurrence.
+///
+/// Under future possible-path semantics:
+/// - Only the non-throwing/non-returning path reaches the sink, so a match
+///   on that path is Definite.
+#[test]
+fn throw_exit_excludes_unreachable_path_from_certainty() {
+    assert_count(
+        "function run(flag) { let api = host.files; if (flag) { api = local.files; throw new Error(); } api.read(); }",
+        rooted_read_rule(),
+        1,
+    );
+}
+
+/// Future Possible: break exits the loop body before reaching the
+/// occurrence, leaving only the no-entry path with the host identity.
+#[test]
+#[ignore = "possible-path semantics not yet implemented"]
+fn future_possible_break_excludes_nonmatching_loop_body() {
+    assert_count(
+        "let api = host.files; while (flag) { api = local.files; break; } api.read();",
+        rooted_read_rule(),
+        1,
+    );
+}
+
+/// Future Possible: continue skips the rest of the iteration body,
+/// but the non-entry path still has the host identity.
+#[test]
+#[ignore = "possible-path semantics not yet implemented"]
+fn future_possible_continue_excludes_nonmatching_iteration() {
+    assert_count(
+        "let api = host.files; let i = 0; while (i < 10) { i++; api = local.files; continue; api.read(); } api.read();",
+        rooted_read_rule(),
+        1,
+    );
+}
+
+/// Future Definite: the only reaching path after return has the identity.
+#[test]
+#[ignore = "possible-path semantics not yet implemented"]
+fn definite_abrupt_return_excludes_nonmatching_path() {
+    assert_count(
+        "function run(flag) { let api = local.files; if (flag) api = host.files; else return; api.read(); }",
+        rooted_read_rule(),
+        1,
+    );
+}
+
+/// Future Definite: the only reaching path after throw has the identity.
+#[test]
+#[ignore = "possible-path semantics not yet implemented"]
+fn definite_abrupt_throw_excludes_nonmatching_path() {
+    assert_count(
+        "function run(flag) { let api = local.files; if (flag) api = host.files; else throw new Error(); api.read(); }",
+        rooted_read_rule(),
+        1,
+    );
+}
+
+/// When no abrupt exit removes the conflicting path, the join must not
+/// produce a finding. This is the counterpart to the abrupt-exit cases.
+#[test]
+fn no_abrupt_exit_means_conflicting_path_poisons_join() {
+    assert_count(
+        "function run(flag) { let api = host.files; if (flag) api = local.files; api.read(); }",
+        rooted_read_rule(),
+        0,
     );
 }
 
