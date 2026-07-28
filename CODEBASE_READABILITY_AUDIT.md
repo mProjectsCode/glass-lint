@@ -196,13 +196,10 @@ For absolute paths, every `..` component is discarded instead of popping the pre
 #### READ-020 — `ParentPathStore` exposes two incompatible ID domains
 - **Severity:** High
 - **Fix Complexity** Extreme
-- **Status:** ✅ Fixed
 - **Category:** API
 - **Location:** `glass-lint-datastructures/src/path_trie/store.rs:46-208`
 
 Linked nodes return tagged IDs, but public methods handle them inconsistently: `depth`, `parent`, and `segment` untag them, while `is_valid`, `collect_segments`, `rebuild_without_first`, and the final `starts_with` comparison do not. `segments(tagged_id)` can silently return an empty iterator, and `append_linked` accepts caller-supplied depth/parent state and refuses to reuse an existing edge once capacity is full. Split ordinary interned paths from overlay/link paths with distinct ID and store types, or make the linked mechanism private to a validated overlay owner. Ensure every public operation either accepts one coherent typed ID domain or returns an explicit invalid-ID error; add round-trip tests over every operation on linked IDs.
-
-**Fix:** Every public method in `ParentPathStore` now consistently untags IDs before using them as node indices. Specifically: `is_valid`, `collect_segments`, `rebuild_without_first`, `starts_with` (both the walk and the final comparison), and `first_segment_of` all call `PathId(id).untag().0` before index access. `append_linked` now checks edge reuse before capacity. Added 26 round-trip tests in `linked_id_roundtrips` covering every public operation on tagged IDs, including depth, parent, segment, is_valid, starts_with, first_segment_of, find_linked_edge, collect_segments, segments, last, without_first, and first_index.
 
 ### `glass-lint-project`: tsconfig and discovery
 
