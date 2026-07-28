@@ -32,7 +32,7 @@ pub struct ProjectMatcherModel<'project, 'matchers> {
 #[derive(Debug)]
 struct ProjectModuleProjection<'project> {
     index: &'project OccurrenceIndexes,
-    overlay: LinkedOccurrenceView<'project>,
+    overlay: Option<LinkedOccurrenceView<'project>>,
     projected: Vec<Vec<ClassificationEvidence>>,
 }
 
@@ -87,13 +87,19 @@ impl ProjectSemanticModel {
                 let index = module.local().facts().matcher_index();
                 let identities = self.module_identities(module.id(), &mut session);
                 let result_identities = self.call_result_identities(module.id(), &mut session);
-                let overlay = index.module_overlay(&identities);
+                let (overlay, overlay_ops) = if plan.needs_overlay() {
+                    let (view, ops) = index.module_overlay(&identities);
+                    (Some(view), ops)
+                } else {
+                    (None, 0)
+                };
+                local_operations = local_operations.saturating_add(overlay_ops);
                 let (projected, local_outcome) = module.local().facts().project(
                     module.local().effects(),
                     &plan,
                     Some(&identities),
                     Some(&result_identities),
-                    Some(&overlay),
+                    overlay.as_ref(),
                     flow_limits,
                     module.id(),
                     &mut arena,
@@ -189,7 +195,7 @@ impl ProjectMatcherModel<'_, '_> {
             .map_or_else(Vec::new, |projection| {
                 projection.index.evidence_for_with_overlay(
                     matcher,
-                    Some(&projection.overlay),
+                    projection.overlay.as_ref(),
                     names,
                 )
             });

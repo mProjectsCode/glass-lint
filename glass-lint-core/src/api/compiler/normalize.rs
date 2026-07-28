@@ -56,7 +56,7 @@ impl PlanRequirements {
             needs_fact_stream: has_any_constraint(&decl.expression),
             needs_value_resolution: has_any_constraint(&decl.expression),
             needs_local_flow: matches!(&decl.expression, QueryExpr::Lifecycle(_)),
-            needs_cross_call_flow: false,
+            needs_cross_call_flow: matches!(&decl.expression, QueryExpr::Lifecycle(_)),
             needs_project_overlay: requires_project_overlay(&decl.expression),
             needs_evidence_trace: true,
         }

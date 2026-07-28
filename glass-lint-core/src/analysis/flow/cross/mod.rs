@@ -62,10 +62,17 @@ pub(in crate::analysis) fn collect(
     // CallPropagation per context, then final exhaustion handling.
     // Extracting the loop body would require passing 12+ context fields
     // through every call site.
+    // Collect flows from lifecycle roots explicitly, keeping the
+    // compiled plan root as the source of truth.  Each lifecycle root
+    // embeds its CompiledObjectFlow directly.
     let mut flows = HashMap::<FlowId, &CompiledObjectFlow>::new();
     for (rule_index, matcher) in matchers.selected_matchers() {
-        for (flow_index, flow) in matcher.flows().iter().enumerate() {
-            flows.insert(FlowId::new(rule_index, flow_index), flow);
+        let mut flow_index = 0usize;
+        for root in matcher.physical_roots() {
+            if let crate::api::compiler::physical::PhysicalRoot::Lifecycle { flow } = root {
+                flows.insert(FlowId::new(rule_index, flow_index), flow);
+                flow_index += 1;
+            }
         }
     }
     let rule_count = matchers.len();

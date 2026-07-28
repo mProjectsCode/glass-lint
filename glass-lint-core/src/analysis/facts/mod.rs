@@ -358,9 +358,16 @@ pub(in crate::analysis) struct ProjectionPlan<'a> {
     constrained_roots: Vec<(usize, &'a PhysicalRoot)>,
     flow_matchers: Vec<(RuleIndex, usize, &'a CompiledObjectFlow)>,
     rule_count: usize,
+    /// Whether any selected plan requires project identity overlays.
+    needs_overlay: bool,
 }
 
 impl<'a> ProjectionPlan<'a> {
+    /// Whether any selected plan requires project identity overlays.
+    pub(in crate::analysis) fn needs_overlay(&self) -> bool {
+        self.needs_overlay
+    }
+
     pub(in crate::analysis) fn from_selection(selection: &'a CompiledRuleSelection<'a>) -> Self {
         let constrained_roots = selection
             .selected_matchers()
@@ -374,9 +381,11 @@ impl<'a> ProjectionPlan<'a> {
                 roots
             })
             .collect::<Vec<_>>();
+        let mut needs_overlay = false;
         let flow_matchers = selection
             .selected_matchers()
             .flat_map(|(rule_index, matcher)| {
+                needs_overlay = needs_overlay || matcher.needs_project_overlay();
                 matcher
                     .flows()
                     .iter()
@@ -389,6 +398,7 @@ impl<'a> ProjectionPlan<'a> {
             constrained_roots,
             flow_matchers,
             rule_count,
+            needs_overlay,
         }
     }
 }

@@ -168,7 +168,7 @@ impl PhysicalPlan {
             }
         }
         format!(
-            "roots={} indexed_scans={} constrained_scans={} returned_subjects={} instance_subjects={} lifecycle_plans={} project_overlay={}",
+            "roots={} indexed_scans={} constrained_scans={} returned_subjects={} instance_subjects={} lifecycle_plans={} project_overlay={} cross_call_flow={}",
             self.roots.len(),
             indexed,
             constrained,
@@ -176,6 +176,11 @@ impl PhysicalPlan {
             instance,
             lifecycle,
             if self.requirements.needs_project_overlay {
+                "yes"
+            } else {
+                "no"
+            },
+            if self.requirements.needs_cross_call_flow {
                 "yes"
             } else {
                 "no"

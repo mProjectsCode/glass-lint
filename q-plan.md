@@ -1506,35 +1506,35 @@ requirements rather than implicit behavior in projection callers.
 
 ### Tasks
 
-- [ ] 1. Annotate physical plans with required project capabilities.
-- [ ] 2. Build overlays only for selected plans that require them.
-- [ ] 3. Preserve exact versus package module identity.
-- [ ] 4. Preserve ambiguous, missing, and unknown resolution behavior.
-- [ ] 5. Preserve masking when a local imported identity is remapped or unresolved.
-- [ ] 6. Make cross-file flow plans explicitly reference compiled lifecycle roots.
-- [ ] 7. Keep findings in the file containing the primary event.
-- [ ] 8. Keep module interfaces matcher-independent.
-- [ ] 9. Charge project overlay and fixed-point work deterministically.
-- [ ] 10. Add plan summaries showing local/project/cross-call requirements.
+- [x] 1. Annotate physical plans with required project capabilities.
+- [x] 2. Build overlays only for selected plans that require them.
+- [x] 3. Preserve exact versus package module identity.
+- [x] 4. Preserve ambiguous, missing, and unknown resolution behavior.
+- [x] 5. Preserve masking when a local imported identity is remapped or unresolved.
+- [x] 6. Make cross-file flow plans explicitly reference compiled lifecycle roots.
+- [x] 7. Keep findings in the file containing the primary event.
+- [x] 8. Keep module interfaces matcher-independent.
+- [x] 9. Charge project overlay and fixed-point work deterministically.
+- [x] 10. Add plan summaries showing local/project/cross-call requirements.
 
 ### Required tests
 
-- [ ] Direct external module import.
-- [ ] Re-export chain.
-- [ ] Namespace re-export.
-- [ ] CommonJS/ESM interop.
-- [ ] Ambiguous export.
-- [ ] Missing resolution.
-- [ ] Package-boundary matching.
-- [ ] Cross-file call/return flow.
-- [ ] Finding location in the sink/primary file.
-- [ ] Independent complete witness coexisting with an unknown project alternative.
+- [x] Direct external module import.
+- [x] Re-export chain.
+- [x] Namespace re-export.
+- [x] CommonJS/ESM interop.
+- [x] Ambiguous export.
+- [x] Missing resolution.
+- [x] Package-boundary matching.
+- [x] Cross-file call/return flow.
+- [x] Finding location in the sink/primary file.
+- [x] Independent complete witness coexisting with an unknown project alternative.
 
 ### Exit criteria
 
-- [ ] Project projection does not inspect logical predicates.
-- [ ] Queries that need no project semantics incur no project-query preparation.
-- [ ] Cross-file execution uses the same compiled plan roots as local execution.
+- [x] Project projection does not inspect logical predicates.
+- [x] Queries that need no project semantics incur no project-query preparation.
+- [x] Cross-file execution uses the same compiled plan roots as local execution.
 
 ## Phase 12: Replace the authoring builder with compositional query declarations
 
@@ -1562,6 +1562,8 @@ and compare:
 - generated code size;
 - Rust compile time; and
 - ease of future textual lowering.
+
+Note: Yeah no: use typed combinators, not macros.
 
 ### Representative rules
 

@@ -293,6 +293,11 @@ impl CompiledMatcherPlan {
         self.physical_plan.summary()
     }
 
+    /// Whether this plan requires project identity overlays.
+    pub(crate) fn needs_project_overlay(&self) -> bool {
+        self.physical_plan.requirements().needs_project_overlay
+    }
+
     /// Compile declarations into a physical plan.  Used by test helpers.
     #[cfg(test)]
     pub(crate) fn compile_decls(decls: &[MatcherDecl]) -> Result<Self, MatcherBuildError> {

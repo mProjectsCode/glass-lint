@@ -128,11 +128,15 @@ impl OccurrenceIndexes {
             || !self.members.module_calls.is_empty()
     }
 
+    /// Build the project overlay and return it along with the number of
+    /// module entries processed (operations charged).  When no overlay is
+    /// needed, returns `None` with zero operations.
     pub(in crate::analysis) fn module_overlay<'a>(
         &'a self,
         identities: &ModuleIdentityMap,
-    ) -> LinkedOccurrenceView<'a> {
+    ) -> (LinkedOccurrenceView<'a>, usize) {
         let mut overlay = LinkedOccurrenceView::default();
+        let mut operations = 0usize;
         let identity_for = |key: &ModuleExportKey| {
             identities.get(key).cloned().or_else(|| {
                 identities
@@ -152,6 +156,7 @@ impl OccurrenceIndexes {
              target: &mut BorrowedModuleBuckets<'a>,
              mut global_target: Option<&mut BorrowedGlobalBuckets<'a>>| {
                 for (key, occurrences) in source.iter() {
+                    operations = operations.saturating_add(1);
                     let Some(identity) = identity_for(key) else {
                         continue;
                     };
@@ -192,7 +197,7 @@ impl OccurrenceIndexes {
             &mut overlay.module_constructors,
             None,
         );
-        overlay
+        (overlay, operations)
     }
 }
 
