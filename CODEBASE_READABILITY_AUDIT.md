@@ -73,6 +73,11 @@ Introduced a checkpointable `AssignmentEnvironment` owned by the scope builder, 
 Every `OriginMap` insert and remove clones the old value into `log`, including long straight-line regions with no active checkpoint. Rollback truncates only to a checkpoint and never commits or discards pre-checkpoint history, so lowering retains a duplicate mutation history for the whole file and copies `SmolStr` origin payloads unnecessarily.
 
 Make `OriginMap` transaction-aware: maintain an active-checkpoint count, append inverse entries only while that count is nonzero, and commit each completed control region by discarding entries older than its surviving checkpoint. Charge every logged mutation and snapshot to the semantic budget before allocation, and preserve deterministic intersection order at joins. Recommendation: add memory-growth tests for long straight-line streams and deeply nested control, with assertions that retained storage is bounded by live state plus active deltas.
+- **Status:** Fixed
+
+`OriginMap` now tracks an `open_checkpoints` counter; `insert` and `remove` append inverse entries only while that count is nonzero, so long straight-line regions with no active checkpoint produce no log writes. `rollback` decrements the counter and clears the entire log when the count reaches zero, discarding all pre-checkpoint history at the end of each control region. Every logged mutation and snapshot charges `budget.try_charge()` before allocation. An explicit `commit` method is called after each control region's rollback to document the intent. Deterministic iteration order at joins is preserved because the underlying `HashMap` (hashbrown) is not modified during `retain_common` filtering.
+
+**Check:** `cargo check -p glass-lint-core` passes; `cargo clippy --workspace --all-targets -- -D warnings` passes; `cargo test -p glass-lint-core --lib` passes 466 tests; workspace tests pass 1131 tests; 12 E2E cases, 2 project cases, 70 `js:` rule cases, and 98 `obsidian:` rule cases pass. `make ci` passed in full on 2026-07-28.
 
 #### READ-006 — Alias resolution is quadratic and repeated
 - **Severity:** High

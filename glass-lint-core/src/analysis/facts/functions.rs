@@ -141,7 +141,8 @@ impl FactBuilder<'_, '_> {
             .and_then(|expr| self.resolver.class_provenance(expr));
         if let Some(provenance) = provenance.clone() {
             let value = self.resolver.resolve_ident_id(&class_decl.ident);
-            self.class_origins.insert(value, provenance);
+            self.class_origins
+                .insert(value, provenance, self.resolver.budget);
         }
         self.emit(
             FactKind::Declaration,

@@ -51,8 +51,9 @@ impl FactBuilder<'_, '_> {
         stmt.test.visit_with(self);
         self.emit_control(stmt.cons.span(), ControlKind::BranchThen, region);
         stmt.cons.visit_with(self);
-        let then_origins = self.instance_origins.snapshot();
+        let then_origins = self.instance_origins.snapshot(self.resolver.budget);
         self.instance_origins.rollback(cp);
+        self.instance_origins.commit(cp);
         if let Some(alt) = &stmt.alt {
             self.emit_control(alt.span(), ControlKind::BranchElse, region);
             alt.visit_with(self);
@@ -83,6 +84,7 @@ impl FactBuilder<'_, '_> {
             update.visit_with(self);
         }
         self.instance_origins.rollback(cp);
+        self.instance_origins.commit(cp);
         self.class_origins.rollback(cp_classes);
         self.emit_control(stmt.span(), ControlKind::LoopEnd, region);
     }
@@ -124,6 +126,7 @@ impl FactBuilder<'_, '_> {
         self.emit_control(span, ControlKind::LoopStart { guaranteed }, region);
         visit_body(self);
         self.instance_origins.rollback(cp);
+        self.instance_origins.commit(cp);
         self.class_origins.rollback(cp_classes);
         self.emit_control(span, ControlKind::LoopEnd, region);
     }
@@ -145,24 +148,26 @@ impl FactBuilder<'_, '_> {
             case.visit_with(self);
             self.instance_origins.rollback(cp);
         }
+        self.instance_origins.commit(cp);
         self.class_origins.rollback(cp_classes);
         self.emit_control(stmt.span(), ControlKind::SwitchEnd, region);
     }
 
     pub(super) fn record_try(&mut self, stmt: &TryStmt) {
         let cp = self.instance_origins.checkpoint();
-        let incoming_snapshot = self.instance_origins.snapshot();
+        let incoming_snapshot = self.instance_origins.snapshot(self.resolver.budget);
         let cp_classes = self.class_origins.checkpoint();
         let region = self.next_control_region();
         self.emit_control(stmt.span(), ControlKind::TryStart, region);
         stmt.block.visit_with(self);
-        let try_origins = self.instance_origins.snapshot();
+        let try_origins = self.instance_origins.snapshot(self.resolver.budget);
         self.instance_origins.rollback(cp);
         if let Some(handler) = &stmt.handler {
             self.emit_control(handler.span(), ControlKind::CatchStart, region);
             handler.visit_with(self);
             if stmt.finalizer.is_some() {
-                let handler_origins = std::mem::take(&mut self.instance_origins).snapshot();
+                let handler_origins =
+                    std::mem::take(&mut self.instance_origins).snapshot(self.resolver.budget);
                 self.instance_origins = OriginMap::from(try_origins);
                 self.retain_common_instance_origins(&handler_origins);
             }
@@ -175,6 +180,7 @@ impl FactBuilder<'_, '_> {
             finalizer.visit_with(self);
             self.instance_origins = OriginMap::from(incoming_snapshot);
         }
+        self.instance_origins.commit(cp);
         self.class_origins.rollback(cp_classes);
         self.emit_control(stmt.span(), ControlKind::TryEnd, region);
     }
@@ -188,9 +194,11 @@ impl FactBuilder<'_, '_> {
         self.emit_control(expr.cons.span(), ControlKind::BranchThen, region);
         expr.cons.visit_with(self);
         self.instance_origins.rollback(cp);
+        self.instance_origins.commit(cp);
         self.emit_control(expr.alt.span(), ControlKind::BranchElse, region);
         expr.alt.visit_with(self);
         self.instance_origins.rollback(cp);
+        self.instance_origins.commit(cp);
         self.class_origins.rollback(cp_classes);
         self.emit_control(expr.span(), ControlKind::BranchEnd, region);
     }
@@ -203,7 +211,7 @@ impl FactBuilder<'_, '_> {
             .map(|(value, _)| *value)
             .collect();
         for key in to_remove {
-            self.instance_origins.remove(key);
+            self.instance_origins.remove(key, self.resolver.budget);
         }
     }
 }

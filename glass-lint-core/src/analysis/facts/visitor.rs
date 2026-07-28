@@ -93,7 +93,8 @@ impl Visit for FactBuilder<'_, '_> {
             && let Some(origin) = self.instance_origin_for_expr(init)
         {
             for target in &targets {
-                self.instance_origins.insert(*target, origin.clone());
+                self.instance_origins
+                    .insert(*target, origin.clone(), self.resolver.budget);
             }
         }
         if Self::is_simple_pattern(&declarator.name)
@@ -101,7 +102,8 @@ impl Visit for FactBuilder<'_, '_> {
             && let Some(origin) = self.constructor_origin_for_expr(init)
         {
             for target in &targets {
-                self.class_origins.insert(*target, origin.clone());
+                self.class_origins
+                    .insert(*target, origin.clone(), self.resolver.budget);
             }
         }
         if targets.is_empty() {
@@ -216,7 +218,8 @@ impl Visit for FactBuilder<'_, '_> {
     fn visit_new_expr(&mut self, new_expr: &NewExpr) {
         let result = self.resolver.fresh_object_value_at(new_expr.span).id;
         if let Some(instance_class) = self.instance_origin_for_constructor(&new_expr.callee) {
-            self.instance_origins.insert(result, instance_class);
+            self.instance_origins
+                .insert(result, instance_class, self.resolver.budget);
         }
         let resolved = self.resolver.resolve_expr(&new_expr.callee);
         let callee_span = new_expr.callee.span();

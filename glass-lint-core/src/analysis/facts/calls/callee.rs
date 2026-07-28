@@ -172,7 +172,8 @@ impl FactBuilder<'_, '_> {
                     return Some(origin);
                 }
                 let origin = self.instance_origin_for_constructor(&new_expr.callee)?;
-                self.instance_origins.insert(value, origin.clone());
+                self.instance_origins
+                    .insert(value, origin.clone(), self.resolver.budget);
                 Some(origin)
             }
             Expr::Ident(ident) => {
