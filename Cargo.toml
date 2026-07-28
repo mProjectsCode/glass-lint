@@ -47,6 +47,7 @@ tracing-subscriber = { version = "0.3.23", features = ["fmt", "env-filter", "reg
 oxc_resolver = "11.24.2"
 tempfile = "3.20"
 hashbrown = "0.17.1"
+petgraph = "0.7"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }

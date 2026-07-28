@@ -192,10 +192,13 @@ Move `lookup_cache` into an explicit mutable `LinkingSession` that owns the mode
 - **Fix Complexity** Medium
 - **Category:** Other
 - **Location:** `glass-lint-core/src/analysis/project/linker/scc.rs:1-135`
+- **Status:** Fixed
 
 The project linker maintains its own iterative Kosaraju decomposition and topological sort over nested ordered collections. SCC DAG construction checks `Vec::contains` for each edge before insertion, making high-fanout duplicate edges quadratic in the component out-degree, and the custom implementation expands the correctness surface for cycles and ordering.
 
-Replace the handwritten SCC and topological-sort implementation with [`petgraph`'s maintained SCC primitive](https://docs.rs/petgraph/latest/petgraph/algo/fn.kosaraju_scc.html) over dense module indexes. Sort component members and the final ready order only at the deterministic output boundary, and convert graph errors into the linker's existing bounded diagnostic state. Recommendation: benchmark a dense re-export graph and retain cycle, fixed-point, and traversal-order golden tests before deleting the bespoke graph code.
+Replaced the handwritten SCC with `petgraph::algo::kosaraju_scc` over dense module indexes, and fixed the quadratic `Vec::contains` deduplication in DAG construction by using `BTreeSet` instead. Added `petgraph = "0.7"` to workspace dependencies and `glass-lint-core/Cargo.toml`. The two existing function signatures remain unchanged, so no caller modifications were needed.
+
+**Check:** `make fmt && make ci` passed on 2026-07-28: workspace check, Clippy, all unit tests, all E2E cases, and all rule suites.
 
 ### `glass-lint-datastructures`
 

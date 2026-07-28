@@ -1,78 +1,47 @@
-//! SCC decomposition and DAG construction.
+//! SCC decomposition and DAG construction using petgraph.
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use petgraph::{algo::kosaraju_scc, graph::DiGraph};
+
 use crate::analysis::ModuleId;
 
-/// Strongly connected components via deterministic iterative Kosaraju.
+/// Strongly connected components via petgraph's kosaraju_scc.
+/// Components are sorted internally for deterministic output.
 pub(super) fn strongly_connected_components(
     adjacency: &BTreeMap<ModuleId, Vec<ModuleId>>,
     nodes: impl IntoIterator<Item = ModuleId>,
 ) -> Vec<Vec<ModuleId>> {
-    // Kosaraju's algorithm expressed as two sequential passes (forward order,
-    // reverse DFS). Splitting into sub-functions would isolate the phases
-    // but the shared `seen`/`order` state across both passes is clearest
-    // when visible in one function body.
-    let nodes = nodes.into_iter().collect::<Vec<_>>();
-    let mut seen = BTreeSet::new();
-    let mut order = Vec::new();
-    for node in nodes.iter().copied() {
-        if seen.contains(&node) {
+    let nodes: Vec<ModuleId> = nodes.into_iter().collect();
+    let mut graph = DiGraph::<ModuleId, ()>::new();
+    let mut node_indices = BTreeMap::new();
+
+    for &node in &nodes {
+        let idx = graph.add_node(node);
+        node_indices.insert(node, idx);
+    }
+
+    for (from, targets) in adjacency {
+        let Some(&from_idx) = node_indices.get(from) else {
             continue;
-        }
-        let mut stack = vec![(node, false)];
-        while let Some((current, expanded)) = stack.pop() {
-            if expanded {
-                order.push(current);
+        };
+        for &to in targets {
+            let Some(&to_idx) = node_indices.get(&to) else {
                 continue;
-            }
-            if !seen.insert(current) {
-                continue;
-            }
-            stack.push((current, true));
-            for next in adjacency.get(&current).into_iter().flatten().rev().copied() {
-                if !seen.contains(&next) {
-                    stack.push((next, false));
-                }
-            }
+            };
+            graph.add_edge(from_idx, to_idx, ());
         }
     }
-    let mut reverse = adjacency.iter().fold(
-        BTreeMap::<ModuleId, Vec<ModuleId>>::new(),
-        |mut reverse, (from, tos)| {
-            for to in tos {
-                reverse.entry(*to).or_default().push(*from);
-            }
-            reverse
-        },
-    );
-    for values in reverse.values_mut() {
-        values.sort_unstable();
-    }
-    seen.clear();
-    let mut components = Vec::new();
-    for node in order.into_iter().rev() {
-        if seen.contains(&node) {
-            continue;
-        }
-        let mut component = Vec::new();
-        let mut stack = vec![node];
-        seen.insert(node);
-        while let Some(current) = stack.pop() {
-            component.push(current);
-            for next in reverse.get(&current).into_iter().flatten().rev().copied() {
-                if seen.insert(next) {
-                    stack.push(next);
-                }
-            }
-        }
-        if !component.is_empty() {
-            component.sort_unstable();
-            components.push(component);
-        }
-    }
-    components.sort();
-    components
+
+    let scc_result = kosaraju_scc(&graph);
+    scc_result
+        .into_iter()
+        .map(|scc| {
+            let mut members: Vec<ModuleId> = scc.into_iter().map(|idx| graph[idx]).collect();
+            members.sort_unstable();
+            members
+        })
+        .collect()
 }
 
 /// Build the SCC DAG and topological order from the original graph edges and
@@ -87,26 +56,25 @@ pub(super) fn build_scc_dag_and_order(
         .flat_map(|(idx, component)| component.iter().map(move |&m| (m, idx)))
         .collect();
 
-    let mut dag: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    // BTreeSet avoids quadratic deduplication from Vec::contains
+    let mut dag: BTreeMap<usize, BTreeSet<usize>> = BTreeMap::new();
     for (from, targets) in forward {
         let Some(&from_scc) = module_to_scc.get(from) else {
             continue;
         };
-        for to in targets {
-            let Some(&to_scc) = module_to_scc.get(to) else {
+        for &to in targets {
+            let Some(&to_scc) = module_to_scc.get(&to) else {
                 continue;
             };
             if from_scc != to_scc {
-                let edges = dag.entry(from_scc).or_default();
-                if !edges.contains(&to_scc) {
-                    edges.push(to_scc);
-                }
+                dag.entry(from_scc).or_default().insert(to_scc);
             }
         }
     }
-    for edges in dag.values_mut() {
-        edges.sort_unstable();
-    }
+    let dag: BTreeMap<usize, Vec<usize>> = dag
+        .into_iter()
+        .map(|(k, v)| (k, v.into_iter().collect()))
+        .collect();
 
     let scc_count = components.len();
     let mut in_degree = vec![0usize; scc_count];
