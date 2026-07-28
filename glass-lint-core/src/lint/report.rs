@@ -3,18 +3,11 @@ use std::collections::BTreeMap;
 use glass_lint_datastructures::{Position, SourceRange};
 
 use crate::{
-    AnalysisLimits, ParseDiagnostic, REPORT_VERSION,
-    analysis::{
+    AnalysisLimits, ParseDiagnostic, REPORT_VERSION, analysis::{
         ProjectSemanticModel, ResolvedLinkInput, project::projection::ProjectionOutcome,
         trace::TraceArena,
-    },
-    api::classification::{ClassificationResult, MatchedCapability, RuleIndex, TraceNodeId},
-    diagnostic::SourceLineIndex,
-    lint::catalog::RuleCatalog,
-    project::{
-        AnalysisReport, Diagnostic, EvidenceRole, EvidenceStep, EvidenceTrace, EvidenceTraces,
-        FileReport, Finding, MatchCertainty, ModuleId, ProjectInputError, ProjectRelativePath,
-        SourceFile, SourceLocation,
+    }, api::classification::{ClassificationResult, MatchedCapability, RuleIndex, TraceNodeId}, diagnostic::SourceLineIndex, lint::catalog::RuleCatalog, project::{
+        AnalysisReport, Diagnostic, EvidenceRole, EvidenceStep, EvidenceTrace, EvidenceTraces, FileReport, Finding, MatchCertainty, ModuleId, ProjectInputError, ProjectRelativePath, ReportCompletion, SourceFile, SourceLocation,
     },
 };
 
@@ -57,24 +50,29 @@ impl<'a> ReportAssembly<'a> {
         }
         let linking = linking_start.elapsed();
         let link_counts = project.operation_counts(0);
+
         tracing::info!(
             target: "glass_lint::project::link",
             files = link_counts.files(), requests = link_counts.requests(),
             edges = link_counts.edges(), elapsed = ?linking, "stage finished"
         );
+
         let matching_start = std::time::Instant::now();
         let (classifications, projection_outcome) = project.classify_with_evidence_limit(
             self.catalog.compiled(),
             self.enabled,
             self.evidence_limit,
         );
+
         project.record_flow_exhaustion(&projection_outcome);
         let matching = matching_start.elapsed();
         self.populate_project_files(&project, &classifications, &mut files);
+
         let diagnostics = Self::attach_project_diagnostics(&project, &mut files);
         let report =
             Self::assemble_project_report(&project, files, diagnostics, &projection_outcome);
         let summary = report.summary();
+
         tracing::info!(
             target: "glass_lint::project::matching",
             files = report.operations().files(), findings = summary.findings(),
@@ -82,6 +80,7 @@ impl<'a> ReportAssembly<'a> {
             diagnostics = report.diagnostics().len() + summary.parse_diagnostics(),
             elapsed = ?matching, "stage finished"
         );
+
         Ok(ProjectAnalysis {
             report,
             linking,
@@ -381,6 +380,7 @@ impl<'a> ReportAssembly<'a> {
                 file.diagnostics_mut().push(Diagnostic::project(diagnostic));
             }
         }
+        
         let mut diagnostics = Vec::new();
         for diagnostic in project.diagnostics().iter().cloned() {
             if let Some(path) = diagnostic.location().map(|l| l.path().clone()) {
@@ -391,6 +391,7 @@ impl<'a> ReportAssembly<'a> {
                 diagnostics.push(Diagnostic::project(diagnostic));
             }
         }
+
         diagnostics.extend(status_project.into_iter().map(Diagnostic::project));
         diagnostics.sort_by(|left, right| left.code().cmp(right.code()));
         diagnostics
@@ -418,18 +419,22 @@ impl<'a> ReportAssembly<'a> {
                     .sum::<usize>()
             })
             .sum();
+
         let rendered_traces = files
             .values()
-            .flat_map(crate::project::FileReport::findings)
+            .flat_map(FileReport::findings)
             .map(|finding| finding.evidence().traces().len())
             .sum();
+
         let is_partial = !project.is_complete();
         let mut operations = project.operation_counts(evidence);
         operations.set_effect_projections(outcome.effect_projections);
+
         let trace_nodes = project
             .trace_arena()
             .lock()
             .map_or(0, |arena| arena.node_count());
+
         operations.set_path_metrics(
             outcome.max_live_alternatives,
             trace_nodes,
@@ -438,6 +443,7 @@ impl<'a> ReportAssembly<'a> {
             outcome.fixed_point_iterations,
             rendered_traces,
         );
+
         AnalysisReport::new(
             REPORT_VERSION,
             env!("CARGO_PKG_VERSION").into(),
@@ -445,9 +451,9 @@ impl<'a> ReportAssembly<'a> {
             diagnostics,
             operations,
             if is_partial {
-                crate::project::ReportCompletion::Partial
+                ReportCompletion::Partial
             } else {
-                crate::project::ReportCompletion::Complete
+                ReportCompletion::Complete
             },
         )
     }

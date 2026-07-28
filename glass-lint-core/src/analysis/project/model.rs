@@ -22,14 +22,11 @@ use crate::{
         syntax::SymbolCallProvenance,
         trace::TraceArena,
         value::{FunctionId, ValueId},
-    },
-    api::{
+    }, api::{
         classification::{ClassificationResult, MatchedCapability, RuleIndex},
         compiler::{CompiledRuleRecord, CompiledRuleSelection},
-    },
-    project::{
-        AnalysisDiagnostic, LinkedModuleTarget, ModuleId, ProjectInputError, ProjectRelativePath,
-        ResolutionRequestKey, ResolverOutcome, SourceFile,
+    }, project::{
+        AnalysisDiagnostic, LinkedModuleTarget, ModuleId, ProjectInputError, ProjectRelativePath, ResolutionRequestKey, ResolverOutcome, SourceFile, SourceLocation,
     },
 };
 
@@ -334,11 +331,12 @@ impl ProjectSemanticModel {
         &self,
         module: ModuleId,
         fact: u32,
-    ) -> Option<crate::project::SourceLocation> {
+    ) -> Option<SourceLocation> {
         let module = self.modules.get(&module)?;
         let fact = module.local().facts().stream().fact(FactId(fact))?;
         let range = module.source_context().range(fact.span).ok()?;
-        Some(crate::project::SourceLocation::new(
+
+        Some(SourceLocation::new(
             module.path().clone(),
             range,
         ))
@@ -440,6 +438,7 @@ impl ProjectSemanticModel {
     ) -> (BTreeMap<ModuleId, ClassificationResult>, ProjectionOutcome) {
         let (matcher_catalog, outcome) =
             self.project(CompiledRuleSelection::new(records, selected));
+
         let results = self
             .modules()
             .map(|module| {
@@ -454,6 +453,7 @@ impl ProjectSemanticModel {
                     if evidence.is_empty() {
                         continue;
                     }
+                    
                     result.capabilities.push(MatchedCapability {
                         rule_index: *rule_index,
                         label: record.description.clone(),

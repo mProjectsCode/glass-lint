@@ -79,6 +79,7 @@ impl ProjectSemanticModel {
         let mut local_operations: usize = 0;
         let mut session = LinkingSession::new(self.flow_limit());
         let mut arena = self.trace_arena.lock().unwrap();
+        
         let projections: BTreeMap<ModuleId, ProjectModuleProjection<'project>> = self
             .modules
             .values()

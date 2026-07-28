@@ -8,8 +8,7 @@ use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
 use crate::{
-    analysis::matches_global_object_alias,
-    api::{
+    Severity, analysis::matches_global_object_alias, api::{
         classification::{MatchKind, RuleIndex},
         compiler::object_flow::CompiledObjectFlow,
         rule::{
@@ -374,7 +373,7 @@ pub struct CompiledRuleRecord {
     /// Human-readable description.
     pub description: String,
     /// Report severity.
-    pub severity: crate::Severity,
+    pub severity: Severity,
     /// Evidence confidence.
     pub confidence: Confidence,
     /// Compiled query plan.
