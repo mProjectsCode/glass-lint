@@ -170,6 +170,72 @@ fn do_while_body_configuration_is_reachable_after_loop() {
         &script_flow(),
     );
     assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert!(
+        evidence[0]
+            .iter()
+            .all(|item| item.certainty == crate::project::MatchCertainty::Definite)
+    );
+}
+
+#[test]
+fn continue_is_a_loop_back_edge_not_a_post_loop_exit() {
+    let evidence = collect_source(
+        "const script = document.createElement('script'); while (ready) { script.src = url; continue; } document.head.appendChild(script);",
+        &script_flow(),
+    );
+    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert!(
+        evidence[0]
+            .iter()
+            .all(|item| item.certainty == crate::project::MatchCertainty::Possible)
+    );
+}
+
+#[test]
+fn for_loop_update_reaches_the_fixed_point_without_unrolling_runtime_paths() {
+    let evidence = collect_source(
+        "const script = document.createElement('script'); for (; ready; index++) { script.src = url; } document.head.appendChild(script);",
+        &script_flow(),
+    );
+    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert!(
+        evidence[0]
+            .iter()
+            .all(|item| item.certainty == crate::project::MatchCertainty::Possible)
+    );
+}
+
+#[test]
+fn for_in_and_for_of_include_the_zero_iteration_path() {
+    for loop_statement in [
+        "for (const item in items) { script.src = url; }",
+        "for (const item of items) { script.src = url; }",
+    ] {
+        let source = format!(
+            "const script = document.createElement('script'); {loop_statement} document.head.appendChild(script);"
+        );
+        let evidence = collect_source(&source, &script_flow());
+        assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+        assert!(
+            evidence[0]
+                .iter()
+                .all(|item| item.certainty == crate::project::MatchCertainty::Possible)
+        );
+    }
+}
+
+#[test]
+fn repeated_loop_source_rebinding_does_not_accumulate_unreachable_states() {
+    let evidence = collect_source(
+        "let script; while (ready) { script = document.createElement('script'); script.src = url; } document.head.appendChild(script);",
+        &script_flow(),
+    );
+    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert!(
+        evidence[0]
+            .iter()
+            .all(|item| item.certainty == crate::project::MatchCertainty::Possible)
+    );
 }
 
 #[test]

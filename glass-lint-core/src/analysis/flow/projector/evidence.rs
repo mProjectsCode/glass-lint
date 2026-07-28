@@ -210,6 +210,9 @@ impl ObjectFlowProjector<'_, '_, '_> {
     /// been evaluated. This keeps certainty about path coverage separate from
     /// the witness trace itself.
     fn emit_state(&mut self, state: &FlowState, match_fact: FactId) {
+        if self.emission_mode == super::EmissionMode::Replay {
+            return;
+        }
         self.queue_state(state.clone(), match_fact);
     }
 

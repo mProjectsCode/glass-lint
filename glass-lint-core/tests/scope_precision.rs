@@ -4,7 +4,7 @@
 //! collection, semantic resolution, and matcher execution together.
 
 use glass_lint_core::{
-    Environment, Linter, LinterConfig, RuleCatalog,
+    Environment, Linter, LinterConfig, MatchCertainty, RuleCatalog,
     rules::{MatcherDecl, Rule},
 };
 
@@ -34,6 +34,21 @@ fn assert_count(source: &str, rule: Rule, expected: usize) {
         }
     }
     assert_eq!(count, expected, "{source}");
+}
+
+fn assert_certainty(source: &str, rule: Rule, expected: MatchCertainty) {
+    let mut environment = Environment::default();
+    environment
+        .add_globals(["fetch", "host", "require"])
+        .unwrap();
+    let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
+    let report = Linter::new(LinterConfig::new(vec![catalog], environment))
+        .unwrap()
+        .lint_snippet(source, "scope-precision.js")
+        .unwrap();
+    assert!(!report.files()[0].has_parse_diagnostics(), "{source}");
+    assert_eq!(report.files()[0].findings().len(), 1, "{source}");
+    assert_eq!(report.files()[0].findings()[0].certainty(), expected);
 }
 
 /// Create the rooted alias rule shared by lexical-scope cases.
@@ -74,6 +89,20 @@ fn loop_header_var_bindings_remain_function_scoped() {
         "for (var api = host.files; false;) {} api.read();",
         rooted_read_rule(),
         1,
+    );
+}
+
+#[test]
+fn do_while_and_continue_paths_use_the_loop_back_edge() {
+    assert_certainty(
+        "let api = local.files; do { api = host.files; } while (flag); api.read();",
+        rooted_read_rule(),
+        MatchCertainty::Definite,
+    );
+    assert_certainty(
+        "let api = local.files; do { api = host.files; continue; } while (flag); api.read();",
+        rooted_read_rule(),
+        MatchCertainty::Definite,
     );
 }
 

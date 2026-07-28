@@ -62,8 +62,8 @@ impl ScopePass for ScopeCollector<'_> {
         self.exit_if(span, has_else);
     }
 
-    fn enter_loop(&mut self) {
-        self.enter_loop();
+    fn enter_loop(&mut self, guaranteed: bool) {
+        self.enter_loop(guaranteed);
     }
 
     fn exit_loop(&mut self, span: swc_common::Span) {
@@ -104,6 +104,10 @@ impl ScopePass for ScopeCollector<'_> {
 
     fn break_exit(&mut self) {
         self.break_exit();
+    }
+
+    fn continue_exit(&mut self) {
+        self.continue_exit();
     }
 
     fn visit_import_decl(&mut self, import: &ImportDecl) {

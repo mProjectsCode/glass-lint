@@ -29,6 +29,25 @@ pub(super) struct FlowEnvironment {
     reachable: bool,
 }
 
+/// Canonical semantic shape of one live flow environment.
+///
+/// Object ids are projection-local allocation details.  Loop fixed points
+/// must compare the aliases and lifecycle states they identify, not the
+/// allocation number assigned during a later replay of the same fact slice.
+type CanonicalRequirements = Vec<(usize, Vec<crate::analysis::facts::FactId>)>;
+type CanonicalFlowState = (
+    u32,
+    FlowId,
+    crate::analysis::facts::FactId,
+    CanonicalRequirements,
+);
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct FlowSemanticSnapshot {
+    aliases: Vec<(ValueId, u32)>,
+    states: Vec<CanonicalFlowState>,
+}
+
 #[derive(Debug)]
 /// Mutable live alias and object-state tables for one projector pass.
 pub(super) struct FlowStateTable {
@@ -154,6 +173,45 @@ impl FlowStateTable {
         BTreeMap<FlowStateKey, FlowState>,
     ) {
         (self.aliases.clone(), self.states.clone())
+    }
+
+    /// Return a deterministic semantic snapshot with object ids normalized to
+    /// their first appearance in the alias table.  This intentionally omits
+    /// checkpoints and allocation counters so repeated loop iterations can
+    /// converge even when they allocate fresh projection-local objects.
+    pub(super) fn semantic_snapshot(&self) -> FlowSemanticSnapshot {
+        let mut objects = BTreeMap::new();
+        let mut next = 0u32;
+        for object in self.aliases.values() {
+            objects.entry(*object).or_insert_with(|| {
+                let id = next;
+                next = next.saturating_add(1);
+                id
+            });
+        }
+        let aliases = self
+            .aliases
+            .iter()
+            .filter_map(|(value, object)| {
+                objects.get(object).copied().map(|object| (*value, object))
+            })
+            .collect();
+        let states = self
+            .states
+            .iter()
+            .filter_map(|(key, state)| {
+                // A state without a live alias cannot reach a later transfer.
+                // Do not let stale, unreachable state from an overwritten
+                // loop binding keep changing the fixed-point shape.
+                let object = objects.get(&key.object).copied()?;
+                let requirements = state
+                    .requirement_keys()
+                    .map(|(index, values)| (index, values.iter().copied().collect()))
+                    .collect();
+                Some((object, key.flow, state.source_event(), requirements))
+            })
+            .collect();
+        FlowSemanticSnapshot { aliases, states }
     }
 
     #[allow(dead_code)]
@@ -320,6 +378,7 @@ pub(super) enum ControlFrame {
     },
     Loop {
         region: ControlRegionId,
+        body_start: crate::analysis::facts::FactId,
         baseline: Vec<FlowEnvironment>,
         guaranteed: bool,
         breaks: Vec<FlowEnvironment>,

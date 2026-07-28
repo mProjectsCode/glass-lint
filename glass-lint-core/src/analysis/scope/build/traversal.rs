@@ -53,7 +53,7 @@ pub(in crate::analysis::scope) trait ScopePass {
     fn enter_if(&mut self) {}
     fn enter_else(&mut self) {}
     fn exit_if(&mut self, _span: Span, _has_else: bool) {}
-    fn enter_loop(&mut self) {}
+    fn enter_loop(&mut self, _guaranteed: bool) {}
     fn exit_loop(&mut self, _span: Span) {}
     fn enter_switch(&mut self) {}
     fn enter_switch_case(&mut self) {}
@@ -63,6 +63,7 @@ pub(in crate::analysis::scope) trait ScopePass {
     fn enter_catch(&mut self) {}
     fn exit_try(&mut self, _span: Span, _has_handler: bool, _has_finally: bool) {}
     fn break_exit(&mut self) {}
+    fn continue_exit(&mut self) {}
     fn mark_unreachable(&mut self) {}
 }
 
@@ -244,13 +245,13 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
 
     fn visit_while_stmt(&mut self, stmt: &WhileStmt) {
         stmt.test.visit_with(self);
-        self.pass.enter_loop();
+        self.pass.enter_loop(false);
         stmt.body.visit_with(self);
         self.pass.exit_loop(stmt.span);
     }
 
     fn visit_do_while_stmt(&mut self, stmt: &DoWhileStmt) {
-        self.pass.enter_loop();
+        self.pass.enter_loop(true);
         stmt.body.visit_with(self);
         self.pass.exit_loop(stmt.span);
         stmt.test.visit_with(self);
@@ -261,7 +262,7 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
         stmt.init.visit_with(self);
         stmt.test.visit_with(self);
         stmt.update.visit_with(self);
-        self.pass.enter_loop();
+        self.pass.enter_loop(false);
         stmt.body.visit_with(self);
         self.pass.exit_loop(stmt.span);
         self.pass.pop_scope();
@@ -271,7 +272,7 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
         self.pass.push_scope(stmt.span, ScopeKind::Block);
         stmt.left.visit_with(self);
         stmt.right.visit_with(self);
-        self.pass.enter_loop();
+        self.pass.enter_loop(false);
         stmt.body.visit_with(self);
         self.pass.exit_loop(stmt.span);
         self.pass.pop_scope();
@@ -281,7 +282,7 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
         self.pass.push_scope(stmt.span, ScopeKind::Block);
         stmt.left.visit_with(self);
         stmt.right.visit_with(self);
-        self.pass.enter_loop();
+        self.pass.enter_loop(false);
         stmt.body.visit_with(self);
         self.pass.exit_loop(stmt.span);
         self.pass.pop_scope();
@@ -293,7 +294,7 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
     }
 
     fn visit_continue_stmt(&mut self, stmt: &ContinueStmt) {
-        self.pass.mark_unreachable();
+        self.pass.continue_exit();
         stmt.visit_children_with(self);
     }
 

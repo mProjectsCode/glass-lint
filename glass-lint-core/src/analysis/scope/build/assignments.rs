@@ -261,10 +261,12 @@ impl ScopeCollector<'_> {
         self.join_paths(span, &incoming, &paths);
     }
 
-    pub(super) fn enter_loop(&mut self) {
+    pub(super) fn enter_loop(&mut self, guaranteed: bool) {
         self.control_flow.push(ControlFlowFrame::Loop {
             incoming: self.checkpoint(),
+            guaranteed,
             breaks: Vec::new(),
+            continues: Vec::new(),
         });
         self.assignment_writes.clear();
         self.conditional_depth = self.conditional_depth.saturating_add(1);
@@ -272,14 +274,23 @@ impl ScopeCollector<'_> {
 
     pub(super) fn exit_loop(&mut self, span: Span) {
         self.conditional_depth = self.conditional_depth.saturating_sub(1);
-        let Some(ControlFlowFrame::Loop { incoming, breaks }) = self.control_flow.pop() else {
+        let Some(ControlFlowFrame::Loop {
+            incoming,
+            guaranteed,
+            breaks,
+            continues,
+        }) = self.control_flow.pop()
+        else {
             return;
         };
         let body = self.checkpoint();
         let mut paths = Vec::with_capacity(breaks.len() + 2);
-        paths.push(incoming.clone());
+        if !guaranteed {
+            paths.push(incoming.clone());
+        }
         paths.push(body);
         paths.extend(breaks);
+        paths.extend(continues);
         self.join_paths(span, &incoming, &paths);
     }
 
@@ -395,6 +406,21 @@ impl ScopeCollector<'_> {
                     | ControlFlowFrame::Switch { breaks, .. } => breaks.push(checkpoint),
                     _ => unreachable!("breakable frame was checked above"),
                 }
+            }
+        }
+        self.reachable = false;
+    }
+
+    pub(super) fn continue_exit(&mut self) {
+        if self.reachable {
+            let checkpoint = self.checkpoint();
+            if let Some(ControlFlowFrame::Loop { continues, .. }) = self
+                .control_flow
+                .iter_mut()
+                .rev()
+                .find(|frame| matches!(frame, ControlFlowFrame::Loop { .. }))
+            {
+                continues.push(checkpoint);
             }
         }
         self.reachable = false;

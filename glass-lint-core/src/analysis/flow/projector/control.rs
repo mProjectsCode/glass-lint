@@ -6,21 +6,26 @@
 //! lifecycle sets.
 
 use crate::analysis::{
-    facts::ControlRegionId,
+    facts::{ControlRegionId, FactId},
     flow::projector::{
         AbruptExit, ControlFrame, ControlKind, FlowEnvironment, ObjectFlowProjector,
     },
 };
 
 impl ObjectFlowProjector<'_, '_, '_> {
-    pub(super) fn transfer_control(&mut self, kind: ControlKind, region: ControlRegionId) {
+    pub(super) fn transfer_control(
+        &mut self,
+        kind: ControlKind,
+        region: ControlRegionId,
+        fact: FactId,
+    ) {
         match kind {
             ControlKind::BranchStart
             | ControlKind::BranchThen
             | ControlKind::BranchElse
             | ControlKind::BranchEnd => self.transfer_branch(kind, region),
             ControlKind::LoopStart { .. } | ControlKind::LoopUpdate | ControlKind::LoopEnd => {
-                self.transfer_loop(kind, region);
+                self.transfer_loop(kind, region, fact);
             }
             ControlKind::SwitchStart | ControlKind::SwitchCase { .. } | ControlKind::SwitchEnd => {
                 self.transfer_switch(kind, region);
@@ -92,11 +97,12 @@ impl ObjectFlowProjector<'_, '_, '_> {
         }
     }
 
-    fn transfer_loop(&mut self, kind: ControlKind, region: ControlRegionId) {
+    fn transfer_loop(&mut self, kind: ControlKind, region: ControlRegionId, fact: FactId) {
         match kind {
             ControlKind::LoopStart { guaranteed } => {
                 self.control.push(ControlFrame::Loop {
                     region,
+                    body_start: FactId(fact.0.saturating_add(1)),
                     baseline: self.paths.clone(),
                     guaranteed,
                     breaks: Vec::new(),
@@ -104,8 +110,8 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 });
             }
             ControlKind::LoopUpdate => {
-                let continues = match self.control.last() {
-                    Some(ControlFrame::Loop { continues, .. }) => continues.clone(),
+                let continues = match self.control.last_mut() {
+                    Some(ControlFrame::Loop { continues, .. }) => std::mem::take(continues),
                     _ => Vec::new(),
                 };
                 self.paths.extend(continues);
@@ -115,25 +121,19 @@ impl ObjectFlowProjector<'_, '_, '_> {
             ControlKind::LoopEnd => {
                 let Some(ControlFrame::Loop {
                     region: expected,
+                    body_start,
                     baseline,
                     guaranteed,
                     breaks,
                     continues,
-                }) = self.control.pop()
+                }) = self.control.last().cloned()
                 else {
                     return;
                 };
                 if expected != region {
                     return;
                 }
-                let mut paths = Vec::new();
-                if !guaranteed {
-                    paths.extend(baseline);
-                }
-                paths.append(&mut self.paths);
-                paths.extend(breaks);
-                paths.extend(continues);
-                self.join_paths(paths);
+                self.finish_loop(body_start, fact, guaranteed, baseline, breaks, continues);
             }
             _ => unreachable!(),
         }

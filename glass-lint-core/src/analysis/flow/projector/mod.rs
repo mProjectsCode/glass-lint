@@ -41,6 +41,12 @@ use crate::{
     project::ModuleId,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EmissionMode {
+    Emit,
+    Replay,
+}
+
 /// Exhaustion state and bounded counters returned by local flow projection.
 #[derive(Debug, Clone, Copy, Default)]
 pub(in crate::analysis) struct LocalFlowProjectionOutcome {
@@ -152,6 +158,10 @@ struct ObjectFlowProjector<'rules, 'stream, 'arena> {
     reachable: bool,
     /// Summary construction exhausted its budget.
     summary_exhausted: bool,
+    /// Suppress findings while replaying a loop body to compute its fixed
+    /// point.  The first canonical pass already emitted evidence for sinks
+    /// reached in the source stream; replay is semantic state propagation.
+    emission_mode: EmissionMode,
     /// Shared trace arena for interning evidence trace nodes.
     trace_arena: &'arena mut TraceArena,
     /// Module being projected, used to qualify trace events.
@@ -198,6 +208,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             binding_slots: BTreeMap::new(),
             reachable: true,
             summary_exhausted,
+            emission_mode: EmissionMode::Emit,
             module_id,
             trace_arena,
         }
@@ -207,7 +218,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         match &fact.payload {
             FactPayload::Function { boundary, .. } => self.transfer_function(*boundary),
             FactPayload::Control { kind, region, .. } => {
-                self.transfer_control(*kind, *region);
+                self.transfer_control(*kind, *region, fact.id);
             }
             _ => self.transfer_paths(fact),
         }
@@ -269,6 +280,140 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             FactPayload::Call { .. } => self.transfer_call(fact),
             _ => {}
         }
+    }
+
+    /// Replay one loop body from a set of back-edge environments.  The body
+    /// is already represented by the canonical fact stream, so replaying that
+    /// bounded slice does not add an AST traversal or a second semantic model.
+    fn replay_loop_body(
+        &mut self,
+        body_start: FactId,
+        body_end: FactId,
+        input: Vec<FlowEnvironment>,
+    ) -> Vec<FlowEnvironment> {
+        let (Some(start), Some(end)) = (body_start.index(), body_end.index()) else {
+            self.alternatives_complete = false;
+            return Vec::new();
+        };
+        if start >= end || end > self.stream.facts().len() {
+            self.alternatives_complete = false;
+            return Vec::new();
+        }
+        let facts = self.stream.facts()[start..end].to_vec();
+        let previous_mode = self.emission_mode;
+        self.emission_mode = EmissionMode::Replay;
+        self.paths = input;
+        for fact in &facts {
+            self.transfer(fact);
+        }
+        self.emission_mode = previous_mode;
+        std::mem::take(&mut self.paths)
+    }
+
+    /// Compute the bounded loop back-edge closure.  A semantic state is
+    /// canonicalized before it is admitted to the frontier, which prevents
+    /// fresh object allocation in repeated iterations from becoming an
+    /// unbounded sequence of equivalent alternatives.
+    pub(super) fn finish_loop(
+        &mut self,
+        body_start: FactId,
+        body_end: FactId,
+        guaranteed: bool,
+        baseline: Vec<FlowEnvironment>,
+        mut breaks: Vec<FlowEnvironment>,
+        mut continues: Vec<FlowEnvironment>,
+    ) {
+        let mut frontier = std::mem::take(&mut self.paths);
+        frontier.append(&mut continues);
+        self.join_paths(frontier.clone());
+        frontier = std::mem::take(&mut self.paths);
+
+        let mut exits = Vec::new();
+        if !guaranteed {
+            exits.extend(baseline);
+        }
+        exits.extend(frontier.iter().copied());
+        exits.append(&mut breaks);
+
+        let mut seen = BTreeSet::new();
+        for environment in &frontier {
+            if self.flow_state.restore(*environment) {
+                seen.insert(self.flow_state.semantic_snapshot());
+            } else {
+                self.alternatives_complete = false;
+            }
+        }
+
+        let iteration_limit = self.limits.alternative_limit();
+        let mut iterations = 0usize;
+        while !frontier.is_empty() {
+            if iterations >= iteration_limit {
+                self.alternatives_complete = false;
+                break;
+            }
+            iterations += 1;
+            let break_count = self
+                .control
+                .iter()
+                .rev()
+                .find_map(|frame| match frame {
+                    ControlFrame::Loop { breaks, .. } => Some(breaks.len()),
+                    _ => None,
+                })
+                .unwrap_or(0);
+            let outputs = self.replay_loop_body(body_start, body_end, frontier);
+            let mut next = outputs;
+            if let Some(ControlFrame::Loop { continues, .. }) = self.control.last_mut() {
+                next.append(continues);
+            }
+            self.join_paths(next);
+            let candidate = std::mem::take(&mut self.paths);
+            exits.extend(candidate.iter().copied());
+
+            if let Some(ControlFrame::Loop { breaks, .. }) = self.control.last()
+                && breaks.len() > break_count
+            {
+                exits.extend(breaks[break_count..].iter().copied());
+            }
+
+            let mut next_frontier = Vec::new();
+            for environment in candidate {
+                if !self.flow_state.restore(environment) {
+                    self.alternatives_complete = false;
+                    continue;
+                }
+                if seen.insert(self.flow_state.semantic_snapshot()) {
+                    next_frontier.push(environment);
+                }
+            }
+            frontier = next_frontier;
+        }
+
+        let Some(ControlFrame::Loop {
+            body_start: expected,
+            ..
+        }) = self.control.last()
+        else {
+            self.alternatives_complete = false;
+            return;
+        };
+        if *expected != body_start {
+            self.alternatives_complete = false;
+            return;
+        }
+        self.control.pop();
+        let mut unique_exits = Vec::with_capacity(exits.len());
+        let mut exit_shapes = BTreeSet::new();
+        for environment in exits {
+            if !self.flow_state.restore(environment) {
+                self.alternatives_complete = false;
+                continue;
+            }
+            if exit_shapes.insert(self.flow_state.semantic_snapshot()) {
+                unique_exits.push(environment);
+            }
+        }
+        self.join_paths(unique_exits);
     }
 
     fn transfer_function(&mut self, boundary: FunctionBoundary) {

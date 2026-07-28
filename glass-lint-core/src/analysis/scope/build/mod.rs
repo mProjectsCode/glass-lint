@@ -119,7 +119,9 @@ enum ControlFlowFrame {
     },
     Loop {
         incoming: CollectorCheckpoint,
+        guaranteed: bool,
         breaks: Vec<CollectorCheckpoint>,
+        continues: Vec<CollectorCheckpoint>,
     },
     Switch {
         incoming: CollectorCheckpoint,
