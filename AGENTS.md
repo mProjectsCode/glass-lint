@@ -27,8 +27,10 @@ or rule policy. Rule IDs are `provider:name`, such as `js:network.request`.
 
 - Prefer declarative matchers. Add reusable semantics to core; use a provider
   callback only when the matcher API cannot express the rule accurately.
-- Preserve strict identity. Shadowing, reassignment, local lookalikes, dynamic
-  values, ambiguity, unsupported semantics, and exhausted budgets fail closed.
+- Preserve strict path-local identity. Shadowing, reassignment, local
+  lookalikes, dynamic values, ambiguity, unsupported semantics, and exhausted
+  alternatives cannot establish a witness or definite coverage, but must not
+  erase an independent complete possible witness.
 - Parse and build matcher-independent facts once per file. A rule must not add
   its own traversal or semantic model.
 - Keep analysis bounded and output deterministic, including locations and

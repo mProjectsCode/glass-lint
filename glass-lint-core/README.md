@@ -68,8 +68,11 @@ belong in `glass-lint-project`.
 
 `AnalysisReport` contains sorted file reports, structured diagnostics,
 operation counts, and `ReportCompletion`. Locations use one-based Unicode
-display columns. TypeScript is normalized but not type-checked. Sources larger
-than 8 MiB are rejected.
+display columns. Each finding includes `certainty` (`definite` or `possible`)
+and bounded, correlated evidence traces. `definite` means the strict proof
+holds on every modeled path reaching the occurrence; `possible` means a
+complete strict witness exists on at least one path. TypeScript is normalized
+but not type-checked. Sources larger than 8 MiB are rejected.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the internal pipeline and the
 workspace [testing guide](../TESTING.md) for matcher coverage.

@@ -64,7 +64,9 @@ matching can run only after authored resolver outcomes have been validated.
 Core never discovers files or resolves modules.
 
 Ambiguous exports, missing resolutions, unsupported module shapes, and
-exhausted budgets remain unknown. Findings stay with the file containing the
+exhausted budgets remain unknown. A complete strict witness can still produce
+a `Possible` finding when an independent alternative is unknown; those
+alternatives prevent `Definite`. Findings stay with the file containing the
 primary event.
 
 ## Invariants
@@ -72,9 +74,14 @@ primary event.
 - Core contains no provider names, APIs, profiles, categories, or
   manifests.
 - Strict matches require proven identity, provenance, static values, or
-  connected flow at the use position.
+  connected flow at the use position on one complete modeled path.
 - Shadowing, reassignment, ambiguity, unsupported semantics, and exhausted
-  budgets fail closed.
+  alternatives cannot establish a witness. They prevent definite path
+  coverage but do not erase an independent complete possible witness.
+- Joins retain bounded correlated alternatives; they never combine aliases,
+  requirements, sources, and sinks from incompatible paths.
+- Findings distinguish `Definite` and `Possible` path coverage. Incomplete
+  analysis never claims `Definite`.
 - Work, intermediate state, evidence, and output are bounded.
 - Files, findings, evidence, diagnostics, and operation counts are
   deterministic.

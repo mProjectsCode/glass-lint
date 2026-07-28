@@ -16,6 +16,17 @@ pub enum MatchCertainty {
     Possible,
 }
 
+impl MatchCertainty {
+    /// Combine certainty from duplicate proofs. A complete all-path proof is
+    /// stronger than a proof covering only some modeled paths.
+    pub(crate) const fn merge(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Definite, _) | (_, Self::Definite) => Self::Definite,
+            (Self::Possible, Self::Possible) => Self::Possible,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Finding {
@@ -68,5 +79,21 @@ impl Finding {
 
     pub fn certainty(&self) -> MatchCertainty {
         self.certainty
+    }
+
+    pub(crate) fn has_primary(&self, other: &Self) -> bool {
+        self.rule_id == other.rule_id && self.location == other.location
+    }
+
+    pub(crate) fn merge_duplicate(self, other: &Self) -> Self {
+        debug_assert!(self.has_primary(other));
+        Self {
+            rule_id: self.rule_id,
+            message: self.message,
+            severity: self.severity,
+            location: self.location,
+            evidence: self.evidence.merge(&other.evidence),
+            certainty: self.certainty.merge(other.certainty),
+        }
     }
 }

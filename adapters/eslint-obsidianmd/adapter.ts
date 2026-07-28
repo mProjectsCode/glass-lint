@@ -4,7 +4,7 @@ import { ESLint, type Linter } from "eslint";
 import obsidianmdPlugin from "eslint-plugin-obsidianmd";
 import tseslint from "typescript-eslint";
 
-const ADAPTER_PROTOCOL_VERSION = 3;
+const ADAPTER_PROTOCOL_VERSION = 4;
 const TOOL_NAME = "eslint-obsidianmd";
 const FALLBACK_PLUGIN_VERSION = "0.4.1";
 
@@ -39,9 +39,9 @@ interface AdapterRequest {
 
 interface AdapterFinding {
     rule_id: string;
-    message_id: string;
     message: string;
     severity: FindingSeverity;
+    certainty: "definite";
     location: {
         path: string;
         range: {
@@ -49,7 +49,15 @@ interface AdapterFinding {
         end: { line: number; column: number };
         };
     };
-    evidence: { items: [] };
+    evidence: {
+        traces: Array<{
+            steps: Array<{
+                role: "occurrence";
+                message: string;
+                location: AdapterFinding["location"];
+            }>;
+        }>;
+    };
 }
 
 interface AdapterResponse {
@@ -223,9 +231,9 @@ function createFinding(
 ): AdapterFinding {
     return {
         rule_id: mapRuleId(message.ruleId),
-        message_id: message.messageId ?? "unknown",
         message: message.message,
         severity: mapSeverity(message.severity),
+        certainty: "definite",
         location: {
             path: filename,
             range: {
@@ -236,7 +244,24 @@ function createFinding(
                 },
             },
         },
-        evidence: { items: [] },
+        evidence: {
+            traces: [{
+                steps: [{
+                    role: "occurrence",
+                    message: "match",
+                    location: {
+                        path: filename,
+                        range: {
+                            start: { line: message.line, column: message.column },
+                            end: {
+                                line: message.endLine ?? message.line,
+                                column: message.endColumn ?? message.column,
+                            },
+                        },
+                    },
+                }],
+            }],
+        },
     };
 }
 

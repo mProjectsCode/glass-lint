@@ -1,7 +1,7 @@
 use crate::project::types::SourceLocation;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 pub enum EvidenceRole {
     Source,
@@ -13,7 +13,7 @@ pub enum EvidenceRole {
     Occurrence,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct EvidenceStep {
     role: EvidenceRole,
@@ -43,7 +43,7 @@ impl EvidenceStep {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct EvidenceTrace {
     steps: Vec<EvidenceStep>,
@@ -102,6 +102,21 @@ impl EvidenceTraces {
 
     pub fn len(&self) -> usize {
         self.traces.len()
+    }
+
+    /// Merge alternative traces while preserving a canonical, deterministic
+    /// order. Trace step order is left untouched because it represents the
+    /// order of events in the witness.
+    pub(crate) fn merge(&self, other: &Self) -> Self {
+        let mut traces = self
+            .traces
+            .iter()
+            .chain(other.traces.iter())
+            .cloned()
+            .collect::<Vec<_>>();
+        traces.sort();
+        traces.dedup();
+        Self::with_truncation(traces, self.truncated || other.truncated)
     }
 
     /// Create an EvidenceTraces with a single fallback Occurrence step at the

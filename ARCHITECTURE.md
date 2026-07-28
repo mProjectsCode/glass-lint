@@ -50,3 +50,8 @@ loaders, report types, or rule catalogs across these boundaries.
 Analysis crosses the crate boundary as validated filesystem admission, owned
 `SourceFile`s, `ProjectCollection`, `LocallyAnalyzedProject`, and
 `ResolvedProject`; only the final resolved phase links and matches.
+
+Path-local strict identity is preserved through bounded correlated
+alternatives at control-flow joins. Findings distinguish possible from
+definite modeled-path coverage, and incomplete analysis cannot claim definite
+coverage.

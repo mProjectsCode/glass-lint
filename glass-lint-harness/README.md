@@ -2,6 +2,8 @@
 
 `glass-lint-harness` is the reusable library for conformance cases, built-in
 and external adapters, verification, reports, comparisons, and profiling.
+The adapter protocol is versioned; response findings must include certainty
+and at least one structured evidence trace.
 
 `load_cases` reads annotated JavaScript or TypeScript snippets and `case.toml`
 project fixtures. `run_suite` executes them through `Adapter`

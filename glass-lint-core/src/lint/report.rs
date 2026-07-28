@@ -99,28 +99,55 @@ impl<'a> ReportAssembly<'a> {
             let Some(classification) = classifications.get(&module.id()) else {
                 continue;
             };
-            let mut findings = self.project_findings_for_module(project, module, classification);
-            findings.sort_by(|a, b| {
-                a.location()
-                    .range()
-                    .start()
-                    .line()
-                    .cmp(&b.location().range().start().line())
-                    .then_with(|| {
-                        a.location()
-                            .range()
-                            .start()
-                            .column()
-                            .cmp(&b.location().range().start().column())
-                    })
-                    .then_with(|| a.rule_id().as_str().cmp(b.rule_id().as_str()))
-            });
-            findings.dedup();
+            let findings = self.project_findings_for_module(project, module, classification);
+            let mut findings = Self::merge_duplicate_findings(findings);
+            findings.sort_by(Self::compare_findings);
             files.insert(
                 module.path().clone(),
                 FileReport::new(module.path().clone(), findings, Vec::new()),
             );
         }
+    }
+
+    fn compare_findings(left: &Finding, right: &Finding) -> std::cmp::Ordering {
+        let left_range = left.location().range();
+        let right_range = right.location().range();
+        (
+            left_range.start().line(),
+            left_range.start().column(),
+            left_range.end().line(),
+            left_range.end().column(),
+            left.rule_id().as_str(),
+            left.message(),
+            left.severity(),
+        )
+            .cmp(&(
+                right_range.start().line(),
+                right_range.start().column(),
+                right_range.end().line(),
+                right_range.end().column(),
+                right.rule_id().as_str(),
+                right.message(),
+                right.severity(),
+            ))
+    }
+
+    fn merge_duplicate_findings(mut findings: Vec<Finding>) -> Vec<Finding> {
+        findings.sort_by(Self::compare_findings);
+        let mut merged: Vec<Finding> = Vec::with_capacity(findings.len());
+        for finding in findings {
+            match merged.pop() {
+                Some(previous) if previous.has_primary(&finding) => {
+                    merged.push(previous.merge_duplicate(&finding));
+                }
+                Some(previous) => {
+                    merged.push(previous);
+                    merged.push(finding);
+                }
+                None => merged.push(finding),
+            }
+        }
+        merged
     }
 
     fn project_findings_for_module(
@@ -241,11 +268,11 @@ impl<'a> ReportAssembly<'a> {
                 let certainty = if groups[retained_idx]
                     .iter()
                     .map(|(ev_idx, _)| evidence_items[*ev_idx].certainty)
-                    .any(|certainty| certainty == MatchCertainty::Possible)
+                    .any(|certainty| certainty == MatchCertainty::Definite)
                 {
-                    MatchCertainty::Possible
-                } else {
                     MatchCertainty::Definite
+                } else {
+                    MatchCertainty::Possible
                 };
                 Finding::new(
                     rule_id.clone(),

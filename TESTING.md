@@ -31,9 +31,16 @@ Cover each boundary relevant to the matcher:
 - constructors, returned objects, callbacks, and lifecycle stages; and
 - minified or bundled shapes where transformation affects semantics.
 
-Unknown, ambiguous, unsupported, dynamic, or budget-exhausted semantics must
-fail closed. Assert deterministic rule IDs and exact locations. Avoid
+Unknown, ambiguous, unsupported, dynamic, or budget-exhausted semantics cannot
+establish a witness and must not produce a definite finding. They may coexist
+with an independent complete strict witness, which produces a possible finding.
+Assert deterministic rule IDs, certainty, and exact locations. Avoid
 wall-clock tests and unordered snapshots.
+
+Matching changes involving joins must include an incompatible-path negative:
+facts from one branch must never combine with an alias, requirement, or sink
+from another branch. Add `certainty=definite` or `certainty=possible` to a
+fixture expectation when path coverage is part of the contract.
 
 For cross-file flow, use a virtual project with explicit resolution records.
 Assert the finding in the sink file, not merely the presence of the same rule
@@ -86,6 +93,7 @@ Expectation fields are:
 | `line` | One-based source line or `any` |
 | `column` | One-based display column or `any` |
 | `message` | Exact whitespace-free message value |
+| `certainty` | `definite` or `possible` path coverage |
 
 The default is one diagnostic on the adjacent source line. Use `any` only for
 intentional aggregate assertions.

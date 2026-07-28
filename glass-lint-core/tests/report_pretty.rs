@@ -126,6 +126,39 @@ fn can_hide_source_excerpts_for_evidence_rows() {
 }
 
 #[test]
+fn explains_possible_path_certainty() {
+    let r = range(1, 1, 6);
+    let report = FileReport::new(
+        path("main.js"),
+        vec![Finding::new(
+            RuleId::parse("test:fetch").unwrap(),
+            "Uses fetch".into(),
+            Severity::Warning,
+            location(r.clone()),
+            EvidenceTraces::new(vec![EvidenceTrace::new(vec![step("call of fetch", r)])]),
+            MatchCertainty::Possible,
+        )],
+        vec![],
+    );
+    let rendered = PrettyReport::new(
+        &report,
+        "main.js",
+        "fetch('x');",
+        PrettyOptions {
+            show_evidence_source: false,
+            ..PrettyOptions::default()
+        },
+        &line_starts("fetch('x');"),
+    )
+    .to_string();
+
+    assert!(rendered.contains("(possible path)"));
+    assert!(rendered.contains(
+        "Proven on at least one modeled control-flow path; runtime reachability is not established."
+    ));
+}
+
+#[test]
 fn renders_empty_reports_without_extra_output() {
     let report = FileReport::new(path("main.js"), vec![], vec![]);
     let line_starts = line_starts("");

@@ -21,9 +21,10 @@ cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- \
 ```
 
 Each invocation reads one protocol request from stdin, analyzes its source with
-`ESLint.lintText`, and writes one protocol response to stdout. A new process is
-used for every case, which isolates the plugin's manifest cache. Expectations
-remain compatible with RuleTester rule IDs and message IDs.
+`ESLint.lintText`, and writes one protocol response to stdout. Responses use
+the current versioned schema, including `certainty` and an occurrence trace.
+A new process is used for every case, which isolates the plugin's manifest
+cache. Expectations use the normalized rule ID and message fields.
 
 Run `make compare` to generate the repository comparison report. See
 [`TESTING.md`](../../TESTING.md) for harness directives and external adapter

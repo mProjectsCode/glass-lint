@@ -2,7 +2,7 @@ use glass_lint_datastructures::SourceRange;
 
 use crate::project::types::ProjectRelativePath;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct SourceLocation {
     path: ProjectRelativePath,

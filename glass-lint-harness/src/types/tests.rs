@@ -87,3 +87,66 @@ fn adapter_project_round_trips_protocol_data() {
     let decoded: AdapterProject = serde_json::from_str(&encoded).unwrap();
     assert_eq!(decoded, project);
 }
+
+fn adapter_response_json() -> serde_json::Value {
+    serde_json::json!({
+        "protocol_version": ADAPTER_PROTOCOL_VERSION,
+        "tool": "external",
+        "tool_version": "1.0.0",
+        "findings": [{
+            "rule_id": "js:network.request",
+            "message": "Makes a request",
+            "severity": "warning",
+            "location": {
+                "path": "main.js",
+                "range": {
+                    "start": {"line": 1, "column": 1},
+                    "end": {"line": 1, "column": 6}
+                }
+            },
+            "certainty": "definite",
+            "evidence": {
+                "traces": [{
+                    "steps": [{
+                        "role": "occurrence",
+                        "message": "match",
+                        "location": {
+                            "path": "main.js",
+                            "range": {
+                                "start": {"line": 1, "column": 1},
+                                "end": {"line": 1, "column": 6}
+                            }
+                        }
+                    }]
+                }]
+            }
+        }]
+    })
+}
+
+#[test]
+fn adapter_response_requires_certainty_and_traces() {
+    let valid = adapter_response_json();
+    let _: AdapterResponse = serde_json::from_value(valid.clone()).unwrap();
+
+    let mut missing_certainty = valid.clone();
+    missing_certainty["findings"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("certainty");
+    assert!(serde_json::from_value::<AdapterResponse>(missing_certainty).is_err());
+
+    let mut missing_traces = valid;
+    missing_traces["findings"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("evidence");
+    assert!(serde_json::from_value::<AdapterResponse>(missing_traces).is_err());
+}
+
+#[test]
+fn adapter_response_rejects_empty_evidence() {
+    let mut response = adapter_response_json();
+    response["findings"][0]["evidence"]["traces"] = serde_json::json!([]);
+    assert!(serde_json::from_value::<AdapterResponse>(response).is_err());
+}

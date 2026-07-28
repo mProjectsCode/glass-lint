@@ -5,14 +5,14 @@ use std::collections::BTreeMap;
 use glass_lint_core::{
     RuleId, Severity,
     project::{
-        BuiltinModuleName, EvidenceTraces, Finding, MatchCertainty, NormalizedOutsidePath,
-        PackageSpecifier, ProjectRelativePath, ResolutionRequestKind, ResolverOutcome,
-        SourceLocation,
+        BuiltinModuleName, EvidenceRole, EvidenceStep, EvidenceTrace, EvidenceTraces, Finding,
+        MatchCertainty, NormalizedOutsidePath, PackageSpecifier, ProjectRelativePath,
+        ResolutionRequestKind, ResolverOutcome, SourceLocation,
     },
 };
 use serde::{Deserialize, Serialize};
 
-pub const ADAPTER_PROTOCOL_VERSION: u32 = 3;
+pub const ADAPTER_PROTOCOL_VERSION: u32 = 4;
 
 #[derive(Clone, Debug)]
 /// One source fixture and its per-adapter expectations.
@@ -464,24 +464,48 @@ pub struct AdapterResponse {
 /// entries as the finding schema so adapters produce findings in the same
 /// shape.
 impl<'de> serde::Deserialize<'de> for AdapterResponse {
+    #[allow(clippy::too_many_lines)]
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
         #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
         struct FindingProxy {
             rule_id: String,
             message: String,
             severity: Severity,
             location: AdapterSourceLocation,
-            certainty: Option<MatchCertainty>,
+            certainty: MatchCertainty,
+            evidence: AdapterEvidence,
         }
         #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
         struct AdapterSourceLocation {
             path: String,
             range: glass_lint_datastructures::SourceRange,
         }
         #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct AdapterEvidence {
+            traces: Vec<AdapterTrace>,
+            #[serde(default)]
+            truncated: bool,
+        }
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct AdapterTrace {
+            steps: Vec<AdapterStep>,
+        }
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct AdapterStep {
+            role: EvidenceRole,
+            message: String,
+            location: AdapterSourceLocation,
+        }
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
         struct Outer {
             protocol_version: u32,
             tool: String,
@@ -496,13 +520,56 @@ impl<'de> serde::Deserialize<'de> for AdapterResponse {
             let rule_id =
                 glass_lint_core::RuleId::parse(&fp.rule_id).map_err(serde::de::Error::custom)?;
             let location = SourceLocation::new(path, fp.location.range);
+            if fp.evidence.traces.is_empty() {
+                return Err(serde::de::Error::custom(
+                    "adapter finding evidence must contain at least one trace",
+                ));
+            }
+            let traces = fp
+                .evidence
+                .traces
+                .into_iter()
+                .map(|trace| {
+                    if trace.steps.is_empty() {
+                        return Err(serde::de::Error::custom(
+                            "adapter evidence traces must contain at least one step",
+                        ));
+                    }
+                    let steps = trace
+                        .steps
+                        .into_iter()
+                        .map(|step| {
+                            let path = glass_lint_core::project::ProjectRelativePath::new(
+                                step.location.path,
+                            )
+                            .map_err(serde::de::Error::custom)?;
+                            Ok(EvidenceStep::new(
+                                step.role,
+                                step.message,
+                                SourceLocation::new(path, step.location.range),
+                            ))
+                        })
+                        .collect::<Result<Vec<_>, D::Error>>()?;
+                    Ok(EvidenceTrace::new(steps))
+                })
+                .collect::<Result<Vec<_>, D::Error>>()?;
+            if traces.iter().any(|trace| {
+                trace
+                    .steps()
+                    .last()
+                    .is_none_or(|step| step.location() != &location)
+            }) {
+                return Err(serde::de::Error::custom(
+                    "adapter evidence trace must end at the finding location",
+                ));
+            }
             findings.push(Finding::new(
                 rule_id,
                 fp.message,
                 fp.severity,
                 location.clone(),
-                EvidenceTraces::fallback(location),
-                fp.certainty.unwrap_or(MatchCertainty::Definite),
+                EvidenceTraces::with_truncation(traces, fp.evidence.truncated),
+                fp.certainty,
             ));
         }
         Ok(Self {

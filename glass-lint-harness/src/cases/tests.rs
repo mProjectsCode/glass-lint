@@ -20,6 +20,42 @@ globalThis.setTimeout('run()', 10);
 }
 
 #[test]
+fn parses_certainty_expectations() {
+    let source = "\
+// @tool glass-lint rules=js:network.request
+// @expect-error glass-lint rule=js:network.request certainty=possible
+fetch('/remote');
+";
+    let case = parse_case(
+        Path::new("fixtures"),
+        Path::new("fixtures/network/possible.js"),
+        source.into(),
+    )
+    .unwrap();
+    assert_eq!(
+        case.adapters["glass-lint"].required()[0].certainty,
+        Some(glass_lint_core::MatchCertainty::Possible)
+    );
+}
+
+#[test]
+fn rejects_unknown_certainty_expectations() {
+    let source = "\
+// @tool glass-lint rules=js:network.request
+// @expect-error glass-lint rule=js:network.request certainty=maybe
+fetch('/remote');
+";
+    let error = parse_case(
+        Path::new("fixtures"),
+        Path::new("fixtures/network/possible.js"),
+        source.into(),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("unknown certainty"));
+}
+
+#[test]
 fn parses_forbidden_diagnostic() {
     let source = "\
 // @tool glass-lint rules=js:network.request

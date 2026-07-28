@@ -489,6 +489,7 @@ fn add_expectation(case: &mut Case, rest: &str, line: u32, required: bool) -> Re
     let mut expected_line = Some(line);
     let mut column = None;
     let mut message = None;
+    let mut certainty = None;
     for (key, value) in parse_fields(fields)? {
         match key.as_str() {
             "rule" => rule_id = Some(value),
@@ -497,6 +498,7 @@ fn add_expectation(case: &mut Case, rest: &str, line: u32, required: bool) -> Re
             "line" => expected_line = parse_optional_u32(&value)?,
             "column" => column = parse_optional_u32(&value)?,
             "message" => message = Some(value),
+            "certainty" => certainty = Some(parse_certainty(&value)?),
             _ => bail!("unknown @expect-error field `{key}`"),
         }
     }
@@ -509,6 +511,7 @@ fn add_expectation(case: &mut Case, rest: &str, line: u32, required: bool) -> Re
     diagnostic.line = expected_line;
     diagnostic.column = column;
     diagnostic.message = message;
+    diagnostic.certainty = certainty;
     if required {
         expectation.add_required(diagnostic);
     } else {
@@ -535,6 +538,14 @@ fn parse_severity(value: &str) -> Result<Severity> {
         "warning" => Ok(Severity::Warning),
         "error" => Ok(Severity::Error),
         _ => bail!("unknown severity `{value}`"),
+    }
+}
+
+fn parse_certainty(value: &str) -> Result<glass_lint_core::MatchCertainty> {
+    match value {
+        "definite" => Ok(glass_lint_core::MatchCertainty::Definite),
+        "possible" => Ok(glass_lint_core::MatchCertainty::Possible),
+        _ => bail!("unknown certainty `{value}`; expected definite or possible"),
     }
 }
 

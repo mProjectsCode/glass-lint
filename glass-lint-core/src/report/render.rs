@@ -227,9 +227,16 @@ impl PrettyReports<'_> {
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         let finding = entries[0].1;
-        let certainty_label = match finding.certainty() {
-            crate::project::types::MatchCertainty::Definite => "definite",
-            crate::project::types::MatchCertainty::Possible => "possible path",
+        let certainty_label = if entries.iter().all(|(_, finding)| {
+            finding.certainty() == crate::project::types::MatchCertainty::Definite
+        }) {
+            "definite"
+        } else if entries.iter().all(|(_, finding)| {
+            finding.certainty() == crate::project::types::MatchCertainty::Possible
+        }) {
+            "possible path"
+        } else {
+            "mixed path coverage"
         };
         writeln!(
             f,
@@ -274,6 +281,17 @@ impl PrettyReports<'_> {
                 "{}",
                 PrettyReport::style(self.options.color, Style::new().dim(), message)
             )?;
+            if finding.certainty() == crate::project::types::MatchCertainty::Possible {
+                writeln!(
+                    f,
+                    "    {}",
+                    PrettyReport::style(
+                        self.options.color,
+                        Style::new().dim(),
+                        "Proven on at least one modeled control-flow path; runtime reachability is not established.",
+                    ),
+                )?;
+            }
             if self.options.show_evidence_source {
                 PrettyReport::new_with_cache(
                     file.report,

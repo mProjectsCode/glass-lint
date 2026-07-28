@@ -287,6 +287,35 @@ fn shared_evidence_path_is_replaced_by_inline_steps() {
 }
 
 #[test]
+fn duplicate_findings_merge_traces_and_keep_definite_certainty() {
+    let first = finding();
+    let second = Finding::new(
+        first.rule_id().clone(),
+        first.message().to_owned(),
+        first.severity(),
+        first.location().clone(),
+        EvidenceTraces::with_truncation(
+            vec![EvidenceTrace::new(vec![EvidenceStep::new(
+                EvidenceRole::Source,
+                "source".into(),
+                first.location().clone(),
+            )])],
+            true,
+        ),
+        MatchCertainty::Possible,
+    );
+
+    let merged = first.merge_duplicate(&second);
+    assert_eq!(merged.certainty(), MatchCertainty::Definite);
+    assert!(merged.evidence().truncated());
+    assert_eq!(merged.evidence().traces().len(), 2);
+    assert_eq!(
+        merged.evidence().traces()[0].steps()[0].role(),
+        EvidenceRole::Source
+    );
+}
+
+#[test]
 fn direct_qualification_matches_one_file_project_shape() {
     let rule = Rule::builder("network.request")
         .description("Uses fetch")

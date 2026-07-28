@@ -62,9 +62,13 @@ provider runs only `js:*` rules.
 Pretty output is the default. Findings are grouped by rule, and evidence is
 sorted by file and source location. Set `show_evidence_source = false` to keep
 evidence locations and messages while omitting source excerpts and carets.
+Each finding reports `definite` or `possible path` certainty. Possible-path
+findings include an explanation that the strict proof holds on at least one
+modeled control-flow path; this is separate from rule confidence.
 
 Set `output = "json"` for the versioned structured report. JSON is always
-uncolored. Pretty output and tracing use color by default; set `color = false`
+uncolored and exposes certainty as a field rather than requiring message
+parsing. Pretty output and tracing use color by default; set `color = false`
 for plain text. Reports go to stdout, while operational errors and telemetry go
 to stderr.
 
