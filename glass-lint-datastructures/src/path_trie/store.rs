@@ -44,7 +44,7 @@ impl ParentPathStore {
     }
 
     pub fn is_valid(&self, id: u32) -> bool {
-        let idx = id as usize;
+        let idx = PathId(id).untag().0 as usize;
         idx < self.nodes.len()
     }
 
@@ -70,11 +70,11 @@ impl ParentPathStore {
     }
 
     pub fn append_linked(&mut self, parent: u32, segment: PathSegment, depth: u32) -> Option<u32> {
-        if self.node_count() >= self.max_nodes {
-            return None;
-        }
         if let Some(path) = self.by_edge.get(&(parent, segment)) {
             return Some(*path);
+        }
+        if self.node_count() >= self.max_nodes {
+            return None;
         }
         let id = u32::try_from(self.nodes.len()).ok()? | PathId::LINK_TAG;
         self.nodes.push(PathNode {
@@ -112,9 +112,9 @@ impl ParentPathStore {
             let Some(node) = self.nodes.get(index) else {
                 return false;
             };
-            current = node.parent;
+            current = PathId(node.parent).untag().0;
         }
-        current == prefix
+        current == PathId(prefix).untag().0
     }
 
     pub fn segment(&self, id: u32) -> Option<&PathSegment> {
@@ -131,7 +131,7 @@ impl ParentPathStore {
         while current != 0 {
             let node = self.nodes.get(current as usize)?;
             last = Some(self.segment(current)?);
-            current = node.parent;
+            current = PathId(node.parent).untag().0;
         }
         last
     }
@@ -146,11 +146,11 @@ impl ParentPathStore {
 
     pub fn collect_segments(&self, id: u32, buf: &mut Vec<PathSegment>) -> Option<()> {
         buf.clear();
-        let mut current = id;
+        let mut current = PathId(id).untag().0;
         while current != 0 {
             let node = self.nodes.get(current as usize)?;
             buf.push(*self.segment(current)?);
-            current = node.parent;
+            current = PathId(node.parent).untag().0;
         }
         buf.reverse();
         Some(())
@@ -182,14 +182,14 @@ impl ParentPathStore {
 
     fn rebuild_without_first(&self, id: u32) -> Option<u32> {
         let mut segments = Vec::new();
-        let mut current = id;
+        let mut current = PathId(id).untag().0;
         loop {
             let node = self.nodes.get(current as usize)?;
             if node.parent == 0 {
                 break;
             }
             segments.push(*self.segment(current)?);
-            current = node.parent;
+            current = PathId(node.parent).untag().0;
         }
         let mut result = 0;
         for seg in segments.into_iter().rev() {
