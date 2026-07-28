@@ -290,12 +290,7 @@ fn partial_status_never_emits_unproved_strict_finding() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_module("./dep", "request")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_module("./dep", "request"))
         .build()
         .unwrap();
     let linter = crate::Linter::new(crate::LinterConfig::new(

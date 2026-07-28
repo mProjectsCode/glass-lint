@@ -1,6 +1,6 @@
 //! CodeMirror extension module rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects static ESM imports and unshadowed CommonJS loads of the exact
 /// CodeMirror packages used by the provider. The finding is attached to the
@@ -13,102 +13,22 @@ pub fn rule() -> Rule {
         .category(Category::new("codemirror").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("@codemirror/state")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("@codemirror/view")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("@codemirror/language")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("@codemirror/commands")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("@codemirror/lang-markdown")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("@codemirror/lang-javascript")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("@codemirror/lang-json")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("@codemirror/autocomplete")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("@codemirror/lint")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("@codemirror/search")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("@codemirror/collab")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("@lezer/common")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("@lezer/highlight")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("@lezer/lr")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("@lezer/javascript")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("@lezer/markdown")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::import_package("@codemirror/state"))
+        .query(QueryDecl::import_package("@codemirror/view"))
+        .query(QueryDecl::import_package("@codemirror/language"))
+        .query(QueryDecl::import_package("@codemirror/commands"))
+        .query(QueryDecl::import_package("@codemirror/lang-markdown"))
+        .query(QueryDecl::import_package("@codemirror/lang-javascript"))
+        .query(QueryDecl::import_package("@codemirror/lang-json"))
+        .query(QueryDecl::import_package("@codemirror/autocomplete"))
+        .query(QueryDecl::import_package("@codemirror/lint"))
+        .query(QueryDecl::import_package("@codemirror/search"))
+        .query(QueryDecl::import_package("@codemirror/collab"))
+        .query(QueryDecl::import_package("@lezer/common"))
+        .query(QueryDecl::import_package("@lezer/highlight"))
+        .query(QueryDecl::import_package("@lezer/lr"))
+        .query(QueryDecl::import_package("@lezer/javascript"))
+        .query(QueryDecl::import_package("@lezer/markdown"))
         .build()
         .unwrap()
 }

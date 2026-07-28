@@ -1,6 +1,6 @@
 //! Obsidian plugin load/unload rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects plugin-manager and returned-plugin load/unload operations.
 pub fn rule() -> Rule {
@@ -9,42 +9,12 @@ pub fn rule() -> Rule {
         .category(Category::new("plugins").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.plugins.loadPlugin")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.plugins.unloadPlugin")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_returned("app.plugins.getPlugin", "load")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_returned("app.plugins.getPlugin", "unload")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_returned("app.plugins.plugins", "load")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_returned("app.plugins.plugins", "unload")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_rooted("app.plugins.loadPlugin"))
+        .query(QueryDecl::member_call_rooted("app.plugins.unloadPlugin"))
+        .query(QueryDecl::member_call_returned("app.plugins.getPlugin", "load"))
+        .query(QueryDecl::member_call_returned("app.plugins.getPlugin", "unload"))
+        .query(QueryDecl::member_call_returned("app.plugins.plugins", "load"))
+        .query(QueryDecl::member_call_returned("app.plugins.plugins", "unload"))
         .build()
         .unwrap()
 }

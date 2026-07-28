@@ -1,6 +1,6 @@
 //! Dynamic-code evaluation rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects calls whose target is proven to be the global `eval` or `Function`
 /// callable, plus construction through the global `Function`. Global-object
@@ -13,24 +13,9 @@ pub fn rule() -> Rule {
         .category(Category::new("language/dynamic-code").unwrap())
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("eval")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("Function")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .constructor_global("Function")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("eval"))
+        .query(QueryDecl::call_global("Function"))
+        .query(QueryDecl::constructor_global("Function"))
         .build()
         .unwrap()
 }

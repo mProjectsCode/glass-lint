@@ -5,14 +5,12 @@
 
 #![allow(clippy::redundant_pub_crate)]
 
-mod decl;
 mod error;
 pub mod matcher;
 mod module;
 pub mod query;
 mod taxonomy;
 
-pub use decl::MatcherDecl;
 pub use error::{CompiledCatalogError, MatcherBuildError, RuleBuildError};
 pub use matcher::{
     ArgumentConstraint, ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher,
@@ -106,13 +104,6 @@ impl Rule {
     }
 
     #[must_use]
-    /// Borrow matcher declarations (retained for backward compatibility).
-    pub fn declarations(&self) -> &[MatcherDecl] {
-        // Stub: no longer stored — migration path
-        &[]
-    }
-
-    #[must_use]
     /// Borrow object-flow matcher declarations.
     pub fn flow_matchers(&self) -> &[ObjectFlowMatcher] {
         &self.flows
@@ -140,15 +131,6 @@ impl RuleBuilder {
     /// to add matching semantics.
     pub fn query(mut self, decl: QueryDecl) -> Self {
         self.queries.push(decl);
-        self
-    }
-
-    #[must_use]
-    /// Add one matcher declaration (legacy, lowered to QueryDecl).
-    #[allow(clippy::needless_pass_by_value)]
-    pub fn declaration(mut self, decl: MatcherDecl) -> Self {
-        self.queries
-            .push(QueryDecl::from_matcher(&decl, VarId::new(0)));
         self
     }
 

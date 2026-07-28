@@ -1,6 +1,6 @@
 //! Node archive and compression rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects direct ESM or unshadowed CommonJS imports of the listed archive and
 /// compression packages. This rule reports the module load itself; it does not
@@ -12,120 +12,25 @@ pub fn rule() -> Rule {
         .category(Category::new("node/archive").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("jszip")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("tar")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("zlib")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_exact("node:zlib")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("fflate")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("archiver")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("yauzl")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("unzipper")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("node-tar")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("compressing")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("adm-zip")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("extract-zip")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("tar-stream")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("pako")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("decompress")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("zip-a-folder")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("@zip.js/zip.js")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("yazl")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("node-stream-zip")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::import_package("jszip"))
+        .query(QueryDecl::import_package("tar"))
+        .query(QueryDecl::import_package("zlib"))
+        .query(QueryDecl::import_exact("node:zlib"))
+        .query(QueryDecl::import_package("fflate"))
+        .query(QueryDecl::import_package("archiver"))
+        .query(QueryDecl::import_package("yauzl"))
+        .query(QueryDecl::import_package("unzipper"))
+        .query(QueryDecl::import_package("node-tar"))
+        .query(QueryDecl::import_package("compressing"))
+        .query(QueryDecl::import_package("adm-zip"))
+        .query(QueryDecl::import_package("extract-zip"))
+        .query(QueryDecl::import_package("tar-stream"))
+        .query(QueryDecl::import_package("pako"))
+        .query(QueryDecl::import_package("decompress"))
+        .query(QueryDecl::import_package("zip-a-folder"))
+        .query(QueryDecl::import_package("@zip.js/zip.js"))
+        .query(QueryDecl::import_package("yazl"))
+        .query(QueryDecl::import_package("node-stream-zip"))
         .build()
         .unwrap()
 }

@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use glass_lint_core::{
     Environment, Linter, LinterConfig, MatchCertainty, RuleCatalog,
     rules::{
-        ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, MatcherDecl,
+        ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, QueryDecl,
         ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule, ValueMatcher,
     },
 };
@@ -89,21 +89,11 @@ fn classify_with_environment(
 fn canonicalizes_configured_global_object_aliases_for_rooted_members() {
     let rules = [
         rule("test.navigator-call")
-            .declaration(
-                MatcherDecl::builder()
-                    .member_call_rooted("navigator.sendBeacon")
-                    .build()
-                    .expect("valid matcher declaration"),
-            )
+            .query(QueryDecl::member_call_rooted("navigator.sendBeacon"))
             .build()
             .unwrap(),
         rule("test.navigator-read")
-            .declaration(
-                MatcherDecl::builder()
-                    .member_read_rooted("navigator.userAgent")
-                    .build()
-                    .expect("valid matcher declaration"),
-            )
+            .query(QueryDecl::member_read_rooted("navigator.userAgent"))
             .build()
             .unwrap(),
     ];
@@ -124,12 +114,7 @@ fn rooted_configured_global_member_calls_match_direct_globals() {
         "test",
         vec![
             rule("crypto")
-                .declaration(
-                    MatcherDecl::builder()
-                        .member_call_rooted("crypto.subtle.digest")
-                        .build()
-                        .expect("valid matcher declaration"),
-                )
+                .query(QueryDecl::member_call_rooted("crypto.subtle.digest"))
                 .build()
                 .unwrap(),
         ],
@@ -147,12 +132,7 @@ fn rooted_global_member_survives_unrelated_crypto_imports() {
     let mut environment = support::test_environment();
     environment.add_global("crypto").unwrap();
     let rules = [rule("crypto")
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("crypto.subtle.digest")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_rooted("crypto.subtle.digest"))
         .build()
         .unwrap()];
     let result = classify_with_environment(
@@ -166,12 +146,7 @@ fn rooted_global_member_survives_unrelated_crypto_imports() {
 #[test]
 fn rooted_member_read_matches_direct_read() {
     let rules = [rule("document")
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("document.onkeydown")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_read_rooted("document.onkeydown"))
         .build()
         .unwrap()];
     assert_eq!(classify("document.onkeydown;", &rules).finding_count, 1);
@@ -186,21 +161,11 @@ fn rooted_global_object_aliases_respect_restricted_members_and_mutations() {
         .unwrap();
     let rules = [
         rule("test.navigator")
-            .declaration(
-                MatcherDecl::builder()
-                    .member_call_rooted("navigator.sendBeacon")
-                    .build()
-                    .expect("valid matcher declaration"),
-            )
+            .query(QueryDecl::member_call_rooted("navigator.sendBeacon"))
             .build()
             .unwrap(),
         rule("test.fetch")
-            .declaration(
-                MatcherDecl::builder()
-                    .member_call_rooted("fetch")
-                    .build()
-                    .expect("valid matcher declaration"),
-            )
+            .query(QueryDecl::member_call_rooted("fetch"))
             .build()
             .unwrap(),
     ];
@@ -232,12 +197,7 @@ fn rooted_global_object_alias_mutations_invalidate_the_canonical_root() {
     let mut environment = Environment::default();
     environment.add_global("navigator").unwrap();
     let rules = [rule("test.navigator")
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("navigator.sendBeacon")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_rooted("navigator.sendBeacon"))
         .build()
         .unwrap()];
     let catalog = RuleCatalog::new("test", rules.to_vec()).unwrap();
@@ -257,12 +217,7 @@ fn rooted_global_object_alias_mutations_invalidate_the_canonical_root() {
 #[test]
 fn extracted_instance_callables_follow_aliases_and_bind_but_not_reassignment() {
     let rules = [rule("instance")
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_instance("obsidian", "Plugin", "addCommand")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_instance("obsidian", "Plugin", "addCommand"))
         .build()
         .unwrap()];
     let result = classify(
@@ -283,18 +238,8 @@ fn extracted_instance_callables_follow_aliases_and_bind_but_not_reassignment() {
 #[test]
 fn package_import_patterns_match_subpaths_without_lookalikes() {
     let rules = [rule("package")
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("@scope/pkg")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("openai")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::import_package("@scope/pkg"))
+        .query(QueryDecl::import_package("openai"))
         .build()
         .unwrap()];
     let result = classify(
@@ -312,24 +257,9 @@ fn package_import_patterns_match_subpaths_without_lookalikes() {
 #[test]
 fn package_provenance_matches_exports_and_namespace_members_at_boundaries() {
     let rules = [rule("package-provenance")
-        .declaration(
-            MatcherDecl::builder()
-                .call_package("sdk", "send")
-                .build()
-                .unwrap(),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_package("sdk", "client.request")
-                .build()
-                .unwrap(),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_package("sdk", "version")
-                .build()
-                .unwrap(),
-        )
+        .query(QueryDecl::call_package("sdk", "send"))
+        .query(QueryDecl::member_call_package("sdk", "client.request"))
+        .query(QueryDecl::member_read_package("sdk", "version"))
         .build()
         .unwrap()];
     let result = classify(
@@ -345,17 +275,12 @@ fn package_provenance_matches_exports_and_namespace_members_at_boundaries() {
 #[test]
 fn associates_static_option_properties_with_their_call_sink() {
     let rules = [rule("string-use")
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
+        .query(QueryDecl::call_global("fetch")
                 .arg_object_property_value(
                     1,
                     "url",
                     ValueMatcher::static_string().contains_any(["localhost"]),
-                )
-                .build()
-                .unwrap(),
-        )
+                ))
         .build()
         .unwrap()];
     let result = classify(
@@ -374,12 +299,7 @@ fn assert_capability_count(result: &Classification, id: &str, expected: usize) {
 #[test]
 fn resolves_module_provenance_and_rejects_local_lookalikes() {
     let rules = [rule("test.module")
-        .declaration(
-            MatcherDecl::builder()
-                .call_module("example-sdk", "send")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_module("example-sdk", "send"))
         .build()
         .unwrap()];
     let result = classify(
@@ -392,12 +312,7 @@ fn resolves_module_provenance_and_rejects_local_lookalikes() {
 #[test]
 fn resolves_commonjs_destructured_module_exports() {
     let rules = [rule("test.module")
-        .declaration(
-            MatcherDecl::builder()
-                .call_module("example-sdk", "send")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_module("example-sdk", "send"))
         .build()
         .unwrap()];
     let result = classify(
@@ -410,12 +325,7 @@ fn resolves_commonjs_destructured_module_exports() {
 #[test]
 fn follows_rooted_aliases_and_reassignment_order() {
     let rules = [rule("test.alias")
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("host.files.read")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_rooted("host.files.read"))
         .build()
         .unwrap()];
     let result = classify(
@@ -428,12 +338,7 @@ fn follows_rooted_aliases_and_reassignment_order() {
 #[test]
 fn rejects_aliases_after_shadowing_reassignment() {
     let rules = [rule("test.fetch")
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap()];
     let result = classify(
@@ -446,13 +351,8 @@ fn rejects_aliases_after_shadowing_reassignment() {
 #[test]
 fn matches_static_string_arguments_but_rejects_dynamic_strings() {
     let rules = [rule("test.fetch-url")
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .arg_static_string(0)
-                .build()
-                .unwrap(),
-        )
+        .query(QueryDecl::call_global("fetch")
+                .with_arg_static_string(0))
         .build()
         .unwrap()];
     let result = classify("fetch('/literal'); fetch('/' + dynamic);", &rules);
@@ -462,13 +362,8 @@ fn matches_static_string_arguments_but_rejects_dynamic_strings() {
 #[test]
 fn callable_transforms_use_effective_target_arguments() {
     let rule = [rule("test.callable")
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .arg_static_strings(0, ["/call", "/apply", "/optional"])
-                .build()
-                .unwrap(),
-        )
+        .query(QueryDecl::call_global("fetch")
+                .with_arg_static_strings(0, ["/call", "/apply", "/optional"]))
         .build()
         .unwrap()];
     let result = classify(
@@ -481,13 +376,8 @@ fn callable_transforms_use_effective_target_arguments() {
 #[test]
 fn global_call_matchers_cover_proven_global_object_callable_forms() {
     let rules = [rule("test.global-callable")
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("eval")
-                .arg_static_strings(0, ["direct", "alias", "call", "apply"])
-                .build()
-                .unwrap(),
-        )
+        .query(QueryDecl::call_global("eval")
+                .with_arg_static_strings(0, ["direct", "alias", "call", "apply"]))
         .build()
         .unwrap()];
     let result = classify(
@@ -503,7 +393,7 @@ fn global_call_matchers_cover_proven_global_object_callable_forms() {
 #[test]
 fn global_object_callable_forms_respect_shadowing_and_property_mutation() {
     let rules = [rule("test.global-callable")
-        .declaration(MatcherDecl::builder().call_global("eval").build().unwrap())
+        .query(QueryDecl::call_global("eval"))
         .build()
         .unwrap()];
     let result = classify(
@@ -522,7 +412,7 @@ fn global_object_callable_forms_respect_shadowing_and_property_mutation() {
 #[test]
 fn host_globals_require_explicit_environment_configuration() {
     let rule = rule("test.fetch")
-        .declaration(MatcherDecl::builder().call_global("fetch").build().unwrap())
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap();
     let default_catalog = RuleCatalog::new("test", vec![rule.clone()]).unwrap();
@@ -558,12 +448,7 @@ fn host_globals_require_explicit_environment_configuration() {
 #[test]
 fn rooted_host_globals_also_require_environment_configuration() {
     let rule = rule("test.host")
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("host.open")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_rooted("host.open"))
         .build()
         .unwrap();
     let default_catalog = RuleCatalog::new("test", vec![rule.clone()]).unwrap();
@@ -599,7 +484,7 @@ fn rooted_host_globals_also_require_environment_configuration() {
 #[test]
 fn custom_global_objects_do_not_make_unconfigured_members_global() {
     let rule = rule("test.fetch")
-        .declaration(MatcherDecl::builder().call_global("fetch").build().unwrap())
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap();
     let mut environment = Environment::default();
@@ -619,21 +504,11 @@ fn custom_global_objects_do_not_make_unconfigured_members_global() {
 fn future_declarations_fail_closed_at_the_use_position() {
     let rules = [
         rule("test.require")
-            .declaration(
-                MatcherDecl::builder()
-                    .import_exact("sdk")
-                    .build()
-                    .expect("valid matcher declaration"),
-            )
+            .query(QueryDecl::import_exact("sdk"))
             .build()
             .unwrap(),
         rule("test.fetch")
-            .declaration(
-                MatcherDecl::builder()
-                    .call_global("fetch")
-                    .build()
-                    .expect("valid matcher declaration"),
-            )
+            .query(QueryDecl::call_global("fetch"))
             .build()
             .unwrap(),
     ];
@@ -648,30 +523,15 @@ fn future_declarations_fail_closed_at_the_use_position() {
 fn future_declarations_shadow_all_builtin_provenance_seeds() {
     let rules = [
         rule("test.import")
-            .declaration(
-                MatcherDecl::builder()
-                    .import_exact("sdk")
-                    .build()
-                    .expect("valid matcher declaration"),
-            )
+            .query(QueryDecl::import_exact("sdk"))
             .build()
             .unwrap(),
         rule("test.fetch")
-            .declaration(
-                MatcherDecl::builder()
-                    .call_global("fetch")
-                    .build()
-                    .expect("valid matcher declaration"),
-            )
+            .query(QueryDecl::call_global("fetch"))
             .build()
             .unwrap(),
         rule("test.global-fetch")
-            .declaration(
-                MatcherDecl::builder()
-                    .member_call_rooted("globalThis.fetch")
-                    .build()
-                    .expect("valid matcher declaration"),
-            )
+            .query(QueryDecl::member_call_rooted("globalThis.fetch"))
             .build()
             .unwrap(),
     ];
@@ -688,12 +548,7 @@ fn future_declarations_shadow_all_builtin_provenance_seeds() {
 #[test]
 fn numeric_addition_is_not_a_static_property_string() {
     let rules = [rule("test.member")
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.12")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_rooted("app.12"))
         .build()
         .unwrap()];
     assert_eq!(
@@ -706,13 +561,8 @@ fn numeric_addition_is_not_a_static_property_string() {
 #[test]
 fn tracks_rooted_expression_arguments_through_aliases() {
     let rules = [rule("test.arg-flow")
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.open")
-                .arg(0, ArgumentMatcher::rooted_expressions(["vault.file"]))
-                .build()
-                .unwrap(),
-        )
+        .query(QueryDecl::member_call_rooted("app.open")
+                .with_arg(0, ArgumentMatcher::rooted_expressions(["vault.file"])))
         .build()
         .unwrap()];
     let result = classify(
@@ -725,12 +575,7 @@ fn tracks_rooted_expression_arguments_through_aliases() {
 #[test]
 fn tracks_simple_parameter_aliases_into_named_functions() {
     let rules = [rule("test.fetch")
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap()];
     let result = classify(
@@ -743,12 +588,7 @@ fn tracks_simple_parameter_aliases_into_named_functions() {
 #[test]
 fn named_helper_summaries_are_lexically_scoped() {
     let rules = [rule("test.fetch")
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap()];
     let result = classify(
@@ -763,12 +603,7 @@ fn named_helper_summaries_are_lexically_scoped() {
 #[test]
 fn tracks_parameter_aliases_into_arrow_functions() {
     let rules = [rule("test.fetch")
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap()];
     let result = classify(
@@ -781,13 +616,8 @@ fn tracks_parameter_aliases_into_arrow_functions() {
 #[test]
 fn matches_optional_chained_calls_with_static_arguments() {
     let rules = [rule("test.optional")
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.commands.execute")
-                .arg_static_strings(0, ["open"])
-                .build()
-                .unwrap(),
-        )
+        .query(QueryDecl::member_call_rooted("app.commands.execute")
+                .with_arg_static_strings(0, ["open"]))
         .build()
         .unwrap()];
     let result = classify(
@@ -800,12 +630,7 @@ fn matches_optional_chained_calls_with_static_arguments() {
 #[test]
 fn resolves_literal_computed_properties_through_constant_aliases() {
     let rules = [rule("test.computed")
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_rooted("fetch"))
         .build()
         .unwrap()];
     let result = classify("const method = 'fetch'; window[method]('/remote');", &rules);
@@ -815,13 +640,8 @@ fn resolves_literal_computed_properties_through_constant_aliases() {
 #[test]
 fn reuses_constant_object_arguments_for_key_matching() {
     let rules = [rule("test.object-arg")
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("client.request")
-                .arg_object_keys(0, ["url", "method"])
-                .build()
-                .unwrap(),
-        )
+        .query(QueryDecl::member_call_rooted("client.request")
+                .with_arg_object_keys(0, ["url", "method"]))
         .build()
         .unwrap()];
     let result = classify(
@@ -834,23 +654,13 @@ fn reuses_constant_object_arguments_for_key_matching() {
 #[test]
 fn rejects_reassigned_static_values() {
     let string_rules = [rule("test.fetch-url")
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .arg_static_string(0)
-                .build()
-                .unwrap(),
-        )
+        .query(QueryDecl::call_global("fetch")
+                .with_arg_static_string(0))
         .build()
         .unwrap()];
     let object_rules = [rule("test.object-arg")
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("client.request")
-                .arg_object_keys(0, ["url"])
-                .build()
-                .unwrap(),
-        )
+        .query(QueryDecl::member_call_rooted("client.request")
+                .with_arg_object_keys(0, ["url"]))
         .build()
         .unwrap()];
 
@@ -875,13 +685,8 @@ fn rejects_reassigned_static_values() {
 #[test]
 fn rejects_static_shapes_after_a_property_write() {
     let rules = [rule("test.object-arg")
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("client.request")
-                .arg_object_keys(0, ["url", "method"])
-                .build()
-                .unwrap(),
-        )
+        .query(QueryDecl::member_call_rooted("client.request")
+                .with_arg_object_keys(0, ["url", "method"]))
         .build()
         .unwrap()];
     let result = classify(
@@ -894,13 +699,8 @@ fn rejects_static_shapes_after_a_property_write() {
 #[test]
 fn projects_const_object_aliases_into_destructured_parameters() {
     let rules = [rule("test.arg-flow")
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.open")
-                .arg(0, ArgumentMatcher::rooted_expressions(["vault.file"]))
-                .build()
-                .unwrap(),
-        )
+        .query(QueryDecl::member_call_rooted("app.open")
+                .with_arg(0, ArgumentMatcher::rooted_expressions(["vault.file"])))
         .build()
         .unwrap()];
     let result = classify(
@@ -930,12 +730,7 @@ fn tracks_configured_values_into_later_member_sinks() {
 #[test]
 fn instance_matchers_do_not_track_chained_constructor_calls() {
     let rules = [rule("test.instance")
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_instance("obsidian", "Menu", "addItem")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_instance("obsidian", "Menu", "addItem"))
         .build()
         .unwrap()];
     let result = classify(

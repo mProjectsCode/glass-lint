@@ -4,7 +4,7 @@
 //! the matcher to prove each match without falling back to name-only matching.
 
 use glass_lint_core::rules::{
-    ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, MatcherDecl,
+    ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, QueryDecl,
     ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher,
 };
 
@@ -12,7 +12,7 @@ use glass_lint_core::rules::{
 mod support;
 
 /// Execute one matcher through a fresh strict catalog and return its count.
-fn findings(source: &str, decl: MatcherDecl) -> usize {
+fn findings(source: &str, decl: QueryDecl) -> usize {
     let rule = support::rule("semantic.match")
         .declaration(decl)
         .build()
@@ -31,7 +31,7 @@ fn findings(source: &str, decl: MatcherDecl) -> usize {
 }
 
 /// Assert the exact match count for a provenance or value-flow scenario.
-fn assert_matches(source: &str, decl: MatcherDecl, expected: usize) {
+fn assert_matches(source: &str, decl: QueryDecl, expected: usize) {
     assert_eq!(findings(source, decl), expected, "{source}");
 }
 
@@ -39,7 +39,7 @@ fn assert_matches(source: &str, decl: MatcherDecl, expected: usize) {
 fn follows_default_import_namespace_members_through_aliases() {
     assert_matches(
         "import sdk from 'sdk'; const send = sdk.send; send('/x');",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .member_call_module("sdk", "send")
             .build()
             .expect("valid matcher declaration"),
@@ -51,7 +51,7 @@ fn follows_default_import_namespace_members_through_aliases() {
 fn follows_destructured_esm_namespace_exports() {
     assert_matches(
         "import * as sdk from 'sdk'; const { send } = sdk; send('/x');",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .call_module("sdk", "send")
             .build()
             .expect("valid matcher declaration"),
@@ -63,7 +63,7 @@ fn follows_destructured_esm_namespace_exports() {
 fn follows_destructured_esm_namespace_export_renames() {
     assert_matches(
         "import * as sdk from 'sdk'; const { send: dispatch } = sdk; dispatch('/x');",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .call_module("sdk", "send")
             .build()
             .expect("valid matcher declaration"),
@@ -75,7 +75,7 @@ fn follows_destructured_esm_namespace_export_renames() {
 fn follows_interop_members_extracted_before_the_call() {
     assert_matches(
         "const send = __toESM(require('sdk')).send; send('/x');",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .call_module("sdk", "send")
             .build()
             .expect("valid matcher declaration"),
@@ -87,7 +87,7 @@ fn follows_interop_members_extracted_before_the_call() {
 fn preserves_module_provenance_through_sequence_calls() {
     assert_matches(
         "const sdk = require('sdk'); (0, sdk.send)('/x');",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .call_module("sdk", "send")
             .build()
             .expect("valid matcher declaration"),
@@ -99,7 +99,7 @@ fn preserves_module_provenance_through_sequence_calls() {
 fn preserves_module_provenance_through_bound_exports() {
     assert_matches(
         "const send = require('sdk').send.bind(null); send('/x');",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .call_module("sdk", "send")
             .build()
             .expect("valid matcher declaration"),
@@ -111,7 +111,7 @@ fn preserves_module_provenance_through_bound_exports() {
 fn follows_destructured_rooted_members() {
     assert_matches(
         "const { read } = host.files; read('x');",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .member_call_rooted("host.files.read")
             .build()
             .expect("valid matcher declaration"),
@@ -123,7 +123,7 @@ fn follows_destructured_rooted_members() {
 fn follows_renamed_destructured_rooted_members() {
     assert_matches(
         "const { read: load } = host.files; load('x');",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .member_call_rooted("host.files.read")
             .build()
             .expect("valid matcher declaration"),
@@ -135,7 +135,7 @@ fn follows_renamed_destructured_rooted_members() {
 fn follows_nested_destructured_rooted_members() {
     assert_matches(
         "const { files: { read } } = host; read('x');",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .member_call_rooted("host.files.read")
             .build()
             .expect("valid matcher declaration"),
@@ -153,7 +153,7 @@ fn follows_a_deep_property_alias_without_changing_identity() {
 
     assert_matches(
         &source,
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .member_call_rooted("app.commands.execute")
             .arg_static_strings(0, ["open"])
             .build()
@@ -173,7 +173,7 @@ fn preserves_deep_module_member_provenance() {
 
     assert_matches(
         &source,
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .member_call_module("sdk", &member)
             .build()
             .unwrap(),
@@ -192,7 +192,7 @@ fn a_deep_rooted_chain_fails_closed_after_an_earlier_prefix_mutation() {
 
     assert_matches(
         &source,
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .member_call_rooted(&chain)
             .build()
             .unwrap(),
@@ -204,7 +204,7 @@ fn a_deep_rooted_chain_fails_closed_after_an_earlier_prefix_mutation() {
 fn follows_rooted_members_called_via_sequence_expressions() {
     assert_matches(
         "(0, app.commands.execute)('open');",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .member_call_rooted("app.commands.execute")
             .arg_static_strings(0, ["open"])
             .build()
@@ -217,7 +217,7 @@ fn follows_rooted_members_called_via_sequence_expressions() {
 fn follows_bound_rooted_members_and_their_arguments() {
     assert_matches(
         "const open = app.open.bind(app); open(vault.file);",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .member_call_rooted("app.open")
             .arg(0, ArgumentMatcher::rooted_expressions(["vault.file"]))
             .build()
@@ -230,7 +230,7 @@ fn follows_bound_rooted_members_and_their_arguments() {
 fn preserves_bound_rooted_expression_arguments() {
     assert_matches(
         "const open = app.open.bind(app, vault.file); open(actual);",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .member_call_rooted("app.open")
             .arg(0, ArgumentMatcher::rooted_expressions(["vault.file"]))
             .build()
@@ -243,7 +243,7 @@ fn preserves_bound_rooted_expression_arguments() {
 fn prepends_static_bound_arguments_before_call_arguments() {
     assert_matches(
         "const request = fetch.bind(null, '/bound'); request('/actual');",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .call_global("fetch")
             .arg_static_strings(0, ["/bound"])
             .build()
@@ -252,7 +252,7 @@ fn prepends_static_bound_arguments_before_call_arguments() {
     );
     assert_matches(
         "const request = fetch.bind(null, '/bound'); request('/actual');",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .call_global("fetch")
             .arg_static_strings(0, ["/actual"])
             .build()
@@ -261,7 +261,7 @@ fn prepends_static_bound_arguments_before_call_arguments() {
     );
     assert_matches(
         "const send = require('sdk').send.bind(null, '/bound'); send('/actual');",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .call_module("sdk", "send")
             .arg_static_strings(0, ["/bound"])
             .build()
@@ -274,7 +274,7 @@ fn prepends_static_bound_arguments_before_call_arguments() {
 fn resolves_static_template_literals_without_substitutions() {
     assert_matches(
         "const url = `/remote`; fetch(url);",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .call_global("fetch")
             .arg_static_string(0)
             .build()
@@ -287,7 +287,7 @@ fn resolves_static_template_literals_without_substitutions() {
 fn resolves_constant_template_literal_substitutions() {
     assert_matches(
         "const segment = 'remote'; const url = `/${segment}`; fetch(url);",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .call_global("fetch")
             .arg_static_string(0)
             .build()
@@ -300,7 +300,7 @@ fn resolves_constant_template_literal_substitutions() {
 fn resolves_static_array_property_names_through_constant_indexes() {
     assert_matches(
         "const names = ['read']; const index = 0; host.files[names[index]]('x');",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .member_call_rooted("host.files.read")
             .build()
             .expect("valid matcher declaration"),
@@ -312,7 +312,7 @@ fn resolves_static_array_property_names_through_constant_indexes() {
 fn tracks_global_callbacks_through_immediately_invoked_arrows() {
     assert_matches(
         "((callback) => callback('/x'))(fetch);",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .call_global("fetch")
             .build()
             .expect("valid matcher declaration"),
@@ -324,7 +324,7 @@ fn tracks_global_callbacks_through_immediately_invoked_arrows() {
 fn tracks_global_callbacks_through_immediately_invoked_functions() {
     assert_matches(
         "(function(callback) { callback('/x'); })(fetch);",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .call_global("fetch")
             .build()
             .expect("valid matcher declaration"),
@@ -336,7 +336,7 @@ fn tracks_global_callbacks_through_immediately_invoked_functions() {
 fn tracks_global_callbacks_through_array_iteration() {
     assert_matches(
         "[fetch].forEach(callback => callback('/x'));",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .call_global("fetch")
             .build()
             .expect("valid matcher declaration"),
@@ -348,7 +348,7 @@ fn tracks_global_callbacks_through_array_iteration() {
 fn joins_matching_values_from_finite_array_callbacks() {
     assert_matches(
         "[fetch, fetch].forEach(callback => callback('/x'));",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .call_global("fetch")
             .build()
             .expect("valid matcher declaration"),
@@ -356,7 +356,7 @@ fn joins_matching_values_from_finite_array_callbacks() {
     );
     assert_matches(
         "[fetch, local].forEach(callback => callback('/x'));",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .call_global("fetch")
             .build()
             .expect("valid matcher declaration"),
@@ -368,7 +368,7 @@ fn joins_matching_values_from_finite_array_callbacks() {
 fn tracks_global_callbacks_through_promise_handlers() {
     assert_matches(
         "Promise.resolve(fetch).then(callback => callback('/x'));",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .call_global("fetch")
             .build()
             .expect("valid matcher declaration"),
@@ -380,7 +380,7 @@ fn tracks_global_callbacks_through_promise_handlers() {
 fn tracks_rooted_arguments_through_destructured_parameters() {
     assert_matches(
         "function open({ file }) { app.open(file); } open({ file: vault.file });",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .member_call_rooted("app.open")
             .arg(0, ArgumentMatcher::rooted_expressions(["vault.file"]))
             .build()
@@ -393,7 +393,7 @@ fn tracks_rooted_arguments_through_destructured_parameters() {
 fn tracks_object_argument_keys_through_const_spreads() {
     assert_matches(
         "const base = { url: '/x' }; const options = { ...base, method: 'GET' }; client.request(options);",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .member_call_rooted("client.request")
             .arg_object_keys(0, ["url", "method"])
             .build()
@@ -406,7 +406,7 @@ fn tracks_object_argument_keys_through_const_spreads() {
 fn tracks_object_argument_keys_through_object_assign() {
     assert_matches(
         "const options = Object.assign({}, { url: '/x', method: 'GET' }); client.request(options);",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .member_call_rooted("client.request")
             .arg_object_keys(0, ["url", "method"])
             .build()
@@ -419,7 +419,7 @@ fn tracks_object_argument_keys_through_object_assign() {
 fn tracks_object_argument_keys_through_member_function_aliases() {
     assert_matches(
         "const request = client.request; request({ url: '/x', method: 'GET' });",
-        MatcherDecl::builder()
+        QueryDecl::builder()
             .member_call_rooted("client.request")
             .arg_object_keys(0, ["url", "method"])
             .build()

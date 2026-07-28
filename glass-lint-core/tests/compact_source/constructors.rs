@@ -4,7 +4,7 @@ use super::*;
 fn global_constructors_survive_transparent_callee_wrappers() {
     let url_constructor = rule("test.wrapped-global-constructor")
         .declaration(
-            MatcherDecl::builder()
+            QueryDecl::builder()
                 .constructor_global("URL")
                 .build()
                 .expect("valid matcher declaration"),
@@ -18,12 +18,7 @@ fn global_constructors_survive_transparent_callee_wrappers() {
 #[test]
 fn rooted_global_constructors_and_their_aliases_match_global_constructors() {
     let url_constructor = rule("test.rooted-global-constructor")
-        .declaration(
-            MatcherDecl::builder()
-                .constructor_global("URL")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::constructor_global("URL"))
         .build()
         .unwrap();
     assert_count(
@@ -43,12 +38,7 @@ fn destructured_derived_function_constructors_preserve_provenance() {
     assert_count(
         r#"const {constructor:AsyncFunction}=Object.getPrototypeOf(async function(){});new AsyncFunction("return 1")"#,
         rule("test.destructured-function-constructor")
-            .declaration(
-                MatcherDecl::builder()
-                    .constructor_global("Function")
-                    .build()
-                    .expect("valid matcher declaration"),
-            )
+            .query(QueryDecl::constructor_global("Function"))
             .build()
             .unwrap(),
         1,
@@ -60,12 +50,7 @@ fn reflect_derived_function_constructors_preserve_provenance() {
     assert_count(
         r#"const AsyncFunction=Reflect.getPrototypeOf(async function(){}).constructor;new AsyncFunction("return 1")"#,
         rule("test.reflect-function-constructor")
-            .declaration(
-                MatcherDecl::builder()
-                    .constructor_global("Function")
-                    .build()
-                    .expect("valid matcher declaration"),
-            )
+            .query(QueryDecl::constructor_global("Function"))
             .build()
             .unwrap(),
         1,
@@ -75,18 +60,8 @@ fn reflect_derived_function_constructors_preserve_provenance() {
 #[test]
 fn constructor_provenance_rejects_shadowed_global_roots_and_wrapped_lookalikes() {
     let url_constructor = rule("test.constructor-shadowing-negative")
-        .declaration(
-            MatcherDecl::builder()
-                .constructor_global("URL")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .constructor_global("Function")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::constructor_global("URL"))
+        .query(QueryDecl::constructor_global("Function"))
         .build()
         .unwrap();
     assert_count(
@@ -116,12 +91,7 @@ fn module_class_references_preserve_class_provenance() {
     assert_count(
         r#"var s=require("sdk");class X extends s.Modal{};x instanceof s.Modal;"#,
         rule("test.module-class")
-            .declaration(
-                MatcherDecl::builder()
-                    .class_module("sdk", "Modal")
-                    .build()
-                    .expect("valid matcher declaration"),
-            )
+            .query(QueryDecl::class_module("sdk", "Modal"))
             .build()
             .unwrap(),
         2,
@@ -133,18 +103,8 @@ fn local_class_lookalikes_do_not_match_module_class_or_constructor() {
     assert_count(
         r#"class Modal{};new Modal();x instanceof Modal;"#,
         rule("test.local-class-negative")
-            .declaration(
-                MatcherDecl::builder()
-                    .class_module("sdk", "Modal")
-                    .build()
-                    .expect("valid matcher declaration"),
-            )
-            .declaration(
-                MatcherDecl::builder()
-                    .constructor_module("sdk", "Modal")
-                    .build()
-                    .expect("valid matcher declaration"),
-            )
+            .query(QueryDecl::class_module("sdk", "Modal"))
+            .query(QueryDecl::constructor_module("sdk", "Modal"))
             .build()
             .unwrap(),
         0,

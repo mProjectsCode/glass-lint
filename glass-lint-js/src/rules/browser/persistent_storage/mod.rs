@@ -1,6 +1,6 @@
 //! Browser persistent-storage rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 const WEB_STORAGE_ROOTS: &[&str] = &["localStorage", "sessionStorage"];
 const WEB_STORAGE_METHODS: &[&str] = &["getItem", "setItem", "removeItem", "clear", "key"];
@@ -31,71 +31,36 @@ pub fn rule() -> Rule {
         .category(Category::new("browser/storage").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("document.cookie")
-                .build()
-                .expect("valid matcher declaration"),
-        );
+        .query(QueryDecl::member_read_rooted("document.cookie"));
 
     for root in WEB_STORAGE_ROOTS {
         for method in WEB_STORAGE_METHODS {
-            builder = builder.declaration(
-                MatcherDecl::builder()
-                    .member_call_rooted(format!("{root}.{method}"))
-                    .build()
-                    .expect("valid matcher declaration"),
-            );
+            builder = builder.query(QueryDecl::member_call_rooted(format!("{root}.{method}")));
         }
     }
     for root in DATABASE_ROOTS {
         for method in DATABASE_METHODS {
-            builder = builder.declaration(
-                MatcherDecl::builder()
-                    .member_call_rooted(format!("{root}.{method}"))
-                    .build()
-                    .expect("valid matcher declaration"),
-            );
+            builder = builder.query(QueryDecl::member_call_rooted(format!("{root}.{method}")));
         }
     }
     for root in CACHE_ROOTS {
         for method in CACHE_METHODS {
-            builder = builder.declaration(
-                MatcherDecl::builder()
-                    .member_call_rooted(format!("{root}.{method}"))
-                    .build()
-                    .expect("valid matcher declaration"),
-            );
+            builder = builder.query(QueryDecl::member_call_rooted(format!("{root}.{method}")));
         }
     }
     for root in STORAGE_MANAGER_ROOTS {
         for method in STORAGE_MANAGER_METHODS {
             let path = format!("{root}.{method}");
-            builder = builder.declaration(
-                MatcherDecl::builder()
-                    .member_call_rooted(path.clone())
-                    .build()
-                    .expect("valid matcher declaration"),
-            );
+            builder = builder.query(QueryDecl::member_call_rooted(path.clone()));
             if *method == "getDirectory" {
                 for member in DIRECTORY_METHODS {
-                    builder = builder.declaration(
-                        MatcherDecl::builder()
-                            .member_call_returned(&path, *member)
-                            .build()
-                            .expect("valid matcher declaration"),
-                    );
+                    builder = builder.query(QueryDecl::member_call_returned(&path, *member));
                 }
             }
         }
     }
     for method in COOKIE_METHODS {
-        builder = builder.declaration(
-            MatcherDecl::builder()
-                .member_call_rooted(format!("cookieStore.{method}"))
-                .build()
-                .expect("valid matcher declaration"),
-        );
+        builder = builder.query(QueryDecl::member_call_rooted(format!("cookieStore.{method}")));
     }
 
     builder.build().unwrap()

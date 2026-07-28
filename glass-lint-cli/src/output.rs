@@ -382,7 +382,7 @@ mod tests {
         project::{
             AnalysisDiagnostic, AnalysisReport, Diagnostic, DiagnosticCode, ReportCompletion,
         },
-        rules::{Category, Confidence, MatcherDecl},
+        rules::{Category, Confidence, QueryDecl},
     };
 
     use super::*;
@@ -393,12 +393,7 @@ mod tests {
             .category(Category::new("network").unwrap())
             .severity(Severity::Warning)
             .confidence(Confidence::High)
-            .declaration(
-                MatcherDecl::builder()
-                    .call_global("fetch")
-                    .build()
-                    .expect("valid matcher declaration"),
-            )
+            .query(QueryDecl::call_global("fetch"))
             .build()
             .unwrap();
         let mut environment = Environment::default();

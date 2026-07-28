@@ -842,36 +842,31 @@ mod tests {
     use crate::api::{
         classification::MatchKind,
         rule::{
-            ArgumentConstraint, MatcherBuildError, MatcherDecl, ValueMatcher,
+            ArgumentConstraint, MatcherBuildError, QueryDecl, ValueMatcher,
             query::{AllExpr, AnyExpr, EmissionDecl, EventQuery, LifecycleQuery},
         },
     };
 
     // ── Helpers ────────────────────────────────────────────────────
 
-    fn make_decl_from_builder(result: Result<MatcherDecl, MatcherBuildError>) -> QueryDecl {
-        let decl = result.expect("valid matcher declaration");
-        QueryDecl::from_matcher(&decl, VarId::new(0))
-    }
-
     // ── Well-formedness tests ─────────────────────────────────────
 
     #[test]
     fn valid_global_call_passes_well_formedness() {
-        let decl = make_decl_from_builder(MatcherDecl::builder().call_global("fetch").build());
+        let decl = QueryDecl::call_global("fetch");
         assert!(pass_well_formedness(&decl).is_ok());
     }
 
     #[test]
     fn valid_heuristic_call_passes_well_formedness() {
-        let decl = make_decl_from_builder(MatcherDecl::builder().call_heuristic("fetch").build());
+        let decl = QueryDecl::call_heuristic("fetch");
         assert!(pass_well_formedness(&decl).is_ok());
     }
 
     #[test]
     fn valid_rooted_member_call_passes_well_formedness() {
         let decl = make_decl_from_builder(
-            MatcherDecl::builder()
+            QueryDecl::builder()
                 .member_call_rooted("document.createElement")
                 .build(),
         );
@@ -1381,101 +1376,42 @@ mod tests {
 
     // ── Top-level validate_query_decl ─────────────────────────────
 
-    /// Test all standard builder forms pass top-level validation.
-    fn assert_builder_valid_result(result: Result<MatcherDecl, MatcherBuildError>) {
-        let decl = result.expect("valid matcher declaration");
-        let query = QueryDecl::from_matcher(&decl, VarId::new(0));
-        if let Err(e) = validate_query_decl(&query) {
+    fn assert_valid_query(decl: &QueryDecl) {
+        if let Err(e) = validate_query_decl(decl) {
             panic!("query validation failed: {} ({})", e, e.diagnostic_name());
         }
     }
 
     #[test]
-    fn all_builder_forms_pass_validation() {
-        assert_builder_valid_result(MatcherDecl::builder().call_global("fetch").build());
-        assert_builder_valid_result(MatcherDecl::builder().call_heuristic("fetch").build());
-        assert_builder_valid_result(MatcherDecl::builder().call_module("fs", "readFile").build());
-        assert_builder_valid_result(
-            MatcherDecl::builder()
-                .call_package("@scope/pkg", "method")
-                .build(),
-        );
-        assert_builder_valid_result(
-            MatcherDecl::builder()
-                .member_call_rooted("document.createElement")
-                .build(),
-        );
-        assert_builder_valid_result(
-            MatcherDecl::builder()
-                .member_call_heuristic("foo.bar")
-                .build(),
-        );
-        assert_builder_valid_result(
-            MatcherDecl::builder()
-                .member_call_module("module", "method")
-                .build(),
-        );
-        assert_builder_valid_result(
-            MatcherDecl::builder()
-                .member_call_instance("pkg", "Client", "send")
-                .build(),
-        );
-        assert_builder_valid_result(
-            MatcherDecl::builder()
-                .member_call_package("@scope/pkg", "method")
-                .build(),
-        );
-        assert_builder_valid_result(
-            MatcherDecl::builder()
-                .member_call_returned("create", "send")
-                .build(),
-        );
-        assert_builder_valid_result(
-            MatcherDecl::builder()
-                .member_read_rooted("window.location")
-                .build(),
-        );
-        assert_builder_valid_result(
-            MatcherDecl::builder()
-                .member_read_module("module", "property")
-                .build(),
-        );
-        assert_builder_valid_result(
-            MatcherDecl::builder()
-                .member_read_returned("create", "token")
-                .build(),
-        );
-        assert_builder_valid_result(
-            MatcherDecl::builder()
-                .member_read_package("@scope/pkg", "property")
-                .build(),
-        );
-        assert_builder_valid_result(MatcherDecl::builder().import_exact("node:fs").build());
-        assert_builder_valid_result(MatcherDecl::builder().import_package("@scope/pkg").build());
-        assert_builder_valid_result(MatcherDecl::builder().string_contains("https://").build());
-        assert_builder_valid_result(MatcherDecl::builder().class_heuristic("Worker").build());
-        assert_builder_valid_result(
-            MatcherDecl::builder()
-                .class_module("module", "Klass")
-                .build(),
-        );
-        assert_builder_valid_result(MatcherDecl::builder().constructor_global("URL").build());
-        assert_builder_valid_result(MatcherDecl::builder().constructor_heuristic("Foo").build());
-        assert_builder_valid_result(
-            MatcherDecl::builder()
-                .constructor_module("pkg", "Klass")
-                .build(),
-        );
+    fn all_query_forms_pass_validation() {
+        assert_valid_query(&QueryDecl::call_global("fetch"));
+        assert_valid_query(&QueryDecl::call_heuristic("fetch"));
+        assert_valid_query(&QueryDecl::call_module("fs", "readFile"));
+        assert_valid_query(&QueryDecl::call_package("@scope/pkg", "method"));
+        assert_valid_query(&QueryDecl::member_call_rooted("document.createElement"));
+        assert_valid_query(&QueryDecl::member_call_heuristic("foo.bar"));
+        assert_valid_query(&QueryDecl::member_call_module("module", "method"));
+        assert_valid_query(&QueryDecl::member_call_instance("pkg", "Client", "send"));
+        assert_valid_query(&QueryDecl::member_call_package("@scope/pkg", "method"));
+        assert_valid_query(&QueryDecl::member_call_returned("create", "send"));
+        assert_valid_query(&QueryDecl::member_read_rooted("window.location"));
+        assert_valid_query(&QueryDecl::member_read_module("module", "property"));
+        assert_valid_query(&QueryDecl::member_read_returned("create", "token"));
+        assert_valid_query(&QueryDecl::member_read_package("@scope/pkg", "property"));
+        assert_valid_query(&QueryDecl::import_exact("node:fs"));
+        assert_valid_query(&QueryDecl::import_package("@scope/pkg"));
+        assert_valid_query(&QueryDecl::string_contains("https://"));
+        assert_valid_query(&QueryDecl::class_heuristic("Worker"));
+        assert_valid_query(&QueryDecl::class_module("module", "Klass"));
+        assert_valid_query(&QueryDecl::constructor_global("URL"));
+        assert_valid_query(&QueryDecl::constructor_heuristic("Foo"));
+        assert_valid_query(&QueryDecl::constructor_module("pkg", "Klass"));
     }
 
     #[test]
     fn query_set_with_valid_queries_passes_validation() {
-        let q1 = make_decl_from_builder(MatcherDecl::builder().call_global("fetch").build());
-        let q2 = make_decl_from_builder(
-            MatcherDecl::builder()
-                .member_read_rooted("window.location")
-                .build(),
-        );
+        let q1 = QueryDecl::call_global("fetch");
+        let q2 = QueryDecl::member_read_rooted("window.location");
         let set = QuerySet::new(vec![q1, q2]);
         assert!(validate_query_set(&set).is_ok());
     }

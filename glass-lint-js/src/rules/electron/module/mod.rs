@@ -1,6 +1,6 @@
 //! Electron module-boundary rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 const MODULE_CALLS: &[&str] = &[
     "webContents.fromId",
@@ -73,64 +73,19 @@ pub fn rule() -> Rule {
         .category(Category::new("electron/module").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .import_exact("electron")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_exact("electron/main")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_exact("electron/renderer")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_exact("electron/common")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_exact("electron/utility")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_exact("electron/sandbox")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .constructor_module("electron", "BrowserWindow")
-                .build()
-                .expect("valid matcher declaration"),
-        );
+        .query(QueryDecl::import_exact("electron"))
+        .query(QueryDecl::import_exact("electron/main"))
+        .query(QueryDecl::import_exact("electron/renderer"))
+        .query(QueryDecl::import_exact("electron/common"))
+        .query(QueryDecl::import_exact("electron/utility"))
+        .query(QueryDecl::import_exact("electron/sandbox"))
+        .query(QueryDecl::constructor_module("electron", "BrowserWindow"));
 
     for member in MODULE_CALLS {
-        builder = builder.declaration(
-            MatcherDecl::builder()
-                .member_call_module("electron", *member)
-                .build()
-                .expect("valid matcher declaration"),
-        );
+        builder = builder.query(QueryDecl::member_call_module("electron", *member));
     }
     for member in MODULE_READS {
-        builder = builder.declaration(
-            MatcherDecl::builder()
-                .member_read_module("electron", *member)
-                .build()
-                .expect("valid matcher declaration"),
-        );
+        builder = builder.query(QueryDecl::member_read_module("electron", *member));
     }
 
     builder.build().unwrap()

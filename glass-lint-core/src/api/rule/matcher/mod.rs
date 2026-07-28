@@ -1,8 +1,8 @@
 //! Value, argument, and object-flow matcher vocabulary.
 //!
-//! [`MatcherDecl`] is the single public matcher declaration type.
+//! [`QueryDecl`] is the single public matcher declaration type.
 //!
-//! [`MatcherDecl`]: super::MatcherDecl
+//! [`QueryDecl`]: super::QueryDecl
 
 pub mod flow;
 pub use flow::*;

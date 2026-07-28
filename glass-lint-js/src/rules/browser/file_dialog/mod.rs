@@ -1,5 +1,5 @@
 use glass_lint_core::rules::{
-    Category, Confidence, FlowCompletion, FlowCondition, MatcherDecl, ObjectEventMatcher,
+    Category, Confidence, FlowCompletion, FlowCondition, QueryDecl, ObjectEventMatcher,
     ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
 };
 
@@ -34,18 +34,8 @@ pub fn rule() -> Rule {
                 .build()
                 .unwrap(),
         )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("showOpenFilePicker")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("showSaveFilePicker")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_rooted("showOpenFilePicker"))
+        .query(QueryDecl::member_call_rooted("showSaveFilePicker"))
         .build()
         .unwrap()
 }

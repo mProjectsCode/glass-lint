@@ -35,7 +35,7 @@ pub mod rules {
     pub use crate::api::rule::{
         AllExpr, AnyExpr, ArgumentMatcher, Category, Confidence, EmissionDecl, EventQuery,
         EventSpec, FlowCompletion, FlowCondition, FlowSinkMatcher, IdentitySpec, LifecycleQuery,
-        MatcherDecl, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, QueryBuildError,
+        ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, QueryBuildError,
         QueryDecl, QueryExpr, QuerySet, Rule, RuleBuildError, RuleBuilder as Builder, Severity,
         SubjectSpec, ValueMatcher, VarId,
     };

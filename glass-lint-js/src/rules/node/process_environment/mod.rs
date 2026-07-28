@@ -1,6 +1,6 @@
 //! Node process-environment rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects rooted reads of Node's `process.env` and `process.platform`,
 /// including direct member access and aliases that retain the rooted
@@ -13,210 +13,40 @@ pub fn rule() -> Rule {
         .category(Category::new("node/process").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("process.env")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("process.platform")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("process.argv")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("process.execPath")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("process.arch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("process.version")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("process.versions")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("process.release")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("process.pid")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("process.ppid")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("process.execArgv")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("process.title")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("process.config")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("process.features")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("process.report")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("process.allowedNodeEnvironmentFlags")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("process.debugPort")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("process.sourceMapsEnabled")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("process.cwd")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("process.memoryUsage")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("process.resourceUsage")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("process.cpuUsage")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("process.uptime")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("process.hrtime")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("process.getActiveResourcesInfo")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("process.constrainedMemory")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("process.getuid")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("process.geteuid")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("process.getgid")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("process.getegid")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("process.getgroups")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("process.umask")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("process.getBuiltinModule")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("process.loadEnvFile")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_read_rooted("process.env"))
+        .query(QueryDecl::member_read_rooted("process.platform"))
+        .query(QueryDecl::member_read_rooted("process.argv"))
+        .query(QueryDecl::member_read_rooted("process.execPath"))
+        .query(QueryDecl::member_read_rooted("process.arch"))
+        .query(QueryDecl::member_read_rooted("process.version"))
+        .query(QueryDecl::member_read_rooted("process.versions"))
+        .query(QueryDecl::member_read_rooted("process.release"))
+        .query(QueryDecl::member_read_rooted("process.pid"))
+        .query(QueryDecl::member_read_rooted("process.ppid"))
+        .query(QueryDecl::member_read_rooted("process.execArgv"))
+        .query(QueryDecl::member_read_rooted("process.title"))
+        .query(QueryDecl::member_read_rooted("process.config"))
+        .query(QueryDecl::member_read_rooted("process.features"))
+        .query(QueryDecl::member_read_rooted("process.report"))
+        .query(QueryDecl::member_read_rooted("process.allowedNodeEnvironmentFlags"))
+        .query(QueryDecl::member_read_rooted("process.debugPort"))
+        .query(QueryDecl::member_read_rooted("process.sourceMapsEnabled"))
+        .query(QueryDecl::member_call_rooted("process.cwd"))
+        .query(QueryDecl::member_call_rooted("process.memoryUsage"))
+        .query(QueryDecl::member_call_rooted("process.resourceUsage"))
+        .query(QueryDecl::member_call_rooted("process.cpuUsage"))
+        .query(QueryDecl::member_call_rooted("process.uptime"))
+        .query(QueryDecl::member_call_rooted("process.hrtime"))
+        .query(QueryDecl::member_call_rooted("process.getActiveResourcesInfo"))
+        .query(QueryDecl::member_call_rooted("process.constrainedMemory"))
+        .query(QueryDecl::member_call_rooted("process.getuid"))
+        .query(QueryDecl::member_call_rooted("process.geteuid"))
+        .query(QueryDecl::member_call_rooted("process.getgid"))
+        .query(QueryDecl::member_call_rooted("process.getegid"))
+        .query(QueryDecl::member_call_rooted("process.getgroups"))
+        .query(QueryDecl::member_call_rooted("process.umask"))
+        .query(QueryDecl::member_call_rooted("process.getBuiltinModule"))
+        .query(QueryDecl::member_call_rooted("process.loadEnvFile"))
         .build()
         .unwrap()
 }

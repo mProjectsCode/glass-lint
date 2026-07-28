@@ -5,7 +5,7 @@ use glass_lint_datastructures::{Position, SourceRange};
 
 use crate::{
     api::rule::{
-        Category, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, MatcherDecl,
+        Category, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, QueryDecl,
         ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
     },
     project::{

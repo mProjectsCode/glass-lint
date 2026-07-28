@@ -1,6 +1,6 @@
 //! Markdown code-block processor rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects the syntactic chain `this.registerMarkdownCodeBlockProcessor`.
 /// The instance matcher requires a proven Obsidian `Plugin` receiver; aliases
@@ -12,12 +12,7 @@ pub fn rule() -> Rule {
         .category(Category::new("markdown").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_instance("obsidian", "Plugin", "registerMarkdownCodeBlockProcessor")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_instance("obsidian", "Plugin", "registerMarkdownCodeBlockProcessor"))
         .build()
         .unwrap()
 }

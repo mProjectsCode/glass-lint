@@ -1,6 +1,6 @@
 //! Node subprocess-module rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects static ESM or unshadowed CommonJS loads of Node's exact
 /// `child_process` module names and configured subprocess packages. It reports
@@ -13,114 +13,24 @@ pub fn rule() -> Rule {
         .category(Category::new("node/process").unwrap())
         .confidence(Confidence::High)
         .severity(Severity::Warning)
-        .declaration(
-            MatcherDecl::builder()
-                .import_exact("child_process")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_exact("node:child_process")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_exact("worker_threads")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_exact("node:worker_threads")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_exact("cluster")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_exact("node:cluster")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("node-pty")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("pty.js")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("execa")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("cross-spawn")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("shelljs")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("zx")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("npm-run-path")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("foreground-child")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("spawn-command")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("concurrently")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("npm-run-all")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("sudo-prompt")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::import_exact("child_process"))
+        .query(QueryDecl::import_exact("node:child_process"))
+        .query(QueryDecl::import_exact("worker_threads"))
+        .query(QueryDecl::import_exact("node:worker_threads"))
+        .query(QueryDecl::import_exact("cluster"))
+        .query(QueryDecl::import_exact("node:cluster"))
+        .query(QueryDecl::import_package("node-pty"))
+        .query(QueryDecl::import_package("pty.js"))
+        .query(QueryDecl::import_package("execa"))
+        .query(QueryDecl::import_package("cross-spawn"))
+        .query(QueryDecl::import_package("shelljs"))
+        .query(QueryDecl::import_package("zx"))
+        .query(QueryDecl::import_package("npm-run-path"))
+        .query(QueryDecl::import_package("foreground-child"))
+        .query(QueryDecl::import_package("spawn-command"))
+        .query(QueryDecl::import_package("concurrently"))
+        .query(QueryDecl::import_package("npm-run-all"))
+        .query(QueryDecl::import_package("sudo-prompt"))
         .build()
         .unwrap()
 }

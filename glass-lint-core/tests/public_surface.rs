@@ -1,7 +1,7 @@
 use glass_lint_core::{
     AnalysisLimits, Environment, Linter, Rule, RuleCatalog, Severity,
     project::{DiagnosticCode, SourceFile},
-    rules::{Category, Confidence, MatcherDecl},
+    rules::{Category, Confidence, QueryDecl},
 };
 use glass_lint_datastructures::{
     ByteRange, InvalidPosition, Position, ReversedSourcePositionRange, SourceRange,
@@ -14,7 +14,7 @@ fn supported_public_operations_do_not_require_engine_storage() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::builder().call_global("fetch").build().unwrap())
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap();
     let mut environment = Environment::default();

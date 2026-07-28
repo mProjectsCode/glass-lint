@@ -1,4 +1,4 @@
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects calls proven to target global `fetch`, rooted
 /// `navigator.sendBeacon`, and the global `XMLHttpRequest`, `WebSocket`, and
@@ -13,36 +13,11 @@ pub fn rule() -> Rule {
         .category(Category::new("browser/network").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("navigator.sendBeacon")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .constructor_global("XMLHttpRequest")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .constructor_global("WebSocket")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .constructor_global("EventSource")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("fetch"))
+        .query(QueryDecl::member_call_rooted("navigator.sendBeacon"))
+        .query(QueryDecl::constructor_global("XMLHttpRequest"))
+        .query(QueryDecl::constructor_global("WebSocket"))
+        .query(QueryDecl::constructor_global("EventSource"))
         .build()
         .unwrap()
 }

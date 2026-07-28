@@ -5,7 +5,7 @@
 
 use glass_lint_core::{
     Environment, Linter, LinterConfig, MatchCertainty, RuleCatalog,
-    rules::{MatcherDecl, Rule},
+    rules::{QueryDecl, Rule},
 };
 
 #[path = "support/mod.rs"]
@@ -54,12 +54,7 @@ fn assert_certainty(source: &str, rule: Rule, expected: MatchCertainty) {
 /// Create the rooted alias rule shared by lexical-scope cases.
 fn rooted_read_rule() -> Rule {
     rule("rooted-read")
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("host.files.read")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_rooted("host.files.read"))
         .build()
         .unwrap()
 }
@@ -137,12 +132,7 @@ fn property_aliases_follow_the_same_receiver_binding_and_version() {
 #[test]
 fn import_matchers_reject_shadowed_commonjs_loaders() {
     let require_rule = rule("import")
-        .declaration(
-            MatcherDecl::builder()
-                .import_exact("@codemirror/state")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::import_exact("@codemirror/state"))
         .build()
         .unwrap();
     assert_count(
@@ -166,12 +156,7 @@ fn import_matchers_reject_shadowed_commonjs_loaders() {
 #[test]
 fn dynamic_scopes_fail_closed_without_affecting_ordinary_globals() {
     let fetch_rule = rule("fetch")
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap();
     assert_count(
@@ -199,12 +184,7 @@ fn alias_classifier_handles_reassignment_to_a_rooted_member() {
     // local, but an assignment to a host-returned object must propagate
     // the rooted identity to the use position.
     let rule = rule("reassign-rooted")
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("host.cache.read")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_rooted("host.cache.read"))
         .build()
         .unwrap();
     assert_count(
@@ -220,12 +200,7 @@ fn precedence_promotes_bound_callable_over_later_aliased_reassignments() {
     // variable to the same expression must keep the bound callable
     // provenance as the higher-priority fact at the call site.
     let rule = rule("bound-callable")
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("host.open.execute")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_rooted("host.open.execute"))
         .build()
         .unwrap();
     assert_count(
@@ -241,12 +216,7 @@ fn destructured_require_aliases_record_named_module_exports() {
     // classifier as a `Require` so the downstream collect step records
     // each named property as a `ModuleExport` binding.
     let rule = rule("sdk-send")
-        .declaration(
-            MatcherDecl::builder()
-                .call_module("sdk", "send")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_module("sdk", "send"))
         .build()
         .unwrap();
     assert_count("const { send } = require('sdk'); send('/x');", rule, 1);
@@ -258,12 +228,7 @@ fn dynamic_call_value_does_not_promote_to_a_strict_provenance() {
     // provenance. The classifier falls back to a returned-object or local
     // binding, which keeps the matcher from observing a strict fact.
     let rule = rule("strict-fetch")
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap();
     assert_count("let value = dynamicThing(); value('/x');", rule, 0);
@@ -552,12 +517,7 @@ fn exceptional_edges_join_try_and_catch_assignments() {
 #[test]
 fn direct_alias_reassignment_to_local_stays_local() {
     let rule = rule("fetch")
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap();
     assert_count(

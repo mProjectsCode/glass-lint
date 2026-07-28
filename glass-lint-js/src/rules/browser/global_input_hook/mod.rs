@@ -1,6 +1,6 @@
 //! Browser global-input listener rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 const INPUT_EVENTS: [&str; 16] = [
     "keydown",
@@ -33,63 +33,18 @@ pub fn rule() -> Rule {
         .category(Category::new("browser/input").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("document.addEventListener")
-                .arg_static_strings(0, INPUT_EVENTS)
-                .build()
-                .unwrap(),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("addEventListener")
-                .arg_static_strings(0, INPUT_EVENTS)
-                .build()
-                .unwrap(),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("document.body.addEventListener")
-                .arg_static_strings(0, INPUT_EVENTS)
-                .build()
-                .unwrap(),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("document.onkeydown")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("document.onkeyup")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("document.onkeypress")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("document.onpaste")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("document.oncopy")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("document.oncut")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_rooted("document.addEventListener")
+                .with_arg_static_strings(0, INPUT_EVENTS))
+        .query(QueryDecl::member_call_rooted("addEventListener")
+                .with_arg_static_strings(0, INPUT_EVENTS))
+        .query(QueryDecl::member_call_rooted("document.body.addEventListener")
+                .with_arg_static_strings(0, INPUT_EVENTS))
+        .query(QueryDecl::member_read_rooted("document.onkeydown"))
+        .query(QueryDecl::member_read_rooted("document.onkeyup"))
+        .query(QueryDecl::member_read_rooted("document.onkeypress"))
+        .query(QueryDecl::member_read_rooted("document.onpaste"))
+        .query(QueryDecl::member_read_rooted("document.oncopy"))
+        .query(QueryDecl::member_read_rooted("document.oncut"))
         .build()
         .unwrap()
 }

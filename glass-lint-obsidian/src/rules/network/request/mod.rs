@@ -1,6 +1,6 @@
 //! Obsidian network-request rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects calls to the exact `request` and `requestUrl` exports of the
 /// `obsidian` module or the corresponding globals injected into the plugin's
@@ -13,30 +13,10 @@ pub fn rule() -> Rule {
         .category(Category::new("network").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("request")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("requestUrl")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_module("obsidian", "request")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_module("obsidian", "requestUrl")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("request"))
+        .query(QueryDecl::call_global("requestUrl"))
+        .query(QueryDecl::member_call_module("obsidian", "request"))
+        .query(QueryDecl::member_call_module("obsidian", "requestUrl"))
         .build()
         .unwrap()
 }

@@ -1,6 +1,6 @@
 //! Obsidian workspace-open rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects rooted calls to `app.workspace.openLinkText` and
 /// `app.workspace.getLeaf.openFile`. Provenance follows `this.app`, workspace
@@ -14,48 +14,13 @@ pub fn rule() -> Rule {
         .category(Category::new("workspace").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.workspace.openLinkText")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.workspace.getLeaf.openFile")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_returned("app.workspace.getLeaf", "openFile")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_returned("app.workspace.getLeafById", "openFile")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_returned("app.workspace.getLeftLeaf", "openFile")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_returned("app.workspace.getRightLeaf", "openFile")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_returned("app.workspace.ensureSideLeaf", "openFile")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_rooted("app.workspace.openLinkText"))
+        .query(QueryDecl::member_call_rooted("app.workspace.getLeaf.openFile"))
+        .query(QueryDecl::member_call_returned("app.workspace.getLeaf", "openFile"))
+        .query(QueryDecl::member_call_returned("app.workspace.getLeafById", "openFile"))
+        .query(QueryDecl::member_call_returned("app.workspace.getLeftLeaf", "openFile"))
+        .query(QueryDecl::member_call_returned("app.workspace.getRightLeaf", "openFile"))
+        .query(QueryDecl::member_call_returned("app.workspace.ensureSideLeaf", "openFile"))
         .build()
         .unwrap()
 }

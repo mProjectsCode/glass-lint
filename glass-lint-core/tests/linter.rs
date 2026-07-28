@@ -8,7 +8,7 @@ use glass_lint_core::{
     Environment, LintConfigError, Linter, LinterConfig, RuleBaseline, RuleCatalog, RuleId,
     RuleOverride, RuleSelection, RuleState,
     project::types::DiagnosticKind,
-    rules::{Category, Confidence, MatcherDecl, Rule, Severity},
+    rules::{Category, Confidence, QueryDecl, Rule, Severity},
 };
 
 fn catalog() -> RuleCatalog {
@@ -17,12 +17,7 @@ fn catalog() -> RuleCatalog {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap();
     RuleCatalog::new("test", vec![rule]).unwrap()
@@ -99,18 +94,8 @@ fn findings_only_carry_evidence_for_their_own_location() {
         .category(Category::new("vault").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.vault.create")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.vault.createFolder")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_rooted("app.vault.create"))
+        .query(QueryDecl::member_call_rooted("app.vault.createFolder"))
         .build()
         .unwrap();
     let report = snippet(
@@ -152,18 +137,8 @@ fn collapses_contained_ranges_for_same_rule() {
         .category(Category::new("metadata").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("app.metadataCache")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.metadataCache.getFileCache")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_read_rooted("app.metadataCache"))
+        .query(QueryDecl::member_call_rooted("app.metadataCache.getFileCache"))
         .build()
         .unwrap();
     let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
@@ -233,12 +208,7 @@ fn ordered_rule_overrides_select_stable_catalog_indexes() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap();
     let second = Rule::builder("network.second")
@@ -246,12 +216,7 @@ fn ordered_rule_overrides_select_stable_catalog_indexes() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap();
     let catalog = RuleCatalog::new("test", vec![first, second]).unwrap();
@@ -412,12 +377,7 @@ fn enabled_rule_order_does_not_affect_findings() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap();
     let rule_b = Rule::builder("beta.second")
@@ -425,12 +385,7 @@ fn enabled_rule_order_does_not_affect_findings() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("XMLHttpRequest")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("XMLHttpRequest"))
         .build()
         .unwrap();
     let mut environment = Environment::default();
@@ -482,12 +437,7 @@ fn disabled_catalog_rules_do_not_produce_findings() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap();
     let rule_b = Rule::builder("beta.second")
@@ -495,12 +445,7 @@ fn disabled_catalog_rules_do_not_produce_findings() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("XMLHttpRequest")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("XMLHttpRequest"))
         .build()
         .unwrap();
     let mut environment = Environment::default();
@@ -529,12 +474,7 @@ fn combines_provider_rules_with_overlapping_local_ids() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap();
     let second = Rule::builder("network.request")
@@ -542,12 +482,7 @@ fn combines_provider_rules_with_overlapping_local_ids() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("requestUrl")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("requestUrl"))
         .build()
         .unwrap();
     let mut environment = Environment::default();
@@ -580,12 +515,7 @@ fn combined_linter_preserves_each_input_rule_selection() {
         .category(Category::new("test").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap();
     let disabled_rule = Rule::builder("disabled")
@@ -593,12 +523,7 @@ fn combined_linter_preserves_each_input_rule_selection() {
         .category(Category::new("test").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("requestUrl")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("requestUrl"))
         .build()
         .unwrap();
     let mut environment = Environment::default();

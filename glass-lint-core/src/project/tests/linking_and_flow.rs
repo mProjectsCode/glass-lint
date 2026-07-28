@@ -1,5 +1,5 @@
 use crate::{
-    api::rule::{Category, MatcherDecl},
+    api::rule::{Category, QueryDecl},
     project::tests::*,
 };
 
@@ -11,12 +11,7 @@ fn linked_internal_aliases_preserve_external_and_global_call_identity() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_module("web", "request")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_module("web", "request"))
         .build()
         .unwrap();
     let global_rule = Rule::builder("network.fetch")
@@ -24,12 +19,7 @@ fn linked_internal_aliases_preserve_external_and_global_call_identity() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap();
     let mut environment = crate::Environment::default();
@@ -303,12 +293,7 @@ fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_module("web", "request")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_module("web", "request"))
         .build()
         .unwrap();
     let linter = crate::Linter::new(crate::LinterConfig::new(
@@ -399,12 +384,7 @@ fn unresolved_internal_imports_do_not_become_external_provenance() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_module("./helper", "request")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_module("./helper", "request"))
         .build()
         .unwrap();
     let linter = crate::Linter::new(crate::LinterConfig::new(
@@ -439,12 +419,7 @@ fn commonjs_export_aliases_preserve_external_provenance_across_modules() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_module("web", "request")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_module("web", "request"))
         .build()
         .unwrap();
     let linter = crate::Linter::new(crate::LinterConfig::new(
@@ -485,12 +460,7 @@ fn namespace_imports_follow_star_reexports() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_module("web", "request")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_module("web", "request"))
         .build()
         .unwrap();
     let linter = crate::Linter::new(crate::LinterConfig::new(
@@ -538,12 +508,7 @@ fn static_dynamic_imports_follow_namespace_exports() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_module("web", "request")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_module("web", "request"))
         .build()
         .unwrap();
     let linter = crate::Linter::new(crate::LinterConfig::new(
@@ -586,12 +551,7 @@ fn anonymous_commonjs_functions_remain_callable_across_modules() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_module("web", "request")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_module("web", "request"))
         .build()
         .unwrap();
     let linter = crate::Linter::new(crate::LinterConfig::new(
@@ -634,13 +594,8 @@ fn returned_callable_provenance_crosses_an_exported_function() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_module("web", "request")
-                .arg_static_string(0)
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_module("web", "request")
+                .with_arg_static_string(0))
         .build()
         .unwrap();
     let linter = crate::Linter::new(crate::LinterConfig::new(
@@ -684,13 +639,8 @@ fn linked_external_call_arguments_are_projected_after_reexports() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_module("web", "request")
-                .arg_static_string(0)
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_module("web", "request")
+                .with_arg_static_string(0))
         .build()
         .unwrap();
     let linter = crate::Linter::new(crate::LinterConfig::new(

@@ -1,6 +1,6 @@
 //! Obsidian vault write rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects rooted calls to the eight configured vault write APIs: `create`,
 /// `createBinary`, `modify`, `modifyBinary`, `append`, `appendBinary`,
@@ -14,54 +14,14 @@ pub fn rule() -> Rule {
         .category(Category::new("vault").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.vault.create")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.vault.createBinary")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.vault.modify")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.vault.modifyBinary")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.vault.append")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.vault.appendBinary")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.vault.process")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.vault.createFolder")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_rooted("app.vault.create"))
+        .query(QueryDecl::member_call_rooted("app.vault.createBinary"))
+        .query(QueryDecl::member_call_rooted("app.vault.modify"))
+        .query(QueryDecl::member_call_rooted("app.vault.modifyBinary"))
+        .query(QueryDecl::member_call_rooted("app.vault.append"))
+        .query(QueryDecl::member_call_rooted("app.vault.appendBinary"))
+        .query(QueryDecl::member_call_rooted("app.vault.process"))
+        .query(QueryDecl::member_call_rooted("app.vault.createFolder"))
         .build()
         .unwrap()
 }

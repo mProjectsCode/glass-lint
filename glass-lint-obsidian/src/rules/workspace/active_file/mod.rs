@@ -1,6 +1,6 @@
 //! Obsidian active-file workspace rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects rooted calls to `app.workspace.getActiveFile`. Provenance follows
 /// `this.app`, workspace aliases, static computed properties, source-ordered
@@ -12,12 +12,7 @@ pub fn rule() -> Rule {
         .category(Category::new("workspace").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.workspace.getActiveFile")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_rooted("app.workspace.getActiveFile"))
         .build()
         .unwrap()
 }

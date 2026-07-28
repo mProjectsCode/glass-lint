@@ -1,6 +1,6 @@
 //! Obsidian metadata-cache access rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects rooted reads of `app.metadataCache`, `resolvedLinks`, and
 /// `unresolvedLinks`, plus calls to the three configured cache lookup methods.
@@ -14,42 +14,12 @@ pub fn rule() -> Rule {
         .category(Category::new("metadata").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("app.metadataCache")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("app.metadataCache.resolvedLinks")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("app.metadataCache.unresolvedLinks")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.metadataCache.getFileCache")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.metadataCache.getCache")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.metadataCache.getFirstLinkpathDest")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_read_rooted("app.metadataCache"))
+        .query(QueryDecl::member_read_rooted("app.metadataCache.resolvedLinks"))
+        .query(QueryDecl::member_read_rooted("app.metadataCache.unresolvedLinks"))
+        .query(QueryDecl::member_call_rooted("app.metadataCache.getFileCache"))
+        .query(QueryDecl::member_call_rooted("app.metadataCache.getCache"))
+        .query(QueryDecl::member_call_rooted("app.metadataCache.getFirstLinkpathDest"))
         .build()
         .unwrap()
 }

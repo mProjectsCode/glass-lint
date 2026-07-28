@@ -458,23 +458,21 @@ mod tests {
         classification::MatchKind,
         compiler::{normalize::normalize_query_decl, rule::IdentityStrength},
         rule::{
-            MatcherDecl, ValueMatcher,
+            QueryDecl, ValueMatcher,
             query::{EmissionDecl, IdentitySpec, QueryDecl, VarId},
         },
     };
 
     // ── Helpers ────────────────────────────────────────────────────
 
-    fn physical_summary(decl: &MatcherDecl) -> String {
-        let qdecl = QueryDecl::from_matcher(decl, VarId::new(0));
-        let (normalized, req) = normalize_query_decl(&qdecl);
+    fn physical_summary(decl: &QueryDecl) -> String {
+        let (normalized, req) = normalize_query_decl(decl);
         let plan = plan_normalized(&normalized, req);
         plan.summary()
     }
 
-    fn physical_roots(decl: &MatcherDecl) -> Vec<PhysicalRoot> {
-        let qdecl = QueryDecl::from_matcher(decl, VarId::new(0));
-        let (normalized, req) = normalize_query_decl(&qdecl);
+    fn physical_roots(decl: &QueryDecl) -> Vec<PhysicalRoot> {
+        let (normalized, req) = normalize_query_decl(decl);
         let plan = plan_normalized(&normalized, req);
         plan.roots().to_vec()
     }
@@ -483,7 +481,7 @@ mod tests {
 
     #[test]
     fn global_call_produces_indexed_scan() {
-        let decl = MatcherDecl::builder()
+        let decl = QueryDecl::builder()
             .call_global("fetch")
             .build()
             .expect("valid matcher declaration");
@@ -497,7 +495,7 @@ mod tests {
 
     #[test]
     fn heuristic_call_produces_indexed_scan() {
-        let decl = MatcherDecl::builder()
+        let decl = QueryDecl::builder()
             .call_heuristic("fetch")
             .build()
             .expect("valid matcher declaration");
@@ -508,7 +506,7 @@ mod tests {
 
     #[test]
     fn constrained_call_produces_constrained_scan() {
-        let decl = MatcherDecl::builder()
+        let decl = QueryDecl::builder()
             .call_global("fetch")
             .arg(0, ValueMatcher::static_string())
             .build()
@@ -523,7 +521,7 @@ mod tests {
 
     #[test]
     fn rooted_member_call_produces_indexed_scan() {
-        let decl = MatcherDecl::builder()
+        let decl = QueryDecl::builder()
             .member_call_rooted("document.createElement")
             .build()
             .expect("valid matcher declaration");
@@ -534,7 +532,7 @@ mod tests {
 
     #[test]
     fn returned_subject_produces_returned_scan() {
-        let decl = MatcherDecl::builder()
+        let decl = QueryDecl::builder()
             .member_call_returned("create", "send")
             .build()
             .expect("valid matcher declaration");
@@ -548,7 +546,7 @@ mod tests {
 
     #[test]
     fn instance_subject_produces_instance_scan() {
-        let decl = MatcherDecl::builder()
+        let decl = QueryDecl::builder()
             .member_call_instance("pkg", "Client", "send")
             .build()
             .expect("valid matcher declaration");
@@ -562,7 +560,7 @@ mod tests {
 
     #[test]
     fn import_exact_produces_indexed_scan() {
-        let decl = MatcherDecl::builder()
+        let decl = QueryDecl::builder()
             .import_exact("node:fs")
             .build()
             .expect("valid matcher declaration");
@@ -573,7 +571,7 @@ mod tests {
 
     #[test]
     fn string_contains_produces_indexed_scan() {
-        let decl = MatcherDecl::builder()
+        let decl = QueryDecl::builder()
             .string_contains("https://")
             .build()
             .expect("valid matcher declaration");
@@ -584,7 +582,7 @@ mod tests {
 
     #[test]
     fn class_reference_produces_indexed_scan() {
-        let decl = MatcherDecl::builder()
+        let decl = QueryDecl::builder()
             .class_heuristic("Worker")
             .build()
             .expect("valid matcher declaration");
@@ -595,7 +593,7 @@ mod tests {
 
     #[test]
     fn constructor_global_produces_indexed_scan() {
-        let decl = MatcherDecl::builder()
+        let decl = QueryDecl::builder()
             .constructor_global("URL")
             .build()
             .expect("valid matcher declaration");
@@ -606,7 +604,7 @@ mod tests {
 
     #[test]
     fn module_call_produces_indexed_scan() {
-        let decl = MatcherDecl::builder()
+        let decl = QueryDecl::builder()
             .call_module("fs", "readFile")
             .build()
             .expect("valid matcher declaration");
@@ -617,7 +615,7 @@ mod tests {
 
     #[test]
     fn member_read_returned_produces_returned_scan() {
-        let decl = MatcherDecl::builder()
+        let decl = QueryDecl::builder()
             .member_read_returned("create", "token")
             .build()
             .expect("valid matcher declaration");
@@ -633,7 +631,7 @@ mod tests {
 
     #[test]
     fn multiple_constraints_on_same_call_fuse_into_one_constrained_scan() {
-        let decl = MatcherDecl::builder()
+        let decl = QueryDecl::builder()
             .call_global("fetch")
             .arg(0, ValueMatcher::static_string())
             .arg(1, ValueMatcher::static_string().equals("/api"))
@@ -698,7 +696,7 @@ mod tests {
 
     #[test]
     fn plan_summary_counts_roots() {
-        let decl = MatcherDecl::builder()
+        let decl = QueryDecl::builder()
             .call_global("fetch")
             .build()
             .expect("valid matcher declaration");
@@ -722,7 +720,7 @@ mod tests {
 
     #[test]
     fn plan_summary_shows_constrained_scan() {
-        let decl = MatcherDecl::builder()
+        let decl = QueryDecl::builder()
             .call_global("fetch")
             .arg(0, ValueMatcher::static_string())
             .build()
@@ -738,7 +736,7 @@ mod tests {
 
     #[test]
     fn plan_summary_shows_project_overlay_for_module_queries() {
-        let decl = MatcherDecl::builder()
+        let decl = QueryDecl::builder()
             .call_module("fs", "readFile")
             .build()
             .expect("valid matcher declaration");
@@ -751,7 +749,7 @@ mod tests {
 
     #[test]
     fn plan_summary_shows_no_project_overlay_for_global_queries() {
-        let decl = MatcherDecl::builder()
+        let decl = QueryDecl::builder()
             .call_global("fetch")
             .build()
             .expect("valid matcher declaration");
@@ -805,11 +803,11 @@ mod tests {
 
     #[test]
     fn equivalent_declarations_produce_identical_plans() {
-        let first = MatcherDecl::builder()
+        let first = QueryDecl::builder()
             .call_global("fetch")
             .build()
             .expect("valid matcher declaration");
-        let second = MatcherDecl::builder()
+        let second = QueryDecl::builder()
             .call_global("fetch")
             .build()
             .expect("valid matcher declaration");
@@ -821,11 +819,11 @@ mod tests {
 
     #[test]
     fn different_declarations_produce_different_plans() {
-        let first = MatcherDecl::builder()
+        let first = QueryDecl::builder()
             .call_global("fetch")
             .build()
             .expect("valid matcher declaration");
-        let second = MatcherDecl::builder()
+        let second = QueryDecl::builder()
             .call_global("navigate")
             .build()
             .expect("valid matcher declaration");
@@ -836,8 +834,8 @@ mod tests {
 
     #[test]
     fn plan_summary_is_stable_across_equal_queries() {
-        let s1 = physical_summary(&MatcherDecl::builder().call_global("fetch").build().unwrap());
-        let s2 = physical_summary(&MatcherDecl::builder().call_global("fetch").build().unwrap());
+        let s1 = physical_summary(&QueryDecl::builder().call_global("fetch").build().unwrap());
+        let s2 = physical_summary(&QueryDecl::builder().call_global("fetch").build().unwrap());
         assert_eq!(s1, s2);
     }
 }

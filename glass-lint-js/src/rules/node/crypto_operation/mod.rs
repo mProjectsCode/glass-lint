@@ -1,6 +1,6 @@
 //! Node and Web Crypto operation rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects imports of the Node crypto modules and configured cryptographic
 /// libraries, plus rooted Web Crypto operation calls. Import reports are
@@ -12,180 +12,35 @@ pub fn rule() -> Rule {
         .category(Category::new("language/crypto").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .declaration(
-            MatcherDecl::builder()
-                .import_exact("crypto")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_exact("crypto/promises")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_exact("node:crypto")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_exact("node:crypto/promises")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("crypto-js")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("@noble/hashes")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("@noble/curves")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("tweetnacl")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("libsodium-wrappers")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("jose")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("jsonwebtoken")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("node-forge")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("elliptic")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("bcrypt")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("bcryptjs")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("argon2")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .import_package("scrypt-js")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("crypto.subtle.digest")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("crypto.subtle.encrypt")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("crypto.subtle.decrypt")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("crypto.subtle.sign")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("crypto.subtle.verify")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("crypto.subtle.deriveBits")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("crypto.subtle.deriveKey")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("crypto.subtle.generateKey")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("crypto.subtle.importKey")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("crypto.subtle.exportKey")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("crypto.subtle.wrapKey")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("crypto.subtle.unwrapKey")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::import_exact("crypto"))
+        .query(QueryDecl::import_exact("crypto/promises"))
+        .query(QueryDecl::import_exact("node:crypto"))
+        .query(QueryDecl::import_exact("node:crypto/promises"))
+        .query(QueryDecl::import_package("crypto-js"))
+        .query(QueryDecl::import_package("@noble/hashes"))
+        .query(QueryDecl::import_package("@noble/curves"))
+        .query(QueryDecl::import_package("tweetnacl"))
+        .query(QueryDecl::import_package("libsodium-wrappers"))
+        .query(QueryDecl::import_package("jose"))
+        .query(QueryDecl::import_package("jsonwebtoken"))
+        .query(QueryDecl::import_package("node-forge"))
+        .query(QueryDecl::import_package("elliptic"))
+        .query(QueryDecl::import_package("bcrypt"))
+        .query(QueryDecl::import_package("bcryptjs"))
+        .query(QueryDecl::import_package("argon2"))
+        .query(QueryDecl::import_package("scrypt-js"))
+        .query(QueryDecl::member_call_rooted("crypto.subtle.digest"))
+        .query(QueryDecl::member_call_rooted("crypto.subtle.encrypt"))
+        .query(QueryDecl::member_call_rooted("crypto.subtle.decrypt"))
+        .query(QueryDecl::member_call_rooted("crypto.subtle.sign"))
+        .query(QueryDecl::member_call_rooted("crypto.subtle.verify"))
+        .query(QueryDecl::member_call_rooted("crypto.subtle.deriveBits"))
+        .query(QueryDecl::member_call_rooted("crypto.subtle.deriveKey"))
+        .query(QueryDecl::member_call_rooted("crypto.subtle.generateKey"))
+        .query(QueryDecl::member_call_rooted("crypto.subtle.importKey"))
+        .query(QueryDecl::member_call_rooted("crypto.subtle.exportKey"))
+        .query(QueryDecl::member_call_rooted("crypto.subtle.wrapKey"))
+        .query(QueryDecl::member_call_rooted("crypto.subtle.unwrapKey"))
         .build()
         .unwrap()
 }

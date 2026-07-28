@@ -1,6 +1,6 @@
 //! Header-marker indicator rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects string literals containing the configured `Authorization` and
 /// `User-Agent` marker substrings. This is an opt-in heuristic indicator: it
@@ -16,10 +16,8 @@ pub fn rule() -> Rule {
         // Sink-associated coverage proves header names in request option
         // objects; literal matchers below intentionally retain this rule's
         // source-wide heuristic policy.
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .arg_object_keys(
+        .query(QueryDecl::call_global("fetch")
+                .with_arg_object_keys(
                     1,
                     [
                         "User-Agent",
@@ -31,35 +29,32 @@ pub fn rule() -> Rule {
                         "X-API-Key",
                         "x-api-key",
                     ],
-                )
-                .build()
-                .unwrap(),
-        )
-        .declaration(MatcherDecl::builder().string_contains("User-Agent").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("user-agent").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("USER-AGENT").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("Authorization").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("authorization").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("AUTHORIZATION").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("Cookie").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("COOKIE").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("Set-Cookie").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("SET-COOKIE").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("Proxy-Authorization").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("PROXY-AUTHORIZATION").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("X-API-Key").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("x-api-key").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("Api-Key").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("api-key").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("API-KEY").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("X-Auth-Token").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("x-auth-token").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("X-Access-Token").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("x-access-token").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("X-Client-Token").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("x-client-token").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("X-API-Token").build().expect("valid matcher declaration"))
-        .declaration(MatcherDecl::builder().string_contains("x-api-token").build().expect("valid matcher declaration"))
+                ))
+        .query(QueryDecl::string_contains("User-Agent"))
+        .query(QueryDecl::string_contains("user-agent"))
+        .query(QueryDecl::string_contains("USER-AGENT"))
+        .query(QueryDecl::string_contains("Authorization"))
+        .query(QueryDecl::string_contains("authorization"))
+        .query(QueryDecl::string_contains("AUTHORIZATION"))
+        .query(QueryDecl::string_contains("Cookie"))
+        .query(QueryDecl::string_contains("COOKIE"))
+        .query(QueryDecl::string_contains("Set-Cookie"))
+        .query(QueryDecl::string_contains("SET-COOKIE"))
+        .query(QueryDecl::string_contains("Proxy-Authorization"))
+        .query(QueryDecl::string_contains("PROXY-AUTHORIZATION"))
+        .query(QueryDecl::string_contains("X-API-Key"))
+        .query(QueryDecl::string_contains("x-api-key"))
+        .query(QueryDecl::string_contains("Api-Key"))
+        .query(QueryDecl::string_contains("api-key"))
+        .query(QueryDecl::string_contains("API-KEY"))
+        .query(QueryDecl::string_contains("X-Auth-Token"))
+        .query(QueryDecl::string_contains("x-auth-token"))
+        .query(QueryDecl::string_contains("X-Access-Token"))
+        .query(QueryDecl::string_contains("x-access-token"))
+        .query(QueryDecl::string_contains("X-Client-Token"))
+        .query(QueryDecl::string_contains("x-client-token"))
+        .query(QueryDecl::string_contains("X-API-Token"))
+        .query(QueryDecl::string_contains("x-api-token"))
         .build()
         .unwrap()
 }

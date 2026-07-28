@@ -1,6 +1,6 @@
 //! Obsidian lifecycle-registration rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects the syntactic lifecycle-registration chains
 /// `this.registerEvent`, `this.registerDomEvent`, `this.registerInterval`, and
@@ -15,30 +15,10 @@ pub fn rule() -> Rule {
         .category(Category::new("lifecycle").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_instance("obsidian", "Plugin", "registerEvent")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_instance("obsidian", "Plugin", "registerDomEvent")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_instance("obsidian", "Plugin", "registerInterval")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_instance("obsidian", "Plugin", "registerObsidianProtocolHandler")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_instance("obsidian", "Plugin", "registerEvent"))
+        .query(QueryDecl::member_call_instance("obsidian", "Plugin", "registerDomEvent"))
+        .query(QueryDecl::member_call_instance("obsidian", "Plugin", "registerInterval"))
+        .query(QueryDecl::member_call_instance("obsidian", "Plugin", "registerObsidianProtocolHandler"))
         .build()
         .unwrap()
 }

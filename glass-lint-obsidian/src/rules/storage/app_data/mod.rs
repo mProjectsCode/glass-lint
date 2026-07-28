@@ -1,6 +1,6 @@
 //! Obsidian app-scoped storage rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects rooted app-scoped storage and secret-store operations. Rooted
 /// aliases and static computed properties retain provenance; local lookalikes,
@@ -12,36 +12,11 @@ pub fn rule() -> Rule {
         .category(Category::new("storage").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.loadLocalStorage")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.saveLocalStorage")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.secretStorage.getSecret")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.secretStorage.setSecret")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.secretStorage.listSecrets")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_rooted("app.loadLocalStorage"))
+        .query(QueryDecl::member_call_rooted("app.saveLocalStorage"))
+        .query(QueryDecl::member_call_rooted("app.secretStorage.getSecret"))
+        .query(QueryDecl::member_call_rooted("app.secretStorage.setSecret"))
+        .query(QueryDecl::member_call_rooted("app.secretStorage.listSecrets"))
         .build()
         .unwrap()
 }

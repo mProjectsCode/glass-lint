@@ -1,5 +1,5 @@
 use super::*;
-use crate::api::rule::MatcherDecl;
+use crate::api::rule::QueryDecl;
 
 pub fn source_file(path: impl Into<String>, source: impl Into<String>) -> SourceFile {
     SourceFile::new(path, source).unwrap()
@@ -42,12 +42,7 @@ pub fn test_linter_with_environment(environment: crate::Environment) -> crate::L
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap();
     crate::Linter::new(crate::LinterConfig::new(
@@ -65,12 +60,7 @@ pub fn test_linter_with_limits(limits: crate::AnalysisLimits) -> crate::Linter {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap();
     crate::Linter::new(
@@ -94,12 +84,7 @@ pub fn test_linter_with_selection(
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::call_global("fetch"))
         .build()
         .unwrap();
     crate::Linter::new(

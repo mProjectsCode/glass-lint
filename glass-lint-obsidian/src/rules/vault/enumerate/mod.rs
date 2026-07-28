@@ -1,6 +1,6 @@
 //! Obsidian vault enumeration rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects rooted calls to the configured vault lookup and enumeration methods:
 /// `getFiles`, `getMarkdownFiles`, `getAllLoadedFiles`, `getAllFolders`,
@@ -14,60 +14,15 @@ pub fn rule() -> Rule {
         .category(Category::new("vault").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.vault.getFiles")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.vault.getMarkdownFiles")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.vault.getAllLoadedFiles")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.vault.getAllFolders")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.vault.getFolderByPath")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.vault.getFileByPath")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.vault.getAbstractFileByPath")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.vault.recurseChildren")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.vault.getRoot")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_rooted("app.vault.getFiles"))
+        .query(QueryDecl::member_call_rooted("app.vault.getMarkdownFiles"))
+        .query(QueryDecl::member_call_rooted("app.vault.getAllLoadedFiles"))
+        .query(QueryDecl::member_call_rooted("app.vault.getAllFolders"))
+        .query(QueryDecl::member_call_rooted("app.vault.getFolderByPath"))
+        .query(QueryDecl::member_call_rooted("app.vault.getFileByPath"))
+        .query(QueryDecl::member_call_rooted("app.vault.getAbstractFileByPath"))
+        .query(QueryDecl::member_call_rooted("app.vault.recurseChildren"))
+        .query(QueryDecl::member_call_rooted("app.vault.getRoot"))
         .build()
         .unwrap()
 }

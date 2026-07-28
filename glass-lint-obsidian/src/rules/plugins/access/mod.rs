@@ -1,6 +1,6 @@
 //! Obsidian plugin-manager access rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects reads from Obsidian's plugin manager: instances, manifests, and
 /// enabled-plugin state. The rooted collection read intentionally also covers
@@ -11,30 +11,10 @@ pub fn rule() -> Rule {
         .category(Category::new("plugins").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("app.plugins.getPlugin")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("app.plugins.plugins")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("app.plugins.manifests")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("app.plugins.enabledPlugins")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_rooted("app.plugins.getPlugin"))
+        .query(QueryDecl::member_read_rooted("app.plugins.plugins"))
+        .query(QueryDecl::member_read_rooted("app.plugins.manifests"))
+        .query(QueryDecl::member_read_rooted("app.plugins.enabledPlugins"))
         .build()
         .unwrap()
 }

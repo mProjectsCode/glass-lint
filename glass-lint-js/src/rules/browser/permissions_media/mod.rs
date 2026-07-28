@@ -1,6 +1,6 @@
 //! Browser media-capture permission rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects unshadowed `navigator.mediaDevices.getUserMedia` and
 /// `getDisplayMedia` calls and aliases
@@ -12,24 +12,9 @@ pub fn rule() -> Rule {
         .category(Category::new("browser/permissions").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("navigator.mediaDevices.getUserMedia")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("navigator.mediaDevices.getDisplayMedia")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_rooted("navigator.mediaDevices.enumerateDevices")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_rooted("navigator.mediaDevices.getUserMedia"))
+        .query(QueryDecl::member_call_rooted("navigator.mediaDevices.getDisplayMedia"))
+        .query(QueryDecl::member_call_rooted("navigator.mediaDevices.enumerateDevices"))
         .build()
         .unwrap()
 }

@@ -1,6 +1,6 @@
 //! Obsidian vault-adapter access rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects reads of rooted `app.vault.adapter`, including `this.app`, direct
 /// receiver aliases, and static computed properties. Source-ordered root
@@ -13,12 +13,7 @@ pub fn rule() -> Rule {
         .category(Category::new("vault").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .member_read_rooted("app.vault.adapter")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_read_rooted("app.vault.adapter"))
         .build()
         .unwrap()
 }

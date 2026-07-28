@@ -1,6 +1,6 @@
 //! Obsidian settings-tab rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects syntactic `this.addSettingTab()` registration calls and
 /// `PluginSettingTab` constructors/subclasses. The registration form requires
@@ -13,30 +13,10 @@ pub fn rule() -> Rule {
         .category(Category::new("ui").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_instance("obsidian", "Plugin", "addSettingTab")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .constructor_heuristic("PluginSettingTab")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .constructor_module("obsidian", "PluginSettingTab")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .class_module("obsidian", "PluginSettingTab")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_instance("obsidian", "Plugin", "addSettingTab"))
+        .query(QueryDecl::constructor_heuristic("PluginSettingTab"))
+        .query(QueryDecl::constructor_module("obsidian", "PluginSettingTab"))
+        .query(QueryDecl::class_module("obsidian", "PluginSettingTab"))
         .build()
         .unwrap()
 }

@@ -1,6 +1,6 @@
 //! Markdown link-helper rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 
 /// Detects calls to the exact `parseLinktext`, `normalizePath`, and
 /// `getLinkpath` exports of the `obsidian` module. ESM/CommonJS aliases retain
@@ -12,60 +12,15 @@ pub fn rule() -> Rule {
         .category(Category::new("markdown").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_module("obsidian", "parseLinktext")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_module("obsidian", "normalizePath")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_module("obsidian", "getLinkpath")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_module("obsidian", "fileToLinktext")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_module("obsidian", "generateMarkdownLink")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_module("obsidian", "resolveSubpath")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_module("obsidian", "parseSubpath")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_module("obsidian", "parseFrontMatterAliases")
-                .build()
-                .expect("valid matcher declaration"),
-        )
-        .declaration(
-            MatcherDecl::builder()
-                .member_call_module("obsidian", "parseFrontMatterTags")
-                .build()
-                .expect("valid matcher declaration"),
-        )
+        .query(QueryDecl::member_call_module("obsidian", "parseLinktext"))
+        .query(QueryDecl::member_call_module("obsidian", "normalizePath"))
+        .query(QueryDecl::member_call_module("obsidian", "getLinkpath"))
+        .query(QueryDecl::member_call_module("obsidian", "fileToLinktext"))
+        .query(QueryDecl::member_call_module("obsidian", "generateMarkdownLink"))
+        .query(QueryDecl::member_call_module("obsidian", "resolveSubpath"))
+        .query(QueryDecl::member_call_module("obsidian", "parseSubpath"))
+        .query(QueryDecl::member_call_module("obsidian", "parseFrontMatterAliases"))
+        .query(QueryDecl::member_call_module("obsidian", "parseFrontMatterTags"))
         .build()
         .unwrap()
 }
