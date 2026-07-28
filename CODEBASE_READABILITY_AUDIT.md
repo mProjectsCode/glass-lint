@@ -153,10 +153,13 @@ Represent each `FlowEnvironment` branch as an incoming snapshot plus a bounded m
 - **Fix Complexity** Low
 - **Category:** Architecture
 - **Location:** `glass-lint-core/src/analysis/project/identities.rs:202-225`
+- **Status:** Fixed
 
 `resolve_namespace` maps a missing resolution-table entry to `ExportResolution::External` without checking the request syntax. An unresolved `import * as ns from "./missing"` can therefore acquire an external wildcard identity, while named-import resolution correctly treats an absent internal outcome as unknown.
 
 Centralize linked-target-to-export-resolution conversion in one helper used by named and namespace imports, and classify every unresolved relative, absolute, or `#` request as unknown. Only a confirmed external or builtin target may produce an external namespace identity. Recommendation: add parity tests for missing, outside, unsupported, builtin, and bare-package namespace requests and assert that namespace and named imports share the same classification.
+
+**Check:** Introduced `target_to_export_resolution` in `glass-lint-core/src/analysis/project/identities.rs` that maps unresolved internal specifiers (relative, absolute, `#`) to `Unknown` and confirmed external/builtin targets to `External`. `resolve_namespace` and `resolve_imported_identity` both delegate to the same helper, with the named-import path using its own internal-target lookup only when the underlying resolution provides a concrete `LinkedModuleTarget::Internal`. `make ci` passed in full on 2026-07-28.
 
 #### READ-012 — Star-export collection can overwrite an authoritative direct export
 - **Severity:** Medium

@@ -7,14 +7,12 @@
 
 use smol_str::{SmolStr, ToSmolStr};
 
-use crate::{
-    analysis::{
-        BTreeSet, ExportResolution, LinkedModuleTarget, ModuleId, ProjectSemanticModel,
-        QualifiedRequestId, module,
-        module::{DEFAULT_EXPORT, ModuleRequestRole},
-        project::model::MAX_EXPORT_DEPTH,
-    },
-    project::is_internal_module_request as is_internal_request,
+use super::identities::target_to_export_resolution;
+use crate::analysis::{
+    BTreeSet, ExportResolution, LinkedModuleTarget, ModuleId, ProjectSemanticModel,
+    QualifiedRequestId, module,
+    module::{DEFAULT_EXPORT, ModuleRequestRole},
+    project::model::MAX_EXPORT_DEPTH,
 };
 
 impl ProjectSemanticModel {
@@ -53,27 +51,10 @@ impl ProjectSemanticModel {
                 return ExportResolution::Unknown;
             };
             let candidate = match self.resolutions.get(&key) {
-                None if is_internal_request(authored_module) => ExportResolution::Unknown,
-                None => ExportResolution::External {
-                    module: authored_module.clone(),
-                    export: authored_export.clone(),
-                },
-                Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
-                    module: package.to_smolstr(),
-                    export: authored_export.clone(),
-                },
-                Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
-                    module: name.to_smolstr(),
-                    export: authored_export.clone(),
-                },
                 Some(LinkedModuleTarget::Internal { id, .. }) => self
                     .lookup_export(*id, authored_export, &mut BTreeSet::new())
                     .unwrap_or(ExportResolution::Unknown),
-                Some(
-                    LinkedModuleTarget::Missing
-                    | LinkedModuleTarget::OutsideProject { .. }
-                    | LinkedModuleTarget::Unsupported { .. },
-                ) => ExportResolution::Unknown,
+                other => target_to_export_resolution(other, authored_module, authored_export),
             };
             if let Some(previous) = &resolved {
                 if previous != &candidate {
