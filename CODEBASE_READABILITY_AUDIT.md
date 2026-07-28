@@ -84,10 +84,13 @@ Make `OriginMap` transaction-aware: maintain an active-checkpoint count, append 
 - **Fix Complexity** Medium
 - **Category:** Complexity
 - **Location:** `glass-lint-core/src/analysis/model/value.rs:126-153`
+- **Status:** Fixed
 
 `ValueTable::resolve` linearly searches a growing `SmallVec` on every alias hop, making one permitted chain O(depth²), and every consumer resolves the same chain again. With a value capacity of 65,536 and no resolution charge, a generated alias chain can consume disproportionate CPU inside lowering and matching.
 
 Enforce that every binding target references an already-interned value, cache each binding's terminal value/root ID, and reject cycles at insertion. Make `ValueTable::resolve` charge one bounded step per hop and return unknown when the chain or budget is exhausted. Recommendation: add a maximum-length alias-chain benchmark plus malformed-cycle tests, and verify that repeated consumers hit the terminal cache instead of traversing the chain again.
+
+**Check:** All 466 core lib tests, 18 model::value unit tests, 183 datastructure tests, and 61 project tests pass. `call_provenance_for_value` uses the cached resolve instead of manually walking bindings. Every new `Value::Binding` is validated against forward references and cycles are rejected at insertion. Repeated `resolve` calls on the same chain hit the terminal cache in O(1). Budget is bounded at MAX_VALUES hops. `make ci` passed in full on 2026-07-28: workspace check, Clippy, workspace tests/doctests, 12 E2E cases, 2 project cases, 70 JavaScript rule cases, and 98 Obsidian rule cases.
 
 #### READ-007 — Cache hits rebuild a full source line index eagerly
 - **Severity:** Medium

@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+
 use glass_lint_datastructures::{FastIndexSet, NameId, NamePath, NameTable};
 use smol_str::SmolStr;
 
@@ -53,11 +55,25 @@ impl CallableValue {
 
 pub const MAX_VALUES: usize = 65_536;
 
-#[derive(Debug, Clone)]
+const MAX_RESOLVE_HOPS: usize = MAX_VALUES;
+
+#[derive(Debug)]
 pub struct ValueTable {
     values: FastIndexSet<Value>,
     next_object: u32,
     exhausted: bool,
+    terminal_cache: Mutex<Vec<Option<ValueId>>>,
+}
+
+impl Clone for ValueTable {
+    fn clone(&self) -> Self {
+        Self {
+            values: self.values.clone(),
+            next_object: self.next_object,
+            exhausted: self.exhausted,
+            terminal_cache: Mutex::new(self.terminal_cache.lock().unwrap().clone()),
+        }
+    }
 }
 
 impl Default for ValueTable {
@@ -66,12 +82,18 @@ impl Default for ValueTable {
             values: core::iter::once(Value::Unknown).collect(),
             next_object: 0,
             exhausted: false,
+            terminal_cache: Mutex::new(vec![Some(ValueId::UNKNOWN)]),
         }
     }
 }
 
 impl ValueTable {
     pub fn intern(&mut self, value: Value) -> ValueId {
+        let binding_target = match &value {
+            Value::Binding { target, .. } => Some(*target),
+            _ => None,
+        };
+
         let (idx, inserted) = self.values.insert_full(value);
         let Ok(index) = u32::try_from(idx) else {
             if inserted {
@@ -88,6 +110,18 @@ impl ValueTable {
             self.exhausted = true;
             return ValueId::UNKNOWN;
         }
+
+        if let Some(target) = binding_target {
+            if target.0 >= index {
+                self.values.pop();
+                self.exhausted = true;
+                return ValueId::UNKNOWN;
+            }
+            self.terminal_cache.get_mut().unwrap().push(None);
+        } else {
+            self.terminal_cache.get_mut().unwrap().push(Some(ValueId(index)));
+        }
+
         ValueId(index)
     }
 
@@ -128,20 +162,62 @@ impl ValueTable {
     }
 
     pub fn resolve(&self, id: ValueId) -> Option<&Value> {
-        let mut value = self.get(id)?;
-        let mut visited = smallvec::SmallVec::<[ValueId; 8]>::new();
-        visited.push(id);
-        loop {
-            match value {
-                Value::Binding { target, .. } => {
-                    if visited.contains(target) {
-                        return None;
-                    }
-                    visited.push(*target);
-                    value = self.get(*target)?;
-                }
-                _ => return Some(value),
+        let terminal = self.resolve_terminal(id)?;
+        self.get(terminal)
+    }
+
+    fn resolve_terminal(&self, id: ValueId) -> Option<ValueId> {
+        let idx = usize::try_from(id.0).ok()?;
+
+        {
+            let cache = self.terminal_cache.lock().unwrap();
+            if idx >= cache.len() {
+                return None;
             }
+            if let Some(terminal) = cache[idx] {
+                return Some(terminal);
+            }
+        }
+
+        let mut chain = smallvec::SmallVec::<[usize; 8]>::new();
+        let mut current = idx;
+        let mut hops = 0;
+
+        loop {
+            hops += 1;
+            if hops > MAX_RESOLVE_HOPS {
+                return None;
+            }
+
+            let terminal = {
+                let mut cache = self.terminal_cache.lock().unwrap();
+                if current >= cache.len() {
+                    return None;
+                }
+                if let Some(t) = cache[current] {
+                    for &p in &chain {
+                        cache[p] = Some(t);
+                    }
+                    return Some(t);
+                }
+
+                let value = self.values.get_index(current)?;
+                if let Value::Binding { target, .. } = value {
+                    let t = usize::try_from(target.0).ok()?;
+                    chain.push(current);
+                    current = t;
+                    continue;
+                }
+
+                let t = ValueId(u32::try_from(current).ok()?);
+                for &p in &chain {
+                    cache[p] = Some(t);
+                }
+                cache[current] = Some(t);
+                t
+            };
+
+            return Some(terminal);
         }
     }
 

@@ -166,12 +166,10 @@ impl Resolver<'_> {
         }
         let mut current = id;
         loop {
-            let values = &self.values;
-            let Some(value) = values.get(current) else {
+            let Some(value) = self.values.resolve(current) else {
                 return SymbolCallProvenance::Unknown(UnknownReason::Missing);
             };
             match value {
-                Value::Binding { target, .. } => current = *target,
                 Value::Callable(callable) => current = callable.target(),
                 Value::Global(name) => {
                     return SymbolCallProvenance::Global { name: name.clone() };
