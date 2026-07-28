@@ -33,66 +33,6 @@ pub struct MatcherDecl {
     pub(crate) evidence_symbol: String,
 }
 
-impl MatcherDecl {
-    /// Return a new declaration with an argument constraint appended.
-    #[must_use]
-    pub fn with_arg(mut self, index: usize, matcher: impl Into<ArgumentMatcher>) -> Self {
-        self.constraints
-            .push(ArgumentConstraint::new(index, matcher));
-        self
-    }
-
-    /// Return a new declaration with a static-string argument constraint.
-    #[must_use]
-    pub fn with_arg_static_string(mut self, index: usize) -> Self {
-        self.constraints.push(ArgumentConstraint::new(
-            index,
-            ValueMatcher::static_string(),
-        ));
-        self
-    }
-
-    /// Return a new declaration with static-string allowed values.
-    #[must_use]
-    pub fn with_arg_static_strings<I, S>(mut self, index: usize, values: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.constraints.push(ArgumentConstraint::new(
-            index,
-            ValueMatcher::static_string().equals_any(values),
-        ));
-        self
-    }
-
-    #[must_use]
-    pub fn with_arg_static_string_contains<I, S>(mut self, index: usize, values: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.constraints.push(ArgumentConstraint::new(
-            index,
-            ValueMatcher::static_string().contains_any(values),
-        ));
-        self
-    }
-
-    #[must_use]
-    pub fn with_arg_object_keys<I, S>(mut self, index: usize, keys: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.constraints.push(ArgumentConstraint::new(
-            index,
-            ArgumentMatcher::object_keys(keys),
-        ));
-        self
-    }
-}
-
 // ── Builder entry ──
 
 impl MatcherDecl {

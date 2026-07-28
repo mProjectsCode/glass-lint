@@ -10,9 +10,12 @@ use crate::{
         project::model::ExportResolution,
         value::ValueId,
     },
-    api::compiler::{
-        physical::PhysicalRoot,
-        rule::{EventPredicate, EvidenceDescriptor, IdentityConstraint, QueryConstraint},
+    api::{
+        compiler::{
+            physical::PhysicalRoot,
+            rule::{EventPredicate, EvidenceDescriptor, IdentityConstraint},
+        },
+        rule::ArgumentConstraint,
     },
 };
 
@@ -27,7 +30,7 @@ type FallbackEntry<'a> = (
     usize,
     &'a IdentityConstraint,
     &'a EventPredicate,
-    &'a [QueryConstraint],
+    &'a [ArgumentConstraint],
     &'a EvidenceDescriptor,
     &'a PreparedClausePaths,
 );
@@ -51,7 +54,7 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
         usize,
         &IdentityConstraint,
         &EventPredicate,
-        &[QueryConstraint],
+        &[ArgumentConstraint],
         &EvidenceDescriptor,
     )> = roots
         .iter()
@@ -158,10 +161,10 @@ mod tests {
                 physical::PhysicalRoot,
                 rule::{
                     CompiledMatcherPlan, EventPredicate, EvidenceDescriptor, IdentityConstraint,
-                    IdentityStrength, QueryConstraint,
+                    IdentityStrength,
                 },
             },
-            rule::{ArgumentConstraint, MatcherDecl, ValueMatcher},
+            rule::{ArgumentConstraint, ArgumentMatcher, MatcherDecl, ValueMatcher},
         },
         project::SourceText,
     };
@@ -191,10 +194,10 @@ mod tests {
         PhysicalRoot::ConstrainedScan {
             identity,
             event,
-            constraints: Box::new([QueryConstraint::Argument(ArgumentConstraint::new(
+            constraints: Box::new([ArgumentConstraint::new(
                 0,
                 ValueMatcher::static_string().equals("/api"),
-            ))]),
+            )]),
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,
                 symbol: symbol.into(),
@@ -291,6 +294,389 @@ mod tests {
                 .occurrences
                 .windows(2)
                 .all(|pair| { (pair[0].span, pair[0].fact) < (pair[1].span, pair[1].fact) })
+        );
+    }
+
+    #[test]
+    fn missing_argument_fails_closed() {
+        let stream = stream("fetch('/api');", &Environment::default());
+        let root = constrained_root(
+            IdentityConstraint::Any {
+                name: "fetch".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            EventPredicate::Call,
+            "fetch",
+        );
+        // Patch the root to reference argument index 5 (out of bounds).
+        let PhysicalRoot::ConstrainedScan { .. } = &root else {
+            panic!("expected ConstrainedScan");
+        };
+        let patched = PhysicalRoot::ConstrainedScan {
+            identity: IdentityConstraint::Any {
+                name: "fetch".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            event: EventPredicate::Call,
+            constraints: Box::new([ArgumentConstraint::new(
+                5,
+                ValueMatcher::static_string().equals("/api"),
+            )]),
+            evidence: EvidenceDescriptor {
+                kind: MatchKind::CallArgument,
+                symbol: "fetch".into(),
+            },
+        };
+        let index = build_index(&stream);
+        let mut evidence = vec![Vec::new()];
+        compute_constrained_evidence_from_stream_with_overlay(
+            &stream,
+            &index,
+            &[(0, &patched)],
+            &mut evidence,
+            None,
+            None,
+            None,
+        );
+        assert!(
+            evidence[0].is_empty(),
+            "missing argument should not produce evidence"
+        );
+    }
+
+    #[test]
+    fn dynamic_value_does_not_match_static_predicate() {
+        let stream = stream("fetch(value);", &Environment::default());
+        let root = constrained_root(
+            IdentityConstraint::Any {
+                name: "fetch".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            EventPredicate::Call,
+            "fetch",
+        );
+        let index = build_index(&stream);
+        let mut evidence = vec![Vec::new()];
+        compute_constrained_evidence_from_stream_with_overlay(
+            &stream,
+            &index,
+            &[(0, &root)],
+            &mut evidence,
+            None,
+            None,
+            None,
+        );
+        // Dynamic values should not match a static string predicate.
+        assert!(
+            evidence[0].is_empty(),
+            "dynamic value must not match static string predicate"
+        );
+    }
+
+    #[test]
+    fn sparse_argument_positions() {
+        let stream = stream("fetch('/api', '/path');", &Environment::default());
+        let root = PhysicalRoot::ConstrainedScan {
+            identity: IdentityConstraint::Any {
+                name: "fetch".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            event: EventPredicate::Call,
+            constraints: Box::new([
+                ArgumentConstraint::new(0, ValueMatcher::static_string().equals("/api")),
+                ArgumentConstraint::new(1, ValueMatcher::static_string().equals("/path")),
+            ]),
+            evidence: EvidenceDescriptor {
+                kind: MatchKind::CallArgument,
+                symbol: "fetch".into(),
+            },
+        };
+        let index = build_index(&stream);
+        let mut evidence = vec![Vec::new()];
+        compute_constrained_evidence_from_stream_with_overlay(
+            &stream,
+            &index,
+            &[(0, &root)],
+            &mut evidence,
+            None,
+            None,
+            None,
+        );
+        assert!(!evidence[0].is_empty(), "sparse arguments should match");
+        assert_eq!(evidence[0][0].occurrences.len(), 1);
+    }
+
+    #[test]
+    fn constraint_order_does_not_affect_matching() {
+        let stream = stream("fetch('/api', '/path');", &Environment::default());
+        let root_a = PhysicalRoot::ConstrainedScan {
+            identity: IdentityConstraint::Any {
+                name: "fetch".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            event: EventPredicate::Call,
+            constraints: Box::new([
+                ArgumentConstraint::new(0, ValueMatcher::static_string().equals("/api")),
+                ArgumentConstraint::new(1, ValueMatcher::static_string().equals("/path")),
+            ]),
+            evidence: EvidenceDescriptor {
+                kind: MatchKind::CallArgument,
+                symbol: "fetch".into(),
+            },
+        };
+        let root_b = PhysicalRoot::ConstrainedScan {
+            identity: IdentityConstraint::Any {
+                name: "fetch".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            event: EventPredicate::Call,
+            constraints: Box::new([
+                ArgumentConstraint::new(1, ValueMatcher::static_string().equals("/path")),
+                ArgumentConstraint::new(0, ValueMatcher::static_string().equals("/api")),
+            ]),
+            evidence: EvidenceDescriptor {
+                kind: MatchKind::CallArgument,
+                symbol: "fetch".into(),
+            },
+        };
+        let index = build_index(&stream);
+        let mut ev_a = vec![Vec::new()];
+        let mut ev_b = vec![Vec::new()];
+        compute_constrained_evidence_from_stream_with_overlay(
+            &stream,
+            &index,
+            &[(0, &root_a)],
+            &mut ev_a,
+            None,
+            None,
+            None,
+        );
+        compute_constrained_evidence_from_stream_with_overlay(
+            &stream,
+            &index,
+            &[(0, &root_b)],
+            &mut ev_b,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(ev_a[0].len(), ev_b[0].len());
+        assert_eq!(ev_a[0][0].count, ev_b[0][0].count);
+    }
+
+    #[test]
+    fn equals_any_accepts_any_matching_alternative() {
+        let stream = stream("fetch('/api');", &Environment::default());
+        let root = PhysicalRoot::ConstrainedScan {
+            identity: IdentityConstraint::Any {
+                name: "fetch".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            event: EventPredicate::Call,
+            constraints: Box::new([ArgumentConstraint::new(
+                0,
+                ValueMatcher::static_string().equals_any(["/api", "/other"]),
+            )]),
+            evidence: EvidenceDescriptor {
+                kind: MatchKind::CallArgument,
+                symbol: "fetch".into(),
+            },
+        };
+        let index = build_index(&stream);
+        let mut evidence = vec![Vec::new()];
+        compute_constrained_evidence_from_stream_with_overlay(
+            &stream,
+            &index,
+            &[(0, &root)],
+            &mut evidence,
+            None,
+            None,
+            None,
+        );
+        assert!(!evidence[0].is_empty(), "equals_any should match /api");
+    }
+
+    #[test]
+    fn equals_any_rejects_non_matching_values() {
+        let stream = stream("fetch('/other');", &Environment::default());
+        let root = PhysicalRoot::ConstrainedScan {
+            identity: IdentityConstraint::Any {
+                name: "fetch".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            event: EventPredicate::Call,
+            constraints: Box::new([ArgumentConstraint::new(
+                0,
+                ValueMatcher::static_string().equals_any(["/api", "/v1"]),
+            )]),
+            evidence: EvidenceDescriptor {
+                kind: MatchKind::CallArgument,
+                symbol: "fetch".into(),
+            },
+        };
+        let index = build_index(&stream);
+        let mut evidence = vec![Vec::new()];
+        compute_constrained_evidence_from_stream_with_overlay(
+            &stream,
+            &index,
+            &[(0, &root)],
+            &mut evidence,
+            None,
+            None,
+            None,
+        );
+        assert!(
+            evidence[0].is_empty(),
+            "equals_any should reject non-matching values"
+        );
+    }
+
+    #[test]
+    fn contains_any_accepts_string_containing_marker() {
+        let stream = stream("fetch('/api/token');", &Environment::default());
+        let root = PhysicalRoot::ConstrainedScan {
+            identity: IdentityConstraint::Any {
+                name: "fetch".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            event: EventPredicate::Call,
+            constraints: Box::new([ArgumentConstraint::new(
+                0,
+                ValueMatcher::static_string().contains_any(["token"]),
+            )]),
+            evidence: EvidenceDescriptor {
+                kind: MatchKind::CallArgument,
+                symbol: "fetch".into(),
+            },
+        };
+        let index = build_index(&stream);
+        let mut evidence = vec![Vec::new()];
+        compute_constrained_evidence_from_stream_with_overlay(
+            &stream,
+            &index,
+            &[(0, &root)],
+            &mut evidence,
+            None,
+            None,
+            None,
+        );
+        assert!(
+            !evidence[0].is_empty(),
+            "contains_any should match /api/token"
+        );
+    }
+
+    #[test]
+    fn prefix_matches_static_string_start() {
+        let stream = stream(
+            "fetch('https://example.test/data');",
+            &Environment::default(),
+        );
+        let root = PhysicalRoot::ConstrainedScan {
+            identity: IdentityConstraint::Any {
+                name: "fetch".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            event: EventPredicate::Call,
+            constraints: Box::new([ArgumentConstraint::new(
+                0,
+                ValueMatcher::static_string().starts_with_any(["https://"]),
+            )]),
+            evidence: EvidenceDescriptor {
+                kind: MatchKind::CallArgument,
+                symbol: "fetch".into(),
+            },
+        };
+        let index = build_index(&stream);
+        let mut evidence = vec![Vec::new()];
+        compute_constrained_evidence_from_stream_with_overlay(
+            &stream,
+            &index,
+            &[(0, &root)],
+            &mut evidence,
+            None,
+            None,
+            None,
+        );
+        assert!(
+            !evidence[0].is_empty(),
+            "prefix should match https:// string"
+        );
+    }
+
+    #[test]
+    fn object_keys_matcher_accepts_expected_keys() {
+        let stream = stream(
+            "fetch({url: '/api', method: 'POST'});",
+            &Environment::default(),
+        );
+        let root = PhysicalRoot::ConstrainedScan {
+            identity: IdentityConstraint::Any {
+                name: "fetch".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            event: EventPredicate::Call,
+            constraints: Box::new([ArgumentConstraint::new(
+                0,
+                ArgumentMatcher::object_keys(["url", "method"]),
+            )]),
+            evidence: EvidenceDescriptor {
+                kind: MatchKind::CallArgument,
+                symbol: "fetch".into(),
+            },
+        };
+        let index = build_index(&stream);
+        let mut evidence = vec![Vec::new()];
+        compute_constrained_evidence_from_stream_with_overlay(
+            &stream,
+            &index,
+            &[(0, &root)],
+            &mut evidence,
+            None,
+            None,
+            None,
+        );
+        assert!(!evidence[0].is_empty(), "object keys should match");
+    }
+
+    #[test]
+    fn object_property_value_matcher_accepts_matching_property() {
+        let stream = stream(
+            "fetch({url: '/api', method: 'POST'});",
+            &Environment::default(),
+        );
+        let root = PhysicalRoot::ConstrainedScan {
+            identity: IdentityConstraint::Any {
+                name: "fetch".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            event: EventPredicate::Call,
+            constraints: Box::new([ArgumentConstraint::new(
+                0,
+                ArgumentMatcher::object_property_value(
+                    "method",
+                    ValueMatcher::static_string().equals("POST"),
+                ),
+            )]),
+            evidence: EvidenceDescriptor {
+                kind: MatchKind::CallArgument,
+                symbol: "fetch".into(),
+            },
+        };
+        let index = build_index(&stream);
+        let mut evidence = vec![Vec::new()];
+        compute_constrained_evidence_from_stream_with_overlay(
+            &stream,
+            &index,
+            &[(0, &root)],
+            &mut evidence,
+            None,
+            None,
+            None,
+        );
+        assert!(
+            !evidence[0].is_empty(),
+            "object property value should match"
         );
     }
 

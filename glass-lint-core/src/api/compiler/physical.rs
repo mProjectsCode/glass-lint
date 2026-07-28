@@ -34,7 +34,7 @@ use crate::api::{
         normalize::PlanRequirements,
         rule::{
             EventPredicate, EvidenceDescriptor, IdentityConstraint, InvalidQueryClause,
-            QueryConstraint, lower_event, lower_identity,
+            lower_event, lower_identity,
         },
     },
     rule::{
@@ -68,7 +68,7 @@ pub(crate) enum PhysicalRoot {
     ConstrainedScan {
         identity: IdentityConstraint,
         event: EventPredicate,
-        constraints: Box<[QueryConstraint]>,
+        constraints: Box<[ArgumentConstraint]>,
         evidence: EvidenceDescriptor,
     },
     /// Subject scan for member access on a returned object.
@@ -194,12 +194,7 @@ fn plan_event_query(eq: &EventQuery, kind: MatchKind, symbol: &str) -> Vec<Physi
         return vec![PhysicalRoot::ConstrainedScan {
             identity: lower_identity(&eq.identity),
             event: lower_event(&eq.event),
-            constraints: eq
-                .constraints
-                .iter()
-                .cloned()
-                .map(QueryConstraint::Argument)
-                .collect(),
+            constraints: eq.constraints.iter().cloned().collect(),
             evidence,
         }];
     }
@@ -307,10 +302,7 @@ fn plan_all_expression(all: &AllExpr, kind: MatchKind, symbol: &str) -> Vec<Phys
                     roots.push(PhysicalRoot::ConstrainedScan {
                         identity: lower_identity(&eq.identity),
                         event: lower_event(&eq.event),
-                        constraints: merged_constraints
-                            .into_iter()
-                            .map(QueryConstraint::Argument)
-                            .collect(),
+                        constraints: merged_constraints.into_iter().collect(),
                         evidence,
                     });
                 }
@@ -339,10 +331,7 @@ fn plan_all_expression(all: &AllExpr, kind: MatchKind, symbol: &str) -> Vec<Phys
         vec![PhysicalRoot::ConstrainedScan {
             identity: lower_identity(&eq.identity),
             event: lower_event(&eq.event),
-            constraints: merged_constraints
-                .into_iter()
-                .map(QueryConstraint::Argument)
-                .collect(),
+            constraints: merged_constraints.into_iter().collect(),
             evidence,
         }]
     }

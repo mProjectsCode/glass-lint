@@ -14,7 +14,10 @@ use crate::{
         syntax::SymbolCallProvenance,
         value::{ValueId, ValueTable},
     },
-    api::compiler::rule::{EventPredicate, IdentityConstraint, QueryConstraint},
+    api::{
+        compiler::rule::{EventPredicate, IdentityConstraint},
+        rule::ArgumentConstraint,
+    },
 };
 
 pub(super) struct PreparedClausePaths {
@@ -80,7 +83,7 @@ impl<'a> MatcherEvaluator<'a> {
         fact: &SemanticFact,
         identity: &IdentityConstraint,
         event: &EventPredicate,
-        constraints: &[QueryConstraint],
+        constraints: &[ArgumentConstraint],
         paths: &PreparedClausePaths,
     ) -> bool {
         let FactPayload::Call {
@@ -178,23 +181,21 @@ impl<'a> MatcherEvaluator<'a> {
         raw.clone()
     }
 
-    fn constraints_match(&self, constraints: &[QueryConstraint], args: &[CallArgInfo]) -> bool {
-        constraints.iter().all(|constraint| match constraint {
-            QueryConstraint::Argument(argument) => {
-                args.get(argument.index()).is_some_and(|value| {
-                    argument.matcher().matches(
-                        &self.argument_with_overlay(value),
-                        self.names,
-                        self.values,
-                    )
-                })
-            }
+    fn constraints_match(&self, constraints: &[ArgumentConstraint], args: &[CallArgInfo]) -> bool {
+        constraints.iter().all(|constraint| {
+            args.get(constraint.index()).is_some_and(|value| {
+                constraint.matcher().matches(
+                    &self.argument_with_overlay(value),
+                    self.names,
+                    self.values,
+                )
+            })
         })
     }
 
     fn check_constrained_args(
         &self,
-        constraints: &[QueryConstraint],
+        constraints: &[ArgumentConstraint],
         args: &[CallArgInfo],
         unwrap: Option<&CallUnwrap>,
     ) -> bool {

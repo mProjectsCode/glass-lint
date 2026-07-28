@@ -637,9 +637,9 @@ fn returned_callable_provenance_crosses_an_exported_function() {
         .declaration(
             MatcherDecl::builder()
                 .call_module("web", "request")
+                .arg_static_string(0)
                 .build()
-                .expect("valid matcher declaration")
-                .with_arg_static_string(0),
+                .expect("valid matcher declaration"),
         )
         .build()
         .unwrap();
@@ -687,9 +687,9 @@ fn linked_external_call_arguments_are_projected_after_reexports() {
         .declaration(
             MatcherDecl::builder()
                 .call_module("web", "request")
+                .arg_static_string(0)
                 .build()
-                .expect("valid matcher declaration")
-                .with_arg_static_string(0),
+                .expect("valid matcher declaration"),
         )
         .build()
         .unwrap();

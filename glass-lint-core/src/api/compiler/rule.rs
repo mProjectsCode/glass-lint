@@ -21,7 +21,7 @@ use crate::{
             validate::{validate_normalized_decl, validate_query_decl},
         },
         rule::{
-            ArgumentConstraint, Confidence, MatcherBuildError, MatcherDecl, ModuleSpecifierPattern,
+            Confidence, MatcherBuildError, MatcherDecl, ModuleSpecifierPattern,
             query::{EventSpec, IdentitySpec, QueryDecl, VarId},
         },
     },
@@ -131,11 +131,6 @@ pub(crate) enum EventPredicate {
     ClassReference,
     Import,
     StringReference,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub(crate) enum QueryConstraint {
-    Argument(ArgumentConstraint),
 }
 
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]

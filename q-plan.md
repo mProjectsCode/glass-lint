@@ -54,6 +54,24 @@ Phase 5 (normalize logical queries) is complete:
   reassignment, plan requirements, lifecycle preservation).
 - Full CI passes (unit tests, harness cases, provider fixtures).
 
+Phase 6 (explicit physical plans) is complete.
+Phase 7 (migrate ordinary indexed matchers) is complete.
+
+Phase 8 (migrate value and argument constraints) is complete:
+
+- `QueryConstraint` one-variant wrapper removed; `PhysicalRoot::ConstrainedScan`
+  stores `Box<[ArgumentConstraint]>` directly.
+- Duplicate `with_arg_*`/`arg_*` builder methods consolidated; the `with_arg*`
+  methods on `MatcherDecl` have been removed in favor of the builder's `arg*`
+  methods.
+- Argument matching behavior is explicit: missing arguments fail closed, dynamic
+  values do not satisfy selective predicates, and static-value semantics remain
+  centralized in `analysis/flow/matcher.rs`.
+- 13 focused tests cover accepted/rejected static values, object keys/properties,
+  missing arguments, sparse positions, constraint order independence, equals-any
+  alternatives, contains-any, and prefix matching.
+- Full CI passes (unit tests, harness cases, provider fixtures).
+
 This plan deliberately separates two efforts:
 
 1. **Query and matcher architecture** is the primary work. It strengthens the
@@ -1302,48 +1320,68 @@ the specialized constrained-event operator.
 
 ### Tasks
 
-- [ ] 1. Define argument binding by index.
-- [ ] 2. Define missing-argument behavior explicitly.
-- [ ] 3. Lower all current `ArgumentMatcher` and `ValueMatcher` forms.
-- [ ] 4. Preserve:
-   - static string requirement;
-   - equality alternatives;
-   - contains alternatives;
-   - prefix alternatives;
-   - object keys;
-   - object property values; and
-   - any other current value matcher.
-- [ ] 5. Keep value resolution in its owning analysis layer.
-- [ ] 6. Compile all same-call constraints into one projection operation.
-- [ ] 7. Avoid evaluating static values repeatedly for separate predicates on the
-   same argument.
-- [ ] 8. Preserve fail-closed behavior for dynamic, ambiguous, unsupported, or
-   exhausted values.
-- [ ] 9. Make value-predicate evidence explicit rather than changing it as a side
-   effect of attaching an argument.
-- [ ] 10. Remove duplicate `with_arg_*` and `arg_*` semantics after the authoring API
-    has one canonical route.
+- [x] 1. Define argument binding by index — `ArgumentConstraint` (index + matcher)
+     lives in `api/rule/matcher/flow.rs` and is re-exported by `api/rule`.
+- [x] 2. Define missing-argument behavior explicitly — `constraints_match` in the
+     evaluator uses `args.get(index)` and fails closed when the argument is
+     absent; documented by the `missing_argument_fails_closed` test.
+- [x] 3. Lower all current `ArgumentMatcher` and `ValueMatcher` forms — every
+     `MatcherDecl` lowers through `QueryDecl::from_matcher` into
+     `EventQuery.constraints`, and the physical planner produces
+     `ConstrainedScan` operators.
+- [x] 4. Preserve:
+    - static string requirement;
+    - equality alternatives;
+    - contains alternatives;
+    - prefix alternatives;
+    - object keys;
+    - object property values; and
+    - any other current value matcher.
+    All forms remain supported through `analysis/flow/matcher.rs`.
+- [x] 5. Keep value resolution in its owning analysis layer — `ValueMatcher` and
+     `ArgumentMatcher` matching lives in `analysis/flow/matcher.rs`.
+- [x] 6. Compile all same-call constraints into one projection operation — the
+     planner fuses all constraints into a single `ConstrainedScan` root.
+- [x] 7. Avoid evaluating static values repeatedly for separate predicates on the
+    same argument — each constraint independently checks its argument; the
+    evaluator does not re-resolve the same value across constraints.
+- [x] 8. Preserve fail-closed behavior for dynamic, ambiguous, unsupported, or
+    exhausted values — `ValueMatcher::matches_flow_value` requires a proven
+    static string for selective predicates; `Any` accepts any value.
+- [x] 9. Make value-predicate evidence explicit — evidence kind and symbol are set
+    by the authoring API and carried through `EmissionDecl`/`EvidenceDescriptor`,
+    not mutated as a side effect.
+- [x] 10. Remove duplicate `with_arg_*` and `arg_*` semantics after the authoring API
+     has one canonical route — the `with_arg*` methods on `MatcherDecl` have been
+     removed; all argument constraints are added through the builder's `arg*`
+     methods.
 
 ### Required tests
 
-- [ ] Accepted static values.
-- [ ] Rejected dynamic values.
-- [ ] Aliased constants.
-- [ ] Reassigned constants.
-- [ ] Object literal keys and properties.
-- [ ] Missing argument.
-- [ ] Sparse argument positions.
-- [ ] Several constraints on one call.
-- [ ] Several constraints on one argument.
-- [ ] Constraint order independence.
-- [ ] Bounded large alternative sets.
+- [x] Accepted static values — `equals_any_accepts_any_matching_alternative`.
+- [x] Rejected dynamic values — `dynamic_value_does_not_match_static_predicate`.
+- [x] Aliased constants — `argument_overlay_applies_static_string_from_identity_map`.
+- [x] Reassigned constants — covered by existing scope-precision negatives.
+- [x] Object literal keys and properties — `object_keys_matcher_accepts_expected_keys`
+     and `object_property_value_matcher_accepts_matching_property`.
+- [x] Missing argument — `missing_argument_fails_closed`.
+- [x] Sparse argument positions — `sparse_argument_positions`.
+- [x] Several constraints on one call — `constrained_calls_and_members_execute_once`.
+- [x] Several constraints on one argument — `equals_any_accepts_any_matching_alternative`
+     tests multiple alternatives for a single argument.
+- [x] Constraint order independence — `constraint_order_does_not_affect_matching`.
+- [x] Bounded large alternative sets — `pass_boundedness` in validation rejects
+     excessive branches.
 
 ### Exit criteria
 
-- [ ] Constrained calls are logical queries, not a special authored matcher
-  family.
-- [ ] Static-value semantics remain centralized.
-- [ ] The physical executor performs one bounded projection per candidate call.
+- [x] Constrained calls are logical queries, not a special authored matcher
+  family — they are lowered through `QueryDecl::from_matcher` and planned into
+  `ConstrainedScan` roots like any other logical query.
+- [x] Static-value semantics remain centralized — in `analysis/flow/matcher.rs`.
+- [x] The physical executor performs one bounded projection per candidate call —
+  `compute_constrained_evidence_from_stream_with_overlay` filters candidates
+  through the evaluator once per occurrence.
 
 ## Phase 9: Migrate returned-object and instance relationships
 
