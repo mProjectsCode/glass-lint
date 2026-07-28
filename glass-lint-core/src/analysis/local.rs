@@ -102,6 +102,10 @@ impl LocatedSourceContext {
         }
     }
 
+    pub(crate) fn with_index(path: ProjectRelativePath, lines: Arc<SourceLineIndex>) -> Self {
+        Self { path, lines }
+    }
+
     pub(crate) fn range(&self, span: ByteRange) -> Result<SourceRange, InvalidSourceBoundary> {
         self.lines.try_range(span)
     }
@@ -209,6 +213,7 @@ impl ArtifactCacheKey {
 #[derive(Clone)]
 pub struct SharedSemanticArtifact {
     pub semantic: Arc<SemanticArtifact>,
+    pub source_index: Arc<SourceLineIndex>,
 }
 
 /// One entry in the artifact cache, retaining the full key for collision
@@ -473,6 +478,7 @@ mod tests {
                 crate::analysis::flow::effect::FunctionEffects::default(),
                 crate::analysis::lowering::status::AnalysisStatus::default(),
             )),
+            source_index: Arc::new(SourceLineIndex::new("")),
         };
         assert!(cache.get(fp, &key).is_none());
         cache.insert(fp, key.clone(), artifact);
@@ -495,6 +501,7 @@ mod tests {
                     crate::analysis::flow::effect::FunctionEffects::default(),
                     crate::analysis::lowering::status::AnalysisStatus::default(),
                 )),
+                source_index: Arc::new(SourceLineIndex::new("")),
             };
             let evicted = cache.insert(fp, key.clone(), artifact);
             keys.push((fp, key));
@@ -526,6 +533,7 @@ mod tests {
                 crate::analysis::flow::effect::FunctionEffects::default(),
                 crate::analysis::lowering::status::AnalysisStatus::default(),
             )),
+            source_index: Arc::new(SourceLineIndex::new("")),
         };
         let artifact_b = SharedSemanticArtifact {
             semantic: Arc::new(SemanticArtifact::from_lowering(
@@ -534,6 +542,7 @@ mod tests {
                 crate::analysis::flow::effect::FunctionEffects::default(),
                 crate::analysis::lowering::status::AnalysisStatus::default(),
             )),
+            source_index: Arc::new(SourceLineIndex::new("")),
         };
         cache.insert(fp, key.clone(), artifact_a);
         let evicted = cache.insert(fp, key, artifact_b);
@@ -553,6 +562,7 @@ mod tests {
                 crate::analysis::flow::effect::FunctionEffects::default(),
                 crate::analysis::lowering::status::AnalysisStatus::default(),
             )),
+            source_index: Arc::new(SourceLineIndex::new("")),
         };
         cache.insert(fp_a, key_a, artifact);
         assert!(

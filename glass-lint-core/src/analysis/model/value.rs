@@ -119,7 +119,10 @@ impl ValueTable {
             }
             self.terminal_cache.get_mut().unwrap().push(None);
         } else {
-            self.terminal_cache.get_mut().unwrap().push(Some(ValueId(index)));
+            self.terminal_cache
+                .get_mut()
+                .unwrap()
+                .push(Some(ValueId(index)));
         }
 
         ValueId(index)

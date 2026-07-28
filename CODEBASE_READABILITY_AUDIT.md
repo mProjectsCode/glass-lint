@@ -99,8 +99,11 @@ Enforce that every binding target references an already-interned value, cache ea
 - **Location:** `glass-lint-core/src/diagnostic.rs:48-134`, `glass-lint-core/src/analysis/local.rs:91-108`, `glass-lint-core/src/project/session/artifacts.rs:93-107`
 
 A semantic artifact cache hit still constructs `LocatedSourceContext`, scans the complete source for line starts, and scans every line of at least 256 bytes again to build Unicode checkpoints. Projects with unchanged large sources therefore pay O(source bytes) position-index work even when no finding needs a position.
+- **Status:** Fixed
 
-Store the source-derived `SourceLineIndex` in the reusable source/fingerprint artifact, with project-relative path context remaining outside the artifact. Use an ASCII fast path and materialize Unicode checkpoints only when a non-ASCII range lookup requires them, while keeping cache identity independent of path. Recommendation: benchmark cold lowering, clean cache hits, and no-finding runs separately and assert that a clean hit does not rescan source bytes until position mapping is requested.
+`SourceLineIndex` is now stored in `SharedSemanticArtifact` alongside the semantic model, so a cache hit reuses the previously built index without rescanning source bytes. `SourceLineIndex` uses an ASCII fast path (`source.is_ascii()` at construction time) and defers Unicode checkpoint computation to a `OnceLock`, materializing checkpoints only when the first non-ASCII position lookup occurs. Cache identity remains path-independent. A cache hit does not rescan source bytes until position mapping is requested.
+
+**Check:** `cargo check -p glass-lint-core` passes; `cargo clippy --workspace --all-targets -- -D warnings` passes; `cargo test -p glass-lint-core --lib` passes; workspace tests pass; harness suites pass. `make ci` passed on 2026-07-28.
 
 #### READ-008 — Scope lookup pays ordered-tree and repeated interner costs per ancestor
 - **Severity:** Medium

@@ -101,7 +101,10 @@ pub(super) fn cached_lowered_source(
     cached: &SharedSemanticArtifact,
 ) -> LoweredSource {
     LoweredSource {
-        source: LocatedSourceContext::new(source),
+        source: LocatedSourceContext::with_index(
+            source.path().clone(),
+            Arc::clone(&cached.source_index),
+        ),
         semantic: Arc::clone(&cached.semantic),
     }
 }
@@ -112,10 +115,12 @@ pub(super) fn insert_and_notify(
     lowered: &LoweredSource,
     observer: &dyn ExecutionObserver,
 ) {
+    let source_index = Arc::clone(&lowered.source.lines);
     let evicted = cache.insert(
         key,
         SharedSemanticArtifact {
             semantic: Arc::clone(&lowered.semantic),
+            source_index,
         },
     );
     observer.observe(ExecutionEvent::CacheInserted);

@@ -1,5 +1,7 @@
 //! Provider-neutral diagnostic and serialized report data types.
 
+use std::sync::OnceLock;
+
 use glass_lint_datastructures::{ByteRange, InvalidSourceBoundary, Position, SourceRange};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -46,14 +48,27 @@ impl Severity {
 }
 
 /// Precomputed byte-to-display-position boundaries for one source.
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceLineIndex {
     starts: Vec<usize>,
     source: SourceText,
+    /// Fast path: when the source is pure ASCII, column offset is just the byte
+    /// delta and no Unicode checkpoints are needed.
+    is_ascii: bool,
     /// Per-line checkpoint intervals for fast column computation on long lines.
     /// Each checkpoint is `(byte_offset_from_line_start, char_count)`.
-    /// Empty for lines under 256 bytes.
-    checkpoints: Vec<Vec<(usize, usize)>>,
+    /// Empty for lines under 256 bytes. Computed on first non-ASCII lookup.
+    checkpoints: OnceLock<Vec<Vec<(usize, usize)>>>,
+}
+
+impl std::fmt::Debug for SourceLineIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SourceLineIndex")
+            .field("line_count", &self.starts.len())
+            .field("source_length", &self.source.len())
+            .field("is_ascii", &self.is_ascii)
+            .field("checkpoints_computed", &self.checkpoints.get().is_some())
+            .finish()
+    }
 }
 
 fn compute_checkpoints(source: &str, starts: &[usize]) -> Vec<Vec<(usize, usize)>> {
@@ -85,11 +100,12 @@ impl SourceLineIndex {
     fn from_source(source: SourceText) -> Self {
         let mut starts = vec![0];
         starts.extend(source.match_indices('\n').map(|(offset, _)| offset + 1));
-        let checkpoints = compute_checkpoints(&source, &starts);
+        let is_ascii = source.is_ascii();
         Self {
             starts,
             source,
-            checkpoints,
+            is_ascii,
+            checkpoints: OnceLock::new(),
         }
     }
 
@@ -106,6 +122,13 @@ impl SourceLineIndex {
         Self::from_source(source)
     }
 
+    /// Ensure per-line checkpoints are computed. Called only for non-ASCII
+    /// sources on the first position lookup.
+    fn ensure_checkpoints(&self) -> &Vec<Vec<(usize, usize)>> {
+        self.checkpoints
+            .get_or_init(|| compute_checkpoints(&self.source, &self.starts))
+    }
+
     /// Convert a validated byte offset into a one-based display position.
     fn position(&self, offset: usize) -> Position {
         let line = self
@@ -113,17 +136,22 @@ impl SourceLineIndex {
             .partition_point(|start| *start <= offset)
             .saturating_sub(1);
         let line_start = self.starts[line];
-        let checkpoints = &self.checkpoints[line];
 
-        let column = if checkpoints.is_empty() {
-            self.source[line_start..offset].chars().count()
+        let column = if self.is_ascii {
+            offset - line_start
         } else {
-            let byte_offset = offset - line_start;
-            let checkpoint = checkpoints
-                .partition_point(|(bo, _)| *bo <= byte_offset)
-                .saturating_sub(1);
-            let (check_byte, check_char) = checkpoints[checkpoint];
-            check_char + self.source[line_start + check_byte..offset].chars().count()
+            let checkpoints = self.ensure_checkpoints();
+            let line_checkpoints = &checkpoints[line];
+            if line_checkpoints.is_empty() {
+                self.source[line_start..offset].chars().count()
+            } else {
+                let byte_offset = offset - line_start;
+                let checkpoint = line_checkpoints
+                    .partition_point(|(bo, _)| *bo <= byte_offset)
+                    .saturating_sub(1);
+                let (check_byte, check_char) = line_checkpoints[checkpoint];
+                check_char + self.source[line_start + check_byte..offset].chars().count()
+            }
         };
 
         Position::new(
