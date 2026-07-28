@@ -9,7 +9,7 @@ use smol_str::SmolStr;
 use crate::api::rule::MatcherBuildError;
 
 /// A context-independent predicate over an argument value.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ValueMatcher {
     /// Predicate family and payload.
     pub(crate) kind: ValueMatcherKind,
@@ -22,7 +22,7 @@ impl ValueMatcher {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ValueMatcherKind {
     /// Accept any value, including unknown/dynamic values.
     Any,
@@ -31,7 +31,7 @@ pub enum ValueMatcherKind {
 }
 
 /// Internal kind of a static-string predicate.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum StaticStringPredicateKind {
     Any,
     Exact(Vec<String>),
@@ -40,7 +40,7 @@ pub(crate) enum StaticStringPredicateKind {
     ContainsAll(Vec<String>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct StaticStringPredicate {
     pub(crate) kind: StaticStringPredicateKind,
 }
@@ -127,7 +127,7 @@ impl ValueMatcher {
 // ── ArgumentMatcher ──────────────────────────────────────────────────────
 
 /// Internal kind of an argument predicate.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum ArgumentMatcherKind {
     /// Apply a value predicate.
     Value(ValueMatcher),
@@ -143,7 +143,7 @@ pub(crate) enum ArgumentMatcherKind {
 }
 
 /// A predicate applied to one selected call argument.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ArgumentMatcher {
     pub(crate) kind: ArgumentMatcherKind,
 }
@@ -194,7 +194,7 @@ impl From<ValueMatcher> for ArgumentMatcher {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ArgumentConstraint {
     /// Zero-based argument position.
     index: usize,
@@ -222,7 +222,7 @@ impl ArgumentConstraint {
 }
 
 /// A call that returns the object tracked by an [`ObjectFlowMatcher`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ObjectSourceMatcher {
     /// Rooted source chain.
     chain: String,
@@ -259,7 +259,7 @@ impl ObjectSourceMatcher {
 // ── ObjectEventMatcher ───────────────────────────────────────────────────
 
 /// Internal kind of a lifecycle event on a tracked object.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum ObjectEventMatcherKind {
     PropertyWrite {
         /// Written property name.
@@ -276,7 +276,7 @@ pub(crate) enum ObjectEventMatcherKind {
 }
 
 /// A lifecycle event observed on a tracked object.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ObjectEventMatcher {
     pub(crate) kind: ObjectEventMatcherKind,
 }
@@ -306,7 +306,7 @@ impl ObjectEventMatcher {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ObjectEventBuilder {
     /// Partially constructed lifecycle event.
     event: ObjectEventMatcherKind,
@@ -335,7 +335,7 @@ impl From<ObjectEventBuilder> for ObjectEventMatcher {
 // ── FlowCondition ────────────────────────────────────────────────────────
 
 /// Internal kind of a flow configuration condition.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum FlowConditionKind {
     /// At least one event must be observed.
     AnyOf(Vec<ObjectEventMatcher>),
@@ -344,7 +344,7 @@ pub(crate) enum FlowConditionKind {
 }
 
 /// Explicitly combines the events that configure a tracked object.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FlowCondition {
     pub(crate) kind: FlowConditionKind,
 }
@@ -385,7 +385,7 @@ impl FlowCondition {
 // ── FlowCompletion ───────────────────────────────────────────────────────
 
 /// Internal kind of a flow completion mode.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum FlowCompletionKind {
     /// Emit once the configuration condition is satisfied.
     Configuration,
@@ -394,7 +394,7 @@ pub(crate) enum FlowCompletionKind {
 }
 
 /// The point at which a configured object produces evidence.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FlowCompletion {
     pub(crate) kind: FlowCompletionKind,
 }
@@ -425,7 +425,7 @@ impl FlowCompletion {
 // ── FlowSinkMatcher ──────────────────────────────────────────────────────
 
 /// Internal kind of a tracked-object sink matcher.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum FlowSinkMatcherKind {
     /// Match one specific argument position.
     ArgumentOf { chain: String, index: usize },
@@ -434,7 +434,7 @@ pub(crate) enum FlowSinkMatcherKind {
 }
 
 /// A tracked object appearing in a selected argument of a call.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FlowSinkMatcher {
     pub(crate) kind: FlowSinkMatcherKind,
 }
@@ -474,7 +474,7 @@ impl FlowSinkMatcher {
 }
 
 /// Declarative object lifecycle matching: source, configuration, completion.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ObjectFlowMatcher {
     /// Evidence symbol for the completed flow.
     symbol: String,

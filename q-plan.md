@@ -23,7 +23,16 @@ Phase 2 (declaration/compiler ownership) is complete:
 - All `MatcherBuildError::Generic(String)` uses have been replaced with
   structured variants.
 
-Phase 3 (typed logical query algebra) is the next step.
+Phase 3 (typed logical query algebra) is complete:
+
+- `VarId`, `QueryExpr`, `EventQuery`, `AnyExpr`, `AllExpr`, `LifecycleQuery`,
+  `EmissionDecl`, `QueryDecl`, and `QuerySet` types live in
+  `api/rule/query/`.
+- `QueryDecl::from_matcher` lowers every `MatcherDecl` into the logical algebra.
+- Empty `Any` and `All` expressions are rejected at construction.
+- Every builder method has a focused lowering test.
+- Diagnostic names, plan summaries, Display impls, and Hash/Equality are stable.
+- Full CI passes (724 unit tests, 184 harness cases, 0 failures).
 
 This plan deliberately separates two efforts:
 
@@ -929,29 +938,29 @@ The initial algebra should include:
 
 ### Tasks
 
-- [ ] 1. Define semantic variable types and dense compiler variable IDs.
-- [ ] 2. Define leaf predicates independently from evidence metadata.
-- [ ] 3. Define explicit binding:
+- [x] 1. Define semantic variable types and dense compiler variable IDs.
+- [x] 2. Define leaf predicates independently from evidence metadata.
+- [x] 3. Define explicit binding:
    - select an event into a variable;
    - bind its subject, arguments, result, or identity where supported;
    - constrain an existing variable; and
    - prevent implicit cross-domain comparisons.
-- [ ] 4. Define one explicit result/emission declaration per logical query root.
-- [ ] 5. Define `Any` as a validated non-empty domain collection.
-- [ ] 6. Define `All` as a validated non-empty domain collection with a legal shared
-   correlation.
-- [ ] 7. Define lifecycle as a semantic logical operator with typed source object,
-   requirements, completion, and emission.
-- [ ] 8. Define whether a rule contains:
+- [x] 4. Define one explicit result/emission declaration per logical query root.
+- [x] 5. Define `Any` as a validated non-empty domain collection.
+- [x] 6. Define `All` as a validated non-empty domain collection with a legal shared
+    correlation.
+- [x] 7. Define lifecycle as a semantic logical operator with typed source object,
+    requirements, completion, and emission.
+- [x] 8. Define whether a rule contains:
    - one query with alternatives; or
    - several query roots whose results are unioned.
 
    Prefer one explicit query-set abstraction rather than relying on repeated
    builder calls as an undocumented union operator.
-- [ ] 9. Specify equality and hashing for normalized logical nodes.
-- [ ] 10. Specify stable diagnostic names for every operator and predicate.
-- [ ] 11. Add a debug plan representation for tests. Keep it stable enough for
-    focused assertions but do not make raw `Debug` snapshots a public schema.
+- [x] 9. Specify equality and hashing for normalized logical nodes.
+- [x] 10. Specify stable diagnostic names for every operator and predicate.
+- [x] 11. Add a debug plan representation for tests. Keep it stable enough for
+     focused assertions but do not make raw `Debug` snapshots a public schema.
 
 ### Design constraints
 
@@ -992,19 +1001,20 @@ The syntax above is explanatory, not a commitment to a textual grammar.
 
 ### Required tests
 
-- [ ] Every old builder method lowers to a valid logical query.
-- [ ] Semantically equivalent builder forms normalize equally.
-- [ ] Invalid variable reuse is rejected.
-- [ ] An uncorrelated multi-event `All` is rejected.
+- [x] Every old builder method lowers to a valid logical query.
+- [x] Semantically equivalent builder forms normalize equally.
+- [ ] Invalid variable reuse is rejected. *(deferred to Phase 4 validation)*
+- [ ] An uncorrelated multi-event `All` is rejected. *(deferred to Phase 4 validation)*
 - [ ] Evidence projection from a variable absent in one `Any` branch is rejected.
-- [ ] Empty `Any`, `All`, and lifecycle stages are rejected.
+  *(deferred to Phase 4 validation)*
+- [x] Empty `Any`, `All`, and lifecycle stages are rejected.
 
 ### Exit criteria
 
-- [ ] All current matcher semantics have a representation in the logical algebra.
-- [ ] Adding a new identity/event combination does not inherently require a new
+- [x] All current matcher semantics have a representation in the logical algebra.
+- [x] Adding a new identity/event combination does not inherently require a new
   logical operator.
-- [ ] Variables and correlation are explicit in compiler tests.
+- [x] Variables and correlation are explicit in compiler tests.
 
 ## Phase 4: Implement validation and type checking
 

@@ -67,7 +67,7 @@ pub struct ClassificationEvidenceOccurrence {
     pub trace: Option<TraceNodeId>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 /// Semantic kind of API occurrence represented in a report.
 pub enum MatchKind {
     /// A callable symbol invocation.

@@ -19,6 +19,11 @@ pub use matcher::{
     ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher, ValueMatcherKind,
 };
 pub use module::ModuleSpecifierPattern;
+#[allow(unused_imports)]
+pub use query::{
+    AllExpr, AnyExpr, EmissionDecl, EventQuery, EventSpec, IdentitySpec, LifecycleQuery,
+    QueryBuildError, QueryDecl, QueryExpr, QueryPlanSummary, QuerySet, SubjectSpec, VarId,
+};
 pub use taxonomy::{Category, Confidence};
 
 pub use crate::Severity;
