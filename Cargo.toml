@@ -38,7 +38,7 @@ indexmap = "2.14.0"
 smol_str = { version = "0.3.6", features = ["serde"] }
 swc_common = "24.0"
 swc_ecma_ast = "26.0"
-swc_ecma_parser = { version = "42.0", features = ["typescript"] }
+swc_ecma_parser = { version = "42.0", features = ["typescript", "unstable"] }
 swc_ecma_transforms_base = "46.0"
 swc_ecma_transforms_typescript = "52.0"
 swc_ecma_visit = "26.0"

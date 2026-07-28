@@ -16,11 +16,14 @@ The three-crate test run passed in full (`cargo test -p glass-lint-core -p glass
 - **Severity:** High
 - **Fix Complexity** High
 - **Category:** Other
-- **Location:** `glass-lint-core/src/parse.rs:214-445`
+- **Location:** `glass-lint-core/src/parse.rs:127-651`
+- **Status:** Fixed
 
 `syntax_depth` is a handwritten JavaScript lexer whose regex/division decision depends on the preceding byte or a short keyword list. Valid forms such as a postfix increment followed by division can be treated as a regex and cause the scanner to skip real nesting, so hostile nesting can bypass the pre-AST guard; other grammar positions can be classified in the opposite direction and reject valid input.
 
-Add a bounded SWC-token pass before AST construction and derive delimiter/member depth from that token stream, keeping lexical state inside the parser frontend. The pass must charge each consumed token, reject on malformed or ambiguous tokenization, and preserve the existing maximum-depth diagnostic. Recommendation: differential-fuzz the guard against SWC acceptance with postfix-division, every regex-prefix context, templates, comments, malformed literals, and hostile nesting, then keep the guard only after those cases agree.
+Implemented a bounded SWC-token pass before AST construction. It derives delimiter/member depth from token kinds, accounts for postfix `++`/`--` before classifying a following slash, charges each token event against the source bound, rejects lexer failures conservatively, and preserves the existing depth diagnostic; template expression boundaries remain covered by a dedicated parser-frontend state path because SWC exposes them through parser-driven rescans.
+
+**Check:** `cargo test -p glass-lint-core parse::tests --no-default-features` passed (25 tests), including the postfix-increment/division regression, and `make ci` passed in full on 2026-07-28.
 
 #### READ-002 — `lower_program` performs three full AST walks and repeats name work
 - **Severity:** Medium
