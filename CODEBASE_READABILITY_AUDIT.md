@@ -156,6 +156,7 @@ Return and argument analysis push destination keys into adjacency vectors withou
 #### READ-017 — Outside-path normalization corrupts absolute parents and accepts drive paths
 - **Severity:** High
 - **Fix Complexity** Medium
+- **Status:** ✅ Fixed
 - **Category:** Newtype
 - **Location:** `glass-lint-core/src/project/input.rs:23-79`
 

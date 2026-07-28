@@ -11,6 +11,22 @@ use crate::project::{
     ProjectRelativePath, ResolutionRequestKey, ResolverOutcome,
 };
 
+/// Whether a normalized (backslash → slash) path is in an absolute form:
+/// POSIX root (`/`), drive prefix (`C:/`, `D:/`), or UNC prefix (`//`).
+fn is_absolute_form(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    if path.starts_with('/') {
+        return true;
+    }
+    bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && bytes[2] == b'/'
+}
+
+/// Whether a path segment looks like a Windows drive prefix (`C:`, `D:`).
+fn is_drive_prefix(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
+}
+
 /// Validate the root path that anchors project-relative normalization.
 pub fn normalize_root(path: &Path) -> Result<PathBuf, ProjectInputError> {
     if path.as_os_str().is_empty() {
@@ -25,7 +41,7 @@ pub fn normalize_relative(path: impl AsRef<str>) -> Result<ProjectRelativePath, 
     let original = path.as_ref().to_string();
     let path = path.as_ref().replace('\\', "/");
     if path.is_empty()
-        || path.starts_with('/')
+        || is_absolute_form(&path)
         || path.contains('\0')
         || path.split('/').any(|part| part == "..")
     {
@@ -49,14 +65,18 @@ pub fn normalize_outside_target(path: &str) -> Result<String, ProjectInputError>
     if path.is_empty() || path.contains('\0') {
         return Err(ProjectInputError::InvalidPath(original));
     }
-    let absolute = path.starts_with('/');
-    let mut parts = Vec::new();
+    let absolute = is_absolute_form(&path);
+    let had_leading_slash = path.starts_with('/');
+    let mut parts: Vec<&str> = Vec::new();
     for part in path.split('/') {
         if part.is_empty() || part == "." {
             continue;
         }
         if part == ".." {
             if absolute {
+                if parts.last().is_some_and(|last| *last != ".." && !is_drive_prefix(last)) {
+                    parts.pop();
+                }
                 continue;
             }
             if parts.last().is_some_and(|last| *last != "..") {
@@ -71,7 +91,7 @@ pub fn normalize_outside_target(path: &str) -> Result<String, ProjectInputError>
     if parts.is_empty() {
         return Err(ProjectInputError::InvalidPath(original));
     }
-    Ok(if absolute {
+    Ok(if had_leading_slash {
         format!("/{}", parts.join("/"))
     } else {
         parts.join("/")
