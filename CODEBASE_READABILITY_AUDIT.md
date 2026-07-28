@@ -222,6 +222,10 @@ The generic table hard-codes a 2²⁰ maximum and returns `false` both when it s
 
 Make `IndexTable` require an owner-supplied capacity and return a typed `InsertOutcome` distinguishing insertion, replacement, and `OutOfRange`. Keep sparse allocation behind the capacity check and require each production owner to handle `OutOfRange` as incomplete analysis rather than treating it as replacement. Recommendation: test sparse IDs just below and above the configured limit, replacement payloads, and every owner's exhaustion path.
 
+- **Status:** Fixed
+
+**Check:** `make fmt && make ci` passed on 2026-07-28.
+
 #### READ-017 — Cache hashing is a handwritten scalar FNV loop
 - **Severity:** Medium
 - **Fix Complexity** Low

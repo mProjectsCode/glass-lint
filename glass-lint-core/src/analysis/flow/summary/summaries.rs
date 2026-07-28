@@ -36,7 +36,7 @@ impl<'a> FunctionSummaries<'a> {
     }
 
     fn insert(&mut self, summary: FunctionSummary) {
-        self.by_id.insert(summary.id(), summary);
+        let _ = self.by_id.insert(summary.id(), summary);
     }
 
     pub(in crate::analysis::flow) fn collect(
@@ -47,7 +47,7 @@ impl<'a> FunctionSummaries<'a> {
     ) -> Self {
         let mut summaries = Self {
             stream,
-            by_id: FunctionTable::default(),
+            by_id: FunctionTable::new(stream.function_count()),
             paths: SummaryPathStore::new(stream.paths()),
             scratch_projections: Vec::new(),
             exhausted: false,

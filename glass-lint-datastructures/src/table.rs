@@ -1,5 +1,16 @@
 use std::marker::PhantomData;
 
+/// Outcome of an [`IndexTable::insert`] operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InsertOutcome {
+    /// The value was inserted into a previously vacant slot.
+    Inserted,
+    /// The value replaced an existing entry at the same id.
+    Replaced,
+    /// The id is at or beyond the table's capacity.
+    OutOfRange,
+}
+
 /// Trait for types used as dense index identifiers in an [`IndexTable`].
 ///
 /// Requires `Copy + Into<u32>` so the identifier can be used as a storage
@@ -9,43 +20,34 @@ pub trait IdIndex: Copy + Into<u32> {
     fn from_raw(raw: u32) -> Self;
 }
 
-/// A sparse, index-based storage table.
+/// A sparse, index-based storage table with an owner-supplied capacity.
 ///
 /// Maps dense `I` identifiers to optional `T` values.  Internally backed by a
 /// `Vec<Option<T>>` where the index corresponds to the identifier.  This
 /// offers O(1) lookup and efficient iteration over present entries, but is
 /// not space-efficient for very sparse populations.
 ///
-/// Insertion refuses IDs at or above [`MAX_TABLE_CAPACITY`] to prevent
+/// Insertion refuses IDs at or above the configured `capacity` to prevent
 /// uncontrolled allocation from forged or sparse identifiers.
 #[derive(Debug, Clone)]
 pub struct IndexTable<I, T> {
     values: Vec<Option<T>>,
     occupied: usize,
+    capacity: usize,
     _marker: PhantomData<I>,
 }
 
-/// The maximum index accepted by [`IndexTable::insert`].
-///
-/// Equal to 2^20, which accommodates legitimate dense ID ranges while
-/// preventing the 4-billion-element allocation that a forged `u32` ID
-/// could otherwise request.
-pub const MAX_TABLE_CAPACITY: usize = 1_048_576;
-
-impl<I: IdIndex, T> Default for IndexTable<I, T> {
-    fn default() -> Self {
+impl<I: IdIndex, T> IndexTable<I, T> {
+    /// Creates an empty table with the given capacity.
+    ///
+    /// IDs at or above `capacity` will be rejected by [`insert`](Self::insert).
+    pub fn new(capacity: usize) -> Self {
         Self {
             values: Vec::new(),
             occupied: 0,
+            capacity,
             _marker: PhantomData,
         }
-    }
-}
-
-impl<I: IdIndex, T> IndexTable<I, T> {
-    /// Creates an empty table.
-    pub fn new() -> Self {
-        Self::default()
     }
 
     /// Returns a shared reference to the value at `id`, or `None`.
@@ -62,18 +64,20 @@ impl<I: IdIndex, T> IndexTable<I, T> {
 
     /// Inserts `value` at `id`.
     ///
-    /// Returns `true` if the slot was vacant, `false` if it was occupied,
-    /// the id was at or above [`MAX_TABLE_CAPACITY`], or the id could not
-    /// be converted to a `usize`.
+    /// Returns [`InsertOutcome::Inserted`] if the slot was vacant,
+    /// [`InsertOutcome::Replaced`] if it was occupied, or
+    /// [`InsertOutcome::OutOfRange`] if the id is at or beyond the table's
+    /// capacity or could not be converted to a `usize`.
     ///
-    /// The vector grows automatically to accommodate the id.
-    pub fn insert(&mut self, id: I, value: T) -> bool {
+    /// The vector grows automatically to accommodate the id, up to the
+    /// configured capacity.
+    pub fn insert(&mut self, id: I, value: T) -> InsertOutcome {
         let raw: u32 = id.into();
         let Some(index) = usize::try_from(raw).ok() else {
-            return false;
+            return InsertOutcome::OutOfRange;
         };
-        if index >= MAX_TABLE_CAPACITY {
-            return false;
+        if index >= self.capacity {
+            return InsertOutcome::OutOfRange;
         }
         if self.values.len() <= index {
             self.values.resize_with(index + 1, || None);
@@ -82,8 +86,10 @@ impl<I: IdIndex, T> IndexTable<I, T> {
         self.values[index] = Some(value);
         if vacant {
             self.occupied += 1;
+            InsertOutcome::Inserted
+        } else {
+            InsertOutcome::Replaced
         }
-        vacant
     }
 
     /// Simultaneously borrows one slot for reading and another for writing.
@@ -178,6 +184,8 @@ impl<I: IdIndex, T> IndexTable<I, T> {
 
 #[cfg(test)]
 mod tests {
+    use InsertOutcome::*;
+
     use super::*;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -197,23 +205,23 @@ mod tests {
 
     #[test]
     fn get_insert_and_get_mut() {
-        let mut table = IndexTable::new();
-        assert!(table.insert(TestId(0), "hello"));
+        let mut table = IndexTable::new(1000);
+        assert_eq!(table.insert(TestId(0), "hello"), Inserted);
         assert_eq!(table.get(TestId(0)), Some(&"hello"));
-        assert!(!table.insert(TestId(0), "world"));
+        assert_eq!(table.insert(TestId(0), "world"), Replaced);
         assert_eq!(table.get(TestId(0)), Some(&"world"));
     }
 
     #[test]
     fn vacancy_tracking() {
-        let mut table = IndexTable::new();
-        assert!(table.insert(TestId(1), "first"));
-        assert!(!table.insert(TestId(1), "second"));
+        let mut table = IndexTable::new(1000);
+        assert_eq!(table.insert(TestId(1), "first"), Inserted);
+        assert_eq!(table.insert(TestId(1), "second"), Replaced);
     }
 
     #[test]
     fn get_disjoint_non_overlapping() {
-        let mut table = IndexTable::new();
+        let mut table = IndexTable::new(1000);
         table.insert(TestId(0), "a");
         table.insert(TestId(1), "b");
         let (r, w) = table.get_disjoint(TestId(0), TestId(1)).unwrap();
@@ -223,14 +231,14 @@ mod tests {
 
     #[test]
     fn get_disjoint_equal_ids_returns_none() {
-        let mut table = IndexTable::new();
+        let mut table = IndexTable::new(1000);
         table.insert(TestId(0), "a");
         assert!(table.get_disjoint(TestId(0), TestId(0)).is_none());
     }
 
     #[test]
     fn get_disjoint_overlapping_reversed_order() {
-        let mut table = IndexTable::new();
+        let mut table = IndexTable::new(1000);
         table.insert(TestId(0), "a");
         table.insert(TestId(1), "b");
         let (r, w) = table.get_disjoint(TestId(1), TestId(0)).unwrap();
@@ -240,7 +248,7 @@ mod tests {
 
     #[test]
     fn iter_yields_present_entries() {
-        let mut table = IndexTable::new();
+        let mut table = IndexTable::new(1000);
         table.insert(TestId(0), "a");
         table.insert(TestId(2), "c");
         let entries: Vec<_> = table.iter().collect();
@@ -251,7 +259,7 @@ mod tests {
 
     #[test]
     fn values_yields_present_values_only() {
-        let mut table = IndexTable::new();
+        let mut table = IndexTable::new(1000);
         table.insert(TestId(0), "a");
         table.insert(TestId(1), "b");
         let values: Vec<_> = table.values().collect();
@@ -260,7 +268,7 @@ mod tests {
 
     #[test]
     fn contains_checks_presence() {
-        let mut table = IndexTable::new();
+        let mut table = IndexTable::new(1000);
         table.insert(TestId(5), "present");
         assert!(table.contains(TestId(5)));
         assert!(!table.contains(TestId(0)));
@@ -268,7 +276,7 @@ mod tests {
 
     #[test]
     fn sparse_slots_handled_correctly() {
-        let mut table = IndexTable::new();
+        let mut table = IndexTable::new(1000);
         table.insert(TestId(0), "a");
         table.insert(TestId(2), "c");
         assert_eq!(table.get(TestId(1)), None);
@@ -277,14 +285,14 @@ mod tests {
 
     #[test]
     fn large_id_resizes() {
-        let mut table = IndexTable::new();
-        assert!(table.insert(TestId(1000), "far"));
+        let mut table = IndexTable::new(2000);
+        assert_eq!(table.insert(TestId(1000), "far"), Inserted);
         assert_eq!(table.get(TestId(1000)), Some(&"far"));
     }
 
     #[test]
     fn len_counts_present_entries() {
-        let mut table = IndexTable::new();
+        let mut table = IndexTable::new(1000);
         assert_eq!(table.len(), 0);
         table.insert(TestId(0), "a");
         assert_eq!(table.len(), 1);
@@ -294,7 +302,7 @@ mod tests {
 
     #[test]
     fn get_mut_allows_mutation() {
-        let mut table = IndexTable::new();
+        let mut table = IndexTable::new(1000);
         table.insert(TestId(0), "hello");
         if let Some(v) = table.get_mut(TestId(0)) {
             *v = "world";
@@ -304,13 +312,13 @@ mod tests {
 
     #[test]
     fn get_mut_nonexistent_id() {
-        let mut table: IndexTable<TestId, &str> = IndexTable::new();
+        let mut table: IndexTable<TestId, &str> = IndexTable::new(1000);
         assert_eq!(table.get_mut(TestId(0)), None);
     }
 
     #[test]
     fn iter_mut_covers_all_entries_and_allows_mutation() {
-        let mut table = IndexTable::new();
+        let mut table = IndexTable::new(1000);
         table.insert(TestId(0), "a");
         table.insert(TestId(2), "c");
         let mut seen = Vec::new();
@@ -327,7 +335,7 @@ mod tests {
 
     #[test]
     fn get_disjoint_both_out_of_bounds() {
-        let mut table: IndexTable<TestId, &str> = IndexTable::new();
+        let mut table: IndexTable<TestId, &str> = IndexTable::new(1000);
         let (r, w) = table.get_disjoint(TestId(10), TestId(20)).unwrap();
         assert!(r.is_none());
         assert!(w.is_none());
@@ -335,7 +343,7 @@ mod tests {
 
     #[test]
     fn get_disjoint_write_out_of_bounds() {
-        let mut table: IndexTable<TestId, &str> = IndexTable::new();
+        let mut table: IndexTable<TestId, &str> = IndexTable::new(1000);
         table.insert(TestId(0), "a");
         // When either index is beyond the storage length, both are None
         let (r, w) = table.get_disjoint(TestId(0), TestId(10)).unwrap();
@@ -345,7 +353,7 @@ mod tests {
 
     #[test]
     fn get_disjoint_read_out_of_bounds() {
-        let mut table: IndexTable<TestId, &str> = IndexTable::new();
+        let mut table: IndexTable<TestId, &str> = IndexTable::new(1000);
         table.insert(TestId(0), "a");
         // When either index is beyond the storage length, both are None
         let (r, w) = table.get_disjoint(TestId(10), TestId(0)).unwrap();
@@ -355,7 +363,7 @@ mod tests {
 
     #[test]
     fn len_after_overwrite() {
-        let mut table = IndexTable::new();
+        let mut table = IndexTable::new(1000);
         table.insert(TestId(0), "a");
         table.insert(TestId(0), "b");
         assert_eq!(table.len(), 1);
@@ -363,20 +371,20 @@ mod tests {
 
     #[test]
     fn is_empty_on_new_table() {
-        let table: IndexTable<TestId, &str> = IndexTable::new();
+        let table: IndexTable<TestId, &str> = IndexTable::new(1000);
         assert!(table.is_empty());
     }
 
     #[test]
     fn is_empty_after_insert() {
-        let mut table: IndexTable<TestId, &str> = IndexTable::new();
+        let mut table: IndexTable<TestId, &str> = IndexTable::new(1000);
         table.insert(TestId(0), "a");
         assert!(!table.is_empty());
     }
 
     #[test]
     fn is_empty_after_clear() {
-        let mut table: IndexTable<TestId, &str> = IndexTable::new();
+        let mut table: IndexTable<TestId, &str> = IndexTable::new(1000);
         table.insert(TestId(0), "a");
         table.insert(TestId(1), "b");
         table.clear();
@@ -386,7 +394,7 @@ mod tests {
 
     #[test]
     fn clear_removes_all_entries() {
-        let mut table: IndexTable<TestId, &str> = IndexTable::new();
+        let mut table: IndexTable<TestId, &str> = IndexTable::new(1000);
         table.insert(TestId(0), "a");
         table.insert(TestId(2), "c");
         table.clear();
@@ -396,7 +404,7 @@ mod tests {
 
     #[test]
     fn shrink_to_fit_removes_trailing_none_slots() {
-        let mut table: IndexTable<TestId, &str> = IndexTable::new();
+        let mut table: IndexTable<TestId, &str> = IndexTable::new(1000);
         table.insert(TestId(0), "a");
         // After inserting at id 10, internal storage must be at least 11
         // entries.  shrink_to_fit should truncate to exactly 11.
@@ -408,33 +416,30 @@ mod tests {
 
     #[test]
     fn shrink_to_fit_empty() {
-        let mut table: IndexTable<TestId, &str> = IndexTable::new();
+        let mut table: IndexTable<TestId, &str> = IndexTable::new(1000);
         table.shrink_to_fit();
         assert!(table.is_empty());
     }
 
     #[test]
     fn clone_produces_independent_table() {
-        let mut table: IndexTable<TestId, &str> = IndexTable::new();
+        let mut table: IndexTable<TestId, &str> = IndexTable::new(1000);
         table.insert(TestId(0), "a");
         let cloned = table.clone();
         assert_eq!(cloned.get(TestId(0)), Some(&"a"));
     }
 
     #[test]
-    fn insert_rejects_id_at_max_capacity() {
-        let mut table: IndexTable<TestId, &str> = IndexTable::new();
-        assert!(!table.insert(
-            TestId(u32::try_from(MAX_TABLE_CAPACITY).unwrap()),
-            "overflow"
-        ));
+    fn insert_rejects_id_at_capacity() {
+        let mut table: IndexTable<TestId, &str> = IndexTable::new(10);
+        assert_eq!(table.insert(TestId(10), "overflow"), OutOfRange);
         assert_eq!(table.len(), 0);
     }
 
     #[test]
-    fn insert_rejects_id_beyond_max_capacity() {
-        let mut table: IndexTable<TestId, &str> = IndexTable::new();
-        assert!(!table.insert(TestId(u32::MAX), "far"));
+    fn insert_rejects_id_beyond_capacity() {
+        let mut table: IndexTable<TestId, &str> = IndexTable::new(10);
+        assert_eq!(table.insert(TestId(u32::MAX), "far"), OutOfRange);
         assert_eq!(table.len(), 0);
     }
 }

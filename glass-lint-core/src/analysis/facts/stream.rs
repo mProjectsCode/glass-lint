@@ -117,6 +117,14 @@ impl<T> FactStream<T> {
         self.facts.get(id.index()?)
     }
 
+    /// The number of functions registered in the stream.
+    ///
+    /// At minimum 1 (the implicit program-level function at [`FunctionId`] 0)
+    /// even when no user-defined functions exist.
+    pub(in crate::analysis) fn function_count(&self) -> usize {
+        self.function_parameters.len().max(1)
+    }
+
     /// Borrow the canonical path table for read-only projection queries.
     pub(in crate::analysis) fn paths(&self) -> &PathInterner {
         &self.paths

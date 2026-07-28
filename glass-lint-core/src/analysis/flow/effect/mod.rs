@@ -488,11 +488,21 @@ impl FunctionEffect {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct FunctionEffects {
     by_id: FunctionTable<FunctionEffect>,
     budget_exhausted: bool,
     operation_count: usize,
+}
+
+impl Default for FunctionEffects {
+    fn default() -> Self {
+        Self {
+            by_id: FunctionTable::new(0),
+            budget_exhausted: false,
+            operation_count: 0,
+        }
+    }
 }
 
 impl FunctionEffects {
@@ -514,7 +524,11 @@ impl FunctionEffects {
 
     #[allow(clippy::too_many_lines)]
     pub(in crate::analysis) fn collect(stream: &FactStream<Frozen>, limit: usize) -> Self {
-        let mut effects = Self::default();
+        let mut effects = Self {
+            by_id: FunctionTable::new(stream.function_count()),
+            budget_exhausted: false,
+            operation_count: 0,
+        };
         if !stream.is_valid() {
             return effects;
         }
@@ -522,7 +536,7 @@ impl FunctionEffects {
         let mut value_provenance = HashMap::new();
 
         if budget.try_push() {
-            effects.by_id.insert(
+            let _ = effects.by_id.insert(
                 FunctionId(0),
                 FunctionEffect {
                     id: FunctionId(0),
@@ -547,7 +561,7 @@ impl FunctionEffects {
                     continue;
                 }
                 let params = stream.function_parameters(*id);
-                effects.by_id.insert(
+                let _ = effects.by_id.insert(
                     *id,
                     FunctionEffect {
                         id: *id,

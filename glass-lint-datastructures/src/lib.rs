@@ -33,4 +33,4 @@ pub use path::{NamePath, Path, PathView, SymbolPath};
 pub use path_trie::{
     ParentPathStore, PathId, PathInterner, PathNode, PathSegment, PathSegmentInput, PathSegments,
 };
-pub use table::{IdIndex, IndexTable};
+pub use table::{IdIndex, IndexTable, InsertOutcome};
