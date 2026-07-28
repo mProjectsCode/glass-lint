@@ -84,6 +84,33 @@ fn fact_count_is_independent_of_enabled_rules() {
 }
 
 #[test]
+fn fact_builder_reuses_names_collected_by_scope_pass() {
+    let source = r"
+        const result = globalThis.fetch('/api');
+        result.then(value => value.json());
+        new Constructor({ option: result });
+    ";
+    let parsed = crate::parse(source, "name-reuse.js").expect("source should parse");
+    let mut resolver = Resolver::collect(&parsed.program, source);
+    let before = resolver
+        .name_snapshot()
+        .iter()
+        .map(|(_, name)| name.to_owned())
+        .collect::<Vec<_>>();
+
+    let mut builder = FactBuilder::new(&mut resolver);
+    parsed.program.visit_with(&mut builder);
+    let _ = builder.into_stream();
+
+    let after = resolver
+        .name_snapshot()
+        .iter()
+        .map(|(_, name)| name.to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(after, before, "fact construction must not intern new names");
+}
+
+#[test]
 fn optional_chain_does_not_double_record_roles() {
     let src = "foo?.bar?.baz();";
     let stream = build_facts(src, "opt.js");

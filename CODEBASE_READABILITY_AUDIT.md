@@ -30,10 +30,13 @@ Implemented a bounded SWC-token pass before AST construction. It derives delimit
 - **Fix Complexity** High
 - **Category:** Complexity
 - **Location:** `glass-lint-core/src/analysis/lowering/mod.rs:119-148`, `glass-lint-core/src/analysis/lowering/mod.rs:230-300`, `glass-lint-core/src/analysis/scope/mod.rs:88-103`, `glass-lint-core/src/analysis/scope/build/plan.rs:164-238`
+- **Status:** Fixed
 
-Every cache miss walks the complete AST for scope planning, again for source-order scope collection, and again for fact building. The declaration planner also interns every identifier, member property, and property name, after which the collector and resolver repeat many of the same lookups; this is a structural multiplier in the hottest per-file path.
+Every cache miss walks the complete AST for scope planning, again for source-order scope collection, and again for fact building. Those passes own distinct declaration, source-order, and fact state, but the collector and resolver were still mutating the same name table for names already seeded by the planner, repeating work in the hottest per-file path.
 
-Retain one declaration/scope-shape prepass, but make it intern declarations and structural property keys only; let collection own interning for use sites and reuse those IDs through fact construction. Preserve explicit planner outputs for hoisting, shadowing, reassignment, and scope validation, and charge the same bounded events regardless of phase. Recommendation: instrument stage visits, intern hits/misses, and semantic charges, then accept the change only when those invariants and lowering benchmarks remain stable.
+Kept the declaration/scope-shape prepass and its identifier seeding because source-order collection must classify initializer roots before visiting their child identifiers. Collection now looks up preseeded declaration, assignment, function, and call names first, falling back to interning only for genuinely synthesized names; fact construction uses the same lookup-first behavior. Removed the obsolete mutable post-freeze interning wrappers, preserved the existing two name-operation budget charges, and added a regression asserting that fact construction does not add collected source names.
+
+**Check:** The focused name-reuse test, rooted-constructor regression, and full `glass-lint-core --no-default-features` test suite passed. `make ci` passed in full on 2026-07-28: workspace check, Clippy, 465 core unit tests, workspace tests/doctests, 12 E2E cases, 2 project cases, 70 JavaScript rule cases, and 98 Obsidian rule cases.
 
 #### READ-003 — Conditional assignments fall back to an older strict identity
 - **Severity:** High

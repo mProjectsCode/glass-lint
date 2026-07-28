@@ -66,7 +66,7 @@ impl ScopePass for ScopeCollector<'_> {
             // after_function hooks can record function_scopes metadata.
             if let (Pat::Ident(ident), Some(init)) = (&declarator.name, init) {
                 self.budget.try_charge();
-                if let Ok(name_id) = self.names.intern(ident.id.sym.as_ref()) {
+                if let Some(name_id) = self.lookup_or_intern_name(ident.id.sym.as_ref()) {
                     if let Expr::Arrow(arrow) = init {
                         self.pending_function_names
                             .insert(arrow.span.lo, (scope, name_id));
@@ -174,7 +174,7 @@ impl ScopePass for ScopeCollector<'_> {
                 ));
             }
             self.budget.try_charge();
-            if let Ok(callee_name) = self.names.intern(callee.sym.as_ref()) {
+            if let Some(callee_name) = self.lookup_or_intern_name(callee.sym.as_ref()) {
                 self.calls.push((
                     self.current_scope(),
                     callee_name,
@@ -202,7 +202,7 @@ impl ScopePass for ScopeCollector<'_> {
     fn after_fn_decl(&mut self, fn_decl: &FnDecl, scope: ScopeId) {
         let parameters = Self::function_parameters(&fn_decl.function);
         self.budget.try_charge();
-        if let Ok(name_id) = self.names.intern(fn_decl.ident.sym.as_ref()) {
+        if let Some(name_id) = self.lookup_or_intern_name(fn_decl.ident.sym.as_ref()) {
             let parent = self
                 .scopes
                 .get(scope.index())

@@ -83,7 +83,7 @@ impl ScopeCollector<'_> {
     ) {
         let name = name.into();
         self.budget.try_charge();
-        let Ok(name) = self.names.intern(name.as_str()) else {
+        let Some(name) = self.lookup_or_intern_name(name.as_str()) else {
             self.name_exhausted = true;
             return;
         };
@@ -119,6 +119,12 @@ impl ScopeCollector<'_> {
 
     pub(super) fn name_id(&self, name: &str) -> Option<NameId> {
         self.names.lookup(name)
+    }
+
+    pub(super) fn lookup_or_intern_name(&mut self, name: &str) -> Option<NameId> {
+        self.names
+            .lookup(name)
+            .or_else(|| self.names.intern(name).ok())
     }
 
     pub(super) fn interned_name(&self, name: &str) -> Option<NameId> {

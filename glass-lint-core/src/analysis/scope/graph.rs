@@ -309,12 +309,6 @@ pub(in crate::analysis) struct ScopeGraphParts {
 impl FrozenScopeGraph {
     // -- Name-environment delegation --
 
-    /// Extend the name table after freeze (used by the resolver during fact
-    /// building).  This does not change frozen scope/binding/mutation indexes.
-    pub(in crate::analysis) fn intern_name_mut(&mut self, name: &str) -> Option<NameId> {
-        self.names.intern_name_mut(name)
-    }
-
     pub(in crate::analysis) fn name_table_mut(&mut self) -> &mut NameTable {
         self.names.name_table_mut()
     }

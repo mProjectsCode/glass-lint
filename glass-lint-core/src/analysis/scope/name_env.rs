@@ -22,10 +22,6 @@ impl NameEnvironment {
         self.names.lookup(name)
     }
 
-    pub(super) fn intern_name_mut(&mut self, name: &str) -> Option<NameId> {
-        self.names.intern(name).ok()
-    }
-
     pub(super) fn name_path(&self, path: &SymbolPath) -> Option<NamePath> {
         self.names.lookup_path(path)
     }

@@ -17,7 +17,7 @@ impl ScopeCollector<'_> {
         provenance: BindingProvenance,
     ) {
         self.budget.try_charge();
-        let Ok(name_id) = self.names.intern(name) else {
+        let Some(name_id) = self.lookup_or_intern_name(name) else {
             self.name_exhausted = true;
             return;
         };

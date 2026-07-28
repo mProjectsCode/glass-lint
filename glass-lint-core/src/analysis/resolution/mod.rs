@@ -235,12 +235,10 @@ impl Resolver<'_> {
 
     pub(super) fn intern_name(&mut self, name: &str) -> Result<NameId, NameExhausted> {
         self.budget.try_charge();
-        self.scopes.intern_name_mut(name).ok_or_else(|| {
-            self.scopes.name_exhaustion().unwrap_or(NameExhausted {
-                limit: 0,
-                attempted: 0,
-            })
-        })
+        if let Some(id) = self.scopes.name_id(name) {
+            return Ok(id);
+        }
+        self.scopes.name_table_mut().intern(name)
     }
 
     pub(super) fn name_path(&self, path: &SymbolPath) -> Option<NamePath> {
