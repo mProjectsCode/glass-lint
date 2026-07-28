@@ -31,25 +31,14 @@ use crate::{
 /// declarations are compiled once while a catalog is built and never enter
 /// the per-file analysis path.
 ///
-/// This is the sole compiled-plan type.  Consumers access physical roots,
-/// clauses, and flows through accessors; there is no separate plan wrapper.
+/// This is the sole compiled-plan type.  Consumers access physical roots
+/// and flows through accessors; there is no separate plan wrapper and no
+/// backward-compat clause storage.
 #[derive(Debug, Clone)]
 pub(crate) struct CompiledMatcherPlan {
     /// Physical plan (Phase 6): executable operators produced by the planner.
     physical_plan: PhysicalPlan,
-    /// Backward-compat clause storage derived from the physical plan.
-    /// Retained while analysis layer migrates to physical roots.
-    clauses: Box<[QueryClause]>,
     flows: Box<[CompiledObjectFlow]>,
-}
-
-#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
-pub(crate) struct QueryClause {
-    pub(crate) identity: IdentityConstraint,
-    pub(crate) event: EventPredicate,
-    pub(crate) subject: SubjectConstraint,
-    pub(crate) constraints: Box<[QueryConstraint]>,
-    pub(crate) evidence: EvidenceDescriptor,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -121,10 +110,12 @@ impl IdentityConstraint {
             || source.is_equal_or_descendant_of(path))
     }
 
+    #[allow(dead_code)]
     pub(crate) fn exact_root_matches(&self, source: &SymbolPath) -> bool {
         matches!(self, Self::Rooted { path } if path == source)
     }
 
+    #[allow(dead_code)]
     pub(crate) fn identity_module_matches(&self, module: &str, export: &str) -> bool {
         matches!(self, Self::ModuleExport { module: expected_module, export: expected_export } if expected_module == module && expected_export == export)
             || matches!(self, Self::PackageModuleExport { module: expected_module, export: expected_export } if expected_module.matches(module) && expected_export == export)
@@ -140,17 +131,6 @@ pub(crate) enum EventPredicate {
     ClassReference,
     Import,
     StringReference,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub(crate) enum SubjectConstraint {
-    Direct,
-    ReturnedFrom {
-        producer: Box<IdentityConstraint>,
-    },
-    InstanceOf {
-        constructor: Box<IdentityConstraint>,
-    },
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -241,91 +221,14 @@ impl fmt::Display for InvalidQueryClause {
     }
 }
 
-impl QueryClause {
-    pub(crate) fn validate(&self) -> Result<(), InvalidQueryClause> {
-        let dimensions_are_valid = matches!(
-            (&self.identity, &self.event, &self.subject),
-            (
-                IdentityConstraint::Any { .. }
-                    | IdentityConstraint::Global { .. }
-                    | IdentityConstraint::ModuleExport { .. }
-                    | IdentityConstraint::PackageModuleExport { .. },
-                EventPredicate::Call | EventPredicate::Construct,
-                SubjectConstraint::Direct,
-            ) | (
-                IdentityConstraint::Any { .. }
-                    | IdentityConstraint::Rooted { .. }
-                    | IdentityConstraint::ModuleNamespace { .. }
-                    | IdentityConstraint::PackageModuleNamespace { .. },
-                EventPredicate::MemberCall { .. } | EventPredicate::MemberRead { .. },
-                SubjectConstraint::Direct,
-            ) | (
-                IdentityConstraint::Any { .. }
-                    | IdentityConstraint::ModuleExport { .. }
-                    | IdentityConstraint::PackageModuleExport { .. },
-                EventPredicate::ClassReference,
-                SubjectConstraint::Direct,
-            ) | (
-                IdentityConstraint::LiteralString { .. }
-                    | IdentityConstraint::PackageSpecifier { .. },
-                EventPredicate::Import | EventPredicate::StringReference,
-                SubjectConstraint::Direct,
-            ) | (
-                IdentityConstraint::Rooted { .. },
-                EventPredicate::MemberCall { .. } | EventPredicate::MemberRead { .. },
-                SubjectConstraint::ReturnedFrom { .. },
-            ) | (
-                IdentityConstraint::ModuleExport { .. }
-                    | IdentityConstraint::PackageModuleExport { .. },
-                EventPredicate::MemberCall { .. },
-                SubjectConstraint::InstanceOf { .. },
-            )
-        );
-        if !dimensions_are_valid {
-            return Err(InvalidQueryClause::ImpossibleDimensions);
-        }
-        let subject_identity_is_valid = match &self.subject {
-            SubjectConstraint::Direct => match (&self.identity, &self.event) {
-                (
-                    IdentityConstraint::Any { name, .. },
-                    EventPredicate::MemberCall { member } | EventPredicate::MemberRead { member },
-                ) => member.eq_chain(name),
-                (
-                    IdentityConstraint::Rooted { path },
-                    EventPredicate::MemberCall { member } | EventPredicate::MemberRead { member },
-                ) => path == member,
-                _ => true,
-            },
-            SubjectConstraint::ReturnedFrom { producer } => producer.as_ref() == &self.identity,
-            SubjectConstraint::InstanceOf { constructor } => constructor.as_ref() == &self.identity,
-        };
-        if !subject_identity_is_valid {
-            return Err(InvalidQueryClause::ImpossibleDimensions);
-        }
-        if self.identity.is_empty() {
-            return Err(InvalidQueryClause::ImpossibleDimensions);
-        }
-        if !self.constraints.is_empty()
-            && !matches!(
-                self.event,
-                EventPredicate::Call | EventPredicate::MemberCall { .. }
-            )
-        {
-            return Err(InvalidQueryClause::ConstraintsRequireCallEvent);
-        }
-        Ok(())
-    }
-}
-
-/// Shared declaration compilation: convert each declaration to a logical
-/// query, validate it, normalize it, then produce both a physical plan and
-/// backward-compatible clauses.
-fn collect_clauses(
-    decls: &[MatcherDecl],
-) -> Result<(Vec<QueryClause>, PhysicalPlan), MatcherBuildError> {
+/// Compile declarations into a physical plan.
+///
+/// Each declaration is converted to a logical query, validated, normalized,
+/// and planned into physical roots.  Roots are sorted for deterministic
+/// execution order across equivalent queries.
+fn compile_declarations(decls: &[MatcherDecl]) -> Result<PhysicalPlan, MatcherBuildError> {
     let mut all_roots = Vec::new();
     let mut merged_requirements = normalize::PlanRequirements::default();
-    let mut clauses: Vec<QueryClause> = Vec::new();
 
     for (i, decl) in decls.iter().enumerate() {
         let var_id = VarId::new(u32::try_from(i).unwrap_or(u32::MAX));
@@ -346,35 +249,22 @@ fn collect_clauses(
         let query_plan = physical::plan_normalized(&normalized, requirements);
         all_roots.extend(query_plan.roots().iter().cloned());
         merged_requirements.merge_from(query_plan.requirements());
-
-        // Backward-compat clause for each root in this query.
-        let root_clauses = physical::roots_to_clauses(query_plan.roots());
-        clauses.extend(root_clauses);
     }
 
-    clauses.sort();
-    clauses.dedup();
-    for clause in &clauses {
-        clause
-            .validate()
-            .map_err(|error| MatcherBuildError::InvalidLoweredQuery(error.to_string()))?;
-    }
-
-    // Sort roots for deterministic order across equivalent queries.
+    // Sort and deduplicate roots for deterministic order across equivalent
+    // queries.  Deduplication ensures that identical declarations produce
+    // one root rather than duplicated work.
     let mut sorted_roots: Vec<physical::PhysicalRoot> = all_roots;
     sorted_roots.sort();
+    sorted_roots.dedup();
     let physical_plan = PhysicalPlan::new(sorted_roots.into_boxed_slice(), merged_requirements);
     physical::validate_physical_plan(&physical_plan, 0)
         .map_err(|e| MatcherBuildError::InvalidLoweredQuery(e.to_string()))?;
 
-    Ok((clauses, physical_plan))
+    Ok(physical_plan)
 }
 
 impl CompiledMatcherPlan {
-    pub(crate) fn clauses(&self) -> &[QueryClause] {
-        &self.clauses
-    }
-
     pub(crate) fn flows(&self) -> &[CompiledObjectFlow] {
         &self.flows
     }
@@ -388,14 +278,12 @@ impl CompiledMatcherPlan {
         self.physical_plan.summary()
     }
 
-    /// Compile declarations into clauses and a physical plan.
-    /// Used by test helpers.
+    /// Compile declarations into a physical plan.  Used by test helpers.
     #[cfg(test)]
     pub(crate) fn compile_decls(decls: &[MatcherDecl]) -> Result<Self, MatcherBuildError> {
-        let (clauses, physical_plan) = collect_clauses(decls)?;
+        let physical_plan = compile_declarations(decls)?;
         Ok(Self {
             physical_plan,
-            clauses: clauses.into_boxed_slice(),
             flows: Box::new([]),
         })
     }
@@ -405,7 +293,7 @@ impl CompiledMatcherPlan {
         decls: &[MatcherDecl],
         flows: &[crate::api::rule::ObjectFlowMatcher],
     ) -> Result<Self, MatcherBuildError> {
-        let (clauses, mut physical_plan) = collect_clauses(decls)?;
+        let mut physical_plan = compile_declarations(decls)?;
         let compiled_flows: Vec<CompiledObjectFlow> = flows
             .iter()
             .map(|flow| {
@@ -433,7 +321,6 @@ impl CompiledMatcherPlan {
 
         Ok(Self {
             physical_plan,
-            clauses: clauses.into_boxed_slice(),
             flows: compiled_flows.into_boxed_slice(),
         })
     }
@@ -568,11 +455,11 @@ mod tests {
                 .expect("valid matcher declaration"),
         ];
         let plan = CompiledMatcherPlan::compile_decls(&decls).unwrap();
-        assert!(!plan.clauses().is_empty());
+        assert!(!plan.physical_roots().is_empty());
     }
 
     #[test]
-    fn argument_matcher_compiles_to_one_query_clause() {
+    fn argument_matcher_compiles_to_constrained_scan() {
         let decl = MatcherDecl::builder()
             .call_global("fetch")
             .arg(0, ValueMatcher::static_string())
@@ -580,10 +467,19 @@ mod tests {
             .build()
             .unwrap();
         let plan = CompiledMatcherPlan::compile_decls(&[decl]).unwrap();
-        let clauses = plan.clauses();
-        assert_eq!(clauses.len(), 1);
-        assert!(!clauses[0].constraints.is_empty());
-        assert_eq!(clauses[0].evidence.kind, MatchKind::CallArgument);
+        let roots = plan.physical_roots();
+        assert_eq!(roots.len(), 1);
+        match &roots[0] {
+            physical::PhysicalRoot::ConstrainedScan {
+                constraints,
+                evidence,
+                ..
+            } => {
+                assert!(!constraints.is_empty());
+                assert_eq!(evidence.kind, MatchKind::CallArgument);
+            }
+            other => panic!("expected ConstrainedScan, got {other:?}"),
+        }
     }
 
     #[test]
@@ -624,61 +520,67 @@ mod tests {
     }
 
     #[test]
-    fn query_plan_compiles_declarations_into_composable_dimensions() {
-        let decls = vec![
-            MatcherDecl::builder()
-                .call_global("fetch")
-                .build()
-                .expect("valid matcher declaration"),
-            MatcherDecl::builder()
-                .member_call_rooted("window.open")
-                .build()
-                .expect("valid matcher declaration"),
-            MatcherDecl::builder()
-                .member_read_returned("create", "token")
-                .build()
-                .expect("valid matcher declaration"),
-            MatcherDecl::builder()
-                .member_call_instance("pkg", "Client", "send")
-                .build()
-                .expect("valid matcher declaration"),
-            MatcherDecl::builder()
-                .import_exact("node:fs")
-                .build()
-                .expect("valid matcher declaration"),
-            MatcherDecl::builder()
-                .string_contains("https://")
-                .build()
-                .expect("valid matcher declaration"),
-        ];
-        let plan = CompiledMatcherPlan::compile_decls(&decls).unwrap();
-        let clauses = plan.clauses();
-        assert!(clauses.iter().any(|clause| matches!(
-            (&clause.identity, &clause.event, &clause.subject),
-            (IdentityConstraint::Global { name, strength: IdentityStrength::Strict }, EventPredicate::Call, SubjectConstraint::Direct) if name == "fetch"
+    fn query_plan_compiles_declarations_into_physical_roots() {
+        let roots = {
+            let decls = vec![
+                MatcherDecl::builder()
+                    .call_global("fetch")
+                    .build()
+                    .expect("valid matcher declaration"),
+                MatcherDecl::builder()
+                    .member_call_rooted("window.open")
+                    .build()
+                    .expect("valid matcher declaration"),
+                MatcherDecl::builder()
+                    .member_read_returned("create", "token")
+                    .build()
+                    .expect("valid matcher declaration"),
+                MatcherDecl::builder()
+                    .member_call_instance("pkg", "Client", "send")
+                    .build()
+                    .expect("valid matcher declaration"),
+                MatcherDecl::builder()
+                    .import_exact("node:fs")
+                    .build()
+                    .expect("valid matcher declaration"),
+                MatcherDecl::builder()
+                    .string_contains("https://")
+                    .build()
+                    .expect("valid matcher declaration"),
+            ];
+            let plan = CompiledMatcherPlan::compile_decls(&decls).unwrap();
+            plan.physical_roots().to_vec()
+        };
+        assert!(roots.iter().any(|root| matches!(
+            root,
+            physical::PhysicalRoot::IndexedScan { identity: IdentityConstraint::Global { name, strength: IdentityStrength::Strict }, event: EventPredicate::Call, .. } if name == "fetch"
         )));
-        assert!(clauses.iter().any(|clause| matches!(
-            (&clause.identity, &clause.event),
-            (IdentityConstraint::Rooted { path }, EventPredicate::MemberCall { member }) if *path == SymbolPath::from("window.open") && member.eq_chain("window.open")
+        assert!(roots.iter().any(|root| matches!(
+            root,
+            physical::PhysicalRoot::IndexedScan { identity: IdentityConstraint::Rooted { path }, event: EventPredicate::MemberCall { member }, .. } if *path == SymbolPath::from("window.open") && member.eq_chain("window.open")
         )));
-        assert!(clauses.iter().any(|clause| matches!(
-            (&clause.subject, &clause.event),
-            (SubjectConstraint::ReturnedFrom { .. }, EventPredicate::MemberRead { member }) if member.eq_chain("token")
+        assert!(roots.iter().any(|root| matches!(
+            root,
+            physical::PhysicalRoot::ReturnedSubject { identity: IdentityConstraint::Rooted { path }, event: EventPredicate::MemberRead { member }, .. } if path.eq_chain("create") && member.eq_chain("token")
         )));
-        assert!(clauses.iter().any(|clause| matches!(
-            (&clause.subject, &clause.event),
-            (SubjectConstraint::InstanceOf { .. }, EventPredicate::MemberCall { member }) if member.eq_chain("send")
+        assert!(roots.iter().any(|root| matches!(
+            root,
+            physical::PhysicalRoot::InstanceSubject { constructor: IdentityConstraint::ModuleExport { module, export }, member, .. } if module == "pkg" && export == "Client" && member.eq_chain("send")
         )));
-        assert!(
-            clauses
-                .iter()
-                .any(|clause| matches!(clause.event, EventPredicate::Import))
-        );
-        assert!(
-            clauses
-                .iter()
-                .any(|clause| matches!(clause.event, EventPredicate::StringReference))
-        );
+        assert!(roots.iter().any(|root| matches!(
+            root,
+            physical::PhysicalRoot::IndexedScan {
+                event: EventPredicate::Import,
+                ..
+            }
+        )));
+        assert!(roots.iter().any(|root| matches!(
+            root,
+            physical::PhysicalRoot::IndexedScan {
+                event: EventPredicate::StringReference,
+                ..
+            }
+        )));
     }
 
     #[test]
@@ -705,8 +607,10 @@ mod tests {
         ];
         let first = CompiledMatcherPlan::compile_decls(&first).unwrap();
         let second = CompiledMatcherPlan::compile_decls(&second).unwrap();
-        assert_eq!(first.clauses(), second.clauses());
-        assert_eq!(first.clauses(), first.clauses());
+        assert_eq!(
+            format!("{:?}", first.physical_roots()),
+            format!("{:?}", second.physical_roots())
+        );
     }
 
     #[test]
@@ -718,12 +622,11 @@ mod tests {
             .build()
             .unwrap();
         let plan = CompiledMatcherPlan::compile_decls(&[decl]).unwrap();
-        let clauses = plan.clauses();
-        assert_eq!(clauses.len(), 1);
-        for left in clauses {
-            for right in clauses {
-                assert_eq!(left == right, left.cmp(right).is_eq());
-            }
-        }
+        let roots = plan.physical_roots();
+        assert_eq!(roots.len(), 1);
+        assert!(matches!(
+            &roots[0],
+            physical::PhysicalRoot::ConstrainedScan { .. }
+        ));
     }
 }

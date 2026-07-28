@@ -1245,53 +1245,53 @@ strings exclusively through physical query plans.
 
 ### Migration order
 
-- [ ] 1. exact import and package import;
-- [ ] 2. literal string reference;
-- [ ] 3. global and heuristic call;
-- [ ] 4. module and package-export call;
-- [ ] 5. global/module/heuristic construction;
-- [ ] 6. class reference;
-- [ ] 7. rooted member call/read;
-- [ ] 8. module/package namespace member call/read.
+- [x] 1. exact import and package import;
+- [x] 2. literal string reference;
+- [x] 3. global and heuristic call;
+- [x] 4. module and package-export call;
+- [x] 5. global/module/heuristic construction;
+- [x] 6. class reference;
+- [x] 7. rooted member call/read;
+- [x] 8. module/package namespace member call/read.
 
 This order begins with simple index scans and ends with more identity-sensitive
 member cases.
 
 ### Tasks for each family
 
-- [ ] 1. Add logical lowering.
-- [ ] 2. Add physical planning.
-- [ ] 3. Execute through the owning occurrence index.
-- [ ] 4. Preserve project overlay behavior.
-- [ ] 5. Preserve masking of unresolved/relinked identities.
-- [ ] 6. Preserve environment global-object aliases.
-- [ ] 7. Preserve exact evidence kind, symbol, and location.
-- [ ] 8. Port unit and integration tests.
-- [ ] 9. Remove the corresponding old clause dispatch.
+- [x] 1. Add logical lowering.
+- [x] 2. Add physical planning.
+- [x] 3. Execute through the owning occurrence index.
+- [x] 4. Preserve project overlay behavior.
+- [x] 5. Preserve masking of unresolved/relinked identities.
+- [x] 6. Preserve environment global-object aliases.
+- [x] 7. Preserve exact evidence kind, symbol, and location.
+- [x] 8. Port unit and integration tests.
+- [x] 9. Remove the corresponding old clause dispatch.
 
 ### Required adversarial coverage
 
-- [ ] lexical shadowing;
-- [ ] reassignment before use;
-- [ ] reassignment after use;
-- [ ] local same-name lookalikes;
-- [ ] ESM aliases;
-- [ ] CommonJS aliases;
-- [ ] namespace imports;
-- [ ] destructuring;
-- [ ] interop forms;
-- [ ] package root versus lookalike prefix;
-- [ ] exact module versus package-boundary match;
-- [ ] dynamic computed members;
-- [ ] supported static computed members;
-- [ ] ambiguous project exports; and
-- [ ] minified identifier shapes.
+- [x] lexical shadowing;
+- [x] reassignment before use;
+- [x] reassignment after use;
+- [x] local same-name lookalikes;
+- [x] ESM aliases;
+- [x] CommonJS aliases;
+- [x] namespace imports;
+- [x] destructuring;
+- [x] interop forms;
+- [x] package root versus lookalike prefix;
+- [x] exact module versus package-boundary match;
+- [x] dynamic computed members;
+- [x] supported static computed members;
+- [x] ambiguous project exports; and
+- [x] minified identifier shapes.
 
 ### Exit criteria
 
-- [ ] Ordinary indexed matching uses only the new physical plan executor.
-- [ ] Old event/identity dispatch for migrated families is deleted.
-- [ ] Findings and operation counts match the baseline unless explicitly updated.
+- [x] Ordinary indexed matching uses only the new physical plan executor.
+- [x] Old event/identity dispatch for migrated families is deleted.
+- [x] Findings and operation counts match the baseline unless explicitly updated.
 
 ## Phase 8: Migrate value and argument constraints
 

@@ -8,17 +8,13 @@ use crate::{
         facts::{ArgumentView, CallArgInfo, CallUnwrap, FactPayload, SemanticFact},
         matching::{
             ModuleIdentityMap,
-            arguments::identity::{
-                call_identity_matches, member_identity_matches, member_subject_matches,
-            },
+            arguments::identity::{call_identity_matches, member_identity_matches},
         },
         project::model::ExportResolution,
         syntax::SymbolCallProvenance,
         value::{ValueId, ValueTable},
     },
-    api::compiler::rule::{
-        EventPredicate, IdentityConstraint, QueryClause, QueryConstraint, SubjectConstraint,
-    },
+    api::compiler::rule::{EventPredicate, IdentityConstraint, QueryConstraint},
 };
 
 pub(super) struct PreparedClausePaths {
@@ -28,18 +24,22 @@ pub(super) struct PreparedClausePaths {
 }
 
 impl PreparedClausePaths {
-    pub(super) fn new(clause: &QueryClause, names: &NameTable) -> Self {
-        let member = match &clause.event {
+    pub(super) fn new(
+        identity: &IdentityConstraint,
+        event: &EventPredicate,
+        names: &NameTable,
+    ) -> Self {
+        let member = match event {
             EventPredicate::MemberCall { member } | EventPredicate::MemberRead { member } => {
                 names.lookup_path(member)
             }
             _ => None,
         };
-        let rooted = match &clause.identity {
+        let rooted = match identity {
             IdentityConstraint::Rooted { path } => names.lookup_path(path),
             _ => None,
         };
-        let any_name = match &clause.identity {
+        let any_name = match identity {
             IdentityConstraint::Any { name, .. } => {
                 names.lookup_path(&SymbolPath::from(name.as_str()))
             }
@@ -78,15 +78,15 @@ impl<'a> MatcherEvaluator<'a> {
     pub(super) fn fact_matches_clause(
         &self,
         fact: &SemanticFact,
-        clause: &QueryClause,
+        identity: &IdentityConstraint,
+        event: &EventPredicate,
+        constraints: &[QueryConstraint],
         paths: &PreparedClausePaths,
     ) -> bool {
         let FactPayload::Call {
             callee,
             syntactic_path,
             rooted_chain,
-            returned_member,
-            instance_class,
             call_provenance,
             callee_name,
             args,
@@ -100,13 +100,10 @@ impl<'a> MatcherEvaluator<'a> {
             callee_name.and_then(|id| self.names.resolve(id).map(Into::into));
         let call_provenance = self.overlaid_call_provenance(call_provenance, *callee);
 
-        match &clause.event {
+        match event {
             EventPredicate::Call => {
-                if !matches!(clause.subject, SubjectConstraint::Direct) {
-                    return false;
-                }
                 if !call_identity_matches(
-                    clause,
+                    identity,
                     &call_provenance,
                     callee_name.as_ref(),
                     syntactic_path.as_ref(),
@@ -114,23 +111,14 @@ impl<'a> MatcherEvaluator<'a> {
                 ) {
                     return false;
                 }
-                self.check_constrained_args(clause, args, unwrap.as_deref())
+                self.check_constrained_args(constraints, args, unwrap.as_deref())
             }
             EventPredicate::MemberCall { .. } => {
                 let Some(ref member) = paths.member else {
                     return false;
                 };
-                if !member_subject_matches(
-                    clause,
-                    member,
-                    returned_member.as_ref(),
-                    instance_class.as_ref(),
-                    self.names,
-                ) {
-                    return false;
-                }
                 if !member_identity_matches(
-                    clause,
+                    identity,
                     member,
                     paths.rooted.as_ref(),
                     syntactic_path.as_ref(),
@@ -140,7 +128,7 @@ impl<'a> MatcherEvaluator<'a> {
                 ) {
                     return false;
                 }
-                self.constraints_match(&clause.constraints, args)
+                self.constraints_match(constraints, args)
             }
             _ => false,
         }
@@ -206,13 +194,13 @@ impl<'a> MatcherEvaluator<'a> {
 
     fn check_constrained_args(
         &self,
-        clause: &QueryClause,
+        constraints: &[QueryConstraint],
         args: &[CallArgInfo],
         unwrap: Option<&CallUnwrap>,
     ) -> bool {
         unwrap.map_or_else(
-            || self.constraints_match(&clause.constraints, args),
-            |unwrap| self.constraints_match(&clause.constraints, &unwrap.effective_args),
+            || self.constraints_match(constraints, args),
+            |unwrap| self.constraints_match(constraints, &unwrap.effective_args),
         )
     }
 }

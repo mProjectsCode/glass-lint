@@ -10,7 +10,10 @@ use crate::{
         project::model::ExportResolution,
         value::ValueId,
     },
-    api::compiler::rule::QueryClause,
+    api::compiler::{
+        physical::PhysicalRoot,
+        rule::{EventPredicate, EvidenceDescriptor, IdentityConstraint, QueryConstraint},
+    },
 };
 
 mod evaluator;
@@ -18,10 +21,21 @@ mod identity;
 
 use evaluator::{MatcherEvaluator, PreparedClausePaths};
 
+/// Bundled data extracted from a `ConstrainedScan` root for the fallback
+/// linear scan path.
+type FallbackEntry<'a> = (
+    usize,
+    &'a IdentityConstraint,
+    &'a EventPredicate,
+    &'a [QueryConstraint],
+    &'a EvidenceDescriptor,
+    &'a PreparedClausePaths,
+);
+
 pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay(
     stream: &FactStream<Frozen>,
     indexes: &OccurrenceIndexes,
-    clauses: &[(usize, &QueryClause)],
+    roots: &[(usize, &PhysicalRoot)],
     evidence: &mut [Vec<ClassificationEvidence>],
     overlay: Option<&LinkedOccurrenceView<'_>>,
     identities: Option<&ModuleIdentityMap>,
@@ -31,52 +45,94 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
     let values = stream.values();
     let evaluator = MatcherEvaluator::new(names, values, identities, result_identities);
 
-    let prepared: Vec<PreparedClausePaths> = clauses
+    // Extract only ConstrainedScan roots (the constrained path only handles
+    // these; other root types are handled by the physical plan executor).
+    let constrained: Vec<(
+        usize,
+        &IdentityConstraint,
+        &EventPredicate,
+        &[QueryConstraint],
+        &EvidenceDescriptor,
+    )> = roots
         .iter()
-        .map(|(_, c)| PreparedClausePaths::new(c, names))
+        .filter_map(|(rule_index, root)| match root {
+            PhysicalRoot::ConstrainedScan {
+                identity,
+                event,
+                constraints,
+                evidence,
+            } => Some((*rule_index, identity, event, constraints.as_ref(), evidence)),
+            _ => None,
+        })
         .collect();
 
-    let mut fallback: Vec<(usize, &QueryClause, &PreparedClausePaths)> = Vec::new();
-    for ((rule_index, clause), paths) in clauses.iter().zip(prepared.iter()) {
-        let Some(candidates) = indexes.occurrences_for_clause(clause, overlay, names) else {
-            fallback.push((*rule_index, clause, paths));
+    let prepared: Vec<PreparedClausePaths> = constrained
+        .iter()
+        .map(|(_, identity, event, _, _)| PreparedClausePaths::new(identity, event, names))
+        .collect();
+
+    // Phase 1: Index-based candidate lookup.
+    // When the index lookup succeeds, candidates are filtered through the
+    // evaluator.  Roots whose index lookup fails are collected for the
+    // fallback linear scan (Phase 2).
+    let mut fallback: Vec<FallbackEntry<'_>> = Vec::new();
+    for ((rule_index, identity, event, constraints, evidence_desc), paths) in
+        constrained.iter().zip(prepared.iter())
+    {
+        let Some(candidates) = indexes.occurrences_for_indexed(identity, event, overlay, names)
+        else {
+            fallback.push((
+                *rule_index,
+                identity,
+                event,
+                constraints,
+                evidence_desc,
+                paths,
+            ));
             continue;
         };
         let matched: Vec<_> = candidates
             .into_iter()
             .filter(|occurrence| {
-                stream
-                    .fact(occurrence.event())
-                    .is_some_and(|fact| evaluator.fact_matches_clause(fact, clause, paths))
+                stream.fact(occurrence.event()).is_some_and(|fact| {
+                    evaluator.fact_matches_clause(fact, identity, event, constraints, paths)
+                })
             })
             .collect();
         if !matched.is_empty() {
             push_owned_evidence(
                 &mut evidence[*rule_index],
-                clause.evidence.kind,
-                clause.evidence.symbol.clone(),
+                evidence_desc.kind,
+                evidence_desc.symbol.clone(),
                 matched,
             );
         }
     }
-    let mut fallback_occurrences: Vec<Vec<Occurrence>> =
-        fallback.iter().map(|_| Vec::new()).collect();
-    for fact in stream.facts() {
-        for (i, (_, clause, paths)) in fallback.iter().enumerate() {
-            if evaluator.fact_matches_clause(fact, clause, paths) {
-                fallback_occurrences[i].push(Occurrence::new(fact.id, fact.span));
+
+    // Phase 2: Fallback linear scan for roots that the index could not
+    // resolve.  This handles cases where the call provenance is resolved
+    // through overlays (e.g., returned callables) rather than direct
+    // module/global index entries.
+    if !fallback.is_empty() {
+        let mut fallback_occurrences: Vec<Vec<Occurrence>> =
+            fallback.iter().map(|_| Vec::new()).collect();
+        for fact in stream.facts() {
+            for (i, (_, identity, event, constraints, _, paths)) in fallback.iter().enumerate() {
+                if evaluator.fact_matches_clause(fact, identity, event, constraints, paths) {
+                    fallback_occurrences[i].push(Occurrence::new(fact.id, fact.span));
+                }
             }
         }
-    }
-    for (i, (rule_index, clause, _paths)) in fallback.iter().enumerate() {
-        let occurrences = std::mem::take(&mut fallback_occurrences[i]);
-        if !occurrences.is_empty() {
-            push_owned_evidence(
-                &mut evidence[*rule_index],
-                clause.evidence.kind,
-                clause.evidence.symbol.clone(),
-                occurrences,
-            );
+        for (i, (rule_index, _, _, _, evidence_desc, _)) in fallback.iter().enumerate() {
+            let occurrences = std::mem::take(&mut fallback_occurrences[i]);
+            if !occurrences.is_empty() {
+                push_owned_evidence(
+                    &mut evidence[*rule_index],
+                    evidence_desc.kind,
+                    evidence_desc.symbol.clone(),
+                    occurrences,
+                );
+            }
         }
     }
 }
@@ -98,9 +154,12 @@ mod tests {
         },
         api::{
             classification::MatchKind,
-            compiler::rule::{
-                CompiledMatcherPlan, EventPredicate, EvidenceDescriptor, IdentityConstraint,
-                IdentityStrength, QueryClause, QueryConstraint, SubjectConstraint,
+            compiler::{
+                physical::PhysicalRoot,
+                rule::{
+                    CompiledMatcherPlan, EventPredicate, EvidenceDescriptor, IdentityConstraint,
+                    IdentityStrength, QueryConstraint,
+                },
             },
             rule::{ArgumentConstraint, MatcherDecl, ValueMatcher},
         },
@@ -124,24 +183,18 @@ mod tests {
         index
     }
 
-    fn exact_argument(value: &str) -> Box<[QueryConstraint]> {
-        Box::new([QueryConstraint::Argument(ArgumentConstraint::new(
-            0,
-            ValueMatcher::static_string().equals(value),
-        ))])
-    }
-
-    fn clause(
+    fn constrained_root(
         identity: IdentityConstraint,
         event: EventPredicate,
-        subject: SubjectConstraint,
         symbol: &str,
-    ) -> QueryClause {
-        QueryClause {
+    ) -> PhysicalRoot {
+        PhysicalRoot::ConstrainedScan {
             identity,
             event,
-            subject,
-            constraints: exact_argument("/api"),
+            constraints: Box::new([QueryConstraint::Argument(ArgumentConstraint::new(
+                0,
+                ValueMatcher::static_string().equals("/api"),
+            ))]),
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,
                 symbol: symbol.into(),
@@ -155,16 +208,15 @@ mod tests {
             "fetch('/api'); client.open('/api');",
             &Environment::default(),
         );
-        let call = clause(
+        let call = constrained_root(
             IdentityConstraint::Any {
                 name: "fetch".into(),
                 strength: IdentityStrength::Heuristic,
             },
             EventPredicate::Call,
-            SubjectConstraint::Direct,
             "fetch",
         );
-        let member = clause(
+        let member = constrained_root(
             IdentityConstraint::Any {
                 name: "client.open".into(),
                 strength: IdentityStrength::Heuristic,
@@ -172,7 +224,6 @@ mod tests {
             EventPredicate::MemberCall {
                 member: "client.open".into(),
             },
-            SubjectConstraint::Direct,
             "client.open",
         );
         let index = build_index(&stream);
@@ -195,71 +246,20 @@ mod tests {
     }
 
     #[test]
-    fn constraints_compose_with_non_direct_subject() {
-        let mut environment = Environment::default();
-        environment.add_global_object("app").unwrap();
-        let stream = stream(
-            "import { Client } from 'pkg';\nconst leaf = app.workspace.getLeaf();\nleaf.openFile('/api');\nclass Child extends Client { sendNow() { this.send('/api'); } }",
-            &environment,
-        );
-        let returned = clause(
-            IdentityConstraint::Rooted {
-                path: "app.workspace.getLeaf".into(),
-            },
-            EventPredicate::MemberCall {
-                member: "openFile".into(),
-            },
-            SubjectConstraint::ReturnedFrom {
-                producer: Box::new(IdentityConstraint::Rooted {
-                    path: "app.workspace.getLeaf".into(),
-                }),
-            },
-            "app.workspace.getLeaf.openFile",
-        );
-        let constructor = IdentityConstraint::ModuleExport {
-            module: "pkg".into(),
-            export: "Client".into(),
-        };
-        let instance = clause(
-            constructor.clone(),
-            EventPredicate::MemberCall {
-                member: "send".into(),
-            },
-            SubjectConstraint::InstanceOf {
-                constructor: Box::new(constructor),
-            },
-            "pkg:Client.send",
-        );
-        let index = build_index(&stream);
-        let mut evidence = vec![Vec::new()];
-        compute_constrained_evidence_from_stream_with_overlay(
-            &stream,
-            &index,
-            &[(0, &returned), (0, &instance)],
-            &mut evidence,
-            None,
-            None,
-            None,
-        );
-        assert_eq!(
-            evidence[0]
-                .iter()
-                .map(|item| item.symbol.as_str())
-                .collect::<Vec<_>>(),
-            ["app.workspace.getLeaf.openFile", "pkg:Client.send"]
-        );
-    }
-
-    #[test]
-    fn constrained_clause_evidence_is_source_ordered_and_deduplicated() {
+    fn constrained_evidence_is_source_ordered_and_deduplicated() {
         let declaration = MatcherDecl::builder()
             .call_heuristic("fetch")
             .arg_static_strings(0, ["/api"])
             .build()
             .unwrap();
         let plan = CompiledMatcherPlan::compile_decls(&[declaration.clone(), declaration]).unwrap();
-        let clauses = plan.clauses();
-        assert_eq!(clauses.len(), 1, "equivalent clauses compile once");
+        let roots: Vec<PhysicalRoot> = plan
+            .physical_roots()
+            .iter()
+            .filter(|r| matches!(r, PhysicalRoot::ConstrainedScan { .. }))
+            .cloned()
+            .collect();
+        assert_eq!(roots.len(), 1, "equivalent declarations produce one root");
 
         let stream = stream("fetch('/api');\nfetch('/api');", &Environment::default());
         let index = build_index(&stream);
@@ -267,7 +267,7 @@ mod tests {
         compute_constrained_evidence_from_stream_with_overlay(
             &stream,
             &index,
-            &[(0, &clauses[0])],
+            &[(0, &roots[0])],
             &mut evidence,
             None,
             None,

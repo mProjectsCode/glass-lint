@@ -6,17 +6,17 @@ use crate::{
         facts::{FactPayload, SemanticFact},
         syntax::{SymbolCallProvenance, SymbolMemberProvenance},
     },
-    api::compiler::rule::{IdentityConstraint, QueryClause, SubjectConstraint},
+    api::compiler::rule::IdentityConstraint,
 };
 
 pub(super) fn call_identity_matches(
-    clause: &QueryClause,
+    identity: &IdentityConstraint,
     call_provenance: &SymbolCallProvenance,
     callee_name: Option<&SmolStr>,
     syntactic_path: Option<&NamePath>,
     any_name_path: Option<&NamePath>,
 ) -> bool {
-    match &clause.identity {
+    match identity {
         IdentityConstraint::Any { name, .. } => {
             callee_name.is_some_and(|found| *found == *name)
                 || any_name_path
@@ -40,30 +40,8 @@ pub(super) fn call_identity_matches(
     }
 }
 
-pub(super) fn member_subject_matches(
-    clause: &QueryClause,
-    member: &NamePath,
-    returned_member: Option<&(NamePath, NamePath)>,
-    instance_class: Option<&(SmolStr, SmolStr)>,
-    names: &NameTable,
-) -> bool {
-    match &clause.subject {
-        SubjectConstraint::Direct => true,
-        SubjectConstraint::ReturnedFrom { producer } => {
-            returned_member.is_some_and(|(source, found)| {
-                found == member
-                    && names
-                        .resolve_path(source)
-                        .is_some_and(|source| producer.exact_root_matches(&source))
-            })
-        }
-        SubjectConstraint::InstanceOf { constructor } => instance_class
-            .is_some_and(|(module, export)| constructor.identity_module_matches(module, export)),
-    }
-}
-
 pub(super) fn member_identity_matches(
-    clause: &QueryClause,
+    identity: &IdentityConstraint,
     member: &NamePath,
     rooted_path: Option<&NamePath>,
     syntactic_path: Option<&NamePath>,
@@ -74,90 +52,31 @@ pub(super) fn member_identity_matches(
     let FactPayload::Call { module_member, .. } = &fact.payload else {
         return false;
     };
-    match (&clause.identity, &clause.subject) {
-        (IdentityConstraint::Any { .. }, SubjectConstraint::Direct) => {
+    match identity {
+        IdentityConstraint::Any { .. } => {
             syntactic_path.is_some_and(|chain| chain == member)
                 || rooted_chain.is_some_and(|chain| chain == member)
         }
-        (IdentityConstraint::Rooted { .. }, SubjectConstraint::Direct) => {
+        IdentityConstraint::Rooted { .. } => {
             let Some(path) = rooted_path else {
                 return false;
             };
             rooted_chain.is_some_and(|chain| chain == path && chain == member)
         }
-        (IdentityConstraint::Rooted { .. }, SubjectConstraint::ReturnedFrom { .. }) => {
-            let FactPayload::Call {
-                returned_member, ..
-            } = &fact.payload
-            else {
-                return false;
-            };
-            let Some(path) = rooted_path else {
-                return false;
-            };
-            returned_member
-                .as_ref()
-                .is_some_and(|(source, found)| source == path && found == member)
-        }
-        (
-            IdentityConstraint::ModuleExport { module, export },
-            SubjectConstraint::InstanceOf { .. },
-        ) => instance_class_and_chain_match(
-            fact,
-            syntactic_path,
+        IdentityConstraint::ModuleNamespace { module } => namespace_member_matches(
+            module_member.as_ref(),
             member,
             |found_module| found_module == module,
-            export,
+            names,
         ),
-        (
-            IdentityConstraint::PackageModuleExport { module, export },
-            SubjectConstraint::InstanceOf { .. },
-        ) => instance_class_and_chain_match(
-            fact,
-            syntactic_path,
+        IdentityConstraint::PackageModuleNamespace { module } => namespace_member_matches(
+            module_member.as_ref(),
             member,
             |found_module| module.matches(found_module),
-            export,
+            names,
         ),
-        (IdentityConstraint::ModuleNamespace { module }, SubjectConstraint::Direct) => {
-            namespace_member_matches(
-                module_member.as_ref(),
-                member,
-                |found_module| found_module == module,
-                names,
-            )
-        }
-        (IdentityConstraint::PackageModuleNamespace { module }, SubjectConstraint::Direct) => {
-            namespace_member_matches(
-                module_member.as_ref(),
-                member,
-                |found_module| module.matches(found_module),
-                names,
-            )
-        }
         _ => false,
     }
-}
-
-fn instance_class_and_chain_match(
-    fact: &SemanticFact,
-    syntactic_path: Option<&NamePath>,
-    member: &NamePath,
-    module_matches: impl FnOnce(&SmolStr) -> bool,
-    export: &SmolStr,
-) -> bool {
-    let FactPayload::Call { instance_class, .. } = &fact.payload else {
-        return false;
-    };
-    instance_class
-        .as_ref()
-        .is_some_and(|(found_module, found_export)| {
-            module_matches(found_module) && found_export == export
-        })
-        && syntactic_path
-            .and_then(NamePath::last_segment)
-            .zip(member.last_segment())
-            .is_some_and(|(s_last, m_last)| s_last == m_last)
 }
 
 fn namespace_member_matches(

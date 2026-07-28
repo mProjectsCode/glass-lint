@@ -13,9 +13,7 @@ use crate::{
     },
     api::compiler::{
         physical::PhysicalRoot,
-        rule::{
-            CompiledMatcherPlan, EventPredicate, IdentityConstraint, QueryClause, SubjectConstraint,
-        },
+        rule::{CompiledMatcherPlan, EventPredicate, IdentityConstraint},
     },
 };
 
@@ -91,7 +89,7 @@ impl OccurrenceIndexes {
     }
 
     /// Resolve an indexed scan (direct event lookup).
-    fn occurrences_for_indexed<'a>(
+    pub(in crate::analysis) fn occurrences_for_indexed<'a>(
         &'a self,
         identity: &'a IdentityConstraint,
         event: &'a EventPredicate,
@@ -152,82 +150,11 @@ impl OccurrenceIndexes {
             })
     }
 
-    /// Resolve a clause using the old clause-based dispatch.
-    /// Still used by the constrained evidence path.
-    pub(in crate::analysis) fn occurrences_for_clause<'a>(
-        &'a self,
-        clause: &'a QueryClause,
-        overlay: Option<&'a LinkedOccurrenceView<'a>>,
-        names: &NameTable,
-    ) -> Option<CandidateOccurrences<'a>> {
-        if !matches!(clause.subject, SubjectConstraint::Direct) {
-            return self.occurrences_for_subject(clause, overlay, names);
-        }
-        self.occurrences_for_event(clause, overlay, names)
-    }
-
-    fn occurrences_for_subject<'a>(
-        &'a self,
-        clause: &'a QueryClause,
-        _overlay: Option<&'a LinkedOccurrenceView<'a>>,
-        names: &NameTable,
-    ) -> Option<CandidateOccurrences<'a>> {
-        match (&clause.event, &clause.subject) {
-            (
-                EventPredicate::MemberCall { member } | EventPredicate::MemberRead { member },
-                SubjectConstraint::ReturnedFrom { .. },
-            ) => {
-                let predicate = |key: &ReturnedMemberKey| {
-                    names.resolve_path(key.source()).is_some_and(|source| {
-                        clause
-                            .identity
-                            .root_or_descendant_matches(&source, &self.environment)
-                    }) && names
-                        .lookup_path(member)
-                        .is_some_and(|m| m == *key.member())
-                };
-                match &clause.event {
-                    EventPredicate::MemberCall { .. } => {
-                        self.members.returned_calls.matching(predicate)
-                    }
-                    EventPredicate::MemberRead { .. } => {
-                        self.members.returned_reads.matching(predicate)
-                    }
-                    _ => unreachable!(),
-                }
-            }
-            (EventPredicate::MemberCall { member }, SubjectConstraint::InstanceOf { .. }) => self
-                .members
-                .instance_calls
-                .matching(|key| match &clause.identity {
-                    IdentityConstraint::ModuleExport {
-                        module: expected_module,
-                        export: expected_export,
-                    } => {
-                        key.identity().module() == expected_module
-                            && key.identity().export() == expected_export
-                            && member.eq_chain(key.member())
-                    }
-                    IdentityConstraint::PackageModuleExport { module, export } => {
-                        module.matches(key.identity().module())
-                            && key.identity().export() == export
-                            && member.eq_chain(key.member())
-                    }
-                    _ => false,
-                }),
-            _ => None,
-        }
-    }
-
-    fn occurrences_for_event<'a>(
-        &'a self,
-        clause: &'a QueryClause,
-        overlay: Option<&'a LinkedOccurrenceView<'a>>,
-        names: &NameTable,
-    ) -> Option<CandidateOccurrences<'a>> {
-        let view = self.build_event_view(&clause.event, overlay);
-        view.resolve(&clause.identity, &clause.event, names)
-    }
+    // occurrences_for_clause, occurrences_for_subject, and
+    // occurrences_for_event were removed in Phase 7.
+    // The constrained evidence path now uses occurrences_for_indexed
+    // directly, and returned/instance subject lookups use
+    // occurrences_for_returned / occurrences_for_instance.
 
     fn build_event_view<'a>(
         &'a self,

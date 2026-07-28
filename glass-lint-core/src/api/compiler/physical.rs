@@ -472,93 +472,7 @@ pub(crate) fn validate_physical_plan(
 }
 
 // ── Backward-compat conversion: physical roots → clauses ─────────────
-
-/// Convert physical roots back to clauses for backward compatibility
-/// with analysis code that has not yet been migrated.
-///
-/// Each `IndexedScan`, `ConstrainedScan`, `ReturnedSubject`, and
-/// `InstanceSubject` root produces one clause.  Lifecycle roots do
-/// not produce clauses (flows are handled separately).
-pub(crate) fn roots_to_clauses(
-    roots: &[PhysicalRoot],
-) -> Vec<crate::api::compiler::rule::QueryClause> {
-    let mut clauses = Vec::new();
-    for root in roots {
-        if let Some(clause) = root_to_clause(root) {
-            clauses.push(clause);
-        }
-    }
-    clauses
-}
-
-fn root_to_clause(root: &PhysicalRoot) -> Option<crate::api::compiler::rule::QueryClause> {
-    match root {
-        PhysicalRoot::IndexedScan {
-            identity,
-            event,
-            evidence,
-        } => Some(crate::api::compiler::rule::QueryClause {
-            identity: identity.clone(),
-            event: event.clone(),
-            subject: crate::api::compiler::rule::SubjectConstraint::Direct,
-            constraints: Box::new([]),
-            evidence: evidence.clone(),
-        }),
-        PhysicalRoot::ConstrainedScan {
-            identity,
-            event,
-            constraints,
-            evidence,
-        } => Some(crate::api::compiler::rule::QueryClause {
-            identity: identity.clone(),
-            event: event.clone(),
-            subject: crate::api::compiler::rule::SubjectConstraint::Direct,
-            constraints: constraints.clone(),
-            evidence: evidence.clone(),
-        }),
-        PhysicalRoot::ReturnedSubject {
-            identity,
-            member: _,
-            event,
-            evidence,
-        } => {
-            // For returned subjects, the identity is the producer.
-            // The clause identity matches the producer identity,
-            // and the subject is ReturnedFrom(producer).
-            let producer = identity.clone();
-            Some(crate::api::compiler::rule::QueryClause {
-                identity: identity.clone(),
-                event: event.clone(),
-                subject: crate::api::compiler::rule::SubjectConstraint::ReturnedFrom {
-                    producer: Box::new(producer),
-                },
-                constraints: Box::new([]),
-                evidence: evidence.clone(),
-            })
-        }
-        PhysicalRoot::InstanceSubject {
-            constructor,
-            member,
-            evidence,
-        } => {
-            // For instance subjects, the constructor identity is stored.
-            // The clause event is MemberCall with the member.
-            // The subject is InstanceOf(constructor).
-            Some(crate::api::compiler::rule::QueryClause {
-                identity: constructor.clone(),
-                event: EventPredicate::MemberCall {
-                    member: member.clone(),
-                },
-                subject: crate::api::compiler::rule::SubjectConstraint::InstanceOf {
-                    constructor: Box::new(constructor.clone()),
-                },
-                constraints: Box::new([]),
-                evidence: evidence.clone(),
-            })
-        }
-        PhysicalRoot::Lifecycle { .. } => None,
-    }
-}
+// (removed in Phase 7 — analysis layer uses physical roots directly)
 
 // ── Tests ───────────────────────────────────────────────────────────────
 
@@ -910,57 +824,7 @@ mod tests {
     }
 
     // ── Roots-to-clauses conversion ───────────────────────────────
-
-    #[test]
-    fn indexed_scan_converts_to_clause() {
-        let roots = [PhysicalRoot::IndexedScan {
-            identity: IdentityConstraint::Global {
-                name: "fetch".into(),
-                strength: IdentityStrength::Strict,
-            },
-            event: EventPredicate::Call,
-            evidence: EvidenceDescriptor {
-                kind: MatchKind::Call,
-                symbol: "fetch".into(),
-            },
-        }];
-        let clauses = roots_to_clauses(&roots);
-        assert_eq!(clauses.len(), 1);
-        assert!(clauses[0].constraints.is_empty());
-        assert!(matches!(
-            clauses[0].subject,
-            crate::api::compiler::rule::SubjectConstraint::Direct
-        ));
-    }
-
-    #[test]
-    fn constrained_scan_converts_to_clause_with_constraints() {
-        let roots = [PhysicalRoot::ConstrainedScan {
-            identity: IdentityConstraint::Global {
-                name: "fetch".into(),
-                strength: IdentityStrength::Strict,
-            },
-            event: EventPredicate::Call,
-            constraints: Box::new([QueryConstraint::Argument(ArgumentConstraint::new(
-                0,
-                ValueMatcher::static_string(),
-            ))]),
-            evidence: EvidenceDescriptor {
-                kind: MatchKind::CallArgument,
-                symbol: "fetch".into(),
-            },
-        }];
-        let clauses = roots_to_clauses(&roots);
-        assert_eq!(clauses.len(), 1);
-        assert!(!clauses[0].constraints.is_empty());
-    }
-
-    #[test]
-    fn lifecycle_root_does_not_produce_clause() {
-        let roots = [PhysicalRoot::Lifecycle { flow_index: 0 }];
-        let clauses = roots_to_clauses(&roots);
-        assert!(clauses.is_empty());
-    }
+    // (Removed in Phase 7 — analysis layer uses physical roots directly)
 
     // ── Planner equivalence tests ─────────────────────────────────
 

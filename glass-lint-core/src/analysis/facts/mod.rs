@@ -26,7 +26,9 @@ use crate::{
     },
     api::{
         classification::RuleIndex,
-        compiler::{CompiledRuleSelection, object_flow::CompiledObjectFlow, rule::QueryClause},
+        compiler::{
+            CompiledRuleSelection, object_flow::CompiledObjectFlow, physical::PhysicalRoot,
+        },
     },
     project::ModuleId,
 };
@@ -353,23 +355,24 @@ pub(in crate::analysis) struct BuiltFacts {
 /// the entire match run. Built once before the module loop to avoid
 /// reconstructing it for every module.
 pub(in crate::analysis) struct ProjectionPlan<'a> {
-    constrained_clauses: Vec<(usize, &'a QueryClause)>,
+    constrained_roots: Vec<(usize, &'a PhysicalRoot)>,
     flow_matchers: Vec<(RuleIndex, usize, &'a CompiledObjectFlow)>,
     rule_count: usize,
 }
 
 impl<'a> ProjectionPlan<'a> {
     pub(in crate::analysis) fn from_selection(selection: &'a CompiledRuleSelection<'a>) -> Self {
-        let constrained_clauses = selection
+        let constrained_roots = selection
             .selected_matchers()
             .flat_map(|(rule_index, matcher)| {
-                matcher
-                    .clauses()
+                let roots: Vec<(usize, &PhysicalRoot)> = matcher
+                    .physical_roots()
                     .iter()
-                    .filter(|clause| !clause.constraints.is_empty())
-                    .map(move |clause| (rule_index, clause))
+                    .filter(|root| matches!(root, PhysicalRoot::ConstrainedScan { constraints, .. } if !constraints.is_empty()))
+                    .map(move |root| (rule_index.get(), root))
+                    .collect();
+                roots
             })
-            .map(|(rule, clause)| (rule.get(), clause))
             .collect::<Vec<_>>();
         let flow_matchers = selection
             .selected_matchers()
@@ -383,7 +386,7 @@ impl<'a> ProjectionPlan<'a> {
             .collect::<Vec<_>>();
         let rule_count = selection.len();
         Self {
-            constrained_clauses,
+            constrained_roots,
             flow_matchers,
             rule_count,
         }
@@ -472,7 +475,7 @@ impl SemanticFacts {
         matching::compute_constrained_evidence_from_stream_with_overlay(
             &self.stream,
             &self.index,
-            &plan.constrained_clauses,
+            &plan.constrained_roots,
             &mut projected_evidence,
             overlay,
             identities,
