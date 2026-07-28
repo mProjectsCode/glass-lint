@@ -1392,47 +1392,47 @@ than dedicated builder combinations.
 
 ### Tasks
 
-- [ ] 1. Model a returned subject as a relation between:
+- [x] 1. Model a returned subject as a relation between:
    - producer identity/event;
    - returned object identity; and
    - member event.
-- [ ] 2. Model an instance subject as a relation between:
+- [x] 2. Model an instance subject as a relation between:
    - constructor identity/event;
    - constructed instance identity; and
    - instance member event.
-- [ ] 3. Require the member event and producer/constructor to share the same object
+- [x] 3. Require the member event and producer/constructor to share the same object
    correlation.
-- [ ] 4. Preserve supported chained forms and intentionally unsupported forms.
-- [ ] 5. Preserve strict module identity for constructed instances.
-- [ ] 6. Preserve rooted/environment semantics for returned objects.
-- [ ] 7. Compile supported shapes to existing returned and instance indexes where
+- [x] 4. Preserve supported chained forms and intentionally unsupported forms.
+- [x] 5. Preserve strict module identity for constructed instances.
+- [x] 6. Preserve rooted/environment semantics for returned objects.
+- [x] 7. Compile supported shapes to existing returned and instance indexes where
    possible.
-- [ ] 8. Add a keyed join only if the existing index cannot express a new supported
+- [x] 8. Add a keyed join only if the existing index cannot express a new supported
    relationship.
-- [ ] 9. Remove duplicated producer/constructor identity stored in both identity and
+- [x] 9. Remove duplicated producer/constructor identity stored in both identity and
    subject fields.
-- [ ] 10. Make evidence projection choose the member occurrence while optionally
-    retaining producer/constructor support.
+- [x] 10. Make evidence projection choose the member occurrence while optionally
+     retaining producer/constructor support.
 
 ### Required tests
 
-- [ ] Direct returned-object member use.
-- [ ] Alias of returned object.
-- [ ] Reassignment of alias.
-- [ ] Disconnected same-name object.
-- [ ] Direct and aliased constructed instance.
-- [ ] Static method lookalike.
-- [ ] Wrong constructor module.
-- [ ] Subclass behavior according to current contract.
-- [ ] Chained constructor behavior according to current contract.
-- [ ] Incompatible-branch producer/member negative.
+- [x] Direct returned-object member use.
+- [x] Alias of returned object.
+- [x] Reassignment of alias.
+- [x] Disconnected same-name object.
+- [x] Direct and aliased constructed instance.
+- [x] Static method lookalike.
+- [x] Wrong constructor module.
+- [x] Subclass behavior according to current contract.
+- [x] Chained constructor behavior according to current contract.
+- [x] Incompatible-branch producer/member negative.
 
 ### Exit criteria
 
-- [ ] Subject relations have one explicit correlation model.
-- [ ] Existing returned/instance convenience methods lower to that model or are
-  replaced.
-- [ ] No identity is duplicated solely to satisfy old validation.
+- [x] Subject relations have one explicit correlation model.
+- [x] Existing returned/instance convenience methods lower to that model or are
+   replaced.
+- [x] No identity is duplicated solely to satisfy old validation.
 
 ## Phase 10: Unify object flow with the logical query model
 

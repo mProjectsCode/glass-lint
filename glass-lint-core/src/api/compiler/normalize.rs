@@ -292,7 +292,7 @@ fn remap_vars(expr: &QueryExpr, var_map: &BTreeMap<VarId, VarId>) -> QueryExpr {
             var: var_map.get(&eq.var).copied().unwrap_or(eq.var),
             event: eq.event.clone(),
             identity: eq.identity.clone(),
-            subject: eq.subject.clone(),
+            subject: eq.subject,
             constraints: eq.constraints.clone(),
         }),
         QueryExpr::Any(any) => {

@@ -207,7 +207,7 @@ fn plan_event_query(eq: &EventQuery, kind: MatchKind, symbol: &str) -> Vec<Physi
                 evidence,
             }]
         }
-        SubjectSpec::ReturnedFrom { producer } => {
+        SubjectSpec::ReturnedFrom => {
             let member = match &eq.event {
                 EventSpec::MemberCall { member } | EventSpec::MemberRead { member } => {
                     member.clone()
@@ -215,19 +215,19 @@ fn plan_event_query(eq: &EventQuery, kind: MatchKind, symbol: &str) -> Vec<Physi
                 _ => SymbolPath::default(),
             };
             vec![PhysicalRoot::ReturnedSubject {
-                identity: lower_identity(producer),
+                identity: lower_identity(&eq.identity),
                 member,
                 event: lower_event(&eq.event),
                 evidence,
             }]
         }
-        SubjectSpec::InstanceOf { constructor } => {
+        SubjectSpec::InstanceOf => {
             let member = match &eq.event {
                 EventSpec::MemberCall { member } => member.clone(),
                 _ => SymbolPath::default(),
             };
             vec![PhysicalRoot::InstanceSubject {
-                constructor: lower_identity(constructor),
+                constructor: lower_identity(&eq.identity),
                 member,
                 evidence,
             }]

@@ -128,23 +128,26 @@ impl EventSpec {
 }
 
 /// Declaration-owned subject relationship.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+///
+/// The identity for the producer (returned-from) or constructor (instance-of)
+/// lives in [`EventQuery::identity`] — it is not duplicated here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum SubjectSpec {
     /// The event is directly on the identity.
     Direct,
     /// The event is on an object returned from a producer.
-    ReturnedFrom { producer: Box<IdentitySpec> },
+    ReturnedFrom,
     /// The event is on an instance created by a constructor.
-    InstanceOf { constructor: Box<IdentitySpec> },
+    InstanceOf,
 }
 
 impl SubjectSpec {
     /// Stable diagnostic name for this subject relationship.
-    pub fn diagnostic_name(&self) -> &'static str {
+    pub fn diagnostic_name(self) -> &'static str {
         match self {
             Self::Direct => "direct",
-            Self::ReturnedFrom { .. } => "returned_from",
-            Self::InstanceOf { .. } => "instance_of",
+            Self::ReturnedFrom => "returned_from",
+            Self::InstanceOf => "instance_of",
         }
     }
 }
@@ -415,7 +418,7 @@ impl QueryDecl {
             var: var_id,
             event: decl.event.clone(),
             identity: decl.identity.clone(),
-            subject: decl.subject.clone(),
+            subject: decl.subject,
             constraints: decl.constraints.clone(),
         });
         let emission = EmissionDecl {
@@ -916,24 +919,8 @@ mod tests {
     #[test]
     fn subject_spec_diagnostic_names_are_stable() {
         assert_eq!(SubjectSpec::Direct.diagnostic_name(), "direct");
-        assert_eq!(
-            SubjectSpec::ReturnedFrom {
-                producer: Box::new(IdentitySpec::Global {
-                    name: SmolStr::new("f")
-                })
-            }
-            .diagnostic_name(),
-            "returned_from"
-        );
-        assert_eq!(
-            SubjectSpec::InstanceOf {
-                constructor: Box::new(IdentitySpec::Global {
-                    name: SmolStr::new("C")
-                })
-            }
-            .diagnostic_name(),
-            "instance_of"
-        );
+        assert_eq!(SubjectSpec::ReturnedFrom.diagnostic_name(), "returned_from");
+        assert_eq!(SubjectSpec::InstanceOf.diagnostic_name(), "instance_of");
     }
 
     // ── Display and plan summary ──────────────────────────────────

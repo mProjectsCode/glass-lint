@@ -191,10 +191,16 @@ fn is_direct_dimension_valid(identity: &IdentitySpec, event: &EventSpec) -> bool
 }
 
 /// Check that the subject identity is consistent with the event's identity.
+///
+/// For [`SubjectSpec::Direct`], the event's identity member chain must match
+/// the identity's path for heuristic and rooted members. For
+/// [`SubjectSpec::ReturnedFrom`] and [`SubjectSpec::InstanceOf`], the
+/// identity is the producer/constructor and is always consistent — the
+/// duplicate-field check was removed in Phase 9.
 fn is_subject_identity_consistent(
     identity: &IdentitySpec,
     event: &EventSpec,
-    subject: &SubjectSpec,
+    subject: SubjectSpec,
 ) -> bool {
     match subject {
         SubjectSpec::Direct => match (identity, event) {
@@ -208,8 +214,7 @@ fn is_subject_identity_consistent(
             ) => *path == *member,
             _ => true,
         },
-        SubjectSpec::ReturnedFrom { producer } => producer.as_ref() == identity,
-        SubjectSpec::InstanceOf { constructor } => constructor.as_ref() == identity,
+        SubjectSpec::ReturnedFrom | SubjectSpec::InstanceOf => true,
     }
 }
 
@@ -217,21 +222,21 @@ fn is_subject_identity_consistent(
 fn is_valid_identity_event_subject(
     identity: &IdentitySpec,
     event: &EventSpec,
-    subject: &SubjectSpec,
+    subject: SubjectSpec,
 ) -> bool {
     if !is_subject_identity_consistent(identity, event, subject) {
         return false;
     }
     match subject {
         SubjectSpec::Direct => is_direct_dimension_valid(identity, event),
-        SubjectSpec::ReturnedFrom { .. } => matches!(
+        SubjectSpec::ReturnedFrom => matches!(
             (identity, event),
             (
                 IdentitySpec::Rooted { .. },
                 EventSpec::MemberCall { .. } | EventSpec::MemberRead { .. }
             )
         ),
-        SubjectSpec::InstanceOf { .. } => matches!(
+        SubjectSpec::InstanceOf => matches!(
             (identity, event),
             (
                 IdentitySpec::ModuleExport { .. } | IdentitySpec::PackageModuleExport { .. },
@@ -348,7 +353,7 @@ fn pass_well_formedness_inner(expr: &QueryExpr) -> Result<(), QueryCompileError>
 }
 
 fn validate_event_query(eq: &EventQuery) -> Result<(), QueryCompileError> {
-    if !is_valid_identity_event_subject(&eq.identity, &eq.event, &eq.subject) {
+    if !is_valid_identity_event_subject(&eq.identity, &eq.event, eq.subject) {
         return Err(QueryCompileError::InvalidEventPredicate {
             identity: eq.identity.diagnostic_name().to_owned(),
             event: eq.event.diagnostic_name().to_owned(),

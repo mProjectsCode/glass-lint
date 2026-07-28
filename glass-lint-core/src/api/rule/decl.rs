@@ -249,15 +249,13 @@ impl MatcherDeclBuilder {
             export: export.clone(),
         };
         self.set_identity_event(
-            constructor.clone(),
+            constructor,
             EventSpec::MemberCall {
                 member: SymbolPath::from(member.as_str()),
             },
             format!("{module}:{export}.{member}"),
         );
-        self.subject = SubjectSpec::InstanceOf {
-            constructor: Box::new(constructor),
-        };
+        self.subject = SubjectSpec::InstanceOf;
         self
     }
 
@@ -341,15 +339,13 @@ impl MatcherDeclBuilder {
             path: SymbolPath::from(source.as_str()),
         };
         self.set_identity_event(
-            producer.clone(),
+            producer,
             EventSpec::MemberCall {
                 member: SymbolPath::from(member.as_str()),
             },
             format!("{source}.{member}"),
         );
-        self.subject = SubjectSpec::ReturnedFrom {
-            producer: Box::new(producer),
-        };
+        self.subject = SubjectSpec::ReturnedFrom;
         self
     }
 
@@ -369,15 +365,13 @@ impl MatcherDeclBuilder {
             path: SymbolPath::from(source.as_str()),
         };
         self.set_identity_event(
-            producer.clone(),
+            producer,
             EventSpec::MemberRead {
                 member: SymbolPath::from(member.as_str()),
             },
             format!("{source}.{member}"),
         );
-        self.subject = SubjectSpec::ReturnedFrom {
-            producer: Box::new(producer),
-        };
+        self.subject = SubjectSpec::ReturnedFrom;
         self
     }
 
