@@ -2,7 +2,7 @@
 
 ## Summary
 
-This audit covers all Rust production modules and the relevant tests in `glass-lint-core`, `glass-lint-datastructures`, and `glass-lint-project` (about 50,000 lines total). It found 32 actionable issues: 16 High, 15 Medium, and 1 Low severity. 21 have been fixed (6 High, 14 Medium, 1 Low), leaving 10 open (9 High, 1 Medium). The most important remaining correctness risks are control-insensitive assignment provenance, exceptional-path identity leakage, and tsconfig inheritance being rebased to the wrong directory. The most important remaining boundedness risks are an unbounded function-summary pass and public dense-ID structures that can be driven into enormous sparse allocations.
+This audit covers all Rust production modules and the relevant tests in `glass-lint-core`, `glass-lint-datastructures`, and `glass-lint-project` (about 50,000 lines total). It found 32 actionable issues: 16 High, 15 Medium, and 1 Low severity. 22 have been fixed (7 High, 14 Medium, 1 Low), leaving 9 open (8 High, 1 Medium). The most important remaining correctness risks are control-insensitive assignment provenance and exceptional-path identity leakage. The most important remaining boundedness risks are an unbounded function-summary pass and public dense-ID structures that can be driven into enormous sparse allocations.
 
 The existing `profile.json.gz` was also inspected against its matching profiling binary. It is supporting rather than dispositive evidence because it does not carry a reproducible workload manifest, but roughly half of the main worker's samples include `FactBuilder` statement traversal, with resolver/name operations prominent below it. That agrees with the static conclusion that lowering work inside `FactBuilder`, interning, and resolver-owned indexes deserves priority.
 
@@ -197,10 +197,13 @@ Linked nodes return tagged IDs, but public methods handle them inconsistently: `
 #### READ-021 — Inherited tsconfig paths are rebased to the child config
 - **Severity:** High
 - **Fix Complexity** High
+- **Status:** ✅ Fixed
 - **Category:** Architecture
 - **Location:** `glass-lint-project/src/tsconfig/mod.rs:367-500`
 
 Inheritance merges raw `files`, `include`, `exclude`, `outDir`, and `declarationDir` strings, then compiles the result once using the extending config's directory. TypeScript paths are relative to the config file where each field was declared, so a parent in another directory selects and excludes the wrong files. Normalize each selection field into an origin-aware path/pattern representation before merging, and preserve that origin through compilation. Add parent/child fixtures in different directories for every supported field, including overridden and inherited combinations.
+
+**Fix:** Added origin-aware path rebasing to `merge_selection`. The function now accepts `child_dir` and `parent_dir` parameters. Before merging, every path/pattern from the parent config is rebased from the parent's directory to the child's directory using a `make_relative` algorithm that normalizes `..` components without consulting the filesystem (supporting glob metacharacters like `**/*`). The `outDir`/`declarationDir` exclusions flow through the same rebasing pipeline because they are already in the parent's merged exclude list. Added 8 new cross-directory inheritance tests: `include`, `files`, `exclude`, `outDir`, override scenarios, inherited-exclude, and a three-level chain.
 
 #### READ-022 — Malformed tsconfig selection fields fail open
 - **Severity:** High

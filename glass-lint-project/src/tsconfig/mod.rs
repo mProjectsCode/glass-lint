@@ -477,51 +477,56 @@ fn build_effective_config_inner(
 
     // Resolve extends — detect cycles at the extends-resolution site rather
     // than returning a sentinel config that callers must recognise.
+    //
+    // Restructured from a closure-chain to plain if-let so that the parent's
+    // canonical path is available for directory rebasing outside the closure.
     let references = dto.references.clone();
-    let parent_merged = dto
-        .extends
-        .clone()
-        .ok()
-        .and_then(|extends_str| {
-            let parent_path = resolve_extends(config_path, &extends_str, &canonical, diagnostics)?;
-            // Canonicalize before cycle comparison so equivalent
-            // paths containing .. or symlink aliases are caught.
-            match realpath(&parent_path) {
-                Ok(parent_canonical) => {
-                    if extends_chain.contains(&parent_canonical) {
-                        diagnostics.push(TsconfigDiagnostic {
-                            config_path: canonical.clone(),
-                            cycle_target: Some(parent_canonical),
-                            message: format!(
-                                "cycle detected: {} is already in the inheritance chain",
-                                canonical.display()
-                            ),
-                        });
-                        None
-                    } else {
-                        let result = build_effective_config_inner(
-                            &parent_canonical,
-                            &base,
-                            extends_chain,
-                            deadline,
-                            diagnostics,
-                            budget,
-                            config_count,
-                            resource_budget,
-                        );
-                        Some(result.map(|(merged, _)| merged))
-                    }
+    let (parent_merged, parent_dir): (Option<MergedSelection>, Option<PathBuf>) =
+        if let Some(extends_str) = dto.extends.clone().ok() {
+            if let Some(parent_path) =
+                resolve_extends(config_path, &extends_str, &canonical, diagnostics)
+            {
+                let parent_canonical = realpath(&parent_path)?;
+                if extends_chain.contains(&parent_canonical) {
+                    diagnostics.push(TsconfigDiagnostic {
+                        config_path: canonical.clone(),
+                        cycle_target: Some(parent_canonical),
+                        message: format!(
+                            "cycle detected: {} is already in the inheritance chain",
+                            canonical.display()
+                        ),
+                    });
+                    (None, None)
+                } else {
+                    let result = build_effective_config_inner(
+                        &parent_canonical,
+                        &base,
+                        extends_chain,
+                        deadline,
+                        diagnostics,
+                        budget,
+                        config_count,
+                        resource_budget,
+                    )?;
+                    (
+                        Some(result.0),
+                        parent_canonical.parent().map(Path::to_path_buf),
+                    )
                 }
-                Err(e) => Some(Err(e)),
+            } else {
+                (None, None)
             }
-        })
-        .transpose()?;
+        } else {
+            (None, None)
+        };
 
     extends_chain.pop();
 
     // Merge: consume child dto and optional parent MergedSelection.
-    // No cloning of selection data occurs — owned fields are moved.
-    let effective = selection::merge_selection(dto, parent_merged);
+    // Paths inherited from the parent are rebased from parent_dir to
+    // child_dir so that each path is interpreted relative to the config
+    // file where it was declared.
+    let effective = selection::merge_selection(dto, parent_merged, &base, parent_dir.as_deref());
     Ok((effective, references))
 }
 

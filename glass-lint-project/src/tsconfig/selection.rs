@@ -3,7 +3,7 @@
 //! These types consume a typed predecessor; none use a mutable
 //! `serde_json::Value` as its semantic model.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::tsconfig::{ParsedField, ParsedTsconfig};
 
@@ -28,10 +28,81 @@ pub struct MergedSelection {
     pub invalid_controlling_field: bool,
 }
 
+/// Compute a relative path from `base` to `absolute`.
+fn make_relative(absolute: &Path, base: &Path) -> PathBuf {
+    let path_comps: Vec<_> = absolute.components().collect();
+    let base_comps: Vec<_> = base.components().collect();
+    let common_len = path_comps
+        .iter()
+        .zip(base_comps.iter())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let mut result = PathBuf::new();
+    for _ in common_len..base_comps.len() {
+        result.push("..");
+    }
+    for comp in &path_comps[common_len..] {
+        result.push(comp.as_os_str());
+    }
+    result
+}
+
+/// Remove `.` and `..` components from a path without consulting the
+/// filesystem.  This is needed because glob-pattern paths (`**/*`) cannot
+/// be canonicalized, yet `from_dir.join("../other/src/**/*")` leaves
+/// unnormalized `parent/..` components that break `make_relative`.
+fn normalize_safe(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut result = PathBuf::new();
+    for c in path.components() {
+        match c {
+            Component::ParentDir => {
+                // Pop the last component only when there is a real
+                // component to remove (don't pop past the root).
+                let tail = result.components().next_back();
+                if !matches!(tail, None | Some(Component::RootDir)) {
+                    result.pop();
+                }
+            }
+            Component::CurDir => {}
+            other => result.push(other.as_os_str()),
+        }
+    }
+    result
+}
+
+/// Rebase a path/pattern from `from_dir` to be relative to `to_dir`.
+fn rebase_path_pattern(pattern: &str, from_dir: &Path, to_dir: &Path) -> String {
+    if Path::new(pattern).is_absolute() {
+        return pattern.to_string();
+    }
+    let absolute = normalize_safe(&from_dir.join(pattern));
+    let base = normalize_safe(to_dir);
+    let relative = make_relative(&absolute, &base);
+    relative.to_string_lossy().replace('\\', "/")
+}
+
+fn rebase_strings(items: Vec<String>, from_dir: &Path, to_dir: &Path) -> Vec<String> {
+    items
+        .into_iter()
+        .map(|p| rebase_path_pattern(&p, from_dir, to_dir))
+        .collect()
+}
+
 /// Merge a child [`ParsedTsconfig`] with an optional parent
 /// [`MergedSelection`] by consuming both (moving owned fields).
 /// No cloning of selection data occurs.
-pub fn merge_selection(child: ParsedTsconfig, parent: Option<MergedSelection>) -> MergedSelection {
+///
+/// When a parent is provided, `parent_dir` is the canonical directory of the
+/// final parent config. Paths and patterns from the parent are rebased from
+/// `parent_dir` to `child_dir` before merging, so that each path is interpreted
+/// relative to the config file where it was declared.
+pub fn merge_selection(
+    child: ParsedTsconfig,
+    parent: Option<MergedSelection>,
+    child_dir: &Path,
+    parent_dir: Option<&Path>,
+) -> MergedSelection {
     // Destructure-and-merge in one pass: the destructuring binding of
     // ParsedTsconfig paired with the field-by-field inheritance rule
     // (child wins, then parent, then default) is clearest when every
@@ -48,8 +119,18 @@ pub fn merge_selection(child: ParsedTsconfig, parent: Option<MergedSelection>) -
     } = child;
 
     let has_parent = parent.is_some();
+    // Rebase parent paths from parent_dir to child_dir so every path is
+    // interpreted relative to the config that declared it.
     let (parent_files, parent_include, parent_exclude, parent_invalid) = match parent {
-        Some(m) => (m.files, m.include, m.exclude, m.invalid_controlling_field),
+        Some(m) => {
+            let pdir = parent_dir.expect("parent_dir must be set when parent is Some");
+            (
+                m.files.map(|v| rebase_strings(v, pdir, child_dir)),
+                rebase_strings(m.include, pdir, child_dir),
+                rebase_strings(m.exclude, pdir, child_dir),
+                m.invalid_controlling_field,
+            )
+        }
         None => (None, Vec::new(), Vec::new(), false),
     };
 
