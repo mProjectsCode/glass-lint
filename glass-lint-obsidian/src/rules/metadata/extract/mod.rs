@@ -37,10 +37,15 @@ pub fn rule() -> Rule {
         .confidence(Confidence::Medium);
 
     for field in METADATA_FIELDS {
-        builder = builder.query(QueryDecl::member_read_rooted(format!("app.metadataCache.getFileCache.{field}")));
+        builder = builder.query(QueryDecl::member_read_rooted(format!(
+            "app.metadataCache.getFileCache.{field}"
+        )));
     }
     for field in METADATA_FIELDS {
-        builder = builder.query(QueryDecl::member_read_returned("app.metadataCache.getFileCache", *field));
+        builder = builder.query(QueryDecl::member_read_returned(
+            "app.metadataCache.getFileCache",
+            *field,
+        ));
     }
 
     builder.build().unwrap()

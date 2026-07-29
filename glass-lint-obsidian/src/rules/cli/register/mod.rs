@@ -10,7 +10,11 @@ pub fn rule() -> Rule {
         .category(Category::new("cli").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_instance("obsidian", "Plugin", "registerCliHandler"))
+        .query(QueryDecl::member_call_instance(
+            "obsidian",
+            "Plugin",
+            "registerCliHandler",
+        ))
         .build()
         .unwrap()
 }

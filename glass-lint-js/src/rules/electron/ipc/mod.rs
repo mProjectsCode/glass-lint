@@ -75,7 +75,10 @@ pub fn rule() -> Rule {
         .confidence(Confidence::High);
     for &(receiver, methods) in RECEIVERS {
         for &method in methods {
-            builder = builder.query(QueryDecl::member_call_module("electron", format!("{receiver}.{method}")));
+            builder = builder.query(QueryDecl::member_call_module(
+                "electron",
+                format!("{receiver}.{method}"),
+            ));
         }
     }
     builder.build().unwrap()

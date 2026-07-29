@@ -15,7 +15,9 @@ pub fn rule() -> Rule {
         .confidence(Confidence::Medium)
         .query(QueryDecl::member_call_rooted("app.workspace.getLayout"))
         .query(QueryDecl::member_call_rooted("app.workspace.changeLayout"))
-        .query(QueryDecl::member_call_rooted("app.workspace.requestSaveLayout"))
+        .query(QueryDecl::member_call_rooted(
+            "app.workspace.requestSaveLayout",
+        ))
         .build()
         .unwrap()
 }

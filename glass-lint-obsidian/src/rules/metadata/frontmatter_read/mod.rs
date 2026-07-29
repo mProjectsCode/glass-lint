@@ -12,10 +12,21 @@ pub fn rule() -> Rule {
         .category(Category::new("metadata").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .query(QueryDecl::member_read_rooted("app.metadataCache.getFileCache.frontmatter"))
-        .query(QueryDecl::member_read_returned("app.metadataCache.getFileCache", "frontmatter"))
-        .query(QueryDecl::member_call_module("obsidian", "parseFrontMatterAliases"))
-        .query(QueryDecl::member_call_module("obsidian", "parseFrontMatterTags"))
+        .query(QueryDecl::member_read_rooted(
+            "app.metadataCache.getFileCache.frontmatter",
+        ))
+        .query(QueryDecl::member_read_returned(
+            "app.metadataCache.getFileCache",
+            "frontmatter",
+        ))
+        .query(QueryDecl::member_call_module(
+            "obsidian",
+            "parseFrontMatterAliases",
+        ))
+        .query(QueryDecl::member_call_module(
+            "obsidian",
+            "parseFrontMatterTags",
+        ))
         .build()
         .unwrap()
 }

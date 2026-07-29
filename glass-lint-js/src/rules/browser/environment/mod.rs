@@ -22,7 +22,9 @@ pub fn rule() -> Rule {
         .query(QueryDecl::member_read_rooted("screen.colorDepth"))
         .query(QueryDecl::member_read_rooted("screen.pixelDepth"))
         .query(QueryDecl::member_read_rooted("navigator.languages"))
-        .query(QueryDecl::member_read_rooted("navigator.hardwareConcurrency"))
+        .query(QueryDecl::member_read_rooted(
+            "navigator.hardwareConcurrency",
+        ))
         .query(QueryDecl::member_read_rooted("navigator.deviceMemory"))
         .query(QueryDecl::member_read_rooted("navigator.vendor"))
         .query(QueryDecl::member_read_rooted("navigator.cookieEnabled"))
@@ -31,10 +33,16 @@ pub fn rule() -> Rule {
         .query(QueryDecl::member_read_rooted("navigator.webdriver"))
         .query(QueryDecl::member_read_rooted("navigator.pdfViewerEnabled"))
         .query(QueryDecl::member_read_rooted("navigator.onLine"))
-        .query(QueryDecl::member_read_rooted("navigator.connection.effectiveType"))
+        .query(QueryDecl::member_read_rooted(
+            "navigator.connection.effectiveType",
+        ))
         .query(QueryDecl::member_read_rooted("navigator.connection.rtt"))
-        .query(QueryDecl::member_read_rooted("navigator.connection.downlink"))
-        .query(QueryDecl::member_read_rooted("navigator.connection.saveData"))
+        .query(QueryDecl::member_read_rooted(
+            "navigator.connection.downlink",
+        ))
+        .query(QueryDecl::member_read_rooted(
+            "navigator.connection.saveData",
+        ))
         .build()
         .unwrap()
 }

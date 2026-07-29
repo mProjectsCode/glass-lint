@@ -28,7 +28,9 @@ pub fn rule() -> Rule {
         .query(QueryDecl::member_read_rooted("process.config"))
         .query(QueryDecl::member_read_rooted("process.features"))
         .query(QueryDecl::member_read_rooted("process.report"))
-        .query(QueryDecl::member_read_rooted("process.allowedNodeEnvironmentFlags"))
+        .query(QueryDecl::member_read_rooted(
+            "process.allowedNodeEnvironmentFlags",
+        ))
         .query(QueryDecl::member_read_rooted("process.debugPort"))
         .query(QueryDecl::member_read_rooted("process.sourceMapsEnabled"))
         .query(QueryDecl::member_call_rooted("process.cwd"))
@@ -37,7 +39,9 @@ pub fn rule() -> Rule {
         .query(QueryDecl::member_call_rooted("process.cpuUsage"))
         .query(QueryDecl::member_call_rooted("process.uptime"))
         .query(QueryDecl::member_call_rooted("process.hrtime"))
-        .query(QueryDecl::member_call_rooted("process.getActiveResourcesInfo"))
+        .query(QueryDecl::member_call_rooted(
+            "process.getActiveResourcesInfo",
+        ))
         .query(QueryDecl::member_call_rooted("process.constrainedMemory"))
         .query(QueryDecl::member_call_rooted("process.getuid"))
         .query(QueryDecl::member_call_rooted("process.geteuid"))

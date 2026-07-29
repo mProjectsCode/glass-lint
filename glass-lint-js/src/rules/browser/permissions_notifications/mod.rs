@@ -12,8 +12,12 @@ pub fn rule() -> Rule {
         .category(Category::new("browser/permissions").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_rooted("Notification.requestPermission"))
-        .query(QueryDecl::member_call_rooted("self.registration.showNotification"))
+        .query(QueryDecl::member_call_rooted(
+            "Notification.requestPermission",
+        ))
+        .query(QueryDecl::member_call_rooted(
+            "self.registration.showNotification",
+        ))
         .query(QueryDecl::constructor_global("Notification"))
         .build()
         .unwrap()

@@ -150,7 +150,10 @@ fn returned_objects_follow_direct_calls_aliases_and_reassignment() {
         localWorkspace.getLeaf().openFile(file);
         "#,
         rule("test.returned")
-            .query(QueryDecl::member_call_returned("app.workspace.getLeaf", "openFile"))
+            .query(QueryDecl::member_call_returned(
+                "app.workspace.getLeaf",
+                "openFile",
+            ))
             .build()
             .unwrap(),
         2,
@@ -167,7 +170,10 @@ fn returned_object_reads_are_provenance_aware() {
         local.manifest;
         "#,
         rule("test.returned-read")
-            .query(QueryDecl::member_read_returned("app.plugins.getPlugin", "manifest"))
+            .query(QueryDecl::member_read_returned(
+                "app.plugins.getPlugin",
+                "manifest",
+            ))
             .build()
             .unwrap(),
         1,
@@ -185,7 +191,10 @@ fn inline_commonjs_members_share_module_provenance() {
         function f(require) { require("electron").shell.openExternal(url); }
         "#,
         rule("test.inline")
-            .query(QueryDecl::member_call_module("electron", "shell.openExternal"))
+            .query(QueryDecl::member_call_module(
+                "electron",
+                "shell.openExternal",
+            ))
             .query(QueryDecl::member_call_module("electron", "shell.openPath"))
             .build()
             .unwrap(),
@@ -208,7 +217,11 @@ fn instance_matchers_require_proven_module_subclasses() {
         function unrelated() { this.registerThing(); }
         "#,
         rule("test.instance")
-            .query(QueryDecl::member_call_instance("framework", "Base", "registerThing"))
+            .query(QueryDecl::member_call_instance(
+                "framework",
+                "Base",
+                "registerThing",
+            ))
             .build()
             .unwrap(),
         4,
@@ -231,7 +244,11 @@ fn instance_matchers_respect_alias_scope_and_static_methods() {
         }
         "#,
         rule("test.instance-scope")
-            .query(QueryDecl::member_call_instance("framework", "Base", "registerThing"))
+            .query(QueryDecl::member_call_instance(
+                "framework",
+                "Base",
+                "registerThing",
+            ))
             .build()
             .unwrap(),
         2,
@@ -247,7 +264,11 @@ fn instance_matchers_track_chained_constructor_calls() {
         new Child().registerThing();
         "#,
         rule("test.instance-chain")
-            .query(QueryDecl::member_call_instance("framework", "Base", "registerThing"))
+            .query(QueryDecl::member_call_instance(
+                "framework",
+                "Base",
+                "registerThing",
+            ))
             .build()
             .unwrap(),
         2,
@@ -276,7 +297,11 @@ fn constructed_instance_origins_follow_supported_aliases_and_wrappers() {
         new framework.Base().registerThing();
         "#,
         rule("test.instance-constructed-aliases")
-            .query(QueryDecl::member_call_instance("framework", "Base", "registerThing"))
+            .query(QueryDecl::member_call_instance(
+                "framework",
+                "Base",
+                "registerThing",
+            ))
             .build()
             .unwrap(),
         9,
@@ -293,7 +318,11 @@ fn constructed_instance_origins_follow_supported_helper_arguments() {
         use(new Base());
         "#,
         rule("test.instance-constructed-helper")
-            .query(QueryDecl::member_call_instance("framework", "Base", "registerThing"))
+            .query(QueryDecl::member_call_instance(
+                "framework",
+                "Base",
+                "registerThing",
+            ))
             .build()
             .unwrap(),
         1,
@@ -317,7 +346,11 @@ fn constructed_instance_origins_fail_closed_for_lookalikes_and_joined_paths() {
         new dynamic().registerThing();
         "#,
         rule("test.instance-constructed-negative")
-            .query(QueryDecl::member_call_instance("framework", "Base", "registerThing"))
+            .query(QueryDecl::member_call_instance(
+                "framework",
+                "Base",
+                "registerThing",
+            ))
             .build()
             .unwrap(),
         0,
@@ -329,7 +362,10 @@ fn new_semantic_matchers_are_normalized_and_validated() {
     assert_count(
         r#"const value = app.workspace["getLeaf"](); value.openFile(file);"#,
         rule("test.normalized-return")
-            .query(QueryDecl::member_call_returned(" app.workspace.getLeaf ", " openFile "))
+            .query(QueryDecl::member_call_returned(
+                " app.workspace.getLeaf ",
+                " openFile ",
+            ))
             .build()
             .unwrap(),
         1,
@@ -346,11 +382,10 @@ fn ordinary_member_argument_predicates_reuse_static_values() {
         app.vault.on("unrelated", handler);
         "#,
         rule("test.event")
-            .query(QueryDecl::member_call_rooted("app.vault.on")
-                    .with_arg(
-                        0,
-                        ValueMatcher::static_string().equals_any(["delete", "rename"]),
-                    ))
+            .query(QueryDecl::member_call_rooted("app.vault.on").with_arg(
+                0,
+                ValueMatcher::static_string().equals_any(["delete", "rename"]),
+            ))
             .build()
             .unwrap(),
         2,
@@ -401,8 +436,10 @@ fn this_rooted_literal_computed_member_chains_are_rooted() {
     assert_count(
         r#"class PluginChild extends Plugin { onload() { this.app.vault["on"]("modify", handler); } }"#,
         rule("test.this-literal-computed")
-            .query(QueryDecl::member_call_rooted("app.vault.on")
-                    .with_arg(0, ValueMatcher::static_string().equals("modify")))
+            .query(
+                QueryDecl::member_call_rooted("app.vault.on")
+                    .with_arg(0, ValueMatcher::static_string().equals("modify")),
+            )
             .build()
             .unwrap(),
         1,
@@ -498,8 +535,10 @@ fn optional_chained_aliases_preserve_rooted_member_arguments() {
     assert_count(
         r#"var c=app.commands;c?.execute?.("open");"#,
         rule("test.optional")
-            .query(QueryDecl::member_call_rooted("app.commands.execute")
-                    .with_arg_static_strings(0, ["open"]))
+            .query(
+                QueryDecl::member_call_rooted("app.commands.execute")
+                    .with_arg_static_strings(0, ["open"]),
+            )
             .build()
             .unwrap(),
         1,
@@ -523,8 +562,7 @@ fn static_string_arguments_follow_aliases_but_reject_dynamic_strings() {
     assert_count(
         r#"var f=fetch,u="/x";f(u);f("/"+name);"#,
         rule("test.static-string-arg")
-            .query(QueryDecl::call_global("fetch")
-                    .with_arg_static_string(0))
+            .query(QueryDecl::call_global("fetch").with_arg_static_string(0))
             .build()
             .unwrap(),
         1,
@@ -536,8 +574,10 @@ fn static_object_arguments_are_reused_for_key_matching() {
     assert_count(
         r#"var o={url:"/x",method:"GET"};client.request(o);"#,
         rule("test.object-arg")
-            .query(QueryDecl::member_call_rooted("client.request")
-                    .with_arg_object_keys(0, ["url", "method"]))
+            .query(
+                QueryDecl::member_call_rooted("client.request")
+                    .with_arg_object_keys(0, ["url", "method"]),
+            )
             .build()
             .unwrap(),
         1,
@@ -549,8 +589,10 @@ fn sequence_object_arguments_are_reused_for_key_matching() {
     assert_count(
         r#"var o;(o={url:"/x",method:"GET"},client.request(o));"#,
         rule("test.sequence-object-arg")
-            .query(QueryDecl::member_call_rooted("client.request")
-                    .with_arg_object_keys(0, ["url", "method"]))
+            .query(
+                QueryDecl::member_call_rooted("client.request")
+                    .with_arg_object_keys(0, ["url", "method"]),
+            )
             .build()
             .unwrap(),
         1,
@@ -562,8 +604,10 @@ fn rooted_expression_arguments_follow_one_letter_aliases() {
     assert_count(
         r#"var f=vault.file,o=app;o.open(f);"#,
         rule("test.rooted-arg")
-            .query(QueryDecl::member_call_rooted("app.open")
-                    .with_arg(0, ArgumentMatcher::rooted_expressions(["vault.file"])))
+            .query(
+                QueryDecl::member_call_rooted("app.open")
+                    .with_arg(0, ArgumentMatcher::rooted_expressions(["vault.file"])),
+            )
             .build()
             .unwrap(),
         1,
@@ -575,8 +619,10 @@ fn spread_object_arguments_do_not_satisfy_exact_key_matching() {
     assert_count(
         r#"var b={url:"/x"};client.request({...b,method:"GET"});"#,
         rule("test.spread-object-negative")
-            .query(QueryDecl::member_call_rooted("client.request")
-                    .with_arg_object_keys(0, ["url", "method"]))
+            .query(
+                QueryDecl::member_call_rooted("client.request")
+                    .with_arg_object_keys(0, ["url", "method"]),
+            )
             .build()
             .unwrap(),
         0,
@@ -612,8 +658,10 @@ fn helper_argument_objects_flow_to_member_call_key_matching() {
     assert_count(
         r#"function n(x){client.request(x)}n({url:"/x",method:"GET"});"#,
         rule("test.helper-object-flow")
-            .query(QueryDecl::member_call_rooted("client.request")
-                    .with_arg_object_keys(0, ["url", "method"]))
+            .query(
+                QueryDecl::member_call_rooted("client.request")
+                    .with_arg_object_keys(0, ["url", "method"]),
+            )
             .build()
             .unwrap(),
         1,

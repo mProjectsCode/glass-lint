@@ -10,7 +10,11 @@ pub fn rule() -> Rule {
         .category(Category::new("bases").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_instance("obsidian", "Plugin", "registerBasesView"))
+        .query(QueryDecl::member_call_instance(
+            "obsidian",
+            "Plugin",
+            "registerBasesView",
+        ))
         .build()
         .unwrap()
 }

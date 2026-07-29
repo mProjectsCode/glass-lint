@@ -12,9 +12,13 @@ pub fn rule() -> Rule {
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(QueryDecl::member_call_rooted("navigator.clipboard.read"))
-        .query(QueryDecl::member_call_rooted("navigator.clipboard.readText"))
-        .query(QueryDecl::member_call_rooted("document.execCommand")
-                .with_arg_static_strings(0, ["paste"]))
+        .query(QueryDecl::member_call_rooted(
+            "navigator.clipboard.readText",
+        ))
+        .query(
+            QueryDecl::member_call_rooted("document.execCommand")
+                .with_arg_static_strings(0, ["paste"]),
+        )
         .build()
         .unwrap()
 }

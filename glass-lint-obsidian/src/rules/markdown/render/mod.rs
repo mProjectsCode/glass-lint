@@ -10,7 +10,10 @@ pub fn rule() -> Rule {
         .category(Category::new("markdown").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .query(QueryDecl::member_call_module("obsidian", "MarkdownRenderer.render"))
+        .query(QueryDecl::member_call_module(
+            "obsidian",
+            "MarkdownRenderer.render",
+        ))
         .build()
         .unwrap()
 }

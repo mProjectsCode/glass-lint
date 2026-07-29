@@ -14,12 +14,13 @@ pub fn rule() -> Rule {
         .category(Category::new("vault").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_rooted("app.vault.on")
-                .with_arg(
-                    0,
-                    ValueMatcher::static_string()
-                        .equals_any(["create", "delete", "modify", "rename", "closed"]),
-                ))
+        .query(
+            QueryDecl::member_call_rooted("app.vault.on").with_arg(
+                0,
+                ValueMatcher::static_string()
+                    .equals_any(["create", "delete", "modify", "rename", "closed"]),
+            ),
+        )
         .build()
         .unwrap()
 }

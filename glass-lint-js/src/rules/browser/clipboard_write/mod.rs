@@ -12,9 +12,13 @@ pub fn rule() -> Rule {
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(QueryDecl::member_call_rooted("navigator.clipboard.write"))
-        .query(QueryDecl::member_call_rooted("navigator.clipboard.writeText"))
-        .query(QueryDecl::member_call_rooted("document.execCommand")
-                .with_arg_static_strings(0, ["copy", "cut"]))
+        .query(QueryDecl::member_call_rooted(
+            "navigator.clipboard.writeText",
+        ))
+        .query(
+            QueryDecl::member_call_rooted("document.execCommand")
+                .with_arg_static_strings(0, ["copy", "cut"]),
+        )
         .build()
         .unwrap()
 }

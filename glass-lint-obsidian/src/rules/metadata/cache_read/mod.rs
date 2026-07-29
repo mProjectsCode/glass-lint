@@ -15,11 +15,19 @@ pub fn rule() -> Rule {
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(QueryDecl::member_read_rooted("app.metadataCache"))
-        .query(QueryDecl::member_read_rooted("app.metadataCache.resolvedLinks"))
-        .query(QueryDecl::member_read_rooted("app.metadataCache.unresolvedLinks"))
-        .query(QueryDecl::member_call_rooted("app.metadataCache.getFileCache"))
+        .query(QueryDecl::member_read_rooted(
+            "app.metadataCache.resolvedLinks",
+        ))
+        .query(QueryDecl::member_read_rooted(
+            "app.metadataCache.unresolvedLinks",
+        ))
+        .query(QueryDecl::member_call_rooted(
+            "app.metadataCache.getFileCache",
+        ))
         .query(QueryDecl::member_call_rooted("app.metadataCache.getCache"))
-        .query(QueryDecl::member_call_rooted("app.metadataCache.getFirstLinkpathDest"))
+        .query(QueryDecl::member_call_rooted(
+            "app.metadataCache.getFirstLinkpathDest",
+        ))
         .build()
         .unwrap()
 }

@@ -11,7 +11,9 @@ pub fn rule() -> Rule {
         .category(Category::new("browser/permissions").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_rooted("navigator.bluetooth.requestDevice"))
+        .query(QueryDecl::member_call_rooted(
+            "navigator.bluetooth.requestDevice",
+        ))
         .build()
         .unwrap()
 }

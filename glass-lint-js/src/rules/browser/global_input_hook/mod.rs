@@ -33,12 +33,18 @@ pub fn rule() -> Rule {
         .category(Category::new("browser/input").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .query(QueryDecl::member_call_rooted("document.addEventListener")
-                .with_arg_static_strings(0, INPUT_EVENTS))
-        .query(QueryDecl::member_call_rooted("addEventListener")
-                .with_arg_static_strings(0, INPUT_EVENTS))
-        .query(QueryDecl::member_call_rooted("document.body.addEventListener")
-                .with_arg_static_strings(0, INPUT_EVENTS))
+        .query(
+            QueryDecl::member_call_rooted("document.addEventListener")
+                .with_arg_static_strings(0, INPUT_EVENTS),
+        )
+        .query(
+            QueryDecl::member_call_rooted("addEventListener")
+                .with_arg_static_strings(0, INPUT_EVENTS),
+        )
+        .query(
+            QueryDecl::member_call_rooted("document.body.addEventListener")
+                .with_arg_static_strings(0, INPUT_EVENTS),
+        )
         .query(QueryDecl::member_read_rooted("document.onkeydown"))
         .query(QueryDecl::member_read_rooted("document.onkeyup"))
         .query(QueryDecl::member_read_rooted("document.onkeypress"))

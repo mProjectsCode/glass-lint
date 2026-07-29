@@ -12,7 +12,11 @@ pub fn rule() -> Rule {
         .category(Category::new("editor").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_instance("obsidian", "Plugin", "registerEditorExtension"))
+        .query(QueryDecl::member_call_instance(
+            "obsidian",
+            "Plugin",
+            "registerEditorExtension",
+        ))
         .build()
         .unwrap()
 }

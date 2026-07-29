@@ -12,19 +12,55 @@ pub fn rule() -> Rule {
         .category(Category::new("platform").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_read_module("obsidian", "Platform.isMobile"))
-        .query(QueryDecl::member_read_module("obsidian", "Platform.isDesktop"))
-        .query(QueryDecl::member_read_module("obsidian", "Platform.isIosApp"))
-        .query(QueryDecl::member_read_module("obsidian", "Platform.isAndroidApp"))
-        .query(QueryDecl::member_read_module("obsidian", "Platform.isMacOS"))
+        .query(QueryDecl::member_read_module(
+            "obsidian",
+            "Platform.isMobile",
+        ))
+        .query(QueryDecl::member_read_module(
+            "obsidian",
+            "Platform.isDesktop",
+        ))
+        .query(QueryDecl::member_read_module(
+            "obsidian",
+            "Platform.isIosApp",
+        ))
+        .query(QueryDecl::member_read_module(
+            "obsidian",
+            "Platform.isAndroidApp",
+        ))
+        .query(QueryDecl::member_read_module(
+            "obsidian",
+            "Platform.isMacOS",
+        ))
         .query(QueryDecl::member_read_module("obsidian", "Platform.isWin"))
-        .query(QueryDecl::member_read_module("obsidian", "Platform.isLinux"))
-        .query(QueryDecl::member_read_module("obsidian", "Platform.isDesktopApp"))
-        .query(QueryDecl::member_read_module("obsidian", "Platform.isMobileApp"))
-        .query(QueryDecl::member_read_module("obsidian", "Platform.isPhone"))
-        .query(QueryDecl::member_read_module("obsidian", "Platform.isTablet"))
-        .query(QueryDecl::member_read_module("obsidian", "Platform.isSafari"))
-        .query(QueryDecl::member_read_module("obsidian", "Platform.resourcePathPrefix"))
+        .query(QueryDecl::member_read_module(
+            "obsidian",
+            "Platform.isLinux",
+        ))
+        .query(QueryDecl::member_read_module(
+            "obsidian",
+            "Platform.isDesktopApp",
+        ))
+        .query(QueryDecl::member_read_module(
+            "obsidian",
+            "Platform.isMobileApp",
+        ))
+        .query(QueryDecl::member_read_module(
+            "obsidian",
+            "Platform.isPhone",
+        ))
+        .query(QueryDecl::member_read_module(
+            "obsidian",
+            "Platform.isTablet",
+        ))
+        .query(QueryDecl::member_read_module(
+            "obsidian",
+            "Platform.isSafari",
+        ))
+        .query(QueryDecl::member_read_module(
+            "obsidian",
+            "Platform.resourcePathPrefix",
+        ))
         .build()
         .unwrap()
 }

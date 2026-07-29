@@ -594,8 +594,7 @@ fn returned_callable_provenance_crosses_an_exported_function() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .query(QueryDecl::call_module("web", "request")
-                .with_arg_static_string(0))
+        .query(QueryDecl::call_module("web", "request").with_arg_static_string(0))
         .build()
         .unwrap();
     let linter = crate::Linter::new(crate::LinterConfig::new(
@@ -639,8 +638,7 @@ fn linked_external_call_arguments_are_projected_after_reexports() {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .query(QueryDecl::call_module("web", "request")
-                .with_arg_static_string(0))
+        .query(QueryDecl::call_module("web", "request").with_arg_static_string(0))
         .build()
         .unwrap();
     let linter = crate::Linter::new(crate::LinterConfig::new(

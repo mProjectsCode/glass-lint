@@ -12,9 +12,15 @@ pub fn rule() -> Rule {
         .category(Category::new("browser/permissions").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_rooted("navigator.mediaDevices.getUserMedia"))
-        .query(QueryDecl::member_call_rooted("navigator.mediaDevices.getDisplayMedia"))
-        .query(QueryDecl::member_call_rooted("navigator.mediaDevices.enumerateDevices"))
+        .query(QueryDecl::member_call_rooted(
+            "navigator.mediaDevices.getUserMedia",
+        ))
+        .query(QueryDecl::member_call_rooted(
+            "navigator.mediaDevices.getDisplayMedia",
+        ))
+        .query(QueryDecl::member_call_rooted(
+            "navigator.mediaDevices.enumerateDevices",
+        ))
         .build()
         .unwrap()
 }

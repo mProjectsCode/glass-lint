@@ -13,9 +13,16 @@ pub fn rule() -> Rule {
         .category(Category::new("ui").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_instance("obsidian", "Plugin", "addSettingTab"))
+        .query(QueryDecl::member_call_instance(
+            "obsidian",
+            "Plugin",
+            "addSettingTab",
+        ))
         .query(QueryDecl::constructor_heuristic("PluginSettingTab"))
-        .query(QueryDecl::constructor_module("obsidian", "PluginSettingTab"))
+        .query(QueryDecl::constructor_module(
+            "obsidian",
+            "PluginSettingTab",
+        ))
         .query(QueryDecl::class_module("obsidian", "PluginSettingTab"))
         .build()
         .unwrap()

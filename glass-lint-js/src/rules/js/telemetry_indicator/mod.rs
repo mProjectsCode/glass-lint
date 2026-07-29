@@ -25,7 +25,9 @@ pub fn rule() -> Rule {
         .query(QueryDecl::import_package("@opentelemetry/api"))
         .query(QueryDecl::import_package("@opentelemetry/sdk-node"))
         .query(QueryDecl::import_package("@opentelemetry/sdk-trace-web"))
-        .query(QueryDecl::import_package("@opentelemetry/exporter-trace-otlp-http"))
+        .query(QueryDecl::import_package(
+            "@opentelemetry/exporter-trace-otlp-http",
+        ))
         .query(QueryDecl::import_package("@segment/analytics-next"))
         .query(QueryDecl::import_package("analytics"))
         .query(QueryDecl::import_package("@amplitude/analytics-browser"))

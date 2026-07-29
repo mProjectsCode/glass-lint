@@ -1,6 +1,6 @@
 use glass_lint_core::rules::{
-    Category, Confidence, FlowCompletion, FlowCondition, QueryDecl, ObjectEventMatcher,
-    ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
+    Category, Confidence, FlowCompletion, FlowCondition, ObjectEventMatcher, ObjectFlowMatcher,
+    ObjectSourceMatcher, QueryDecl, Rule, Severity, ValueMatcher,
 };
 
 /// Detects an input created by `document.createElement("input")` whose direct

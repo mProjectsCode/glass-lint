@@ -499,8 +499,7 @@ mod tests {
     #[test]
     fn constrained_call_produces_constrained_scan() {
         let roots = physical_roots(
-            &QueryDecl::call_global("fetch")
-                .with_arg(0, ValueMatcher::static_string()),
+            &QueryDecl::call_global("fetch").with_arg(0, ValueMatcher::static_string()),
         );
         assert_eq!(roots.len(), 1);
         assert!(
@@ -651,27 +650,41 @@ mod tests {
         let summary = physical_summary(&QueryDecl::call_global("fetch"));
         assert!(summary.contains("roots=1"), "summary: {summary}");
         assert!(summary.contains("indexed_scans=1"), "summary: {summary}");
-        assert!(summary.contains("constrained_scans=0"), "summary: {summary}");
-        assert!(summary.contains("returned_subjects=0"), "summary: {summary}");
-        assert!(summary.contains("instance_subjects=0"), "summary: {summary}");
+        assert!(
+            summary.contains("constrained_scans=0"),
+            "summary: {summary}"
+        );
+        assert!(
+            summary.contains("returned_subjects=0"),
+            "summary: {summary}"
+        );
+        assert!(
+            summary.contains("instance_subjects=0"),
+            "summary: {summary}"
+        );
         assert!(summary.contains("project_overlay=no"), "summary: {summary}");
     }
 
     #[test]
     fn plan_summary_shows_constrained_scan() {
         let summary = physical_summary(
-            &QueryDecl::call_global("fetch")
-                .with_arg(0, ValueMatcher::static_string()),
+            &QueryDecl::call_global("fetch").with_arg(0, ValueMatcher::static_string()),
         );
         assert!(summary.contains("roots=1"), "summary: {summary}");
-        assert!(summary.contains("constrained_scans=1"), "summary: {summary}");
+        assert!(
+            summary.contains("constrained_scans=1"),
+            "summary: {summary}"
+        );
         assert!(summary.contains("indexed_scans=0"), "summary: {summary}");
     }
 
     #[test]
     fn plan_summary_shows_project_overlay_for_module_queries() {
         let summary = physical_summary(&QueryDecl::call_module("fs", "readFile"));
-        assert!(summary.contains("project_overlay=yes"), "summary: {summary}");
+        assert!(
+            summary.contains("project_overlay=yes"),
+            "summary: {summary}"
+        );
     }
 
     #[test]

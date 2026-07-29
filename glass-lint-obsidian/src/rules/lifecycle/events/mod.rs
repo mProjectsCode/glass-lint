@@ -15,10 +15,26 @@ pub fn rule() -> Rule {
         .category(Category::new("lifecycle").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_instance("obsidian", "Plugin", "registerEvent"))
-        .query(QueryDecl::member_call_instance("obsidian", "Plugin", "registerDomEvent"))
-        .query(QueryDecl::member_call_instance("obsidian", "Plugin", "registerInterval"))
-        .query(QueryDecl::member_call_instance("obsidian", "Plugin", "registerObsidianProtocolHandler"))
+        .query(QueryDecl::member_call_instance(
+            "obsidian",
+            "Plugin",
+            "registerEvent",
+        ))
+        .query(QueryDecl::member_call_instance(
+            "obsidian",
+            "Plugin",
+            "registerDomEvent",
+        ))
+        .query(QueryDecl::member_call_instance(
+            "obsidian",
+            "Plugin",
+            "registerInterval",
+        ))
+        .query(QueryDecl::member_call_instance(
+            "obsidian",
+            "Plugin",
+            "registerObsidianProtocolHandler",
+        ))
         .build()
         .unwrap()
 }

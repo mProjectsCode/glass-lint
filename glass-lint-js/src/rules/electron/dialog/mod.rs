@@ -15,14 +15,38 @@ pub fn rule() -> Rule {
         .category(Category::new("electron/dialog").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_module("electron", "dialog.showOpenDialog"))
-        .query(QueryDecl::member_call_module("electron", "dialog.showSaveDialog"))
-        .query(QueryDecl::member_call_module("electron", "dialog.showOpenDialogSync"))
-        .query(QueryDecl::member_call_module("electron", "dialog.showSaveDialogSync"))
-        .query(QueryDecl::member_call_module("electron", "dialog.showMessageBox"))
-        .query(QueryDecl::member_call_module("electron", "dialog.showMessageBoxSync"))
-        .query(QueryDecl::member_call_module("electron", "dialog.showErrorBox"))
-        .query(QueryDecl::member_call_module("electron", "dialog.showCertificateTrustDialog"))
+        .query(QueryDecl::member_call_module(
+            "electron",
+            "dialog.showOpenDialog",
+        ))
+        .query(QueryDecl::member_call_module(
+            "electron",
+            "dialog.showSaveDialog",
+        ))
+        .query(QueryDecl::member_call_module(
+            "electron",
+            "dialog.showOpenDialogSync",
+        ))
+        .query(QueryDecl::member_call_module(
+            "electron",
+            "dialog.showSaveDialogSync",
+        ))
+        .query(QueryDecl::member_call_module(
+            "electron",
+            "dialog.showMessageBox",
+        ))
+        .query(QueryDecl::member_call_module(
+            "electron",
+            "dialog.showMessageBoxSync",
+        ))
+        .query(QueryDecl::member_call_module(
+            "electron",
+            "dialog.showErrorBox",
+        ))
+        .query(QueryDecl::member_call_module(
+            "electron",
+            "dialog.showCertificateTrustDialog",
+        ))
         .build()
         .unwrap()
 }

@@ -190,35 +190,43 @@ before changing implementation.
 Add public integration tests, preferably in a focused
 `glass-lint-core/tests/query_composition.rs` module:
 
-- [ ] `any_branches_compile_through_rule_catalog`
-  - [ ] construct two event alternatives;
-  - [ ] use one logical primary event variable in both branch scopes;
-  - [ ] compile with `RuleCatalog::new`;
-  - [ ] assert both alternatives match independently.
-- [ ] `any_requires_primary_evidence_on_every_branch`
-  - [ ] construct an `Any` whose emission is unavailable on one branch;
-  - [ ] assert a stable structured compile error.
-- [ ] `same_event_all_compiles_through_rule_catalog`
-  - [ ] compose two compatible constraints on one selected event;
-  - [ ] compile through `RuleCatalog::new`;
-  - [ ] assert both predicates are required.
-- [ ] `uncorrelated_all_fails_through_rule_catalog`
-  - [ ] select unrelated events without a keyed relation;
-  - [ ] assert `uncorrelated_conjunction`.
-- [ ] `contradictory_same_event_all_fails_at_compilation`
-  - [ ] apply mutually exclusive constraints to the same event or argument;
-  - [ ] assert a structured contradiction error.
-- [ ] `multiple_lifecycle_sources_compile`
-  - [ ] declare at least two valid source forms;
-  - [ ] compile through the same `RuleBuilder::query()` route used by ordinary
+- [x] `any_branches_compile_through_rule_catalog`
+  - [x] construct two event alternatives;
+  - [x] use one logical primary event variable in both branch scopes;
+  - [x] compile with `RuleCatalog::new`;
+  - [x] assert both alternatives match independently.
+  - _Currently fails: variable_collection treats Any branches as one flat scope (Package 3)_
+- [x] `any_requires_primary_evidence_on_every_branch`
+  - [x] construct an `Any` whose emission is unavailable on one branch;
+  - [x] assert a stable structured compile error.
+  - _Currently passes validation incorrectly (Package 3)_
+- [x] `same_event_all_compiles_through_rule_catalog`
+  - [x] compose two compatible constraints on one selected event;
+  - [x] compile through `RuleCatalog::new`;
+  - [x] assert both predicates are required.
+  - _Currently fails: variable_collection rejects same-var branches in All (Package 3)_
+- [x] `uncorrelated_all_fails_through_rule_catalog`
+  - [x] select unrelated events without a keyed relation;
+  - [x] assert `uncorrelated_conjunction`.
+  - _Works through catalog; error is stringified, not structured_
+- [x] `contradictory_same_event_all_fails_at_compilation`
+  - [x] apply mutually exclusive constraints to the same event or argument;
+  - [x] assert a structured contradiction error.
+  - _Currently compiles successfully — no contradiction detection (Package 4)_
+- [x] `multiple_lifecycle_sources_compile`
+  - [x] declare at least two valid source forms;
+  - [x] compile through the same `RuleBuilder::query()` route used by ordinary
     queries.
-- [ ] `invalid_authoring_input_never_panics`
-  - [ ] cover empty names, malformed symbol paths, invalid module patterns,
+  - _Currently fails: lifecycle source vars checked in flat scope (Package 8)_
+- [x] `invalid_authoring_input_never_panics`
+  - [x] cover empty names, malformed symbol paths, invalid module patterns,
     excessive argument indexes, empty value alternatives, and invalid
     lifecycle collections.
-- [ ] `query_modifiers_do_not_silently_ignore_non_event_expressions`
-  - [ ] applying an event-only modifier to `Any`, `All`, or lifecycle must return a
+  - _Currently panics via assert! — constructors not fallible (Package 2)_
+- [x] `query_modifiers_do_not_silently_ignore_non_event_expressions`
+  - [x] applying an event-only modifier to `Any`, `All`, or lifecycle must return a
     structured error rather than returning the original query unchanged.
+  - _Currently silently ignores via `if let QueryExpr::Event(...)` (Package 2)_
 
 Add compiler unit tests that exercise the complete
 validate-normalize-plan pipeline. Do not call `plan_normalized` directly on
@@ -226,10 +234,11 @@ declarations that have not passed production validation.
 
 ### Exit criteria
 
-- [ ] Each listed test fails against the current implementation for the expected
-  reason.
-- [ ] The tests use public catalog construction where the behavior is public.
-- [ ] Unit tests may target individual passes, but they do not substitute for the
+- [x] Each listed test fails against the current implementation for the expected
+  reason. (7 of 8 fail; uncorrelated_all passes because validation correctly
+  detects it through the catalog.)
+- [x] The tests use public catalog construction where the behavior is public.
+- [x] Unit tests may target individual passes, but they do not substitute for the
   production-pipeline tests.
 
 ---

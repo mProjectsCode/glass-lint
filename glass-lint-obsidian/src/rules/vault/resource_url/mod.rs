@@ -15,7 +15,9 @@ pub fn rule() -> Rule {
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(QueryDecl::member_call_rooted("app.vault.getResourcePath"))
-        .query(QueryDecl::member_call_rooted("app.vault.adapter.getResourcePath"))
+        .query(QueryDecl::member_call_rooted(
+            "app.vault.adapter.getResourcePath",
+        ))
         .query(QueryDecl::string_contains("obsidian://"))
         .build()
         .unwrap()

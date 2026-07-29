@@ -12,7 +12,9 @@ pub fn rule() -> Rule {
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(QueryDecl::member_call_rooted("navigator.hid.requestDevice"))
-        .query(QueryDecl::member_call_rooted("navigator.serial.requestPort"))
+        .query(QueryDecl::member_call_rooted(
+            "navigator.serial.requestPort",
+        ))
         .query(QueryDecl::member_call_rooted("navigator.usb.requestDevice"))
         .build()
         .unwrap()

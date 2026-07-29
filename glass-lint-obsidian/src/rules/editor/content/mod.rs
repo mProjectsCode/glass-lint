@@ -11,18 +11,56 @@ pub fn rule() -> Rule {
         .category(Category::new("editor").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_instance("obsidian", "Editor", "getValue"))
-        .query(QueryDecl::member_call_instance("obsidian", "Editor", "setValue"))
-        .query(QueryDecl::member_call_instance("obsidian", "Editor", "getLine"))
-        .query(QueryDecl::member_call_instance("obsidian", "Editor", "setLine"))
-        .query(QueryDecl::member_call_instance("obsidian", "Editor", "getRange"))
-        .query(QueryDecl::member_call_instance("obsidian", "Editor", "replaceRange"))
-        .query(QueryDecl::member_call_instance("obsidian", "Editor", "getSelection"))
-        .query(QueryDecl::member_call_instance("obsidian", "Editor", "replaceSelection"))
-        .query(QueryDecl::member_call_instance("obsidian", "Editor", "getCursor"))
-        .query(QueryDecl::member_call_instance("obsidian", "Editor", "setCursor"))
-        .query(QueryDecl::member_call_instance("obsidian", "Editor", "setSelection"))
-        .query(QueryDecl::member_call_instance("obsidian", "Editor", "setSelections"))
+        .query(QueryDecl::member_call_instance(
+            "obsidian", "Editor", "getValue",
+        ))
+        .query(QueryDecl::member_call_instance(
+            "obsidian", "Editor", "setValue",
+        ))
+        .query(QueryDecl::member_call_instance(
+            "obsidian", "Editor", "getLine",
+        ))
+        .query(QueryDecl::member_call_instance(
+            "obsidian", "Editor", "setLine",
+        ))
+        .query(QueryDecl::member_call_instance(
+            "obsidian", "Editor", "getRange",
+        ))
+        .query(QueryDecl::member_call_instance(
+            "obsidian",
+            "Editor",
+            "replaceRange",
+        ))
+        .query(QueryDecl::member_call_instance(
+            "obsidian",
+            "Editor",
+            "getSelection",
+        ))
+        .query(QueryDecl::member_call_instance(
+            "obsidian",
+            "Editor",
+            "replaceSelection",
+        ))
+        .query(QueryDecl::member_call_instance(
+            "obsidian",
+            "Editor",
+            "getCursor",
+        ))
+        .query(QueryDecl::member_call_instance(
+            "obsidian",
+            "Editor",
+            "setCursor",
+        ))
+        .query(QueryDecl::member_call_instance(
+            "obsidian",
+            "Editor",
+            "setSelection",
+        ))
+        .query(QueryDecl::member_call_instance(
+            "obsidian",
+            "Editor",
+            "setSelections",
+        ))
         .build()
         .unwrap()
 }

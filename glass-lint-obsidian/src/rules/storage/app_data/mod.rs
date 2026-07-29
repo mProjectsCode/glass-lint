@@ -16,7 +16,9 @@ pub fn rule() -> Rule {
         .query(QueryDecl::member_call_rooted("app.saveLocalStorage"))
         .query(QueryDecl::member_call_rooted("app.secretStorage.getSecret"))
         .query(QueryDecl::member_call_rooted("app.secretStorage.setSecret"))
-        .query(QueryDecl::member_call_rooted("app.secretStorage.listSecrets"))
+        .query(QueryDecl::member_call_rooted(
+            "app.secretStorage.listSecrets",
+        ))
         .build()
         .unwrap()
 }

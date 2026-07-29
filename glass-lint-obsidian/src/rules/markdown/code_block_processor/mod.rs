@@ -12,7 +12,11 @@ pub fn rule() -> Rule {
         .category(Category::new("markdown").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_instance("obsidian", "Plugin", "registerMarkdownCodeBlockProcessor"))
+        .query(QueryDecl::member_call_instance(
+            "obsidian",
+            "Plugin",
+            "registerMarkdownCodeBlockProcessor",
+        ))
         .build()
         .unwrap()
 }

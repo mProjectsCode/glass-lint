@@ -16,11 +16,20 @@ pub fn rule() -> Rule {
         .query(QueryDecl::member_call_module("obsidian", "normalizePath"))
         .query(QueryDecl::member_call_module("obsidian", "getLinkpath"))
         .query(QueryDecl::member_call_module("obsidian", "fileToLinktext"))
-        .query(QueryDecl::member_call_module("obsidian", "generateMarkdownLink"))
+        .query(QueryDecl::member_call_module(
+            "obsidian",
+            "generateMarkdownLink",
+        ))
         .query(QueryDecl::member_call_module("obsidian", "resolveSubpath"))
         .query(QueryDecl::member_call_module("obsidian", "parseSubpath"))
-        .query(QueryDecl::member_call_module("obsidian", "parseFrontMatterAliases"))
-        .query(QueryDecl::member_call_module("obsidian", "parseFrontMatterTags"))
+        .query(QueryDecl::member_call_module(
+            "obsidian",
+            "parseFrontMatterAliases",
+        ))
+        .query(QueryDecl::member_call_module(
+            "obsidian",
+            "parseFrontMatterTags",
+        ))
         .build()
         .unwrap()
 }

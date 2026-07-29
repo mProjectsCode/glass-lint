@@ -20,7 +20,9 @@ pub fn rule() -> Rule {
         .query(QueryDecl::member_call_rooted("app.vault.getAllFolders"))
         .query(QueryDecl::member_call_rooted("app.vault.getFolderByPath"))
         .query(QueryDecl::member_call_rooted("app.vault.getFileByPath"))
-        .query(QueryDecl::member_call_rooted("app.vault.getAbstractFileByPath"))
+        .query(QueryDecl::member_call_rooted(
+            "app.vault.getAbstractFileByPath",
+        ))
         .query(QueryDecl::member_call_rooted("app.vault.recurseChildren"))
         .query(QueryDecl::member_call_rooted("app.vault.getRoot"))
         .build()

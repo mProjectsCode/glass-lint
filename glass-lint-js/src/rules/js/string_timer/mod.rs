@@ -13,10 +13,8 @@ pub fn rule() -> Rule {
         .category(Category::new("language/dynamic-code").unwrap())
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
-        .query(QueryDecl::call_global("setTimeout")
-                .with_arg_static_string(0))
-        .query(QueryDecl::call_global("setInterval")
-                .with_arg_static_string(0))
+        .query(QueryDecl::call_global("setTimeout").with_arg_static_string(0))
+        .query(QueryDecl::call_global("setInterval").with_arg_static_string(0))
         .build()
         .unwrap()
 }

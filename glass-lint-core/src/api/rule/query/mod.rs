@@ -18,8 +18,8 @@ use smol_str::SmolStr;
 use crate::api::{
     classification::MatchKind,
     rule::{
-        ArgumentConstraint, ArgumentMatcher, FlowCompletion, FlowCondition,
-        ModuleSpecifierPattern, ObjectFlowMatcher, ValueMatcher,
+        ArgumentConstraint, ArgumentMatcher, FlowCompletion, FlowCondition, ModuleSpecifierPattern,
+        ObjectFlowMatcher, ValueMatcher,
     },
 };
 
@@ -1196,10 +1196,7 @@ impl fmt::Display for QueryBuildError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::{
-        classification::MatchKind,
-        rule::ValueMatcher,
-    };
+    use crate::api::{classification::MatchKind, rule::ValueMatcher};
 
     // ── VarId tests ────────────────────────────────────────────────
 
@@ -1286,7 +1283,10 @@ mod tests {
 
     #[test]
     fn lowers_call_package_to_query_decl() {
-        assert_event_query(&QueryDecl::call_package("@scope/pkg", "method"), "@scope/pkg.method");
+        assert_event_query(
+            &QueryDecl::call_package("@scope/pkg", "method"),
+            "@scope/pkg.method",
+        );
     }
 
     #[test]
@@ -1417,8 +1417,8 @@ mod tests {
 
     #[test]
     fn lowers_evidence_override_to_query_decl() {
-        let q = QueryDecl::call_global("fetch")
-            .with_evidence(MatchKind::CallArgument, "custom.fetch");
+        let q =
+            QueryDecl::call_global("fetch").with_evidence(MatchKind::CallArgument, "custom.fetch");
         assert_eq!(q.emission.kind, MatchKind::CallArgument);
         assert_eq!(q.emission.symbol, "custom.fetch");
     }

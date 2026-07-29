@@ -12,7 +12,9 @@ pub fn rule() -> Rule {
         .category(Category::new("storage").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_instance("obsidian", "Plugin", "loadData"))
+        .query(QueryDecl::member_call_instance(
+            "obsidian", "Plugin", "loadData",
+        ))
         .build()
         .unwrap()
 }

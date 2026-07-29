@@ -15,12 +15,29 @@ pub fn rule() -> Rule {
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(QueryDecl::member_call_rooted("app.workspace.openLinkText"))
-        .query(QueryDecl::member_call_rooted("app.workspace.getLeaf.openFile"))
-        .query(QueryDecl::member_call_returned("app.workspace.getLeaf", "openFile"))
-        .query(QueryDecl::member_call_returned("app.workspace.getLeafById", "openFile"))
-        .query(QueryDecl::member_call_returned("app.workspace.getLeftLeaf", "openFile"))
-        .query(QueryDecl::member_call_returned("app.workspace.getRightLeaf", "openFile"))
-        .query(QueryDecl::member_call_returned("app.workspace.ensureSideLeaf", "openFile"))
+        .query(QueryDecl::member_call_rooted(
+            "app.workspace.getLeaf.openFile",
+        ))
+        .query(QueryDecl::member_call_returned(
+            "app.workspace.getLeaf",
+            "openFile",
+        ))
+        .query(QueryDecl::member_call_returned(
+            "app.workspace.getLeafById",
+            "openFile",
+        ))
+        .query(QueryDecl::member_call_returned(
+            "app.workspace.getLeftLeaf",
+            "openFile",
+        ))
+        .query(QueryDecl::member_call_returned(
+            "app.workspace.getRightLeaf",
+            "openFile",
+        ))
+        .query(QueryDecl::member_call_returned(
+            "app.workspace.ensureSideLeaf",
+            "openFile",
+        ))
         .build()
         .unwrap()
 }

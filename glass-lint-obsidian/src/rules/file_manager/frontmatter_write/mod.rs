@@ -12,7 +12,9 @@ pub fn rule() -> Rule {
         .category(Category::new("file-manager").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_rooted("app.fileManager.processFrontMatter"))
+        .query(QueryDecl::member_call_rooted(
+            "app.fileManager.processFrontMatter",
+        ))
         .build()
         .unwrap()
 }

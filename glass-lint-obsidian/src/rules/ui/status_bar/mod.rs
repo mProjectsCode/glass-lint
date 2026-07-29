@@ -12,7 +12,11 @@ pub fn rule() -> Rule {
         .category(Category::new("ui").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_instance("obsidian", "Plugin", "addStatusBarItem"))
+        .query(QueryDecl::member_call_instance(
+            "obsidian",
+            "Plugin",
+            "addStatusBarItem",
+        ))
         .build()
         .unwrap()
 }

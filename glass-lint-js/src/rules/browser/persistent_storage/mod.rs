@@ -60,7 +60,9 @@ pub fn rule() -> Rule {
         }
     }
     for method in COOKIE_METHODS {
-        builder = builder.query(QueryDecl::member_call_rooted(format!("cookieStore.{method}")));
+        builder = builder.query(QueryDecl::member_call_rooted(format!(
+            "cookieStore.{method}"
+        )));
     }
 
     builder.build().unwrap()

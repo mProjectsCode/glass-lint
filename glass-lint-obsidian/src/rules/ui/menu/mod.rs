@@ -10,7 +10,9 @@ pub fn rule() -> Rule {
         .category(Category::new("ui").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .query(QueryDecl::member_call_instance("obsidian", "Menu", "addItem"))
+        .query(QueryDecl::member_call_instance(
+            "obsidian", "Menu", "addItem",
+        ))
         .build()
         .unwrap()
 }

@@ -138,7 +138,9 @@ fn collapses_contained_ranges_for_same_rule() {
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(QueryDecl::member_read_rooted("app.metadataCache"))
-        .query(QueryDecl::member_call_rooted("app.metadataCache.getFileCache"))
+        .query(QueryDecl::member_call_rooted(
+            "app.metadataCache.getFileCache",
+        ))
         .build()
         .unwrap();
     let catalog = RuleCatalog::new("test", vec![rule]).unwrap();

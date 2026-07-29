@@ -8,8 +8,8 @@ use std::collections::BTreeSet;
 use glass_lint_core::{
     Environment, Linter, LinterConfig, MatchCertainty, RuleCatalog,
     rules::{
-        ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, QueryDecl,
-        ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule, ValueMatcher,
+        ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, ObjectEventMatcher,
+        ObjectFlowMatcher, ObjectSourceMatcher, QueryDecl, Rule, ValueMatcher,
     },
 };
 
@@ -217,7 +217,11 @@ fn rooted_global_object_alias_mutations_invalidate_the_canonical_root() {
 #[test]
 fn extracted_instance_callables_follow_aliases_and_bind_but_not_reassignment() {
     let rules = [rule("instance")
-        .query(QueryDecl::member_call_instance("obsidian", "Plugin", "addCommand"))
+        .query(QueryDecl::member_call_instance(
+            "obsidian",
+            "Plugin",
+            "addCommand",
+        ))
         .build()
         .unwrap()];
     let result = classify(
@@ -275,12 +279,13 @@ fn package_provenance_matches_exports_and_namespace_members_at_boundaries() {
 #[test]
 fn associates_static_option_properties_with_their_call_sink() {
     let rules = [rule("string-use")
-        .query(QueryDecl::call_global("fetch")
-                .with_arg_object_property_value(
-                    1,
-                    "url",
-                    ValueMatcher::static_string().contains_any(["localhost"]),
-                ))
+        .query(
+            QueryDecl::call_global("fetch").with_arg_object_property_value(
+                1,
+                "url",
+                ValueMatcher::static_string().contains_any(["localhost"]),
+            ),
+        )
         .build()
         .unwrap()];
     let result = classify(
@@ -351,8 +356,7 @@ fn rejects_aliases_after_shadowing_reassignment() {
 #[test]
 fn matches_static_string_arguments_but_rejects_dynamic_strings() {
     let rules = [rule("test.fetch-url")
-        .query(QueryDecl::call_global("fetch")
-                .with_arg_static_string(0))
+        .query(QueryDecl::call_global("fetch").with_arg_static_string(0))
         .build()
         .unwrap()];
     let result = classify("fetch('/literal'); fetch('/' + dynamic);", &rules);
@@ -362,8 +366,10 @@ fn matches_static_string_arguments_but_rejects_dynamic_strings() {
 #[test]
 fn callable_transforms_use_effective_target_arguments() {
     let rule = [rule("test.callable")
-        .query(QueryDecl::call_global("fetch")
-                .with_arg_static_strings(0, ["/call", "/apply", "/optional"]))
+        .query(
+            QueryDecl::call_global("fetch")
+                .with_arg_static_strings(0, ["/call", "/apply", "/optional"]),
+        )
         .build()
         .unwrap()];
     let result = classify(
@@ -376,8 +382,10 @@ fn callable_transforms_use_effective_target_arguments() {
 #[test]
 fn global_call_matchers_cover_proven_global_object_callable_forms() {
     let rules = [rule("test.global-callable")
-        .query(QueryDecl::call_global("eval")
-                .with_arg_static_strings(0, ["direct", "alias", "call", "apply"]))
+        .query(
+            QueryDecl::call_global("eval")
+                .with_arg_static_strings(0, ["direct", "alias", "call", "apply"]),
+        )
         .build()
         .unwrap()];
     let result = classify(
@@ -561,8 +569,10 @@ fn numeric_addition_is_not_a_static_property_string() {
 #[test]
 fn tracks_rooted_expression_arguments_through_aliases() {
     let rules = [rule("test.arg-flow")
-        .query(QueryDecl::member_call_rooted("app.open")
-                .with_arg(0, ArgumentMatcher::rooted_expressions(["vault.file"])))
+        .query(
+            QueryDecl::member_call_rooted("app.open")
+                .with_arg(0, ArgumentMatcher::rooted_expressions(["vault.file"])),
+        )
         .build()
         .unwrap()];
     let result = classify(
@@ -616,8 +626,10 @@ fn tracks_parameter_aliases_into_arrow_functions() {
 #[test]
 fn matches_optional_chained_calls_with_static_arguments() {
     let rules = [rule("test.optional")
-        .query(QueryDecl::member_call_rooted("app.commands.execute")
-                .with_arg_static_strings(0, ["open"]))
+        .query(
+            QueryDecl::member_call_rooted("app.commands.execute")
+                .with_arg_static_strings(0, ["open"]),
+        )
         .build()
         .unwrap()];
     let result = classify(
@@ -640,8 +652,10 @@ fn resolves_literal_computed_properties_through_constant_aliases() {
 #[test]
 fn reuses_constant_object_arguments_for_key_matching() {
     let rules = [rule("test.object-arg")
-        .query(QueryDecl::member_call_rooted("client.request")
-                .with_arg_object_keys(0, ["url", "method"]))
+        .query(
+            QueryDecl::member_call_rooted("client.request")
+                .with_arg_object_keys(0, ["url", "method"]),
+        )
         .build()
         .unwrap()];
     let result = classify(
@@ -654,13 +668,11 @@ fn reuses_constant_object_arguments_for_key_matching() {
 #[test]
 fn rejects_reassigned_static_values() {
     let string_rules = [rule("test.fetch-url")
-        .query(QueryDecl::call_global("fetch")
-                .with_arg_static_string(0))
+        .query(QueryDecl::call_global("fetch").with_arg_static_string(0))
         .build()
         .unwrap()];
     let object_rules = [rule("test.object-arg")
-        .query(QueryDecl::member_call_rooted("client.request")
-                .with_arg_object_keys(0, ["url"]))
+        .query(QueryDecl::member_call_rooted("client.request").with_arg_object_keys(0, ["url"]))
         .build()
         .unwrap()];
 
@@ -685,8 +697,10 @@ fn rejects_reassigned_static_values() {
 #[test]
 fn rejects_static_shapes_after_a_property_write() {
     let rules = [rule("test.object-arg")
-        .query(QueryDecl::member_call_rooted("client.request")
-                .with_arg_object_keys(0, ["url", "method"]))
+        .query(
+            QueryDecl::member_call_rooted("client.request")
+                .with_arg_object_keys(0, ["url", "method"]),
+        )
         .build()
         .unwrap()];
     let result = classify(
@@ -699,8 +713,10 @@ fn rejects_static_shapes_after_a_property_write() {
 #[test]
 fn projects_const_object_aliases_into_destructured_parameters() {
     let rules = [rule("test.arg-flow")
-        .query(QueryDecl::member_call_rooted("app.open")
-                .with_arg(0, ArgumentMatcher::rooted_expressions(["vault.file"])))
+        .query(
+            QueryDecl::member_call_rooted("app.open")
+                .with_arg(0, ArgumentMatcher::rooted_expressions(["vault.file"])),
+        )
         .build()
         .unwrap()];
     let result = classify(
@@ -730,7 +746,9 @@ fn tracks_configured_values_into_later_member_sinks() {
 #[test]
 fn instance_matchers_do_not_track_chained_constructor_calls() {
     let rules = [rule("test.instance")
-        .query(QueryDecl::member_call_instance("obsidian", "Menu", "addItem"))
+        .query(QueryDecl::member_call_instance(
+            "obsidian", "Menu", "addItem",
+        ))
         .build()
         .unwrap()];
     let result = classify(

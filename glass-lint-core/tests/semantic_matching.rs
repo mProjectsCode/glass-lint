@@ -4,8 +4,8 @@
 //! the matcher to prove each match without falling back to name-only matching.
 
 use glass_lint_core::rules::{
-    ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, QueryDecl,
-    ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher,
+    ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, ObjectEventMatcher,
+    ObjectFlowMatcher, ObjectSourceMatcher, QueryDecl, ValueMatcher,
 };
 
 #[path = "support/mod.rs"]
@@ -13,10 +13,7 @@ mod support;
 
 /// Execute one matcher through a fresh strict catalog and return its count.
 fn findings(source: &str, decl: QueryDecl) -> usize {
-    let rule = support::rule("semantic.match")
-        .query(decl)
-        .build()
-        .unwrap();
+    let rule = support::rule("semantic.match").query(decl).build().unwrap();
     let environment = support::test_environment();
     let catalog = glass_lint_core::RuleCatalog::new("test", vec![rule]).unwrap();
     let (_, _, files, _, _, _) = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
@@ -126,8 +123,7 @@ fn follows_a_deep_property_alias_without_changing_identity() {
 
     assert_matches(
         &source,
-        QueryDecl::member_call_rooted("app.commands.execute")
-            .with_arg_static_strings(0, ["open"]),
+        QueryDecl::member_call_rooted("app.commands.execute").with_arg_static_strings(0, ["open"]),
         1,
     );
 }
@@ -141,11 +137,7 @@ fn preserves_deep_module_member_provenance() {
         .join(".");
     let source = format!("import * as sdk from 'sdk'; sdk.{member}();");
 
-    assert_matches(
-        &source,
-        QueryDecl::member_call_module("sdk", &member),
-        1,
-    );
+    assert_matches(&source, QueryDecl::member_call_module("sdk", &member), 1);
 }
 
 #[test]
@@ -157,19 +149,14 @@ fn a_deep_rooted_chain_fails_closed_after_an_earlier_prefix_mutation() {
     let chain = format!("app.{suffix}.execute");
     let source = format!("app.p0.p1 = replacement; {chain}();");
 
-    assert_matches(
-        &source,
-        QueryDecl::member_call_rooted(&chain),
-        0,
-    );
+    assert_matches(&source, QueryDecl::member_call_rooted(&chain), 0);
 }
 
 #[test]
 fn follows_rooted_members_called_via_sequence_expressions() {
     assert_matches(
         "(0, app.commands.execute)('open');",
-        QueryDecl::member_call_rooted("app.commands.execute")
-            .with_arg_static_strings(0, ["open"]),
+        QueryDecl::member_call_rooted("app.commands.execute").with_arg_static_strings(0, ["open"]),
         1,
     );
 }
@@ -198,20 +185,17 @@ fn preserves_bound_rooted_expression_arguments() {
 fn prepends_static_bound_arguments_before_call_arguments() {
     assert_matches(
         "const request = fetch.bind(null, '/bound'); request('/actual');",
-        QueryDecl::call_global("fetch")
-            .with_arg_static_strings(0, ["/bound"]),
+        QueryDecl::call_global("fetch").with_arg_static_strings(0, ["/bound"]),
         1,
     );
     assert_matches(
         "const request = fetch.bind(null, '/bound'); request('/actual');",
-        QueryDecl::call_global("fetch")
-            .with_arg_static_strings(0, ["/actual"]),
+        QueryDecl::call_global("fetch").with_arg_static_strings(0, ["/actual"]),
         0,
     );
     assert_matches(
         "const send = require('sdk').send.bind(null, '/bound'); send('/actual');",
-        QueryDecl::call_module("sdk", "send")
-            .with_arg_static_strings(0, ["/bound"]),
+        QueryDecl::call_module("sdk", "send").with_arg_static_strings(0, ["/bound"]),
         1,
     );
 }
@@ -220,8 +204,7 @@ fn prepends_static_bound_arguments_before_call_arguments() {
 fn resolves_static_template_literals_without_substitutions() {
     assert_matches(
         "const url = `/remote`; fetch(url);",
-        QueryDecl::call_global("fetch")
-            .with_arg_static_string(0),
+        QueryDecl::call_global("fetch").with_arg_static_string(0),
         1,
     );
 }
@@ -230,8 +213,7 @@ fn resolves_static_template_literals_without_substitutions() {
 fn resolves_constant_template_literal_substitutions() {
     assert_matches(
         "const segment = 'remote'; const url = `/${segment}`; fetch(url);",
-        QueryDecl::call_global("fetch")
-            .with_arg_static_string(0),
+        QueryDecl::call_global("fetch").with_arg_static_string(0),
         1,
     );
 }
@@ -309,8 +291,7 @@ fn tracks_rooted_arguments_through_destructured_parameters() {
 fn tracks_object_argument_keys_through_const_spreads() {
     assert_matches(
         "const base = { url: '/x' }; const options = { ...base, method: 'GET' }; client.request(options);",
-        QueryDecl::member_call_rooted("client.request")
-            .with_arg_object_keys(0, ["url", "method"]),
+        QueryDecl::member_call_rooted("client.request").with_arg_object_keys(0, ["url", "method"]),
         1,
     );
 }
@@ -319,8 +300,7 @@ fn tracks_object_argument_keys_through_const_spreads() {
 fn tracks_object_argument_keys_through_object_assign() {
     assert_matches(
         "const options = Object.assign({}, { url: '/x', method: 'GET' }); client.request(options);",
-        QueryDecl::member_call_rooted("client.request")
-            .with_arg_object_keys(0, ["url", "method"]),
+        QueryDecl::member_call_rooted("client.request").with_arg_object_keys(0, ["url", "method"]),
         1,
     );
 }
@@ -329,8 +309,7 @@ fn tracks_object_argument_keys_through_object_assign() {
 fn tracks_object_argument_keys_through_member_function_aliases() {
     assert_matches(
         "const request = client.request; request({ url: '/x', method: 'GET' });",
-        QueryDecl::member_call_rooted("client.request")
-            .with_arg_object_keys(0, ["url", "method"]),
+        QueryDecl::member_call_rooted("client.request").with_arg_object_keys(0, ["url", "method"]),
         1,
     );
 }

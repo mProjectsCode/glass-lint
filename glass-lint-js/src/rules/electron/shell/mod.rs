@@ -14,13 +14,25 @@ pub fn rule() -> Rule {
         .category(Category::new("electron/shell").unwrap())
         .confidence(Confidence::High)
         .severity(Severity::Warning)
-        .query(QueryDecl::member_call_module("electron", "shell.openExternal"))
+        .query(QueryDecl::member_call_module(
+            "electron",
+            "shell.openExternal",
+        ))
         .query(QueryDecl::member_call_module("electron", "shell.openPath"))
-        .query(QueryDecl::member_call_module("electron", "shell.showItemInFolder"))
+        .query(QueryDecl::member_call_module(
+            "electron",
+            "shell.showItemInFolder",
+        ))
         .query(QueryDecl::member_call_module("electron", "shell.trashItem"))
         .query(QueryDecl::member_call_module("electron", "shell.beep"))
-        .query(QueryDecl::member_call_module("electron", "shell.readShortcutLink"))
-        .query(QueryDecl::member_call_module("electron", "shell.writeShortcutLink"))
+        .query(QueryDecl::member_call_module(
+            "electron",
+            "shell.readShortcutLink",
+        ))
+        .query(QueryDecl::member_call_module(
+            "electron",
+            "shell.writeShortcutLink",
+        ))
         .build()
         .unwrap()
 }

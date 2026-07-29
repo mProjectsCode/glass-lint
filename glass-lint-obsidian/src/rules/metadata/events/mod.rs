@@ -13,8 +13,12 @@ pub fn rule() -> Rule {
         .category(Category::new("metadata").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .query(QueryDecl::member_call_rooted("app.metadataCache.on")
-                .with_arg_static_strings(0, ["changed", "deleted", "finished", "resolve", "resolved"]))
+        .query(
+            QueryDecl::member_call_rooted("app.metadataCache.on").with_arg_static_strings(
+                0,
+                ["changed", "deleted", "finished", "resolve", "resolved"],
+            ),
+        )
         .build()
         .unwrap()
 }

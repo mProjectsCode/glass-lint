@@ -12,23 +12,22 @@ pub fn rule() -> Rule {
         .category(Category::new("workspace").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_rooted("app.workspace.on")
-                .with_arg(
-                    0,
-                    ValueMatcher::static_string().equals_any([
-                        "active-leaf-change",
-                        "file-open",
-                        "layout-change",
-                        "window-open",
-                        "window-close",
-                        "quit",
-                        "editor-change",
-                        "editor-paste",
-                        "editor-drop",
-                        "file-menu",
-                        "editor-menu",
-                    ]),
-                ))
+        .query(QueryDecl::member_call_rooted("app.workspace.on").with_arg(
+            0,
+            ValueMatcher::static_string().equals_any([
+                "active-leaf-change",
+                "file-open",
+                "layout-change",
+                "window-open",
+                "window-close",
+                "quit",
+                "editor-change",
+                "editor-paste",
+                "editor-drop",
+                "file-menu",
+                "editor-menu",
+            ]),
+        ))
         .build()
         .unwrap()
 }

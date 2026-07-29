@@ -12,8 +12,12 @@ pub fn rule() -> Rule {
         .confidence(Confidence::High)
         .query(QueryDecl::member_call_rooted("app.plugins.enablePlugin"))
         .query(QueryDecl::member_call_rooted("app.plugins.disablePlugin"))
-        .query(QueryDecl::member_call_rooted("app.plugins.enablePluginAndSave"))
-        .query(QueryDecl::member_call_rooted("app.plugins.disablePluginAndSave"))
+        .query(QueryDecl::member_call_rooted(
+            "app.plugins.enablePluginAndSave",
+        ))
+        .query(QueryDecl::member_call_rooted(
+            "app.plugins.disablePluginAndSave",
+        ))
         .build()
         .unwrap()
 }

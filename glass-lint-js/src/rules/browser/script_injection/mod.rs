@@ -1,8 +1,8 @@
 //! Browser executable-script-injection rule definition.
 
 use glass_lint_core::rules::{
-    Category, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, QueryDecl,
-    ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
+    Category, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, ObjectEventMatcher,
+    ObjectFlowMatcher, ObjectSourceMatcher, QueryDecl, Rule, Severity, ValueMatcher,
 };
 
 /// Detects rooted script elements whose executable content is configured and
@@ -35,16 +35,14 @@ pub fn rule() -> Rule {
                 .build()
                 .unwrap(),
         )
-        .query(QueryDecl::member_call_rooted("document.write")
-                .with_arg(
-                    0,
-                    ValueMatcher::static_string().contains_any(["<script", "javascript:"]),
-                ))
-        .query(QueryDecl::member_call_rooted("document.writeln")
-                .with_arg(
-                    0,
-                    ValueMatcher::static_string().contains_any(["<script", "javascript:"]),
-                ))
+        .query(QueryDecl::member_call_rooted("document.write").with_arg(
+            0,
+            ValueMatcher::static_string().contains_any(["<script", "javascript:"]),
+        ))
+        .query(QueryDecl::member_call_rooted("document.writeln").with_arg(
+            0,
+            ValueMatcher::static_string().contains_any(["<script", "javascript:"]),
+        ))
         .build()
         .unwrap()
 }
