@@ -10,19 +10,16 @@ use crate::{
         project::model::ExportResolution,
         value::ValueId,
     },
-    api::{
-        compiler::{
-            physical::PhysicalRoot,
-            rule::{EventPredicate, EvidenceDescriptor, IdentityConstraint},
-        },
-        rule::ArgumentConstraint,
+    api::compiler::{
+        physical::{CompiledArgumentConstraints, PhysicalRoot},
+        rule::{EventPredicate, EvidenceDescriptor, IdentityConstraint},
     },
 };
 
 mod evaluator;
 mod identity;
 
-use evaluator::{MatcherEvaluator, PreparedClausePaths};
+use evaluator::{EvaluationOperations, MatcherEvaluator, PreparedClausePaths};
 
 /// Bundled data extracted from a `ConstrainedScan` root for the fallback
 /// linear scan path.
@@ -30,7 +27,7 @@ type FallbackEntry<'a> = (
     usize,
     &'a IdentityConstraint,
     &'a EventPredicate,
-    &'a [ArgumentConstraint],
+    &'a CompiledArgumentConstraints,
     &'a EvidenceDescriptor,
     &'a PreparedClausePaths,
 );
@@ -44,6 +41,31 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
     identities: Option<&ModuleIdentityMap>,
     result_identities: Option<&BTreeMap<ValueId, ExportResolution>>,
 ) {
+    let mut ops = EvaluationOperations::default();
+    compute_constrained_inner(
+        stream,
+        indexes,
+        roots,
+        evidence,
+        overlay,
+        identities,
+        result_identities,
+        &mut ops,
+    );
+}
+
+/// Inner implementation that also tracks evaluation operations.
+#[allow(clippy::too_many_arguments)]
+fn compute_constrained_inner(
+    stream: &FactStream<Frozen>,
+    indexes: &OccurrenceIndexes,
+    roots: &[(usize, &PhysicalRoot)],
+    evidence: &mut [Vec<ClassificationEvidence>],
+    overlay: Option<&LinkedOccurrenceView<'_>>,
+    identities: Option<&ModuleIdentityMap>,
+    result_identities: Option<&BTreeMap<ValueId, ExportResolution>>,
+    ops: &mut EvaluationOperations,
+) {
     let names = stream.names();
     let values = stream.values();
     let evaluator = MatcherEvaluator::new(names, values, identities, result_identities);
@@ -54,7 +76,7 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
         usize,
         &IdentityConstraint,
         &EventPredicate,
-        &[ArgumentConstraint],
+        &CompiledArgumentConstraints,
         &EvidenceDescriptor,
     )> = roots
         .iter()
@@ -64,7 +86,7 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
                 event,
                 constraints,
                 evidence,
-            } => Some((*rule_index, identity, event, constraints.as_ref(), evidence)),
+            } => Some((*rule_index, identity, event, constraints, evidence)),
             _ => None,
         })
         .collect();
@@ -94,14 +116,14 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
             ));
             continue;
         };
-        let matched: Vec<_> = candidates
-            .into_iter()
-            .filter(|occurrence| {
-                stream.fact(occurrence.event()).is_some_and(|fact| {
-                    evaluator.fact_matches_clause(fact, identity, event, constraints, paths)
-                })
-            })
-            .collect();
+        let mut matched: Vec<Occurrence> = Vec::new();
+        for occurrence in candidates {
+            if let Some(fact) = stream.fact(occurrence.event())
+                && evaluator.fact_matches_clause(fact, identity, event, constraints, paths, ops)
+            {
+                matched.push(occurrence);
+            }
+        }
         if !matched.is_empty() {
             push_owned_evidence(
                 &mut evidence[*rule_index],
@@ -121,7 +143,7 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
             fallback.iter().map(|_| Vec::new()).collect();
         for fact in stream.facts() {
             for (i, (_, identity, event, constraints, _, paths)) in fallback.iter().enumerate() {
-                if evaluator.fact_matches_clause(fact, identity, event, constraints, paths) {
+                if evaluator.fact_matches_clause(fact, identity, event, constraints, paths, ops) {
                     fallback_occurrences[i].push(Occurrence::new(fact.id, fact.span));
                 }
             }
@@ -158,7 +180,7 @@ mod tests {
         api::{
             classification::MatchKind,
             compiler::{
-                physical::PhysicalRoot,
+                physical::{PhysicalRoot, compile_argument_constraints},
                 rule::{
                     CompiledMatcherPlan, EventPredicate, EvidenceDescriptor, IdentityConstraint,
                     IdentityStrength,
@@ -194,7 +216,7 @@ mod tests {
         PhysicalRoot::ConstrainedScan {
             identity,
             event,
-            constraints: Box::new([ArgumentConstraint::new(
+            constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ValueMatcher::static_string().equals("/api"),
             )]),
@@ -300,7 +322,7 @@ mod tests {
     #[test]
     fn missing_argument_fails_closed() {
         let stream = stream("fetch('/api');", &Environment::default());
-        let root = constrained_root(
+        let _root = constrained_root(
             IdentityConstraint::Any {
                 name: "fetch".into(),
                 strength: IdentityStrength::Heuristic,
@@ -309,16 +331,13 @@ mod tests {
             "fetch",
         );
         // Patch the root to reference argument index 5 (out of bounds).
-        let PhysicalRoot::ConstrainedScan { .. } = &root else {
-            panic!("expected ConstrainedScan");
-        };
         let patched = PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
                 strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
-            constraints: Box::new([ArgumentConstraint::new(
+            constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(5),
                 ValueMatcher::static_string().equals("/api"),
             )]),
@@ -382,7 +401,7 @@ mod tests {
                 strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
-            constraints: Box::new([
+            constraints: compile_argument_constraints(&[
                 ArgumentConstraint::new(
                     crate::api::rule::ArgumentIndex::new_unchecked(0),
                     ValueMatcher::static_string().equals("/api"),
@@ -421,7 +440,7 @@ mod tests {
                 strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
-            constraints: Box::new([
+            constraints: compile_argument_constraints(&[
                 ArgumentConstraint::new(
                     crate::api::rule::ArgumentIndex::new_unchecked(0),
                     ValueMatcher::static_string().equals("/api"),
@@ -442,7 +461,7 @@ mod tests {
                 strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
-            constraints: Box::new([
+            constraints: compile_argument_constraints(&[
                 ArgumentConstraint::new(
                     crate::api::rule::ArgumentIndex::new_unchecked(1),
                     ValueMatcher::static_string().equals("/path"),
@@ -491,7 +510,7 @@ mod tests {
                 strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
-            constraints: Box::new([ArgumentConstraint::new(
+            constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ValueMatcher::static_string().equals_any(["/api", "/other"]),
             )]),
@@ -523,7 +542,7 @@ mod tests {
                 strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
-            constraints: Box::new([ArgumentConstraint::new(
+            constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ValueMatcher::static_string().equals_any(["/api", "/v1"]),
             )]),
@@ -558,7 +577,7 @@ mod tests {
                 strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
-            constraints: Box::new([ArgumentConstraint::new(
+            constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ValueMatcher::static_string().contains_any(["token"]),
             )]),
@@ -596,7 +615,7 @@ mod tests {
                 strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
-            constraints: Box::new([ArgumentConstraint::new(
+            constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ValueMatcher::static_string().starts_with_any(["https://"]),
             )]),
@@ -634,7 +653,7 @@ mod tests {
                 strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
-            constraints: Box::new([ArgumentConstraint::new(
+            constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ArgumentMatcher::object_keys(["url", "method"]),
             )]),
@@ -669,7 +688,7 @@ mod tests {
                 strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
-            constraints: Box::new([ArgumentConstraint::new(
+            constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ArgumentMatcher::object_property_value(
                     "method",
@@ -728,5 +747,233 @@ mod tests {
             .static_string,
             Some("https://example.test")
         );
+    }
+
+    // ── Package 6: operation and argument-preparation tests ────────
+
+    /// Helper that runs `compute_constrained_inner` and returns ops.
+    fn run_with_ops(
+        stream: &FactStream<Frozen>,
+        index: &OccurrenceIndexes,
+        roots: &[(usize, &PhysicalRoot)],
+        overlay: Option<&LinkedOccurrenceView<'_>>,
+    ) -> EvaluationOperations {
+        let mut evidence = vec![Vec::new(); roots.len()];
+        let mut ops = EvaluationOperations::default();
+        compute_constrained_inner(
+            stream,
+            index,
+            roots,
+            &mut evidence,
+            overlay,
+            None,
+            None,
+            &mut ops,
+        );
+        ops
+    }
+
+    #[test]
+    fn two_predicates_on_one_arg_prepare_argument_once() {
+        let stream = stream("fetch('/api');", &Environment::default());
+        let index = build_index(&stream);
+
+        // Two constraints on the same argument index (0):
+        //   equals("/api") AND starts_with_any(["/"])
+        let constraints = compile_argument_constraints(&[
+            ArgumentConstraint::new(
+                crate::api::rule::ArgumentIndex::new_unchecked(0),
+                ValueMatcher::static_string().equals("/api"),
+            ),
+            ArgumentConstraint::new(
+                crate::api::rule::ArgumentIndex::new_unchecked(0),
+                ValueMatcher::static_string().starts_with_any(["/"]),
+            ),
+        ]);
+        assert_eq!(constraints.groups().len(), 1, "should be one group");
+
+        let root = PhysicalRoot::ConstrainedScan {
+            identity: IdentityConstraint::Any {
+                name: "fetch".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            event: EventPredicate::Call,
+            constraints,
+            evidence: EvidenceDescriptor {
+                kind: MatchKind::CallArgument,
+                symbol: "fetch".into(),
+            },
+        };
+
+        let ops = run_with_ops(&stream, &index, &[(0, &root)], None);
+
+        // One candidate, one group → 1 argument preparation, 2 predicates
+        assert_eq!(ops.candidates, 1, "one candidate (fetch call)");
+        assert_eq!(ops.groups, 1, "one group");
+        assert_eq!(ops.argument_preparations, 1, "argument prepared once");
+        assert_eq!(ops.predicates, 2, "two predicates applied");
+    }
+
+    #[test]
+    fn several_argument_positions_each_prepared_once() {
+        let stream = stream("fetch('/api', '/path');", &Environment::default());
+        let index = build_index(&stream);
+
+        // Constraints on index 0 AND index 1
+        let constraints = compile_argument_constraints(&[
+            ArgumentConstraint::new(
+                crate::api::rule::ArgumentIndex::new_unchecked(0),
+                ValueMatcher::static_string().equals("/api"),
+            ),
+            ArgumentConstraint::new(
+                crate::api::rule::ArgumentIndex::new_unchecked(1),
+                ValueMatcher::static_string().equals("/path"),
+            ),
+        ]);
+        assert_eq!(constraints.groups().len(), 2, "should be two groups");
+
+        let root = PhysicalRoot::ConstrainedScan {
+            identity: IdentityConstraint::Any {
+                name: "fetch".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            event: EventPredicate::Call,
+            constraints,
+            evidence: EvidenceDescriptor {
+                kind: MatchKind::CallArgument,
+                symbol: "fetch".into(),
+            },
+        };
+
+        let ops = run_with_ops(&stream, &index, &[(0, &root)], None);
+
+        // One candidate, two groups → 2 argument preparations, 2 predicates
+        assert_eq!(ops.candidates, 1, "one candidate");
+        assert_eq!(ops.groups, 2, "two groups (index 0 and index 1)");
+        assert_eq!(ops.argument_preparations, 2, "each index prepared once");
+        assert_eq!(ops.predicates, 2, "one predicate per group");
+    }
+
+    #[test]
+    fn duplicate_constraints_do_not_inflate_operation_counts() {
+        let stream = stream("fetch('/api');", &Environment::default());
+        let index = build_index(&stream);
+
+        // Four identical constraints on the same index — compile_argument_constraints
+        // should deduplicate them down to one group with one predicate.
+        let constraints = compile_argument_constraints(&[
+            ArgumentConstraint::new(
+                crate::api::rule::ArgumentIndex::new_unchecked(0),
+                ValueMatcher::static_string().equals("/api"),
+            ),
+            ArgumentConstraint::new(
+                crate::api::rule::ArgumentIndex::new_unchecked(0),
+                ValueMatcher::static_string().equals("/api"),
+            ),
+            ArgumentConstraint::new(
+                crate::api::rule::ArgumentIndex::new_unchecked(0),
+                ValueMatcher::static_string().equals("/api"),
+            ),
+            ArgumentConstraint::new(
+                crate::api::rule::ArgumentIndex::new_unchecked(0),
+                ValueMatcher::static_string().equals("/api"),
+            ),
+        ]);
+        assert_eq!(constraints.groups().len(), 1, "deduplicated to one group");
+        assert_eq!(
+            constraints.groups()[0].predicates().len(),
+            1,
+            "deduplicated to one predicate"
+        );
+
+        let root = PhysicalRoot::ConstrainedScan {
+            identity: IdentityConstraint::Any {
+                name: "fetch".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            event: EventPredicate::Call,
+            constraints,
+            evidence: EvidenceDescriptor {
+                kind: MatchKind::CallArgument,
+                symbol: "fetch".into(),
+            },
+        };
+
+        let ops = run_with_ops(&stream, &index, &[(0, &root)], None);
+
+        // One candidate, one group, one predicate — same as the simple case.
+        assert_eq!(ops.candidates, 1, "one candidate");
+        assert_eq!(ops.groups, 1, "one group (deduplicated)");
+        assert_eq!(ops.predicates, 1, "one predicate (deduplicated)");
+        assert_eq!(
+            ops.argument_preparations, 1,
+            "argument prepared once despite four raw constraints"
+        );
+    }
+
+    #[test]
+    fn operation_counts_scale_with_candidates() {
+        let stream = stream(
+            "fetch('/a'); fetch('/b'); fetch('/c');",
+            &Environment::default(),
+        );
+        let index = build_index(&stream);
+
+        let constraints = compile_argument_constraints(&[ArgumentConstraint::new(
+            crate::api::rule::ArgumentIndex::new_unchecked(0),
+            ValueMatcher::static_string(),
+        )]);
+
+        let root = PhysicalRoot::ConstrainedScan {
+            identity: IdentityConstraint::Any {
+                name: "fetch".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            event: EventPredicate::Call,
+            constraints,
+            evidence: EvidenceDescriptor {
+                kind: MatchKind::CallArgument,
+                symbol: "fetch".into(),
+            },
+        };
+
+        let ops = run_with_ops(&stream, &index, &[(0, &root)], None);
+
+        assert_eq!(ops.candidates, 3, "three candidates (one per call)");
+        assert_eq!(ops.groups, 3, "one group per candidate");
+        assert_eq!(ops.predicates, 3, "one predicate per candidate");
+    }
+
+    #[test]
+    fn static_alias_and_reassignment_preserves_matching() {
+        // A static alias (`const x = '/api'; fetch(x);`) should match
+        // the same as `fetch('/api');`.
+        let stream = stream("const x = '/api'; fetch(x);", &Environment::default());
+        let index = build_index(&stream);
+
+        let constraints = compile_argument_constraints(&[ArgumentConstraint::new(
+            crate::api::rule::ArgumentIndex::new_unchecked(0),
+            ValueMatcher::static_string().equals("/api"),
+        )]);
+
+        let root = PhysicalRoot::ConstrainedScan {
+            identity: IdentityConstraint::Any {
+                name: "fetch".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            event: EventPredicate::Call,
+            constraints,
+            evidence: EvidenceDescriptor {
+                kind: MatchKind::CallArgument,
+                symbol: "fetch".into(),
+            },
+        };
+
+        let ops = run_with_ops(&stream, &index, &[(0, &root)], None);
+
+        // The alias resolves through the value table: fetch(x) with x='/api'
+        // should produce one matching candidate.
+        assert_eq!(ops.candidates, 1, "one candidate (fetch(x))");
+        assert_eq!(ops.groups, 1, "one group");
     }
 }

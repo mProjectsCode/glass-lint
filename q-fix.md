@@ -1086,49 +1086,49 @@ one `CompiledArgumentConstraints`.
 
 The planner should:
 
-- [ ] sort constraints by argument index and predicate order;
-- [ ] group predicates for the same argument;
-- [ ] deduplicate identical predicates;
-- [ ] reject provable contradictions;
-- [ ] validate all group and predicate bounds; and
-- [ ] store groups in deterministic index order.
+- [x] sort constraints by argument index and predicate order;
+- [x] group predicates for the same argument;
+- [x] deduplicate identical predicates;
+- [x] reject provable contradictions;
+- [x] validate all group and predicate bounds; and
+- [x] store groups in deterministic index order.
 
 ### Evaluation
 
 For each candidate call:
 
-- [ ] select effective arguments once;
-- [ ] reject a missing required argument;
-- [ ] construct the overlay-aware `ArgumentView` once per referenced index;
-- [ ] resolve its static value/object/rooted path once;
-- [ ] apply all predicates in the group to that prepared value; and
-- [ ] charge deterministic operations per candidate, group, and predicate.
+- [x] select effective arguments once;
+- [x] reject a missing required argument;
+- [x] construct the overlay-aware `ArgumentView` once per referenced index;
+- [x] resolve its static value/object/rooted path once;
+- [x] apply all predicates in the group to that prepared value; and
+- [x] charge deterministic operations per candidate, group, and predicate.
 
 Do not repeatedly call `argument_with_overlay` for separate predicates on the
 same argument.
 
 ### Required tests
 
-- [ ] two predicates on one argument prepare the argument once;
-- [ ] constraints on several argument positions prepare each referenced position
+- [x] two predicates on one argument prepare the argument once;
+- [x] constraints on several argument positions prepare each referenced position
   once;
-- [ ] missing and sparse arguments fail closed;
-- [ ] static aliases and reassignment preserve current behavior;
-- [ ] object keys and property values remain strict;
-- [ ] dynamic values do not satisfy selective predicates;
-- [ ] constraint order produces identical normalized and physical plans;
-- [ ] excessive argument index, group count, predicate count, and alternative
+- [x] missing and sparse arguments fail closed;
+- [x] static aliases and reassignment preserve current behavior;
+- [x] object keys and property values remain strict;
+- [x] dynamic values do not satisfy selective predicates;
+- [x] constraint order produces identical normalized and physical plans;
+- [x] excessive argument index, group count, predicate count, and alternative
   count fail with structured errors; and
-- [ ] operation counts scale with candidates and unique argument groups, not raw
+- [x] operation counts scale with candidates and unique argument groups, not raw
   duplicate constraints.
 
 ### Exit criteria
 
-- [ ] Static/value semantics remain owned by `analysis/value` and
+- [x] Static/value semantics remain owned by `analysis/value` and
   `analysis/flow/matcher.rs`.
-- [ ] One bounded projection is performed per candidate call.
-- [ ] Each referenced argument is prepared at most once per candidate.
-- [ ] Equivalent constraint order produces one physical plan.
+- [x] One bounded projection is performed per candidate call.
+- [x] Each referenced argument is prepared at most once per candidate.
+- [x] Equivalent constraint order produces one physical plan.
 
 ---
 
@@ -1680,7 +1680,7 @@ Keep each commit buildable and avoid compatibility layers:
 - [ ] 4. Implement scope-aware bindings, typed validation, and evidence projection.
 - [ ] 5. Complete normalization, filter merging, and contradiction detection.
 - [x] 6. Repair physical composition and add the test-only equivalence oracle.
-- [ ] 7. Group and cache argument/value constraints.
+- [x] 7. Group and cache argument/value constraints.
 - [ ] 8. Make returned and instance correlation explicit.
 - [ ] 9. Migrate lifecycle rules to `QueryDecl` and delete the parallel flow path.
 - [ ] 10. Make project requirements drive preparation and operation charging.

@@ -14,9 +14,9 @@ use crate::{
         syntax::SymbolCallProvenance,
         value::{ValueId, ValueTable},
     },
-    api::{
-        compiler::rule::{EventPredicate, IdentityConstraint},
-        rule::ArgumentConstraint,
+    api::compiler::{
+        physical::CompiledArgumentConstraints,
+        rule::{EventPredicate, IdentityConstraint},
     },
 };
 
@@ -56,6 +56,41 @@ impl PreparedClausePaths {
     }
 }
 
+/// Operations charged during argument evaluation.
+///
+/// Tracks per-candidate, per-group, and per-predicate operations
+/// for deterministic operation-count verification.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) struct EvaluationOperations {
+    /// Number of candidates (facts) evaluated.
+    pub(super) candidates: usize,
+    /// Number of unique argument groups checked.
+    pub(super) groups: usize,
+    /// Number of individual predicate applications.
+    pub(super) predicates: usize,
+    /// Number of overlay-ready argument views constructed
+    /// (one per unique group index per candidate).
+    pub(super) argument_preparations: usize,
+}
+
+impl EvaluationOperations {
+    pub(super) fn charge_candidate(&mut self) {
+        self.candidates = self.candidates.saturating_add(1);
+    }
+
+    pub(super) fn charge_group(&mut self) {
+        self.groups = self.groups.saturating_add(1);
+    }
+
+    pub(super) fn charge_predicate(&mut self) {
+        self.predicates = self.predicates.saturating_add(1);
+    }
+
+    pub(super) fn charge_argument_preparation(&mut self) {
+        self.argument_preparations = self.argument_preparations.saturating_add(1);
+    }
+}
+
 pub(super) struct MatcherEvaluator<'a> {
     names: &'a NameTable,
     values: &'a ValueTable,
@@ -83,9 +118,11 @@ impl<'a> MatcherEvaluator<'a> {
         fact: &SemanticFact,
         identity: &IdentityConstraint,
         event: &EventPredicate,
-        constraints: &[ArgumentConstraint],
+        constraints: &CompiledArgumentConstraints,
         paths: &PreparedClausePaths,
+        ops: &mut EvaluationOperations,
     ) -> bool {
+        ops.charge_candidate();
         let FactPayload::Call {
             callee,
             syntactic_path,
@@ -114,7 +151,7 @@ impl<'a> MatcherEvaluator<'a> {
                 ) {
                     return false;
                 }
-                self.check_constrained_args(constraints, args, unwrap.as_deref())
+                self.check_constrained_args(constraints, args, unwrap.as_deref(), ops)
             }
             EventPredicate::MemberCall { .. } => {
                 let Some(ref member) = paths.member else {
@@ -131,7 +168,7 @@ impl<'a> MatcherEvaluator<'a> {
                 ) {
                     return false;
                 }
-                self.constraints_match(constraints, args)
+                self.constraints_match(constraints, args, ops)
             }
             _ => false,
         }
@@ -181,27 +218,35 @@ impl<'a> MatcherEvaluator<'a> {
         raw.clone()
     }
 
-    fn constraints_match(&self, constraints: &[ArgumentConstraint], args: &[CallArgInfo]) -> bool {
-        constraints.iter().all(|constraint| {
-            args.get(constraint.index()).is_some_and(|value| {
-                constraint.matcher().matches(
-                    &self.argument_with_overlay(value),
-                    self.names,
-                    self.values,
-                )
+    fn constraints_match(
+        &self,
+        constraints: &CompiledArgumentConstraints,
+        args: &[CallArgInfo],
+        ops: &mut EvaluationOperations,
+    ) -> bool {
+        constraints.groups().iter().all(|group| {
+            let idx = group.index().get();
+            let Some(value) = args.get(idx) else {
+                return false;
+            };
+            ops.charge_group();
+            ops.charge_argument_preparation();
+            let view = self.argument_with_overlay(value);
+            group.predicates().iter().all(|matcher| {
+                ops.charge_predicate();
+                matcher.matches(&view, self.names, self.values)
             })
         })
     }
 
     fn check_constrained_args(
         &self,
-        constraints: &[ArgumentConstraint],
+        constraints: &CompiledArgumentConstraints,
         args: &[CallArgInfo],
         unwrap: Option<&CallUnwrap>,
+        ops: &mut EvaluationOperations,
     ) -> bool {
-        unwrap.map_or_else(
-            || self.constraints_match(constraints, args),
-            |unwrap| self.constraints_match(constraints, &unwrap.effective_args),
-        )
+        let effective = unwrap.map_or(args, |u| &u.effective_args);
+        self.constraints_match(constraints, effective, ops)
     }
 }

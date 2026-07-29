@@ -16,7 +16,7 @@ use crate::{
         },
         rule::{
             Confidence, MatcherBuildError, ModuleSpecifierPattern,
-            query::{EventSpec, IdentitySpec, QueryDecl, VarId},
+            query::{EventSpec, IdentitySpec, QueryDecl, VarId, limits},
         },
     },
 };
@@ -186,6 +186,9 @@ pub(crate) enum InvalidQueryClause {
     NonCanonicalConstraints,
     UnavailablePrimaryEvidence,
     InvalidLifecycleRoot,
+    ExcessiveArgumentGroups(usize),
+    ExcessivePredicateCount(usize),
+    ExcessiveAlternatives(usize),
 }
 
 impl fmt::Display for InvalidQueryClause {
@@ -202,6 +205,27 @@ impl fmt::Display for InvalidQueryClause {
             }
             Self::UnavailablePrimaryEvidence => f.write_str("primary evidence symbol is empty"),
             Self::InvalidLifecycleRoot => f.write_str("lifecycle root is malformed"),
+            Self::ExcessiveArgumentGroups(count) => {
+                write!(
+                    f,
+                    "argument group count {count} exceeds limit {}",
+                    limits::MAX_ARGUMENT_GROUPS
+                )
+            }
+            Self::ExcessivePredicateCount(count) => {
+                write!(
+                    f,
+                    "predicate count {count} exceeds limit {}",
+                    limits::MAX_PREDICATES_PER_ARGUMENT
+                )
+            }
+            Self::ExcessiveAlternatives(count) => {
+                write!(
+                    f,
+                    "static alternative count {count} exceeds limit {}",
+                    limits::MAX_STATIC_ALTERNATIVES
+                )
+            }
         }
     }
 }
@@ -412,7 +436,7 @@ mod tests {
                 evidence,
                 ..
             } => {
-                assert!(!constraints.is_empty());
+                assert!(!constraints.groups().is_empty());
                 assert_eq!(evidence.kind, MatchKind::CallArgument);
             }
             other => panic!("expected ConstrainedScan, got {other:?}"),

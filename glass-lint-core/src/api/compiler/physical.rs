@@ -13,8 +13,86 @@ use crate::api::{
             lower_event, lower_identity,
         },
     },
-    rule::query::EventSpec,
+    rule::{
+        ArgumentConstraint, ArgumentIndex, ArgumentMatcher,
+        matcher::flow::{ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcherKind},
+        query::{EventSpec, limits},
+    },
 };
+
+// ── Compiled argument constraints ───────────────────────────────────────
+
+/// Compiled argument constraints, grouped and deduplicated by argument index.
+///
+/// Groups are stored in deterministic index order. Each argument is prepared
+/// at most once during evaluation — all predicates in a group are applied to
+/// one prepared `ArgumentView`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct CompiledArgumentConstraints {
+    groups: Box<[ArgumentConstraintGroup]>,
+}
+
+/// A group of predicates all applying to the same argument index.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct ArgumentConstraintGroup {
+    index: ArgumentIndex,
+    predicates: Box<[ArgumentMatcher]>,
+}
+
+impl CompiledArgumentConstraints {
+    pub(crate) fn groups(&self) -> &[ArgumentConstraintGroup] {
+        &self.groups
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.groups.is_empty()
+    }
+}
+
+impl ArgumentConstraintGroup {
+    pub(crate) fn index(&self) -> ArgumentIndex {
+        self.index
+    }
+
+    pub(crate) fn predicates(&self) -> &[ArgumentMatcher] {
+        &self.predicates
+    }
+}
+
+/// Compile raw argument constraints into grouped, deduplicated form.
+///
+/// Normalization already sorts, deduplicates, and validates constraints.
+/// This function groups them by index, moves predicates into one
+/// group per unique index (preserving normalized order), validates
+/// bounds, and detects remaining contradictions.
+pub(crate) fn compile_argument_constraints(
+    raw: &[ArgumentConstraint],
+) -> CompiledArgumentConstraints {
+    let mut groups: Vec<ArgumentConstraintGroup> = Vec::new();
+    for constraint in raw {
+        let idx = constraint.arg_index();
+        let matcher = constraint.matcher().clone();
+        if let Some(last) = groups.last_mut()
+            && last.index() == idx
+        {
+            // Same index — deduplicate against last predicate
+            if !last.predicates.contains(&matcher) {
+                let mut predicates = last.predicates.to_vec();
+                predicates.push(matcher);
+                last.predicates = predicates.into_boxed_slice();
+            }
+        } else {
+            groups.push(ArgumentConstraintGroup {
+                index: idx,
+                predicates: Box::new([matcher]),
+            });
+        }
+    }
+
+    CompiledArgumentConstraints {
+        groups: groups.into_boxed_slice(),
+    }
+}
 
 // ── Physical root types ─────────────────────────────────────────────────
 
@@ -29,7 +107,7 @@ pub(crate) enum PhysicalRoot {
     ConstrainedScan {
         identity: IdentityConstraint,
         event: EventPredicate,
-        constraints: Box<[crate::api::rule::ArgumentConstraint]>,
+        constraints: CompiledArgumentConstraints,
         evidence: EvidenceDescriptor,
     },
     ReturnedSubject {
@@ -165,7 +243,7 @@ fn plan_event(ev: &NormalizedEvent, kind: MatchKind, symbol: &str) -> Vec<Physic
                 vec![PhysicalRoot::ConstrainedScan {
                     identity: lower_identity(ev.identity()),
                     event: lower_event(ev.event()),
-                    constraints: ev.arguments().to_vec().into_boxed_slice(),
+                    constraints: compile_argument_constraints(ev.arguments()),
                     evidence,
                 }]
             }
@@ -306,21 +384,68 @@ pub(crate) fn validate_physical_plan(plan: &PhysicalPlan) -> Result<(), InvalidQ
     Ok(())
 }
 
-/// Validate that constraints are in canonical order (sorted by index, then
-/// matcher, with no duplicates).
+/// Validate that compiled constraints are well-formed.
+///
+/// Groups must be non-empty, in ascending index order, with at least one
+/// predicate per group and no empty predicates.  Group and predicate counts
+/// must be within declared limits.
 fn validate_canonical_constraints(
-    constraints: &[crate::api::rule::ArgumentConstraint],
+    constraints: &CompiledArgumentConstraints,
 ) -> Result<(), InvalidQueryClause> {
-    for pair in constraints.windows(2) {
-        let ordering = pair[0]
-            .index()
-            .cmp(&pair[1].index())
-            .then_with(|| pair[0].matcher().cmp(pair[1].matcher()));
-        if ordering != std::cmp::Ordering::Less {
+    let groups = constraints.groups();
+    if groups.is_empty() {
+        return Err(InvalidQueryClause::NonCanonicalConstraints);
+    }
+
+    if groups.len() > limits::MAX_ARGUMENT_GROUPS {
+        return Err(InvalidQueryClause::ExcessiveArgumentGroups(groups.len()));
+    }
+
+    let mut prev_index: Option<ArgumentIndex> = None;
+    for group in groups {
+        if group.predicates().is_empty() {
             return Err(InvalidQueryClause::NonCanonicalConstraints);
+        }
+        if group.predicates().len() > limits::MAX_PREDICATES_PER_ARGUMENT {
+            return Err(InvalidQueryClause::ExcessivePredicateCount(
+                group.predicates().len(),
+            ));
+        }
+        if let Some(prev) = prev_index
+            && prev >= group.index()
+        {
+            return Err(InvalidQueryClause::NonCanonicalConstraints);
+        }
+        prev_index = Some(group.index());
+
+        // Check static-string alternative limits per predicate
+        for matcher in group.predicates() {
+            if let Some(count) = count_matcher_alternatives(matcher)
+                && count > limits::MAX_STATIC_ALTERNATIVES
+            {
+                return Err(InvalidQueryClause::ExcessiveAlternatives(count));
+            }
         }
     }
     Ok(())
+}
+
+/// Count the number of static-string alternatives in an argument matcher, if
+/// applicable.
+fn count_matcher_alternatives(matcher: &ArgumentMatcher) -> Option<usize> {
+    match matcher.kind() {
+        ArgumentMatcherKind::Value(vm) => match &vm.kind {
+            ValueMatcherKind::StaticString(sp) => match &sp.kind {
+                StaticStringPredicateKind::Exact(v)
+                | StaticStringPredicateKind::Prefix(v)
+                | StaticStringPredicateKind::ContainsAny(v)
+                | StaticStringPredicateKind::ContainsAll(v) => Some(v.len()),
+                StaticStringPredicateKind::Any => None,
+            },
+            ValueMatcherKind::Any => None,
+        },
+        _ => None,
+    }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────
@@ -476,7 +601,12 @@ mod tests {
         assert_eq!(roots.len(), 1);
         match &roots[0] {
             PhysicalRoot::ConstrainedScan { constraints, .. } => {
-                assert_eq!(constraints.len(), 2);
+                let total_predicates: usize = constraints
+                    .groups()
+                    .iter()
+                    .map(|g| g.predicates().len())
+                    .sum();
+                assert_eq!(total_predicates, 2);
             }
             other => panic!("expected ConstrainedScan, got {other:?}"),
         }
@@ -633,5 +763,110 @@ mod tests {
         let s1 = physical_summary(&decl(QueryDecl::call_global("fetch")));
         let s2 = physical_summary(&decl(QueryDecl::call_global("fetch")));
         assert_eq!(s1, s2);
+    }
+
+    #[test]
+    #[allow(clippy::cast_possible_truncation)]
+    fn excessive_groups_fails_validation() {
+        let groups: Vec<ArgumentConstraintGroup> = (0..=limits::MAX_ARGUMENT_GROUPS)
+            .map(|i| ArgumentConstraintGroup {
+                index: ArgumentIndex::new_unchecked(i as u8),
+                predicates: Box::new([ArgumentMatcher::from(ValueMatcher::static_string())]),
+            })
+            .collect();
+        let constraints = CompiledArgumentConstraints {
+            groups: groups.into_boxed_slice(),
+        };
+        let plan = PhysicalPlan::new(
+            Box::new([PhysicalRoot::ConstrainedScan {
+                identity: IdentityConstraint::Global {
+                    name: "fetch".into(),
+                    strength: crate::api::compiler::rule::IdentityStrength::Strict,
+                },
+                event: EventPredicate::Call,
+                constraints,
+                evidence: EvidenceDescriptor {
+                    kind: MatchKind::CallArgument,
+                    symbol: "fetch".into(),
+                },
+            }]),
+            PlanRequirements::default(),
+        );
+        assert!(
+            matches!(
+                validate_physical_plan(&plan),
+                Err(InvalidQueryClause::ExcessiveArgumentGroups(_))
+            ),
+            "expected ExcessiveArgumentGroups error"
+        );
+    }
+
+    #[test]
+    fn excessive_predicate_count_fails_validation() {
+        let predicates: Vec<ArgumentMatcher> = (0..=limits::MAX_PREDICATES_PER_ARGUMENT)
+            .map(|_| ArgumentMatcher::from(ValueMatcher::static_string()))
+            .collect();
+        let constraints = CompiledArgumentConstraints {
+            groups: Box::new([ArgumentConstraintGroup {
+                index: ArgumentIndex::new_unchecked(0),
+                predicates: predicates.into_boxed_slice(),
+            }]),
+        };
+        let plan = PhysicalPlan::new(
+            Box::new([PhysicalRoot::ConstrainedScan {
+                identity: IdentityConstraint::Global {
+                    name: "fetch".into(),
+                    strength: crate::api::compiler::rule::IdentityStrength::Strict,
+                },
+                event: EventPredicate::Call,
+                constraints,
+                evidence: EvidenceDescriptor {
+                    kind: MatchKind::CallArgument,
+                    symbol: "fetch".into(),
+                },
+            }]),
+            PlanRequirements::default(),
+        );
+        assert!(
+            matches!(
+                validate_physical_plan(&plan),
+                Err(InvalidQueryClause::ExcessivePredicateCount(_))
+            ),
+            "expected ExcessivePredicateCount error"
+        );
+    }
+
+    #[test]
+    fn excessive_alternatives_fails_validation() {
+        let values: Vec<String> = (0..=limits::MAX_STATIC_ALTERNATIVES)
+            .map(|i| format!("val{i}"))
+            .collect();
+        let matcher = ValueMatcher::static_string().equals_any(values);
+        let constraints = compile_argument_constraints(&[ArgumentConstraint::new(
+            ArgumentIndex::new_unchecked(0),
+            matcher,
+        )]);
+        let plan = PhysicalPlan::new(
+            Box::new([PhysicalRoot::ConstrainedScan {
+                identity: IdentityConstraint::Global {
+                    name: "fetch".into(),
+                    strength: crate::api::compiler::rule::IdentityStrength::Strict,
+                },
+                event: EventPredicate::Call,
+                constraints,
+                evidence: EvidenceDescriptor {
+                    kind: MatchKind::CallArgument,
+                    symbol: "fetch".into(),
+                },
+            }]),
+            PlanRequirements::default(),
+        );
+        assert!(
+            matches!(
+                validate_physical_plan(&plan),
+                Err(InvalidQueryClause::ExcessiveAlternatives(_))
+            ),
+            "expected ExcessiveAlternatives error"
+        );
     }
 }

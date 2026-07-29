@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use crate::api::{
     compiler::{
         normalize::{NormalizedEvent, NormalizedQuery, NormalizedRoot, NormalizedSubject},
-        physical::{PhysicalPlan, PhysicalRoot},
+        physical::{CompiledArgumentConstraints, PhysicalPlan, PhysicalRoot},
         rule::{EventPredicate, IdentityConstraint, lower_event, lower_identity},
     },
     rule::{
@@ -268,7 +268,7 @@ fn evaluate_indexed_scan(
 fn evaluate_constrained_scan(
     identity: &IdentityConstraint,
     event: &EventPredicate,
-    constraints: &[ArgumentConstraint],
+    constraints: &CompiledArgumentConstraints,
     rows: &[ReferenceRow],
 ) -> Vec<ReferenceWitness> {
     let mut witnesses = Vec::new();
@@ -412,15 +412,19 @@ fn matches_identity_constraint(expected: &IdentityConstraint, actual: &IdentityS
 }
 
 fn matches_arguments_physical(
-    constraints: &[ArgumentConstraint],
+    constraints: &CompiledArgumentConstraints,
     args: &BTreeMap<ArgumentIndex, ReferenceValue>,
 ) -> bool {
-    for constraint in constraints {
-        let idx = constraint.arg_index();
+    for group in constraints.groups() {
+        let idx = group.index();
         let Some(value) = args.get(&idx) else {
             return false;
         };
-        if !matches_reference_value(constraint.matcher(), value) {
+        if !group
+            .predicates()
+            .iter()
+            .all(|m| matches_reference_value(m, value))
+        {
             return false;
         }
     }

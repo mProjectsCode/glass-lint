@@ -375,7 +375,7 @@ impl<'a> ProjectionPlan<'a> {
                 let roots: Vec<(usize, &PhysicalRoot)> = matcher
                     .physical_roots()
                     .iter()
-                    .filter(|root| matches!(root, PhysicalRoot::ConstrainedScan { constraints, .. } if !constraints.is_empty()))
+                    .filter(|root| matches!(root, PhysicalRoot::ConstrainedScan { constraints, .. } if !constraints.groups().is_empty()))
                     .map(move |root| (rule_index.get(), root))
                     .collect();
                 roots
