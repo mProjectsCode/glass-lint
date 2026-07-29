@@ -27,14 +27,21 @@
 #![allow(clippy::redundant_pub_crate)]
 
 pub(crate) mod catalog;
+pub(crate) mod contradiction;
 pub(crate) mod error;
 pub(crate) mod normalize;
+pub(crate) mod normalize_all;
+pub(crate) mod normalized;
 pub(crate) mod object_flow;
 pub(crate) mod physical;
 #[cfg(test)]
 pub(crate) mod reference;
+pub(crate) mod requirements;
 pub(crate) mod rule;
 pub(crate) mod validate;
+
+#[cfg(test)]
+mod tests;
 
 pub(crate) use catalog::compile_records;
 use glass_lint_datastructures::SymbolPath;
@@ -49,7 +56,7 @@ use crate::{
     api::{
         classification::MatchKind,
         compiler::{
-            normalize::NormalizedQuery, physical::PhysicalPlan, validate::validate_query_decl,
+            normalized::NormalizedQuery, physical::PhysicalPlan, validate::validate_query_decl,
         },
         rule::{
             MatcherBuildError, ModuleSpecifierPattern,
@@ -218,7 +225,7 @@ pub(crate) fn lower_event(spec: &EventSpec) -> EventPredicate {
 /// Compile query declarations into a physical plan.
 fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildError> {
     let mut all_roots = Vec::new();
-    let mut merged_requirements = normalize::PlanRequirements::default();
+    let mut merged_requirements = requirements::PlanRequirements::default();
 
     for query in queries {
         validate_query_decl(query).map_err(MatcherBuildError::QueryCompileError)?;
@@ -268,7 +275,7 @@ impl CompiledMatcherPlan {
             .needs_call_result_identities()
     }
 
-    pub(crate) fn flow_requirements(&self) -> &normalize::FlowRequirements {
+    pub(crate) fn flow_requirements(&self) -> &requirements::FlowRequirements {
         self.physical_plan.requirements().flow()
     }
 

@@ -27,8 +27,8 @@ use crate::{
     api::{
         classification::RuleIndex,
         compiler::{
-            CompiledRuleSelection, normalize::FlowRequirements, object_flow::CompiledObjectFlow,
-            physical::PhysicalRoot,
+            CompiledRuleSelection, object_flow::CompiledObjectFlow, physical::PhysicalRoot,
+            requirements::FlowRequirements,
         },
     },
     project::ModuleId,
