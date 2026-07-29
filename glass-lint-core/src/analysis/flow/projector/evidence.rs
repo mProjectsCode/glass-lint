@@ -158,6 +158,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
         }
         let summary = summary_ref.clone();
         let parameters = summary.parameter_bindings(self.stream).to_vec();
+        #[allow(clippy::needless_collect)]
         let values: Vec<(FlowId, ValueId)> = summary
             .sinks()
             .into_iter()
@@ -206,10 +207,10 @@ impl ObjectFlowProjector<'_, '_, '_> {
         let Some(state) = state else {
             return;
         };
-        let ready = self
-            .plan
-            .get(flow)
-            .is_some_and(|f| f.emit_on_requirements && state.is_ready(f));
+        let ready = self.plan.get(flow).is_some_and(|f| {
+            f.completion_mode == crate::api::compiler::object_flow::CompletionMode::Configuration
+                && state.is_ready(f)
+        });
         if !ready {
             return;
         }
@@ -241,11 +242,12 @@ impl ObjectFlowProjector<'_, '_, '_> {
         );
 
         // Extract the flow symbol before the mutable borrow of self.
-        let flow_symbol = self
+        let flow_symbol: String = self
             .plan
             .get(state.flow_id())
-            .map(crate::api::compiler::object_flow::CompiledObjectFlow::evidence_symbol)
-            .unwrap_or_default();
+            .map(|f| f.evidence_symbol().as_str())
+            .unwrap_or_default()
+            .to_owned();
 
         if !self
             .flow_evidence

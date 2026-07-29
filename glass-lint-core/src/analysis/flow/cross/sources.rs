@@ -1,13 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use glass_lint_datastructures::{NamePath, NameTable};
+use glass_lint_datastructures::{Budget, NamePath, NameTable};
 use hashbrown::HashMap;
 
 use crate::{
     analysis::{
         ProjectSemanticModel,
         facts::FactId,
-        flow::cross::{MAX_PENDING, QualifiedCallGraph, state::SourceBudget},
+        flow::cross::{MAX_PENDING, QualifiedCallGraph},
         model::flow::FlowId,
         value::{FunctionId, ValueId},
     },
@@ -149,11 +149,12 @@ impl FlowSources {
         project: &ProjectSemanticModel,
         flows: &HashMap<FlowId, &CompiledObjectFlow>,
         call_graph: &QualifiedCallGraph,
+        budget: &mut Budget,
     ) -> (Self, bool) {
         let mut sources = Self::default();
         sources.collect_candidates(project, flows);
         sources.build_adjacency(project, call_graph);
-        let budget_exhausted = sources.propagate();
+        let budget_exhausted = sources.propagate(budget);
         (sources, budget_exhausted)
     }
 
@@ -210,9 +211,7 @@ impl FlowSources {
     /// Both the pending frontier and the total unique seen-set are bounded so
     /// that a long, narrow propagation graph cannot retain unbounded state
     /// without tripping the frontier limit.
-    pub(super) fn propagate(&mut self) -> bool {
-        let mut budget = SourceBudget::new();
-
+    pub(super) fn propagate(&mut self, budget: &mut Budget) -> bool {
         let mut pending: VecDeque<(SourceKey, SourceCandidate)> = VecDeque::new();
         let mut pending_seen: BTreeSet<(SourceKey, SourceCandidate)> = BTreeSet::new();
 
@@ -228,7 +227,7 @@ impl FlowSources {
             }
         }
 
-        while !pending.is_empty() && budget.next_round() {
+        while !pending.is_empty() {
             let round = std::mem::take(&mut pending);
 
             for (from_key, candidate) in &round {
@@ -240,6 +239,9 @@ impl FlowSources {
                         continue;
                     }
                     if self.sources.entry(to_key).or_default().insert(*candidate) {
+                        if !budget.try_push() {
+                            return true;
+                        }
                         if pending_seen.len() >= MAX_PENDING {
                             return true;
                         }

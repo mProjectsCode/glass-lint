@@ -173,6 +173,10 @@ impl ScopePass for ScopePlanner<'_> {
         self.current_scope()
     }
 
+    fn is_budget_exhausted(&self) -> bool {
+        self.budget.exhausted()
+    }
+
     fn visit_ident(&mut self, ident: &Ident) {
         self.budget.try_charge();
         if self.names.intern(ident.sym.as_ref()).is_err() {

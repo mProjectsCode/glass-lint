@@ -260,6 +260,11 @@ impl LocalLowering<'_> {
             );
         }
 
+        let budget_exhausted = budget.exhausted()
+            || stream.budget_exhausted()
+            || stream.path_exhausted()
+            || resolver.value_arena_exhausted()
+            || !stream.is_structurally_valid();
         if let Some(reason) = check_facts_budget(&stream, &resolver, limits, &budget) {
             status.record(StatusScope::Project, reason);
         }
@@ -270,19 +275,23 @@ impl LocalLowering<'_> {
             status.record(StatusScope::Project, reason);
         }
 
-        let export_origins = interface
-            .exports()
-            .filter_map(|(_, export)| match export {
-                module::ModuleExport::Local { name } => Some((
-                    name.clone(),
-                    resolver.exported_provenance(name, program.span()),
-                )),
-                module::ModuleExport::Value
-                | module::ModuleExport::ReExport { .. }
-                | module::ModuleExport::Namespace { .. }
-                | module::ModuleExport::Unknown => None,
-            })
-            .collect::<BTreeMap<_, _>>();
+        let export_origins = if budget_exhausted {
+            BTreeMap::new()
+        } else {
+            interface
+                .exports()
+                .filter_map(|(_, export)| match export {
+                    module::ModuleExport::Local { name } => Some((
+                        name.clone(),
+                        resolver.exported_provenance(name, program.span()),
+                    )),
+                    module::ModuleExport::Value
+                    | module::ModuleExport::ReExport { .. }
+                    | module::ModuleExport::Namespace { .. }
+                    | module::ModuleExport::Unknown => None,
+                })
+                .collect::<BTreeMap<_, _>>()
+        };
 
         if resolver.name_table_exhausted() {
             stream.mark_name_exhausted();
@@ -292,10 +301,15 @@ impl LocalLowering<'_> {
         let stream = stream.freeze(names, values);
 
         let facts = SemanticFacts::from_lowering(stream, interface, environment);
-        let effects = FunctionEffects::collect(facts.stream(), limits.effect_operations());
-        if let Some(reason) = check_effects_budget(&effects, limits) {
-            status.record(StatusScope::Project, reason);
-        }
+        let effects = if budget_exhausted {
+            FunctionEffects::default()
+        } else {
+            let effects = FunctionEffects::collect(facts.stream(), limits.effect_operations());
+            if let Some(reason) = check_effects_budget(&effects, limits) {
+                status.record(StatusScope::Project, reason);
+            }
+            effects
+        };
 
         SemanticArtifact::from_lowering(facts, export_origins, effects, status)
     }
@@ -363,6 +377,64 @@ mod tests {
             format!("{:?}", repeated.facts().stream().facts())
         );
         assert_eq!(artifact.status(), repeated.status());
+    }
+
+    #[test]
+    fn tiny_semantic_budget_stops_traversal_and_skips_derived_phases() {
+        let source = "
+            function helper(a, b) { return a + b; }
+            function process(c, d) { return helper(c, d); }
+            function compute(e, f) { return process(e, f); }
+            export const result = compute(1, 2);
+            export function identity(x) { return x; }
+        ";
+        let parsed = crate::parse(source, "budget-exhaustion.js").expect("source should parse");
+        let coordinates = SpanNormalizer::new(parsed.source_start, &SourceText::from(source));
+
+        let limits = crate::AnalysisLimits::default()
+            .with_semantic_operations(10)
+            .expect("valid limit");
+        let artifact = lower_program(
+            &parsed.program,
+            &crate::Environment::default(),
+            &limits,
+            &coordinates,
+        );
+
+        assert!(!artifact.status().is_complete());
+        assert!(artifact.effects().iter_effects().next().is_none());
+        // With budget of 10, the fact stream has very few facts
+        assert!(artifact.facts().stream().facts().len() < 5);
+        // Export origin lookups return nothing since the phase was skipped
+        assert!(artifact.export_origin("result").is_none());
+        assert!(artifact.export_origin("identity").is_none());
+    }
+
+    #[test]
+    fn large_semantic_budget_produces_complete_artifact_with_export_origins() {
+        let source = "
+            function helper(a, b) { return a + b; }
+            function process(c, d) { return helper(c, d); }
+            function compute(e, f) { return process(e, f); }
+            export const result = compute(1, 2);
+            export function identity(x) { return x; }
+        ";
+        let parsed = crate::parse(source, "budget-sufficient.js").expect("source should parse");
+        let coordinates = SpanNormalizer::new(parsed.source_start, &SourceText::from(source));
+
+        let artifact = lower_program(
+            &parsed.program,
+            &crate::Environment::default(),
+            &crate::AnalysisLimits::default(),
+            &coordinates,
+        );
+
+        assert!(artifact.status().is_complete());
+        assert!(artifact.facts().stream().facts().len() > 10);
+        assert!(artifact.effects().iter_effects().next().is_some());
+        // Export origins should be present since the phase ran
+        assert!(artifact.export_origin("result").is_some());
+        assert!(artifact.export_origin("identity").is_some());
     }
 
     #[test]

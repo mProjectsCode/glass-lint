@@ -6,6 +6,8 @@ This read-only audit covers all production and test source under `glass-lint-cor
 
 I found 29 actionable issues: 11 High, 16 Medium, and 2 Low severity. The most urgent correctness defects are an exact rule selector matching longer rule IDs and helper-sink propagation losing transitive sinks according to function order. The largest static performance risks are repeated whole-AST passes, deep cloning of scope environments, quadratic flow-state coalescing, whole-state cloning on each flow edit, copying loop facts on every fixed-point iteration, a mutex on every terminal value lookup, and an unbounded hand-built worker pool.
 
+**Completed (11 of 29):** READ-001, READ-002, READ-005, READ-009, READ-010, READ-014, READ-016, READ-026, READ-028, READ-029, READ-013. Remaining: 6 High, 12 Medium.
+
 The new query compiler has a sensible declaration → normalized IR → physical IR direction, but it still contains a reverse lifecycle adapter, repeated tree walkers and canonicalizers, a duplicate convenience API, and a partial “reference” evaluator that does not cover the newly important lifecycle path. The flow implementation is bounded in many dimensions, but several bounds cap retained output rather than the CPU and allocation work used to reach it.
 
 `cargo test -p glass-lint-core --all-features` passed: 682 unit tests plus all integration and doc-test binaries. Five tests remain ignored, including the three limit/certainty tests discussed in READ-027. `cargo clippy -p glass-lint-core --all-targets --all-features -- -W clippy::pedantic` also completed successfully; its 272 library warnings and 283 test-build warnings were predominantly documentation and `must_use` suggestions and are not repeated as findings.
@@ -44,7 +46,7 @@ Add a no-wildcard fast path using `id == self.raw`, then add exact-prefix, leadi
 
 ### Flow summaries
 
-#### READ-002 — The helper-summary delta cursor loses transitive sinks
+#### READ-002 — The helper-summary delta cursor loses transitive sinks [Done]
 
 - **Severity:** High
 - **Fix Complexity** Medium
@@ -54,6 +56,8 @@ Add a no-wildcard fast path using `id == self.raw`, then add exact-prefix, leadi
 `propagate_sinks` processes a round, advances every changed summary's global `sinks_offset` to its current length, and only then schedules reverse callers. If a caller ran before its callee in that round, it is retried next round, but the callee's cursor has already advanced, so `propagate_call_sinks` sees no new sinks. Multi-hop propagation is consequently dependent on `FunctionId`/source order.
 
 Remove the global per-summary cursor and let the existing sink set deduplicate, or keep a version/cursor per call-graph edge. Add three-or-more-hop tests in both declaration orders, a diamond, recursion with a newly discovered sink, and a permutation property asserting source-order independence.
+
+**Fix:** Removed the per-summary `sinks_offset` cursor entirely. `propagate_call_sinks` now iterates all sinks and the `SinkSet::push_unique` (based on `IndexSet`) deduplication prevents redundant work. The cursor was being advanced on callers instead of targets, causing transitive sinks to be silently skipped in multi-hop call graphs.
 
 ### Parsing and local lowering
 
@@ -79,7 +83,7 @@ Delete the byte lexer. Obtain template-expression boundaries from the same SWC f
 
 Retain a narrow hoisting/scope-shape prepass, but stop using it as a general name census. Design one semantic frontend traversal that collects source-order scope state and emits facts against the frozen declaration plan, then build occurrence indexes and effects in one fact-stream pass. Because this is the central semantic invariant, require lowering benchmarks and adversarial semantic parity tests before merging phases.
 
-#### READ-005 — Exhausting a semantic budget does not stop AST traversal
+#### READ-005 — Exhausting a semantic budget does not stop AST traversal [Done]
 
 - **Severity:** High
 - **Fix Complexity** High
@@ -89,6 +93,8 @@ Retain a narrow hoisting/scope-shape prepass, but stop using it as a general nam
 Scope visitors continue walking after `try_charge` fails. `FactBuilder::emit` returns once the shared budget is exhausted, but SWC's visitor still descends through the rest of the program, and lowering proceeds to export-origin and effects phases. The configured limit therefore bounds recorded operations but not the CPU spent visiting a hostile oversized AST.
 
 Make cancellation a phase-level result. Use an explicitly stoppable walker or a visitor gate that prevents child descent after exhaustion, and do not start later derived phases when their required input is already invalid. Tests should count visited nodes below/at/above each limit, not only emitted facts and status codes.
+
+**Fix:** Added `is_budget_exhausted` to `ScopePass` trait and guarded every `ScopeTraversal` visitor method's child descent behind it. Added the same early-return guard to every `FactBuilder::visit_*` method. In `lower_program`, export-origin processing and effects collection are now skipped when the budget is exhausted or the stream is structurally invalid. Added `tiny_semantic_budget_stops_traversal` and `large_semantic_budget_produces_complete_artifact` tests verifying that traversal stops, effects/export origins are empty under exhaustion, and the analysis completes without panic at every limit.
 
 #### READ-006 — Scope branch checkpoints deep-clone all assignment state
 
@@ -125,7 +131,7 @@ Give each mutation-log state a canonical incremental fingerprint or interned sta
 
 Put fine-grained mutation methods on `FlowStateTable` and log typed deltas such as requirement inserted/removed or sink inserted/removed. That removes the raw pointer, full-state snapshots, and accidental COW deep copies. The table—not a deref guard—owns both the state and its rollback invariant.
 
-#### READ-009 — Loop fixed-point replay clones the entire fact slice each iteration
+#### READ-009 — Loop fixed-point replay clones the entire fact slice each iteration [Done]
 
 - **Severity:** High
 - **Fix Complexity** Medium
@@ -136,9 +142,11 @@ Put fine-grained mutation methods on `FlowStateTable` and log typed deltas such 
 
 Split immutable projection context (`FactStream`, names, plan, summaries) from mutable execution state, or replay `FactId` indices through a method that borrows each fact only for the transfer call. No semantic fact should be copied merely to satisfy a broad `&mut self` receiver.
 
+**Fix:** Replaced `self.stream.facts()[start..end].to_vec()` with a zero-copy indexed iteration over a local immutable stream reference. The stream borrow is independent of the projector's mutable state, so each fact can be transferred without cloning semantic facts or using raw pointers.
+
 ### Value model
 
-#### READ-010 — Immutable value resolution locks a mutex on every lookup
+#### READ-010 — Immutable value resolution locks a mutex on every lookup [Done]
 
 - **Severity:** High
 - **Fix Complexity** Medium
@@ -148,6 +156,8 @@ Split immutable projection context (`FactStream`, names, plan, summaries) from m
 The frozen `ValueTable` retains `Mutex<Vec<Option<ValueId>>>`, and every `resolve`/`resolve_id` takes that mutex. These calls are pervasive in fact indexing, matching, and flow. Yet `intern` already enforces that a binding target has a lower ID, so the target's terminal ID is known when the binding is inserted.
 
 Compute and store the terminal ID eagerly at insertion/freeze and make resolution a direct immutable lookup. This removes locking, path-compression complexity, poison handling, and the manual `Clone` implementation. If a separate resolved arena is desirable, use dense IDs rather than `Arc<ResolvedValue>`/mutexes as ownership adapters.
+
+**Fix:** Replaced `Mutex<Vec<Option<ValueId>>>` with a plain `Vec<ValueId>`. `intern` now eagerly computes the terminal ID for bindings from the already-known target terminal and stores it directly. Removed `MAX_RESOLVE_HOPS`, the chain-walking path-compression loop, the `SmallVec` allocation, the manual `Clone` impl (now derived), and all mutex locking/poison handling. `resolve_terminal` is now a single `self.terminal_cache.get(idx).copied()` lookup.
 
 ### Project execution
 
@@ -177,7 +187,7 @@ Compile `NormalizedLifecycle` directly into the physical flow IR. The normalized
 
 ### Compiled flow representation and fixed points
 
-#### READ-013 — Compiled object flow is a boolean state machine with per-event allocations
+#### READ-013 — Compiled object flow is a boolean state machine with per-event allocations [Done]
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -188,7 +198,9 @@ Compile `NormalizedLifecycle` directly into the physical flow IR. The normalized
 
 Replace the booleans with exhaustive enums such as `RequirementMode` and `CompletionMode`; store the symbol as `SmolStr` or return `&str`; return an iterator for sink indices. After READ-008, reuse bounded scratch buffers or indexed lookups so ordinary event transfer does not allocate several short-lived vectors.
 
-#### READ-014 — Fixed-point completeness is limited by arbitrary 64-round caps
+**Fix:** Replaced the three booleans (`all_requirements_required`, `all_sinks_required`, `emit_on_requirements`) with exhaustive `RequirementMode` (`AllRequired`/`AnyRequired`) and `CompletionMode` (`Configuration`/`AnySink`/`AllSinks`) enums. Changed `symbol` from `String` to `SmolStr`; `evidence_symbol()` returns `&SmolStr` instead of cloning. `present_indices` now returns `Box<dyn Iterator<Item = usize>>` instead of allocating a `Vec`.
+
+#### READ-014 — Fixed-point completeness is limited by arbitrary 64-round caps [Done]
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -198,6 +210,8 @@ Replace the booleans with exhaustive enums such as `RequirementMode` and `Comple
 Helper-sink propagation and cross-source refinement stop after 64 rounds even though both are monotone worklists with separate size/operation bounds. A valid chain deeper than 64 becomes incomplete solely because of graph depth, and the cap obscures whether work, state, or depth was actually exhausted.
 
 Run worklists until stable or until the typed operation/state budget is exhausted. Charge each edge/candidate transfer and report that precise bound. A semantic depth restriction, if desired, should be an explicit public analysis limit with adversarial tests rather than a private magic number.
+
+**Fix:** Removed `MAX_SUMMARY_ROUNDS` (64) from summary propagation — the loop now runs until the worklist is empty or the `Budget`/sink-capacity limits are exhausted. Replaced `MAX_SOURCE_REFINEMENT_ROUNDS` (64) and the round-based `SourceBudget` with a per-transfer `Budget` that charges each candidate insertion. The source worklist now also runs until stable (empty pending) or budget exhausted. `FlowLimits` operations budget is passed from the cross-module collector into source propagation.
 
 #### READ-015 — Local and cross flow independently pre-resolve the same paths
 

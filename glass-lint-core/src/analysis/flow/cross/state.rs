@@ -1,7 +1,9 @@
+#[cfg(test)]
+use glass_lint_datastructures::Budget;
+
 use crate::{
     analysis::{
         facts::FactId,
-        flow::cross::MAX_SOURCE_REFINEMENT_ROUNDS,
         model::flow::{FlowId, RequirementSet},
         value::{FunctionId, ValueId},
     },
@@ -9,23 +11,31 @@ use crate::{
 };
 
 #[derive(Debug)]
-/// Fixed-point budget for propagating source identities through helper calls.
+/// Per-transfer budget for propagating source identities through helper calls.
+///
+/// Charges each candidate insertion as one operation so that a long or
+/// cyclical propagation graph is bounded by work done, not by an arbitrary
+/// round count.
+#[cfg(test)]
 pub(super) struct SourceBudget {
-    rounds: usize,
+    inner: Budget,
 }
 
+#[cfg(test)]
 impl SourceBudget {
-    pub(super) fn new() -> Self {
-        Self { rounds: 0 }
+    pub(super) fn new(operations: usize) -> Self {
+        Self {
+            inner: Budget::new(operations),
+        }
     }
 
-    pub(super) fn next_round(&mut self) -> bool {
-        self.rounds = self.rounds.saturating_add(1);
-        self.rounds <= MAX_SOURCE_REFINEMENT_ROUNDS
+    /// Charge for one candidate transfer. Returns `false` when exhausted.
+    pub(super) fn try_charge(&mut self) -> bool {
+        self.inner.try_push()
     }
 
     pub(super) fn exhausted(&self) -> bool {
-        self.rounds > MAX_SOURCE_REFINEMENT_ROUNDS
+        self.inner.exhausted()
     }
 }
 

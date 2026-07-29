@@ -97,7 +97,6 @@ pub(in crate::analysis::flow) struct FunctionSummary {
     has_rest: bool,
     calls: Vec<FactId>,
     sinks: SinkSet,
-    sinks_offset: usize,
 }
 
 impl FunctionSummary {
@@ -113,7 +112,6 @@ impl FunctionSummary {
             has_rest,
             calls,
             sinks: SinkSet::default(),
-            sinks_offset: 0,
         }
     }
 
@@ -130,14 +128,6 @@ impl FunctionSummary {
 
     pub(super) fn calls(&self) -> &[FactId] {
         &self.calls
-    }
-
-    pub(super) fn sinks_offset(&self) -> usize {
-        self.sinks_offset
-    }
-
-    pub(super) fn set_sinks_offset(&mut self, value: usize) {
-        self.sinks_offset = value;
     }
 
     pub(super) fn id(&self) -> FunctionId {
@@ -414,7 +404,6 @@ mod tests {
         assert_eq!(summary.parameter_count(), 3);
         assert!(summary.calls().is_empty());
         assert_eq!(summary.sinks().len(), 0);
-        assert_eq!(summary.sinks_offset(), 0);
     }
 
     #[test]
@@ -429,14 +418,6 @@ mod tests {
         summary.add_sink(s1);
         summary.sort_sinks();
         assert_eq!(summary.sinks().len(), 2);
-    }
-
-    #[test]
-    fn function_summary_set_sinks_offset() {
-        let mut summary = FunctionSummary::new(FunctionId(1), 0, false, vec![]);
-        assert_eq!(summary.sinks_offset(), 0);
-        summary.set_sinks_offset(5);
-        assert_eq!(summary.sinks_offset(), 5);
     }
 
     // ── is_invocation_compatible ──────────────────────────────────────────

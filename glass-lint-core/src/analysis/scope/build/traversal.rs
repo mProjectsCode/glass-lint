@@ -19,6 +19,13 @@ pub(in crate::analysis::scope) trait ScopePass {
     fn pop_scope(&mut self);
     fn current_scope(&self) -> ScopeId;
 
+    /// Returns `true` when the semantic budget is exhausted.
+    /// The traversal skips child descent after exhaustion so the AST walk
+    /// terminates quickly instead of visiting every remaining node.
+    fn is_budget_exhausted(&self) -> bool {
+        false
+    }
+
     // === SCOPE-FORMING HOOKS ===
     // Called by the traversal at specific points. MUST NOT call visit_with.
 
@@ -92,12 +99,16 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
 
     fn visit_member_expr(&mut self, member: &MemberExpr) {
         self.pass.visit_member_expr(member);
-        member.visit_children_with(self);
+        if !self.pass.is_budget_exhausted() {
+            member.visit_children_with(self);
+        }
     }
 
     fn visit_prop_name(&mut self, prop: &PropName) {
         self.pass.visit_prop_name(prop);
-        prop.visit_children_with(self);
+        if !self.pass.is_budget_exhausted() {
+            prop.visit_children_with(self);
+        }
     }
 
     fn visit_lit(&mut self, lit: &Lit) {
@@ -106,27 +117,37 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
 
     fn visit_import_decl(&mut self, import: &ImportDecl) {
         self.pass.visit_import_decl(import);
-        import.visit_children_with(self);
+        if !self.pass.is_budget_exhausted() {
+            import.visit_children_with(self);
+        }
     }
 
     fn visit_var_decl(&mut self, decl: &VarDecl) {
         self.pass.visit_var_decl(decl);
-        decl.visit_children_with(self);
+        if !self.pass.is_budget_exhausted() {
+            decl.visit_children_with(self);
+        }
     }
 
     fn visit_assign_expr(&mut self, expr: &AssignExpr) {
         self.pass.visit_assign_expr(expr);
-        expr.visit_children_with(self);
+        if !self.pass.is_budget_exhausted() {
+            expr.visit_children_with(self);
+        }
     }
 
     fn visit_call_expr(&mut self, call: &CallExpr) {
         self.pass.visit_call_expr(call);
-        call.visit_children_with(self);
+        if !self.pass.is_budget_exhausted() {
+            call.visit_children_with(self);
+        }
     }
 
     fn visit_class_decl(&mut self, decl: &ClassDecl) {
         self.pass.visit_class_decl(decl);
-        decl.visit_children_with(self);
+        if !self.pass.is_budget_exhausted() {
+            decl.visit_children_with(self);
+        }
     }
 
     // === SCOPE-FORMING METHODS ===
@@ -139,11 +160,13 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
         let scope = self.pass.current_scope();
         self.pass.enter_function();
         self.pass.after_fn_decl(decl, scope);
-        for param in &decl.function.params {
-            param.pat.visit_with(self);
+        if !self.pass.is_budget_exhausted() {
+            for param in &decl.function.params {
+                param.pat.visit_with(self);
+            }
+            decl.function.decorators.visit_with(self);
+            decl.function.body.visit_with(self);
         }
-        decl.function.decorators.visit_with(self);
-        decl.function.body.visit_with(self);
         self.pass.exit_function();
         self.pass.pop_scope();
     }
@@ -153,11 +176,13 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
         let scope = self.pass.current_scope();
         self.pass.enter_function();
         self.pass.after_function(func, scope);
-        for param in &func.params {
-            param.pat.visit_with(self);
+        if !self.pass.is_budget_exhausted() {
+            for param in &func.params {
+                param.pat.visit_with(self);
+            }
+            func.decorators.visit_with(self);
+            func.body.visit_with(self);
         }
-        func.decorators.visit_with(self);
-        func.body.visit_with(self);
         self.pass.exit_function();
         self.pass.pop_scope();
     }
@@ -167,17 +192,21 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
         let scope = self.pass.current_scope();
         self.pass.enter_function();
         self.pass.after_arrow(arrow, scope);
-        for param in &arrow.params {
-            param.visit_with(self);
+        if !self.pass.is_budget_exhausted() {
+            for param in &arrow.params {
+                param.visit_with(self);
+            }
+            arrow.body.visit_with(self);
         }
-        arrow.body.visit_with(self);
         self.pass.exit_function();
         self.pass.pop_scope();
     }
 
     fn visit_block_stmt(&mut self, block: &BlockStmt) {
         self.pass.push_scope(block.span, ScopeKind::Block);
-        block.stmts.visit_with(self);
+        if !self.pass.is_budget_exhausted() {
+            block.stmts.visit_with(self);
+        }
         self.pass.pop_scope();
     }
 
@@ -185,8 +214,10 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
         stmt.discriminant.visit_with(self);
         self.pass.push_scope(stmt.span, ScopeKind::Block);
         self.pass.enter_switch();
-        for case in &stmt.cases {
-            self.visit_switch_case(case);
+        if !self.pass.is_budget_exhausted() {
+            for case in &stmt.cases {
+                self.visit_switch_case(case);
+            }
         }
         self.pass.exit_switch(stmt.span);
         self.pass.pop_scope();
@@ -194,15 +225,19 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
 
     fn visit_switch_case(&mut self, case: &SwitchCase) {
         self.pass.enter_switch_case();
-        case.test.visit_with(self);
-        case.cons.visit_with(self);
+        if !self.pass.is_budget_exhausted() {
+            case.test.visit_with(self);
+            case.cons.visit_with(self);
+        }
         self.pass.exit_switch_case();
     }
 
     fn visit_with_stmt(&mut self, stmt: &WithStmt) {
         stmt.obj.visit_with(self);
         self.pass.push_scope(stmt.body.span(), ScopeKind::Dynamic);
-        stmt.body.visit_with(self);
+        if !self.pass.is_budget_exhausted() {
+            stmt.body.visit_with(self);
+        }
         self.pass.pop_scope();
     }
 
@@ -211,7 +246,9 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
         if let Some(param) = &clause.param {
             self.pass.visit_catch_param(param);
         }
-        clause.body.stmts.visit_with(self);
+        if !self.pass.is_budget_exhausted() {
+            clause.body.stmts.visit_with(self);
+        }
         self.pass.pop_scope();
     }
 
@@ -219,14 +256,18 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
         let has_handler = stmt.handler.is_some();
         let has_finally = stmt.finalizer.is_some();
         self.pass.enter_try(has_handler, has_finally);
-        stmt.block.visit_with(self);
-        if let Some(handler) = &stmt.handler {
-            self.pass.enter_catch();
-            handler.visit_with(self);
-        }
-        self.pass.exit_try(stmt.span, has_handler, has_finally);
-        if let Some(finalizer) = &stmt.finalizer {
-            finalizer.visit_with(self);
+        if self.pass.is_budget_exhausted() {
+            self.pass.exit_try(stmt.span, has_handler, has_finally);
+        } else {
+            stmt.block.visit_with(self);
+            if let Some(handler) = &stmt.handler {
+                self.pass.enter_catch();
+                handler.visit_with(self);
+            }
+            self.pass.exit_try(stmt.span, has_handler, has_finally);
+            if let Some(finalizer) = &stmt.finalizer {
+                finalizer.visit_with(self);
+            }
         }
     }
 
@@ -235,10 +276,12 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
     fn visit_if_stmt(&mut self, stmt: &IfStmt) {
         stmt.test.visit_with(self);
         self.pass.enter_if();
-        stmt.cons.visit_with(self);
-        if let Some(alt) = &stmt.alt {
-            self.pass.enter_else();
-            alt.visit_with(self);
+        if !self.pass.is_budget_exhausted() {
+            stmt.cons.visit_with(self);
+            if let Some(alt) = &stmt.alt {
+                self.pass.enter_else();
+                alt.visit_with(self);
+            }
         }
         self.pass.exit_if(stmt.span, stmt.alt.is_some());
     }
@@ -246,13 +289,17 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
     fn visit_while_stmt(&mut self, stmt: &WhileStmt) {
         stmt.test.visit_with(self);
         self.pass.enter_loop(false);
-        stmt.body.visit_with(self);
+        if !self.pass.is_budget_exhausted() {
+            stmt.body.visit_with(self);
+        }
         self.pass.exit_loop(stmt.span);
     }
 
     fn visit_do_while_stmt(&mut self, stmt: &DoWhileStmt) {
         self.pass.enter_loop(true);
-        stmt.body.visit_with(self);
+        if !self.pass.is_budget_exhausted() {
+            stmt.body.visit_with(self);
+        }
         self.pass.exit_loop(stmt.span);
         stmt.test.visit_with(self);
     }
@@ -263,7 +310,9 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
         stmt.test.visit_with(self);
         stmt.update.visit_with(self);
         self.pass.enter_loop(false);
-        stmt.body.visit_with(self);
+        if !self.pass.is_budget_exhausted() {
+            stmt.body.visit_with(self);
+        }
         self.pass.exit_loop(stmt.span);
         self.pass.pop_scope();
     }
@@ -273,7 +322,9 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
         stmt.left.visit_with(self);
         stmt.right.visit_with(self);
         self.pass.enter_loop(false);
-        stmt.body.visit_with(self);
+        if !self.pass.is_budget_exhausted() {
+            stmt.body.visit_with(self);
+        }
         self.pass.exit_loop(stmt.span);
         self.pass.pop_scope();
     }
@@ -283,28 +334,38 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
         stmt.left.visit_with(self);
         stmt.right.visit_with(self);
         self.pass.enter_loop(false);
-        stmt.body.visit_with(self);
+        if !self.pass.is_budget_exhausted() {
+            stmt.body.visit_with(self);
+        }
         self.pass.exit_loop(stmt.span);
         self.pass.pop_scope();
     }
 
     fn visit_break_stmt(&mut self, stmt: &BreakStmt) {
         self.pass.break_exit();
-        stmt.visit_children_with(self);
+        if !self.pass.is_budget_exhausted() {
+            stmt.visit_children_with(self);
+        }
     }
 
     fn visit_continue_stmt(&mut self, stmt: &ContinueStmt) {
         self.pass.continue_exit();
-        stmt.visit_children_with(self);
+        if !self.pass.is_budget_exhausted() {
+            stmt.visit_children_with(self);
+        }
     }
 
     fn visit_return_stmt(&mut self, stmt: &ReturnStmt) {
-        stmt.visit_children_with(self);
+        if !self.pass.is_budget_exhausted() {
+            stmt.visit_children_with(self);
+        }
         self.pass.mark_unreachable();
     }
 
     fn visit_throw_stmt(&mut self, stmt: &ThrowStmt) {
-        stmt.visit_children_with(self);
+        if !self.pass.is_budget_exhausted() {
+            stmt.visit_children_with(self);
+        }
         self.pass.mark_unreachable();
     }
 }

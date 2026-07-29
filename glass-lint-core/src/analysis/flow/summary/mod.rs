@@ -23,5 +23,4 @@ mod summaries;
 pub(super) use store::SummaryPathStore;
 pub(super) use summaries::FunctionSummaries;
 
-const MAX_SUMMARY_ROUNDS: usize = 64;
 pub(super) const MAX_SUMMARY_SINKS: usize = 65_536;

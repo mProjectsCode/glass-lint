@@ -8,7 +8,7 @@ use crate::analysis::{
         effect::{EffectCall, FunctionEffects},
         planning::BoundFlowPlan,
         summary::{
-            MAX_SUMMARY_ROUNDS, MAX_SUMMARY_SINKS, SummaryPathStore,
+            MAX_SUMMARY_SINKS, SummaryPathStore,
             sink::{FunctionSinkSummary, FunctionSummary},
         },
     },
@@ -157,11 +157,7 @@ impl<'a> FunctionSummaries<'a> {
 
         let mut worklist: BTreeSet<FunctionId> = self.by_id.iter().map(|(id, _)| id).collect();
 
-        for _ in 0..MAX_SUMMARY_ROUNDS {
-            if worklist.is_empty() {
-                break;
-            }
-
+        while !worklist.is_empty() {
             if !budget.try_push() {
                 self.exhausted = true;
                 return;
@@ -200,12 +196,6 @@ impl<'a> FunctionSummaries<'a> {
             }
 
             for &changed_id in &changed {
-                if let Some(summary) = self.by_id.get_mut(changed_id) {
-                    summary.set_sinks_offset(summary.sinks().len());
-                }
-            }
-
-            for &changed_id in &changed {
                 if let Some(callers) = reverse_calls.get(&changed_id) {
                     for &c in callers {
                         if worklist.len() >= MAX_SUMMARY_SINKS {
@@ -216,10 +206,6 @@ impl<'a> FunctionSummaries<'a> {
                     }
                 }
             }
-        }
-
-        if !worklist.is_empty() {
-            self.exhausted = true;
         }
     }
 
@@ -233,10 +219,6 @@ impl<'a> FunctionSummaries<'a> {
         let Some((target, args)) = resolve_call_target(call_id, stream) else {
             return false;
         };
-        let target_sinks_offset = self
-            .by_id
-            .get(target)
-            .map_or(0, FunctionSummary::sinks_offset);
         if target == caller {
             return false;
         }
@@ -254,8 +236,7 @@ impl<'a> FunctionSummaries<'a> {
         {
             let target_params = stream.function_parameters(target);
             let caller_params = stream.function_parameters(caller);
-            let sink_count = target_summary.sinks().len();
-            for sink_idx in target_sinks_offset..sink_count {
+            for sink_idx in 0..target_summary.sinks().len() {
                 let sink = target_summary.sinks().get(sink_idx).expect("valid index");
                 if let Some(proj) = try_project_sink(
                     target_params,

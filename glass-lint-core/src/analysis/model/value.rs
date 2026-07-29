@@ -1,5 +1,3 @@
-use std::sync::Mutex;
-
 use glass_lint_datastructures::{FastIndexSet, NameId, NamePath, NameTable};
 use smol_str::SmolStr;
 
@@ -55,25 +53,12 @@ impl CallableValue {
 
 pub const MAX_VALUES: usize = 65_536;
 
-const MAX_RESOLVE_HOPS: usize = MAX_VALUES;
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ValueTable {
     values: FastIndexSet<Value>,
     next_object: u32,
     exhausted: bool,
-    terminal_cache: Mutex<Vec<Option<ValueId>>>,
-}
-
-impl Clone for ValueTable {
-    fn clone(&self) -> Self {
-        Self {
-            values: self.values.clone(),
-            next_object: self.next_object,
-            exhausted: self.exhausted,
-            terminal_cache: Mutex::new(self.terminal_cache.lock().unwrap().clone()),
-        }
-    }
+    terminal_cache: Vec<ValueId>,
 }
 
 impl Default for ValueTable {
@@ -82,7 +67,7 @@ impl Default for ValueTable {
             values: core::iter::once(Value::Unknown).collect(),
             next_object: 0,
             exhausted: false,
-            terminal_cache: Mutex::new(vec![Some(ValueId::UNKNOWN)]),
+            terminal_cache: vec![ValueId::UNKNOWN],
         }
     }
 }
@@ -117,12 +102,10 @@ impl ValueTable {
                 self.exhausted = true;
                 return ValueId::UNKNOWN;
             }
-            self.terminal_cache.get_mut().unwrap().push(None);
-        } else {
             self.terminal_cache
-                .get_mut()
-                .unwrap()
-                .push(Some(ValueId(index)));
+                .push(self.terminal_cache[usize::try_from(target.0).unwrap()]);
+        } else {
+            self.terminal_cache.push(ValueId(index));
         }
 
         ValueId(index)
@@ -182,57 +165,7 @@ impl ValueTable {
 
     fn resolve_terminal(&self, id: ValueId) -> Option<ValueId> {
         let idx = usize::try_from(id.0).ok()?;
-
-        {
-            let cache = self.terminal_cache.lock().unwrap();
-            if idx >= cache.len() {
-                return None;
-            }
-            if let Some(terminal) = cache[idx] {
-                return Some(terminal);
-            }
-        }
-
-        let mut chain = smallvec::SmallVec::<[usize; 8]>::new();
-        let mut current = idx;
-        let mut hops = 0;
-
-        loop {
-            hops += 1;
-            if hops > MAX_RESOLVE_HOPS {
-                return None;
-            }
-
-            let terminal = {
-                let mut cache = self.terminal_cache.lock().unwrap();
-                if current >= cache.len() {
-                    return None;
-                }
-                if let Some(t) = cache[current] {
-                    for &p in &chain {
-                        cache[p] = Some(t);
-                    }
-                    return Some(t);
-                }
-
-                let value = self.values.get_index(current)?;
-                if let Value::Binding { target, .. } = value {
-                    let t = usize::try_from(target.0).ok()?;
-                    chain.push(current);
-                    current = t;
-                    continue;
-                }
-
-                let t = ValueId(u32::try_from(current).ok()?);
-                for &p in &chain {
-                    cache[p] = Some(t);
-                }
-                cache[current] = Some(t);
-                t
-            };
-
-            return Some(terminal);
-        }
+        self.terminal_cache.get(idx).copied()
     }
 
     pub fn static_string(&self, id: ValueId) -> Option<&str> {

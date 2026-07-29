@@ -5,9 +5,14 @@ use std::{
 };
 
 use crate::{
-    analysis::model::fact::FactId,
-    api::{classification::RuleIndex, compiler::CompiledObjectFlow},
+    analysis::model::{fact::FactId, scope::FunctionId, value::ObjectId},
+    api::{
+        classification::RuleIndex,
+        compiler::{CompiledObjectFlow, object_flow::RequirementMode},
+    },
 };
+
+pub type FunctionTable<T> = glass_lint_datastructures::IndexTable<FunctionId, T>;
 
 #[derive(Debug, Clone, Copy)]
 pub struct FlowLimits {
@@ -189,12 +194,6 @@ impl<K: Clone + Ord> RequirementSet<K> {
     }
 }
 
-use crate::analysis::model::scope::FunctionId;
-
-pub type FunctionTable<T> = glass_lint_datastructures::IndexTable<FunctionId, T>;
-
-use crate::analysis::model::value::ObjectId;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FlowState {
     flow: FlowId,
@@ -249,10 +248,9 @@ impl FlowState {
     }
 
     pub fn is_ready(&self, flow: &CompiledObjectFlow) -> bool {
-        if flow.all_requirements_required {
-            self.requirements.len() == flow.requirements.len()
-        } else {
-            !self.requirements.is_empty()
+        match flow.requirement_mode {
+            RequirementMode::AllRequired => self.requirements.len() == flow.requirements.len(),
+            RequirementMode::AnyRequired => !self.requirements.is_empty(),
         }
     }
 
@@ -261,7 +259,8 @@ impl FlowState {
     }
 
     pub fn sinks_ready(&self, flow: &CompiledObjectFlow) -> bool {
-        !flow.all_sinks_required || self.sinks.len() == flow.sinks.len()
+        flow.completion_mode != crate::api::compiler::object_flow::CompletionMode::AllSinks
+            || self.sinks.len() == flow.sinks.len()
     }
 
     pub fn requirement_keys(&self) -> impl Iterator<Item = (usize, &BTreeSet<FactId>)> {

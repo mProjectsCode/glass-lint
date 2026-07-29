@@ -21,7 +21,10 @@ use crate::{
         },
         trace::TraceArena,
     },
-    api::compiler::{CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArguments},
+    api::compiler::{
+        CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArguments,
+        object_flow::CompletionMode,
+    },
     project::ModuleId,
 };
 
@@ -180,7 +183,7 @@ impl UsageProjector<'_> {
             }
             if self.flow.requirements_ready(self.state.requirements.len())
                 && self.state.source.is_some()
-                && (!self.flow.all_sinks_required
+                && (self.flow.completion_mode != CompletionMode::AllSinks
                     || self.state.sinks.len() == self.flow.sinks.len())
             {
                 emit(
@@ -206,7 +209,7 @@ impl UsageProjector<'_> {
     }
 
     fn emit_requirements(&mut self, state: &CrossFlowState, event: FactId) {
-        if self.flow.emit_on_requirements
+        if self.flow.completion_mode == CompletionMode::Configuration
             && self.flow.requirements_ready(state.requirements.len())
             && self.context.crossed
         {

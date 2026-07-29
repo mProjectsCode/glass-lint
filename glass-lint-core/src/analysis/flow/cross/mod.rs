@@ -37,7 +37,6 @@ use crate::{
 };
 
 const MAX_CONTEXTS: usize = 65_536;
-const MAX_SOURCE_REFINEMENT_ROUNDS: usize = 64;
 const MAX_PENDING: usize = 65_536;
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -89,7 +88,10 @@ pub(in crate::analysis) fn collect(
     }
 
     let call_graph = QualifiedCallGraph::build(project, session);
-    let (sources, return_budget_exhausted) = FlowSources::collect(project, &flows, &call_graph);
+    let mut source_budget =
+        Budget::new(FlowLimits::from_flow_operations(project.flow_limit()).operation_limit());
+    let (sources, return_budget_exhausted) =
+        FlowSources::collect(project, &flows, &call_graph, &mut source_budget);
     let flow_ids: Vec<FlowId> = flows.keys().copied().collect();
     let mut worklist = ContextWorklist::seed(project, &sources, &call_graph, &flow_ids);
 
@@ -207,6 +209,7 @@ mod tests {
     #[test]
     fn propagate_transfers_along_adjacency_edge() {
         let mut sources = FlowSources::default();
+        let mut budget = Budget::new(usize::MAX);
         let from = key(1, 1, 1);
         let to = key(1, 1, 2);
 
@@ -214,7 +217,7 @@ mod tests {
         sources.add(from, candidate(0, 0, 20));
         sources.adjacency.insert(from, vec![to]);
 
-        assert!(!sources.propagate());
+        assert!(!sources.propagate(&mut budget));
 
         let dest = sources.get(&to).unwrap();
         assert_eq!(dest.len(), 2);
@@ -225,24 +228,26 @@ mod tests {
     #[test]
     fn propagate_deduplicates_by_construction() {
         let mut sources = FlowSources::default();
+        let mut budget = Budget::new(usize::MAX);
         let from = key(1, 1, 1);
         let to = key(1, 1, 2);
 
         sources.add(from, candidate(0, 0, 10));
         sources.adjacency.insert(from, vec![to]);
 
-        assert!(!sources.propagate());
+        assert!(!sources.propagate(&mut budget));
         assert_eq!(sources.get(&to).unwrap().len(), 1);
 
         // Second propagation is a no-op because candidates are already at the
         // destination.
-        assert!(!sources.propagate());
+        assert!(!sources.propagate(&mut budget));
         assert_eq!(sources.get(&to).unwrap().len(), 1);
     }
 
     #[test]
     fn propagate_partial_novelty() {
         let mut sources = FlowSources::default();
+        let mut budget = Budget::new(usize::MAX);
         let from = key(1, 1, 1);
         let to = key(1, 1, 2);
 
@@ -251,21 +256,22 @@ mod tests {
         sources.add(to, candidate(0, 0, 10));
         sources.adjacency.insert(from, vec![to]);
 
-        assert!(!sources.propagate());
+        assert!(!sources.propagate(&mut budget));
         assert_eq!(sources.get(&to).unwrap().len(), 2);
 
-        assert!(!sources.propagate());
+        assert!(!sources.propagate(&mut budget));
     }
 
     #[test]
     fn propagate_missing_source_is_no_op() {
         let mut sources = FlowSources::default();
+        let mut budget = Budget::new(usize::MAX);
         let from = key(1, 1, 1);
         let to = key(1, 1, 2);
 
         sources.adjacency.insert(from, vec![to]);
 
-        assert!(!sources.propagate());
+        assert!(!sources.propagate(&mut budget));
         assert!(sources.get(&to).is_none());
         assert!(sources.get(&from).is_none());
     }
@@ -273,17 +279,19 @@ mod tests {
     #[test]
     fn propagate_self_edge_is_skipped() {
         let mut sources = FlowSources::default();
+        let mut budget = Budget::new(usize::MAX);
         let k = key(1, 1, 1);
         sources.add(k, candidate(0, 0, 10));
         sources.adjacency.insert(k, vec![k]);
 
-        assert!(!sources.propagate());
+        assert!(!sources.propagate(&mut budget));
         assert_eq!(sources.get(&k).unwrap().len(), 1);
     }
 
     #[test]
     fn propagate_multi_hop() {
         let mut sources = FlowSources::default();
+        let mut budget = Budget::new(usize::MAX);
         let a = key(1, 1, 1);
         let b = key(1, 1, 2);
         let c = key(1, 1, 3);
@@ -292,7 +300,7 @@ mod tests {
         sources.adjacency.insert(a, vec![b]);
         sources.adjacency.insert(b, vec![c]);
 
-        assert!(!sources.propagate());
+        assert!(!sources.propagate(&mut budget));
 
         assert_eq!(sources.get(&b).unwrap().len(), 1);
         assert!(sources.get(&b).unwrap().contains(&candidate(0, 0, 10)));
@@ -303,6 +311,7 @@ mod tests {
     #[test]
     fn propagate_multi_hop_converges() {
         let mut sources = FlowSources::default();
+        let mut budget = Budget::new(usize::MAX);
         let a = key(1, 1, 1);
         let b = key(1, 1, 2);
 
@@ -310,7 +319,7 @@ mod tests {
         sources.adjacency.insert(a, vec![b]);
         sources.adjacency.insert(b, vec![a]);
 
-        let exhausted = sources.propagate();
+        let exhausted = sources.propagate(&mut budget);
         assert!(!exhausted);
         assert!(sources.get(&b).unwrap().contains(&candidate(0, 0, 10)));
     }
@@ -318,6 +327,7 @@ mod tests {
     #[test]
     fn propagate_preserves_ordering_at_destination() {
         let mut sources = FlowSources::default();
+        let mut budget = Budget::new(usize::MAX);
         let from = key(1, 1, 1);
         let to = key(1, 1, 2);
 
@@ -326,7 +336,7 @@ mod tests {
         sources.add(from, candidate(0, 0, 10));
         sources.adjacency.insert(from, vec![to]);
 
-        sources.propagate();
+        sources.propagate(&mut budget);
 
         let ordered: Vec<_> = sources.get(&to).unwrap().iter().copied().collect();
         assert_eq!(ordered[0], candidate(0, 0, 5));
@@ -337,6 +347,7 @@ mod tests {
     #[test]
     fn propagate_pending_limit_exhausted() {
         let mut sources = FlowSources::default();
+        let mut budget = Budget::new(usize::MAX);
         let a = key(1, 1, 1);
         let b = key(1, 1, 2);
         for i in 0..(u32::try_from(MAX_PENDING).unwrap_or(u32::MAX) + 10) {
@@ -346,24 +357,24 @@ mod tests {
         // filling the pending queue past the safety limit.
         sources.adjacency.insert(a, vec![b]);
 
-        assert!(sources.propagate());
+        assert!(sources.propagate(&mut budget));
     }
 
     #[test]
-    fn source_budget_round_limit_is_detected() {
-        let mut budget = SourceBudget::new();
-        for _ in 0..MAX_SOURCE_REFINEMENT_ROUNDS {
-            assert!(budget.next_round());
+    fn source_budget_transfer_limit_is_detected() {
+        let mut budget = SourceBudget::new(10);
+        for _ in 0..10 {
+            assert!(budget.try_charge());
             assert!(!budget.exhausted());
         }
-        assert!(!budget.next_round());
+        assert!(!budget.try_charge());
         assert!(budget.exhausted());
     }
 
     #[test]
     fn source_budget_not_exhausted_after_stabilization() {
-        let mut budget = SourceBudget::new();
-        assert!(budget.next_round());
+        let mut budget = SourceBudget::new(100);
+        assert!(budget.try_charge());
         assert!(!budget.exhausted());
     }
 

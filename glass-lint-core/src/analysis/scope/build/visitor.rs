@@ -42,6 +42,10 @@ impl ScopePass for ScopeCollector<'_> {
         self.current_scope()
     }
 
+    fn is_budget_exhausted(&self) -> bool {
+        self.budget.exhausted()
+    }
+
     fn enter_function(&mut self) {
         self.enter_function();
     }

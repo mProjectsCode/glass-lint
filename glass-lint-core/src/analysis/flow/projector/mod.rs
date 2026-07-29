@@ -338,11 +338,12 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             self.alternatives_complete = false;
             return Vec::new();
         }
-        let facts = self.stream.facts()[start..end].to_vec();
+        let stream = self.stream;
         let previous_mode = self.emission_mode;
         self.emission_mode = EmissionMode::Replay;
         self.paths = input;
-        for fact in &facts {
+        for i in start..end {
+            let fact = &stream.facts()[i];
             self.transfer(fact);
         }
         self.emission_mode = previous_mode;

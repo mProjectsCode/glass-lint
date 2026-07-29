@@ -107,7 +107,11 @@ pub(super) fn mark_nonmatching(
         return;
     };
     let rule_idx = flow_id.rule_index().get();
-    let key = (MatchKind::CallArgument, flow.symbol.clone(), event.0);
+    let key = (
+        MatchKind::CallArgument,
+        flow.symbol.as_str().to_owned(),
+        event.0,
+    );
     values.nonmatching[rule_idx].insert(key.clone());
     if let Some(item) = values.evidence[rule_idx].iter_mut().find(|item| {
         item.kind == key.0
@@ -136,7 +140,11 @@ pub(super) fn emit(
         return;
     };
     let rule_idx = flow_id.rule_index().get();
-    let key = (MatchKind::CallArgument, flow.symbol.clone(), event.0);
+    let key = (
+        MatchKind::CallArgument,
+        flow.symbol.as_str().to_owned(),
+        event.0,
+    );
     let span = project
         .fact(module, event)
         .map_or_else(glass_lint_datastructures::ByteRange::empty, |fact| {
@@ -239,7 +247,7 @@ pub(super) fn emit(
         values.seen[rule_idx].insert(key);
         values.evidence[rule_idx].push(ClassificationEvidence {
             kind: MatchKind::CallArgument,
-            symbol: flow.evidence_symbol(),
+            symbol: flow.evidence_symbol().as_str().to_owned(),
             count: 1,
             truncated: false,
             certainty,
