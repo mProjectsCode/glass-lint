@@ -38,7 +38,7 @@ impl<'a> CompiledRuleSelection<'a> {
         self.rules.get(index.get()).map(|rule| &rule.matcher)
     }
 
-    pub fn len(&self) -> usize {
+    pub fn rule_capacity(&self) -> usize {
         self.rules.len()
     }
 }

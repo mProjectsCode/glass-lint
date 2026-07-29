@@ -354,11 +354,13 @@ fn check_branch_evidence_compatibility(
     let first_type = branch_var_type(&branches[0], primary);
     for branch in branches.iter().skip(1) {
         let other = branch_var_type(branch, primary);
-        if first_type != other && first_type.is_some() && other.is_some() {
+        if let (Some(a), Some(b)) = (first_type, other)
+            && a != b
+        {
             return Err(QueryCompileError::IncompatibleBranchOutput {
                 var: primary,
-                type_a: "some",
-                type_b: "other",
+                type_a: a,
+                type_b: b,
             });
         }
     }

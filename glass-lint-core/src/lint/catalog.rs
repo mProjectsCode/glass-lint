@@ -57,7 +57,7 @@ impl RuleCatalog {
             .into_iter()
             .map(|rule| {
                 let rule_id = RuleId::parse(format!("{provider}:{}", rule.id()))?;
-                let validated = rule.validate_and_normalize().map_err(|error| {
+                let validated = rule.require_queries().map_err(|error| {
                     ProviderCatalogError::InvalidRule(rule_id.clone(), error.to_string())
                 })?;
                 Ok((validated, rule_id))

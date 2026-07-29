@@ -434,7 +434,7 @@ impl<'a> ProjectionPlan<'a> {
                     )
                 })
                 .collect::<Vec<_>>();
-        let rule_count = selection.len();
+        let rule_count = selection.rule_capacity();
         Self {
             constrained_roots,
             flow_matchers,

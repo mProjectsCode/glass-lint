@@ -210,7 +210,7 @@ impl RuleBuilder {
 }
 
 impl Rule {
-    pub(crate) fn validate_and_normalize(self) -> Result<Self, MatcherBuildError> {
+    pub(crate) fn require_queries(self) -> Result<Self, MatcherBuildError> {
         if self.queries.is_empty() {
             return Err(MatcherBuildError::MissingRequired);
         }
@@ -312,7 +312,7 @@ mod tests {
     #[test]
     fn rejects_empty_and_incomplete_matchers() {
         // Empty declarations list (no queries) passes build but fails
-        // validate_and_normalize
+        // require_queries
         assert!(
             Rule::builder("test.test")
                 .description("desc")

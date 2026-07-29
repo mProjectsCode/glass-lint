@@ -13,8 +13,8 @@ use crate::{
     lint::catalog::RuleCatalog,
     project::{
         AnalysisReport, Diagnostic, EvidenceRole, EvidenceStep, EvidenceTrace, EvidenceTraces,
-        FileReport, Finding, MatchCertainty, ModuleId, ProjectInputError, ProjectRelativePath,
-        ReportCompletion, SourceFile, SourceLocation,
+        FileReport, Finding, MatchCertainty, ModuleId, ProjectRelativePath, ReportCompletion,
+        SourceFile, SourceLocation,
     },
 };
 
@@ -39,14 +39,13 @@ impl<'a> ReportAssembly<'a> {
         }
     }
 
-    #[allow(clippy::unnecessary_wraps)]
     pub fn finish(
         &self,
         source_map: &BTreeMap<ProjectRelativePath, SourceFile>,
         link_input: ResolvedLinkInput,
         parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
         limits: &AnalysisLimits,
-    ) -> Result<ProjectAnalysis, ProjectInputError> {
+    ) -> ProjectAnalysis {
         let (mut files, parse_failure_codes) =
             Self::initialize_project_files(source_map, parse_diagnostics);
 
@@ -88,11 +87,11 @@ impl<'a> ReportAssembly<'a> {
             elapsed = ?matching, "stage finished"
         );
 
-        Ok(ProjectAnalysis {
+        ProjectAnalysis {
             report,
             linking,
             matching,
-        })
+        }
     }
 
     fn populate_project_files(

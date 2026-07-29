@@ -7,6 +7,7 @@ use std::{
 
 use glass_lint_datastructures::Fingerprint;
 use smol_str::SmolStr;
+use swc_ecma_ast::EsReserved;
 
 /// The globals and current- or foreign-realm global objects available to
 /// analyzed code.
@@ -80,11 +81,17 @@ impl Default for Environment {
 }
 
 fn is_js_identifier_start(c: char) -> bool {
-    c == '$' || c == '_' || c.is_ascii_alphabetic()
+    if c == '$' || c == '_' {
+        return true;
+    }
+    swc_ecma_ast::Ident::is_valid_start(c)
 }
 
 fn is_js_identifier_continue(c: char) -> bool {
-    c == '$' || c == '_' || c.is_ascii_alphanumeric()
+    if c == '$' || c == '_' {
+        return true;
+    }
+    swc_ecma_ast::Ident::is_valid_continue(c)
 }
 
 impl Environment {
@@ -108,7 +115,9 @@ impl Environment {
                 } else {
                     is_js_identifier_continue(character)
                 }
-            });
+            })
+            && !name.is_reserved()
+            && !name.is_reserved_in_strict_mode(true);
         valid
             .then_some(SmolStr::from(name))
             .ok_or_else(|| EnvironmentError { name: name.into() })

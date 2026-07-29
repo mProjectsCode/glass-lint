@@ -29,7 +29,7 @@ The crate is large, but most semantic modules share private IDs, tables, and fai
 
 ### Rule selection
 
-#### READ-001 — Exact rule selectors match longer rule IDs
+#### READ-001 — Exact rule selectors match longer rule IDs [Done]
 
 - **Severity:** High
 - **Fix Complexity** Low
@@ -39,6 +39,8 @@ The crate is large, but most semantic modules share private IDs, tables, and fai
 `RuleSelector::matches` treats the first literal specially and only calls `starts_with`. For a selector without `*`, that first literal is also the final literal, but the end-anchor branch is never reached. An exact selector such as `js:foo` therefore matches `js:foobar`, so validation can accept and enable a different rule than the user named.
 
 Add a no-wildcard fast path using `id == self.raw`, then add exact-prefix, leading/trailing/multiple-wildcard, empty-match, and Unicode table tests. Keep the deliberately tiny in-house `*` grammar; adding `globset` for this single-selector language is not justified unless the language expands.
+
+**Fix:** Added `id == self.raw` early return before the wildcard loop. Added 14 focused unit tests covering exact match, exact rejection of longer/shorter/different IDs, trailing/leading/both-sides wildcards, and the `*:*` catch-all pattern.
 
 ### Flow summaries
 
@@ -210,7 +212,7 @@ Build one module-bound flow plan containing source, requirement, and sink paths 
 
 ### Query compiler: validation, normalization, and tests
 
-#### READ-016 — Branch compatibility ignores the requested evidence variable
+#### READ-016 — Branch compatibility ignores the requested evidence variable [Done]
 
 - **Severity:** Medium
 - **Fix Complexity** Low
@@ -220,6 +222,8 @@ Build one module-bound flow plan containing source, requirement, and sink paths 
 `check_branch_evidence_compatibility` passes the primary variable to `branch_var_type`, but that function names it `_var` and classifies only the root event. Its diagnostics use placeholder strings `"some"` and `"other"`. The earlier type-checking pass already implements variable-aware compatibility, so this duplicate normalizer check can reject or describe the wrong thing as the expression language grows.
 
 Remove the duplicate and have normalization consume validated typed metadata, or make a single shared variable-type query authoritative. Diagnostics must carry the actual `VarType` names; placeholder text should not survive an internal compiler error path.
+
+**Fix:** Replaced `if first_type != other && first_type.is_some() && other.is_some()` with `if let (Some(a), Some(b)) = (first_type, other) && a != b`, using the actual type values instead of hard-coded `"some"`/`"other"` placeholders in the error diagnostic.
 
 #### READ-017 — Query-tree walking and constraint canonicalization are reimplemented repeatedly
 
@@ -311,7 +315,7 @@ Remove the duplicate cache field and the meaningless core root parameter; the `g
 
 Terminal rendering is consumed by `glass-lint-cli`; telemetry subscriber setup is consumed by the CLI crates. Nevertheless core depends on `console` and optional `tracing-subscriber`, and its telemetry filter hard-codes higher-level crate targets (`glass_lint_project`, CLI, and harness). That is a dependency inversion and the cleanest available crate split.
 
-Move terminal rendering to `glass-lint-cli` or a small `glass-lint-output` crate if multiple front ends need it. Move subscriber/options setup to CLI support; core should only emit `tracing` events. Do not split lowering/scope/facts/flow or the query compiler into crates yet: their private IDs and stage invariants are still too coupled, and a crate boundary would force internal execution IR public. Reassess a `glass-lint-query` crate only after READ-012 and READ-017 establish an opaque stable compiler boundary and cargo-timing data shows a build benefit.
+Move terminal rendering to a small `glass-lint-output` crate. Move subscriber/options setup to CLI support; core should only emit `tracing` events. Do not split lowering/scope/facts/flow or the query compiler into crates yet: their private IDs and stage invariants are still too coupled, and a crate boundary would force internal execution IR public. Reassess a `glass-lint-query` crate only after READ-012 and READ-017 establish an opaque stable compiler boundary and cargo-timing data shows a build benefit.
 
 ### Public rule and environment APIs
 
@@ -326,7 +330,7 @@ Every provider rule must construct a `Category`, and `RuleBuilder::build` reject
 
 Remove `Category` from core's required `Rule` contract. If a front end needs categories, keep them in provider/catalog metadata outside the semantic engine or explicitly preserve them in a higher-layer report schema. Do not require data that the engine immediately discards.
 
-#### READ-026 — “JavaScript identifier” validation implements neither Unicode nor keyword rules
+#### READ-026 — “JavaScript identifier” validation implements neither Unicode nor keyword rules [Done]
 
 - **Severity:** Medium
 - **Fix Complexity** Low
@@ -336,6 +340,8 @@ Remove `Category` from core's required `Rule` contract. If a front end needs cat
 `EnvironmentError` promises a JavaScript global identifier, but validation accepts any ASCII identifier-shaped keyword such as `class` and rejects valid Unicode names such as `π`. The public environment contract therefore disagrees with the SWC parser over which bare global bindings can exist.
 
 Choose and name the exact grammar (`IdentifierName` versus `BindingIdentifier`). Reuse SWC-compatible `unicode-id-start` tables for start/continue characters, add `$`, `_`, ZWNJ/ZWJ as required, and enforce the chosen reserved-word policy in one domain newtype shared by all environment constructors.
+
+**Fix:** Replaced ASCII-only `is_ascii_alphabetic`/`is_ascii_alphanumeric` with `swc_ecma_ast::Ident::is_valid_start`/`is_valid_continue` for Unicode support. Added `name.is_reserved()` and `name.is_reserved_in_strict_mode(true)` checks to reject ECMAScript reserved words.
 
 ### Bounded-analysis tests
 
@@ -352,7 +358,7 @@ Decide which phase each test exercises, configure small explicit limits, and ass
 
 ### Legacy API and terminal rendering
 
-#### READ-028 — Several compatibility-shaped APIs no longer describe what they do
+#### READ-028 — Several compatibility-shaped APIs no longer describe what they do [Done]
 
 - **Severity:** Low
 - **Fix Complexity** Low
@@ -363,7 +369,9 @@ Decide which phase each test exercises, configure small explicit limits, and ass
 
 Breaking changes are allowed, so remove these adapters rather than preserving misleading compatibility: rename the rule check, use `catalog_len`/`rule_capacity`, return `ProjectAnalysis` directly, and remove the lossy tuple in favor of named getters or the owned struct.
 
-#### READ-029 — Pretty rendering allocates per character and scans files per trace step
+**Fix:** Renamed `validate_and_normalize` → `require_queries`, renamed `len` → `rule_capacity`, changed `finish` to return `ProjectAnalysis` directly (no `Result`), and removed the lossy `into_parts` (7-tuple) from `AnalysisOperationCounts`.
+
+#### READ-029 — Pretty rendering allocates per character and scans files per trace step [Done]
 
 - **Severity:** Low
 - **Fix Complexity** Low
@@ -373,6 +381,8 @@ Breaking changes are allowed, so remove these adapters rather than preserving mi
 `visible_text` creates a fresh `String` for every character before collecting the result. Evidence rendering linearly searches all files for every trace step, and display-time caching uses `RefCell<BTreeMap>` because mutation is hidden behind `Display`.
 
 When moving rendering per READ-024, write escaped characters directly into one output buffer and pre-index files by `ProjectRelativePath`. Build immutable line-cell caches before formatting or give a renderer object explicit mutable state instead of embedding interior mutability in display models.
+
+**Fix:** Rewrote `visible_text` to write directly into a pre-allocated `String` buffer instead of per-character `to_string`. Added a `file_index: HashMap<&str, &PrettyFile>` to `PrettyReports` for O(1) file lookups in trace-step rendering, replacing the per-call linear scan of all files.
 
 ## Systemic Themes
 

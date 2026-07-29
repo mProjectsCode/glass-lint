@@ -12,16 +12,20 @@ type RuleGroupEntry<'a> = (&'a PrettyFile<'a>, &'a crate::project::types::Findin
 
 /// Escape control characters before placing text in terminal-oriented output.
 pub fn visible_text(value: &str) -> String {
-    value
-        .chars()
-        .map(|ch| match ch {
-            '\n' => "\\n".to_owned(),
-            '\r' => "\\r".to_owned(),
-            '\t' => "\\t".to_owned(),
-            ch if ch.is_control() => format!("\\u{{{:04x}}}", ch as u32),
-            ch => ch.to_string(),
-        })
-        .collect()
+    let mut result = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '\n' => result.push_str("\\n"),
+            '\r' => result.push_str("\\r"),
+            '\t' => result.push_str("\\t"),
+            ch if ch.is_control() => {
+                use std::fmt::Write;
+                let _ = write!(result, "\\u{{{:04x}}}", ch as u32);
+            }
+            ch => result.push(ch),
+        }
+    }
+    result
 }
 
 impl PrettyReport<'_> {
@@ -311,10 +315,7 @@ impl PrettyReports<'_> {
             visible_text(step.message()),
         )?;
         if self.options.show_evidence_source
-            && let Some(step_file) = self
-                .files
-                .iter()
-                .find(|candidate| candidate.filename == location.path().as_str())
+            && let Some(step_file) = self.file_index.get(location.path().as_str())
         {
             PrettyReport::new_with_cache(
                 step_file.report,

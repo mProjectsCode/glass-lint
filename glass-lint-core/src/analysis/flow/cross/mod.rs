@@ -75,7 +75,7 @@ pub(in crate::analysis) fn collect(
             }
         }
     }
-    let rule_count = matchers.len();
+    let rule_count = matchers.rule_capacity();
     let mut evidence = project
         .modules()
         .map(|module| (module.id(), ModuleEvidence::new(rule_count)))

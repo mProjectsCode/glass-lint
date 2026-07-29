@@ -1,4 +1,7 @@
-use std::{cell::RefCell, collections::BTreeMap};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashMap},
+};
 
 use console::measure_text_width;
 
@@ -63,12 +66,18 @@ impl<'a> PrettyFile<'a> {
 pub struct PrettyReports<'a> {
     pub(crate) files: &'a [PrettyFile<'a>],
     pub(crate) options: PrettyOptions,
+    pub(crate) file_index: HashMap<&'a str, &'a PrettyFile<'a>>,
 }
 
 impl<'a> PrettyReports<'a> {
     /// Construct a grouped renderer with display options.
     pub fn new(files: &'a [PrettyFile<'a>], options: PrettyOptions) -> Self {
-        Self { files, options }
+        let file_index = files.iter().map(|f| (f.filename, f)).collect();
+        Self {
+            files,
+            options,
+            file_index,
+        }
     }
 }
 

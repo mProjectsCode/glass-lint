@@ -121,18 +121,6 @@ impl AnalysisOperationCounts {
     pub(crate) fn set_effect_projections(&mut self, value: usize) {
         self.effect_projections = value;
     }
-
-    pub fn into_parts(self) -> (usize, usize, usize, usize, usize, usize, usize) {
-        (
-            self.files,
-            self.requests,
-            self.edges,
-            self.exports,
-            self.scc_rounds,
-            self.effect_projections,
-            self.evidence,
-        )
-    }
 }
 
 impl std::ops::AddAssign for AnalysisOperationCounts {

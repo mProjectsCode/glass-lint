@@ -490,11 +490,11 @@ impl ResolvedProject<'_> {
             self.state.enabled,
             self.state.evidence_limit,
         );
-        assembly.finish(
+        Ok(assembly.finish(
             &self.source_map,
             self.link_input,
             self.parse_diagnostics,
             self.state.lowerer.limits(),
-        )
+        ))
     }
 }
