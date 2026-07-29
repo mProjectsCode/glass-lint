@@ -680,16 +680,16 @@ introducing this model. `Rule.queries()` is the compiler input and repeated
 
 Implement a scope-aware validator with these semantics:
 
-- [ ] An `Event` selector binds its declared event variable once in its scope.
-- [ ] `Any` branches have independent binding scopes.
-- [ ] A variable projected after `Any` must be bound with one compatible type on
+- [x] An `Event` selector binds its declared event variable once in its scope.
+- [x] `Any` branches have independent binding scopes.
+- [x] A variable projected after `Any` must be bound with one compatible type on
   every successful branch.
-- [ ] `All` evaluates branches in one correlation scope.
-- [ ] A binding may occur only once in an `All` scope.
-- [ ] Other `All` atoms may reference that binding.
-- [ ] A same-event conjunction must refer to one selected event; it must not model
+- [x] `All` evaluates branches in one correlation scope.
+- [x] A binding may occur only once in an `All` scope.
+- [x] Other `All` atoms may reference that binding.
+- [x] A same-event conjunction must refer to one selected event; it must not model
   correlation by selecting the event twice.
-- [ ] Public multi-event conjunctions are rejected as `UnsupportedRelation`
+- [x] Public multi-event conjunctions are rejected as `UnsupportedRelation`
   through Phase 12. Returned-object and instance constructors are the only
   multi-event relationships; they introduce compiler-owned object correlation
   predicates and lower to specialized indexes.
@@ -708,36 +708,36 @@ expression
 
 ### Fix `Any`
 
-- [ ] Permit the same logical output variable name/slot to be bound independently
+- [x] Permit the same logical output variable name/slot to be bound independently
   in separate alternatives.
-- [ ] Validate branch output compatibility.
-- [ ] Require the primary evidence variable on every successful branch.
-- [ ] Preserve independent complete witnesses when another branch is unknown.
-- [ ] Deduplicate equal witnesses after execution without changing certainty.
+- [x] Validate branch output compatibility.
+- [x] Require the primary evidence variable on every successful branch.
+- [x] Preserve independent complete witnesses when another branch is unknown.
+- [x] Deduplicate equal witnesses after execution without changing certainty.
 
 ### Fix `All`
 
-- [ ] Represent same-event filters as references to one event binding.
-- [ ] Reject uncorrelated multi-event conjunctions as
+- [x] Represent same-event filters as references to one event binding.
+- [x] Reject uncorrelated multi-event conjunctions as
   `UncorrelatedConjunction`.
-- [ ] Reject other public multi-event conjunctions as `UnsupportedRelation` until
+- [x] Reject other public multi-event conjunctions as `UnsupportedRelation` until
   Phase 13.
-- [ ] Reject incompatible uses of a shared variable.
-- [ ] Preserve one path-correlation key across every contributing predicate.
-- [ ] Do not plan an `All` by taking the first event and copying constraints from
+- [x] Reject incompatible uses of a shared variable.
+- [x] Preserve one path-correlation key across every contributing predicate.
+- [x] Do not plan an `All` by taking the first event and copying constraints from
   unrelated event selectors.
 
 ### Type checking
 
 Replace the no-op `pass_type_checking` with a fallible pass that can produce:
 
-- [ ] missing binding;
-- [ ] duplicate binding;
-- [ ] incompatible branch output;
-- [ ] type mismatch;
-- [ ] invalid relation operand;
-- [ ] unavailable primary location; and
-- [ ] unsupported relation scope.
+- [x] missing binding;
+- [x] duplicate binding;
+- [x] incompatible branch output;
+- [x] type mismatch;
+- [x] invalid relation operand;
+- [x] unavailable primary location; and
+- [x] unsupported relation scope.
 
 Remove `#[allow(dead_code)]` from error variants that should be produced by the
 compiler. If a planned error is not meaningful for the final algebra, remove
@@ -746,27 +746,27 @@ coverage.
 
 ### Required tests
 
-- [ ] `Any` branch-local binding succeeds.
-- [ ] `Any` with incompatible output types fails.
-- [ ] `Any` missing the primary variable in one branch fails.
-- [ ] Same-event `All` succeeds.
-- [ ] Duplicate binding in one `All` scope fails.
-- [ ] Reference before binding fails.
-- [ ] Uncorrelated events fail.
-- [ ] Event/value, event/object, and local/project type mismatches fail.
-- [ ] Emission from a non-location-bearing variable fails.
+- [x] `Any` branch-local binding succeeds.
+- [x] `Any` with incompatible output types fails.
+- [x] `Any` missing the primary variable in one branch fails.
+- [x] Same-event `All` succeeds.
+- [x] Duplicate binding in one `All` scope fails.
+- [x] Reference before binding fails.
+- [x] Uncorrelated events fail.
+- [x] Event/value, event/object, and local/project type mismatches fail.
+- [x] Emission from a non-location-bearing variable fails.
 - [ ] Nested `Any` in `All` retains correlation and certainty.
 - [ ] Incompatible control-flow paths never satisfy a conjunction.
-- [ ] Full public catalog construction exercises these cases, not just individual
+- [x] Full public catalog construction exercises these cases, not just individual
   validation passes.
 
 ### Exit criteria
 
-- [ ] The public regression tests from Package 0 pass.
-- [ ] `Any` and same-event `All` are usable through `RuleCatalog::new`.
-- [ ] Type checking is real and produces its structured error variants.
-- [ ] Emission is valid on every successful branch.
-- [ ] No runtime component sees authored variables or logical declarations.
+- [x] The public regression tests from Package 0 pass.
+- [x] `Any` and same-event `All` are usable through `RuleCatalog::new`.
+- [x] Type checking is real and produces its structured error variants.
+- [x] Emission is valid on every successful branch.
+- [x] No runtime component sees authored variables or logical declarations.
 
 ---
 

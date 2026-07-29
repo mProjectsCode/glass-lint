@@ -60,6 +60,12 @@ pub(crate) enum QueryCompileError {
     },
     /// Multi-event `All` without compatible shared variables.
     UncorrelatedConjunction,
+    /// `Any` branches produce incompatible types for the projected variable.
+    IncompatibleBranchOutput {
+        var: VarId,
+        type_a: &'static str,
+        type_b: &'static str,
+    },
     /// Primary variable lacks an available source location.
     UnavailablePrimaryLocation { var: VarId },
     /// Lifecycle structure is invalid.
@@ -86,6 +92,7 @@ impl QueryCompileError {
             Self::InvalidEventPredicate { .. } => "invalid_event_predicate",
             Self::UnsupportedRelation { .. } => "unsupported_relation",
             Self::UncorrelatedConjunction => "uncorrelated_conjunction",
+            Self::IncompatibleBranchOutput { .. } => "incompatible_branch_output",
             Self::UnavailablePrimaryLocation { .. } => "unavailable_primary_location",
             Self::InvalidLifecycle { .. } => "invalid_lifecycle",
             Self::UnboundedQuery { .. } => "unbounded_query",
@@ -134,6 +141,16 @@ impl std::fmt::Display for QueryCompileError {
             }
             Self::UncorrelatedConjunction => {
                 f.write_str("multi-event All without compatible shared variables")
+            }
+            Self::IncompatibleBranchOutput {
+                var,
+                type_a,
+                type_b,
+            } => {
+                write!(
+                    f,
+                    "variable {var} has incompatible types across Any branches: `{type_a}` vs `{type_b}`"
+                )
             }
             Self::UnavailablePrimaryLocation { var } => {
                 write!(f, "primary variable {var} lacks a source location")
@@ -462,8 +479,32 @@ fn collect_and_check_scope(
                 }
                 seen.push(*bind);
             }
-            // Other Require atoms only reference, never bind.
-            _ => {}
+            // Other Require atoms only reference previously bound vars.
+            QueryPredicate::EventKind { event, .. }
+            | QueryPredicate::EventIdentity { event, .. } => {
+                if !seen.contains(event) {
+                    return Err(QueryCompileError::MissingBinding {
+                        primary_var: *event,
+                    });
+                }
+            }
+            QueryPredicate::Argument { call, .. } => {
+                if !seen.contains(call) {
+                    return Err(QueryCompileError::MissingBinding { primary_var: *call });
+                }
+            }
+            QueryPredicate::MemberSubject { event, object } => {
+                if !seen.contains(event) {
+                    return Err(QueryCompileError::MissingBinding {
+                        primary_var: *event,
+                    });
+                }
+                if !seen.contains(object) {
+                    return Err(QueryCompileError::MissingBinding {
+                        primary_var: *object,
+                    });
+                }
+            }
         },
         QueryExprKind::Any(any) => {
             // Each Any branch has an independent scope.
@@ -556,17 +597,31 @@ fn infer_types(
         QueryExprKind::Any(any) => {
             // Each branch is independently typed. Merge branch types
             // back to the outer scope so that the primary variable's
-            // type is visible after Any.
-            let mut merged = std::collections::HashMap::new();
+            // type is visible after Any. Incompatible types on the
+            // same variable across branches are an error.
+            let mut merged: std::collections::HashMap<VarId, VarType> =
+                std::collections::HashMap::new();
             for branch in &any.branches {
                 let mut branch_types = std::collections::HashMap::new();
                 infer_types(branch, emission, &mut branch_types)?;
-                // Keep branches' type info for the outer scope.
                 for (var, ty) in branch_types {
-                    let entry = merged.entry(var).or_insert(ty);
-                    // Use more specific type if available.
-                    if is_more_specific(ty, *entry) {
-                        *entry = ty;
+                    match merged.entry(var) {
+                        std::collections::hash_map::Entry::Occupied(mut entry) => {
+                            let existing = *entry.get();
+                            if !types_compatible(ty, existing) && !types_compatible(existing, ty) {
+                                return Err(QueryCompileError::IncompatibleBranchOutput {
+                                    var,
+                                    type_a: existing.variant_name(),
+                                    type_b: ty.variant_name(),
+                                });
+                            }
+                            if is_more_specific(ty, existing) {
+                                *entry.get_mut() = ty;
+                            }
+                        }
+                        std::collections::hash_map::Entry::Vacant(entry) => {
+                            entry.insert(ty);
+                        }
                     }
                 }
             }
@@ -1912,6 +1967,170 @@ mod tests {
                 subject: "direct".into(),
                 detail: "identity/event/subject combination cannot select a semantic fact",
             })
+        );
+    }
+
+    // ── Package 3: Branch output type compatibility ───────────────
+
+    #[test]
+    fn any_with_incompatible_branch_types_fails() {
+        // Two Any branches with incompatible primary types:
+        // branch A uses call_global (CallEvent), branch B uses member_call_rooted
+        // (MemberEvent). The primary variable $0 must have a compatible type
+        // across both branches.
+        let branch_a = QueryDecl::call_global("fetch").unwrap();
+        let branch_b = QueryDecl::member_call_rooted("document.createElement").unwrap();
+        let query = QueryDecl::any([Ok(branch_a), Ok(branch_b)]).unwrap();
+        let result = pass_type_checking(&query);
+        assert!(
+            matches!(
+                result,
+                Err(QueryCompileError::IncompatibleBranchOutput { var, .. }) if var == VarId::new(0)
+            ),
+            "expected IncompatibleBranchOutput for $0, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn any_with_compatible_branch_types_passes() {
+        // Two branches with the same event type (CallEvent) pass.
+        let branch_a = QueryDecl::call_global("fetch").unwrap();
+        let branch_b = QueryDecl::call_global("navigate").unwrap();
+        let query = QueryDecl::any([Ok(branch_a), Ok(branch_b)]).unwrap();
+        assert!(pass_type_checking(&query).is_ok());
+    }
+
+    #[test]
+    fn incompatible_branch_output_has_correct_diagnostic_name() {
+        let err = QueryCompileError::IncompatibleBranchOutput {
+            var: VarId::new(0),
+            type_a: "call_event",
+            type_b: "member_event",
+        };
+        assert_eq!(err.diagnostic_name(), "incompatible_branch_output");
+    }
+
+    // ── Package 3: Reference before binding ────────────────────────
+
+    #[test]
+    fn reference_before_binding_fails() {
+        // All with branches [Require(EventKind), SelectEvent]:
+        // Require references $0 before it is bound.
+        let branches = vec![
+            QueryExpr::require(QueryPredicate::EventKind {
+                event: VarId::new(0),
+                expected: EventSpec::Call,
+            }),
+            QueryExpr::select_event(VarId::new(0)),
+        ];
+        let all_expr = AllExpr::new(branches).unwrap();
+        let decl = QueryDecl {
+            expression: QueryExpr::all(all_expr),
+            emission: EmissionDecl {
+                primary_var: VarId::new(0),
+                kind: MatchKind::Call,
+                symbol: "test".into(),
+            },
+        };
+        let result = pass_variable_collection(&decl);
+        assert!(
+            matches!(
+                result,
+                Err(QueryCompileError::MissingBinding { primary_var }) if primary_var == VarId::new(0)
+            ),
+            "expected MissingBinding for $0 referenced before binding, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn reference_after_binding_passes() {
+        // Correct All order: SelectEvent then Require.
+        let branches = vec![
+            QueryExpr::select_event(VarId::new(0)),
+            QueryExpr::require(QueryPredicate::EventKind {
+                event: VarId::new(0),
+                expected: EventSpec::Call,
+            }),
+        ];
+        let all_expr = AllExpr::new(branches).unwrap();
+        let decl = QueryDecl {
+            expression: QueryExpr::all(all_expr),
+            emission: EmissionDecl {
+                primary_var: VarId::new(0),
+                kind: MatchKind::Call,
+                symbol: "test".into(),
+            },
+        };
+        assert!(pass_variable_collection(&decl).is_ok());
+    }
+
+    // ── Package 3: Type mismatch detection ─────────────────────────
+
+    #[test]
+    fn type_mismatch_between_event_and_object_fails() {
+        // ReturnedObject binds $0 as Object. Argument requires $0 as
+        // CallEvent — that's a type mismatch.
+        let branches = vec![
+            QueryExpr::select_event(VarId::new(0)),
+            QueryExpr::require(QueryPredicate::ReturnedObject {
+                bind: VarId::new(0),
+                identity: IdentitySpec::Global {
+                    name: SmolStr::new("create"),
+                },
+            }),
+            QueryExpr::require(QueryPredicate::Argument {
+                call: VarId::new(0),
+                index: crate::api::rule::ArgumentIndex::new_unchecked(0),
+                matcher: ValueMatcher::any_value().into(),
+            }),
+        ];
+        let all_expr = AllExpr::new(branches).unwrap();
+        let decl = QueryDecl {
+            expression: QueryExpr::all(all_expr),
+            emission: EmissionDecl {
+                primary_var: VarId::new(0),
+                kind: MatchKind::Call,
+                symbol: "test".into(),
+            },
+        };
+        let result = pass_type_checking(&decl);
+        assert!(
+            matches!(
+                result,
+                Err(QueryCompileError::TypeMismatch { var, .. }) if var == VarId::new(0)
+            ),
+            "expected TypeMismatch for $0 (object vs call), got: {result:?}"
+        );
+    }
+
+    // ── Package 3: Unavailable primary location ────────────────────
+
+    #[test]
+    fn emission_from_object_var_fails() {
+        // ReturnedObject binds $0 as Object. Emission uses $0 as the
+        // primary var, but Object is not an event type (no location).
+        let branches = vec![QueryExpr::require(QueryPredicate::ReturnedObject {
+            bind: VarId::new(0),
+            identity: IdentitySpec::Global {
+                name: SmolStr::new("create"),
+            },
+        })];
+        let all_expr = AllExpr::new(branches).unwrap();
+        let decl = QueryDecl {
+            expression: QueryExpr::all(all_expr),
+            emission: EmissionDecl {
+                primary_var: VarId::new(0),
+                kind: MatchKind::Call,
+                symbol: "test".into(),
+            },
+        };
+        let result = pass_type_checking(&decl);
+        assert!(
+            matches!(
+                result,
+                Err(QueryCompileError::UnavailablePrimaryLocation { var }) if var == VarId::new(0)
+            ),
+            "expected UnavailablePrimaryLocation for $0 (Object), got: {result:?}"
         );
     }
 }
