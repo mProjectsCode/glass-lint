@@ -815,9 +815,9 @@ pub(crate) enum NormalizedSubject {
 
 There is no normalized `All` variant. Normalization must turn:
 
-- [ ] same-event `All` into one `NormalizedEvent`;
-- [ ] an uncorrelated multi-event `All` into `UncorrelatedConjunction`; and
-- [ ] every other multi-event `All` into `UnsupportedRelation`.
+- [x] same-event `All` into one `NormalizedEvent`;
+- [x] an uncorrelated multi-event `All` into `UncorrelatedConjunction`; and
+- [x] every other multi-event `All` into `UnsupportedRelation`.
 
 Do not add a general keyed join in the Phase 0–12 remediation. Returned-object
 and instance relationships lower to `NormalizedSubject` and their existing
@@ -832,16 +832,16 @@ accepts `&NormalizedQuery` only.
 
 Use one documented order such as:
 
-- [ ] 1. recursively normalize children;
-- [ ] 2. flatten nested same-kind `Any` and `All`;
-- [ ] 3. canonicalize semantic paths, module patterns, and predicate sets;
-- [ ] 4. merge compatible same-event filters;
-- [ ] 5. detect contradictions;
-- [ ] 6. sort order-independent branches;
-- [ ] 7. deduplicate equal branches;
-- [ ] 8. alpha-normalize variables into deterministic dense slots;
-- [ ] 9. validate normalized invariants; and
-- [ ] 10. compute exact plan requirements.
+- [x] 1. recursively normalize children;
+- [x] 2. flatten nested same-kind `Any` and `All`;
+- [x] 3. canonicalize semantic paths, module patterns, and predicate sets;
+- [x] 4. merge compatible same-event filters;
+- [x] 5. detect contradictions;
+- [x] 6. sort order-independent branches;
+- [x] 7. deduplicate equal branches;
+- [x] 8. alpha-normalize variables into deterministic dense slots;
+- [x] 9. validate normalized invariants; and
+- [x] 10. compute exact plan requirements.
 
 Variable renumbering must be independent of author-assigned numeric `VarId`
 values and incidental construction order. Add alpha-equivalence tests that use
@@ -852,18 +852,18 @@ different original IDs.
 Merge only when the compiler has proved all selectors refer to the same event
 binding and have compatible:
 
-- [ ] event kind;
-- [ ] identity;
-- [ ] subject relationship;
-- [ ] project scope; and
-- [ ] primary evidence location.
+- [x] event kind;
+- [x] identity;
+- [x] subject relationship;
+- [x] project scope; and
+- [x] primary evidence location.
 
 Canonicalize merged constraints by:
 
-- [ ] argument index;
-- [ ] matcher family;
-- [ ] property/key name; and
-- [ ] canonical predicate payload.
+- [x] argument index;
+- [x] matcher family;
+- [x] property/key name; and
+- [x] canonical predicate payload.
 
 Deduplicate identical constraints.
 
@@ -888,14 +888,14 @@ pub(crate) enum ContradictionKind {
 
 Detect at least:
 
-- [ ] incompatible event kinds on the same event variable;
-- [ ] incompatible strict identities on the same event variable;
-- [ ] incompatible subject relationships;
-- [ ] disjoint exact static-string requirements on one argument;
-- [ ] `static_string` predicates with empty accepted sets;
-- [ ] impossible exact/prefix combinations where the contradiction is provable;
+- [x] incompatible event kinds on the same event variable;
+- [x] incompatible strict identities on the same event variable;
+- [x] incompatible subject relationships;
+- [x] disjoint exact static-string requirements on one argument;
+- [x] `static_string` predicates with empty accepted sets;
+- [x] impossible exact/prefix combinations where the contradiction is provable;
   and
-- [ ] incompatible evidence projections.
+- [x] incompatible evidence projections.
 
 Do not apply two-valued Boolean simplifications when an unknown branch changes
 certainty or completeness.
@@ -914,25 +914,25 @@ defaults. See Package 9 for runtime consumption requirements.
 
 ### Required tests
 
-- [ ] normalization idempotency;
-- [ ] alpha-equivalent variable IDs normalize equally;
-- [ ] reversed argument-constraint order normalizes equally;
-- [ ] reversed independent alternative order normalizes equally;
-- [ ] compatible filters merge once;
-- [ ] incompatible filters produce a structured contradiction;
-- [ ] duplicate filters do not duplicate work or evidence;
-- [ ] lifecycle ordering is preserved where meaningful;
-- [ ] distinct lifecycle conditions never compare as the same ordering key;
-- [ ] unknown-sensitive forms are not over-simplified; and
-- [ ] normalized validation rejects any remaining nested, sparse, or untyped
+- [x] normalization idempotency;
+- [x] alpha-equivalent variable IDs normalize equally;
+- [x] reversed argument-constraint order normalizes equally;
+- [x] reversed independent alternative order normalizes equally;
+- [x] compatible filters merge once;
+- [x] incompatible filters produce a structured contradiction;
+- [x] duplicate filters do not duplicate work or evidence;
+- [x] lifecycle ordering is preserved where meaningful;
+- [x] distinct lifecycle conditions never compare as the same ordering key;
+- [x] unknown-sensitive forms are not over-simplified; and
+- [x] normalized validation rejects any remaining nested, sparse, or untyped
   invariant violation.
 
 ### Exit criteria
 
-- [ ] Phase 5 Tasks 7 and 8 are implemented.
-- [ ] Structural equality is independent of order wherever semantics are
+- [x] Phase 5 Tasks 7 and 8 are implemented.
+- [x] Structural equality is independent of order wherever semantics are
   order-independent.
-- [ ] Physical planning never needs to guess whether filters are compatible.
+- [x] Physical planning never needs to guess whether filters are compatible.
 
 ---
 

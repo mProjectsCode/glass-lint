@@ -1,9 +1,3 @@
-//! Compiled declarative matcher plans and object-flow projections.
-//!
-//! The compiler preserves matcher semantics in owned, immutable structures.
-//! Selection only filters catalog indexes; it never changes the semantic facts
-//! constructed for a source file.
-
 use std::fmt;
 
 use glass_lint_datastructures::SymbolPath;
@@ -15,10 +9,10 @@ use crate::{
     api::{
         classification::{MatchKind, RuleIndex},
         compiler::{
-            normalize,
+            normalize::{self, NormalizedQuery},
             object_flow::CompiledObjectFlow,
             physical::{self, PhysicalPlan},
-            validate::{validate_normalized_decl, validate_query_decl},
+            validate::validate_query_decl,
         },
         rule::{
             Confidence, MatcherBuildError, ModuleSpecifierPattern,
@@ -27,16 +21,9 @@ use crate::{
     },
 };
 
-/// Canonical compiled matcher plan consumed by analysis.  Public matcher
-/// declarations are compiled once while a catalog is built and never enter
-/// the per-file analysis path.
-///
-/// This is the sole compiled-plan type.  Consumers access physical roots
-/// and flows through accessors; there is no separate plan wrapper and no
-/// backward-compat clause storage.
+/// Canonical compiled matcher plan consumed by analysis.
 #[derive(Debug, Clone)]
 pub(crate) struct CompiledMatcherPlan {
-    /// Physical plan (Phase 6): executable operators produced by the planner.
     physical_plan: PhysicalPlan,
     flows: Box<[CompiledObjectFlow]>,
 }
@@ -74,8 +61,6 @@ pub(crate) enum IdentityConstraint {
     Rooted {
         path: SymbolPath,
     },
-    /// Free-form substring predicate retained intentionally for literal
-    /// matching; unlike identities, it is not an API symbol.
     LiteralString {
         predicate: String,
     },
@@ -85,7 +70,6 @@ pub(crate) enum IdentityConstraint {
 }
 
 impl IdentityConstraint {
-    /// Return true when the identity references an empty name or predicate.
     pub(crate) fn is_empty(&self) -> bool {
         match self {
             Self::Any { name, .. } | Self::Global { name, .. } => name.is_empty(),
@@ -197,9 +181,7 @@ pub(crate) fn lower_event(spec: &EventSpec) -> EventPredicate {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) enum InvalidQueryClause {
-    /// The identity/event/subject dimensions cannot select a semantic fact.
     ImpossibleDimensions,
-    /// Argument predicates require a call-bearing event.
     ConstraintsRequireCallEvent,
 }
 
@@ -217,31 +199,21 @@ impl fmt::Display for InvalidQueryClause {
 }
 
 /// Compile query declarations into a physical plan.
-///
-/// Each declaration is validated, normalized, and planned into physical roots.
-/// Roots are sorted for deterministic execution order across equivalent
-/// queries.
 fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildError> {
     let mut all_roots = Vec::new();
     let mut merged_requirements = normalize::PlanRequirements::default();
 
     for query in queries {
-        // Phase 4: Validate the logical QueryDecl.
         validate_query_decl(query).map_err(MatcherBuildError::QueryCompileError)?;
 
-        // Phase 5: Normalize the logical query into canonical form.
-        let (normalized, requirements) = normalize::normalize_query_decl(query);
-        validate_normalized_decl(&normalized).map_err(MatcherBuildError::QueryCompileError)?;
+        let normalized: NormalizedQuery =
+            normalize::normalize_query_decl(query).map_err(MatcherBuildError::QueryCompileError)?;
 
-        // Phase 6: Plan the normalized query into physical roots.
-        let query_plan = physical::plan_normalized(&normalized, requirements);
+        let query_plan = physical::plan_normalized(&normalized);
         all_roots.extend(query_plan.roots().iter().cloned());
         merged_requirements.merge_from(query_plan.requirements());
     }
 
-    // Sort and deduplicate roots for deterministic order across equivalent
-    // queries.  Deduplication ensures that identical declarations produce
-    // one root rather than duplicated work.
     let mut sorted_roots: Vec<physical::PhysicalRoot> = all_roots;
     sorted_roots.sort();
     sorted_roots.dedup();
@@ -252,8 +224,7 @@ fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildEr
     Ok(physical_plan)
 }
 
-/// Compile a single flow matcher into a physical plan, routed through the
-/// validate→normalize→plan pipeline.
+/// Compile a single flow matcher into a physical plan.
 fn compile_single_flow(
     flow: &crate::api::rule::ObjectFlowMatcher,
 ) -> Result<PhysicalPlan, MatcherBuildError> {
@@ -262,10 +233,10 @@ fn compile_single_flow(
     let query = QueryDecl::from_flow_matcher(flow, VarId::new(0));
     validate_query_decl(&query).map_err(MatcherBuildError::QueryCompileError)?;
 
-    let (normalized, requirements) = normalize::normalize_query_decl(&query);
-    validate_normalized_decl(&normalized).map_err(MatcherBuildError::QueryCompileError)?;
+    let normalized: NormalizedQuery =
+        normalize::normalize_query_decl(&query).map_err(MatcherBuildError::QueryCompileError)?;
 
-    Ok(physical::plan_normalized(&normalized, requirements))
+    Ok(physical::plan_normalized(&normalized))
 }
 
 impl CompiledMatcherPlan {
@@ -282,12 +253,10 @@ impl CompiledMatcherPlan {
         self.physical_plan.summary()
     }
 
-    /// Whether this plan requires project identity overlays.
     pub(crate) fn needs_project_overlay(&self) -> bool {
         self.physical_plan.requirements().needs_project_overlay
     }
 
-    /// Compile queries into a physical plan.  Used by test helpers.
     #[cfg(test)]
     pub(crate) fn compile_queries(queries: &[QueryDecl]) -> Result<Self, MatcherBuildError> {
         let physical_plan = compile_queries(queries)?;
@@ -297,12 +266,6 @@ impl CompiledMatcherPlan {
         })
     }
 
-    /// Compile queries and object flows into a complete plan.
-    ///
-    /// Flow matchers are lowered to [`QueryDecl`] lifecycle queries,
-    /// validated, normalized, and planned through the same pipeline as
-    /// ordinary declarations.  The resulting lifecycle roots embed
-    /// [`CompiledObjectFlow`] values directly.
     pub(crate) fn compile_decls_and_flows(
         queries: &[QueryDecl],
         flows: &[crate::api::rule::ObjectFlowMatcher],
@@ -317,15 +280,12 @@ impl CompiledMatcherPlan {
             merged_requirements.merge_from(flow_plan.requirements());
         }
 
-        // Sort and deduplicate for deterministic order.
         all_roots.sort();
         all_roots.dedup();
         let physical_plan = PhysicalPlan::new(all_roots.into_boxed_slice(), merged_requirements);
         physical::validate_physical_plan(&physical_plan, 0)
             .map_err(|e| MatcherBuildError::InvalidLoweredQuery(e.to_string()))?;
 
-        // Extract compiled flows from lifecycle roots for analysis
-        // consumer compatibility.
         let compiled_flows: Vec<CompiledObjectFlow> = physical_plan
             .roots()
             .iter()
@@ -346,21 +306,16 @@ impl CompiledMatcherPlan {
 }
 
 #[derive(Debug, Clone)]
-/// Borrowed view of compiled rules selected for a classification run.
 pub(crate) struct CompiledRuleSelection<'a> {
-    /// All compiled rules, retained for stable rule indexes.
     pub(crate) rules: &'a [CompiledRuleRecord],
-    /// Sorted selected rule indexes.
     pub(crate) selected: &'a [RuleIndex],
 }
 
 impl<'a> CompiledRuleSelection<'a> {
-    /// Create a borrowed catalog view over sorted selected indexes.
     pub fn new(rules: &'a [CompiledRuleRecord], selected: &'a [RuleIndex]) -> Self {
         Self { rules, selected }
     }
 
-    /// Iterate selected plans while preserving their catalog indexes.
     pub fn selected_matchers(&self) -> impl Iterator<Item = (RuleIndex, &CompiledMatcherPlan)> {
         self.selected.iter().filter_map(move |&index| {
             self.rules
@@ -369,38 +324,28 @@ impl<'a> CompiledRuleSelection<'a> {
         })
     }
 
-    /// Whether a catalog index is selected by this view.
     pub fn is_selected(&self, index: RuleIndex) -> bool {
         self.selected.binary_search(&index).is_ok()
     }
 
-    /// Borrow a compiled plan by its stable catalog index.
     pub fn get(&self, index: RuleIndex) -> Option<&'a CompiledMatcherPlan> {
         self.rules.get(index.get()).map(|rule| &rule.matcher)
     }
 
-    /// Return the total catalog rule count.
     pub fn len(&self) -> usize {
         self.rules.len()
     }
 }
 
 #[derive(Debug, Clone)]
-/// Immutable compiled rule record containing metadata and the query plan.
-/// Retains no source declaration tree after construction.
 pub(crate) struct CompiledRuleRecord {
-    /// Human-readable description.
     pub(crate) description: String,
-    /// Report severity.
     pub(crate) severity: Severity,
-    /// Evidence confidence.
     pub(crate) confidence: Confidence,
-    /// Compiled query plan.
     pub(crate) matcher: CompiledMatcherPlan,
 }
 
 impl CompiledRuleRecord {
-    /// Compile a rule's queries and flows into one record.
     pub(crate) fn new(rule: &crate::api::rule::Rule) -> Result<Self, MatcherBuildError> {
         let plan =
             CompiledMatcherPlan::compile_decls_and_flows(rule.queries(), rule.flow_matchers())?;
@@ -498,19 +443,31 @@ mod tests {
         };
         assert!(roots.iter().any(|root| matches!(
             root,
-            physical::PhysicalRoot::IndexedScan { identity: IdentityConstraint::Global { name, strength: IdentityStrength::Strict }, event: EventPredicate::Call, .. } if name == "fetch"
+            physical::PhysicalRoot::IndexedScan {
+                identity: IdentityConstraint::Global { name, strength: IdentityStrength::Strict },
+                event: EventPredicate::Call, ..
+            } if name == "fetch"
         )));
         assert!(roots.iter().any(|root| matches!(
             root,
-            physical::PhysicalRoot::IndexedScan { identity: IdentityConstraint::Rooted { path }, event: EventPredicate::MemberCall { member }, .. } if *path == SymbolPath::from("window.open") && member.eq_chain("window.open")
+            physical::PhysicalRoot::IndexedScan {
+                identity: IdentityConstraint::Rooted { path },
+                event: EventPredicate::MemberCall { member }, ..
+            } if *path == SymbolPath::from("window.open") && member.eq_chain("window.open")
         )));
         assert!(roots.iter().any(|root| matches!(
             root,
-            physical::PhysicalRoot::ReturnedSubject { identity: IdentityConstraint::Rooted { path }, event: EventPredicate::MemberRead { member }, .. } if path.eq_chain("create") && member.eq_chain("token")
+            physical::PhysicalRoot::ReturnedSubject {
+                identity: IdentityConstraint::Rooted { path },
+                event: EventPredicate::MemberRead { member }, ..
+            } if path.eq_chain("create") && member.eq_chain("token")
         )));
         assert!(roots.iter().any(|root| matches!(
             root,
-            physical::PhysicalRoot::InstanceSubject { constructor: IdentityConstraint::ModuleExport { module, export }, member, .. } if module == "pkg" && export == "Client" && member.eq_chain("send")
+            physical::PhysicalRoot::InstanceSubject {
+                constructor: IdentityConstraint::ModuleExport { module, export },
+                member, ..
+            } if module == "pkg" && export == "Client" && member.eq_chain("send")
         )));
         assert!(roots.iter().any(|root| matches!(
             root,

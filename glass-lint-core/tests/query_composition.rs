@@ -172,7 +172,6 @@ fn uncorrelated_all_fails_through_rule_catalog() {
 // is not implemented in the validator (Package 4 will add this).
 
 #[test]
-#[ignore = "Package 0 regression probe — contradiction detection not implemented"]
 fn contradictory_same_event_all_fails_at_compilation() {
     // One event query with two contradictory argument constraints:
     // argument 0 must equal "a" AND argument 0 must equal "b".

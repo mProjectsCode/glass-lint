@@ -60,6 +60,11 @@ pub(crate) enum QueryCompileError {
     },
     /// Multi-event `All` without compatible shared variables.
     UncorrelatedConjunction,
+    /// Contradictory predicates on the same variable or argument.
+    ContradictoryPredicate {
+        variable: VarId,
+        detail: ContradictionKind,
+    },
     /// `Any` branches produce incompatible types for the projected variable.
     IncompatibleBranchOutput {
         var: VarId,
@@ -92,6 +97,7 @@ impl QueryCompileError {
             Self::InvalidEventPredicate { .. } => "invalid_event_predicate",
             Self::UnsupportedRelation { .. } => "unsupported_relation",
             Self::UncorrelatedConjunction => "uncorrelated_conjunction",
+            Self::ContradictoryPredicate { .. } => "contradictory_predicate",
             Self::IncompatibleBranchOutput { .. } => "incompatible_branch_output",
             Self::UnavailablePrimaryLocation { .. } => "unavailable_primary_location",
             Self::InvalidLifecycle { .. } => "invalid_lifecycle",
@@ -99,6 +105,34 @@ impl QueryCompileError {
             Self::InvalidModulePattern { .. } => "invalid_module_pattern",
             Self::InvalidStaticValuePredicate { .. } => "invalid_static_value_predicate",
             Self::InternalInvariant { .. } => "internal_invariant",
+        }
+    }
+}
+
+/// Classification of a contradiction between two predicates on the same
+/// variable or argument.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
+pub(crate) enum ContradictionKind {
+    EventKind,
+    StrictIdentity,
+    SubjectRelation,
+    StaticExactValues,
+    StaticExactAndPrefix,
+    EvidenceProjection,
+}
+
+impl std::fmt::Display for ContradictionKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EventKind => f.write_str("incompatible event kinds"),
+            Self::StrictIdentity => f.write_str("incompatible strict identities"),
+            Self::SubjectRelation => f.write_str("incompatible subject relationships"),
+            Self::StaticExactValues => f.write_str("disjoint exact static-string values"),
+            Self::StaticExactAndPrefix => {
+                f.write_str("exact and prefix values that cannot both match")
+            }
+            Self::EvidenceProjection => f.write_str("incompatible evidence projections"),
         }
     }
 }
@@ -141,6 +175,12 @@ impl std::fmt::Display for QueryCompileError {
             }
             Self::UncorrelatedConjunction => {
                 f.write_str("multi-event All without compatible shared variables")
+            }
+            Self::ContradictoryPredicate { variable, detail } => {
+                write!(
+                    f,
+                    "contradictory predicate on variable {variable}: {detail}"
+                )
             }
             Self::IncompatibleBranchOutput {
                 var,
@@ -1124,6 +1164,7 @@ pub(crate) fn pass_final_invariants(decl: &QueryDecl) -> Result<(), QueryCompile
 /// - evidence projection refers to a valid remapped variable;
 /// - no nested `Any`-in-`Any` or `All`-in-`All` remains;
 /// - variable slots are dense starting from 0.
+#[allow(dead_code)]
 pub(crate) fn validate_normalized_decl(decl: &QueryDecl) -> Result<(), QueryCompileError> {
     // Re-check evidence projection (vars may have been remapped).
     pass_evidence_projection(decl)?;
@@ -1137,6 +1178,7 @@ pub(crate) fn validate_normalized_decl(decl: &QueryDecl) -> Result<(), QueryComp
 /// Recursively check that a normalized expression has no nested same-type
 /// Any/All (which should have been flattened) and that variable slots
 /// are structurally sound.
+#[allow(dead_code)]
 fn check_normalized_structure(expr: &QueryExpr, _is_root: bool) -> Result<(), QueryCompileError> {
     match &expr.kind {
         QueryExprKind::Any(any) => {

@@ -1,126 +1,62 @@
-//! Physical query plan types and the planner that produces them from
-//! normalized logical queries.
-//!
-//! Physical operators correspond to executable execution paths through
-//! the existing occurrence indexes, fact stream, and flow engine. The
-//! planner selects the narrowest available index for each event/identity
-//! pair and attaches same-event value predicates directly to the scan
-//! or constrained projection.
-//!
-//! ## Layout
-//!
-//! The planner converts a normalized [`QueryDecl`] into
-//! a [`PhysicalPlan`] containing zero or more [`PhysicalRoot`] values.
-//! Each root is a self-contained executable operator.  Alternatives
-//! (nested `Any`) are flattened into independent roots; same-variable
-//! conjunctions (`All`) are merged into one root with combined
-//! constraints.
-//!
-//! ## Physical operators
-//!
-//! | Operator | Purpose |
-//! |---|---|
-//! | `IndexedScan` | Unconstrained occurrence index lookup |
-//! | `ConstrainedScan` | Call/member-call with argument constraints |
-//! | `ReturnedSubject` | Member access on a returned object |
-//! | `InstanceSubject` | Member call on a constructed instance |
-//! | `Lifecycle` | Object flow lifecycle plan reference |
-
 use glass_lint_datastructures::SymbolPath;
 
 use crate::api::{
     classification::MatchKind,
     compiler::{
-        normalize::PlanRequirements,
+        normalize::{
+            NormalizedEvent, NormalizedLifecycle, NormalizedQuery, NormalizedRoot,
+            NormalizedSubject, PlanRequirements,
+        },
         object_flow::CompiledObjectFlow,
         rule::{
             EventPredicate, EvidenceDescriptor, IdentityConstraint, InvalidQueryClause,
             lower_event, lower_identity,
         },
     },
-    rule::{
-        ArgumentConstraint,
-        query::{
-            AllExpr, EventQuery, EventSpec, IdentitySpec, LifecycleQuery, QueryDecl, QueryExpr,
-            QueryExprKind, QueryPredicate, SubjectSpec, VarId,
-        },
-    },
+    rule::query::EventSpec,
 };
 
 // ── Physical root types ─────────────────────────────────────────────────
 
 /// A single executable physical operator root.
-///
-/// Each root can be executed independently by the appropriate analysis
-/// subsystem.  The planner selects the narrowest possible operator for
-/// each logical leaf.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum PhysicalRoot {
-    /// Indexed occurrence scan with no additional value constraints.
-    ///
-    /// Used for unconstrained calls, member calls, imports, strings,
-    /// classes, and constructions — the fastest execution path.
     IndexedScan {
         identity: IdentityConstraint,
         event: EventPredicate,
         evidence: EvidenceDescriptor,
     },
-    /// Constrained call projection with argument value constraints.
-    ///
-    /// Used for calls and member-calls with one or more value/argument
-    /// predicates attached to the same event.
     ConstrainedScan {
         identity: IdentityConstraint,
         event: EventPredicate,
-        constraints: Box<[ArgumentConstraint]>,
+        constraints: Box<[crate::api::rule::ArgumentConstraint]>,
         evidence: EvidenceDescriptor,
     },
-    /// Subject scan for member access on a returned object.
-    ///
-    /// The `identity` holds the rooted path of the producer (e.g.
-    /// `document.createElement`); the `member` is the subsequent
-    /// member access on the returned object.
     ReturnedSubject {
         identity: IdentityConstraint,
         member: SymbolPath,
         event: EventPredicate,
         evidence: EvidenceDescriptor,
     },
-    /// Subject scan for a member call on a constructed instance.
-    ///
-    /// The `constructor` holds the module identity of the constructor
-    /// (e.g. `ModuleExport("pkg", "Client")`); the `member` is the
-    /// method called on the instance.
     InstanceSubject {
         constructor: IdentityConstraint,
         member: SymbolPath,
         evidence: EvidenceDescriptor,
     },
-    /// Compiled lifecycle flow plan.
-    Lifecycle { flow: CompiledObjectFlow },
+    Lifecycle {
+        flow: CompiledObjectFlow,
+    },
 }
-
-// PhysicalRoot derives PartialOrd/Ord through its fields, which gives
-// deterministic ordering by discriminant then by field values.
 
 // ── PhysicalPlan ────────────────────────────────────────────────────────
 
-/// Compiled physical plan containing executable roots and their
-/// resource requirements.
-///
-/// A plan is produced by the planner from a normalized logical query.
-/// It is stored in [`CompiledMatcherPlan`] and consumed by the analysis
-/// layer during per-file matching.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PhysicalPlan {
-    /// Physical roots in deterministic execution order.
     roots: Box<[PhysicalRoot]>,
-    /// Plan-wide resource requirements computed from the logical query.
     requirements: PlanRequirements,
 }
 
 impl PhysicalPlan {
-    /// Create a new physical plan from roots and requirements.
     pub(crate) fn new(roots: Box<[PhysicalRoot]>, requirements: PlanRequirements) -> Self {
         Self {
             roots,
@@ -128,29 +64,19 @@ impl PhysicalPlan {
         }
     }
 
-    /// Access physical roots in deterministic order.
     pub(crate) fn roots(&self) -> &[PhysicalRoot] {
         &self.roots
     }
 
-    /// Access plan-wide resource requirements.
     pub(crate) fn requirements(&self) -> &PlanRequirements {
         &self.requirements
     }
 
-    /// Return true when the plan has no executable roots.
     #[allow(dead_code)]
     pub(crate) fn is_empty(&self) -> bool {
         self.roots.is_empty()
     }
 
-    /// A stable, deterministic plan summary string for tests and
-    /// profiling.
-    ///
-    /// Format:
-    /// ```text
-    /// roots=N indexed_scans=N constrained_scans=N returned_subjects=N instance_subjects=N lifecycle_plans=N project_overlay=yes|no
-    /// ```
     #[allow(dead_code)]
     pub(crate) fn summary(&self) -> String {
         let mut indexed = 0usize;
@@ -164,7 +90,7 @@ impl PhysicalPlan {
                 PhysicalRoot::ConstrainedScan { .. } => constrained += 1,
                 PhysicalRoot::ReturnedSubject { .. } => returned += 1,
                 PhysicalRoot::InstanceSubject { .. } => instance += 1,
-                PhysicalRoot::Lifecycle { flow: _ } => lifecycle += 1,
+                PhysicalRoot::Lifecycle { .. } => lifecycle += 1,
             }
         }
         format!(
@@ -191,52 +117,75 @@ impl PhysicalPlan {
 
 // ── Planner ─────────────────────────────────────────────────────────────
 
-/// Plan a single event query into a physical root.
-fn plan_event_query(eq: &EventQuery, kind: MatchKind, symbol: &str) -> Vec<PhysicalRoot> {
+/// Plan a normalized query into a [`PhysicalPlan`].
+pub(crate) fn plan_normalized(nq: &NormalizedQuery) -> PhysicalPlan {
+    let emission = nq.emission();
+    let kind = emission.kind();
+    let symbol = emission.symbol();
+    let roots = plan_root(nq.root(), kind, symbol);
+    PhysicalPlan::new(roots.into_boxed_slice(), nq.requirements().clone())
+}
+
+fn plan_root(root: &NormalizedRoot, kind: MatchKind, symbol: &str) -> Vec<PhysicalRoot> {
+    match root {
+        NormalizedRoot::Event(ev) => plan_event(ev, kind, symbol),
+        NormalizedRoot::Any(branches) => {
+            let mut roots = Vec::new();
+            for b in branches {
+                roots.extend(plan_root(b, kind, symbol));
+            }
+            roots
+        }
+        NormalizedRoot::Lifecycle(lc) => {
+            vec![plan_lifecycle(lc, symbol)]
+        }
+    }
+}
+
+fn plan_event(ev: &NormalizedEvent, kind: MatchKind, symbol: &str) -> Vec<PhysicalRoot> {
     let evidence = EvidenceDescriptor {
         kind,
         symbol: symbol.to_owned(),
     };
 
-    if !eq.constraints.is_empty() {
-        // Constrained call or member-call: compile to ConstrainedScan.
+    if !ev.arguments().is_empty() {
         return vec![PhysicalRoot::ConstrainedScan {
-            identity: lower_identity(&eq.identity),
-            event: lower_event(&eq.event),
-            constraints: eq.constraints.iter().cloned().collect(),
+            identity: lower_identity(ev.identity()),
+            event: lower_event(ev.event()),
+            constraints: ev.arguments().to_vec().into_boxed_slice(),
             evidence,
         }];
     }
 
-    match &eq.subject {
-        SubjectSpec::Direct => {
+    match ev.subject() {
+        NormalizedSubject::Direct => {
             vec![PhysicalRoot::IndexedScan {
-                identity: lower_identity(&eq.identity),
-                event: lower_event(&eq.event),
+                identity: lower_identity(ev.identity()),
+                event: lower_event(ev.event()),
                 evidence,
             }]
         }
-        SubjectSpec::ReturnedFrom => {
-            let member = match &eq.event {
+        NormalizedSubject::Returned => {
+            let member = match ev.event() {
                 EventSpec::MemberCall { member } | EventSpec::MemberRead { member } => {
                     member.clone()
                 }
                 _ => SymbolPath::default(),
             };
             vec![PhysicalRoot::ReturnedSubject {
-                identity: lower_identity(&eq.identity),
+                identity: lower_identity(ev.identity()),
                 member,
-                event: lower_event(&eq.event),
+                event: lower_event(ev.event()),
                 evidence,
             }]
         }
-        SubjectSpec::InstanceOf => {
-            let member = match &eq.event {
+        NormalizedSubject::Instance => {
+            let member = match ev.event() {
                 EventSpec::MemberCall { member } => member.clone(),
                 _ => SymbolPath::default(),
             };
             vec![PhysicalRoot::InstanceSubject {
-                constructor: lower_identity(&eq.identity),
+                constructor: lower_identity(ev.identity()),
                 member,
                 evidence,
             }]
@@ -244,183 +193,37 @@ fn plan_event_query(eq: &EventQuery, kind: MatchKind, symbol: &str) -> Vec<Physi
     }
 }
 
-/// Plan a normalized logical expression tree into a vector of physical
-/// roots.
-///
-/// Nested `Any` branches are flattened into independent roots (the
-/// planner receives already-flattened input from the normalizer).
-/// Same-variable `All` branches are merged into a single root with
-/// combined constraints.
-fn plan_expression(expr: &QueryExpr, kind: MatchKind, symbol: &str) -> Vec<PhysicalRoot> {
-    match &expr.kind {
-        QueryExprKind::Event(eq) => plan_event_query(eq, kind, symbol),
-        QueryExprKind::SelectEvent(_) | QueryExprKind::Require(_) => Vec::new(),
-        QueryExprKind::Any(any) => {
-            let mut roots = Vec::new();
-            for branch in &any.branches {
-                roots.extend(plan_expression(branch, kind, symbol));
-            }
-            roots
-        }
-        QueryExprKind::All(all) => plan_all_expression(all, kind, symbol),
-        QueryExprKind::Lifecycle(lc) => {
-            vec![plan_lifecycle(lc, kind, symbol)]
-        }
-    }
-}
-
-/// Plan a normalized `All` expression by merging same-variable branches
-/// into one physical root.
-///
-/// After normalization, `All` only contains `Event` leaves (nested `All`
-/// is flattened).  Branches sharing a variable represent predicates on
-/// the same event that can be merged into a single scan with combined
-/// constraints.
-fn plan_all_expression(all: &AllExpr, kind: MatchKind, symbol: &str) -> Vec<PhysicalRoot> {
-    // Try to extract an event from the All branches.
-    // Handle both forms:
-    // 1. Old form: branches contain Event(EventQuery) nodes
-    // 2. New atomized form: branches contain SelectEvent + Require atoms
-    let mut event_var: Option<VarId> = None;
-    let mut event_spec: Option<EventSpec> = None;
-    let mut identity_spec: Option<IdentitySpec> = None;
-    let mut subject_spec: SubjectSpec = SubjectSpec::Direct;
-    let mut constraints: Vec<ArgumentConstraint> = Vec::new();
-
-    for branch in &all.branches {
-        match &branch.kind {
-            QueryExprKind::Event(eq) => {
-                // Old form: carry the EventQuery fields.
-                if event_var.is_none() {
-                    event_var = Some(eq.var);
-                    event_spec = Some(eq.event.clone());
-                    identity_spec = Some(eq.identity.clone());
-                    subject_spec = eq.subject;
-                }
-                constraints.extend(eq.constraints.iter().cloned());
-            }
-            QueryExprKind::SelectEvent(s) => {
-                event_var = Some(s.bind);
-            }
-            QueryExprKind::Require(p) => match p {
-                QueryPredicate::EventKind { expected, .. } => {
-                    event_spec = Some(expected.clone());
-                }
-                QueryPredicate::EventIdentity { expected, .. } => {
-                    identity_spec = Some(expected.clone());
-                }
-                QueryPredicate::Argument {
-                    call: _,
-                    index,
-                    matcher,
-                } => {
-                    constraints.push(ArgumentConstraint::new(*index, matcher.clone()));
-                }
-                QueryPredicate::ReturnedObject { .. } => {
-                    subject_spec = SubjectSpec::ReturnedFrom;
-                }
-                QueryPredicate::ConstructedObject { .. } => {
-                    subject_spec = SubjectSpec::InstanceOf;
-                }
-                QueryPredicate::MemberSubject { .. } => {}
+fn plan_lifecycle(lc: &NormalizedLifecycle, symbol: &str) -> PhysicalRoot {
+    // Convert NormalizedLifecycle back to a LifecycleQuery for compilation.
+    let sources: Vec<crate::api::rule::query::EventQuery> = lc
+        .sources()
+        .iter()
+        .map(|sev| crate::api::rule::query::EventQuery {
+            var: crate::api::rule::query::VarId::new(sev.slot()),
+            event: sev.event().clone(),
+            identity: sev.identity().clone(),
+            subject: match sev.subject() {
+                NormalizedSubject::Direct => crate::api::rule::query::SubjectSpec::Direct,
+                NormalizedSubject::Returned => crate::api::rule::query::SubjectSpec::ReturnedFrom,
+                NormalizedSubject::Instance => crate::api::rule::query::SubjectSpec::InstanceOf,
             },
-            _ => {
-                // Non-Event/non-atom branch (e.g. nested Any inside All):
-                // plan independently and return.
-                let mut roots = plan_atomized_event(
-                    event_var,
-                    event_spec,
-                    identity_spec.as_ref(),
-                    subject_spec,
-                    &constraints,
-                    kind,
-                    symbol,
-                );
-                roots.extend(plan_expression(branch, kind, symbol));
-                return roots;
-            }
-        }
-    }
+            constraints: sev.arguments().to_vec(),
+        })
+        .collect();
 
-    plan_atomized_event(
-        event_var,
-        event_spec,
-        identity_spec.as_ref(),
-        subject_spec,
-        &constraints,
-        kind,
-        symbol,
+    let lc_query = crate::api::rule::query::LifecycleQuery::new(
+        sources,
+        lc.condition().cloned(),
+        lc.completion().cloned(),
     )
-}
-
-/// Build a physical root from atomized event fields (extracted from
-/// SelectEvent + Require atoms or from EventQuery).
-fn plan_atomized_event(
-    _event_var: Option<VarId>,
-    event_spec: Option<EventSpec>,
-    identity_spec: Option<&IdentitySpec>,
-    _subject_spec: SubjectSpec,
-    constraints: &[ArgumentConstraint],
-    kind: MatchKind,
-    symbol: &str,
-) -> Vec<PhysicalRoot> {
-    let Some(event) = event_spec else {
-        return Vec::new();
-    };
-    let Some(identity) = identity_spec else {
-        return Vec::new();
-    };
-
-    let evidence = EvidenceDescriptor {
-        kind,
-        symbol: symbol.to_owned(),
-    };
-
-    if constraints.is_empty() {
-        vec![PhysicalRoot::IndexedScan {
-            identity: lower_identity(identity),
-            event: lower_event(&event),
-            evidence,
-        }]
-    } else {
-        vec![PhysicalRoot::ConstrainedScan {
-            identity: lower_identity(identity),
-            event: lower_event(&event),
-            constraints: constraints.to_vec().into_boxed_slice(),
-            evidence,
-        }]
-    }
-}
-
-/// Plan a normalized [`QueryDecl`] into a [`PhysicalPlan`].
-///
-/// The input should already be normalized (flattened, deduplicated,
-/// sorted, with dense variable slots).  If the declaration contains
-/// a lifecycle, the caller must assign flow indices via
-/// [`patch_lifecycle_flow_indices`] before using the plan.
-pub(crate) fn plan_normalized(decl: &QueryDecl, requirements: PlanRequirements) -> PhysicalPlan {
-    let roots = plan_expression(&decl.expression, decl.emission.kind, &decl.emission.symbol);
-    PhysicalPlan::new(roots.into_boxed_slice(), requirements)
-}
-
-/// Plan a lifecycle query into a [`PhysicalRoot::Lifecycle`] with an
-/// embedded [`CompiledObjectFlow`].
-fn plan_lifecycle(lc: &LifecycleQuery, _kind: MatchKind, symbol: &str) -> PhysicalRoot {
+    .expect("normalized lifecycle must be valid");
     PhysicalRoot::Lifecycle {
-        flow: CompiledObjectFlow::from_lifecycle_query(lc, symbol),
+        flow: CompiledObjectFlow::from_lifecycle_query(&lc_query, symbol),
     }
 }
 
 // ── Validation ──────────────────────────────────────────────────────────
 
-/// Validate a [`PhysicalPlan`] for internal consistency.
-///
-/// Checks:
-/// - No root has an empty identity.
-/// - `ConstrainedScan` roots have a call-bearing event.
-/// - `ReturnedSubject` roots have a member-call or member-read event.
-/// - `InstanceSubject` roots have a member-call event.
-/// - Lifecycle has non-empty sources.
 pub(crate) fn validate_physical_plan(
     plan: &PhysicalPlan,
     _flow_count: usize,
@@ -473,9 +276,6 @@ pub(crate) fn validate_physical_plan(
     Ok(())
 }
 
-// ── Backward-compat conversion: physical roots → clauses ─────────────
-// (removed in Phase 7 — analysis layer uses physical roots directly)
-
 // ── Tests ───────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -483,28 +283,24 @@ mod tests {
     use super::*;
     use crate::api::{
         classification::MatchKind,
-        compiler::{normalize::normalize_query_decl, rule::IdentityStrength},
+        compiler::normalize::normalize_query_decl,
         rule::{
             QueryDecl, ValueMatcher,
-            query::{EmissionDecl, IdentitySpec, QueryBuildError, VarId},
+            query::{QueryBuildError, VarId},
         },
     };
 
-    // ── Helpers ────────────────────────────────────────────────────
-
     fn physical_summary(decl: &QueryDecl) -> String {
-        let (normalized, req) = normalize_query_decl(decl);
-        let plan = plan_normalized(&normalized, req);
+        let nq = normalize_query_decl(decl).unwrap();
+        let plan = plan_normalized(&nq);
         plan.summary()
     }
 
-    fn physical_roots(decl: &QueryDecl) -> Vec<PhysicalRoot> {
-        let (normalized, req) = normalize_query_decl(decl);
-        let plan = plan_normalized(&normalized, req);
+    fn physical_roots_from_decl(decl: &QueryDecl) -> Vec<PhysicalRoot> {
+        let nq = normalize_query_decl(decl).unwrap();
+        let plan = plan_normalized(&nq);
         plan.roots().to_vec()
     }
-
-    // ── Planner selects the expected physical access path ──────────
 
     fn decl(decl: Result<QueryDecl, QueryBuildError>) -> QueryDecl {
         decl.unwrap()
@@ -512,7 +308,7 @@ mod tests {
 
     #[test]
     fn global_call_produces_indexed_scan() {
-        let roots = physical_roots(&decl(QueryDecl::call_global("fetch")));
+        let roots = physical_roots_from_decl(&decl(QueryDecl::call_global("fetch")));
         assert_eq!(roots.len(), 1);
         assert!(
             matches!(&roots[0], PhysicalRoot::IndexedScan { .. }),
@@ -522,19 +318,19 @@ mod tests {
 
     #[test]
     fn heuristic_call_produces_indexed_scan() {
-        let roots = physical_roots(&decl(QueryDecl::call_heuristic("fetch")));
+        let roots = physical_roots_from_decl(&decl(QueryDecl::call_heuristic("fetch")));
         assert_eq!(roots.len(), 1);
         assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
     }
 
     #[test]
     fn constrained_call_produces_constrained_scan() {
-        let decl = EventQuery::call_global("fetch")
+        let d = crate::api::rule::EventQuery::call_global("fetch")
             .unwrap()
             .with_arg(0, ValueMatcher::static_string())
             .unwrap()
             .into_query();
-        let roots = physical_roots(&decl);
+        let roots = physical_roots_from_decl(&d);
         assert_eq!(roots.len(), 1);
         assert!(
             matches!(&roots[0], PhysicalRoot::ConstrainedScan { .. }),
@@ -544,7 +340,7 @@ mod tests {
 
     #[test]
     fn rooted_member_call_produces_indexed_scan() {
-        let roots = physical_roots(&decl(QueryDecl::member_call_rooted(
+        let roots = physical_roots_from_decl(&decl(QueryDecl::member_call_rooted(
             "document.createElement",
         )));
         assert_eq!(roots.len(), 1);
@@ -553,7 +349,8 @@ mod tests {
 
     #[test]
     fn returned_subject_produces_returned_scan() {
-        let roots = physical_roots(&decl(QueryDecl::member_call_returned("create", "send")));
+        let roots =
+            physical_roots_from_decl(&decl(QueryDecl::member_call_returned("create", "send")));
         assert_eq!(roots.len(), 1);
         assert!(
             matches!(&roots[0], PhysicalRoot::ReturnedSubject { .. }),
@@ -563,7 +360,7 @@ mod tests {
 
     #[test]
     fn instance_subject_produces_instance_scan() {
-        let roots = physical_roots(&decl(QueryDecl::member_call_instance(
+        let roots = physical_roots_from_decl(&decl(QueryDecl::member_call_instance(
             "pkg", "Client", "send",
         )));
         assert_eq!(roots.len(), 1);
@@ -575,42 +372,43 @@ mod tests {
 
     #[test]
     fn import_exact_produces_indexed_scan() {
-        let roots = physical_roots(&decl(QueryDecl::import_exact("node:fs")));
+        let roots = physical_roots_from_decl(&decl(QueryDecl::import_exact("node:fs")));
         assert_eq!(roots.len(), 1);
         assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
     }
 
     #[test]
     fn string_contains_produces_indexed_scan() {
-        let roots = physical_roots(&decl(QueryDecl::string_contains("https://")));
+        let roots = physical_roots_from_decl(&decl(QueryDecl::string_contains("https://")));
         assert_eq!(roots.len(), 1);
         assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
     }
 
     #[test]
     fn class_reference_produces_indexed_scan() {
-        let roots = physical_roots(&decl(QueryDecl::class_heuristic("Worker")));
+        let roots = physical_roots_from_decl(&decl(QueryDecl::class_heuristic("Worker")));
         assert_eq!(roots.len(), 1);
         assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
     }
 
     #[test]
     fn constructor_global_produces_indexed_scan() {
-        let roots = physical_roots(&decl(QueryDecl::constructor_global("URL")));
+        let roots = physical_roots_from_decl(&decl(QueryDecl::constructor_global("URL")));
         assert_eq!(roots.len(), 1);
         assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
     }
 
     #[test]
     fn module_call_produces_indexed_scan() {
-        let roots = physical_roots(&decl(QueryDecl::call_module("fs", "readFile")));
+        let roots = physical_roots_from_decl(&decl(QueryDecl::call_module("fs", "readFile")));
         assert_eq!(roots.len(), 1);
         assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
     }
 
     #[test]
     fn member_read_returned_produces_returned_scan() {
-        let roots = physical_roots(&decl(QueryDecl::member_read_returned("create", "token")));
+        let roots =
+            physical_roots_from_decl(&decl(QueryDecl::member_read_returned("create", "token")));
         assert_eq!(roots.len(), 1);
         assert!(
             matches!(&roots[0], PhysicalRoot::ReturnedSubject { .. }),
@@ -618,18 +416,16 @@ mod tests {
         );
     }
 
-    // ── Same-event filters fuse into one constrained operator ─────
-
     #[test]
     fn multiple_constraints_on_same_call_fuse_into_one_constrained_scan() {
-        let decl = EventQuery::call_global("fetch")
+        let d = crate::api::rule::EventQuery::call_global("fetch")
             .unwrap()
             .with_arg(0, ValueMatcher::static_string())
             .unwrap()
             .with_arg(1, ValueMatcher::static_string().equals("/api"))
             .unwrap()
             .into_query();
-        let roots = physical_roots(&decl);
+        let roots = physical_roots_from_decl(&d);
         assert_eq!(roots.len(), 1);
         match &roots[0] {
             PhysicalRoot::ConstrainedScan { constraints, .. } => {
@@ -639,8 +435,6 @@ mod tests {
         }
     }
 
-    // ── Alternatives retain deterministic order ───────────────────
-
     #[test]
     fn alternatives_from_any_produce_multiple_roots() {
         use crate::api::rule::query::{AnyExpr, EventQuery, EventSpec, QueryExpr};
@@ -648,33 +442,32 @@ mod tests {
             QueryExpr::event(EventQuery {
                 var: VarId::new(0),
                 event: EventSpec::Call,
-                identity: IdentitySpec::Global {
+                identity: crate::api::rule::query::IdentitySpec::Global {
                     name: "fetch".into(),
                 },
-                subject: SubjectSpec::Direct,
+                subject: crate::api::rule::query::SubjectSpec::Direct,
                 constraints: vec![],
             }),
             QueryExpr::event(EventQuery {
                 var: VarId::new(1),
                 event: EventSpec::Call,
-                identity: IdentitySpec::Global {
+                identity: crate::api::rule::query::IdentitySpec::Global {
                     name: "navigate".into(),
                 },
-                subject: SubjectSpec::Direct,
+                subject: crate::api::rule::query::SubjectSpec::Direct,
                 constraints: vec![],
             }),
         ];
         let query = QueryDecl {
             expression: QueryExpr::any(AnyExpr::new(branches).unwrap()),
-            emission: EmissionDecl {
+            emission: crate::api::rule::query::EmissionDecl {
                 primary_var: VarId::new(0),
                 kind: MatchKind::Call,
                 symbol: "request".into(),
             },
         };
-        let (normalized, req) = normalize_query_decl(&query);
-        let plan = plan_normalized(&normalized, req);
-        // Two alternatives → two physical roots
+        let nq = normalize_query_decl(&query).unwrap();
+        let plan = plan_normalized(&nq);
         assert_eq!(plan.roots().len(), 2);
         for root in plan.roots() {
             assert!(
@@ -683,8 +476,6 @@ mod tests {
             );
         }
     }
-
-    // ── Plan summary tests ────────────────────────────────────────
 
     #[test]
     fn plan_summary_counts_roots() {
@@ -708,12 +499,12 @@ mod tests {
 
     #[test]
     fn plan_summary_shows_constrained_scan() {
-        let decl = EventQuery::call_global("fetch")
+        let d = crate::api::rule::EventQuery::call_global("fetch")
             .unwrap()
             .with_arg(0, ValueMatcher::static_string())
             .unwrap()
             .into_query();
-        let summary = physical_summary(&decl);
+        let summary = physical_summary(&d);
         assert!(summary.contains("roots=1"), "summary: {summary}");
         assert!(
             summary.contains("constrained_scans=1"),
@@ -737,10 +528,9 @@ mod tests {
         assert!(summary.contains("project_overlay=no"), "summary: {summary}");
     }
 
-    // ── Validation tests ──────────────────────────────────────────
-
     #[test]
     fn empty_identity_fails_validation() {
+        use crate::api::compiler::rule::IdentityStrength;
         let roots = Box::new([PhysicalRoot::IndexedScan {
             identity: IdentityConstraint::Global {
                 name: "".into(),
@@ -761,6 +551,7 @@ mod tests {
 
     #[test]
     fn valid_roots_pass_validation() {
+        use crate::api::compiler::rule::IdentityStrength;
         let roots = Box::new([PhysicalRoot::IndexedScan {
             identity: IdentityConstraint::Global {
                 name: "fetch".into(),
@@ -776,22 +567,17 @@ mod tests {
         assert!(validate_physical_plan(&plan, 0).is_ok());
     }
 
-    // ── Roots-to-clauses conversion ───────────────────────────────
-    // (Removed in Phase 7 — analysis layer uses physical roots directly)
-
-    // ── Planner equivalence tests ─────────────────────────────────
-
     #[test]
     fn equivalent_declarations_produce_identical_plans() {
-        let roots1 = physical_roots(&decl(QueryDecl::call_global("fetch")));
-        let roots2 = physical_roots(&decl(QueryDecl::call_global("fetch")));
+        let roots1 = physical_roots_from_decl(&decl(QueryDecl::call_global("fetch")));
+        let roots2 = physical_roots_from_decl(&decl(QueryDecl::call_global("fetch")));
         assert_eq!(roots1, roots2);
     }
 
     #[test]
     fn different_declarations_produce_different_plans() {
-        let roots1 = physical_roots(&decl(QueryDecl::call_global("fetch")));
-        let roots2 = physical_roots(&decl(QueryDecl::call_global("navigate")));
+        let roots1 = physical_roots_from_decl(&decl(QueryDecl::call_global("fetch")));
+        let roots2 = physical_roots_from_decl(&decl(QueryDecl::call_global("navigate")));
         assert_ne!(roots1, roots2);
     }
 
