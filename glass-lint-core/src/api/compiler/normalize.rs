@@ -616,7 +616,7 @@ mod tests {
         };
         eq.constraints
             .push(crate::api::rule::ArgumentConstraint::new(
-                0,
+                crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ValueMatcher::static_string(),
             ));
         let expr = QueryExpr::Event(eq);

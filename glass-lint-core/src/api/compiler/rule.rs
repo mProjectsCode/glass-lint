@@ -227,15 +227,11 @@ fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildEr
 
     for query in queries {
         // Phase 4: Validate the logical QueryDecl.
-        validate_query_decl(query).map_err(|e| {
-            MatcherBuildError::InvalidLoweredQuery(format!("{}: {}", e.diagnostic_name(), e))
-        })?;
+        validate_query_decl(query).map_err(MatcherBuildError::QueryCompileError)?;
 
         // Phase 5: Normalize the logical query into canonical form.
         let (normalized, requirements) = normalize::normalize_query_decl(query);
-        validate_normalized_decl(&normalized).map_err(|e| {
-            MatcherBuildError::InvalidLoweredQuery(format!("{}: {}", e.diagnostic_name(), e))
-        })?;
+        validate_normalized_decl(&normalized).map_err(MatcherBuildError::QueryCompileError)?;
 
         // Phase 6: Plan the normalized query into physical roots.
         let query_plan = physical::plan_normalized(&normalized, requirements);
@@ -264,14 +260,10 @@ fn compile_single_flow(
     flow.validate()?;
 
     let query = QueryDecl::from_flow_matcher(flow, VarId::new(0));
-    validate_query_decl(&query).map_err(|e| {
-        MatcherBuildError::InvalidLoweredQuery(format!("{}: {}", e.diagnostic_name(), e))
-    })?;
+    validate_query_decl(&query).map_err(MatcherBuildError::QueryCompileError)?;
 
     let (normalized, requirements) = normalize::normalize_query_decl(&query);
-    validate_normalized_decl(&normalized).map_err(|e| {
-        MatcherBuildError::InvalidLoweredQuery(format!("{}: {}", e.diagnostic_name(), e))
-    })?;
+    validate_normalized_decl(&normalized).map_err(MatcherBuildError::QueryCompileError)?;
 
     Ok(physical::plan_normalized(&normalized, requirements))
 }
@@ -428,23 +420,23 @@ mod tests {
     use super::*;
     use crate::api::{
         classification::MatchKind,
-        rule::{QueryDecl, ValueMatcher},
+        rule::{EventQuery, QueryDecl, ValueMatcher},
     };
 
     #[test]
     fn every_declaration_compiles_into_one_plan() {
         let queries = vec![
-            QueryDecl::call_global("fetch"),
-            QueryDecl::member_call_rooted("window.open"),
-            QueryDecl::member_read_rooted("window.location"),
-            QueryDecl::import_exact("node:fs"),
-            QueryDecl::import_package("@scope/pkg"),
-            QueryDecl::string_contains("https://"),
-            QueryDecl::class_heuristic("Worker"),
-            QueryDecl::constructor_global("URL"),
-            QueryDecl::member_call_returned("create", "send"),
-            QueryDecl::member_read_returned("create", "token"),
-            QueryDecl::member_call_instance("pkg", "Client", "send"),
+            QueryDecl::call_global("fetch").unwrap(),
+            QueryDecl::member_call_rooted("window.open").unwrap(),
+            QueryDecl::member_read_rooted("window.location").unwrap(),
+            QueryDecl::import_exact("node:fs").unwrap(),
+            QueryDecl::import_package("@scope/pkg").unwrap(),
+            QueryDecl::string_contains("https://").unwrap(),
+            QueryDecl::class_heuristic("Worker").unwrap(),
+            QueryDecl::constructor_global("URL").unwrap(),
+            QueryDecl::member_call_returned("create", "send").unwrap(),
+            QueryDecl::member_read_returned("create", "token").unwrap(),
+            QueryDecl::member_call_instance("pkg", "Client", "send").unwrap(),
         ];
         let plan = CompiledMatcherPlan::compile_queries(&queries).unwrap();
         assert!(!plan.physical_roots().is_empty());
@@ -452,8 +444,11 @@ mod tests {
 
     #[test]
     fn argument_matcher_compiles_to_constrained_scan() {
-        let query = QueryDecl::call_global("fetch")
+        let query = EventQuery::call_global("fetch")
+            .unwrap()
             .with_arg(0, ValueMatcher::static_string())
+            .unwrap()
+            .into_query()
             .with_evidence(MatchKind::CallArgument, "fetch");
         let plan = CompiledMatcherPlan::compile_queries(&[query]).unwrap();
         let roots = plan.physical_roots();
@@ -474,12 +469,12 @@ mod tests {
     #[test]
     fn equivalent_declarations_compile_to_identical_queries() {
         let first = vec![
-            QueryDecl::call_global("fetch"),
-            QueryDecl::member_read_rooted("location.href"),
+            QueryDecl::call_global("fetch").unwrap(),
+            QueryDecl::member_read_rooted("location.href").unwrap(),
         ];
         let second = vec![
-            QueryDecl::member_read_rooted("location.href"),
-            QueryDecl::call_global("fetch"),
+            QueryDecl::member_read_rooted("location.href").unwrap(),
+            QueryDecl::call_global("fetch").unwrap(),
         ];
 
         let first = CompiledMatcherPlan::compile_queries(&first).unwrap();
@@ -491,12 +486,12 @@ mod tests {
     fn query_plan_compiles_declarations_into_physical_roots() {
         let roots = {
             let queries = vec![
-                QueryDecl::call_global("fetch"),
-                QueryDecl::member_call_rooted("window.open"),
-                QueryDecl::member_read_returned("create", "token"),
-                QueryDecl::member_call_instance("pkg", "Client", "send"),
-                QueryDecl::import_exact("node:fs"),
-                QueryDecl::string_contains("https://"),
+                QueryDecl::call_global("fetch").unwrap(),
+                QueryDecl::member_call_rooted("window.open").unwrap(),
+                QueryDecl::member_read_returned("create", "token").unwrap(),
+                QueryDecl::member_call_instance("pkg", "Client", "send").unwrap(),
+                QueryDecl::import_exact("node:fs").unwrap(),
+                QueryDecl::string_contains("https://").unwrap(),
             ];
             let plan = CompiledMatcherPlan::compile_queries(&queries).unwrap();
             plan.physical_roots().to_vec()
@@ -536,12 +531,12 @@ mod tests {
     #[test]
     fn query_plan_normalization_is_idempotent_and_order_independent() {
         let first = vec![
-            QueryDecl::call_heuristic("fetch"),
-            QueryDecl::member_read_rooted("location.href"),
+            QueryDecl::call_heuristic("fetch").unwrap(),
+            QueryDecl::member_read_rooted("location.href").unwrap(),
         ];
         let second = vec![
-            QueryDecl::member_read_rooted("location.href"),
-            QueryDecl::call_heuristic("fetch"),
+            QueryDecl::member_read_rooted("location.href").unwrap(),
+            QueryDecl::call_heuristic("fetch").unwrap(),
         ];
         let first = CompiledMatcherPlan::compile_queries(&first).unwrap();
         let second = CompiledMatcherPlan::compile_queries(&second).unwrap();
@@ -553,8 +548,11 @@ mod tests {
 
     #[test]
     fn decl_with_argument_constraint_keeps_call_kind() {
-        let query = QueryDecl::call_global("fetch")
+        let query = EventQuery::call_global("fetch")
+            .unwrap()
             .with_arg(0, ValueMatcher::static_string())
+            .unwrap()
+            .into_query()
             .with_evidence(MatchKind::CallArgument, "fetch");
         let plan = CompiledMatcherPlan::compile_queries(&[query]).unwrap();
         let roots = plan.physical_roots();

@@ -1,6 +1,6 @@
 //! Browser clipboard-read rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, QueryDecl, Rule, Severity};
 
 /// Detects calls to the unshadowed browser clipboard read APIs, including
 /// aliases derived from those APIs. Shadowed `navigator` bindings and aliases
@@ -16,8 +16,13 @@ pub fn rule() -> Rule {
             "navigator.clipboard.readText",
         ))
         .query(
-            QueryDecl::member_call_rooted("document.execCommand")
-                .with_arg_static_strings(0, ["paste"]),
+            EventQuery::member_call_rooted("document.execCommand")
+                .map(|q| {
+                    q.with_arg_static_strings(0, ["paste"])
+                        .unwrap()
+                        .into_query()
+                })
+                .unwrap(),
         )
         .build()
         .unwrap()

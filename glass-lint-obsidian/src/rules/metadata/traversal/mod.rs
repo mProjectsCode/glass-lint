@@ -1,6 +1,6 @@
 //! Obsidian metadata-map traversal rule definition.
 
-use glass_lint_core::rules::{ArgumentMatcher, Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{ArgumentMatcher, Category, Confidence, EventQuery, Rule, Severity};
 
 const METADATA_MAPS: [&str; 2] = [
     "app.metadataCache.resolvedLinks",
@@ -20,60 +20,130 @@ pub fn rule() -> Rule {
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .query(
-            QueryDecl::member_call_rooted("Object.entries")
-                .with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS)),
+            EventQuery::member_call_rooted("Object.entries")
+                .map(|q| {
+                    q.with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS))
+                        .unwrap()
+                        .into_query()
+                })
+                .unwrap(),
         )
         .query(
-            QueryDecl::member_call_rooted("Object.keys")
-                .with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS)),
+            EventQuery::member_call_rooted("Object.keys")
+                .map(|q| {
+                    q.with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS))
+                        .unwrap()
+                        .into_query()
+                })
+                .unwrap(),
         )
         .query(
-            QueryDecl::member_call_rooted("Object.values")
-                .with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS)),
+            EventQuery::member_call_rooted("Object.values")
+                .map(|q| {
+                    q.with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS))
+                        .unwrap()
+                        .into_query()
+                })
+                .unwrap(),
         )
         .query(
-            QueryDecl::member_call_rooted("Object.getOwnPropertyNames")
-                .with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS)),
+            EventQuery::member_call_rooted("Object.getOwnPropertyNames")
+                .map(|q| {
+                    q.with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS))
+                        .unwrap()
+                        .into_query()
+                })
+                .unwrap(),
         )
         .query(
-            QueryDecl::member_call_rooted("Object.getOwnPropertySymbols")
-                .with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS)),
+            EventQuery::member_call_rooted("Object.getOwnPropertySymbols")
+                .map(|q| {
+                    q.with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS))
+                        .unwrap()
+                        .into_query()
+                })
+                .unwrap(),
         )
         .query(
-            QueryDecl::member_call_rooted("Object.getOwnPropertyDescriptors")
-                .with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS)),
+            EventQuery::member_call_rooted("Object.getOwnPropertyDescriptors")
+                .map(|q| {
+                    q.with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS))
+                        .unwrap()
+                        .into_query()
+                })
+                .unwrap(),
         )
         .query(
-            QueryDecl::member_call_rooted("Reflect.ownKeys")
-                .with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS)),
+            EventQuery::member_call_rooted("Reflect.ownKeys")
+                .map(|q| {
+                    q.with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS))
+                        .unwrap()
+                        .into_query()
+                })
+                .unwrap(),
         )
         .query(
-            QueryDecl::member_call_rooted("global.Object.keys")
-                .with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS)),
+            EventQuery::member_call_rooted("global.Object.keys")
+                .map(|q| {
+                    q.with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS))
+                        .unwrap()
+                        .into_query()
+                })
+                .unwrap(),
         )
         .query(
-            QueryDecl::member_call_rooted("global.Object.entries")
-                .with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS)),
+            EventQuery::member_call_rooted("global.Object.entries")
+                .map(|q| {
+                    q.with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS))
+                        .unwrap()
+                        .into_query()
+                })
+                .unwrap(),
         )
         .query(
-            QueryDecl::member_call_rooted("global.Object.values")
-                .with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS)),
+            EventQuery::member_call_rooted("global.Object.values")
+                .map(|q| {
+                    q.with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS))
+                        .unwrap()
+                        .into_query()
+                })
+                .unwrap(),
         )
         .query(
-            QueryDecl::member_call_rooted("global.Object.getOwnPropertyNames")
-                .with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS)),
+            EventQuery::member_call_rooted("global.Object.getOwnPropertyNames")
+                .map(|q| {
+                    q.with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS))
+                        .unwrap()
+                        .into_query()
+                })
+                .unwrap(),
         )
         .query(
-            QueryDecl::member_call_rooted("global.Object.getOwnPropertySymbols")
-                .with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS)),
+            EventQuery::member_call_rooted("global.Object.getOwnPropertySymbols")
+                .map(|q| {
+                    q.with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS))
+                        .unwrap()
+                        .into_query()
+                })
+                .unwrap(),
         )
         .query(
-            QueryDecl::member_call_rooted("global.Object.getOwnPropertyDescriptors")
-                .with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS)),
+            EventQuery::member_call_rooted("global.Object.getOwnPropertyDescriptors")
+                .map(|q| {
+                    q.with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS))
+                        .unwrap()
+                        .into_query()
+                })
+                .unwrap(),
         )
         .query(
-            QueryDecl::member_call_rooted("global.Reflect.ownKeys")
-                .with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS)),
+            EventQuery::member_call_rooted("global.Reflect.ownKeys")
+                .map(|q| {
+                    q.with_arg(0, ArgumentMatcher::rooted_expressions(METADATA_MAPS))
+                        .unwrap()
+                        .into_query()
+                })
+                .unwrap(),
         )
         .build()
         .unwrap()

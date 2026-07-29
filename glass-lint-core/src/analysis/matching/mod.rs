@@ -278,7 +278,8 @@ mod tests {
 
         let compiled = CompiledMatcherPlan::compile_queries(&[QueryDecl::member_call_heuristic(
             "client.request",
-        )])
+        )
+        .unwrap()])
         .unwrap();
         let evidence = facts.evidence_for(&compiled);
         let reference = facts

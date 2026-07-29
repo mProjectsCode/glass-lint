@@ -2,6 +2,8 @@
 
 use std::{error::Error, fmt};
 
+use super::query::QueryDiagnostic;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Construction-time rule metadata or matcher validation failure.
 pub enum RuleBuildError {
@@ -21,6 +23,8 @@ pub enum RuleBuildError {
     DuplicateField(&'static str),
     /// Category failed taxonomy validation.
     InvalidCategory(String),
+    /// A query declaration could not be constructed.
+    InvalidQuery(super::query::QueryBuildError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +52,11 @@ pub enum MatcherBuildError {
     MissingFlowCompletion,
     /// A flow operation was specified more than once.
     DuplicateFlowOperation(&'static str),
+    /// A query compilation error with structured diagnostic.
+    #[allow(private_interfaces)]
+    QueryCompileError(crate::api::compiler::validate::QueryCompileError),
+    /// A query build error.
+    QueryBuildError(super::query::QueryBuildError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,6 +64,11 @@ pub enum MatcherBuildError {
 pub enum CompiledCatalogError {
     /// A rule declaration could not be lowered into a semantic query.
     InvalidMatcher(String),
+    /// A rule query failed compilation with a structured diagnostic.
+    InvalidQuery {
+        rule_id: String,
+        diagnostic: QueryDiagnostic,
+    },
 }
 
 impl fmt::Display for RuleBuildError {
@@ -70,6 +84,7 @@ impl fmt::Display for RuleBuildError {
                 write!(formatter, "rule {field} was supplied more than once")
             }
             Self::InvalidCategory(value) => write!(formatter, "invalid rule category `{value}`"),
+            Self::InvalidQuery(err) => write!(formatter, "invalid query: {err}"),
         }
     }
 }
@@ -104,6 +119,10 @@ impl fmt::Display for MatcherBuildError {
                 formatter.write_str("object flow must have a completion mode")
             }
             Self::DuplicateFlowOperation(op) => write!(formatter, "duplicate flow operation: {op}"),
+            Self::QueryCompileError(e) => {
+                write!(formatter, "{}: {}", e.diagnostic_name(), e)
+            }
+            Self::QueryBuildError(e) => write!(formatter, "{e}"),
         }
     }
 }
@@ -114,6 +133,10 @@ impl fmt::Display for CompiledCatalogError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidMatcher(message) => write!(formatter, "invalid matcher: {message}"),
+            Self::InvalidQuery {
+                rule_id,
+                diagnostic,
+            } => write!(formatter, "rule `{rule_id}`: {diagnostic}"),
         }
     }
 }

@@ -280,7 +280,7 @@ fn collect_vars(expr: &QueryExpr) -> Vec<VarId> {
 
 fn collect_vars_rec(expr: &QueryExpr, ids: &mut Vec<VarId>) {
     match expr {
-        QueryExpr::Event(eq) => ids.push(eq.var),
+        QueryExpr::Event(eq) => ids.push(eq.var()),
         QueryExpr::Any(any) => {
             for b in &any.branches {
                 collect_vars_rec(b, ids);
@@ -292,8 +292,8 @@ fn collect_vars_rec(expr: &QueryExpr, ids: &mut Vec<VarId>) {
             }
         }
         QueryExpr::Lifecycle(lc) => {
-            for src in &lc.sources {
-                ids.push(src.var);
+            for src in lc.sources() {
+                ids.push(src.var());
             }
         }
     }
@@ -302,10 +302,10 @@ fn collect_vars_rec(expr: &QueryExpr, ids: &mut Vec<VarId>) {
 /// Check whether a variable appears in an expression tree.
 fn expr_contains_var(expr: &QueryExpr, target: VarId) -> bool {
     match expr {
-        QueryExpr::Event(eq) => eq.var == target,
+        QueryExpr::Event(eq) => eq.var() == target,
         QueryExpr::Any(any) => any.branches.iter().any(|b| expr_contains_var(b, target)),
         QueryExpr::All(all) => all.branches.iter().any(|b| expr_contains_var(b, target)),
-        QueryExpr::Lifecycle(lc) => lc.sources.iter().any(|src| src.var == target),
+        QueryExpr::Lifecycle(lc) => lc.sources().iter().any(|src| src.var() == target),
     }
 }
 
@@ -316,7 +316,7 @@ fn expr_contains_var(expr: &QueryExpr, target: VarId) -> bool {
 /// Rejects invalid identity/event/subject combinations, empty identities,
 /// and constraints on non-call events.
 pub(crate) fn pass_well_formedness(decl: &QueryDecl) -> Result<(), QueryCompileError> {
-    match &decl.expression {
+    match decl.expression() {
         QueryExpr::Event(eq) => {
             validate_event_query(eq)?;
         }
@@ -331,7 +331,7 @@ pub(crate) fn pass_well_formedness(decl: &QueryDecl) -> Result<(), QueryCompileE
             }
         }
         QueryExpr::Lifecycle(lc) => {
-            for src in &lc.sources {
+            for src in lc.sources() {
                 validate_event_query(src)?;
             }
         }
@@ -355,7 +355,7 @@ fn pass_well_formedness_inner(expr: &QueryExpr) -> Result<(), QueryCompileError>
             Ok(())
         }
         QueryExpr::Lifecycle(lc) => {
-            for src in &lc.sources {
+            for src in lc.sources() {
                 validate_event_query(src)?;
             }
             Ok(())
@@ -364,27 +364,27 @@ fn pass_well_formedness_inner(expr: &QueryExpr) -> Result<(), QueryCompileError>
 }
 
 fn validate_event_query(eq: &EventQuery) -> Result<(), QueryCompileError> {
-    if !is_valid_identity_event_subject(&eq.identity, &eq.event, eq.subject) {
+    if !is_valid_identity_event_subject(eq.identity(), eq.event(), eq.subject()) {
         return Err(QueryCompileError::InvalidEventPredicate {
-            identity: eq.identity.diagnostic_name().to_owned(),
-            event: eq.event.diagnostic_name().to_owned(),
-            subject: eq.subject.diagnostic_name().to_owned(),
+            identity: eq.identity().diagnostic_name().to_owned(),
+            event: eq.event().diagnostic_name().to_owned(),
+            subject: eq.subject().diagnostic_name().to_owned(),
             detail: "identity/event/subject combination cannot select a semantic fact",
         });
     }
-    if is_identity_empty(&eq.identity) {
+    if is_identity_empty(eq.identity()) {
         return Err(QueryCompileError::InvalidEventPredicate {
-            identity: eq.identity.diagnostic_name().to_owned(),
-            event: eq.event.diagnostic_name().to_owned(),
-            subject: eq.subject.diagnostic_name().to_owned(),
+            identity: eq.identity().diagnostic_name().to_owned(),
+            event: eq.event().diagnostic_name().to_owned(),
+            subject: eq.subject().diagnostic_name().to_owned(),
             detail: "identity name or pattern is empty",
         });
     }
-    if !eq.constraints.is_empty() && !event_supports_constraints(&eq.event) {
+    if !eq.constraints().is_empty() && !event_supports_constraints(eq.event()) {
         return Err(QueryCompileError::InvalidEventPredicate {
-            identity: eq.identity.diagnostic_name().to_owned(),
-            event: eq.event.diagnostic_name().to_owned(),
-            subject: eq.subject.diagnostic_name().to_owned(),
+            identity: eq.identity().diagnostic_name().to_owned(),
+            event: eq.event().diagnostic_name().to_owned(),
+            subject: eq.subject().diagnostic_name().to_owned(),
             detail: "argument constraints require a call-bearing event",
         });
     }
@@ -396,17 +396,17 @@ fn validate_event_query(eq: &EventQuery) -> Result<(), QueryCompileError> {
 /// Checks that no variable is bound more than once in the expression tree.
 pub(crate) fn pass_variable_collection(decl: &QueryDecl) -> Result<(), QueryCompileError> {
     let mut seen = Vec::new();
-    collect_and_check(&decl.expression, &mut seen)?;
+    collect_and_check(decl.expression(), &mut seen)?;
     Ok(())
 }
 
 fn collect_and_check(expr: &QueryExpr, seen: &mut Vec<VarId>) -> Result<(), QueryCompileError> {
     match expr {
         QueryExpr::Event(eq) => {
-            if seen.contains(&eq.var) {
-                return Err(QueryCompileError::DuplicateBinding { var: eq.var });
+            if seen.contains(&eq.var()) {
+                return Err(QueryCompileError::DuplicateBinding { var: eq.var() });
             }
-            seen.push(eq.var);
+            seen.push(eq.var());
         }
         QueryExpr::Any(any) => {
             for b in &any.branches {
@@ -419,11 +419,11 @@ fn collect_and_check(expr: &QueryExpr, seen: &mut Vec<VarId>) -> Result<(), Quer
             }
         }
         QueryExpr::Lifecycle(lc) => {
-            for src in &lc.sources {
-                if seen.contains(&src.var) {
-                    return Err(QueryCompileError::DuplicateBinding { var: src.var });
+            for src in lc.sources() {
+                if seen.contains(&src.var()) {
+                    return Err(QueryCompileError::DuplicateBinding { var: src.var() });
                 }
-                seen.push(src.var);
+                seen.push(src.var());
             }
         }
     }
@@ -448,7 +448,7 @@ pub(crate) fn pass_type_checking(decl: &QueryDecl) {
 /// Validates that `Any` and `All` operators have compatible internal
 /// structure (e.g., non-empty branches with matching variable shapes).
 pub(crate) fn pass_operator_compatibility(decl: &QueryDecl) -> Result<(), QueryCompileError> {
-    check_operator_compatibility(&decl.expression)
+    check_operator_compatibility(decl.expression())
 }
 
 fn check_operator_compatibility(expr: &QueryExpr) -> Result<(), QueryCompileError> {
@@ -485,7 +485,7 @@ fn check_operator_compatibility(expr: &QueryExpr) -> Result<(), QueryCompileErro
 /// variable across branches, which would produce an uncontrolled Cartesian
 /// product.
 pub(crate) fn pass_correlation_scope(decl: &QueryDecl) -> Result<(), QueryCompileError> {
-    check_correlation(&decl.expression)
+    check_correlation(decl.expression())
 }
 
 fn check_correlation(expr: &QueryExpr) -> Result<(), QueryCompileError> {
@@ -528,9 +528,9 @@ fn check_correlation(expr: &QueryExpr) -> Result<(), QueryCompileError> {
 /// Verifies that the emission's primary variable is bound in the expression
 /// and has an event type (which provides a source location).
 pub(crate) fn pass_evidence_projection(decl: &QueryDecl) -> Result<(), QueryCompileError> {
-    if !expr_contains_var(&decl.expression, decl.emission.primary_var) {
+    if !expr_contains_var(decl.expression(), decl.emission().primary_var()) {
         return Err(QueryCompileError::MissingBinding {
-            primary_var: decl.emission.primary_var,
+            primary_var: decl.emission().primary_var(),
         });
     }
     Ok(())
@@ -542,7 +542,7 @@ pub(crate) fn pass_evidence_projection(decl: &QueryDecl) -> Result<(), QueryComp
 /// unkeyed multi-event conjunctions (handled by correlation check) and
 /// unbounded collection sizes.
 pub(crate) fn pass_boundedness(decl: &QueryDecl) -> Result<(), QueryCompileError> {
-    check_boundedness(&decl.expression)
+    check_boundedness(decl.expression())
 }
 
 fn check_boundedness(expr: &QueryExpr) -> Result<(), QueryCompileError> {
@@ -573,7 +573,7 @@ fn check_boundedness(expr: &QueryExpr) -> Result<(), QueryCompileError> {
         }
         QueryExpr::Event(eq) => {
             // Check for excessive argument constraints.
-            if eq.constraints.len() > 1_000 {
+            if eq.constraints().len() > 1_000 {
                 return Err(QueryCompileError::UnboundedQuery {
                     detail: "Event query exceeds maximum argument constraint count",
                 });
@@ -590,7 +590,7 @@ fn check_boundedness(expr: &QueryExpr) -> Result<(), QueryCompileError> {
 /// query scope.  For the current algebra, available relations are
 /// determined by the event/identity/subject combination.
 pub(crate) fn pass_relation_availability(decl: &QueryDecl) -> Result<(), QueryCompileError> {
-    check_relation_scope(&decl.expression)
+    check_relation_scope(decl.expression())
 }
 
 fn check_relation_scope(expr: &QueryExpr) -> Result<(), QueryCompileError> {
@@ -598,11 +598,11 @@ fn check_relation_scope(expr: &QueryExpr) -> Result<(), QueryCompileError> {
         QueryExpr::Event(eq) => {
             // Validate that the identity type is supported in the
             // current semantic model.
-            match &eq.identity {
+            match eq.identity() {
                 IdentitySpec::Global { name } | IdentitySpec::Heuristic { name } => {
                     if name.trim().is_empty() {
                         return Err(QueryCompileError::UnsupportedRelation {
-                            relation: eq.identity.diagnostic_name(),
+                            relation: eq.identity().diagnostic_name(),
                             detail: "identity name is empty".into(),
                         });
                     }
@@ -679,7 +679,7 @@ fn check_relation_scope(expr: &QueryExpr) -> Result<(), QueryCompileError> {
             Ok(())
         }
         QueryExpr::Lifecycle(lc) => {
-            for src in &lc.sources {
+            for src in lc.sources() {
                 check_relation_scope(&QueryExpr::Event(src.clone()))?;
             }
             Ok(())
@@ -693,7 +693,7 @@ fn check_relation_scope(expr: &QueryExpr) -> Result<(), QueryCompileError> {
 /// - Source must have a valid event query.
 /// - Condition and completion must be consistent.
 pub(crate) fn pass_lifecycle_validation(decl: &QueryDecl) -> Result<(), QueryCompileError> {
-    match &decl.expression {
+    match decl.expression() {
         QueryExpr::Lifecycle(lc) => validate_lifecycle(lc),
         _ => Ok(()),
     }
@@ -701,26 +701,26 @@ pub(crate) fn pass_lifecycle_validation(decl: &QueryDecl) -> Result<(), QueryCom
 
 fn validate_lifecycle(lc: &LifecycleQuery) -> Result<(), QueryCompileError> {
     // Sources must be non-empty.
-    if lc.sources.is_empty() {
+    if lc.sources().is_empty() {
         return Err(QueryCompileError::InvalidLifecycle {
             detail: "lifecycle must have at least one source".into(),
         });
     }
 
     // Each source must be valid.
-    for src in &lc.sources {
+    for src in lc.sources() {
         validate_event_query(src)?;
 
         // Source event must be a member call (the tracked object is produced
         // by a member call returning an object).
-        if !matches!(src.event, EventSpec::MemberCall { .. }) {
+        if !matches!(src.event(), EventSpec::MemberCall { .. }) {
             return Err(QueryCompileError::InvalidLifecycle {
                 detail: "lifecycle source event must be a member call".into(),
             });
         }
 
         // Source identity must be rooted for object tracking.
-        if !matches!(src.identity, IdentitySpec::Rooted { .. }) {
+        if !matches!(src.identity(), IdentitySpec::Rooted { .. }) {
             return Err(QueryCompileError::InvalidLifecycle {
                 detail: "lifecycle source identity must be rooted".into(),
             });
@@ -728,7 +728,7 @@ fn validate_lifecycle(lc: &LifecycleQuery) -> Result<(), QueryCompileError> {
     }
 
     // Lifecycle must have at least one of condition or completion.
-    if lc.condition.is_none() && lc.completion.is_none() {
+    if lc.condition().is_none() && lc.completion().is_none() {
         return Err(QueryCompileError::InvalidLifecycle {
             detail: "lifecycle must have at least a condition or completion".into(),
         });
@@ -763,7 +763,7 @@ pub(crate) fn validate_normalized_decl(decl: &QueryDecl) -> Result<(), QueryComp
     pass_evidence_projection(decl)?;
 
     // Check that flattening was effective.
-    check_normalized_structure(&decl.expression, true)?;
+    check_normalized_structure(decl.expression(), true)?;
 
     Ok(())
 }
@@ -827,7 +827,7 @@ pub(crate) fn validate_query_decl(decl: &QueryDecl) -> Result<(), QueryCompileEr
 /// Validate all queries in a [`QuerySet`].
 #[allow(dead_code)]
 pub(crate) fn validate_query_set(set: &QuerySet) -> Result<(), QueryCompileError> {
-    for query in &set.queries {
+    for query in set.queries() {
         validate_query_decl(query)?;
     }
     Ok(())
@@ -853,19 +853,19 @@ mod tests {
 
     #[test]
     fn valid_global_call_passes_well_formedness() {
-        let decl = QueryDecl::call_global("fetch");
+        let decl = QueryDecl::call_global("fetch").unwrap();
         assert!(pass_well_formedness(&decl).is_ok());
     }
 
     #[test]
     fn valid_heuristic_call_passes_well_formedness() {
-        let decl = QueryDecl::call_heuristic("fetch");
+        let decl = QueryDecl::call_heuristic("fetch").unwrap();
         assert!(pass_well_formedness(&decl).is_ok());
     }
 
     #[test]
     fn valid_rooted_member_call_passes_well_formedness() {
-        let decl = QueryDecl::member_call_rooted("document.createElement");
+        let decl = QueryDecl::member_call_rooted("document.createElement").unwrap();
         assert!(pass_well_formedness(&decl).is_ok());
     }
 
@@ -938,7 +938,10 @@ mod tests {
                 predicate: "node:fs".into(),
             },
             subject: SubjectSpec::Direct,
-            constraints: vec![ArgumentConstraint::new(0, ValueMatcher::static_string())],
+            constraints: vec![ArgumentConstraint::new(
+                crate::api::rule::ArgumentIndex::new_unchecked(0),
+                ValueMatcher::static_string(),
+            )],
         };
         let decl = QueryDecl {
             expression: QueryExpr::Event(eq),
@@ -1380,34 +1383,34 @@ mod tests {
 
     #[test]
     fn all_query_forms_pass_validation() {
-        assert_valid_query(&QueryDecl::call_global("fetch"));
-        assert_valid_query(&QueryDecl::call_heuristic("fetch"));
-        assert_valid_query(&QueryDecl::call_module("fs", "readFile"));
-        assert_valid_query(&QueryDecl::call_package("@scope/pkg", "method"));
-        assert_valid_query(&QueryDecl::member_call_rooted("document.createElement"));
-        assert_valid_query(&QueryDecl::member_call_heuristic("foo.bar"));
-        assert_valid_query(&QueryDecl::member_call_module("module", "method"));
-        assert_valid_query(&QueryDecl::member_call_instance("pkg", "Client", "send"));
-        assert_valid_query(&QueryDecl::member_call_package("@scope/pkg", "method"));
-        assert_valid_query(&QueryDecl::member_call_returned("create", "send"));
-        assert_valid_query(&QueryDecl::member_read_rooted("window.location"));
-        assert_valid_query(&QueryDecl::member_read_module("module", "property"));
-        assert_valid_query(&QueryDecl::member_read_returned("create", "token"));
-        assert_valid_query(&QueryDecl::member_read_package("@scope/pkg", "property"));
-        assert_valid_query(&QueryDecl::import_exact("node:fs"));
-        assert_valid_query(&QueryDecl::import_package("@scope/pkg"));
-        assert_valid_query(&QueryDecl::string_contains("https://"));
-        assert_valid_query(&QueryDecl::class_heuristic("Worker"));
-        assert_valid_query(&QueryDecl::class_module("module", "Klass"));
-        assert_valid_query(&QueryDecl::constructor_global("URL"));
-        assert_valid_query(&QueryDecl::constructor_heuristic("Foo"));
-        assert_valid_query(&QueryDecl::constructor_module("pkg", "Klass"));
+        assert_valid_query(&QueryDecl::call_global("fetch").unwrap());
+        assert_valid_query(&QueryDecl::call_heuristic("fetch").unwrap());
+        assert_valid_query(&QueryDecl::call_module("fs", "readFile").unwrap());
+        assert_valid_query(&QueryDecl::call_package("@scope/pkg", "method").unwrap());
+        assert_valid_query(&QueryDecl::member_call_rooted("document.createElement").unwrap());
+        assert_valid_query(&QueryDecl::member_call_heuristic("foo.bar").unwrap());
+        assert_valid_query(&QueryDecl::member_call_module("module", "method").unwrap());
+        assert_valid_query(&QueryDecl::member_call_instance("pkg", "Client", "send").unwrap());
+        assert_valid_query(&QueryDecl::member_call_package("@scope/pkg", "method").unwrap());
+        assert_valid_query(&QueryDecl::member_call_returned("create", "send").unwrap());
+        assert_valid_query(&QueryDecl::member_read_rooted("window.location").unwrap());
+        assert_valid_query(&QueryDecl::member_read_module("module", "property").unwrap());
+        assert_valid_query(&QueryDecl::member_read_returned("create", "token").unwrap());
+        assert_valid_query(&QueryDecl::member_read_package("@scope/pkg", "property").unwrap());
+        assert_valid_query(&QueryDecl::import_exact("node:fs").unwrap());
+        assert_valid_query(&QueryDecl::import_package("@scope/pkg").unwrap());
+        assert_valid_query(&QueryDecl::string_contains("https://").unwrap());
+        assert_valid_query(&QueryDecl::class_heuristic("Worker").unwrap());
+        assert_valid_query(&QueryDecl::class_module("module", "Klass").unwrap());
+        assert_valid_query(&QueryDecl::constructor_global("URL").unwrap());
+        assert_valid_query(&QueryDecl::constructor_heuristic("Foo").unwrap());
+        assert_valid_query(&QueryDecl::constructor_module("pkg", "Klass").unwrap());
     }
 
     #[test]
     fn query_set_with_valid_queries_passes_validation() {
-        let q1 = QueryDecl::call_global("fetch");
-        let q2 = QueryDecl::member_read_rooted("window.location");
+        let q1 = QueryDecl::call_global("fetch").unwrap();
+        let q2 = QueryDecl::member_read_rooted("window.location").unwrap();
         let set = QuerySet::new(vec![q1, q2]);
         assert!(validate_query_set(&set).is_ok());
     }

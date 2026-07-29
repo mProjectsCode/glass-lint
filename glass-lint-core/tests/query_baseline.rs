@@ -11,8 +11,9 @@ use glass_lint_core::{
     Linter, LinterConfig, MatchCertainty, RuleCatalog,
     project::ReportCompletion,
     rules::{
-        Category, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, ObjectEventMatcher,
-        ObjectFlowMatcher, ObjectSourceMatcher, QueryDecl, Rule, Severity, ValueMatcher,
+        Category, Confidence, EventQuery, FlowCompletion, FlowCondition, FlowSinkMatcher,
+        ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, QueryDecl, Rule, Severity,
+        ValueMatcher,
     },
 };
 
@@ -70,8 +71,11 @@ fn baseline_constrained_call() {
         "fetch('/api/data');",
         rule("fetch-constrained")
             .query(
-                QueryDecl::call_global("fetch")
-                    .with_arg(0, ValueMatcher::static_string().equals("/api/data")),
+                EventQuery::call_global("fetch")
+                    .unwrap()
+                    .with_arg(0, ValueMatcher::static_string().equals("/api/data"))
+                    .unwrap()
+                    .into_query(),
             )
             .build()
             .unwrap(),
@@ -87,8 +91,11 @@ fn baseline_constrained_call() {
         "fetch('/other');",
         rule("fetch-constrained-no")
             .query(
-                QueryDecl::call_global("fetch")
-                    .with_arg(0, ValueMatcher::static_string().equals("/api/data")),
+                EventQuery::call_global("fetch")
+                    .unwrap()
+                    .with_arg(0, ValueMatcher::static_string().equals("/api/data"))
+                    .unwrap()
+                    .into_query(),
             )
             .build()
             .unwrap(),

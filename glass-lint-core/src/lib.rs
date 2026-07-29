@@ -32,12 +32,15 @@ pub use project::MatchCertainty;
 pub use report::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports, visible_text};
 pub use rule_id::RuleId;
 pub mod rules {
-    pub use crate::api::rule::{
-        AllExpr, AnyExpr, ArgumentMatcher, Category, Confidence, EmissionDecl, EventQuery,
-        EventSpec, FlowCompletion, FlowCondition, FlowSinkMatcher, IdentitySpec, LifecycleQuery,
-        ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, QueryBuildError, QueryDecl,
-        QueryExpr, QuerySet, Rule, RuleBuildError, RuleBuilder as Builder, Severity, SubjectSpec,
-        ValueMatcher, VarId,
+    pub use crate::api::{
+        classification::MatchKind,
+        rule::{
+            AllExpr, AnyExpr, ArgumentMatcher, Category, Confidence, EmissionDecl, EventQuery,
+            EventSpec, FlowCompletion, FlowCondition, FlowSinkMatcher, IdentitySpec, IntoQueryDecl,
+            LifecycleQuery, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher,
+            QueryBuildError, QueryDecl, QueryExpr, QuerySet, Rule, RuleBuildError,
+            RuleBuilder as Builder, Severity, SubjectSpec, ValueMatcher, VarId,
+        },
     };
 }
 

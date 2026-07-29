@@ -1,6 +1,6 @@
 //! Browser clipboard-write rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, QueryDecl, Rule, Severity};
 
 /// Detects calls to the unshadowed browser clipboard write APIs, including
 /// aliases derived from those APIs. Shadowed `navigator` bindings and aliases
@@ -16,8 +16,13 @@ pub fn rule() -> Rule {
             "navigator.clipboard.writeText",
         ))
         .query(
-            QueryDecl::member_call_rooted("document.execCommand")
-                .with_arg_static_strings(0, ["copy", "cut"]),
+            EventQuery::member_call_rooted("document.execCommand")
+                .map(|q| {
+                    q.with_arg_static_strings(0, ["copy", "cut"])
+                        .unwrap()
+                        .into_query()
+                })
+                .unwrap(),
         )
         .build()
         .unwrap()

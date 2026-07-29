@@ -41,8 +41,8 @@ use crate::api::{
     rule::{
         ArgumentConstraint,
         query::{
-            AllExpr, EventQuery, EventSpec, LifecycleQuery, QueryDecl, QueryExpr, QuerySet,
-            SubjectSpec,
+            AllExpr, EventQuery, EventSpec, LifecycleQuery, QueryDecl, QueryExpr,
+            QuerySet, SubjectSpec,
         },
     },
 };
@@ -459,7 +459,7 @@ mod tests {
         compiler::{normalize::normalize_query_decl, rule::IdentityStrength},
         rule::{
             QueryDecl, ValueMatcher,
-            query::{EmissionDecl, IdentitySpec, VarId},
+            query::{EmissionDecl, IdentitySpec, QueryBuildError, VarId},
         },
     };
 
@@ -479,9 +479,13 @@ mod tests {
 
     // ── Planner selects the expected physical access path ──────────
 
+    fn decl(decl: Result<QueryDecl, QueryBuildError>) -> QueryDecl {
+        decl.unwrap()
+    }
+
     #[test]
     fn global_call_produces_indexed_scan() {
-        let roots = physical_roots(&QueryDecl::call_global("fetch"));
+        let roots = physical_roots(&decl(QueryDecl::call_global("fetch")));
         assert_eq!(roots.len(), 1);
         assert!(
             matches!(&roots[0], PhysicalRoot::IndexedScan { .. }),
@@ -491,16 +495,19 @@ mod tests {
 
     #[test]
     fn heuristic_call_produces_indexed_scan() {
-        let roots = physical_roots(&QueryDecl::call_heuristic("fetch"));
+        let roots = physical_roots(&decl(QueryDecl::call_heuristic("fetch")));
         assert_eq!(roots.len(), 1);
         assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
     }
 
     #[test]
     fn constrained_call_produces_constrained_scan() {
-        let roots = physical_roots(
-            &QueryDecl::call_global("fetch").with_arg(0, ValueMatcher::static_string()),
-        );
+        let decl = EventQuery::call_global("fetch")
+            .unwrap()
+            .with_arg(0, ValueMatcher::static_string())
+            .unwrap()
+            .into_query();
+        let roots = physical_roots(&decl);
         assert_eq!(roots.len(), 1);
         assert!(
             matches!(&roots[0], PhysicalRoot::ConstrainedScan { .. }),
@@ -510,14 +517,16 @@ mod tests {
 
     #[test]
     fn rooted_member_call_produces_indexed_scan() {
-        let roots = physical_roots(&QueryDecl::member_call_rooted("document.createElement"));
+        let roots = physical_roots(&decl(QueryDecl::member_call_rooted(
+            "document.createElement",
+        )));
         assert_eq!(roots.len(), 1);
         assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
     }
 
     #[test]
     fn returned_subject_produces_returned_scan() {
-        let roots = physical_roots(&QueryDecl::member_call_returned("create", "send"));
+        let roots = physical_roots(&decl(QueryDecl::member_call_returned("create", "send")));
         assert_eq!(roots.len(), 1);
         assert!(
             matches!(&roots[0], PhysicalRoot::ReturnedSubject { .. }),
@@ -527,7 +536,9 @@ mod tests {
 
     #[test]
     fn instance_subject_produces_instance_scan() {
-        let roots = physical_roots(&QueryDecl::member_call_instance("pkg", "Client", "send"));
+        let roots = physical_roots(&decl(QueryDecl::member_call_instance(
+            "pkg", "Client", "send",
+        )));
         assert_eq!(roots.len(), 1);
         assert!(
             matches!(&roots[0], PhysicalRoot::InstanceSubject { .. }),
@@ -537,42 +548,42 @@ mod tests {
 
     #[test]
     fn import_exact_produces_indexed_scan() {
-        let roots = physical_roots(&QueryDecl::import_exact("node:fs"));
+        let roots = physical_roots(&decl(QueryDecl::import_exact("node:fs")));
         assert_eq!(roots.len(), 1);
         assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
     }
 
     #[test]
     fn string_contains_produces_indexed_scan() {
-        let roots = physical_roots(&QueryDecl::string_contains("https://"));
+        let roots = physical_roots(&decl(QueryDecl::string_contains("https://")));
         assert_eq!(roots.len(), 1);
         assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
     }
 
     #[test]
     fn class_reference_produces_indexed_scan() {
-        let roots = physical_roots(&QueryDecl::class_heuristic("Worker"));
+        let roots = physical_roots(&decl(QueryDecl::class_heuristic("Worker")));
         assert_eq!(roots.len(), 1);
         assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
     }
 
     #[test]
     fn constructor_global_produces_indexed_scan() {
-        let roots = physical_roots(&QueryDecl::constructor_global("URL"));
+        let roots = physical_roots(&decl(QueryDecl::constructor_global("URL")));
         assert_eq!(roots.len(), 1);
         assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
     }
 
     #[test]
     fn module_call_produces_indexed_scan() {
-        let roots = physical_roots(&QueryDecl::call_module("fs", "readFile"));
+        let roots = physical_roots(&decl(QueryDecl::call_module("fs", "readFile")));
         assert_eq!(roots.len(), 1);
         assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
     }
 
     #[test]
     fn member_read_returned_produces_returned_scan() {
-        let roots = physical_roots(&QueryDecl::member_read_returned("create", "token"));
+        let roots = physical_roots(&decl(QueryDecl::member_read_returned("create", "token")));
         assert_eq!(roots.len(), 1);
         assert!(
             matches!(&roots[0], PhysicalRoot::ReturnedSubject { .. }),
@@ -584,11 +595,14 @@ mod tests {
 
     #[test]
     fn multiple_constraints_on_same_call_fuse_into_one_constrained_scan() {
-        let roots = physical_roots(
-            &QueryDecl::call_global("fetch")
-                .with_arg(0, ValueMatcher::static_string())
-                .with_arg(1, ValueMatcher::static_string().equals("/api")),
-        );
+        let decl = EventQuery::call_global("fetch")
+            .unwrap()
+            .with_arg(0, ValueMatcher::static_string())
+            .unwrap()
+            .with_arg(1, ValueMatcher::static_string().equals("/api"))
+            .unwrap()
+            .into_query();
+        let roots = physical_roots(&decl);
         assert_eq!(roots.len(), 1);
         match &roots[0] {
             PhysicalRoot::ConstrainedScan { constraints, .. } => {
@@ -647,7 +661,7 @@ mod tests {
 
     #[test]
     fn plan_summary_counts_roots() {
-        let summary = physical_summary(&QueryDecl::call_global("fetch"));
+        let summary = physical_summary(&decl(QueryDecl::call_global("fetch")));
         assert!(summary.contains("roots=1"), "summary: {summary}");
         assert!(summary.contains("indexed_scans=1"), "summary: {summary}");
         assert!(
@@ -667,9 +681,12 @@ mod tests {
 
     #[test]
     fn plan_summary_shows_constrained_scan() {
-        let summary = physical_summary(
-            &QueryDecl::call_global("fetch").with_arg(0, ValueMatcher::static_string()),
-        );
+        let decl = EventQuery::call_global("fetch")
+            .unwrap()
+            .with_arg(0, ValueMatcher::static_string())
+            .unwrap()
+            .into_query();
+        let summary = physical_summary(&decl);
         assert!(summary.contains("roots=1"), "summary: {summary}");
         assert!(
             summary.contains("constrained_scans=1"),
@@ -680,7 +697,7 @@ mod tests {
 
     #[test]
     fn plan_summary_shows_project_overlay_for_module_queries() {
-        let summary = physical_summary(&QueryDecl::call_module("fs", "readFile"));
+        let summary = physical_summary(&decl(QueryDecl::call_module("fs", "readFile")));
         assert!(
             summary.contains("project_overlay=yes"),
             "summary: {summary}"
@@ -689,7 +706,7 @@ mod tests {
 
     #[test]
     fn plan_summary_shows_no_project_overlay_for_global_queries() {
-        let summary = physical_summary(&QueryDecl::call_global("fetch"));
+        let summary = physical_summary(&decl(QueryDecl::call_global("fetch")));
         assert!(summary.contains("project_overlay=no"), "summary: {summary}");
     }
 
@@ -739,22 +756,22 @@ mod tests {
 
     #[test]
     fn equivalent_declarations_produce_identical_plans() {
-        let roots1 = physical_roots(&QueryDecl::call_global("fetch"));
-        let roots2 = physical_roots(&QueryDecl::call_global("fetch"));
+        let roots1 = physical_roots(&decl(QueryDecl::call_global("fetch")));
+        let roots2 = physical_roots(&decl(QueryDecl::call_global("fetch")));
         assert_eq!(roots1, roots2);
     }
 
     #[test]
     fn different_declarations_produce_different_plans() {
-        let roots1 = physical_roots(&QueryDecl::call_global("fetch"));
-        let roots2 = physical_roots(&QueryDecl::call_global("navigate"));
+        let roots1 = physical_roots(&decl(QueryDecl::call_global("fetch")));
+        let roots2 = physical_roots(&decl(QueryDecl::call_global("navigate")));
         assert_ne!(roots1, roots2);
     }
 
     #[test]
     fn plan_summary_is_stable_across_equal_queries() {
-        let s1 = physical_summary(&QueryDecl::call_global("fetch"));
-        let s2 = physical_summary(&QueryDecl::call_global("fetch"));
+        let s1 = physical_summary(&decl(QueryDecl::call_global("fetch")));
+        let s2 = physical_summary(&decl(QueryDecl::call_global("fetch")));
         assert_eq!(s1, s2);
     }
 }

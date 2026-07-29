@@ -638,10 +638,12 @@ mod tests {
         let source = "fetch('/api'); document.createElement('script');";
         let parsed = crate::parse(source, "catalog-fingerprint.js").expect("source should parse");
         let first =
-            CompiledMatcherPlan::compile_queries(&[QueryDecl::call_global("fetch")]).unwrap();
+            CompiledMatcherPlan::compile_queries(&[QueryDecl::call_global("fetch").unwrap()])
+                .unwrap();
         let second = CompiledMatcherPlan::compile_queries(&[QueryDecl::member_call_heuristic(
             "document.createElement",
-        )])
+        )
+        .unwrap()])
         .unwrap();
         let build = |matchers: Vec<&crate::api::compiler::rule::CompiledMatcherPlan>,
                      selected: &[usize]| {

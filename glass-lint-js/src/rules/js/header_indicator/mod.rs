@@ -1,6 +1,6 @@
 //! Header-marker indicator rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, QueryDecl, Rule, Severity};
 
 /// Detects string literals containing the configured `Authorization` and
 /// `User-Agent` marker substrings. This is an opt-in heuristic indicator: it
@@ -16,20 +16,27 @@ pub fn rule() -> Rule {
         // Sink-associated coverage proves header names in request option
         // objects; literal matchers below intentionally retain this rule's
         // source-wide heuristic policy.
-        .query(QueryDecl::call_global("fetch")
-                .with_arg_object_keys(
-                    1,
-                    [
-                        "User-Agent",
-                        "user-agent",
-                        "Authorization",
-                        "authorization",
-                        "Cookie",
-                        "cookie",
-                        "X-API-Key",
-                        "x-api-key",
-                    ],
-                ))
+        .query(
+            EventQuery::call_global("fetch")
+                .map(|q| {
+                    q.with_arg_object_keys(
+                        1,
+                        [
+                            "User-Agent",
+                            "user-agent",
+                            "Authorization",
+                            "authorization",
+                            "Cookie",
+                            "cookie",
+                            "X-API-Key",
+                            "x-api-key",
+                        ],
+                    )
+                    .unwrap()
+                    .into_query()
+                })
+                .unwrap()
+        )
         .query(QueryDecl::string_contains("User-Agent"))
         .query(QueryDecl::string_contains("user-agent"))
         .query(QueryDecl::string_contains("USER-AGENT"))

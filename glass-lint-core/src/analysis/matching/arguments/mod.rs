@@ -164,7 +164,9 @@ mod tests {
                     IdentityStrength,
                 },
             },
-            rule::{ArgumentConstraint, ArgumentMatcher, QueryDecl, ValueMatcher},
+            rule::{
+                ArgumentConstraint, ArgumentMatcher, EventQuery, ValueMatcher,
+            },
         },
         project::SourceText,
     };
@@ -195,7 +197,7 @@ mod tests {
             identity,
             event,
             constraints: Box::new([ArgumentConstraint::new(
-                0,
+                crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ValueMatcher::static_string().equals("/api"),
             )]),
             evidence: EvidenceDescriptor {
@@ -250,7 +252,11 @@ mod tests {
 
     #[test]
     fn constrained_evidence_is_source_ordered_and_deduplicated() {
-        let query = QueryDecl::call_heuristic("fetch").with_arg_static_strings(0, ["/api"]);
+        let query = EventQuery::call_heuristic("fetch")
+            .unwrap()
+            .with_arg_static_strings(0, ["/api"])
+            .unwrap()
+            .into_query();
         let plan = CompiledMatcherPlan::compile_queries(&[query.clone(), query]).unwrap();
         let roots: Vec<PhysicalRoot> = plan
             .physical_roots()
@@ -315,7 +321,7 @@ mod tests {
             },
             event: EventPredicate::Call,
             constraints: Box::new([ArgumentConstraint::new(
-                5,
+                crate::api::rule::ArgumentIndex::new_unchecked(5),
                 ValueMatcher::static_string().equals("/api"),
             )]),
             evidence: EvidenceDescriptor {
@@ -379,8 +385,14 @@ mod tests {
             },
             event: EventPredicate::Call,
             constraints: Box::new([
-                ArgumentConstraint::new(0, ValueMatcher::static_string().equals("/api")),
-                ArgumentConstraint::new(1, ValueMatcher::static_string().equals("/path")),
+                ArgumentConstraint::new(
+                    crate::api::rule::ArgumentIndex::new_unchecked(0),
+                    ValueMatcher::static_string().equals("/api"),
+                ),
+                ArgumentConstraint::new(
+                    crate::api::rule::ArgumentIndex::new_unchecked(1),
+                    ValueMatcher::static_string().equals("/path"),
+                ),
             ]),
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,
@@ -412,8 +424,14 @@ mod tests {
             },
             event: EventPredicate::Call,
             constraints: Box::new([
-                ArgumentConstraint::new(0, ValueMatcher::static_string().equals("/api")),
-                ArgumentConstraint::new(1, ValueMatcher::static_string().equals("/path")),
+                ArgumentConstraint::new(
+                    crate::api::rule::ArgumentIndex::new_unchecked(0),
+                    ValueMatcher::static_string().equals("/api"),
+                ),
+                ArgumentConstraint::new(
+                    crate::api::rule::ArgumentIndex::new_unchecked(1),
+                    ValueMatcher::static_string().equals("/path"),
+                ),
             ]),
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,
@@ -427,8 +445,14 @@ mod tests {
             },
             event: EventPredicate::Call,
             constraints: Box::new([
-                ArgumentConstraint::new(1, ValueMatcher::static_string().equals("/path")),
-                ArgumentConstraint::new(0, ValueMatcher::static_string().equals("/api")),
+                ArgumentConstraint::new(
+                    crate::api::rule::ArgumentIndex::new_unchecked(1),
+                    ValueMatcher::static_string().equals("/path"),
+                ),
+                ArgumentConstraint::new(
+                    crate::api::rule::ArgumentIndex::new_unchecked(0),
+                    ValueMatcher::static_string().equals("/api"),
+                ),
             ]),
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,
@@ -470,7 +494,7 @@ mod tests {
             },
             event: EventPredicate::Call,
             constraints: Box::new([ArgumentConstraint::new(
-                0,
+                crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ValueMatcher::static_string().equals_any(["/api", "/other"]),
             )]),
             evidence: EvidenceDescriptor {
@@ -502,7 +526,7 @@ mod tests {
             },
             event: EventPredicate::Call,
             constraints: Box::new([ArgumentConstraint::new(
-                0,
+                crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ValueMatcher::static_string().equals_any(["/api", "/v1"]),
             )]),
             evidence: EvidenceDescriptor {
@@ -537,7 +561,7 @@ mod tests {
             },
             event: EventPredicate::Call,
             constraints: Box::new([ArgumentConstraint::new(
-                0,
+                crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ValueMatcher::static_string().contains_any(["token"]),
             )]),
             evidence: EvidenceDescriptor {
@@ -575,7 +599,7 @@ mod tests {
             },
             event: EventPredicate::Call,
             constraints: Box::new([ArgumentConstraint::new(
-                0,
+                crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ValueMatcher::static_string().starts_with_any(["https://"]),
             )]),
             evidence: EvidenceDescriptor {
@@ -613,7 +637,7 @@ mod tests {
             },
             event: EventPredicate::Call,
             constraints: Box::new([ArgumentConstraint::new(
-                0,
+                crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ArgumentMatcher::object_keys(["url", "method"]),
             )]),
             evidence: EvidenceDescriptor {
@@ -648,7 +672,7 @@ mod tests {
             },
             event: EventPredicate::Call,
             constraints: Box::new([ArgumentConstraint::new(
-                0,
+                crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ArgumentMatcher::object_property_value(
                     "method",
                     ValueMatcher::static_string().equals("POST"),

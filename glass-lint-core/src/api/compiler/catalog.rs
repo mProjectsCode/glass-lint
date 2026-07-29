@@ -2,7 +2,10 @@
 
 use crate::{
     Rule,
-    api::{compiler::CompiledRuleRecord, rule::CompiledCatalogError},
+    api::{
+        compiler::CompiledRuleRecord,
+        rule::{CompiledCatalogError, MatcherBuildError, QueryDiagnostic},
+    },
 };
 
 /// Compile rules into records in deterministic declaration order.
@@ -12,8 +15,23 @@ pub(crate) fn compile_records(
     rules
         .iter()
         .map(|rule| {
-            CompiledRuleRecord::new(rule)
-                .map_err(|e| CompiledCatalogError::InvalidMatcher(e.to_string()))
+            CompiledRuleRecord::new(rule).map_err(|e| match e {
+                MatcherBuildError::QueryCompileError(qce) => CompiledCatalogError::InvalidQuery {
+                    rule_id: rule.id().to_owned(),
+                    diagnostic: QueryDiagnostic {
+                        code: qce.diagnostic_name(),
+                        message: qce.to_string(),
+                    },
+                },
+                MatcherBuildError::QueryBuildError(qbe) => CompiledCatalogError::InvalidQuery {
+                    rule_id: rule.id().to_owned(),
+                    diagnostic: QueryDiagnostic {
+                        code: "query_build_error",
+                        message: qbe.to_string(),
+                    },
+                },
+                _ => CompiledCatalogError::InvalidMatcher(e.to_string()),
+            })
         })
         .collect::<Result<Vec<_>, _>>()
 }

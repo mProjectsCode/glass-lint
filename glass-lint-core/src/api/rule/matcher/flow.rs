@@ -8,6 +8,28 @@ use smol_str::SmolStr;
 
 use crate::api::rule::MatcherBuildError;
 
+/// A validated bounded argument position index.
+///
+/// Created through the typed `EventQuery::with_arg` constructors which
+/// validate the index against [`limits::MAX_ARGUMENT_INDEX`]. The compiler
+/// never receives an unchecked raw index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ArgumentIndex(u8);
+
+impl ArgumentIndex {
+    /// Create an argument index from a raw value without validation.
+    /// External callers should use the fallible `EventQuery::with_arg`
+    /// constructors instead.
+    pub(crate) fn new_unchecked(index: u8) -> Self {
+        Self(index)
+    }
+
+    /// Return the raw index value.
+    pub fn get(self) -> usize {
+        self.0 as usize
+    }
+}
+
 /// A context-independent predicate over an argument value.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ValueMatcher {
@@ -79,15 +101,21 @@ impl ValueMatcher {
         self.with_static_predicate(StaticStringPredicateKind::Exact(vec![value.into()]))
     }
 
+    /// Canonicalize a string collection: sort and deduplicate.
+    fn canonicalize_strings(values: &mut Vec<String>) {
+        values.sort();
+        values.dedup();
+    }
+
     #[must_use]
     pub fn equals_any<I, S>(self, values: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.with_static_predicate(StaticStringPredicateKind::Exact(
-            values.into_iter().map(Into::into).collect(),
-        ))
+        let mut values: Vec<String> = values.into_iter().map(Into::into).collect();
+        Self::canonicalize_strings(&mut values);
+        self.with_static_predicate(StaticStringPredicateKind::Exact(values))
     }
 
     #[must_use]
@@ -96,9 +124,9 @@ impl ValueMatcher {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.with_static_predicate(StaticStringPredicateKind::Prefix(
-            values.into_iter().map(Into::into).collect(),
-        ))
+        let mut values: Vec<String> = values.into_iter().map(Into::into).collect();
+        Self::canonicalize_strings(&mut values);
+        self.with_static_predicate(StaticStringPredicateKind::Prefix(values))
     }
 
     #[must_use]
@@ -107,9 +135,9 @@ impl ValueMatcher {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.with_static_predicate(StaticStringPredicateKind::ContainsAny(
-            values.into_iter().map(Into::into).collect(),
-        ))
+        let mut values: Vec<String> = values.into_iter().map(Into::into).collect();
+        Self::canonicalize_strings(&mut values);
+        self.with_static_predicate(StaticStringPredicateKind::ContainsAny(values))
     }
 
     #[must_use]
@@ -118,9 +146,9 @@ impl ValueMatcher {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.with_static_predicate(StaticStringPredicateKind::ContainsAll(
-            values.into_iter().map(Into::into).collect(),
-        ))
+        let mut values: Vec<String> = values.into_iter().map(Into::into).collect();
+        Self::canonicalize_strings(&mut values);
+        self.with_static_predicate(StaticStringPredicateKind::ContainsAll(values))
     }
 }
 
@@ -203,9 +231,9 @@ pub struct ArgumentConstraint {
 }
 
 impl ArgumentConstraint {
-    pub fn new(index: usize, matcher: impl Into<ArgumentMatcher>) -> Self {
+    pub fn new(index: ArgumentIndex, matcher: impl Into<ArgumentMatcher>) -> Self {
         Self {
-            index,
+            index: index.get(),
             matcher: matcher.into(),
         }
     }
@@ -213,6 +241,13 @@ impl ArgumentConstraint {
     /// Return the zero-based argument position.
     pub fn index(&self) -> usize {
         self.index
+    }
+
+    /// Return the argument index as a bounded type.
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn arg_index(&self) -> ArgumentIndex {
+        // Safety: stored index was produced from a validated ArgumentIndex
+        ArgumentIndex::new_unchecked(self.index as u8)
     }
 
     /// Borrow the argument predicate.
@@ -250,8 +285,11 @@ impl ObjectSourceMatcher {
     }
 
     #[must_use]
+    #[allow(clippy::cast_possible_truncation)]
     pub fn arg(mut self, index: usize, matcher: impl Into<ArgumentMatcher>) -> Self {
-        self.arguments.push(ArgumentConstraint::new(index, matcher));
+        let arg_idx = ArgumentIndex::new_unchecked(index as u8);
+        self.arguments
+            .push(ArgumentConstraint::new(arg_idx, matcher));
         self
     }
 }
@@ -314,9 +352,11 @@ pub struct ObjectEventBuilder {
 
 impl ObjectEventBuilder {
     #[must_use]
+    #[allow(clippy::cast_possible_truncation)]
     pub fn arg(mut self, index: usize, matcher: impl Into<ArgumentMatcher>) -> Self {
         if let ObjectEventMatcherKind::MemberCall { arguments, .. } = &mut self.event {
-            arguments.push(ArgumentConstraint::new(index, matcher));
+            let arg_idx = ArgumentIndex::new_unchecked(index as u8);
+            arguments.push(ArgumentConstraint::new(arg_idx, matcher));
         }
         self
     }
@@ -704,22 +744,24 @@ mod tests {
 
     #[test]
     fn value_matcher_contains_any_creates_contains_any() {
+        // Values are canonicalized (sorted), so input order does not matter.
         let m = ValueMatcher::static_string().contains_any(["token", "secret"]);
         assert_eq!(
             m.kind(),
             &ValueMatcherKind::StaticString(StaticStringPredicate::new(
-                StaticStringPredicateKind::ContainsAny(vec!["token".into(), "secret".into()])
+                StaticStringPredicateKind::ContainsAny(vec!["secret".into(), "token".into()])
             ))
         );
     }
 
     #[test]
     fn value_matcher_contains_all_creates_contains_all() {
+        // Values are canonicalized (sorted), so input order does not matter.
         let m = ValueMatcher::static_string().contains_all(["required", "field"]);
         assert_eq!(
             m.kind(),
             &ValueMatcherKind::StaticString(StaticStringPredicate::new(
-                StaticStringPredicateKind::ContainsAll(vec!["required".into(), "field".into()])
+                StaticStringPredicateKind::ContainsAll(vec!["field".into(), "required".into()])
             ))
         );
     }
@@ -769,7 +811,7 @@ mod tests {
     #[test]
     fn argument_constraint_new_holds_index_and_matcher() {
         let m = ArgumentMatcher::object_keys(["k"]);
-        let c = ArgumentConstraint::new(2, m);
+        let c = ArgumentConstraint::new(crate::api::rule::ArgumentIndex::new_unchecked(2), m);
         assert_eq!(c.index(), 2);
         assert!(matches!(
             c.matcher().kind(),

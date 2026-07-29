@@ -13,13 +13,15 @@ mod taxonomy;
 
 pub use error::{CompiledCatalogError, MatcherBuildError, RuleBuildError};
 pub use matcher::{
-    ArgumentConstraint, ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher,
-    ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher, ValueMatcherKind,
+    ArgumentConstraint, ArgumentIndex, ArgumentMatcher, FlowCompletion, FlowCondition,
+    FlowSinkMatcher, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher,
+    ValueMatcherKind,
 };
 pub use module::ModuleSpecifierPattern;
 pub use query::{
-    AllExpr, AnyExpr, EmissionDecl, EventQuery, EventSpec, IdentitySpec, LifecycleQuery,
-    QueryBuildError, QueryDecl, QueryExpr, QuerySet, SubjectSpec, VarId,
+    AllExpr, AnyExpr, EmissionDecl, EventQuery, EventSpec, IdentitySpec, IntoQueryDecl,
+    LifecycleQuery, QueryBuildError, QueryDecl, QueryDiagnostic, QueryExpr, QuerySet, SubjectSpec,
+    VarId,
 };
 pub use taxonomy::{Category, Confidence};
 
@@ -64,6 +66,7 @@ impl Rule {
             queries: Vec::new(),
             flows: Vec::new(),
             duplicate_field: None,
+            first_query_error: None,
         }
     }
 
@@ -121,16 +124,26 @@ pub struct RuleBuilder {
     queries: Vec<QueryDecl>,
     flows: Vec<ObjectFlowMatcher>,
     duplicate_field: Option<&'static str>,
+    first_query_error: Option<QueryBuildError>,
 }
 
 impl RuleBuilder {
     #[must_use]
     /// Add one query declaration (the primary authoring API).
     ///
-    /// This replaces [`declaration`](Self::declaration) as the canonical way
-    /// to add matching semantics.
-    pub fn query(mut self, decl: QueryDecl) -> Self {
-        self.queries.push(decl);
+    /// Accepts either a [`QueryDecl`] directly or a
+    /// [`Result<QueryDecl, QueryBuildError>`] (from the fallible
+    /// constructors), storing the first construction error for
+    /// deferred reporting at `build()` time.
+    pub fn query(mut self, query: impl IntoQueryDecl) -> Self {
+        match query.into_query_decl() {
+            Ok(decl) => self.queries.push(decl),
+            Err(e) => {
+                if self.first_query_error.is_none() {
+                    self.first_query_error = Some(e);
+                }
+            }
+        }
         self
     }
 
@@ -185,6 +198,9 @@ impl RuleBuilder {
     pub fn build(self) -> Result<Rule, RuleBuildError> {
         if let Some(field) = self.duplicate_field {
             return Err(RuleBuildError::DuplicateField(field));
+        }
+        if let Some(err) = self.first_query_error {
+            return Err(RuleBuildError::InvalidQuery(err));
         }
         let description = required_string(self.description, RuleBuildError::MissingDescription)?;
         let category = self.category.ok_or(RuleBuildError::MissingCategory)?;

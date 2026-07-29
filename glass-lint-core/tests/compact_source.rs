@@ -7,7 +7,7 @@
 
 use glass_lint_core::{
     Environment,
-    rules::{ArgumentMatcher, QueryDecl, Rule, ValueMatcher},
+    rules::{ArgumentMatcher, EventQuery, QueryDecl, Rule, ValueMatcher},
 };
 
 #[path = "compact_source/constructors.rs"]
@@ -382,10 +382,16 @@ fn ordinary_member_argument_predicates_reuse_static_values() {
         app.vault.on("unrelated", handler);
         "#,
         rule("test.event")
-            .query(QueryDecl::member_call_rooted("app.vault.on").with_arg(
-                0,
-                ValueMatcher::static_string().equals_any(["delete", "rename"]),
-            ))
+            .query(
+                EventQuery::member_call_rooted("app.vault.on")
+                    .unwrap()
+                    .with_arg(
+                        0,
+                        ValueMatcher::static_string().equals_any(["delete", "rename"]),
+                    )
+                    .unwrap()
+                    .into_query(),
+            )
             .build()
             .unwrap(),
         2,
@@ -437,8 +443,11 @@ fn this_rooted_literal_computed_member_chains_are_rooted() {
         r#"class PluginChild extends Plugin { onload() { this.app.vault["on"]("modify", handler); } }"#,
         rule("test.this-literal-computed")
             .query(
-                QueryDecl::member_call_rooted("app.vault.on")
-                    .with_arg(0, ValueMatcher::static_string().equals("modify")),
+                EventQuery::member_call_rooted("app.vault.on")
+                    .unwrap()
+                    .with_arg(0, ValueMatcher::static_string().equals("modify"))
+                    .unwrap()
+                    .into_query(),
             )
             .build()
             .unwrap(),
@@ -536,8 +545,11 @@ fn optional_chained_aliases_preserve_rooted_member_arguments() {
         r#"var c=app.commands;c?.execute?.("open");"#,
         rule("test.optional")
             .query(
-                QueryDecl::member_call_rooted("app.commands.execute")
-                    .with_arg_static_strings(0, ["open"]),
+                EventQuery::member_call_rooted("app.commands.execute")
+                    .unwrap()
+                    .with_arg_static_strings(0, ["open"])
+                    .unwrap()
+                    .into_query(),
             )
             .build()
             .unwrap(),
@@ -562,7 +574,13 @@ fn static_string_arguments_follow_aliases_but_reject_dynamic_strings() {
     assert_count(
         r#"var f=fetch,u="/x";f(u);f("/"+name);"#,
         rule("test.static-string-arg")
-            .query(QueryDecl::call_global("fetch").with_arg_static_string(0))
+            .query(
+                EventQuery::call_global("fetch")
+                    .unwrap()
+                    .with_arg_static_string(0)
+                    .unwrap()
+                    .into_query(),
+            )
             .build()
             .unwrap(),
         1,
@@ -575,8 +593,11 @@ fn static_object_arguments_are_reused_for_key_matching() {
         r#"var o={url:"/x",method:"GET"};client.request(o);"#,
         rule("test.object-arg")
             .query(
-                QueryDecl::member_call_rooted("client.request")
-                    .with_arg_object_keys(0, ["url", "method"]),
+                EventQuery::member_call_rooted("client.request")
+                    .unwrap()
+                    .with_arg_object_keys(0, ["url", "method"])
+                    .unwrap()
+                    .into_query(),
             )
             .build()
             .unwrap(),
@@ -590,8 +611,11 @@ fn sequence_object_arguments_are_reused_for_key_matching() {
         r#"var o;(o={url:"/x",method:"GET"},client.request(o));"#,
         rule("test.sequence-object-arg")
             .query(
-                QueryDecl::member_call_rooted("client.request")
-                    .with_arg_object_keys(0, ["url", "method"]),
+                EventQuery::member_call_rooted("client.request")
+                    .unwrap()
+                    .with_arg_object_keys(0, ["url", "method"])
+                    .unwrap()
+                    .into_query(),
             )
             .build()
             .unwrap(),
@@ -605,8 +629,11 @@ fn rooted_expression_arguments_follow_one_letter_aliases() {
         r#"var f=vault.file,o=app;o.open(f);"#,
         rule("test.rooted-arg")
             .query(
-                QueryDecl::member_call_rooted("app.open")
-                    .with_arg(0, ArgumentMatcher::rooted_expressions(["vault.file"])),
+                EventQuery::member_call_rooted("app.open")
+                    .unwrap()
+                    .with_arg(0, ArgumentMatcher::rooted_expressions(["vault.file"]))
+                    .unwrap()
+                    .into_query(),
             )
             .build()
             .unwrap(),
@@ -620,8 +647,11 @@ fn spread_object_arguments_do_not_satisfy_exact_key_matching() {
         r#"var b={url:"/x"};client.request({...b,method:"GET"});"#,
         rule("test.spread-object-negative")
             .query(
-                QueryDecl::member_call_rooted("client.request")
-                    .with_arg_object_keys(0, ["url", "method"]),
+                EventQuery::member_call_rooted("client.request")
+                    .unwrap()
+                    .with_arg_object_keys(0, ["url", "method"])
+                    .unwrap()
+                    .into_query(),
             )
             .build()
             .unwrap(),
@@ -659,8 +689,11 @@ fn helper_argument_objects_flow_to_member_call_key_matching() {
         r#"function n(x){client.request(x)}n({url:"/x",method:"GET"});"#,
         rule("test.helper-object-flow")
             .query(
-                QueryDecl::member_call_rooted("client.request")
-                    .with_arg_object_keys(0, ["url", "method"]),
+                EventQuery::member_call_rooted("client.request")
+                    .unwrap()
+                    .with_arg_object_keys(0, ["url", "method"])
+                    .unwrap()
+                    .into_query(),
             )
             .build()
             .unwrap(),

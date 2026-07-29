@@ -8,8 +8,8 @@ use std::collections::BTreeSet;
 use glass_lint_core::{
     Environment, Linter, LinterConfig, MatchCertainty, RuleCatalog,
     rules::{
-        ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, ObjectEventMatcher,
-        ObjectFlowMatcher, ObjectSourceMatcher, QueryDecl, Rule, ValueMatcher,
+        ArgumentMatcher, EventQuery, FlowCompletion, FlowCondition, FlowSinkMatcher,
+        ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, QueryDecl, Rule, ValueMatcher,
     },
 };
 
@@ -280,11 +280,15 @@ fn package_provenance_matches_exports_and_namespace_members_at_boundaries() {
 fn associates_static_option_properties_with_their_call_sink() {
     let rules = [rule("string-use")
         .query(
-            QueryDecl::call_global("fetch").with_arg_object_property_value(
-                1,
-                "url",
-                ValueMatcher::static_string().contains_any(["localhost"]),
-            ),
+            EventQuery::call_global("fetch")
+                .unwrap()
+                .with_arg_object_property_value(
+                    1,
+                    "url",
+                    ValueMatcher::static_string().contains_any(["localhost"]),
+                )
+                .unwrap()
+                .into_query(),
         )
         .build()
         .unwrap()];
@@ -356,7 +360,13 @@ fn rejects_aliases_after_shadowing_reassignment() {
 #[test]
 fn matches_static_string_arguments_but_rejects_dynamic_strings() {
     let rules = [rule("test.fetch-url")
-        .query(QueryDecl::call_global("fetch").with_arg_static_string(0))
+        .query(
+            EventQuery::call_global("fetch")
+                .unwrap()
+                .with_arg_static_string(0)
+                .unwrap()
+                .into_query(),
+        )
         .build()
         .unwrap()];
     let result = classify("fetch('/literal'); fetch('/' + dynamic);", &rules);
@@ -367,8 +377,11 @@ fn matches_static_string_arguments_but_rejects_dynamic_strings() {
 fn callable_transforms_use_effective_target_arguments() {
     let rule = [rule("test.callable")
         .query(
-            QueryDecl::call_global("fetch")
-                .with_arg_static_strings(0, ["/call", "/apply", "/optional"]),
+            EventQuery::call_global("fetch")
+                .unwrap()
+                .with_arg_static_strings(0, ["/call", "/apply", "/optional"])
+                .unwrap()
+                .into_query(),
         )
         .build()
         .unwrap()];
@@ -383,8 +396,11 @@ fn callable_transforms_use_effective_target_arguments() {
 fn global_call_matchers_cover_proven_global_object_callable_forms() {
     let rules = [rule("test.global-callable")
         .query(
-            QueryDecl::call_global("eval")
-                .with_arg_static_strings(0, ["direct", "alias", "call", "apply"]),
+            EventQuery::call_global("eval")
+                .unwrap()
+                .with_arg_static_strings(0, ["direct", "alias", "call", "apply"])
+                .unwrap()
+                .into_query(),
         )
         .build()
         .unwrap()];
@@ -570,8 +586,11 @@ fn numeric_addition_is_not_a_static_property_string() {
 fn tracks_rooted_expression_arguments_through_aliases() {
     let rules = [rule("test.arg-flow")
         .query(
-            QueryDecl::member_call_rooted("app.open")
-                .with_arg(0, ArgumentMatcher::rooted_expressions(["vault.file"])),
+            EventQuery::member_call_rooted("app.open")
+                .unwrap()
+                .with_arg(0, ArgumentMatcher::rooted_expressions(["vault.file"]))
+                .unwrap()
+                .into_query(),
         )
         .build()
         .unwrap()];
@@ -627,8 +646,11 @@ fn tracks_parameter_aliases_into_arrow_functions() {
 fn matches_optional_chained_calls_with_static_arguments() {
     let rules = [rule("test.optional")
         .query(
-            QueryDecl::member_call_rooted("app.commands.execute")
-                .with_arg_static_strings(0, ["open"]),
+            EventQuery::member_call_rooted("app.commands.execute")
+                .unwrap()
+                .with_arg_static_strings(0, ["open"])
+                .unwrap()
+                .into_query(),
         )
         .build()
         .unwrap()];
@@ -653,8 +675,11 @@ fn resolves_literal_computed_properties_through_constant_aliases() {
 fn reuses_constant_object_arguments_for_key_matching() {
     let rules = [rule("test.object-arg")
         .query(
-            QueryDecl::member_call_rooted("client.request")
-                .with_arg_object_keys(0, ["url", "method"]),
+            EventQuery::member_call_rooted("client.request")
+                .unwrap()
+                .with_arg_object_keys(0, ["url", "method"])
+                .unwrap()
+                .into_query(),
         )
         .build()
         .unwrap()];
@@ -668,11 +693,23 @@ fn reuses_constant_object_arguments_for_key_matching() {
 #[test]
 fn rejects_reassigned_static_values() {
     let string_rules = [rule("test.fetch-url")
-        .query(QueryDecl::call_global("fetch").with_arg_static_string(0))
+        .query(
+            EventQuery::call_global("fetch")
+                .unwrap()
+                .with_arg_static_string(0)
+                .unwrap()
+                .into_query(),
+        )
         .build()
         .unwrap()];
     let object_rules = [rule("test.object-arg")
-        .query(QueryDecl::member_call_rooted("client.request").with_arg_object_keys(0, ["url"]))
+        .query(
+            EventQuery::member_call_rooted("client.request")
+                .unwrap()
+                .with_arg_object_keys(0, ["url"])
+                .unwrap()
+                .into_query(),
+        )
         .build()
         .unwrap()];
 
@@ -698,8 +735,11 @@ fn rejects_reassigned_static_values() {
 fn rejects_static_shapes_after_a_property_write() {
     let rules = [rule("test.object-arg")
         .query(
-            QueryDecl::member_call_rooted("client.request")
-                .with_arg_object_keys(0, ["url", "method"]),
+            EventQuery::member_call_rooted("client.request")
+                .unwrap()
+                .with_arg_object_keys(0, ["url", "method"])
+                .unwrap()
+                .into_query(),
         )
         .build()
         .unwrap()];
@@ -714,8 +754,11 @@ fn rejects_static_shapes_after_a_property_write() {
 fn projects_const_object_aliases_into_destructured_parameters() {
     let rules = [rule("test.arg-flow")
         .query(
-            QueryDecl::member_call_rooted("app.open")
-                .with_arg(0, ArgumentMatcher::rooted_expressions(["vault.file"])),
+            EventQuery::member_call_rooted("app.open")
+                .unwrap()
+                .with_arg(0, ArgumentMatcher::rooted_expressions(["vault.file"]))
+                .unwrap()
+                .into_query(),
         )
         .build()
         .unwrap()];

@@ -1,6 +1,6 @@
 //! String-based timer dynamic-code rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
 /// Detects calls proven to target the HTML timer globals `setTimeout` or
 /// `setInterval` with a static string first argument. Global-object access and
@@ -13,8 +13,16 @@ pub fn rule() -> Rule {
         .category(Category::new("language/dynamic-code").unwrap())
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
-        .query(QueryDecl::call_global("setTimeout").with_arg_static_string(0))
-        .query(QueryDecl::call_global("setInterval").with_arg_static_string(0))
+        .query(
+            EventQuery::call_global("setTimeout")
+                .map(|q| q.with_arg_static_string(0).unwrap().into_query())
+                .unwrap(),
+        )
+        .query(
+            EventQuery::call_global("setInterval")
+                .map(|q| q.with_arg_static_string(0).unwrap().into_query())
+                .unwrap(),
+        )
         .build()
         .unwrap()
 }

@@ -11,9 +11,8 @@ use std::panic::catch_unwind;
 use glass_lint_core::{
     RuleCatalog,
     rules::{
-        AllExpr, AnyExpr, Category, Confidence, EventQuery, EventSpec, IdentitySpec,
-        LifecycleQuery, QueryBuildError, QueryDecl, QueryExpr, Rule, SubjectSpec, ValueMatcher,
-        VarId,
+        AllExpr, AnyExpr, Category, Confidence, EventQuery, LifecycleQuery, MatchKind,
+        QueryBuildError, QueryDecl, QueryExpr, Rule, ValueMatcher, VarId,
     },
 };
 
@@ -38,18 +37,12 @@ fn compile_rule(
 /// Build a tracked-template query whose emission can be reused in Any/All.
 /// Using `call_global` gives MatchKind::Call without naming the type.
 fn template_query() -> QueryDecl {
-    EventQuery::call_global("template").into_query()
+    EventQuery::call_global("template").unwrap().into_query()
 }
 
 /// Create an EventQuery with the given var and global identity.
-fn event_var(var: u32, name: &str) -> EventQuery {
-    EventQuery {
-        var: VarId::new(var),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global { name: name.into() },
-        subject: SubjectSpec::Direct,
-        constraints: vec![],
-    }
+fn event_var(_var: u32, name: &str) -> EventQuery {
+    EventQuery::call_global(name).unwrap()
 }
 
 // ── Test 1: Any branches compile through the catalog ────────────────────
@@ -67,10 +60,10 @@ fn any_branches_compile_through_rule_catalog() {
     let branch_a = QueryExpr::Event(event_var(0, "fetch"));
     let branch_b = QueryExpr::Event(event_var(0, "navigate"));
     let any_expr = AnyExpr::new(vec![branch_a, branch_b]).unwrap();
-    let mut query = template_query();
-    query.emission.primary_var = VarId::new(0);
-    query.emission.symbol = "test.any".into();
-    query.expression = QueryExpr::Any(any_expr);
+    let query = template_query()
+        .with_primary_var(VarId::new(0))
+        .with_evidence(MatchKind::Call, "test.any")
+        .with_expression(QueryExpr::Any(any_expr));
 
     let result = compile_rule("test.any", query);
     assert!(
@@ -91,13 +84,12 @@ fn any_branches_compile_through_rule_catalog() {
 #[ignore = "Package 0 regression probe — Any evidence check not per-branch"]
 fn any_requires_primary_evidence_on_every_branch() {
     let branch_a = QueryExpr::Event(event_var(0, "fetch"));
-    let branch_b = QueryExpr::Event(event_var(1, "navigate"));
+    let branch_b = QueryExpr::Event(event_var(0, "navigate"));
     let any_expr = AnyExpr::new(vec![branch_a, branch_b]).unwrap();
-    let mut query = template_query();
-    // primary_var = VarId(0) exists in branch_a but not branch_b.
-    query.emission.primary_var = VarId::new(0);
-    query.emission.symbol = "test.any".into();
-    query.expression = QueryExpr::Any(any_expr);
+    let query = template_query()
+        .with_primary_var(VarId::new(0))
+        .with_evidence(MatchKind::Call, "test.any")
+        .with_expression(QueryExpr::Any(any_expr));
 
     let result = compile_rule("test.any-evidence", query);
     assert!(
@@ -120,10 +112,10 @@ fn same_event_all_compiles_through_rule_catalog() {
     let branch_a = QueryExpr::Event(event_var(0, "fetch"));
     let branch_b = QueryExpr::Event(event_var(0, "fetch"));
     let all_expr = AllExpr::new(vec![branch_a, branch_b]).unwrap();
-    let mut query = template_query();
-    query.emission.primary_var = VarId::new(0);
-    query.emission.symbol = "fetch".into();
-    query.expression = QueryExpr::All(all_expr);
+    let query = template_query()
+        .with_primary_var(VarId::new(0))
+        .with_evidence(MatchKind::Call, "fetch")
+        .with_expression(QueryExpr::All(all_expr));
 
     let result = compile_rule("test.all", query);
     assert!(
@@ -139,13 +131,15 @@ fn same_event_all_compiles_through_rule_catalog() {
 
 #[test]
 fn uncorrelated_all_fails_through_rule_catalog() {
-    let branch_a = QueryExpr::Event(event_var(0, "fetch"));
-    let branch_b = QueryExpr::Event(event_var(1, "navigate"));
+    // Use different VarIds so pass_variable_collection does not reject
+    // the two branches as duplicate bindings before the correlation check.
+    let branch_a = QueryExpr::Event(event_var(0, "fetch").with_var(VarId::new(1)).unwrap());
+    let branch_b = QueryExpr::Event(event_var(0, "navigate").with_var(VarId::new(2)).unwrap());
     let all_expr = AllExpr::new(vec![branch_a, branch_b]).unwrap();
-    let mut query = template_query();
-    query.emission.primary_var = VarId::new(0);
-    query.emission.symbol = "test".into();
-    query.expression = QueryExpr::All(all_expr);
+    let query = template_query()
+        .with_primary_var(VarId::new(1))
+        .with_evidence(MatchKind::Call, "test")
+        .with_expression(QueryExpr::All(all_expr));
 
     let result = compile_rule("test.uncorrelated", query);
     let err = result.unwrap_err();
@@ -171,8 +165,11 @@ fn contradictory_same_event_all_fails_at_compilation() {
     // argument 0 must equal "a" AND argument 0 must equal "b".
     // This is statically contradictory.
     let query = EventQuery::call_global("fetch")
+        .unwrap()
         .with_arg(0, ValueMatcher::static_string().equals("a"))
+        .unwrap()
         .with_arg(0, ValueMatcher::static_string().equals("b"))
+        .unwrap()
         .into_query();
     let result = compile_rule("test.contradictory", query);
     let err = result.unwrap_err();
@@ -197,44 +194,25 @@ fn contradictory_same_event_all_fails_at_compilation() {
 fn multiple_lifecycle_sources_compile() {
     use glass_lint_core::rules::FlowCompletion;
 
-    let src_a = EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::MemberCall {
-            member: "document.createElement".into(),
-        },
-        identity: IdentitySpec::Rooted {
-            path: "document.createElement".into(),
-        },
-        subject: SubjectSpec::Direct,
-        constraints: vec![],
-    };
+    let src_a = EventQuery::member_call_rooted("document.createElement").unwrap();
     // Second source uses the same object variable — valid Any-of-source semantics
     // where either independently valid source can start the lifecycle.
-    let src_b = EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::MemberCall {
-            member: "document.createTextNode".into(),
-        },
-        identity: IdentitySpec::Rooted {
-            path: "document.createTextNode".into(),
-        },
-        subject: SubjectSpec::Direct,
-        constraints: vec![],
-    };
-    let lifecycle = LifecycleQuery {
-        sources: vec![src_a, src_b],
-        condition: Some(glass_lint_core::rules::FlowCondition::event(
+    let src_b = EventQuery::member_call_rooted("document.createTextNode").unwrap();
+    let lifecycle = LifecycleQuery::new(
+        vec![src_a, src_b],
+        Some(glass_lint_core::rules::FlowCondition::event(
             glass_lint_core::rules::ObjectEventMatcher::property_write(
                 "type",
                 glass_lint_core::rules::ValueMatcher::any_value(),
             ),
         )),
-        completion: Some(FlowCompletion::configuration()),
-    };
-    let mut query = template_query();
-    query.emission.primary_var = VarId::new(0);
-    query.emission.symbol = "test.lifecycle".into();
-    query.expression = QueryExpr::Lifecycle(lifecycle);
+        Some(FlowCompletion::configuration()),
+    )
+    .unwrap();
+    let query = template_query()
+        .with_primary_var(VarId::new(0))
+        .with_evidence(MatchKind::Call, "test.lifecycle")
+        .with_expression(QueryExpr::Lifecycle(lifecycle));
 
     let result = compile_rule("test.lifecycle", query);
     assert!(
@@ -247,12 +225,8 @@ fn multiple_lifecycle_sources_compile() {
 //
 // Every text/index/collection constructor returns a structured error rather
 // than panicking via assert! or expect.
-//
-// Currently several constructors use assert! which panics on invalid input
-// (Package 2 will make them fallible).
 
 #[test]
-#[ignore = "Package 0 regression probe — constructors panic on invalid input"]
 fn invalid_authoring_input_never_panics() {
     // Empty global call name
     let empty_name = catch_unwind(|| EventQuery::call_global(""));
@@ -339,24 +313,132 @@ fn invalid_authoring_input_never_panics() {
 // expression must return a structured error rather than silently returning
 // the original query unchanged.
 //
-// Currently with_arg uses `if let QueryExpr::Event(...)` to silently skip
-// non-Event expressions (Package 2 will make this an error).
+// with_arg is only available on EventQuery, so calling it on a composed
+// QueryDecl expression is impossible at the type level.
+
+// ── Package 2: QueryBuildError variant tests ──────────────────────────
 
 #[test]
-#[ignore = "Package 0 regression probe — modifiers silently ignore non-Event expressions"]
-fn query_modifiers_do_not_silently_ignore_non_event_expressions() {
-    let branch = QueryExpr::Event(event_var(0, "fetch"));
-    let any_expr = AnyExpr::new(vec![branch]).unwrap();
-    let mut query = template_query();
-    query.emission.primary_var = VarId::new(0);
-    query.emission.symbol = "test".into();
-    query.expression = QueryExpr::Any(any_expr);
+fn empty_lifecycle_sources_rejected() {
+    let err = LifecycleQuery::new(vec![], None, None).unwrap_err();
+    assert!(matches!(err, QueryBuildError::EmptyCollection(_)));
+}
 
-    // Apply with_arg to the Any query.  Currently this silently returns the
-    // query unchanged because with_arg only matches QueryExpr::Event.
-    let modified = query.with_arg(0, ValueMatcher::static_string());
+#[test]
+fn excessive_lifecycle_sources_rejected() {
+    let sources = (0..65)
+        .map(|i| EventQuery::member_call_rooted(format!("a.b{i}")))
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let err = LifecycleQuery::new(sources, None, None).unwrap_err();
+    assert!(matches!(err, QueryBuildError::CollectionTooLarge(..)));
+}
+
+#[test]
+fn invalid_scope_package_rejected() {
+    let err = EventQuery::call_package("  ", "export");
+    assert!(matches!(err, Err(QueryBuildError::InvalidScopePackage)));
+}
+
+#[test]
+fn invalid_argument_index_rejected() {
+    // Argument index 256 exceeds MAX_ARGUMENT_INDEX (255).
+    let err = EventQuery::call_global("fetch")
+        .unwrap()
+        .with_arg(256, ValueMatcher::static_string());
     assert!(
-        !matches!(modified.expression, QueryExpr::Any(_)),
-        "with_arg on Any should not silently return the query unchanged"
+        matches!(err, Err(QueryBuildError::InvalidArgumentIndex(256))),
+        "expected InvalidArgumentIndex(256), got: {err:?}"
+    );
+}
+
+#[test]
+fn excessive_constraints_same_index_rejected() {
+    // The limit is MAX_PREDICATES_PER_ARGUMENT * MAX_ARGUMENT_GROUPS = 32 * 64 =
+    // 2048. Add 2049 constraints on the same index to trigger the limit.
+    let mut q = EventQuery::call_global("fetch").unwrap();
+    for _ in 0..2049 {
+        match q.with_arg(0, ValueMatcher::static_string()) {
+            Ok(next) => q = next,
+            Err(e) => {
+                assert!(
+                    matches!(e, QueryBuildError::ExcessiveConstraints(_)),
+                    "expected ExcessiveConstraints, got: {e:?}"
+                );
+                return;
+            }
+        }
+    }
+    panic!("expected ExcessiveConstraints at constraint 2049");
+}
+
+#[test]
+fn equivalent_argument_order_produces_equal_matchers() {
+    let a = ValueMatcher::static_string().equals_any(["b", "a", "c"]);
+    let b = ValueMatcher::static_string().equals_any(["c", "a", "b"]);
+    assert_eq!(a, b, "canonicalized equals_any should be order-independent");
+}
+
+#[test]
+fn equivalent_starts_with_order_produces_equal_matchers() {
+    let a = ValueMatcher::static_string().starts_with_any(["z", "a"]);
+    let b = ValueMatcher::static_string().starts_with_any(["a", "z"]);
+    assert_eq!(
+        a, b,
+        "canonicalized starts_with_any should be order-independent"
+    );
+}
+
+#[test]
+fn equivalent_contains_any_order_produces_equal_matchers() {
+    let a = ValueMatcher::static_string().contains_any(["secret", "token"]);
+    let b = ValueMatcher::static_string().contains_any(["token", "secret"]);
+    assert_eq!(
+        a, b,
+        "canonicalized contains_any should be order-independent"
+    );
+}
+
+#[test]
+fn equivalent_contains_all_order_produces_equal_matchers() {
+    let a = ValueMatcher::static_string().contains_all(["b", "a"]);
+    let b = ValueMatcher::static_string().contains_all(["a", "b"]);
+    assert_eq!(
+        a, b,
+        "canonicalized contains_all should be order-independent"
+    );
+}
+
+#[test]
+fn deduplicated_alternatives_are_removed() {
+    // equals_any with duplicates should deduplicate to one element.
+    let m = ValueMatcher::static_string().equals_any(["a", "a", "a"]);
+    let expected = ValueMatcher::static_string().equals("a");
+    assert_eq!(m, expected, "duplicates in equals_any should be removed");
+}
+
+#[test]
+fn query_modifiers_do_not_silently_ignore_non_event_expressions() {
+    // Verify that with_arg is only available on EventQuery, not on
+    // composed QueryDecl — meaning it cannot silently ignore
+    // non-Event expressions.
+    let event_query = EventQuery::call_global("fetch")
+        .unwrap()
+        .with_arg(0, ValueMatcher::static_string())
+        .unwrap();
+    let modified = event_query.into_query();
+    assert!(
+        matches!(modified.expression(), QueryExpr::Event(_)),
+        "with_arg should produce an Event expression, got: {:?}",
+        modified.expression()
+    );
+
+    // Also verify that invalid index produces a build error, not a panic.
+    let err = EventQuery::call_global("fetch")
+        .unwrap()
+        .with_arg(300, ValueMatcher::static_string());
+    assert!(
+        err.is_err(),
+        "excessive argument index must produce an error"
     );
 }

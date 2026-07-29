@@ -1,6 +1,6 @@
 //! Browser global-input listener rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, QueryDecl, Rule, Severity};
 
 const INPUT_EVENTS: [&str; 16] = [
     "keydown",
@@ -34,16 +34,31 @@ pub fn rule() -> Rule {
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .query(
-            QueryDecl::member_call_rooted("document.addEventListener")
-                .with_arg_static_strings(0, INPUT_EVENTS),
+            EventQuery::member_call_rooted("document.addEventListener")
+                .map(|q| {
+                    q.with_arg_static_strings(0, INPUT_EVENTS)
+                        .unwrap()
+                        .into_query()
+                })
+                .unwrap(),
         )
         .query(
-            QueryDecl::member_call_rooted("addEventListener")
-                .with_arg_static_strings(0, INPUT_EVENTS),
+            EventQuery::member_call_rooted("addEventListener")
+                .map(|q| {
+                    q.with_arg_static_strings(0, INPUT_EVENTS)
+                        .unwrap()
+                        .into_query()
+                })
+                .unwrap(),
         )
         .query(
-            QueryDecl::member_call_rooted("document.body.addEventListener")
-                .with_arg_static_strings(0, INPUT_EVENTS),
+            EventQuery::member_call_rooted("document.body.addEventListener")
+                .map(|q| {
+                    q.with_arg_static_strings(0, INPUT_EVENTS)
+                        .unwrap()
+                        .into_query()
+                })
+                .unwrap(),
         )
         .query(QueryDecl::member_read_rooted("document.onkeydown"))
         .query(QueryDecl::member_read_rooted("document.onkeyup"))
