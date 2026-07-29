@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::api::{
     classification::MatchKind,
@@ -129,51 +129,147 @@ impl NormalizedLifecycle {
 
 // ── Plan requirements ─────────────────────────────────────────────────────
 
-/// Requirements computed during normalization for physical planning.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-#[allow(clippy::struct_excessive_bools)]
-pub(crate) struct PlanRequirements {
-    pub(crate) needs_occurrence_indexes: bool,
-    pub(crate) needs_fact_stream: bool,
-    pub(crate) needs_value_resolution: bool,
-    pub(crate) needs_local_flow: bool,
-    pub(crate) needs_cross_call_flow: bool,
-    pub(crate) needs_project_overlay: bool,
-    pub(crate) needs_evidence_trace: bool,
+/// Which occurrence index families a physical plan needs.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum OccurrenceIndexRequirement {
+    Calls,
+    Constructions,
+    Members,
+    Literals,
+    ReturnedMembers,
+    InstanceMembers,
 }
 
+/// Which fact-stream fields the physical plan needs populated.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[allow(dead_code)]
+pub(crate) enum FactFieldRequirement {
+    CallArguments,
+    ObjectProperties,
+    RootedValues,
+}
+
+/// Which value-resolution capabilities the physical plan needs.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum ValueResolutionRequirement {
+    LocalStaticValues,
+    ModuleIdentityValues,
+    CallResultIdentities,
+}
+
+/// Whether local, cross-call, or cross-file flow projection is required.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct FlowRequirements {
+    pub(crate) local: bool,
+    pub(crate) cross_call: bool,
+    pub(crate) cross_file: bool,
+}
+
+/// Which project-level preparation the physical plan needs.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum ProjectRequirement {
+    ExactModuleExports,
+    PackageModuleExports,
+    ExactModuleNamespaces,
+    PackageModuleNamespaces,
+    CallResultIdentities,
+}
+
+/// Requirements computed during normalization for physical planning.
+///
+/// Each field contains the exact set of capabilities needed by the
+/// normalized query.  Runtime preparation must consult these sets rather
+/// than performing work unconditionally.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct PlanRequirements {
+    occurrence_indexes: BTreeSet<OccurrenceIndexRequirement>,
+    fact_fields: BTreeSet<FactFieldRequirement>,
+    value_resolution: BTreeSet<ValueResolutionRequirement>,
+    flow: FlowRequirements,
+    project: BTreeSet<ProjectRequirement>,
+}
+
+#[allow(dead_code)]
 impl PlanRequirements {
+    pub(crate) fn occurrence_indexes(&self) -> &BTreeSet<OccurrenceIndexRequirement> {
+        &self.occurrence_indexes
+    }
+
+    pub(crate) fn fact_fields(&self) -> &BTreeSet<FactFieldRequirement> {
+        &self.fact_fields
+    }
+
+    pub(crate) fn value_resolution(&self) -> &BTreeSet<ValueResolutionRequirement> {
+        &self.value_resolution
+    }
+
+    pub(crate) fn flow(&self) -> &FlowRequirements {
+        &self.flow
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn project_requirements(&self) -> &BTreeSet<ProjectRequirement> {
+        &self.project
+    }
+
+    /// Whether any project-level identity work (module identities, overlays)
+    /// is needed.
+    pub(crate) fn needs_module_identities(&self) -> bool {
+        !self.project.is_empty()
+    }
+
+    /// Whether call-result identity resolution is needed.
+    pub(crate) fn needs_call_result_identities(&self) -> bool {
+        self.project
+            .contains(&ProjectRequirement::CallResultIdentities)
+            || self
+                .value_resolution
+                .contains(&ValueResolutionRequirement::CallResultIdentities)
+    }
+
+    /// Whether a project identity overlay is needed for any matched plan.
+    pub(crate) fn needs_project_overlay(&self) -> bool {
+        !self.project.is_empty()
+    }
+
     pub(crate) fn merge_from(&mut self, other: &Self) {
-        self.needs_occurrence_indexes |= other.needs_occurrence_indexes;
-        self.needs_fact_stream |= other.needs_fact_stream;
-        self.needs_value_resolution |= other.needs_value_resolution;
-        self.needs_local_flow |= other.needs_local_flow;
-        self.needs_cross_call_flow |= other.needs_cross_call_flow;
-        self.needs_project_overlay |= other.needs_project_overlay;
-        self.needs_evidence_trace |= other.needs_evidence_trace;
+        self.occurrence_indexes
+            .extend(other.occurrence_indexes.iter().cloned());
+        self.fact_fields.extend(other.fact_fields.iter().cloned());
+        self.value_resolution
+            .extend(other.value_resolution.iter().cloned());
+        self.flow.local |= other.flow.local;
+        self.flow.cross_call |= other.flow.cross_call;
+        self.flow.cross_file |= other.flow.cross_file;
+        self.project.extend(other.project.iter().cloned());
     }
 
     fn for_event(event: &NormalizedEvent) -> Self {
         Self {
-            needs_occurrence_indexes: true,
-            needs_fact_stream: !event.arguments.is_empty(),
-            needs_value_resolution: !event.arguments.is_empty(),
-            needs_local_flow: false,
-            needs_cross_call_flow: false,
-            needs_project_overlay: requires_project_overlay_spec(&event.identity),
-            needs_evidence_trace: true,
+            occurrence_indexes: Self::occurrence_types_for_event(event),
+            fact_fields: Self::fact_fields_for_event(event),
+            value_resolution: Self::value_resolution_for_event(event),
+            flow: FlowRequirements::default(),
+            project: Self::project_for_event(event),
         }
     }
 
     fn for_lifecycle(_lc: &NormalizedLifecycle) -> Self {
         Self {
-            needs_occurrence_indexes: true,
-            needs_fact_stream: false,
-            needs_value_resolution: false,
-            needs_local_flow: true,
-            needs_cross_call_flow: true,
-            needs_project_overlay: false,
-            needs_evidence_trace: true,
+            occurrence_indexes: BTreeSet::from([
+                OccurrenceIndexRequirement::Calls,
+                OccurrenceIndexRequirement::Constructions,
+                OccurrenceIndexRequirement::Members,
+                OccurrenceIndexRequirement::Literals,
+            ]),
+            fact_fields: BTreeSet::new(),
+            value_resolution: BTreeSet::new(),
+            flow: FlowRequirements {
+                local: true,
+                cross_call: true,
+                cross_file: false,
+            },
+            project: BTreeSet::new(),
         }
     }
 
@@ -185,11 +281,84 @@ impl PlanRequirements {
                 for b in branches {
                     req.merge_from(&Self::for_root(b));
                 }
-                req.needs_occurrence_indexes = true;
                 req
             }
             NormalizedRoot::Lifecycle(lc) => Self::for_lifecycle(lc),
         }
+    }
+
+    fn occurrence_types_for_event(event: &NormalizedEvent) -> BTreeSet<OccurrenceIndexRequirement> {
+        let mut set = BTreeSet::new();
+        match event.event {
+            EventSpec::Call => {
+                set.insert(OccurrenceIndexRequirement::Calls);
+            }
+            EventSpec::Construct => {
+                set.insert(OccurrenceIndexRequirement::Constructions);
+            }
+            EventSpec::MemberCall { .. }
+            | EventSpec::MemberRead { .. }
+            | EventSpec::ClassReference => {
+                set.insert(OccurrenceIndexRequirement::Members);
+            }
+            EventSpec::Import | EventSpec::StringReference => {
+                set.insert(OccurrenceIndexRequirement::Literals);
+            }
+        }
+        match event.subject {
+            NormalizedSubject::Returned => {
+                set.insert(OccurrenceIndexRequirement::ReturnedMembers);
+            }
+            NormalizedSubject::Instance => {
+                set.insert(OccurrenceIndexRequirement::InstanceMembers);
+            }
+            NormalizedSubject::Direct => {}
+        }
+        set
+    }
+
+    fn fact_fields_for_event(event: &NormalizedEvent) -> BTreeSet<FactFieldRequirement> {
+        let mut set = BTreeSet::new();
+        if !event.arguments.is_empty() {
+            set.insert(FactFieldRequirement::CallArguments);
+        }
+        set
+    }
+
+    fn value_resolution_for_event(event: &NormalizedEvent) -> BTreeSet<ValueResolutionRequirement> {
+        let mut set = BTreeSet::new();
+        if !event.arguments.is_empty() {
+            set.insert(ValueResolutionRequirement::LocalStaticValues);
+        }
+        if requires_project_overlay_spec(&event.identity) {
+            set.insert(ValueResolutionRequirement::ModuleIdentityValues);
+            set.insert(ValueResolutionRequirement::CallResultIdentities);
+        }
+        set
+    }
+
+    fn project_for_event(event: &NormalizedEvent) -> BTreeSet<ProjectRequirement> {
+        let mut set = BTreeSet::new();
+        if requires_project_overlay_spec(&event.identity) {
+            match &event.identity {
+                IdentitySpec::ModuleExport { .. } => {
+                    set.insert(ProjectRequirement::ExactModuleExports);
+                    set.insert(ProjectRequirement::CallResultIdentities);
+                }
+                IdentitySpec::PackageModuleExport { .. } => {
+                    set.insert(ProjectRequirement::PackageModuleExports);
+                    set.insert(ProjectRequirement::CallResultIdentities);
+                }
+                IdentitySpec::ModuleNamespace { .. } => {
+                    set.insert(ProjectRequirement::ExactModuleNamespaces);
+                }
+                IdentitySpec::PackageModuleNamespace { .. } => {
+                    set.insert(ProjectRequirement::PackageModuleNamespaces);
+                }
+                _ => {}
+            }
+        }
+        set
     }
 }
 
@@ -1476,10 +1645,13 @@ mod tests {
         let d = decl(event(0, "fetch"), 0, "fetch");
         let nq = normalize_ok(&d);
         let req = nq.requirements();
-        assert!(req.needs_occurrence_indexes);
-        assert!(!req.needs_fact_stream);
-        assert!(!req.needs_local_flow);
-        assert!(!req.needs_project_overlay);
+        assert!(
+            req.occurrence_indexes()
+                .contains(&OccurrenceIndexRequirement::Calls)
+        );
+        assert!(req.fact_fields().is_empty());
+        assert!(!req.flow().local);
+        assert!(!req.needs_project_overlay());
     }
 
     #[test]
@@ -1491,8 +1663,14 @@ mod tests {
         let d = eq.into_query();
         let nq = normalize_ok(&d);
         let req = nq.requirements();
-        assert!(req.needs_fact_stream);
-        assert!(req.needs_value_resolution);
+        assert!(
+            req.fact_fields()
+                .contains(&FactFieldRequirement::CallArguments)
+        );
+        assert!(
+            req.value_resolution()
+                .contains(&ValueResolutionRequirement::LocalStaticValues)
+        );
     }
 
     #[test]
@@ -1500,7 +1678,7 @@ mod tests {
         let d = QueryDecl::call_module("fs", "readFile").unwrap();
         let nq = normalize_ok(&d);
         let req = nq.requirements();
-        assert!(req.needs_project_overlay);
+        assert!(req.needs_project_overlay());
     }
 
     #[test]
@@ -1508,7 +1686,108 @@ mod tests {
         let d = decl(event(0, "fetch"), 0, "fetch");
         let nq = normalize_ok(&d);
         let req = nq.requirements();
-        assert!(!req.needs_project_overlay);
+        assert!(!req.needs_project_overlay());
+    }
+
+    // ── Any requirement merging tests ──────────────────────────────
+
+    #[test]
+    fn any_merges_requirements_from_branches() {
+        let branches = vec![
+            QueryDecl::call_global("fetch").unwrap(),
+            QueryDecl::call_module("fs", "readFile").unwrap(),
+        ];
+        let any = QueryDecl::any(branches.into_iter().map(Ok)).unwrap();
+        let d = any.with_evidence(MatchKind::Call, "test");
+        let nq = normalize_ok(&d);
+        let req = nq.requirements();
+        assert!(
+            req.occurrence_indexes()
+                .contains(&OccurrenceIndexRequirement::Calls),
+            "Any should carry Calls from its branches"
+        );
+        assert!(
+            req.needs_project_overlay(),
+            "Any with module branch should need project overlay"
+        );
+    }
+
+    #[test]
+    fn lifecycle_has_flow_requirements() {
+        let source = EventQuery {
+            var: VarId::new(0),
+            event: EventSpec::MemberCall {
+                member: SymbolPath::from("document.createElement"),
+            },
+            identity: IdentitySpec::Rooted {
+                path: SymbolPath::from("document.createElement"),
+            },
+            constraints: vec![],
+        };
+        let lc = LifecycleQuery::new(
+            "test",
+            vec![source],
+            Some(crate::api::rule::LifecycleCondition::event(
+                crate::api::rule::LifecycleEvent::property_write("src", ValueMatcher::any_value()),
+            )),
+            Some(crate::api::rule::LifecycleCompletion::configuration()),
+        )
+        .unwrap();
+        let d = QueryDecl {
+            expression: QueryExpr::lifecycle(lc),
+            emission: EmissionDecl {
+                primary_var: VarId::new(0),
+                kind: MatchKind::CallArgument,
+                symbol: "test".into(),
+            },
+        };
+        let nq = normalize_ok(&d);
+        let req = nq.requirements();
+        assert!(req.flow().local, "lifecycle should need local flow");
+        assert!(
+            req.flow().cross_call,
+            "lifecycle should need cross-call flow"
+        );
+        assert!(
+            req.occurrence_indexes()
+                .contains(&OccurrenceIndexRequirement::Calls),
+            "lifecycle should include Calls"
+        );
+        assert!(
+            req.occurrence_indexes()
+                .contains(&OccurrenceIndexRequirement::Members),
+            "lifecycle should include Members"
+        );
+    }
+
+    #[test]
+    fn global_query_has_only_calls_requirement() {
+        let d = QueryDecl::call_global("fetch").unwrap();
+        let nq = normalize_ok(&d);
+        let req = nq.requirements();
+        assert!(
+            req.occurrence_indexes()
+                .contains(&OccurrenceIndexRequirement::Calls)
+        );
+        assert!(
+            !req.occurrence_indexes()
+                .contains(&OccurrenceIndexRequirement::Members)
+        );
+        assert!(
+            !req.occurrence_indexes()
+                .contains(&OccurrenceIndexRequirement::Literals)
+        );
+        assert!(
+            !req.occurrence_indexes()
+                .contains(&OccurrenceIndexRequirement::Constructions)
+        );
+        assert!(
+            !req.fact_fields()
+                .contains(&FactFieldRequirement::CallArguments)
+        );
+        assert!(!req.flow().local);
+        assert!(!req.flow().cross_call);
+        assert!(!req.needs_project_overlay());
     }
 
     // ── Lifecycle preservation ─────────────────────────────────────

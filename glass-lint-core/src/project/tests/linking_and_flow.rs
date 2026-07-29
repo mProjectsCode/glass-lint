@@ -4,7 +4,6 @@ use crate::{
 };
 
 #[test]
-#[ignore = "Package 9 migration — project identity and linking not yet implemented"]
 #[allow(clippy::too_many_lines)]
 fn linked_internal_aliases_preserve_external_and_global_call_identity() {
     let external_rule = Rule::builder("network.request")
@@ -379,7 +378,6 @@ fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
 }
 
 #[test]
-#[ignore = "Package 9 migration — project identity and linking not yet implemented"]
 fn unresolved_internal_imports_do_not_become_external_provenance() {
     let rule = Rule::builder("network.request")
         .description("Uses request")
@@ -415,7 +413,6 @@ fn unresolved_internal_imports_do_not_become_external_provenance() {
 }
 
 #[test]
-#[ignore = "Package 9 migration — project identity and linking not yet implemented"]
 fn commonjs_export_aliases_preserve_external_provenance_across_modules() {
     let rule = Rule::builder("network.request")
         .description("Uses request")
@@ -457,7 +454,6 @@ fn commonjs_export_aliases_preserve_external_provenance_across_modules() {
 }
 
 #[test]
-#[ignore = "Package 9 migration — project identity and linking not yet implemented"]
 fn namespace_imports_follow_star_reexports() {
     let rule = Rule::builder("network.request")
         .description("Uses request")
@@ -506,7 +502,6 @@ fn namespace_imports_follow_star_reexports() {
 }
 
 #[test]
-#[ignore = "Package 9 migration — project identity and linking not yet implemented"]
 fn static_dynamic_imports_follow_namespace_exports() {
     let rule = Rule::builder("network.request")
         .description("Uses request")

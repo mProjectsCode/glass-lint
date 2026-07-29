@@ -179,17 +179,17 @@ impl PhysicalPlan {
             returned,
             instance,
             lifecycle,
-            if self.requirements.needs_local_flow {
+            if self.requirements.flow().local {
                 "yes"
             } else {
                 "no"
             },
-            if self.requirements.needs_cross_call_flow {
+            if self.requirements.flow().cross_call {
                 "yes"
             } else {
                 "no"
             },
-            if self.requirements.needs_project_overlay {
+            if self.requirements.needs_project_overlay() {
                 "yes"
             } else {
                 "no"
@@ -759,6 +759,24 @@ mod tests {
         let s1 = physical_summary(&decl(QueryDecl::call_global("fetch")));
         let s2 = physical_summary(&decl(QueryDecl::call_global("fetch")));
         assert_eq!(s1, s2);
+    }
+
+    #[test]
+    fn plan_summary_shows_no_flow_for_global_query() {
+        let summary = physical_summary(&decl(QueryDecl::call_global("fetch")));
+        assert!(summary.contains("local_flow=no"), "summary: {summary}");
+        assert!(summary.contains("cross_call_flow=no"), "summary: {summary}");
+    }
+
+    #[test]
+    fn plan_summary_shows_no_flow_for_module_query() {
+        let summary = physical_summary(&decl(QueryDecl::call_module("fs", "readFile")));
+        assert!(summary.contains("local_flow=no"), "summary: {summary}");
+        assert!(summary.contains("cross_call_flow=no"), "summary: {summary}");
+        assert!(
+            summary.contains("project_overlay=yes"),
+            "summary: {summary}"
+        );
     }
 
     #[test]

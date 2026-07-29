@@ -65,6 +65,7 @@ impl ProjectSemanticModel {
     /// any source AST.  Side effects such as budget exhaustion and projection
     /// counts are returned in a `ProjectionOutcome` instead of being written
     /// back into `self`.
+    #[allow(clippy::too_many_lines)]
     pub fn project<'project, 'matchers>(
         &'project self,
         matchers: CompiledRuleSelection<'matchers>,
@@ -80,16 +81,32 @@ impl ProjectSemanticModel {
         let mut session = LinkingSession::new(self.flow_limit());
         let mut arena = self.trace_arena.lock().unwrap();
 
+        let need_module_ids = plan.needs_module_identities() || plan.needs_overlay();
+        let need_result_ids = plan.needs_call_result_identities();
+        let has_flow = plan.flow_requirements().local
+            || plan.flow_requirements().cross_call
+            || plan.flow_requirements().cross_file;
+
         let projections: BTreeMap<ModuleId, ProjectModuleProjection<'project>> = self
             .modules
             .values()
             .map(|module| {
                 let index = module.local().facts().matcher_index();
-                let identities = self.module_identities(module.id(), &mut session);
-                let result_identities = self.call_result_identities(module.id(), &mut session);
+                let identities = if need_module_ids {
+                    Some(self.module_identities(module.id(), &mut session))
+                } else {
+                    None
+                };
+                let result_identities = if need_result_ids {
+                    Some(self.call_result_identities(module.id(), &mut session))
+                } else {
+                    None
+                };
                 let (overlay, overlay_ops) = if plan.needs_overlay() {
-                    let (view, ops) = index.module_overlay(&identities);
-                    (Some(view), ops)
+                    identities.as_ref().map_or((None, 0), |ids| {
+                        let (view, ops) = index.module_overlay(ids);
+                        (Some(view), ops)
+                    })
                 } else {
                     (None, 0)
                 };
@@ -97,8 +114,8 @@ impl ProjectSemanticModel {
                 let (projected, local_outcome) = module.local().facts().project(
                     module.local().effects(),
                     &plan,
-                    Some(&identities),
-                    Some(&result_identities),
+                    identities.as_ref(),
+                    result_identities.as_ref(),
                     overlay.as_ref(),
                     flow_limits,
                     module.id(),
@@ -126,8 +143,11 @@ impl ProjectSemanticModel {
             })
             .collect();
 
-        let (cross, cross_outcome) =
-            { flow::cross::collect(self, &matchers, &mut session, &mut arena) };
+        let (cross, cross_outcome) = if has_flow {
+            flow::cross::collect(self, &matchers, &mut session, &mut arena)
+        } else {
+            Default::default()
+        };
         let exhausted = local_exhausted || cross_outcome.exhausted;
         let flow_operations = local_operations.saturating_add(cross_outcome.operations);
         let outcome = ProjectionOutcome {

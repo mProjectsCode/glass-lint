@@ -1431,10 +1431,10 @@ are encoded by the physical root that emits them.
 
 Every requirement field must have:
 
-- [ ] a compiler producer;
-- [ ] a runtime consumer;
-- [ ] a plan-summary representation; and
-- [ ] a focused test proving work is skipped when absent.
+- [x] a compiler producer;
+- [x] a runtime consumer;
+- [x] a plan-summary representation; and
+- [x] a focused test proving work is skipped when absent.
 
 Remove fields that do not represent a meaningful conditional preparation.
 
@@ -1442,15 +1442,15 @@ Remove fields that do not represent a meaningful conditional preparation.
 
 Refactor project preparation so that:
 
-- [ ] module identities are built only when selected plans require them;
-- [ ] call-result identities are built only for constrained/project relations that
+- [x] module identities are built only when selected plans require them;
+- [x] call-result identities are built only for constrained/project relations that
   use them;
-- [ ] module occurrence overlays are built only for the exact requested overlay
+- [x] module occurrence overlays are built only for the exact requested overlay
   families;
-- [ ] local lifecycle projection runs only when lifecycle roots are selected;
-- [ ] cross-call/cross-file collection returns immediately before graph/session
+- [x] local lifecycle projection runs only when lifecycle roots are selected;
+- [x] cross-call/cross-file collection returns immediately before graph/session
   preparation when no selected root requires it; and
-- [ ] project projection never inspects `QueryDecl`, `QueryExpr`, or provider rule
+- [x] project projection never inspects `QueryDecl`, `QueryExpr`, or provider rule
   types.
 
 The physical root remains the source of executable state. Requirements select
@@ -1460,38 +1460,38 @@ preparation; they must not become a second copy of the query.
 
 Charge deterministically for:
 
-- [ ] identity map construction;
-- [ ] result-identity construction;
-- [ ] overlay insertion and lookup;
-- [ ] local lifecycle projection;
-- [ ] call graph construction;
-- [ ] worklist propagation; and
-- [ ] evidence normalization.
+- [x] identity map construction;
+- [x] result-identity construction;
+- [x] overlay insertion and lookup;
+- [x] local lifecycle projection;
+- [x] call graph construction;
+- [x] worklist propagation; and
+- [x] evidence normalization.
 
 Queries that need no project behavior must show zero project-query preparation
 operations attributable to overlays or flow.
 
 ### Required tests
 
-- [ ] global-only query skips module identities, result identities, and overlays;
-- [ ] unconstrained module query builds only its identity overlay;
-- [ ] constrained local query avoids project overlay work;
-- [ ] call-result identity query prepares result identities;
-- [ ] project-independent query skips cross-flow graph construction;
-- [ ] direct external import and re-export chains preserve matching;
-- [ ] namespace and CommonJS/ESM interop preserve matching;
-- [ ] ambiguity and missing resolution remain unknown;
-- [ ] package boundaries remain exact;
-- [ ] cross-file finding stays in the primary/sink file;
-- [ ] independent witness plus unknown project alternative remains possible; and
-- [ ] plan summaries list exact local/project/cross-call requirements.
+- [x] global-only query skips module identities, result identities, and overlays;
+- [x] unconstrained module query builds only its identity overlay;
+- [x] constrained local query avoids project overlay work;
+- [x] call-result identity query prepares result identities;
+- [x] project-independent query skips cross-flow graph construction;
+- [x] direct external import and re-export chains preserve matching;
+- [x] namespace and CommonJS/ESM interop preserve matching;
+- [x] ambiguity and missing resolution remain unknown;
+- [x] package boundaries remain exact;
+- [x] cross-file finding stays in the primary/sink file;
+- [x] independent witness plus unknown project alternative remains possible; and
+- [x] plan summaries list exact local/project/cross-call requirements.
 
 ### Exit criteria
 
-- [ ] No project preparation is performed merely because analysis is in project
+- [x] No project preparation is performed merely because analysis is in project
   mode.
-- [ ] Every selected preparation is justified by compiled requirements.
-- [ ] Cross-file execution uses the same physical roots as local execution.
+- [x] Every selected preparation is justified by compiled requirements.
+- [x] Cross-file execution uses the same physical roots as local execution.
 
 ---
 
@@ -1683,6 +1683,6 @@ Keep each commit buildable and avoid compatibility layers:
 - [x] 7. Group and cache argument/value constraints.
 - [x] 8. Make returned and instance correlation explicit.
 - [ ] 9. Migrate lifecycle rules to `QueryDecl` and delete the parallel flow path.
-- [ ] 10. Make project requirements drive preparation and operation charging.
+- [x] 10. Make project requirements drive preparation and operation charging.
 - [ ] 11. Update compilable public examples and architecture documentation.
 - [ ] 12. Reconcile `q-plan.md` and run the final completion gate.

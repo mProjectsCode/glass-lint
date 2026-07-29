@@ -27,7 +27,8 @@ use crate::{
     api::{
         classification::RuleIndex,
         compiler::{
-            CompiledRuleSelection, object_flow::CompiledObjectFlow, physical::PhysicalRoot,
+            CompiledRuleSelection, normalize::FlowRequirements, object_flow::CompiledObjectFlow,
+            physical::PhysicalRoot,
         },
     },
     project::ModuleId,
@@ -358,14 +359,28 @@ pub(in crate::analysis) struct ProjectionPlan<'a> {
     constrained_roots: Vec<(usize, &'a PhysicalRoot)>,
     flow_matchers: Vec<(RuleIndex, usize, &'a CompiledObjectFlow)>,
     rule_count: usize,
-    /// Whether any selected plan requires project identity overlays.
+    needs_module_identities: bool,
+    needs_call_result_identities: bool,
     needs_overlay: bool,
+    flow_requirements: FlowRequirements,
 }
 
 impl<'a> ProjectionPlan<'a> {
     /// Whether any selected plan requires project identity overlays.
     pub(in crate::analysis) fn needs_overlay(&self) -> bool {
         self.needs_overlay
+    }
+
+    pub(in crate::analysis) fn needs_module_identities(&self) -> bool {
+        self.needs_module_identities
+    }
+
+    pub(in crate::analysis) fn needs_call_result_identities(&self) -> bool {
+        self.needs_call_result_identities
+    }
+
+    pub(in crate::analysis) fn flow_requirements(&self) -> &FlowRequirements {
+        &self.flow_requirements
     }
 
     pub(in crate::analysis) fn from_selection(selection: &'a CompiledRuleSelection<'a>) -> Self {
@@ -381,12 +396,32 @@ impl<'a> ProjectionPlan<'a> {
                 roots
             })
             .collect::<Vec<_>>();
-        let mut needs_overlay = false;
+
+        // Accumulate requirements across all selected matchers.
+        // This is done separately from the flow_matchers iteration to avoid
+        // move-closure ownership issues with non-Copy requirement types.
+        let mut needs_overall_overlay = false;
+        let mut needs_overall_module_ids = false;
+        let mut needs_overall_result_ids = false;
+        let mut flow_local = false;
+        let mut flow_cross_call = false;
+        let mut flow_cross_file = false;
+        for (_, matcher) in selection.selected_matchers() {
+            needs_overall_overlay = needs_overall_overlay || matcher.needs_project_overlay();
+            needs_overall_module_ids =
+                needs_overall_module_ids || matcher.needs_module_identities();
+            needs_overall_result_ids =
+                needs_overall_result_ids || matcher.needs_call_result_identities();
+            let fr = matcher.flow_requirements();
+            flow_local = flow_local || fr.local;
+            flow_cross_call = flow_cross_call || fr.cross_call;
+            flow_cross_file = flow_cross_file || fr.cross_file;
+        }
+
         let flow_matchers =
             selection
                 .selected_matchers()
-                .flat_map(move |(rule_index, matcher)| {
-                    needs_overlay = needs_overlay || matcher.needs_project_overlay();
+                .flat_map(|(rule_index, matcher)| {
                     let ri = rule_index;
                     matcher.physical_roots().iter().enumerate().filter_map(
                         move |(flow_index, root)| {
@@ -404,7 +439,14 @@ impl<'a> ProjectionPlan<'a> {
             constrained_roots,
             flow_matchers,
             rule_count,
-            needs_overlay,
+            needs_module_identities: needs_overall_module_ids,
+            needs_call_result_identities: needs_overall_result_ids,
+            needs_overlay: needs_overall_overlay,
+            flow_requirements: FlowRequirements {
+                local: flow_local,
+                cross_call: flow_cross_call,
+                cross_file: flow_cross_file,
+            },
         }
     }
 }
