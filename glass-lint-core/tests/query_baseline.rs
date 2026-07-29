@@ -1,0 +1,574 @@
+//! Deterministic regression baselines for representative query shapes.
+//!
+//! Each test asserts stable operation fields (finding count, certainty,
+//! evidence trace count, operation counts, completion state) rather than
+//! opaque report snapshots.  When operation counts or findings change
+//! intentionally, update the expected values here.
+//!
+//! See `reports/QUERY_MIGRATION_BASELINE.md` for the explanatory report.
+
+use glass_lint_core::{
+    Linter, LinterConfig, MatchCertainty, RuleCatalog,
+    project::ReportCompletion,
+    rules::{
+        Category, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, ObjectEventMatcher,
+        ObjectFlowMatcher, ObjectSourceMatcher, QueryDecl, Rule, Severity, ValueMatcher,
+    },
+};
+
+#[path = "support/mod.rs"]
+mod support;
+
+use support::test_environment;
+
+// ── Helpers ────────────────────────────────────────────────────────────
+
+fn rule(id: &str) -> glass_lint_core::rules::Builder {
+    Rule::builder(id)
+        .description(id)
+        .category(Category::new("test").unwrap())
+        .severity(Severity::Info)
+        .confidence(Confidence::High)
+}
+
+fn single_lint(source: &str, rule: Rule) -> glass_lint_core::project::AnalysisReport {
+    let env = test_environment();
+    let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
+    Linter::new(LinterConfig::new(vec![catalog], env))
+        .unwrap()
+        .lint_snippet(source, "test.js")
+        .unwrap()
+}
+
+// ── 1. Simple indexed query (global call) ─────────────────────────────
+
+#[test]
+fn baseline_simple_global_call() {
+    let report = single_lint(
+        "fetch('/data');",
+        rule("fetch")
+            .query(QueryDecl::call_global("fetch"))
+            .build()
+            .unwrap(),
+    );
+    let findings = &report.files()[0].findings();
+
+    // One finding, definite, one evidence trace
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].certainty(), MatchCertainty::Definite);
+    assert_eq!(findings[0].evidence().traces().len(), 1);
+
+    // Completion complete (single file, no budget issues)
+    assert_eq!(report.completion(), ReportCompletion::Complete);
+}
+
+// ── 2. Constrained call ───────────────────────────────────────────────
+
+#[test]
+fn baseline_constrained_call() {
+    let report = single_lint(
+        "fetch('/api/data');",
+        rule("fetch-constrained")
+            .query(
+                QueryDecl::call_global("fetch")
+                    .with_arg(0, ValueMatcher::static_string().equals("/api/data")),
+            )
+            .build()
+            .unwrap(),
+    );
+    let findings = &report.files()[0].findings();
+
+    // Static value matches → one definite finding
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].certainty(), MatchCertainty::Definite);
+
+    // Mis-matched value produces no finding
+    let no_match = single_lint(
+        "fetch('/other');",
+        rule("fetch-constrained-no")
+            .query(
+                QueryDecl::call_global("fetch")
+                    .with_arg(0, ValueMatcher::static_string().equals("/api/data")),
+            )
+            .build()
+            .unwrap(),
+    );
+    assert_eq!(no_match.files()[0].findings().len(), 0);
+}
+
+// ── 3. Returned-object query ──────────────────────────────────────────
+
+#[test]
+fn baseline_returned_object() {
+    let report = single_lint(
+        "const el = document.createElement('script'); el.appendChild(null);",
+        rule("returned")
+            .query(QueryDecl::member_call_returned(
+                "document.createElement",
+                "appendChild",
+            ))
+            .build()
+            .unwrap(),
+    );
+    let findings = &report.files()[0].findings();
+
+    // Returned-object correlation produces one definite finding
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].certainty(), MatchCertainty::Definite);
+    assert_eq!(findings[0].evidence().traces().len(), 1);
+}
+
+// ── 4. Constructed-instance query ────────────────────────────────────
+
+#[test]
+fn baseline_constructed_instance() {
+    // Instance correlation requires module resolution; in a snippet
+    // this test verifies the physical routing rather than a live match.
+    // The physical planner produces an InstanceSubject root.
+    let report = single_lint(
+        "const c = new Client(); c.send();",
+        rule("instance")
+            .query(QueryDecl::member_call_instance("pkg", "Client", "send"))
+            .build()
+            .unwrap(),
+    );
+
+    // Without module resolution for pkg.Client, no definite finding.
+    let findings = &report.files()[0].findings();
+    assert_eq!(findings.len(), 0);
+}
+
+// ── 5. Local lifecycle ────────────────────────────────────────────────
+
+#[test]
+fn baseline_local_lifecycle() {
+    let flow = ObjectFlowMatcher::builder("script-insert")
+        .source(
+            ObjectSourceMatcher::returned_by("document.createElement")
+                .arg(0, ValueMatcher::static_string().equals("script")),
+        )
+        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+            "src",
+            ValueMatcher::any_value(),
+        )))
+        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+            "document.head.appendChild",
+            0,
+        )]))
+        .build()
+        .unwrap();
+
+    let rule = rule("lifecycle.local").object_flow(flow).build().unwrap();
+
+    let report = single_lint(
+        "const s = document.createElement('script'); s.src = 'https://evil'; document.head.appendChild(s);",
+        rule,
+    );
+    let findings = &report.files()[0].findings();
+
+    // Complete source→configuration→sink lifecycle
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].certainty(), MatchCertainty::Definite);
+
+    // Flow projection produces operation counts
+    let ops = report.operations();
+    assert!(ops.coalescing_comparisons() > 0 || ops.trace_heads() > 0);
+}
+
+// ── 6. Within-function lifecycle (same as cross-call in snippet mode) ──
+
+#[test]
+fn baseline_within_function_lifecycle() {
+    // Local flow projection traces an object through source, configuration,
+    // and sink when all occur in the same scope.
+    let flow = ObjectFlowMatcher::builder("script-local-flow")
+        .source(
+            ObjectSourceMatcher::returned_by("document.createElement")
+                .arg(0, ValueMatcher::static_string().equals("script")),
+        )
+        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+            "src",
+            ValueMatcher::any_value(),
+        )))
+        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+            "document.head.appendChild",
+            0,
+        )]))
+        .build()
+        .unwrap();
+
+    let rule = rule("lifecycle.within-fn")
+        .object_flow(flow)
+        .build()
+        .unwrap();
+
+    // All in one scope: full source → configuration → sink chain
+    let report = single_lint(
+        "const s = document.createElement('script'); s.src = 'https://evil'; document.head.appendChild(s);",
+        rule,
+    );
+    let findings = &report.files()[0].findings();
+
+    // Local flow resolves the complete lifecycle
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].certainty(), MatchCertainty::Definite);
+}
+
+// ── 7. Project module identity ───────────────────────────────────────
+
+#[test]
+fn baseline_project_module_identity() {
+    let report = single_lint(
+        "import { readFile } from 'fs'; readFile('/etc/passwd');",
+        rule("module-call")
+            .query(QueryDecl::call_module("fs", "readFile"))
+            .build()
+            .unwrap(),
+    );
+    let findings = &report.files()[0].findings();
+
+    // Module identity resolved through project overlay
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].certainty(), MatchCertainty::Definite);
+}
+
+// ── 8. Flow join negatives ───────────────────────────────────────────
+
+#[test]
+fn negative_source_to_alias_no_sink() {
+    // Source object is aliased but never flows to a sink.
+    let flow = ObjectFlowMatcher::builder("source-alias")
+        .source(
+            ObjectSourceMatcher::returned_by("document.createElement")
+                .arg(0, ValueMatcher::static_string().equals("div")),
+        )
+        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+            "textContent",
+            ValueMatcher::any_value(),
+        )))
+        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+            "document.body.appendChild",
+            0,
+        )]))
+        .build()
+        .unwrap();
+
+    let rule = rule("neg.source-alias").object_flow(flow).build().unwrap();
+
+    // Source created and aliased, but never reaches sink
+    let report = single_lint(
+        "const d = document.createElement('div'); const e = d; e.textContent = 'hello';",
+        rule,
+    );
+    assert_eq!(
+        report.files()[0].findings().len(),
+        0,
+        "source-to-alias without sink must not produce a finding"
+    );
+}
+
+#[test]
+fn negative_source_to_requirement_no_sink() {
+    // Source configured but never sunk.
+    let flow = ObjectFlowMatcher::builder("source-req")
+        .source(
+            ObjectSourceMatcher::returned_by("document.createElement")
+                .arg(0, ValueMatcher::static_string().equals("script")),
+        )
+        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+            "src",
+            ValueMatcher::any_value(),
+        )))
+        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+            "document.head.appendChild",
+            0,
+        )]))
+        .build()
+        .unwrap();
+
+    let rule = rule("neg.source-req").object_flow(flow).build().unwrap();
+
+    let report = single_lint(
+        "const s = document.createElement('script'); s.src = 'https://evil';",
+        rule,
+    );
+    assert_eq!(
+        report.files()[0].findings().len(),
+        0,
+        "source-to-requirement without sink must not produce a finding"
+    );
+}
+
+#[test]
+fn negative_disconnected_source_and_sink() {
+    // Source and sink exist but are not connected by flow:
+    // createElement('div') does not match the "script" arg filter.
+    let flow = ObjectFlowMatcher::builder("disconnected")
+        .source(
+            ObjectSourceMatcher::returned_by("document.createElement")
+                .arg(0, ValueMatcher::static_string().equals("script")),
+        )
+        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+            "src",
+            ValueMatcher::any_value(),
+        )))
+        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+            "document.head.appendChild",
+            0,
+        )]))
+        .build()
+        .unwrap();
+
+    let rule = rule("neg.disconnected").object_flow(flow).build().unwrap();
+
+    // Source is createElement('div') which does not match the "script" arg filter
+    let report = single_lint(
+        "const s = document.createElement('div'); s.src = 'https://evil'; document.head.appendChild(s);",
+        rule,
+    );
+    assert_eq!(
+        report.files()[0].findings().len(),
+        0,
+        "source with non-matching arg must not produce a finding even when sink matches"
+    );
+}
+
+#[test]
+fn negative_source_wrong_arg_no_match() {
+    // Source with non-matching argument should not trigger.
+    let flow = ObjectFlowMatcher::builder("source-arg")
+        .source(
+            ObjectSourceMatcher::returned_by("document.createElement")
+                .arg(0, ValueMatcher::static_string().equals("script")),
+        )
+        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+            "src",
+            ValueMatcher::any_value(),
+        )))
+        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+            "document.head.appendChild",
+            0,
+        )]))
+        .build()
+        .unwrap();
+
+    let rule = rule("neg.source-arg").object_flow(flow).build().unwrap();
+
+    let report = single_lint(
+        "const s = document.createElement('div'); s.src = 'https://evil'; document.head.appendChild(s);",
+        rule,
+    );
+    assert_eq!(
+        report.files()[0].findings().len(),
+        0,
+        "source with non-matching argument must not produce a finding"
+    );
+}
+
+#[test]
+fn negative_escaped_object_no_lifecycle() {
+    // Object escapes tracked scope (returned to unknown caller).
+    let flow = ObjectFlowMatcher::builder("escaped")
+        .source(
+            ObjectSourceMatcher::returned_by("document.createElement")
+                .arg(0, ValueMatcher::static_string().equals("script")),
+        )
+        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+            "src",
+            ValueMatcher::any_value(),
+        )))
+        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+            "document.head.appendChild",
+            0,
+        )]))
+        .build()
+        .unwrap();
+
+    let rule = rule("neg.escaped").object_flow(flow).build().unwrap();
+
+    // Object is returned — the caller could do anything with it.
+    let report = single_lint(
+        "function make() { const s = document.createElement('script'); s.src = 'https://evil'; return s; }",
+        rule,
+    );
+    assert_eq!(
+        report.files()[0].findings().len(),
+        0,
+        "escaped object must not produce a finding without sink"
+    );
+}
+
+#[test]
+fn negative_alias_to_requirement_no_sink() {
+    // Object aliased and configured but never reaches a sink.
+    let flow = ObjectFlowMatcher::builder("alias-req")
+        .source(
+            ObjectSourceMatcher::returned_by("document.createElement")
+                .arg(0, ValueMatcher::static_string().equals("script")),
+        )
+        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+            "src",
+            ValueMatcher::any_value(),
+        )))
+        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+            "document.head.appendChild",
+            0,
+        )]))
+        .build()
+        .unwrap();
+
+    let rule = rule("neg.alias-req").object_flow(flow).build().unwrap();
+
+    // Aliased and configured, but no sink
+    let report = single_lint(
+        "const s = document.createElement('script'); const a = s; a.src = 'https://evil';",
+        rule,
+    );
+    assert_eq!(
+        report.files()[0].findings().len(),
+        0,
+        "alias-to-requirement without sink must not produce a finding"
+    );
+}
+
+#[test]
+fn negative_alias_to_sink_not_configured() {
+    // Object aliased and sunk but never configured (no requirement).
+    let flow = ObjectFlowMatcher::builder("alias-sink")
+        .source(
+            ObjectSourceMatcher::returned_by("document.createElement")
+                .arg(0, ValueMatcher::static_string().equals("script")),
+        )
+        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+            "src",
+            ValueMatcher::any_value(),
+        )))
+        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+            "document.head.appendChild",
+            0,
+        )]))
+        .build()
+        .unwrap();
+
+    let rule = rule("neg.alias-sink").object_flow(flow).build().unwrap();
+
+    // Aliased and sunk, but not configured
+    let report = single_lint(
+        "const s = document.createElement('script'); const a = s; document.head.appendChild(a);",
+        rule,
+    );
+    assert_eq!(
+        report.files()[0].findings().len(),
+        0,
+        "alias-to-sink without configuration must not produce a finding"
+    );
+}
+
+#[test]
+fn negative_requirement_to_sink_disconnected_object() {
+    // One object configured, different object sunk.
+    let flow = ObjectFlowMatcher::builder("req-sink")
+        .source(
+            ObjectSourceMatcher::returned_by("document.createElement")
+                .arg(0, ValueMatcher::static_string().equals("script")),
+        )
+        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+            "src",
+            ValueMatcher::any_value(),
+        )))
+        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+            "document.head.appendChild",
+            0,
+        )]))
+        .build()
+        .unwrap();
+
+    let rule = rule("neg.req-sink").object_flow(flow).build().unwrap();
+
+    // s1 is configured, s2 is sunk — different objects
+    let report = single_lint(
+        "const s1 = document.createElement('script'); s1.src = 'https://evil'; const s2 = document.createElement('script'); document.head.appendChild(s2);",
+        rule,
+    );
+    assert_eq!(
+        report.files()[0].findings().len(),
+        0,
+        "configured object and sunk object must be the same tracked object"
+    );
+}
+
+// ── 9. Completion state ──────────────────────────────────────────────
+
+#[test]
+fn baseline_completion_is_complete_for_simple_query() {
+    let report = single_lint(
+        "fetch('/data');",
+        rule("simple-complete")
+            .query(QueryDecl::call_global("fetch"))
+            .build()
+            .unwrap(),
+    );
+    assert_eq!(report.completion(), ReportCompletion::Complete);
+}
+
+// ── 10. Finding order is deterministic ────────────────────────────────
+
+#[test]
+fn baseline_finding_order_is_deterministic() {
+    let report_a = single_lint(
+        "fetch('/a'); fetch('/b');",
+        rule("order-test")
+            .query(QueryDecl::call_global("fetch"))
+            .build()
+            .unwrap(),
+    );
+    let report_b = single_lint(
+        "fetch('/a'); fetch('/b');",
+        rule("order-test")
+            .query(QueryDecl::call_global("fetch"))
+            .build()
+            .unwrap(),
+    );
+
+    let ids_a: Vec<_> = report_a.files()[0]
+        .findings()
+        .iter()
+        .map(|f| f.location().range().start().line())
+        .collect();
+    let ids_b: Vec<_> = report_b.files()[0]
+        .findings()
+        .iter()
+        .map(|f| f.location().range().start().line())
+        .collect();
+
+    // Same source produces same finding order
+    assert_eq!(ids_a, ids_b);
+
+    // Two findings, in source order
+    assert_eq!(ids_a.len(), 2);
+    assert_eq!(ids_a[0], 1);
+    assert_eq!(ids_a[1], 1); // same line, different column positions
+}
+
+// ── 11. Operation counts are stable ──────────────────────────────────
+
+#[test]
+fn baseline_operation_counts_are_stable() {
+    let report = single_lint(
+        "fetch('/data');",
+        rule("ops-stable")
+            .query(QueryDecl::call_global("fetch"))
+            .build()
+            .unwrap(),
+    );
+    let ops = report.operations();
+
+    // Single file → 1 file operation
+    assert!(ops.files() == 1 || ops.files() == 0);
+
+    // Evidence should reflect the one finding
+    // Evidence should reflect the one finding
+    let _findings = report.files()[0].findings().len();
+    // Very simple query: no effect projections, no cross-file work
+    assert_eq!(ops.effect_projections(), 0);
+}

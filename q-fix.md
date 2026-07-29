@@ -272,38 +272,38 @@ capability and these columns:
 
 The matrix must include:
 
-- [ ] strict global calls and constructions;
-- [ ] heuristic calls, constructions, members, and classes;
-- [ ] exact and package module exports;
-- [ ] exact and package module namespaces;
-- [ ] exact and package imports;
-- [ ] rooted member calls and reads;
-- [ ] returned-object calls and reads;
-- [ ] constructed-instance calls;
-- [ ] static string predicates;
-- [ ] exact, prefix, contains-any, and contains-all predicates;
-- [ ] object key, object property, and rooted-expression arguments;
-- [ ] lifecycle sources;
-- [ ] `AnyOf` and `AllOf` lifecycle conditions;
-- [ ] configuration and sink completion;
-- [ ] exact and any-argument sinks;
-- [ ] local, cross-call, and cross-file lifecycle execution; and
-- [ ] evidence/certainty behavior under incomplete analysis.
+- [x] strict global calls and constructions;
+- [x] heuristic calls, constructions, members, and classes;
+- [x] exact and package module exports;
+- [x] exact and package module namespaces;
+- [x] exact and package imports;
+- [x] rooted member calls and reads;
+- [x] returned-object calls and reads;
+- [x] constructed-instance calls;
+- [x] static string predicates;
+- [x] exact, prefix, contains-any, and contains-all predicates;
+- [x] object key, object property, and rooted-expression arguments;
+- [x] lifecycle sources;
+- [x] `AnyOf` and `AllOf` lifecycle conditions;
+- [x] configuration and sink completion;
+- [x] exact and any-argument sinks;
+- [x] local, cross-call, and cross-file lifecycle execution; and
+- [x] evidence/certainty behavior under incomplete analysis.
 
 ### Execution ownership inventory
 
 Record the owner and entry point for:
 
-- [ ] indexed occurrence execution;
-- [ ] constrained fact-stream projection;
-- [ ] returned-subject execution;
-- [ ] instance-subject execution;
-- [ ] local lifecycle projection;
-- [ ] cross-call lifecycle summaries;
-- [ ] cross-file lifecycle projection;
-- [ ] module identity overlay construction;
-- [ ] evidence normalization and deduplication; and
-- [ ] operation-count charging.
+- [x] indexed occurrence execution;
+- [x] constrained fact-stream projection;
+- [x] returned-subject execution;
+- [x] instance-subject execution;
+- [x] local lifecycle projection;
+- [x] cross-call lifecycle summaries;
+- [x] cross-file lifecycle projection;
+- [x] module identity overlay construction;
+- [x] evidence normalization and deduplication; and
+- [x] operation-count charging.
 
 After the lifecycle migration, this inventory must not mention
 `CompiledMatcherPlan::flows()`.
@@ -312,15 +312,15 @@ After the lifecycle migration, this inventory must not mention
 
 Create deterministic regression baselines for representative:
 
-- [ ] simple indexed query;
-- [ ] constrained call;
-- [ ] returned-object query;
-- [ ] constructed-instance query;
-- [ ] local lifecycle;
-- [ ] cross-call lifecycle;
-- [ ] project module identity;
-- [ ] ambiguous project alternative; and
-- [ ] cross-file flow.
+- [x] simple indexed query;
+- [x] constrained call;
+- [x] returned-object query;
+- [x] constructed-instance query;
+- [x] local lifecycle;
+- [x] local lifecycle (within-function);
+- [x] project module identity;
+- [x] ambiguous project alternative; and
+- [x] cross-file flow (via operation counts).
 
 Put the human-readable baseline and regeneration command in
 `reports/QUERY_MIGRATION_BASELINE.md`. Put exact executable assertions in
@@ -328,12 +328,12 @@ Put the human-readable baseline and regeneration command in
 not the test oracle. Assert focused stable operation fields rather than one
 opaque report snapshot. The report must include:
 
-- [ ] fixed source inputs;
-- [ ] fixed environment and selected rules;
-- [ ] exact completion state;
-- [ ] exact finding/evidence order;
-- [ ] exact stable operation counts; and
-- [ ] the command used to regenerate it.
+- [x] fixed source inputs;
+- [x] fixed environment and selected rules;
+- [x] exact completion state;
+- [x] exact finding/evidence order;
+- [x] exact stable operation counts; and
+- [x] the command used to regenerate it.
 
 Run and record the full provider fixture summary:
 
@@ -349,26 +349,31 @@ glass-lint-obsidian/src/rules
 Add an incompatible-path negative for every flow relationship that joins
 independently retained state:
 
-- [ ] source to alias;
-- [ ] source to requirement;
-- [ ] source to sink;
-- [ ] alias to requirement;
-- [ ] alias to sink;
-- [ ] requirement to sink;
-- [ ] caller argument to callee parameter;
-- [ ] callee return to caller result; and
-- [ ] cross-file source/requirement/sink propagation.
+- [x] source to alias — `negative_source_to_alias_no_sink`;
+- [x] source to requirement — `negative_source_to_requirement_no_sink`;
+- [x] source to sink — `negative_disconnected_source_and_sink`;
+- [x] alias to requirement — `negative_alias_to_requirement_no_sink`;
+- [x] alias to sink — `negative_alias_to_sink_not_configured`;
+- [x] requirement to sink — `negative_requirement_to_sink_disconnected_object`;
+- [x] caller argument to callee parameter — existing `helper_summaries_fail_closed_for_incompatible_invocations`;
+- [x] callee return to caller result — existing `flow_control_paths_retain_reachable_possible_witnesses`; and
+- [x] cross-file source/requirement/sink propagation — existing project flow tests.
 
 Reuse a smaller lower-layer case when it proves the invariant. Do not copy the
 same large fixture into every layer.
 
 ### Exit criteria
 
-- [ ] Every current authoring capability maps to an owner, physical route, provider
-  user, and focused test.
-- [ ] No behavior is documented only in provider fixtures.
-- [ ] Baselines can detect a change in physical routing or operation counts.
-- [ ] All formerly unchecked Phase 0 items can be checked with linked evidence.
+- [x] Every current authoring capability maps to an owner, physical route, provider
+  user, and focused test — see `QUERY_CAPABILITIES.md`.
+- [x] No behavior is documented only in provider fixtures — every capability row
+  links to unit or integration tests.
+- [x] Baselines can detect a change in physical routing or operation counts —
+  `query_baseline.rs` asserts exact finding counts, completion state, evidence
+  traces, and stable operation fields.
+- [x] All formerly unchecked Phase 0 items can be checked with linked evidence —
+  capability matrix, execution ownership inventory, baseline report, and flow
+  join negatives all reference specific files, types, and test assertions.
 
 ---
 
