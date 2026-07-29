@@ -975,11 +975,23 @@ fn normalize_lifecycle_root(
     lc: &LifecycleQuery,
     emission: &EmissionDecl,
 ) -> Result<NormalizedRoot, QueryCompileError> {
-    let sources: Vec<NormalizedEvent> = lc
+    let mut sources: Vec<NormalizedEvent> = lc
         .sources
         .iter()
         .map(|src| normalize_event_from_query(src, emission))
         .collect::<Result<Vec<_>, _>>()?;
+
+    // Deduplicate sources — two sources are equal when their event, identity,
+    // and arguments match. Deterministic order is preserved (first wins).
+    {
+        use std::collections::BTreeSet;
+        let mut seen: BTreeSet<(EventSpec, IdentitySpec, Box<[ArgumentConstraint]>)> =
+            BTreeSet::new();
+        sources.retain(|s| {
+            let key = (s.event.clone(), s.identity.clone(), s.arguments.clone());
+            seen.insert(key)
+        });
+    }
 
     Ok(NormalizedRoot::Lifecycle(NormalizedLifecycle {
         sources,

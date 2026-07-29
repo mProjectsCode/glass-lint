@@ -217,7 +217,7 @@ Add public integration tests, preferably in a focused
   - [x] declare at least two valid source forms;
   - [x] compile through the same `RuleBuilder::query()` route used by ordinary
     queries.
-  - _Currently fails: lifecycle source vars checked in flat scope (Package 8)_
+  - _Fixed: lifecycle sources use Any-like independent scopes with alpha-aligned output (Package 8)_
 - [x] `invalid_authoring_input_never_panics`
   - [x] cover empty names, malformed symbol paths, invalid module patterns,
     excessive argument indexes, empty value alternatives, and invalid
@@ -1244,24 +1244,24 @@ QueryDecl::lifecycle(
 
 Use these exact constructor names:
 
-- [ ] `LifecycleSource::returned_by`;
-- [ ] `LifecycleSource::with_arg`;
-- [ ] `LifecycleEvent::property_write`;
-- [ ] `LifecycleEvent::member_call`;
-- [ ] `LifecycleEvent::with_arg`;
-- [ ] `LifecycleCondition::event`;
-- [ ] `LifecycleCondition::any_of`;
-- [ ] `LifecycleCondition::all_of`;
-- [ ] `LifecycleCompletion::configuration`;
-- [ ] `LifecycleCompletion::any_sink`;
-- [ ] `LifecycleSink::argument_of`;
-- [ ] `LifecycleSink::any_argument_of`;
-- [ ] `LifecycleQuery::builder`;
-- [ ] `LifecycleQueryBuilder::source`;
-- [ ] `LifecycleQueryBuilder::condition`;
-- [ ] `LifecycleQueryBuilder::completion`;
-- [ ] `LifecycleQueryBuilder::build`; and
-- [ ] `QueryDecl::lifecycle`.
+- [x] `LifecycleSource::returned_by`;
+- [x] `LifecycleSource::with_arg`;
+- [x] `LifecycleEvent::property_write`;
+- [x] `LifecycleEvent::member_call`;
+- [x] `LifecycleEvent::with_arg`;
+- [x] `LifecycleCondition::event`;
+- [x] `LifecycleCondition::any_of`;
+- [x] `LifecycleCondition::all_of`;
+- [x] `LifecycleCompletion::configuration`;
+- [x] `LifecycleCompletion::any_sink`;
+- [x] `LifecycleSink::argument_of`;
+- [x] `LifecycleSink::any_argument_of`;
+- [x] `LifecycleQuery::builder`;
+- [x] `LifecycleQueryBuilder::source`;
+- [x] `LifecycleQueryBuilder::condition`;
+- [x] `LifecycleQueryBuilder::completion`;
+- [x] `LifecycleQueryBuilder::build`; and
+- [x] `QueryDecl::lifecycle`.
 
 Every text/index/collection constructor returns `Result`. Builder mutation
 methods accept the validated final types. `LifecycleQueryBuilder::build`
@@ -1282,13 +1282,13 @@ value semantics.
 
 Migrate, in order:
 
-- [ ] 1. core lifecycle unit tests;
-- [ ] 2. core declarative matching integration tests;
-- [ ] 3. project test support;
-- [ ] 4. `glass-lint-js` file-dialog rule;
-- [ ] 5. `glass-lint-js` script-injection rule;
-- [ ] 6. `glass-lint-js` remote-resource rules; and
-- [ ] 7. any remaining harness helper using `ObjectFlowMatcher`.
+- [x] 1. core lifecycle unit tests;
+- [x] 2. core declarative matching integration tests;
+- [x] 3. project test support;
+- [x] 4. `glass-lint-js` file-dialog rule;
+- [x] 5. `glass-lint-js` script-injection rule;
+- [x] 6. `glass-lint-js` remote-resource rules; and
+- [x] 7. any remaining harness helper using `ObjectFlowMatcher`.
 
 Provider code must finish with `.query(QueryDecl::lifecycle(...))`.
 
@@ -1296,28 +1296,28 @@ Provider code must finish with `.query(QueryDecl::lifecycle(...))`.
 
 Delete in the same migration:
 
-- [ ] `Rule.flows`;
-- [ ] `Rule::flow_matchers()`;
-- [ ] `RuleBuilder.flows`;
-- [ ] `RuleBuilder::object_flow()`;
-- [ ] `CompiledMatcherPlan.flows`;
-- [ ] `CompiledMatcherPlan::flows()`;
-- [ ] `compile_decls_and_flows`;
-- [ ] `compile_single_flow`;
-- [ ] `QueryDecl::from_flow_matcher`;
-- [ ] compatibility extraction of flows from physical roots;
-- [ ] `ObjectFlowMatcher` and its builder;
-- [ ] comments or docs describing a parallel flow matcher path.
+- [x] `Rule.flows`;
+- [x] `Rule::flow_matchers()`;
+- [x] `RuleBuilder.flows`;
+- [x] `RuleBuilder::object_flow()`;
+- [x] `CompiledMatcherPlan.flows`;
+- [x] `CompiledMatcherPlan::flows()`;
+- [x] `compile_decls_and_flows`;
+- [x] `compile_single_flow`;
+- [x] `QueryDecl::from_flow_matcher`;
+- [x] compatibility extraction of flows from physical roots;
+- [x] `ObjectFlowMatcher` and its builder;
+- [x] comments or docs describing a parallel flow matcher path.
 
 Rename and move existing lifecycle types rather than retaining aliases.
 
 ### Execution
 
-- [ ] Local lifecycle projection must enumerate `PhysicalRoot::Lifecycle`.
-- [ ] Cross-call and cross-file flow must enumerate the same roots.
-- [ ] Assign stable flow IDs from deterministic physical root order.
-- [ ] Never clone lifecycle roots into a second storage collection.
-- [ ] Preserve local/cross-file flow fixed-point and budget behavior.
+- [x] Local lifecycle projection must enumerate `PhysicalRoot::Lifecycle`.
+- [x] Cross-call and cross-file flow must enumerate the same roots.
+- [x] Assign stable flow IDs from deterministic physical root order.
+- [x] Never clone lifecycle roots into a second storage collection.
+- [x] Preserve local/cross-file flow fixed-point and budget behavior.
 
 ### Multiple sources
 
@@ -1327,39 +1327,39 @@ branch's produced object to one lifecycle object output slot. Sources have
 `Any` semantics: any independently complete source can start the lifecycle.
 Duplicate normalized sources are removed. Add explicit tests for:
 
-- [ ] multiple independently valid sources;
-- [ ] duplicate sources;
-- [ ] one unknown source plus one complete source;
-- [ ] sources on incompatible paths; and
-- [ ] deterministic source evidence ordering.
+- [x] multiple independently valid sources;
+- [x] duplicate sources;
+- [x] one unknown source plus one complete source;
+- [x] sources on incompatible paths; and
+- [x] deterministic source evidence ordering.
 
 ### Required tests
 
 Run every Phase 10 required case through the new public query authoring route.
 At minimum cover:
 
-- [ ] any and all requirements;
-- [ ] configuration completion;
-- [ ] exact and any-argument sinks;
-- [ ] multiple sources and sinks;
-- [ ] aliases and reassignment;
-- [ ] escaped or unsupported objects;
-- [ ] dynamic source and requirement values;
-- [ ] disconnected source and sink;
-- [ ] incompatible source/requirement/sink paths;
-- [ ] cross-call source/requirement/sink combinations;
-- [ ] cross-file flow;
-- [ ] budget exhaustion; and
-- [ ] primary evidence in the sink file.
+- [x] any and all requirements;
+- [x] configuration completion;
+- [x] exact and any-argument sinks;
+- [x] multiple sources and sinks;
+- [x] aliases and reassignment;
+- [x] escaped or unsupported objects;
+- [x] dynamic source and requirement values;
+- [x] disconnected source and sink;
+- [x] incompatible source/requirement/sink paths;
+- [x] cross-call source/requirement/sink combinations;
+- [x] cross-file flow;
+- [x] budget exhaustion; and
+- [x] primary evidence in the sink file.
 
 ### Exit criteria
 
-- [ ] `RuleBuilder::query()` is the only way to add matching semantics.
-- [ ] `Rule` stores only `Vec<QueryDecl>`.
-- [ ] `CompiledMatcherPlan` stores only one physical plan.
-- [ ] Lifecycle exists only as a logical operator and a physical lifecycle root.
-- [ ] Local and project execution use the same lifecycle roots.
-- [ ] No provider rule mentions a physical executor family or old flow builder.
+- [x] `RuleBuilder::query()` is the only way to add matching semantics.
+- [x] `Rule` stores only `Vec<QueryDecl>`.
+- [x] `CompiledMatcherPlan` stores only one physical plan.
+- [x] Lifecycle exists only as a logical operator and a physical lifecycle root.
+- [x] Local and project execution use the same lifecycle roots.
+- [x] No provider rule mentions a physical executor family or old flow builder.
 
 ---
 

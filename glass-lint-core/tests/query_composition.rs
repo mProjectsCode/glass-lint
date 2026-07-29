@@ -202,7 +202,6 @@ fn contradictory_same_event_all_fails_at_compilation() {
 // scopes with alpha-aligned output (Package 8).
 
 #[test]
-#[ignore = "Package 0 regression probe — lifecycle source scoping not implemented"]
 fn multiple_lifecycle_sources_compile() {
     use glass_lint_core::rules::LifecycleCompletion;
 

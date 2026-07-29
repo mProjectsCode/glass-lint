@@ -298,6 +298,40 @@ impl LifecycleQueryBuilder {
                 self.sources.len(),
             ));
         }
+
+        // Validate condition/completion consistency.
+        if let Some(ref condition) = self.condition {
+            match condition.kind() {
+                LifecycleConditionKind::AnyOf(events) | LifecycleConditionKind::AllOf(events) => {
+                    if events.is_empty() {
+                        return Err(QueryBuildError::EmptyCollection(
+                            "lifecycle condition events",
+                        ));
+                    }
+                }
+            }
+        }
+        if let Some(ref completion) = self.completion {
+            match completion.kind() {
+                LifecycleCompletionKind::AnySink(sinks) => {
+                    if sinks.is_empty() {
+                        return Err(QueryBuildError::EmptyCollection(
+                            "lifecycle completion sinks",
+                        ));
+                    }
+                }
+                LifecycleCompletionKind::Configuration => {
+                    if self.condition.is_none() {
+                        return Err(QueryBuildError::EmptyCollection(
+                            "configuration completion requires a condition",
+                        ));
+                    }
+                }
+            }
+        } else {
+            return Err(QueryBuildError::EmptyCollection("lifecycle completion"));
+        }
+
         Ok(LifecycleQuery {
             symbol: self.symbol,
             sources: self.sources,
@@ -455,5 +489,84 @@ mod tests {
             sink.kind(),
             LifecycleSinkKind::AnyArgumentOf { .. }
         ));
+    }
+
+    #[test]
+    fn configuration_completion_requires_condition() {
+        let err = LifecycleQuery::builder("test")
+            .source(source())
+            .completion(LifecycleCompletion::configuration())
+            .build()
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("condition"),
+            "configuration completion without condition: {err}"
+        );
+    }
+
+    #[test]
+    fn any_sink_requires_non_empty_sinks() {
+        let err = LifecycleQuery::builder("test")
+            .source(source())
+            .condition(LifecycleCondition::event(LifecycleEvent::property_write(
+                "x",
+                ValueMatcher::any_value(),
+            )))
+            .completion(LifecycleCompletion::any_sink([]))
+            .build()
+            .unwrap_err();
+        assert!(err.to_string().contains("sinks"), "empty any_sink: {err}");
+    }
+
+    #[test]
+    fn completion_is_required() {
+        let err = LifecycleQuery::builder("test")
+            .source(source())
+            .condition(LifecycleCondition::event(LifecycleEvent::property_write(
+                "x",
+                ValueMatcher::any_value(),
+            )))
+            .build()
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("completion"),
+            "missing completion: {err}"
+        );
+    }
+
+    #[test]
+    fn empty_any_of_condition_fails() {
+        let condition = LifecycleCondition::any_of::<[LifecycleEvent; 0]>([]);
+        let err = LifecycleQuery::builder("test")
+            .source(source())
+            .condition(condition)
+            .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
+                "target.appendChild",
+                0,
+            )]))
+            .build()
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("condition"),
+            "empty any_of condition: {err}"
+        );
+    }
+
+    #[test]
+    fn empty_all_of_condition_fails() {
+        let condition = LifecycleCondition::all_of::<[LifecycleEvent; 0]>([]);
+        let err = LifecycleQuery::builder("test")
+            .source(source())
+            .condition(condition)
+            .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
+                "target.appendChild",
+                0,
+            )]))
+            .build()
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("condition"),
+            "empty all_of condition: {err}"
+        );
     }
 }
