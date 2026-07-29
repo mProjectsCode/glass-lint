@@ -25,6 +25,8 @@ pub enum RuleBuildError {
     InvalidCategory(String),
     /// A query declaration could not be constructed.
     InvalidQuery(super::query::QueryBuildError),
+    /// The rule contains more query roots than the bounded authoring limit.
+    TooManyQueries(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,6 +87,12 @@ impl fmt::Display for RuleBuildError {
             }
             Self::InvalidCategory(value) => write!(formatter, "invalid rule category `{value}`"),
             Self::InvalidQuery(err) => write!(formatter, "invalid query: {err}"),
+            Self::TooManyQueries(count) => {
+                write!(
+                    formatter,
+                    "rule contains {count} query roots, exceeding the limit"
+                )
+            }
         }
     }
 }

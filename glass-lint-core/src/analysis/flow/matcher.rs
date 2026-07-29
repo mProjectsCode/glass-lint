@@ -1,11 +1,11 @@
 //! Shared value predicates for fact-driven flow analysis.
 
-use glass_lint_datastructures::NameTable;
+use glass_lint_datastructures::{NameId, NamePath, NameTable};
 
 use crate::{
     analysis::{
         facts::{ArgumentView, CallArgInfo},
-        value::{Value, ValueTable},
+        value::{Value, ValueId, ValueTable},
     },
     api::rule::{
         ArgumentMatcher, ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcher,
@@ -67,23 +67,25 @@ impl ArgumentMatcher {
                     .overlay_static_string()
                     .or_else(|| values.static_string(argument.value())),
             ),
-            ArgumentMatcherKind::ObjectKeys(expected) => {
-                argument.object_entries(values).is_some_and(|entries| {
+            ArgumentMatcherKind::ObjectKeys(expected) => argument
+                .prepared_object_entries()
+                .or_else(|| argument.object_entries(values))
+                .is_some_and(|entries| {
                     expected.iter().all(|expected| {
                         entries
                             .iter()
                             .any(|(key, _)| names.resolve(*key) == Some(expected.as_str()))
                     })
-                })
-            }
-            ArgumentMatcherKind::RootedExpressions(expected) => {
-                argument.rooted_chain(values).is_some_and(|chain| {
+                }),
+            ArgumentMatcherKind::RootedExpressions(expected) => argument
+                .prepared_rooted_chain()
+                .or_else(|| argument.rooted_chain(values))
+                .is_some_and(|chain| {
                     let Some(chain) = names.resolve_path(chain) else {
                         return false;
                     };
                     expected.iter().any(|candidate| chain.eq_chain(candidate))
-                })
-            }
+                }),
             ArgumentMatcherKind::ObjectPropertyValue { property, value } => {
                 let val = argument.value();
                 let entry = values.resolve(val);
@@ -104,49 +106,38 @@ impl ArgumentMatcher {
 }
 
 pub(in crate::analysis) trait ArgumentData {
-    fn value(&self) -> crate::analysis::value::ValueId;
+    fn value(&self) -> ValueId;
+
     fn overlay_static_string(&self) -> Option<&str> {
         None
     }
-    fn object_entries<'v>(
-        &self,
-        values: &'v ValueTable,
-    ) -> Option<
-        &'v [(
-            glass_lint_datastructures::NameId,
-            crate::analysis::value::ValueId,
-        )],
-    >;
-    fn rooted_chain<'v>(
-        &self,
-        values: &'v ValueTable,
-    ) -> Option<&'v glass_lint_datastructures::NamePath>;
+
+    fn object_entries<'v>(&self, values: &'v ValueTable) -> Option<&'v [(NameId, ValueId)]>;
+
+    fn rooted_chain<'v>(&self, values: &'v ValueTable) -> Option<&'v NamePath>;
+
+    fn prepared_object_entries(&self) -> Option<&[(NameId, ValueId)]> {
+        None
+    }
+
+    fn prepared_rooted_chain(&self) -> Option<&NamePath> {
+        None
+    }
 }
 
 impl ArgumentData for CallArgInfo {
-    fn value(&self) -> crate::analysis::value::ValueId {
+    fn value(&self) -> ValueId {
         self.value
     }
 
-    fn object_entries<'v>(
-        &self,
-        values: &'v ValueTable,
-    ) -> Option<
-        &'v [(
-            glass_lint_datastructures::NameId,
-            crate::analysis::value::ValueId,
-        )],
-    > {
+    fn object_entries<'v>(&self, values: &'v ValueTable) -> Option<&'v [(NameId, ValueId)]> {
         match values.resolve(self.value)? {
             Value::StaticObject(entries) => Some(entries.as_slice()),
             _ => None,
         }
     }
 
-    fn rooted_chain<'v>(
-        &self,
-        values: &'v ValueTable,
-    ) -> Option<&'v glass_lint_datastructures::NamePath> {
+    fn rooted_chain<'v>(&self, values: &'v ValueTable) -> Option<&'v NamePath> {
         match values.resolve(self.value)? {
             Value::RootedMember { path } => Some(path),
             _ => None,
@@ -155,7 +146,7 @@ impl ArgumentData for CallArgInfo {
 }
 
 impl ArgumentData for ArgumentView<'_> {
-    fn value(&self) -> crate::analysis::value::ValueId {
+    fn value(&self) -> ValueId {
         self.argument.value()
     }
 
@@ -163,22 +154,19 @@ impl ArgumentData for ArgumentView<'_> {
         self.static_string
     }
 
-    fn object_entries<'v>(
-        &self,
-        values: &'v ValueTable,
-    ) -> Option<
-        &'v [(
-            glass_lint_datastructures::NameId,
-            crate::analysis::value::ValueId,
-        )],
-    > {
+    fn object_entries<'v>(&self, values: &'v ValueTable) -> Option<&'v [(NameId, ValueId)]> {
         self.argument.object_entries(values)
     }
 
-    fn rooted_chain<'v>(
-        &self,
-        values: &'v ValueTable,
-    ) -> Option<&'v glass_lint_datastructures::NamePath> {
+    fn rooted_chain<'v>(&self, values: &'v ValueTable) -> Option<&'v NamePath> {
         self.argument.rooted_chain(values)
+    }
+
+    fn prepared_object_entries(&self) -> Option<&[(NameId, ValueId)]> {
+        self.object_entries
+    }
+
+    fn prepared_rooted_chain(&self) -> Option<&NamePath> {
+        self.rooted_chain
     }
 }

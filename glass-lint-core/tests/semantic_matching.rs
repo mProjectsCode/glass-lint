@@ -175,7 +175,10 @@ fn follows_bound_rooted_members_and_their_arguments() {
         "const open = app.open.bind(app); open(vault.file);",
         EventQuery::member_call_rooted("app.open")
             .unwrap()
-            .with_arg(0, ArgumentMatcher::rooted_expressions(["vault.file"]))
+            .with_arg(
+                0,
+                ArgumentMatcher::rooted_expressions(["vault.file"]).unwrap(),
+            )
             .unwrap()
             .into_query(),
         1,
@@ -188,7 +191,10 @@ fn preserves_bound_rooted_expression_arguments() {
         "const open = app.open.bind(app, vault.file); open(actual);",
         EventQuery::member_call_rooted("app.open")
             .unwrap()
-            .with_arg(0, ArgumentMatcher::rooted_expressions(["vault.file"]))
+            .with_arg(
+                0,
+                ArgumentMatcher::rooted_expressions(["vault.file"]).unwrap(),
+            )
             .unwrap()
             .into_query(),
         1,
@@ -317,7 +323,10 @@ fn tracks_rooted_arguments_through_destructured_parameters() {
         "function open({ file }) { app.open(file); } open({ file: vault.file });",
         EventQuery::member_call_rooted("app.open")
             .unwrap()
-            .with_arg(0, ArgumentMatcher::rooted_expressions(["vault.file"]))
+            .with_arg(
+                0,
+                ArgumentMatcher::rooted_expressions(["vault.file"]).unwrap(),
+            )
             .unwrap()
             .into_query(),
         1,
@@ -368,6 +377,7 @@ fn script_insertion_flow() -> LifecycleQuery {
     LifecycleQuery::builder("script insertion")
         .source(
             LifecycleSource::returned_by("document.createElement")
+                .unwrap()
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(

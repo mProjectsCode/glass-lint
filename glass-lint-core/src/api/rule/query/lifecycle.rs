@@ -1,8 +1,9 @@
 use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
-use crate::api::rule::query::value::{
-    ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ValueMatcher,
+use crate::api::rule::query::{
+    limits,
+    value::{ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ValueMatcher},
 };
 
 // ── LifecycleSource ───────────────────────────────────────────────────
@@ -14,11 +15,18 @@ pub struct LifecycleSource {
 }
 
 impl LifecycleSource {
-    pub fn returned_by(chain: impl Into<String>) -> Self {
-        Self {
-            chain: chain.into(),
-            arguments: Vec::new(),
+    pub fn returned_by(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
+        let chain = chain.into();
+        if chain.trim().is_empty() {
+            return Err(QueryBuildError::EmptyIdentityName);
         }
+        if chain.starts_with('.') || chain.ends_with('.') || chain.contains("..") {
+            return Err(QueryBuildError::MalformedChain(chain));
+        }
+        Ok(Self {
+            chain,
+            arguments: Vec::new(),
+        })
     }
 
     pub fn chain(&self) -> &str {
@@ -29,24 +37,40 @@ impl LifecycleSource {
         &self.arguments
     }
 
-    #[must_use]
-    #[allow(clippy::cast_possible_truncation)]
-    pub fn with_arg(mut self, index: usize, matcher: impl Into<ArgumentMatcher>) -> Self {
-        let arg_idx = ArgumentIndex::new_unchecked(index as u8);
+    pub fn with_arg(
+        mut self,
+        index: usize,
+        matcher: impl Into<ArgumentMatcher>,
+    ) -> Result<Self, QueryBuildError> {
+        if index > limits::MAX_ARGUMENT_INDEX {
+            return Err(QueryBuildError::InvalidArgumentIndex(index));
+        }
+        let arg_idx = ArgumentIndex::new_unchecked(
+            u8::try_from(index).map_err(|_| QueryBuildError::InvalidArgumentIndex(index))?,
+        );
         self.arguments
             .push(ArgumentConstraint::new(arg_idx, matcher));
-        self
+        if self.arguments.len() > limits::MAX_PREDICATES_PER_ARGUMENT {
+            return Err(QueryBuildError::ExcessivePredicates {
+                index,
+                count: self.arguments.len(),
+            });
+        }
+        Ok(self)
     }
 
-    #[must_use]
-    pub fn arg(self, index: usize, matcher: impl Into<ArgumentMatcher>) -> Self {
+    pub fn arg(
+        self,
+        index: usize,
+        matcher: impl Into<ArgumentMatcher>,
+    ) -> Result<Self, QueryBuildError> {
         self.with_arg(index, matcher)
     }
 }
 
 // ── LifecycleEvent ────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum LifecycleEventKind {
     PropertyWrite {
         property: SmolStr,
@@ -58,7 +82,7 @@ pub(crate) enum LifecycleEventKind {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct LifecycleEvent {
     pub(crate) kind: LifecycleEventKind,
 }
@@ -68,22 +92,32 @@ impl LifecycleEvent {
         &self.kind
     }
 
-    pub fn property_write(property: impl Into<SmolStr>, value: ValueMatcher) -> Self {
-        Self {
-            kind: LifecycleEventKind::PropertyWrite {
-                property: property.into(),
-                value,
-            },
+    pub fn property_write(
+        property: impl Into<SmolStr>,
+        value: ValueMatcher,
+    ) -> Result<Self, QueryBuildError> {
+        let property = property.into();
+        if property.trim().is_empty() {
+            return Err(QueryBuildError::EmptyIdentityName);
         }
+        Ok(Self {
+            kind: LifecycleEventKind::PropertyWrite { property, value },
+        })
     }
 
-    pub fn member_call(member: impl Into<String>) -> LifecycleEventBuilder {
-        LifecycleEventBuilder {
+    pub fn member_call(
+        member: impl Into<String>,
+    ) -> Result<LifecycleEventBuilder, QueryBuildError> {
+        let member = member.into();
+        if member.trim().is_empty() {
+            return Err(QueryBuildError::EmptyIdentityName);
+        }
+        Ok(LifecycleEventBuilder {
             event: LifecycleEventKind::MemberCall {
-                member: member.into(),
+                member,
                 arguments: Vec::new(),
             },
-        }
+        })
     }
 }
 
@@ -93,35 +127,69 @@ pub struct LifecycleEventBuilder {
 }
 
 impl LifecycleEventBuilder {
-    #[allow(clippy::cast_possible_truncation)]
-    pub fn arg(mut self, index: usize, matcher: impl Into<ArgumentMatcher>) -> Self {
+    pub fn arg(
+        mut self,
+        index: usize,
+        matcher: impl Into<ArgumentMatcher>,
+    ) -> Result<Self, QueryBuildError> {
+        if index > limits::MAX_ARGUMENT_INDEX {
+            return Err(QueryBuildError::InvalidArgumentIndex(index));
+        }
         if let LifecycleEventKind::MemberCall { arguments, .. } = &mut self.event {
-            let arg_idx = ArgumentIndex::new_unchecked(index as u8);
+            let arg_idx = ArgumentIndex::new_unchecked(
+                u8::try_from(index).map_err(|_| QueryBuildError::InvalidArgumentIndex(index))?,
+            );
             arguments.push(ArgumentConstraint::new(arg_idx, matcher));
         }
-        self
+        if let LifecycleEventKind::MemberCall { arguments, .. } = &self.event
+            && arguments.len() > limits::MAX_PREDICATES_PER_ARGUMENT
+        {
+            return Err(QueryBuildError::ExcessivePredicates {
+                index,
+                count: arguments.len(),
+            });
+        }
+        Ok(self)
     }
 
-    pub fn build(self) -> LifecycleEvent {
-        LifecycleEvent { kind: self.event }
+    #[allow(clippy::unnecessary_wraps)]
+    pub fn build(self) -> Result<LifecycleEvent, QueryBuildError> {
+        Ok(LifecycleEvent { kind: self.event })
     }
 }
 
-impl From<LifecycleEventBuilder> for LifecycleEvent {
-    fn from(value: LifecycleEventBuilder) -> Self {
-        value.build()
+/// Fallible event input accepted by lifecycle condition constructors.
+pub trait IntoLifecycleEvent {
+    fn into_lifecycle_event(self) -> Result<LifecycleEvent, QueryBuildError>;
+}
+
+impl IntoLifecycleEvent for LifecycleEvent {
+    fn into_lifecycle_event(self) -> Result<LifecycleEvent, QueryBuildError> {
+        Ok(self)
+    }
+}
+
+impl IntoLifecycleEvent for Result<LifecycleEvent, QueryBuildError> {
+    fn into_lifecycle_event(self) -> Result<LifecycleEvent, QueryBuildError> {
+        self
+    }
+}
+
+impl IntoLifecycleEvent for LifecycleEventBuilder {
+    fn into_lifecycle_event(self) -> Result<LifecycleEvent, QueryBuildError> {
+        self.build()
     }
 }
 
 // ── LifecycleCondition ────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum LifecycleConditionKind {
     AnyOf(Vec<LifecycleEvent>),
     AllOf(Vec<LifecycleEvent>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct LifecycleCondition {
     pub(crate) kind: LifecycleConditionKind,
 }
@@ -131,42 +199,70 @@ impl LifecycleCondition {
         &self.kind
     }
 
-    pub fn any_of<I>(events: I) -> Self
+    pub fn any_of<I>(events: I) -> Result<Self, QueryBuildError>
     where
         I: IntoIterator,
-        I::Item: Into<LifecycleEvent>,
+        I::Item: IntoLifecycleEvent,
     {
-        Self {
-            kind: LifecycleConditionKind::AnyOf(events.into_iter().map(Into::into).collect()),
+        let mut events = events
+            .into_iter()
+            .map(IntoLifecycleEvent::into_lifecycle_event)
+            .collect::<Result<Vec<_>, _>>()?;
+        if events.is_empty() {
+            return Err(QueryBuildError::EmptyLifecycleCondition);
         }
+        events.sort();
+        events.dedup();
+        if events.len() > limits::MAX_LIFECYCLE_EVENTS {
+            return Err(QueryBuildError::CollectionTooLarge(
+                "lifecycle condition events",
+                events.len(),
+            ));
+        }
+        Ok(Self {
+            kind: LifecycleConditionKind::AnyOf(events),
+        })
     }
 
-    pub fn all_of<I>(events: I) -> Self
+    pub fn all_of<I>(events: I) -> Result<Self, QueryBuildError>
     where
         I: IntoIterator,
-        I::Item: Into<LifecycleEvent>,
+        I::Item: IntoLifecycleEvent,
     {
-        Self {
-            kind: LifecycleConditionKind::AllOf(events.into_iter().map(Into::into).collect()),
+        let events = events
+            .into_iter()
+            .map(IntoLifecycleEvent::into_lifecycle_event)
+            .collect::<Result<Vec<_>, _>>()?;
+        if events.is_empty() {
+            return Err(QueryBuildError::EmptyLifecycleCondition);
         }
+        if events.len() > limits::MAX_LIFECYCLE_EVENTS {
+            return Err(QueryBuildError::CollectionTooLarge(
+                "lifecycle condition events",
+                events.len(),
+            ));
+        }
+        Ok(Self {
+            kind: LifecycleConditionKind::AllOf(events),
+        })
     }
 
-    pub fn event(event: impl Into<LifecycleEvent>) -> Self {
-        Self {
-            kind: LifecycleConditionKind::AllOf(vec![event.into()]),
-        }
+    pub fn event(event: impl IntoLifecycleEvent) -> Result<Self, QueryBuildError> {
+        Ok(Self {
+            kind: LifecycleConditionKind::AllOf(vec![event.into_lifecycle_event()?]),
+        })
     }
 }
 
 // ── LifecycleCompletion ───────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum LifecycleCompletionKind {
     Configuration,
     AnySink(Vec<LifecycleSink>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct LifecycleCompletion {
     pub(crate) kind: LifecycleCompletionKind,
 }
@@ -176,31 +272,47 @@ impl LifecycleCompletion {
         &self.kind
     }
 
-    pub fn configuration() -> Self {
-        Self {
+    pub fn configuration() -> Result<Self, QueryBuildError> {
+        Ok(Self {
             kind: LifecycleCompletionKind::Configuration,
-        }
+        })
     }
 
-    pub fn any_sink<I>(sinks: I) -> Self
+    pub fn any_sink<I, S>(sinks: I) -> Result<Self, QueryBuildError>
     where
-        I: IntoIterator<Item = LifecycleSink>,
+        I: IntoIterator<Item = S>,
+        S: IntoLifecycleSink,
     {
-        Self {
-            kind: LifecycleCompletionKind::AnySink(sinks.into_iter().collect()),
+        let mut sinks = sinks
+            .into_iter()
+            .map(IntoLifecycleSink::into_lifecycle_sink)
+            .collect::<Result<Vec<_>, _>>()?;
+        if sinks.is_empty() {
+            return Err(QueryBuildError::EmptyLifecycleSinks);
         }
+        sinks.sort();
+        sinks.dedup();
+        if sinks.len() > limits::MAX_LIFECYCLE_SINKS {
+            return Err(QueryBuildError::CollectionTooLarge(
+                "lifecycle completion sinks",
+                sinks.len(),
+            ));
+        }
+        Ok(Self {
+            kind: LifecycleCompletionKind::AnySink(sinks),
+        })
     }
 }
 
 // ── LifecycleSink ─────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum LifecycleSinkKind {
     ArgumentOf { chain: String, index: usize },
     AnyArgumentOf { chain: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct LifecycleSink {
     pub(crate) kind: LifecycleSinkKind,
 }
@@ -210,21 +322,27 @@ impl LifecycleSink {
         &self.kind
     }
 
-    pub fn argument_of(chain: impl Into<String>, index: usize) -> Self {
-        Self {
-            kind: LifecycleSinkKind::ArgumentOf {
-                chain: chain.into(),
-                index,
-            },
+    pub fn argument_of(chain: impl Into<String>, index: usize) -> Result<Self, QueryBuildError> {
+        let chain = chain.into();
+        if chain.trim().is_empty() {
+            return Err(QueryBuildError::EmptyIdentityName);
         }
+        if index > limits::MAX_ARGUMENT_INDEX {
+            return Err(QueryBuildError::InvalidArgumentIndex(index));
+        }
+        Ok(Self {
+            kind: LifecycleSinkKind::ArgumentOf { chain, index },
+        })
     }
 
-    pub fn any_argument_of(chain: impl Into<String>) -> Self {
-        Self {
-            kind: LifecycleSinkKind::AnyArgumentOf {
-                chain: chain.into(),
-            },
+    pub fn any_argument_of(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
+        let chain = chain.into();
+        if chain.trim().is_empty() {
+            return Err(QueryBuildError::EmptyIdentityName);
         }
+        Ok(Self {
+            kind: LifecycleSinkKind::AnyArgumentOf { chain },
+        })
     }
 
     pub fn chain(&self) -> &str {
@@ -235,10 +353,27 @@ impl LifecycleSink {
     }
 }
 
+/// Fallible sink input accepted by [`LifecycleCompletion::any_sink`].
+pub trait IntoLifecycleSink {
+    fn into_lifecycle_sink(self) -> Result<LifecycleSink, QueryBuildError>;
+}
+
+impl IntoLifecycleSink for LifecycleSink {
+    fn into_lifecycle_sink(self) -> Result<LifecycleSink, QueryBuildError> {
+        Ok(self)
+    }
+}
+
+impl IntoLifecycleSink for Result<LifecycleSink, QueryBuildError> {
+    fn into_lifecycle_sink(self) -> Result<LifecycleSink, QueryBuildError> {
+        self
+    }
+}
+
 // ── LifecycleQueryBuilder ─────────────────────────────────────────────
 
 use crate::api::rule::query::{
-    EventQuery, EventSpec, IdentitySpec, LifecycleQuery, QueryBuildError, VarId, limits,
+    EventQuery, EventSpec, IdentitySpec, LifecycleQuery, QueryBuildError, VarId,
 };
 
 #[derive(Debug, Clone)]
@@ -247,12 +382,19 @@ pub struct LifecycleQueryBuilder {
     sources: Vec<EventQuery>,
     condition: Option<LifecycleCondition>,
     completion: Option<LifecycleCompletion>,
-    invalid_operation: Option<&'static str>,
+    invalid_operation: Option<QueryBuildError>,
 }
 
 impl LifecycleQueryBuilder {
     #[allow(clippy::needless_pass_by_value)]
-    pub fn source(mut self, source: LifecycleSource) -> Self {
+    pub fn source(mut self, source: Result<LifecycleSource, QueryBuildError>) -> Self {
+        let source = match source {
+            Ok(source) => source,
+            Err(error) => {
+                self.invalid_operation = Some(error);
+                return self;
+            }
+        };
         let eq = EventQuery {
             var: VarId::new(0),
             event: EventSpec::MemberCall {
@@ -267,18 +409,32 @@ impl LifecycleQueryBuilder {
         self
     }
 
-    pub fn condition(mut self, condition: LifecycleCondition) -> Self {
+    pub fn condition(mut self, condition: Result<LifecycleCondition, QueryBuildError>) -> Self {
+        let condition = match condition {
+            Ok(condition) => condition,
+            Err(error) => {
+                self.invalid_operation = Some(error);
+                return self;
+            }
+        };
         if self.condition.is_some() {
-            self.invalid_operation = Some("condition may only be specified once");
+            self.invalid_operation = Some(QueryBuildError::DuplicateLifecycleStage("condition"));
         } else {
             self.condition = Some(condition);
         }
         self
     }
 
-    pub fn completion(mut self, completion: LifecycleCompletion) -> Self {
+    pub fn completion(mut self, completion: Result<LifecycleCompletion, QueryBuildError>) -> Self {
+        let completion = match completion {
+            Ok(completion) => completion,
+            Err(error) => {
+                self.invalid_operation = Some(error);
+                return self;
+            }
+        };
         if self.completion.is_some() {
-            self.invalid_operation = Some("completion may only be specified once");
+            self.invalid_operation = Some(QueryBuildError::DuplicateLifecycleStage("completion"));
         } else {
             self.completion = Some(completion);
         }
@@ -286,11 +442,14 @@ impl LifecycleQueryBuilder {
     }
 
     pub fn build(self) -> Result<LifecycleQuery, QueryBuildError> {
-        if let Some(op) = self.invalid_operation {
-            return Err(QueryBuildError::EmptyCollection(op));
+        if let Some(error) = self.invalid_operation {
+            return Err(error);
+        }
+        if self.symbol.trim().is_empty() {
+            return Err(QueryBuildError::EmptyEvidenceSymbol);
         }
         if self.sources.is_empty() {
-            return Err(QueryBuildError::EmptyCollection("lifecycle sources"));
+            return Err(QueryBuildError::MissingLifecycleSources);
         }
         if self.sources.len() > limits::MAX_LIFECYCLE_SOURCES {
             return Err(QueryBuildError::CollectionTooLarge(
@@ -304,8 +463,12 @@ impl LifecycleQueryBuilder {
             match condition.kind() {
                 LifecycleConditionKind::AnyOf(events) | LifecycleConditionKind::AllOf(events) => {
                     if events.is_empty() {
-                        return Err(QueryBuildError::EmptyCollection(
+                        return Err(QueryBuildError::EmptyLifecycleCondition);
+                    }
+                    if events.len() > limits::MAX_LIFECYCLE_EVENTS {
+                        return Err(QueryBuildError::CollectionTooLarge(
                             "lifecycle condition events",
+                            events.len(),
                         ));
                     }
                 }
@@ -315,21 +478,23 @@ impl LifecycleQueryBuilder {
             match completion.kind() {
                 LifecycleCompletionKind::AnySink(sinks) => {
                     if sinks.is_empty() {
-                        return Err(QueryBuildError::EmptyCollection(
+                        return Err(QueryBuildError::EmptyLifecycleSinks);
+                    }
+                    if sinks.len() > limits::MAX_LIFECYCLE_SINKS {
+                        return Err(QueryBuildError::CollectionTooLarge(
                             "lifecycle completion sinks",
+                            sinks.len(),
                         ));
                     }
                 }
                 LifecycleCompletionKind::Configuration => {
                     if self.condition.is_none() {
-                        return Err(QueryBuildError::EmptyCollection(
-                            "configuration completion requires a condition",
-                        ));
+                        return Err(QueryBuildError::MissingLifecycleCondition);
                     }
                 }
             }
         } else {
-            return Err(QueryBuildError::EmptyCollection("lifecycle completion"));
+            return Err(QueryBuildError::MissingLifecycleCompletion);
         }
 
         Ok(LifecycleQuery {
@@ -357,7 +522,7 @@ impl LifecycleQuery {
 mod tests {
     use super::*;
 
-    fn source() -> LifecycleSource {
+    fn source() -> Result<LifecycleSource, QueryBuildError> {
         LifecycleSource::returned_by("document.createElement")
     }
 
@@ -383,20 +548,39 @@ mod tests {
             .completion(LifecycleCompletion::configuration())
             .build()
             .unwrap_err();
-        assert!(err.to_string().contains("sources"));
+        assert!(err.to_string().contains("source"));
     }
 
     #[test]
     fn lifecycle_source_returned_by_has_expected_chain() {
-        let s = LifecycleSource::returned_by("foo.bar");
+        let s = LifecycleSource::returned_by("foo.bar").unwrap();
         assert_eq!(s.chain(), "foo.bar");
         assert!(s.arguments().is_empty());
     }
 
     #[test]
+    fn order_independent_lifecycle_alternatives_are_canonical() {
+        let src = LifecycleEvent::property_write("src", ValueMatcher::any_value()).unwrap();
+        let href = LifecycleEvent::property_write("href", ValueMatcher::any_value()).unwrap();
+        assert_eq!(
+            LifecycleCondition::any_of([src.clone(), href.clone()]).unwrap(),
+            LifecycleCondition::any_of([href, src]).unwrap()
+        );
+
+        let first = LifecycleSink::argument_of("sink", 0).unwrap();
+        let second = LifecycleSink::any_argument_of("other").unwrap();
+        assert_eq!(
+            LifecycleCompletion::any_sink([first.clone(), second.clone()]).unwrap(),
+            LifecycleCompletion::any_sink([second, first]).unwrap()
+        );
+    }
+
+    #[test]
     fn lifecycle_source_arg_adds_argument_constraint() {
         let s = LifecycleSource::returned_by("foo.bar")
+            .unwrap()
             .arg(0, ValueMatcher::static_string().equals("val"));
+        let s = s.unwrap();
         assert_eq!(s.arguments().len(), 1);
         assert_eq!(s.arguments()[0].index(), 0);
     }
@@ -404,7 +588,7 @@ mod tests {
     #[test]
     fn lifecycle_event_property_write_holds_property_and_value() {
         let value = ValueMatcher::any_value();
-        let event = LifecycleEvent::property_write("src", value);
+        let event = LifecycleEvent::property_write("src", value).unwrap();
         assert!(
             matches!(event.kind(), LifecycleEventKind::PropertyWrite { property, .. } if property == "src")
         );
@@ -413,11 +597,32 @@ mod tests {
     #[test]
     fn lifecycle_event_member_call_builds_with_args() {
         let event: LifecycleEvent = LifecycleEvent::member_call("addEventListener")
+            .unwrap()
             .arg(0, ValueMatcher::static_string().equals("load"))
-            .build();
+            .unwrap()
+            .build()
+            .unwrap();
         assert!(
             matches!(event.kind(), LifecycleEventKind::MemberCall { member, .. } if member == "addEventListener")
         );
+    }
+
+    #[test]
+    fn lifecycle_event_text_and_argument_indices_are_checked() {
+        assert!(matches!(
+            LifecycleEvent::property_write("", ValueMatcher::any_value()),
+            Err(QueryBuildError::EmptyIdentityName)
+        ));
+        assert!(matches!(
+            LifecycleEvent::member_call(""),
+            Err(QueryBuildError::EmptyIdentityName)
+        ));
+        assert!(matches!(
+            LifecycleEvent::member_call("setAttribute")
+                .unwrap()
+                .arg(256, ValueMatcher::any_value()),
+            Err(QueryBuildError::InvalidArgumentIndex(256))
+        ));
     }
 
     #[test]
@@ -425,7 +630,8 @@ mod tests {
         let condition = LifecycleCondition::any_of([
             LifecycleEvent::property_write("a", ValueMatcher::any_value()),
             LifecycleEvent::property_write("b", ValueMatcher::any_value()),
-        ]);
+        ])
+        .unwrap();
         assert!(
             matches!(condition.kind(), LifecycleConditionKind::AnyOf(events) if events.len() == 2)
         );
@@ -436,7 +642,8 @@ mod tests {
         let condition = LifecycleCondition::all_of([LifecycleEvent::property_write(
             "x",
             ValueMatcher::any_value(),
-        )]);
+        )])
+        .unwrap();
         assert!(
             matches!(condition.kind(), LifecycleConditionKind::AllOf(events) if events.len() == 1)
         );
@@ -447,7 +654,8 @@ mod tests {
         let condition = LifecycleCondition::event(LifecycleEvent::property_write(
             "type",
             ValueMatcher::static_string().equals("file"),
-        ));
+        ))
+        .unwrap();
         assert!(
             matches!(condition.kind(), LifecycleConditionKind::AllOf(events) if events.len() == 1)
         );
@@ -455,7 +663,7 @@ mod tests {
 
     #[test]
     fn lifecycle_completion_configuration_has_no_sinks() {
-        let completion = LifecycleCompletion::configuration();
+        let completion = LifecycleCompletion::configuration().unwrap();
         assert!(matches!(
             completion.kind(),
             LifecycleCompletionKind::Configuration
@@ -464,8 +672,8 @@ mod tests {
 
     #[test]
     fn lifecycle_completion_any_sink_holds_sink_matchers() {
-        let sink = LifecycleSink::argument_of("target.appendChild", 0);
-        let completion = LifecycleCompletion::any_sink([sink]);
+        let sink = LifecycleSink::argument_of("target.appendChild", 0).unwrap();
+        let completion = LifecycleCompletion::any_sink([sink]).unwrap();
         assert!(
             matches!(completion.kind(), LifecycleCompletionKind::AnySink(sinks) if sinks.len() == 1)
         );
@@ -473,7 +681,7 @@ mod tests {
 
     #[test]
     fn lifecycle_sink_argument_of_holds_chain_and_index() {
-        let sink = LifecycleSink::argument_of("parent.appendChild", 0);
+        let sink = LifecycleSink::argument_of("parent.appendChild", 0).unwrap();
         assert_eq!(sink.chain(), "parent.appendChild");
         assert!(matches!(
             sink.kind(),
@@ -483,7 +691,7 @@ mod tests {
 
     #[test]
     fn lifecycle_sink_any_argument_of_holds_chain() {
-        let sink = LifecycleSink::any_argument_of("parent.appendChild");
+        let sink = LifecycleSink::any_argument_of("parent.appendChild").unwrap();
         assert_eq!(sink.chain(), "parent.appendChild");
         assert!(matches!(
             sink.kind(),
@@ -512,10 +720,12 @@ mod tests {
                 "x",
                 ValueMatcher::any_value(),
             )))
-            .completion(LifecycleCompletion::any_sink([]))
+            .completion(LifecycleCompletion::any_sink(Vec::<
+                Result<LifecycleSink, QueryBuildError>,
+            >::new()))
             .build()
             .unwrap_err();
-        assert!(err.to_string().contains("sinks"), "empty any_sink: {err}");
+        assert!(err.to_string().contains("sink"), "empty any_sink: {err}");
     }
 
     #[test]

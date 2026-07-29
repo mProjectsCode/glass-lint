@@ -38,10 +38,26 @@ pub(crate) struct ReferenceRow {
     pub arguments: BTreeMap<ArgumentIndex, ReferenceValue>,
     /// Correlated object ID, if applicable.
     pub object: Option<u32>,
+    /// The producer or constructor event that established the object
+    /// correlation, together with its path key.
+    pub support: Option<ReferenceSupport>,
     /// Correlation path key.
     pub path: u32,
     /// Completeness status.
     pub completeness: ReferenceCompleteness,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct ReferenceSupport {
+    pub event: u32,
+    pub path: u32,
+    pub kind: ReferenceSupportKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum ReferenceSupportKind {
+    Producer,
+    Constructor,
 }
 
 /// A value at a specific argument position.
@@ -121,7 +137,14 @@ fn evaluate_event_logical(ev: &NormalizedEvent, rows: &[ReferenceRow]) -> Vec<Re
         if !matches_event_kind_logical(ev.event(), &row.event_kind) {
             continue;
         }
-        if !matches_identity_logical(ev.identity(), &row.identity) {
+        let identity = match ev.subject() {
+            NormalizedSubject::Returned { producer, .. } => producer,
+            NormalizedSubject::Instance { constructor, .. } => constructor,
+            NormalizedSubject::Direct => ev
+                .identity()
+                .expect("direct normalized events retain an identity"),
+        };
+        if !matches_identity_logical(identity, &row.identity) {
             continue;
         }
         if !matches_arguments_logical(ev.arguments(), &row.arguments) {
@@ -129,8 +152,13 @@ fn evaluate_event_logical(ev: &NormalizedEvent, rows: &[ReferenceRow]) -> Vec<Re
         }
         match ev.subject() {
             NormalizedSubject::Direct => {}
-            NormalizedSubject::Returned | NormalizedSubject::Instance => {
-                if row.object.is_none() {
+            subject => {
+                let kind = match subject {
+                    NormalizedSubject::Returned { .. } => ReferenceSupportKind::Producer,
+                    NormalizedSubject::Instance { .. } => ReferenceSupportKind::Constructor,
+                    NormalizedSubject::Direct => unreachable!(),
+                };
+                if !has_correlated_support(row, kind) {
                     continue;
                 }
             }
@@ -144,8 +172,8 @@ fn evaluate_event_logical(ev: &NormalizedEvent, rows: &[ReferenceRow]) -> Vec<Re
 
         let support_events = match ev.subject() {
             NormalizedSubject::Direct => Vec::new(),
-            NormalizedSubject::Returned | NormalizedSubject::Instance => {
-                row.object.into_iter().collect()
+            NormalizedSubject::Returned { .. } | NormalizedSubject::Instance { .. } => {
+                vec![row.support.as_ref().expect("checked above").event]
             }
         };
 
@@ -176,7 +204,7 @@ fn matches_arguments_logical(
         let Some(value) = args.get(&idx) else {
             return false;
         };
-        if !matches_reference_value(constraint.matcher(), value) {
+        if !matches_reference_value(constraint.predicate(), value) {
             return false;
         }
     }
@@ -216,15 +244,17 @@ fn evaluate_physical_root(root: &PhysicalRoot, rows: &[ReferenceRow]) -> Vec<Ref
             evidence: _,
         } => evaluate_constrained_scan(identity, event, constraints, rows),
         PhysicalRoot::ReturnedSubject {
-            identity,
+            producer,
             member,
             event,
             evidence: _,
-        } => evaluate_returned_subject(identity, member, event, rows),
+            object_slot: _,
+        } => evaluate_returned_subject(producer, member, event, rows),
         PhysicalRoot::InstanceSubject {
             constructor,
             member,
             evidence: _,
+            object_slot: _,
         } => evaluate_instance_subject(constructor, member, rows),
         PhysicalRoot::Lifecycle { flow: _ } => {
             // Lifecycle evaluation not implemented in Phase 12 oracle.
@@ -305,7 +335,7 @@ fn evaluate_returned_subject(
 ) -> Vec<ReferenceWitness> {
     let mut witnesses = Vec::new();
     for row in rows {
-        if row.object.is_none() {
+        if !has_correlated_support(row, ReferenceSupportKind::Producer) {
             continue;
         }
         if !matches_event_physical(event, &row.event_kind) {
@@ -321,7 +351,7 @@ fn evaluate_returned_subject(
             ReferenceCertainty::Definite
         };
 
-        let support_events = row.object.into_iter().collect();
+        let support_events = vec![row.support.as_ref().expect("checked above").event];
         witnesses.push(ReferenceWitness {
             primary_event: row.event,
             support_events,
@@ -339,7 +369,7 @@ fn evaluate_instance_subject(
 ) -> Vec<ReferenceWitness> {
     let mut witnesses = Vec::new();
     for row in rows {
-        if row.object.is_none() {
+        if !has_correlated_support(row, ReferenceSupportKind::Constructor) {
             continue;
         }
         if !matches_identity_constraint(constructor, &row.identity) {
@@ -352,7 +382,7 @@ fn evaluate_instance_subject(
             ReferenceCertainty::Definite
         };
 
-        let support_events = row.object.into_iter().collect();
+        let support_events = vec![row.support.as_ref().expect("checked above").event];
         witnesses.push(ReferenceWitness {
             primary_event: row.event,
             support_events,
@@ -361,6 +391,14 @@ fn evaluate_instance_subject(
         });
     }
     witnesses
+}
+
+fn has_correlated_support(row: &ReferenceRow, kind: ReferenceSupportKind) -> bool {
+    row.object.is_some_and(|_| {
+        row.support.as_ref().is_some_and(|support| {
+            support.path == row.path && support.event != row.event && support.kind == kind
+        })
+    })
 }
 
 // ── Matching helpers ────────────────────────────────────────────────────────
@@ -485,6 +523,7 @@ mod tests {
             identity,
             arguments: BTreeMap::new(),
             object: None,
+            support: None,
             path,
             completeness: ReferenceCompleteness::Complete,
         }
@@ -503,6 +542,7 @@ mod tests {
             identity,
             arguments,
             object: None,
+            support: None,
             path,
             completeness: ReferenceCompleteness::Complete,
         }
@@ -520,6 +560,7 @@ mod tests {
             identity,
             arguments: BTreeMap::new(),
             object: None,
+            support: None,
             path,
             completeness: ReferenceCompleteness::Unknown,
         }
@@ -910,6 +951,11 @@ mod tests {
             },
             arguments: BTreeMap::new(),
             object: Some(7),
+            support: Some(ReferenceSupport {
+                event: 7,
+                path: 0,
+                kind: ReferenceSupportKind::Producer,
+            }),
             path: 0,
             completeness: ReferenceCompleteness::Complete,
         }];
@@ -918,6 +964,10 @@ mod tests {
         let w = logical_witnesses(&nq, &rows);
         assert_eq!(w.len(), 1);
         assert_eq!(w[0].support_events, vec![7]);
+
+        let mut incomplete = rows[0].clone();
+        incomplete.support = None;
+        assert!(logical_witnesses(&nq, &[incomplete]).is_empty());
     }
 
     // ── Incompatible correlation keys ──────────────────────────────

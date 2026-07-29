@@ -18,6 +18,7 @@ pub fn rule() -> Rule {
             LifecycleQuery::builder("file input element")
                 .source(
                     LifecycleSource::returned_by("document.createElement")
+                        .unwrap()
                         .arg(0, ValueMatcher::static_string().equals("input")),
                 )
                 .condition(LifecycleCondition::any_of([
@@ -26,8 +27,11 @@ pub fn rule() -> Rule {
                         ValueMatcher::static_string().equals("file"),
                     ),
                     LifecycleEvent::member_call("setAttribute")
+                        .unwrap()
                         .arg(0, ValueMatcher::static_string().equals("type"))
+                        .unwrap()
                         .arg(1, ValueMatcher::static_string().equals("file"))
+                        .unwrap()
                         .build(),
                 ]))
                 .completion(LifecycleCompletion::configuration())

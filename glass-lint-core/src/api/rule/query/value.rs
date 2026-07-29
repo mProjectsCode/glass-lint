@@ -1,3 +1,5 @@
+use super::{QueryBuildError, limits};
+
 /// A validated bounded argument position index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ArgumentIndex(u8);
@@ -55,6 +57,59 @@ fn canonicalize_strings(values: &mut Vec<String>) {
     values.dedup();
 }
 
+fn bounded_strings<I, S>(values: I) -> Result<Vec<String>, QueryBuildError>
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
+    let mut values: Vec<String> = values.into_iter().map(Into::into).collect();
+    if values.iter().any(|value| value.trim().is_empty()) {
+        return Err(QueryBuildError::EmptyStaticValue);
+    }
+    canonicalize_strings(&mut values);
+    if values.is_empty() {
+        return Err(QueryBuildError::EmptyCollection("static alternatives"));
+    }
+    if values.len() > limits::MAX_STATIC_ALTERNATIVES {
+        return Err(QueryBuildError::CollectionTooLarge(
+            "static alternatives",
+            values.len(),
+        ));
+    }
+    Ok(values)
+}
+
+fn bounded_paths<I, S>(values: I) -> Result<Vec<String>, QueryBuildError>
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
+    let values: Vec<String> = values.into_iter().map(Into::into).collect();
+    if values.iter().any(|value| {
+        let trimmed = value.trim();
+        trimmed.is_empty()
+            || trimmed.starts_with('.')
+            || trimmed.ends_with('.')
+            || trimmed.contains("..")
+    }) {
+        return Err(QueryBuildError::MalformedChain(
+            "invalid rooted expression path".into(),
+        ));
+    }
+    let mut values = values;
+    canonicalize_strings(&mut values);
+    if values.is_empty() {
+        return Err(QueryBuildError::EmptyCollection("rooted expression paths"));
+    }
+    if values.len() > limits::MAX_STATIC_ALTERNATIVES {
+        return Err(QueryBuildError::CollectionTooLarge(
+            "rooted expression paths",
+            values.len(),
+        ));
+    }
+    Ok(values)
+}
+
 impl ValueMatcher {
     #[must_use]
     fn with_static_predicate(mut self, kind: StaticStringPredicateKind) -> Self {
@@ -83,48 +138,44 @@ impl ValueMatcher {
         self.with_static_predicate(StaticStringPredicateKind::Exact(vec![value.into()]))
     }
 
-    #[must_use]
-    pub fn equals_any<I, S>(self, values: I) -> Self
+    pub fn equals_any<I, S>(self, values: I) -> Result<Self, QueryBuildError>
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        let mut values: Vec<String> = values.into_iter().map(Into::into).collect();
-        canonicalize_strings(&mut values);
-        self.with_static_predicate(StaticStringPredicateKind::Exact(values))
+        Ok(self.with_static_predicate(StaticStringPredicateKind::Exact(bounded_strings(values)?)))
     }
 
-    #[must_use]
-    pub fn starts_with_any<I, S>(self, values: I) -> Self
+    pub fn starts_with_any<I, S>(self, values: I) -> Result<Self, QueryBuildError>
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        let mut values: Vec<String> = values.into_iter().map(Into::into).collect();
-        canonicalize_strings(&mut values);
-        self.with_static_predicate(StaticStringPredicateKind::Prefix(values))
+        Ok(self.with_static_predicate(StaticStringPredicateKind::Prefix(bounded_strings(values)?)))
     }
 
-    #[must_use]
-    pub fn contains_any<I, S>(self, values: I) -> Self
+    pub fn contains_any<I, S>(self, values: I) -> Result<Self, QueryBuildError>
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        let mut values: Vec<String> = values.into_iter().map(Into::into).collect();
-        canonicalize_strings(&mut values);
-        self.with_static_predicate(StaticStringPredicateKind::ContainsAny(values))
+        Ok(
+            self.with_static_predicate(StaticStringPredicateKind::ContainsAny(bounded_strings(
+                values,
+            )?)),
+        )
     }
 
-    #[must_use]
-    pub fn contains_all<I, S>(self, values: I) -> Self
+    pub fn contains_all<I, S>(self, values: I) -> Result<Self, QueryBuildError>
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        let mut values: Vec<String> = values.into_iter().map(Into::into).collect();
-        canonicalize_strings(&mut values);
-        self.with_static_predicate(StaticStringPredicateKind::ContainsAll(values))
+        Ok(
+            self.with_static_predicate(StaticStringPredicateKind::ContainsAll(bounded_strings(
+                values,
+            )?)),
+        )
     }
 }
 
@@ -151,26 +202,24 @@ impl ArgumentMatcher {
         &self.kind
     }
 
-    pub fn object_keys<I, S>(keys: I) -> Self
+    pub fn object_keys<I, S>(keys: I) -> Result<Self, QueryBuildError>
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        Self {
-            kind: ArgumentMatcherKind::ObjectKeys(keys.into_iter().map(Into::into).collect()),
-        }
+        Ok(Self {
+            kind: ArgumentMatcherKind::ObjectKeys(bounded_strings(keys)?),
+        })
     }
 
-    pub fn rooted_expressions<I, S>(chains: I) -> Self
+    pub fn rooted_expressions<I, S>(chains: I) -> Result<Self, QueryBuildError>
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        Self {
-            kind: ArgumentMatcherKind::RootedExpressions(
-                chains.into_iter().map(Into::into).collect(),
-            ),
-        }
+        Ok(Self {
+            kind: ArgumentMatcherKind::RootedExpressions(bounded_paths(chains)?),
+        })
     }
 
     pub fn object_property_value(property: impl Into<String>, value: ValueMatcher) -> Self {
@@ -214,7 +263,7 @@ impl ArgumentConstraint {
         ArgumentIndex::new_unchecked(self.index as u8)
     }
 
-    pub fn matcher(&self) -> &ArgumentMatcher {
+    pub fn predicate(&self) -> &ArgumentMatcher {
         &self.matcher
     }
 }
@@ -253,7 +302,9 @@ mod tests {
 
     #[test]
     fn value_matcher_equals_any_creates_multi_exact() {
-        let m = ValueMatcher::static_string().equals_any(["a", "b"]);
+        let m = ValueMatcher::static_string()
+            .equals_any(["a", "b"])
+            .unwrap();
         assert_eq!(
             m.kind(),
             &ValueMatcherKind::StaticString(StaticStringPredicate::new(
@@ -264,7 +315,9 @@ mod tests {
 
     #[test]
     fn value_matcher_starts_with_any_creates_prefix_predicate() {
-        let m = ValueMatcher::static_string().starts_with_any(["https://"]);
+        let m = ValueMatcher::static_string()
+            .starts_with_any(["https://"])
+            .unwrap();
         assert_eq!(
             m.kind(),
             &ValueMatcherKind::StaticString(StaticStringPredicate::new(
@@ -275,7 +328,9 @@ mod tests {
 
     #[test]
     fn value_matcher_contains_any_creates_contains_any() {
-        let m = ValueMatcher::static_string().contains_any(["token", "secret"]);
+        let m = ValueMatcher::static_string()
+            .contains_any(["token", "secret"])
+            .unwrap();
         assert_eq!(
             m.kind(),
             &ValueMatcherKind::StaticString(StaticStringPredicate::new(
@@ -286,7 +341,9 @@ mod tests {
 
     #[test]
     fn value_matcher_contains_all_creates_contains_all() {
-        let m = ValueMatcher::static_string().contains_all(["required", "field"]);
+        let m = ValueMatcher::static_string()
+            .contains_all(["required", "field"])
+            .unwrap();
         assert_eq!(
             m.kind(),
             &ValueMatcherKind::StaticString(StaticStringPredicate::new(
@@ -303,13 +360,13 @@ mod tests {
 
     #[test]
     fn argument_matcher_object_keys_holds_keys() {
-        let m = ArgumentMatcher::object_keys(["x", "y"]);
+        let m = ArgumentMatcher::object_keys(["x", "y"]).unwrap();
         assert!(matches!(m.kind(), ArgumentMatcherKind::ObjectKeys(keys) if keys == &["x", "y"]));
     }
 
     #[test]
     fn argument_matcher_rooted_expressions_holds_chains() {
-        let m = ArgumentMatcher::rooted_expressions(["document.body"]);
+        let m = ArgumentMatcher::rooted_expressions(["document.body"]).unwrap();
         assert!(
             matches!(m.kind(), ArgumentMatcherKind::RootedExpressions(chains) if chains == &["document.body"])
         );
@@ -333,12 +390,55 @@ mod tests {
 
     #[test]
     fn argument_constraint_new_holds_index_and_matcher() {
-        let m = ArgumentMatcher::object_keys(["k"]);
+        let m = ArgumentMatcher::object_keys(["k"]).unwrap();
         let c = ArgumentConstraint::new(ArgumentIndex::new_unchecked(2), m);
         assert_eq!(c.index(), 2);
         assert!(matches!(
-            c.matcher().kind(),
+            c.predicate().kind(),
             ArgumentMatcherKind::ObjectKeys(_)
+        ));
+    }
+
+    #[test]
+    fn object_key_collections_are_non_empty_canonical_and_bounded() {
+        let matcher = ArgumentMatcher::object_keys(["method", "url", "url"]).unwrap();
+        assert!(matches!(
+            matcher.kind(),
+            ArgumentMatcherKind::ObjectKeys(keys)
+                if keys == &["method".to_string(), "url".to_string()]
+        ));
+        assert!(matches!(
+            ArgumentMatcher::object_keys::<[&str; 0], &str>([]),
+            Err(QueryBuildError::EmptyCollection(_))
+        ));
+        let keys: Vec<String> = (0..=limits::MAX_STATIC_ALTERNATIVES)
+            .map(|index| format!("key{index}"))
+            .collect();
+        assert!(matches!(
+            ArgumentMatcher::object_keys(keys),
+            Err(QueryBuildError::CollectionTooLarge(_, _))
+        ));
+    }
+
+    #[test]
+    fn rooted_expression_collections_validate_paths_and_limits() {
+        let matcher =
+            ArgumentMatcher::rooted_expressions(["document.body", "document.body"]).unwrap();
+        assert!(matches!(
+            matcher.kind(),
+            ArgumentMatcherKind::RootedExpressions(paths)
+                if paths == &["document.body".to_string()]
+        ));
+        assert!(matches!(
+            ArgumentMatcher::rooted_expressions(["document..body"]),
+            Err(QueryBuildError::MalformedChain(_))
+        ));
+        let paths: Vec<String> = (0..=limits::MAX_STATIC_ALTERNATIVES)
+            .map(|index| format!("document.node{index}"))
+            .collect();
+        assert!(matches!(
+            ArgumentMatcher::rooted_expressions(paths),
+            Err(QueryBuildError::CollectionTooLarge(_, _))
         ));
     }
 }

@@ -67,6 +67,7 @@ fn script_flow() -> LifecycleQuery {
     LifecycleQuery::builder("script insertion")
         .source(
             LifecycleSource::returned_by("document.createElement")
+                .unwrap()
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
@@ -143,11 +144,14 @@ fn member_call_configuration_stays_with_its_receiver() {
     let flow = LifecycleQuery::builder("configured script")
         .source(
             LifecycleSource::returned_by("document.createElement")
+                .unwrap()
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
         .condition(LifecycleCondition::event(
             LifecycleEvent::member_call("configure")
+                .unwrap()
                 .arg(0, ValueMatcher::static_string().equals("yes"))
+                .unwrap()
                 .build(),
         ))
         .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
@@ -476,6 +480,7 @@ fn requirement_only_evidence_is_anchored_at_the_configuration_event() {
     let flow = LifecycleQuery::builder("configured input")
         .source(
             LifecycleSource::returned_by("document.createElement")
+                .unwrap()
                 .arg(0, ValueMatcher::static_string().equals("input")),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(

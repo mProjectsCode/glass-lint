@@ -512,7 +512,9 @@ mod tests {
             event: EventPredicate::Call,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
-                ValueMatcher::static_string().equals_any(["/api", "/other"]),
+                ValueMatcher::static_string()
+                    .equals_any(["/api", "/other"])
+                    .unwrap(),
             )]),
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,
@@ -544,7 +546,9 @@ mod tests {
             event: EventPredicate::Call,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
-                ValueMatcher::static_string().equals_any(["/api", "/v1"]),
+                ValueMatcher::static_string()
+                    .equals_any(["/api", "/v1"])
+                    .unwrap(),
             )]),
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,
@@ -579,7 +583,9 @@ mod tests {
             event: EventPredicate::Call,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
-                ValueMatcher::static_string().contains_any(["token"]),
+                ValueMatcher::static_string()
+                    .contains_any(["token"])
+                    .unwrap(),
             )]),
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,
@@ -617,7 +623,9 @@ mod tests {
             event: EventPredicate::Call,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
-                ValueMatcher::static_string().starts_with_any(["https://"]),
+                ValueMatcher::static_string()
+                    .starts_with_any(["https://"])
+                    .unwrap(),
             )]),
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,
@@ -655,7 +663,7 @@ mod tests {
             event: EventPredicate::Call,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
-                ArgumentMatcher::object_keys(["url", "method"]),
+                ArgumentMatcher::object_keys(["url", "method"]).unwrap(),
             )]),
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,
@@ -787,7 +795,9 @@ mod tests {
             ),
             ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
-                ValueMatcher::static_string().starts_with_any(["/"]),
+                ValueMatcher::static_string()
+                    .starts_with_any(["/"])
+                    .unwrap(),
             ),
         ]);
         assert_eq!(constraints.groups().len(), 1, "should be one group");
@@ -811,7 +821,49 @@ mod tests {
         assert_eq!(ops.candidates, 1, "one candidate (fetch call)");
         assert_eq!(ops.groups, 1, "one group");
         assert_eq!(ops.argument_preparations, 1, "argument prepared once");
+        assert_eq!(ops.value_resolutions, 1, "argument value resolved once");
         assert_eq!(ops.predicates, 2, "two predicates applied");
+    }
+
+    #[test]
+    fn mixed_object_predicates_share_one_prepared_projection() {
+        let stream = stream(
+            "fetch({url: '/api', method: 'POST'});",
+            &Environment::default(),
+        );
+        let index = build_index(&stream);
+        let constraints = compile_argument_constraints(&[
+            ArgumentConstraint::new(
+                crate::api::rule::ArgumentIndex::new_unchecked(0),
+                ArgumentMatcher::object_keys(["url", "method"]).unwrap(),
+            ),
+            ArgumentConstraint::new(
+                crate::api::rule::ArgumentIndex::new_unchecked(0),
+                ArgumentMatcher::object_property_value(
+                    "method",
+                    ValueMatcher::static_string().equals("POST"),
+                ),
+            ),
+        ]);
+        let root = PhysicalRoot::ConstrainedScan {
+            identity: IdentityConstraint::Any {
+                name: "fetch".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            event: EventPredicate::Call,
+            constraints,
+            evidence: EvidenceDescriptor {
+                kind: MatchKind::CallArgument,
+                symbol: "fetch".into(),
+            },
+        };
+
+        let ops = run_with_ops(&stream, &index, &[(0, &root)], None);
+        assert_eq!(ops.candidates, 1);
+        assert_eq!(ops.groups, 1);
+        assert_eq!(ops.argument_preparations, 1);
+        assert_eq!(ops.value_resolutions, 1);
+        assert_eq!(ops.predicates, 2);
     }
 
     #[test]
@@ -851,6 +903,10 @@ mod tests {
         assert_eq!(ops.candidates, 1, "one candidate");
         assert_eq!(ops.groups, 2, "two groups (index 0 and index 1)");
         assert_eq!(ops.argument_preparations, 2, "each index prepared once");
+        assert_eq!(
+            ops.value_resolutions, 2,
+            "each argument value resolved once"
+        );
         assert_eq!(ops.predicates, 2, "one predicate per group");
     }
 
@@ -909,6 +965,7 @@ mod tests {
             ops.argument_preparations, 1,
             "argument prepared once despite four raw constraints"
         );
+        assert_eq!(ops.value_resolutions, 1);
     }
 
     #[test]

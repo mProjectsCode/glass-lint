@@ -10,15 +10,15 @@ deterministically ordered reports without filesystem access.
 Rules use local IDs; `RuleCatalog` adds the provider namespace:
 
 ```rust
-use glass_lint_core::rules::{CallMatcher, Confidence, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 use glass_lint_core::{Environment, Linter, LinterConfig, RuleCatalog};
 
 let rule = Rule::builder("network.request")
-    .label("Makes a network request")
-    .category("network")
+    .description("Makes a network request")
+    .category(Category::new("network")?)
     .severity(Severity::Warning)
     .confidence(Confidence::High)
-    .matcher(CallMatcher::global("fetch"))
+    .query(QueryDecl::call_global("fetch")?)
     .build()?;
 
 let mut environment = Environment::default();
@@ -77,3 +77,21 @@ but not type-checked. Sources larger than 8 MiB are rejected.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the internal pipeline and the
 workspace [testing guide](../TESTING.md) for matcher coverage.
+
+## Query declarations
+
+The compiled example [`examples/query_declarations.rs`](examples/query_declarations.rs)
+covers the supported authoring surface: ordinary and constrained events,
+alternatives, same-event conjunctions, returned-object and instance member
+queries, lifecycle flow, and structured construction errors. Query identity,
+argument indexes, collections, lifecycle stages, and evidence symbols are
+validated before catalog compilation; invalid input is returned as a typed
+`QueryBuildError`.
+
+`heuristic` identities intentionally provide weaker syntactic evidence than
+strict global, rooted, or module identities. `QueryDecl::any` combines
+independent complete alternatives, while `QueryDecl::all` is restricted to
+constraints on one selected event. General uncorrelated multi-event
+conjunctions are not part of the public authoring grammar; nested `Any` inside
+`All` is likewise an internal compiler-test shape, not a public declaration
+route.

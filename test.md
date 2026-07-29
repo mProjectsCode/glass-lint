@@ -237,7 +237,9 @@ Covers typed addition, templates, arrays/objects/spreads/Object.assign, containe
 
 ### Analysis: API — Rule compilation — `api/compiler/rule.rs` — 7 inline tests
 
-Covers compilation of every declaration variant, argument matcher clauses, invalid decl errors, order-independent equivalence, composable dimensions, normalization idempotency, argument constraint preservation.
+Covers compilation of every query declaration variant, argument constraints,
+invalid declaration errors, order-independent equivalence, composable
+dimensions, normalized invariants, and argument constraint preservation.
 
 **Coverage: Good.** Missing: `CompiledRuleSelection::is_selected`/`len`, `CompiledRuleRecord::new` error paths.
 
@@ -270,9 +272,13 @@ Covers compilation of every declaration variant, argument matcher clauses, inval
 
 ### Analysis: API — Flow matcher — `api/rule/matcher/flow.rs` — 26 inline tests
 
-Covers: `ValueMatcher` (7 constructors: any_value, static_string, equals, equals_any, starts_with_any, contains_any, contains_all), `StaticStringPredicate` (1 round-trip), `ArgumentMatcher` (4 constructors: object_keys, rooted_expressions, object_property_value, from ValueMatcher), `ArgumentConstraint` (1), `ObjectSourceMatcher` (2: chain, arg), `ObjectEventMatcher` (2: property_write, member_call), `FlowCondition` (3: any_of, all_of, event), `FlowCompletion` (2: configuration, any_sink), `FlowSinkMatcher` (2: argument_of, any_argument_of), `ObjectFlowMatcher` accessors (1).
+Covers `ValueMatcher`, `StaticStringPredicate`, `ArgumentMatcher`,
+`ArgumentConstraint`, `LifecycleSource`, `LifecycleEvent`,
+`LifecycleCondition`, `LifecycleCompletion`, and `LifecycleSink`, including
+their bounded construction and malformed-input behavior.
 
-**Coverage: Good.** `ValueMatcher`, `StaticStringPredicate`, `ArgumentMatcher`, `ObjectFlowMatcherBuilder` now fully covered at unit level.
+**Coverage: Good.** Value and lifecycle declaration types are covered at unit
+level, including their fallible construction paths.
 
 ### Core: Lint — `lint/linter.rs` — 4 inline tests
 
@@ -740,7 +746,8 @@ Covers schema version, globals list, binding classification, realm sources, erro
 - core/analysis: flow/summary/sink.rs (was 0 — now 16 tests covering SinkSet, FunctionSummary, FunctionSinkSummary, all is_invocation_compatible rejection/acceptance paths)
 - core/analysis: flow/effect (was 9 — now 16 tests covering budget exhaustion, operation counting, ParameterRef, function creation)
 - core: environment.rs (was adequate — now 9 tests covering extend, aliases_match, paths_match, fingerprint hashing)
-- core/api: rule/matcher/flow.rs (was minimal — now 26 tests covering ValueMatcher, StaticStringPredicate, ArgumentMatcher, ObjectFlowMatcherBuilder)
+- core/api: rule/query/value.rs and rule/query/lifecycle.rs cover value and
+  lifecycle declaration construction, canonicalization, and limits.
 - core/api: rule/module.rs (was narrow — now 9 tests covering ModuleSpecifierPattern::exact with matching, validation, trimming, accessor, display)
 - project: resolver.rs (was thin — now 7 tests covering require-vs-import, package_name, missing fallback)
 

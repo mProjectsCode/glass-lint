@@ -43,6 +43,7 @@ impl NormalizedQuery {
 /// Evidence emission for a normalized query.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NormalizedEmission {
+    primary_slot: u32,
     kind: MatchKind,
     symbol: String,
 }
@@ -70,7 +71,7 @@ pub(crate) enum NormalizedRoot {
 pub(crate) struct NormalizedEvent {
     slot: u32,
     event: EventSpec,
-    identity: IdentitySpec,
+    identity: Option<IdentitySpec>,
     subject: NormalizedSubject,
     arguments: Box<[ArgumentConstraint]>,
 }
@@ -84,8 +85,8 @@ impl NormalizedEvent {
         &self.event
     }
 
-    pub(crate) fn identity(&self) -> &IdentitySpec {
-        &self.identity
+    pub(crate) fn identity(&self) -> Option<&IdentitySpec> {
+        self.identity.as_ref()
     }
 
     pub(crate) fn subject(&self) -> &NormalizedSubject {
@@ -101,8 +102,14 @@ impl NormalizedEvent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum NormalizedSubject {
     Direct,
-    Returned,
-    Instance,
+    Returned {
+        producer: IdentitySpec,
+        object_slot: u32,
+    },
+    Instance {
+        constructor: IdentitySpec,
+        object_slot: u32,
+    },
 }
 
 /// Normalized lifecycle — preserves sources, condition, and completion.
@@ -128,26 +135,6 @@ impl NormalizedLifecycle {
 }
 
 // ── Plan requirements ─────────────────────────────────────────────────────
-
-/// Which occurrence index families a physical plan needs.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum OccurrenceIndexRequirement {
-    Calls,
-    Constructions,
-    Members,
-    Literals,
-    ReturnedMembers,
-    InstanceMembers,
-}
-
-/// Which fact-stream fields the physical plan needs populated.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-#[allow(dead_code)]
-pub(crate) enum FactFieldRequirement {
-    CallArguments,
-    ObjectProperties,
-    RootedValues,
-}
 
 /// Which value-resolution capabilities the physical plan needs.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -182,23 +169,13 @@ pub(crate) enum ProjectRequirement {
 /// than performing work unconditionally.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct PlanRequirements {
-    occurrence_indexes: BTreeSet<OccurrenceIndexRequirement>,
-    fact_fields: BTreeSet<FactFieldRequirement>,
-    value_resolution: BTreeSet<ValueResolutionRequirement>,
-    flow: FlowRequirements,
-    project: BTreeSet<ProjectRequirement>,
+    pub(crate) value_resolution: BTreeSet<ValueResolutionRequirement>,
+    pub(crate) flow: FlowRequirements,
+    pub(crate) project: BTreeSet<ProjectRequirement>,
 }
 
 #[allow(dead_code)]
 impl PlanRequirements {
-    pub(crate) fn occurrence_indexes(&self) -> &BTreeSet<OccurrenceIndexRequirement> {
-        &self.occurrence_indexes
-    }
-
-    pub(crate) fn fact_fields(&self) -> &BTreeSet<FactFieldRequirement> {
-        &self.fact_fields
-    }
-
     pub(crate) fn value_resolution(&self) -> &BTreeSet<ValueResolutionRequirement> {
         &self.value_resolution
     }
@@ -215,7 +192,15 @@ impl PlanRequirements {
     /// Whether any project-level identity work (module identities, overlays)
     /// is needed.
     pub(crate) fn needs_module_identities(&self) -> bool {
-        !self.project.is_empty()
+        self.project.iter().any(|requirement| {
+            matches!(
+                requirement,
+                ProjectRequirement::ExactModuleExports
+                    | ProjectRequirement::PackageModuleExports
+                    | ProjectRequirement::ExactModuleNamespaces
+                    | ProjectRequirement::PackageModuleNamespaces
+            )
+        })
     }
 
     /// Whether call-result identity resolution is needed.
@@ -229,13 +214,19 @@ impl PlanRequirements {
 
     /// Whether a project identity overlay is needed for any matched plan.
     pub(crate) fn needs_project_overlay(&self) -> bool {
-        !self.project.is_empty()
+        self.project.iter().any(|requirement| {
+            matches!(
+                requirement,
+                ProjectRequirement::ExactModuleExports
+                    | ProjectRequirement::PackageModuleExports
+                    | ProjectRequirement::ExactModuleNamespaces
+                    | ProjectRequirement::PackageModuleNamespaces
+                    | ProjectRequirement::CallResultIdentities
+            )
+        })
     }
 
     pub(crate) fn merge_from(&mut self, other: &Self) {
-        self.occurrence_indexes
-            .extend(other.occurrence_indexes.iter().cloned());
-        self.fact_fields.extend(other.fact_fields.iter().cloned());
         self.value_resolution
             .extend(other.value_resolution.iter().cloned());
         self.flow.local |= other.flow.local;
@@ -246,8 +237,6 @@ impl PlanRequirements {
 
     fn for_event(event: &NormalizedEvent) -> Self {
         Self {
-            occurrence_indexes: Self::occurrence_types_for_event(event),
-            fact_fields: Self::fact_fields_for_event(event),
             value_resolution: Self::value_resolution_for_event(event),
             flow: FlowRequirements::default(),
             project: Self::project_for_event(event),
@@ -256,13 +245,6 @@ impl PlanRequirements {
 
     fn for_lifecycle(_lc: &NormalizedLifecycle) -> Self {
         Self {
-            occurrence_indexes: BTreeSet::from([
-                OccurrenceIndexRequirement::Calls,
-                OccurrenceIndexRequirement::Constructions,
-                OccurrenceIndexRequirement::Members,
-                OccurrenceIndexRequirement::Literals,
-            ]),
-            fact_fields: BTreeSet::new(),
             value_resolution: BTreeSet::new(),
             flow: FlowRequirements {
                 local: true,
@@ -287,60 +269,33 @@ impl PlanRequirements {
         }
     }
 
-    fn occurrence_types_for_event(event: &NormalizedEvent) -> BTreeSet<OccurrenceIndexRequirement> {
-        let mut set = BTreeSet::new();
-        match event.event {
-            EventSpec::Call => {
-                set.insert(OccurrenceIndexRequirement::Calls);
-            }
-            EventSpec::Construct => {
-                set.insert(OccurrenceIndexRequirement::Constructions);
-            }
-            EventSpec::MemberCall { .. }
-            | EventSpec::MemberRead { .. }
-            | EventSpec::ClassReference => {
-                set.insert(OccurrenceIndexRequirement::Members);
-            }
-            EventSpec::Import | EventSpec::StringReference => {
-                set.insert(OccurrenceIndexRequirement::Literals);
-            }
-        }
-        match event.subject {
-            NormalizedSubject::Returned => {
-                set.insert(OccurrenceIndexRequirement::ReturnedMembers);
-            }
-            NormalizedSubject::Instance => {
-                set.insert(OccurrenceIndexRequirement::InstanceMembers);
-            }
-            NormalizedSubject::Direct => {}
-        }
-        set
-    }
-
-    fn fact_fields_for_event(event: &NormalizedEvent) -> BTreeSet<FactFieldRequirement> {
-        let mut set = BTreeSet::new();
-        if !event.arguments.is_empty() {
-            set.insert(FactFieldRequirement::CallArguments);
-        }
-        set
-    }
-
     fn value_resolution_for_event(event: &NormalizedEvent) -> BTreeSet<ValueResolutionRequirement> {
         let mut set = BTreeSet::new();
         if !event.arguments.is_empty() {
             set.insert(ValueResolutionRequirement::LocalStaticValues);
         }
-        if requires_project_overlay_spec(&event.identity) {
-            set.insert(ValueResolutionRequirement::ModuleIdentityValues);
-            set.insert(ValueResolutionRequirement::CallResultIdentities);
+        if let Some(identity) = event_identity(event) {
+            match identity {
+                IdentitySpec::ModuleExport { .. } | IdentitySpec::PackageModuleExport { .. } => {
+                    set.insert(ValueResolutionRequirement::ModuleIdentityValues);
+                    set.insert(ValueResolutionRequirement::CallResultIdentities);
+                }
+                IdentitySpec::ModuleNamespace { .. }
+                | IdentitySpec::PackageModuleNamespace { .. } => {
+                    set.insert(ValueResolutionRequirement::ModuleIdentityValues);
+                }
+                _ => {}
+            }
         }
         set
     }
 
     fn project_for_event(event: &NormalizedEvent) -> BTreeSet<ProjectRequirement> {
         let mut set = BTreeSet::new();
-        if requires_project_overlay_spec(&event.identity) {
-            match &event.identity {
+        if let Some(identity) = event_identity(event)
+            && requires_project_overlay_spec(identity)
+        {
+            match identity {
                 IdentitySpec::ModuleExport { .. } => {
                     set.insert(ProjectRequirement::ExactModuleExports);
                     set.insert(ProjectRequirement::CallResultIdentities);
@@ -360,6 +315,14 @@ impl PlanRequirements {
         }
         set
     }
+}
+
+fn event_identity(event: &NormalizedEvent) -> Option<&IdentitySpec> {
+    event.identity.as_ref().or(match &event.subject {
+        NormalizedSubject::Returned { producer, .. } => Some(producer),
+        NormalizedSubject::Instance { constructor, .. } => Some(constructor),
+        NormalizedSubject::Direct => None,
+    })
 }
 
 fn requires_project_overlay_spec(identity: &IdentitySpec) -> bool {
@@ -394,7 +357,13 @@ pub(crate) fn normalize_query_decl(decl: &QueryDecl) -> Result<NormalizedQuery, 
 
     // Step 8: Alpha-normalize — renumber slots to dense 0..n order independent
     // of author-assigned VarId values.
-    alpha_renumber_slots(&mut root);
+    let slot_map = alpha_renumber_slots(&mut root);
+    let primary_slot = slot_map
+        .get(&decl.emission.primary_var().get())
+        .copied()
+        .ok_or_else(|| QueryCompileError::MissingBinding {
+            primary_var: decl.emission.primary_var(),
+        })?;
 
     // Step 9: Compute exact plan requirements.
     let req = PlanRequirements::for_root(&root);
@@ -402,6 +371,7 @@ pub(crate) fn normalize_query_decl(decl: &QueryDecl) -> Result<NormalizedQuery, 
     let nq = NormalizedQuery {
         root,
         emission: NormalizedEmission {
+            primary_slot,
             kind: decl.emission.kind,
             symbol: decl.emission.symbol.clone(),
         },
@@ -449,7 +419,7 @@ fn canonicalize_event(ev: &mut NormalizedEvent) {
     args.sort_by(|a, b| {
         a.index()
             .cmp(&b.index())
-            .then_with(|| a.matcher().cmp(b.matcher()))
+            .then_with(|| a.predicate().cmp(b.predicate()))
     });
     args.dedup();
     ev.arguments = args.into_boxed_slice();
@@ -463,6 +433,32 @@ fn canonicalize_event(ev: &mut NormalizedEvent) {
 /// - `Any` branches are non-empty.
 fn validate_normalized(nq: &NormalizedQuery) -> Result<(), QueryCompileError> {
     validate_normalized_root(&nq.root, true)?;
+    let slots = collect_normalized_slots(&nq.root);
+    if slots
+        .iter()
+        .enumerate()
+        .any(|(expected, actual)| usize::try_from(*actual) != Ok(expected))
+    {
+        return Err(QueryCompileError::InternalInvariant {
+            detail: "normalized variable slots are not dense".into(),
+        });
+    }
+    if !slots.contains(&nq.emission.primary_slot) {
+        return Err(QueryCompileError::InternalInvariant {
+            detail: "normalized emission slot is not bound".into(),
+        });
+    }
+    if nq.emission.symbol.trim().is_empty() {
+        return Err(QueryCompileError::InternalInvariant {
+            detail: "normalized evidence symbol is empty".into(),
+        });
+    }
+    let expected_requirements = PlanRequirements::for_root(&nq.root);
+    if expected_requirements != nq.requirements {
+        return Err(QueryCompileError::InternalInvariant {
+            detail: "normalized plan requirements do not match normalized root".into(),
+        });
+    }
     Ok(())
 }
 
@@ -485,9 +481,25 @@ fn validate_normalized_root(root: &NormalizedRoot, is_top: bool) -> Result<(), Q
             Ok(())
         }
         NormalizedRoot::Event(ev) => {
+            if ev.arguments.windows(2).any(|pair| {
+                pair[0].index() > pair[1].index()
+                    || (pair[0].index() == pair[1].index()
+                        && pair[0].predicate() >= pair[1].predicate())
+            }) {
+                return Err(QueryCompileError::InternalInvariant {
+                    detail: "normalized argument constraints are not canonical".into(),
+                });
+            }
             // Verify subject-specific invariants.
             match &ev.subject {
-                NormalizedSubject::Returned | NormalizedSubject::Instance => {
+                NormalizedSubject::Returned {
+                    producer,
+                    object_slot: _,
+                }
+                | NormalizedSubject::Instance {
+                    constructor: producer,
+                    object_slot: _,
+                } => {
                     // Returned/Instance must have a member event, not a bare call.
                     if !matches!(
                         ev.event,
@@ -497,15 +509,25 @@ fn validate_normalized_root(root: &NormalizedRoot, is_top: bool) -> Result<(), Q
                             detail: "returned/instance subject on non-member event".into(),
                         });
                     }
+                    if producer.display_name().is_empty() {
+                        return Err(QueryCompileError::InternalInvariant {
+                            detail: "returned/instance subject relation is incomplete".into(),
+                        });
+                    }
                 }
                 NormalizedSubject::Direct => {}
             }
             Ok(())
         }
-        NormalizedRoot::Lifecycle(_) => {
+        NormalizedRoot::Lifecycle(lifecycle) => {
             if !is_top {
                 return Err(QueryCompileError::InternalInvariant {
                     detail: "lifecycle root nested inside Any".into(),
+                });
+            }
+            if lifecycle.sources.is_empty() || lifecycle.completion.is_none() {
+                return Err(QueryCompileError::InternalInvariant {
+                    detail: "normalized lifecycle is missing a required stage".into(),
                 });
             }
             Ok(())
@@ -540,10 +562,10 @@ fn collect_slots_rec(root: &NormalizedRoot, slots: &mut Vec<u32>) {
 
 /// Remap every slot in the tree using the given old→new mapping.
 #[allow(clippy::cast_possible_truncation)]
-fn apply_slot_map(root: &mut NormalizedRoot, map: &[u32]) {
+fn apply_slot_map(root: &mut NormalizedRoot, map: &BTreeMap<u32, u32>) {
     match root {
         NormalizedRoot::Event(ev) => {
-            if let Some(&new_slot) = map.get(ev.slot as usize) {
+            if let Some(&new_slot) = map.get(&ev.slot) {
                 ev.slot = new_slot;
             }
         }
@@ -554,7 +576,7 @@ fn apply_slot_map(root: &mut NormalizedRoot, map: &[u32]) {
         }
         NormalizedRoot::Lifecycle(lc) => {
             for src in &mut lc.sources {
-                if let Some(&new_slot) = map.get(src.slot as usize) {
+                if let Some(&new_slot) = map.get(&src.slot) {
                     src.slot = new_slot;
                 }
             }
@@ -565,18 +587,21 @@ fn apply_slot_map(root: &mut NormalizedRoot, map: &[u32]) {
 /// Alpha-renumber: replace author-assigned slot values with dense 0..n slots
 /// ordered by the original slot values (deterministic).
 #[allow(clippy::cast_possible_truncation)]
-fn alpha_renumber_slots(root: &mut NormalizedRoot) {
+fn alpha_renumber_slots(root: &mut NormalizedRoot) -> BTreeMap<u32, u32> {
     let slots = collect_normalized_slots(root);
     if slots.is_empty() {
-        return;
+        return BTreeMap::new();
     }
-    // Build a mapping from old slot value → position in sorted list.
-    let max_old = *slots.last().unwrap();
-    let mut map = vec![u32::MAX; (max_old + 1) as usize];
+    // Build a sparse mapping from old slot value → position in sorted list.
+    // VarId is public and can legally contain u32::MAX; indexing by the
+    // largest authored value would otherwise attempt a multi-gigabyte
+    // allocation before validation can reject or normalize the query.
+    let mut map = BTreeMap::new();
     for (new_idx, &old) in slots.iter().enumerate() {
-        map[old as usize] = new_idx as u32;
+        map.insert(old, new_idx as u32);
     }
     apply_slot_map(root, &map);
+    map
 }
 
 /// Normalize a [`QueryExpr`] into a [`NormalizedRoot`].
@@ -839,13 +864,37 @@ fn merge_same_event(
                 QueryPredicate::Argument { index, matcher, .. } => {
                     constraints.push(ArgumentConstraint::new(*index, matcher.clone()));
                 }
-                QueryPredicate::ReturnedObject { .. } => {
-                    merge_subject_relation(&mut subject, NormalizedSubject::Returned)?;
+                QueryPredicate::ReturnedObject { bind, identity } => {
+                    merge_subject_relation(
+                        &mut subject,
+                        NormalizedSubject::Returned {
+                            producer: identity.clone(),
+                            object_slot: var_to_slot(*bind),
+                        },
+                    )?;
                 }
-                QueryPredicate::ConstructedObject { .. } => {
-                    merge_subject_relation(&mut subject, NormalizedSubject::Instance)?;
+                QueryPredicate::ConstructedObject { bind, identity } => {
+                    merge_subject_relation(
+                        &mut subject,
+                        NormalizedSubject::Instance {
+                            constructor: identity.clone(),
+                            object_slot: var_to_slot(*bind),
+                        },
+                    )?;
                 }
-                QueryPredicate::MemberSubject { .. } => {}
+                QueryPredicate::MemberSubject { event, object } => {
+                    if *event != event_var {
+                        return Err(QueryCompileError::UncorrelatedConjunction);
+                    }
+                    match &subject {
+                        NormalizedSubject::Returned { object_slot, .. }
+                        | NormalizedSubject::Instance { object_slot, .. }
+                            if *object_slot == var_to_slot(*object) => {}
+                        _ => {
+                            return Err(QueryCompileError::UncorrelatedConjunction);
+                        }
+                    }
+                }
             },
             _ => {
                 return Err(QueryCompileError::InternalInvariant {
@@ -867,7 +916,7 @@ fn merge_same_event(
     constraints.sort_by(|a, b| {
         a.index()
             .cmp(&b.index())
-            .then_with(|| a.matcher().cmp(b.matcher()))
+            .then_with(|| a.predicate().cmp(b.predicate()))
     });
     // Deduplicate.
     constraints.dedup();
@@ -876,11 +925,12 @@ fn merge_same_event(
     detect_event_contradictions(event_var, &event, &identity, &subject, &constraints)?;
 
     let slot = var_to_slot(event_var);
+    let normalized_identity = matches!(subject, NormalizedSubject::Direct).then_some(identity);
 
     Ok(NormalizedRoot::Event(NormalizedEvent {
         slot,
         event,
-        identity,
+        identity: normalized_identity,
         subject,
         arguments: constraints.into_boxed_slice(),
     }))
@@ -940,13 +990,13 @@ fn merge_subject_relation(
     target: &mut NormalizedSubject,
     candidate: NormalizedSubject,
 ) -> Result<(), QueryCompileError> {
-    if *target != NormalizedSubject::Direct && *target != candidate {
+    if !matches!(target, NormalizedSubject::Direct) && *target != candidate {
         return Err(QueryCompileError::ContradictoryPredicate {
             variable: VarId::new(0),
             detail: ContradictionKind::SubjectRelation,
         });
     }
-    if candidate != NormalizedSubject::Direct {
+    if !matches!(candidate, NormalizedSubject::Direct) {
         *target = candidate;
     }
     Ok(())
@@ -972,7 +1022,7 @@ fn check_dimension_contradictions(
     identity: &IdentitySpec,
     subject: &NormalizedSubject,
 ) -> Result<(), QueryCompileError> {
-    if *subject != NormalizedSubject::Direct {
+    if !matches!(subject, NormalizedSubject::Direct) {
         return Ok(());
     }
     let valid = match event {
@@ -1008,7 +1058,7 @@ fn check_argument_contradictions(
 ) -> Result<(), QueryCompileError> {
     let mut by_index: BTreeMap<usize, Vec<&crate::api::rule::ArgumentMatcher>> = BTreeMap::new();
     for c in constraints {
-        by_index.entry(c.index()).or_default().push(c.matcher());
+        by_index.entry(c.index()).or_default().push(c.predicate());
     }
 
     for matchers in by_index.values() {
@@ -1154,11 +1204,18 @@ fn normalize_lifecycle_root(
     // and arguments match. Deterministic order is preserved (first wins).
     {
         use std::collections::BTreeSet;
-        let mut seen: BTreeSet<(EventSpec, IdentitySpec, Box<[ArgumentConstraint]>)> =
+        let mut seen: BTreeSet<(EventSpec, Option<IdentitySpec>, Box<[ArgumentConstraint]>)> =
             BTreeSet::new();
         sources.retain(|s| {
             let key = (s.event.clone(), s.identity.clone(), s.arguments.clone());
             seen.insert(key)
+        });
+        sources.sort_by(|a, b| {
+            a.slot
+                .cmp(&b.slot)
+                .then_with(|| a.event.cmp(&b.event))
+                .then_with(|| a.identity.cmp(&b.identity))
+                .then_with(|| a.arguments.cmp(&b.arguments))
         });
     }
 
@@ -1179,7 +1236,7 @@ fn normalize_event_from_query(
     args.sort_by(|a, b| {
         a.index()
             .cmp(&b.index())
-            .then_with(|| a.matcher().cmp(b.matcher()))
+            .then_with(|| a.predicate().cmp(b.predicate()))
     });
     args.dedup();
 
@@ -1189,7 +1246,7 @@ fn normalize_event_from_query(
     Ok(NormalizedEvent {
         slot: eq.var.get(),
         event: eq.event.clone(),
-        identity: eq.identity.clone(),
+        identity: Some(eq.identity.clone()),
         subject,
         arguments: args.into_boxed_slice(),
     })
@@ -1243,8 +1300,26 @@ fn compare_roots(a: &NormalizedRoot, b: &NormalizedRoot) -> std::cmp::Ordering {
                     })
                     .then_with(|| la.sources.len().cmp(&lb.sources.len()))
             })
-            .then_with(|| format!("{:?}", la.condition).cmp(&format!("{:?}", lb.condition)))
-            .then_with(|| format!("{:?}", la.completion).cmp(&format!("{:?}", lb.completion))),
+            .then_with(|| {
+                la.condition
+                    .as_ref()
+                    .map(crate::api::rule::LifecycleCondition::kind)
+                    .cmp(
+                        &lb.condition
+                            .as_ref()
+                            .map(crate::api::rule::LifecycleCondition::kind),
+                    )
+            })
+            .then_with(|| {
+                la.completion
+                    .as_ref()
+                    .map(crate::api::rule::LifecycleCompletion::kind)
+                    .cmp(
+                        &lb.completion
+                            .as_ref()
+                            .map(crate::api::rule::LifecycleCompletion::kind),
+                    )
+            }),
         _ => Ordering::Equal,
     }
 }
@@ -1362,10 +1437,16 @@ mod tests {
         let lc = LifecycleQuery::new(
             "remote-script",
             vec![source],
-            Some(crate::api::rule::LifecycleCondition::event(
-                crate::api::rule::LifecycleEvent::property_write("src", ValueMatcher::any_value()),
-            )),
-            Some(crate::api::rule::LifecycleCompletion::configuration()),
+            Some(
+                crate::api::rule::LifecycleCondition::event(
+                    crate::api::rule::LifecycleEvent::property_write(
+                        "src",
+                        ValueMatcher::any_value(),
+                    ),
+                )
+                .unwrap(),
+            ),
+            Some(crate::api::rule::LifecycleCompletion::configuration().unwrap()),
         )
         .unwrap();
         let d = QueryDecl {
@@ -1476,13 +1557,23 @@ mod tests {
             event(2, "c"),
         ];
         let d = decl(QueryExpr::any(AnyExpr::new(branches).unwrap()), 0, "test");
-        let once = normalize_ok(&d);
-        // Normalize again — needs to create a QueryDecl from the first result.
-        // We can only normalize QueryDecl, not NormalizedQuery, so this tests
-        // that the original input normalizes stably. For true idempotency we'd
-        // re-create a QueryDecl from the normalized form.
-        let twice = normalize_ok(&d);
-        assert_eq!(once, twice);
+        let normalized = normalize_ok(&d);
+        let slots = collect_normalized_slots(normalized.root());
+        assert_eq!(slots, vec![0, 1, 2]);
+        assert_eq!(
+            normalized.requirements(),
+            &PlanRequirements::for_root(normalized.root())
+        );
+        match normalized.root() {
+            NormalizedRoot::Any(branches) => {
+                assert!(
+                    branches
+                        .iter()
+                        .all(|branch| { !matches!(branch, NormalizedRoot::Any(_)) })
+                );
+            }
+            other => panic!("expected normalized Any, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1641,15 +1732,11 @@ mod tests {
     // ── Plan requirements tests ────────────────────────────────────
 
     #[test]
-    fn simple_query_has_occurrence_indexes() {
+    fn simple_query_has_no_matcher_specific_preparation_requirements() {
         let d = decl(event(0, "fetch"), 0, "fetch");
         let nq = normalize_ok(&d);
         let req = nq.requirements();
-        assert!(
-            req.occurrence_indexes()
-                .contains(&OccurrenceIndexRequirement::Calls)
-        );
-        assert!(req.fact_fields().is_empty());
+        assert!(req.value_resolution().is_empty());
         assert!(!req.flow().local);
         assert!(!req.needs_project_overlay());
     }
@@ -1664,10 +1751,6 @@ mod tests {
         let nq = normalize_ok(&d);
         let req = nq.requirements();
         assert!(
-            req.fact_fields()
-                .contains(&FactFieldRequirement::CallArguments)
-        );
-        assert!(
             req.value_resolution()
                 .contains(&ValueResolutionRequirement::LocalStaticValues)
         );
@@ -1679,6 +1762,13 @@ mod tests {
         let nq = normalize_ok(&d);
         let req = nq.requirements();
         assert!(req.needs_project_overlay());
+        assert_eq!(
+            req.project_requirements(),
+            &BTreeSet::from([
+                ProjectRequirement::ExactModuleExports,
+                ProjectRequirement::CallResultIdentities,
+            ])
+        );
     }
 
     #[test]
@@ -1702,11 +1792,6 @@ mod tests {
         let nq = normalize_ok(&d);
         let req = nq.requirements();
         assert!(
-            req.occurrence_indexes()
-                .contains(&OccurrenceIndexRequirement::Calls),
-            "Any should carry Calls from its branches"
-        );
-        assert!(
             req.needs_project_overlay(),
             "Any with module branch should need project overlay"
         );
@@ -1727,10 +1812,16 @@ mod tests {
         let lc = LifecycleQuery::new(
             "test",
             vec![source],
-            Some(crate::api::rule::LifecycleCondition::event(
-                crate::api::rule::LifecycleEvent::property_write("src", ValueMatcher::any_value()),
-            )),
-            Some(crate::api::rule::LifecycleCompletion::configuration()),
+            Some(
+                crate::api::rule::LifecycleCondition::event(
+                    crate::api::rule::LifecycleEvent::property_write(
+                        "src",
+                        ValueMatcher::any_value(),
+                    ),
+                )
+                .unwrap(),
+            ),
+            Some(crate::api::rule::LifecycleCompletion::configuration().unwrap()),
         )
         .unwrap();
         let d = QueryDecl {
@@ -1748,16 +1839,6 @@ mod tests {
             req.flow().cross_call,
             "lifecycle should need cross-call flow"
         );
-        assert!(
-            req.occurrence_indexes()
-                .contains(&OccurrenceIndexRequirement::Calls),
-            "lifecycle should include Calls"
-        );
-        assert!(
-            req.occurrence_indexes()
-                .contains(&OccurrenceIndexRequirement::Members),
-            "lifecycle should include Members"
-        );
     }
 
     #[test]
@@ -1765,26 +1846,7 @@ mod tests {
         let d = QueryDecl::call_global("fetch").unwrap();
         let nq = normalize_ok(&d);
         let req = nq.requirements();
-        assert!(
-            req.occurrence_indexes()
-                .contains(&OccurrenceIndexRequirement::Calls)
-        );
-        assert!(
-            !req.occurrence_indexes()
-                .contains(&OccurrenceIndexRequirement::Members)
-        );
-        assert!(
-            !req.occurrence_indexes()
-                .contains(&OccurrenceIndexRequirement::Literals)
-        );
-        assert!(
-            !req.occurrence_indexes()
-                .contains(&OccurrenceIndexRequirement::Constructions)
-        );
-        assert!(
-            !req.fact_fields()
-                .contains(&FactFieldRequirement::CallArguments)
-        );
+        assert!(req.value_resolution().is_empty());
         assert!(!req.flow().local);
         assert!(!req.flow().cross_call);
         assert!(!req.needs_project_overlay());
@@ -1807,10 +1869,16 @@ mod tests {
         let lc = LifecycleQuery::new(
             "test",
             vec![source],
-            Some(crate::api::rule::LifecycleCondition::event(
-                crate::api::rule::LifecycleEvent::property_write("type", ValueMatcher::any_value()),
-            )),
-            Some(crate::api::rule::LifecycleCompletion::configuration()),
+            Some(
+                crate::api::rule::LifecycleCondition::event(
+                    crate::api::rule::LifecycleEvent::property_write(
+                        "type",
+                        ValueMatcher::any_value(),
+                    ),
+                )
+                .unwrap(),
+            ),
+            Some(crate::api::rule::LifecycleCompletion::configuration().unwrap()),
         )
         .unwrap();
         let d = QueryDecl {
@@ -1964,7 +2032,12 @@ mod tests {
             .unwrap()
             .with_arg(0, ValueMatcher::static_string().equals("foo"))
             .unwrap()
-            .with_arg(0, ValueMatcher::static_string().starts_with_any(["bar"]))
+            .with_arg(
+                0,
+                ValueMatcher::static_string()
+                    .starts_with_any(["bar"])
+                    .unwrap(),
+            )
             .unwrap();
         let result = normalize_query_decl(&eq.into_query());
         assert!(
@@ -1986,7 +2059,12 @@ mod tests {
             .unwrap()
             .with_arg(0, ValueMatcher::static_string().equals("foobar"))
             .unwrap()
-            .with_arg(0, ValueMatcher::static_string().starts_with_any(["foo"]))
+            .with_arg(
+                0,
+                ValueMatcher::static_string()
+                    .starts_with_any(["foo"])
+                    .unwrap(),
+            )
             .unwrap();
         assert!(normalize_query_decl(&eq.into_query()).is_ok());
     }
@@ -1994,43 +2072,21 @@ mod tests {
     // ── Contradiction – empty accepted sets ────────────────────────
 
     #[test]
-    fn empty_exact_set_is_contradictory() {
-        // An Exact with zero alternatives can never match.
+    fn empty_exact_set_is_rejected_at_construction() {
         let empty: Vec<&str> = vec![];
-        let eq = EventQuery::call_global("fetch")
-            .unwrap()
-            .with_arg(0, ValueMatcher::static_string().equals_any(empty))
-            .unwrap();
-        let result = normalize_query_decl(&eq.into_query());
-        assert!(
-            matches!(
-                result,
-                Err(QueryCompileError::ContradictoryPredicate {
-                    detail: ContradictionKind::StaticExactValues,
-                    ..
-                })
-            ),
-            "expected StaticExactValues contradiction for empty exact set, got {result:?}"
-        );
+        assert!(matches!(
+            ValueMatcher::static_string().equals_any(empty),
+            Err(crate::api::rule::QueryBuildError::EmptyCollection(_))
+        ));
     }
 
     #[test]
-    fn empty_contains_any_set_is_contradictory() {
-        // contains_any with zero alternatives can never match.
+    fn empty_contains_any_set_is_rejected_at_construction() {
         let empty: Vec<String> = vec![];
-        let matcher = ValueMatcher::static_string().contains_any(empty);
-        let eq = EventQuery::call_global("fetch")
-            .unwrap()
-            .with_arg(0, matcher)
-            .unwrap();
-        let result = normalize_query_decl(&eq.into_query());
-        assert!(
-            matches!(
-                result,
-                Err(QueryCompileError::ContradictoryPredicate { .. })
-            ),
-            "expected contradiction for empty contains_any set, got {result:?}"
-        );
+        assert!(matches!(
+            ValueMatcher::static_string().contains_any(empty),
+            Err(crate::api::rule::QueryBuildError::EmptyCollection(_))
+        ));
     }
 
     // ── Normalized validation tests ────────────────────────────────
@@ -2160,20 +2216,32 @@ mod tests {
         let lc_a = LifecycleQuery::new(
             "test-a",
             vec![source_a],
-            Some(crate::api::rule::LifecycleCondition::event(
-                crate::api::rule::LifecycleEvent::property_write("src", ValueMatcher::any_value()),
-            )),
-            Some(crate::api::rule::LifecycleCompletion::configuration()),
+            Some(
+                crate::api::rule::LifecycleCondition::event(
+                    crate::api::rule::LifecycleEvent::property_write(
+                        "src",
+                        ValueMatcher::any_value(),
+                    ),
+                )
+                .unwrap(),
+            ),
+            Some(crate::api::rule::LifecycleCompletion::configuration().unwrap()),
         )
         .unwrap();
 
         let lc_b = LifecycleQuery::new(
             "test-b",
             vec![source_b],
-            Some(crate::api::rule::LifecycleCondition::event(
-                crate::api::rule::LifecycleEvent::property_write("href", ValueMatcher::any_value()),
-            )),
-            Some(crate::api::rule::LifecycleCompletion::configuration()),
+            Some(
+                crate::api::rule::LifecycleCondition::event(
+                    crate::api::rule::LifecycleEvent::property_write(
+                        "href",
+                        ValueMatcher::any_value(),
+                    ),
+                )
+                .unwrap(),
+            ),
+            Some(crate::api::rule::LifecycleCompletion::configuration().unwrap()),
         )
         .unwrap();
 
@@ -2222,7 +2290,7 @@ mod tests {
                     1,
                     "AnyValue constraint must be preserved through normalization"
                 );
-                let matcher = ev.arguments[0].matcher();
+                let matcher = ev.arguments[0].predicate();
                 assert_eq!(
                     matcher.kind(),
                     &crate::api::rule::ArgumentMatcherKind::Value(

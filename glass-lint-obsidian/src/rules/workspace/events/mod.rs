@@ -17,19 +17,21 @@ pub fn rule() -> Rule {
                 .map(|q| {
                     q.with_arg(
                         0,
-                        ValueMatcher::static_string().equals_any([
-                            "active-leaf-change",
-                            "file-open",
-                            "layout-change",
-                            "window-open",
-                            "window-close",
-                            "quit",
-                            "editor-change",
-                            "editor-paste",
-                            "editor-drop",
-                            "file-menu",
-                            "editor-menu",
-                        ]),
+                        ValueMatcher::static_string()
+                            .equals_any([
+                                "active-leaf-change",
+                                "file-open",
+                                "layout-change",
+                                "window-open",
+                                "window-close",
+                                "quit",
+                                "editor-change",
+                                "editor-paste",
+                                "editor-drop",
+                                "file-menu",
+                                "editor-menu",
+                            ])
+                            .unwrap(),
                     )
                     .unwrap()
                     .into_query()

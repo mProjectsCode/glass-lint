@@ -77,12 +77,6 @@ pub(crate) enum QueryCompileError {
     InvalidLifecycle { detail: String },
     /// Query shape cannot be bounded at compile time.
     UnboundedQuery { detail: &'static str },
-    /// Module specifier pattern is invalid.
-    #[allow(dead_code)]
-    InvalidModulePattern { pattern: String, detail: String },
-    /// Static-value predicate is invalid.
-    #[allow(dead_code)]
-    InvalidStaticValuePredicate { detail: String },
     /// Internal compiler invariant violation (bug, not authored error).
     InternalInvariant { detail: String },
 }
@@ -102,8 +96,6 @@ impl QueryCompileError {
             Self::UnavailablePrimaryLocation { .. } => "unavailable_primary_location",
             Self::InvalidLifecycle { .. } => "invalid_lifecycle",
             Self::UnboundedQuery { .. } => "unbounded_query",
-            Self::InvalidModulePattern { .. } => "invalid_module_pattern",
-            Self::InvalidStaticValuePredicate { .. } => "invalid_static_value_predicate",
             Self::InternalInvariant { .. } => "internal_invariant",
         }
     }
@@ -200,12 +192,6 @@ impl std::fmt::Display for QueryCompileError {
             }
             Self::UnboundedQuery { detail } => {
                 write!(f, "unbounded query: {detail}")
-            }
-            Self::InvalidModulePattern { pattern, detail } => {
-                write!(f, "invalid module pattern `{pattern}`: {detail}")
-            }
-            Self::InvalidStaticValuePredicate { detail } => {
-                write!(f, "invalid static-value predicate: {detail}")
             }
             Self::InternalInvariant { detail } => {
                 write!(f, "internal invariant: {detail}")
@@ -391,7 +377,29 @@ pub(crate) fn pass_well_formedness(decl: &QueryDecl) -> Result<(), QueryCompileE
 fn pass_well_formedness_inner(expr: &QueryExpr) -> Result<(), QueryCompileError> {
     match &expr.kind {
         QueryExprKind::Event(eq) => validate_event_query(eq),
-        QueryExprKind::SelectEvent(_) | QueryExprKind::Require(_) => Ok(()),
+        QueryExprKind::SelectEvent(_) => Ok(()),
+        QueryExprKind::Require(predicate) => match predicate {
+            QueryPredicate::ReturnedObject { identity, .. }
+                if !matches!(identity, IdentitySpec::Rooted { .. }) =>
+            {
+                Err(QueryCompileError::UnsupportedRelation {
+                    relation: "returned_object",
+                    detail: "returned objects require a rooted producer identity".into(),
+                })
+            }
+            QueryPredicate::ConstructedObject { identity, .. }
+                if !matches!(
+                    identity,
+                    IdentitySpec::ModuleExport { .. } | IdentitySpec::PackageModuleExport { .. }
+                ) =>
+            {
+                Err(QueryCompileError::UnsupportedRelation {
+                    relation: "constructed_object",
+                    detail: "constructed objects require a module export identity".into(),
+                })
+            }
+            _ => Ok(()),
+        },
         QueryExprKind::Any(any) => {
             for b in &any.branches {
                 pass_well_formedness_inner(b)?;
@@ -563,7 +571,7 @@ pub(crate) fn pass_type_checking(decl: &QueryDecl) -> Result<(), QueryCompileErr
         }),
         |ty| match ty {
             VarType::Event | VarType::CallEvent | VarType::MemberEvent => Ok(()),
-            _ => Err(QueryCompileError::UnavailablePrimaryLocation { var: primary }),
+            VarType::Object => Err(QueryCompileError::UnavailablePrimaryLocation { var: primary }),
         },
     )
 }
@@ -745,10 +753,6 @@ impl VarType {
             Self::CallEvent => "call_event",
             Self::MemberEvent => "member_event",
             Self::Object => "object",
-            Self::StaticValue => "static_value",
-            Self::CallableIdentity => "callable_identity",
-            Self::ModuleIdentity => "module_identity",
-            Self::SymbolPath => "symbol_path",
         }
     }
 }
@@ -967,6 +971,16 @@ pub(crate) fn pass_relation_availability(decl: &QueryDecl) -> Result<(), QueryCo
 fn check_relation_scope(expr: &QueryExpr) -> Result<(), QueryCompileError> {
     match &expr.kind {
         QueryExprKind::Event(eq) => {
+            if !identity_supports_event(eq.identity(), eq.event()) {
+                return Err(QueryCompileError::UnsupportedRelation {
+                    relation: eq.identity().diagnostic_name(),
+                    detail: format!(
+                        "identity `{}` is not available for event `{}`",
+                        eq.identity().diagnostic_name(),
+                        eq.event().diagnostic_name()
+                    ),
+                });
+            }
             // Validate that the identity type is supported in the
             // current semantic model.
             match eq.identity() {
@@ -1056,6 +1070,41 @@ fn check_relation_scope(expr: &QueryExpr) -> Result<(), QueryCompileError> {
             Ok(())
         }
         QueryExprKind::SelectEvent(_) | QueryExprKind::Require(_) => Ok(()),
+    }
+}
+
+fn identity_supports_event(identity: &IdentitySpec, event: &EventSpec) -> bool {
+    match identity {
+        IdentitySpec::Global { .. } | IdentitySpec::Heuristic { .. } => matches!(
+            event,
+            EventSpec::Call
+                | EventSpec::Construct
+                | EventSpec::ClassReference
+                | EventSpec::MemberCall { .. }
+                | EventSpec::MemberRead { .. }
+        ),
+        IdentitySpec::ModuleExport { .. } | IdentitySpec::PackageModuleExport { .. } => {
+            matches!(
+                event,
+                EventSpec::Call | EventSpec::Construct | EventSpec::ClassReference
+            )
+        }
+        IdentitySpec::ModuleNamespace { .. } | IdentitySpec::PackageModuleNamespace { .. } => {
+            matches!(
+                event,
+                EventSpec::MemberCall { .. } | EventSpec::MemberRead { .. }
+            )
+        }
+        IdentitySpec::Rooted { .. } => {
+            matches!(
+                event,
+                EventSpec::MemberCall { .. } | EventSpec::MemberRead { .. }
+            )
+        }
+        IdentitySpec::LiteralString { .. } => {
+            matches!(event, EventSpec::Import | EventSpec::StringReference)
+        }
+        IdentitySpec::PackageSpecifier { .. } => matches!(event, EventSpec::Import),
     }
 }
 
@@ -1607,21 +1656,11 @@ mod tests {
                 })
             })
             .collect();
-        let any = QueryExpr::any(AnyExpr::new(branches).unwrap());
-        let decl = QueryDecl {
-            expression: any,
-            emission: EmissionDecl {
-                primary_var: VarId::new(0),
-                kind: MatchKind::Call,
-                symbol: "test".into(),
-            },
-        };
-        assert_eq!(
-            pass_boundedness(&decl),
-            Err(QueryCompileError::UnboundedQuery {
-                detail: "Any expression exceeds maximum branch count",
-            })
-        );
+        let error = AnyExpr::new(branches).unwrap_err();
+        assert!(matches!(
+            error,
+            crate::api::rule::QueryBuildError::CollectionTooLarge(_, 1001)
+        ));
     }
 
     // ── Lifecycle validation tests ────────────────────────────────
@@ -1642,10 +1681,16 @@ mod tests {
         let lc = LifecycleQuery {
             symbol: "test".into(),
             sources: vec![source],
-            condition: Some(crate::api::rule::LifecycleCondition::event(
-                crate::api::rule::LifecycleEvent::property_write("type", ValueMatcher::any_value()),
-            )),
-            completion: Some(crate::api::rule::LifecycleCompletion::configuration()),
+            condition: Some(
+                crate::api::rule::LifecycleCondition::event(
+                    crate::api::rule::LifecycleEvent::property_write(
+                        "type",
+                        ValueMatcher::any_value(),
+                    ),
+                )
+                .unwrap(),
+            ),
+            completion: Some(crate::api::rule::LifecycleCompletion::configuration().unwrap()),
         };
         let decl = QueryDecl {
             expression: QueryExpr::lifecycle(lc),
@@ -1681,10 +1726,16 @@ mod tests {
         let lc = LifecycleQuery {
             symbol: "test".into(),
             sources: vec![source],
-            condition: Some(crate::api::rule::LifecycleCondition::event(
-                crate::api::rule::LifecycleEvent::property_write("type", ValueMatcher::any_value()),
-            )),
-            completion: Some(crate::api::rule::LifecycleCompletion::configuration()),
+            condition: Some(
+                crate::api::rule::LifecycleCondition::event(
+                    crate::api::rule::LifecycleEvent::property_write(
+                        "type",
+                        ValueMatcher::any_value(),
+                    ),
+                )
+                .unwrap(),
+            ),
+            completion: Some(crate::api::rule::LifecycleCompletion::configuration().unwrap()),
         };
         let decl = QueryDecl {
             expression: QueryExpr::lifecycle(lc),
@@ -1719,10 +1770,16 @@ mod tests {
         let lc = LifecycleQuery {
             symbol: "test".into(),
             sources: vec![source],
-            condition: Some(crate::api::rule::LifecycleCondition::event(
-                crate::api::rule::LifecycleEvent::property_write("type", ValueMatcher::any_value()),
-            )),
-            completion: Some(crate::api::rule::LifecycleCompletion::configuration()),
+            condition: Some(
+                crate::api::rule::LifecycleCondition::event(
+                    crate::api::rule::LifecycleEvent::property_write(
+                        "type",
+                        ValueMatcher::any_value(),
+                    ),
+                )
+                .unwrap(),
+            ),
+            completion: Some(crate::api::rule::LifecycleCompletion::configuration().unwrap()),
         };
         let decl = QueryDecl {
             expression: QueryExpr::lifecycle(lc),
@@ -1839,23 +1896,6 @@ mod tests {
     fn unbounded_query_error_has_correct_diagnostic_name() {
         let err = QueryCompileError::UnboundedQuery { detail: "test" };
         assert_eq!(err.diagnostic_name(), "unbounded_query");
-    }
-
-    #[test]
-    fn invalid_module_pattern_error_has_correct_diagnostic_name() {
-        let err = QueryCompileError::InvalidModulePattern {
-            pattern: "test".into(),
-            detail: "test".into(),
-        };
-        assert_eq!(err.diagnostic_name(), "invalid_module_pattern");
-    }
-
-    #[test]
-    fn invalid_static_value_predicate_has_correct_diagnostic_name() {
-        let err = QueryCompileError::InvalidStaticValuePredicate {
-            detail: "test".into(),
-        };
-        assert_eq!(err.diagnostic_name(), "invalid_static_value_predicate");
     }
 
     #[test]
@@ -1982,15 +2022,11 @@ mod tests {
         // across both branches.
         let branch_a = QueryDecl::call_global("fetch").unwrap();
         let branch_b = QueryDecl::member_call_rooted("document.createElement").unwrap();
-        let query = QueryDecl::any([Ok(branch_a), Ok(branch_b)]).unwrap();
-        let result = pass_type_checking(&query);
-        assert!(
-            matches!(
-                result,
-                Err(QueryCompileError::IncompatibleBranchOutput { var, .. }) if var == VarId::new(0)
-            ),
-            "expected IncompatibleBranchOutput for $0, got: {result:?}"
-        );
+        let result = QueryDecl::any([Ok(branch_a), Ok(branch_b)]);
+        assert!(matches!(
+            result,
+            Err(crate::api::rule::QueryBuildError::EvidenceProjection)
+        ));
     }
 
     #[test]

@@ -29,11 +29,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::call_global(name)` / `QueryDecl::call_global(name)` |
 | Logical identity | `IdentitySpec::Global { name }` |
+| Normalized relation | `NormalizedEvent::Direct` in `normalize.rs` |
 | Event | `EventSpec::Call` |
-| Subject relation | `SubjectSpec::Direct` |
+| Subject relation | `Direct` |
 | Constraints | All: `with_arg`, `with_arg_static_string`, `with_arg_static_strings`, `with_arg_static_string_contains`, `with_arg_object_property_value`, `with_arg_object_keys`, `rooted_expressions` |
 | Evidence | `MatchKind::Call`, symbol = name |
 | Local operator | `PhysicalRoot::IndexedScan` (unconstrained) / `ConstrainedScan` (with argument constraints) — `OccurrenceIndexes::occurrences_for_indexed` via `CallIndexes::global_calls` |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | None |
 | Certainty behavior | `Definite` when global exists in environment and identity is proven; `Possible` when alias chain is incomplete; unknown when environment does not contain the global |
 | Provider users | `js:network.request` (`fetch`), `js:browser.clipboard-write` (`navigator.clipboard.writeText` → rooted), `node:network` (`fetch`, `require`) |
@@ -45,11 +47,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::call_heuristic(name)` / `QueryDecl::call_heuristic(name)` |
 | Logical identity | `IdentitySpec::Heuristic { name }` |
+| Normalized relation | `NormalizedEvent::Direct` in `normalize.rs` |
 | Event | `EventSpec::Call` |
-| Subject relation | `SubjectSpec::Direct` |
+| Subject relation | `Direct` |
 | Constraints | All argument forms |
 | Evidence | `MatchKind::Call`, symbol = name |
 | Local operator | `PhysicalRoot::IndexedScan` — `OccurrenceIndexes::occurrences_for_indexed` via `CallIndexes::calls` |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | None |
 | Certainty behavior | `Possible` (heuristic identity is never strict) |
 | Provider users | `js:telemetry.indicator` (heuristic sendBeacon) |
@@ -61,11 +65,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::call_module(module, export)` / `QueryDecl::call_module(module, export)` |
 | Logical identity | `IdentitySpec::ModuleExport { module, export }` |
+| Normalized relation | `NormalizedEvent::Direct` in `normalize.rs` |
 | Event | `EventSpec::Call` |
-| Subject relation | `SubjectSpec::Direct` |
+| Subject relation | `Direct` |
 | Constraints | All argument forms |
 | Evidence | `MatchKind::Call`, symbol = `module.export` |
 | Local operator | `PhysicalRoot::IndexedScan` / `ConstrainedScan` — `OccurrenceIndexes::occurrences_for_indexed` via `CallIndexes::module_calls` |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | Overlay: `LinkedOccurrenceView` remaps local occurrences through module export identities |
 | Certainty behavior | `Definite` when export identity is proven; `Unknown` when module is unresolved or ambiguous |
 | Provider users | `js:node.filesystem` (`fs` module calls), `js:browser.remote-resource` |
@@ -77,11 +83,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::call_package(module, export)` / `QueryDecl::call_package(module, export)` |
 | Logical identity | `IdentitySpec::PackageModuleExport { module: ModuleSpecifierPattern, export }` |
+| Normalized relation | `NormalizedEvent::Direct` in `normalize.rs` |
 | Event | `EventSpec::Call` |
-| Subject relation | `SubjectSpec::Direct` |
+| Subject relation | `Direct` |
 | Constraints | All argument forms |
 | Evidence | `MatchKind::Call`, symbol = `module.export` |
 | Local operator | `PhysicalRoot::IndexedScan` / `ConstrainedScan` — `OccurrenceIndexes::occurrences_for_indexed` via pattern match on package buckets |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | Overlay: package-scoped identity resolution |
 | Certainty behavior | `Definite` when package identity resolves; `Possible` for pattern match with multiple candidates |
 | Provider users | `obsidian:network.request` (`@obsidian/` packages) |
@@ -93,11 +101,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::member_call_rooted(chain)` / `QueryDecl::member_call_rooted(chain)` |
 | Logical identity | `IdentitySpec::Rooted { path: SymbolPath }` |
+| Normalized relation | `NormalizedEvent::Direct` in `normalize.rs` |
 | Event | `EventSpec::MemberCall { member: SymbolPath }` |
-| Subject relation | `SubjectSpec::Direct` |
+| Subject relation | `Direct` |
 | Constraints | All argument forms |
 | Evidence | `MatchKind::MemberCall`, symbol = chain |
 | Local operator | `PhysicalRoot::IndexedScan` / `ConstrainedScan` — `OccurrenceIndexes::occurrences_for_indexed` via `MemberIndexes::rooted_calls` |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | None (rooted paths are local) |
 | Certainty behavior | `Definite` when the root matches a global object alias; `Unknown` when the root is not a known global |
 | Provider users | `obsidian:storage.*`, `obsidian:vault.*`, `obsidian:workspace.*`, `js:browser.environment` (`document.cookie`, `window.localStorage`) |
@@ -109,11 +119,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::member_call_heuristic(chain)` / `QueryDecl::member_call_heuristic(chain)` |
 | Logical identity | `IdentitySpec::Heuristic { name }` |
+| Normalized relation | `NormalizedEvent::Direct` in `normalize.rs` |
 | Event | `EventSpec::MemberCall { member: SymbolPath }` |
-| Subject relation | `SubjectSpec::Direct` |
+| Subject relation | `Direct` |
 | Constraints | All argument forms |
 | Evidence | `MatchKind::MemberCall`, symbol = chain |
 | Local operator | `PhysicalRoot::IndexedScan` — `MemberIndexes::calls` |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | None |
 | Certainty behavior | `Possible` (heuristic identity) |
 | Provider users | General fallback |
@@ -125,11 +137,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::member_call_module(module, member)` / `QueryDecl::member_call_module(module, member)` |
 | Logical identity | `IdentitySpec::ModuleNamespace { module }` |
+| Normalized relation | `NormalizedEvent::Direct` in `normalize.rs` |
 | Event | `EventSpec::MemberCall { member }` |
-| Subject relation | `SubjectSpec::Direct` |
+| Subject relation | `Direct` |
 | Constraints | All argument forms |
 | Evidence | `MatchKind::MemberCall`, symbol = module |
 | Local operator | `PhysicalRoot::IndexedScan` / `ConstrainedScan` — `MemberIndexes::module_calls` |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | Overlay: namespace identity resolution |
 | Certainty behavior | `Definite` when module namespace is proven |
 | Provider users | `js:node.filesystem`, `obsidian:network.request` |
@@ -141,11 +155,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::member_call_instance(module, export, member)` / `QueryDecl::member_call_instance(module, export, member)` |
 | Logical identity | `IdentitySpec::ModuleExport { module, export }` (constructor identity) |
+| Normalized relation | `NormalizedSubject::Instance` in `normalize.rs` |
 | Event | `EventSpec::MemberCall { member }` |
-| Subject relation | `SubjectSpec::InstanceOf` |
+| Subject relation | `ConstructedInstance` |
 | Constraints | All argument forms (on the member call) |
 | Evidence | `MatchKind::MemberCall`, symbol = `module.export` |
 | Local operator | `PhysicalRoot::InstanceSubject` — `OccurrenceIndexes::occurrences_for_instance` via `MemberIndexes::instance_calls` |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | Overlay: constructor module identity resolution |
 | Certainty behavior | `Definite` when constructor identity is proven and instance correlation holds |
 | Provider users | `obsidian:lifecycle.*` (`obsidian.Plugin.loadData`), `obsidian:editor.*`, `obsidian:view.*` |
@@ -157,11 +173,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::member_call_returned(source, member)` / `QueryDecl::member_call_returned(source, member)` |
 | Logical identity | `IdentitySpec::Rooted { path }` (producer identity) |
+| Normalized relation | `NormalizedSubject::Returned` in `normalize.rs` |
 | Event | `EventSpec::MemberCall { member }` |
-| Subject relation | `SubjectSpec::ReturnedFrom` |
+| Subject relation | `ReturnedObject` |
 | Constraints | All argument forms |
 | Evidence | `MatchKind::MemberCall`, symbol = source |
 | Local operator | `PhysicalRoot::ReturnedSubject` — `OccurrenceIndexes::occurrences_for_returned` via `MemberIndexes::returned_calls` |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | None (rooted producer) |
 | Certainty behavior | `Definite` when producer identity and object correlation are proven |
 | Provider users | `js:browser.filesystem` (`showDirectoryPicker.getFileHandle`), `obsidian:markdown.*` |
@@ -173,11 +191,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::member_read_rooted(chain)` / `QueryDecl::member_read_rooted(chain)` |
 | Logical identity | `IdentitySpec::Rooted { path }` |
+| Normalized relation | `NormalizedEvent::Direct` in `normalize.rs` |
 | Event | `EventSpec::MemberRead { member }` |
-| Subject relation | `SubjectSpec::Direct` |
+| Subject relation | `Direct` |
 | Constraints | Not applicable (member reads have no arguments) |
 | Evidence | `MatchKind::MemberRead`, symbol = chain |
 | Local operator | `PhysicalRoot::IndexedScan` — `MemberIndexes::rooted_reads` |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | None |
 | Certainty behavior | Same as `member_call_rooted` |
 | Provider users | `obsidian:platform.*` (`obsidian.Platform.isMobile`), `js:browser.permissions*` |
@@ -189,11 +209,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::member_read_module(module, member)` / `QueryDecl::member_read_module(module, member)` |
 | Logical identity | `IdentitySpec::ModuleNamespace { module }` |
+| Normalized relation | `NormalizedEvent::Direct` in `normalize.rs` |
 | Event | `EventSpec::MemberRead { member }` |
-| Subject relation | `SubjectSpec::Direct` |
+| Subject relation | `Direct` |
 | Constraints | Not applicable |
 | Evidence | `MatchKind::MemberRead`, symbol = module |
 | Local operator | `PhysicalRoot::IndexedScan` — `MemberIndexes::module_reads` |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | Overlay: namespace identity resolution |
 | Certainty behavior | Same as `member_call_module` |
 | Provider users | `obsidian:platform.*` |
@@ -205,11 +227,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::member_read_returned(source, member)` / `QueryDecl::member_read_returned(source, member)` |
 | Logical identity | `IdentitySpec::Rooted { path }` (producer identity) |
+| Normalized relation | `NormalizedSubject::Returned` in `normalize.rs` |
 | Event | `EventSpec::MemberRead { member }` |
-| Subject relation | `SubjectSpec::ReturnedFrom` |
+| Subject relation | `ReturnedObject` |
 | Constraints | Not applicable |
 | Evidence | `MatchKind::MemberRead`, symbol = source |
 | Local operator | `PhysicalRoot::ReturnedSubject` — `MemberIndexes::returned_reads` |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | None (rooted producer) |
 | Certainty behavior | Same as `member_call_returned` |
 | Provider users | `obsidian:storage.*` |
@@ -221,11 +245,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::member_call_package(module, member)` / `member_read_package(module, member)` |
 | Logical identity | `IdentitySpec::PackageModuleNamespace { pattern }` |
+| Normalized relation | `NormalizedEvent::Direct` in `normalize.rs` |
 | Event | `EventSpec::MemberCall` / `MemberRead` |
-| Subject relation | `SubjectSpec::Direct` |
+| Subject relation | `Direct` |
 | Constraints | All argument forms (calls only) |
 | Evidence | `MatchKind::MemberCall` / `MemberRead`, symbol = module |
 | Local operator | `PhysicalRoot::IndexedScan` — package bucket scan |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | Overlay: package-scoped identity |
 | Certainty behavior | `Definite` when package identity matches |
 | Provider users | `obsidian:codemirror.*` |
@@ -237,11 +263,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::import_exact(module)` / `QueryDecl::import_exact(module)` |
 | Logical identity | `IdentitySpec::LiteralString { predicate }` |
+| Normalized relation | `NormalizedEvent::Direct` in `normalize.rs` |
 | Event | `EventSpec::Import` |
-| Subject relation | `SubjectSpec::Direct` |
+| Subject relation | `Direct` |
 | Constraints | Not applicable |
 | Evidence | `MatchKind::Import`, symbol = module |
 | Local operator | `PhysicalRoot::IndexedScan` — `LiteralIndexes::imports` |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | Project identity matching for module specifiers |
 | Certainty behavior | `Definite` when import specifier matches exactly |
 | Provider users | `js:node.network` (`require('http')`), `js:browser.remote-resource` |
@@ -253,11 +281,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::import_package(module)` / `QueryDecl::import_package(module)` |
 | Logical identity | `IdentitySpec::PackageSpecifier { pattern }` |
+| Normalized relation | `NormalizedEvent::Direct` in `normalize.rs` |
 | Event | `EventSpec::Import` |
-| Subject relation | `SubjectSpec::Direct` |
+| Subject relation | `Direct` |
 | Constraints | Not applicable |
 | Evidence | `MatchKind::Import`, symbol = module |
 | Local operator | `PhysicalRoot::IndexedScan` — pattern scan on import buckets |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | Package-scoped pattern matching |
 | Certainty behavior | `Definite` when import matches package pattern |
 | Provider users | `js:node.filesystem`, `obsidian:network.request` |
@@ -269,11 +299,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::string_contains(value)` / `QueryDecl::string_contains(value)` |
 | Logical identity | `IdentitySpec::LiteralString { predicate }` |
+| Normalized relation | `NormalizedEvent::Direct` in `normalize.rs` |
 | Event | `EventSpec::StringReference` |
-| Subject relation | `SubjectSpec::Direct` |
+| Subject relation | `Direct` |
 | Constraints | Not applicable |
 | Evidence | `MatchKind::StringContains`, symbol = value |
 | Local operator | `PhysicalRoot::IndexedScan` — `LiteralIndexes::strings` |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | None |
 | Certainty behavior | `Definite` when the literal string contains the predicate |
 | Provider users | `js:telemetry.indicator`, `js:string_timer` |
@@ -285,11 +317,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::class_heuristic(name)` / `QueryDecl::class_heuristic(name)` |
 | Logical identity | `IdentitySpec::Heuristic { name }` |
+| Normalized relation | `NormalizedEvent::Direct` in `normalize.rs` |
 | Event | `EventSpec::ClassReference` |
-| Subject relation | `SubjectSpec::Direct` |
+| Subject relation | `Direct` |
 | Constraints | Not applicable |
 | Evidence | `MatchKind::Class`, symbol = name |
 | Local operator | `PhysicalRoot::IndexedScan` — `ConstructionIndexes::classes` |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | None |
 | Certainty behavior | `Possible` (heuristic identity) |
 | Provider users | General heuristic class matching |
@@ -301,11 +335,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::class_module(module, export)` / `QueryDecl::class_module(module, export)` |
 | Logical identity | `IdentitySpec::ModuleExport { module, export }` |
+| Normalized relation | `NormalizedEvent::Direct` in `normalize.rs` |
 | Event | `EventSpec::ClassReference` |
-| Subject relation | `SubjectSpec::Direct` |
+| Subject relation | `Direct` |
 | Constraints | Not applicable |
 | Evidence | `MatchKind::Class`, symbol = `module.export` |
 | Local operator | `PhysicalRoot::IndexedScan` — `ConstructionIndexes::module_classes` |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | Overlay: module identity resolution |
 | Certainty behavior | `Definite` when module class identity is proven |
 | Provider users | `obsidian:bases.*`, `obsidian:view.*` |
@@ -317,11 +353,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::constructor_global(name)` / `QueryDecl::constructor_global(name)` |
 | Logical identity | `IdentitySpec::Global { name }` |
+| Normalized relation | `NormalizedEvent::Direct` in `normalize.rs` |
 | Event | `EventSpec::Construct` |
-| Subject relation | `SubjectSpec::Direct` |
+| Subject relation | `Direct` |
 | Constraints | All argument forms |
 | Evidence | `MatchKind::Constructor`, symbol = name |
 | Local operator | `PhysicalRoot::IndexedScan` — `ConstructionIndexes::global_constructors` |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | None |
 | Certainty behavior | `Definite` when global constructor exists in environment |
 | Provider users | `js:url_construction` (`new URL(...)`) |
@@ -333,11 +371,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::constructor_heuristic(name)` / `QueryDecl::constructor_heuristic(name)` |
 | Logical identity | `IdentitySpec::Heuristic { name }` |
+| Normalized relation | `NormalizedEvent::Direct` in `normalize.rs` |
 | Event | `EventSpec::Construct` |
-| Subject relation | `SubjectSpec::Direct` |
+| Subject relation | `Direct` |
 | Constraints | All argument forms |
 | Evidence | `MatchKind::Constructor`, symbol = name |
 | Local operator | `PhysicalRoot::IndexedScan` — `ConstructionIndexes::constructors` |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | None |
 | Certainty behavior | `Possible` (heuristic identity) |
 | Provider users | General heuristic constructor matching |
@@ -349,11 +389,13 @@ and focused test coverage.
 |---|---|
 | Authoring constructor | `EventQuery::constructor_module(module, export)` / `QueryDecl::constructor_module(module, export)` |
 | Logical identity | `IdentitySpec::ModuleExport { module, export }` |
+| Normalized relation | `NormalizedEvent::Direct` in `normalize.rs` |
 | Event | `EventSpec::Construct` |
-| Subject relation | `SubjectSpec::Direct` |
+| Subject relation | `Direct` |
 | Constraints | All argument forms |
 | Evidence | `MatchKind::Constructor`, symbol = `module.export` |
 | Local operator | `PhysicalRoot::IndexedScan` — `ConstructionIndexes::module_constructors` |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
 | Project behavior | Overlay: module identity resolution |
 | Certainty behavior | `Definite` when module constructor identity is proven |
 | Provider users | `obsidian:ui.*` (`new obsidian.Modal(...)`) |
@@ -376,20 +418,20 @@ and focused test coverage.
 
 | Capability | Constructor | Details |
 |---|---|---|
-| AnyOf condition | `FlowCondition::any_of([...])` | Union of alternative lifecycle requirements |
-| AllOf condition | `FlowCondition::all_of([...])` | Intersection of lifecycle requirements |
-| Event condition | `FlowCondition::event(member)` | Single property-write or member-call requirement |
-| Property write event | `ObjectEventMatcher::property_write(property, value_matcher)` | Property assignment on tracked object |
-| Member call event | `ObjectEventMatcher::member_call(member, args)` | Method call on tracked object |
+| AnyOf condition | `LifecycleCondition::any_of([...])` | Union of alternative lifecycle requirements |
+| AllOf condition | `LifecycleCondition::all_of([...])` | Intersection of lifecycle requirements |
+| Event condition | `LifecycleCondition::event(member)` | Single property-write or member-call requirement |
+| Property write event | `LifecycleEvent::property_write(property, value_matcher)` | Property assignment on tracked object |
+| Member call event | `LifecycleEvent::member_call(member, args)` | Method call on tracked object |
 
 ### Configuration and sink completion
 
 | Capability | Constructor | Details |
 |---|---|---|
-| Configuration completion | `FlowCompletion::configuration()` | Object is configured when requirements are met |
-| Any-sink completion | `FlowCompletion::any_sink([...])` | Object reaches a sink that accepts it |
-| Exact argument sink | `FlowSinkMatcher::argument_of(chain, index)` | Specific argument of a call chain is the sink |
-| Any-argument sink | `FlowSinkMatcher::any_argument_of(chain)` | Any argument of a call chain is the sink |
+| Configuration completion | `LifecycleCompletion::configuration()` | Object is configured when requirements are met |
+| Any-sink completion | `LifecycleCompletion::any_sink([...])` | Object reaches a sink that accepts it |
+| Exact argument sink | `LifecycleSink::argument_of(chain, index)` | Specific argument of a call chain is the sink |
+| Any-argument sink | `LifecycleSink::any_argument_of(chain)` | Any argument of a call chain is the sink |
 
 ### Lifecycle sources
 

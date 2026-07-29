@@ -50,6 +50,7 @@ compare:
 	$(HARNESS) --adapter eslint-obsidianmd=adapters/eslint-obsidianmd/adapter.ts compare $(HARNESS_SUITE)
 
 ci: check clippy test-all
+	$(CARGO) check -p glass-lint-core --examples
 
 clean:
 	$(CARGO) clean

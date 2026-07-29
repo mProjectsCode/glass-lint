@@ -70,17 +70,23 @@ fn remote_element_query(
     tag: &str,
     property: &str,
 ) -> Result<LifecycleQuery, QueryBuildError> {
-    let remote_url = ValueMatcher::static_string().starts_with_any(["http://", "https://", "//"]);
+    let remote_url = ValueMatcher::static_string()
+        .starts_with_any(["http://", "https://", "//"])
+        .unwrap();
     LifecycleQuery::builder(symbol)
         .source(
             LifecycleSource::returned_by("document.createElement")
+                .unwrap()
                 .arg(0, ValueMatcher::static_string().equals(tag)),
         )
         .condition(LifecycleCondition::any_of([
             LifecycleEvent::property_write(property, remote_url.clone()),
             LifecycleEvent::member_call("setAttribute")
+                .unwrap()
                 .arg(0, ValueMatcher::static_string().equals(property))
+                .unwrap()
                 .arg(1, remote_url)
+                .unwrap()
                 .build(),
         ]))
         .completion(LifecycleCompletion::any_sink(

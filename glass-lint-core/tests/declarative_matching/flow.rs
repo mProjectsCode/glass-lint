@@ -140,12 +140,16 @@ fn value_flow_supports_member_call_configuration_and_helper_sinks() {
             LifecycleQuery::builder("script insertion")
                 .source(
                     LifecycleSource::returned_by("document.createElement")
+                        .unwrap()
                         .arg(0, ValueMatcher::static_string().equals("script")),
                 )
                 .condition(LifecycleCondition::event(
                     LifecycleEvent::member_call("setAttribute")
+                        .unwrap()
                         .arg(0, ValueMatcher::static_string().equals("src"))
+                        .unwrap()
                         .arg(1, ValueMatcher::any_value())
+                        .unwrap()
                         .build(),
                 ))
                 .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
@@ -301,11 +305,14 @@ fn value_flow_static_prefix_requires_static_values() {
             LifecycleQuery::builder("remote element")
                 .source(
                     LifecycleSource::returned_by("document.createElement")
+                        .unwrap()
                         .arg(0, ValueMatcher::static_string().equals("img")),
                 )
                 .condition(LifecycleCondition::event(LifecycleEvent::property_write(
                     "src",
-                    ValueMatcher::static_string().starts_with_any(["https://", "http://"]),
+                    ValueMatcher::static_string()
+                        .starts_with_any(["https://", "http://"])
+                        .unwrap(),
                 )))
                 .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
                     "document.body.appendChild",
@@ -331,6 +338,7 @@ fn flow_can_require_all_requirements() {
             LifecycleQuery::builder("remote stylesheet")
                 .source(
                     LifecycleSource::returned_by("document.createElement")
+                        .unwrap()
                         .arg(0, ValueMatcher::static_string().equals("link")),
                 )
                 .condition(LifecycleCondition::all_of([
@@ -340,7 +348,9 @@ fn flow_can_require_all_requirements() {
                     ),
                     LifecycleEvent::property_write(
                         "href",
-                        ValueMatcher::static_string().starts_with_any(["https://"]),
+                        ValueMatcher::static_string()
+                            .starts_with_any(["https://"])
+                            .unwrap(),
                     ),
                 ]))
                 .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(

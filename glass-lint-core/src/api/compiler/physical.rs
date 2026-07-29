@@ -3,14 +3,14 @@ use glass_lint_datastructures::SymbolPath;
 use crate::api::{
     classification::MatchKind,
     compiler::{
+        error::PhysicalPlanValidationError,
         normalize::{
             NormalizedEvent, NormalizedLifecycle, NormalizedQuery, NormalizedRoot,
-            NormalizedSubject, PlanRequirements,
+            NormalizedSubject, PlanRequirements, ProjectRequirement, ValueResolutionRequirement,
         },
         object_flow::CompiledObjectFlow,
         rule::{
-            EventPredicate, EvidenceDescriptor, IdentityConstraint, InvalidQueryClause,
-            lower_event, lower_identity,
+            EventPredicate, EvidenceDescriptor, IdentityConstraint, lower_event, lower_identity,
         },
     },
     rule::{
@@ -71,7 +71,7 @@ pub(crate) fn compile_argument_constraints(
     let mut groups: Vec<ArgumentConstraintGroup> = Vec::new();
     for constraint in raw {
         let idx = constraint.arg_index();
-        let matcher = constraint.matcher().clone();
+        let matcher = constraint.predicate().clone();
         if let Some(last) = groups.last_mut()
             && last.index() == idx
         {
@@ -111,13 +111,15 @@ pub(crate) enum PhysicalRoot {
         evidence: EvidenceDescriptor,
     },
     ReturnedSubject {
-        identity: IdentityConstraint,
+        producer: IdentityConstraint,
+        object_slot: u32,
         member: SymbolPath,
         event: EventPredicate,
         evidence: EvidenceDescriptor,
     },
     InstanceSubject {
         constructor: IdentityConstraint,
+        object_slot: u32,
         member: SymbolPath,
         evidence: EvidenceDescriptor,
     },
@@ -172,7 +174,7 @@ impl PhysicalPlan {
             }
         }
         format!(
-            "roots={} indexed_scans={} constrained_scans={} returned_subjects={} instance_subjects={} lifecycle_plans={} local_flow={} cross_call_flow={} project_overlay={}",
+            "roots={} indexed_scans={} constrained_scans={} returned_subjects={} instance_subjects={} lifecycle_plans={} local_flow={} cross_call_flow={} project_overlay={} value_resolution={:?} project_requirements={:?}",
             self.roots.len(),
             indexed,
             constrained,
@@ -194,6 +196,8 @@ impl PhysicalPlan {
             } else {
                 "no"
             },
+            self.requirements.value_resolution(),
+            self.requirements.project_requirements(),
         )
     }
 }
@@ -235,20 +239,29 @@ fn plan_event(ev: &NormalizedEvent, kind: MatchKind, symbol: &str) -> Vec<Physic
         NormalizedSubject::Direct => {
             if ev.arguments().is_empty() {
                 vec![PhysicalRoot::IndexedScan {
-                    identity: lower_identity(ev.identity()),
+                    identity: lower_identity(
+                        ev.identity()
+                            .expect("direct normalized events retain an identity"),
+                    ),
                     event: lower_event(ev.event()),
                     evidence,
                 }]
             } else {
                 vec![PhysicalRoot::ConstrainedScan {
-                    identity: lower_identity(ev.identity()),
+                    identity: lower_identity(
+                        ev.identity()
+                            .expect("direct normalized events retain an identity"),
+                    ),
                     event: lower_event(ev.event()),
                     constraints: compile_argument_constraints(ev.arguments()),
                     evidence,
                 }]
             }
         }
-        NormalizedSubject::Returned => {
+        NormalizedSubject::Returned {
+            producer,
+            object_slot,
+        } => {
             let member = match ev.event() {
                 EventSpec::MemberCall { member } | EventSpec::MemberRead { member } => {
                     member.clone()
@@ -256,19 +269,24 @@ fn plan_event(ev: &NormalizedEvent, kind: MatchKind, symbol: &str) -> Vec<Physic
                 _ => SymbolPath::default(),
             };
             vec![PhysicalRoot::ReturnedSubject {
-                identity: lower_identity(ev.identity()),
+                producer: lower_identity(producer),
+                object_slot: *object_slot,
                 member,
                 event: lower_event(ev.event()),
                 evidence,
             }]
         }
-        NormalizedSubject::Instance => {
+        NormalizedSubject::Instance {
+            constructor,
+            object_slot,
+        } => {
             let member = match ev.event() {
                 EventSpec::MemberCall { member } => member.clone(),
                 _ => SymbolPath::default(),
             };
             vec![PhysicalRoot::InstanceSubject {
-                constructor: lower_identity(ev.identity()),
+                constructor: lower_identity(constructor),
+                object_slot: *object_slot,
                 member,
                 evidence,
             }]
@@ -284,7 +302,10 @@ fn plan_lifecycle(lc: &NormalizedLifecycle, symbol: &str) -> PhysicalRoot {
         .map(|sev| crate::api::rule::query::EventQuery {
             var: crate::api::rule::query::VarId::new(sev.slot()),
             event: sev.event().clone(),
-            identity: sev.identity().clone(),
+            identity: sev
+                .identity()
+                .expect("lifecycle sources retain an identity")
+                .clone(),
             constraints: sev.arguments().to_vec(),
         })
         .collect();
@@ -303,17 +324,19 @@ fn plan_lifecycle(lc: &NormalizedLifecycle, symbol: &str) -> PhysicalRoot {
 
 // ── Validation ──────────────────────────────────────────────────────────
 
-pub(crate) fn validate_physical_plan(plan: &PhysicalPlan) -> Result<(), InvalidQueryClause> {
+pub(crate) fn validate_physical_plan(
+    plan: &PhysicalPlan,
+) -> Result<(), PhysicalPlanValidationError> {
     for root in plan.roots() {
         match root {
             PhysicalRoot::IndexedScan {
                 identity, evidence, ..
             } => {
                 if identity.is_empty() {
-                    return Err(InvalidQueryClause::ImpossibleDimensions);
+                    return Err(PhysicalPlanValidationError::ImpossibleDimensions);
                 }
                 if evidence.symbol.is_empty() {
-                    return Err(InvalidQueryClause::UnavailablePrimaryEvidence);
+                    return Err(PhysicalPlanValidationError::UnavailablePrimaryEvidence);
                 }
             }
             PhysicalRoot::ConstrainedScan {
@@ -323,61 +346,147 @@ pub(crate) fn validate_physical_plan(plan: &PhysicalPlan) -> Result<(), InvalidQ
                 evidence,
             } => {
                 if identity.is_empty() {
-                    return Err(InvalidQueryClause::ImpossibleDimensions);
+                    return Err(PhysicalPlanValidationError::ImpossibleDimensions);
                 }
                 if !matches!(
                     event,
                     EventPredicate::Call | EventPredicate::MemberCall { .. }
                 ) {
-                    return Err(InvalidQueryClause::ConstraintsRequireCallEvent);
+                    return Err(PhysicalPlanValidationError::ConstraintsRequireCallEvent);
                 }
                 if constraints.is_empty() {
-                    return Err(InvalidQueryClause::NonCanonicalConstraints);
+                    return Err(PhysicalPlanValidationError::NonCanonicalConstraints);
                 }
                 validate_canonical_constraints(constraints)?;
                 if evidence.symbol.is_empty() {
-                    return Err(InvalidQueryClause::UnavailablePrimaryEvidence);
+                    return Err(PhysicalPlanValidationError::UnavailablePrimaryEvidence);
                 }
             }
             PhysicalRoot::ReturnedSubject {
-                identity,
+                producer,
+                object_slot,
+                member,
                 event,
                 evidence,
                 ..
             } => {
-                if identity.is_empty() {
-                    return Err(InvalidQueryClause::ImpossibleDimensions);
+                if producer.is_empty()
+                    || !matches!(producer, IdentityConstraint::Rooted { .. })
+                    || *object_slot == u32::MAX
+                    || member.is_empty()
+                {
+                    return Err(PhysicalPlanValidationError::ImpossibleDimensions);
                 }
-                if !matches!(
-                    event,
-                    EventPredicate::MemberCall { .. } | EventPredicate::MemberRead { .. }
-                ) {
-                    return Err(InvalidQueryClause::ImpossibleDimensions);
+                if !matches!(event, EventPredicate::MemberCall { member: event_member }
+                    | EventPredicate::MemberRead { member: event_member } if event_member == member)
+                {
+                    return Err(PhysicalPlanValidationError::ImpossibleDimensions);
                 }
                 if evidence.symbol.is_empty() {
-                    return Err(InvalidQueryClause::UnavailablePrimaryEvidence);
+                    return Err(PhysicalPlanValidationError::UnavailablePrimaryEvidence);
                 }
             }
             PhysicalRoot::InstanceSubject {
                 constructor,
+                object_slot,
+                member,
                 evidence,
                 ..
             } => {
-                if constructor.is_empty() {
-                    return Err(InvalidQueryClause::ImpossibleDimensions);
+                if constructor.is_empty()
+                    || *object_slot == u32::MAX
+                    || !matches!(
+                        constructor,
+                        IdentityConstraint::ModuleExport { .. }
+                            | IdentityConstraint::PackageModuleExport { .. }
+                    )
+                    || member.is_empty()
+                {
+                    return Err(PhysicalPlanValidationError::ImpossibleDimensions);
                 }
                 if evidence.symbol.is_empty() {
-                    return Err(InvalidQueryClause::UnavailablePrimaryEvidence);
+                    return Err(PhysicalPlanValidationError::UnavailablePrimaryEvidence);
                 }
             }
             PhysicalRoot::Lifecycle { flow } => {
                 if flow.sources.is_empty() {
-                    return Err(InvalidQueryClause::InvalidLifecycleRoot);
+                    return Err(PhysicalPlanValidationError::InvalidLifecycleRoot);
                 }
             }
         }
     }
+    if executable_requirements(plan.roots()) != *plan.requirements() {
+        return Err(PhysicalPlanValidationError::RequirementsMismatch);
+    }
     Ok(())
+}
+
+fn executable_requirements(roots: &[PhysicalRoot]) -> PlanRequirements {
+    let mut requirements = PlanRequirements::default();
+    for root in roots {
+        match root {
+            PhysicalRoot::ConstrainedScan { identity, .. }
+            | PhysicalRoot::IndexedScan { identity, .. } => {
+                if matches!(root, PhysicalRoot::ConstrainedScan { .. }) {
+                    requirements
+                        .value_resolution
+                        .insert(ValueResolutionRequirement::LocalStaticValues);
+                }
+                add_identity_requirements(&mut requirements, identity);
+            }
+            PhysicalRoot::ReturnedSubject { .. } => {}
+            PhysicalRoot::InstanceSubject { constructor, .. } => {
+                add_identity_requirements(&mut requirements, constructor);
+            }
+            PhysicalRoot::Lifecycle { .. } => {
+                requirements.flow.local = true;
+                requirements.flow.cross_call = true;
+            }
+        }
+    }
+    requirements
+}
+
+fn add_identity_requirements(requirements: &mut PlanRequirements, identity: &IdentityConstraint) {
+    match identity {
+        IdentityConstraint::ModuleExport { .. } => {
+            requirements.value_resolution.extend([
+                ValueResolutionRequirement::ModuleIdentityValues,
+                ValueResolutionRequirement::CallResultIdentities,
+            ]);
+            requirements.project.extend([
+                ProjectRequirement::ExactModuleExports,
+                ProjectRequirement::CallResultIdentities,
+            ]);
+        }
+        IdentityConstraint::PackageModuleExport { .. } => {
+            requirements.value_resolution.extend([
+                ValueResolutionRequirement::ModuleIdentityValues,
+                ValueResolutionRequirement::CallResultIdentities,
+            ]);
+            requirements.project.extend([
+                ProjectRequirement::PackageModuleExports,
+                ProjectRequirement::CallResultIdentities,
+            ]);
+        }
+        IdentityConstraint::ModuleNamespace { .. } => {
+            requirements
+                .value_resolution
+                .insert(ValueResolutionRequirement::ModuleIdentityValues);
+            requirements
+                .project
+                .insert(ProjectRequirement::ExactModuleNamespaces);
+        }
+        IdentityConstraint::PackageModuleNamespace { .. } => {
+            requirements
+                .value_resolution
+                .insert(ValueResolutionRequirement::ModuleIdentityValues);
+            requirements
+                .project
+                .insert(ProjectRequirement::PackageModuleNamespaces);
+        }
+        _ => {}
+    }
 }
 
 /// Validate that compiled constraints are well-formed.
@@ -387,30 +496,32 @@ pub(crate) fn validate_physical_plan(plan: &PhysicalPlan) -> Result<(), InvalidQ
 /// must be within declared limits.
 fn validate_canonical_constraints(
     constraints: &CompiledArgumentConstraints,
-) -> Result<(), InvalidQueryClause> {
+) -> Result<(), PhysicalPlanValidationError> {
     let groups = constraints.groups();
     if groups.is_empty() {
-        return Err(InvalidQueryClause::NonCanonicalConstraints);
+        return Err(PhysicalPlanValidationError::NonCanonicalConstraints);
     }
 
     if groups.len() > limits::MAX_ARGUMENT_GROUPS {
-        return Err(InvalidQueryClause::ExcessiveArgumentGroups(groups.len()));
+        return Err(PhysicalPlanValidationError::ExcessiveArgumentGroups(
+            groups.len(),
+        ));
     }
 
     let mut prev_index: Option<ArgumentIndex> = None;
     for group in groups {
         if group.predicates().is_empty() {
-            return Err(InvalidQueryClause::NonCanonicalConstraints);
+            return Err(PhysicalPlanValidationError::NonCanonicalConstraints);
         }
         if group.predicates().len() > limits::MAX_PREDICATES_PER_ARGUMENT {
-            return Err(InvalidQueryClause::ExcessivePredicateCount(
+            return Err(PhysicalPlanValidationError::ExcessivePredicateCount(
                 group.predicates().len(),
             ));
         }
         if let Some(prev) = prev_index
             && prev >= group.index()
         {
-            return Err(InvalidQueryClause::NonCanonicalConstraints);
+            return Err(PhysicalPlanValidationError::NonCanonicalConstraints);
         }
         prev_index = Some(group.index());
 
@@ -419,7 +530,7 @@ fn validate_canonical_constraints(
             if let Some(count) = count_matcher_alternatives(matcher)
                 && count > limits::MAX_STATIC_ALTERNATIVES
             {
-                return Err(InvalidQueryClause::ExcessiveAlternatives(count));
+                return Err(PhysicalPlanValidationError::ExcessiveAlternatives(count));
             }
         }
     }
@@ -653,21 +764,10 @@ mod tests {
     #[test]
     fn plan_summary_counts_roots() {
         let summary = physical_summary(&decl(QueryDecl::call_global("fetch")));
-        assert!(summary.contains("roots=1"), "summary: {summary}");
-        assert!(summary.contains("indexed_scans=1"), "summary: {summary}");
-        assert!(
-            summary.contains("constrained_scans=0"),
-            "summary: {summary}"
+        assert_eq!(
+            summary,
+            "roots=1 indexed_scans=1 constrained_scans=0 returned_subjects=0 instance_subjects=0 lifecycle_plans=0 local_flow=no cross_call_flow=no project_overlay=no value_resolution={} project_requirements={}"
         );
-        assert!(
-            summary.contains("returned_subjects=0"),
-            "summary: {summary}"
-        );
-        assert!(
-            summary.contains("instance_subjects=0"),
-            "summary: {summary}"
-        );
-        assert!(summary.contains("project_overlay=no"), "summary: {summary}");
     }
 
     #[test]
@@ -678,10 +778,9 @@ mod tests {
             .unwrap()
             .into_query();
         let summary = physical_summary(&d);
-        assert!(summary.contains("roots=1"), "summary: {summary}");
-        assert!(
-            summary.contains("constrained_scans=1"),
-            "summary: {summary}"
+        assert_eq!(
+            summary,
+            "roots=1 indexed_scans=0 constrained_scans=1 returned_subjects=0 instance_subjects=0 lifecycle_plans=0 local_flow=no cross_call_flow=no project_overlay=no value_resolution={LocalStaticValues} project_requirements={}"
         );
         assert!(summary.contains("indexed_scans=0"), "summary: {summary}");
     }
@@ -718,7 +817,7 @@ mod tests {
         let plan = PhysicalPlan::new(roots, PlanRequirements::default());
         assert_eq!(
             validate_physical_plan(&plan),
-            Err(InvalidQueryClause::ImpossibleDimensions)
+            Err(PhysicalPlanValidationError::ImpossibleDimensions)
         );
     }
 
@@ -738,6 +837,29 @@ mod tests {
         }]);
         let plan = PhysicalPlan::new(roots, PlanRequirements::default());
         assert!(validate_physical_plan(&plan).is_ok());
+    }
+
+    #[test]
+    fn requirements_must_match_executable_roots() {
+        use crate::api::compiler::rule::IdentityStrength;
+        let roots = Box::new([PhysicalRoot::IndexedScan {
+            identity: IdentityConstraint::Global {
+                name: "fetch".into(),
+                strength: IdentityStrength::Strict,
+            },
+            event: EventPredicate::Call,
+            evidence: EvidenceDescriptor {
+                kind: MatchKind::Call,
+                symbol: "fetch".into(),
+            },
+        }]);
+        let mut requirements = PlanRequirements::default();
+        requirements.flow.local = true;
+        let plan = PhysicalPlan::new(roots, requirements);
+        assert_eq!(
+            validate_physical_plan(&plan),
+            Err(PhysicalPlanValidationError::RequirementsMismatch)
+        );
     }
 
     #[test]
@@ -809,7 +931,7 @@ mod tests {
         assert!(
             matches!(
                 validate_physical_plan(&plan),
-                Err(InvalidQueryClause::ExcessiveArgumentGroups(_))
+                Err(PhysicalPlanValidationError::ExcessiveArgumentGroups(_))
             ),
             "expected ExcessiveArgumentGroups error"
         );
@@ -844,43 +966,20 @@ mod tests {
         assert!(
             matches!(
                 validate_physical_plan(&plan),
-                Err(InvalidQueryClause::ExcessivePredicateCount(_))
+                Err(PhysicalPlanValidationError::ExcessivePredicateCount(_))
             ),
             "expected ExcessivePredicateCount error"
         );
     }
 
     #[test]
-    fn excessive_alternatives_fails_validation() {
+    fn excessive_alternatives_are_rejected_at_construction() {
         let values: Vec<String> = (0..=limits::MAX_STATIC_ALTERNATIVES)
             .map(|i| format!("val{i}"))
             .collect();
-        let matcher = ValueMatcher::static_string().equals_any(values);
-        let constraints = compile_argument_constraints(&[ArgumentConstraint::new(
-            ArgumentIndex::new_unchecked(0),
-            matcher,
-        )]);
-        let plan = PhysicalPlan::new(
-            Box::new([PhysicalRoot::ConstrainedScan {
-                identity: IdentityConstraint::Global {
-                    name: "fetch".into(),
-                    strength: crate::api::compiler::rule::IdentityStrength::Strict,
-                },
-                event: EventPredicate::Call,
-                constraints,
-                evidence: EvidenceDescriptor {
-                    kind: MatchKind::CallArgument,
-                    symbol: "fetch".into(),
-                },
-            }]),
-            PlanRequirements::default(),
-        );
-        assert!(
-            matches!(
-                validate_physical_plan(&plan),
-                Err(InvalidQueryClause::ExcessiveAlternatives(_))
-            ),
-            "expected ExcessiveAlternatives error"
-        );
+        assert!(matches!(
+            ValueMatcher::static_string().equals_any(values),
+            Err(crate::api::rule::QueryBuildError::CollectionTooLarge(_, _))
+        ));
     }
 }

@@ -38,6 +38,7 @@ fn script_insertion_flow() -> LifecycleQuery {
     LifecycleQuery::builder("script insertion")
         .source(
             LifecycleSource::returned_by("document.createElement")
+                .unwrap()
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
@@ -285,7 +286,9 @@ fn associates_static_option_properties_with_their_call_sink() {
                 .with_arg_object_property_value(
                     1,
                     "url",
-                    ValueMatcher::static_string().contains_any(["localhost"]),
+                    ValueMatcher::static_string()
+                        .contains_any(["localhost"])
+                        .unwrap(),
                 )
                 .unwrap()
                 .into_query(),
@@ -588,7 +591,10 @@ fn tracks_rooted_expression_arguments_through_aliases() {
         .query(
             EventQuery::member_call_rooted("app.open")
                 .unwrap()
-                .with_arg(0, ArgumentMatcher::rooted_expressions(["vault.file"]))
+                .with_arg(
+                    0,
+                    ArgumentMatcher::rooted_expressions(["vault.file"]).unwrap(),
+                )
                 .unwrap()
                 .into_query(),
         )
@@ -756,7 +762,10 @@ fn projects_const_object_aliases_into_destructured_parameters() {
         .query(
             EventQuery::member_call_rooted("app.open")
                 .unwrap()
-                .with_arg(0, ArgumentMatcher::rooted_expressions(["vault.file"]))
+                .with_arg(
+                    0,
+                    ArgumentMatcher::rooted_expressions(["vault.file"]).unwrap(),
+                )
                 .unwrap()
                 .into_query(),
         )

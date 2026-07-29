@@ -274,6 +274,8 @@ impl CallArgInfo {
 pub struct ArgumentView<'a> {
     pub argument: &'a CallArgInfo,
     pub static_string: Option<&'a str>,
+    pub object_entries: Option<&'a [(NameId, ValueId)]>,
+    pub rooted_chain: Option<&'a NamePath>,
 }
 
 impl<'a> ArgumentView<'a> {
@@ -281,11 +283,23 @@ impl<'a> ArgumentView<'a> {
         Self {
             argument,
             static_string: None,
+            object_entries: None,
+            rooted_chain: None,
         }
     }
 
     pub fn with_static_string(mut self, value: &'a str) -> Self {
         self.static_string = Some(value);
+        self
+    }
+
+    pub fn with_object_entries(mut self, entries: Option<&'a [(NameId, ValueId)]>) -> Self {
+        self.object_entries = entries;
+        self
+    }
+
+    pub fn with_rooted_chain(mut self, chain: Option<&'a NamePath>) -> Self {
+        self.rooted_chain = chain;
         self
     }
 }

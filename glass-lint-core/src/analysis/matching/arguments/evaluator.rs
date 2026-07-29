@@ -12,7 +12,7 @@ use crate::{
         },
         project::model::ExportResolution,
         syntax::SymbolCallProvenance,
-        value::{ValueId, ValueTable},
+        value::{Value, ValueId, ValueTable},
     },
     api::compiler::{
         physical::CompiledArgumentConstraints,
@@ -71,6 +71,8 @@ pub(super) struct EvaluationOperations {
     /// Number of overlay-ready argument views constructed
     /// (one per unique group index per candidate).
     pub(super) argument_preparations: usize,
+    /// Number of value-table resolutions performed while preparing groups.
+    pub(super) value_resolutions: usize,
 }
 
 impl EvaluationOperations {
@@ -88,6 +90,10 @@ impl EvaluationOperations {
 
     pub(super) fn charge_argument_preparation(&mut self) {
         self.argument_preparations = self.argument_preparations.saturating_add(1);
+    }
+
+    pub(super) fn charge_value_resolution(&mut self) {
+        self.value_resolutions = self.value_resolutions.saturating_add(1);
     }
 }
 
@@ -184,6 +190,14 @@ impl<'a> MatcherEvaluator<'a> {
         argument: &'b CallArgInfo,
     ) -> ArgumentView<'b> {
         let mut view = ArgumentView::new(argument);
+        let (object_entries, rooted_chain) = match self.values.resolve(argument.value) {
+            Some(Value::StaticObject(entries)) => (Some(entries.as_slice()), None),
+            Some(Value::RootedMember { path }) => (None, Some(path)),
+            _ => (None, None),
+        };
+        view = view
+            .with_object_entries(object_entries)
+            .with_rooted_chain(rooted_chain);
         if let Some(result_identities) = self.result_identities
             && let Some(value) = result_identities
                 .get(&argument.value)
@@ -193,6 +207,11 @@ impl<'a> MatcherEvaluator<'a> {
         }
         if let Some(identity) = self.lookup_identity(&argument.provenance)
             && let Some(value) = identity.static_string_value()
+        {
+            view = view.with_static_string(value);
+        }
+        if view.static_string.is_none()
+            && let Some(value) = self.values.static_string(argument.value)
         {
             view = view.with_static_string(value);
         }
@@ -231,6 +250,7 @@ impl<'a> MatcherEvaluator<'a> {
             };
             ops.charge_group();
             ops.charge_argument_preparation();
+            ops.charge_value_resolution();
             let view = self.argument_with_overlay(value);
             group.predicates().iter().all(|matcher| {
                 ops.charge_predicate();

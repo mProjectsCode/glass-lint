@@ -18,6 +18,7 @@ pub fn rule() -> Rule {
             LifecycleQuery::builder("script-element")
                 .source(
                     LifecycleSource::returned_by("document.createElement")
+                        .unwrap()
                         .arg(0, ValueMatcher::static_string().equals("script")),
                 )
                 .condition(LifecycleCondition::any_of([
@@ -36,7 +37,9 @@ pub fn rule() -> Rule {
                 .map(|q| {
                     q.with_arg(
                         0,
-                        ValueMatcher::static_string().contains_any(["<script", "javascript:"]),
+                        ValueMatcher::static_string()
+                            .contains_any(["<script", "javascript:"])
+                            .unwrap(),
                     )
                     .unwrap()
                     .into_query()
@@ -48,7 +51,9 @@ pub fn rule() -> Rule {
                 .map(|q| {
                     q.with_arg(
                         0,
-                        ValueMatcher::static_string().contains_any(["<script", "javascript:"]),
+                        ValueMatcher::static_string()
+                            .contains_any(["<script", "javascript:"])
+                            .unwrap(),
                     )
                     .unwrap()
                     .into_query()

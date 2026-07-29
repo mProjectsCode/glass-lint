@@ -20,7 +20,8 @@ pub fn rule() -> Rule {
                     q.with_arg(
                         0,
                         ValueMatcher::static_string()
-                            .equals_any(["create", "delete", "modify", "rename", "closed"]),
+                            .equals_any(["create", "delete", "modify", "rename", "closed"])
+                            .unwrap(),
                     )
                     .unwrap()
                     .into_query()

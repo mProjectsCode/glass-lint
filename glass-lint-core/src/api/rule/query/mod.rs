@@ -10,7 +10,7 @@
 //!
 //! [`EventQuery::call_global`], [`QueryDecl::call_global`], and the other
 //! identity/event combinators replace the former [`QueryDecl`] builder.
-use std::fmt;
+use std::{collections::BTreeSet, fmt};
 
 use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
@@ -26,101 +26,17 @@ use crate::api::{
     },
 };
 
+pub(crate) mod expression;
 pub(crate) mod lifecycle;
 pub(crate) mod limits;
 pub(crate) mod value;
+pub(crate) use expression::QueryExprKind;
+pub use expression::{AllExpr, AnyExpr, QueryExpr};
 
-/// Declaration-owned identity specification for an event.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub enum IdentitySpec {
-    Global {
-        name: SmolStr,
-    },
-    Heuristic {
-        name: SmolStr,
-    },
-    ModuleExport {
-        module: SmolStr,
-        export: SmolStr,
-    },
-    PackageModuleExport {
-        module: ModuleSpecifierPattern,
-        export: SmolStr,
-    },
-    ModuleNamespace {
-        module: SmolStr,
-    },
-    PackageModuleNamespace {
-        module: ModuleSpecifierPattern,
-    },
-    Rooted {
-        path: SymbolPath,
-    },
-    LiteralString {
-        predicate: String,
-    },
-    PackageSpecifier {
-        pattern: ModuleSpecifierPattern,
-    },
-}
-
-impl IdentitySpec {
-    /// Return a display-oriented string for the identity name.
-    pub fn display_name(&self) -> String {
-        match self {
-            Self::Global { name } | Self::Heuristic { name } => name.to_string(),
-            Self::ModuleExport { module, export } => format!("{module}.{export}"),
-            Self::PackageModuleExport { module, export } => format!("{module}.{export}"),
-            Self::ModuleNamespace { module } => module.to_string(),
-            Self::PackageModuleNamespace { module } => module.to_string(),
-            Self::Rooted { path } => path.to_string(),
-            Self::LiteralString { predicate } => predicate.clone(),
-            Self::PackageSpecifier { pattern } => pattern.to_string(),
-        }
-    }
-
-    /// Stable diagnostic name for this identity kind.
-    pub fn diagnostic_name(&self) -> &'static str {
-        match self {
-            Self::Global { .. } => "global",
-            Self::Heuristic { .. } => "heuristic",
-            Self::ModuleExport { .. } => "module_export",
-            Self::PackageModuleExport { .. } => "package_module_export",
-            Self::ModuleNamespace { .. } => "module_namespace",
-            Self::PackageModuleNamespace { .. } => "package_module_namespace",
-            Self::Rooted { .. } => "rooted",
-            Self::LiteralString { .. } => "literal",
-            Self::PackageSpecifier { .. } => "package_specifier",
-        }
-    }
-}
-
-/// Declaration-owned event kind.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub enum EventSpec {
-    Call,
-    Construct,
-    MemberCall { member: SymbolPath },
-    MemberRead { member: SymbolPath },
-    ClassReference,
-    Import,
-    StringReference,
-}
-
-impl EventSpec {
-    /// Stable diagnostic name for this event kind.
-    pub fn diagnostic_name(&self) -> &'static str {
-        match self {
-            Self::Call => "call",
-            Self::Construct => "construct",
-            Self::MemberCall { .. } => "member_call",
-            Self::MemberRead { .. } => "member_read",
-            Self::ClassReference => "class",
-            Self::Import => "import",
-            Self::StringReference => "string",
-        }
-    }
-}
+pub(crate) mod event;
+pub use event::{EventSpec, IdentitySpec};
+pub(crate) mod error;
+pub use error::{QueryBuildError, QueryDiagnostic};
 
 // ── Typed logical query algebra ───────────────────────────────────────
 
@@ -159,10 +75,6 @@ pub(crate) enum VarType {
     CallEvent,
     MemberEvent,
     Object,
-    StaticValue,
-    CallableIdentity,
-    ModuleIdentity,
-    SymbolPath,
 }
 
 /// Binding atom: selects one event variable at a call/member/import site.
@@ -243,13 +155,6 @@ impl EventQuery {
     pub fn constraints(&self) -> &[ArgumentConstraint] {
         &self.constraints
     }
-
-    /// Create an EventQuery with a different variable ID.
-    /// Useful when composing multi-variable query expressions.
-    pub fn with_var(mut self, var: VarId) -> Result<Self, QueryBuildError> {
-        self.var = var;
-        Ok(self)
-    }
 }
 
 fn is_chain_malformed(chain: &str) -> bool {
@@ -257,6 +162,25 @@ fn is_chain_malformed(chain: &str) -> bool {
         || chain.contains("..")
         || chain.starts_with('.')
         || chain.ends_with('.')
+}
+
+fn validate_argument_constraints(
+    constraints: &[ArgumentConstraint],
+) -> Result<(), QueryBuildError> {
+    let groups: BTreeSet<usize> = constraints.iter().map(ArgumentConstraint::index).collect();
+    if groups.len() > limits::MAX_ARGUMENT_GROUPS {
+        return Err(QueryBuildError::ExcessiveArgumentGroups(groups.len()));
+    }
+    for index in groups {
+        let count = constraints
+            .iter()
+            .filter(|constraint| constraint.index() == index)
+            .count();
+        if count > limits::MAX_PREDICATES_PER_ARGUMENT {
+            return Err(QueryBuildError::ExcessivePredicates { index, count });
+        }
+    }
+    Ok(())
 }
 
 fn evidence_kind_for_event(event: &EventSpec) -> MatchKind {
@@ -613,13 +537,7 @@ impl EventQuery {
         let arg_idx = ArgumentIndex::new_unchecked(index as u8);
         self.constraints
             .push(ArgumentConstraint::new(arg_idx, matcher));
-        if self.constraints.len()
-            > limits::MAX_PREDICATES_PER_ARGUMENT * limits::MAX_ARGUMENT_GROUPS
-        {
-            return Err(QueryBuildError::ExcessiveConstraints(
-                self.constraints.len(),
-            ));
-        }
+        validate_argument_constraints(&self.constraints)?;
         Ok(self)
     }
 
@@ -633,13 +551,7 @@ impl EventQuery {
             arg_idx,
             ValueMatcher::static_string(),
         ));
-        if self.constraints.len()
-            > limits::MAX_PREDICATES_PER_ARGUMENT * limits::MAX_ARGUMENT_GROUPS
-        {
-            return Err(QueryBuildError::ExcessiveConstraints(
-                self.constraints.len(),
-            ));
-        }
+        validate_argument_constraints(&self.constraints)?;
         Ok(self)
     }
 
@@ -659,15 +571,9 @@ impl EventQuery {
         let arg_idx = ArgumentIndex::new_unchecked(index as u8);
         self.constraints.push(ArgumentConstraint::new(
             arg_idx,
-            ValueMatcher::static_string().equals_any(values),
+            ValueMatcher::static_string().equals_any(values)?,
         ));
-        if self.constraints.len()
-            > limits::MAX_PREDICATES_PER_ARGUMENT * limits::MAX_ARGUMENT_GROUPS
-        {
-            return Err(QueryBuildError::ExcessiveConstraints(
-                self.constraints.len(),
-            ));
-        }
+        validate_argument_constraints(&self.constraints)?;
         Ok(self)
     }
 
@@ -687,15 +593,9 @@ impl EventQuery {
         let arg_idx = ArgumentIndex::new_unchecked(index as u8);
         self.constraints.push(ArgumentConstraint::new(
             arg_idx,
-            ValueMatcher::static_string().contains_any(values),
+            ValueMatcher::static_string().contains_any(values)?,
         ));
-        if self.constraints.len()
-            > limits::MAX_PREDICATES_PER_ARGUMENT * limits::MAX_ARGUMENT_GROUPS
-        {
-            return Err(QueryBuildError::ExcessiveConstraints(
-                self.constraints.len(),
-            ));
-        }
+        validate_argument_constraints(&self.constraints)?;
         Ok(self)
     }
 
@@ -714,13 +614,7 @@ impl EventQuery {
             arg_idx,
             ArgumentMatcher::object_property_value(property, value),
         ));
-        if self.constraints.len()
-            > limits::MAX_PREDICATES_PER_ARGUMENT * limits::MAX_ARGUMENT_GROUPS
-        {
-            return Err(QueryBuildError::ExcessiveConstraints(
-                self.constraints.len(),
-            ));
-        }
+        validate_argument_constraints(&self.constraints)?;
         Ok(self)
     }
 
@@ -740,15 +634,9 @@ impl EventQuery {
         let arg_idx = ArgumentIndex::new_unchecked(index as u8);
         self.constraints.push(ArgumentConstraint::new(
             arg_idx,
-            ArgumentMatcher::object_keys(keys),
+            ArgumentMatcher::object_keys(keys)?,
         ));
-        if self.constraints.len()
-            > limits::MAX_PREDICATES_PER_ARGUMENT * limits::MAX_ARGUMENT_GROUPS
-        {
-            return Err(QueryBuildError::ExcessiveConstraints(
-                self.constraints.len(),
-            ));
-        }
+        validate_argument_constraints(&self.constraints)?;
         Ok(self)
     }
 
@@ -766,277 +654,6 @@ impl EventQuery {
                 symbol,
             },
         }
-    }
-}
-
-/// A typed logical query expression.
-///
-/// The algebra supports five operators:
-///
-/// - `Event` — select a single event with identity, subject, and constraints
-///   (migration form; lowered during normalization);
-/// - `SelectEvent` — bind one event variable at a call/member/import site;
-/// - `Require` — constrain an already-bound variable;
-/// - `Any` — union of independently complete alternatives;
-/// - `All` — conjunction over predicates sharing explicitly compatible
-///   variables; and
-/// - `Lifecycle` — object lifecycle with source, condition, and completion.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct QueryExpr {
-    pub(crate) kind: QueryExprKind,
-}
-
-/// Internal expression kind.
-///
-/// Most code outside `api/rule/query` matches on this directly. Public API
-/// users construct queries through [`EventQuery`], [`QueryDecl::any`], and
-/// [`QueryDecl::all`] rather than building raw atoms.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) enum QueryExprKind {
-    /// A single event with identity, subject, and constraints (migration form).
-    Event(EventQuery),
-    /// Bind one event variable.
-    SelectEvent(EventSelection),
-    /// Constrain an already-bound variable.
-    Require(QueryPredicate),
-    /// Union of alternative expressions (must be non-empty).
-    Any(AnyExpr),
-    /// Conjunction of expressions sharing compatible variables (must be
-    /// non-empty; correlation required for multi-event joins).
-    All(AllExpr),
-    /// Object lifecycle: source event, condition, and completion.
-    Lifecycle(LifecycleQuery),
-}
-
-impl QueryExpr {
-    /// Wrap an [`EventQuery`] into a query expression (migration form).
-    pub fn event(eq: EventQuery) -> Self {
-        Self {
-            kind: QueryExprKind::Event(eq),
-        }
-    }
-
-    /// Wrap a [`AnyExpr`] into a query expression.
-    pub fn any(any: AnyExpr) -> Self {
-        Self {
-            kind: QueryExprKind::Any(any),
-        }
-    }
-
-    /// Wrap a [`AllExpr`] into a query expression.
-    pub fn all(all: AllExpr) -> Self {
-        Self {
-            kind: QueryExprKind::All(all),
-        }
-    }
-
-    /// Wrap a [`LifecycleQuery`] into a query expression.
-    pub fn lifecycle(lc: LifecycleQuery) -> Self {
-        Self {
-            kind: QueryExprKind::Lifecycle(lc),
-        }
-    }
-
-    /// Select one event variable.
-    pub(crate) fn select_event(bind: VarId) -> Self {
-        Self {
-            kind: QueryExprKind::SelectEvent(EventSelection { bind }),
-        }
-    }
-
-    /// Require a predicate on an already-bound variable.
-    pub(crate) fn require(pred: QueryPredicate) -> Self {
-        Self {
-            kind: QueryExprKind::Require(pred),
-        }
-    }
-
-    /// Expose the internal query expression kind (compiler access).
-    #[allow(dead_code)]
-    pub(crate) fn kind(&self) -> &QueryExprKind {
-        &self.kind
-    }
-
-    /// Stable diagnostic name for this operator.
-    pub fn diagnostic_name(&self) -> &'static str {
-        match &self.kind {
-            QueryExprKind::Event(_) => "event",
-            QueryExprKind::SelectEvent(_) => "select_event",
-            QueryExprKind::Require(_) => "require",
-            QueryExprKind::Any(_) => "any",
-            QueryExprKind::All(_) => "all",
-            QueryExprKind::Lifecycle(_) => "lifecycle",
-        }
-    }
-
-    /// Collect all variable IDs bound or referenced by this expression.
-    pub fn vars(&self) -> Vec<VarId> {
-        let mut ids = Vec::new();
-        self.collect_vars(&mut ids);
-        ids
-    }
-
-    fn collect_vars(&self, ids: &mut Vec<VarId>) {
-        match &self.kind {
-            QueryExprKind::Event(q) => ids.push(q.var),
-            QueryExprKind::SelectEvent(s) => ids.push(s.bind),
-            QueryExprKind::Require(p) => match p {
-                QueryPredicate::EventKind { event, .. }
-                | QueryPredicate::EventIdentity { event, .. } => ids.push(*event),
-                QueryPredicate::Argument { call, .. } => ids.push(*call),
-                QueryPredicate::ReturnedObject { bind, .. }
-                | QueryPredicate::ConstructedObject { bind, .. } => ids.push(*bind),
-                QueryPredicate::MemberSubject { event, object } => {
-                    ids.push(*event);
-                    ids.push(*object);
-                }
-            },
-            QueryExprKind::Any(a) => {
-                for b in &a.branches {
-                    b.collect_vars(ids);
-                }
-            }
-            QueryExprKind::All(a) => {
-                for b in &a.branches {
-                    b.collect_vars(ids);
-                }
-            }
-            QueryExprKind::Lifecycle(l) => {
-                for src in &l.sources {
-                    ids.push(src.var);
-                }
-            }
-        }
-    }
-}
-
-impl fmt::Display for QueryExpr {
-    /// Compact debug-oriented display showing the expression shape.
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.kind {
-            QueryExprKind::Event(q) => {
-                write!(
-                    f,
-                    "select {} {} {}",
-                    q.var,
-                    q.event.diagnostic_name(),
-                    q.identity.diagnostic_name(),
-                )
-            }
-            QueryExprKind::SelectEvent(s) => {
-                write!(f, "bind {}", s.bind)
-            }
-            QueryExprKind::Require(p) => match p {
-                QueryPredicate::EventKind { event, expected } => {
-                    write!(f, "kind({event})={}", expected.diagnostic_name())
-                }
-                QueryPredicate::EventIdentity { event, expected } => {
-                    write!(f, "id({event})={}", expected.diagnostic_name())
-                }
-                QueryPredicate::Argument { call, index, .. } => {
-                    write!(f, "arg({call})[{}]", index.get())
-                }
-                QueryPredicate::ReturnedObject { bind, .. } => {
-                    write!(f, "returned({bind})")
-                }
-                QueryPredicate::ConstructedObject { bind, .. } => {
-                    write!(f, "constructed({bind})")
-                }
-                QueryPredicate::MemberSubject { event, object } => {
-                    write!(f, "member({event},{object})")
-                }
-            },
-            QueryExprKind::Any(a) => {
-                write!(f, "any [")?;
-                for (i, b) in a.branches.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{b}")?;
-                }
-                write!(f, "]")
-            }
-            QueryExprKind::All(a) => {
-                write!(f, "all [")?;
-                for (i, b) in a.branches.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{b}")?;
-                }
-                write!(f, "]")
-            }
-            QueryExprKind::Lifecycle(l) => {
-                write!(
-                    f,
-                    "lifecycle sources={} condition={} completion={}",
-                    l.sources.len(),
-                    l.condition.is_some(),
-                    l.completion.is_some()
-                )
-            }
-        }
-    }
-}
-
-/// Union of alternative query expressions.
-///
-/// Semantics:
-/// - Normalize nested `Any`.
-/// - Reject empty `Any`.
-/// - Deduplicate equivalent branches.
-/// - Preserve deterministic branch order.
-/// - Merge duplicate results through the existing certainty/evidence policy.
-/// - Do not let an unknown branch erase an independent complete witness.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct AnyExpr {
-    pub(crate) branches: Vec<QueryExpr>,
-}
-
-impl AnyExpr {
-    /// Create an `Any` expression. Returns an error if branches is empty.
-    pub fn new(branches: Vec<QueryExpr>) -> Result<Self, QueryBuildError> {
-        if branches.is_empty() {
-            return Err(QueryBuildError::EmptyAlternatives);
-        }
-        Ok(Self { branches })
-    }
-
-    /// Borrow the branches of this `Any` expression.
-    pub fn branches(&self) -> &[QueryExpr] {
-        &self.branches
-    }
-}
-
-/// Conjunction of query expressions sharing compatible variables.
-///
-/// Semantics:
-/// - Normalize nested `All`.
-/// - Reject empty `All`.
-/// - Attach single-event filters to the selecting scan where possible.
-/// - Require explicit shared variables for multi-event joins (checked during
-///   validation).
-/// - Preserve one path-correlation token across all contributing predicates.
-/// - Never combine evidence from incompatible alternatives.
-/// - Propagate incomplete state without fabricating a witness.
-/// - Select one explicit primary event for result emission.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct AllExpr {
-    pub(crate) branches: Vec<QueryExpr>,
-}
-
-impl AllExpr {
-    /// Create an `All` expression. Returns an error if branches is empty.
-    pub fn new(branches: Vec<QueryExpr>) -> Result<Self, QueryBuildError> {
-        if branches.is_empty() {
-            return Err(QueryBuildError::EmptyConjunction);
-        }
-        Ok(Self { branches })
-    }
-
-    /// Borrow the branches of this `All` expression.
-    pub fn branches(&self) -> &[QueryExpr] {
-        &self.branches
     }
 }
 
@@ -1061,14 +678,14 @@ pub struct LifecycleQuery {
 impl LifecycleQuery {
     /// Create a lifecycle query with the given components.
     #[doc(hidden)]
-    pub fn new(
+    pub(crate) fn new(
         symbol: impl Into<String>,
         sources: Vec<EventQuery>,
         condition: Option<LifecycleCondition>,
         completion: Option<LifecycleCompletion>,
     ) -> Result<Self, QueryBuildError> {
         if sources.is_empty() {
-            return Err(QueryBuildError::EmptyCollection("lifecycle sources"));
+            return Err(QueryBuildError::MissingLifecycleSources);
         }
         if sources.len() > limits::MAX_LIFECYCLE_SOURCES {
             return Err(QueryBuildError::CollectionTooLarge(
@@ -1076,11 +693,47 @@ impl LifecycleQuery {
                 sources.len(),
             ));
         }
+        let completion = completion.ok_or(QueryBuildError::MissingLifecycleCompletion)?;
+        if let Some(condition) = &condition {
+            let count = match condition.kind() {
+                crate::api::rule::query::lifecycle::LifecycleConditionKind::AnyOf(events)
+                | crate::api::rule::query::lifecycle::LifecycleConditionKind::AllOf(events) => {
+                    if events.is_empty() {
+                        return Err(QueryBuildError::EmptyLifecycleCondition);
+                    }
+                    events.len()
+                }
+            };
+            if count > limits::MAX_LIFECYCLE_EVENTS {
+                return Err(QueryBuildError::CollectionTooLarge(
+                    "lifecycle condition events",
+                    count,
+                ));
+            }
+        }
+        match completion.kind() {
+            crate::api::rule::query::lifecycle::LifecycleCompletionKind::Configuration => {
+                if condition.is_none() {
+                    return Err(QueryBuildError::MissingLifecycleCondition);
+                }
+            }
+            crate::api::rule::query::lifecycle::LifecycleCompletionKind::AnySink(sinks) => {
+                if sinks.is_empty() {
+                    return Err(QueryBuildError::EmptyLifecycleSinks);
+                }
+                if sinks.len() > limits::MAX_LIFECYCLE_SINKS {
+                    return Err(QueryBuildError::CollectionTooLarge(
+                        "lifecycle completion sinks",
+                        sinks.len(),
+                    ));
+                }
+            }
+        }
         Ok(Self {
             symbol: symbol.into(),
             sources,
             condition,
-            completion,
+            completion: Some(completion),
         })
     }
 
@@ -1486,24 +1139,10 @@ impl QueryDecl {
     // ── Evidence override ─────────────────────────────────────────
 
     /// Override the evidence kind and symbol.
-    #[must_use]
-    pub fn with_evidence(mut self, kind: MatchKind, symbol: impl Into<String>) -> Self {
+    #[cfg(test)]
+    pub(crate) fn with_evidence(mut self, kind: MatchKind, symbol: impl Into<String>) -> Self {
         self.emission.kind = kind;
         self.emission.symbol = symbol.into();
-        self
-    }
-
-    /// Set the query expression.
-    #[must_use]
-    pub fn with_expression(mut self, expression: QueryExpr) -> Self {
-        self.expression = expression;
-        self
-    }
-
-    /// Set the primary evidence variable.
-    #[must_use]
-    pub fn with_primary_var(mut self, var: VarId) -> Self {
-        self.emission.primary_var = var;
         self
     }
 
@@ -1531,7 +1170,17 @@ impl QueryDecl {
         let mut first_emission: Option<EmissionDecl> = None;
         for branch in branches {
             let decl = branch?;
-            first_emission.get_or_insert_with(|| decl.emission.clone());
+            if let Some(first) = &first_emission {
+                let primary_present = decl.expression.vars().contains(&first.primary_var);
+                if !primary_present
+                    || decl.emission.primary_var != first.primary_var
+                    || decl.emission.kind != first.kind
+                {
+                    return Err(QueryBuildError::EvidenceProjection);
+                }
+            } else {
+                first_emission = Some(decl.emission.clone());
+            }
             exprs.push(decl.expression);
         }
         if exprs.is_empty() {
@@ -1539,7 +1188,7 @@ impl QueryDecl {
         }
         let first = first_emission.unwrap_or_else(Self::default_emission);
         Ok(Self {
-            expression: QueryExpr::any(AnyExpr { branches: exprs }),
+            expression: QueryExpr::any(AnyExpr::new(exprs)?),
             emission: first,
         })
     }
@@ -1597,7 +1246,7 @@ impl QueryDecl {
             }
         }
 
-        let expression = QueryExpr::all(AllExpr { branches });
+        let expression = QueryExpr::all(AllExpr::new(branches)?);
         Ok(Self {
             expression,
             emission: EmissionDecl {
@@ -1625,6 +1274,7 @@ impl QueryDecl {
     ) -> Result<Self, QueryBuildError> {
         lc_result.map(|lc| {
             let symbol = lc.symbol.clone();
+            debug_assert!(!symbol.trim().is_empty());
             Self {
                 expression: QueryExpr::lifecycle(lc),
                 emission: EmissionDecl {
@@ -1665,94 +1315,6 @@ mod private {
 impl fmt::Display for QueryDecl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "query emit={} {}", self.emission.symbol, self.expression)
-    }
-}
-
-// ── Construction errors ──────────────────────────────────────────────
-
-/// Errors from constructing or lowering logical query expressions.
-///
-/// These are declaration-layer errors, distinct from compiler validation
-/// errors. They prevent construction of structurally invalid queries such as
-/// empty `Any` or `All` expressions.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum QueryBuildError {
-    /// An `Any` expression was constructed with zero branches.
-    EmptyAlternatives,
-    /// An `All` expression was constructed with zero branches.
-    EmptyConjunction,
-    /// A required name or identity string was empty.
-    EmptyIdentityName,
-    /// A module specifier string was empty.
-    EmptyModuleSpecifier,
-    /// A static value string was empty.
-    EmptyStaticValue,
-    /// A member chain is malformed (empty, double-dot, leading/trailing dot).
-    MalformedChain(String),
-    /// An argument index exceeds the maximum.
-    InvalidArgumentIndex(usize),
-    /// A package scope pattern is invalid.
-    InvalidScopePackage,
-    /// The number of constraints exceeds the limit.
-    ExcessiveConstraints(usize),
-    /// An alternative set or collection is empty when it must be non-empty.
-    EmptyCollection(&'static str),
-    /// A collection exceeds the maximum size.
-    CollectionTooLarge(&'static str, usize),
-}
-
-impl fmt::Display for QueryBuildError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::EmptyAlternatives => write!(f, "Any expression must have at least one branch"),
-            Self::EmptyConjunction => write!(f, "All expression must have at least one branch"),
-            Self::EmptyIdentityName => write!(f, "identity name must not be empty"),
-            Self::EmptyModuleSpecifier => write!(f, "module specifier must not be empty"),
-            Self::EmptyStaticValue => write!(f, "static value must not be empty"),
-            Self::MalformedChain(chain) => write!(f, "malformed member chain: {chain}"),
-            Self::InvalidArgumentIndex(idx) => {
-                write!(
-                    f,
-                    "argument index {idx} exceeds maximum ({})",
-                    limits::MAX_ARGUMENT_INDEX
-                )
-            }
-            Self::InvalidScopePackage => write!(f, "invalid package scope pattern"),
-            Self::ExcessiveConstraints(count) => {
-                write!(f, "constraint count {count} exceeds limit")
-            }
-            Self::EmptyCollection(name) => write!(f, "{name} must not be empty"),
-            Self::CollectionTooLarge(name, size) => {
-                write!(f, "{name} size {size} exceeds maximum")
-            }
-        }
-    }
-}
-
-/// Structured diagnostic projected from
-/// [`crate::api::compiler::validate::QueryCompileError`] for public catalog
-/// errors.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct QueryDiagnostic {
-    pub(crate) code: &'static str,
-    pub(crate) message: String,
-}
-
-impl QueryDiagnostic {
-    #[allow(dead_code)]
-    pub fn code(&self) -> &'static str {
-        self.code
-    }
-
-    #[allow(dead_code)]
-    pub fn message(&self) -> &str {
-        &self.message
-    }
-}
-
-impl fmt::Display for QueryDiagnostic {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}] {}", self.code, self.message)
     }
 }
 
@@ -1819,6 +1381,47 @@ mod tests {
         });
         let all = AllExpr::new(vec![event]).unwrap();
         assert_eq!(all.branches.len(), 1);
+    }
+
+    #[test]
+    fn expression_depth_is_bounded_before_compilation() {
+        let mut nested = QueryExpr::event(EventQuery {
+            var: VarId::new(0),
+            event: EventSpec::Call,
+            identity: IdentitySpec::Global {
+                name: SmolStr::new("fetch"),
+            },
+            constraints: vec![],
+        });
+        for _ in 1..limits::MAX_EXPR_DEPTH {
+            nested = QueryExpr::any(AnyExpr::new(vec![nested]).unwrap());
+        }
+
+        assert!(matches!(
+            AnyExpr::new(vec![nested]),
+            Err(QueryBuildError::ExpressionDepthExceeded(depth))
+                if depth == limits::MAX_EXPR_DEPTH + 1
+        ));
+    }
+
+    #[test]
+    fn expression_child_limit_plus_one_is_rejected_at_authoring() {
+        let event = QueryExpr::event(EventQuery {
+            var: VarId::new(0),
+            event: EventSpec::Call,
+            identity: IdentitySpec::Global {
+                name: SmolStr::new("fetch"),
+            },
+            constraints: vec![],
+        });
+        let branches = vec![event; limits::MAX_EXPR_CHILDREN + 1];
+        assert!(matches!(
+            AnyExpr::new(branches),
+            Err(QueryBuildError::CollectionTooLarge(
+                "Any expression branches",
+                257
+            ))
+        ));
     }
 
     // ── Construction: every convenience constructor → valid QueryDecl ──

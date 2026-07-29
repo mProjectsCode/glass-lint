@@ -125,7 +125,7 @@ impl UsageProjector<'_> {
                     &self.flow.requirements[index]
                 && arguments.iter().all(|matcher| {
                     call_args.get(matcher.index()).is_some_and(|argument| {
-                        matcher.matcher().matches(argument, self.names, values)
+                        matcher.predicate().matches(argument, self.names, values)
                     })
                 })
             {

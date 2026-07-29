@@ -151,6 +151,7 @@ fn baseline_local_lifecycle() {
     let flow = LifecycleQuery::builder("script-insert")
         .source(
             LifecycleSource::returned_by("document.createElement")
+                .unwrap()
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
@@ -181,7 +182,14 @@ fn baseline_local_lifecycle() {
 
     // Flow projection produces operation counts
     let ops = report.operations();
-    assert!(ops.coalescing_comparisons() > 0 || ops.trace_heads() > 0);
+    assert_eq!(ops.effect_projections(), 1);
+    assert_eq!(ops.evidence(), 3);
+    assert_eq!(ops.max_live_alternatives(), 1);
+    assert_eq!(ops.trace_nodes(), 3);
+    assert_eq!(ops.trace_heads(), 1);
+    assert_eq!(ops.coalescing_comparisons(), 0);
+    assert_eq!(ops.fixed_point_iterations(), 0);
+    assert_eq!(ops.rendered_traces(), 1);
 }
 
 // ── 6. Within-function lifecycle (same as cross-call in snippet mode) ──
@@ -193,6 +201,7 @@ fn baseline_within_function_lifecycle() {
     let flow = LifecycleQuery::builder("script-local-flow")
         .source(
             LifecycleSource::returned_by("document.createElement")
+                .unwrap()
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
@@ -249,6 +258,7 @@ fn negative_source_to_alias_no_sink() {
     let flow = LifecycleQuery::builder("source-alias")
         .source(
             LifecycleSource::returned_by("document.createElement")
+                .unwrap()
                 .arg(0, ValueMatcher::static_string().equals("div")),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
@@ -285,6 +295,7 @@ fn negative_source_to_requirement_no_sink() {
     let flow = LifecycleQuery::builder("source-req")
         .source(
             LifecycleSource::returned_by("document.createElement")
+                .unwrap()
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
@@ -321,6 +332,7 @@ fn negative_disconnected_source_and_sink() {
     let flow = LifecycleQuery::builder("disconnected")
         .source(
             LifecycleSource::returned_by("document.createElement")
+                .unwrap()
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
@@ -357,6 +369,7 @@ fn negative_source_wrong_arg_no_match() {
     let flow = LifecycleQuery::builder("source-arg")
         .source(
             LifecycleSource::returned_by("document.createElement")
+                .unwrap()
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
@@ -392,6 +405,7 @@ fn negative_escaped_object_no_lifecycle() {
     let flow = LifecycleQuery::builder("escaped")
         .source(
             LifecycleSource::returned_by("document.createElement")
+                .unwrap()
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
@@ -428,6 +442,7 @@ fn negative_alias_to_requirement_no_sink() {
     let flow = LifecycleQuery::builder("alias-req")
         .source(
             LifecycleSource::returned_by("document.createElement")
+                .unwrap()
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
@@ -464,6 +479,7 @@ fn negative_alias_to_sink_not_configured() {
     let flow = LifecycleQuery::builder("alias-sink")
         .source(
             LifecycleSource::returned_by("document.createElement")
+                .unwrap()
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
@@ -500,6 +516,7 @@ fn negative_requirement_to_sink_disconnected_object() {
     let flow = LifecycleQuery::builder("req-sink")
         .source(
             LifecycleSource::returned_by("document.createElement")
+                .unwrap()
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
@@ -595,13 +612,18 @@ fn baseline_operation_counts_are_stable() {
             .unwrap(),
     );
     let ops = report.operations();
-
     // Single file → 1 file operation
-    assert!(ops.files() == 1 || ops.files() == 0);
-
-    // Evidence should reflect the one finding
-    // Evidence should reflect the one finding
-    let _findings = report.files()[0].findings().len();
-    // Very simple query: no effect projections, no cross-file work
+    assert_eq!(ops.files(), 1);
+    assert_eq!(ops.requests(), 0);
+    assert_eq!(ops.edges(), 0);
+    assert_eq!(ops.exports(), 0);
+    assert_eq!(ops.scc_rounds(), 0);
     assert_eq!(ops.effect_projections(), 0);
+    assert_eq!(ops.evidence(), 1);
+    assert_eq!(ops.max_live_alternatives(), 1);
+    assert_eq!(ops.trace_nodes(), 0);
+    assert_eq!(ops.trace_heads(), 0);
+    assert_eq!(ops.coalescing_comparisons(), 0);
+    assert_eq!(ops.fixed_point_iterations(), 0);
+    assert_eq!(ops.rendered_traces(), 1);
 }

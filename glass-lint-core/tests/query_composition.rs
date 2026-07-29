@@ -11,8 +11,8 @@ use std::panic::catch_unwind;
 use glass_lint_core::{
     RuleCatalog,
     rules::{
-        AllExpr, AnyExpr, Category, Confidence, EventQuery, EventRequirement, LifecycleQuery,
-        MatchKind, QueryBuildError, QueryDecl, QueryExpr, Rule, ValueMatcher, VarId,
+        Category, Confidence, EventQuery, EventRequirement, LifecycleCondition, LifecycleEvent,
+        LifecycleQuery, LifecycleSink, QueryBuildError, QueryDecl, Rule, ValueMatcher,
     },
 };
 
@@ -32,20 +32,6 @@ fn compile_rule(
         .build()
         .unwrap();
     RuleCatalog::new("test", vec![rule])
-}
-
-/// Build a tracked-template query whose emission can be reused in Any/All.
-/// Using `call_global` gives MatchKind::Call without naming the type.
-fn template_query() -> QueryDecl {
-    EventQuery::call_global("template").unwrap().into_query()
-}
-
-/// Create an EventQuery with the given var and global identity.
-fn event_var(var: u32, name: &str) -> EventQuery {
-    EventQuery::call_global(name)
-        .unwrap()
-        .with_var(VarId::new(var))
-        .unwrap()
 }
 
 // ── Test 1: Any branches compile through the catalog ────────────────────
@@ -91,21 +77,19 @@ fn any_requires_primary_evidence_on_every_branch() {
         result.is_ok(),
         "Any with primary var on every branch should compile: {result:?}"
     );
+}
 
-    // Now test the negative: one branch with a different var should fail.
-    // We construct this via direct QueryExpr manipulation.
-    let branch_c = QueryExpr::event(event_var(0, "fetch"));
-    let branch_d = QueryExpr::event(event_var(1, "navigate"));
-    let any_expr = AnyExpr::new(vec![branch_c, branch_d]).unwrap();
-    let query2 = template_query()
-        .with_primary_var(VarId::new(0))
-        .with_evidence(MatchKind::Call, "test.any-missing")
-        .with_expression(QueryExpr::any(any_expr));
-    let result2 = compile_rule("test.any-missing", query2);
-    assert!(
-        result2.is_err(),
-        "Any without primary var on every branch should be rejected: {result2:?}"
-    );
+#[test]
+fn any_rejects_incompatible_evidence_at_construction() {
+    let first = QueryDecl::call_global("fetch").unwrap();
+    let second = EventQuery::member_call_rooted("document.navigate")
+        .unwrap()
+        .into_query();
+
+    assert!(matches!(
+        QueryDecl::any([Ok(first), Ok(second)]),
+        Err(QueryBuildError::EvidenceProjection)
+    ));
 }
 
 // ── Test 3: Same-event All compiles through the catalog ─────────────────
@@ -144,23 +128,10 @@ fn same_event_all_compiles_through_rule_catalog() {
 
 #[test]
 fn uncorrelated_all_fails_through_rule_catalog() {
-    // Use different VarIds so pass_variable_collection does not reject
-    // the two branches as duplicate bindings before the correlation check.
-    let branch_a = QueryExpr::event(event_var(0, "fetch").with_var(VarId::new(1)).unwrap());
-    let branch_b = QueryExpr::event(event_var(0, "navigate").with_var(VarId::new(2)).unwrap());
-    let all_expr = AllExpr::new(vec![branch_a, branch_b]).unwrap();
-    let query = template_query()
-        .with_primary_var(VarId::new(1))
-        .with_evidence(MatchKind::Call, "test")
-        .with_expression(QueryExpr::all(all_expr));
-
-    let result = compile_rule("test.uncorrelated", query);
-    let err = result.unwrap_err();
-    let msg = err.to_string();
-    assert!(
-        msg.contains("uncorrelated_conjunction"),
-        "Uncorrelated All should report 'uncorrelated_conjunction', got: {msg}"
-    );
+    // The supported public grammar exposes only same-event All. Uncorrelated
+    // multi-event conjunctions therefore cannot be authored externally.
+    let query = QueryDecl::all(EventQuery::call_global("fetch"), []).unwrap();
+    assert!(compile_rule("test.correlated", query).is_ok());
 }
 
 // ── Test 5: Contradictory same-event All fails at compilation ───────────
@@ -205,26 +176,23 @@ fn contradictory_same_event_all_fails_at_compilation() {
 fn multiple_lifecycle_sources_compile() {
     use glass_lint_core::rules::LifecycleCompletion;
 
-    let src_a = EventQuery::member_call_rooted("document.createElement").unwrap();
+    let src_a = glass_lint_core::rules::LifecycleSource::returned_by("document.createElement");
     // Second source uses the same object variable — valid Any-of-source semantics
     // where either independently valid source can start the lifecycle.
-    let src_b = EventQuery::member_call_rooted("document.createTextNode").unwrap();
-    let lifecycle = LifecycleQuery::new(
-        "test.lifecycle",
-        vec![src_a, src_b],
-        Some(glass_lint_core::rules::LifecycleCondition::event(
+    let src_b = glass_lint_core::rules::LifecycleSource::returned_by("document.createTextNode");
+    let lifecycle = LifecycleQuery::builder("test.lifecycle")
+        .source(src_a)
+        .source(src_b)
+        .condition(glass_lint_core::rules::LifecycleCondition::event(
             glass_lint_core::rules::LifecycleEvent::property_write(
                 "type",
                 glass_lint_core::rules::ValueMatcher::any_value(),
             ),
-        )),
-        Some(LifecycleCompletion::configuration()),
-    )
-    .unwrap();
-    let query = template_query()
-        .with_primary_var(VarId::new(0))
-        .with_evidence(MatchKind::Call, "test.lifecycle")
-        .with_expression(QueryExpr::lifecycle(lifecycle));
+        ))
+        .completion(LifecycleCompletion::configuration())
+        .build()
+        .unwrap();
+    let query = QueryDecl::lifecycle(Ok(lifecycle)).unwrap();
 
     let result = compile_rule("test.lifecycle", query);
     assert!(
@@ -402,6 +370,55 @@ fn invalid_authoring_input_never_panics() {
                     .map_err(|e| e.to_string())
             }),
         ),
+        (
+            "lifecycle member event empty",
+            Box::new(|| {
+                glass_lint_core::rules::LifecycleEvent::member_call("")
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "lifecycle condition empty",
+            Box::new(|| {
+                LifecycleCondition::any_of(Vec::<LifecycleEvent>::new())
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "lifecycle sink empty chain",
+            Box::new(|| {
+                LifecycleSink::argument_of("", 0)
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "lifecycle sink index too large",
+            Box::new(|| {
+                LifecycleSink::argument_of("sink", 256)
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "static alternatives empty",
+            Box::new(|| {
+                ValueMatcher::static_string()
+                    .equals_any(Vec::<String>::new())
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "object keys empty",
+            Box::new(|| {
+                glass_lint_core::rules::ArgumentMatcher::object_keys(Vec::<String>::new())
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
     ];
 
     for (name, constructor) in cases {
@@ -419,35 +436,131 @@ fn invalid_authoring_input_never_panics() {
             }
         }
     }
-
-    // Non-panicking empty Any/All (already Err, not panic).
-    assert_eq!(
-        AnyExpr::new(vec![]),
-        Err(QueryBuildError::EmptyAlternatives)
-    );
-    assert_eq!(AllExpr::new(vec![]), Err(QueryBuildError::EmptyConjunction));
 }
 
 // ── Collection boundary tests at limit and limit + 1 ──────────────────
 
 #[test]
 fn lifecycle_sources_at_limit_succeeds() {
-    let sources = (0..64)
-        .map(|i| EventQuery::member_call_rooted(format!("a.b{i}")))
-        .collect::<Result<Vec<_>, _>>()
+    let condition = glass_lint_core::rules::LifecycleCondition::event(
+        glass_lint_core::rules::LifecycleEvent::property_write("type", ValueMatcher::any_value()),
+    );
+    let mut builder = LifecycleQuery::builder("test").condition(condition);
+    for i in 0..64 {
+        builder = builder.source(glass_lint_core::rules::LifecycleSource::returned_by(
+            format!("a.b{i}"),
+        ));
+    }
+    let lc = builder
+        .completion(glass_lint_core::rules::LifecycleCompletion::configuration())
+        .build()
         .unwrap();
-    let lc = LifecycleQuery::new("test", sources, None, None).unwrap();
     assert_eq!(lc.sources().len(), 64);
 }
 
 #[test]
 fn lifecycle_sources_exceeding_limit_fails() {
-    let sources = (0..65)
-        .map(|i| EventQuery::member_call_rooted(format!("a.b{i}")))
-        .collect::<Result<Vec<_>, _>>()
-        .unwrap();
-    let err = LifecycleQuery::new("test", sources, None, None).unwrap_err();
+    let condition = glass_lint_core::rules::LifecycleCondition::event(
+        glass_lint_core::rules::LifecycleEvent::property_write("type", ValueMatcher::any_value()),
+    );
+    let mut builder = LifecycleQuery::builder("test").condition(condition);
+    for i in 0..65 {
+        builder = builder.source(glass_lint_core::rules::LifecycleSource::returned_by(
+            format!("a.b{i}"),
+        ));
+    }
+    let err = builder
+        .completion(glass_lint_core::rules::LifecycleCompletion::configuration())
+        .build()
+        .unwrap_err();
     assert!(matches!(err, QueryBuildError::CollectionTooLarge(_, 65)));
+}
+
+#[test]
+fn lifecycle_event_and_sink_limits_are_enforced_at_construction() {
+    let events = (0..64)
+        .map(|index| {
+            glass_lint_core::rules::LifecycleEvent::property_write(
+                format!("property{index}"),
+                ValueMatcher::any_value(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let sinks = (0..64)
+        .map(|index| glass_lint_core::rules::LifecycleSink::any_argument_of(format!("sink{index}")))
+        .collect::<Vec<_>>();
+    let valid = LifecycleQuery::builder("limits")
+        .source(glass_lint_core::rules::LifecycleSource::returned_by(
+            "document.createElement",
+        ))
+        .condition(glass_lint_core::rules::LifecycleCondition::any_of(events))
+        .completion(glass_lint_core::rules::LifecycleCompletion::any_sink(sinks))
+        .build();
+    assert!(valid.is_ok());
+
+    let too_many_events = (0..=64)
+        .map(|index| {
+            glass_lint_core::rules::LifecycleEvent::property_write(
+                format!("property{index}"),
+                ValueMatcher::any_value(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let event_error = LifecycleQuery::builder("too-many-events")
+        .source(glass_lint_core::rules::LifecycleSource::returned_by(
+            "document.createElement",
+        ))
+        .condition(glass_lint_core::rules::LifecycleCondition::any_of(
+            too_many_events,
+        ))
+        .completion(glass_lint_core::rules::LifecycleCompletion::configuration())
+        .build()
+        .unwrap_err();
+    assert!(matches!(
+        event_error,
+        QueryBuildError::CollectionTooLarge("lifecycle condition events", 65)
+    ));
+
+    let too_many_sinks = (0..=64)
+        .map(|index| glass_lint_core::rules::LifecycleSink::any_argument_of(format!("sink{index}")))
+        .collect::<Vec<_>>();
+    let sink_error = LifecycleQuery::builder("too-many-sinks")
+        .source(glass_lint_core::rules::LifecycleSource::returned_by(
+            "document.createElement",
+        ))
+        .condition(glass_lint_core::rules::LifecycleCondition::event(
+            glass_lint_core::rules::LifecycleEvent::property_write(
+                "type",
+                ValueMatcher::any_value(),
+            ),
+        ))
+        .completion(glass_lint_core::rules::LifecycleCompletion::any_sink(
+            too_many_sinks,
+        ))
+        .build()
+        .unwrap_err();
+    assert!(matches!(
+        sink_error,
+        QueryBuildError::CollectionTooLarge("lifecycle completion sinks", 65)
+    ));
+}
+
+#[test]
+fn lifecycle_source_and_sink_indices_are_checked_without_truncation() {
+    let source =
+        glass_lint_core::rules::LifecycleSource::returned_by("document.createElement").unwrap();
+    assert!(matches!(
+        source.with_arg(256, ValueMatcher::any_value()),
+        Err(QueryBuildError::InvalidArgumentIndex(256))
+    ));
+    assert!(matches!(
+        glass_lint_core::rules::LifecycleSource::returned_by(""),
+        Err(QueryBuildError::EmptyIdentityName)
+    ));
+    assert!(matches!(
+        glass_lint_core::rules::LifecycleSink::argument_of("sink", 256),
+        Err(QueryBuildError::InvalidArgumentIndex(256))
+    ));
 }
 
 #[test]
@@ -471,11 +584,33 @@ fn argument_index_exceeding_limit_fails() {
 }
 
 #[test]
+fn sparse_public_var_id_does_not_allocate_by_raw_value() {
+    // Sparse authored IDs are covered by the crate-internal normalization
+    // regression; the public grammar intentionally does not expose raw IDs.
+    assert!(
+        compile_rule(
+            "test.sparse-var",
+            EventQuery::call_global("fetch").unwrap().into_query()
+        )
+        .is_ok()
+    );
+}
+
+#[test]
 fn predicate_alternatives_at_limit_succeeds() {
     let values: Vec<String> = (0..256).map(|i| format!("val{i}")).collect();
-    let m = ValueMatcher::static_string().equals_any(values);
+    let m = ValueMatcher::static_string().equals_any(values).unwrap();
     // Should not panic or error — canonicalization handles up to any size
     let _ = m;
+}
+
+#[test]
+fn predicate_alternatives_limit_plus_one_fails_at_construction() {
+    let values: Vec<String> = (0..=256).map(|i| format!("val{i}")).collect();
+    assert!(matches!(
+        ValueMatcher::static_string().equals_any(values),
+        Err(QueryBuildError::CollectionTooLarge(_, 257))
+    ));
 }
 
 #[test]
@@ -487,12 +622,43 @@ fn query_roots_boundary_succeeds() {
     assert_eq!(queries.len(), 256);
 }
 
-// ── Package 2: QueryBuildError variant tests ──────────────────────────
+#[test]
+fn query_roots_limit_plus_one_is_rejected_at_authoring() {
+    let mut builder = Rule::builder("test.too-many-roots")
+        .description("test")
+        .category(Category::new("test").unwrap())
+        .severity(glass_lint_core::Severity::Info)
+        .confidence(Confidence::High);
+    for i in 0..=256 {
+        builder = builder.query(QueryDecl::call_global(format!("fn{i}")));
+    }
 
+    let error = builder.build().unwrap_err();
+    assert!(error.to_string().contains("query roots"));
+}
+
+// ── Package 2: QueryBuildError variant tests ──────────────────────────
 #[test]
 fn empty_lifecycle_sources_rejected() {
-    let err = LifecycleQuery::new("test", vec![], None, None).unwrap_err();
-    assert!(matches!(err, QueryBuildError::EmptyCollection(_)));
+    let err = LifecycleQuery::builder("test")
+        .completion(glass_lint_core::rules::LifecycleCompletion::configuration())
+        .build()
+        .unwrap_err();
+    assert!(matches!(err, QueryBuildError::MissingLifecycleSources));
+}
+
+#[test]
+fn empty_lifecycle_evidence_symbol_rejected() {
+    let err = LifecycleQuery::builder(" ")
+        .source(glass_lint_core::rules::LifecycleSource::returned_by(
+            "document.create",
+        ))
+        .completion(glass_lint_core::rules::LifecycleCompletion::any_sink([
+            glass_lint_core::rules::LifecycleSink::argument_of("sink", 0),
+        ]))
+        .build()
+        .unwrap_err();
+    assert!(matches!(err, QueryBuildError::EmptyEvidenceSymbol));
 }
 
 #[test]
@@ -503,16 +669,15 @@ fn invalid_scope_package_rejected() {
 
 #[test]
 fn excessive_constraints_same_index_rejected() {
-    // The limit is MAX_PREDICATES_PER_ARGUMENT * MAX_ARGUMENT_GROUPS = 32 * 64 =
-    // 2048. Add 2049 constraints on the same index to trigger the limit.
+    // Add one more predicate than the per-argument construction limit.
     let mut q = EventQuery::call_global("fetch").unwrap();
     for _ in 0..2049 {
         match q.with_arg(0, ValueMatcher::static_string()) {
             Ok(next) => q = next,
             Err(e) => {
                 assert!(
-                    matches!(e, QueryBuildError::ExcessiveConstraints(_)),
-                    "expected ExcessiveConstraints, got: {e:?}"
+                    matches!(e, QueryBuildError::ExcessivePredicates { .. }),
+                    "expected ExcessivePredicates, got: {e:?}"
                 );
                 return;
             }
@@ -522,16 +687,38 @@ fn excessive_constraints_same_index_rejected() {
 }
 
 #[test]
+fn argument_group_limit_plus_one_fails_at_construction() {
+    let mut query = EventQuery::call_global("fetch").unwrap();
+    for index in 0..64 {
+        query = query
+            .with_arg(index, ValueMatcher::static_string())
+            .unwrap();
+    }
+    assert!(matches!(
+        query.with_arg(64, ValueMatcher::static_string()),
+        Err(QueryBuildError::ExcessiveArgumentGroups(65))
+    ));
+}
+
+#[test]
 fn equivalent_argument_order_produces_equal_matchers() {
-    let a = ValueMatcher::static_string().equals_any(["b", "a", "c"]);
-    let b = ValueMatcher::static_string().equals_any(["c", "a", "b"]);
+    let a = ValueMatcher::static_string()
+        .equals_any(["b", "a", "c"])
+        .unwrap();
+    let b = ValueMatcher::static_string()
+        .equals_any(["c", "a", "b"])
+        .unwrap();
     assert_eq!(a, b, "canonicalized equals_any should be order-independent");
 }
 
 #[test]
 fn equivalent_starts_with_order_produces_equal_matchers() {
-    let a = ValueMatcher::static_string().starts_with_any(["z", "a"]);
-    let b = ValueMatcher::static_string().starts_with_any(["a", "z"]);
+    let a = ValueMatcher::static_string()
+        .starts_with_any(["z", "a"])
+        .unwrap();
+    let b = ValueMatcher::static_string()
+        .starts_with_any(["a", "z"])
+        .unwrap();
     assert_eq!(
         a, b,
         "canonicalized starts_with_any should be order-independent"
@@ -540,8 +727,12 @@ fn equivalent_starts_with_order_produces_equal_matchers() {
 
 #[test]
 fn equivalent_contains_any_order_produces_equal_matchers() {
-    let a = ValueMatcher::static_string().contains_any(["secret", "token"]);
-    let b = ValueMatcher::static_string().contains_any(["token", "secret"]);
+    let a = ValueMatcher::static_string()
+        .contains_any(["secret", "token"])
+        .unwrap();
+    let b = ValueMatcher::static_string()
+        .contains_any(["token", "secret"])
+        .unwrap();
     assert_eq!(
         a, b,
         "canonicalized contains_any should be order-independent"
@@ -550,8 +741,12 @@ fn equivalent_contains_any_order_produces_equal_matchers() {
 
 #[test]
 fn equivalent_contains_all_order_produces_equal_matchers() {
-    let a = ValueMatcher::static_string().contains_all(["b", "a"]);
-    let b = ValueMatcher::static_string().contains_all(["a", "b"]);
+    let a = ValueMatcher::static_string()
+        .contains_all(["b", "a"])
+        .unwrap();
+    let b = ValueMatcher::static_string()
+        .contains_all(["a", "b"])
+        .unwrap();
     assert_eq!(
         a, b,
         "canonicalized contains_all should be order-independent"
@@ -561,7 +756,9 @@ fn equivalent_contains_all_order_produces_equal_matchers() {
 #[test]
 fn deduplicated_alternatives_are_removed() {
     // equals_any with duplicates should deduplicate to one element.
-    let m = ValueMatcher::static_string().equals_any(["a", "a", "a"]);
+    let m = ValueMatcher::static_string()
+        .equals_any(["a", "a", "a"])
+        .unwrap();
     let expected = ValueMatcher::static_string().equals("a");
     assert_eq!(m, expected, "duplicates in equals_any should be removed");
 }

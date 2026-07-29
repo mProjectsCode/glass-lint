@@ -387,7 +387,9 @@ fn ordinary_member_argument_predicates_reuse_static_values() {
                     .unwrap()
                     .with_arg(
                         0,
-                        ValueMatcher::static_string().equals_any(["delete", "rename"]),
+                        ValueMatcher::static_string()
+                            .equals_any(["delete", "rename"])
+                            .unwrap(),
                     )
                     .unwrap()
                     .into_query(),
@@ -631,7 +633,10 @@ fn rooted_expression_arguments_follow_one_letter_aliases() {
             .query(
                 EventQuery::member_call_rooted("app.open")
                     .unwrap()
-                    .with_arg(0, ArgumentMatcher::rooted_expressions(["vault.file"]))
+                    .with_arg(
+                        0,
+                        ArgumentMatcher::rooted_expressions(["vault.file"]).unwrap(),
+                    )
                     .unwrap()
                     .into_query(),
             )

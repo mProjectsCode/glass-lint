@@ -108,6 +108,7 @@ pub fn flow_linter() -> crate::Linter {
             LifecycleQuery::builder("script insertion")
                 .source(
                     LifecycleSource::returned_by("document.createElement")
+                        .unwrap()
                         .arg(0, ValueMatcher::static_string().equals("script")),
                 )
                 .condition(LifecycleCondition::event(LifecycleEvent::property_write(

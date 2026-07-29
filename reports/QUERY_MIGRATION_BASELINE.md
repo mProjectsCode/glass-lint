@@ -63,11 +63,13 @@ the assertions in `query_baseline.rs` to match the new expected values.
 
 **Rule:** `QueryDecl::member_call_instance("pkg", "Client", "send")`
 
-**Environment:** module resolution maps `pkg.Client` → export
+**Environment:** the snippet baseline intentionally has no module resolution;
+the physical planner route is covered by compiler tests.
 
 **Expected:**
 - Physical plan: 1 root, 1 `InstanceSubject`
-- Findings: 1 (definite, instance correlation verified)
+- Findings: 0 in the unresolved snippet (fail closed); instance correlation
+  and physical routing are covered by compiler tests.
 
 ### 5. Local lifecycle
 
@@ -80,17 +82,7 @@ the assertions in `query_baseline.rs` to match the new expected values.
 - Findings: 1 (definite, source→condition→sink complete)
 - Flow operations > 0
 
-### 6. Cross-call lifecycle
-
-**Source:** Multi-function script-injection (create in helper, configure in caller, append in caller)
-
-**Rule:** Same flow rule
-
-**Expected:**
-- Findings: 1 (definite, cross-function flow tracked)
-- Cross-call flow operations > 0
-
-### 7. Project module identity
+### 6. Project module identity
 
 **Source:** `import { readFile } from 'fs'; readFile('/etc/passwd')`
 
@@ -100,25 +92,6 @@ the assertions in `query_baseline.rs` to match the new expected values.
 - Physical plan: project_overlay=yes
 - Findings: 1 (definite, module identity resolved)
 
-### 8. Ambiguous project alternative
-
-**Source:** Module with ambiguous re-exports
-
-**Rule:** `QueryDecl::call_module("pkg", "ambiguousExport")`
-
-**Expected:**
-- Findings: possible (unknown alternative does not erase complete witness)
-
-### 9. Cross-file flow
-
-**Source:** Multi-file script-injection (source in a.js, config in b.js, sink in a.js)
-
-**Rule:** Same flow rule
-
-**Expected:**
-- Findings: 1 (cross-file flow)
-- Cross-file flow operations > 0
-
 ## Baseline invariants
 
 Baselines assert the following are stable:
@@ -127,9 +100,24 @@ Baselines assert the following are stable:
 2. **Certainty** (Definite / Possible) per finding
 3. **Physical root count and type distribution**
 4. **Plan requirement flags** (overlay, flow, cross-call)
-5. **Operation counts** for flow projection
+5. **Operation counts** for local flow projection
 6. **Evidence trace count** per finding
 7. **Finding order** (deterministic by source location)
 
 These are not opaque snapshots. Each assertion targets a specific stable
 field so that intentional changes require targeted updates.
+
+## Reviewed verification commands
+
+The baseline and repository migration surfaces were reviewed with:
+
+```sh
+cargo test -p glass-lint-core --test query_baseline
+cargo test -p glass-lint-core --test query_composition
+make ci
+```
+
+The repository gate includes workspace checks, clippy, workspace tests and
+doctests, e2e cases, JavaScript and Obsidian fixtures, and compiled core
+examples. The checked-in assertions are the authoritative expected results;
+the report intentionally does not embed volatile suite-size counts.

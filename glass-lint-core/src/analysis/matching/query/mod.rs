@@ -50,13 +50,14 @@ impl OccurrenceIndexes {
                     }
                 }
                 PhysicalRoot::ReturnedSubject {
-                    identity,
+                    producer,
                     member,
                     event,
                     evidence: ev,
+                    ..
                 } => {
                     if let Some(occurrences) =
-                        self.occurrences_for_returned(identity, member, event, overlay, names)
+                        self.occurrences_for_returned(producer, member, event, overlay, names)
                     {
                         push_owned_evidence(&mut evidence, ev.kind, ev.symbol.clone(), occurrences);
                     }
@@ -65,6 +66,7 @@ impl OccurrenceIndexes {
                     constructor,
                     member,
                     evidence: ev,
+                    ..
                 } => {
                     if let Some(occurrences) =
                         self.occurrences_for_instance(constructor, member, names)

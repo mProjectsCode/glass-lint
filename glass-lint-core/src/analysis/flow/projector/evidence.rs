@@ -62,7 +62,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                         && matchers.iter().all(|matcher| {
                             args.get(matcher.index()).is_some_and(|arg| {
                                 matcher
-                                    .matcher()
+                                    .predicate()
                                     .matches(arg, self.names, self.stream.values())
                             })
                         })

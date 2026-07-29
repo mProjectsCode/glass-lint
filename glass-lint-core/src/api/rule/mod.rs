@@ -14,8 +14,8 @@ pub use error::{CompiledCatalogError, MatcherBuildError, RuleBuildError};
 pub use module::ModuleSpecifierPattern;
 pub(crate) use query::value::{ArgumentMatcherKind, StaticStringPredicateKind};
 pub use query::{
-    AllExpr, AnyExpr, EmissionDecl, EventQuery, EventRequirement, EventSpec, IdentitySpec,
-    IntoQueryDecl, LifecycleQuery, QueryBuildError, QueryDecl, QueryDiagnostic, QueryExpr, VarId,
+    EventQuery, EventRequirement, EventSpec, IdentitySpec, IntoQueryDecl, LifecycleQuery,
+    QueryBuildError, QueryDecl, QueryDiagnostic, VarId,
     lifecycle::{
         LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleSink, LifecycleSource,
     },
@@ -182,6 +182,9 @@ impl RuleBuilder {
         }
         if let Some(err) = self.first_query_error {
             return Err(RuleBuildError::InvalidQuery(err));
+        }
+        if self.queries.len() > query::limits::MAX_QUERY_ROOTS_PER_RULE {
+            return Err(RuleBuildError::TooManyQueries(self.queries.len()));
         }
         let description = required_string(self.description, RuleBuildError::MissingDescription)?;
         let category = self.category.ok_or(RuleBuildError::MissingCategory)?;
