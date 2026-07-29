@@ -6,21 +6,20 @@
 #![allow(clippy::redundant_pub_crate)]
 
 mod error;
-pub mod matcher;
 mod module;
 pub mod query;
 mod taxonomy;
 
 pub use error::{CompiledCatalogError, MatcherBuildError, RuleBuildError};
-pub use matcher::{
-    ArgumentConstraint, ArgumentIndex, ArgumentMatcher, FlowCompletion, FlowCondition,
-    FlowSinkMatcher, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher,
-    ValueMatcherKind,
-};
 pub use module::ModuleSpecifierPattern;
+pub(crate) use query::value::{ArgumentMatcherKind, StaticStringPredicateKind};
 pub use query::{
     AllExpr, AnyExpr, EmissionDecl, EventQuery, EventRequirement, EventSpec, IdentitySpec,
     IntoQueryDecl, LifecycleQuery, QueryBuildError, QueryDecl, QueryDiagnostic, QueryExpr, VarId,
+    lifecycle::{
+        LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleSink, LifecycleSource,
+    },
+    value::{ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ValueMatcher, ValueMatcherKind},
 };
 pub use taxonomy::{Category, Confidence};
 
@@ -44,8 +43,6 @@ pub struct Rule {
     confidence: Confidence,
     /// Query declarations retained until catalog compilation.
     queries: Vec<QueryDecl>,
-    /// Object-flow matcher declarations (lowered on RuleBuilder).
-    flows: Vec<ObjectFlowMatcher>,
 }
 
 impl Rule {
@@ -63,7 +60,6 @@ impl Rule {
             severity: None,
             confidence: None,
             queries: Vec::new(),
-            flows: Vec::new(),
             duplicate_field: None,
             first_query_error: None,
         }
@@ -104,12 +100,6 @@ impl Rule {
     pub fn queries(&self) -> &[QueryDecl] {
         &self.queries
     }
-
-    #[must_use]
-    /// Borrow object-flow matcher declarations.
-    pub fn flow_matchers(&self) -> &[ObjectFlowMatcher] {
-        &self.flows
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -121,7 +111,6 @@ pub struct RuleBuilder {
     severity: Option<Severity>,
     confidence: Option<Confidence>,
     queries: Vec<QueryDecl>,
-    flows: Vec<ObjectFlowMatcher>,
     duplicate_field: Option<&'static str>,
     first_query_error: Option<QueryBuildError>,
 }
@@ -143,13 +132,6 @@ impl RuleBuilder {
                 }
             }
         }
-        self
-    }
-
-    #[must_use]
-    /// Add an object-flow matcher declaration.
-    pub fn object_flow(mut self, flow: ObjectFlowMatcher) -> Self {
-        self.flows.push(flow);
         self
     }
 
@@ -220,14 +202,13 @@ impl RuleBuilder {
             severity,
             confidence,
             queries: self.queries,
-            flows: self.flows,
         })
     }
 }
 
 impl Rule {
     pub(crate) fn validate_and_normalize(self) -> Result<Self, MatcherBuildError> {
-        if self.queries.is_empty() && self.flows.is_empty() {
+        if self.queries.is_empty() {
             return Err(MatcherBuildError::MissingRequired);
         }
         Ok(self)
@@ -327,7 +308,8 @@ mod tests {
 
     #[test]
     fn rejects_empty_and_incomplete_matchers() {
-        // Empty declarations list (no queries, no flows)
+        // Empty declarations list (no queries) passes build but fails
+        // validate_and_normalize
         assert!(
             Rule::builder("test.test")
                 .description("desc")
@@ -336,13 +318,6 @@ mod tests {
                 .confidence(Confidence::Medium)
                 .build()
                 .is_ok()
-        ); // passes build; fails validate_and_normalize
-
-        assert!(
-            ObjectFlowMatcher::builder("incomplete")
-                .source(ObjectSourceMatcher::returned_by("document.createElement"))
-                .build()
-                .is_err()
         );
     }
 }

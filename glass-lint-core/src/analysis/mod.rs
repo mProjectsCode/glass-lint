@@ -86,8 +86,7 @@ mod tests {
         );
 
         let fetch_plan =
-            CompiledMatcherPlan::compile_queries(&[QueryDecl::call_global("fetch").unwrap()])
-                .unwrap();
+            CompiledMatcherPlan::compile(&[QueryDecl::call_global("fetch").unwrap()]).unwrap();
         let selected = [RuleIndex::new(0)];
         let fetch_rule = CompiledRuleRecord {
             description: "fetch".into(),
@@ -99,12 +98,11 @@ mod tests {
         let (_model, _outcome) =
             project.project(CompiledRuleSelection::new(&fetch_rules, &selected));
 
-        let member_plan =
-            CompiledMatcherPlan::compile_queries(&[QueryDecl::member_call_heuristic(
-                "document.createElement",
-            )
-            .unwrap()])
-            .unwrap();
+        let member_plan = CompiledMatcherPlan::compile(&[QueryDecl::member_call_heuristic(
+            "document.createElement",
+        )
+        .unwrap()])
+        .unwrap();
         let member_rule = CompiledRuleRecord {
             description: "member".into(),
             severity: Severity::Warning,

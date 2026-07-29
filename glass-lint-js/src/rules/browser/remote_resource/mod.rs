@@ -1,8 +1,8 @@
 //! Browser remote-DOM-resource flow rule definition.
 
 use glass_lint_core::rules::{
-    Category, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, ObjectEventMatcher,
-    ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
+    Category, Confidence, LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleQuery,
+    LifecycleSink, LifecycleSource, QueryBuildError, QueryDecl, Rule, Severity, ValueMatcher,
 };
 
 /// Detects a script or image created by `document.createElement`, configured
@@ -16,53 +16,74 @@ pub fn rule() -> Rule {
         .category(Category::new("browser/dom").unwrap())
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
-        .object_flow(remote_element_flow(
+        .query(QueryDecl::lifecycle(remote_element_query(
             "remote script element",
             "script",
             "src",
-        ))
-        .object_flow(remote_element_flow("remote image element", "img", "src"))
-        .object_flow(remote_element_flow("remote link element", "link", "href"))
-        .object_flow(remote_element_flow(
+        )))
+        .query(QueryDecl::lifecycle(remote_element_query(
+            "remote image element",
+            "img",
+            "src",
+        )))
+        .query(QueryDecl::lifecycle(remote_element_query(
+            "remote link element",
+            "link",
+            "href",
+        )))
+        .query(QueryDecl::lifecycle(remote_element_query(
             "remote iframe element",
             "iframe",
             "src",
-        ))
-        .object_flow(remote_element_flow("remote audio element", "audio", "src"))
-        .object_flow(remote_element_flow("remote video element", "video", "src"))
-        .object_flow(remote_element_flow(
+        )))
+        .query(QueryDecl::lifecycle(remote_element_query(
+            "remote audio element",
+            "audio",
+            "src",
+        )))
+        .query(QueryDecl::lifecycle(remote_element_query(
+            "remote video element",
+            "video",
+            "src",
+        )))
+        .query(QueryDecl::lifecycle(remote_element_query(
             "remote source element",
             "source",
             "src",
-        ))
-        .object_flow(remote_element_flow(
+        )))
+        .query(QueryDecl::lifecycle(remote_element_query(
             "remote object element",
             "object",
             "data",
-        ))
-        .object_flow(remote_element_flow("remote embed element", "embed", "src"))
+        )))
+        .query(QueryDecl::lifecycle(remote_element_query(
+            "remote embed element",
+            "embed",
+            "src",
+        )))
         .build()
         .unwrap()
 }
 
-fn remote_element_flow(symbol: &str, tag: &str, property: &str) -> ObjectFlowMatcher {
-    // Both property assignment and setAttribute configure the same bounded
-    // element flow; the static URL prefix keeps the heuristic intentionally
-    // narrow and avoids treating local or dynamic sources as remote.
+fn remote_element_query(
+    symbol: &str,
+    tag: &str,
+    property: &str,
+) -> Result<LifecycleQuery, QueryBuildError> {
     let remote_url = ValueMatcher::static_string().starts_with_any(["http://", "https://", "//"]);
-    ObjectFlowMatcher::builder(symbol)
+    LifecycleQuery::builder(symbol)
         .source(
-            ObjectSourceMatcher::returned_by("document.createElement")
+            LifecycleSource::returned_by("document.createElement")
                 .arg(0, ValueMatcher::static_string().equals(tag)),
         )
-        .configured_by(FlowCondition::any_of([
-            ObjectEventMatcher::property_write(property, remote_url.clone()),
-            ObjectEventMatcher::member_call("setAttribute")
+        .condition(LifecycleCondition::any_of([
+            LifecycleEvent::property_write(property, remote_url.clone()),
+            LifecycleEvent::member_call("setAttribute")
                 .arg(0, ValueMatcher::static_string().equals(property))
                 .arg(1, remote_url)
                 .build(),
         ]))
-        .complete_at(FlowCompletion::any_sink(
+        .completion(LifecycleCompletion::any_sink(
             [
                 "document.head.appendChild",
                 "document.body.appendChild",
@@ -70,7 +91,7 @@ fn remote_element_flow(symbol: &str, tag: &str, property: &str) -> ObjectFlowMat
                 "document.documentElement.insertBefore",
             ]
             .into_iter()
-            .map(|chain| FlowSinkMatcher::argument_of(chain, 0))
+            .map(|chain| LifecycleSink::argument_of(chain, 0))
             .chain(
                 [
                     "document.head.append",
@@ -80,9 +101,8 @@ fn remote_element_flow(symbol: &str, tag: &str, property: &str) -> ObjectFlowMat
                     "document.documentElement.prepend",
                 ]
                 .into_iter()
-                .map(FlowSinkMatcher::any_argument_of),
+                .map(LifecycleSink::any_argument_of),
             ),
         ))
         .build()
-        .unwrap()
 }

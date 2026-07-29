@@ -8,8 +8,8 @@ use crate::{
         value::{Value, ValueTable},
     },
     api::rule::{
-        ArgumentMatcher, ValueMatcher, ValueMatcherKind,
-        matcher::{ArgumentMatcherKind, StaticStringPredicateKind},
+        ArgumentMatcher, ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcher,
+        ValueMatcherKind,
     },
 };
 

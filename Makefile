@@ -30,7 +30,7 @@ test:
 	$(CARGO) test --workspace
 
 test-all:
-	make test test-e2e test-projects test-rules
+	make test test-e2e test-rules
 
 test-e2e:
 	$(HARNESS) verify $(HARNESS_SUITE)

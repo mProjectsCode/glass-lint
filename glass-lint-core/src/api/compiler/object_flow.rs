@@ -2,12 +2,15 @@ use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
 use crate::api::rule::{
-    ArgumentConstraint, FlowSinkMatcher, ObjectEventMatcher, ValueMatcher,
-    matcher::{FlowCompletionKind, FlowConditionKind, FlowSinkMatcherKind, ObjectEventMatcherKind},
-    query::LifecycleQuery,
+    ArgumentConstraint, ValueMatcher,
+    query::{
+        LifecycleQuery,
+        lifecycle::{
+            LifecycleCompletionKind, LifecycleConditionKind, LifecycleEvent, LifecycleEventKind,
+            LifecycleSink, LifecycleSinkKind,
+        },
+    },
 };
-#[cfg(test)]
-use crate::api::rule::{ObjectFlowMatcher, ObjectSourceMatcher};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct CompiledObjectFlow {
@@ -37,14 +40,14 @@ impl CompiledObjectFlow {
         let (requirements, all_requirements_required) = lc.condition.as_ref().map_or_else(
             || (Vec::new(), false),
             |cond| match cond.kind() {
-                FlowConditionKind::AnyOf(events) => (
+                LifecycleConditionKind::AnyOf(events) => (
                     events
                         .iter()
                         .map(CompiledObjectRequirement::from_matcher)
                         .collect(),
                     false,
                 ),
-                FlowConditionKind::AllOf(events) => (
+                LifecycleConditionKind::AllOf(events) => (
                     events
                         .iter()
                         .map(CompiledObjectRequirement::from_matcher)
@@ -56,8 +59,8 @@ impl CompiledObjectFlow {
         let (sinks, emit_on_requirements) = lc.completion.as_ref().map_or_else(
             || (Vec::new(), false),
             |comp| match comp.kind() {
-                FlowCompletionKind::Configuration => (Vec::new(), true),
-                FlowCompletionKind::AnySink(sinks) => (
+                LifecycleCompletionKind::Configuration => (Vec::new(), true),
+                LifecycleCompletionKind::AnySink(sinks) => (
                     sinks.iter().map(CompiledObjectSink::from_matcher).collect(),
                     false,
                 ),
@@ -76,51 +79,6 @@ impl CompiledObjectFlow {
             emit_on_requirements,
         }
     }
-
-    #[cfg(test)]
-    pub fn from_matcher(flow: &ObjectFlowMatcher) -> Self {
-        let (requirements, all_requirements_required) = flow.condition().map_or_else(
-            || (Vec::new(), false),
-            |cond| match cond.kind() {
-                FlowConditionKind::AnyOf(events) => (
-                    events
-                        .iter()
-                        .map(CompiledObjectRequirement::from_matcher)
-                        .collect(),
-                    false,
-                ),
-                FlowConditionKind::AllOf(events) => (
-                    events
-                        .iter()
-                        .map(CompiledObjectRequirement::from_matcher)
-                        .collect(),
-                    true,
-                ),
-            },
-        );
-        let (sinks, emit_on_requirements) = flow.completion().map_or_else(
-            || (Vec::new(), false),
-            |comp| match comp.kind() {
-                FlowCompletionKind::Configuration => (Vec::new(), true),
-                FlowCompletionKind::AnySink(sinks) => (
-                    sinks.iter().map(CompiledObjectSink::from_matcher).collect(),
-                    false,
-                ),
-            },
-        );
-        Self {
-            symbol: flow.symbol().to_owned(),
-            sources: flow
-                .sources()
-                .iter()
-                .map(CompiledObjectSource::from_matcher)
-                .collect(),
-            requirements,
-            sinks,
-            all_requirements_required,
-            emit_on_requirements,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -131,15 +89,6 @@ pub(crate) struct CompiledObjectSource {
 }
 
 impl CompiledObjectSource {
-    #[cfg(test)]
-    fn from_matcher(source: &ObjectSourceMatcher) -> Self {
-        Self {
-            member_call: SymbolPath::from(source.chain()),
-            arguments: source.arguments().to_vec(),
-            is_rooted: true,
-        }
-    }
-
     fn from_event_query(eq: &crate::api::rule::query::EventQuery) -> Self {
         let member_call = match &eq.event {
             crate::api::rule::query::EventSpec::MemberCall { member } => member.clone(),
@@ -166,13 +115,13 @@ pub(crate) enum CompiledObjectRequirement {
 }
 
 impl CompiledObjectRequirement {
-    fn from_matcher(event: &ObjectEventMatcher) -> Self {
+    fn from_matcher(event: &LifecycleEvent) -> Self {
         match event.kind() {
-            ObjectEventMatcherKind::PropertyWrite { property, value } => Self::PropertyWrite {
+            LifecycleEventKind::PropertyWrite { property, value } => Self::PropertyWrite {
                 property: property.clone(),
                 value: value.clone(),
             },
-            ObjectEventMatcherKind::MemberCall { member, arguments } => Self::MemberCall {
+            LifecycleEventKind::MemberCall { member, arguments } => Self::MemberCall {
                 member: SymbolPath::from(member.as_str()),
                 arguments: arguments.clone(),
             },
@@ -207,14 +156,14 @@ pub(crate) struct CompiledObjectSink {
 }
 
 impl CompiledObjectSink {
-    fn from_matcher(sink: &FlowSinkMatcher) -> Self {
+    fn from_matcher(sink: &LifecycleSink) -> Self {
         match sink.kind() {
-            FlowSinkMatcherKind::ArgumentOf { chain, index } => Self {
+            LifecycleSinkKind::ArgumentOf { chain, index } => Self {
                 member_calls: vec![SymbolPath::from(chain.as_str())],
                 args: CompiledObjectSinkArguments::Indices(vec![*index]),
                 is_rooted: true,
             },
-            FlowSinkMatcherKind::AnyArgumentOf { chain } => Self {
+            LifecycleSinkKind::AnyArgumentOf { chain } => Self {
                 member_calls: vec![SymbolPath::from(chain.as_str())],
                 args: CompiledObjectSinkArguments::Any,
                 is_rooted: true,

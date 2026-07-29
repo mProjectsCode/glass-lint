@@ -1,5 +1,5 @@
 //! Generic, provenance-aware JavaScript linting.
-//!
+
 //! Core owns provider-neutral parsing, semantic analysis, matcher execution,
 //! bounded reports, and diagnostics. Host policy and rule catalogs are passed
 //! in through explicit configuration rather than embedded in this crate.
@@ -36,10 +36,10 @@ pub mod rules {
         classification::MatchKind,
         rule::{
             AllExpr, AnyExpr, ArgumentMatcher, Category, Confidence, EmissionDecl, EventQuery,
-            EventRequirement, EventSpec, FlowCompletion, FlowCondition, FlowSinkMatcher,
-            IdentitySpec, IntoQueryDecl, LifecycleQuery, ObjectEventMatcher, ObjectFlowMatcher,
-            ObjectSourceMatcher, QueryBuildError, QueryDecl, QueryExpr, Rule, RuleBuildError,
-            RuleBuilder as Builder, Severity, ValueMatcher, VarId,
+            EventRequirement, EventSpec, IdentitySpec, IntoQueryDecl, LifecycleCompletion,
+            LifecycleCondition, LifecycleEvent, LifecycleQuery, LifecycleSink, LifecycleSource,
+            QueryBuildError, QueryDecl, QueryExpr, Rule, RuleBuildError, RuleBuilder as Builder,
+            Severity, ValueMatcher, VarId,
         },
     };
 }

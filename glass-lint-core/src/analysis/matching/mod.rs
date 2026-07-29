@@ -276,11 +276,11 @@ mod tests {
         facts.record(MatchKind::MemberCall, "client.request", span(10, 24));
         facts.normalize_occurrences();
 
-        let compiled = CompiledMatcherPlan::compile_queries(&[QueryDecl::member_call_heuristic(
-            "client.request",
-        )
-        .unwrap()])
-        .unwrap();
+        let compiled =
+            CompiledMatcherPlan::compile(&[
+                QueryDecl::member_call_heuristic("client.request").unwrap()
+            ])
+            .unwrap();
         let evidence = facts.evidence_for(&compiled);
         let reference = facts
             .members

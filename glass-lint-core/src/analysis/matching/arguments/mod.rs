@@ -277,7 +277,7 @@ mod tests {
             .with_arg_static_strings(0, ["/api"])
             .unwrap()
             .into_query();
-        let plan = CompiledMatcherPlan::compile_queries(&[query.clone(), query]).unwrap();
+        let plan = CompiledMatcherPlan::compile(&[query.clone(), query]).unwrap();
         let roots: Vec<PhysicalRoot> = plan
             .physical_roots()
             .iter()

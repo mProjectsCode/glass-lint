@@ -14,8 +14,8 @@ use crate::api::{
         },
     },
     rule::{
-        ArgumentConstraint, ArgumentIndex, ArgumentMatcher,
-        matcher::flow::{ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcherKind},
+        ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ArgumentMatcherKind,
+        StaticStringPredicateKind, ValueMatcherKind,
         query::{EventSpec, limits},
     },
 };
@@ -290,6 +290,7 @@ fn plan_lifecycle(lc: &NormalizedLifecycle, symbol: &str) -> PhysicalRoot {
         .collect();
 
     let lc_query = crate::api::rule::query::LifecycleQuery::new(
+        "lifecycle",
         sources,
         lc.condition().cloned(),
         lc.completion().cloned(),

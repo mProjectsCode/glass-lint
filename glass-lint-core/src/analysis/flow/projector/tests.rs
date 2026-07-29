@@ -2,8 +2,8 @@ use super::*;
 use crate::{
     analysis::{resolution::Resolver, trace::TraceArena},
     api::rule::{
-        FlowCompletion, FlowCondition, FlowSinkMatcher, ObjectEventMatcher, ObjectFlowMatcher,
-        ObjectSourceMatcher, ValueMatcher,
+        LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleQuery, LifecycleSink,
+        LifecycleSource, ValueMatcher,
     },
     project::ModuleId,
 };
@@ -27,12 +27,12 @@ fn collect_with_limits_test(
     )
 }
 
-fn collect_source(source: &str, flow: &ObjectFlowMatcher) -> Vec<Vec<ClassificationEvidence>> {
+fn collect_source(source: &str, query: &LifecycleQuery) -> Vec<Vec<ClassificationEvidence>> {
     let parsed = crate::parse(source, "fact-flow.js").expect("source should parse");
     let mut resolver = Resolver::collect(&parsed.program, source);
     let stream = crate::analysis::facts::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
-    let flow = CompiledObjectFlow::from_matcher(flow);
+    let flow = CompiledObjectFlow::from_lifecycle_query(query, query.symbol());
     let (evidence, _outcome) = collect_with_limits_test(
         &stream,
         &effects,
@@ -45,14 +45,14 @@ fn collect_source(source: &str, flow: &ObjectFlowMatcher) -> Vec<Vec<Classificat
 
 fn collect_source_with_outcome(
     source: &str,
-    flow: &ObjectFlowMatcher,
+    query: &LifecycleQuery,
     limits: FlowLimits,
 ) -> LocalFlowProjectionOutcome {
     let parsed = crate::parse(source, "flow-metrics.js").expect("source should parse");
     let mut resolver = Resolver::collect(&parsed.program, source);
     let stream = crate::analysis::facts::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
-    let flow = CompiledObjectFlow::from_matcher(flow);
+    let flow = CompiledObjectFlow::from_lifecycle_query(query, query.symbol());
     let (_evidence, outcome) = collect_with_limits_test(
         &stream,
         &effects,
@@ -63,17 +63,17 @@ fn collect_source_with_outcome(
     outcome
 }
 
-fn script_flow() -> ObjectFlowMatcher {
-    ObjectFlowMatcher::builder("script insertion")
+fn script_flow() -> LifecycleQuery {
+    LifecycleQuery::builder("script insertion")
         .source(
-            ObjectSourceMatcher::returned_by("document.createElement")
+            LifecycleSource::returned_by("document.createElement")
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
-        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+        .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
             ValueMatcher::any_value(),
         )))
-        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
             "document.head.appendChild",
             0,
         )]))
@@ -140,16 +140,17 @@ fn exhausted_flow_operation_budget_is_reported_as_incomplete() {
 
 #[test]
 fn member_call_configuration_stays_with_its_receiver() {
-    let flow = ObjectFlowMatcher::builder("configured script")
+    let flow = LifecycleQuery::builder("configured script")
         .source(
-            ObjectSourceMatcher::returned_by("document.createElement")
+            LifecycleSource::returned_by("document.createElement")
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
-        .configured_by(FlowCondition::event(
-            ObjectEventMatcher::member_call("configure")
-                .arg(0, ValueMatcher::static_string().equals("yes")),
+        .condition(LifecycleCondition::event(
+            LifecycleEvent::member_call("configure")
+                .arg(0, ValueMatcher::static_string().equals("yes"))
+                .build(),
         ))
-        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
             "document.head.appendChild",
             0,
         )]))
@@ -458,7 +459,8 @@ fn flow_evidence_is_anchored_at_the_sink_event() {
             _ => None,
         })
         .expect("sink call should be present");
-    let flow = CompiledObjectFlow::from_matcher(&script_flow());
+    let lc = script_flow();
+    let flow = CompiledObjectFlow::from_lifecycle_query(&lc, lc.symbol());
     let (evidence, _outcome) = collect_with_limits_test(
         &stream,
         &effects,
@@ -471,16 +473,16 @@ fn flow_evidence_is_anchored_at_the_sink_event() {
 
 #[test]
 fn requirement_only_evidence_is_anchored_at_the_configuration_event() {
-    let flow = ObjectFlowMatcher::builder("configured input")
+    let flow = LifecycleQuery::builder("configured input")
         .source(
-            ObjectSourceMatcher::returned_by("document.createElement")
+            LifecycleSource::returned_by("document.createElement")
                 .arg(0, ValueMatcher::static_string().equals("input")),
         )
-        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+        .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "type",
             ValueMatcher::static_string().equals("file"),
         )))
-        .complete_at(FlowCompletion::configuration())
+        .completion(LifecycleCompletion::configuration())
         .build()
         .unwrap();
     let source = "const input = document.createElement('input'); input.type = 'file';";
@@ -496,7 +498,7 @@ fn requirement_only_evidence_is_anchored_at_the_configuration_event() {
                 .then_some((fact.id, fact.span))
         })
         .expect("configuration write should be present");
-    let flow = CompiledObjectFlow::from_matcher(&flow);
+    let flow = CompiledObjectFlow::from_lifecycle_query(&flow, flow.symbol());
     let (evidence, _outcome) = collect_with_limits_test(
         &stream,
         &effects,
@@ -510,14 +512,14 @@ fn requirement_only_evidence_is_anchored_at_the_configuration_event() {
 
 #[test]
 fn object_limit_exhaustion_returns_exhausted_outcome() {
-    let flow = script_flow();
+    let query = script_flow();
     let source =
         "const a = document.createElement('script'); const b = document.createElement('script');";
     let parsed = crate::parse(source, "obj-limit.js").expect("source should parse");
     let mut resolver = Resolver::collect(&parsed.program, source);
     let stream = crate::analysis::facts::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
-    let flow = CompiledObjectFlow::from_matcher(&flow);
+    let flow = CompiledObjectFlow::from_lifecycle_query(&query, query.symbol());
     let limits = FlowLimits::test_new(1, 262_144, 65_536, 4096);
     let (evidence, outcome) = collect_with_limits_test(
         &stream,
@@ -539,14 +541,14 @@ fn object_limit_exhaustion_returns_exhausted_outcome() {
 
 #[test]
 fn mutation_log_exhaustion_returns_exhausted_outcome() {
-    let flow = script_flow();
+    let query = script_flow();
     let source =
         "const a = document.createElement('script'); const b = document.createElement('script');";
     let parsed = crate::parse(source, "mut-limit.js").expect("source should parse");
     let mut resolver = Resolver::collect(&parsed.program, source);
     let stream = crate::analysis::facts::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
-    let flow = CompiledObjectFlow::from_matcher(&flow);
+    let flow = CompiledObjectFlow::from_lifecycle_query(&query, query.symbol());
     let limits = FlowLimits::test_new(65_536, 262_144, 65_536, 1);
     let (_evidence, outcome) = collect_with_limits_test(
         &stream,
@@ -560,14 +562,14 @@ fn mutation_log_exhaustion_returns_exhausted_outcome() {
 
 #[test]
 fn state_limit_exhaustion_returns_exhausted_outcome() {
-    let flow = script_flow();
+    let query = script_flow();
     let source =
         "const a = document.createElement('script'); a.src = url; document.head.appendChild(a);";
     let parsed = crate::parse(source, "state-limit.js").expect("source should parse");
     let mut resolver = Resolver::collect(&parsed.program, source);
     let stream = crate::analysis::facts::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
-    let flow = CompiledObjectFlow::from_matcher(&flow);
+    let flow = CompiledObjectFlow::from_lifecycle_query(&query, query.symbol());
     let limits = FlowLimits::test_new(65_536, 0, 65_536, 4096);
     let (_evidence, outcome) = collect_with_limits_test(
         &stream,
@@ -581,14 +583,14 @@ fn state_limit_exhaustion_returns_exhausted_outcome() {
 
 #[test]
 fn emission_limit_exhaustion_returns_exhausted_outcome() {
-    let flow = script_flow();
+    let query = script_flow();
     let source =
         "const a = document.createElement('script'); a.src = url; document.head.appendChild(a);";
     let parsed = crate::parse(source, "emit-limit.js").expect("source should parse");
     let mut resolver = Resolver::collect(&parsed.program, source);
     let stream = crate::analysis::facts::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
-    let flow = CompiledObjectFlow::from_matcher(&flow);
+    let flow = CompiledObjectFlow::from_lifecycle_query(&query, query.symbol());
     let limits = FlowLimits::test_new(65_536, 262_144, 0, 4096);
     let (_evidence, outcome) = collect_with_limits_test(
         &stream,

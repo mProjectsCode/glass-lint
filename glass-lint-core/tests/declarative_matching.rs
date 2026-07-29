@@ -8,8 +8,8 @@ use std::collections::BTreeSet;
 use glass_lint_core::{
     Environment, Linter, LinterConfig, MatchCertainty, RuleCatalog,
     rules::{
-        ArgumentMatcher, EventQuery, FlowCompletion, FlowCondition, FlowSinkMatcher,
-        ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, QueryDecl, Rule, ValueMatcher,
+        ArgumentMatcher, EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
+        LifecycleQuery, LifecycleSink, LifecycleSource, QueryDecl, Rule, ValueMatcher,
     },
 };
 
@@ -34,17 +34,17 @@ impl Classification {
 }
 
 /// Construct the multi-step flow used by source/configuration/sink tests.
-fn script_insertion_flow() -> ObjectFlowMatcher {
-    ObjectFlowMatcher::builder("script insertion")
+fn script_insertion_flow() -> LifecycleQuery {
+    LifecycleQuery::builder("script insertion")
         .source(
-            ObjectSourceMatcher::returned_by("document.createElement")
+            LifecycleSource::returned_by("document.createElement")
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
-        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+        .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
             ValueMatcher::any_value(),
         )))
-        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
             "document.head.appendChild",
             0,
         )]))
@@ -772,7 +772,7 @@ fn projects_const_object_aliases_into_destructured_parameters() {
 #[test]
 fn tracks_configured_values_into_later_member_sinks() {
     let rules = [rule("test.flow")
-        .object_flow(script_insertion_flow())
+        .query(QueryDecl::lifecycle(Ok(script_insertion_flow())))
         .build()
         .unwrap()];
     let result = classify(

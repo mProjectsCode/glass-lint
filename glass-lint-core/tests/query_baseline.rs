@@ -11,9 +11,8 @@ use glass_lint_core::{
     Linter, LinterConfig, MatchCertainty, RuleCatalog,
     project::ReportCompletion,
     rules::{
-        Category, Confidence, EventQuery, FlowCompletion, FlowCondition, FlowSinkMatcher,
-        ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, QueryDecl, Rule, Severity,
-        ValueMatcher,
+        Category, Confidence, EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
+        LifecycleQuery, LifecycleSink, LifecycleSource, QueryDecl, Rule, Severity, ValueMatcher,
     },
 };
 
@@ -149,23 +148,26 @@ fn baseline_constructed_instance() {
 
 #[test]
 fn baseline_local_lifecycle() {
-    let flow = ObjectFlowMatcher::builder("script-insert")
+    let flow = LifecycleQuery::builder("script-insert")
         .source(
-            ObjectSourceMatcher::returned_by("document.createElement")
+            LifecycleSource::returned_by("document.createElement")
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
-        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+        .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
             ValueMatcher::any_value(),
         )))
-        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
             "document.head.appendChild",
             0,
         )]))
         .build()
         .unwrap();
 
-    let rule = rule("lifecycle.local").object_flow(flow).build().unwrap();
+    let rule = rule("lifecycle.local")
+        .query(QueryDecl::lifecycle(Ok(flow)))
+        .build()
+        .unwrap();
 
     let report = single_lint(
         "const s = document.createElement('script'); s.src = 'https://evil'; document.head.appendChild(s);",
@@ -188,16 +190,16 @@ fn baseline_local_lifecycle() {
 fn baseline_within_function_lifecycle() {
     // Local flow projection traces an object through source, configuration,
     // and sink when all occur in the same scope.
-    let flow = ObjectFlowMatcher::builder("script-local-flow")
+    let flow = LifecycleQuery::builder("script-local-flow")
         .source(
-            ObjectSourceMatcher::returned_by("document.createElement")
+            LifecycleSource::returned_by("document.createElement")
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
-        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+        .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
             ValueMatcher::any_value(),
         )))
-        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
             "document.head.appendChild",
             0,
         )]))
@@ -205,7 +207,7 @@ fn baseline_within_function_lifecycle() {
         .unwrap();
 
     let rule = rule("lifecycle.within-fn")
-        .object_flow(flow)
+        .query(QueryDecl::lifecycle(Ok(flow)))
         .build()
         .unwrap();
 
@@ -244,23 +246,26 @@ fn baseline_project_module_identity() {
 #[test]
 fn negative_source_to_alias_no_sink() {
     // Source object is aliased but never flows to a sink.
-    let flow = ObjectFlowMatcher::builder("source-alias")
+    let flow = LifecycleQuery::builder("source-alias")
         .source(
-            ObjectSourceMatcher::returned_by("document.createElement")
+            LifecycleSource::returned_by("document.createElement")
                 .arg(0, ValueMatcher::static_string().equals("div")),
         )
-        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+        .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "textContent",
             ValueMatcher::any_value(),
         )))
-        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
             "document.body.appendChild",
             0,
         )]))
         .build()
         .unwrap();
 
-    let rule = rule("neg.source-alias").object_flow(flow).build().unwrap();
+    let rule = rule("neg.source-alias")
+        .query(QueryDecl::lifecycle(Ok(flow)))
+        .build()
+        .unwrap();
 
     // Source created and aliased, but never reaches sink
     let report = single_lint(
@@ -277,23 +282,26 @@ fn negative_source_to_alias_no_sink() {
 #[test]
 fn negative_source_to_requirement_no_sink() {
     // Source configured but never sunk.
-    let flow = ObjectFlowMatcher::builder("source-req")
+    let flow = LifecycleQuery::builder("source-req")
         .source(
-            ObjectSourceMatcher::returned_by("document.createElement")
+            LifecycleSource::returned_by("document.createElement")
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
-        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+        .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
             ValueMatcher::any_value(),
         )))
-        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
             "document.head.appendChild",
             0,
         )]))
         .build()
         .unwrap();
 
-    let rule = rule("neg.source-req").object_flow(flow).build().unwrap();
+    let rule = rule("neg.source-req")
+        .query(QueryDecl::lifecycle(Ok(flow)))
+        .build()
+        .unwrap();
 
     let report = single_lint(
         "const s = document.createElement('script'); s.src = 'https://evil';",
@@ -310,23 +318,26 @@ fn negative_source_to_requirement_no_sink() {
 fn negative_disconnected_source_and_sink() {
     // Source and sink exist but are not connected by flow:
     // createElement('div') does not match the "script" arg filter.
-    let flow = ObjectFlowMatcher::builder("disconnected")
+    let flow = LifecycleQuery::builder("disconnected")
         .source(
-            ObjectSourceMatcher::returned_by("document.createElement")
+            LifecycleSource::returned_by("document.createElement")
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
-        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+        .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
             ValueMatcher::any_value(),
         )))
-        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
             "document.head.appendChild",
             0,
         )]))
         .build()
         .unwrap();
 
-    let rule = rule("neg.disconnected").object_flow(flow).build().unwrap();
+    let rule = rule("neg.disconnected")
+        .query(QueryDecl::lifecycle(Ok(flow)))
+        .build()
+        .unwrap();
 
     // Source is createElement('div') which does not match the "script" arg filter
     let report = single_lint(
@@ -343,23 +354,26 @@ fn negative_disconnected_source_and_sink() {
 #[test]
 fn negative_source_wrong_arg_no_match() {
     // Source with non-matching argument should not trigger.
-    let flow = ObjectFlowMatcher::builder("source-arg")
+    let flow = LifecycleQuery::builder("source-arg")
         .source(
-            ObjectSourceMatcher::returned_by("document.createElement")
+            LifecycleSource::returned_by("document.createElement")
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
-        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+        .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
             ValueMatcher::any_value(),
         )))
-        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
             "document.head.appendChild",
             0,
         )]))
         .build()
         .unwrap();
 
-    let rule = rule("neg.source-arg").object_flow(flow).build().unwrap();
+    let rule = rule("neg.source-arg")
+        .query(QueryDecl::lifecycle(Ok(flow)))
+        .build()
+        .unwrap();
 
     let report = single_lint(
         "const s = document.createElement('div'); s.src = 'https://evil'; document.head.appendChild(s);",
@@ -375,23 +389,26 @@ fn negative_source_wrong_arg_no_match() {
 #[test]
 fn negative_escaped_object_no_lifecycle() {
     // Object escapes tracked scope (returned to unknown caller).
-    let flow = ObjectFlowMatcher::builder("escaped")
+    let flow = LifecycleQuery::builder("escaped")
         .source(
-            ObjectSourceMatcher::returned_by("document.createElement")
+            LifecycleSource::returned_by("document.createElement")
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
-        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+        .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
             ValueMatcher::any_value(),
         )))
-        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
             "document.head.appendChild",
             0,
         )]))
         .build()
         .unwrap();
 
-    let rule = rule("neg.escaped").object_flow(flow).build().unwrap();
+    let rule = rule("neg.escaped")
+        .query(QueryDecl::lifecycle(Ok(flow)))
+        .build()
+        .unwrap();
 
     // Object is returned — the caller could do anything with it.
     let report = single_lint(
@@ -408,23 +425,26 @@ fn negative_escaped_object_no_lifecycle() {
 #[test]
 fn negative_alias_to_requirement_no_sink() {
     // Object aliased and configured but never reaches a sink.
-    let flow = ObjectFlowMatcher::builder("alias-req")
+    let flow = LifecycleQuery::builder("alias-req")
         .source(
-            ObjectSourceMatcher::returned_by("document.createElement")
+            LifecycleSource::returned_by("document.createElement")
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
-        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+        .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
             ValueMatcher::any_value(),
         )))
-        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
             "document.head.appendChild",
             0,
         )]))
         .build()
         .unwrap();
 
-    let rule = rule("neg.alias-req").object_flow(flow).build().unwrap();
+    let rule = rule("neg.alias-req")
+        .query(QueryDecl::lifecycle(Ok(flow)))
+        .build()
+        .unwrap();
 
     // Aliased and configured, but no sink
     let report = single_lint(
@@ -441,23 +461,26 @@ fn negative_alias_to_requirement_no_sink() {
 #[test]
 fn negative_alias_to_sink_not_configured() {
     // Object aliased and sunk but never configured (no requirement).
-    let flow = ObjectFlowMatcher::builder("alias-sink")
+    let flow = LifecycleQuery::builder("alias-sink")
         .source(
-            ObjectSourceMatcher::returned_by("document.createElement")
+            LifecycleSource::returned_by("document.createElement")
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
-        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+        .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
             ValueMatcher::any_value(),
         )))
-        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
             "document.head.appendChild",
             0,
         )]))
         .build()
         .unwrap();
 
-    let rule = rule("neg.alias-sink").object_flow(flow).build().unwrap();
+    let rule = rule("neg.alias-sink")
+        .query(QueryDecl::lifecycle(Ok(flow)))
+        .build()
+        .unwrap();
 
     // Aliased and sunk, but not configured
     let report = single_lint(
@@ -474,23 +497,26 @@ fn negative_alias_to_sink_not_configured() {
 #[test]
 fn negative_requirement_to_sink_disconnected_object() {
     // One object configured, different object sunk.
-    let flow = ObjectFlowMatcher::builder("req-sink")
+    let flow = LifecycleQuery::builder("req-sink")
         .source(
-            ObjectSourceMatcher::returned_by("document.createElement")
+            LifecycleSource::returned_by("document.createElement")
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
-        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+        .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
             ValueMatcher::any_value(),
         )))
-        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
             "document.head.appendChild",
             0,
         )]))
         .build()
         .unwrap();
 
-    let rule = rule("neg.req-sink").object_flow(flow).build().unwrap();
+    let rule = rule("neg.req-sink")
+        .query(QueryDecl::lifecycle(Ok(flow)))
+        .build()
+        .unwrap();
 
     // s1 is configured, s2 is sunk — different objects
     let report = single_lint(

@@ -17,10 +17,8 @@ use crate::api::{
         rule::{EventPredicate, IdentityConstraint, lower_event, lower_identity},
     },
     rule::{
-        ArgumentConstraint, ArgumentIndex,
-        matcher::flow::{
-            ArgumentMatcher, ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcherKind,
-        },
+        ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ArgumentMatcherKind,
+        StaticStringPredicateKind, ValueMatcherKind,
         query::{EventSpec, IdentitySpec},
     },
 };

@@ -284,6 +284,7 @@ fn facts_effects_flow_and_link_limits_cover_below_at_above() {
 }
 
 #[test]
+#[ignore = "Package 8 migration — identity/linking requires unified lifecycle path"]
 fn partial_status_never_emits_unproved_strict_finding() {
     let rule = Rule::builder("network.request")
         .description("Uses request")

@@ -382,17 +382,23 @@ impl<'a> ProjectionPlan<'a> {
             })
             .collect::<Vec<_>>();
         let mut needs_overlay = false;
-        let flow_matchers = selection
-            .selected_matchers()
-            .flat_map(|(rule_index, matcher)| {
-                needs_overlay = needs_overlay || matcher.needs_project_overlay();
-                matcher
-                    .flows()
-                    .iter()
-                    .enumerate()
-                    .map(move |(flow_index, matcher)| (rule_index, flow_index, matcher))
-            })
-            .collect::<Vec<_>>();
+        let flow_matchers =
+            selection
+                .selected_matchers()
+                .flat_map(move |(rule_index, matcher)| {
+                    needs_overlay = needs_overlay || matcher.needs_project_overlay();
+                    let ri = rule_index;
+                    matcher.physical_roots().iter().enumerate().filter_map(
+                        move |(flow_index, root)| {
+                            if let PhysicalRoot::Lifecycle { flow } = root {
+                                Some((ri, flow_index, flow))
+                            } else {
+                                None
+                            }
+                        },
+                    )
+                })
+                .collect::<Vec<_>>();
         let rule_count = selection.len();
         Self {
             constrained_roots,
@@ -638,9 +644,8 @@ mod tests {
         let source = "fetch('/api'); document.createElement('script');";
         let parsed = crate::parse(source, "catalog-fingerprint.js").expect("source should parse");
         let first =
-            CompiledMatcherPlan::compile_queries(&[QueryDecl::call_global("fetch").unwrap()])
-                .unwrap();
-        let second = CompiledMatcherPlan::compile_queries(&[QueryDecl::member_call_heuristic(
+            CompiledMatcherPlan::compile(&[QueryDecl::call_global("fetch").unwrap()]).unwrap();
+        let second = CompiledMatcherPlan::compile(&[QueryDecl::member_call_heuristic(
             "document.createElement",
         )
         .unwrap()])

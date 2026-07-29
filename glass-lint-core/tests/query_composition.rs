@@ -204,21 +204,22 @@ fn contradictory_same_event_all_fails_at_compilation() {
 #[test]
 #[ignore = "Package 0 regression probe — lifecycle source scoping not implemented"]
 fn multiple_lifecycle_sources_compile() {
-    use glass_lint_core::rules::FlowCompletion;
+    use glass_lint_core::rules::LifecycleCompletion;
 
     let src_a = EventQuery::member_call_rooted("document.createElement").unwrap();
     // Second source uses the same object variable — valid Any-of-source semantics
     // where either independently valid source can start the lifecycle.
     let src_b = EventQuery::member_call_rooted("document.createTextNode").unwrap();
     let lifecycle = LifecycleQuery::new(
+        "test.lifecycle",
         vec![src_a, src_b],
-        Some(glass_lint_core::rules::FlowCondition::event(
-            glass_lint_core::rules::ObjectEventMatcher::property_write(
+        Some(glass_lint_core::rules::LifecycleCondition::event(
+            glass_lint_core::rules::LifecycleEvent::property_write(
                 "type",
                 glass_lint_core::rules::ValueMatcher::any_value(),
             ),
         )),
-        Some(FlowCompletion::configuration()),
+        Some(LifecycleCompletion::configuration()),
     )
     .unwrap();
     let query = template_query()
@@ -436,7 +437,7 @@ fn lifecycle_sources_at_limit_succeeds() {
         .map(|i| EventQuery::member_call_rooted(format!("a.b{i}")))
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
-    let lc = LifecycleQuery::new(sources, None, None).unwrap();
+    let lc = LifecycleQuery::new("test", sources, None, None).unwrap();
     assert_eq!(lc.sources().len(), 64);
 }
 
@@ -446,7 +447,7 @@ fn lifecycle_sources_exceeding_limit_fails() {
         .map(|i| EventQuery::member_call_rooted(format!("a.b{i}")))
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
-    let err = LifecycleQuery::new(sources, None, None).unwrap_err();
+    let err = LifecycleQuery::new("test", sources, None, None).unwrap_err();
     assert!(matches!(err, QueryBuildError::CollectionTooLarge(_, 65)));
 }
 
@@ -491,7 +492,7 @@ fn query_roots_boundary_succeeds() {
 
 #[test]
 fn empty_lifecycle_sources_rejected() {
-    let err = LifecycleQuery::new(vec![], None, None).unwrap_err();
+    let err = LifecycleQuery::new("test", vec![], None, None).unwrap_err();
     assert!(matches!(err, QueryBuildError::EmptyCollection(_)));
 }
 

@@ -109,8 +109,8 @@ pub(crate) enum NormalizedSubject {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NormalizedLifecycle {
     sources: Vec<NormalizedEvent>,
-    condition: Option<crate::api::rule::FlowCondition>,
-    completion: Option<crate::api::rule::FlowCompletion>,
+    condition: Option<crate::api::rule::LifecycleCondition>,
+    completion: Option<crate::api::rule::LifecycleCompletion>,
 }
 
 impl NormalizedLifecycle {
@@ -118,11 +118,11 @@ impl NormalizedLifecycle {
         &self.sources
     }
 
-    pub(crate) fn condition(&self) -> Option<&crate::api::rule::FlowCondition> {
+    pub(crate) fn condition(&self) -> Option<&crate::api::rule::LifecycleCondition> {
         self.condition.as_ref()
     }
 
-    pub(crate) fn completion(&self) -> Option<&crate::api::rule::FlowCompletion> {
+    pub(crate) fn completion(&self) -> Option<&crate::api::rule::LifecycleCompletion> {
         self.completion.as_ref()
     }
 }
@@ -837,8 +837,7 @@ fn check_argument_contradictions(
     var: VarId,
     constraints: &[ArgumentConstraint],
 ) -> Result<(), QueryCompileError> {
-    let mut by_index: BTreeMap<usize, Vec<&crate::api::rule::matcher::flow::ArgumentMatcher>> =
-        BTreeMap::new();
+    let mut by_index: BTreeMap<usize, Vec<&crate::api::rule::ArgumentMatcher>> = BTreeMap::new();
     for c in constraints {
         by_index.entry(c.index()).or_default().push(c.matcher());
     }
@@ -854,11 +853,9 @@ fn check_argument_contradictions(
 /// Reject any static-string predicate whose accepted set is empty.
 fn check_empty_accepted_sets(
     var: VarId,
-    matchers: &[&crate::api::rule::matcher::flow::ArgumentMatcher],
+    matchers: &[&crate::api::rule::ArgumentMatcher],
 ) -> Result<(), QueryCompileError> {
-    use crate::api::rule::matcher::flow::{
-        ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcherKind,
-    };
+    use crate::api::rule::{ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcherKind};
     for m in matchers {
         if let ArgumentMatcherKind::Value(vm) = m.kind()
             && let ValueMatcherKind::StaticString(sp) = &vm.kind
@@ -884,11 +881,9 @@ fn check_empty_accepted_sets(
 /// Reject two disjoint exact sets on the same argument.
 fn check_disjoint_exact_sets(
     var: VarId,
-    matchers: &[&crate::api::rule::matcher::flow::ArgumentMatcher],
+    matchers: &[&crate::api::rule::ArgumentMatcher],
 ) -> Result<(), QueryCompileError> {
-    use crate::api::rule::matcher::flow::{
-        ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcherKind,
-    };
+    use crate::api::rule::{ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcherKind};
     let exact_sets: Vec<std::collections::BTreeSet<String>> = matchers
         .iter()
         .filter_map(|m| match m.kind() {
@@ -924,11 +919,9 @@ fn check_disjoint_exact_sets(
 /// prefix.
 fn check_exact_prefix_contradiction(
     var: VarId,
-    matchers: &[&crate::api::rule::matcher::flow::ArgumentMatcher],
+    matchers: &[&crate::api::rule::ArgumentMatcher],
 ) -> Result<(), QueryCompileError> {
-    use crate::api::rule::matcher::flow::{
-        ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcherKind,
-    };
+    use crate::api::rule::{ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcherKind};
     let exact_values: Vec<&String> = matchers
         .iter()
         .filter_map(|m| match m.kind() {
@@ -1186,14 +1179,12 @@ mod tests {
             constraints: vec![],
         };
         let lc = LifecycleQuery::new(
+            "remote-script",
             vec![source],
-            Some(crate::api::rule::FlowCondition::event(
-                crate::api::rule::ObjectEventMatcher::property_write(
-                    "src",
-                    ValueMatcher::any_value(),
-                ),
+            Some(crate::api::rule::LifecycleCondition::event(
+                crate::api::rule::LifecycleEvent::property_write("src", ValueMatcher::any_value()),
             )),
-            Some(crate::api::rule::FlowCompletion::configuration()),
+            Some(crate::api::rule::LifecycleCompletion::configuration()),
         )
         .unwrap();
         let d = QueryDecl {
@@ -1523,14 +1514,12 @@ mod tests {
             constraints: vec![],
         };
         let lc = LifecycleQuery::new(
+            "test",
             vec![source],
-            Some(crate::api::rule::FlowCondition::event(
-                crate::api::rule::ObjectEventMatcher::property_write(
-                    "type",
-                    ValueMatcher::any_value(),
-                ),
+            Some(crate::api::rule::LifecycleCondition::event(
+                crate::api::rule::LifecycleEvent::property_write("type", ValueMatcher::any_value()),
             )),
-            Some(crate::api::rule::FlowCompletion::configuration()),
+            Some(crate::api::rule::LifecycleCompletion::configuration()),
         )
         .unwrap();
         let d = QueryDecl {
@@ -1878,26 +1867,22 @@ mod tests {
 
         // Different conditions: property_write("src") vs property_write("href")
         let lc_a = LifecycleQuery::new(
+            "test-a",
             vec![source_a],
-            Some(crate::api::rule::FlowCondition::event(
-                crate::api::rule::ObjectEventMatcher::property_write(
-                    "src",
-                    ValueMatcher::any_value(),
-                ),
+            Some(crate::api::rule::LifecycleCondition::event(
+                crate::api::rule::LifecycleEvent::property_write("src", ValueMatcher::any_value()),
             )),
-            Some(crate::api::rule::FlowCompletion::configuration()),
+            Some(crate::api::rule::LifecycleCompletion::configuration()),
         )
         .unwrap();
 
         let lc_b = LifecycleQuery::new(
+            "test-b",
             vec![source_b],
-            Some(crate::api::rule::FlowCondition::event(
-                crate::api::rule::ObjectEventMatcher::property_write(
-                    "href",
-                    ValueMatcher::any_value(),
-                ),
+            Some(crate::api::rule::LifecycleCondition::event(
+                crate::api::rule::LifecycleEvent::property_write("href", ValueMatcher::any_value()),
             )),
-            Some(crate::api::rule::FlowCompletion::configuration()),
+            Some(crate::api::rule::LifecycleCompletion::configuration()),
         )
         .unwrap();
 
@@ -1949,8 +1934,8 @@ mod tests {
                 let matcher = ev.arguments[0].matcher();
                 assert_eq!(
                     matcher.kind(),
-                    &crate::api::rule::matcher::flow::ArgumentMatcherKind::Value(
-                        crate::api::rule::matcher::flow::ValueMatcher::any_value()
+                    &crate::api::rule::ArgumentMatcherKind::Value(
+                        crate::api::rule::ValueMatcher::any_value()
                     )
                 );
             }

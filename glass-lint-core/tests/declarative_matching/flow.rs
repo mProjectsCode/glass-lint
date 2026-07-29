@@ -8,7 +8,7 @@ use super::*;
 #[test]
 fn incompatible_branch_facts_never_stitch_into_a_finding() {
     let rules = [rule("test.flow")
-        .object_flow(script_insertion_flow())
+        .query(QueryDecl::lifecycle(Ok(script_insertion_flow())))
         .build()
         .unwrap()];
     assert_eq!(
@@ -27,7 +27,7 @@ fn incompatible_branch_facts_never_stitch_into_a_finding() {
 #[test]
 fn one_arm_flow_witness_is_reported_as_possible() {
     let rules = [rule("test.flow")
-        .object_flow(script_insertion_flow())
+        .query(QueryDecl::lifecycle(Ok(script_insertion_flow())))
         .build()
         .unwrap()];
     let result = classify(
@@ -44,7 +44,7 @@ fn one_arm_flow_witness_is_reported_as_possible() {
 #[test]
 fn flow_calls_use_effective_call_and_apply_arguments() {
     let rules = [rule("test.flow")
-        .object_flow(script_insertion_flow())
+        .query(QueryDecl::lifecycle(Ok(script_insertion_flow())))
         .build()
         .unwrap()];
     let result = classify(
@@ -60,7 +60,7 @@ fn flow_calls_use_effective_call_and_apply_arguments() {
 #[test]
 fn flow_control_paths_retain_reachable_possible_witnesses() {
     let rules = [rule("test.flow")
-        .object_flow(script_insertion_flow())
+        .query(QueryDecl::lifecycle(Ok(script_insertion_flow())))
         .build()
         .unwrap()];
     let result = classify(
@@ -83,7 +83,7 @@ fn flow_control_paths_retain_reachable_possible_witnesses() {
 #[test]
 fn flow_state_keeps_correlated_paths_and_deduplicates_sinks() {
     let rules = [rule("test.flow")
-        .object_flow(script_insertion_flow())
+        .query(QueryDecl::lifecycle(Ok(script_insertion_flow())))
         .build()
         .unwrap()];
     assert_eq!(
@@ -107,7 +107,7 @@ fn flow_state_keeps_correlated_paths_and_deduplicates_sinks() {
 #[test]
 fn value_flow_respects_reassignment_and_order() {
     let rules = [rule("test.flow")
-        .object_flow(script_insertion_flow())
+        .query(QueryDecl::lifecycle(Ok(script_insertion_flow())))
         .build()
         .unwrap()];
     let result = classify(
@@ -121,7 +121,7 @@ fn value_flow_respects_reassignment_and_order() {
 #[test]
 fn flow_kills_object_state_for_compound_writes_updates_and_delete() {
     let rules = [rule("test.flow")
-        .object_flow(script_insertion_flow())
+        .query(QueryDecl::lifecycle(Ok(script_insertion_flow())))
         .build()
         .unwrap()];
     let result = classify(
@@ -136,24 +136,24 @@ fn flow_kills_object_state_for_compound_writes_updates_and_delete() {
 #[test]
 fn value_flow_supports_member_call_configuration_and_helper_sinks() {
     let rules = [rule("test.flow")
-        .object_flow(
-            ObjectFlowMatcher::builder("script insertion")
+        .query(QueryDecl::lifecycle(
+            LifecycleQuery::builder("script insertion")
                 .source(
-                    ObjectSourceMatcher::returned_by("document.createElement")
+                    LifecycleSource::returned_by("document.createElement")
                         .arg(0, ValueMatcher::static_string().equals("script")),
                 )
-                .configured_by(FlowCondition::event(
-                    ObjectEventMatcher::member_call("setAttribute")
+                .condition(LifecycleCondition::event(
+                    LifecycleEvent::member_call("setAttribute")
                         .arg(0, ValueMatcher::static_string().equals("src"))
-                        .arg(1, ValueMatcher::any_value()),
+                        .arg(1, ValueMatcher::any_value())
+                        .build(),
                 ))
-                .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+                .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
                     "document.head.appendChild",
                     0,
                 )]))
-                .build()
-                .unwrap(),
-        )
+                .build(),
+        ))
         .build()
         .unwrap()];
     let result = classify(
@@ -167,7 +167,7 @@ fn value_flow_supports_member_call_configuration_and_helper_sinks() {
 #[test]
 fn flow_helpers_are_scope_and_assignment_aware() {
     let rules = [rule("test.flow")
-        .object_flow(script_insertion_flow())
+        .query(QueryDecl::lifecycle(Ok(script_insertion_flow())))
         .build()
         .unwrap()];
     let result = classify(
@@ -184,7 +184,7 @@ fn flow_helpers_are_scope_and_assignment_aware() {
 #[test]
 fn value_flow_supports_const_arrow_helper_sinks() {
     let rules = [rule("test.flow")
-        .object_flow(script_insertion_flow())
+        .query(QueryDecl::lifecycle(Ok(script_insertion_flow())))
         .build()
         .unwrap()];
     let result = classify(
@@ -198,7 +198,7 @@ fn value_flow_supports_const_arrow_helper_sinks() {
 #[test]
 fn value_flow_projects_nested_destructured_helper_arguments() {
     let rules = [rule("test.flow")
-        .object_flow(script_insertion_flow())
+        .query(QueryDecl::lifecycle(Ok(script_insertion_flow())))
         .build()
         .unwrap()];
     let result = classify(
@@ -223,7 +223,7 @@ fn value_flow_projects_nested_destructured_helper_arguments() {
 #[test]
 fn value_flow_reaches_sinks_through_mutually_recursive_helpers() {
     let rules = [rule("test.flow")
-        .object_flow(script_insertion_flow())
+        .query(QueryDecl::lifecycle(Ok(script_insertion_flow())))
         .build()
         .unwrap()];
     let result = classify(
@@ -238,7 +238,7 @@ fn value_flow_reaches_sinks_through_mutually_recursive_helpers() {
 #[test]
 fn value_flow_uses_precise_helper_parameter_defaults() {
     let rules = [rule("test.flow")
-        .object_flow(script_insertion_flow())
+        .query(QueryDecl::lifecycle(Ok(script_insertion_flow())))
         .build()
         .unwrap()];
     let result = classify(
@@ -267,7 +267,7 @@ fn value_flow_uses_precise_helper_parameter_defaults() {
 #[test]
 fn value_flow_follows_function_aliases_by_function_id() {
     let rules = [rule("test.flow")
-        .object_flow(script_insertion_flow())
+        .query(QueryDecl::lifecycle(Ok(script_insertion_flow())))
         .build()
         .unwrap()];
     let result = classify(
@@ -282,7 +282,7 @@ fn value_flow_follows_function_aliases_by_function_id() {
 #[test]
 fn helper_summaries_fail_closed_for_incompatible_invocations() {
     let rules = [rule("test.flow")
-        .object_flow(script_insertion_flow())
+        .query(QueryDecl::lifecycle(Ok(script_insertion_flow())))
         .build()
         .unwrap()];
     let result = classify(
@@ -297,23 +297,22 @@ fn helper_summaries_fail_closed_for_incompatible_invocations() {
 #[test]
 fn value_flow_static_prefix_requires_static_values() {
     let rules = [rule("test.flow")
-        .object_flow(
-            ObjectFlowMatcher::builder("remote element")
+        .query(QueryDecl::lifecycle(
+            LifecycleQuery::builder("remote element")
                 .source(
-                    ObjectSourceMatcher::returned_by("document.createElement")
+                    LifecycleSource::returned_by("document.createElement")
                         .arg(0, ValueMatcher::static_string().equals("img")),
                 )
-                .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+                .condition(LifecycleCondition::event(LifecycleEvent::property_write(
                     "src",
                     ValueMatcher::static_string().starts_with_any(["https://", "http://"]),
                 )))
-                .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+                .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
                     "document.body.appendChild",
                     0,
                 )]))
-                .build()
-                .unwrap(),
-        )
+                .build(),
+        ))
         .build()
         .unwrap()];
     let result = classify(
@@ -328,29 +327,28 @@ fn value_flow_static_prefix_requires_static_values() {
 #[test]
 fn flow_can_require_all_requirements() {
     let rules = [rule("test.flow")
-        .object_flow(
-            ObjectFlowMatcher::builder("remote stylesheet")
+        .query(QueryDecl::lifecycle(
+            LifecycleQuery::builder("remote stylesheet")
                 .source(
-                    ObjectSourceMatcher::returned_by("document.createElement")
+                    LifecycleSource::returned_by("document.createElement")
                         .arg(0, ValueMatcher::static_string().equals("link")),
                 )
-                .configured_by(FlowCondition::all_of([
-                    ObjectEventMatcher::property_write(
+                .condition(LifecycleCondition::all_of([
+                    LifecycleEvent::property_write(
                         "rel",
                         ValueMatcher::static_string().equals("stylesheet"),
                     ),
-                    ObjectEventMatcher::property_write(
+                    LifecycleEvent::property_write(
                         "href",
                         ValueMatcher::static_string().starts_with_any(["https://"]),
                     ),
                 ]))
-                .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+                .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
                     "document.head.appendChild",
                     0,
                 )]))
-                .build()
-                .unwrap(),
-        )
+                .build(),
+        ))
         .build()
         .unwrap()];
     let result = classify(

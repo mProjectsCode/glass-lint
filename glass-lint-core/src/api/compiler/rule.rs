@@ -10,13 +10,12 @@ use crate::{
         classification::{MatchKind, RuleIndex},
         compiler::{
             normalize::{self, NormalizedQuery},
-            object_flow::CompiledObjectFlow,
             physical::{self, PhysicalPlan},
             validate::validate_query_decl,
         },
         rule::{
             Confidence, MatcherBuildError, ModuleSpecifierPattern,
-            query::{EventSpec, IdentitySpec, QueryDecl, VarId, limits},
+            query::{EventSpec, IdentitySpec, QueryDecl, limits},
         },
     },
 };
@@ -25,7 +24,6 @@ use crate::{
 #[derive(Debug, Clone)]
 pub(crate) struct CompiledMatcherPlan {
     physical_plan: PhysicalPlan,
-    flows: Box<[CompiledObjectFlow]>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -256,26 +254,7 @@ fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildEr
     Ok(physical_plan)
 }
 
-/// Compile a single flow matcher into a physical plan.
-fn compile_single_flow(
-    flow: &crate::api::rule::ObjectFlowMatcher,
-) -> Result<PhysicalPlan, MatcherBuildError> {
-    flow.validate()?;
-
-    let query = QueryDecl::from_flow_matcher(flow, VarId::new(0));
-    validate_query_decl(&query).map_err(MatcherBuildError::QueryCompileError)?;
-
-    let normalized: NormalizedQuery =
-        normalize::normalize_query_decl(&query).map_err(MatcherBuildError::QueryCompileError)?;
-
-    Ok(physical::plan_normalized(&normalized))
-}
-
 impl CompiledMatcherPlan {
-    pub(crate) fn flows(&self) -> &[CompiledObjectFlow] {
-        &self.flows
-    }
-
     pub(crate) fn physical_roots(&self) -> &[physical::PhysicalRoot] {
         self.physical_plan.roots()
     }
@@ -289,51 +268,9 @@ impl CompiledMatcherPlan {
         self.physical_plan.requirements().needs_project_overlay
     }
 
-    #[cfg(test)]
-    pub(crate) fn compile_queries(queries: &[QueryDecl]) -> Result<Self, MatcherBuildError> {
+    pub(crate) fn compile(queries: &[QueryDecl]) -> Result<Self, MatcherBuildError> {
         let physical_plan = compile_queries(queries)?;
-        Ok(Self {
-            physical_plan,
-            flows: Box::new([]),
-        })
-    }
-
-    pub(crate) fn compile_decls_and_flows(
-        queries: &[QueryDecl],
-        flows: &[crate::api::rule::ObjectFlowMatcher],
-    ) -> Result<Self, MatcherBuildError> {
-        let physical_plan = compile_queries(queries)?;
-        let mut all_roots: Vec<physical::PhysicalRoot> = physical_plan.roots().to_vec();
-        let mut merged_requirements = physical_plan.requirements().clone();
-
-        for flow in flows {
-            let flow_plan = compile_single_flow(flow)?;
-            all_roots.extend(flow_plan.roots().iter().cloned());
-            merged_requirements.merge_from(flow_plan.requirements());
-        }
-
-        all_roots.sort();
-        all_roots.dedup();
-        let physical_plan = PhysicalPlan::new(all_roots.into_boxed_slice(), merged_requirements);
-        physical::validate_physical_plan(&physical_plan)
-            .map_err(|e| MatcherBuildError::InvalidLoweredQuery(e.to_string()))?;
-
-        let compiled_flows: Vec<CompiledObjectFlow> = physical_plan
-            .roots()
-            .iter()
-            .filter_map(|root| {
-                if let physical::PhysicalRoot::Lifecycle { flow } = root {
-                    Some(flow.clone())
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        Ok(Self {
-            physical_plan,
-            flows: compiled_flows.into_boxed_slice(),
-        })
+        Ok(Self { physical_plan })
     }
 }
 
@@ -379,8 +316,7 @@ pub(crate) struct CompiledRuleRecord {
 
 impl CompiledRuleRecord {
     pub(crate) fn new(rule: &crate::api::rule::Rule) -> Result<Self, MatcherBuildError> {
-        let plan =
-            CompiledMatcherPlan::compile_decls_and_flows(rule.queries(), rule.flow_matchers())?;
+        let plan = CompiledMatcherPlan::compile(rule.queries())?;
         Ok(Self {
             description: rule.description().to_owned(),
             severity: rule.severity(),
@@ -415,7 +351,7 @@ mod tests {
             QueryDecl::member_read_returned("create", "token").unwrap(),
             QueryDecl::member_call_instance("pkg", "Client", "send").unwrap(),
         ];
-        let plan = CompiledMatcherPlan::compile_queries(&queries).unwrap();
+        let plan = CompiledMatcherPlan::compile(&queries).unwrap();
         assert!(!plan.physical_roots().is_empty());
     }
 
@@ -427,7 +363,7 @@ mod tests {
             .unwrap()
             .into_query()
             .with_evidence(MatchKind::CallArgument, "fetch");
-        let plan = CompiledMatcherPlan::compile_queries(&[query]).unwrap();
+        let plan = CompiledMatcherPlan::compile(&[query]).unwrap();
         let roots = plan.physical_roots();
         assert_eq!(roots.len(), 1);
         match &roots[0] {
@@ -454,8 +390,8 @@ mod tests {
             QueryDecl::call_global("fetch").unwrap(),
         ];
 
-        let first = CompiledMatcherPlan::compile_queries(&first).unwrap();
-        let second = CompiledMatcherPlan::compile_queries(&second).unwrap();
+        let first = CompiledMatcherPlan::compile(&first).unwrap();
+        let second = CompiledMatcherPlan::compile(&second).unwrap();
         assert_eq!(format!("{first:?}"), format!("{second:?}"));
     }
 
@@ -470,7 +406,7 @@ mod tests {
                 QueryDecl::import_exact("node:fs").unwrap(),
                 QueryDecl::string_contains("https://").unwrap(),
             ];
-            let plan = CompiledMatcherPlan::compile_queries(&queries).unwrap();
+            let plan = CompiledMatcherPlan::compile(&queries).unwrap();
             plan.physical_roots().to_vec()
         };
         assert!(roots.iter().any(|root| matches!(
@@ -527,8 +463,8 @@ mod tests {
             QueryDecl::member_read_rooted("location.href").unwrap(),
             QueryDecl::call_heuristic("fetch").unwrap(),
         ];
-        let first = CompiledMatcherPlan::compile_queries(&first).unwrap();
-        let second = CompiledMatcherPlan::compile_queries(&second).unwrap();
+        let first = CompiledMatcherPlan::compile(&first).unwrap();
+        let second = CompiledMatcherPlan::compile(&second).unwrap();
         assert_eq!(
             format!("{:?}", first.physical_roots()),
             format!("{:?}", second.physical_roots())
@@ -543,7 +479,7 @@ mod tests {
             .unwrap()
             .into_query()
             .with_evidence(MatchKind::CallArgument, "fetch");
-        let plan = CompiledMatcherPlan::compile_queries(&[query]).unwrap();
+        let plan = CompiledMatcherPlan::compile(&[query]).unwrap();
         let roots = plan.physical_roots();
         assert_eq!(roots.len(), 1);
         assert!(matches!(

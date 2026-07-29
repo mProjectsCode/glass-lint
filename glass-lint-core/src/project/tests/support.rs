@@ -104,23 +104,22 @@ pub fn flow_linter() -> crate::Linter {
         .category(Category::new("flow").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .object_flow(
-            ObjectFlowMatcher::builder("script insertion")
+        .query(QueryDecl::lifecycle(
+            LifecycleQuery::builder("script insertion")
                 .source(
-                    ObjectSourceMatcher::returned_by("document.createElement")
+                    LifecycleSource::returned_by("document.createElement")
                         .arg(0, ValueMatcher::static_string().equals("script")),
                 )
-                .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+                .condition(LifecycleCondition::event(LifecycleEvent::property_write(
                     "src",
                     ValueMatcher::any_value(),
                 )))
-                .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+                .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
                     "document.head.appendChild",
                     0,
                 )]))
-                .build()
-                .unwrap(),
-        )
+                .build(),
+        ))
         .build()
         .unwrap();
     let mut environment = crate::Environment::default();

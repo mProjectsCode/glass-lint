@@ -4,8 +4,8 @@
 //! the matcher to prove each match without falling back to name-only matching.
 
 use glass_lint_core::rules::{
-    ArgumentMatcher, EventQuery, FlowCompletion, FlowCondition, FlowSinkMatcher, IntoQueryDecl,
-    ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, QueryDecl, ValueMatcher,
+    ArgumentMatcher, EventQuery, IntoQueryDecl, LifecycleCompletion, LifecycleCondition,
+    LifecycleEvent, LifecycleQuery, LifecycleSink, LifecycleSource, QueryDecl, ValueMatcher,
 };
 
 #[path = "support/mod.rs"]
@@ -364,17 +364,17 @@ fn tracks_object_argument_keys_through_member_function_aliases() {
 }
 
 /// Build the source/configuration/sink flow used by flow-provenance tests.
-fn script_insertion_flow() -> ObjectFlowMatcher {
-    ObjectFlowMatcher::builder("script insertion")
+fn script_insertion_flow() -> LifecycleQuery {
+    LifecycleQuery::builder("script insertion")
         .source(
-            ObjectSourceMatcher::returned_by("document.createElement")
+            LifecycleSource::returned_by("document.createElement")
                 .arg(0, ValueMatcher::static_string().equals("script")),
         )
-        .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+        .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
             ValueMatcher::any_value(),
         )))
-        .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
             "document.head.appendChild",
             0,
         )]))
@@ -384,9 +384,9 @@ fn script_insertion_flow() -> ObjectFlowMatcher {
 
 /// Execute one flow matcher through a fresh strict catalog and return its
 /// count.
-fn findings_for_flow(source: &str, flow: ObjectFlowMatcher) -> usize {
+fn findings_for_flow(source: &str, flow: LifecycleQuery) -> usize {
     let rule = support::rule("semantic.match")
-        .object_flow(flow)
+        .query(QueryDecl::lifecycle(Ok(flow)))
         .build()
         .unwrap();
     let environment = support::test_environment();

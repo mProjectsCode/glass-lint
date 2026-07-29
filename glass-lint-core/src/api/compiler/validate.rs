@@ -1640,14 +1640,12 @@ mod tests {
             constraints: vec![],
         };
         let lc = LifecycleQuery {
+            symbol: "test".into(),
             sources: vec![source],
-            condition: Some(crate::api::rule::FlowCondition::event(
-                crate::api::rule::ObjectEventMatcher::property_write(
-                    "type",
-                    ValueMatcher::any_value(),
-                ),
+            condition: Some(crate::api::rule::LifecycleCondition::event(
+                crate::api::rule::LifecycleEvent::property_write("type", ValueMatcher::any_value()),
             )),
-            completion: Some(crate::api::rule::FlowCompletion::configuration()),
+            completion: Some(crate::api::rule::LifecycleCompletion::configuration()),
         };
         let decl = QueryDecl {
             expression: QueryExpr::lifecycle(lc),
@@ -1681,14 +1679,12 @@ mod tests {
             constraints: vec![],
         };
         let lc = LifecycleQuery {
+            symbol: "test".into(),
             sources: vec![source],
-            condition: Some(crate::api::rule::FlowCondition::event(
-                crate::api::rule::ObjectEventMatcher::property_write(
-                    "type",
-                    ValueMatcher::any_value(),
-                ),
+            condition: Some(crate::api::rule::LifecycleCondition::event(
+                crate::api::rule::LifecycleEvent::property_write("type", ValueMatcher::any_value()),
             )),
-            completion: Some(crate::api::rule::FlowCompletion::configuration()),
+            completion: Some(crate::api::rule::LifecycleCompletion::configuration()),
         };
         let decl = QueryDecl {
             expression: QueryExpr::lifecycle(lc),
@@ -1721,14 +1717,12 @@ mod tests {
             constraints: vec![],
         };
         let lc = LifecycleQuery {
+            symbol: "test".into(),
             sources: vec![source],
-            condition: Some(crate::api::rule::FlowCondition::event(
-                crate::api::rule::ObjectEventMatcher::property_write(
-                    "type",
-                    ValueMatcher::any_value(),
-                ),
+            condition: Some(crate::api::rule::LifecycleCondition::event(
+                crate::api::rule::LifecycleEvent::property_write("type", ValueMatcher::any_value()),
             )),
-            completion: Some(crate::api::rule::FlowCompletion::configuration()),
+            completion: Some(crate::api::rule::LifecycleCompletion::configuration()),
         };
         let decl = QueryDecl {
             expression: QueryExpr::lifecycle(lc),

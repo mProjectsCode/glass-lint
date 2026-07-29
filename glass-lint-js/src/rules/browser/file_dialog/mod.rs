@@ -1,6 +1,6 @@
 use glass_lint_core::rules::{
-    Category, Confidence, FlowCompletion, FlowCondition, ObjectEventMatcher, ObjectFlowMatcher,
-    ObjectSourceMatcher, QueryDecl, Rule, Severity, ValueMatcher,
+    Category, Confidence, LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleQuery,
+    LifecycleSource, QueryDecl, Rule, Severity, ValueMatcher,
 };
 
 /// Detects an input created by `document.createElement("input")` whose direct
@@ -14,26 +14,25 @@ pub fn rule() -> Rule {
         .category(Category::new("browser/file-dialog").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .object_flow(
-            ObjectFlowMatcher::builder("file input element")
+        .query(QueryDecl::lifecycle(
+            LifecycleQuery::builder("file input element")
                 .source(
-                    ObjectSourceMatcher::returned_by("document.createElement")
+                    LifecycleSource::returned_by("document.createElement")
                         .arg(0, ValueMatcher::static_string().equals("input")),
                 )
-                .configured_by(FlowCondition::any_of([
-                    ObjectEventMatcher::property_write(
+                .condition(LifecycleCondition::any_of([
+                    LifecycleEvent::property_write(
                         "type",
                         ValueMatcher::static_string().equals("file"),
                     ),
-                    ObjectEventMatcher::member_call("setAttribute")
+                    LifecycleEvent::member_call("setAttribute")
                         .arg(0, ValueMatcher::static_string().equals("type"))
                         .arg(1, ValueMatcher::static_string().equals("file"))
                         .build(),
                 ]))
-                .complete_at(FlowCompletion::configuration())
-                .build()
-                .unwrap(),
-        )
+                .completion(LifecycleCompletion::configuration())
+                .build(),
+        ))
         .query(QueryDecl::member_call_rooted("showOpenFilePicker"))
         .query(QueryDecl::member_call_rooted("showSaveFilePicker"))
         .build()

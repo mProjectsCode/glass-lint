@@ -18,12 +18,17 @@ use smol_str::SmolStr;
 use crate::api::{
     classification::MatchKind,
     rule::{
-        ArgumentConstraint, ArgumentIndex, ArgumentMatcher, FlowCompletion, FlowCondition,
-        ModuleSpecifierPattern, ObjectFlowMatcher, ValueMatcher,
+        ModuleSpecifierPattern,
+        query::{
+            lifecycle::{LifecycleCompletion, LifecycleCondition},
+            value::{ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ValueMatcher},
+        },
     },
 };
 
+pub(crate) mod lifecycle;
 pub(crate) mod limits;
+pub(crate) mod value;
 
 /// Declaration-owned identity specification for an event.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -1043,24 +1048,24 @@ impl AllExpr {
 /// existing local/cross-call flow engine.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LifecycleQuery {
+    /// Evidence symbol.
+    pub(crate) symbol: String,
     /// Events that produce the tracked object.
     pub(crate) sources: Vec<EventQuery>,
     /// Optional configuration condition (requirements).
-    pub(crate) condition: Option<FlowCondition>,
+    pub(crate) condition: Option<LifecycleCondition>,
     /// Optional completion mode (sink or configuration).
-    pub(crate) completion: Option<FlowCompletion>,
+    pub(crate) completion: Option<LifecycleCompletion>,
 }
 
 impl LifecycleQuery {
-    /// Create a new lifecycle query with the given sources, condition, and
-    /// completion.
-    ///
-    /// The sources must be non-empty and within
-    /// [`limits::MAX_LIFECYCLE_SOURCES`].
+    /// Create a lifecycle query with the given components.
+    #[doc(hidden)]
     pub fn new(
+        symbol: impl Into<String>,
         sources: Vec<EventQuery>,
-        condition: Option<FlowCondition>,
-        completion: Option<FlowCompletion>,
+        condition: Option<LifecycleCondition>,
+        completion: Option<LifecycleCompletion>,
     ) -> Result<Self, QueryBuildError> {
         if sources.is_empty() {
             return Err(QueryBuildError::EmptyCollection("lifecycle sources"));
@@ -1072,21 +1077,27 @@ impl LifecycleQuery {
             ));
         }
         Ok(Self {
+            symbol: symbol.into(),
             sources,
             condition,
             completion,
         })
     }
 
+    /// Return the evidence symbol.
+    pub fn symbol(&self) -> &str {
+        &self.symbol
+    }
+
     pub fn sources(&self) -> &[EventQuery] {
         &self.sources
     }
 
-    pub fn condition(&self) -> Option<&FlowCondition> {
+    pub fn condition(&self) -> Option<&LifecycleCondition> {
         self.condition.as_ref()
     }
 
-    pub fn completion(&self) -> Option<&FlowCompletion> {
+    pub fn completion(&self) -> Option<&LifecycleCompletion> {
         self.completion.as_ref()
     }
 }
@@ -1606,52 +1617,23 @@ impl QueryDecl {
         }
     }
 
-    /// Lower an [`ObjectFlowMatcher`] into a logical [`QueryDecl`] with a
-    /// [`LifecycleQuery`] expression.
-    ///
-    /// Each source matcher becomes a source event query; the condition and
-    /// completion are carried through as-is.  The emission kind is
-    /// [`MatchKind::CallArgument`] and the symbol is the flow's symbol.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the flow has no sources — callers must validate before
-    /// calling. This method is deprecated; use [`QueryDecl::lifecycle`]
-    /// instead.
-    pub fn from_flow_matcher(flow: &ObjectFlowMatcher, _var_id: VarId) -> Self {
-        let sources: Vec<EventQuery> = flow
-            .sources()
-            .iter()
-            .map(|src| EventQuery {
-                var: VarId::new(0),
-                event: EventSpec::MemberCall {
-                    member: SymbolPath::from(src.chain()),
+    /// Wrap a [`LifecycleQuery`] into a [`QueryDecl`] with inferred evidence.
+    /// Accepts a `Result` from a builder for direct use in
+    /// [`RuleBuilder::query`].
+    pub fn lifecycle(
+        lc_result: Result<LifecycleQuery, QueryBuildError>,
+    ) -> Result<Self, QueryBuildError> {
+        lc_result.map(|lc| {
+            let symbol = lc.symbol.clone();
+            Self {
+                expression: QueryExpr::lifecycle(lc),
+                emission: EmissionDecl {
+                    primary_var: VarId::new(0),
+                    kind: MatchKind::CallArgument,
+                    symbol,
                 },
-                identity: IdentitySpec::Rooted {
-                    path: SymbolPath::from(src.chain()),
-                },
-                constraints: src.arguments().to_vec(),
-            })
-            .collect();
-
-        let lc = LifecycleQuery::new(
-            sources,
-            flow.condition().cloned(),
-            flow.completion().cloned(),
-        )
-        .expect("from_flow_matcher: flow must have at least one source (caller must validate)");
-        let expression = QueryExpr {
-            kind: QueryExprKind::Lifecycle(lc),
-        };
-        let emission = EmissionDecl {
-            primary_var: VarId::new(0),
-            kind: MatchKind::CallArgument,
-            symbol: flow.symbol().to_owned(),
-        };
-        Self {
-            expression,
-            emission,
-        }
+            }
+        })
     }
 }
 

@@ -1,8 +1,8 @@
 //! Browser executable-script-injection rule definition.
 
 use glass_lint_core::rules::{
-    Category, Confidence, EventQuery, FlowCompletion, FlowCondition, FlowSinkMatcher,
-    ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
+    Category, Confidence, EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
+    LifecycleQuery, LifecycleSink, LifecycleSource, QueryDecl, Rule, Severity, ValueMatcher,
 };
 
 /// Detects rooted script elements whose executable content is configured and
@@ -14,27 +14,23 @@ pub fn rule() -> Rule {
         .category(Category::new("browser/dom").unwrap())
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
-        .object_flow(
-            ObjectFlowMatcher::builder("script-element")
+        .query(QueryDecl::lifecycle(
+            LifecycleQuery::builder("script-element")
                 .source(
-                    ObjectSourceMatcher::returned_by("document.createElement")
+                    LifecycleSource::returned_by("document.createElement")
                         .arg(0, ValueMatcher::static_string().equals("script")),
                 )
-                .configured_by(FlowCondition::any_of([
-                    ObjectEventMatcher::property_write("src", ValueMatcher::static_string()),
-                    ObjectEventMatcher::property_write("text", ValueMatcher::static_string()),
-                    ObjectEventMatcher::property_write(
-                        "textContent",
-                        ValueMatcher::static_string(),
-                    ),
+                .condition(LifecycleCondition::any_of([
+                    LifecycleEvent::property_write("src", ValueMatcher::static_string()),
+                    LifecycleEvent::property_write("text", ValueMatcher::static_string()),
+                    LifecycleEvent::property_write("textContent", ValueMatcher::static_string()),
                 ]))
-                .complete_at(FlowCompletion::any_sink([
-                    FlowSinkMatcher::argument_of("document.head.appendChild", 0),
-                    FlowSinkMatcher::argument_of("document.body.appendChild", 0),
+                .completion(LifecycleCompletion::any_sink([
+                    LifecycleSink::argument_of("document.head.appendChild", 0),
+                    LifecycleSink::argument_of("document.body.appendChild", 0),
                 ]))
-                .build()
-                .unwrap(),
-        )
+                .build(),
+        ))
         .query(
             EventQuery::member_call_rooted("document.write")
                 .map(|q| {
