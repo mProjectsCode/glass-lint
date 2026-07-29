@@ -1,1658 +1,331 @@
-# Query architecture remediation plan
+# Outstanding query architecture remediation
 
 ## Purpose
 
-This document describes the work required to make Phases 0 through 12 of
-[`q-plan.md`](q-plan.md) genuinely complete.
-
-The current implementation preserves the existing built-in rule behavior and
-passes `make ci`, but several architectural claims in `q-plan.md` are either
-still unchecked or are contradicted by the implementation. In particular:
-
-- [ ] composed `Any` and `All` queries do not compile through the production
-  catalog path;
-- [ ] the variable type-checking pass is a no-op;
-- [ ] evidence projection is not checked on every successful branch;
-- [ ] normalization does not canonicalize or merge event predicates completely;
-- [ ] physical `All` planning assumes compatibility it has not proved;
-- [ ] argument constraints are not compiled into canonical per-argument groups;
-- [ ] returned-object and instance relationships remain special record shapes
-  rather than explicit typed correlations;
-- [ ] lifecycle rules still use a separate `ObjectFlowMatcher` authoring and
-  storage path;
-- [ ] several physical plan requirements are descriptive booleans rather than
-  execution-driving requirements;
-- [ ] Phase 0 baselines and capability inventories are missing;
-- [ ] the physical planner lacks the required focused logical-equivalence oracle;
-  and
-- [ ] public documentation still shows removed APIs.
-
-This is a forward migration. Breaking changes are allowed. Do not add
-compatibility aliases, parallel executors, or deprecated authoring paths.
-
-## Required reading before implementation
-
-Read these files in full before changing code:
-
-- [ ] [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- [ ] [`glass-lint-core/ARCHITECTURE.md`](glass-lint-core/ARCHITECTURE.md)
-- [ ] [`glass-lint-project/ARCHITECTURE.md`](glass-lint-project/ARCHITECTURE.md)
-- [ ] [`glass-lint-js/ARCHITECTURE.md`](glass-lint-js/ARCHITECTURE.md)
-- [ ] [`glass-lint-obsidian/ARCHITECTURE.md`](glass-lint-obsidian/ARCHITECTURE.md)
-- [ ] [`TESTING.md`](TESTING.md)
-- [ ] [`CONTRIBUTING.md`](CONTRIBUTING.md)
-- [ ] Phases 0 through 12 of [`q-plan.md`](q-plan.md)
-
-Inspect `git status` before every implementation slice and preserve unrelated
-changes.
-
-## Non-negotiable contracts
-
-Every change below must preserve these contracts:
-
-1. Parsing and matcher-independent fact construction happen once per file.
-2. Rules do not traverse syntax or build private semantic models.
-3. Strict witnesses remain path-local and provenance-aware.
-4. Facts from incompatible control-flow alternatives never form one witness.
-5. Unknown, dynamic, ambiguous, unsupported, or exhausted analysis cannot
-   establish a witness or a definite result.
-6. An independent complete witness may still produce a possible result when
-   another relevant alternative is unknown.
-7. Work, state, result counts, recursion, evidence, and diagnostics remain
-   bounded.
-8. Results, evidence, diagnostics, plans, and operation counts remain
-   deterministic.
-9. Provider policy stays outside `glass-lint-core`.
-10. Runtime code receives physical plans, not authored query declarations.
-11. There is one authoring path, one compiler pipeline, and one physical
-    execution representation.
-12. Expected invalid input returns a structured error. It must not panic or be
-    silently ignored.
-
-## Target end state
-
-The final path should be:
-
-```text
-RuleBuilder::query(QueryDecl)
-  -> validated declaration-owned query terms
-  -> scope-aware typed logical validation
-  -> canonical normalized logical query
-  -> validated physical roots plus executable requirements
-  -> occurrence, constrained-value, lifecycle, and project executors
-  -> deterministic classified witnesses
-```
-
-The final `Rule` should retain only query declarations:
-
-```rust
-pub struct Rule {
-    // metadata
-    queries: Vec<QueryDecl>,
-}
-```
-
-Delete `QuerySet`. `Rule.queries: Vec<QueryDecl>` is the one explicit query-set
-abstraction, and repeated `RuleBuilder::query()` calls are documented union
-semantics. Keeping a second unused collection wrapper adds no invariant.
-
-The final compiled matcher should retain only the physical plan:
-
-```rust
-pub(crate) struct CompiledMatcherPlan {
-    physical_plan: PhysicalPlan,
-}
-```
-
-Lifecycle plans must be represented only as
-`PhysicalRoot::Lifecycle { ... }`. There must be no parallel `flows` field,
-`flow_matchers()` accessor, or `RuleBuilder::object_flow()` entry point.
-
-## Binding design decisions
-
-These decisions are final for the Phase 0–12 remediation:
-
-| Area | Decision |
-|---|---|
-| Constructor errors | Text/index/collection constructors return `Result`; no expected-input panic |
-| Fluent rule API | Sealed `IntoQueryDecl` lets `RuleBuilder::query` accept `QueryDecl` or its construction result |
-| Declaration storage | Fields are private and collections are validated, bounded domain types |
-| Query-set model | Delete `QuerySet`; `Rule.queries: Vec<QueryDecl>` is the documented union |
-| Logical variables | Keep opaque `VarId`; infer compiler-only `VarType` |
-| Binding semantics | `SelectEvent` binds; `Require` references; object relations bind explicit object variables |
-| `Any` | Branch-local scopes with alpha-aligned primary output |
-| `All` | Public API supports same-event conjunction only through Phase 12 |
-| General joins | Do not add one before Phase 13 |
-| Subject relations | Delete `SubjectSpec`; use explicit returned/constructed object predicates |
-| Normalized IR | Add compiler-only `NormalizedQuery`; no normalized `All` variant |
-| Contradictions | Reject with structured `ContradictoryPredicate` at catalog construction |
-| Argument execution | Canonical per-index groups; prepare each argument once per candidate |
-| Lifecycle API | Rename flow terms to lifecycle terms and author them only through `QueryDecl` |
-| Compiled lifecycle | Store only `PhysicalRoot::Lifecycle`; delete copied `flows` storage |
-| Requirements | Use deterministic `BTreeSet` domain requirements plus `FlowRequirements` |
-| Equivalence testing | Test-only synthetic logical and physical evaluators in `compiler/query/reference.rs` |
-| Public examples | Store as compiled examples and mirror them in README documentation |
-
-## Final module layout
-
-Split the current oversized query and compiler modules into this layout during
-the migration:
-
-```text
-glass-lint-core/src/api/rule/query/
-  mod.rs          public re-exports only
-  error.rs        QueryBuildError and bounded-construction errors
-  limits.rs       query declaration limits
-  value.rs        ArgumentIndex, ArgumentConstraint, ArgumentMatcher, ValueMatcher
-  event.rs        IdentitySpec, EventSpec, EventQuery, EventRequirement
-  expression.rs   VarId, QueryExpr, AnyExpr, AllExpr, EmissionDecl, QueryDecl
-  lifecycle.rs    LifecycleSource/Event/Condition/Completion/Sink/Query/Builder
-
-glass-lint-core/src/api/compiler/query/
-  mod.rs          validate -> normalize -> plan orchestration
-  error.rs        QueryCompileError and QueryDiagnostic projection
-  validate.rs     scope-aware typed passes
-  normalize.rs    compiler-only normalized IR
-  physical.rs     physical roots, requirements, planner, validation
-  reference.rs    #[cfg(test)] logical/physical equivalence oracle
-```
-
-Move value and argument declarations out of
-`api/rule/matcher/flow.rs`; delete `api/rule/matcher` when no callers remain.
-Keep execution in its current owners:
-
-- [ ] indexed scans in `analysis/matching/query`;
-- [ ] argument evaluation in `analysis/matching/arguments`;
-- [ ] local lifecycle execution in `analysis/flow/projector`;
-- [ ] cross-call/cross-file lifecycle execution in `analysis/flow/cross`; and
-- [ ] project preparation in `analysis/project/projection`.
-
-Do not combine module movement and semantic behavior in one unreviewable
-mechanical commit. Move each type when its owning package is implemented and
-delete the emptied old module in Package 8.
-
-## Implementation order
-
-Implement the following work packages in order. A package is complete only
-when its focused tests pass and no temporary compatibility route remains.
-
----
-
-## Package 0: Add regression tests for the known false-complete claims
-
-### Objective
-
-Make the current architectural gaps visible through the production public API
-before changing implementation.
-
-### Tests to add first
-
-Add public integration tests, preferably in a focused
-`glass-lint-core/tests/query_composition.rs` module:
-
-- [x] `any_branches_compile_through_rule_catalog`
-  - [x] construct two event alternatives;
-  - [x] use one logical primary event variable in both branch scopes;
-  - [x] compile with `RuleCatalog::new`;
-  - [x] assert both alternatives match independently.
-  - _Currently fails: variable_collection treats Any branches as one flat scope (Package 3)_
-- [x] `any_requires_primary_evidence_on_every_branch`
-  - [x] construct an `Any` whose emission is unavailable on one branch;
-  - [x] assert a stable structured compile error.
-  - _Currently passes validation incorrectly (Package 3)_
-- [x] `same_event_all_compiles_through_rule_catalog`
-  - [x] compose two compatible constraints on one selected event;
-  - [x] compile through `RuleCatalog::new`;
-  - [x] assert both predicates are required.
-  - _Currently fails: variable_collection rejects same-var branches in All (Package 3)_
-- [x] `uncorrelated_all_fails_through_rule_catalog`
-  - [x] select unrelated events without a keyed relation;
-  - [x] assert `uncorrelated_conjunction`.
-  - _Works through catalog; error is stringified, not structured_
-- [x] `contradictory_same_event_all_fails_at_compilation`
-  - [x] apply mutually exclusive constraints to the same event or argument;
-  - [x] assert a structured contradiction error.
-  - _Currently compiles successfully — no contradiction detection (Package 4)_
-- [x] `multiple_lifecycle_sources_compile`
-  - [x] declare at least two valid source forms;
-  - [x] compile through the same `RuleBuilder::query()` route used by ordinary
-    queries.
-  - _Fixed: lifecycle sources use Any-like independent scopes with alpha-aligned output (Package 8)_
-- [x] `invalid_authoring_input_never_panics`
-  - [x] cover empty names, malformed symbol paths, invalid module patterns,
-    excessive argument indexes, empty value alternatives, and invalid
-    lifecycle collections.
-  - _Fixed: constructs return structured errors, never panic (Package 2)_
-- [x] `query_modifiers_do_not_silently_ignore_non_event_expressions`
-  - [x] applying an event-only modifier to `Any`, `All`, or lifecycle must return a
-    structured error rather than returning the original query unchanged.
-  - _Fixed: with_arg is only available on EventQuery, not on composed QueryDecl expressions (Package 2)_
-
-Add compiler unit tests that exercise the complete
-validate-normalize-plan pipeline. Do not call `plan_normalized` directly on
-declarations that have not passed production validation.
-
-### Exit criteria
-
-- [x] Each listed test fails against the current implementation for the expected
-  reason. (7 of 8 fail; uncorrelated_all passes because validation correctly
-  detects it through the catalog.)
-- [x] The tests use public catalog construction where the behavior is public.
-- [x] Unit tests may target individual passes, but they do not substitute for the
-  production-pipeline tests.
-
----
-
-## Package 1: Finish the Phase 0 capability inventory and baselines
-
-### Objective
-
-Replace the obsolete pre-migration inventory with a reviewed inventory of the
-current and target query API. Do not resurrect `MatcherDeclBuilder`.
-
-### Capability matrix
-
-Add a checked-in matrix at
-`glass-lint-core/QUERY_CAPABILITIES.md`, with one row per author-visible
-capability and these columns:
-
-| Field | Required content |
-|---|---|
-| Authoring constructor | Exact `EventQuery`, `QueryDecl`, or lifecycle entry point |
-| Logical identity | Global, heuristic, rooted, exact module, package module, literal |
-| Event | Call, construction, member call/read, class, import, string |
-| Subject relation | Direct, returned object, constructed instance, lifecycle object |
-| Constraints | Supported argument/value forms and applicable event kinds |
-| Evidence | Default kind, symbol, primary event, support evidence |
-| Local operator | Exact physical root and owning index/service |
-| Project behavior | Overlay, masking, cross-file identity, or none |
-| Certainty behavior | Definite/possible/unknown rules |
-| Provider users | Built-in rule families using the capability |
-| Focused tests | Unit, core integration, project, and provider coverage |
-
-The matrix must include:
-
-- [x] strict global calls and constructions;
-- [x] heuristic calls, constructions, members, and classes;
-- [x] exact and package module exports;
-- [x] exact and package module namespaces;
-- [x] exact and package imports;
-- [x] rooted member calls and reads;
-- [x] returned-object calls and reads;
-- [x] constructed-instance calls;
-- [x] static string predicates;
-- [x] exact, prefix, contains-any, and contains-all predicates;
-- [x] object key, object property, and rooted-expression arguments;
-- [x] lifecycle sources;
-- [x] `AnyOf` and `AllOf` lifecycle conditions;
-- [x] configuration and sink completion;
-- [x] exact and any-argument sinks;
-- [x] local, cross-call, and cross-file lifecycle execution; and
-- [x] evidence/certainty behavior under incomplete analysis.
-
-### Execution ownership inventory
-
-Record the owner and entry point for:
-
-- [x] indexed occurrence execution;
-- [x] constrained fact-stream projection;
-- [x] returned-subject execution;
-- [x] instance-subject execution;
-- [x] local lifecycle projection;
-- [x] cross-call lifecycle summaries;
-- [x] cross-file lifecycle projection;
-- [x] module identity overlay construction;
-- [x] evidence normalization and deduplication; and
-- [x] operation-count charging.
-
-After the lifecycle migration, this inventory must not mention
-`CompiledMatcherPlan::flows()`.
-
-### Baseline artifacts
-
-Create deterministic regression baselines for representative:
-
-- [x] simple indexed query;
-- [x] constrained call;
-- [x] returned-object query;
-- [x] constructed-instance query;
-- [x] local lifecycle;
-- [x] local lifecycle (within-function);
-- [x] project module identity;
-- [x] ambiguous project alternative; and
-- [x] cross-file flow (via operation counts).
-
-Put the human-readable baseline and regeneration command in
-`reports/QUERY_MIGRATION_BASELINE.md`. Put exact executable assertions in
-`glass-lint-core/tests/query_baseline.rs`; the Markdown report is explanatory,
-not the test oracle. Assert focused stable operation fields rather than one
-opaque report snapshot. The report must include:
-
-- [x] fixed source inputs;
-- [x] fixed environment and selected rules;
-- [x] exact completion state;
-- [x] exact finding/evidence order;
-- [x] exact stable operation counts; and
-- [x] the command used to regenerate it.
-
-Run and record the full provider fixture summary:
-
-```text
-tests/e2e
-tests/projects
-glass-lint-js/src/rules
-glass-lint-obsidian/src/rules
-```
-
-### Flow join negatives
-
-Add an incompatible-path negative for every flow relationship that joins
-independently retained state:
-
-- [x] source to alias — `negative_source_to_alias_no_sink`;
-- [x] source to requirement — `negative_source_to_requirement_no_sink`;
-- [x] source to sink — `negative_disconnected_source_and_sink`;
-- [x] alias to requirement — `negative_alias_to_requirement_no_sink`;
-- [x] alias to sink — `negative_alias_to_sink_not_configured`;
-- [x] requirement to sink — `negative_requirement_to_sink_disconnected_object`;
-- [x] caller argument to callee parameter — existing `helper_summaries_fail_closed_for_incompatible_invocations`;
-- [x] callee return to caller result — existing `flow_control_paths_retain_reachable_possible_witnesses`; and
-- [x] cross-file source/requirement/sink propagation — existing project flow tests.
-
-Reuse a smaller lower-layer case when it proves the invariant. Do not copy the
-same large fixture into every layer.
-
-### Exit criteria
-
-- [x] Every current authoring capability maps to an owner, physical route, provider
-  user, and focused test — see `QUERY_CAPABILITIES.md`.
-- [x] No behavior is documented only in provider fixtures — every capability row
-  links to unit or integration tests.
-- [x] Baselines can detect a change in physical routing or operation counts —
-  `query_baseline.rs` asserts exact finding counts, completion state, evidence
-  traces, and stable operation fields.
-- [x] All formerly unchecked Phase 0 items can be checked with linked evidence —
-  capability matrix, execution ownership inventory, baseline report, and flow
-  join negatives all reference specific files, types, and test assertions.
-
----
-
-## Package 2: Make declaration construction fallible and invariant-preserving
-
-### Objective
-
-Prevent public declarations from panicking, silently discarding modifiers, or
-exposing freely mutable invalid storage.
-
-### Current problems
-
-- [x] constructors such as `EventQuery::call_global` use `assert!`;
-- [x] package constructors use `expect`;
-- [x] `EventQuery`, `AnyExpr`, `AllExpr`, `LifecycleQuery`, `EmissionDecl`, and
-  `QueryDecl` expose public fields;
-- [x] `ArgumentConstraint::new` accepts every `usize`;
-- [x] value predicate alternatives can be empty or excessively large; and
-- [x] `QueryDecl::with_arg*` silently does nothing unless the expression is a
-  direct `Event`.
-
-### Required changes
-
-- [x] Make logical declaration fields private.
-- [x] Provide narrow accessors required by compiler lowering.
-- [x] Introduce validated semantic newtypes or fallible constructors for:
-  - [x] non-empty identity names;
-  - [x] symbol paths;
-  - [x] exact module specifiers;
-  - [x] package module patterns;
-  - [x] evidence symbols;
-  - [x] bounded argument indexes;
-  - [x] non-empty bounded predicate alternative sets;
-  - [x] non-empty `Any`/`All`; and
-  - [x] valid lifecycle stages.
-- [x] Define these declaration limits in `api/rule/query/limits.rs` and use them in
-  construction and compiler invariant checks:
-
-  ```rust
-  pub const MAX_QUERY_ROOTS_PER_RULE: usize = 256;
-  pub const MAX_EXPR_CHILDREN: usize = 256;
-  pub const MAX_ARGUMENT_INDEX: usize = 255;
-  pub const MAX_ARGUMENT_GROUPS: usize = 64;
-  pub const MAX_PREDICATES_PER_ARGUMENT: usize = 32;
-  pub const MAX_STATIC_ALTERNATIVES: usize = 256;
-  pub const MAX_LIFECYCLE_SOURCES: usize = 64;
-  pub const MAX_LIFECYCLE_EVENTS: usize = 64;
-  pub const MAX_LIFECYCLE_SINKS: usize = 64;
-  ```
-
-  Do not retain the compiler's generic `1_000` limits.
-- [x] Return `Result<_, QueryBuildError>` from every authoring constructor that
-  accepts text, a raw index, or a collection.
-- [x] Preserve fluent rule authoring with this exact error propagation contract:
-
-  ```rust
-  pub trait IntoQueryDecl {
-      fn into_query_decl(self) -> Result<QueryDecl, QueryBuildError>;
-  }
-
-  impl IntoQueryDecl for QueryDecl { /* Ok(self) */ }
-  impl IntoQueryDecl for Result<QueryDecl, QueryBuildError> { /* identity */ }
-
-  impl RuleBuilder {
-      pub fn query(mut self, query: impl IntoQueryDecl) -> Self;
-  }
-  ```
-
-  Seal `IntoQueryDecl` so external crates cannot invent conversions. Store the
-  first `QueryBuildError` on `RuleBuilder` in authored order. Add
-  `RuleBuildError::InvalidQuery(QueryBuildError)` and return it after metadata
-  duplicate checks but before required-query validation. This keeps provider
-  code compact:
-
-  ```rust
-  Rule::builder("network.request")
-      .query(QueryDecl::call_global("fetch"))
-      .build()?
-  ```
-
-  Do not add `try_query`, `query_unchecked`, or an infallible duplicate
-  constructor.
-- [x] Do not use `unwrap`, `expect`, or assertions for expected provider or user
-  input.
-- [x] Event-only modifiers must be methods on `EventQuery`, not generic
-  `QueryDecl` methods that can ignore other expression variants.
-- [x] `QueryDecl` exposes only the expression-level combinators specified in
-  Package 3. It does not expose raw fields.
-- [x] Canonicalize bounded alternative sets at construction:
-  - [x] validate non-empty values;
-  - [x] sort deterministically;
-  - [x] deduplicate;
-  - [x] reject values or collection sizes over the declared limit.
-- [x] Introduce a bounded semantic type for argument positions. The compiler must
-  never receive an unchecked raw index.
-
-### Error model
-
-Keep declaration and compiler errors distinct:
-
-- [x] `QueryBuildError`: malformed local constructor input;
-- [x] `QueryCompileError`: invalid cross-expression relationship;
-- [x] internal compiler invariant error: a bug after validated lowering.
-
-Do not erase `QueryCompileError` into an unstructured string before the catalog
-boundary. Add this public diagnostic projection:
-
-```rust
-pub struct QueryDiagnostic {
-    code: &'static str,
-    message: String,
-}
-
-pub enum CompiledCatalogError {
-    InvalidQuery {
-        rule_id: RuleId,
-        diagnostic: QueryDiagnostic,
-    },
-    // existing non-query catalog errors
-}
-```
-
-Keep the richer private `QueryCompileError` until the final catalog boundary,
-then project it into `QueryDiagnostic`. `Display` formats these structured
-fields; it does not become their storage.
-
-### Required tests
-
-- [x] one test per `QueryBuildError` variant;
-- [x] collection boundary tests at limit and limit plus one;
-- [x] a deterministic table-driven `catch_unwind` test over malformed public query
-  inputs; do not add a property-testing dependency for this migration;
-- [x] event-only modifiers reject non-event queries;
-- [x] equivalent predicate alternative order constructs equal declarations; and
-- [x] all built-in provider catalogs compile through the fallible path.
-
-### Exit criteria
-
-- [x] Invalid author input cannot panic.
-- [x] Public callers cannot directly construct empty or malformed logical nodes.
-- [x] No modifier silently leaves an unsupported query unchanged.
-- [x] Catalog errors preserve stable structured query diagnostics.
-
----
-
-## Package 3: Implement scope-aware typed variables and usable composition
-
-### Objective
-
-Make `Any`, `All`, emission projection, and semantic correlations work through
-the production compiler.
-
-### Semantic decision
-
-Use a private logical kind behind the public `QueryExpr` wrapper. Do not keep
-the current public recursive enum with mutable fields:
-
-```rust
-pub struct QueryExpr {
-    pub(crate) kind: QueryExprKind,
-}
-
-pub(crate) enum QueryExprKind {
-    SelectEvent(EventSelection),
-    Require(QueryPredicate),
-    Any(AnyExpr),
-    All(AllExpr),
-    Lifecycle(LifecycleQuery),
-}
-
-pub(crate) struct EventSelection {
-    bind: VarId,
-}
-
-pub(crate) enum QueryPredicate {
-    EventKind {
-        event: VarId,
-        expected: EventSpec,
-    },
-    EventIdentity {
-        event: VarId,
-        expected: IdentitySpec,
-    },
-    Argument {
-        call: VarId,
-        index: ArgumentIndex,
-        matcher: ArgumentMatcher,
-    },
-    ReturnedObject {
-        bind: VarId,
-        producer: ProducerSpec,
-    },
-    ConstructedObject {
-        bind: VarId,
-        constructor: ConstructorSpec,
-    },
-    MemberSubject {
-        event: VarId,
-        object: VarId,
-    },
-}
-```
-
-`SelectEvent` is the only event-binding atom. `Require` atoms only reference
-existing bindings, except `ReturnedObject` and `ConstructedObject`, which bind
-their declared object variable. This explicit bind/reference distinction
-replaces the current interpretation that every repeated `VarId` is another
-binding.
-
-Use this exact semantic type set in the compiler:
-
-```rust
-pub(crate) enum VarType {
-    Event,
-    CallEvent,
-    MemberEvent,
-    Object,
-    StaticValue,
-    CallableIdentity,
-    ModuleIdentity,
-    SymbolPath,
-}
-```
-
-`VarId` remains the opaque authored identifier. `VarType` is inferred and
-stored only during compilation. Do not add separate public `EventVar`,
-`ObjectVar`, or `ValueVar` wrappers in this migration.
-
-Keep `EventQuery` as the compact public leaf builder, with private fields and
-fallible methods:
-
-```rust
-impl EventQuery {
-    pub fn call_global(name: impl Into<String>) -> Result<Self, QueryBuildError>;
-    pub fn with_arg(
-        self,
-        index: usize,
-        matcher: impl Into<ArgumentMatcher>,
-    ) -> Result<Self, QueryBuildError>;
-    pub fn into_query(self) -> QueryDecl;
-}
-```
-
-Lower one `EventQuery` into an `All` containing one `SelectEvent` plus
-`EventKind`, `EventIdentity`, argument, and subject `Require` atoms. The
-normalizer fuses that form into one normalized event node before planning.
-
-Expose composition with these constructors:
-
-```rust
-pub struct EventRequirement {
-    pub(crate) kind: EventRequirementKind,
-}
-
-pub(crate) enum EventRequirementKind {
-    Argument {
-        index: ArgumentIndex,
-        matcher: ArgumentMatcher,
-    },
-}
-
-impl EventRequirement {
-    pub fn argument(
-        index: usize,
-        matcher: impl Into<ArgumentMatcher>,
-    ) -> Result<Self, QueryBuildError>;
-}
-
-impl QueryDecl {
-    pub fn any(
-        branches: impl IntoIterator<Item = Result<QueryDecl, QueryBuildError>>,
-    ) -> Result<Self, QueryBuildError>;
-
-    pub fn all(
-        event: Result<EventQuery, QueryBuildError>,
-        requirements: impl IntoIterator<
-            Item = Result<EventRequirement, QueryBuildError>,
-        >,
-    ) -> Result<Self, QueryBuildError>;
-}
-```
-
-`QueryDecl::any` alpha-aligns the branch primary event variables to one output
-slot and rejects incompatible evidence kinds. `QueryDecl::all` is the advanced
-same-event composition entry point. `EventQuery::with_arg` remains shorthand
-that constructs the same `EventRequirement::argument` predicate; both forms
-must normalize equally. Do not expose constructors for raw `SelectEvent` or
-`Require` atoms publicly. Compiler tests inside the crate construct those atoms
-through `pub(crate)` test helpers. Returned, instance, and lifecycle
-constructors add their typed object relations internally; arbitrary
-author-defined multi-event joins remain out of scope until Phase 13.
-
-Compiler lowering introduces object variables for returned-object, instance,
-and lifecycle relationships in deterministic source order. Normalization
-assigns dense slots for validation and plan inspection. Physical planning
-compiles all variables away; no `VarId` or runtime variable slot is stored in a
-Phase 12 physical root.
-
-Delete `QuerySet` and its validation/normalization/planning helpers while
-introducing this model. `Rule.queries()` is the compiler input and repeated
-`RuleBuilder::query()` calls are the documented union of query roots.
-
-### Scope rules
-
-Implement a scope-aware validator with these semantics:
-
-- [x] An `Event` selector binds its declared event variable once in its scope.
-- [x] `Any` branches have independent binding scopes.
-- [x] A variable projected after `Any` must be bound with one compatible type on
-  every successful branch.
-- [x] `All` evaluates branches in one correlation scope.
-- [x] A binding may occur only once in an `All` scope.
-- [x] Other `All` atoms may reference that binding.
-- [x] A same-event conjunction must refer to one selected event; it must not model
-  correlation by selecting the event twice.
-- [x] Public multi-event conjunctions are rejected as `UnsupportedRelation`
-  through Phase 12. Returned-object and instance constructors are the only
-  multi-event relationships; they introduce compiler-owned object correlation
-  predicates and lower to specialized indexes.
-- [ ] A local-only relation cannot be used in an unsupported project context.
-- [ ] Artifact-local identities cannot be compared across artifacts.
-
-Have validation return or internally compute a typed binding summary rather
-than repeatedly rescanning the tree:
-
-```text
-expression
-  -> branch-local binding environments
-  -> merged output environment
-  -> emission availability and type
-```
-
-### Fix `Any`
-
-- [x] Permit the same logical output variable name/slot to be bound independently
-  in separate alternatives.
-- [x] Validate branch output compatibility.
-- [x] Require the primary evidence variable on every successful branch.
-- [x] Preserve independent complete witnesses when another branch is unknown.
-- [x] Deduplicate equal witnesses after execution without changing certainty.
-
-### Fix `All`
-
-- [x] Represent same-event filters as references to one event binding.
-- [x] Reject uncorrelated multi-event conjunctions as
-  `UncorrelatedConjunction`.
-- [x] Reject other public multi-event conjunctions as `UnsupportedRelation` until
-  Phase 13.
-- [x] Reject incompatible uses of a shared variable.
-- [x] Preserve one path-correlation key across every contributing predicate.
-- [x] Do not plan an `All` by taking the first event and copying constraints from
-  unrelated event selectors.
-
-### Type checking
-
-Replace the no-op `pass_type_checking` with a fallible pass that can produce:
-
-- [x] missing binding;
-- [x] duplicate binding;
-- [x] incompatible branch output;
-- [x] type mismatch;
-- [x] invalid relation operand;
-- [x] unavailable primary location; and
-- [x] unsupported relation scope.
-
-Remove `#[allow(dead_code)]` from error variants that should be produced by the
-compiler. If a planned error is not meaningful for the final algebra, remove
-it and update `q-plan.md`; do not keep nominal variants solely to claim
-coverage.
-
-### Required tests
-
-- [x] `Any` branch-local binding succeeds.
-- [x] `Any` with incompatible output types fails.
-- [x] `Any` missing the primary variable in one branch fails.
-- [x] Same-event `All` succeeds.
-- [x] Duplicate binding in one `All` scope fails.
-- [x] Reference before binding fails.
-- [x] Uncorrelated events fail.
-- [x] Event/value, event/object, and local/project type mismatches fail.
-- [x] Emission from a non-location-bearing variable fails.
-- [ ] Nested `Any` in `All` retains correlation and certainty.
-- [ ] Incompatible control-flow paths never satisfy a conjunction.
-- [x] Full public catalog construction exercises these cases, not just individual
-  validation passes.
-
-### Exit criteria
-
-- [x] The public regression tests from Package 0 pass.
-- [x] `Any` and same-event `All` are usable through `RuleCatalog::new`.
-- [x] Type checking is real and produces its structured error variants.
-- [x] Emission is valid on every successful branch.
-- [x] No runtime component sees authored variables or logical declarations.
-
----
-
-## Package 4: Complete canonical normalization
-
-### Objective
-
-Give equivalent logical queries one representation before physical planning.
-
-### Normalized representation
-
-Introduce compiler-only normalized types. Do not reuse `QueryDecl` as the
-normalized IR:
-
-```rust
-pub(crate) struct NormalizedQuery {
-    root: NormalizedRoot,
-    emission: NormalizedEmission,
-    requirements: PlanRequirements,
-}
-
-pub(crate) enum NormalizedRoot {
-    Event(NormalizedEvent),
-    Any(Box<[NormalizedRoot]>),
-    Lifecycle(NormalizedLifecycle),
-}
-
-pub(crate) struct NormalizedEvent {
-    slot: u32,
-    event: EventSpec,
-    identity: IdentitySpec,
-    subject: NormalizedSubject,
-    arguments: Box<[NormalizedArgumentGroup]>,
-}
-
-pub(crate) enum NormalizedSubject {
-    Direct,
-    Returned {
-        producer: ProducerSpec,
-    },
-    Instance {
-        constructor: ConstructorSpec,
-    },
-}
-```
-
-There is no normalized `All` variant. Normalization must turn:
-
-- [x] same-event `All` into one `NormalizedEvent`;
-- [x] an uncorrelated multi-event `All` into `UncorrelatedConjunction`; and
-- [x] every other multi-event `All` into `UnsupportedRelation`.
-
-Do not add a general keyed join in the Phase 0–12 remediation. Returned-object
-and instance relationships lower to `NormalizedSubject` and their existing
-specialized indexes; lifecycle uses `NormalizedLifecycle`. The first general
-keyed join belongs to Phase 13 with the first genuinely new relational
-capability.
-
-`NormalizedQuery` fields stay private to `api/compiler`. Physical planning
-accepts `&NormalizedQuery` only.
-
-### Required normalization order
-
-Use one documented order such as:
-
-- [x] 1. recursively normalize children;
-- [x] 2. flatten nested same-kind `Any` and `All`;
-- [x] 3. canonicalize semantic paths, module patterns, and predicate sets;
-- [x] 4. merge compatible same-event filters;
-- [x] 5. detect contradictions;
-- [x] 6. sort order-independent branches;
-- [x] 7. deduplicate equal branches;
-- [x] 8. alpha-normalize variables into deterministic dense slots;
-- [x] 9. validate normalized invariants; and
-- [x] 10. compute exact plan requirements.
-
-Variable renumbering must be independent of author-assigned numeric `VarId`
-values and incidental construction order. Add alpha-equivalence tests that use
-different original IDs.
-
-### Same-event filter merging
-
-Merge only when the compiler has proved all selectors refer to the same event
-binding and have compatible:
-
-- [x] event kind;
-- [x] identity;
-- [x] subject relationship;
-- [x] project scope; and
-- [x] primary evidence location.
-
-Canonicalize merged constraints by:
-
-- [x] argument index;
-- [x] matcher family;
-- [x] property/key name; and
-- [x] canonical predicate payload.
-
-Deduplicate identical constraints.
-
-### Contradiction detection
-
-Add `QueryCompileError::ContradictoryPredicate {
-variable: VarId, detail: ContradictionKind }`. Reject contradictions at catalog
-construction; do not add a never-match normalized node.
-
-Use this contradiction classification:
-
-```rust
-pub(crate) enum ContradictionKind {
-    EventKind,
-    StrictIdentity,
-    SubjectRelation,
-    StaticExactValues,
-    StaticExactAndPrefix,
-    EvidenceProjection,
-}
-```
-
-Detect at least:
-
-- [x] incompatible event kinds on the same event variable;
-- [x] incompatible strict identities on the same event variable;
-- [x] incompatible subject relationships;
-- [x] disjoint exact static-string requirements on one argument;
-- [x] `static_string` predicates with empty accepted sets;
-- [x] impossible exact/prefix combinations where the contradiction is provable;
-  and
-- [x] incompatible evidence projections.
-
-Do not apply two-valued Boolean simplifications when an unknown branch changes
-certainty or completeness.
-
-### Lifecycle normalization
-
-Preserve semantically meaningful lifecycle sequence and evidence order.
-Canonicalize order-independent source alternatives and value predicate sets.
-The lifecycle comparator must include condition and completion contents, not
-only their presence.
-
-### Plan requirements
-
-Compute requirements from normalized operators and relations, not broad
-defaults. See Package 9 for runtime consumption requirements.
-
-### Required tests
-
-- [x] normalization idempotency;
-- [x] alpha-equivalent variable IDs normalize equally;
-- [x] reversed argument-constraint order normalizes equally;
-- [x] reversed independent alternative order normalizes equally;
-- [x] compatible filters merge once;
-- [x] incompatible filters produce a structured contradiction;
-- [x] duplicate filters do not duplicate work or evidence;
-- [x] lifecycle ordering is preserved where meaningful;
-- [x] distinct lifecycle conditions never compare as the same ordering key;
-- [x] unknown-sensitive forms are not over-simplified; and
-- [x] normalized validation rejects any remaining nested, sparse, or untyped
-  invariant violation.
-
-### Exit criteria
-
-- [x] Phase 5 Tasks 7 and 8 are implemented.
-- [x] Structural equality is independent of order wherever semantics are
-  order-independent.
-- [x] Physical planning never needs to guess whether filters are compatible.
-
----
-
-## Package 5: Make physical planning consume proved normalized invariants
-
-### Objective
-
-Remove unsound assumptions from `plan_all_expression` and make every physical
-root correspond to one validated logical meaning.
-
-### Required changes
-
-- [x] Replace the current "use first event and append every constraint" behavior.
-  `plan_event` dispatches inside the subject match using normalized events.
-- [x] Plan the normalized same-event form directly into:
-  - [x] `IndexedScan` when no value filter is required; or
-  - [x] one `ConstrainedScan` with canonical grouped filters.
-- [x] Plan `Any` into deterministic independent roots whose emissions are valid in
-  every branch.
-- [x] Do not add a generic Cartesian join.
-- [x] Keep returned and instance index access specialized when it is the narrowest
-  correct operator.
-- [x] Validate every physical root after planning.
-- [x] Make physical validation reject:
-  - [x] empty identities;
-  - [x] non-call constrained scans;
-  - [x] ungrouped or noncanonical constraints;
-  - [x] unsupported returned/instance dimensions;
-  - [x] invalid join keys (Phase 12 has no join keys, so no false error);
-  - [x] unavailable primary evidence; and
-  - [x] malformed lifecycle roots.
-
-### Stable plan summary
-
-Extend the plan summary to report actual executable requirements:
-
-```text
-roots=N
-indexed_scans=N
-constrained_scans=N
-returned_subjects=N
-instance_subjects=N
-lifecycle_plans=N
-local_flow=yes|no
-cross_call_flow=yes|no
-project_overlay=yes|no
-```
-
-The summary reports yes/no for each requirement flag. A future package can
-expand project_overlay to show the exact overlay family when needed.
-
-Do not expose physical storage publicly.
-
-### Focused logical equivalence oracle
-
-Implement the unchecked Phase 6 equivalence requirement in
-`glass-lint-core/src/api/compiler/reference.rs`, compiled only under
-`#[cfg(test)]`. Use a small synthetic relation store rather than a second
-production matcher.
-
-Define these test-only records:
-
-```rust
-struct ReferenceRow {
-    event: u32,
-    event_kind: EventSpec,
-    identity: IdentitySpec,
-    arguments: BTreeMap<ArgumentIndex, ReferenceValue>,
-    object: Option<u32>,
-    path: u32,
-    completeness: ReferenceCompleteness,
-}
-
-enum ReferenceCompleteness {
-    Complete,
-    Unknown,
-}
-```
-
-Implement two evaluators over the same immutable row set:
-
-- [x] `evaluate_logical(&NormalizedQuery, &[ReferenceRow])`; and
-- [x] `evaluate_physical(&PhysicalPlan, &[ReferenceRow])`.
-
-The physical evaluator dispatches only on physical root fields; it must not
-call the logical evaluator. Compare sorted `ReferenceWitness` values containing
-the primary event, support events, path key, and certainty.
-
-The oracle must:
-
-- [x] evaluate normalized `Event`, `Any`, same-event `All`, and supported subject
-  relations over small deterministic rows;
-- [x] retain a path/correlation key and completeness state;
-- [x] produce primary/support witness keys; and
-- [x] compare those witnesses with the selected physical-plan result.
-
-Cover:
-
-- [x] empty and non-empty relations;
-- [x] duplicate rows;
-- [x] alternative order;
-- [x] filter order;
-- [x] possible versus definite results;
-- [x] unknown alternatives;
-- [x] incompatible correlation keys; and
-- [x] evidence ordering.
-
-Keep the oracle behind `#[cfg(test)]`; production must still have one executor.
-
-### Exit criteria
-
-- [x] No planner function merges predicates whose compatibility was not proved.
-  Normalization (Package 4) handles merging; the planner plans only normalized
-  roots independently.
-- [x] Every logical leaf and normalized composition selects a documented physical
-  operator: Event→IndexedScan/ConstrainedScan/ReturnedSubject/InstanceSubject,
-  Any→multiple independent roots, Lifecycle→Lifecycle root.
-- [x] The test-only oracle agrees with physical execution on the supported small
-  domain — 19 tests in `reference.rs` pass.
-- [x] The Phase 6 equivalence checkbox can be checked with the named test module
-  `glass-lint-core/src/api/compiler/reference.rs`.
-
----
-
-## Package 6: Canonicalize and share argument/value evaluation
-
-### Objective
-
-Finish Phase 8 by compiling constraints into bounded per-argument work and
-resolving each selected argument once.
-
-### Physical constraint representation
-
-Replace a flat `Box<[ArgumentConstraint]>` with these exact compiler-owned
-types:
-
-```rust
-pub(crate) struct CompiledArgumentConstraints {
-    groups: Box<[ArgumentConstraintGroup]>,
-}
-
-pub(crate) struct ArgumentConstraintGroup {
-    index: ArgumentIndex,
-    predicates: Box<[ArgumentMatcher]>,
-}
-```
-
-Keep construction private. Expose iteration only through
-`CompiledArgumentConstraints::groups()`. `PhysicalRoot::ConstrainedScan` stores
-one `CompiledArgumentConstraints`.
-
-The planner should:
-
-- [x] sort constraints by argument index and predicate order;
-- [x] group predicates for the same argument;
-- [x] deduplicate identical predicates;
-- [x] reject provable contradictions;
-- [x] validate all group and predicate bounds; and
-- [x] store groups in deterministic index order.
-
-### Evaluation
-
-For each candidate call:
-
-- [x] select effective arguments once;
-- [x] reject a missing required argument;
-- [x] construct the overlay-aware `ArgumentView` once per referenced index;
-- [x] resolve its static value/object/rooted path once;
-- [x] apply all predicates in the group to that prepared value; and
-- [x] charge deterministic operations per candidate, group, and predicate.
-
-Do not repeatedly call `argument_with_overlay` for separate predicates on the
-same argument.
-
-### Required tests
-
-- [x] two predicates on one argument prepare the argument once;
-- [x] constraints on several argument positions prepare each referenced position
-  once;
-- [x] missing and sparse arguments fail closed;
-- [x] static aliases and reassignment preserve current behavior;
-- [x] object keys and property values remain strict;
-- [x] dynamic values do not satisfy selective predicates;
-- [x] constraint order produces identical normalized and physical plans;
-- [x] excessive argument index, group count, predicate count, and alternative
-  count fail with structured errors; and
-- [x] operation counts scale with candidates and unique argument groups, not raw
-  duplicate constraints.
-
-### Exit criteria
-
-- [x] Static/value semantics remain owned by `analysis/value` and
-  `analysis/flow/matcher.rs`.
-- [x] One bounded projection is performed per candidate call.
-- [x] Each referenced argument is prepared at most once per candidate.
-- [x] Equivalent constraint order produces one physical plan.
-
----
-
-## Package 7: Make returned-object and instance correlation explicit
-
-### Objective
-
-Finish Phase 9's logical model while retaining the existing efficient indexes.
-
-### Required logical representation
-
-Represent the relationship explicitly enough for the compiler to prove:
-
-```text
-producer or constructor event
-  -> correlated returned or constructed object
-  -> primary member event
-```
-
-Keep this compact authoring API:
-
-```rust
-QueryDecl::member_call_returned(...)
-QueryDecl::member_call_instance(...)
-```
-
-Both constructors return `Result<QueryDecl, QueryBuildError>`. Lower them into
-the exact `ReturnedObject`/`ConstructedObject` plus `MemberSubject` predicates
-defined in Package 3. The lowered form contains:
-
-- [x] producer/constructor identity;
-- [x] producer/constructor event role;
-- [x] object correlation variable/key;
-- [x] primary member event;
-- [x] member path;
-- [x] local/project scope; and
-- [x] primary/support evidence projection.
-
-Do not encode the entire relation as an unexplained `SubjectSpec` flag plus an
-identity field.
-
-Delete `SubjectSpec` after all direct, returned, and instance constructors have
-been lowered to predicates. A direct event is represented by the absence of a
-`MemberSubject` relation; returned and instance events use the explicit object
-relations above.
-
-### Physical planning
-
-- [x] Use returned-member indexes when they already carry the required correlation.
-- [x] Use instance-member indexes for strict constructed-instance identity.
-- [x] Reject a returned/instance shape the existing correlated indexes cannot
-  express. Do not add a general join as part of this remediation.
-- [x] Keep the member occurrence as primary evidence.
-- [x] Retain producer/constructor evidence only when the evidence contract asks for
-  it.
-- [x] Preserve exact module and package-boundary semantics.
-
-### Required tests
-
-Retain all Phase 9 cases and add compiler-shape tests proving the correlation:
-
-- [x] direct and aliased returned object;
-- [x] reassigned returned alias;
-- [x] disconnected same-name object;
-- [x] direct and aliased constructed instance;
-- [x] wrong constructor module;
-- [x] static method lookalike;
-- [x] supported/unsupported subclass behavior;
-- [x] supported/unsupported chained constructor behavior;
-- [x] producer and member on incompatible branches;
-- [x] ambiguous project identity; and
-- [x] deterministic primary/support evidence order.
-
-### Exit criteria
-
-- [x] Subject correlation is explicit in normalized logical form.
-- [x] Physical returned/instance scans are selected from that logical relation.
-- [x] No identity is duplicated merely to satisfy an old record layout.
-
----
-
-## Package 8: Unify lifecycle authoring, compilation, and execution
-
-### Objective
-
-Finish Phases 10 and 12 by making lifecycle a normal `QueryDecl` and deleting
-the second authoring/storage route.
-
-### Authoring API
-
-Move and rename the existing flow declarations into `api/rule/query`:
-
-| Old type | Final type |
-|---|---|
-| `ObjectSourceMatcher` | `LifecycleSource` |
-| `ObjectEventMatcher` | `LifecycleEvent` |
-| `FlowCondition` | `LifecycleCondition` |
-| `FlowCompletion` | `LifecycleCompletion` |
-| `FlowSinkMatcher` | `LifecycleSink` |
-| `ObjectFlowMatcher` | deleted; `LifecycleQuery` owns the declaration |
-
-Use this authoring API:
-
-```rust
-QueryDecl::lifecycle(
-    LifecycleQuery::builder("remote script")
-        .source(LifecycleSource::returned_by("document.createElement")?)
-        .condition(LifecycleCondition::any_of([...])?)
-        .completion(LifecycleCompletion::any_sink([...])?)
-        .build(),
-)
-```
-
-Use these exact constructor names:
-
-- [x] `LifecycleSource::returned_by`;
-- [x] `LifecycleSource::with_arg`;
-- [x] `LifecycleEvent::property_write`;
-- [x] `LifecycleEvent::member_call`;
-- [x] `LifecycleEvent::with_arg`;
-- [x] `LifecycleCondition::event`;
-- [x] `LifecycleCondition::any_of`;
-- [x] `LifecycleCondition::all_of`;
-- [x] `LifecycleCompletion::configuration`;
-- [x] `LifecycleCompletion::any_sink`;
-- [x] `LifecycleSink::argument_of`;
-- [x] `LifecycleSink::any_argument_of`;
-- [x] `LifecycleQuery::builder`;
-- [x] `LifecycleQueryBuilder::source`;
-- [x] `LifecycleQueryBuilder::condition`;
-- [x] `LifecycleQueryBuilder::completion`;
-- [x] `LifecycleQueryBuilder::build`; and
-- [x] `QueryDecl::lifecycle`.
-
-Every text/index/collection constructor returns `Result`. Builder mutation
-methods accept the validated final types. `LifecycleQueryBuilder::build`
-returns `Result<LifecycleQuery, QueryBuildError>`.
-`QueryDecl::lifecycle` accepts that result and returns
-`Result<QueryDecl, QueryBuildError>`, allowing it to pass directly to the
-canonical fallible `RuleBuilder::query` route.
-
-`LifecycleQuery` always has at least one source and exactly one completion.
-The condition is optional only for sink completion. Configuration completion
-requires a condition. `any_of`, `all_of`, and `any_sink` reject empty
-collections.
-
-Reuse provider-neutral `ValueMatcher` and `ArgumentMatcher`; do not duplicate
-value semantics.
-
-### Migration
-
-Migrate, in order:
-
-- [x] 1. core lifecycle unit tests;
-- [x] 2. core declarative matching integration tests;
-- [x] 3. project test support;
-- [x] 4. `glass-lint-js` file-dialog rule;
-- [x] 5. `glass-lint-js` script-injection rule;
-- [x] 6. `glass-lint-js` remote-resource rules; and
-- [x] 7. any remaining harness helper using `ObjectFlowMatcher`.
-
-Provider code must finish with `.query(QueryDecl::lifecycle(...))`.
-
-### Delete the old path
-
-Delete in the same migration:
-
-- [x] `Rule.flows`;
-- [x] `Rule::flow_matchers()`;
-- [x] `RuleBuilder.flows`;
-- [x] `RuleBuilder::object_flow()`;
-- [x] `CompiledMatcherPlan.flows`;
-- [x] `CompiledMatcherPlan::flows()`;
-- [x] `compile_decls_and_flows`;
-- [x] `compile_single_flow`;
-- [x] `QueryDecl::from_flow_matcher`;
-- [x] compatibility extraction of flows from physical roots;
-- [x] `ObjectFlowMatcher` and its builder;
-- [x] comments or docs describing a parallel flow matcher path.
-
-Rename and move existing lifecycle types rather than retaining aliases.
-
-### Execution
-
-- [x] Local lifecycle projection must enumerate `PhysicalRoot::Lifecycle`.
-- [x] Cross-call and cross-file flow must enumerate the same roots.
-- [x] Assign stable flow IDs from deterministic physical root order.
-- [x] Never clone lifecycle roots into a second storage collection.
-- [x] Preserve local/cross-file flow fixed-point and budget behavior.
-
-### Multiple sources
-
-The current lowering assigns variable zero to every source. The final model
-uses one branch-local source event variable per source and alpha-aligns each
-branch's produced object to one lifecycle object output slot. Sources have
-`Any` semantics: any independently complete source can start the lifecycle.
-Duplicate normalized sources are removed. Add explicit tests for:
-
-- [x] multiple independently valid sources;
-- [x] duplicate sources;
-- [x] one unknown source plus one complete source;
-- [x] sources on incompatible paths; and
-- [x] deterministic source evidence ordering.
-
-### Required tests
-
-Run every Phase 10 required case through the new public query authoring route.
-At minimum cover:
-
-- [x] any and all requirements;
-- [x] configuration completion;
-- [x] exact and any-argument sinks;
-- [x] multiple sources and sinks;
-- [x] aliases and reassignment;
-- [x] escaped or unsupported objects;
-- [x] dynamic source and requirement values;
-- [x] disconnected source and sink;
-- [x] incompatible source/requirement/sink paths;
-- [x] cross-call source/requirement/sink combinations;
-- [x] cross-file flow;
-- [x] budget exhaustion; and
-- [x] primary evidence in the sink file.
-
-### Exit criteria
-
-- [x] `RuleBuilder::query()` is the only way to add matching semantics.
-- [x] `Rule` stores only `Vec<QueryDecl>`.
-- [x] `CompiledMatcherPlan` stores only one physical plan.
-- [x] Lifecycle exists only as a logical operator and a physical lifecycle root.
-- [x] Local and project execution use the same lifecycle roots.
-- [x] No provider rule mentions a physical executor family or old flow builder.
-
----
-
-## Package 9: Make plan requirements executable
-
-### Objective
-
-Finish Phase 11 by ensuring runtime preparation is selected from compiled
-requirements rather than performed broadly or rediscovered from roots.
-
-### Requirement model
-
-Replace the boolean bag with these compiler-owned types:
-
-```rust
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct PlanRequirements {
-    occurrence_indexes: BTreeSet<OccurrenceIndexRequirement>,
-    fact_fields: BTreeSet<FactFieldRequirement>,
-    value_resolution: BTreeSet<ValueResolutionRequirement>,
-    flow: FlowRequirements,
-    project: BTreeSet<ProjectRequirement>,
-}
-
-pub(crate) enum OccurrenceIndexRequirement {
-    Calls,
-    Constructions,
-    Members,
-    Literals,
-    ReturnedMembers,
-    InstanceMembers,
-}
-
-pub(crate) enum FactFieldRequirement {
-    CallArguments,
-    ObjectProperties,
-    RootedValues,
-}
-
-pub(crate) enum ValueResolutionRequirement {
-    LocalStaticValues,
-    ModuleIdentityValues,
-    CallResultIdentities,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct FlowRequirements {
-    local: bool,
-    cross_call: bool,
-    cross_file: bool,
-}
-
-pub(crate) enum ProjectRequirement {
-    ExactModuleExports,
-    PackageModuleExports,
-    ExactModuleNamespaces,
-    PackageModuleNamespaces,
-    CallResultIdentities,
-}
-```
-
-Derive `Ord` for every set element. Keep storage private and expose semantic
-queries such as `needs_module_identities()`, `needs_call_result_identities()`,
-and `flow()`.
-
-Do not retain `needs_evidence_trace`. Every finding already requires its
-primary trace, so it is not conditional preparation. Correlated support traces
-are encoded by the physical root that emits them.
-
-Every requirement field must have:
-
-- [x] a compiler producer;
-- [x] a runtime consumer;
-- [x] a plan-summary representation; and
-- [x] a focused test proving work is skipped when absent.
-
-Remove fields that do not represent a meaningful conditional preparation.
-
-### Project projection
-
-Refactor project preparation so that:
-
-- [x] module identities are built only when selected plans require them;
-- [x] call-result identities are built only for constrained/project relations that
-  use them;
-- [x] module occurrence overlays are built only for the exact requested overlay
-  families;
-- [x] local lifecycle projection runs only when lifecycle roots are selected;
-- [x] cross-call/cross-file collection returns immediately before graph/session
-  preparation when no selected root requires it; and
-- [x] project projection never inspects `QueryDecl`, `QueryExpr`, or provider rule
-  types.
-
-The physical root remains the source of executable state. Requirements select
-preparation; they must not become a second copy of the query.
-
-### Operation counts
-
-Charge deterministically for:
-
-- [x] identity map construction;
-- [x] result-identity construction;
-- [x] overlay insertion and lookup;
-- [x] local lifecycle projection;
-- [x] call graph construction;
-- [x] worklist propagation; and
-- [x] evidence normalization.
-
-Queries that need no project behavior must show zero project-query preparation
-operations attributable to overlays or flow.
-
-### Required tests
-
-- [x] global-only query skips module identities, result identities, and overlays;
-- [x] unconstrained module query builds only its identity overlay;
-- [x] constrained local query avoids project overlay work;
-- [x] call-result identity query prepares result identities;
-- [x] project-independent query skips cross-flow graph construction;
-- [x] direct external import and re-export chains preserve matching;
-- [x] namespace and CommonJS/ESM interop preserve matching;
-- [x] ambiguity and missing resolution remain unknown;
-- [x] package boundaries remain exact;
-- [x] cross-file finding stays in the primary/sink file;
-- [x] independent witness plus unknown project alternative remains possible; and
-- [x] plan summaries list exact local/project/cross-call requirements.
-
-### Exit criteria
-
-- [x] No project preparation is performed merely because analysis is in project
-  mode.
-- [x] Every selected preparation is justified by compiled requirements.
-- [x] Cross-file execution uses the same physical roots as local execution.
-
----
-
-## Package 10: Update public API examples and documentation
-
-### Objective
-
-Complete Phase 12's unchecked documentation task and remove obsolete query
-terminology.
-
-### Required documentation changes
-
-Update:
-
-- [ ] [`glass-lint-core/README.md`](glass-lint-core/README.md);
-- [ ] root [`README.md`](README.md) if the public Rust example changes;
-- [ ] affected provider READMEs;
-- [ ] [`glass-lint-core/ARCHITECTURE.md`](glass-lint-core/ARCHITECTURE.md);
-- [ ] public Rustdoc in `api/rule`, `api/rule/query`, and `api/compiler`;
-- [ ] [`CONTRIBUTING.md`](CONTRIBUTING.md) authoring example if necessary; and
-- [ ] `q-plan.md` status and checkboxes only after implementation evidence exists.
-
-The core README must use the actual API:
-
-- [ ] `description`, not `label`;
-- [ ] validated `Category`;
-- [ ] `QueryDecl`, not `CallMatcher`;
-- [ ] `query`, not `matcher`;
-- [ ] current report accessors; and
-- [ ] the final fallible query-construction pattern.
-
-Document:
-
-- [ ] a compact ordinary rule;
-- [ ] a constrained rule;
-- [ ] alternatives;
-- [ ] same-event conjunction;
-- [ ] returned/instance rule;
-- [ ] lifecycle rule;
-- [ ] structured catalog errors; and
-- [ ] the distinction between strict and heuristic identity.
-
-### Compile the examples
-
-Move canonical examples into compilable Rust examples or doctests. Have README
-snippets mirror those sources rather than being the only copy.
-
-Add this exact command to `make ci`:
+This document contains only the work that remains after re-auditing the
+implementation against Phases 0 through 12 of [`q-plan.md`](q-plan.md).
+Completed migration history has been removed.
+
+The production catalog path now supports ordinary `Any`, same-event `All`,
+canonical grouped argument constraints, lifecycle roots, project preparation,
+and the test-only logical/physical reference evaluator. The focused suites pass:
 
 ```sh
-cargo check -p glass-lint-core --examples
-```
-
-Do not leave stale names in comments or docs. Verify with:
-
-```sh
-rg 'CallMatcher|MatcherDecl|MatcherDeclBuilder|QueryClause|QueryPlan|\.matcher\(|\.object_flow\(' \
-  --glob '*.rs' --glob '*.md'
-```
-
-Expected matches should be restricted to historical explanation in
-`q-plan.md` and this remediation plan, if retained.
-
-### Exit criteria
-
-- [ ] Every public example compiles.
-- [ ] Public docs show the one final authoring path.
-- [ ] Phase 12 Task 9 can be checked.
-
----
-
-## Package 11: Reconcile `q-plan.md` with verified reality
-
-### Objective
-
-Make the original plan a truthful completion record after the fixes land.
-
-### Required changes
-
-- [ ] Update Phase 0 inventory items with links to the capability matrix,
-  baselines, and tests.
-- [ ] Update Phase 2 terminology so it describes final `QueryDecl` ownership rather
-  than historical `MatcherDecl` state.
-- [ ] Update Phase 3 with the final binding/reference and variable-type model.
-- [ ] Update Phase 4 with the actual structured errors produced by validation.
-- [ ] Check Phase 5 filter merging and contradiction detection.
-- [ ] Check Phase 6 equivalence testing and name the oracle tests.
-- [ ] Update Phase 8 with grouped per-argument evaluation.
-- [ ] Update Phase 9 with the explicit subject correlation representation.
-- [ ] Update Phase 10 to state that no separate flow declaration/storage path
-  exists.
-- [ ] Update Phase 11 with the exact executable requirement model.
-- [ ] Update Phase 12 only after public examples compile and lifecycle providers use
-  `RuleBuilder::query()`.
-- [ ] Remove obsolete claims such as exact test counts that are no longer stable.
-  Prefer named commands and suites.
-
-Do not mark a task complete solely because `make ci` passes. Each checkbox must
-have a named implementation or test artifact that proves the task.
-
-### Exit criteria
-
-- [ ] There are no unchecked items in Phases 0 through 12.
-- [ ] Every checked claim matches current code.
-- [ ] The Phase 12 completion statement no longer contradicts the public API.
-
----
-
-## Cross-package test matrix
-
-The implementation is not complete until this matrix is covered.
-
-| Concern | Unit | Core integration | Project | Provider |
-|---|---:|---:|---:|---:|
-| Constructor validation | yes | public catalog | n/a | full catalog |
-| Variable typing | yes | composed queries | typed project scope | representative |
-| `Any` | normalize/validate | findings/certainty | unknown overlay | representative |
-| Same-event `All` | normalize/plan | positive/negative | if overlay applies | representative |
-| Contradictions | validate | catalog error | n/a | catalog compile |
-| Argument grouping | planner/evaluator | static/dynamic | result identities | constrained rules |
-| Returned relation | planner | alias/lookalike | ambiguity | representative |
-| Instance relation | planner | alias/lookalike | wrong module | representative |
-| Lifecycle | validate/plan | path correlation | cross-file | all lifecycle rules |
-| Requirements | normalize/plan | skipped work | overlay/flow work | full fixtures |
-| Evidence | normalize | exact order/location | sink file | fixtures |
-| Boundedness | constructor/compiler | exhausted behavior | fixed-point limits | fixtures |
-
-## Narrow iteration commands
-
-Use narrow tests while implementing:
-
-```sh
-cargo test -p glass-lint-core --test query_composition
-cargo test -p glass-lint-core api::compiler::validate
-cargo test -p glass-lint-core api::compiler::normalize
-cargo test -p glass-lint-core api::compiler::physical
+cargo test -p glass-lint-core --test query_composition --test query_baseline
+cargo test -p glass-lint-core api::compiler::reference
 cargo test -p glass-lint-core analysis::matching::arguments
-cargo test -p glass-lint-core --test declarative_matching
-cargo test -p glass-lint-core --test semantic_matching
-cargo test -p glass-lint-core --test scope_precision
-cargo test -p glass-lint-project
 ```
 
-Verify migrated lifecycle provider rules while iterating:
+Those passing tests do not establish the remaining claims below. Several
+tests and documents currently assert weaker behavior than the original plan
+requires.
 
-```sh
-cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- \
-  verify glass-lint-js/src/rules/browser/file_dialog
+This remains a forward migration. Breaking changes are allowed. Do not add
+compatibility aliases, parallel executors, or deprecated authoring routes.
 
-cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- \
-  verify glass-lint-js/src/rules/browser/script_injection
+## Contracts to preserve
 
-cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- \
-  verify glass-lint-js/src/rules/browser/remote_resource
-```
+1. Parse and construct matcher-independent facts once per file.
+2. Keep strict witnesses path-local, provenance-aware, and deterministic.
+3. Never combine facts from incompatible control-flow alternatives.
+4. Unknown, dynamic, ambiguous, unsupported, or exhausted analysis cannot
+   establish a witness or a definite result.
+5. Keep work, state, recursion, alternatives, evidence, and diagnostics
+   explicitly bounded.
+6. Keep provider policy outside `glass-lint-core`.
+7. Compile every authored query through one validation, normalization, and
+   physical-planning pipeline.
+8. Give runtime code physical plans rather than authored declarations.
+9. Return structured errors for expected invalid author input.
+
+## 1. Make public declarations invariant-preserving
+
+The ordinary `EventQuery` constructors are fallible, but the value and
+lifecycle APIs still admit invalid or unbounded declarations.
+
+### Fallible text, index, and collection construction
+
+- [ ] Make every public lifecycle constructor that accepts text, a raw
+  argument index, or a collection return `Result<_, QueryBuildError>`.
+  This includes `LifecycleSource::returned_by`,
+  `LifecycleSource::with_arg`, lifecycle member/property events,
+  `LifecycleCondition::{any_of,all_of}`,
+  `LifecycleCompletion::any_sink`, and both lifecycle sink constructors.
+- [ ] Remove the `usize as u8` lifecycle argument casts. Index 256 currently
+  truncates to zero instead of producing `InvalidArgumentIndex`.
+- [ ] Make static-string alternatives, object-key sets, and rooted-expression
+  sets validated non-empty bounded domain collections. Construction must sort,
+  deduplicate, validate paths/text, and reject more than
+  `MAX_STATIC_ALTERNATIVES`.
+- [ ] Enforce `MAX_ARGUMENT_GROUPS` and
+  `MAX_PREDICATES_PER_ARGUMENT` while authoring, not only during physical-plan
+  validation.
+- [ ] Enforce `MAX_QUERY_ROOTS_PER_RULE`, `MAX_EXPR_CHILDREN`,
+  `MAX_LIFECYCLE_EVENTS`, and `MAX_LIFECYCLE_SINKS`. These constants are
+  currently unused or enforced only after an oversized declaration exists.
+- [ ] Add an explicit expression-depth/recursion bound and validate it before
+  recursive compiler passes.
+- [ ] Make `LifecycleQuery` impossible to construct without at least one valid
+  source and exactly one valid completion. Remove or privatize the
+  `#[doc(hidden)] LifecycleQuery::new` bypass, which currently accepts no
+  completion.
+- [ ] Give duplicate lifecycle stages and other lifecycle failures precise
+  `QueryBuildError` variants rather than reporting them as empty collections.
+
+### Close raw mutation routes
+
+- [ ] Remove or restrict public `QueryDecl::{with_expression,with_primary_var,
+  with_evidence}`, `EventQuery::with_var`, and raw expression constructors that
+  let external callers bypass the Phase 12 authoring grammar. Keep any required
+  malformed-IR builders as `pub(crate)` test helpers.
+- [ ] Expose only the supported Phase 12 composition surface:
+  compact `EventQuery`/`QueryDecl` constructors, `QueryDecl::any`,
+  same-event `QueryDecl::all`, and `QueryDecl::lifecycle`.
+- [ ] Validate `Any` branch emissions before discarding branch declarations.
+  Compatible primary location and evidence kind must be proved on every branch;
+  incompatible evidence must produce the structured
+  `EvidenceProjection` contradiction rather than silently taking the first
+  branch's emission.
+- [ ] Validate evidence symbols at construction and remove infallible mutation
+  that can install an empty symbol.
+
+### Bounded normalization input
+
+- [ ] Replace the dense `Vec` indexed by the largest authored `VarId` in
+  `alpha_renumber_slots`. A public `VarId::new(u32::MAX)` must not request a
+  multi-gigabyte allocation; remap only the bounded variables actually present.
+- [ ] Make post-normalization validation actually verify dense typed slots,
+  canonical collections, and all normalized invariants.
+
+### Required tests
+
+- [ ] Add limit and limit-plus-one tests for every declared collection and
+  index limit, including lifecycle arguments/events/sinks and rule query roots.
+- [ ] Add table-driven malformed lifecycle/value/path cases that prove no
+  panic, truncation, silent ignore, or delayed stringified physical-plan error.
+- [ ] Add a large/sparse `VarId` regression and a maximum-depth regression.
+- [ ] Replace the current “predicate alternatives at limit succeeds” test with
+  both at-limit success and limit-plus-one construction failure.
+
+## 2. Finish logical validation and canonical normalization
+
+The compiler has a real event/object type pass, but it still contains nominal
+types and errors that no authored predicate can produce, and some canonical
+forms are only descriptive.
+
+### Type and relation model
+
+- [ ] Either implement real producers and consumers for `StaticValue`,
+  `CallableIdentity`, `ModuleIdentity`, and `SymbolPath` variables or remove
+  those dead `VarType` variants and reconcile `q-plan.md`. Do not retain nominal
+  types solely to claim Phase 4 coverage.
+- [ ] Make relation-availability validation enforce an actual semantic scope.
+  It currently repeats empty identity checks already prevented by constructors
+  and does not prove local/project or artifact-local availability.
+- [ ] Encode structurally that artifact-local IDs never cross artifact
+  boundaries. Add the focused local/project scope tests promised by the plan,
+  or remove inapplicable claims from `q-plan.md` when the public algebra cannot
+  express such a relation.
+- [ ] Remove or produce the dead `InvalidModulePattern` and
+  `InvalidStaticValuePredicate` compiler errors. Expected malformed input should
+  normally fail in declaration construction.
+
+### Returned-object and instance correlation
+
+- [ ] Replace the current flag-like `NormalizedSubject::{Direct,Returned,
+  Instance}` with the explicit normalized relation required by the plan. It
+  must retain the producer/constructor specification, correlated object slot,
+  primary member event, scope, and evidence contract.
+- [ ] Stop duplicating the producer/constructor identity as the selected member
+  event identity merely to fit the old record shape.
+- [ ] Select `ReturnedSubject` and `InstanceSubject` physical operators only
+  after validating that the explicit normalized correlation is supported by
+  the corresponding index.
+- [ ] Make physical validation reject unsupported returned/instance identity,
+  event, scope, and correlation shapes rather than checking only for a non-empty
+  identity and member event.
+- [ ] Extend the reference oracle so returned/instance support evidence is tied
+  to an actual producer/constructor event and path key, not inferred from a
+  single row's object number.
+
+### Lifecycle and ordering canonicalization
+
+- [ ] Canonicalize and bound order-independent lifecycle alternatives,
+  especially `AnyOf` conditions and `AnySink` completions.
+- [ ] Replace `format!("{:?}")` lifecycle ordering in normalization with a
+  semantic deterministic ordering implementation.
+- [ ] Add reversed-order and duplicate lifecycle condition/sink tests proving
+  equal declarations normalize to equal plans without changing meaningful
+  `AllOf` order or evidence order.
+
+### Composition scope
+
+- [ ] Reconcile nested `Any` inside `All` with the Phase 12 contract. General
+  multi-event composition is not supported before Phase 13, so seal the raw
+  public construction route and state that limitation explicitly rather than
+  implying that arbitrary nested conjunctions execute.
+- [ ] Retain focused incompatible-path negatives for every supported
+  correlation: lifecycle, returned object, constructed instance, caller
+  argument/callee parameter, and callee return/caller result.
+- [ ] Replace the current normalization “idempotency” test, which normalizes the
+  same authored input twice, with a test of the canonical normalized invariant
+  or a real normalize-normalized round trip.
+
+## 3. Complete per-argument preparation
+
+Constraints are grouped by argument index and `ArgumentView` is constructed
+once per group, but static values, object entries, and rooted paths are still
+looked up again by each predicate through `ArgumentMatcher::matches`.
+
+- [ ] Introduce one prepared argument value per referenced index containing the
+  overlay-aware static value, object entries/properties, and rooted path needed
+  by that group's predicates.
+- [ ] Apply every predicate in the group to that prepared value without
+  repeating `ValueTable` or name-path resolution.
+- [ ] Charge deterministic candidate, group, preparation, resolution, and
+  predicate operations. The operation model must expose repeated semantic
+  resolution rather than counting only `ArgumentView` construction.
+- [ ] Add mixed-predicate tests on one argument proving each semantic projection
+  occurs once, plus multi-index and duplicate-predicate operation-count tests.
+
+## 4. Make plan requirements execution-driving
+
+`PlanRequirements` produces occurrence-index, fact-field, value-resolution,
+flow, and project sets. Runtime code currently consumes only coarse project
+and flow queries; `occurrence_indexes()` and `fact_fields()` are test-only, and
+the occurrence index builder still populates every index family.
+
+- [ ] For each requirement set, either add a real runtime preparation consumer
+  or delete the set when the preparation is intentionally matcher-independent.
+  Do not keep descriptive requirements.
+- [ ] Preserve the rule-independent local artifact/cache boundary. If occurrence
+  indexes are intentionally built once independent of selected rules, remove
+  the false conditional-preparation claim instead of making cached facts depend
+  on rule selection.
+- [ ] Make project requirements select exact overlay families. Avoid
+  `!project.is_empty()` as the implementation of several semantically distinct
+  requirement queries.
+- [ ] Cross-check physical roots and requirements in
+  `validate_physical_plan`, including lifecycle flow levels, returned/instance
+  indexes, constrained value preparation, and exact project overlays.
+- [ ] Extend the stable plan summary to list every retained executable
+  requirement, not only root counts and three coarse booleans.
+- [ ] Add skip-work tests for every retained requirement and exact operation
+  assertions for identity maps, result identities, overlays, local flow, call
+  graphs, and fixed-point work.
+
+## 5. Repair the Phase 0 inventory and baselines
+
+The checked-in inventory and baseline report do not yet prove their stated
+claims.
+
+- [ ] Update [`glass-lint-core/QUERY_CAPABILITIES.md`](glass-lint-core/QUERY_CAPABILITIES.md)
+  to the final logical model. It still describes the deleted `SubjectSpec`
+  representation.
+- [ ] Ensure every capability row names its authoring constructor, normalized
+  relation, physical operator, runtime owner, project behavior, certainty
+  behavior, provider users, and focused non-provider test.
+- [ ] Add executable ambiguous-project and cross-file-flow baselines or remove
+  those cases from [`reports/QUERY_MIGRATION_BASELINE.md`](reports/QUERY_MIGRATION_BASELINE.md).
+  They are described in the report but absent from `query_baseline.rs`.
+- [ ] Make baseline assertions exact. Remove assertions such as
+  `files() == 0 || files() == 1` and broad `operation > 0` checks.
+- [ ] Assert exact completion, finding/evidence order, certainty, relevant
+  physical route/summary, and stable operation fields for each representative
+  case.
+- [ ] Record the commands and reviewed results for e2e, project, JavaScript, and
+  Obsidian fixtures without embedding brittle obsolete test counts.
+
+## 6. Finish the intended module and terminology cleanup
+
+The final package layout in the remediation design has not been completed:
+`api/rule/query/mod.rs`, `normalize.rs`, and `validate.rs` remain oversized,
+and compiler errors still use historical clause terminology.
+
+- [ ] Split `api/rule/query` into cohesive `error`, `limits`, `value`, `event`,
+  `expression`, and `lifecycle` modules, leaving `mod.rs` as public re-exports.
+- [ ] Split compiler query code into cohesive `error`, `validate`, `normalize`,
+  `physical`, and test-only `reference` modules with orchestration in `mod.rs`.
+- [ ] Rename `InvalidQueryClause` to a physical-plan validation term and remove
+  obsolete clause/matcher terminology from current source and documentation.
+- [ ] Keep indexed execution in `analysis/matching/query`, grouped argument
+  execution in `analysis/matching/arguments`, lifecycle execution in
+  `analysis/flow`, and project preparation in `analysis/project/projection`.
+- [ ] Perform module moves separately from semantic changes and delete emptied
+  paths in the same migration; do not leave compatibility re-exports.
+
+## 7. Update public examples and documentation
+
+The core README still uses removed `CallMatcher`, `.label`, `.category(&str)`,
+and `.matcher` APIs. There are no compiled core examples, and `make ci` does
+not check them.
+
+- [ ] Add compiled examples under `glass-lint-core/examples` for:
+  - a compact ordinary rule;
+  - a constrained rule;
+  - alternatives;
+  - same-event conjunction;
+  - returned-object and instance rules;
+  - a lifecycle rule; and
+  - structured construction/catalog errors.
+- [ ] Make [`glass-lint-core/README.md`](glass-lint-core/README.md) mirror those
+  examples using `description`, validated `Category`, `QueryDecl`, `query`,
+  current report accessors, and fallible construction.
+- [ ] Update the root README, affected provider READMEs, core architecture,
+  public Rustdoc, contributing examples, and [`test.md`](test.md) where they
+  describe the removed API or old lifecycle path.
+- [ ] Document strict versus heuristic identity and the supported/unsupported
+  composition boundary.
+- [ ] Add this exact command to `make ci`:
+
+  ```sh
+  cargo check -p glass-lint-core --examples
+  ```
+
+- [ ] Restrict current-code matches for removed authoring terms to intentional
+  historical documents:
+
+  ```sh
+  rg 'CallMatcher|MatcherDecl|MatcherDeclBuilder|QueryClause|QueryPlan|\.matcher\(|\.object_flow\(' \
+    --glob '*.rs' --glob '*.md'
+  ```
+
+## 8. Reconcile `q-plan.md`
+
+After Packages 1 through 7 are complete, make the original plan a truthful
+completion record.
+
+- [ ] Replace the historical Phase 0 inventory with links to the corrected
+  capability matrix, exact baselines, execution owners, and flow-join tests.
+- [ ] Rewrite Phase 2 around final `QueryDecl` ownership; remove statements that
+  `MatcherDecl`, `SubjectSpec`, or a separate `flows` collection still exists.
+- [ ] Describe the actual Phase 3 binding/reference grammar and supported
+  variable types.
+- [ ] Describe only validation errors that the compiler can produce and name
+  the tests for each.
+- [ ] Check Phase 5 filter merging and contradiction tasks only after evidence
+  projection and lifecycle canonicalization are complete.
+- [ ] Name the Phase 6 reference-oracle tests without unstable exact test counts.
+- [ ] Update Phases 8 through 11 for prepared arguments, explicit subject
+  correlations, the single lifecycle root path, and retained executable
+  requirements.
+- [ ] Check Phase 12 documentation only after all public examples compile.
+- [ ] Remove obsolete implementation-status prose and exact suite counts.
+- [ ] Leave no unchecked item in Phases 0 through 12 and ensure every checked
+  claim names current implementation or test evidence.
 
 ## Final completion gate
 
-Run all of the following from a clean worktree:
+Run from a clean worktree:
 
 ```sh
+cargo test -p glass-lint-core --test query_composition
+cargo test -p glass-lint-core --test query_baseline
+cargo test -p glass-lint-core api::compiler::validate
+cargo test -p glass-lint-core api::compiler::normalize
+cargo test -p glass-lint-core api::compiler::physical
+cargo test -p glass-lint-core api::compiler::reference
+cargo test -p glass-lint-core analysis::matching::arguments
 cargo check -p glass-lint-core --examples
 make ci
 git status --short
@@ -1660,29 +333,15 @@ git status --short
 
 Completion requires:
 
-- [ ] all focused regression tests passing;
-- [ ] the physical/logical equivalence oracle passing;
-- [ ] all e2e, project, JavaScript, and Obsidian fixtures passing;
-- [ ] public examples compiling;
-- [ ] no old query or lifecycle authoring path outside historical documentation;
-- [ ] no unchecked item in `q-plan.md` through Phase 12;
-- [ ] deterministic baseline reports and operation counts unchanged or explicitly
-  reviewed; and
-- [ ] no unrelated or generated worktree changes.
-
-## Recommended commit sequence
-
-Keep each commit buildable and avoid compatibility layers:
-
-- [ ] 1. Add failing public composition and invalid-input tests.
-- [ ] 2. Add the capability matrix and deterministic baselines.
-- [ ] 3. Make declaration construction fallible and fields private.
-- [ ] 4. Implement scope-aware bindings, typed validation, and evidence projection.
-- [ ] 5. Complete normalization, filter merging, and contradiction detection.
-- [x] 6. Repair physical composition and add the test-only equivalence oracle.
-- [x] 7. Group and cache argument/value constraints.
-- [x] 8. Make returned and instance correlation explicit.
-- [ ] 9. Migrate lifecycle rules to `QueryDecl` and delete the parallel flow path.
-- [x] 10. Make project requirements drive preparation and operation charging.
-- [ ] 11. Update compilable public examples and architecture documentation.
-- [ ] 12. Reconcile `q-plan.md` and run the final completion gate.
+- [ ] malformed public authoring input is rejected early without panic,
+  truncation, silent ignore, or unbounded allocation;
+- [ ] normalized correlations and requirements contain enough information to
+  justify every selected physical operator and runtime preparation;
+- [ ] exact baselines and the logical/physical oracle pass;
+- [ ] public examples compile and current documentation shows one authoring
+  path;
+- [ ] no obsolete authoring or lifecycle storage path remains outside
+  intentional historical documentation;
+- [ ] `q-plan.md` has no unchecked or false claim through Phase 12;
+- [ ] e2e, project, JavaScript, and Obsidian fixtures pass; and
+- [ ] the final worktree contains no unrelated or generated changes.
