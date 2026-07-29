@@ -24,7 +24,7 @@
 
 use crate::api::rule::query::{
     EmissionDecl, EventQuery, EventSpec, IdentitySpec, LifecycleQuery, QueryDecl, QueryExpr,
-    QueryExprKind, QueryPredicate, SubjectSpec, VarId, VarType, limits,
+    QueryExprKind, QueryPredicate, VarId, VarType, limits,
 };
 
 // ── Error type ───────────────────────────────────────────────────────────
@@ -247,58 +247,28 @@ fn is_direct_dimension_valid(identity: &IdentitySpec, event: &EventSpec) -> bool
 
 /// Check that the subject identity is consistent with the event's identity.
 ///
-/// For [`SubjectSpec::Direct`], the event's identity member chain must match
-/// the identity's path for heuristic and rooted members. For
-/// [`SubjectSpec::ReturnedFrom`] and [`SubjectSpec::InstanceOf`], the
-/// identity is the producer/constructor and is always consistent — the
-/// duplicate-field check was removed in Phase 9.
-fn is_subject_identity_consistent(
-    identity: &IdentitySpec,
-    event: &EventSpec,
-    subject: SubjectSpec,
-) -> bool {
-    match subject {
-        SubjectSpec::Direct => match (identity, event) {
-            (
-                IdentitySpec::Heuristic { name },
-                EventSpec::MemberCall { member } | EventSpec::MemberRead { member },
-            ) => member.eq_chain(name),
-            (
-                IdentitySpec::Rooted { path },
-                EventSpec::MemberCall { member } | EventSpec::MemberRead { member },
-            ) => *path == *member,
-            _ => true,
-        },
-        SubjectSpec::ReturnedFrom | SubjectSpec::InstanceOf => true,
+/// For direct events, the event's identity member chain must match the
+/// identity's path for heuristic and rooted members.
+fn is_subject_identity_consistent(identity: &IdentitySpec, event: &EventSpec) -> bool {
+    match (identity, event) {
+        (
+            IdentitySpec::Heuristic { name },
+            EventSpec::MemberCall { member } | EventSpec::MemberRead { member },
+        ) => member.eq_chain(name),
+        (
+            IdentitySpec::Rooted { path },
+            EventSpec::MemberCall { member } | EventSpec::MemberRead { member },
+        ) => *path == *member,
+        _ => true,
     }
 }
 
-/// Top-level dimension check: is this (identity, event, subject) valid?
-fn is_valid_identity_event_subject(
-    identity: &IdentitySpec,
-    event: &EventSpec,
-    subject: SubjectSpec,
-) -> bool {
-    if !is_subject_identity_consistent(identity, event, subject) {
+/// Top-level dimension check: is this (identity, event) valid?
+fn is_valid_identity_event_pair(identity: &IdentitySpec, event: &EventSpec) -> bool {
+    if !is_subject_identity_consistent(identity, event) {
         return false;
     }
-    match subject {
-        SubjectSpec::Direct => is_direct_dimension_valid(identity, event),
-        SubjectSpec::ReturnedFrom => matches!(
-            (identity, event),
-            (
-                IdentitySpec::Rooted { .. },
-                EventSpec::MemberCall { .. } | EventSpec::MemberRead { .. }
-            )
-        ),
-        SubjectSpec::InstanceOf => matches!(
-            (identity, event),
-            (
-                IdentitySpec::ModuleExport { .. } | IdentitySpec::PackageModuleExport { .. },
-                EventSpec::MemberCall { .. }
-            )
-        ),
-    }
+    is_direct_dimension_valid(identity, event)
 }
 
 /// Check if an identity name or pattern is empty.
@@ -444,19 +414,19 @@ fn pass_well_formedness_inner(expr: &QueryExpr) -> Result<(), QueryCompileError>
 }
 
 fn validate_event_query(eq: &EventQuery) -> Result<(), QueryCompileError> {
-    if !is_valid_identity_event_subject(eq.identity(), eq.event(), eq.subject()) {
+    if !is_valid_identity_event_pair(eq.identity(), eq.event()) {
         return Err(QueryCompileError::InvalidEventPredicate {
             identity: eq.identity().diagnostic_name().to_owned(),
             event: eq.event().diagnostic_name().to_owned(),
-            subject: eq.subject().diagnostic_name().to_owned(),
-            detail: "identity/event/subject combination cannot select a semantic fact",
+            subject: "direct".to_string(),
+            detail: "identity/event combination cannot select a semantic fact",
         });
     }
     if is_identity_empty(eq.identity()) {
         return Err(QueryCompileError::InvalidEventPredicate {
             identity: eq.identity().diagnostic_name().to_owned(),
             event: eq.event().diagnostic_name().to_owned(),
-            subject: eq.subject().diagnostic_name().to_owned(),
+            subject: "direct".to_string(),
             detail: "identity name or pattern is empty",
         });
     }
@@ -464,7 +434,7 @@ fn validate_event_query(eq: &EventQuery) -> Result<(), QueryCompileError> {
         return Err(QueryCompileError::InvalidEventPredicate {
             identity: eq.identity().diagnostic_name().to_owned(),
             event: eq.event().diagnostic_name().to_owned(),
-            subject: eq.subject().diagnostic_name().to_owned(),
+            subject: "direct".to_string(),
             detail: "argument constraints require a call-bearing event",
         });
     }
@@ -606,7 +576,7 @@ fn infer_types(
 ) -> Result<(), QueryCompileError> {
     match &expr.kind {
         QueryExprKind::Event(eq) => {
-            let ty = var_type_for_event(eq.event(), eq.identity(), eq.subject());
+            let ty = var_type_for_event(eq.event(), eq.identity());
             set_type(eq.var(), ty, types)?;
         }
         QueryExprKind::SelectEvent(s) => {
@@ -674,7 +644,7 @@ fn infer_types(
         }
         QueryExprKind::Lifecycle(lc) => {
             for src in lc.sources() {
-                let ty = var_type_for_event(src.event(), src.identity(), src.subject());
+                let ty = var_type_for_event(src.event(), src.identity());
                 set_type(src.var(), ty, types)?;
             }
         }
@@ -748,11 +718,7 @@ fn is_more_specific(candidate: VarType, existing: VarType) -> bool {
     )
 }
 
-fn var_type_for_event(
-    event: &EventSpec,
-    _identity: &IdentitySpec,
-    _subject: SubjectSpec,
-) -> VarType {
+fn var_type_for_event(event: &EventSpec, _identity: &IdentitySpec) -> VarType {
     match event {
         EventSpec::Call | EventSpec::Construct => VarType::CallEvent,
         EventSpec::MemberCall { .. } | EventSpec::MemberRead { .. } => VarType::MemberEvent,
@@ -1283,7 +1249,7 @@ mod tests {
             identity: IdentitySpec::Heuristic {
                 name: SmolStr::new("foo.bar"),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![],
         };
         let decl = QueryDecl {
@@ -1309,7 +1275,7 @@ mod tests {
             identity: IdentitySpec::Heuristic {
                 name: SmolStr::new("foo"),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![],
         };
         let decl = QueryDecl {
@@ -1326,7 +1292,7 @@ mod tests {
                 identity: "heuristic".into(),
                 event: "member_call".into(),
                 subject: "direct".into(),
-                detail: "identity/event/subject combination cannot select a semantic fact",
+                detail: "identity/event combination cannot select a semantic fact",
             })
         );
     }
@@ -1339,7 +1305,7 @@ mod tests {
             identity: IdentitySpec::LiteralString {
                 predicate: "node:fs".into(),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ValueMatcher::static_string(),
@@ -1372,7 +1338,7 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new(""),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![],
         };
         let decl = QueryDecl {
@@ -1404,7 +1370,7 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("fetch"),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![],
         });
         let b = QueryExpr::event(EventQuery {
@@ -1413,7 +1379,7 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("fetch"),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![],
         });
         let decl = QueryDecl {
@@ -1438,7 +1404,7 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("fetch"),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![],
         });
         let b = QueryExpr::event(EventQuery {
@@ -1447,7 +1413,7 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("navigate"),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![],
         });
         // Even in a multi-branch All, different vars are fine.
@@ -1472,7 +1438,7 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("fetch"),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![],
         };
         let decl = QueryDecl {
@@ -1499,7 +1465,7 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("fetch"),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![],
         };
         let decl = QueryDecl {
@@ -1523,7 +1489,7 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("fetch"),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![],
         });
         let b = QueryExpr::event(EventQuery {
@@ -1532,7 +1498,7 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("navigate"),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![],
         });
         let decl = QueryDecl {
@@ -1557,7 +1523,7 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("fetch"),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![],
         });
         let b = QueryExpr::event(EventQuery {
@@ -1566,7 +1532,7 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("navigate"),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![],
         });
         let decl = QueryDecl {
@@ -1588,7 +1554,7 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("fetch"),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![],
         });
         let decl = QueryDecl {
@@ -1612,7 +1578,7 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("fetch"),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![],
         };
         let decl = QueryDecl {
@@ -1636,7 +1602,7 @@ mod tests {
                     identity: IdentitySpec::Global {
                         name: SmolStr::new(format!("f{i}")),
                     },
-                    subject: SubjectSpec::Direct,
+
                     constraints: vec![],
                 })
             })
@@ -1670,7 +1636,7 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("fetch"),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![],
         };
         let lc = LifecycleQuery {
@@ -1711,7 +1677,7 @@ mod tests {
             identity: IdentitySpec::ModuleNamespace {
                 module: SmolStr::new("mod"),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![],
         };
         let lc = LifecycleQuery {
@@ -1751,7 +1717,7 @@ mod tests {
             identity: IdentitySpec::Rooted {
                 path: SymbolPath::from("document.createElement"),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![],
         };
         let lc = LifecycleQuery {
@@ -1961,7 +1927,7 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("fetch"),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![],
         };
         let decl = QueryDecl {
@@ -1988,7 +1954,7 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("fs"),
             },
-            subject: SubjectSpec::Direct,
+
             constraints: vec![],
         };
         let decl = QueryDecl {
@@ -2007,7 +1973,7 @@ mod tests {
                 identity: "global".into(),
                 event: "import".into(),
                 subject: "direct".into(),
-                detail: "identity/event/subject combination cannot select a semantic fact",
+                detail: "identity/event combination cannot select a semantic fact",
             })
         );
     }

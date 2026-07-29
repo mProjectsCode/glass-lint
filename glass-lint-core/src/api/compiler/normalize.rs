@@ -7,7 +7,7 @@ use crate::api::{
         ArgumentConstraint,
         query::{
             AllExpr, AnyExpr, EmissionDecl, EventQuery, EventSpec, IdentitySpec, LifecycleQuery,
-            QueryDecl, QueryExpr, QueryExprKind, QueryPredicate, SubjectSpec, VarId,
+            QueryDecl, QueryExpr, QueryExprKind, QueryPredicate, VarId,
         },
     },
 };
@@ -557,7 +557,12 @@ fn normalize_all_root(
 }
 
 /// Find a variable bound as an event by the first branch that also
-/// appears in every other branch.
+/// appears in every other branch (directly referenced or correlated).
+///
+/// `ReturnedObject` and `ConstructedObject` predicates only bind new
+/// object variables; they do not reference the event variable.  The
+/// correlation is via a separate `MemberSubject` predicate.  These
+/// binding-only predicates are accepted as not breaking the chain.
 fn find_common_event_var(branches: &[QueryExpr]) -> Option<VarId> {
     if branches.is_empty() {
         return None;
@@ -565,11 +570,16 @@ fn find_common_event_var(branches: &[QueryExpr]) -> Option<VarId> {
     // Collect binding vars from the first branch.
     let first_bindings = collect_binding_vars(&branches[0]);
     for var in &first_bindings {
-        if branches
-            .iter()
-            .skip(1)
-            .all(|b| expr_references_var(b, *var))
-        {
+        if branches.iter().skip(1).all(|b| {
+            expr_references_var(b, *var)
+                || matches!(
+                    &b.kind,
+                    QueryExprKind::Require(
+                        QueryPredicate::ReturnedObject { .. }
+                            | QueryPredicate::ConstructedObject { .. }
+                    )
+                )
+        }) {
             return Some(*var);
         }
     }
@@ -638,13 +648,13 @@ fn merge_same_event(
 ) -> Result<NormalizedRoot, QueryCompileError> {
     let mut event_spec: Option<EventSpec> = None;
     let mut identity_spec: Option<IdentitySpec> = None;
-    let mut subject = SubjectSpec::Direct;
+    let mut subject = NormalizedSubject::Direct;
     let mut constraints: Vec<ArgumentConstraint> = Vec::new();
 
     for branch in &all.branches {
         match &branch.kind {
             QueryExprKind::Event(eq) => {
-                merge_event_fields(&mut event_spec, &mut identity_spec, &mut subject, eq)?;
+                merge_event_fields(&mut event_spec, &mut identity_spec, eq)?;
                 constraints.extend(eq.constraints.iter().cloned());
             }
             QueryExprKind::SelectEvent(_) => {
@@ -661,10 +671,10 @@ fn merge_same_event(
                     constraints.push(ArgumentConstraint::new(*index, matcher.clone()));
                 }
                 QueryPredicate::ReturnedObject { .. } => {
-                    merge_subject_relation(&mut subject, SubjectSpec::ReturnedFrom)?;
+                    merge_subject_relation(&mut subject, NormalizedSubject::Returned)?;
                 }
                 QueryPredicate::ConstructedObject { .. } => {
-                    merge_subject_relation(&mut subject, SubjectSpec::InstanceOf)?;
+                    merge_subject_relation(&mut subject, NormalizedSubject::Instance)?;
                 }
                 QueryPredicate::MemberSubject { .. } => {}
             },
@@ -694,16 +704,15 @@ fn merge_same_event(
     constraints.dedup();
 
     // Detect contradictions on the merged event.
-    detect_event_contradictions(event_var, &event, &identity, subject, &constraints)?;
+    detect_event_contradictions(event_var, &event, &identity, &subject, &constraints)?;
 
     let slot = var_to_slot(event_var);
-    let norm_subject = normalize_subject(subject);
 
     Ok(NormalizedRoot::Event(NormalizedEvent {
         slot,
         event,
         identity,
-        subject: norm_subject,
+        subject,
         arguments: constraints.into_boxed_slice(),
     }))
 }
@@ -712,23 +721,13 @@ fn var_to_slot(var: VarId) -> u32 {
     var.get()
 }
 
-fn normalize_subject(subject: SubjectSpec) -> NormalizedSubject {
-    match subject {
-        SubjectSpec::Direct => NormalizedSubject::Direct,
-        SubjectSpec::ReturnedFrom => NormalizedSubject::Returned,
-        SubjectSpec::InstanceOf => NormalizedSubject::Instance,
-    }
-}
-
 fn merge_event_fields(
     event_spec: &mut Option<EventSpec>,
     identity_spec: &mut Option<IdentitySpec>,
-    subject: &mut SubjectSpec,
     eq: &EventQuery,
 ) -> Result<(), QueryCompileError> {
     merge_event_kind(event_spec, eq.event.clone())?;
     merge_identity(identity_spec, eq.identity.clone())?;
-    merge_subject_relation(subject, eq.subject)?;
     Ok(())
 }
 
@@ -769,16 +768,16 @@ fn merge_identity(
 }
 
 fn merge_subject_relation(
-    target: &mut SubjectSpec,
-    candidate: SubjectSpec,
+    target: &mut NormalizedSubject,
+    candidate: NormalizedSubject,
 ) -> Result<(), QueryCompileError> {
-    if *target != SubjectSpec::Direct && *target != candidate {
+    if *target != NormalizedSubject::Direct && *target != candidate {
         return Err(QueryCompileError::ContradictoryPredicate {
             variable: VarId::new(0),
             detail: ContradictionKind::SubjectRelation,
         });
     }
-    if candidate != SubjectSpec::Direct {
+    if candidate != NormalizedSubject::Direct {
         *target = candidate;
     }
     Ok(())
@@ -790,7 +789,7 @@ fn detect_event_contradictions(
     var: VarId,
     event: &EventSpec,
     identity: &IdentitySpec,
-    subject: SubjectSpec,
+    subject: &NormalizedSubject,
     constraints: &[ArgumentConstraint],
 ) -> Result<(), QueryCompileError> {
     check_dimension_contradictions(var, event, identity, subject)?;
@@ -802,9 +801,9 @@ fn check_dimension_contradictions(
     var: VarId,
     event: &EventSpec,
     identity: &IdentitySpec,
-    subject: SubjectSpec,
+    subject: &NormalizedSubject,
 ) -> Result<(), QueryCompileError> {
-    if subject != SubjectSpec::Direct {
+    if *subject != NormalizedSubject::Direct {
         return Ok(());
     }
     let valid = match event {
@@ -1010,13 +1009,14 @@ fn normalize_event_from_query(
     });
     args.dedup();
 
-    detect_event_contradictions(eq.var, &eq.event, &eq.identity, eq.subject, &args)?;
+    let subject = NormalizedSubject::Direct;
+    detect_event_contradictions(eq.var, &eq.event, &eq.identity, &subject, &args)?;
 
     Ok(NormalizedEvent {
         slot: eq.var.get(),
         event: eq.event.clone(),
         identity: eq.identity.clone(),
-        subject: normalize_subject(eq.subject),
+        subject,
         arguments: args.into_boxed_slice(),
     })
 }
@@ -1145,7 +1145,6 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new(name),
             },
-            subject: SubjectSpec::Direct,
             constraints: vec![],
         })
     }
@@ -1184,7 +1183,6 @@ mod tests {
             identity: IdentitySpec::Rooted {
                 path: SymbolPath::from("document.createElement"),
             },
-            subject: SubjectSpec::Direct,
             constraints: vec![],
         };
         let lc = LifecycleQuery::new(
@@ -1371,7 +1369,6 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("fetch"),
             },
-            subject: SubjectSpec::Direct,
             constraints: vec![],
         });
         let b = QueryExpr::event(EventQuery {
@@ -1380,7 +1377,6 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("URL"),
             },
-            subject: SubjectSpec::Direct,
             constraints: vec![],
         });
         let all = AllExpr::new(vec![a, b]).unwrap();
@@ -1406,7 +1402,6 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("fetch"),
             },
-            subject: SubjectSpec::Direct,
             constraints: vec![],
         });
         let b = QueryExpr::event(EventQuery {
@@ -1415,7 +1410,6 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("navigate"), // different name
             },
-            subject: SubjectSpec::Direct,
             constraints: vec![],
         });
         let all = AllExpr::new(vec![a, b]).unwrap();
@@ -1451,7 +1445,6 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("fetch"),
             },
-            subject: SubjectSpec::Direct,
             constraints: vec![],
         });
         let b = QueryExpr::event(EventQuery {
@@ -1462,7 +1455,6 @@ mod tests {
             identity: IdentitySpec::Rooted {
                 path: SymbolPath::from("doc.createElement"),
             },
-            subject: SubjectSpec::Direct,
             constraints: vec![],
         });
         let all = AllExpr::new(vec![a, b]).unwrap();
@@ -1528,7 +1520,6 @@ mod tests {
             identity: IdentitySpec::Rooted {
                 path: SymbolPath::from("document.createElement"),
             },
-            subject: SubjectSpec::Direct,
             constraints: vec![],
         };
         let lc = LifecycleQuery::new(
@@ -1872,7 +1863,6 @@ mod tests {
             identity: IdentitySpec::Rooted {
                 path: SymbolPath::from("document.createElement"),
             },
-            subject: SubjectSpec::Direct,
             constraints: vec![],
         };
         let source_b = EventQuery {
@@ -1883,7 +1873,6 @@ mod tests {
             identity: IdentitySpec::Rooted {
                 path: SymbolPath::from("doc.createElement"),
             },
-            subject: SubjectSpec::Direct,
             constraints: vec![],
         };
 

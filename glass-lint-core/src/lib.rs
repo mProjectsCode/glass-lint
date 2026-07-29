@@ -39,7 +39,7 @@ pub mod rules {
             EventRequirement, EventSpec, FlowCompletion, FlowCondition, FlowSinkMatcher,
             IdentitySpec, IntoQueryDecl, LifecycleQuery, ObjectEventMatcher, ObjectFlowMatcher,
             ObjectSourceMatcher, QueryBuildError, QueryDecl, QueryExpr, Rule, RuleBuildError,
-            RuleBuilder as Builder, Severity, SubjectSpec, ValueMatcher, VarId,
+            RuleBuilder as Builder, Severity, ValueMatcher, VarId,
         },
     };
 }

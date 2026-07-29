@@ -1159,13 +1159,13 @@ Both constructors return `Result<QueryDecl, QueryBuildError>`. Lower them into
 the exact `ReturnedObject`/`ConstructedObject` plus `MemberSubject` predicates
 defined in Package 3. The lowered form contains:
 
-- [ ] producer/constructor identity;
-- [ ] producer/constructor event role;
-- [ ] object correlation variable/key;
-- [ ] primary member event;
-- [ ] member path;
-- [ ] local/project scope; and
-- [ ] primary/support evidence projection.
+- [x] producer/constructor identity;
+- [x] producer/constructor event role;
+- [x] object correlation variable/key;
+- [x] primary member event;
+- [x] member path;
+- [x] local/project scope; and
+- [x] primary/support evidence projection.
 
 Do not encode the entire relation as an unexplained `SubjectSpec` flag plus an
 identity field.
@@ -1177,36 +1177,36 @@ relations above.
 
 ### Physical planning
 
-- [ ] Use returned-member indexes when they already carry the required correlation.
-- [ ] Use instance-member indexes for strict constructed-instance identity.
-- [ ] Reject a returned/instance shape the existing correlated indexes cannot
+- [x] Use returned-member indexes when they already carry the required correlation.
+- [x] Use instance-member indexes for strict constructed-instance identity.
+- [x] Reject a returned/instance shape the existing correlated indexes cannot
   express. Do not add a general join as part of this remediation.
-- [ ] Keep the member occurrence as primary evidence.
-- [ ] Retain producer/constructor evidence only when the evidence contract asks for
+- [x] Keep the member occurrence as primary evidence.
+- [x] Retain producer/constructor evidence only when the evidence contract asks for
   it.
-- [ ] Preserve exact module and package-boundary semantics.
+- [x] Preserve exact module and package-boundary semantics.
 
 ### Required tests
 
 Retain all Phase 9 cases and add compiler-shape tests proving the correlation:
 
-- [ ] direct and aliased returned object;
-- [ ] reassigned returned alias;
-- [ ] disconnected same-name object;
-- [ ] direct and aliased constructed instance;
-- [ ] wrong constructor module;
-- [ ] static method lookalike;
-- [ ] supported/unsupported subclass behavior;
-- [ ] supported/unsupported chained constructor behavior;
-- [ ] producer and member on incompatible branches;
-- [ ] ambiguous project identity; and
-- [ ] deterministic primary/support evidence order.
+- [x] direct and aliased returned object;
+- [x] reassigned returned alias;
+- [x] disconnected same-name object;
+- [x] direct and aliased constructed instance;
+- [x] wrong constructor module;
+- [x] static method lookalike;
+- [x] supported/unsupported subclass behavior;
+- [x] supported/unsupported chained constructor behavior;
+- [x] producer and member on incompatible branches;
+- [x] ambiguous project identity; and
+- [x] deterministic primary/support evidence order.
 
 ### Exit criteria
 
-- [ ] Subject correlation is explicit in normalized logical form.
-- [ ] Physical returned/instance scans are selected from that logical relation.
-- [ ] No identity is duplicated merely to satisfy an old record layout.
+- [x] Subject correlation is explicit in normalized logical form.
+- [x] Physical returned/instance scans are selected from that logical relation.
+- [x] No identity is duplicated merely to satisfy an old record layout.
 
 ---
 
@@ -1681,7 +1681,7 @@ Keep each commit buildable and avoid compatibility layers:
 - [ ] 5. Complete normalization, filter merging, and contradiction detection.
 - [x] 6. Repair physical composition and add the test-only equivalence oracle.
 - [x] 7. Group and cache argument/value constraints.
-- [ ] 8. Make returned and instance correlation explicit.
+- [x] 8. Make returned and instance correlation explicit.
 - [ ] 9. Migrate lifecycle rules to `QueryDecl` and delete the parallel flow path.
 - [ ] 10. Make project requirements drive preparation and operation charging.
 - [ ] 11. Update compilable public examples and architecture documentation.

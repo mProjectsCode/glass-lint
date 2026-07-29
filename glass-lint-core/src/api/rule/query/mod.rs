@@ -117,31 +117,6 @@ impl EventSpec {
     }
 }
 
-/// Declaration-owned subject relationship.
-///
-/// The identity for the producer (returned-from) or constructor (instance-of)
-/// lives in [`EventQuery::identity`] — it is not duplicated here.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub enum SubjectSpec {
-    /// The event is directly on the identity.
-    Direct,
-    /// The event is on an object returned from a producer.
-    ReturnedFrom,
-    /// The event is on an instance created by a constructor.
-    InstanceOf,
-}
-
-impl SubjectSpec {
-    /// Stable diagnostic name for this subject relationship.
-    pub fn diagnostic_name(self) -> &'static str {
-        match self {
-            Self::Direct => "direct",
-            Self::ReturnedFrom => "returned_from",
-            Self::InstanceOf => "instance_of",
-        }
-    }
-}
-
 // ── Typed logical query algebra ───────────────────────────────────────
 
 /// Dense compiler variable ID assigned during query construction.
@@ -225,11 +200,11 @@ pub(crate) enum QueryPredicate {
     },
 }
 
-/// A single event selection with identity, subject, and argument constraints.
+/// A single event selection with identity and argument constraints.
 ///
 /// This is a leaf predicate — it selects an event occurrence and optionally
-/// constrains its identity, subject relationship, and arguments. Evidence
-/// metadata is not stored here; it lives in the owning [`EmissionDecl`].
+/// constrains its identity and arguments. Evidence metadata is not stored
+/// here; it lives in the owning [`EmissionDecl`].
 ///
 /// Construct instances through the typed combinator methods such as
 /// [`EventQuery::call_global`], [`EventQuery::member_call_rooted`], etc.
@@ -243,8 +218,6 @@ pub struct EventQuery {
     pub(crate) event: EventSpec,
     /// Identity specification (global, rooted, module, etc.).
     pub(crate) identity: IdentitySpec,
-    /// Subject relationship (direct, returned-from, instance-of).
-    pub(crate) subject: SubjectSpec,
     /// Argument value constraints (empty for non-call events).
     pub(crate) constraints: Vec<ArgumentConstraint>,
 }
@@ -260,10 +233,6 @@ impl EventQuery {
 
     pub fn identity(&self) -> &IdentitySpec {
         &self.identity
-    }
-
-    pub fn subject(&self) -> SubjectSpec {
-        self.subject
     }
 
     pub fn constraints(&self) -> &[ArgumentConstraint] {
@@ -299,28 +268,18 @@ fn evidence_kind_for_event(event: &EventSpec) -> MatchKind {
 
 #[allow(clippy::cast_possible_truncation)]
 impl EventQuery {
-    fn new(var: VarId, event: EventSpec, identity: IdentitySpec, subject: SubjectSpec) -> Self {
-        Self {
-            var,
-            event,
-            identity,
-            subject,
-            constraints: Vec::new(),
-        }
-    }
-
     /// Global call, e.g. `fetch(...)`.
     pub fn call_global(name: impl Into<String>) -> Result<Self, QueryBuildError> {
         let name: SmolStr = name.into().into();
         if name.trim().is_empty() {
             return Err(QueryBuildError::EmptyIdentityName);
         }
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::Call,
-            IdentitySpec::Global { name },
-            SubjectSpec::Direct,
-        ))
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::Call,
+            identity: IdentitySpec::Global { name },
+            constraints: Vec::new(),
+        })
     }
 
     /// Heuristic spelling call.
@@ -329,12 +288,12 @@ impl EventQuery {
         if name.trim().is_empty() {
             return Err(QueryBuildError::EmptyIdentityName);
         }
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::Call,
-            IdentitySpec::Heuristic { name },
-            SubjectSpec::Direct,
-        ))
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::Call,
+            identity: IdentitySpec::Heuristic { name },
+            constraints: Vec::new(),
+        })
     }
 
     /// Module-export call.
@@ -350,12 +309,12 @@ impl EventQuery {
         if export.trim().is_empty() {
             return Err(QueryBuildError::EmptyIdentityName);
         }
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::Call,
-            IdentitySpec::ModuleExport { module, export },
-            SubjectSpec::Direct,
-        ))
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::Call,
+            identity: IdentitySpec::ModuleExport { module, export },
+            constraints: Vec::new(),
+        })
     }
 
     /// Package module export call.
@@ -366,12 +325,12 @@ impl EventQuery {
         let export: SmolStr = export.into().into();
         let module = ModuleSpecifierPattern::package(module)
             .map_err(|_| QueryBuildError::InvalidScopePackage)?;
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::Call,
-            IdentitySpec::PackageModuleExport { module, export },
-            SubjectSpec::Direct,
-        ))
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::Call,
+            identity: IdentitySpec::PackageModuleExport { module, export },
+            constraints: Vec::new(),
+        })
     }
 
     /// Rooted member call, e.g. `document.createElement(...)`.
@@ -381,14 +340,14 @@ impl EventQuery {
             return Err(QueryBuildError::MalformedChain(chain_str));
         }
         let path = SymbolPath::from(chain_str.as_str());
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::MemberCall {
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::MemberCall {
                 member: path.clone(),
             },
-            IdentitySpec::Rooted { path },
-            SubjectSpec::Direct,
-        ))
+            identity: IdentitySpec::Rooted { path },
+            constraints: Vec::new(),
+        })
     }
 
     /// Heuristic member call.
@@ -398,14 +357,14 @@ impl EventQuery {
             return Err(QueryBuildError::MalformedChain(chain_str));
         }
         let path = SymbolPath::from(chain_str.as_str());
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::MemberCall { member: path },
-            IdentitySpec::Heuristic {
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::MemberCall { member: path },
+            identity: IdentitySpec::Heuristic {
                 name: chain_str.into(),
             },
-            SubjectSpec::Direct,
-        ))
+            constraints: Vec::new(),
+        })
     }
 
     /// Module-namespace member call.
@@ -422,40 +381,12 @@ impl EventQuery {
             return Err(QueryBuildError::MalformedChain(member_str));
         }
         let path = SymbolPath::from(member_str.as_str());
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::MemberCall { member: path },
-            IdentitySpec::ModuleNamespace { module },
-            SubjectSpec::Direct,
-        ))
-    }
-
-    /// Member call on an instance created by a module export.
-    pub fn member_call_instance(
-        module: impl Into<String>,
-        export: impl Into<String>,
-        member: impl Into<String>,
-    ) -> Result<Self, QueryBuildError> {
-        let module: SmolStr = module.into().into();
-        let export: SmolStr = export.into().into();
-        let member_str: String = member.into();
-        if module.trim().is_empty() {
-            return Err(QueryBuildError::EmptyModuleSpecifier);
-        }
-        if export.trim().is_empty() {
-            return Err(QueryBuildError::EmptyIdentityName);
-        }
-        if is_chain_malformed(&member_str) {
-            return Err(QueryBuildError::MalformedChain(member_str));
-        }
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::MemberCall {
-                member: SymbolPath::from(member_str.as_str()),
-            },
-            IdentitySpec::ModuleExport { module, export },
-            SubjectSpec::InstanceOf,
-        ))
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::MemberCall { member: path },
+            identity: IdentitySpec::ModuleNamespace { module },
+            constraints: Vec::new(),
+        })
     }
 
     /// Package module namespace member call.
@@ -470,35 +401,12 @@ impl EventQuery {
         let path = SymbolPath::from(member_str.as_str());
         let module = ModuleSpecifierPattern::package(module)
             .map_err(|_| QueryBuildError::InvalidScopePackage)?;
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::MemberCall { member: path },
-            IdentitySpec::PackageModuleNamespace { module },
-            SubjectSpec::Direct,
-        ))
-    }
-
-    /// Member call on an object returned by a rooted source.
-    pub fn member_call_returned(
-        source: impl Into<String>,
-        member: impl Into<String>,
-    ) -> Result<Self, QueryBuildError> {
-        let source = source.into();
-        let member: SmolStr = member.into().into();
-        let member_str = member.to_string();
-        if is_chain_malformed(&source) || is_chain_malformed(&member_str) {
-            return Err(QueryBuildError::MalformedChain(source));
-        }
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::MemberCall {
-                member: SymbolPath::from(member_str.as_str()),
-            },
-            IdentitySpec::Rooted {
-                path: SymbolPath::from(source.as_str()),
-            },
-            SubjectSpec::ReturnedFrom,
-        ))
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::MemberCall { member: path },
+            identity: IdentitySpec::PackageModuleNamespace { module },
+            constraints: Vec::new(),
+        })
     }
 
     /// Rooted member read.
@@ -508,14 +416,14 @@ impl EventQuery {
             return Err(QueryBuildError::MalformedChain(chain_str));
         }
         let path = SymbolPath::from(chain_str.as_str());
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::MemberRead {
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::MemberRead {
                 member: path.clone(),
             },
-            IdentitySpec::Rooted { path },
-            SubjectSpec::Direct,
-        ))
+            identity: IdentitySpec::Rooted { path },
+            constraints: Vec::new(),
+        })
     }
 
     /// Module-namespace member read.
@@ -532,34 +440,12 @@ impl EventQuery {
             return Err(QueryBuildError::MalformedChain(member_str));
         }
         let path = SymbolPath::from(member_str.as_str());
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::MemberRead { member: path },
-            IdentitySpec::ModuleNamespace { module },
-            SubjectSpec::Direct,
-        ))
-    }
-
-    /// Member read on an object returned by a rooted source.
-    pub fn member_read_returned(
-        source: impl Into<String>,
-        member: impl Into<String>,
-    ) -> Result<Self, QueryBuildError> {
-        let source = source.into();
-        let member_str: String = member.into();
-        if is_chain_malformed(&source) || is_chain_malformed(&member_str) {
-            return Err(QueryBuildError::MalformedChain(source));
-        }
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::MemberRead {
-                member: SymbolPath::from(member_str.as_str()),
-            },
-            IdentitySpec::Rooted {
-                path: SymbolPath::from(source.as_str()),
-            },
-            SubjectSpec::ReturnedFrom,
-        ))
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::MemberRead { member: path },
+            identity: IdentitySpec::ModuleNamespace { module },
+            constraints: Vec::new(),
+        })
     }
 
     /// Package module namespace member read.
@@ -574,12 +460,12 @@ impl EventQuery {
         let path = SymbolPath::from(member_str.as_str());
         let module = ModuleSpecifierPattern::package(module)
             .map_err(|_| QueryBuildError::InvalidScopePackage)?;
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::MemberRead { member: path },
-            IdentitySpec::PackageModuleNamespace { module },
-            SubjectSpec::Direct,
-        ))
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::MemberRead { member: path },
+            identity: IdentitySpec::PackageModuleNamespace { module },
+            constraints: Vec::new(),
+        })
     }
 
     /// Import exact module specifier.
@@ -588,26 +474,26 @@ impl EventQuery {
         if module_str.trim().is_empty() {
             return Err(QueryBuildError::EmptyModuleSpecifier);
         }
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::Import,
-            IdentitySpec::LiteralString {
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::Import,
+            identity: IdentitySpec::LiteralString {
                 predicate: module_str,
             },
-            SubjectSpec::Direct,
-        ))
+            constraints: Vec::new(),
+        })
     }
 
     /// Import package pattern.
     pub fn import_package(module: impl Into<String>) -> Result<Self, QueryBuildError> {
         let pattern = ModuleSpecifierPattern::package(module)
             .map_err(|_| QueryBuildError::InvalidScopePackage)?;
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::Import,
-            IdentitySpec::PackageSpecifier { pattern },
-            SubjectSpec::Direct,
-        ))
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::Import,
+            identity: IdentitySpec::PackageSpecifier { pattern },
+            constraints: Vec::new(),
+        })
     }
 
     /// Static string reference.
@@ -616,14 +502,14 @@ impl EventQuery {
         if value_str.trim().is_empty() {
             return Err(QueryBuildError::EmptyStaticValue);
         }
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::StringReference,
-            IdentitySpec::LiteralString {
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::StringReference,
+            identity: IdentitySpec::LiteralString {
                 predicate: value_str,
             },
-            SubjectSpec::Direct,
-        ))
+            constraints: Vec::new(),
+        })
     }
 
     /// Heuristic class reference.
@@ -632,12 +518,12 @@ impl EventQuery {
         if name.trim().is_empty() {
             return Err(QueryBuildError::EmptyIdentityName);
         }
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::ClassReference,
-            IdentitySpec::Heuristic { name },
-            SubjectSpec::Direct,
-        ))
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::ClassReference,
+            identity: IdentitySpec::Heuristic { name },
+            constraints: Vec::new(),
+        })
     }
 
     /// Module-export class reference.
@@ -653,12 +539,12 @@ impl EventQuery {
         if export.trim().is_empty() {
             return Err(QueryBuildError::EmptyIdentityName);
         }
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::ClassReference,
-            IdentitySpec::ModuleExport { module, export },
-            SubjectSpec::Direct,
-        ))
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::ClassReference,
+            identity: IdentitySpec::ModuleExport { module, export },
+            constraints: Vec::new(),
+        })
     }
 
     /// Global constructor, e.g. `new URL(...)`.
@@ -667,12 +553,12 @@ impl EventQuery {
         if name.trim().is_empty() {
             return Err(QueryBuildError::EmptyIdentityName);
         }
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::Construct,
-            IdentitySpec::Global { name },
-            SubjectSpec::Direct,
-        ))
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::Construct,
+            identity: IdentitySpec::Global { name },
+            constraints: Vec::new(),
+        })
     }
 
     /// Heuristic constructor.
@@ -681,12 +567,12 @@ impl EventQuery {
         if name.trim().is_empty() {
             return Err(QueryBuildError::EmptyIdentityName);
         }
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::Construct,
-            IdentitySpec::Heuristic { name },
-            SubjectSpec::Direct,
-        ))
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::Construct,
+            identity: IdentitySpec::Heuristic { name },
+            constraints: Vec::new(),
+        })
     }
 
     /// Module-export constructor.
@@ -702,12 +588,12 @@ impl EventQuery {
         if export.trim().is_empty() {
             return Err(QueryBuildError::EmptyIdentityName);
         }
-        Ok(Self::new(
-            VarId::new(0),
-            EventSpec::Construct,
-            IdentitySpec::ModuleExport { module, export },
-            SubjectSpec::Direct,
-        ))
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::Construct,
+            identity: IdentitySpec::ModuleExport { module, export },
+            constraints: Vec::new(),
+        })
     }
 
     /// Add an argument predicate.
@@ -876,20 +762,6 @@ impl EventQuery {
             },
         }
     }
-
-    /// Create an `EventQuery` with [`SubjectSpec::ReturnedFrom`] subject.
-    #[must_use]
-    pub fn with_returned_subject(mut self) -> Self {
-        self.subject = SubjectSpec::ReturnedFrom;
-        self
-    }
-
-    /// Create an `EventQuery` with [`SubjectSpec::InstanceOf`] subject.
-    #[must_use]
-    pub fn with_instance_subject(mut self) -> Self {
-        self.subject = SubjectSpec::InstanceOf;
-        self
-    }
 }
 
 /// A typed logical query expression.
@@ -1040,11 +912,10 @@ impl fmt::Display for QueryExpr {
             QueryExprKind::Event(q) => {
                 write!(
                     f,
-                    "select {} {} {} {}",
+                    "select {} {} {}",
                     q.var,
                     q.event.diagnostic_name(),
                     q.identity.diagnostic_name(),
-                    q.subject.diagnostic_name()
                 )
             }
             QueryExprKind::SelectEvent(s) => {
@@ -1383,7 +1254,55 @@ impl QueryDecl {
         export: impl Into<String>,
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::member_call_instance(module, export, member)?.into_query())
+        let module_str: SmolStr = module.into().into();
+        let export_str: SmolStr = export.into().into();
+        let member_str: String = member.into();
+        if module_str.trim().is_empty() {
+            return Err(QueryBuildError::EmptyModuleSpecifier);
+        }
+        if export_str.trim().is_empty() {
+            return Err(QueryBuildError::EmptyIdentityName);
+        }
+        if is_chain_malformed(&member_str) {
+            return Err(QueryBuildError::MalformedChain(member_str));
+        }
+        let event_var = VarId::new(0);
+        let object_var = VarId::new(1);
+        let member_path = SymbolPath::from(member_str.as_str());
+        let symbol = format!("{module_str}.{export_str}");
+        let identity = IdentitySpec::ModuleExport {
+            module: module_str,
+            export: export_str,
+        };
+        let branches = vec![
+            QueryExpr::select_event(event_var),
+            QueryExpr::require(QueryPredicate::EventKind {
+                event: event_var,
+                expected: EventSpec::MemberCall {
+                    member: member_path,
+                },
+            }),
+            QueryExpr::require(QueryPredicate::EventIdentity {
+                event: event_var,
+                expected: identity.clone(),
+            }),
+            QueryExpr::require(QueryPredicate::ConstructedObject {
+                bind: object_var,
+                identity,
+            }),
+            QueryExpr::require(QueryPredicate::MemberSubject {
+                event: event_var,
+                object: object_var,
+            }),
+        ];
+        Ok(Self {
+            expression: QueryExpr::all(AllExpr { branches }),
+            emission: EmissionDecl {
+                primary_var: event_var,
+                kind: MatchKind::MemberCall,
+                symbol,
+            },
+        })
     }
 
     /// Package module namespace member call.
@@ -1399,7 +1318,45 @@ impl QueryDecl {
         source: impl Into<String>,
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::member_call_returned(source, member)?.into_query())
+        let source_str: String = source.into();
+        let member_str: String = member.into();
+        if is_chain_malformed(&source_str) || is_chain_malformed(&member_str) {
+            return Err(QueryBuildError::MalformedChain(source_str));
+        }
+        let event_var = VarId::new(0);
+        let object_var = VarId::new(1);
+        let source_path = SymbolPath::from(source_str.as_str());
+        let member_path = SymbolPath::from(member_str.as_str());
+        let identity = IdentitySpec::Rooted { path: source_path };
+        let branches = vec![
+            QueryExpr::select_event(event_var),
+            QueryExpr::require(QueryPredicate::EventKind {
+                event: event_var,
+                expected: EventSpec::MemberCall {
+                    member: member_path,
+                },
+            }),
+            QueryExpr::require(QueryPredicate::EventIdentity {
+                event: event_var,
+                expected: identity.clone(),
+            }),
+            QueryExpr::require(QueryPredicate::ReturnedObject {
+                bind: object_var,
+                identity,
+            }),
+            QueryExpr::require(QueryPredicate::MemberSubject {
+                event: event_var,
+                object: object_var,
+            }),
+        ];
+        Ok(Self {
+            expression: QueryExpr::all(AllExpr { branches }),
+            emission: EmissionDecl {
+                primary_var: event_var,
+                kind: MatchKind::MemberCall,
+                symbol: source_str,
+            },
+        })
     }
 
     /// Rooted member read.
@@ -1420,7 +1377,45 @@ impl QueryDecl {
         source: impl Into<String>,
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::member_read_returned(source, member)?.into_query())
+        let source_str: String = source.into();
+        let member_str: String = member.into();
+        if is_chain_malformed(&source_str) || is_chain_malformed(&member_str) {
+            return Err(QueryBuildError::MalformedChain(source_str));
+        }
+        let event_var = VarId::new(0);
+        let object_var = VarId::new(1);
+        let source_path = SymbolPath::from(source_str.as_str());
+        let member_path = SymbolPath::from(member_str.as_str());
+        let identity = IdentitySpec::Rooted { path: source_path };
+        let branches = vec![
+            QueryExpr::select_event(event_var),
+            QueryExpr::require(QueryPredicate::EventKind {
+                event: event_var,
+                expected: EventSpec::MemberRead {
+                    member: member_path,
+                },
+            }),
+            QueryExpr::require(QueryPredicate::EventIdentity {
+                event: event_var,
+                expected: identity.clone(),
+            }),
+            QueryExpr::require(QueryPredicate::ReturnedObject {
+                bind: object_var,
+                identity,
+            }),
+            QueryExpr::require(QueryPredicate::MemberSubject {
+                event: event_var,
+                object: object_var,
+            }),
+        ];
+        Ok(Self {
+            expression: QueryExpr::all(AllExpr { branches }),
+            emission: EmissionDecl {
+                primary_var: event_var,
+                kind: MatchKind::MemberRead,
+                symbol: source_str,
+            },
+        })
     }
 
     /// Package module namespace member read.
@@ -1635,7 +1630,6 @@ impl QueryDecl {
                 identity: IdentitySpec::Rooted {
                     path: SymbolPath::from(src.chain()),
                 },
-                subject: SubjectSpec::Direct,
                 constraints: src.arguments().to_vec(),
             })
             .collect();
@@ -1825,7 +1819,6 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("fetch"),
             },
-            subject: SubjectSpec::Direct,
             constraints: vec![],
         });
         let any = AnyExpr::new(vec![event.clone(), event]).unwrap();
@@ -1840,7 +1833,6 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("fetch"),
             },
-            subject: SubjectSpec::Direct,
             constraints: vec![],
         });
         let all = AllExpr::new(vec![event]).unwrap();
@@ -1854,6 +1846,12 @@ mod tests {
         assert_eq!(decl.emission.primary_var, VarId::new(0));
         assert_eq!(decl.emission.symbol, expected_symbol);
         assert!(matches!(&decl.expression.kind, QueryExprKind::Event(_)));
+    }
+
+    fn assert_any_all_query(decl: Result<QueryDecl, QueryBuildError>, expected_symbol: &str) {
+        let decl = decl.unwrap();
+        assert_eq!(decl.emission.primary_var, VarId::new(0));
+        assert_eq!(decl.emission.symbol, expected_symbol);
     }
 
     #[test]
@@ -1899,7 +1897,7 @@ mod tests {
 
     #[test]
     fn lowers_member_call_instance_to_query_decl() {
-        assert_event_query(
+        assert_any_all_query(
             QueryDecl::member_call_instance("pkg", "Client", "send"),
             "pkg.Client",
         );
@@ -1915,7 +1913,7 @@ mod tests {
 
     #[test]
     fn lowers_member_call_returned_to_query_decl() {
-        assert_event_query(QueryDecl::member_call_returned("create", "send"), "create");
+        assert_any_all_query(QueryDecl::member_call_returned("create", "send"), "create");
     }
 
     #[test]
@@ -1936,7 +1934,7 @@ mod tests {
 
     #[test]
     fn lowers_member_read_returned_to_query_decl() {
-        assert_event_query(QueryDecl::member_read_returned("create", "token"), "create");
+        assert_any_all_query(QueryDecl::member_read_returned("create", "token"), "create");
     }
 
     #[test]
@@ -2036,7 +2034,6 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("fetch"),
             },
-            subject: SubjectSpec::Direct,
             constraints: vec![],
         });
         assert_eq!(event.diagnostic_name(), "event");
@@ -2111,13 +2108,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn subject_spec_diagnostic_names_are_stable() {
-        assert_eq!(SubjectSpec::Direct.diagnostic_name(), "direct");
-        assert_eq!(SubjectSpec::ReturnedFrom.diagnostic_name(), "returned_from");
-        assert_eq!(SubjectSpec::InstanceOf.diagnostic_name(), "instance_of");
-    }
-
     // ── Display and plan summary ──────────────────────────────────
 
     #[test]
@@ -2128,7 +2118,6 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("fetch"),
             },
-            subject: SubjectSpec::Direct,
             constraints: vec![],
         });
         let text = format!("{event}");
@@ -2136,7 +2125,6 @@ mod tests {
         assert!(text.contains("$0"));
         assert!(text.contains("call"));
         assert!(text.contains("global"));
-        assert!(text.contains("direct"));
     }
 
     #[test]
@@ -2147,7 +2135,6 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("fetch"),
             },
-            subject: SubjectSpec::Direct,
             constraints: vec![],
         });
         let any = QueryExpr::any(AnyExpr::new(vec![event]).unwrap());
@@ -2182,7 +2169,6 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("f"),
             },
-            subject: SubjectSpec::Direct,
             constraints: vec![],
         });
         assert_eq!(event.vars(), vec![VarId::new(5)]);
@@ -2196,7 +2182,6 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("f"),
             },
-            subject: SubjectSpec::Direct,
             constraints: vec![],
         });
         let b = QueryExpr::event(EventQuery {
@@ -2205,7 +2190,6 @@ mod tests {
             identity: IdentitySpec::Global {
                 name: SmolStr::new("g"),
             },
-            subject: SubjectSpec::Direct,
             constraints: vec![],
         });
         let any = QueryExpr::any(AnyExpr::new(vec![a, b]).unwrap());

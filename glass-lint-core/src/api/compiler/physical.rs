@@ -285,11 +285,6 @@ fn plan_lifecycle(lc: &NormalizedLifecycle, symbol: &str) -> PhysicalRoot {
             var: crate::api::rule::query::VarId::new(sev.slot()),
             event: sev.event().clone(),
             identity: sev.identity().clone(),
-            subject: match sev.subject() {
-                NormalizedSubject::Direct => crate::api::rule::query::SubjectSpec::Direct,
-                NormalizedSubject::Returned => crate::api::rule::query::SubjectSpec::ReturnedFrom,
-                NormalizedSubject::Instance => crate::api::rule::query::SubjectSpec::InstanceOf,
-            },
             constraints: sev.arguments().to_vec(),
         })
         .collect();
@@ -622,7 +617,7 @@ mod tests {
                 identity: crate::api::rule::query::IdentitySpec::Global {
                     name: "fetch".into(),
                 },
-                subject: crate::api::rule::query::SubjectSpec::Direct,
+
                 constraints: vec![],
             }),
             QueryExpr::event(EventQuery {
@@ -631,7 +626,7 @@ mod tests {
                 identity: crate::api::rule::query::IdentitySpec::Global {
                     name: "navigate".into(),
                 },
-                subject: crate::api::rule::query::SubjectSpec::Direct,
+
                 constraints: vec![],
             }),
         ];

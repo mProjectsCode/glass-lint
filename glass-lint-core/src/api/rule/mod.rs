@@ -20,8 +20,7 @@ pub use matcher::{
 pub use module::ModuleSpecifierPattern;
 pub use query::{
     AllExpr, AnyExpr, EmissionDecl, EventQuery, EventRequirement, EventSpec, IdentitySpec,
-    IntoQueryDecl, LifecycleQuery, QueryBuildError, QueryDecl, QueryDiagnostic, QueryExpr,
-    SubjectSpec, VarId,
+    IntoQueryDecl, LifecycleQuery, QueryBuildError, QueryDecl, QueryDiagnostic, QueryExpr, VarId,
 };
 pub use taxonomy::{Category, Confidence};
 
