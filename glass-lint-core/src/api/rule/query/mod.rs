@@ -717,7 +717,8 @@ impl LifecycleQuery {
                     return Err(QueryBuildError::MissingLifecycleCondition);
                 }
             }
-            crate::api::rule::query::lifecycle::LifecycleCompletionKind::AnySink(sinks) => {
+            crate::api::rule::query::lifecycle::LifecycleCompletionKind::AnySink(sinks)
+            | crate::api::rule::query::lifecycle::LifecycleCompletionKind::AllSinks(sinks) => {
                 if sinks.is_empty() {
                     return Err(QueryBuildError::EmptyLifecycleSinks);
                 }

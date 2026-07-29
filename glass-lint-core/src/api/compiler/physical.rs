@@ -200,6 +200,85 @@ impl PhysicalPlan {
             self.requirements.project_requirements(),
         )
     }
+
+    /// Return a deterministic, human-readable explanation of the executable
+    /// plan. This intentionally describes semantic operators and requirements,
+    /// rather than exposing compiler slots or index implementation details.
+    #[allow(dead_code)]
+    pub(crate) fn explain(&self) -> String {
+        let mut lines = vec![format!("plan {}", self.summary())];
+        lines.push("optimization canonical-root-order,deduplicate-identical-roots".into());
+        for (index, root) in self.roots.iter().enumerate() {
+            lines.push(format!("root[{index}] {}", explain_root(root)));
+        }
+        lines.push(format!(
+            "requirements value_resolution={:?} flow={{local={}, cross_call={}, cross_file={}}} project={:?}",
+            self.requirements.value_resolution(),
+            self.requirements.flow().local,
+            self.requirements.flow().cross_call,
+            self.requirements.flow().cross_file,
+            self.requirements.project_requirements(),
+        ));
+        lines.join("\n")
+    }
+}
+
+/// Apply deterministic, semantics-preserving physical plan optimizations.
+///
+/// Roots are order-independent alternatives, so canonical sorting and exact
+/// deduplication are safe. Evidence-bearing roots are only deduplicated when
+/// their complete descriptors are equal; roots with different evidence remain
+/// separate. This deliberately keeps the unoptimized semantic representation
+/// available to tests while making the production choice explicit.
+pub(crate) fn optimize_roots(mut roots: Vec<PhysicalRoot>) -> Box<[PhysicalRoot]> {
+    roots.sort();
+    roots.dedup();
+    roots.into_boxed_slice()
+}
+
+#[allow(dead_code)]
+fn explain_root(root: &PhysicalRoot) -> String {
+    match root {
+        PhysicalRoot::IndexedScan {
+            identity,
+            event,
+            evidence,
+        } => format!(
+            "indexed event={event:?} identity={identity:?} evidence={:?}:{}",
+            evidence.kind, evidence.symbol
+        ),
+        PhysicalRoot::ConstrainedScan {
+            identity,
+            event,
+            constraints,
+            evidence,
+        } => format!(
+            "constrained event={event:?} identity={identity:?} groups={} evidence={:?}:{}",
+            constraints.groups().len(),
+            evidence.kind,
+            evidence.symbol
+        ),
+        PhysicalRoot::ReturnedSubject {
+            producer,
+            member,
+            event,
+            object_slot,
+            evidence,
+        } => format!(
+            "returned_subject producer={producer:?} member={member} event={event:?} slot={object_slot} evidence={:?}:{}",
+            evidence.kind, evidence.symbol
+        ),
+        PhysicalRoot::InstanceSubject {
+            constructor,
+            member,
+            object_slot,
+            evidence,
+        } => format!(
+            "instance_subject constructor={constructor:?} member={member} slot={object_slot} evidence={:?}:{}",
+            evidence.kind, evidence.symbol
+        ),
+        PhysicalRoot::Lifecycle { flow } => format!("lifecycle {flow:?}"),
+    }
 }
 
 // ── Planner ─────────────────────────────────────────────────────────────
@@ -768,6 +847,33 @@ mod tests {
             summary,
             "roots=1 indexed_scans=1 constrained_scans=0 returned_subjects=0 instance_subjects=0 lifecycle_plans=0 local_flow=no cross_call_flow=no project_overlay=no value_resolution={} project_requirements={}"
         );
+    }
+
+    #[test]
+    fn plan_explanation_is_deterministic_and_names_operator_choice() {
+        let first = physical_summary(&decl(QueryDecl::call_global("fetch")));
+        let query = decl(QueryDecl::call_global("fetch"));
+        let normalized = crate::api::compiler::normalize::normalize_query_decl(&query).unwrap();
+        let plan = plan_normalized(&normalized);
+        assert!(plan.explain().contains("indexed event=Call"));
+        assert!(plan.explain().contains("optimization canonical-root-order"));
+        assert_eq!(first, plan.summary());
+        assert_eq!(plan.explain(), plan.explain());
+    }
+
+    #[test]
+    fn optimizer_deduplicates_only_identical_evidence_bearing_roots() {
+        let query = decl(QueryDecl::call_global("fetch"));
+        let normalized = normalize_query_decl(&query).unwrap();
+        let root = plan_normalized(&normalized).roots()[0].clone();
+        assert_eq!(optimize_roots(vec![root.clone(), root]).len(), 1);
+
+        let first = decl(QueryDecl::call_global("fetch"));
+        let second = decl(QueryDecl::call_global("fetch"))
+            .with_evidence(MatchKind::CallArgument, "fetch-argument");
+        let first = plan_normalized(&normalize_query_decl(&first).unwrap()).roots()[0].clone();
+        let second = plan_normalized(&normalize_query_decl(&second).unwrap()).roots()[0].clone();
+        assert_eq!(optimize_roots(vec![first, second]).len(), 2);
     }
 
     #[test]

@@ -40,6 +40,7 @@ type CanonicalFlowState = (
     FlowId,
     crate::analysis::facts::FactId,
     CanonicalRequirements,
+    CanonicalRequirements,
 );
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -208,7 +209,11 @@ impl FlowStateTable {
                     .requirement_keys()
                     .map(|(index, values)| (index, values.iter().copied().collect()))
                     .collect();
-                Some((object, key.flow, state.source_event(), requirements))
+                let sinks = state
+                    .sink_keys()
+                    .map(|(index, values)| (index, values.iter().copied().collect()))
+                    .collect();
+                Some((object, key.flow, state.source_event(), requirements, sinks))
             })
             .collect();
         FlowSemanticSnapshot { aliases, states }

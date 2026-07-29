@@ -368,3 +368,41 @@ fn flow_can_require_all_requirements() {
     );
     assert_capability_count(&result, "test.flow", 1);
 }
+
+#[test]
+fn flow_can_require_all_sinks_on_one_object() {
+    let lifecycle = LifecycleQuery::builder("two-stage-object-use")
+        .source(LifecycleSource::returned_by("document.createElement"))
+        .condition(LifecycleCondition::event(LifecycleEvent::property_write(
+            "src",
+            ValueMatcher::any_value(),
+        )))
+        .completion(LifecycleCompletion::all_sinks([
+            LifecycleSink::argument_of("document.head.appendChild", 0),
+            LifecycleSink::argument_of("document.body.appendChild", 0),
+        ]))
+        .build()
+        .unwrap();
+    let rules = [rule("test.two-stage")
+        .query(QueryDecl::lifecycle(Ok(lifecycle)))
+        .build()
+        .unwrap()];
+
+    let complete = classify(
+        "const node = document.createElement('script'); node.src = url; document.head.appendChild(node); document.body.appendChild(node);",
+        &rules,
+    );
+    assert_eq!(complete.finding_count, 1);
+
+    let incomplete = classify(
+        "const node = document.createElement('script'); node.src = url; document.head.appendChild(node);",
+        &rules,
+    );
+    assert_eq!(incomplete.finding_count, 0);
+
+    let disconnected = classify(
+        "const first = document.createElement('script'); first.src = url; document.head.appendChild(first); const second = document.createElement('script'); document.body.appendChild(second);",
+        &rules,
+    );
+    assert_eq!(disconnected.finding_count, 0);
+}

@@ -6,7 +6,7 @@ deterministic output.
 
 Read [ARCHITECTURE.md](ARCHITECTURE.md) and the owning crate's
 `ARCHITECTURE.md` before changing analysis, public APIs, or crate boundaries.
-Read [TESTING.md](TESTING.md) before changing matcher or rule behavior.
+Read [TESTING.md](TESTING.md) before changing query or rule behavior.
 
 ## Prerequisites
 
@@ -56,9 +56,9 @@ make profile PROFILE_PATH=path/to/bundles PROFILE_PROVIDER=js
 
 ## Rule changes
 
-Prefer the declarative matcher API in `glass-lint-core`. Add a reusable
-provider-neutral matcher primitive when multiple rules need the same semantic
-operation; use provider callbacks only when the matcher API cannot express the
+Prefer the declarative query API in `glass-lint-core`. Add a reusable
+provider-neutral query relation when multiple rules need the same semantic
+operation; use provider callbacks only when the query API cannot express the
 rule accurately.
 
 Rule factories use local IDs. `RuleCatalog` adds the namespace, producing IDs
@@ -82,6 +82,12 @@ worker comparisons, and phase metrics. Keep the build profile, verified
 manifest, provider, rule profile, worker count, warm-up count, and repetition
 count fixed across measurements. Prefer operation-count regression tests over
 wall-clock assertions.
+
+For query work, document the relation before implementing it. Prefer an
+existing physical owner and add a specialized operator only when the access
+path is genuinely new. Plan explanations are the supported regression surface
+for canonical operator choice and requirements; do not assert private IDs or
+unordered debug output.
 
 The [harness CLI README](glass-lint-harness-cli/) documents profiling modes.
 The [ESLint adapter README](adapters/eslint-obsidianmd/) documents external

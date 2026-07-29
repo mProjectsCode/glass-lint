@@ -224,6 +224,12 @@ impl LifecycleCondition {
         })
     }
 
+    /// Require every event on the same tracked lifecycle object.
+    ///
+    /// This is a bounded multi-event correlation. It preserves path-local
+    /// identity: an event from another object, an incompatible branch, an
+    /// unknown value, or an exhausted alternative cannot complete the
+    /// conjunction.
     pub fn all_of<I>(events: I) -> Result<Self, QueryBuildError>
     where
         I: IntoIterator,
@@ -260,6 +266,7 @@ impl LifecycleCondition {
 pub(crate) enum LifecycleCompletionKind {
     Configuration,
     AnySink(Vec<LifecycleSink>),
+    AllSinks(Vec<LifecycleSink>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -300,6 +307,37 @@ impl LifecycleCompletion {
         }
         Ok(Self {
             kind: LifecycleCompletionKind::AnySink(sinks),
+        })
+    }
+
+    /// Require every sink for the same tracked object, in path order.
+    ///
+    /// Unlike [`Self::any_sink`], one matching sink does not complete the
+    /// flow. Each sink is a separate bounded correlation event; unknown,
+    /// escaped, reassigned, or incompatible-path objects cannot satisfy the
+    /// conjunction.
+    pub fn all_sinks<I, S>(sinks: I) -> Result<Self, QueryBuildError>
+    where
+        I: IntoIterator<Item = S>,
+        S: IntoLifecycleSink,
+    {
+        let mut sinks = sinks
+            .into_iter()
+            .map(IntoLifecycleSink::into_lifecycle_sink)
+            .collect::<Result<Vec<_>, _>>()?;
+        if sinks.is_empty() {
+            return Err(QueryBuildError::EmptyLifecycleSinks);
+        }
+        sinks.sort();
+        sinks.dedup();
+        if sinks.len() > limits::MAX_LIFECYCLE_SINKS {
+            return Err(QueryBuildError::CollectionTooLarge(
+                "lifecycle completion sinks",
+                sinks.len(),
+            ));
+        }
+        Ok(Self {
+            kind: LifecycleCompletionKind::AllSinks(sinks),
         })
     }
 }
@@ -476,7 +514,8 @@ impl LifecycleQueryBuilder {
         }
         if let Some(ref completion) = self.completion {
             match completion.kind() {
-                LifecycleCompletionKind::AnySink(sinks) => {
+                LifecycleCompletionKind::AnySink(sinks)
+                | LifecycleCompletionKind::AllSinks(sinks) => {
                     if sinks.is_empty() {
                         return Err(QueryBuildError::EmptyLifecycleSinks);
                     }
@@ -573,6 +612,17 @@ mod tests {
             LifecycleCompletion::any_sink([first.clone(), second.clone()]).unwrap(),
             LifecycleCompletion::any_sink([second, first]).unwrap()
         );
+    }
+
+    #[test]
+    fn all_sink_completion_is_bounded_and_deterministic() {
+        let first = LifecycleSink::argument_of("document.head.appendChild", 0).unwrap();
+        let second = LifecycleSink::argument_of("document.body.appendChild", 0).unwrap();
+        let a =
+            LifecycleCompletion::all_sinks([first.clone(), second.clone(), first.clone()]).unwrap();
+        let b = LifecycleCompletion::all_sinks([second, first]).unwrap();
+        assert_eq!(a, b);
+        assert!(matches!(a.kind(), LifecycleCompletionKind::AllSinks(sinks) if sinks.len() == 2));
     }
 
     #[test]

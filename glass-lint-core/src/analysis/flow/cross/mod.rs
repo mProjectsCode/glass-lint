@@ -395,6 +395,7 @@ mod tests {
                     fact: FactId(1),
                 }),
                 requirements: RequirementSet::default(),
+                sinks: RequirementSet::default(),
             },
             crossed: false,
         }

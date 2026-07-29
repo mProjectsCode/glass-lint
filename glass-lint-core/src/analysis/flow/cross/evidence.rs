@@ -121,7 +121,7 @@ pub(super) fn mark_nonmatching(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub(super) fn emit(
     project: &ProjectSemanticModel,
     evidence: &mut HashMap<ModuleId, ModuleEvidence>,
@@ -164,6 +164,28 @@ pub(super) fn emit(
         tail = match arena.intern(
             tail,
             TraceQualifiedEvent::new(req.module, req.fact),
+            EvidenceRole::Requirement,
+        ) {
+            Some(id) => Some(id),
+            None => break,
+        };
+    }
+
+    // Preserve earlier sink events for all-sink correlations. Fact order is
+    // the deterministic execution order; the completing sink is emitted once
+    // below as the terminal sink node.
+    let mut prior_sinks: Vec<_> = state
+        .sinks
+        .values()
+        .filter(|sink| !(sink.module == module && sink.fact == event))
+        .cloned()
+        .collect();
+    prior_sinks.sort();
+    prior_sinks.dedup();
+    for sink in prior_sinks {
+        tail = match arena.intern(
+            tail,
+            TraceQualifiedEvent::new(sink.module, sink.fact),
             EvidenceRole::Requirement,
         ) {
             Some(id) => Some(id),

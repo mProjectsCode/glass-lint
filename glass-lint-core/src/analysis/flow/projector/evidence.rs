@@ -103,19 +103,29 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     continue;
                 };
                 let sink_members = self.plan.sink_member_calls(flow_id);
-                let matches = flow.sinks.iter().enumerate().any(|(i, sink)| {
-                    sink_members
-                        .get(i)
-                        .is_some_and(|members| members.iter().any(|member| member == chain))
-                        && sink.is_rooted == rooted
-                        && match &sink.args {
-                            CompiledObjectSinkArguments::Any => true,
-                            CompiledObjectSinkArguments::Indices(indices) => {
-                                indices.contains(&argument_index)
-                            }
+                let matching_sinks: Vec<usize> =
+                    flow.sinks
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, sink)| {
+                            let matches = sink_members.get(i).is_some_and(|members| {
+                                members.iter().any(|member| member == chain)
+                            }) && sink.is_rooted == rooted
+                                && match &sink.args {
+                                    CompiledObjectSinkArguments::Any => true,
+                                    CompiledObjectSinkArguments::Indices(indices) => {
+                                        indices.contains(&argument_index)
+                                    }
+                                };
+                            matches.then_some(i)
+                        })
+                        .collect();
+                if !matching_sinks.is_empty() {
+                    if let Some(mut state) = self.flow_state.state_mut(key.object, key.flow) {
+                        for index in matching_sinks {
+                            state.record_sink(index, sink_fact);
                         }
-                });
-                if matches {
+                    }
                     let state = self.flow_state.state(key.object, key.flow).cloned();
                     let Some(state) = state else {
                         continue;
@@ -123,7 +133,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     let ready = self
                         .plan
                         .get(flow_id)
-                        .is_some_and(|flow| state.is_ready(flow));
+                        .is_some_and(|flow| state.is_ready(flow) && state.sinks_ready(flow));
                     if !ready {
                         continue;
                     }
@@ -182,7 +192,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             let ready = self
                 .plan
                 .get(flow_id)
-                .is_some_and(|flow| state.is_ready(flow));
+                .is_some_and(|flow| state.is_ready(flow) && state.sinks_ready(flow));
             if !ready {
                 continue;
             }
@@ -308,6 +318,24 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 return None;
             }
             tail = next;
+        }
+
+        // A multi-sink correlation must retain the earlier sink events in its
+        // evidence projection. Sort by fact position so declaration order
+        // cannot change the trace, and avoid repeating the completing event.
+        let mut prior_sinks: Vec<FactId> = state
+            .sink_keys()
+            .flat_map(|(_, values)| values.iter().copied())
+            .filter(|fact| *fact != sink_fact)
+            .collect();
+        prior_sinks.sort();
+        prior_sinks.dedup();
+        for sink in prior_sinks {
+            tail = Some(self.trace_arena.intern(
+                tail,
+                QualifiedEvent::new(self.module_id, sink),
+                EvidenceRole::Requirement,
+            )?);
         }
 
         // 3. Sink node (last in execution order, becomes the trace head)

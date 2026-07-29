@@ -201,6 +201,7 @@ pub struct FlowState {
     source_event: FactId,
     object_id: ObjectId,
     requirements: RequirementSet,
+    sinks: RequirementSet,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -216,6 +217,7 @@ impl FlowState {
             source_event,
             object_id,
             requirements: RequirementSet::default(),
+            sinks: RequirementSet::default(),
         }
     }
 
@@ -254,8 +256,20 @@ impl FlowState {
         }
     }
 
+    pub fn record_sink(&mut self, index: usize, event: FactId) {
+        self.sinks.insert(index, event);
+    }
+
+    pub fn sinks_ready(&self, flow: &CompiledObjectFlow) -> bool {
+        !flow.all_sinks_required || self.sinks.len() == flow.sinks.len()
+    }
+
     pub fn requirement_keys(&self) -> impl Iterator<Item = (usize, &BTreeSet<FactId>)> {
         self.requirements.iter_by_key()
+    }
+
+    pub fn sink_keys(&self) -> impl Iterator<Item = (usize, &BTreeSet<FactId>)> {
+        self.sinks.iter_by_key()
     }
 }
 

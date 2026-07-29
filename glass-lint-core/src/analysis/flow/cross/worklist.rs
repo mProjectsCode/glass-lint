@@ -136,6 +136,7 @@ impl ContextWorklist {
                             fact: candidate.fact,
                         }),
                         requirements: RequirementSet::default(),
+                        sinks: RequirementSet::default(),
                     },
                     crossed: key.value != project.source_call_result(key.module, candidate.fact),
                 });
@@ -178,6 +179,7 @@ impl ContextWorklist {
                                         fact: candidate.fact,
                                     }),
                                     requirements: RequirementSet::default(),
+                                    sinks: RequirementSet::default(),
                                 };
                                 self.enqueue_parameters(
                                     project,
@@ -211,6 +213,7 @@ impl ContextWorklist {
                                     flow,
                                     source: None,
                                     requirements: RequirementSet::default(),
+                                    sinks: RequirementSet::default(),
                                 },
                                 target_module != module.id(),
                             );

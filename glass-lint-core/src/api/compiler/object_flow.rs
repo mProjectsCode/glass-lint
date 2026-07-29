@@ -19,6 +19,7 @@ pub(crate) struct CompiledObjectFlow {
     pub(crate) requirements: Vec<CompiledObjectRequirement>,
     pub(crate) sinks: Vec<CompiledObjectSink>,
     pub(crate) all_requirements_required: bool,
+    pub(crate) all_sinks_required: bool,
     pub(crate) emit_on_requirements: bool,
 }
 
@@ -56,12 +57,18 @@ impl CompiledObjectFlow {
                 ),
             },
         );
-        let (sinks, emit_on_requirements) = lc.completion.as_ref().map_or_else(
-            || (Vec::new(), false),
+        let (sinks, all_sinks_required, emit_on_requirements) = lc.completion.as_ref().map_or_else(
+            || (Vec::new(), false, false),
             |comp| match comp.kind() {
-                LifecycleCompletionKind::Configuration => (Vec::new(), true),
+                LifecycleCompletionKind::Configuration => (Vec::new(), false, true),
                 LifecycleCompletionKind::AnySink(sinks) => (
                     sinks.iter().map(CompiledObjectSink::from_matcher).collect(),
+                    false,
+                    false,
+                ),
+                LifecycleCompletionKind::AllSinks(sinks) => (
+                    sinks.iter().map(CompiledObjectSink::from_matcher).collect(),
+                    true,
                     false,
                 ),
             },
@@ -76,6 +83,7 @@ impl CompiledObjectFlow {
             requirements,
             sinks,
             all_requirements_required,
+            all_sinks_required,
             emit_on_requirements,
         }
     }

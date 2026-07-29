@@ -8,7 +8,7 @@ behavior crosses a crate or executable boundary.
 | Layer | Location | Purpose |
 |---|---|---|
 | Unit | Rust modules under `src/` | Private invariants, validation, and small algorithms |
-| Core integration | `glass-lint-core/tests/` | Public matcher, scope, provenance, flow, and report behavior |
+| Core integration | `glass-lint-core/tests/` | Public query, scope, provenance, flow, and report behavior |
 | Project | `glass-lint-project/src/tests.rs` and `tests/projects/` | Discovery, boundaries, resolution, and multi-file behavior |
 | Provider contract | Beside each rule | One rule's positives and adversarial negatives |
 | End to end | `tests/e2e/` | Realistic cross-rule and cross-provider workflows |
@@ -19,7 +19,7 @@ layer that owns the behavior.
 
 ## Required matching coverage
 
-Cover each boundary relevant to the matcher:
+Cover each boundary relevant to the query:
 
 - direct use and supported call forms;
 - ESM, CommonJS, namespace, destructured, and interop provenance;
@@ -36,6 +36,13 @@ establish a witness and must not produce a definite finding. They may coexist
 with an independent complete strict witness, which produces a possible finding.
 Assert deterministic rule IDs, certainty, and exact locations. Avoid
 wall-clock tests and unordered snapshots.
+
+Query compiler tests should cover declaration, normalization, physical
+planning, and execution. For multi-event relations, include an independent
+complete witness alongside an incomplete alternative and verify that the
+witness remains possible while the incomplete path prevents definite
+coverage. Plan explanations may assert deterministic operator choice and
+requirements; evidence order remains part of the runtime contract.
 
 Matching changes involving joins must include an incompatible-path negative:
 facts from one branch must never combine with an alias, requirement, or sink

@@ -96,6 +96,28 @@ fn lifecycle() -> Rule {
     )
 }
 
+fn correlated_sinks() -> Rule {
+    let lifecycle = LifecycleQuery::builder("two sinks")
+        .source(Ok(
+            LifecycleSource::returned_by("document.createElement").expect("valid source")
+        ))
+        .condition(LifecycleCondition::event(LifecycleEvent::property_write(
+            "src",
+            ValueMatcher::any_value(),
+        )))
+        .completion(LifecycleCompletion::all_sinks([
+            LifecycleSink::argument_of("document.head.appendChild", 0).expect("valid sink"),
+            LifecycleSink::argument_of("document.body.appendChild", 0).expect("valid sink"),
+        ]))
+        .build()
+        .expect("valid lifecycle");
+    rule(
+        "dom.two-sinks",
+        "Uses one object at two later sinks",
+        QueryDecl::lifecycle(Ok(lifecycle)),
+    )
+}
+
 fn structured_error() -> glass_lint_core::rules::QueryBuildError {
     QueryDecl::call_global("").expect_err("empty identities are rejected")
 }
@@ -103,6 +125,7 @@ fn structured_error() -> glass_lint_core::rules::QueryBuildError {
 fn main() {
     let _rules = [
         ordinary(),
+        correlated_sinks(),
         constrained(),
         alternatives(),
         same_event_conjunction(),

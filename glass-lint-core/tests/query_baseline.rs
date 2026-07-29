@@ -627,3 +627,54 @@ fn baseline_operation_counts_are_stable() {
     assert_eq!(ops.fixed_point_iterations(), 0);
     assert_eq!(ops.rendered_traces(), 1);
 }
+
+#[test]
+fn all_sink_correlation_has_deterministic_bounded_operations() {
+    let lifecycle = LifecycleQuery::builder("two-sinks")
+        .source(Ok(
+            LifecycleSource::returned_by("document.createElement").unwrap()
+        ))
+        .condition(LifecycleCondition::event(LifecycleEvent::property_write(
+            "src",
+            ValueMatcher::any_value(),
+        )))
+        .completion(LifecycleCompletion::all_sinks([
+            LifecycleSink::argument_of("document.head.appendChild", 0).unwrap(),
+            LifecycleSink::argument_of("document.body.appendChild", 0).unwrap(),
+        ]))
+        .build()
+        .unwrap();
+    let report = single_lint(
+        "const node = document.createElement('script'); node.src = url; document.head.appendChild(node); document.body.appendChild(node);",
+        rule("two-sinks")
+            .query(QueryDecl::lifecycle(Ok(lifecycle)))
+            .build()
+            .unwrap(),
+    );
+    let ops = report.operations();
+    assert_eq!(report.files()[0].findings().len(), 1);
+    let steps = report.files()[0].findings()[0].evidence().traces()[0].steps();
+    assert_eq!(
+        steps.len(),
+        4,
+        "source, configuration, first sink, final sink"
+    );
+    assert_eq!(ops.evidence(), 4);
+    assert!(ops.fixed_point_iterations() <= 16);
+    assert!(ops.trace_nodes() <= 16);
+}
+
+#[test]
+fn duplicate_query_roots_are_deduplicated_before_execution() {
+    let query = QueryDecl::call_global("fetch").unwrap();
+    let report = single_lint(
+        "fetch('/data');",
+        rule("duplicate-roots")
+            .query(query.clone())
+            .query(query)
+            .build()
+            .unwrap(),
+    );
+    assert_eq!(report.files()[0].findings().len(), 1);
+    assert_eq!(report.operations().evidence(), 1);
+}

@@ -13,7 +13,7 @@ source + language + environment + limits
   -> immutable local artifact
   -> module interfaces and bounded flow summaries
   -> project linking
-  -> compiled matcher queries
+  -> compiled query plans
   -> deterministic AnalysisReport
 ```
 
@@ -25,14 +25,14 @@ semantic model.
 
 - `parse` and `analysis/syntax` contain the private SWC-backed frontend.
 - `analysis/scope` owns bindings, shadowing, reassignment, and provenance.
-- `analysis/facts` owns the matcher-independent event stream.
+- `analysis/facts` owns the query-independent event stream.
 - `analysis/resolution` and `analysis/value` own identity and static-value
   resolution.
 - `analysis/flow` owns bounded local and cross-call flow.
 - `analysis/matching` owns occurrence indexes and query execution.
 - `analysis/project` links module identities and cross-file effects.
 - `api/rule` validates declarative rule definitions.
-- `api/compiler` compiles catalogs into immutable matcher plans.
+- `api/compiler` compiles catalogs into immutable query plans.
 - `api/rule` exposes validated package-boundary module patterns and bounded
   sink-associated static-string predicates; exact module identities remain
   distinct from package-root patterns.
@@ -93,3 +93,22 @@ primary event.
 Core stays one crate while these layers share an evolving private semantic
 model. A split requires a stable, independently owned contract, acyclic
 dependency direction, and measured build-time benefit.
+
+## Adding query capabilities
+
+Define the provider-neutral relation and certainty rule in `api/rule/query`
+first, including unknown and incomplete alternatives. Add construction and
+validation errors before lowering. Normalize to a canonical form, compute exact
+preparation requirements, and add a specialized physical root only when an
+existing root cannot express the access path.
+
+New relations require positives and adversarial negatives for shadowing,
+lookalikes, reassignment, dynamic values, incompatible joins, unsupported
+escape, ambiguity, and budget exhaustion. Assert evidence order and certainty.
+Use `CompiledMatcherPlan::plan_explanation` in compiler and profiling tests;
+it is deterministic and does not expose artifact-local IDs.
+
+The public-surface audit keeps compiler IR, physical roots, fact IDs, caches,
+and executor storage private. Public query declarations expose only validated
+semantic constructors, while `public_surface.rs` guards that callers can
+build and use rules without engine storage access.

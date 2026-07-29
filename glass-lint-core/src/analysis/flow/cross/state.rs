@@ -47,6 +47,7 @@ pub(super) struct CrossFlowState {
     /// source from another call site.
     pub(super) source: Option<QualifiedEvent>,
     pub(super) requirements: RequirementSet<QualifiedEvent>,
+    pub(super) sinks: RequirementSet<QualifiedEvent>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]

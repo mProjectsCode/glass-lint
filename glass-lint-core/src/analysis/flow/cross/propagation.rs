@@ -149,20 +149,39 @@ impl UsageProjector<'_> {
         let cref = CallEffectRef { stream, event };
         let chain = cref.chain();
         let rooted = cref.rooted();
-        let sink_matches = self.flow.sinks.iter().enumerate().any(|(i, sink)| {
-            self.flow_plan
-                .sink_members
-                .get(i)
-                .is_some_and(|members| members.iter().any(|member| chain == Some(member)))
-                && sink.is_rooted == rooted
-                && match &sink.args {
-                    CompiledObjectSinkArguments::Any => true,
-                    CompiledObjectSinkArguments::Indices(indices) => indices.contains(&argument),
-                }
-        });
-        if sink_matches && self.context.crossed {
+        let matching_sinks: Vec<usize> =
+            self.flow
+                .sinks
+                .iter()
+                .enumerate()
+                .filter_map(|(i, sink)| {
+                    let matches =
+                        self.flow_plan.sink_members.get(i).is_some_and(|members| {
+                            members.iter().any(|member| chain == Some(member))
+                        }) && sink.is_rooted == rooted
+                            && match &sink.args {
+                                CompiledObjectSinkArguments::Any => true,
+                                CompiledObjectSinkArguments::Indices(indices) => {
+                                    indices.contains(&argument)
+                                }
+                            };
+                    matches.then_some(i)
+                })
+                .collect();
+        if !matching_sinks.is_empty() && self.context.crossed {
+            for index in matching_sinks {
+                self.state.sinks.insert(
+                    index,
+                    QualifiedEvent {
+                        module: self.context.module,
+                        fact: event,
+                    },
+                );
+            }
             if self.flow.requirements_ready(self.state.requirements.len())
                 && self.state.source.is_some()
+                && (!self.flow.all_sinks_required
+                    || self.state.sinks.len() == self.flow.sinks.len())
             {
                 emit(
                     self.project,

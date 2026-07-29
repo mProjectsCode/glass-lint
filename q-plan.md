@@ -2,11 +2,11 @@
 
 ## Status
 
-Phases 0–12 are complete for the implemented query architecture. The current
+Phases 0–15 are complete for the implemented query architecture. The current
 public path is typed `EventQuery`/`QueryDecl` authoring, compiler validation and
 normalization, explicit physical planning, and execution through the existing
 indexed, constrained, lifecycle, and project-projection owners. A textual query
-language and the capabilities in Phases 13–15 remain future work.
+language remains future work.
 
 Current evidence is maintained in:
 
@@ -23,7 +23,15 @@ queries, the compiler lowers them once into immutable physical plans, and
 runtime consumers execute those plans through named subsystem owners. Public
 compiler storage and artifact-local IDs are not exposed.
 
-## Completion record for Phases 0–12
+## Completion record for Phases 0–15
+
+Phase 13 adds `LifecycleCompletion::all_sinks`, a bounded conjunction of
+distinct sink events keyed by one tracked object. The relation is compiled
+through the existing lifecycle physical operator and carried through local and
+cross-call checkpoint state. Phase 14 canonicalizes and deduplicates physical
+roots, with deterministic explanations and workload/operation baselines.
+Phase 15 documents the compiler vocabulary, extension workflow, public-surface
+boundary, diagnostics, examples, and regression surfaces.
 
 ### Phase 0 — baseline and capability inventory
 
@@ -128,9 +136,9 @@ compiler storage and artifact-local IDs are not exposed.
 - [x] Public examples compile through the core example check in `make ci`, and
       current documentation describes one authoring path.
 
-Phases 0–12 are the completed migration boundary. Future phases may add new
-relations, optimization, diagnostics, or a textual frontend only by reusing
-this query compiler and executor.
+Phases 0–15 are the completed Part I boundary. Future work may add further
+relations or a textual frontend only by reusing this query compiler and
+executor.
 
 ## Phase 13: Add the first genuinely new relational capability
 
@@ -145,7 +153,7 @@ Add bounded multi-event correlation over one explicit semantic identity or
 value. Candidate examples:
 
 - [ ] a proven API result later passed to a second proven API;
-- [ ] two calls on the same returned or constructed object;
+- [x] two calls on the same returned or constructed object;
 - [ ] a call argument related to a later sink argument; or
 - [ ] a required event before a completion event using existing flow semantics.
 
@@ -154,36 +162,36 @@ high-value rule that cannot be accurately expressed today.
 
 ### Tasks
 
-- [ ] 1. Write positive and adversarial negative examples before implementation.
-- [ ] 2. Specify the relation and correlation key.
-- [ ] 3. Specify certainty under joins and incomplete alternatives.
-- [ ] 4. Specify evidence projection.
-- [ ] 5. Specify physical access path and bounds.
-- [ ] 6. Add logical validation.
-- [ ] 7. Add normalization.
-- [ ] 8. Add physical planning.
-- [ ] 9. Add execution and operation accounting.
-- [ ] 10. Implement provider rules without callbacks or custom traversal.
-- [ ] 11. Profile representative projects.
+- [x] 1. Write positive and adversarial negative examples before implementation.
+- [x] 2. Specify the relation and correlation key.
+- [x] 3. Specify certainty under joins and incomplete alternatives.
+- [x] 4. Specify evidence projection.
+- [x] 5. Specify physical access path and bounds.
+- [x] 6. Add logical validation.
+- [x] 7. Add normalization.
+- [x] 8. Add physical planning.
+- [x] 9. Add execution and operation accounting.
+- [x] 10. Implement provider rules without callbacks or custom traversal.
+- [x] 11. Profile representative projects.
 
 ### Required adversarial tests
 
-- [ ] same spelling, different identity;
-- [ ] correct events on different objects;
-- [ ] correct events on incompatible branches;
-- [ ] reassignment between events;
-- [ ] dynamic or unknown connecting value;
-- [ ] ambiguous module identity;
-- [ ] unsupported escape;
-- [ ] exhausted alternatives; and
-- [ ] independent complete witness alongside unknown alternatives.
+- [x] same spelling, different identity;
+- [x] correct events on different objects;
+- [x] correct events on incompatible branches;
+- [x] reassignment between events;
+- [x] dynamic or unknown connecting value;
+- [x] ambiguous module identity;
+- [x] unsupported escape;
+- [x] exhausted alternatives; and
+- [x] independent complete witness alongside unknown alternatives.
 
 ### Exit criteria
 
-- [ ] At least one useful query is expressible without adding a family-specific
+- [x] At least one useful query is expressible without adding a family-specific
   builder method.
-- [ ] The query compiles to bounded specialized operators.
-- [ ] No precision invariant is weakened.
+- [x] The query compiles to bounded specialized operators.
+- [x] No precision invariant is weakened.
 
 ## Phase 14: Query optimizer and plan quality
 
@@ -197,7 +205,7 @@ Improve physical plan selection only after semantic equivalence is well tested.
 - [ ] push static filters into indexed scans;
 - [ ] share repeated static-value resolution;
 - [ ] reorder commutative keyed predicates by estimated candidate count;
-- [ ] deduplicate identical scans within one rule;
+- [x] deduplicate identical scans within one rule;
 - [ ] share immutable compiled constants across rules;
 - [ ] pre-group selected physical roots by required index;
 - [ ] batch module-overlay probes;
@@ -218,16 +226,16 @@ Improve physical plan selection only after semantic equivalence is well tested.
 
 ### Required tests
 
-- [ ] Optimized and unoptimized reference plans produce identical results.
-- [ ] Canonical plan choice is stable.
-- [ ] Operation-count tests demonstrate the intended improvement.
-- [ ] Worst-case query shapes remain bounded.
+- [x] Optimized and unoptimized reference plans produce identical results.
+- [x] Canonical plan choice is stable.
+- [x] Operation-count tests demonstrate the intended improvement.
+- [x] Worst-case query shapes remain bounded.
 
 ### Exit criteria
 
-- [ ] Optimization is driven by measured query workloads.
-- [ ] Plan explanations show why a physical path was selected.
-- [ ] The unoptimized semantic contract remains understandable and testable.
+- [x] Optimization is driven by measured query workloads.
+- [x] Plan explanations show why a physical path was selected.
+- [x] The unoptimized semantic contract remains understandable and testable.
 
 ## Phase 15: Stabilize query diagnostics, inspection, and documentation
 
@@ -237,7 +245,7 @@ Make the query system maintainable before considering a textual language.
 
 ### Tasks
 
-- [ ] 1. Add compiler documentation for:
+- [x] 1. Add compiler documentation for:
    - logical operators;
    - semantic relation catalog;
    - certainty;
@@ -245,24 +253,24 @@ Make the query system maintainable before considering a textual language.
    - boundedness;
    - evidence emission; and
    - physical planning.
-- [ ] 2. Add an internal plan-explain facility for tests and profiling.
-- [ ] 3. Include compile diagnostics in catalog construction errors without leaking
+- [x] 2. Add an internal plan-explain facility for tests and profiling.
+- [x] 3. Include compile diagnostics in catalog construction errors without leaking
    internal IDs.
-- [ ] 4. Document how to add a provider-neutral relation.
-- [ ] 5. Document when to add a specialized physical operator.
-- [ ] 6. Document required tests for new query behavior.
-- [ ] 7. Update `ARCHITECTURE.md`, `glass-lint-core/ARCHITECTURE.md`,
+- [x] 4. Document how to add a provider-neutral relation.
+- [x] 5. Document when to add a specialized physical operator.
+- [x] 6. Document required tests for new query behavior.
+- [x] 7. Update `ARCHITECTURE.md`, `glass-lint-core/ARCHITECTURE.md`,
    `CONTRIBUTING.md`, and `TESTING.md`.
-- [ ] 8. Remove obsolete matcher terminology and diagrams.
-- [ ] 9. Add examples for every supported query capability.
-- [ ] 10. Audit public API size and visibility.
+- [x] 8. Remove obsolete matcher terminology and diagrams.
+- [x] 9. Add examples for every supported query capability.
+- [x] 10. Audit public API size and visibility.
 
 ### Exit criteria
 
-- [ ] A contributor can add a query capability without discovering hidden
+- [x] A contributor can add a query capability without discovering hidden
   executor routes.
-- [ ] Plan explanations are deterministic and useful in regression tests.
-- [ ] Architecture documents describe only the new path.
+- [x] Plan explanations are deterministic and useful in regression tests.
+- [x] Architecture documents describe only the new path.
 
 ## Part I completion gate
 

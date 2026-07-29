@@ -3,6 +3,26 @@
 //! Compilation translates validated public matcher declarations once. The
 //! resulting plans are provider-neutral and can be projected onto many files
 //! without rebuilding matcher semantics.
+//!
+//! Query compiler vocabulary:
+//! - logical operators are typed events, `any`, same-event `all`, and lifecycle
+//!   stages;
+//! - relations are identity, event kind, arguments, returned/instance subject,
+//!   and path-local lifecycle correlation;
+//! - certainty is possible or definite and is reduced by incomplete paths;
+//! - correlation keys are validated variables or one tracked lifecycle object,
+//!   never source spelling;
+//! - every root has a finite limit and explicit preparation requirements;
+//! - evidence is emitted by the primary event selected by the declaration; and
+//! - physical planning chooses an indexed, constrained, subject, or lifecycle
+//!   operator and then canonicalizes the root set.
+//!
+//! To add a provider-neutral relation, extend the declaration and validation
+//! layers first, add normalization and requirements, then reuse an existing
+//! executor owner where possible. Add a specialized physical operator only
+//! when its access path cannot be expressed by an existing root. Required
+//! tests cover positive behavior, adversarial identity/path cases, bounds,
+//! certainty, evidence ordering, and operation counts.
 
 #![allow(clippy::redundant_pub_crate)]
 
@@ -211,10 +231,7 @@ fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildEr
         merged_requirements.merge_from(query_plan.requirements());
     }
 
-    let mut sorted_roots: Vec<physical::PhysicalRoot> = all_roots;
-    sorted_roots.sort();
-    sorted_roots.dedup();
-    let physical_plan = PhysicalPlan::new(sorted_roots.into_boxed_slice(), merged_requirements);
+    let physical_plan = PhysicalPlan::new(physical::optimize_roots(all_roots), merged_requirements);
     physical::validate_physical_plan(&physical_plan)
         .map_err(|e| MatcherBuildError::InvalidLoweredQuery(e.to_string()))?;
 
@@ -229,6 +246,12 @@ impl CompiledMatcherPlan {
     #[allow(dead_code)]
     pub(crate) fn plan_summary(&self) -> String {
         self.physical_plan.summary()
+    }
+
+    /// Explain the canonical executable plan for tests and profiling.
+    #[allow(dead_code)]
+    pub(crate) fn plan_explanation(&self) -> String {
+        self.physical_plan.explain()
     }
 
     pub(crate) fn needs_project_overlay(&self) -> bool {

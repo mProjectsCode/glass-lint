@@ -91,6 +91,7 @@ mod tests {
         ];
         let plan = CompiledMatcherPlan::compile(&queries).unwrap();
         assert!(!plan.physical_roots().is_empty());
+        assert!(plan.plan_explanation().starts_with("plan roots="));
     }
 
     #[test]

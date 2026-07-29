@@ -41,7 +41,7 @@ overrides are resolved during construction.
 
 ## Matching
 
-Strict matchers prove identity or connected semantics instead of matching
+Strict query predicates prove identity or connected semantics instead of matching
 spelling alone. The public builder API covers:
 
 - global and module-provenance calls and constructors;
@@ -49,6 +49,8 @@ spelling alone. The public builder API covers:
 - imports and parsed literals;
 - static value and rooted-expression argument constraints; and
 - bounded object lifecycles and connected source-to-sink flow.
+- multi-event object flow with `LifecycleCompletion::all_sinks`, which
+  requires several later sinks to consume the same tracked object.
 
 APIs named `heuristic` deliberately use weaker syntactic evidence.
 Unsupported, ambiguous, dynamic, or exhausted analysis does not become a
@@ -76,7 +78,7 @@ complete strict witness exists on at least one path. TypeScript is normalized
 but not type-checked. Sources larger than 8 MiB are rejected.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the internal pipeline and the
-workspace [testing guide](../TESTING.md) for matcher coverage.
+workspace [testing guide](../TESTING.md) for query coverage.
 
 ## Query declarations
 
@@ -91,7 +93,7 @@ validated before catalog compilation; invalid input is returned as a typed
 `heuristic` identities intentionally provide weaker syntactic evidence than
 strict global, rooted, or module identities. `QueryDecl::any` combines
 independent complete alternatives, while `QueryDecl::all` is restricted to
-constraints on one selected event. General uncorrelated multi-event
-conjunctions are not part of the public authoring grammar; nested `Any` inside
-`All` is likewise an internal compiler-test shape, not a public declaration
-route.
+constraints on one selected event. Bounded multi-event object correlation is
+available through lifecycle conditions and `all_sinks`; unrelated events are
+never joined by spelling alone. Nested `Any` inside `All` is an internal
+compiler-test shape, not a public declaration route.

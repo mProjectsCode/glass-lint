@@ -34,7 +34,7 @@ Production crates do not depend on either harness crate.
 | Crate | Owns | Does not own |
 |---|---|---|
 | [`glass-lint-datastructures`](glass-lint-datastructures/ARCHITECTURE.md) | Provider-neutral bounded data structures: interned names, sparse tables, path tries, fingerprints, and diagnostics | Semantic analysis, filesystem access, or provider policy |
-| [`glass-lint-core`](glass-lint-core/ARCHITECTURE.md) | Parsing, provider-neutral semantics, matchers, project linking, limits, and reports | Filesystem access, module resolution, host policy, profiles, or CLI behavior |
+| [`glass-lint-core`](glass-lint-core/ARCHITECTURE.md) | Parsing, provider-neutral semantics, query execution, project linking, limits, and reports | Filesystem access, module resolution, host policy, profiles, or CLI behavior |
 | [`glass-lint-project`](glass-lint-project/ARCHITECTURE.md) | Discovery, source loading, project boundaries, `tsconfig` membership, and module resolution | Parsing, semantic matching, or provider policy |
 | [`glass-lint-js`](glass-lint-js/ARCHITECTURE.md) | `js:` rules, JavaScript runtime assumptions, and profiles | Generic analysis or filesystem behavior |
 | [`glass-lint-obsidian`](glass-lint-obsidian/ARCHITECTURE.md) | `obsidian:` rules, Obsidian host assumptions, and profiles | Generic analysis or the `js:` catalog |
@@ -44,7 +44,7 @@ Production crates do not depend on either harness crate.
 
 Shared semantics move toward `glass-lint-core`; host policy stays in provider
 crates; filesystem policy stays in `glass-lint-project`; executable crates
-remain thin. Do not duplicate parsers, semantic models, matcher paths, project
+remain thin. Do not duplicate parsers, semantic models, query paths, project
 loaders, report types, or rule catalogs across these boundaries.
 
 Analysis crosses the crate boundary as validated filesystem admission, owned
@@ -55,3 +55,15 @@ Path-local strict identity is preserved through bounded correlated
 alternatives at control-flow joins. Findings distinguish possible from
 definite modeled-path coverage, and incomplete analysis cannot claim definite
 coverage.
+
+## Query planning contract
+
+Provider rules author typed declarations. Core validates them, normalizes
+order-independent expressions, and lowers them to one immutable
+`CompiledMatcherPlan`. Physical roots are canonicalized and deduplicated
+before execution; runtime preparation consults only the plan requirements.
+
+Bounded multi-event correlation is represented by lifecycle `all_of`
+conditions. Every event must belong to the same tracked object and one
+path-local alternative. Unknown, ambiguous, reassigned, escaped, or exhausted
+alternatives cannot establish a witness.
