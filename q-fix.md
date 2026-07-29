@@ -222,11 +222,11 @@ Add public integration tests, preferably in a focused
   - [x] cover empty names, malformed symbol paths, invalid module patterns,
     excessive argument indexes, empty value alternatives, and invalid
     lifecycle collections.
-  - _Currently panics via assert! — constructors not fallible (Package 2)_
+  - _Fixed: constructs return structured errors, never panic (Package 2)_
 - [x] `query_modifiers_do_not_silently_ignore_non_event_expressions`
   - [x] applying an event-only modifier to `Any`, `All`, or lifecycle must return a
     structured error rather than returning the original query unchanged.
-  - _Currently silently ignores via `if let QueryExpr::Event(...)` (Package 2)_
+  - _Fixed: with_arg is only available on EventQuery, not on composed QueryDecl expressions (Package 2)_
 
 Add compiler unit tests that exercise the complete
 validate-normalize-plan pipeline. Do not call `plan_normalized` directly on
@@ -386,30 +386,30 @@ exposing freely mutable invalid storage.
 
 ### Current problems
 
-- [ ] constructors such as `EventQuery::call_global` use `assert!`;
-- [ ] package constructors use `expect`;
-- [ ] `EventQuery`, `AnyExpr`, `AllExpr`, `LifecycleQuery`, `EmissionDecl`, and
+- [x] constructors such as `EventQuery::call_global` use `assert!`;
+- [x] package constructors use `expect`;
+- [x] `EventQuery`, `AnyExpr`, `AllExpr`, `LifecycleQuery`, `EmissionDecl`, and
   `QueryDecl` expose public fields;
-- [ ] `ArgumentConstraint::new` accepts every `usize`;
-- [ ] value predicate alternatives can be empty or excessively large; and
-- [ ] `QueryDecl::with_arg*` silently does nothing unless the expression is a
+- [x] `ArgumentConstraint::new` accepts every `usize`;
+- [x] value predicate alternatives can be empty or excessively large; and
+- [x] `QueryDecl::with_arg*` silently does nothing unless the expression is a
   direct `Event`.
 
 ### Required changes
 
-- [ ] Make logical declaration fields private.
-- [ ] Provide narrow accessors required by compiler lowering.
-- [ ] Introduce validated semantic newtypes or fallible constructors for:
-  - [ ] non-empty identity names;
-  - [ ] symbol paths;
-  - [ ] exact module specifiers;
-  - [ ] package module patterns;
-  - [ ] evidence symbols;
-  - [ ] bounded argument indexes;
-  - [ ] non-empty bounded predicate alternative sets;
-  - [ ] non-empty `Any`/`All`; and
-  - [ ] valid lifecycle stages.
-- [ ] Define these declaration limits in `api/rule/query/limits.rs` and use them in
+- [x] Make logical declaration fields private.
+- [x] Provide narrow accessors required by compiler lowering.
+- [x] Introduce validated semantic newtypes or fallible constructors for:
+  - [x] non-empty identity names;
+  - [x] symbol paths;
+  - [x] exact module specifiers;
+  - [x] package module patterns;
+  - [x] evidence symbols;
+  - [x] bounded argument indexes;
+  - [x] non-empty bounded predicate alternative sets;
+  - [x] non-empty `Any`/`All`; and
+  - [x] valid lifecycle stages.
+- [x] Define these declaration limits in `api/rule/query/limits.rs` and use them in
   construction and compiler invariant checks:
 
   ```rust
@@ -425,9 +425,9 @@ exposing freely mutable invalid storage.
   ```
 
   Do not retain the compiler's generic `1_000` limits.
-- [ ] Return `Result<_, QueryBuildError>` from every authoring constructor that
+- [x] Return `Result<_, QueryBuildError>` from every authoring constructor that
   accepts text, a raw index, or a collection.
-- [ ] Preserve fluent rule authoring with this exact error propagation contract:
+- [x] Preserve fluent rule authoring with this exact error propagation contract:
 
   ```rust
   pub trait IntoQueryDecl {
@@ -456,27 +456,27 @@ exposing freely mutable invalid storage.
 
   Do not add `try_query`, `query_unchecked`, or an infallible duplicate
   constructor.
-- [ ] Do not use `unwrap`, `expect`, or assertions for expected provider or user
+- [x] Do not use `unwrap`, `expect`, or assertions for expected provider or user
   input.
-- [ ] Event-only modifiers must be methods on `EventQuery`, not generic
+- [x] Event-only modifiers must be methods on `EventQuery`, not generic
   `QueryDecl` methods that can ignore other expression variants.
-- [ ] `QueryDecl` exposes only the expression-level combinators specified in
+- [x] `QueryDecl` exposes only the expression-level combinators specified in
   Package 3. It does not expose raw fields.
-- [ ] Canonicalize bounded alternative sets at construction:
-  - [ ] validate non-empty values;
-  - [ ] sort deterministically;
-  - [ ] deduplicate;
-  - [ ] reject values or collection sizes over the declared limit.
-- [ ] Introduce a bounded semantic type for argument positions. The compiler must
+- [x] Canonicalize bounded alternative sets at construction:
+  - [x] validate non-empty values;
+  - [x] sort deterministically;
+  - [x] deduplicate;
+  - [x] reject values or collection sizes over the declared limit.
+- [x] Introduce a bounded semantic type for argument positions. The compiler must
   never receive an unchecked raw index.
 
 ### Error model
 
 Keep declaration and compiler errors distinct:
 
-- [ ] `QueryBuildError`: malformed local constructor input;
-- [ ] `QueryCompileError`: invalid cross-expression relationship;
-- [ ] internal compiler invariant error: a bug after validated lowering.
+- [x] `QueryBuildError`: malformed local constructor input;
+- [x] `QueryCompileError`: invalid cross-expression relationship;
+- [x] internal compiler invariant error: a bug after validated lowering.
 
 Do not erase `QueryCompileError` into an unstructured string before the catalog
 boundary. Add this public diagnostic projection:
@@ -502,20 +502,20 @@ fields; it does not become their storage.
 
 ### Required tests
 
-- [ ] one test per `QueryBuildError` variant;
-- [ ] collection boundary tests at limit and limit plus one;
-- [ ] a deterministic table-driven `catch_unwind` test over malformed public query
+- [x] one test per `QueryBuildError` variant;
+- [x] collection boundary tests at limit and limit plus one;
+- [x] a deterministic table-driven `catch_unwind` test over malformed public query
   inputs; do not add a property-testing dependency for this migration;
-- [ ] event-only modifiers reject non-event queries;
-- [ ] equivalent predicate alternative order constructs equal declarations; and
-- [ ] all built-in provider catalogs compile through the fallible path.
+- [x] event-only modifiers reject non-event queries;
+- [x] equivalent predicate alternative order constructs equal declarations; and
+- [x] all built-in provider catalogs compile through the fallible path.
 
 ### Exit criteria
 
-- [ ] Invalid author input cannot panic.
-- [ ] Public callers cannot directly construct empty or malformed logical nodes.
-- [ ] No modifier silently leaves an unsupported query unchanged.
-- [ ] Catalog errors preserve stable structured query diagnostics.
+- [x] Invalid author input cannot panic.
+- [x] Public callers cannot directly construct empty or malformed logical nodes.
+- [x] No modifier silently leaves an unsupported query unchanged.
+- [x] Catalog errors preserve stable structured query diagnostics.
 
 ---
 

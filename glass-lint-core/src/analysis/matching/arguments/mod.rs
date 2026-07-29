@@ -164,9 +164,7 @@ mod tests {
                     IdentityStrength,
                 },
             },
-            rule::{
-                ArgumentConstraint, ArgumentMatcher, EventQuery, ValueMatcher,
-            },
+            rule::{ArgumentConstraint, ArgumentMatcher, EventQuery, ValueMatcher},
         },
         project::SourceText,
     };

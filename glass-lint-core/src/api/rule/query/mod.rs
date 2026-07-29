@@ -944,7 +944,7 @@ impl fmt::Display for QueryExpr {
 /// - Do not let an unknown branch erase an independent complete witness.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AnyExpr {
-    pub branches: Vec<QueryExpr>,
+    pub(crate) branches: Vec<QueryExpr>,
 }
 
 impl AnyExpr {
@@ -954,6 +954,11 @@ impl AnyExpr {
             return Err(QueryBuildError::EmptyAlternatives);
         }
         Ok(Self { branches })
+    }
+
+    /// Borrow the branches of this `Any` expression.
+    pub fn branches(&self) -> &[QueryExpr] {
+        &self.branches
     }
 }
 
@@ -971,7 +976,7 @@ impl AnyExpr {
 /// - Select one explicit primary event for result emission.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AllExpr {
-    pub branches: Vec<QueryExpr>,
+    pub(crate) branches: Vec<QueryExpr>,
 }
 
 impl AllExpr {
@@ -981,6 +986,11 @@ impl AllExpr {
             return Err(QueryBuildError::EmptyConjunction);
         }
         Ok(Self { branches })
+    }
+
+    /// Borrow the branches of this `All` expression.
+    pub fn branches(&self) -> &[QueryExpr] {
+        &self.branches
     }
 }
 

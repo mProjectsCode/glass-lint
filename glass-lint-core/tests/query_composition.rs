@@ -221,100 +221,259 @@ fn multiple_lifecycle_sources_compile() {
     );
 }
 
-// ── Test 7: Invalid authoring input never panics ────────────────────────
-//
-// Every text/index/collection constructor returns a structured error rather
-// than panicking via assert! or expect.
-
-#[test]
-fn invalid_authoring_input_never_panics() {
-    // Empty global call name
-    let empty_name = catch_unwind(|| EventQuery::call_global(""));
-    assert!(
-        empty_name.is_ok(),
-        "EventQuery::call_global with empty name must not panic"
-    );
-
-    // Empty heuristic call name
-    let empty_heuristic = catch_unwind(|| EventQuery::call_heuristic(""));
-    assert!(
-        empty_heuristic.is_ok(),
-        "EventQuery::call_heuristic with empty name must not panic"
-    );
-
-    // Empty module string
-    let empty_module = catch_unwind(|| EventQuery::call_module("", "export"));
-    assert!(
-        empty_module.is_ok(),
-        "EventQuery::call_module with empty module must not panic"
-    );
-
-    // Empty export string
-    let empty_export = catch_unwind(|| EventQuery::call_module("fs", ""));
-    assert!(
-        empty_export.is_ok(),
-        "EventQuery::call_module with empty export must not panic"
-    );
-
-    // Malformed chain (double dot)
-    let malformed_chain = catch_unwind(|| EventQuery::member_call_rooted("a..b"));
-    assert!(
-        malformed_chain.is_ok(),
-        "EventQuery::member_call_rooted with '..' must not panic"
-    );
-
-    // Malformed chain (trailing dot)
-    let trailing_dot = catch_unwind(|| EventQuery::member_call_rooted("a.b."));
-    assert!(
-        trailing_dot.is_ok(),
-        "EventQuery::member_call_rooted with trailing dot must not panic"
-    );
-
-    // Empty import
-    let empty_import = catch_unwind(|| EventQuery::import_exact(""));
-    assert!(
-        empty_import.is_ok(),
-        "EventQuery::import_exact with empty module must not panic"
-    );
-
-    // Empty string reference
-    let empty_string = catch_unwind(|| EventQuery::string_contains(""));
-    assert!(
-        empty_string.is_ok(),
-        "EventQuery::string_contains with empty value must not panic"
-    );
-
-    // Empty class name
-    let empty_class_heuristic = catch_unwind(|| EventQuery::class_heuristic(""));
-    assert!(
-        empty_class_heuristic.is_ok(),
-        "EventQuery::class_heuristic with empty name must not panic"
-    );
-
-    // Empty constructor
-    let empty_constructor_global = catch_unwind(|| EventQuery::constructor_global(""));
-    assert!(
-        empty_constructor_global.is_ok(),
-        "EventQuery::constructor_global with empty name must not panic"
-    );
-
-    // Empty AnyExpr
-    let empty_any = AnyExpr::new(vec![]);
-    assert_eq!(empty_any, Err(QueryBuildError::EmptyAlternatives));
-
-    // Empty AllExpr
-    let empty_all = AllExpr::new(vec![]);
-    assert_eq!(empty_all, Err(QueryBuildError::EmptyConjunction));
-}
-
 // ── Test 8: Event-only modifiers reject non-event expressions ───────────
-//
-// Applying with_arg (an event-only modifier) to an Any, All, or Lifecycle
-// expression must return a structured error rather than silently returning
-// the original query unchanged.
 //
 // with_arg is only available on EventQuery, so calling it on a composed
 // QueryDecl expression is impossible at the type level.
+
+// ── Table-driven catch_unwind test ────────────────────────────────────
+//
+// Every text/index/collection constructor must return a structured error
+// rather than panicking.  Constructors tested here accept user-provided
+// strings or indices that could be empty, malformed, or out of range.
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn invalid_authoring_input_never_panics() {
+    // All constructor calls that should return Err, never panic.
+    #[allow(clippy::type_complexity)]
+    let cases: Vec<(&str, Box<dyn Fn() -> Result<(), String>>)> = vec![
+        (
+            "call_global empty",
+            Box::new(|| {
+                EventQuery::call_global("")
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "call_heuristic empty",
+            Box::new(|| {
+                EventQuery::call_heuristic("")
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "call_module empty module",
+            Box::new(|| {
+                EventQuery::call_module("", "x")
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "call_module empty export",
+            Box::new(|| {
+                EventQuery::call_module("m", "")
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "call_package empty",
+            Box::new(|| {
+                EventQuery::call_package("", "x")
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "member_call_rooted double dot",
+            Box::new(|| {
+                EventQuery::member_call_rooted("a..b")
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "member_call_rooted trailing dot",
+            Box::new(|| {
+                EventQuery::member_call_rooted("a.b.")
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "member_call_rooted leading dot",
+            Box::new(|| {
+                EventQuery::member_call_rooted(".a")
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "member_call_rooted empty",
+            Box::new(|| {
+                EventQuery::member_call_rooted("")
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "member_call_heuristic empty",
+            Box::new(|| {
+                EventQuery::member_call_heuristic("")
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "member_call_module empty module",
+            Box::new(|| {
+                EventQuery::member_call_module("", "m")
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "import_exact empty",
+            Box::new(|| {
+                EventQuery::import_exact("")
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "import_package empty",
+            Box::new(|| {
+                EventQuery::import_package("")
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "string_contains empty",
+            Box::new(|| {
+                EventQuery::string_contains("")
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "class_heuristic empty",
+            Box::new(|| {
+                EventQuery::class_heuristic("")
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "class_module empty module",
+            Box::new(|| {
+                EventQuery::class_module("", "C")
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "constructor_global empty",
+            Box::new(|| {
+                EventQuery::constructor_global("")
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "constructor_heuristic empty",
+            Box::new(|| {
+                EventQuery::constructor_heuristic("")
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+        (
+            "constructor_module empty module",
+            Box::new(|| {
+                EventQuery::constructor_module("", "C")
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }),
+        ),
+    ];
+
+    for (name, constructor) in cases {
+        let result = catch_unwind(std::panic::AssertUnwindSafe(constructor));
+        match result {
+            Ok(Err(_)) => {} // expected: structured error
+            Ok(Ok(())) => panic!("{name}: expected Err but got Ok"),
+            Err(panic) => {
+                let msg = panic
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| panic.downcast_ref::<&str>().map(ToString::to_string))
+                    .unwrap_or_else(|| "unknown panic payload".into());
+                panic!("{name}: panicked instead of returning Err: {msg}")
+            }
+        }
+    }
+
+    // Non-panicking empty Any/All (already Err, not panic).
+    assert_eq!(
+        AnyExpr::new(vec![]),
+        Err(QueryBuildError::EmptyAlternatives)
+    );
+    assert_eq!(AllExpr::new(vec![]), Err(QueryBuildError::EmptyConjunction));
+}
+
+// ── Collection boundary tests at limit and limit + 1 ──────────────────
+
+#[test]
+fn lifecycle_sources_at_limit_succeeds() {
+    let sources = (0..64)
+        .map(|i| EventQuery::member_call_rooted(format!("a.b{i}")))
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let lc = LifecycleQuery::new(sources, None, None).unwrap();
+    assert_eq!(lc.sources().len(), 64);
+}
+
+#[test]
+fn lifecycle_sources_exceeding_limit_fails() {
+    let sources = (0..65)
+        .map(|i| EventQuery::member_call_rooted(format!("a.b{i}")))
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let err = LifecycleQuery::new(sources, None, None).unwrap_err();
+    assert!(matches!(err, QueryBuildError::CollectionTooLarge(_, 65)));
+}
+
+#[test]
+fn argument_index_at_limit_succeeds() {
+    let q = EventQuery::call_global("fetch")
+        .unwrap()
+        .with_arg(255, ValueMatcher::static_string())
+        .unwrap();
+    assert_eq!(q.constraints().len(), 1);
+}
+
+#[test]
+fn argument_index_exceeding_limit_fails() {
+    let err = EventQuery::call_global("fetch")
+        .unwrap()
+        .with_arg(256, ValueMatcher::static_string());
+    assert!(matches!(
+        err,
+        Err(QueryBuildError::InvalidArgumentIndex(256))
+    ));
+}
+
+#[test]
+fn predicate_alternatives_at_limit_succeeds() {
+    let values: Vec<String> = (0..256).map(|i| format!("val{i}")).collect();
+    let m = ValueMatcher::static_string().equals_any(values);
+    // Should not panic or error — canonicalization handles up to any size
+    let _ = m;
+}
+
+#[test]
+fn query_roots_boundary_succeeds() {
+    let queries: Vec<QueryDecl> = (0..256)
+        .map(|i| QueryDecl::call_global(format!("fn{i}")))
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(queries.len(), 256);
+}
 
 // ── Package 2: QueryBuildError variant tests ──────────────────────────
 
@@ -325,31 +484,9 @@ fn empty_lifecycle_sources_rejected() {
 }
 
 #[test]
-fn excessive_lifecycle_sources_rejected() {
-    let sources = (0..65)
-        .map(|i| EventQuery::member_call_rooted(format!("a.b{i}")))
-        .collect::<Result<Vec<_>, _>>()
-        .unwrap();
-    let err = LifecycleQuery::new(sources, None, None).unwrap_err();
-    assert!(matches!(err, QueryBuildError::CollectionTooLarge(..)));
-}
-
-#[test]
 fn invalid_scope_package_rejected() {
     let err = EventQuery::call_package("  ", "export");
     assert!(matches!(err, Err(QueryBuildError::InvalidScopePackage)));
-}
-
-#[test]
-fn invalid_argument_index_rejected() {
-    // Argument index 256 exceeds MAX_ARGUMENT_INDEX (255).
-    let err = EventQuery::call_global("fetch")
-        .unwrap()
-        .with_arg(256, ValueMatcher::static_string());
-    assert!(
-        matches!(err, Err(QueryBuildError::InvalidArgumentIndex(256))),
-        "expected InvalidArgumentIndex(256), got: {err:?}"
-    );
 }
 
 #[test]

@@ -41,8 +41,8 @@ use crate::api::{
     rule::{
         ArgumentConstraint,
         query::{
-            AllExpr, EventQuery, EventSpec, LifecycleQuery, QueryDecl, QueryExpr,
-            QuerySet, SubjectSpec,
+            AllExpr, EventQuery, EventSpec, LifecycleQuery, QueryDecl, QueryExpr, QuerySet,
+            SubjectSpec,
         },
     },
 };

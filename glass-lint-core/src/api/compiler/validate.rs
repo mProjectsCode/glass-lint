@@ -23,7 +23,7 @@
 //! 10. **final invariant validation** — post-normalization checks.
 
 use crate::api::rule::query::{
-    EventQuery, EventSpec, IdentitySpec, LifecycleQuery, QueryDecl, QueryExpr, QuerySet,
+    limits, EventQuery, EventSpec, IdentitySpec, LifecycleQuery, QueryDecl, QueryExpr, QuerySet,
     SubjectSpec, VarId,
 };
 
@@ -548,9 +548,7 @@ pub(crate) fn pass_boundedness(decl: &QueryDecl) -> Result<(), QueryCompileError
 fn check_boundedness(expr: &QueryExpr) -> Result<(), QueryCompileError> {
     match expr {
         QueryExpr::Any(any) => {
-            // Reject deeply nested alternatives that could cause
-            // exponential blowup during planning.
-            if any.branches.len() > 1_000 {
+            if any.branches.len() > limits::MAX_EXPR_CHILDREN {
                 return Err(QueryCompileError::UnboundedQuery {
                     detail: "Any expression exceeds maximum branch count",
                 });
@@ -561,7 +559,7 @@ fn check_boundedness(expr: &QueryExpr) -> Result<(), QueryCompileError> {
             Ok(())
         }
         QueryExpr::All(all) => {
-            if all.branches.len() > 1_000 {
+            if all.branches.len() > limits::MAX_EXPR_CHILDREN {
                 return Err(QueryCompileError::UnboundedQuery {
                     detail: "All expression exceeds maximum branch count",
                 });
@@ -572,8 +570,8 @@ fn check_boundedness(expr: &QueryExpr) -> Result<(), QueryCompileError> {
             Ok(())
         }
         QueryExpr::Event(eq) => {
-            // Check for excessive argument constraints.
-            if eq.constraints().len() > 1_000 {
+            let max_constraints = limits::MAX_PREDICATES_PER_ARGUMENT * limits::MAX_ARGUMENT_GROUPS;
+            if eq.constraints().len() > max_constraints {
                 return Err(QueryCompileError::UnboundedQuery {
                     detail: "Event query exceeds maximum argument constraint count",
                 });

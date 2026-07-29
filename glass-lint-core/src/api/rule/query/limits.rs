@@ -1,6 +1,5 @@
 #[allow(dead_code)]
 pub const MAX_QUERY_ROOTS_PER_RULE: usize = 256;
-#[allow(dead_code)]
 pub const MAX_EXPR_CHILDREN: usize = 256;
 pub const MAX_ARGUMENT_INDEX: usize = 255;
 pub const MAX_ARGUMENT_GROUPS: usize = 64;
