@@ -9,7 +9,7 @@
 //!
 //! ## Layout
 //!
-//! The planner converts a normalized [`QueryDecl`] (or [`QuerySet`]) into
+//! The planner converts a normalized [`QueryDecl`] into
 //! a [`PhysicalPlan`] containing zero or more [`PhysicalRoot`] values.
 //! Each root is a self-contained executable operator.  Alternatives
 //! (nested `Any`) are flattened into independent roots; same-variable
@@ -41,8 +41,8 @@ use crate::api::{
     rule::{
         ArgumentConstraint,
         query::{
-            AllExpr, EventQuery, EventSpec, LifecycleQuery, QueryDecl, QueryExpr, QuerySet,
-            SubjectSpec,
+            AllExpr, EventQuery, EventSpec, IdentitySpec, LifecycleQuery, QueryDecl, QueryExpr,
+            QueryExprKind, QueryPredicate, SubjectSpec, VarId,
         },
     },
 };
@@ -252,17 +252,18 @@ fn plan_event_query(eq: &EventQuery, kind: MatchKind, symbol: &str) -> Vec<Physi
 /// Same-variable `All` branches are merged into a single root with
 /// combined constraints.
 fn plan_expression(expr: &QueryExpr, kind: MatchKind, symbol: &str) -> Vec<PhysicalRoot> {
-    match expr {
-        QueryExpr::Event(eq) => plan_event_query(eq, kind, symbol),
-        QueryExpr::Any(any) => {
+    match &expr.kind {
+        QueryExprKind::Event(eq) => plan_event_query(eq, kind, symbol),
+        QueryExprKind::SelectEvent(_) | QueryExprKind::Require(_) => Vec::new(),
+        QueryExprKind::Any(any) => {
             let mut roots = Vec::new();
             for branch in &any.branches {
                 roots.extend(plan_expression(branch, kind, symbol));
             }
             roots
         }
-        QueryExpr::All(all) => plan_all_expression(all, kind, symbol),
-        QueryExpr::Lifecycle(lc) => {
+        QueryExprKind::All(all) => plan_all_expression(all, kind, symbol),
+        QueryExprKind::Lifecycle(lc) => {
             vec![plan_lifecycle(lc, kind, symbol)]
         }
     }
@@ -276,48 +277,97 @@ fn plan_expression(expr: &QueryExpr, kind: MatchKind, symbol: &str) -> Vec<Physi
 /// the same event that can be merged into a single scan with combined
 /// constraints.
 fn plan_all_expression(all: &AllExpr, kind: MatchKind, symbol: &str) -> Vec<PhysicalRoot> {
-    // Collect all constraints across branches and use the first event
-    // as the base scan.
-    let mut first_event: Option<EventQuery> = None;
-    let mut merged_constraints: Vec<ArgumentConstraint> = Vec::new();
+    // Try to extract an event from the All branches.
+    // Handle both forms:
+    // 1. Old form: branches contain Event(EventQuery) nodes
+    // 2. New atomized form: branches contain SelectEvent + Require atoms
+    let mut event_var: Option<VarId> = None;
+    let mut event_spec: Option<EventSpec> = None;
+    let mut identity_spec: Option<IdentitySpec> = None;
+    let mut subject_spec: SubjectSpec = SubjectSpec::Direct;
+    let mut constraints: Vec<ArgumentConstraint> = Vec::new();
 
     for branch in &all.branches {
-        if let QueryExpr::Event(eq) = branch {
-            if first_event.is_none() {
-                first_event = Some(eq.clone());
-            }
-            merged_constraints.extend(eq.constraints.iter().cloned());
-        } else {
-            // After normalization, nested Any/All inside All is possible
-            // if they have different logical operators (Any inside All
-            // is preserved).  Plan the non-Event branch independently.
-            let mut roots = Vec::new();
-            if let Some(eq) = first_event.take() {
-                let evidence = EvidenceDescriptor {
-                    kind,
-                    symbol: symbol.to_owned(),
-                };
-                if merged_constraints.is_empty() {
-                    roots.push(PhysicalRoot::IndexedScan {
-                        identity: lower_identity(&eq.identity),
-                        event: lower_event(&eq.event),
-                        evidence,
-                    });
-                } else {
-                    roots.push(PhysicalRoot::ConstrainedScan {
-                        identity: lower_identity(&eq.identity),
-                        event: lower_event(&eq.event),
-                        constraints: merged_constraints.into_iter().collect(),
-                        evidence,
-                    });
+        match &branch.kind {
+            QueryExprKind::Event(eq) => {
+                // Old form: carry the EventQuery fields.
+                if event_var.is_none() {
+                    event_var = Some(eq.var);
+                    event_spec = Some(eq.event.clone());
+                    identity_spec = Some(eq.identity.clone());
+                    subject_spec = eq.subject;
                 }
+                constraints.extend(eq.constraints.iter().cloned());
             }
-            roots.extend(plan_expression(branch, kind, symbol));
-            return roots;
+            QueryExprKind::SelectEvent(s) => {
+                event_var = Some(s.bind);
+            }
+            QueryExprKind::Require(p) => match p {
+                QueryPredicate::EventKind { expected, .. } => {
+                    event_spec = Some(expected.clone());
+                }
+                QueryPredicate::EventIdentity { expected, .. } => {
+                    identity_spec = Some(expected.clone());
+                }
+                QueryPredicate::Argument {
+                    call: _,
+                    index,
+                    matcher,
+                } => {
+                    constraints.push(ArgumentConstraint::new(*index, matcher.clone()));
+                }
+                QueryPredicate::ReturnedObject { .. } => {
+                    subject_spec = SubjectSpec::ReturnedFrom;
+                }
+                QueryPredicate::ConstructedObject { .. } => {
+                    subject_spec = SubjectSpec::InstanceOf;
+                }
+                QueryPredicate::MemberSubject { .. } => {}
+            },
+            _ => {
+                // Non-Event/non-atom branch (e.g. nested Any inside All):
+                // plan independently and return.
+                let mut roots = plan_atomized_event(
+                    event_var,
+                    event_spec,
+                    identity_spec.as_ref(),
+                    subject_spec,
+                    &constraints,
+                    kind,
+                    symbol,
+                );
+                roots.extend(plan_expression(branch, kind, symbol));
+                return roots;
+            }
         }
     }
 
-    let Some(eq) = first_event else {
+    plan_atomized_event(
+        event_var,
+        event_spec,
+        identity_spec.as_ref(),
+        subject_spec,
+        &constraints,
+        kind,
+        symbol,
+    )
+}
+
+/// Build a physical root from atomized event fields (extracted from
+/// SelectEvent + Require atoms or from EventQuery).
+fn plan_atomized_event(
+    _event_var: Option<VarId>,
+    event_spec: Option<EventSpec>,
+    identity_spec: Option<&IdentitySpec>,
+    _subject_spec: SubjectSpec,
+    constraints: &[ArgumentConstraint],
+    kind: MatchKind,
+    symbol: &str,
+) -> Vec<PhysicalRoot> {
+    let Some(event) = event_spec else {
+        return Vec::new();
+    };
+    let Some(identity) = identity_spec else {
         return Vec::new();
     };
 
@@ -326,17 +376,17 @@ fn plan_all_expression(all: &AllExpr, kind: MatchKind, symbol: &str) -> Vec<Phys
         symbol: symbol.to_owned(),
     };
 
-    if merged_constraints.is_empty() {
+    if constraints.is_empty() {
         vec![PhysicalRoot::IndexedScan {
-            identity: lower_identity(&eq.identity),
-            event: lower_event(&eq.event),
+            identity: lower_identity(identity),
+            event: lower_event(&event),
             evidence,
         }]
     } else {
         vec![PhysicalRoot::ConstrainedScan {
-            identity: lower_identity(&eq.identity),
-            event: lower_event(&eq.event),
-            constraints: merged_constraints.into_iter().collect(),
+            identity: lower_identity(identity),
+            event: lower_event(&event),
+            constraints: constraints.to_vec().into_boxed_slice(),
             evidence,
         }]
     }
@@ -351,29 +401,6 @@ fn plan_all_expression(all: &AllExpr, kind: MatchKind, symbol: &str) -> Vec<Phys
 pub(crate) fn plan_normalized(decl: &QueryDecl, requirements: PlanRequirements) -> PhysicalPlan {
     let roots = plan_expression(&decl.expression, decl.emission.kind, &decl.emission.symbol);
     PhysicalPlan::new(roots.into_boxed_slice(), requirements)
-}
-
-/// Plan all queries in a normalized [`QuerySet`] into a single
-/// [`PhysicalPlan`].
-///
-/// Each query's roots are concatenated in query order.  Requirements
-/// are unioned (any true → true).
-#[allow(dead_code)]
-pub(crate) fn plan_query_set(set: &QuerySet, requirements: &[PlanRequirements]) -> PhysicalPlan {
-    let mut all_roots = Vec::new();
-    let mut merged_requirements = PlanRequirements::default();
-
-    for (query, req) in set.queries.iter().zip(requirements.iter()) {
-        let roots = plan_expression(
-            &query.expression,
-            query.emission.kind,
-            &query.emission.symbol,
-        );
-        all_roots.extend(roots);
-        merged_requirements.merge_from(req);
-    }
-
-    PhysicalPlan::new(all_roots.into_boxed_slice(), merged_requirements)
 }
 
 /// Plan a lifecycle query into a [`PhysicalRoot::Lifecycle`] with an
@@ -618,7 +645,7 @@ mod tests {
     fn alternatives_from_any_produce_multiple_roots() {
         use crate::api::rule::query::{AnyExpr, EventQuery, EventSpec, QueryExpr};
         let branches = vec![
-            QueryExpr::Event(EventQuery {
+            QueryExpr::event(EventQuery {
                 var: VarId::new(0),
                 event: EventSpec::Call,
                 identity: IdentitySpec::Global {
@@ -627,7 +654,7 @@ mod tests {
                 subject: SubjectSpec::Direct,
                 constraints: vec![],
             }),
-            QueryExpr::Event(EventQuery {
+            QueryExpr::event(EventQuery {
                 var: VarId::new(1),
                 event: EventSpec::Call,
                 identity: IdentitySpec::Global {
@@ -638,7 +665,7 @@ mod tests {
             }),
         ];
         let query = QueryDecl {
-            expression: QueryExpr::Any(AnyExpr::new(branches).unwrap()),
+            expression: QueryExpr::any(AnyExpr::new(branches).unwrap()),
             emission: EmissionDecl {
                 primary_var: VarId::new(0),
                 kind: MatchKind::Call,

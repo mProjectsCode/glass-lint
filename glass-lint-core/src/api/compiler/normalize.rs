@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 
 use crate::api::rule::query::{
     AllExpr, AnyExpr, EmissionDecl, EventQuery, IdentitySpec, LifecycleQuery, QueryDecl, QueryExpr,
-    QuerySet, VarId,
+    QueryExprKind, QueryPredicate, VarId,
 };
 
 // ── Plan requirements ─────────────────────────────────────────────────────
@@ -55,8 +55,8 @@ impl PlanRequirements {
             needs_occurrence_indexes: true,
             needs_fact_stream: has_any_constraint(&decl.expression),
             needs_value_resolution: has_any_constraint(&decl.expression),
-            needs_local_flow: matches!(&decl.expression, QueryExpr::Lifecycle(_)),
-            needs_cross_call_flow: matches!(&decl.expression, QueryExpr::Lifecycle(_)),
+            needs_local_flow: matches!(&decl.expression.kind, QueryExprKind::Lifecycle(_)),
+            needs_cross_call_flow: matches!(&decl.expression.kind, QueryExprKind::Lifecycle(_)),
             needs_project_overlay: requires_project_overlay(&decl.expression),
             needs_evidence_trace: true,
         }
@@ -75,29 +75,32 @@ impl PlanRequirements {
 }
 
 fn has_any_constraint(expr: &QueryExpr) -> bool {
-    match expr {
-        QueryExpr::Event(eq) => !eq.constraints.is_empty(),
-        QueryExpr::Any(any) => any.branches.iter().any(has_any_constraint),
-        QueryExpr::All(all) => all.branches.iter().any(has_any_constraint),
-        QueryExpr::Lifecycle(_) => false,
+    match &expr.kind {
+        QueryExprKind::Event(eq) => !eq.constraints.is_empty(),
+        QueryExprKind::SelectEvent(_) | QueryExprKind::Require(_) | QueryExprKind::Lifecycle(_) => {
+            false
+        }
+        QueryExprKind::Any(any) => any.branches.iter().any(has_any_constraint),
+        QueryExprKind::All(all) => all.branches.iter().any(has_any_constraint),
     }
 }
 
 fn requires_project_overlay(expr: &QueryExpr) -> bool {
-    match expr {
-        QueryExpr::Event(eq) => matches!(
+    match &expr.kind {
+        QueryExprKind::Event(eq) => matches!(
             &eq.identity,
             IdentitySpec::ModuleExport { .. }
                 | IdentitySpec::PackageModuleExport { .. }
                 | IdentitySpec::ModuleNamespace { .. }
                 | IdentitySpec::PackageModuleNamespace { .. }
         ),
-        QueryExpr::Any(any) => any.branches.iter().any(requires_project_overlay),
-        QueryExpr::All(all) => all.branches.iter().any(requires_project_overlay),
-        QueryExpr::Lifecycle(lc) => lc
+        QueryExprKind::SelectEvent(_) | QueryExprKind::Require(_) => false,
+        QueryExprKind::Any(any) => any.branches.iter().any(requires_project_overlay),
+        QueryExprKind::All(all) => all.branches.iter().any(requires_project_overlay),
+        QueryExprKind::Lifecycle(lc) => lc
             .sources
             .iter()
-            .any(|src| requires_project_overlay(&QueryExpr::Event(src.clone()))),
+            .any(|src| requires_project_overlay(&QueryExpr::event(src.clone()))),
     }
 }
 
@@ -132,23 +135,26 @@ pub(crate) fn normalize_query_decl(decl: &QueryDecl) -> (QueryDecl, PlanRequirem
 /// 2. Sort branches by a deterministic canonical order.
 /// 3. Remove exact duplicate branches (using `Eq`).
 pub(crate) fn normalize_expr(expr: &QueryExpr) -> QueryExpr {
-    match expr {
-        QueryExpr::Any(any) => {
+    match &expr.kind {
+        QueryExprKind::Any(any) => {
             let mut branches = flatten_branches::<true>(&any.branches);
             sort_exprs(&mut branches);
             branches.dedup();
             // Must be non-empty (validated at construction)
             debug_assert!(!branches.is_empty(), "normalized Any must be non-empty");
-            QueryExpr::Any(AnyExpr { branches })
+            QueryExpr::any(AnyExpr { branches })
         }
-        QueryExpr::All(all) => {
+        QueryExprKind::All(all) => {
             let mut branches = flatten_branches::<false>(&all.branches);
             sort_exprs(&mut branches);
             branches.dedup();
             debug_assert!(!branches.is_empty(), "normalized All must be non-empty");
-            QueryExpr::All(AllExpr { branches })
+            QueryExpr::all(AllExpr { branches })
         }
-        QueryExpr::Event(_) | QueryExpr::Lifecycle(_) => expr.clone(),
+        QueryExprKind::Event(_)
+        | QueryExprKind::SelectEvent(_)
+        | QueryExprKind::Require(_)
+        | QueryExprKind::Lifecycle(_) => expr.clone(),
     }
 }
 
@@ -163,12 +169,12 @@ fn flatten_branches<const IS_ANY: bool>(branches: &[QueryExpr]) -> Vec<QueryExpr
     for b in branches {
         let flat = normalize_expr(b);
         if IS_ANY {
-            if let QueryExpr::Any(inner) = &flat {
+            if let QueryExprKind::Any(inner) = &flat.kind {
                 result.extend(inner.branches.clone());
             } else {
                 result.push(flat);
             }
-        } else if let QueryExpr::All(inner) = &flat {
+        } else if let QueryExprKind::All(inner) = &flat.kind {
             result.extend(inner.branches.clone());
         } else {
             result.push(flat);
@@ -191,15 +197,15 @@ fn sort_exprs(exprs: &mut [QueryExpr]) {
 fn compare_exprs(a: &QueryExpr, b: &QueryExpr) -> std::cmp::Ordering {
     use std::cmp::Ordering;
 
-    let disc_a = expr_discriminant(a);
-    let disc_b = expr_discriminant(b);
+    let disc_a = expr_discriminant(&a.kind);
+    let disc_b = expr_discriminant(&b.kind);
     if disc_a != disc_b {
         return disc_a.cmp(&disc_b);
     }
 
-    match (a, b) {
-        (QueryExpr::Event(ae), QueryExpr::Event(be)) => compare_event_fields(ae, be),
-        (QueryExpr::Lifecycle(la), QueryExpr::Lifecycle(lb)) => la
+    match (&a.kind, &b.kind) {
+        (QueryExprKind::Event(ae), QueryExprKind::Event(be)) => compare_event_fields(ae, be),
+        (QueryExprKind::Lifecycle(la), QueryExprKind::Lifecycle(lb)) => la
             .sources
             .len()
             .cmp(&lb.sources.len())
@@ -213,22 +219,24 @@ fn compare_exprs(a: &QueryExpr, b: &QueryExpr) -> std::cmp::Ordering {
             })
             .then_with(|| la.condition.is_some().cmp(&lb.condition.is_some()))
             .then_with(|| la.completion.is_some().cmp(&lb.completion.is_some())),
-        (QueryExpr::Any(aa), QueryExpr::Any(ba)) => {
+        (QueryExprKind::Any(aa), QueryExprKind::Any(ba)) => {
             compare_branch_slices(&aa.branches, &ba.branches)
         }
-        (QueryExpr::All(aa), QueryExpr::All(ba)) => {
+        (QueryExprKind::All(aa), QueryExprKind::All(ba)) => {
             compare_branch_slices(&aa.branches, &ba.branches)
         }
         _ => Ordering::Equal,
     }
 }
 
-fn expr_discriminant(e: &QueryExpr) -> u8 {
+fn expr_discriminant(e: &QueryExprKind) -> u8 {
     match e {
-        QueryExpr::Event(_) => 0,
-        QueryExpr::Lifecycle(_) => 1,
-        QueryExpr::Any(_) => 2,
-        QueryExpr::All(_) => 3,
+        QueryExprKind::Event(_) => 0,
+        QueryExprKind::SelectEvent(_) => 1,
+        QueryExprKind::Require(_) => 2,
+        QueryExprKind::Lifecycle(_) => 3,
+        QueryExprKind::Any(_) => 4,
+        QueryExprKind::All(_) => 5,
     }
 }
 
@@ -282,19 +290,31 @@ fn reassign_vars(expr: &QueryExpr) -> (QueryExpr, BTreeMap<VarId, VarId>) {
 }
 
 fn collect_vars_preorder(expr: &QueryExpr, vars: &mut Vec<VarId>) {
-    match expr {
-        QueryExpr::Event(eq) => vars.push(eq.var),
-        QueryExpr::Any(any) => {
+    match &expr.kind {
+        QueryExprKind::Event(eq) => vars.push(eq.var),
+        QueryExprKind::SelectEvent(s) => vars.push(s.bind),
+        QueryExprKind::Require(p) => match p {
+            QueryPredicate::EventKind { event, .. }
+            | QueryPredicate::EventIdentity { event, .. } => vars.push(*event),
+            QueryPredicate::Argument { call, .. } => vars.push(*call),
+            QueryPredicate::ReturnedObject { bind, .. }
+            | QueryPredicate::ConstructedObject { bind, .. } => vars.push(*bind),
+            QueryPredicate::MemberSubject { event, object } => {
+                vars.push(*event);
+                vars.push(*object);
+            }
+        },
+        QueryExprKind::Any(any) => {
             for b in &any.branches {
                 collect_vars_preorder(b, vars);
             }
         }
-        QueryExpr::All(all) => {
+        QueryExprKind::All(all) => {
             for b in &all.branches {
                 collect_vars_preorder(b, vars);
             }
         }
-        QueryExpr::Lifecycle(lc) => {
+        QueryExprKind::Lifecycle(lc) => {
             for src in &lc.sources {
                 vars.push(src.var);
             }
@@ -303,31 +323,35 @@ fn collect_vars_preorder(expr: &QueryExpr, vars: &mut Vec<VarId>) {
 }
 
 fn remap_vars(expr: &QueryExpr, var_map: &BTreeMap<VarId, VarId>) -> QueryExpr {
-    match expr {
-        QueryExpr::Event(eq) => QueryExpr::Event(EventQuery {
+    match &expr.kind {
+        QueryExprKind::Event(eq) => QueryExpr::event(EventQuery {
             var: var_map.get(&eq.var).copied().unwrap_or(eq.var),
             event: eq.event.clone(),
             identity: eq.identity.clone(),
             subject: eq.subject,
             constraints: eq.constraints.clone(),
         }),
-        QueryExpr::Any(any) => {
+        QueryExprKind::SelectEvent(s) => {
+            QueryExpr::select_event(var_map.get(&s.bind).copied().unwrap_or(s.bind))
+        }
+        QueryExprKind::Require(p) => QueryExpr::require(remap_predicate(p, var_map)),
+        QueryExprKind::Any(any) => {
             let branches: Vec<QueryExpr> = any
                 .branches
                 .iter()
                 .map(|b| remap_vars(b, var_map))
                 .collect();
-            QueryExpr::Any(AnyExpr { branches })
+            QueryExpr::any(AnyExpr { branches })
         }
-        QueryExpr::All(all) => {
+        QueryExprKind::All(all) => {
             let branches: Vec<QueryExpr> = all
                 .branches
                 .iter()
                 .map(|b| remap_vars(b, var_map))
                 .collect();
-            QueryExpr::All(AllExpr { branches })
+            QueryExpr::all(AllExpr { branches })
         }
-        QueryExpr::Lifecycle(lc) => {
+        QueryExprKind::Lifecycle(lc) => {
             let sources: Vec<EventQuery> = lc
                 .sources
                 .iter()
@@ -336,7 +360,7 @@ fn remap_vars(expr: &QueryExpr, var_map: &BTreeMap<VarId, VarId>) -> QueryExpr {
                     ..src.clone()
                 })
                 .collect();
-            QueryExpr::Lifecycle(LifecycleQuery {
+            QueryExpr::lifecycle(LifecycleQuery {
                 sources,
                 condition: lc.condition.clone(),
                 completion: lc.completion.clone(),
@@ -345,20 +369,38 @@ fn remap_vars(expr: &QueryExpr, var_map: &BTreeMap<VarId, VarId>) -> QueryExpr {
     }
 }
 
-/// Normalize all queries in a [`QuerySet`].
-///
-/// Each query is normalized independently. Returns the normalized set and
-/// a vector of plan requirements (one per query).
-#[allow(dead_code)]
-pub(crate) fn normalize_query_set(set: &QuerySet) -> (QuerySet, Vec<PlanRequirements>) {
-    let mut normalized = Vec::with_capacity(set.queries.len());
-    let mut requirements = Vec::with_capacity(set.queries.len());
-    for query in &set.queries {
-        let (norm, req) = normalize_query_decl(query);
-        normalized.push(norm);
-        requirements.push(req);
+fn remap_predicate(p: &QueryPredicate, var_map: &BTreeMap<VarId, VarId>) -> QueryPredicate {
+    match p {
+        QueryPredicate::EventKind { event, expected } => QueryPredicate::EventKind {
+            event: var_map.get(event).copied().unwrap_or(*event),
+            expected: expected.clone(),
+        },
+        QueryPredicate::EventIdentity { event, expected } => QueryPredicate::EventIdentity {
+            event: var_map.get(event).copied().unwrap_or(*event),
+            expected: expected.clone(),
+        },
+        QueryPredicate::Argument {
+            call,
+            index,
+            matcher,
+        } => QueryPredicate::Argument {
+            call: var_map.get(call).copied().unwrap_or(*call),
+            index: *index,
+            matcher: matcher.clone(),
+        },
+        QueryPredicate::ReturnedObject { bind, identity } => QueryPredicate::ReturnedObject {
+            bind: var_map.get(bind).copied().unwrap_or(*bind),
+            identity: identity.clone(),
+        },
+        QueryPredicate::ConstructedObject { bind, identity } => QueryPredicate::ConstructedObject {
+            bind: var_map.get(bind).copied().unwrap_or(*bind),
+            identity: identity.clone(),
+        },
+        QueryPredicate::MemberSubject { event, object } => QueryPredicate::MemberSubject {
+            event: var_map.get(event).copied().unwrap_or(*event),
+            object: var_map.get(object).copied().unwrap_or(*object),
+        },
     }
-    (QuerySet::new(normalized), requirements)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────
@@ -373,14 +415,14 @@ mod tests {
         classification::MatchKind,
         rule::{
             ValueMatcher,
-            query::{EmissionDecl, EventQuery, EventSpec, IdentitySpec, QuerySet, SubjectSpec},
+            query::{EmissionDecl, EventQuery, EventSpec, IdentitySpec, SubjectSpec},
         },
     };
 
     // ── Helpers ────────────────────────────────────────────────────
 
     fn event(var: u32, name: &str) -> QueryExpr {
-        QueryExpr::Event(EventQuery {
+        QueryExpr::event(EventQuery {
             var: VarId::new(var),
             event: EventSpec::Call,
             identity: IdentitySpec::Global {
@@ -410,14 +452,14 @@ mod tests {
         // After flattening: 3 - 1 (inner Any) + 2 (its branches) = 4.
         let inner = AnyExpr::new(vec![event(0, "a"), event(1, "b")]).unwrap();
         let outer =
-            AnyExpr::new(vec![event(2, "c"), QueryExpr::Any(inner), event(3, "d")]).unwrap();
-        let expr = QueryExpr::Any(outer);
+            AnyExpr::new(vec![event(2, "c"), QueryExpr::any(inner), event(3, "d")]).unwrap();
+        let expr = QueryExpr::any(outer);
         let normalized = normalize_expr(&expr);
-        match &normalized {
-            QueryExpr::Any(a) => {
+        match &normalized.kind {
+            QueryExprKind::Any(a) => {
                 assert_eq!(a.branches.len(), 4);
                 for b in &a.branches {
-                    assert!(matches!(b, QueryExpr::Event(_)));
+                    assert!(matches!(&b.kind, QueryExprKind::Event(_)));
                 }
             }
             _ => panic!("expected Any"),
@@ -428,14 +470,14 @@ mod tests {
     fn flattens_nested_all() {
         let inner = AllExpr::new(vec![event(0, "a"), event(1, "b")]).unwrap();
         let outer =
-            AllExpr::new(vec![event(2, "c"), QueryExpr::All(inner), event(3, "d")]).unwrap();
-        let expr = QueryExpr::All(outer);
+            AllExpr::new(vec![event(2, "c"), QueryExpr::all(inner), event(3, "d")]).unwrap();
+        let expr = QueryExpr::all(outer);
         let normalized = normalize_expr(&expr);
-        match &normalized {
-            QueryExpr::All(a) => {
+        match &normalized.kind {
+            QueryExprKind::All(a) => {
                 assert_eq!(a.branches.len(), 4);
                 for b in &a.branches {
-                    assert!(matches!(b, QueryExpr::Event(_)));
+                    assert!(matches!(&b.kind, QueryExprKind::Event(_)));
                 }
             }
             _ => panic!("expected All"),
@@ -445,16 +487,16 @@ mod tests {
     #[test]
     fn does_not_flatten_any_into_all_or_vice_versa() {
         let inner_any = AnyExpr::new(vec![event(0, "a"), event(1, "b")]).unwrap();
-        let outer = AllExpr::new(vec![event(2, "c"), QueryExpr::Any(inner_any)]).unwrap();
-        let expr = QueryExpr::All(outer);
+        let outer = AllExpr::new(vec![event(2, "c"), QueryExpr::any(inner_any)]).unwrap();
+        let expr = QueryExpr::all(outer);
         let normalized = normalize_expr(&expr);
-        match &normalized {
-            QueryExpr::All(a) => {
+        match &normalized.kind {
+            QueryExprKind::All(a) => {
                 // Two branches: one Event, one Any.
-                // Events sort before Any (discriminant 0 < 2).
+                // Events sort before Any (discriminant 0 < 4).
                 assert_eq!(a.branches.len(), 2);
-                assert!(matches!(&a.branches[0], QueryExpr::Event(_)));
-                assert!(matches!(&a.branches[1], QueryExpr::Any(_)));
+                assert!(matches!(&a.branches[0].kind, QueryExprKind::Event(_)));
+                assert!(matches!(&a.branches[1].kind, QueryExprKind::Any(_)));
             }
             _ => panic!("expected All"),
         }
@@ -463,15 +505,15 @@ mod tests {
     #[test]
     fn deeply_nested_any_is_fully_flattened() {
         let level3 = AnyExpr::new(vec![event(0, "a")]).unwrap();
-        let level2 = AnyExpr::new(vec![event(1, "b"), QueryExpr::Any(level3)]).unwrap();
-        let level1 = AnyExpr::new(vec![QueryExpr::Any(level2), event(2, "c")]).unwrap();
-        let expr = QueryExpr::Any(level1);
+        let level2 = AnyExpr::new(vec![event(1, "b"), QueryExpr::any(level3)]).unwrap();
+        let level1 = AnyExpr::new(vec![QueryExpr::any(level2), event(2, "c")]).unwrap();
+        let expr = QueryExpr::any(level1);
         let normalized = normalize_expr(&expr);
-        match &normalized {
-            QueryExpr::Any(a) => {
+        match &normalized.kind {
+            QueryExprKind::Any(a) => {
                 assert_eq!(a.branches.len(), 3);
                 for b in &a.branches {
-                    assert!(matches!(b, QueryExpr::Event(_)));
+                    assert!(matches!(&b.kind, QueryExprKind::Event(_)));
                 }
             }
             _ => panic!("expected Any"),
@@ -483,10 +525,10 @@ mod tests {
     #[test]
     fn deduplicates_identical_branches_in_any() {
         let branches = vec![event(0, "a"), event(0, "a"), event(1, "b")];
-        let expr = QueryExpr::Any(AnyExpr::new(branches).unwrap());
+        let expr = QueryExpr::any(AnyExpr::new(branches).unwrap());
         let normalized = normalize_expr(&expr);
-        match &normalized {
-            QueryExpr::Any(a) => {
+        match &normalized.kind {
+            QueryExprKind::Any(a) => {
                 assert_eq!(a.branches.len(), 2);
             }
             _ => panic!("expected Any"),
@@ -496,10 +538,10 @@ mod tests {
     #[test]
     fn deduplicates_identical_branches_in_all() {
         let branches = vec![event(0, "a"), event(0, "a")];
-        let expr = QueryExpr::All(AllExpr::new(branches).unwrap());
+        let expr = QueryExpr::all(AllExpr::new(branches).unwrap());
         let normalized = normalize_expr(&expr);
-        match &normalized {
-            QueryExpr::All(a) => {
+        match &normalized.kind {
+            QueryExprKind::All(a) => {
                 assert_eq!(a.branches.len(), 1);
             }
             _ => panic!("expected All"),
@@ -511,13 +553,10 @@ mod tests {
     #[test]
     fn branches_are_sorted_canonically() {
         let branches = vec![event(1, "z"), event(0, "a")];
-        let expr = QueryExpr::Any(AnyExpr::new(branches).unwrap());
+        let expr = QueryExpr::any(AnyExpr::new(branches).unwrap());
         let normalized = normalize_expr(&expr);
-        match &normalized {
-            QueryExpr::Any(a) => {
-                // After normalization, var slots are reassigned and
-                // branches are sorted.  Event with var=0 (smallest)
-                // comes first.
+        match &normalized.kind {
+            QueryExprKind::Any(a) => {
                 assert_eq!(a.branches.len(), 2);
             }
             _ => panic!("expected Any"),
@@ -528,8 +567,8 @@ mod tests {
     fn equivalent_builder_forms_normalize_equally() {
         let a_branches = vec![event(0, "fetch"), event(1, "navigate")];
         let b_branches = vec![event(1, "navigate"), event(0, "fetch")];
-        let a_expr = QueryExpr::Any(AnyExpr::new(a_branches).unwrap());
-        let b_expr = QueryExpr::Any(AnyExpr::new(b_branches).unwrap());
+        let a_expr = QueryExpr::any(AnyExpr::new(a_branches).unwrap());
+        let b_expr = QueryExpr::any(AnyExpr::new(b_branches).unwrap());
         let a_norm = normalize_expr(&a_expr);
         let b_norm = normalize_expr(&b_expr);
         assert_eq!(a_norm, b_norm);
@@ -540,10 +579,10 @@ mod tests {
     #[test]
     fn normalization_is_idempotent() {
         let branches = vec![
-            QueryExpr::Any(AnyExpr::new(vec![event(0, "a"), event(1, "b")]).unwrap()),
+            QueryExpr::any(AnyExpr::new(vec![event(0, "a"), event(1, "b")]).unwrap()),
             event(2, "c"),
         ];
-        let expr = QueryExpr::Any(AnyExpr::new(branches).unwrap());
+        let expr = QueryExpr::any(AnyExpr::new(branches).unwrap());
         let once = normalize_expr(&expr);
         let twice = normalize_expr(&once);
         assert_eq!(once, twice);
@@ -561,22 +600,20 @@ mod tests {
 
     #[test]
     fn reassigns_vars_to_dense_slots() {
-        // normalize_query_decl does both flattening and var reassignment.
         let branches = vec![event(5, "a"), event(3, "b")];
-        let expr = QueryExpr::Any(AnyExpr::new(branches).unwrap());
+        let expr = QueryExpr::any(AnyExpr::new(branches).unwrap());
         let d = decl(expr, 0, "test");
         let (normalized, _) = normalize_query_decl(&d);
-        match &normalized.expression {
-            QueryExpr::Any(a) => {
+        match &normalized.expression.kind {
+            QueryExprKind::Any(a) => {
                 let vars: Vec<u32> = a
                     .branches
                     .iter()
-                    .map(|b| match b {
-                        QueryExpr::Event(e) => e.var.get(),
+                    .map(|b| match &b.kind {
+                        QueryExprKind::Event(e) => e.var.get(),
                         _ => panic!("expected Event"),
                     })
                     .collect();
-                // Vars should be 0 and 1 (dense, sorted by original var order)
                 assert_eq!(vars, vec![0, 1]);
             }
             _ => panic!("expected Any"),
@@ -619,7 +656,7 @@ mod tests {
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ValueMatcher::static_string(),
             ));
-        let expr = QueryExpr::Event(eq);
+        let expr = QueryExpr::event(eq);
         let d = decl(expr, 0, "fetch");
         let (_, req) = normalize_query_decl(&d);
         assert!(req.needs_fact_stream);
@@ -638,7 +675,7 @@ mod tests {
             subject: SubjectSpec::Direct,
             constraints: vec![],
         };
-        let expr = QueryExpr::Event(eq);
+        let expr = QueryExpr::event(eq);
         let d = decl(expr, 0, "readFile");
         let (_, req) = normalize_query_decl(&d);
         assert!(req.needs_project_overlay);
@@ -666,7 +703,7 @@ mod tests {
             subject: SubjectSpec::Direct,
             constraints: vec![],
         };
-        let lc = QueryExpr::Lifecycle(LifecycleQuery {
+        let lc = LifecycleQuery {
             sources: vec![source],
             condition: Some(crate::api::rule::FlowCondition::event(
                 crate::api::rule::ObjectEventMatcher::property_write(
@@ -675,45 +712,19 @@ mod tests {
                 ),
             )),
             completion: Some(crate::api::rule::FlowCompletion::configuration()),
-        });
-        let normalized = normalize_expr(&lc);
-        assert!(matches!(normalized, QueryExpr::Lifecycle(_)));
-    }
-
-    // ── QuerySet normalization ─────────────────────────────────────
-
-    #[test]
-    fn normalize_query_set_preserves_decl_count() {
-        let queries = vec![
-            decl(event(0, "fetch"), 0, "fetch"),
-            decl(event(1, "navigate"), 1, "navigate"),
-        ];
-        let set = QuerySet::new(queries);
-        let (normalized_set, _) = normalize_query_set(&set);
-        assert_eq!(normalized_set.queries.len(), 2);
-    }
-
-    #[test]
-    fn normalize_query_set_makes_vars_dense() {
-        let queries = vec![
-            decl(event(5, "fetch"), 5, "fetch"),
-            decl(event(3, "navigate"), 3, "navigate"),
-        ];
-        let set = QuerySet::new(queries);
-        let (normalized_set, _) = normalize_query_set(&set);
-        // Each query gets independent 0-based vars
-        assert_eq!(normalized_set.queries[0].emission.primary_var.get(), 0);
-        assert_eq!(normalized_set.queries[1].emission.primary_var.get(), 0);
+        };
+        let normalized = normalize_expr(&QueryExpr::lifecycle(lc));
+        assert!(matches!(&normalized.kind, QueryExprKind::Lifecycle(_)));
     }
 
     // ── Edge cases ─────────────────────────────────────────────────
 
     #[test]
     fn single_branch_any_is_preserved() {
-        let expr = QueryExpr::Any(AnyExpr::new(vec![event(0, "a")]).unwrap());
+        let expr = QueryExpr::any(AnyExpr::new(vec![event(0, "a")]).unwrap());
         let normalized = normalize_expr(&expr);
-        match &normalized {
-            QueryExpr::Any(a) => {
+        match &normalized.kind {
+            QueryExprKind::Any(a) => {
                 assert_eq!(a.branches.len(), 1);
             }
             _ => panic!("expected Any"),
@@ -722,10 +733,10 @@ mod tests {
 
     #[test]
     fn single_branch_all_is_preserved() {
-        let expr = QueryExpr::All(AllExpr::new(vec![event(0, "a")]).unwrap());
+        let expr = QueryExpr::all(AllExpr::new(vec![event(0, "a")]).unwrap());
         let normalized = normalize_expr(&expr);
-        match &normalized {
-            QueryExpr::All(a) => {
+        match &normalized.kind {
+            QueryExprKind::All(a) => {
                 assert_eq!(a.branches.len(), 1);
             }
             _ => panic!("expected All"),

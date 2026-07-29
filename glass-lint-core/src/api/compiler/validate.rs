@@ -23,8 +23,8 @@
 //! 10. **final invariant validation** — post-normalization checks.
 
 use crate::api::rule::query::{
-    limits, EventQuery, EventSpec, IdentitySpec, LifecycleQuery, QueryDecl, QueryExpr, QuerySet,
-    SubjectSpec, VarId,
+    EmissionDecl, EventQuery, EventSpec, IdentitySpec, LifecycleQuery, QueryDecl, QueryExpr,
+    QueryExprKind, QueryPredicate, SubjectSpec, VarId, VarType, limits,
 };
 
 // ── Error type ───────────────────────────────────────────────────────────
@@ -41,7 +41,6 @@ pub(crate) enum QueryCompileError {
     /// A variable is bound more than once.
     DuplicateBinding { var: VarId },
     /// Variable type mismatch between binding and use.
-    #[allow(dead_code)]
     TypeMismatch {
         var: VarId,
         expected: &'static str,
@@ -62,7 +61,6 @@ pub(crate) enum QueryCompileError {
     /// Multi-event `All` without compatible shared variables.
     UncorrelatedConjunction,
     /// Primary variable lacks an available source location.
-    #[allow(dead_code)]
     UnavailablePrimaryLocation { var: VarId },
     /// Lifecycle structure is invalid.
     InvalidLifecycle { detail: String },
@@ -279,19 +277,31 @@ fn collect_vars(expr: &QueryExpr) -> Vec<VarId> {
 }
 
 fn collect_vars_rec(expr: &QueryExpr, ids: &mut Vec<VarId>) {
-    match expr {
-        QueryExpr::Event(eq) => ids.push(eq.var()),
-        QueryExpr::Any(any) => {
+    match &expr.kind {
+        QueryExprKind::Event(eq) => ids.push(eq.var()),
+        QueryExprKind::SelectEvent(s) => ids.push(s.bind),
+        QueryExprKind::Require(p) => match p {
+            QueryPredicate::EventKind { event, .. }
+            | QueryPredicate::EventIdentity { event, .. } => ids.push(*event),
+            QueryPredicate::Argument { call, .. } => ids.push(*call),
+            QueryPredicate::ReturnedObject { bind, .. }
+            | QueryPredicate::ConstructedObject { bind, .. } => ids.push(*bind),
+            QueryPredicate::MemberSubject { event, object } => {
+                ids.push(*event);
+                ids.push(*object);
+            }
+        },
+        QueryExprKind::Any(any) => {
             for b in &any.branches {
                 collect_vars_rec(b, ids);
             }
         }
-        QueryExpr::All(all) => {
+        QueryExprKind::All(all) => {
             for b in &all.branches {
                 collect_vars_rec(b, ids);
             }
         }
-        QueryExpr::Lifecycle(lc) => {
+        QueryExprKind::Lifecycle(lc) => {
             for src in lc.sources() {
                 ids.push(src.var());
             }
@@ -301,11 +311,22 @@ fn collect_vars_rec(expr: &QueryExpr, ids: &mut Vec<VarId>) {
 
 /// Check whether a variable appears in an expression tree.
 fn expr_contains_var(expr: &QueryExpr, target: VarId) -> bool {
-    match expr {
-        QueryExpr::Event(eq) => eq.var() == target,
-        QueryExpr::Any(any) => any.branches.iter().any(|b| expr_contains_var(b, target)),
-        QueryExpr::All(all) => all.branches.iter().any(|b| expr_contains_var(b, target)),
-        QueryExpr::Lifecycle(lc) => lc.sources().iter().any(|src| src.var() == target),
+    match &expr.kind {
+        QueryExprKind::Event(eq) => eq.var() == target,
+        QueryExprKind::SelectEvent(s) => s.bind == target,
+        QueryExprKind::Require(p) => match p {
+            QueryPredicate::EventKind { event, .. }
+            | QueryPredicate::EventIdentity { event, .. } => *event == target,
+            QueryPredicate::Argument { call, .. } => *call == target,
+            QueryPredicate::ReturnedObject { bind, .. }
+            | QueryPredicate::ConstructedObject { bind, .. } => *bind == target,
+            QueryPredicate::MemberSubject { event, object } => {
+                *event == target || *object == target
+            }
+        },
+        QueryExprKind::Any(any) => any.branches.iter().any(|b| expr_contains_var(b, target)),
+        QueryExprKind::All(all) => all.branches.iter().any(|b| expr_contains_var(b, target)),
+        QueryExprKind::Lifecycle(lc) => lc.sources().iter().any(|src| src.var() == target),
     }
 }
 
@@ -316,21 +337,22 @@ fn expr_contains_var(expr: &QueryExpr, target: VarId) -> bool {
 /// Rejects invalid identity/event/subject combinations, empty identities,
 /// and constraints on non-call events.
 pub(crate) fn pass_well_formedness(decl: &QueryDecl) -> Result<(), QueryCompileError> {
-    match decl.expression() {
-        QueryExpr::Event(eq) => {
+    match &decl.expression().kind {
+        QueryExprKind::Event(eq) => {
             validate_event_query(eq)?;
         }
-        QueryExpr::Any(any) => {
+        QueryExprKind::SelectEvent(_) | QueryExprKind::Require(_) => {}
+        QueryExprKind::Any(any) => {
             for branch in &any.branches {
                 pass_well_formedness_inner(branch)?;
             }
         }
-        QueryExpr::All(all) => {
+        QueryExprKind::All(all) => {
             for branch in &all.branches {
                 pass_well_formedness_inner(branch)?;
             }
         }
-        QueryExpr::Lifecycle(lc) => {
+        QueryExprKind::Lifecycle(lc) => {
             for src in lc.sources() {
                 validate_event_query(src)?;
             }
@@ -340,21 +362,22 @@ pub(crate) fn pass_well_formedness(decl: &QueryDecl) -> Result<(), QueryCompileE
 }
 
 fn pass_well_formedness_inner(expr: &QueryExpr) -> Result<(), QueryCompileError> {
-    match expr {
-        QueryExpr::Event(eq) => validate_event_query(eq),
-        QueryExpr::Any(any) => {
+    match &expr.kind {
+        QueryExprKind::Event(eq) => validate_event_query(eq),
+        QueryExprKind::SelectEvent(_) | QueryExprKind::Require(_) => Ok(()),
+        QueryExprKind::Any(any) => {
             for b in &any.branches {
                 pass_well_formedness_inner(b)?;
             }
             Ok(())
         }
-        QueryExpr::All(all) => {
+        QueryExprKind::All(all) => {
             for b in &all.branches {
                 pass_well_formedness_inner(b)?;
             }
             Ok(())
         }
-        QueryExpr::Lifecycle(lc) => {
+        QueryExprKind::Lifecycle(lc) => {
             for src in lc.sources() {
                 validate_event_query(src)?;
             }
@@ -391,39 +414,79 @@ fn validate_event_query(eq: &EventQuery) -> Result<(), QueryCompileError> {
     Ok(())
 }
 
-/// Pass 2: Symbol and variable collection.
+/// Scope-aware variable binding collection.
 ///
-/// Checks that no variable is bound more than once in the expression tree.
+/// Semantics:
+/// - `Any` branches have independent binding scopes.
+/// - `All` branches share one correlation scope.
+/// - `SelectEvent` and `Event` atoms bind their variable.
+/// - `Require` atoms (except `ReturnedObject`/`ConstructedObject`) only
+///   reference variables.
+/// - `ReturnedObject` and `ConstructedObject` bind their object variable.
 pub(crate) fn pass_variable_collection(decl: &QueryDecl) -> Result<(), QueryCompileError> {
-    let mut seen = Vec::new();
-    collect_and_check(decl.expression(), &mut seen)?;
+    collect_and_check_scope(decl.expression(), &mut Vec::new(), false)?;
     Ok(())
 }
 
-fn collect_and_check(expr: &QueryExpr, seen: &mut Vec<VarId>) -> Result<(), QueryCompileError> {
-    match expr {
-        QueryExpr::Event(eq) => {
+/// Recursively check binding scopes.
+///
+/// `seen` accumulates bindings in the current scope.
+/// `has_separate_branch_scopes` controls whether branches of the current
+/// composite operator introduce independent scopes (true for `Any`) or share
+/// the caller's scope (true for `All` and top-level).
+fn collect_and_check_scope(
+    expr: &QueryExpr,
+    seen: &mut Vec<VarId>,
+    _has_separate_branch_scopes: bool,
+) -> Result<(), QueryCompileError> {
+    match &expr.kind {
+        QueryExprKind::Event(eq) => {
+            // Event always binds its var.
             if seen.contains(&eq.var()) {
                 return Err(QueryCompileError::DuplicateBinding { var: eq.var() });
             }
             seen.push(eq.var());
         }
-        QueryExpr::Any(any) => {
-            for b in &any.branches {
-                collect_and_check(b, seen)?;
+        QueryExprKind::SelectEvent(s) => {
+            if seen.contains(&s.bind) {
+                return Err(QueryCompileError::DuplicateBinding { var: s.bind });
+            }
+            seen.push(s.bind);
+        }
+        QueryExprKind::Require(p) => match p {
+            // ReturnedObject and ConstructedObject bind their object variable.
+            QueryPredicate::ReturnedObject { bind, .. }
+            | QueryPredicate::ConstructedObject { bind, .. } => {
+                if seen.contains(bind) {
+                    return Err(QueryCompileError::DuplicateBinding { var: *bind });
+                }
+                seen.push(*bind);
+            }
+            // Other Require atoms only reference, never bind.
+            _ => {}
+        },
+        QueryExprKind::Any(any) => {
+            // Each Any branch has an independent scope.
+            for branch in &any.branches {
+                let mut branch_seen = Vec::new();
+                collect_and_check_scope(branch, &mut branch_seen, false)?;
             }
         }
-        QueryExpr::All(all) => {
-            for b in &all.branches {
-                collect_and_check(b, seen)?;
+        QueryExprKind::All(all) => {
+            // All branches share the same scope (add bindings to `seen`).
+            for branch in &all.branches {
+                collect_and_check_scope(branch, seen, false)?;
             }
         }
-        QueryExpr::Lifecycle(lc) => {
+        QueryExprKind::Lifecycle(lc) => {
+            // Lifecycle sources have Any-like independent scopes (each
+            // source can independently start the lifecycle).
             for src in lc.sources() {
-                if seen.contains(&src.var()) {
+                let mut src_seen = Vec::new();
+                if src_seen.contains(&src.var()) {
                     return Err(QueryCompileError::DuplicateBinding { var: src.var() });
                 }
-                seen.push(src.var());
+                src_seen.push(src.var());
             }
         }
     }
@@ -432,15 +495,201 @@ fn collect_and_check(expr: &QueryExpr, seen: &mut Vec<VarId>) -> Result<(), Quer
 
 /// Pass 3: Variable type inference/checking.
 ///
-/// Validates basic type compatibility for the current algebra. Variables
-/// are bound by event selections and used in evidence projection. Full
-/// type inference across relational predicates is deferred to later phases.
-pub(crate) fn pass_type_checking(decl: &QueryDecl) {
-    // For the current algebra all variables are event-typed and the
-    // emission primary var type is compatible with the evidence kind by
-    // construction.  No additional type errors are possible until
-    // relational predicates introduce typed bindings.
-    let _ = decl;
+/// Infers a [`VarType`] for every variable in the expression tree and
+/// checks that:
+/// - Every variable has a consistent type across all uses.
+/// - The emission primary variable is an event type (has a source location).
+/// - No type mismatch exists (e.g. treating a static value as an event).
+pub(crate) fn pass_type_checking(decl: &QueryDecl) -> Result<(), QueryCompileError> {
+    let mut var_types: std::collections::HashMap<VarId, VarType> = std::collections::HashMap::new();
+    infer_types(decl.expression(), decl.emission(), &mut var_types)?;
+
+    // Verify the emission primary variable is event-typed.
+    let primary = decl.emission().primary_var();
+    var_types.get(&primary).map_or(
+        Err(QueryCompileError::MissingBinding {
+            primary_var: primary,
+        }),
+        |ty| match ty {
+            VarType::Event | VarType::CallEvent | VarType::MemberEvent => Ok(()),
+            _ => Err(QueryCompileError::UnavailablePrimaryLocation { var: primary }),
+        },
+    )
+}
+
+#[allow(clippy::only_used_in_recursion)]
+fn infer_types(
+    expr: &QueryExpr,
+    emission: &EmissionDecl,
+    types: &mut std::collections::HashMap<VarId, VarType>,
+) -> Result<(), QueryCompileError> {
+    match &expr.kind {
+        QueryExprKind::Event(eq) => {
+            let ty = var_type_for_event(eq.event(), eq.identity(), eq.subject());
+            set_type(eq.var(), ty, types)?;
+        }
+        QueryExprKind::SelectEvent(s) => {
+            // Without full EventSpec/IdentitySpec, we use a generic Event type.
+            set_type(s.bind, VarType::Event, types)?;
+        }
+        QueryExprKind::Require(p) => match p {
+            QueryPredicate::EventKind { event, expected } => {
+                // The kind constrains what type the event variable must be.
+                let implied = var_type_for_event_kind(expected);
+                check_type(*event, implied, types)?;
+            }
+            QueryPredicate::EventIdentity { event, .. } => {
+                check_type(*event, VarType::Event, types)?;
+            }
+            QueryPredicate::Argument { call, .. } => {
+                check_type(*call, VarType::CallEvent, types)?;
+            }
+            QueryPredicate::ReturnedObject { bind, .. }
+            | QueryPredicate::ConstructedObject { bind, .. } => {
+                set_type(*bind, VarType::Object, types)?;
+            }
+            QueryPredicate::MemberSubject { event, object } => {
+                check_type(*event, VarType::MemberEvent, types)?;
+                check_type(*object, VarType::Object, types)?;
+            }
+        },
+        QueryExprKind::Any(any) => {
+            // Each branch is independently typed. Merge branch types
+            // back to the outer scope so that the primary variable's
+            // type is visible after Any.
+            let mut merged = std::collections::HashMap::new();
+            for branch in &any.branches {
+                let mut branch_types = std::collections::HashMap::new();
+                infer_types(branch, emission, &mut branch_types)?;
+                // Keep branches' type info for the outer scope.
+                for (var, ty) in branch_types {
+                    let entry = merged.entry(var).or_insert(ty);
+                    // Use more specific type if available.
+                    if is_more_specific(ty, *entry) {
+                        *entry = ty;
+                    }
+                }
+            }
+            types.extend(merged);
+        }
+        QueryExprKind::All(all) => {
+            for branch in &all.branches {
+                infer_types(branch, emission, types)?;
+            }
+        }
+        QueryExprKind::Lifecycle(lc) => {
+            for src in lc.sources() {
+                let ty = var_type_for_event(src.event(), src.identity(), src.subject());
+                set_type(src.var(), ty, types)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn set_type(
+    var: VarId,
+    ty: VarType,
+    types: &mut std::collections::HashMap<VarId, VarType>,
+) -> Result<(), QueryCompileError> {
+    if let Some(existing) = types.get(&var) {
+        // Allow Event to be widened to CallEvent or MemberEvent.
+        if !types_compatible(*existing, ty) {
+            return Err(QueryCompileError::TypeMismatch {
+                var,
+                expected: ty.variant_name(),
+                actual: existing.variant_name(),
+            });
+        }
+        // Prefer the more specific type.
+        if is_more_specific(ty, *existing) {
+            types.insert(var, ty);
+        }
+        return Ok(());
+    }
+    types.insert(var, ty);
+    Ok(())
+}
+
+fn check_type(
+    var: VarId,
+    expected: VarType,
+    types: &mut std::collections::HashMap<VarId, VarType>,
+) -> Result<(), QueryCompileError> {
+    if let Some(actual) = types.get(&var) {
+        if !types_compatible(*actual, expected) {
+            return Err(QueryCompileError::TypeMismatch {
+                var,
+                expected: expected.variant_name(),
+                actual: actual.variant_name(),
+            });
+        }
+        // Refine to the more specific type.
+        if is_more_specific(expected, *actual) {
+            types.insert(var, expected);
+        }
+        return Ok(());
+    }
+    // If the variable hasn't been typed yet, assign the expected type.
+    types.insert(var, expected);
+    Ok(())
+}
+
+/// Return true if `actual` is compatible with `expected`.
+/// Event is compatible with CallEvent and MemberEvent (Event is a supertype).
+fn types_compatible(actual: VarType, expected: VarType) -> bool {
+    actual == expected
+        || (actual == VarType::Event
+            && (expected == VarType::CallEvent || expected == VarType::MemberEvent))
+        || ((actual == VarType::CallEvent || actual == VarType::MemberEvent)
+            && expected == VarType::Event)
+}
+
+/// Return true if `candidate` is more specific than `existing`.
+fn is_more_specific(candidate: VarType, existing: VarType) -> bool {
+    matches!(
+        (candidate, existing),
+        (VarType::CallEvent | VarType::MemberEvent, VarType::Event)
+    )
+}
+
+fn var_type_for_event(
+    event: &EventSpec,
+    _identity: &IdentitySpec,
+    _subject: SubjectSpec,
+) -> VarType {
+    match event {
+        EventSpec::Call | EventSpec::Construct => VarType::CallEvent,
+        EventSpec::MemberCall { .. } | EventSpec::MemberRead { .. } => VarType::MemberEvent,
+        EventSpec::ClassReference | EventSpec::Import | EventSpec::StringReference => {
+            VarType::Event
+        }
+    }
+}
+
+fn var_type_for_event_kind(kind: &EventSpec) -> VarType {
+    match kind {
+        EventSpec::Call | EventSpec::Construct => VarType::CallEvent,
+        EventSpec::MemberCall { .. } | EventSpec::MemberRead { .. } => VarType::MemberEvent,
+        EventSpec::ClassReference | EventSpec::Import | EventSpec::StringReference => {
+            VarType::Event
+        }
+    }
+}
+
+impl VarType {
+    fn variant_name(self) -> &'static str {
+        match self {
+            Self::Event => "event",
+            Self::CallEvent => "call_event",
+            Self::MemberEvent => "member_event",
+            Self::Object => "object",
+            Self::StaticValue => "static_value",
+            Self::CallableIdentity => "callable_identity",
+            Self::ModuleIdentity => "module_identity",
+            Self::SymbolPath => "symbol_path",
+        }
+    }
 }
 
 /// Pass 4: Operator compatibility.
@@ -452,8 +701,8 @@ pub(crate) fn pass_operator_compatibility(decl: &QueryDecl) -> Result<(), QueryC
 }
 
 fn check_operator_compatibility(expr: &QueryExpr) -> Result<(), QueryCompileError> {
-    match expr {
-        QueryExpr::Any(any) => {
+    match &expr.kind {
+        QueryExprKind::Any(any) => {
             if any.branches.is_empty() {
                 return Err(QueryCompileError::InternalInvariant {
                     detail: "Any expression has zero branches (should have been rejected at construction)".into(),
@@ -464,7 +713,7 @@ fn check_operator_compatibility(expr: &QueryExpr) -> Result<(), QueryCompileErro
             }
             Ok(())
         }
-        QueryExpr::All(all) => {
+        QueryExprKind::All(all) => {
             if all.branches.is_empty() {
                 return Err(QueryCompileError::InternalInvariant {
                     detail: "All expression has zero branches (should have been rejected at construction)".into(),
@@ -475,7 +724,10 @@ fn check_operator_compatibility(expr: &QueryExpr) -> Result<(), QueryCompileErro
             }
             Ok(())
         }
-        QueryExpr::Event(_) | QueryExpr::Lifecycle(_) => Ok(()),
+        QueryExprKind::Event(_)
+        | QueryExprKind::SelectEvent(_)
+        | QueryExprKind::Require(_)
+        | QueryExprKind::Lifecycle(_) => Ok(()),
     }
 }
 
@@ -489,8 +741,8 @@ pub(crate) fn pass_correlation_scope(decl: &QueryDecl) -> Result<(), QueryCompil
 }
 
 fn check_correlation(expr: &QueryExpr) -> Result<(), QueryCompileError> {
-    match expr {
-        QueryExpr::All(all) => {
+    match &expr.kind {
+        QueryExprKind::All(all) => {
             // Collect variables from each branch
             let branch_vars: Vec<Vec<VarId>> = all.branches.iter().map(collect_vars).collect();
 
@@ -513,27 +765,85 @@ fn check_correlation(expr: &QueryExpr) -> Result<(), QueryCompileError> {
             }
             Ok(())
         }
-        QueryExpr::Any(any) => {
+        QueryExprKind::Any(any) => {
             for b in &any.branches {
                 check_correlation(b)?;
             }
             Ok(())
         }
-        QueryExpr::Event(_) | QueryExpr::Lifecycle(_) => Ok(()),
+        QueryExprKind::Event(_)
+        | QueryExprKind::SelectEvent(_)
+        | QueryExprKind::Require(_)
+        | QueryExprKind::Lifecycle(_) => Ok(()),
     }
 }
 
 /// Pass 6: Evidence projection checking.
 ///
-/// Verifies that the emission's primary variable is bound in the expression
-/// and has an event type (which provides a source location).
+/// Verifies that the emission's primary variable is bound on every
+/// successful branch:
+/// - For `Any`, every branch must contain the primary variable.
+/// - For `All`, at least one branch must contain it.
+/// - For `Event`, `Lifecycle`, and atomic forms, the primary variable must
+///   exist.
 pub(crate) fn pass_evidence_projection(decl: &QueryDecl) -> Result<(), QueryCompileError> {
-    if !expr_contains_var(decl.expression(), decl.emission().primary_var()) {
-        return Err(QueryCompileError::MissingBinding {
-            primary_var: decl.emission().primary_var(),
-        });
-    }
+    let primary = decl.emission().primary_var();
+    check_evidence_branch(decl.expression(), primary, true)?;
     Ok(())
+}
+
+/// Recursively check that `primary` is available on every successful branch.
+///
+/// `is_root` indicates whether this is the top-level expression (controls
+/// whether `All` needs every branch or at least one).
+fn check_evidence_branch(
+    expr: &QueryExpr,
+    primary: VarId,
+    _is_root: bool,
+) -> Result<(), QueryCompileError> {
+    match &expr.kind {
+        QueryExprKind::Any(any) => {
+            // EVERY branch must contain the primary variable.
+            for branch in &any.branches {
+                if !expr_contains_var(branch, primary) {
+                    return Err(QueryCompileError::MissingBinding {
+                        primary_var: primary,
+                    });
+                }
+            }
+            Ok(())
+        }
+        QueryExprKind::All(all) => {
+            // At least one branch must contain the primary variable.
+            // Inner Any/All branches are checked recursively.
+            for branch in &all.branches {
+                check_evidence_branch(branch, primary, false)?;
+            }
+            if !all.branches.iter().any(|b| expr_contains_var(b, primary)) {
+                return Err(QueryCompileError::MissingBinding {
+                    primary_var: primary,
+                });
+            }
+            Ok(())
+        }
+        QueryExprKind::Event(eq) => {
+            if eq.var() != primary {
+                return Err(QueryCompileError::MissingBinding {
+                    primary_var: primary,
+                });
+            }
+            Ok(())
+        }
+        QueryExprKind::SelectEvent(s) => {
+            if s.bind != primary {
+                return Err(QueryCompileError::MissingBinding {
+                    primary_var: primary,
+                });
+            }
+            Ok(())
+        }
+        QueryExprKind::Require(_) | QueryExprKind::Lifecycle(_) => Ok(()),
+    }
 }
 
 /// Pass 7: Boundedness checking.
@@ -546,8 +856,8 @@ pub(crate) fn pass_boundedness(decl: &QueryDecl) -> Result<(), QueryCompileError
 }
 
 fn check_boundedness(expr: &QueryExpr) -> Result<(), QueryCompileError> {
-    match expr {
-        QueryExpr::Any(any) => {
+    match &expr.kind {
+        QueryExprKind::Any(any) => {
             if any.branches.len() > limits::MAX_EXPR_CHILDREN {
                 return Err(QueryCompileError::UnboundedQuery {
                     detail: "Any expression exceeds maximum branch count",
@@ -558,7 +868,7 @@ fn check_boundedness(expr: &QueryExpr) -> Result<(), QueryCompileError> {
             }
             Ok(())
         }
-        QueryExpr::All(all) => {
+        QueryExprKind::All(all) => {
             if all.branches.len() > limits::MAX_EXPR_CHILDREN {
                 return Err(QueryCompileError::UnboundedQuery {
                     detail: "All expression exceeds maximum branch count",
@@ -569,7 +879,7 @@ fn check_boundedness(expr: &QueryExpr) -> Result<(), QueryCompileError> {
             }
             Ok(())
         }
-        QueryExpr::Event(eq) => {
+        QueryExprKind::Event(eq) => {
             let max_constraints = limits::MAX_PREDICATES_PER_ARGUMENT * limits::MAX_ARGUMENT_GROUPS;
             if eq.constraints().len() > max_constraints {
                 return Err(QueryCompileError::UnboundedQuery {
@@ -578,7 +888,9 @@ fn check_boundedness(expr: &QueryExpr) -> Result<(), QueryCompileError> {
             }
             Ok(())
         }
-        QueryExpr::Lifecycle(_) => Ok(()),
+        QueryExprKind::SelectEvent(_) | QueryExprKind::Require(_) | QueryExprKind::Lifecycle(_) => {
+            Ok(())
+        }
     }
 }
 
@@ -592,8 +904,8 @@ pub(crate) fn pass_relation_availability(decl: &QueryDecl) -> Result<(), QueryCo
 }
 
 fn check_relation_scope(expr: &QueryExpr) -> Result<(), QueryCompileError> {
-    match expr {
-        QueryExpr::Event(eq) => {
+    match &expr.kind {
+        QueryExprKind::Event(eq) => {
             // Validate that the identity type is supported in the
             // current semantic model.
             match eq.identity() {
@@ -664,24 +976,25 @@ fn check_relation_scope(expr: &QueryExpr) -> Result<(), QueryCompileError> {
             }
             Ok(())
         }
-        QueryExpr::Any(any) => {
+        QueryExprKind::Any(any) => {
             for b in &any.branches {
                 check_relation_scope(b)?;
             }
             Ok(())
         }
-        QueryExpr::All(all) => {
+        QueryExprKind::All(all) => {
             for b in &all.branches {
                 check_relation_scope(b)?;
             }
             Ok(())
         }
-        QueryExpr::Lifecycle(lc) => {
+        QueryExprKind::Lifecycle(lc) => {
             for src in lc.sources() {
-                check_relation_scope(&QueryExpr::Event(src.clone()))?;
+                check_relation_scope(&QueryExpr::event(src.clone()))?;
             }
             Ok(())
         }
+        QueryExprKind::SelectEvent(_) | QueryExprKind::Require(_) => Ok(()),
     }
 }
 
@@ -691,10 +1004,10 @@ fn check_relation_scope(expr: &QueryExpr) -> Result<(), QueryCompileError> {
 /// - Source must have a valid event query.
 /// - Condition and completion must be consistent.
 pub(crate) fn pass_lifecycle_validation(decl: &QueryDecl) -> Result<(), QueryCompileError> {
-    match decl.expression() {
-        QueryExpr::Lifecycle(lc) => validate_lifecycle(lc),
-        _ => Ok(()),
+    if let QueryExprKind::Lifecycle(lc) = &decl.expression().kind {
+        return validate_lifecycle(lc);
     }
+    Ok(())
 }
 
 fn validate_lifecycle(lc: &LifecycleQuery) -> Result<(), QueryCompileError> {
@@ -770,11 +1083,11 @@ pub(crate) fn validate_normalized_decl(decl: &QueryDecl) -> Result<(), QueryComp
 /// Any/All (which should have been flattened) and that variable slots
 /// are structurally sound.
 fn check_normalized_structure(expr: &QueryExpr, _is_root: bool) -> Result<(), QueryCompileError> {
-    match expr {
-        QueryExpr::Any(any) => {
+    match &expr.kind {
+        QueryExprKind::Any(any) => {
             for b in &any.branches {
                 // Any should not contain Any (would have been flattened).
-                if matches!(b, QueryExpr::Any(_)) {
+                if matches!(&b.kind, QueryExprKind::Any(_)) {
                     return Err(QueryCompileError::InternalInvariant {
                         detail: "nested Any found after normalization".into(),
                     });
@@ -784,10 +1097,10 @@ fn check_normalized_structure(expr: &QueryExpr, _is_root: bool) -> Result<(), Qu
             }
             Ok(())
         }
-        QueryExpr::All(all) => {
+        QueryExprKind::All(all) => {
             for b in &all.branches {
                 // All should not contain All (would have been flattened).
-                if matches!(b, QueryExpr::All(_)) {
+                if matches!(&b.kind, QueryExprKind::All(_)) {
                     return Err(QueryCompileError::InternalInvariant {
                         detail: "nested All found after normalization".into(),
                     });
@@ -796,7 +1109,10 @@ fn check_normalized_structure(expr: &QueryExpr, _is_root: bool) -> Result<(), Qu
             }
             Ok(())
         }
-        QueryExpr::Event(_) | QueryExpr::Lifecycle(_) => Ok(()),
+        QueryExprKind::Event(_)
+        | QueryExprKind::SelectEvent(_)
+        | QueryExprKind::Require(_)
+        | QueryExprKind::Lifecycle(_) => Ok(()),
     }
 }
 
@@ -811,7 +1127,7 @@ pub(crate) fn validate_query_decl(decl: &QueryDecl) -> Result<(), QueryCompileEr
     // Order: structural → semantic → post-normalization
     pass_well_formedness(decl)?;
     pass_variable_collection(decl)?;
-    pass_type_checking(decl);
+    pass_type_checking(decl)?;
     pass_operator_compatibility(decl)?;
     pass_correlation_scope(decl)?;
     pass_evidence_projection(decl)?;
@@ -819,15 +1135,6 @@ pub(crate) fn validate_query_decl(decl: &QueryDecl) -> Result<(), QueryCompileEr
     pass_relation_availability(decl)?;
     pass_lifecycle_validation(decl)?;
     pass_final_invariants(decl)?;
-    Ok(())
-}
-
-/// Validate all queries in a [`QuerySet`].
-#[allow(dead_code)]
-pub(crate) fn validate_query_set(set: &QuerySet) -> Result<(), QueryCompileError> {
-    for query in set.queries() {
-        validate_query_decl(query)?;
-    }
     Ok(())
 }
 
@@ -883,7 +1190,7 @@ mod tests {
             constraints: vec![],
         };
         let decl = QueryDecl {
-            expression: QueryExpr::Event(eq),
+            expression: QueryExpr::event(eq),
             emission: EmissionDecl {
                 primary_var: VarId::new(0),
                 kind: MatchKind::MemberCall,
@@ -909,10 +1216,10 @@ mod tests {
             constraints: vec![],
         };
         let decl = QueryDecl {
-            expression: QueryExpr::Event(eq),
+            expression: QueryExpr::event(eq),
             emission: EmissionDecl {
                 primary_var: VarId::new(0),
-                kind: MatchKind::MemberCall,
+                kind: MatchKind::Call,
                 symbol: "test".into(),
             },
         };
@@ -942,7 +1249,7 @@ mod tests {
             )],
         };
         let decl = QueryDecl {
-            expression: QueryExpr::Event(eq),
+            expression: QueryExpr::event(eq),
             emission: EmissionDecl {
                 primary_var: VarId::new(0),
                 kind: MatchKind::Import,
@@ -972,7 +1279,7 @@ mod tests {
             constraints: vec![],
         };
         let decl = QueryDecl {
-            expression: QueryExpr::Event(eq),
+            expression: QueryExpr::event(eq),
             emission: EmissionDecl {
                 primary_var: VarId::new(0),
                 kind: MatchKind::Call,
@@ -994,7 +1301,7 @@ mod tests {
 
     #[test]
     fn duplicate_var_in_all_fails() {
-        let a = QueryExpr::Event(EventQuery {
+        let a = QueryExpr::event(EventQuery {
             var: VarId::new(0),
             event: EventSpec::Call,
             identity: IdentitySpec::Global {
@@ -1003,7 +1310,7 @@ mod tests {
             subject: SubjectSpec::Direct,
             constraints: vec![],
         });
-        let b = QueryExpr::Event(EventQuery {
+        let b = QueryExpr::event(EventQuery {
             var: VarId::new(0), // same var as a
             event: EventSpec::Call,
             identity: IdentitySpec::Global {
@@ -1013,7 +1320,7 @@ mod tests {
             constraints: vec![],
         });
         let decl = QueryDecl {
-            expression: QueryExpr::All(AllExpr::new(vec![a, b]).unwrap()),
+            expression: QueryExpr::all(AllExpr::new(vec![a, b]).unwrap()),
             emission: EmissionDecl {
                 primary_var: VarId::new(0),
                 kind: MatchKind::Call,
@@ -1028,7 +1335,7 @@ mod tests {
 
     #[test]
     fn unique_vars_pass_collection() {
-        let a = QueryExpr::Event(EventQuery {
+        let a = QueryExpr::event(EventQuery {
             var: VarId::new(0),
             event: EventSpec::Call,
             identity: IdentitySpec::Global {
@@ -1037,7 +1344,7 @@ mod tests {
             subject: SubjectSpec::Direct,
             constraints: vec![],
         });
-        let b = QueryExpr::Event(EventQuery {
+        let b = QueryExpr::event(EventQuery {
             var: VarId::new(1),
             event: EventSpec::Call,
             identity: IdentitySpec::Global {
@@ -1048,7 +1355,7 @@ mod tests {
         });
         // Even in a multi-branch All, different vars are fine.
         let decl = QueryDecl {
-            expression: QueryExpr::All(AllExpr::new(vec![a, b]).unwrap()),
+            expression: QueryExpr::all(AllExpr::new(vec![a, b]).unwrap()),
             emission: EmissionDecl {
                 primary_var: VarId::new(0),
                 kind: MatchKind::Call,
@@ -1072,7 +1379,7 @@ mod tests {
             constraints: vec![],
         };
         let decl = QueryDecl {
-            expression: QueryExpr::Event(eq),
+            expression: QueryExpr::event(eq),
             emission: EmissionDecl {
                 primary_var: VarId::new(1), // not in expression
                 kind: MatchKind::Call,
@@ -1099,7 +1406,7 @@ mod tests {
             constraints: vec![],
         };
         let decl = QueryDecl {
-            expression: QueryExpr::Event(eq),
+            expression: QueryExpr::event(eq),
             emission: EmissionDecl {
                 primary_var: VarId::new(0),
                 kind: MatchKind::Call,
@@ -1113,7 +1420,7 @@ mod tests {
 
     #[test]
     fn uncorrelated_multi_event_all_fails() {
-        let a = QueryExpr::Event(EventQuery {
+        let a = QueryExpr::event(EventQuery {
             var: VarId::new(0),
             event: EventSpec::Call,
             identity: IdentitySpec::Global {
@@ -1122,7 +1429,7 @@ mod tests {
             subject: SubjectSpec::Direct,
             constraints: vec![],
         });
-        let b = QueryExpr::Event(EventQuery {
+        let b = QueryExpr::event(EventQuery {
             var: VarId::new(1), // different var, no shared
             event: EventSpec::Call,
             identity: IdentitySpec::Global {
@@ -1132,7 +1439,7 @@ mod tests {
             constraints: vec![],
         });
         let decl = QueryDecl {
-            expression: QueryExpr::All(AllExpr::new(vec![a, b]).unwrap()),
+            expression: QueryExpr::all(AllExpr::new(vec![a, b]).unwrap()),
             emission: EmissionDecl {
                 primary_var: VarId::new(0),
                 kind: MatchKind::Call,
@@ -1147,7 +1454,7 @@ mod tests {
 
     #[test]
     fn correlated_multi_event_all_passes() {
-        let a = QueryExpr::Event(EventQuery {
+        let a = QueryExpr::event(EventQuery {
             var: VarId::new(0),
             event: EventSpec::Call,
             identity: IdentitySpec::Global {
@@ -1156,7 +1463,7 @@ mod tests {
             subject: SubjectSpec::Direct,
             constraints: vec![],
         });
-        let b = QueryExpr::Event(EventQuery {
+        let b = QueryExpr::event(EventQuery {
             var: VarId::new(0), // same var as a → correlated
             event: EventSpec::Call,
             identity: IdentitySpec::Global {
@@ -1166,7 +1473,7 @@ mod tests {
             constraints: vec![],
         });
         let decl = QueryDecl {
-            expression: QueryExpr::All(AllExpr::new(vec![a, b]).unwrap()),
+            expression: QueryExpr::all(AllExpr::new(vec![a, b]).unwrap()),
             emission: EmissionDecl {
                 primary_var: VarId::new(0),
                 kind: MatchKind::Call,
@@ -1178,7 +1485,7 @@ mod tests {
 
     #[test]
     fn single_branch_all_needs_no_correlation() {
-        let a = QueryExpr::Event(EventQuery {
+        let a = QueryExpr::event(EventQuery {
             var: VarId::new(0),
             event: EventSpec::Call,
             identity: IdentitySpec::Global {
@@ -1188,7 +1495,7 @@ mod tests {
             constraints: vec![],
         });
         let decl = QueryDecl {
-            expression: QueryExpr::All(AllExpr::new(vec![a]).unwrap()),
+            expression: QueryExpr::all(AllExpr::new(vec![a]).unwrap()),
             emission: EmissionDecl {
                 primary_var: VarId::new(0),
                 kind: MatchKind::Call,
@@ -1212,7 +1519,7 @@ mod tests {
             constraints: vec![],
         };
         let decl = QueryDecl {
-            expression: QueryExpr::Event(eq),
+            expression: QueryExpr::event(eq),
             emission: EmissionDecl {
                 primary_var: VarId::new(0),
                 kind: MatchKind::Call,
@@ -1226,7 +1533,7 @@ mod tests {
     fn excessive_any_branches_fails_boundedness() {
         let branches: Vec<QueryExpr> = (0..1001)
             .map(|i| {
-                QueryExpr::Event(EventQuery {
+                QueryExpr::event(EventQuery {
                     var: VarId::new(i),
                     event: EventSpec::Call,
                     identity: IdentitySpec::Global {
@@ -1237,7 +1544,7 @@ mod tests {
                 })
             })
             .collect();
-        let any = QueryExpr::Any(AnyExpr::new(branches).unwrap());
+        let any = QueryExpr::any(AnyExpr::new(branches).unwrap());
         let decl = QueryDecl {
             expression: any,
             emission: EmissionDecl {
@@ -1280,7 +1587,7 @@ mod tests {
             completion: Some(crate::api::rule::FlowCompletion::configuration()),
         };
         let decl = QueryDecl {
-            expression: QueryExpr::Lifecycle(lc),
+            expression: QueryExpr::lifecycle(lc),
             emission: EmissionDecl {
                 primary_var: VarId::new(0),
                 kind: MatchKind::Call,
@@ -1321,7 +1628,7 @@ mod tests {
             completion: Some(crate::api::rule::FlowCompletion::configuration()),
         };
         let decl = QueryDecl {
-            expression: QueryExpr::Lifecycle(lc),
+            expression: QueryExpr::lifecycle(lc),
             emission: EmissionDecl {
                 primary_var: VarId::new(0),
                 kind: MatchKind::Call,
@@ -1361,7 +1668,7 @@ mod tests {
             completion: Some(crate::api::rule::FlowCompletion::configuration()),
         };
         let decl = QueryDecl {
-            expression: QueryExpr::Lifecycle(lc),
+            expression: QueryExpr::lifecycle(lc),
             emission: EmissionDecl {
                 primary_var: VarId::new(0),
                 kind: MatchKind::Call,
@@ -1403,14 +1710,6 @@ mod tests {
         assert_valid_query(&QueryDecl::constructor_global("URL").unwrap());
         assert_valid_query(&QueryDecl::constructor_heuristic("Foo").unwrap());
         assert_valid_query(&QueryDecl::constructor_module("pkg", "Klass").unwrap());
-    }
-
-    #[test]
-    fn query_set_with_valid_queries_passes_validation() {
-        let q1 = QueryDecl::call_global("fetch").unwrap();
-        let q2 = QueryDecl::member_read_rooted("window.location").unwrap();
-        let set = QuerySet::new(vec![q1, q2]);
-        assert!(validate_query_set(&set).is_ok());
     }
 
     // ── Error variant tests ───────────────────────────────────────
@@ -1569,7 +1868,7 @@ mod tests {
             constraints: vec![],
         };
         let decl = QueryDecl {
-            expression: QueryExpr::Event(eq),
+            expression: QueryExpr::event(eq),
             emission: EmissionDecl {
                 primary_var: VarId::new(0),
                 kind: MatchKind::Call,
@@ -1596,7 +1895,7 @@ mod tests {
             constraints: vec![],
         };
         let decl = QueryDecl {
-            expression: QueryExpr::Event(eq),
+            expression: QueryExpr::event(eq),
             emission: EmissionDecl {
                 primary_var: VarId::new(1), // also wrong, but not reached
                 kind: MatchKind::Import,

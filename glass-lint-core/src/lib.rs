@@ -36,9 +36,9 @@ pub mod rules {
         classification::MatchKind,
         rule::{
             AllExpr, AnyExpr, ArgumentMatcher, Category, Confidence, EmissionDecl, EventQuery,
-            EventSpec, FlowCompletion, FlowCondition, FlowSinkMatcher, IdentitySpec, IntoQueryDecl,
-            LifecycleQuery, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher,
-            QueryBuildError, QueryDecl, QueryExpr, QuerySet, Rule, RuleBuildError,
+            EventRequirement, EventSpec, FlowCompletion, FlowCondition, FlowSinkMatcher,
+            IdentitySpec, IntoQueryDecl, LifecycleQuery, ObjectEventMatcher, ObjectFlowMatcher,
+            ObjectSourceMatcher, QueryBuildError, QueryDecl, QueryExpr, Rule, RuleBuildError,
             RuleBuilder as Builder, Severity, SubjectSpec, ValueMatcher, VarId,
         },
     };

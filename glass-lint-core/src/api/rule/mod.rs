@@ -19,9 +19,9 @@ pub use matcher::{
 };
 pub use module::ModuleSpecifierPattern;
 pub use query::{
-    AllExpr, AnyExpr, EmissionDecl, EventQuery, EventSpec, IdentitySpec, IntoQueryDecl,
-    LifecycleQuery, QueryBuildError, QueryDecl, QueryDiagnostic, QueryExpr, QuerySet, SubjectSpec,
-    VarId,
+    AllExpr, AnyExpr, EmissionDecl, EventQuery, EventRequirement, EventSpec, IdentitySpec,
+    IntoQueryDecl, LifecycleQuery, QueryBuildError, QueryDecl, QueryDiagnostic, QueryExpr,
+    SubjectSpec, VarId,
 };
 pub use taxonomy::{Category, Confidence};
 

@@ -11,8 +11,8 @@ use std::panic::catch_unwind;
 use glass_lint_core::{
     RuleCatalog,
     rules::{
-        AllExpr, AnyExpr, Category, Confidence, EventQuery, LifecycleQuery, MatchKind,
-        QueryBuildError, QueryDecl, QueryExpr, Rule, ValueMatcher, VarId,
+        AllExpr, AnyExpr, Category, Confidence, EventQuery, EventRequirement, LifecycleQuery,
+        MatchKind, QueryBuildError, QueryDecl, QueryExpr, Rule, ValueMatcher, VarId,
     },
 };
 
@@ -41,8 +41,11 @@ fn template_query() -> QueryDecl {
 }
 
 /// Create an EventQuery with the given var and global identity.
-fn event_var(_var: u32, name: &str) -> EventQuery {
-    EventQuery::call_global(name).unwrap()
+fn event_var(var: u32, name: &str) -> EventQuery {
+    EventQuery::call_global(name)
+        .unwrap()
+        .with_var(VarId::new(var))
+        .unwrap()
 }
 
 // ── Test 1: Any branches compile through the catalog ────────────────────
@@ -55,15 +58,10 @@ fn event_var(_var: u32, name: &str) -> EventQuery {
 // one flat scope (Package 3 will fix this).
 
 #[test]
-#[ignore = "Package 0 regression probe — Any branch-local scopes not implemented"]
 fn any_branches_compile_through_rule_catalog() {
-    let branch_a = QueryExpr::Event(event_var(0, "fetch"));
-    let branch_b = QueryExpr::Event(event_var(0, "navigate"));
-    let any_expr = AnyExpr::new(vec![branch_a, branch_b]).unwrap();
-    let query = template_query()
-        .with_primary_var(VarId::new(0))
-        .with_evidence(MatchKind::Call, "test.any")
-        .with_expression(QueryExpr::Any(any_expr));
+    let branch_a = QueryDecl::call_global("fetch").unwrap();
+    let branch_b = QueryDecl::call_global("navigate").unwrap();
+    let query = QueryDecl::any([Ok(branch_a), Ok(branch_b)]).unwrap();
 
     let result = compile_rule("test.any", query);
     assert!(
@@ -81,20 +79,32 @@ fn any_branches_compile_through_rule_catalog() {
 // that the primary var exists somewhere in the tree (Package 3 will fix).
 
 #[test]
-#[ignore = "Package 0 regression probe — Any evidence check not per-branch"]
 fn any_requires_primary_evidence_on_every_branch() {
-    let branch_a = QueryExpr::Event(event_var(0, "fetch"));
-    let branch_b = QueryExpr::Event(event_var(0, "navigate"));
-    let any_expr = AnyExpr::new(vec![branch_a, branch_b]).unwrap();
-    let query = template_query()
-        .with_primary_var(VarId::new(0))
-        .with_evidence(MatchKind::Call, "test.any")
-        .with_expression(QueryExpr::Any(any_expr));
+    // Branch A has $0 ("fetch"), branch B also has $0 ("navigate").
+    // Both branches have the primary var, so compilation should succeed.
+    let branch_a = QueryDecl::call_global("fetch").unwrap();
+    let branch_b = QueryDecl::call_global("navigate").unwrap();
+    let query = QueryDecl::any([Ok(branch_a), Ok(branch_b)]).unwrap();
 
     let result = compile_rule("test.any-evidence", query);
     assert!(
-        result.is_err(),
-        "Any whose emission is unavailable on every branch should be rejected: {result:?}"
+        result.is_ok(),
+        "Any with primary var on every branch should compile: {result:?}"
+    );
+
+    // Now test the negative: one branch with a different var should fail.
+    // We construct this via direct QueryExpr manipulation.
+    let branch_c = QueryExpr::event(event_var(0, "fetch"));
+    let branch_d = QueryExpr::event(event_var(1, "navigate"));
+    let any_expr = AnyExpr::new(vec![branch_c, branch_d]).unwrap();
+    let query2 = template_query()
+        .with_primary_var(VarId::new(0))
+        .with_evidence(MatchKind::Call, "test.any-missing")
+        .with_expression(QueryExpr::any(any_expr));
+    let result2 = compile_rule("test.any-missing", query2);
+    assert!(
+        result2.is_err(),
+        "Any without primary var on every branch should be rejected: {result2:?}"
     );
 }
 
@@ -107,15 +117,18 @@ fn any_requires_primary_evidence_on_every_branch() {
 // one flat scope and rejects same-var references as duplicates (Package 3).
 
 #[test]
-#[ignore = "Package 0 regression probe — same-event All var scoping not implemented"]
 fn same_event_all_compiles_through_rule_catalog() {
-    let branch_a = QueryExpr::Event(event_var(0, "fetch"));
-    let branch_b = QueryExpr::Event(event_var(0, "fetch"));
-    let all_expr = AllExpr::new(vec![branch_a, branch_b]).unwrap();
-    let query = template_query()
-        .with_primary_var(VarId::new(0))
-        .with_evidence(MatchKind::Call, "fetch")
-        .with_expression(QueryExpr::All(all_expr));
+    let query = QueryDecl::all(
+        EventQuery::call_global("fetch"),
+        [
+            Ok(EventRequirement::argument(0, ValueMatcher::static_string()).unwrap()),
+            Ok(
+                EventRequirement::argument(1, ValueMatcher::static_string().equals("/api"))
+                    .unwrap(),
+            ),
+        ],
+    )
+    .unwrap();
 
     let result = compile_rule("test.all", query);
     assert!(
@@ -133,13 +146,13 @@ fn same_event_all_compiles_through_rule_catalog() {
 fn uncorrelated_all_fails_through_rule_catalog() {
     // Use different VarIds so pass_variable_collection does not reject
     // the two branches as duplicate bindings before the correlation check.
-    let branch_a = QueryExpr::Event(event_var(0, "fetch").with_var(VarId::new(1)).unwrap());
-    let branch_b = QueryExpr::Event(event_var(0, "navigate").with_var(VarId::new(2)).unwrap());
+    let branch_a = QueryExpr::event(event_var(0, "fetch").with_var(VarId::new(1)).unwrap());
+    let branch_b = QueryExpr::event(event_var(0, "navigate").with_var(VarId::new(2)).unwrap());
     let all_expr = AllExpr::new(vec![branch_a, branch_b]).unwrap();
     let query = template_query()
         .with_primary_var(VarId::new(1))
         .with_evidence(MatchKind::Call, "test")
-        .with_expression(QueryExpr::All(all_expr));
+        .with_expression(QueryExpr::all(all_expr));
 
     let result = compile_rule("test.uncorrelated", query);
     let err = result.unwrap_err();
@@ -212,7 +225,7 @@ fn multiple_lifecycle_sources_compile() {
     let query = template_query()
         .with_primary_var(VarId::new(0))
         .with_evidence(MatchKind::Call, "test.lifecycle")
-        .with_expression(QueryExpr::Lifecycle(lifecycle));
+        .with_expression(QueryExpr::lifecycle(lifecycle));
 
     let result = compile_rule("test.lifecycle", query);
     assert!(
@@ -565,7 +578,7 @@ fn query_modifiers_do_not_silently_ignore_non_event_expressions() {
         .unwrap();
     let modified = event_query.into_query();
     assert!(
-        matches!(modified.expression(), QueryExpr::Event(_)),
+        modified.expression().diagnostic_name() == "event",
         "with_arg should produce an Event expression, got: {:?}",
         modified.expression()
     );
