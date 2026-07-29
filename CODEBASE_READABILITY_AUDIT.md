@@ -1,375 +1,410 @@
-# Codebase Readability Audit
+# `glass-lint-core` Readability and Performance Audit
 
 ## Summary
 
-This read-only audit covers the complete Rust source and relevant tests of `glass-lint-core`, `glass-lint-datastructures`, and `glass-lint-project` (216 Rust modules, roughly 52,000 lines). It found 27 actionable issues: 13 High and 14 Medium severity. The highest-priority risks are unsound joins in assignment and exception provenance, unsafe reuse of invalid function effects, namespace/export-resolution inconsistencies, incorrect TypeScript project membership, a Unicode filename panic, and symlink policy bypasses.
+This read-only audit covers all production and test source under `glass-lint-core`, with extra attention to the recent query API/compiler and flow-matcher work and to hot paths beginning at `lower_program`. The crate's `src` tree contains 51,776 lines of Rust: 30,408 in `analysis`, 11,551 in `api`, 5,485 in `project`, 1,316 in `lint`, and 652 in terminal report rendering.
 
-The main performance risks in and around `lower_program` are three complete AST traversals with repeated interning and ordered-map lookup, quadratic alias resolution, an ever-growing rollback log, eager source-position indexing on cache hits, and full live-state clones at object-flow joins. These conclusions are based on static path analysis; the repository does not contain a reproducible lowering benchmark corpus, so optimization choices below deliberately require benchmark confirmation.
+I found 29 actionable issues: 11 High, 16 Medium, and 2 Low severity. The most urgent correctness defects are an exact rule selector matching longer rule IDs and helper-sink propagation losing transitive sinks according to function order. The largest static performance risks are repeated whole-AST passes, deep cloning of scope environments, quadratic flow-state coalescing, whole-state cloning on each flow edit, copying loop facts on every fixed-point iteration, a mutex on every terminal value lookup, and an unbounded hand-built worker pool.
 
-The three-crate test run passed in full (`cargo test -p glass-lint-core -p glass-lint-datastructures -p glass-lint-project`): 456 core unit tests plus integrations and doctests, 183 datastructure tests, and 61 project tests. The complete repository gate (`make ci`, including workspace check, Clippy, tests, and every harness suite) also passed. The green suite does not cover the adversarial examples identified below.
+The new query compiler has a sensible declaration → normalized IR → physical IR direction, but it still contains a reverse lifecycle adapter, repeated tree walkers and canonicalizers, a duplicate convenience API, and a partial “reference” evaluator that does not cover the newly important lifecycle path. The flow implementation is bounded in many dimensions, but several bounds cap retained output rather than the CPU and allocation work used to reach it.
+
+`cargo test -p glass-lint-core --all-features` passed: 682 unit tests plus all integration and doc-test binaries. Five tests remain ignored, including the three limit/certainty tests discussed in READ-027. `cargo clippy -p glass-lint-core --all-targets --all-features -- -W clippy::pedantic` also completed successfully; its 272 library warnings and 283 test-build warnings were predominantly documentation and `must_use` suggestions and are not repeated as findings.
+
+## Architecture Summary
+
+The current semantic pipeline is:
+
+1. copy source into SWC, pre-scan syntax depth, and parse;
+2. plan scopes and seed names with one AST traversal;
+3. collect source-order scope and assignment semantics with a second traversal;
+4. build matcher-independent facts with a third traversal;
+5. freeze names/values, derive occurrence indexes and function effects;
+6. link modules, project compiled matchers, run local/cross-call/cross-file flow, and assemble reports.
+
+The core abstractions are generally moving in the right direction: facts are matcher-independent, query declarations compile once, stable ID newtypes are common, and project stages consume `self`. The main architectural weakness is that phase ownership is not consistently reflected in types. That produces immutable artifacts containing `Mutex` or `RefCell`, `Arc` used as a borrow-checker workaround, unsafe edit guards, and repeated conversions between already-validated representations.
+
+The crate is large, but most semantic modules share private IDs, tables, and fail-closed invariants. Splitting that semantic graph into crates now would expose implementation storage and create more adapter APIs. Presentation and telemetry are different: they have clean outward-facing boundaries and only higher-level consumers, so they should leave core now. The detailed decision is recorded under READ-024 and Open Questions.
 
 ## Findings
 
-### `glass-lint-core`: parsing and local lowering
+### Rule selection
 
-#### READ-001 — The pre-AST depth guard still guesses JavaScript token context
+#### READ-001 — Exact rule selectors match longer rule IDs
+
+- **Severity:** High
+- **Fix Complexity** Low
+- **Category:** API
+- **Location:** `glass-lint-core/src/lint/selection.rs:75-142`
+
+`RuleSelector::matches` treats the first literal specially and only calls `starts_with`. For a selector without `*`, that first literal is also the final literal, but the end-anchor branch is never reached. An exact selector such as `js:foo` therefore matches `js:foobar`, so validation can accept and enable a different rule than the user named.
+
+Add a no-wildcard fast path using `id == self.raw`, then add exact-prefix, leading/trailing/multiple-wildcard, empty-match, and Unicode table tests. Keep the deliberately tiny in-house `*` grammar; adding `globset` for this single-selector language is not justified unless the language expands.
+
+### Flow summaries
+
+#### READ-002 — The helper-summary delta cursor loses transitive sinks
+
+- **Severity:** High
+- **Fix Complexity** Medium
+- **Category:** Testing
+- **Location:** `glass-lint-core/src/analysis/flow/summary/summaries.rs:142-223`, `glass-lint-core/src/analysis/flow/summary/summaries.rs:226-287`
+
+`propagate_sinks` processes a round, advances every changed summary's global `sinks_offset` to its current length, and only then schedules reverse callers. If a caller ran before its callee in that round, it is retried next round, but the callee's cursor has already advanced, so `propagate_call_sinks` sees no new sinks. Multi-hop propagation is consequently dependent on `FunctionId`/source order.
+
+Remove the global per-summary cursor and let the existing sink set deduplicate, or keep a version/cursor per call-graph edge. Add three-or-more-hop tests in both declaration orders, a diamond, recursion with a newly discovered sink, and a permutation property asserting source-order independence.
+
+### Parsing and local lowering
+
+#### READ-003 — Any backtick selects a second handwritten JavaScript lexer
+
+- **Severity:** High
+- **Fix Complexity** High
+- **Category:** Duplication
+- **Location:** `glass-lint-core/src/parse.rs:113-177`, `glass-lint-core/src/parse.rs:252-359`, `glass-lint-core/src/parse.rs:362-557`, `glass-lint-core/src/parse.rs:631-651`
+
+Ordinary input is depth-scanned with SWC tokens before being parsed by SWC, but any source byte equal to a backtick bypasses that path. `template_syntax_depth` then reimplements quotes, comments, regular-expression classes, regex-vs-division context, nested templates, delimiters, and member chains. A backtick in a comment or string is enough to select it. This is a duplicate language frontend on an adversarial pre-parse path, and it cannot stay aligned with ECMAScript/SWC.
+
+Delete the byte lexer. Obtain template-expression boundaries from the same SWC frontend that parses the file, or add a bounded token/context hook upstream and make parsing itself return the depth failure. SWC is already the high-quality crate to use here; a regex crate would not solve lexical context.
+
+#### READ-004 — Each cache miss walks the whole AST at least three times
+
+- **Severity:** High
+- **Fix Complexity** Extreme
+- **Category:** Complexity
+- **Location:** `glass-lint-core/src/analysis/lowering/mod.rs:119-135`, `glass-lint-core/src/analysis/lowering/mod.rs:231-300`, `glass-lint-core/src/analysis/scope/mod.rs:88-103`, `glass-lint-core/src/analysis/scope/build/plan.rs:176-215`
+
+`ScopeGraph::collect_scoped_program` performs a planning traversal and a collection traversal, after which `FactBuilder` performs a third complete SWC traversal. The planner visits every identifier, member, and property to seed names, not only declarations needed for hoisting. The frozen fact stream is then scanned again to construct `SemanticFacts` indexes and again to collect `FunctionEffects`.
+
+Retain a narrow hoisting/scope-shape prepass, but stop using it as a general name census. Design one semantic frontend traversal that collects source-order scope state and emits facts against the frozen declaration plan, then build occurrence indexes and effects in one fact-stream pass. Because this is the central semantic invariant, require lowering benchmarks and adversarial semantic parity tests before merging phases.
+
+#### READ-005 — Exhausting a semantic budget does not stop AST traversal
+
 - **Severity:** High
 - **Fix Complexity** High
 - **Category:** Other
-- **Location:** `glass-lint-core/src/parse.rs:127-651`
-- **Status:** Fixed
+- **Location:** `glass-lint-core/src/analysis/scope/build/plan.rs:176-199`, `glass-lint-core/src/analysis/facts/mod.rs:166-204`, `glass-lint-core/src/analysis/lowering/mod.rs:238-300`
 
-`syntax_depth` is a handwritten JavaScript lexer whose regex/division decision depends on the preceding byte or a short keyword list. Valid forms such as a postfix increment followed by division can be treated as a regex and cause the scanner to skip real nesting, so hostile nesting can bypass the pre-AST guard; other grammar positions can be classified in the opposite direction and reject valid input.
+Scope visitors continue walking after `try_charge` fails. `FactBuilder::emit` returns once the shared budget is exhausted, but SWC's visitor still descends through the rest of the program, and lowering proceeds to export-origin and effects phases. The configured limit therefore bounds recorded operations but not the CPU spent visiting a hostile oversized AST.
 
-Implemented a bounded SWC-token pass before AST construction. It derives delimiter/member depth from token kinds, accounts for postfix `++`/`--` before classifying a following slash, charges each token event against the source bound, rejects lexer failures conservatively, and preserves the existing depth diagnostic; template expression boundaries remain covered by a dedicated parser-frontend state path because SWC exposes them through parser-driven rescans.
+Make cancellation a phase-level result. Use an explicitly stoppable walker or a visitor gate that prevents child descent after exhaustion, and do not start later derived phases when their required input is already invalid. Tests should count visited nodes below/at/above each limit, not only emitted facts and status codes.
 
-**Check:** `cargo test -p glass-lint-core parse::tests --no-default-features` passed (25 tests), including the postfix-increment/division regression, and `make ci` passed in full on 2026-07-28.
+#### READ-006 — Scope branch checkpoints deep-clone all assignment state
 
-#### READ-002 — `lower_program` performs three full AST walks and repeats name work
-- **Severity:** Medium
-- **Fix Complexity** High
-- **Category:** Complexity
-- **Location:** `glass-lint-core/src/analysis/lowering/mod.rs:119-148`, `glass-lint-core/src/analysis/lowering/mod.rs:230-300`, `glass-lint-core/src/analysis/scope/mod.rs:88-103`, `glass-lint-core/src/analysis/scope/build/plan.rs:164-238`
-- **Status:** Fixed
-
-Every cache miss walks the complete AST for scope planning, again for source-order scope collection, and again for fact building. Those passes own distinct declaration, source-order, and fact state, but the collector and resolver were still mutating the same name table for names already seeded by the planner, repeating work in the hottest per-file path.
-
-Kept the declaration/scope-shape prepass and its identifier seeding because source-order collection must classify initializer roots before visiting their child identifiers. Collection now looks up preseeded declaration, assignment, function, and call names first, falling back to interning only for genuinely synthesized names; fact construction uses the same lookup-first behavior. Removed the obsolete mutable post-freeze interning wrappers, preserved the existing two name-operation budget charges, and added a regression asserting that fact construction does not add collected source names.
-
-**Check:** The focused name-reuse test, rooted-constructor regression, and full `glass-lint-core --no-default-features` test suite passed. `make ci` passed in full on 2026-07-28: workspace check, Clippy, 465 core unit tests, workspace tests/doctests, 12 E2E cases, 2 project cases, 70 JavaScript rule cases, and 98 Obsidian rule cases.
-
-#### READ-003 — Conditional assignments fall back to an older strict identity
 - **Severity:** High
 - **Fix Complexity** High
-- **Category:** Architecture
-- **Location:** `glass-lint-core/src/analysis/scope/frozen_assignments.rs:46-98`, `glass-lint-core/src/analysis/scope/query/bindings.rs:21-36`
-- **Status:** Fixed
+- **Category:** Other
+- **Location:** `glass-lint-core/src/analysis/scope/build/assignments.rs:127-170`, `glass-lint-core/src/analysis/scope/build/history.rs:12-145`, `glass-lint-core/tests/scope_precision.rs:308-363`
 
-When the latest textual assignment is conditional, `latest_at` returns `None`, and `binding_at` treats that as “no assignment” and falls back to a parameter alias or the declaration provenance. Thus `let f = fetch; if (flag) f = local; f()` can retain the strict `fetch` identity even though the use may observe the local function, contrary to the fail-closed contract.
+Every conditional, loop, switch, and `try` checkpoint clones the nested `HashMap<ScopeId, HashMap<NameId, ProvenanceAlternatives>>` plus the write set. Joins rebuild maps for every active scope/name and deduplicate provenance with `Vec::contains`. There is no bound on the number of provenance alternatives; the intended alternative-limit tests are still ignored.
 
-Changed `FrozenAssignmentIndex::latest_at` to return explicit `Absent`, `Known`, or `Ambiguous` states; binding queries now map `Ambiguous` directly to unknown instead of falling back to parameter or declaration provenance. The collector now joins bounded path environments for zero-iteration loops, conditional arms, switch fallthrough, abrupt exits, and exceptional `try`/`catch` edges, retaining a strict identity only when every reachable definition agrees. Source-order versions remain monotonic while path state is checkpointed separately.
+Reuse the mutation-log/checkpoint approach already present in facts and flow, or use an immutable/persistent map only after benchmarking it against a domain-specific delta log. Store touched bindings per branch and join only those deltas. Introduce an explicit alternative budget whose exhaustion produces unknown/possible, then enable the ignored certainty tests.
 
-**Check:** Added strict-to-local, local-to-strict, equal-branch, nested-branch, loop, switch, abrupt-exit, exceptional-edge, function-boundary, and branch-isolation regressions in `glass-lint-core/tests/scope_precision.rs`, plus direct environment-join coverage in the scope builder. The focused suite passed (15 tests), and the full `glass-lint-core --lib` suite passed (459 tests). `make ci` passed in full on 2026-07-28: workspace check, Clippy, 466 core unit tests, workspace tests/doctests, 12 E2E cases, 2 project cases, 70 JavaScript rule cases, and 98 Obsidian rule cases.
+### Local flow projection
 
-#### READ-004 — Source-order provenance leaks between sibling branches during collection
+#### READ-007 — Flow path coalescing is quadratic in alternatives and copies every state
+
 - **Severity:** High
 - **Fix Complexity** High
-- **Category:** Architecture
-- **Location:** `glass-lint-core/src/analysis/scope/build/assignments.rs:12-67`, `glass-lint-core/src/analysis/scope/build/history.rs:13-59`, `glass-lint-core/src/analysis/scope/build/traversal.rs:188-245`
-- **Status:** Fixed
+- **Category:** Other
+- **Location:** `glass-lint-core/src/analysis/flow/projector/mod.rs:549-587`, `glass-lint-core/src/analysis/flow/projector/state.rs:170-215`
 
-`ScopeCollector.latest_assignments` is overwritten while visiting a conditional body, but `enter_conditional` and `exit_conditional` only change a depth counter; they do not checkpoint or join the history. Provenance inferred in an `else` arm or after a construct can therefore depend on whichever sibling was visited first or last, even though that path is not necessarily reachable.
+For every path at every join, `join_paths` restores the path, clones the complete alias and flow-state maps, and linearly compares that snapshot with all prior snapshots. The cost is O(alternatives² × live state), with thousands of alternatives allowed. The operation budget eventually stops comparisons, but only after repeatedly allocating and copying the state being compared.
 
-Introduced a checkpointable `AssignmentEnvironment` owned by the scope builder, with explicit unknown values, rollback, and conservative joins. The shared scope traversal now gives the collector lifecycle hooks for conditionals, loops, switches, and `try`/`catch`/`finally`; sibling paths restore the incoming environment, unreachable exits are excluded, and disagreement is joined as unknown. Synthetic join assignments keep the frozen source-order index and monotonic binding versions consistent with the path result.
+Give each mutation-log state a canonical incremental fingerprint or interned state ID and use a hash set for membership with full equality only on hash collision. Normalize object IDs once when a semantic state is frozen/interned, not for each comparison. Deterministic report order does not require a `BTreeSet` in this internal membership test.
 
-**Check:** The environment’s equal-value/disagreement join test passed; collector regressions cover nested conditionals, loop fallthrough, switches, abrupt exits, exceptional edges, function boundaries, and sibling branch isolation. `cargo test -p glass-lint-core --test scope_precision` passed (15 tests), and `cargo test -p glass-lint-core --lib` passed (459 tests). `make ci` passed in full on 2026-07-28: workspace check, Clippy, 466 core unit tests, workspace tests/doctests, 12 E2E cases, 2 project cases, 70 JavaScript rule cases, and 98 Obsidian rule cases.
+#### READ-008 — Every flow-state edit deep-copies COW maps and uses an unsafe guard
 
-#### READ-005 — The origin rollback log grows even when rollback is impossible
-- **Severity:** Medium
-- **Fix Complexity** Medium
-- **Category:** Complexity
-- **Location:** `glass-lint-core/src/analysis/facts/origin_map.rs:5-76`, `glass-lint-core/src/analysis/facts/control.rs:46-208`
-- **Status:** Fixed
-
-Every `OriginMap` insert and remove clones the old value into `log`, including long straight-line regions with no active checkpoint. Rollback truncates only to a checkpoint and never commits or discards pre-checkpoint history, so lowering retains a duplicate mutation history for the whole file and copies `SmolStr` origin payloads unnecessarily.
-
-Make `OriginMap` transaction-aware: maintain an active-checkpoint count, append inverse entries only while that count is nonzero, and commit each completed control region by discarding entries older than its surviving checkpoint. Charge every logged mutation and snapshot to the semantic budget before allocation, and preserve deterministic intersection order at joins. Recommendation: add memory-growth tests for long straight-line streams and deeply nested control, with assertions that retained storage is bounded by live state plus active deltas.
-
-`OriginMap` now tracks an `open_checkpoints` counter; `insert` and `remove` append inverse entries only while that count is nonzero, so long straight-line regions with no active checkpoint produce no log writes. `rollback` decrements the counter and clears the entire log when the count reaches zero, discarding all pre-checkpoint history at the end of each control region. Every logged mutation and snapshot charges `budget.try_charge()` before allocation. An explicit `commit` method is called after each control region's rollback to document the intent. Deterministic iteration order at joins is preserved because the underlying `HashMap` (hashbrown) is not modified during `retain_common` filtering.
-
-**Check:** `cargo check -p glass-lint-core` passes; `cargo clippy --workspace --all-targets -- -D warnings` passes; `cargo test -p glass-lint-core --lib` passes 466 tests; workspace tests pass 1131 tests; 12 E2E cases, 2 project cases, 70 `js:` rule cases, and 98 `obsidian:` rule cases pass. `make ci` passed in full on 2026-07-28.
-
-#### READ-006 — Alias resolution is quadratic and repeated
 - **Severity:** High
-- **Fix Complexity** Medium
-- **Category:** Complexity
-- **Location:** `glass-lint-core/src/analysis/model/value.rs:126-153`
-- **Status:** Fixed
-
-`ValueTable::resolve` linearly searches a growing `SmallVec` on every alias hop, making one permitted chain O(depth²), and every consumer resolves the same chain again. With a value capacity of 65,536 and no resolution charge, a generated alias chain can consume disproportionate CPU inside lowering and matching.
-
-Enforce that every binding target references an already-interned value, cache each binding's terminal value/root ID, and reject cycles at insertion. Make `ValueTable::resolve` charge one bounded step per hop and return unknown when the chain or budget is exhausted. Recommendation: add a maximum-length alias-chain benchmark plus malformed-cycle tests, and verify that repeated consumers hit the terminal cache instead of traversing the chain again.
-
-**Check:** All 466 core lib tests, 18 model::value unit tests, 183 datastructure tests, and 61 project tests pass. `call_provenance_for_value` uses the cached resolve instead of manually walking bindings. Every new `Value::Binding` is validated against forward references and cycles are rejected at insertion. Repeated `resolve` calls on the same chain hit the terminal cache in O(1). Budget is bounded at MAX_VALUES hops. `make ci` passed in full on 2026-07-28: workspace check, Clippy, workspace tests/doctests, 12 E2E cases, 2 project cases, 70 JavaScript rule cases, and 98 Obsidian rule cases.
-
-#### READ-007 — Cache hits rebuild a full source line index eagerly
-- **Severity:** Medium
-- **Fix Complexity** Medium
-- **Category:** Complexity
-- **Location:** `glass-lint-core/src/diagnostic.rs:48-134`, `glass-lint-core/src/analysis/local.rs:91-108`, `glass-lint-core/src/project/session/artifacts.rs:93-107`
-- **Status:** Fixed
-
-A semantic artifact cache hit still constructs `LocatedSourceContext`, scans the complete source for line starts, and scans every line of at least 256 bytes again to build Unicode checkpoints. Projects with unchanged large sources therefore pay O(source bytes) position-index work even when no finding needs a position.
-
-`SourceLineIndex` is now stored in `SharedSemanticArtifact` alongside the semantic model, so a cache hit reuses the previously built index without rescanning source bytes. `SourceLineIndex` uses an ASCII fast path (`source.is_ascii()` at construction time) and defers Unicode checkpoint computation to a `OnceLock`, materializing checkpoints only when the first non-ASCII position lookup occurs. Cache identity remains path-independent. A cache hit does not rescan source bytes until position mapping is requested.
-
-**Check:** `cargo check -p glass-lint-core` passes; `cargo clippy --workspace --all-targets -- -D warnings` passes; `cargo test -p glass-lint-core --lib` passes; workspace tests pass; harness suites pass. `make ci` passed on 2026-07-28.
-
-#### READ-008 — Scope lookup pays ordered-tree and repeated interner costs per ancestor
-- **Severity:** Medium
-- **Fix Complexity** Medium
-- **Category:** Complexity
-- **Location:** `glass-lint-core/src/analysis/model/scope.rs:90-99`, `glass-lint-core/src/analysis/scope/frozen_assignments.rs:11-43`, `glass-lint-core/src/analysis/scope/build/history.rs:13-54`, `glass-lint-core/src/analysis/scope/query/bindings.rs:120-135`
-- **Status:** Fixed
-
-Bindings and assignment indexes use nested `BTreeMap`s in lookup-heavy local analysis, and `binding_with_scope_at` calls `name_id` once per ancestor rather than once per query. Deterministic output does not consume these maps directly, so logarithmic pointer-heavy lookup is being paid for internal state whose keys are dense IDs.
-
-Resolve `NameId` once per query, then store bindings and assignments in a dense scope-indexed vector whose per-scope map is keyed by `NameId`; sort keys only when freezing or producing observable output. Keep the working representation private to the scope model so deterministic ordering remains an output concern. Recommendation: benchmark deep scopes and minified repeated identifiers against the current index and require equivalent lookup results before replacing it.
-
-`LexicalScope.bindings` changed from `BTreeMap<NameId, BindingProvenance>` to `HashMap<NameId, BindingProvenance>`. `FrozenAssignmentIndex` stores per-scope assignments in a `Vec<HashMap<NameId, Vec<AliasAssignment>>>` instead of nested `BTreeMap`s. `AssignmentEnvironment` uses the same dense `Vec<HashMap<NameId, AssignmentValue>>` representation. `binding_with_scope_at` resolves `NameId` once before the scope-walk loop on both `ScopeGraph` and `FrozenScopeGraph`, and `ScopeCollector::visible_binding`, `visible_binding_scope`, `invalidate_member_root`, and `visit_assign_expr` follow the same pattern. Binding-key comparison in tests sorts keys for order-independent comparison.
-
-**Check:** `cargo test -p glass-lint-core --lib` passes (466 tests); workspace tests pass; `make ci` passed in full on 2026-07-28: workspace check, Clippy, 466 core unit tests, workspace tests/doctests, 12 E2E cases, 2 project cases, 70 JavaScript rule cases, and 98 Obsidian rule cases.
-
-#### READ-009 — Invalid function effects are still turned into helper summaries
-- **Severity:** High
-- **Fix Complexity** Low
-- **Category:** Architecture
-- **Location:** `glass-lint-core/src/analysis/flow/effect/mod.rs:1-10`, `glass-lint-core/src/analysis/flow/summary/summaries.rs:42-95`
-- **Status:** Fixed
-
-The effect contract says summaries invalidated by unsupported control or budget exhaustion are not used for propagation, and cross-module flow explicitly checks `is_invalid`. `FunctionSummaries::collect_facts` nevertheless iterates every effect and copies its calls into local helper summaries, allowing the local object-flow path to consume information declared incomplete.
-
-Filter `is_invalid` effects before `FunctionSummaries::collect_facts` creates any helper summary, and make the filtered collection the only input to local and cross-module propagation. Calls to or through an invalid helper must produce neither projected sinks nor return identity. Recommendation: add local/cross-module parity tests for member writes, unsupported control, and effect-budget exhaustion, including a direct assertion that no invalid summary is retained.
-
-`collect_facts` now skips effects where `is_invalid` is true, preventing invalid helper summaries from being created. `QualifiedCallGraph::build`, `FlowSources::collect_candidates`, and `FlowSources::build_adjacency` also skip invalid effects, so cross-module propagation and adjacency are built only from valid effects. Calls to or through an invalid helper produce no projected sinks via `record_helper_sink` and no return identity, because no summary exists for the invalid effect. `record_helper_sink` returns `None` on lookup, and cross-module flow's existing `is_invalid` guard in the context loop preserves fail-closed behavior.
-
-#### READ-010 — Object-flow joins clone all live aliases and states
-- **Severity:** Medium
 - **Fix Complexity** High
-- **Category:** Complexity
-- **Location:** `glass-lint-core/src/analysis/flow/projector/state.rs:25-45`, `glass-lint-core/src/analysis/flow/projector/state.rs:174-258`
-- **Status:** Fixed
+- **Category:** Encapsulation
+- **Location:** `glass-lint-core/src/analysis/flow/projector/state.rs:138-176`, `glass-lint-core/src/analysis/flow/projector/state.rs:269-300`, `glass-lint-core/src/analysis/model/flow.rs:143-205`
 
-`FlowEnvironment` is described as an O(1) snapshot, but `join_environments` restores branches and clones the complete alias and state maps before retaining common entries, then rebuilds reference counts. On branch-heavy flows the work is O(live state × reachable branches), independent of the mutation-log budget and in addition to ordered-map costs.
+`state_mut` clones the entire old `FlowState`, obtains a raw pointer into the map, and returns a `StateEdit` that dereferences it unsafely. Because `RequirementSet` is `Arc<BTreeMap<...>>`, cloning the old state increments the `Arc`; the first edit then makes `Arc::make_mut` copy the whole requirement or sink map. `Drop` clones the new state again to record the inverse delta.
 
-Represent each `FlowEnvironment` branch as an incoming snapshot plus a bounded mutation delta, and compute `join_environments` by intersecting those deltas without cloning the complete live alias/state maps. Charge each compared entry and retained requirement key so the flow limit bounds CPU as well as output. Recommendation: add a selected-rule benchmark with many live objects across nested diamonds and require allocation and operation counts to scale with changed entries rather than total live state.
+Put fine-grained mutation methods on `FlowStateTable` and log typed deltas such as requirement inserted/removed or sink inserted/removed. That removes the raw pointer, full-state snapshots, and accidental COW deep copies. The table—not a deref guard—owns both the state and its rollback invariant.
 
-`join_environments` now collects candidates from the first branch into flat `Vec<(ValueId, ObjectId)>` and `Vec<(FlowStateKey, FlowState)>` instead of cloning the entire `BTreeMap`.  Each remaining branch restores and filters the candidate Vecs with `swap_remove`, keeping only entries present in every branch.  `MutationLog` gains a `charges` counter and a `try_charge` method; every alias/state comparison and every retained requirement key charges the budget, so the flow limit bounds CPU as well as output.  Reference counts are rebuilt only from the final joined alias map.  Budget exhaustion during comparison returns `false` from `join_environments`, marking the joined path unreachable.
+#### READ-009 — Loop fixed-point replay clones the entire fact slice each iteration
 
-### `glass-lint-core`: project linking and projection
-
-#### READ-011 — An unresolved internal namespace is labeled external
 - **Severity:** High
-- **Fix Complexity** Low
-- **Category:** Architecture
-- **Location:** `glass-lint-core/src/analysis/project/identities.rs:202-225`
-- **Status:** Fixed
-
-`resolve_namespace` maps a missing resolution-table entry to `ExportResolution::External` without checking the request syntax. An unresolved `import * as ns from "./missing"` can therefore acquire an external wildcard identity, while named-import resolution correctly treats an absent internal outcome as unknown.
-
-Centralize linked-target-to-export-resolution conversion in one helper used by named and namespace imports, and classify every unresolved relative, absolute, or `#` request as unknown. Only a confirmed external or builtin target may produce an external namespace identity. Recommendation: add parity tests for missing, outside, unsupported, builtin, and bare-package namespace requests and assert that namespace and named imports share the same classification.
-
-**Check:** Introduced `target_to_export_resolution` in `glass-lint-core/src/analysis/project/identities.rs` that maps unresolved internal specifiers (relative, absolute, `#`) to `Unknown` and confirmed external/builtin targets to `External`. `resolve_namespace` and `resolve_imported_identity` both delegate to the same helper, with the named-import path using its own internal-target lookup only when the underlying resolution provides a concrete `LinkedModuleTarget::Internal`. `make ci` passed in full on 2026-07-28.
-
-#### READ-012 — Star-export collection can overwrite an authoritative direct export
-- **Severity:** Medium
 - **Fix Complexity** Medium
-- **Category:** Architecture
-- **Location:** `glass-lint-core/src/analysis/project/identities.rs:142-200`
-- **Status:** Fixed
+- **Category:** Other
+- **Location:** `glass-lint-core/src/analysis/flow/projector/mod.rs:324-350`
 
-The method documents direct exports as authoritative, inserts them first, then inserts each star-exported child and changes any conflicting previous value to `Ambiguous`. A module with a direct `foo` and `export *` from a module containing another `foo` therefore loses the direct export that should win.
+`replay_loop_body` calls `.to_vec()` on the loop's `SemanticFact` slice for every replay iteration so it can mutate `self` while iterating its stream. Fact payloads contain paths, arguments, and provenance, so a large loop repeatedly allocates and clones its whole semantic body.
 
-`collect_exported_identities` now collects star-exported entries into a temporary map with star-vs-star conflict detection first, then inserts authoritative direct/named exports from the export table after, so direct exports always win. Star-exported entries are merged into the identity map only for keys not already set by a direct export.
+Split immutable projection context (`FactStream`, names, plan, summaries) from mutable execution state, or replay `FactId` indices through a method that borrows each fact only for the transfer call. No semantic fact should be copied merely to satisfy a broad `&mut self` receiver.
 
-**Check:** `cargo test -p glass-lint-core --lib` passes, and `make ci` passed on 2026-07-28.
+### Value model
 
-#### READ-013 — An immutable project model contains a mutable `RefCell` lookup cache
-- **Severity:** Medium
+#### READ-010 — Immutable value resolution locks a mutex on every lookup
+
+- **Severity:** High
 - **Fix Complexity** Medium
 - **Category:** Encapsulation
-- **Location:** `glass-lint-core/src/analysis/project/model.rs:189-209`, `glass-lint-core/src/analysis/project/exports.rs:107-156`, `glass-lint-core/src/analysis/project/state.rs:118-147`
-- **Status:** Fixed
+- **Location:** `glass-lint-core/src/analysis/model/value.rs:56-128`, `glass-lint-core/src/analysis/model/value.rs:163-235`
 
-`ProjectSemanticModel` query methods mutate `lookup_cache` through `RefCell`, making the frozen semantic model non-`Sync`, adding runtime borrow checks, and obscuring when cache state is valid. A second bounded export cache abstraction exists in linker state, so capacity and invalidation policy are split across owners.
+The frozen `ValueTable` retains `Mutex<Vec<Option<ValueId>>>`, and every `resolve`/`resolve_id` takes that mutex. These calls are pervasive in fact indexing, matching, and flow. Yet `intern` already enforces that a binding target has a lower ID, so the target's terminal ID is known when the binding is inserted.
 
-Move `lookup_cache` into an explicit mutable `LinkingSession` that owns the model version, negative entries, capacity, and eviction policy; keep `ProjectSemanticModel` immutable and `Sync`. Require every export lookup to receive that session, and invalidate the session when the linked model version changes. Recommendation: add a concurrency test proving the frozen model is shareable and a bounded-cache test proving positive and negative entries have deterministic capacity behavior.
+Compute and store the terminal ID eagerly at insertion/freeze and make resolution a direct immutable lookup. This removes locking, path-compression complexity, poison handling, and the manual `Clone` implementation. If a separate resolved arena is desirable, use dense IDs rather than `Arc<ResolvedValue>`/mutexes as ownership adapters.
 
-**Check:** Removed the `lookup_cache: RefCell<ExportLookupCache>` field from `ProjectSemanticModel` and the `use std::cell::RefCell` import from `model.rs`. Created `LinkingSession` in `state.rs` that owns an `ExportLookupCache` and is passed as `&mut LinkingSession` to every export lookup and identity method (`resolve_imported_identity`, `lookup_export`, `walk_star_exports`, `qualified_function_target`, `call_result_identities`, `module_identities`). The session is created in `project()` and threaded through to `flow::cross::collect` and `QualifiedCallGraph::build`. The linker at `linker/export.rs` retains its own independent `RefCell<ExportLookupCache>` since `ProjectLinker` is already mutable. Added `Send + Sync` type-level assertions for `ProjectSemanticModel` and a `Send` assertion for `LinkingSession`. All tests pass via `make ci`.
+### Project execution
 
-#### READ-014 — Handwritten graph algorithms add avoidable complexity and quadratic edge deduplication
+#### READ-011 — The local executor can create arbitrarily many threads
+
 - **Severity:** High
 - **Fix Complexity** Medium
-- **Category:** Other
-- **Location:** `glass-lint-core/src/analysis/project/linker/scc.rs:1-135`
-- **Status:** Fixed
+- **Category:** Architecture
+- **Location:** `glass-lint-core/src/project/session/execution.rs:167-245`, `glass-lint-core/src/project/session/execution.rs:300-305`
 
-The project linker maintains its own iterative Kosaraju decomposition and topological sort over nested ordered collections. SCC DAG construction checks `Vec::contains` for each edge before insertion, making high-fanout duplicate edges quadratic in the component out-degree, and the custom implementation expands the correctness surface for cycles and ordering.
+Each analysis call creates `worker_limit` scoped OS threads, even for an empty or one-file job stream. `normalize_worker_limit` only changes zero to one; it does not cap the request by job count or `available_parallelism`. A caller-supplied large value can exhaust threads and creates an equally large channel bound. Workers also serialize `recv` through a mutex around the standard MPSC receiver.
 
-Replaced the handwritten SCC with `petgraph::algo::kosaraju_scc` over dense module indexes, and fixed the quadratic `Vec::contains` deduplication in DAG construction by using `BTreeSet` instead. Added `petgraph = "0.7"` to workspace dependencies and `glass-lint-core/Cargo.toml`. The two existing function signatures remain unchanged, so no caller modifications were needed.
+Use a bounded Rayon pool (or accept an executor from the host) and cap active workers to `min(requested, uncached_jobs, available_parallelism)` unless the API explicitly documents oversubscription. Collect indexed results and release them through the existing deterministic assembly boundary. Rayon is a better-established implementation than maintaining a custom pool/channel protocol here.
 
-**Check:** `make fmt && make ci` passed on 2026-07-28: workspace check, Clippy, all unit tests, all E2E cases, and all rule suites.
+### Query compiler: lifecycle physical planning
 
-### `glass-lint-datastructures`
+#### READ-012 — Lifecycle compilation reverses normalized IR back into the public API
 
-#### READ-015 — `ParentPathStore` exposes unchecked mixed-domain construction
-- **Severity:** High
-- **Fix Complexity** High
-- **Category:** API
-- **Location:** `glass-lint-datastructures/src/path_trie/store.rs:26-112`, `glass-lint-datastructures/src/path_trie/store.rs:164-235`, `glass-lint-datastructures/src/path_trie/types.rs:5-31`
-
-The general path store publicly exposes `raw_path_id` and `append_linked`, accepts caller-supplied parent/depth values, and uses a tag bit whose interpretation belongs to core's summary overlay. It also checks capacity before reusing an existing linked edge, and `segments` silently returns an empty iterator when collection fails, conflating an invalid ID with the empty path.
-
-Create a private core-owned linked-path store that translates validated `PathId` values into a dedicated overlay newtype, and remove raw-ID construction and `append_linked` from the public path-store API. Have the store find an existing edge before checking capacity, derive depth from the parent, and return `Result` for invalid segment traversal so invalid IDs cannot look like empty paths. Recommendation: add forged-tag, foreign-parent, full-store reuse, and invalid-versus-empty tests at both the datastructure boundary and the core adapter.
-- **Status:** Fixed
-
-**Check:** `make fmt && make ci` passed on 2026-07-28.
-
-#### READ-016 — `IndexTable::insert` conflates replacement with resource rejection
 - **Severity:** Medium
 - **Fix Complexity** Medium
-- **Category:** API
-- **Location:** `glass-lint-datastructures/src/table.rs:3-87`
-
-The generic table hard-codes a 2²⁰ maximum and returns `false` both when it successfully replaces an occupied value and when it rejects a sparse/oversized ID. Owners therefore cannot distinguish normal replacement from exhaustion or record an incomplete analysis status, and one trusted sparse ID can still allocate almost a million `Option` slots.
-
-Make `IndexTable` require an owner-supplied capacity and return a typed `InsertOutcome` distinguishing insertion, replacement, and `OutOfRange`. Keep sparse allocation behind the capacity check and require each production owner to handle `OutOfRange` as incomplete analysis rather than treating it as replacement. Recommendation: test sparse IDs just below and above the configured limit, replacement payloads, and every owner's exhaustion path.
-
-- **Status:** Fixed
-
-**Check:** `make fmt && make ci` passed on 2026-07-28.
-
-#### READ-017 — Cache hashing is a handwritten scalar FNV loop
-- **Severity:** Medium
-- **Fix Complexity** Low
-- **Category:** Other
-- **Location:** `glass-lint-datastructures/src/fingerprint.rs:1-48`, `glass-lint-core/src/analysis/local.rs:48-88`
-
-Every artifact fingerprint scans the complete source through a byte-at-a-time FNV-1a loop, and raw `fnv_init`/`fnv_write` functions couple core to the algorithm. The full cache key collision-checks content, so cryptographic hashing is unnecessary, but FNV is usually a poor throughput choice for this hot whole-source pass.
-
-Replace the scalar FNV loop with `xxhash-rust`'s streaming XXH3 implementation behind `Fingerprint`'s `write`/`into_raw` API, and remove raw algorithm functions from callers. Bump `FINGERPRINT_VERSION` and retain full-key collision verification.
-
-- **Status:** Fixed
-
-**Check:** `make fmt && make ci` passed on 2026-07-28.
-
-### `glass-lint-project`: filesystem admission and loading
-
-#### READ-018 — Unicode filenames can panic during extension checks
-- **Severity:** High
-- **Fix Complexity** Low
-- **Category:** Other
-- **Location:** `glass-lint-project/src/options.rs:95-120`
-
-`SourceExtensionSet::supports` computes a byte offset and slices `str` without checking a UTF-8 boundary. A filename whose byte length is sufficient but whose suffix start falls inside a multibyte character, such as `éjs` against `.js`, panics during discovery instead of returning unsupported.
-
-Centralize extension matching in a helper that obtains the suffix with `str::get(start..)` and returns unsupported for a non-boundary start. Use that helper for both normal extensions and declaration-file rejection, preserving the validated ASCII policy for configured suffixes. Recommendation: add Unicode filenames at every suffix-length boundary plus custom Unicode-extension tests and assert discovery never panics.
-
-#### READ-019 — `files` and `include` are incorrectly mutually exclusive
-- **Severity:** High
-- **Fix Complexity** High
 - **Category:** Architecture
-- **Location:** `glass-lint-project/src/tsconfig/selection.rs:20-28`, `glass-lint-project/src/tsconfig/selection.rs:100-193`, `glass-lint-project/src/discovery.rs:270-300`
+- **Location:** `glass-lint-core/src/api/compiler/physical.rs:377-402`, `glass-lint-core/src/api/compiler/object_flow.rs:15-79`
 
-The merge discards `include` and `exclude` whenever `files` is present, and discovery chooses either explicit files or patterns. TypeScript instead selects the union of `files` and `include`, with `exclude` filtering only the `include` side; missing explicit files should also produce a diagnostic rather than disappear. See the [TypeScript 2.0 configuration semantics](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-2-0.html).
+`plan_lifecycle` clones a `NormalizedLifecycle` into public `EventQuery` values, invents the name `"lifecycle"`, reconstructs a validated `LifecycleQuery`, calls `.expect`, and then has `CompiledObjectFlow` interpret that query again. This is a legacy reverse adapter inside the new forward compiler.
 
-Represent explicit files and compiled include patterns as separate members of one effective selection, preserving each field's declaring-config origin. Admit explicit files first with a diagnostic for every missing or unsupported entry, then apply `exclude` only to include matches and deduplicate through the shared admission set. Recommendation: add same-config and inherited fixtures for `files`, `include`, `exclude`, and output directories, and compare the admitted set with TypeScript's union semantics.
+Compile `NormalizedLifecycle` directly into the physical flow IR. The normalized representation has already established source slots, canonical constraints, condition, and completion; rebuilding an authoring type adds allocations, a panic assertion, and a second interpretation of invariants.
 
-#### READ-020 — Generic glob matching does not implement TypeScript directory-pattern semantics
-- **Severity:** High
+### Compiled flow representation and fixed points
+
+#### READ-013 — Compiled object flow is a boolean state machine with per-event allocations
+
+- **Severity:** Medium
+- **Fix Complexity** Medium
+- **Category:** Newtype
+- **Location:** `glass-lint-core/src/api/compiler/object_flow.rs:15-79`, `glass-lint-core/src/api/compiler/object_flow.rs:140-157`, `glass-lint-core/src/analysis/flow/projector/evidence.rs:35-129`
+
+`all_requirements_required`, `all_sinks_required`, and `emit_on_requirements` encode mutually dependent modes as three booleans. `evidence_symbol` clones a `String`, and `present_indices` allocates a `Vec` for each sink call. Flow event handling also allocates temporary object, key, flow-ID, pair, and matching-sink vectors to work around mutable-borrow boundaries.
+
+Replace the booleans with exhaustive enums such as `RequirementMode` and `CompletionMode`; store the symbol as `SmolStr` or return `&str`; return an iterator for sink indices. After READ-008, reuse bounded scratch buffers or indexed lookups so ordinary event transfer does not allocate several short-lived vectors.
+
+#### READ-014 — Fixed-point completeness is limited by arbitrary 64-round caps
+
+- **Severity:** Medium
 - **Fix Complexity** Medium
 - **Category:** Architecture
-- **Location:** `glass-lint-project/src/tsconfig/selection.rs:247-334`
+- **Location:** `glass-lint-core/src/analysis/flow/summary/summaries.rs:158-223`, `glass-lint-core/src/analysis/flow/cross/mod.rs:40`, `glass-lint-core/src/analysis/flow/cross/state.rs:11-29`
 
-The implementation passes raw patterns to `glob::Pattern`; consequently `include: ["src"]` does not include `src/a.ts`, and an `exclude` or `outDir` of `"dist"` does not exclude `dist/a.js`. TypeScript treats a final segment without an extension or wildcard as a directory and applies supported-extension rules; the current code is also O(files × include/exclude patterns). See the [TypeScript TSConfig include reference](https://www.typescriptlang.org/tsconfig/explainFiles.html).
+Helper-sink propagation and cross-source refinement stop after 64 rounds even though both are monotone worklists with separate size/operation bounds. A valid chain deeper than 64 becomes incomplete solely because of graph depth, and the cap obscures whether work, state, or depth was actually exhausted.
 
-Normalize TypeScript directory and wildcard semantics into repository-relative patterns, then compile them into a [`globset::GlobSet`](https://docs.rs/globset/latest/globset/struct.GlobSet.html) for one multi-pattern matching pass. Keep extension admission in the existing validated source policy and make declaration-file exclusion an explicit selection stage. Recommendation: build `tsc --listFiles` fixtures for plain directories, basename excludes, `**/`, extensionless patterns, dotfiles, separators, and invalid patterns, and require identical membership.
+Run worklists until stable or until the typed operation/state budget is exhausted. Charge each edge/candidate transfer and report that precise bound. A semantic depth restriction, if desired, should be an explicit public analysis limit with adversarial tests rather than a private magic number.
 
-#### READ-021 — Missing and package-based `extends` diagnostics still fail open
-- **Severity:** High
-- **Fix Complexity** High
-- **Category:** Architecture
-- **Location:** `glass-lint-project/src/tsconfig/mod.rs:339-381`, `glass-lint-project/src/tsconfig/mod.rs:478-529`
+#### READ-015 — Local and cross flow independently pre-resolve the same paths
 
-Package-based `extends` is declared unsupported and a missing relative target is diagnosed, but both paths continue as if no parent existed. A child with no local `files`/`include` then falls back to `**/*`, broadening a project whose unresolved base may have been restrictive; TypeScript permits Node-style resolution for `extends`. See the [official `extends` contract](https://www.typescriptlang.org/tsconfig/extends.html).
+- **Severity:** Medium
+- **Fix Complexity** Medium
+- **Category:** Duplication
+- **Location:** `glass-lint-core/src/analysis/flow/planning.rs:22-103`, `glass-lint-core/src/analysis/flow/cross/graph.rs:53-84`
 
-Resolve `extends` through the existing Oxc/Node resolution stack, including package-based targets, and propagate a typed invalid-inheritance state for missing targets, cycles, invalid types, and paths outside the project boundary. Source selection must admit nothing from an invalid inheritance chain while retaining deterministic diagnostics. Recommendation: add fixtures for relative files, package bases, cycles, invalid `extends` values, and boundary escapes, and verify that every failure is both diagnosed and fail-closed.
+`BoundFlowPlan` and `FlowPathPlan` both walk every compiled requirement and sink and convert the same `SymbolPath` values through the same module `NameTable`. One serves local projection and the other cross-flow contexts, so the recent flow split created duplicate planning logic and storage.
 
-#### READ-022 — Shared `extends` ancestors are reparsed and recharged
+Build one module-bound flow plan containing source, requirement, and sink paths and share it across local, summary, and cross-module stages. This also gives one place to choose hot hash indexes and to enforce deterministic iteration at freeze time.
+
+### Query compiler: validation, normalization, and tests
+
+#### READ-016 — Branch compatibility ignores the requested evidence variable
+
+- **Severity:** Medium
+- **Fix Complexity** Low
+- **Category:** Testing
+- **Location:** `glass-lint-core/src/api/compiler/normalize.rs:330-379`, `glass-lint-core/src/api/compiler/validate/pass1_3.rs:228-376`
+
+`check_branch_evidence_compatibility` passes the primary variable to `branch_var_type`, but that function names it `_var` and classifies only the root event. Its diagnostics use placeholder strings `"some"` and `"other"`. The earlier type-checking pass already implements variable-aware compatibility, so this duplicate normalizer check can reject or describe the wrong thing as the expression language grows.
+
+Remove the duplicate and have normalization consume validated typed metadata, or make a single shared variable-type query authoritative. Diagnostics must carry the actual `VarType` names; placeholder text should not survive an internal compiler error path.
+
+#### READ-017 — Query-tree walking and constraint canonicalization are reimplemented repeatedly
+
+- **Severity:** Medium
+- **Fix Complexity** Medium
+- **Category:** Duplication
+- **Location:** `glass-lint-core/src/api/rule/query/expression.rs:90-126`, `glass-lint-core/src/api/compiler/validate/error.rs:258-318`, `glass-lint-core/src/api/compiler/normalize_all.rs:97-146`, `glass-lint-core/src/api/compiler/normalize_all.rs:319-354`, `glass-lint-core/src/api/compiler/normalize.rs:99-108`, `glass-lint-core/src/api/compiler/physical.rs:63-96`
+
+Variable collection/reference checks have at least five recursive match trees. Argument constraints are sorted/deduplicated during authoring/normalization, copied and canonicalized again after normalization, then `compile_argument_constraints` still performs `contains` checks and repeatedly converts a boxed slice back to `Vec` for each predicate in a group.
+
+Add one internal `QueryExpr` walker/fold with explicit bound/reference callbacks and introduce invariant-bearing canonical constraint/group types. Validate and canonicalize once at the public/compiler trust boundary; physical lowering should consume those newtypes without rechecking or reallocating.
+
+#### READ-018 — Ten compiler passes repeatedly traverse a bounded, already-validated tree
+
 - **Severity:** Medium
 - **Fix Complexity** High
 - **Category:** Complexity
-- **Location:** `glass-lint-project/src/discovery.rs:159-267`, `glass-lint-project/src/tsconfig/mod.rs:384-530`
+- **Location:** `glass-lint-core/src/api/compiler/validate/pass4_10.rs:448-468`, `glass-lint-core/src/api/compiler/mod.rs:225-245`, `glass-lint-core/src/api/compiler/normalize.rs:23-67`
 
-Each referenced project calls `build_effective_config` with a fresh inheritance chain, so shared base configs are canonicalized, read, JSONC-stripped, parsed, rebased, and charged once per descendant. `config_count` therefore counts traversals rather than unique configuration documents and can reject a diamond graph despite the reference walk's own `visited` set.
+Every declaration runs ten validation passes, normalization, post-normalization validation (including recomputing requirements), planning, and whole-plan validation. Query limits make this cold compared with source analysis, but the number of independent semantic passes is why checks and walkers have drifted. Numerous `allow(dead_code)` and unused re-exports in the recently split compiler show that old phase seams remain.
 
-Introduce one `ConfigTraversalContext` owning the canonical parsed/effective cache, diagnostics, active chain, counters, deadline, and byte budget. Count and charge each canonical config document once, detect cycles against the active chain, and cache origin-relative fields before child-specific rebasing. Recommendation: route every `extends` and project-reference load through this context, remove the current `too_many_arguments` coordinator, and add a diamond-inheritance test proving shared ancestors are parsed and charged once.
+Define one trusted transition from authoring AST to typed normalized IR and combine related validation while types are already in hand. Keep normalized/physical invariant validation in debug and test builds unless it validates untrusted deserialization. Delete dead explain/accessor surfaces after the new compiler API stabilizes.
 
-#### READ-023 — Invalid output-directory options disappear silently
+#### READ-019 — `QueryDecl` duplicates the complete `EventQuery` constructor surface
+
+- **Severity:** Medium
+- **Fix Complexity** Medium
+- **Category:** API
+- **Location:** `glass-lint-core/src/api/rule/query/mod.rs:130-275`, `glass-lint-core/src/api/rule/query/mod.rs:833-930`
+
+The 1,787-line query module exposes the same large constructor matrix on `EventQuery` and again as forwarding conveniences on `QueryDecl`. Some wrappers are simple delegation while others repeat validation and construction, so every new event form expands two public APIs, docs, and tests.
+
+With breaking changes allowed, keep the validated constructors on the type that owns the event and one `IntoQueryDecl`/`into_query` conversion. Reserve `QueryDecl` constructors for genuine expression composition (`any`, `all`, lifecycle), not aliases for every event constructor.
+
+#### READ-020 — The compiler “reference” evaluator omits the new flow semantics
+
+- **Severity:** Medium
+- **Fix Complexity** High
+- **Category:** Testing
+- **Location:** `glass-lint-core/src/api/compiler/reference.rs:105-145`, `glass-lint-core/src/api/compiler/reference.rs:245-262`, `glass-lint-core/src/api/compiler/reference.rs:330-447`
+
+Both logical and physical reference evaluation return an empty result for lifecycle roots. Returned/instance subject evaluators ignore the member path, and identity comparison supports only a subset of variants. The oracle is test-only, but its name suggests broader differential coverage than it provides precisely where recent compiler and flow changes are riskiest.
+
+Either extend it into an independent lifecycle/correlation interpreter and generate bounded query/row cases, or rename it to the subset it actually covers and make unsupported capabilities explicit test failures rather than empty matches. Add differential tests for every physical root and identity variant before relying on it as a compiler oracle.
+
+### Lowering status and budget observability
+
+#### READ-021 — Facts exhaustion conflates unrelated limits and invalid states
+
 - **Severity:** Medium
 - **Fix Complexity** Medium
 - **Category:** Other
-- **Location:** `glass-lint-project/src/tsconfig/mod.rs:172-212`, `glass-lint-project/src/tsconfig/selection.rs:162-185`
+- **Location:** `glass-lint-core/src/analysis/lowering/mod.rs:151-172`, `glass-lint-core/src/analysis/lowering/mod.rs:238-266`
 
-A non-object `compilerOptions`, or wrong-type `outDir`/`declarationDir`, becomes `Absent` and emits no field diagnostic. Generated output can then be selected by the default include even though the configuration attempted to exclude it, and callers cannot distinguish omission from malformed policy.
+One `semantic_operations` number is passed both to `SemanticBudget` and as `FactBuilder`'s fact limit. `check_facts_budget` then reports semantic-budget, fact-count, path-capacity, value-arena, and structural-invalidity failures as `AnalysisComponent::Facts` with the semantic-operation limit and budget-used count. The diagnostic cannot identify which resource actually caused the incomplete result.
 
-Parse `compilerOptions` and each supported nested field into an explicit `Valid`/`Invalid` state, emit deterministic field-level diagnostics, and make an invalid output-exclusion field fail closed for project membership. Carry that invalid state through inherited effective configuration so a child cannot silently broaden selection. Recommendation: test null, scalar, array, and wrong nested types in both base and child configs and assert that malformed output settings never select generated files.
+Use separate semantic-step, fact-count, path, name, and value limits or a typed exhaustion enum carrying the owning capacity and observed value. Structural mismatch should remain its own reason. Accurate telemetry is necessary before optimizing READ-004 through READ-010.
 
-#### READ-024 — Config byte accounting trusts stale metadata and ignores remaining budget
+### Project reporting, session ownership, and crate boundaries
+
+#### READ-022 — Report assembly repeats range work under a long-lived arena lock
+
 - **Severity:** Medium
-- **Fix Complexity** Medium
-- **Category:** Architecture
-- **Location:** `glass-lint-project/src/budget.rs:3-59`, `glass-lint-project/src/tsconfig/mod.rs:300-329`
-
-Config loading charges `metadata.len()` before reading, then allows every file to read `max_config_bytes + 1` rather than the remaining aggregate allowance and never reconciles the actual byte count. Filesystem growth races and repeated shared ancestors can therefore make I/O exceed the intended aggregate bound, while errors are mislabeled `ProjectSourceTooLarge`.
-
-Give the project budget a remaining config-byte reservation, limit each read to remaining plus one byte, and commit the actual bytes consumed after the read completes. Return a config-specific typed exhaustion error and charge each canonical config only once through `ConfigTraversalContext`. Recommendation: test truncation and growth races with a controllable reader plus aggregate-boundary cases across several small configs, asserting that no read exceeds the remaining allowance.
-
-#### READ-025 — Early canonicalization bypasses the no-symlink policy
-- **Severity:** High
 - **Fix Complexity** High
-- **Category:** Architecture
-- **Location:** `glass-lint-project/src/loader.rs:256-299`, `glass-lint-project/src/admission.rs:173-200`, `glass-lint-project/src/walk.rs:14-40`
+- **Category:** Other
+- **Location:** `glass-lint-core/src/analysis/project/model.rs:195-210`, `glass-lint-core/src/analysis/project/projection.rs:69-99`, `glass-lint-core/src/lint/report.rs:178-292`
 
-The initial selection is canonicalized before discovery calls `resolve_root`, and general admission canonicalizes before policy classification. An explicitly selected symlink is therefore replaced by its target before `follow_symlinks = false` can inspect it; resolver targets take the same path, so the option governs directory walking more reliably than direct admission.
+The finalized project owns `Mutex<TraceArena>`. Projection locks it for the whole project pass; report assembly locks it again while grouping findings, converting spans, resolving traces, allocating messages, and deduplicating traces. Occurrence ranges are converted once for grouping and then recomputed by filtering every evidence occurrence for each retained group. Trace dedup uses `Vec::contains`.
 
-Preserve the lexical path through policy evaluation and inspect `symlink_metadata` for the selected path and every traversed component before canonicalization. Reject any symlink when `follow_symlinks` is false; when it is true, canonicalize once and apply containment and exclusion to the target path. Recommendation: add file, directory, intermediate-component, in-root, out-of-root, and resolver-target symlink fixtures for both policy settings, including direct explicit selections.
+Make the arena a mutable projection-stage owner and freeze/move it into `ProjectionOutcome`; report assembly should borrow an immutable arena without locking. Build converted occurrence records once, index them by retained range, and deduplicate traces with `IndexSet`/`HashSet` while retaining deterministic insertion order.
 
-#### READ-026 — Files consume admission budget before their bytes are accepted
+#### READ-023 — Project session state retains unused and duplicated ownership
+
 - **Severity:** Medium
 - **Fix Complexity** Medium
 - **Category:** Architecture
-- **Location:** `glass-lint-project/src/loader.rs:508-584`, `glass-lint-project/src/admission.rs:229-240`, `glass-lint-project/src/corpus.rs:27-73`
+- **Location:** `glass-lint-core/src/project/session/mod.rs:40-87`, `glass-lint-core/src/project/session/mod.rs:140-172`, `glass-lint-core/src/project/input.rs:30-37`, `glass-lint-core/src/project/session/mod.rs:432-475`
 
-`process_wave` commits a path to `AdmissionSet` before aggregate-byte reservation; if that file is rejected, it still consumes file capacity and later inflates `metrics.files`. The loop also stats the file, then `read_source_bytes` opens and stats it again, while actual-size reconciliation happens only after the admission mutation.
+`ProjectCollection` stores the artifact cache both inside `SessionState` and as a cloned direct field. It also accepts and stores `_root`, but `normalize_root` only rejects an empty path and no later core operation reads the root. At resolution, `source_map` is cloned wholesale into `ResolvedLinkInput` because reporting retains another owner.
 
-Create a bounded read/reservation result that opens each file once, validates per-file and remaining aggregate limits, reads at most remaining plus one byte, and commits admission and progress only after acceptance. Preserve partial-report behavior by retaining only successfully committed files and continue deterministically after a rejected middle file. Recommendation: add an oversized-middle-file fixture followed by a small file and assert both the admitted set and file metrics exclude the rejected file.
+Remove the duplicate cache field and the meaningless core root parameter; the `glass-lint-project` crate already owns filesystem/project boundaries. Split source metadata needed by linking from source text/context needed by reports, or make the link builder consume and return the map, so a stage transition does not clone the complete project table.
 
-#### READ-027 — `SourceCorpus` does not uphold its one-root contract
+#### READ-024 — Terminal presentation and subscriber configuration belong outside core
+
 - **Severity:** Medium
 - **Fix Complexity** Medium
 - **Category:** Architecture
-- **Location:** `glass-lint-project/src/corpus.rs:75-128`, `glass-lint-project/src/corpus.rs:135-215`
+- **Location:** `glass-lint-core/src/report/render.rs:1-25`, `glass-lint-core/src/telemetry.rs:1-93`, `glass-lint-core/Cargo.toml:7-31`
 
-The type says it owns one canonical project root and derives it from the first discovery root, but `canonical_root` remains `None`; every root and every later load creates a new admission authority. `discover(&[root_a, root_b])` can therefore combine unrelated trees, and `load` without a configured root trusts the target file's parent as a new project boundary.
+Terminal rendering is consumed by `glass-lint-cli`; telemetry subscriber setup is consumed by the CLI crates. Nevertheless core depends on `console` and optional `tracing-subscriber`, and its telemetry filter hard-codes higher-level crate targets (`glass_lint_project`, CLI, and harness). That is a dependency inversion and the cleanest available crate split.
 
-Make a canonical root mandatory in `SourceCorpus::new`, retain it for the corpus lifetime, and reject every discovery root or load outside that boundary. Return project-relative admitted paths when callers need to carry the admission proof across operations, while keeping multi-root aggregation outside this type. Recommendation: add tests for two roots, a later outside load, and a relative-path round trip, and assert that one corpus can never create a second admission authority.
+Move terminal rendering to `glass-lint-cli` or a small `glass-lint-output` crate if multiple front ends need it. Move subscriber/options setup to CLI support; core should only emit `tracing` events. Do not split lowering/scope/facts/flow or the query compiler into crates yet: their private IDs and stage invariants are still too coupled, and a crate boundary would force internal execution IR public. Reassess a `glass-lint-query` crate only after READ-012 and READ-017 establish an opaque stable compiler boundary and cargo-timing data shows a build benefit.
+
+### Public rule and environment APIs
+
+#### READ-025 — Core requires provider category policy and then discards it
+
+- **Severity:** Medium
+- **Fix Complexity** Medium
+- **Category:** Architecture
+- **Location:** `glass-lint-core/src/api/rule/mod.rs:28-45`, `glass-lint-core/src/api/rule/mod.rs:178-208`, `glass-lint-core/src/api/compiler/rule.rs:46-62`, `glass-lint-core/src/lint/catalog.rs:140-151`
+
+Every provider rule must construct a `Category`, and `RuleBuilder::build` rejects its absence. Compilation drops the category from `CompiledRuleRecord`, and public `RuleMetadata` does not expose it. This creates mandatory policy ceremony across all providers while violating the stated boundary that core must not own provider categories or rule policy.
+
+Remove `Category` from core's required `Rule` contract. If a front end needs categories, keep them in provider/catalog metadata outside the semantic engine or explicitly preserve them in a higher-layer report schema. Do not require data that the engine immediately discards.
+
+#### READ-026 — “JavaScript identifier” validation implements neither Unicode nor keyword rules
+
+- **Severity:** Medium
+- **Fix Complexity** Low
+- **Category:** API
+- **Location:** `glass-lint-core/src/environment.rs:60-115`
+
+`EnvironmentError` promises a JavaScript global identifier, but validation accepts any ASCII identifier-shaped keyword such as `class` and rejects valid Unicode names such as `π`. The public environment contract therefore disagrees with the SWC parser over which bare global bindings can exist.
+
+Choose and name the exact grammar (`IdentifierName` versus `BindingIdentifier`). Reuse SWC-compatible `unicode-id-start` tables for start/continue characters, add `$`, `_`, ZWNJ/ZWJ as required, and enforce the chosen reserved-word policy in one domain newtype shared by all environment constructors.
+
+### Bounded-analysis tests
+
+#### READ-027 — Limit and certainty regressions are still disabled
+
+- **Severity:** Medium
+- **Fix Complexity** Medium
+- **Category:** Testing
+- **Location:** `glass-lint-core/tests/scope_precision.rs:308-363`
+
+Three adversarial tests remain ignored with messages saying alternative or trace limits are “not yet implemented,” although recent flow work now exposes alternative, trace, mutation, and operation limits. The tests only assert finding counts and do not inspect completion status, certainty, or truncation, so the most security-relevant bounded-analysis contract remains unverified.
+
+Decide which phase each test exercises, configure small explicit limits, and assert status plus certainty/truncation. Enable them in the default suite. Add separate lower-scope, local-flow, cross-flow, and report-limit boundary tables so one phase's cap cannot accidentally satisfy another phase's test.
+
+### Legacy API and terminal rendering
+
+#### READ-028 — Several compatibility-shaped APIs no longer describe what they do
+
+- **Severity:** Low
+- **Fix Complexity** Low
+- **Category:** Naming
+- **Location:** `glass-lint-core/src/api/rule/mod.rs:212-218`, `glass-lint-core/src/api/compiler/rule.rs:20-43`, `glass-lint-core/src/lint/report.rs:42-59`, `glass-lint-core/src/project/types/report/operations.rs:121-135`
+
+`Rule::validate_and_normalize` only checks for an empty query list; `CompiledRuleSelection::len` returns catalog capacity, not selected count; `ReportAssembly::finish` returns `Result` despite having no error path; and `AnalysisOperationCounts::into_parts` silently drops the six metrics added after the original seven-tuple API.
+
+Breaking changes are allowed, so remove these adapters rather than preserving misleading compatibility: rename the rule check, use `catalog_len`/`rule_capacity`, return `ProjectAnalysis` directly, and remove the lossy tuple in favor of named getters or the owned struct.
+
+#### READ-029 — Pretty rendering allocates per character and scans files per trace step
+
+- **Severity:** Low
+- **Fix Complexity** Low
+- **Category:** Other
+- **Location:** `glass-lint-core/src/report/render.rs:13-25`, `glass-lint-core/src/report/render.rs:298-329`, `glass-lint-core/src/report/types.rs:1-57`
+
+`visible_text` creates a fresh `String` for every character before collecting the result. Evidence rendering linearly searches all files for every trace step, and display-time caching uses `RefCell<BTreeMap>` because mutation is hidden behind `Display`.
+
+When moving rendering per READ-024, write escaped characters directly into one output buffer and pre-index files by `ProjectRelativePath`. Build immutable line-cell caches before formatting or give a renderer object explicit mutable state instead of embedding interior mutability in display models.
 
 ## Systemic Themes
 
-- **Control state uses several incompatible approximations.** Scope collection, frozen assignment lookup, fact identity tracking, function effects, and object-flow projection each implement branch semantics independently. A shared bounded environment/join vocabulary would remove the current “none means absent or ambiguous” bugs and make strict identity fail closed consistently.
-- **Bounds often cap outputs but not work.** Alias walks, origin logs, map clones, graph edge deduplication, config rereads, and glob matching can perform substantially more work than their counters describe. Budgets should charge mutations, comparisons, bytes actually read, and unique documents.
-- **Determinism is enforced too early with ordered trees.** Local scope, assignment, flow, and linker state frequently uses `BTreeMap`/`BTreeSet` even where only final output needs ordering. Dense IDs and insertion-ordered/hash storage can serve hot queries, with sorting confined to freeze/report boundaries.
-- **TypeScript configuration is a semantic subsystem, not generic JSON plus globs.** Inheritance, directory patterns, explicit files, output exclusions, package resolution, and diagnostic behavior interact. Model those phases in one cached traversal context and validate behavior against small `tsc --listFiles` fixtures.
-- **Existing crates should own commodity algorithms.** `globset` is a better multi-pattern engine once TypeScript patterns are normalized; `petgraph` can own SCC/toposort; a maintained xxHash implementation can own cache hashing; and the already-used Oxc resolver should be reused for Node-style config resolution where possible. Domain-specific identity and fail-closed joins should remain in Glass Lint.
+- **Bounds cap retained results more reliably than work.** AST visitors, scope snapshots, path coalescing, state edits, loop replay, and reporting can do substantial cloning or traversal before a count is rejected. Charge and stop actual visits, comparisons, transfers, and allocations.
+- **Phase ownership is not encoded strongly enough.** Immutable artifacts with mutexes, unsafe edit guards, COW maps forced to clone, and reverse adapters are symptoms of one type spanning construction, execution, and frozen phases.
+- **The same semantics are represented several times.** Query variables, constraint canonicalization, lifecycle forms, and bound flow paths each have duplicate walkers or conversion layers. Establish one validated transition and invariant-bearing types.
+- **Determinism is paid for in hot internal state.** `BTreeMap`/`BTreeSet` are useful at observable boundaries, but joins and membership tests should use dense/hash/interned structures and sort only when freezing output.
+- **Recent tests emphasize examples more than invariants.** The suite is large and green, but order independence, deep transitive propagation, exact selector anchoring, and limit-to-certainty behavior need permutation/property and boundary tests.
+- **Commodity implementations should be delegated selectively.** Use SWC for JavaScript lexical context, Rayon for bounded parallel execution, and the SWC-compatible `unicode-id-start` tables for ECMAScript identifier classes. Retain the tiny selector grammar, domain-specific flow joins, and path normalization rather than adding crates that do not encode Glass Lint's semantics.
 
 ## Open Questions
 
-No unresolved questions remain from this audit. The following decisions should guide remediation:
+No unresolved questions remain from this audit. The decisions are:
 
-1. Ambiguous, conditional, incomplete, or budget-exhausted identity is **unknown**; it must never fall back to an older strict declaration.
-2. Use SWC tokenization for the pre-AST syntax-depth boundary and reject any tokenization uncertainty before AST construction.
-3. Retain a declaration/hoisting prepass, remove repeated non-declaration interning, and move hot lookup ordering to the freeze/output boundary.
-4. Implement TypeScript project membership as `files ∪ (include − exclude)` with origin-relative inherited paths, directory-pattern expansion, Node-style `extends`, and diagnostics for missing explicit files; invalid inheritance fails closed.
-5. `SourceCorpus` owns exactly one stable project root, and multi-root aggregation belongs in a separate explicitly named abstraction.
-6. Place third-party algorithms behind Glass Lint domain APIs, require workload benchmarks before adoption, and keep deterministic ordering at observable boundaries.
+1. **Crate split:** move terminal rendering and telemetry subscriber setup out of `glass-lint-core` now. Keep parsing, lowering, facts, linking, matching, and flow together until their shared private IDs and stage invariants are reduced. Do not create a query/compiler crate during the current API churn; reconsider after normalized-to-physical compilation is one-way and opaque.
+2. **Lowering passes:** retain only a declaration/hoisting prepass. Target one subsequent semantic AST traversal and one derived fact-stream pass; prove the change with benchmarks and semantic parity tests.
+3. **Persistent collections:** first implement domain-specific delta logs and state interning because the code already has those concepts. Evaluate `im` or `rpds` only against branch-heavy benchmarks; do not adopt either speculatively.
+4. **JavaScript lexing:** SWC is the sole lexical authority. Do not maintain a template/regex byte lexer and do not substitute a regex crate.
+5. **Parallelism:** use a bounded Rayon pool or host executor, capped by jobs and available parallelism. Determinism belongs in result assembly, not in a custom thread/channel implementation.
+6. **Rule selectors:** fix exact anchoring in the current tiny `*` matcher. Do not add `globset` unless selector syntax or bulk matching grows enough to justify it.
+7. **Identifiers:** the API currently promises JavaScript identifiers, so support Unicode with the SWC-compatible `unicode-id-start` tables plus JavaScript's additional characters and an explicit keyword policy. The preferred decision is full ECMAScript identifier support, not renaming the contract to ASCII.
+8. **Failure policy:** budget exhaustion, ambiguity, unsupported semantics, and dropped alternatives remain incomplete/possible and must never promote a witness to definite. Limits must report the resource actually exhausted.
 
 ## Coverage
 
-Reviewed all production and test modules under:
+Reviewed all production and test modules under `glass-lint-core/src` and `glass-lint-core/tests`, including:
 
-- `glass-lint-core/src`, including parsing, local lowering, scope planning/collection/query, facts, effects, object and cross-module flow, matching, project linking, artifact caching, reports, public configuration, and limits
-- `glass-lint-datastructures/src`, including budgets, diagnostics, names, paths, path tries, fingerprints, and dense tables
-- `glass-lint-project/src`, including options, admission, walking, corpus loading, project loading, resolution, resource budgets, tsconfig parsing/inheritance/selection, and tests
+- parsing, TypeScript stripping, syntax-depth defenses, source coordinates, limits, and diagnostics;
+- local lowering, scope planning/collection/query, assignment provenance, resolution, values, facts, indexes, and function effects;
+- occurrence matching, argument evaluation, local object flow, summaries, loop projection, cross-call/cross-file flow, evidence, traces, and status propagation;
+- rule/query authoring, lifecycle declarations, validation passes, normalization, requirements, physical planning, compiled catalogs, selection, and the reference evaluator;
+- staged project collection, caching, worker execution, resolution/link input, project linking/SCCs, projection, report assembly, public report types, pretty rendering, and telemetry;
+- crate manifests, workspace architecture/testing/contribution guidance, recent `glass-lint-core` commit history, current dependency tree, and the prior audit report.
 
-Also reviewed root and owning-crate architecture documents, `TESTING.md`, `CONTRIBUTING.md`, the historical audit, current dependency manifests, and official TypeScript configuration semantics. Validation was read-only apart from this report; no Rust source, tests, configuration, dependencies, or other documentation were changed.
+Validation was read-only apart from replacing this report. No Rust source, tests, configuration, dependencies, or other documentation were intentionally changed.
