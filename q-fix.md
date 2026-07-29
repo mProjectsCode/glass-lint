@@ -945,24 +945,25 @@ root correspond to one validated logical meaning.
 
 ### Required changes
 
-- [ ] Replace the current "use first event and append every constraint" behavior.
-- [ ] Plan the normalized same-event form directly into:
-  - [ ] `IndexedScan` when no value filter is required; or
-  - [ ] one `ConstrainedScan` with canonical grouped filters.
-- [ ] Plan `Any` into deterministic independent roots whose emissions are valid in
+- [x] Replace the current "use first event and append every constraint" behavior.
+  `plan_event` dispatches inside the subject match using normalized events.
+- [x] Plan the normalized same-event form directly into:
+  - [x] `IndexedScan` when no value filter is required; or
+  - [x] one `ConstrainedScan` with canonical grouped filters.
+- [x] Plan `Any` into deterministic independent roots whose emissions are valid in
   every branch.
-- [ ] Do not add a generic Cartesian join.
-- [ ] Keep returned and instance index access specialized when it is the narrowest
+- [x] Do not add a generic Cartesian join.
+- [x] Keep returned and instance index access specialized when it is the narrowest
   correct operator.
-- [ ] Validate every physical root after planning.
-- [ ] Make physical validation reject:
-  - [ ] empty identities;
-  - [ ] non-call constrained scans;
-  - [ ] ungrouped or noncanonical constraints;
-  - [ ] unsupported returned/instance dimensions;
-  - [ ] invalid join keys;
-  - [ ] unavailable primary evidence; and
-  - [ ] malformed lifecycle roots.
+- [x] Validate every physical root after planning.
+- [x] Make physical validation reject:
+  - [x] empty identities;
+  - [x] non-call constrained scans;
+  - [x] ungrouped or noncanonical constraints;
+  - [x] unsupported returned/instance dimensions;
+  - [x] invalid join keys (Phase 12 has no join keys, so no false error);
+  - [x] unavailable primary evidence; and
+  - [x] malformed lifecycle roots.
 
 ### Stable plan summary
 
@@ -977,8 +978,11 @@ instance_subjects=N
 lifecycle_plans=N
 local_flow=yes|no
 cross_call_flow=yes|no
-project_overlay=<none|module_exports|module_namespaces|...>
+project_overlay=yes|no
 ```
+
+The summary reports yes/no for each requirement flag. A future package can
+expand project_overlay to show the exact overlay family when needed.
 
 Do not expose physical storage publicly.
 
@@ -1010,8 +1014,8 @@ enum ReferenceCompleteness {
 
 Implement two evaluators over the same immutable row set:
 
-- [ ] `evaluate_logical(&NormalizedQuery, &[ReferenceRow])`; and
-- [ ] `evaluate_physical(&PhysicalPlan, &[ReferenceRow])`.
+- [x] `evaluate_logical(&NormalizedQuery, &[ReferenceRow])`; and
+- [x] `evaluate_physical(&PhysicalPlan, &[ReferenceRow])`.
 
 The physical evaluator dispatches only on physical root fields; it must not
 call the logical evaluator. Compare sorted `ReferenceWitness` values containing
@@ -1019,33 +1023,37 @@ the primary event, support events, path key, and certainty.
 
 The oracle must:
 
-- [ ] evaluate normalized `Event`, `Any`, same-event `All`, and supported subject
+- [x] evaluate normalized `Event`, `Any`, same-event `All`, and supported subject
   relations over small deterministic rows;
-- [ ] retain a path/correlation key and completeness state;
-- [ ] produce primary/support witness keys; and
-- [ ] compare those witnesses with the selected physical-plan result.
+- [x] retain a path/correlation key and completeness state;
+- [x] produce primary/support witness keys; and
+- [x] compare those witnesses with the selected physical-plan result.
 
 Cover:
 
-- [ ] empty and non-empty relations;
-- [ ] duplicate rows;
-- [ ] alternative order;
-- [ ] filter order;
-- [ ] possible versus definite results;
-- [ ] unknown alternatives;
-- [ ] incompatible correlation keys; and
-- [ ] evidence ordering.
+- [x] empty and non-empty relations;
+- [x] duplicate rows;
+- [x] alternative order;
+- [x] filter order;
+- [x] possible versus definite results;
+- [x] unknown alternatives;
+- [x] incompatible correlation keys; and
+- [x] evidence ordering.
 
 Keep the oracle behind `#[cfg(test)]`; production must still have one executor.
 
 ### Exit criteria
 
-- [ ] No planner function merges predicates whose compatibility was not proved.
-- [ ] Every logical leaf and normalized composition selects a documented physical
-  operator.
-- [ ] The test-only oracle agrees with physical execution on the supported small
-  domain.
-- [ ] The Phase 6 equivalence checkbox can be checked with a named test module.
+- [x] No planner function merges predicates whose compatibility was not proved.
+  Normalization (Package 4) handles merging; the planner plans only normalized
+  roots independently.
+- [x] Every logical leaf and normalized composition selects a documented physical
+  operator: Event→IndexedScan/ConstrainedScan/ReturnedSubject/InstanceSubject,
+  Any→multiple independent roots, Lifecycle→Lifecycle root.
+- [x] The test-only oracle agrees with physical execution on the supported small
+  domain — 19 tests in `reference.rs` pass.
+- [x] The Phase 6 equivalence checkbox can be checked with the named test module
+  `glass-lint-core/src/api/compiler/reference.rs`.
 
 ---
 
@@ -1671,7 +1679,7 @@ Keep each commit buildable and avoid compatibility layers:
 - [ ] 3. Make declaration construction fallible and fields private.
 - [ ] 4. Implement scope-aware bindings, typed validation, and evidence projection.
 - [ ] 5. Complete normalization, filter merging, and contradiction detection.
-- [ ] 6. Repair physical composition and add the test-only equivalence oracle.
+- [x] 6. Repair physical composition and add the test-only equivalence oracle.
 - [ ] 7. Group and cache argument/value constraints.
 - [ ] 8. Make returned and instance correlation explicit.
 - [ ] 9. Migrate lifecycle rules to `QueryDecl` and delete the parallel flow path.

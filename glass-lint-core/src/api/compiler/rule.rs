@@ -183,6 +183,9 @@ pub(crate) fn lower_event(spec: &EventSpec) -> EventPredicate {
 pub(crate) enum InvalidQueryClause {
     ImpossibleDimensions,
     ConstraintsRequireCallEvent,
+    NonCanonicalConstraints,
+    UnavailablePrimaryEvidence,
+    InvalidLifecycleRoot,
 }
 
 impl fmt::Display for InvalidQueryClause {
@@ -194,6 +197,11 @@ impl fmt::Display for InvalidQueryClause {
             Self::ConstraintsRequireCallEvent => {
                 f.write_str("argument constraints require a call-bearing event")
             }
+            Self::NonCanonicalConstraints => {
+                f.write_str("constraints are not in canonical grouped order")
+            }
+            Self::UnavailablePrimaryEvidence => f.write_str("primary evidence symbol is empty"),
+            Self::InvalidLifecycleRoot => f.write_str("lifecycle root is malformed"),
         }
     }
 }
@@ -218,7 +226,7 @@ fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildEr
     sorted_roots.sort();
     sorted_roots.dedup();
     let physical_plan = PhysicalPlan::new(sorted_roots.into_boxed_slice(), merged_requirements);
-    physical::validate_physical_plan(&physical_plan, 0)
+    physical::validate_physical_plan(&physical_plan)
         .map_err(|e| MatcherBuildError::InvalidLoweredQuery(e.to_string()))?;
 
     Ok(physical_plan)
@@ -283,7 +291,7 @@ impl CompiledMatcherPlan {
         all_roots.sort();
         all_roots.dedup();
         let physical_plan = PhysicalPlan::new(all_roots.into_boxed_slice(), merged_requirements);
-        physical::validate_physical_plan(&physical_plan, 0)
+        physical::validate_physical_plan(&physical_plan)
             .map_err(|e| MatcherBuildError::InvalidLoweredQuery(e.to_string()))?;
 
         let compiled_flows: Vec<CompiledObjectFlow> = physical_plan

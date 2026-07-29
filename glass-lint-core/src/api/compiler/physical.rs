@@ -94,19 +94,24 @@ impl PhysicalPlan {
             }
         }
         format!(
-            "roots={} indexed_scans={} constrained_scans={} returned_subjects={} instance_subjects={} lifecycle_plans={} project_overlay={} cross_call_flow={}",
+            "roots={} indexed_scans={} constrained_scans={} returned_subjects={} instance_subjects={} lifecycle_plans={} local_flow={} cross_call_flow={} project_overlay={}",
             self.roots.len(),
             indexed,
             constrained,
             returned,
             instance,
             lifecycle,
-            if self.requirements.needs_project_overlay {
+            if self.requirements.needs_local_flow {
                 "yes"
             } else {
                 "no"
             },
             if self.requirements.needs_cross_call_flow {
+                "yes"
+            } else {
+                "no"
+            },
+            if self.requirements.needs_project_overlay {
                 "yes"
             } else {
                 "no"
@@ -148,22 +153,22 @@ fn plan_event(ev: &NormalizedEvent, kind: MatchKind, symbol: &str) -> Vec<Physic
         symbol: symbol.to_owned(),
     };
 
-    if !ev.arguments().is_empty() {
-        return vec![PhysicalRoot::ConstrainedScan {
-            identity: lower_identity(ev.identity()),
-            event: lower_event(ev.event()),
-            constraints: ev.arguments().to_vec().into_boxed_slice(),
-            evidence,
-        }];
-    }
-
     match ev.subject() {
         NormalizedSubject::Direct => {
-            vec![PhysicalRoot::IndexedScan {
-                identity: lower_identity(ev.identity()),
-                event: lower_event(ev.event()),
-                evidence,
-            }]
+            if ev.arguments().is_empty() {
+                vec![PhysicalRoot::IndexedScan {
+                    identity: lower_identity(ev.identity()),
+                    event: lower_event(ev.event()),
+                    evidence,
+                }]
+            } else {
+                vec![PhysicalRoot::ConstrainedScan {
+                    identity: lower_identity(ev.identity()),
+                    event: lower_event(ev.event()),
+                    constraints: ev.arguments().to_vec().into_boxed_slice(),
+                    evidence,
+                }]
+            }
         }
         NormalizedSubject::Returned => {
             let member = match ev.event() {
@@ -224,19 +229,24 @@ fn plan_lifecycle(lc: &NormalizedLifecycle, symbol: &str) -> PhysicalRoot {
 
 // ── Validation ──────────────────────────────────────────────────────────
 
-pub(crate) fn validate_physical_plan(
-    plan: &PhysicalPlan,
-    _flow_count: usize,
-) -> Result<(), InvalidQueryClause> {
+pub(crate) fn validate_physical_plan(plan: &PhysicalPlan) -> Result<(), InvalidQueryClause> {
     for root in plan.roots() {
         match root {
-            PhysicalRoot::IndexedScan { identity, .. } => {
+            PhysicalRoot::IndexedScan {
+                identity, evidence, ..
+            } => {
                 if identity.is_empty() {
                     return Err(InvalidQueryClause::ImpossibleDimensions);
                 }
+                if evidence.symbol.is_empty() {
+                    return Err(InvalidQueryClause::UnavailablePrimaryEvidence);
+                }
             }
             PhysicalRoot::ConstrainedScan {
-                identity, event, ..
+                identity,
+                event,
+                constraints,
+                evidence,
             } => {
                 if identity.is_empty() {
                     return Err(InvalidQueryClause::ImpossibleDimensions);
@@ -247,9 +257,19 @@ pub(crate) fn validate_physical_plan(
                 ) {
                     return Err(InvalidQueryClause::ConstraintsRequireCallEvent);
                 }
+                if constraints.is_empty() {
+                    return Err(InvalidQueryClause::NonCanonicalConstraints);
+                }
+                validate_canonical_constraints(constraints)?;
+                if evidence.symbol.is_empty() {
+                    return Err(InvalidQueryClause::UnavailablePrimaryEvidence);
+                }
             }
             PhysicalRoot::ReturnedSubject {
-                identity, event, ..
+                identity,
+                event,
+                evidence,
+                ..
             } => {
                 if identity.is_empty() {
                     return Err(InvalidQueryClause::ImpossibleDimensions);
@@ -260,17 +280,44 @@ pub(crate) fn validate_physical_plan(
                 ) {
                     return Err(InvalidQueryClause::ImpossibleDimensions);
                 }
+                if evidence.symbol.is_empty() {
+                    return Err(InvalidQueryClause::UnavailablePrimaryEvidence);
+                }
             }
-            PhysicalRoot::InstanceSubject { constructor, .. } => {
+            PhysicalRoot::InstanceSubject {
+                constructor,
+                evidence,
+                ..
+            } => {
                 if constructor.is_empty() {
                     return Err(InvalidQueryClause::ImpossibleDimensions);
+                }
+                if evidence.symbol.is_empty() {
+                    return Err(InvalidQueryClause::UnavailablePrimaryEvidence);
                 }
             }
             PhysicalRoot::Lifecycle { flow } => {
                 if flow.sources.is_empty() {
-                    return Err(InvalidQueryClause::ImpossibleDimensions);
+                    return Err(InvalidQueryClause::InvalidLifecycleRoot);
                 }
             }
+        }
+    }
+    Ok(())
+}
+
+/// Validate that constraints are in canonical order (sorted by index, then
+/// matcher, with no duplicates).
+fn validate_canonical_constraints(
+    constraints: &[crate::api::rule::ArgumentConstraint],
+) -> Result<(), InvalidQueryClause> {
+    for pair in constraints.windows(2) {
+        let ordering = pair[0]
+            .index()
+            .cmp(&pair[1].index())
+            .then_with(|| pair[0].matcher().cmp(pair[1].matcher()));
+        if ordering != std::cmp::Ordering::Less {
+            return Err(InvalidQueryClause::NonCanonicalConstraints);
         }
     }
     Ok(())
@@ -544,7 +591,7 @@ mod tests {
         }]);
         let plan = PhysicalPlan::new(roots, PlanRequirements::default());
         assert_eq!(
-            validate_physical_plan(&plan, 0),
+            validate_physical_plan(&plan),
             Err(InvalidQueryClause::ImpossibleDimensions)
         );
     }
@@ -564,7 +611,7 @@ mod tests {
             },
         }]);
         let plan = PhysicalPlan::new(roots, PlanRequirements::default());
-        assert!(validate_physical_plan(&plan, 0).is_ok());
+        assert!(validate_physical_plan(&plan).is_ok());
     }
 
     #[test]

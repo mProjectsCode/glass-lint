@@ -1522,23 +1522,19 @@ impl QueryDecl {
         branches: impl IntoIterator<Item = Result<Self, QueryBuildError>>,
     ) -> Result<Self, QueryBuildError> {
         let mut exprs = Vec::new();
+        let mut first_emission: Option<EmissionDecl> = None;
         for branch in branches {
             let decl = branch?;
+            first_emission.get_or_insert_with(|| decl.emission.clone());
             exprs.push(decl.expression);
         }
         if exprs.is_empty() {
             return Err(QueryBuildError::EmptyAlternatives);
         }
-        // Use the first branch's emission for evidence. The emission
-        // primary var is alpha-aligned during normalization.
-        let first = Self::default_emission();
+        let first = first_emission.unwrap_or_else(Self::default_emission);
         Ok(Self {
             expression: QueryExpr::any(AnyExpr { branches: exprs }),
-            emission: EmissionDecl {
-                primary_var: VarId::new(0),
-                kind: first.kind,
-                symbol: first.symbol,
-            },
+            emission: first,
         })
     }
 
