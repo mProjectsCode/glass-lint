@@ -103,7 +103,7 @@ Implement one small predicate-intersection algebra per argument: intersect exact
 
 Retain only the declaration/hoisting information that truly requires a prepass, then design one source-order semantic traversal that updates live scope state and emits matcher-independent facts. Do not add a fourth adapter traversal or expose half-built scope storage to make the merge easier. Require parity tests for shadowing, reassignment, control flow, imports, and exhaustion plus size/depth benchmarks before changing pass ownership.
 
-#### READ-008 — Flow-state lookups scan the complete live state table
+#### [x] READ-008 — Flow-state lookups scan the complete live state table
 
 - **Severity:** High
 - **Fix Complexity** Medium
@@ -113,6 +113,8 @@ Retain only the declaration/hoisting information that truly requires a prepass, 
 `states_for(object)` and `remove_states_for(object)` iterate the entire `BTreeMap`, even though `FlowStateKey` begins with `object` and supports a bounded range. Configuration and sink handling repeatedly collect those scans into temporary vectors, while `objects()` yields duplicate object IDs once per alias.
 
 Use a `BTreeMap::range` over the object key interval or an object-indexed two-level/dense table, and iterate `object_refs.keys()` for unique live objects. Add direct candidate indexes for property and member requirements so one event touches only relevant `(object, flow, requirement)` entries. Preserve deterministic order at iteration boundaries rather than paying for a globally ordered container in every lookup.
+
+**Fix:** Flow-state lookup and removal now use the object-bounded `BTreeMap::range` interval, and live-object iteration uses the reverse alias index so each object is visited once. A unit test covers duplicate aliases sharing one object while preserving deterministic object order.
 
 #### READ-009 — Cross-call seeding multiplies every argument by every flow
 

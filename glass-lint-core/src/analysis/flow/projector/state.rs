@@ -89,7 +89,7 @@ impl FlowStateTable {
     }
 
     pub(super) fn objects(&self) -> impl Iterator<Item = ObjectId> + '_ {
-        self.aliases.values().copied()
+        self.object_refs.keys().copied()
     }
 
     pub(super) fn bind(&mut self, value: ValueId, object: ObjectId) {
@@ -122,8 +122,18 @@ impl FlowStateTable {
         object: ObjectId,
     ) -> impl Iterator<Item = (FlowStateKey, &FlowState)> + '_ {
         self.states
-            .iter()
-            .filter(move |(key, _)| key.object == object)
+            .range(
+                FlowStateKey {
+                    object,
+                    flow: FlowId::new(crate::api::classification::RuleIndex::new(0), 0),
+                }..=FlowStateKey {
+                    object,
+                    flow: FlowId::new(
+                        crate::api::classification::RuleIndex::new(usize::MAX),
+                        usize::MAX,
+                    ),
+                },
+            )
             .map(|(key, state)| (*key, state))
     }
 
@@ -264,9 +274,19 @@ impl FlowStateTable {
     pub(super) fn remove_states_for(&mut self, object: ObjectId) {
         let keys: Vec<FlowStateKey> = self
             .states
-            .iter()
-            .filter(|(k, _)| k.object == object)
-            .map(|(k, _)| *k)
+            .range(
+                FlowStateKey {
+                    object,
+                    flow: FlowId::new(crate::api::classification::RuleIndex::new(0), 0),
+                }..=FlowStateKey {
+                    object,
+                    flow: FlowId::new(
+                        crate::api::classification::RuleIndex::new(usize::MAX),
+                        usize::MAX,
+                    ),
+                },
+            )
+            .map(|(key, _)| *key)
             .collect();
         for key in keys {
             if let Some(state) = self.states.remove(&key) {
@@ -496,6 +516,19 @@ mod tests {
     fn has_alias_for_false_when_no_aliases_exist() {
         let table = FlowStateTable::new(100, 100);
         assert!(!table.has_alias_for(ObjectId(1)));
+    }
+
+    #[test]
+    fn objects_are_unique_for_multiple_aliases() {
+        let mut table = FlowStateTable::new(100, 100);
+        table.bind(ValueId(1), ObjectId(1));
+        table.bind(ValueId(2), ObjectId(1));
+        table.bind(ValueId(3), ObjectId(2));
+
+        assert_eq!(
+            table.objects().collect::<Vec<_>>(),
+            vec![ObjectId(1), ObjectId(2)]
+        );
     }
 
     #[test]
