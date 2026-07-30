@@ -70,7 +70,7 @@ impl Resolver<'_> {
     pub(in crate::analysis) fn resolve_call_expression(
         &mut self,
         call: &swc_ecma_ast::CallExpr,
-    ) -> std::sync::Arc<ResolvedValue> {
+    ) -> std::rc::Rc<ResolvedValue> {
         if matches!(call.callee, Callee::Import(_))
             && let Some(Expr::Lit(Lit::Str(specifier))) = call.args.first().map(|arg| &*arg.expr)
         {
@@ -83,7 +83,7 @@ impl Resolver<'_> {
                 None,
                 None,
             );
-            return std::sync::Arc::new(ResolvedValue {
+            return std::rc::Rc::new(ResolvedValue {
                 id,
                 rooted_chain: None,
                 call: self.call_provenance_for_value(id),

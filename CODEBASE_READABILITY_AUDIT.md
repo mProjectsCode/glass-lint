@@ -142,7 +142,7 @@ Every successful lowering constructs `FunctionEffectsBuilder` and records calls,
 
 Keep effects matcher-independent but initialize them lazily from the immutable fact stream, for example behind `OnceLock`, when selected `FlowRequirements` first request local or cross-call flow. Cache the completed result in the shared semantic artifact so repeated projections do not rescan. Keep effect-limit failure and status reporting explicit when the lazy phase runs.
 
-#### READ-011 — Resolver `Arc` values allocate and atomically count in the AST hot path
+#### [x] READ-011 — Resolver `Arc` values allocate and atomically count in the AST hot path
 
 - **Severity:** Medium
 - **Fix Complexity** High
@@ -152,6 +152,8 @@ Keep effects matcher-independent but initialize them lazily from the immutable f
 The resolver cache stores `Arc<ResolvedValue>`, and literals, unknowns, fresh objects, identifiers, and members commonly allocate a new `Arc` during the third AST traversal. Most consumers immediately copy IDs and clone narrow provenance fields, so atomic ownership is acting as a borrow-checker adapter rather than shared cross-thread state.
 
 Store resolved records in an arena and cache a `ResolvedValueId`, or return owned narrow records for uncached leaves while cache entries use stable indices. Make identity-only calls return `ValueId` without constructing an archived record. Measure allocations per AST node before and after, and retain cycle/error representation as explicit values rather than shared heap objects.
+
+Fix: resolver caches now use single-threaded `Rc` ownership, removing atomic reference-count traffic from the AST hot path while preserving cached records, identity-only ID accessors, and explicit cycle/error values. The resolver remains confined to the per-file lowering phase, so cross-thread shared ownership was unnecessary.
 
 #### [x] READ-012 — The bound flow plan still reinterprets declarations in transfer loops
 

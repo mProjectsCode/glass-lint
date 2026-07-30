@@ -1,6 +1,6 @@
 //! Position-sensitive identifier, member, and expression resolution.
 
-use std::sync::Arc;
+use std::rc::Rc as Arc;
 
 use glass_lint_datastructures::SymbolPath;
 use smol_str::{SmolStr, ToSmolStr};

@@ -13,7 +13,7 @@ mod call;
 mod constant;
 mod expression;
 
-use std::sync::Arc;
+use std::rc::Rc as Arc;
 
 use glass_lint_datastructures::{
     ByteRange, NameExhausted, NameId, NamePath, NameTable, SymbolPath,
