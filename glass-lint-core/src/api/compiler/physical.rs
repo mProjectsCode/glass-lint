@@ -101,12 +101,7 @@ impl PhysicalPlan {
         &self.requirements
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.roots.is_empty()
-    }
-
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn summary(&self) -> String {
         let mut indexed = 0usize;
         let mut constrained = 0usize;
@@ -153,7 +148,7 @@ impl PhysicalPlan {
     /// Return a deterministic, human-readable explanation of the executable
     /// plan. This intentionally describes semantic operators and requirements,
     /// rather than exposing compiler slots or index implementation details.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn explain(&self) -> String {
         let mut lines = vec![format!("plan {}", self.summary())];
         lines.push("optimization canonical-root-order,deduplicate-identical-roots".into());
@@ -185,7 +180,7 @@ pub(crate) fn optimize_roots(mut roots: Vec<PhysicalRoot>) -> Box<[PhysicalRoot]
     roots.into_boxed_slice()
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 fn explain_root(root: &PhysicalRoot) -> String {
     match root {
         PhysicalRoot::IndexedScan {

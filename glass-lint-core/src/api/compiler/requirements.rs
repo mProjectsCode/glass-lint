@@ -47,8 +47,8 @@ pub(crate) struct PlanRequirements {
     pub(crate) project: BTreeSet<ProjectRequirement>,
 }
 
-#[allow(dead_code)]
 impl PlanRequirements {
+    #[cfg(test)]
     pub(crate) fn value_resolution(&self) -> &BTreeSet<ValueResolutionRequirement> {
         &self.value_resolution
     }
@@ -57,7 +57,7 @@ impl PlanRequirements {
         &self.flow
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn project_requirements(&self) -> &BTreeSet<ProjectRequirement> {
         &self.project
     }

@@ -4,9 +4,8 @@ use smol_str::SmolStr;
 use crate::api::{
     classification::MatchKind,
     compiler::validate::{
-        QueryCompileError, pass_boundedness, pass_correlation_scope, pass_evidence_projection,
-        pass_lifecycle_validation, pass_relation_availability, pass_type_checking,
-        pass_variable_collection, pass_well_formedness, validate_query_decl,
+        QueryCompileError, pass_correlation_evidence, pass_scope_types, pass_structure,
+        validate_query_decl,
     },
     rule::{
         ArgumentConstraint, QueryDecl, ValueMatcher,
@@ -26,19 +25,19 @@ fn assert_valid_query(decl: &QueryDecl) {
 #[test]
 fn valid_global_call_passes_well_formedness() {
     let decl = QueryDecl::call_global("fetch").unwrap();
-    assert!(pass_well_formedness(&decl).is_ok());
+    assert!(pass_structure(&decl).is_ok());
 }
 
 #[test]
 fn valid_heuristic_call_passes_well_formedness() {
     let decl = QueryDecl::call_heuristic("fetch").unwrap();
-    assert!(pass_well_formedness(&decl).is_ok());
+    assert!(pass_structure(&decl).is_ok());
 }
 
 #[test]
 fn valid_rooted_member_call_passes_well_formedness() {
     let decl = QueryDecl::member_call_rooted("document.createElement").unwrap();
-    assert!(pass_well_formedness(&decl).is_ok());
+    assert!(pass_structure(&decl).is_ok());
 }
 
 #[test]
@@ -61,7 +60,7 @@ fn direct_event_must_match_subject_identity() {
             symbol: "test".into(),
         },
     };
-    assert!(pass_well_formedness(&decl).is_ok());
+    assert!(pass_structure(&decl).is_ok());
 }
 
 #[test]
@@ -85,7 +84,7 @@ fn member_call_needs_matching_identity_name() {
         },
     };
     assert_eq!(
-        pass_well_formedness(&decl),
+        pass_structure(&decl),
         Err(QueryCompileError::InvalidEventPredicate {
             identity: "heuristic".into(),
             event: "member_call".into(),
@@ -117,7 +116,7 @@ fn constraints_on_non_call_event_fails() {
         },
     };
     assert_eq!(
-        pass_well_formedness(&decl),
+        pass_structure(&decl),
         Err(QueryCompileError::InvalidEventPredicate {
             identity: "literal".into(),
             event: "import".into(),
@@ -146,7 +145,7 @@ fn empty_identity_fails() {
         },
     };
     assert_eq!(
-        pass_well_formedness(&decl),
+        pass_structure(&decl),
         Err(QueryCompileError::InvalidEventPredicate {
             identity: "global".into(),
             event: "call".into(),
@@ -183,7 +182,7 @@ fn duplicate_var_in_all_fails() {
         },
     };
     assert_eq!(
-        pass_variable_collection(&decl),
+        pass_scope_types(&decl),
         Err(QueryCompileError::DuplicateBinding { var: VarId::new(0) })
     );
 }
@@ -214,7 +213,7 @@ fn unique_vars_pass_collection() {
             symbol: "test".into(),
         },
     };
-    assert!(pass_variable_collection(&decl).is_ok());
+    assert!(pass_scope_types(&decl).is_ok());
 }
 
 #[test]
@@ -236,7 +235,7 @@ fn emission_var_must_exist_in_expression() {
         },
     };
     assert_eq!(
-        pass_evidence_projection(&decl),
+        pass_correlation_evidence(&decl),
         Err(QueryCompileError::MissingBinding {
             primary_var: VarId::new(1)
         })
@@ -261,7 +260,7 @@ fn emission_var_exists_in_expression_passes() {
             symbol: "fetch".into(),
         },
     };
-    assert!(pass_evidence_projection(&decl).is_ok());
+    assert!(pass_correlation_evidence(&decl).is_ok());
 }
 
 #[test]
@@ -291,7 +290,7 @@ fn uncorrelated_multi_event_all_fails() {
         },
     };
     assert_eq!(
-        pass_correlation_scope(&decl),
+        pass_correlation_evidence(&decl),
         Err(QueryCompileError::UncorrelatedConjunction)
     );
 }
@@ -322,7 +321,7 @@ fn correlated_multi_event_all_passes() {
             symbol: "test".into(),
         },
     };
-    assert!(pass_correlation_scope(&decl).is_ok());
+    assert!(pass_correlation_evidence(&decl).is_ok());
 }
 
 #[test]
@@ -343,7 +342,7 @@ fn single_branch_all_needs_no_correlation() {
             symbol: "fetch".into(),
         },
     };
-    assert!(pass_correlation_scope(&decl).is_ok());
+    assert!(pass_correlation_evidence(&decl).is_ok());
 }
 
 #[test]
@@ -364,7 +363,7 @@ fn bounded_query_passes_boundedness() {
             symbol: "fetch".into(),
         },
     };
-    assert!(pass_boundedness(&decl).is_ok());
+    assert!(pass_structure(&decl).is_ok());
 }
 
 #[test]
@@ -418,7 +417,7 @@ fn lifecycle_source_must_be_member_call() {
         },
     };
     assert_eq!(
-        pass_lifecycle_validation(&decl),
+        pass_structure(&decl),
         Err(QueryCompileError::InvalidLifecycle {
             detail: "lifecycle source event must be a member call".into(),
         })
@@ -457,7 +456,7 @@ fn lifecycle_source_must_be_rooted() {
         },
     };
     assert_eq!(
-        pass_lifecycle_validation(&decl),
+        pass_structure(&decl),
         Err(QueryCompileError::InvalidLifecycle {
             detail: "lifecycle source identity must be rooted".into(),
         })
@@ -495,7 +494,7 @@ fn valid_lifecycle_passes_lifecycle_validation() {
             symbol: "test".into(),
         },
     };
-    assert!(pass_lifecycle_validation(&decl).is_ok());
+    assert!(pass_structure(&decl).is_ok());
 }
 
 #[test]
@@ -661,7 +660,7 @@ fn relation_availability_passes_for_valid_global() {
             symbol: "fetch".into(),
         },
     };
-    assert!(pass_relation_availability(&decl).is_ok());
+    assert!(pass_structure(&decl).is_ok());
 }
 
 #[test]
@@ -710,7 +709,7 @@ fn any_with_compatible_branch_types_passes() {
     let branch_a = QueryDecl::call_global("fetch").unwrap();
     let branch_b = QueryDecl::call_global("navigate").unwrap();
     let query = QueryDecl::any([Ok(branch_a), Ok(branch_b)]).unwrap();
-    assert!(pass_type_checking(&query).is_ok());
+    assert!(pass_scope_types(&query).is_ok());
 }
 
 #[test]
@@ -741,7 +740,7 @@ fn reference_before_binding_fails() {
             symbol: "test".into(),
         },
     };
-    let result = pass_variable_collection(&decl);
+    let result = pass_scope_types(&decl);
     assert!(
         matches!(
             result,
@@ -769,23 +768,21 @@ fn reference_after_binding_passes() {
             symbol: "test".into(),
         },
     };
-    assert!(pass_variable_collection(&decl).is_ok());
+    assert!(pass_scope_types(&decl).is_ok());
 }
 
 #[test]
 fn type_mismatch_between_event_and_object_fails() {
     let branches = vec![
-        QueryExpr::select_event(VarId::new(0)),
         QueryExpr::require(QueryPredicate::ReturnedObject {
             bind: VarId::new(0),
             identity: IdentitySpec::Global {
                 name: SmolStr::new("create"),
             },
         }),
-        QueryExpr::require(QueryPredicate::Argument {
-            call: VarId::new(0),
-            index: crate::api::rule::ArgumentIndex::new_unchecked(0),
-            matcher: ValueMatcher::any_value().into(),
+        QueryExpr::require(QueryPredicate::EventKind {
+            event: VarId::new(0),
+            expected: EventSpec::Call,
         }),
     ];
     let all_expr = AllExpr::new(branches).unwrap();
@@ -797,7 +794,7 @@ fn type_mismatch_between_event_and_object_fails() {
             symbol: "test".into(),
         },
     };
-    let result = pass_type_checking(&decl);
+    let result = pass_scope_types(&decl);
     assert!(
         matches!(
             result,
@@ -824,7 +821,7 @@ fn emission_from_object_var_fails() {
             symbol: "test".into(),
         },
     };
-    let result = pass_type_checking(&decl);
+    let result = pass_scope_types(&decl);
     assert!(
         matches!(
             result,
@@ -832,4 +829,129 @@ fn emission_from_object_var_fails() {
         ),
         "expected UnavailablePrimaryLocation for $0 (Object), got: {result:?}"
     );
+}
+
+#[test]
+fn returned_object_with_non_rooted_identity_fails_at_structure() {
+    let event = EventQuery::member_call_rooted("document.createElement").unwrap();
+    let branches = vec![
+        QueryExpr::event(event),
+        QueryExpr::require(QueryPredicate::ReturnedObject {
+            bind: VarId::new(1),
+            identity: IdentitySpec::Global {
+                name: SmolStr::new("create"),
+            },
+        }),
+    ];
+    let all_expr = AllExpr::new(branches).unwrap();
+    let decl = QueryDecl {
+        expression: QueryExpr::all(all_expr),
+        emission: EmissionDecl {
+            primary_var: VarId::new(0),
+            kind: MatchKind::MemberCall,
+            symbol: "test".into(),
+        },
+    };
+    let result = validate_query_decl(&decl);
+    assert!(
+        matches!(
+            result,
+            Err(QueryCompileError::UnsupportedRelation {
+                relation: "returned_object",
+                ..
+            })
+        ),
+        "expected UnsupportedRelation for returned_object with global identity, got: {result:?}"
+    );
+}
+
+#[test]
+fn constructed_object_with_non_module_export_identity_fails_at_structure() {
+    let event = EventQuery::call_global("create").unwrap();
+    let branches = vec![
+        QueryExpr::event(event),
+        QueryExpr::require(QueryPredicate::ConstructedObject {
+            bind: VarId::new(1),
+            identity: IdentitySpec::Global {
+                name: SmolStr::new("create"),
+            },
+        }),
+    ];
+    let all_expr = AllExpr::new(branches).unwrap();
+    let decl = QueryDecl {
+        expression: QueryExpr::all(all_expr),
+        emission: EmissionDecl {
+            primary_var: VarId::new(0),
+            kind: MatchKind::Call,
+            symbol: "test".into(),
+        },
+    };
+    let result = validate_query_decl(&decl);
+    assert!(
+        matches!(
+            result,
+            Err(QueryCompileError::UnsupportedRelation {
+                relation: "constructed_object",
+                ..
+            })
+        ),
+        "expected UnsupportedRelation for constructed_object with global identity, got: {result:?}"
+    );
+}
+
+#[test]
+fn valid_returned_object_with_rooted_identity_passes() {
+    let event = EventQuery::member_call_rooted("document.createElement").unwrap();
+    let branches = vec![
+        QueryExpr::event(event),
+        QueryExpr::require(QueryPredicate::ReturnedObject {
+            bind: VarId::new(1),
+            identity: IdentitySpec::Rooted {
+                path: SymbolPath::from("element"),
+            },
+        }),
+        QueryExpr::require(QueryPredicate::MemberSubject {
+            event: VarId::new(0),
+            object: VarId::new(1),
+        }),
+    ];
+    let all_expr = AllExpr::new(branches).unwrap();
+    let decl = QueryDecl {
+        expression: QueryExpr::all(all_expr),
+        emission: EmissionDecl {
+            primary_var: VarId::new(0),
+            kind: MatchKind::MemberCall,
+            symbol: "test".into(),
+        },
+    };
+    assert_valid_query(&decl);
+}
+
+#[test]
+fn valid_constructed_object_with_module_export_identity_passes() {
+    let event = EventQuery::member_call_rooted("someLib.createWidget").unwrap();
+    let branches = vec![
+        QueryExpr::event(event),
+        QueryExpr::require(QueryPredicate::ConstructedObject {
+            bind: VarId::new(1),
+            identity: IdentitySpec::ModuleExport {
+                module: SmolStr::new("some-lib"),
+                export: SmolStr::new("Widget"),
+            },
+        }),
+        QueryExpr::require(QueryPredicate::MemberSubject {
+            event: VarId::new(0),
+            object: VarId::new(1),
+        }),
+    ];
+    let all_expr = AllExpr::new(branches).unwrap();
+    let decl = QueryDecl {
+        expression: QueryExpr::all(all_expr),
+        emission: EmissionDecl {
+            primary_var: VarId::new(0),
+            kind: MatchKind::MemberCall,
+            symbol: "test".into(),
+        },
+    };
+    assert_valid_query(&decl);
 }

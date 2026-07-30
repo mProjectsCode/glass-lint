@@ -240,7 +240,7 @@ impl CompiledMatcherPlan {
     }
 
     /// Explain the canonical executable plan for tests and profiling.
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg(test)]
     pub(crate) fn plan_explanation(&self) -> String {
         self.physical_plan.explain()
     }

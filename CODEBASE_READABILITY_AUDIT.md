@@ -6,7 +6,7 @@ This read-only audit covers all production and test source under `glass-lint-cor
 
 I found 32 actionable issues: 12 High, 17 Medium, and 3 Low severity. The most urgent correctness defects are an exact rule selector matching longer rule IDs, helper-sink propagation losing transitive sinks according to function order, and the consolidated validator dropping an early subject-identity check. The largest static performance risks are repeated whole-AST passes, deep cloning of scope environments, quadratic flow-state coalescing, whole-state cloning on each flow edit, copying loop facts on every fixed-point iteration, a mutex on every terminal value lookup, and an unbounded hand-built worker pool.
 
-**Completed (16 of 32):** READ-001, READ-002, READ-005, READ-009, READ-010, READ-011, READ-013, READ-014, READ-016, READ-017, READ-018, READ-021, READ-025, READ-026, READ-028, READ-029. Remaining: 6 High, 9 Medium, 1 Low.
+**Completed (19 of 32):** READ-001, READ-002, READ-005, READ-009, READ-010, READ-011, READ-013, READ-014, READ-016, READ-017, READ-018, READ-021, READ-025, READ-026, READ-028, READ-029, READ-030, READ-031, READ-032. Remaining: 5 High, 8 Medium, 0 Low.
 
 The new query compiler has a sensible declaration → normalized IR → physical IR direction, but it still contains a reverse lifecycle adapter, repeated tree walkers and canonicalizers, a duplicate convenience API, test-only validation implementations that are no longer the production path, and a partial “reference” evaluator that does not cover the newly important lifecycle path. The flow implementation is bounded in many dimensions, but several bounds cap retained output rather than the CPU and allocation work used to reach it.
 
@@ -267,7 +267,7 @@ Define one trusted transition from authoring AST to typed normalized IR and comb
 
 **Fix:** Replaced the ten individual validation passes with three consolidated traversals: `pass_structure` (well-formedness, operator compatibility, boundedness, relation availability, lifecycle validation), `pass_scope_types` (variable binding collection and type inference in one walk), and `pass_correlation_evidence` (multi-event correlation and evidence projection). Removed `pass_final_invariants` (duplicate of evidence projection). Removed unused `validate_normalized_decl`, `exact_root_matches`, `identity_module_matches`, `pass_operator_compatibility`, and the unused `EvidenceProjection` variant from `ContradictionKind`. Gated old individual passes with `#[cfg(test)]` and cleaned up `allow(dead_code)`/`allow(unused_imports)` annotations and re-exports.
 
-#### READ-030 — Test-only legacy passes preserve an obsolete validation implementation
+#### READ-030 — Test-only legacy passes preserve an obsolete validation implementation [Done]
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -278,7 +278,9 @@ Twenty-four validation tests call the old individual passes directly, while prod
 
 Delete the old pass implementations and their test-only re-exports after moving each meaningful case to `validate_query_decl` (or a small production-owned helper only when the behavior is intentionally independently testable). Keep tests for duplicate/reference ordering, type compatibility, lifecycle structure, bounds, correlation, evidence, and stable errors, but make them assert the production compiler path. Add invalid returned/constructed subject cases before deleting the legacy code, because the consolidation currently has a validation gap recorded in READ-031.
 
-#### READ-031 — Consolidated structural validation omits subject-relation checks
+**Fix:** Removed all eight `#[cfg(test)]` individual pass functions (`pass_well_formedness`, `pass_variable_collection`, `pass_type_checking`, `pass_correlation_scope`, `pass_evidence_projection`, `pass_boundedness`, `pass_relation_availability`, `pass_lifecycle_validation`) and their test-only private helpers from `pass1_3.rs` and `pass4_10.rs`. Removed their `#[cfg(test)]` re-exports from `validate/mod.rs`. Updated all 24 test cases in `validate.rs` to call the equivalent consolidated passes (`pass_structure`, `pass_scope_types`, `pass_correlation_evidence`) that the production `validate_query_decl` uses. The `type_mismatch_between_event_and_object_fails` test was restructured to avoid duplicate bindings so the consolidated `pass_scope_types` can reach the type-mismatch error.
+
+#### READ-031 — Consolidated structural validation omits subject-relation checks [Done]
 
 - **Severity:** High
 - **Fix Complexity** Low
@@ -289,7 +291,9 @@ The former well-formedness walk rejected `ReturnedObject` unless its identity wa
 
 Fold the two subject-identity checks into the consolidated structural walk before removing the old helper. Add production-entrypoint tests for both invalid identities and valid returned/constructed subjects, asserting the intended `UnsupportedRelation` versus lowered-plan error boundary. Keep physical-plan validation as a defense-in-depth check for malformed internal IR.
 
-#### READ-032 — Dead compiler accessors are hidden by broad dead-code allowances
+**Fix:** Added `check_require_structure` to the consolidated `pass_structure` in `pass4_10.rs`. The function rejects `ReturnedObject` unless its identity is `IdentitySpec::Rooted` and rejects `ConstructedObject` unless its identity is `IdentitySpec::ModuleExport` or `IdentitySpec::PackageModuleExport`, using `QueryCompileError::UnsupportedRelation` to preserve the intended validation boundary. Added four production-entrypoint tests via `validate_query_decl`: `returned_object_with_non_rooted_identity_fails_at_structure`, `constructed_object_with_non_module_export_identity_fails_at_structure`, `valid_returned_object_with_rooted_identity_passes`, and `valid_constructed_object_with_module_export_identity_passes`.
+
+#### READ-032 — Dead compiler accessors are hidden by broad dead-code allowances [Done]
 
 - **Severity:** Low
 - **Fix Complexity** Low
@@ -299,6 +303,8 @@ Fold the two subject-identity checks into the consolidated structural walk befor
 `CompiledMatcherPlan::plan_summary` has no callers and still emits a `dead_code` warning in the test build; `PhysicalPlan::is_empty` also has no callers. `PhysicalPlan::summary`/`explain` and `compile_argument_constraints` are test support with real deterministic-plan and matcher-evaluator coverage, while `PlanRequirements` uses a broad `allow(dead_code)` that can conceal future unused accessors.
 
 Remove the two unreferenced accessors. Keep the reference evaluator and plan explanation surfaces because their tests exercise logical/physical equivalence and deterministic operator choice, but mark genuinely test-only APIs `cfg(test)` or move them into test support where feasible. Replace broad allowances with narrow attributes or no allowance so new dead compiler APIs are visible to the build.
+
+**Fix:** Removed `PhysicalPlan::is_empty` (no callers). Gated `PhysicalPlan::summary`, `PhysicalPlan::explain`, `explain_root`, `CompiledMatcherPlan::plan_explanation`, `PlanRequirements::value_resolution`, and `PlanRequirements::project_requirements` with `#[cfg(test)]`. Removed the broad `#[allow(dead_code)]` from `impl PlanRequirements` and the individual `#[allow(dead_code)]` from the now-gated methods. `compile_argument_constraints` was already `#[cfg(test)]` and unchanged.
 
 #### READ-019 — `QueryDecl` duplicates the complete `EventQuery` constructor surface
 
