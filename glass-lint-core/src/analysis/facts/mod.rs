@@ -578,6 +578,9 @@ impl SemanticFacts {
             identities,
             result_identities,
         );
+        if plan.flow_matchers.is_empty() {
+            return (projected_evidence, LocalFlowProjectionOutcome::default());
+        }
         let outcome = object_flow::collect_into(
             &self.stream,
             effects,

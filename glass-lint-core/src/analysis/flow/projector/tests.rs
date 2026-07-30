@@ -75,6 +75,29 @@ fn collect_source_with_outcome(
     outcome
 }
 
+#[test]
+fn empty_flow_catalog_skips_projection_work() {
+    let parsed = crate::parse("fetch('/api');", "no-flow.js").expect("source should parse");
+    let mut resolver = Resolver::collect(&parsed.program, "fetch('/api');");
+    let stream = crate::analysis::facts::build_test_stream(&parsed.program, &mut resolver);
+    let effects = FunctionEffects::collect(&stream, usize::MAX);
+    let mut arena = TraceArena::new(4096);
+    let mut evidence = vec![Vec::new()];
+
+    let outcome = collect_into(
+        &stream,
+        &effects,
+        &[],
+        &mut evidence,
+        FlowLimits::from_flow_operations(262_144),
+        ModuleId::new(0),
+        &mut arena,
+    );
+
+    assert_eq!(outcome.operations, 0);
+    assert!(evidence[0].is_empty());
+}
+
 fn script_flow() -> LifecycleQuery {
     LifecycleQuery::builder("script insertion")
         .source(

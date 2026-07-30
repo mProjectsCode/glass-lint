@@ -79,6 +79,9 @@ pub(in crate::analysis) fn collect_into(
     module_id: ModuleId,
     trace_arena: &mut TraceArena,
 ) -> LocalFlowProjectionOutcome {
+    if rules.is_empty() {
+        return LocalFlowProjectionOutcome::default();
+    }
     let names = stream.names();
     let plan = BoundFlowPlan::new(rules, names);
     let mut summary_budget = Budget::new(limits.emission_limit());

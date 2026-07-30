@@ -40,7 +40,7 @@ Check the global cap before every successful increment, while keeping the separa
 
 **Fix:** `FlowEvidence` now checks the global cap before every emission, including emissions for keys that already have retained traces, and records whether the cap rejected work. Boundary tests cover repeated emissions for one key and multiple existing keys.
 
-#### READ-003 — No-flow catalogs still run local flow setup and full-stream passes
+#### [x] READ-003 — No-flow catalogs still run local flow setup and full-stream passes
 
 - **Severity:** High
 - **Fix Complexity** Low
@@ -50,6 +50,8 @@ Check the global cap before every successful increment, while keeping the separa
 `SemanticFacts::project` always calls `object_flow::collect_into`, even when `ProjectionPlan::flow_matchers` is empty. That empty case still binds a plan, constructs function summaries, builds `calls_by_result` with a full fact scan, constructs a projector, and transfers every fact, so ordinary call/member catalogs pay multiple flow passes per module.
 
 Return immediately when `flow_matchers.is_empty()` and make that fast path observable in a focused test. Gate later setup by the already-computed `FlowRequirements` rather than rediscovering an empty plan inside the projector. Keep the guard at the owning projection boundary so every caller receives the same behavior.
+
+**Fix:** Semantic projection now returns after ordinary constrained matching when no lifecycle matcher is selected, and the flow collector has the same defensive empty-input fast path. A focused projector test verifies that an empty flow catalog performs no flow operations.
 
 #### READ-004 — Scope checkpoints still clone whole environments at every join
 
