@@ -1,12 +1,14 @@
 use glass_lint_datastructures::SymbolPath;
 
+#[cfg(test)]
+use crate::api::rule::ArgumentConstraint;
 use crate::api::{
     classification::MatchKind,
     compiler::{
         error::PhysicalPlanValidationError,
         normalized::{
-            NormalizedEvent, NormalizedLifecycle, NormalizedQuery, NormalizedRoot,
-            NormalizedSubject,
+            CanonicalArgumentConstraints, NormalizedEvent, NormalizedLifecycle, NormalizedQuery,
+            NormalizedRoot, NormalizedSubject,
         },
         object_flow::CompiledObjectFlow,
         requirements::{PlanRequirements, ProjectRequirement, ValueResolutionRequirement},
@@ -15,84 +17,30 @@ use crate::api::{
         },
     },
     rule::{
-        ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ArgumentMatcherKind,
-        StaticStringPredicateKind, ValueMatcherKind,
+        ArgumentIndex, ArgumentMatcher, ArgumentMatcherKind, StaticStringPredicateKind,
+        ValueMatcherKind,
         query::{EventSpec, limits},
     },
 };
 
-// ── Compiled argument constraints ───────────────────────────────────────
-
-/// Compiled argument constraints, grouped and deduplicated by argument index.
+/// Compile raw argument constraints into canonical grouped form.
 ///
-/// Groups are stored in deterministic index order. Each argument is prepared
-/// at most once during evaluation — all predicates in a group are applied to
-/// one prepared `ArgumentView`.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct CompiledArgumentConstraints {
-    pub(crate) groups: Box<[ArgumentConstraintGroup]>,
-}
-
-/// A group of predicates all applying to the same argument index.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct ArgumentConstraintGroup {
-    pub(crate) index: ArgumentIndex,
-    pub(crate) predicates: Box<[ArgumentMatcher]>,
-}
-
-impl CompiledArgumentConstraints {
-    pub(crate) fn groups(&self) -> &[ArgumentConstraintGroup] {
-        &self.groups
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.groups.is_empty()
-    }
-}
-
-impl ArgumentConstraintGroup {
-    pub(crate) fn index(&self) -> ArgumentIndex {
-        self.index
-    }
-
-    pub(crate) fn predicates(&self) -> &[ArgumentMatcher] {
-        &self.predicates
-    }
-}
-
-/// Compile raw argument constraints into grouped, deduplicated form.
-///
-/// Normalization already sorts, deduplicates, and validates constraints.
-/// This function groups them by index, moves predicates into one
-/// group per unique index (preserving normalized order), validates
-/// bounds, and detects remaining contradictions.
+/// The input slice does not need to be pre-canonicalized (sorted,
+/// deduplicated). This function handles arbitrary ordering and duplicates by
+/// delegating to `CanonicalArgumentConstraints::from_canonicalized` after
+/// sorting and dedup.
+#[cfg(test)]
 pub(crate) fn compile_argument_constraints(
     raw: &[ArgumentConstraint],
-) -> CompiledArgumentConstraints {
-    let mut groups: Vec<ArgumentConstraintGroup> = Vec::new();
-    for constraint in raw {
-        let idx = constraint.arg_index();
-        let matcher = constraint.predicate().clone();
-        if let Some(last) = groups.last_mut()
-            && last.index() == idx
-        {
-            // Same index — deduplicate against last predicate
-            if !last.predicates.contains(&matcher) {
-                let mut predicates = last.predicates.to_vec();
-                predicates.push(matcher);
-                last.predicates = predicates.into_boxed_slice();
-            }
-        } else {
-            groups.push(ArgumentConstraintGroup {
-                index: idx,
-                predicates: Box::new([matcher]),
-            });
-        }
-    }
-
-    CompiledArgumentConstraints {
-        groups: groups.into_boxed_slice(),
-    }
+) -> CanonicalArgumentConstraints {
+    let mut tmp: Vec<ArgumentConstraint> = raw.to_vec();
+    tmp.sort_by(|a, b| {
+        a.index()
+            .cmp(&b.index())
+            .then_with(|| a.predicate().cmp(b.predicate()))
+    });
+    tmp.dedup();
+    CanonicalArgumentConstraints::from_canonicalized(&tmp)
 }
 
 // ── Physical root types ─────────────────────────────────────────────────
@@ -108,7 +56,7 @@ pub(crate) enum PhysicalRoot {
     ConstrainedScan {
         identity: IdentityConstraint,
         event: EventPredicate,
-        constraints: CompiledArgumentConstraints,
+        constraints: CanonicalArgumentConstraints,
         evidence: EvidenceDescriptor,
     },
     ReturnedSubject {
@@ -333,7 +281,7 @@ fn plan_event(ev: &NormalizedEvent, kind: MatchKind, symbol: &str) -> Vec<Physic
                             .expect("direct normalized events retain an identity"),
                     ),
                     event: lower_event(ev.event()),
-                    constraints: compile_argument_constraints(ev.arguments()),
+                    constraints: ev.arguments().clone(),
                     evidence,
                 }]
             }
@@ -386,7 +334,7 @@ fn plan_lifecycle(lc: &NormalizedLifecycle, symbol: &str) -> PhysicalRoot {
                 .identity()
                 .expect("lifecycle sources retain an identity")
                 .clone(),
-            constraints: sev.arguments().to_vec(),
+            constraints: sev.arguments().to_flat_vec(),
         })
         .collect();
 
@@ -575,7 +523,7 @@ fn add_identity_requirements(requirements: &mut PlanRequirements, identity: &Ide
 /// predicate per group and no empty predicates.  Group and predicate counts
 /// must be within declared limits.
 fn validate_canonical_constraints(
-    constraints: &CompiledArgumentConstraints,
+    constraints: &CanonicalArgumentConstraints,
 ) -> Result<(), PhysicalPlanValidationError> {
     let groups = constraints.groups();
     if groups.is_empty() {

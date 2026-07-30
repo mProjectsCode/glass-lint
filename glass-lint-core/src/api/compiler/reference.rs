@@ -12,13 +12,16 @@ use std::collections::BTreeMap;
 
 use crate::api::{
     compiler::{
-        normalized::{NormalizedEvent, NormalizedQuery, NormalizedRoot, NormalizedSubject},
-        physical::{CompiledArgumentConstraints, PhysicalPlan, PhysicalRoot},
+        normalized::{
+            CanonicalArgumentConstraints, NormalizedEvent, NormalizedQuery, NormalizedRoot,
+            NormalizedSubject,
+        },
+        physical::{PhysicalPlan, PhysicalRoot},
         rule::{EventPredicate, IdentityConstraint, lower_event, lower_identity},
     },
     rule::{
-        ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ArgumentMatcherKind,
-        StaticStringPredicateKind, ValueMatcherKind,
+        ArgumentIndex, ArgumentMatcher, ArgumentMatcherKind, StaticStringPredicateKind,
+        ValueMatcherKind,
         query::{EventSpec, IdentitySpec},
     },
 };
@@ -196,15 +199,19 @@ fn matches_identity_logical(expected: &IdentitySpec, actual: &IdentitySpec) -> b
 }
 
 fn matches_arguments_logical(
-    constraints: &[ArgumentConstraint],
+    constraints: &CanonicalArgumentConstraints,
     args: &BTreeMap<ArgumentIndex, ReferenceValue>,
 ) -> bool {
-    for constraint in constraints {
-        let idx = constraint.arg_index();
+    for group in constraints.groups() {
+        let idx = group.index();
         let Some(value) = args.get(&idx) else {
             return false;
         };
-        if !matches_reference_value(constraint.predicate(), value) {
+        if !group
+            .predicates()
+            .iter()
+            .all(|m| matches_reference_value(m, value))
+        {
             return false;
         }
     }
@@ -296,7 +303,7 @@ fn evaluate_indexed_scan(
 fn evaluate_constrained_scan(
     identity: &IdentityConstraint,
     event: &EventPredicate,
-    constraints: &CompiledArgumentConstraints,
+    constraints: &CanonicalArgumentConstraints,
     rows: &[ReferenceRow],
 ) -> Vec<ReferenceWitness> {
     let mut witnesses = Vec::new();
@@ -448,7 +455,7 @@ fn matches_identity_constraint(expected: &IdentityConstraint, actual: &IdentityS
 }
 
 fn matches_arguments_physical(
-    constraints: &CompiledArgumentConstraints,
+    constraints: &CanonicalArgumentConstraints,
     args: &BTreeMap<ArgumentIndex, ReferenceValue>,
 ) -> bool {
     for group in constraints.groups() {

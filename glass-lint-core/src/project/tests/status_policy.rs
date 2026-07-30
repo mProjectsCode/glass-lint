@@ -221,7 +221,7 @@ fn facts_effects_flow_and_link_limits_cover_below_at_above() {
         configured_linter,
         AnalysisLimits::set_semantic_operations,
         25,
-        "semantic_budget_exhausted",
+        "semantic_step_budget_exhausted",
         Some("main.js"),
         facts,
     );

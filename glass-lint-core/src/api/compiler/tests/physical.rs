@@ -3,9 +3,9 @@ use crate::api::{
     compiler::{
         error::PhysicalPlanValidationError,
         normalize::normalize_query_decl,
+        normalized::{ArgumentConstraintGroup, CanonicalArgumentConstraints},
         physical::{
-            ArgumentConstraintGroup, CompiledArgumentConstraints, PhysicalPlan, PhysicalRoot,
-            optimize_roots, plan_normalized, validate_physical_plan,
+            PhysicalPlan, PhysicalRoot, optimize_roots, plan_normalized, validate_physical_plan,
         },
         requirements::PlanRequirements,
         rule::{EventPredicate, EvidenceDescriptor, IdentityConstraint},
@@ -377,7 +377,7 @@ fn excessive_groups_fails_validation() {
             predicates: Box::new([ArgumentMatcher::from(ValueMatcher::static_string())]),
         })
         .collect();
-    let constraints = CompiledArgumentConstraints {
+    let constraints = CanonicalArgumentConstraints {
         groups: groups.into_boxed_slice(),
     };
     let plan = PhysicalPlan::new(
@@ -409,7 +409,7 @@ fn excessive_predicate_count_fails_validation() {
     let predicates: Vec<ArgumentMatcher> = (0..=limits::MAX_PREDICATES_PER_ARGUMENT)
         .map(|_| ArgumentMatcher::from(ValueMatcher::static_string()))
         .collect();
-    let constraints = CompiledArgumentConstraints {
+    let constraints = CanonicalArgumentConstraints {
         groups: Box::new([ArgumentConstraintGroup {
             index: ArgumentIndex::new_unchecked(0),
             predicates: predicates.into_boxed_slice(),

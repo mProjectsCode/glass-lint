@@ -144,7 +144,7 @@ fn session_reuses_exhausted_artifact_with_partial_status() {
         report.files()[0]
             .diagnostics()
             .iter()
-            .any(|diagnostic| diagnostic.code() == "semantic_budget_exhausted")
+            .any(|diagnostic| diagnostic.code() == "semantic_step_budget_exhausted")
     );
 }
 

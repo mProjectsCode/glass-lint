@@ -23,6 +23,13 @@ pub(crate) enum QueryExprKind {
     Lifecycle(LifecycleQuery),
 }
 
+/// The role of a variable in an expression node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum VarRole {
+    Binding,
+    Reference,
+}
+
 impl QueryExpr {
     pub(crate) fn event(eq: EventQuery) -> Self {
         Self {
@@ -87,42 +94,57 @@ impl QueryExpr {
         }
     }
 
+    /// Walk all variables in the expression, calling `f` for each with its
+    /// role.
+    pub(crate) fn walk_vars(&self, f: &mut impl FnMut(VarId, VarRole)) {
+        match &self.kind {
+            QueryExprKind::Event(q) => f(q.var, VarRole::Binding),
+            QueryExprKind::SelectEvent(s) => f(s.bind, VarRole::Binding),
+            QueryExprKind::Require(p) => match p {
+                QueryPredicate::EventKind { event, .. }
+                | QueryPredicate::EventIdentity { event, .. } => f(*event, VarRole::Reference),
+                QueryPredicate::Argument { call, .. } => f(*call, VarRole::Reference),
+                QueryPredicate::ReturnedObject { bind, .. }
+                | QueryPredicate::ConstructedObject { bind, .. } => f(*bind, VarRole::Binding),
+                QueryPredicate::MemberSubject { event, object } => {
+                    f(*event, VarRole::Reference);
+                    f(*object, VarRole::Reference);
+                }
+            },
+            QueryExprKind::Any(any) => any.branches.iter().for_each(|b| b.walk_vars(f)),
+            QueryExprKind::All(all) => all.branches.iter().for_each(|b| b.walk_vars(f)),
+            QueryExprKind::Lifecycle(lc) => {
+                lc.sources
+                    .iter()
+                    .for_each(|src| f(src.var, VarRole::Binding));
+            }
+        }
+    }
+
     pub fn vars(&self) -> Vec<VarId> {
         let mut ids = Vec::new();
-        self.collect_vars(&mut ids);
+        self.walk_vars(&mut |id, _role| ids.push(id));
         ids
     }
 
-    fn collect_vars(&self, ids: &mut Vec<VarId>) {
-        match &self.kind {
-            QueryExprKind::Event(q) => ids.push(q.var),
-            QueryExprKind::SelectEvent(selection) => ids.push(selection.bind),
-            QueryExprKind::Require(predicate) => match predicate {
-                QueryPredicate::EventKind { event, .. }
-                | QueryPredicate::EventIdentity { event, .. } => ids.push(*event),
-                QueryPredicate::Argument { call, .. } => ids.push(*call),
-                QueryPredicate::ReturnedObject { bind, .. }
-                | QueryPredicate::ConstructedObject { bind, .. } => ids.push(*bind),
-                QueryPredicate::MemberSubject { event, object } => {
-                    ids.push(*event);
-                    ids.push(*object);
-                }
-            },
-            QueryExprKind::Any(any) => any
-                .branches
-                .iter()
-                .for_each(|branch| branch.collect_vars(ids)),
-            QueryExprKind::All(all) => all
-                .branches
-                .iter()
-                .for_each(|branch| branch.collect_vars(ids)),
-            QueryExprKind::Lifecycle(lifecycle) => {
-                lifecycle
-                    .sources
-                    .iter()
-                    .for_each(|source| ids.push(source.var));
+    pub(crate) fn contains_var(&self, target: VarId) -> bool {
+        let mut found = false;
+        self.walk_vars(&mut |id, _role| {
+            if id == target {
+                found = true;
             }
-        }
+        });
+        found
+    }
+
+    pub(crate) fn binding_vars(&self) -> Vec<VarId> {
+        let mut ids = Vec::new();
+        self.walk_vars(&mut |id, role| {
+            if role == VarRole::Binding {
+                ids.push(id);
+            }
+        });
+        ids
     }
 }
 

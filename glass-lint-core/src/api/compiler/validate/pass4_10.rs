@@ -1,9 +1,6 @@
 use std::collections::BTreeSet;
 
-use super::{
-    error::{QueryCompileError, collect_vars, expr_contains_var},
-    pass1_3::validate_event_query,
-};
+use super::{error::QueryCompileError, pass1_3::validate_event_query};
 use crate::api::rule::query::{
     EventSpec, IdentitySpec, LifecycleQuery, QueryDecl, QueryExpr, QueryExprKind, VarId, limits,
 };
@@ -59,7 +56,7 @@ pub(crate) fn pass_correlation_scope(decl: &QueryDecl) -> Result<(), QueryCompil
 fn check_correlation(expr: &QueryExpr) -> Result<(), QueryCompileError> {
     match &expr.kind {
         QueryExprKind::All(all) => {
-            let branch_vars: Vec<Vec<VarId>> = all.branches.iter().map(collect_vars).collect();
+            let branch_vars: Vec<Vec<VarId>> = all.branches.iter().map(QueryExpr::vars).collect();
 
             if branch_vars.len() > 1 {
                 let first_set: BTreeSet<VarId> = branch_vars[0].iter().copied().collect();
@@ -111,7 +108,7 @@ fn check_evidence_branch(
     match &expr.kind {
         QueryExprKind::Any(any) => {
             for branch in &any.branches {
-                if !expr_contains_var(branch, primary) {
+                if !branch.contains_var(primary) {
                     return Err(QueryCompileError::MissingBinding {
                         primary_var: primary,
                     });
@@ -123,7 +120,7 @@ fn check_evidence_branch(
             for branch in &all.branches {
                 check_evidence_branch(branch, primary, false)?;
             }
-            if !all.branches.iter().any(|b| expr_contains_var(b, primary)) {
+            if !all.branches.iter().any(|b| b.contains_var(primary)) {
                 return Err(QueryCompileError::MissingBinding {
                     primary_var: primary,
                 });

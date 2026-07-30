@@ -4,7 +4,9 @@ use super::normalize::normalize_root;
 use crate::api::{
     compiler::{
         contradiction::detect_event_contradictions,
-        normalized::{NormalizedEvent, NormalizedRoot, NormalizedSubject},
+        normalized::{
+            CanonicalArgumentConstraints, NormalizedEvent, NormalizedRoot, NormalizedSubject,
+        },
         validate::{ContradictionKind, QueryCompileError},
     },
     rule::{
@@ -29,7 +31,7 @@ pub(crate) fn normalize_all_root(
     emission: &EmissionDecl,
 ) -> Result<NormalizedRoot, QueryCompileError> {
     // Collect the set of distinct binding variables across branches.
-    let branch_vars: Vec<Vec<VarId>> = all.branches.iter().map(collect_expr_vars).collect();
+    let branch_vars: Vec<Vec<VarId>> = all.branches.iter().map(QueryExpr::vars).collect();
 
     // Single branch — normalize as-is (should be rare after construction).
     if all.branches.len() == 1 {
@@ -76,10 +78,10 @@ fn find_common_event_var(branches: &[QueryExpr]) -> Option<VarId> {
         return None;
     }
     // Collect binding vars from the first branch.
-    let first_bindings = collect_binding_vars(&branches[0]);
+    let first_bindings = branches[0].binding_vars();
     for var in &first_bindings {
         if branches.iter().skip(1).all(|b| {
-            expr_references_var(b, *var)
+            b.contains_var(*var)
                 || matches!(
                     &b.kind,
                     QueryExprKind::Require(
@@ -92,57 +94,6 @@ fn find_common_event_var(branches: &[QueryExpr]) -> Option<VarId> {
         }
     }
     None
-}
-
-/// Collect variables that are *bound* (not just referenced) in an expression.
-fn collect_binding_vars(expr: &QueryExpr) -> Vec<VarId> {
-    let mut vars = Vec::new();
-    match &expr.kind {
-        QueryExprKind::Event(eq) => vars.push(eq.var),
-        QueryExprKind::SelectEvent(s) => vars.push(s.bind),
-        QueryExprKind::Require(p) => match p {
-            QueryPredicate::ReturnedObject { bind, .. }
-            | QueryPredicate::ConstructedObject { bind, .. } => vars.push(*bind),
-            _ => {}
-        },
-        QueryExprKind::Any(any) => {
-            for b in &any.branches {
-                vars.extend(collect_binding_vars(b));
-            }
-        }
-        QueryExprKind::All(all) => {
-            for b in &all.branches {
-                vars.extend(collect_binding_vars(b));
-            }
-        }
-        QueryExprKind::Lifecycle(lc) => {
-            for src in &lc.sources {
-                vars.push(src.var);
-            }
-        }
-    }
-    vars
-}
-
-/// Check whether an expression references a given variable.
-fn expr_references_var(expr: &QueryExpr, target: VarId) -> bool {
-    match &expr.kind {
-        QueryExprKind::Event(eq) => eq.var == target,
-        QueryExprKind::SelectEvent(s) => s.bind == target,
-        QueryExprKind::Require(p) => match p {
-            QueryPredicate::EventKind { event, .. }
-            | QueryPredicate::EventIdentity { event, .. } => *event == target,
-            QueryPredicate::Argument { call, .. } => *call == target,
-            QueryPredicate::ReturnedObject { bind, .. }
-            | QueryPredicate::ConstructedObject { bind, .. } => *bind == target,
-            QueryPredicate::MemberSubject { event, object } => {
-                *event == target || *object == target
-            }
-        },
-        QueryExprKind::Any(any) => any.branches.iter().any(|b| expr_references_var(b, target)),
-        QueryExprKind::All(all) => all.branches.iter().any(|b| expr_references_var(b, target)),
-        QueryExprKind::Lifecycle(lc) => lc.sources.iter().any(|src| src.var == target),
-    }
 }
 
 /// Merge branches of a same-event `All` into one `NormalizedEvent`.
@@ -246,7 +197,7 @@ fn merge_same_event(
         event,
         identity: normalized_identity,
         subject,
-        arguments: constraints.into_boxed_slice(),
+        arguments: CanonicalArgumentConstraints::from_canonicalized(&constraints),
     }))
 }
 
@@ -314,41 +265,4 @@ fn merge_subject_relation(
         *target = candidate;
     }
     Ok(())
-}
-
-// ── Variable collection helper ─────────────────────────────────────────────
-
-fn collect_expr_vars(expr: &QueryExpr) -> Vec<VarId> {
-    let mut vars = Vec::new();
-    match &expr.kind {
-        QueryExprKind::Event(eq) => vars.push(eq.var),
-        QueryExprKind::SelectEvent(s) => vars.push(s.bind),
-        QueryExprKind::Require(p) => match p {
-            QueryPredicate::EventKind { event, .. }
-            | QueryPredicate::EventIdentity { event, .. } => vars.push(*event),
-            QueryPredicate::Argument { call, .. } => vars.push(*call),
-            QueryPredicate::ReturnedObject { bind, .. }
-            | QueryPredicate::ConstructedObject { bind, .. } => vars.push(*bind),
-            QueryPredicate::MemberSubject { event, object } => {
-                vars.push(*event);
-                vars.push(*object);
-            }
-        },
-        QueryExprKind::Any(any) => {
-            for b in &any.branches {
-                vars.extend(collect_expr_vars(b));
-            }
-        }
-        QueryExprKind::All(all) => {
-            for b in &all.branches {
-                vars.extend(collect_expr_vars(b));
-            }
-        }
-        QueryExprKind::Lifecycle(lc) => {
-            for src in &lc.sources {
-                vars.push(src.var);
-            }
-        }
-    }
-    vars
 }

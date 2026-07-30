@@ -158,7 +158,7 @@ fn controlled_release_orders_produce_identical_full_report() {
     assert!(
         diagnostics
             .iter()
-            .any(|item| item["code"] == "semantic_budget_exhausted")
+            .any(|item| item["code"] == "semantic_step_budget_exhausted")
     );
     assert!(
         diagnostics

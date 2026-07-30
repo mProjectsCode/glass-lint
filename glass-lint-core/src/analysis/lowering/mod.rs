@@ -154,21 +154,31 @@ fn check_facts_budget(
     limits: &AnalysisLimits,
     budget: &SemanticBudget,
 ) -> Option<IncompleteReason> {
-    let name_exhausted = resolver.name_table_exhausted();
-    if budget.exhausted()
-        || stream.budget_exhausted()
-        || stream.path_exhausted()
-        || (resolver.value_arena_exhausted() && !name_exhausted)
-        || (!stream.is_structurally_valid() && !stream.name_exhausted())
-    {
-        Some(IncompleteReason::BudgetExhausted {
+    if budget.exhausted() {
+        return Some(IncompleteReason::SemanticBudgetExhausted {
+            limit: limits.semantic_operations(),
+            used: budget.used(),
+        });
+    }
+    if stream.budget_exhausted() {
+        return Some(IncompleteReason::FactCapacityExhausted {
+            limit: stream.max_facts(),
+        });
+    }
+    if stream.path_exhausted() {
+        return Some(IncompleteReason::PathCapacityExhausted);
+    }
+    if resolver.value_arena_exhausted() && !resolver.name_table_exhausted() {
+        return Some(IncompleteReason::ValueArenaExhausted);
+    }
+    if !stream.is_structurally_valid() && !stream.name_exhausted() {
+        return Some(IncompleteReason::BudgetExhausted {
             component: AnalysisComponent::Facts,
             limit: limits.semantic_operations(),
             observed: Some(budget.used()),
-        })
-    } else {
-        None
+        });
     }
+    None
 }
 
 fn check_invalid_parser_span(

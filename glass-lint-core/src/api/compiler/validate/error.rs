@@ -1,6 +1,4 @@
-use crate::api::rule::query::{
-    EventSpec, IdentitySpec, QueryExpr, QueryExprKind, QueryPredicate, VarId,
-};
+use crate::api::rule::query::{EventSpec, IdentitySpec, VarId};
 
 // ── Error type ───────────────────────────────────────────────────────────
 
@@ -253,67 +251,4 @@ pub(crate) fn is_identity_empty(identity: &IdentitySpec) -> bool {
 /// Check whether constraints are on a call-bearing event.
 pub(crate) fn event_supports_constraints(event: &EventSpec) -> bool {
     matches!(event, EventSpec::Call | EventSpec::MemberCall { .. })
-}
-
-// ── Variable helpers ─────────────────────────────────────────────────────
-
-/// Collect all distinct variable IDs in an expression tree.
-pub(crate) fn collect_vars(expr: &QueryExpr) -> Vec<VarId> {
-    let mut ids = Vec::new();
-    collect_vars_rec(expr, &mut ids);
-    ids
-}
-
-fn collect_vars_rec(expr: &QueryExpr, ids: &mut Vec<VarId>) {
-    match &expr.kind {
-        QueryExprKind::Event(eq) => ids.push(eq.var()),
-        QueryExprKind::SelectEvent(s) => ids.push(s.bind),
-        QueryExprKind::Require(p) => match p {
-            QueryPredicate::EventKind { event, .. }
-            | QueryPredicate::EventIdentity { event, .. } => ids.push(*event),
-            QueryPredicate::Argument { call, .. } => ids.push(*call),
-            QueryPredicate::ReturnedObject { bind, .. }
-            | QueryPredicate::ConstructedObject { bind, .. } => ids.push(*bind),
-            QueryPredicate::MemberSubject { event, object } => {
-                ids.push(*event);
-                ids.push(*object);
-            }
-        },
-        QueryExprKind::Any(any) => {
-            for b in &any.branches {
-                collect_vars_rec(b, ids);
-            }
-        }
-        QueryExprKind::All(all) => {
-            for b in &all.branches {
-                collect_vars_rec(b, ids);
-            }
-        }
-        QueryExprKind::Lifecycle(lc) => {
-            for src in lc.sources() {
-                ids.push(src.var());
-            }
-        }
-    }
-}
-
-/// Check whether a variable appears in an expression tree.
-pub(crate) fn expr_contains_var(expr: &QueryExpr, target: VarId) -> bool {
-    match &expr.kind {
-        QueryExprKind::Event(eq) => eq.var() == target,
-        QueryExprKind::SelectEvent(s) => s.bind == target,
-        QueryExprKind::Require(p) => match p {
-            QueryPredicate::EventKind { event, .. }
-            | QueryPredicate::EventIdentity { event, .. } => *event == target,
-            QueryPredicate::Argument { call, .. } => *call == target,
-            QueryPredicate::ReturnedObject { bind, .. }
-            | QueryPredicate::ConstructedObject { bind, .. } => *bind == target,
-            QueryPredicate::MemberSubject { event, object } => {
-                *event == target || *object == target
-            }
-        },
-        QueryExprKind::Any(any) => any.branches.iter().any(|b| expr_contains_var(b, target)),
-        QueryExprKind::All(all) => all.branches.iter().any(|b| expr_contains_var(b, target)),
-        QueryExprKind::Lifecycle(lc) => lc.sources().iter().any(|src| src.var() == target),
-    }
 }

@@ -205,7 +205,7 @@ fn same_event_all_merges_into_one_normalized_event() {
     let nq = normalize_ok(&d);
     match nq.root() {
         NormalizedRoot::Event(ev) => {
-            assert_eq!(ev.arguments.len(), 1);
+            assert_eq!(ev.arguments.to_flat_vec().len(), 1);
         }
         other => panic!("expected Event, got {other:?}"),
     }
@@ -222,7 +222,7 @@ fn same_event_all_with_multiple_constraints_merges_all_constraints() {
     let nq = normalize_ok(&d);
     match nq.root() {
         NormalizedRoot::Event(ev) => {
-            assert_eq!(ev.arguments.len(), 2);
+            assert_eq!(ev.arguments.to_flat_vec().len(), 2);
         }
         other => panic!("expected Event, got {other:?}"),
     }
@@ -528,9 +528,10 @@ fn reversed_argument_orders_normalize_equally() {
     let nq = normalize_ok(&d);
     match nq.root() {
         NormalizedRoot::Event(ev) => {
-            assert_eq!(ev.arguments.len(), 2);
-            assert_eq!(ev.arguments[0].index(), 0);
-            assert_eq!(ev.arguments[1].index(), 1);
+            let flat = ev.arguments.to_flat_vec();
+            assert_eq!(flat.len(), 2);
+            assert_eq!(flat[0].index(), 0);
+            assert_eq!(flat[1].index(), 1);
         }
         other => panic!("expected Event, got {other:?}"),
     }
@@ -716,7 +717,7 @@ fn duplicate_filters_do_not_duplicate_work_or_evidence() {
     match nq.root() {
         NormalizedRoot::Event(ev) => {
             assert_eq!(
-                ev.arguments.len(),
+                ev.arguments.to_flat_vec().len(),
                 1,
                 "duplicate constraints must be deduplicated"
             );
@@ -737,7 +738,7 @@ fn duplicate_filters_in_all_are_deduplicated() {
     match nq.root() {
         NormalizedRoot::Event(ev) => {
             assert_eq!(
-                ev.arguments.len(),
+                ev.arguments.to_flat_vec().len(),
                 1,
                 "duplicate constraints from All branches must be deduplicated"
             );
@@ -829,12 +830,13 @@ fn unknown_sensitive_forms_are_not_over_simplified() {
     let nq = normalize::normalize_query_decl(&eq.into_query()).unwrap();
     match nq.root() {
         NormalizedRoot::Event(ev) => {
+            let flat = ev.arguments.to_flat_vec();
             assert_eq!(
-                ev.arguments.len(),
+                flat.len(),
                 1,
                 "AnyValue constraint must be preserved through normalization"
             );
-            let matcher = ev.arguments[0].predicate();
+            let matcher = flat[0].predicate();
             assert_eq!(
                 matcher.kind(),
                 &crate::api::rule::ArgumentMatcherKind::Value(

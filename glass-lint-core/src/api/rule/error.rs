@@ -13,8 +13,6 @@ pub enum RuleBuildError {
     InvalidId(String),
     /// Human-readable label was not supplied.
     MissingDescription,
-    /// Category was not supplied.
-    MissingCategory,
     /// Severity was not supplied.
     MissingSeverity,
     /// Confidence was not supplied.
@@ -79,7 +77,6 @@ impl fmt::Display for RuleBuildError {
             Self::MissingId => formatter.write_str("rule ID is required"),
             Self::InvalidId(value) => write!(formatter, "invalid rule ID `{value}`"),
             Self::MissingDescription => formatter.write_str("rule label is required"),
-            Self::MissingCategory => formatter.write_str("rule category is required"),
             Self::MissingSeverity => formatter.write_str("rule severity is required"),
             Self::MissingConfidence => formatter.write_str("rule confidence is required"),
             Self::DuplicateField(field) => {

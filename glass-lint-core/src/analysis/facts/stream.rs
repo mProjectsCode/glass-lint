@@ -238,6 +238,10 @@ impl FactStream<Building> {
         self.facts.push(fact);
     }
 
+    pub(in crate::analysis) fn max_facts(&self) -> usize {
+        self.max_facts
+    }
+
     pub(super) fn mark_budget_exhausted(&mut self) {
         self.issues.insert(FactStreamIssue::BudgetExhausted);
     }

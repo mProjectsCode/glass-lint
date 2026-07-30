@@ -175,13 +175,16 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
         observer: &dyn ExecutionObserver,
         release: &mut dyn FnMut(LocalJobResult),
     ) -> Result<(), LocalExecutionError> {
-        let bound = outstanding_job_bound(worker_limit);
+        let all_jobs: Vec<LocalJob> = jobs.collect();
+        let worker_count = worker_limit.get().min(all_jobs.len()).max(1);
+        let bound =
+            outstanding_job_bound(NonZeroUsize::new(worker_count).unwrap_or(NonZeroUsize::MIN));
         let (job_tx, job_rx) = std::sync::mpsc::sync_channel::<LocalJob>(bound);
         let (result_tx, result_rx) = std::sync::mpsc::sync_channel(bound);
         let queue = std::sync::Mutex::new(job_rx);
         std::thread::scope(|scope| {
             let mut handles = Vec::new();
-            for _ in 0..worker_limit.get() {
+            for _ in 0..worker_count {
                 let queue_ref = &queue;
                 let result_tx = result_tx.clone();
                 handles.push(scope.spawn(move || {
@@ -211,7 +214,7 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
             }
 
             let mut outstanding = 0usize;
-            for job in jobs {
+            for job in all_jobs {
                 observer.observe(ExecutionEvent::Submitted);
                 job_tx
                     .send(job)
@@ -298,7 +301,10 @@ impl LocalJobExecutor for ControlledLocalJobExecutor {
 }
 
 pub(super) fn normalize_worker_limit(requested: usize) -> NonZeroUsize {
-    NonZeroUsize::new(requested).unwrap_or(NonZeroUsize::MIN)
+    let nonzero = NonZeroUsize::new(requested).unwrap_or(NonZeroUsize::MIN);
+    let available = std::thread::available_parallelism().map_or(usize::MAX, NonZeroUsize::get);
+    // SAFETY: `max(1)` ensures the result is always non-zero.
+    NonZeroUsize::new(nonzero.get().min(available).max(1)).expect("capped worker count is non-zero")
 }
 
 pub const fn outstanding_job_bound(worker_limit: NonZeroUsize) -> usize {

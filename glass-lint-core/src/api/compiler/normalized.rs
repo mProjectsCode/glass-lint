@@ -2,7 +2,7 @@ use super::requirements::PlanRequirements;
 use crate::api::{
     classification::MatchKind,
     rule::{
-        ArgumentConstraint,
+        ArgumentConstraint, ArgumentIndex, ArgumentMatcher,
         query::{
             EventSpec, IdentitySpec,
             lifecycle::{LifecycleCompletion, LifecycleCondition},
@@ -64,6 +64,96 @@ pub(crate) enum NormalizedRoot {
     Lifecycle(NormalizedLifecycle),
 }
 
+/// Argument constraints in canonical form: grouped by argument index.
+///
+/// Invariants (maintained by construction):
+/// - Groups are ordered by argument index.
+/// - Within each group, predicates are sorted and deduplicated.
+/// - No group is empty.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct CanonicalArgumentConstraints {
+    pub(crate) groups: Box<[ArgumentConstraintGroup]>,
+}
+
+/// A group of predicates all applying to the same argument index.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct ArgumentConstraintGroup {
+    pub(crate) index: ArgumentIndex,
+    pub(crate) predicates: Box<[ArgumentMatcher]>,
+}
+
+impl CanonicalArgumentConstraints {
+    pub(crate) fn groups(&self) -> &[ArgumentConstraintGroup] {
+        &self.groups
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.groups.is_empty()
+    }
+
+    /// Build canonical form from already-canonicalized (sorted, deduplicated)
+    /// constraints.
+    ///
+    /// Panics if the input is empty or has duplicates — callers must
+    /// canonicalize first. Groups are accumulated with a Vec per index and
+    /// frozen once at the end, avoiding repeated Box<[_]> → Vec → Box<[_]>
+    /// conversions.
+    pub(crate) fn from_canonicalized(raw: &[ArgumentConstraint]) -> Self {
+        // First pass: count predicates per group so we allocate exactly once.
+        let mut group_counts: Vec<(ArgumentIndex, usize)> = Vec::new();
+        for c in raw {
+            let idx = c.arg_index();
+            if let Some(last) = group_counts.last_mut()
+                && last.0 == idx
+            {
+                last.1 += 1;
+            } else {
+                group_counts.push((idx, 1));
+            }
+        }
+
+        // Second pass: fill groups.
+        let mut groups = Vec::with_capacity(group_counts.len());
+        let mut cursor = 0;
+        for (idx, count) in group_counts {
+            let mut predicates = Vec::with_capacity(count);
+            for _ in 0..count {
+                predicates.push(raw[cursor].predicate().clone());
+                cursor += 1;
+            }
+            groups.push(ArgumentConstraintGroup {
+                index: idx,
+                predicates: predicates.into_boxed_slice(),
+            });
+        }
+
+        Self {
+            groups: groups.into_boxed_slice(),
+        }
+    }
+
+    /// Flatten canonical groups back into a constraint vector.
+    pub(crate) fn to_flat_vec(&self) -> Vec<ArgumentConstraint> {
+        let mut v = Vec::new();
+        for group in &self.groups {
+            for m in &group.predicates {
+                v.push(ArgumentConstraint::new(group.index, m.clone()));
+            }
+        }
+        v
+    }
+}
+
+impl ArgumentConstraintGroup {
+    pub(crate) fn index(&self) -> ArgumentIndex {
+        self.index
+    }
+
+    pub(crate) fn predicates(&self) -> &[ArgumentMatcher] {
+        &self.predicates
+    }
+}
+
 /// A single normalized event node with merged subject and arguments.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NormalizedEvent {
@@ -71,7 +161,7 @@ pub(crate) struct NormalizedEvent {
     pub(crate) event: EventSpec,
     pub(crate) identity: Option<IdentitySpec>,
     pub(crate) subject: NormalizedSubject,
-    pub(crate) arguments: Box<[ArgumentConstraint]>,
+    pub(crate) arguments: CanonicalArgumentConstraints,
 }
 
 impl NormalizedEvent {
@@ -91,7 +181,7 @@ impl NormalizedEvent {
         &self.subject
     }
 
-    pub(crate) fn arguments(&self) -> &[ArgumentConstraint] {
+    pub(crate) fn arguments(&self) -> &CanonicalArgumentConstraints {
         &self.arguments
     }
 }

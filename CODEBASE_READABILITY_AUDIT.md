@@ -6,7 +6,7 @@ This read-only audit covers all production and test source under `glass-lint-cor
 
 I found 29 actionable issues: 11 High, 16 Medium, and 2 Low severity. The most urgent correctness defects are an exact rule selector matching longer rule IDs and helper-sink propagation losing transitive sinks according to function order. The largest static performance risks are repeated whole-AST passes, deep cloning of scope environments, quadratic flow-state coalescing, whole-state cloning on each flow edit, copying loop facts on every fixed-point iteration, a mutex on every terminal value lookup, and an unbounded hand-built worker pool.
 
-**Completed (11 of 29):** READ-001, READ-002, READ-005, READ-009, READ-010, READ-014, READ-016, READ-026, READ-028, READ-029, READ-013. Remaining: 6 High, 12 Medium.
+**Completed (15 of 29):** READ-001, READ-002, READ-005, READ-009, READ-010, READ-011, READ-013, READ-014, READ-016, READ-017, READ-021, READ-025, READ-026, READ-028, READ-029. Remaining: 5 High, 9 Medium.
 
 The new query compiler has a sensible declaration → normalized IR → physical IR direction, but it still contains a reverse lifecycle adapter, repeated tree walkers and canonicalizers, a duplicate convenience API, and a partial “reference” evaluator that does not cover the newly important lifecycle path. The flow implementation is bounded in many dimensions, but several bounds cap retained output rather than the CPU and allocation work used to reach it.
 
@@ -161,7 +161,7 @@ Compute and store the terminal ID eagerly at insertion/freeze and make resolutio
 
 ### Project execution
 
-#### READ-011 — The local executor can create arbitrarily many threads
+#### READ-011 — The local executor can create arbitrarily many threads [Done]
 
 - **Severity:** High
 - **Fix Complexity** Medium
@@ -171,6 +171,8 @@ Compute and store the terminal ID eagerly at insertion/freeze and make resolutio
 Each analysis call creates `worker_limit` scoped OS threads, even for an empty or one-file job stream. `normalize_worker_limit` only changes zero to one; it does not cap the request by job count or `available_parallelism`. A caller-supplied large value can exhaust threads and creates an equally large channel bound. Workers also serialize `recv` through a mutex around the standard MPSC receiver.
 
 Use a bounded Rayon pool (or accept an executor from the host) and cap active workers to `min(requested, uncached_jobs, available_parallelism)` unless the API explicitly documents oversubscription. Collect indexed results and release them through the existing deterministic assembly boundary. Rayon is a better-established implementation than maintaining a custom pool/channel protocol here.
+
+**Fix:** Capped `normalize_worker_limit` at `std::thread::available_parallelism()` so the caller-supplied value cannot exceed the host's hardware parallelism. Capped `ThreadLocalJobExecutor::execute` at `min(worker_limit, job_count)` by collecting jobs first, so an empty or one-file stream never spawns more threads than there is work. The channel bound is now derived from the post-cap worker count.
 
 ### Query compiler: lifecycle physical planning
 
@@ -239,7 +241,7 @@ Remove the duplicate and have normalization consume validated typed metadata, or
 
 **Fix:** Replaced `if first_type != other && first_type.is_some() && other.is_some()` with `if let (Some(a), Some(b)) = (first_type, other) && a != b`, using the actual type values instead of hard-coded `"some"`/`"other"` placeholders in the error diagnostic.
 
-#### READ-017 — Query-tree walking and constraint canonicalization are reimplemented repeatedly
+#### READ-017 — Query-tree walking and constraint canonicalization are reimplemented repeatedly [Done]
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -249,6 +251,8 @@ Remove the duplicate and have normalization consume validated typed metadata, or
 Variable collection/reference checks have at least five recursive match trees. Argument constraints are sorted/deduplicated during authoring/normalization, copied and canonicalized again after normalization, then `compile_argument_constraints` still performs `contains` checks and repeatedly converts a boxed slice back to `Vec` for each predicate in a group.
 
 Add one internal `QueryExpr` walker/fold with explicit bound/reference callbacks and introduce invariant-bearing canonical constraint/group types. Validate and canonicalize once at the public/compiler trust boundary; physical lowering should consume those newtypes without rechecking or reallocating.
+
+**Fix:** Added `QueryExpr::walk_vars` (with `VarRole::Binding`/`VarRole::Reference` callbacks) and reimplemented `vars()`, `contains_var()`, and `binding_vars()` in terms of it. Replaced the five duplicate recursive match trees: removed `collect_vars`/`expr_contains_var` from `error.rs`, `collect_binding_vars`/`expr_references_var`/`collect_expr_vars` from `normalize_all.rs`, and updated callers in `pass4_10.rs`. Moved `CompiledArgumentConstraints`/`ArgumentConstraintGroup` from `physical.rs` into `normalized.rs` as `CanonicalArgumentConstraints` (the invariant-bearing canonical type). `NormalizedEvent` now stores `CanonicalArgumentConstraints` directly. `canonicalize_event` constructs it via a two-pass allocation strategy, eliminating `contains` checks and repeated `Box<[_]>`→`Vec`→`Box<[_]>` conversions. Physical lowering (`plan_event`) clones the already-canonical constraints instead of recompiling them.
 
 #### READ-018 — Ten compiler passes repeatedly traverse a bounded, already-validated tree
 
@@ -285,7 +289,7 @@ Either extend it into an independent lifecycle/correlation interpreter and gener
 
 ### Lowering status and budget observability
 
-#### READ-021 — Facts exhaustion conflates unrelated limits and invalid states
+#### READ-021 — Facts exhaustion conflates unrelated limits and invalid states [Done]
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -295,6 +299,8 @@ Either extend it into an independent lifecycle/correlation interpreter and gener
 One `semantic_operations` number is passed both to `SemanticBudget` and as `FactBuilder`'s fact limit. `check_facts_budget` then reports semantic-budget, fact-count, path-capacity, value-arena, and structural-invalidity failures as `AnalysisComponent::Facts` with the semantic-operation limit and budget-used count. The diagnostic cannot identify which resource actually caused the incomplete result.
 
 Use separate semantic-step, fact-count, path, name, and value limits or a typed exhaustion enum carrying the owning capacity and observed value. Structural mismatch should remain its own reason. Accurate telemetry is necessary before optimizing READ-004 through READ-010.
+
+**Fix:** Replaced the single `BudgetExhausted { component: Facts }` catch-all with dedicated `IncompleteReason` variants: `SemanticBudgetExhausted`, `FactCapacityExhausted`, `PathCapacityExhausted`, and `ValueArenaExhausted`. Each has its own `DiagnosticKind` (`semantic_step_budget_exhausted`, `semantic_fact_capacity_exhausted`, `semantic_path_capacity_exhausted`, `semantic_value_arena_exhausted`). `check_facts_budget` now returns the first-exhausted resource with its specific limit/usage rather than silently attributing every exhaustion to the step budget. Structural-invalidity-only failures still use the original `BudgetExhausted { component: Facts }` path.
 
 ### Project reporting, session ownership, and crate boundaries
 
@@ -333,7 +339,7 @@ Move terminal rendering to a small `glass-lint-output` crate. Move subscriber/op
 
 ### Public rule and environment APIs
 
-#### READ-025 — Core requires provider category policy and then discards it
+#### READ-025 — Core requires provider category policy and then discards it [Done]
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -343,6 +349,8 @@ Move terminal rendering to a small `glass-lint-output` crate. Move subscriber/op
 Every provider rule must construct a `Category`, and `RuleBuilder::build` rejects its absence. Compilation drops the category from `CompiledRuleRecord`, and public `RuleMetadata` does not expose it. This creates mandatory policy ceremony across all providers while violating the stated boundary that core must not own provider categories or rule policy.
 
 Remove `Category` from core's required `Rule` contract. If a front end needs categories, keep them in provider/catalog metadata outside the semantic engine or explicitly preserve them in a higher-layer report schema. Do not require data that the engine immediately discards.
+
+**Fix:** Changed `Rule.category` from `Category` to `Option<Category>`. Removed the `MissingCategory` error variant and its mandatory check from `RuleBuilder::build`. The builder's `.category()` method is still available for providers that want to set it, but category is no longer required. `Rule::category()` returns `Option<&Category>`. All downstream crates (glass-lint-js, glass-lint-obsidian, glass-lint-cli) set category via the optional builder call and compile without changes.
 
 #### READ-026 — “JavaScript identifier” validation implements neither Unicode nor keyword rules [Done]
 

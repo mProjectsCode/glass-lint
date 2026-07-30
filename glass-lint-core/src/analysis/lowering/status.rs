@@ -36,6 +36,15 @@ pub(in crate::analysis) enum IncompleteReason {
     ParseFailure {
         kind: ParseFailureKind,
     },
+    SemanticBudgetExhausted {
+        limit: usize,
+        used: usize,
+    },
+    FactCapacityExhausted {
+        limit: usize,
+    },
+    PathCapacityExhausted,
+    ValueArenaExhausted,
     BudgetExhausted {
         component: AnalysisComponent,
         limit: usize,
@@ -187,6 +196,22 @@ impl IncompleteReason {
                 let (code, text) = kind.diagnostic();
                 (code, text.into())
             }
+            Self::SemanticBudgetExhausted { limit, used } => (
+                DiagnosticKind::SemanticBudgetExhausted,
+                format!("semantic analysis exceeded its step budget; limit={limit}, used={used}"),
+            ),
+            Self::FactCapacityExhausted { limit } => (
+                DiagnosticKind::FactCapacityExhausted,
+                format!("semantic analysis exceeded its fact capacity; limit={limit}"),
+            ),
+            Self::PathCapacityExhausted => (
+                DiagnosticKind::PathCapacityExhausted,
+                "semantic analysis exceeded its path interning capacity".into(),
+            ),
+            Self::ValueArenaExhausted => (
+                DiagnosticKind::ValueArenaExhausted,
+                "semantic analysis exceeded its value arena capacity".into(),
+            ),
             Self::BudgetExhausted {
                 component,
                 limit,

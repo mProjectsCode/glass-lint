@@ -11,7 +11,8 @@ use crate::{
         value::ValueId,
     },
     api::compiler::{
-        physical::{CompiledArgumentConstraints, PhysicalRoot},
+        normalized::CanonicalArgumentConstraints,
+        physical::PhysicalRoot,
         rule::{EventPredicate, EvidenceDescriptor, IdentityConstraint},
     },
 };
@@ -27,7 +28,7 @@ type FallbackEntry<'a> = (
     usize,
     &'a IdentityConstraint,
     &'a EventPredicate,
-    &'a CompiledArgumentConstraints,
+    &'a CanonicalArgumentConstraints,
     &'a EvidenceDescriptor,
     &'a PreparedClausePaths,
 );
@@ -76,7 +77,7 @@ fn compute_constrained_inner(
         usize,
         &IdentityConstraint,
         &EventPredicate,
-        &CompiledArgumentConstraints,
+        &CanonicalArgumentConstraints,
         &EvidenceDescriptor,
     )> = roots
         .iter()

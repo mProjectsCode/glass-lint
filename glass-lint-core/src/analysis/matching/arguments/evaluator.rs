@@ -15,7 +15,7 @@ use crate::{
         value::{Value, ValueId, ValueTable},
     },
     api::compiler::{
-        physical::CompiledArgumentConstraints,
+        normalized::CanonicalArgumentConstraints,
         rule::{EventPredicate, IdentityConstraint},
     },
 };
@@ -124,7 +124,7 @@ impl<'a> MatcherEvaluator<'a> {
         fact: &SemanticFact,
         identity: &IdentityConstraint,
         event: &EventPredicate,
-        constraints: &CompiledArgumentConstraints,
+        constraints: &CanonicalArgumentConstraints,
         paths: &PreparedClausePaths,
         ops: &mut EvaluationOperations,
     ) -> bool {
@@ -239,7 +239,7 @@ impl<'a> MatcherEvaluator<'a> {
 
     fn constraints_match(
         &self,
-        constraints: &CompiledArgumentConstraints,
+        constraints: &CanonicalArgumentConstraints,
         args: &[CallArgInfo],
         ops: &mut EvaluationOperations,
     ) -> bool {
@@ -261,7 +261,7 @@ impl<'a> MatcherEvaluator<'a> {
 
     fn check_constrained_args(
         &self,
-        constraints: &CompiledArgumentConstraints,
+        constraints: &CanonicalArgumentConstraints,
         args: &[CallArgInfo],
         unwrap: Option<&CallUnwrap>,
         ops: &mut EvaluationOperations,

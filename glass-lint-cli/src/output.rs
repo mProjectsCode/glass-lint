@@ -454,7 +454,7 @@ mod tests {
         assert_eq!(combined.completion(), ReportCompletion::Partial);
         assert_eq!(
             combined.files()[0].diagnostics()[0].code(),
-            "semantic_budget_exhausted"
+            "semantic_step_budget_exhausted"
         );
     }
 

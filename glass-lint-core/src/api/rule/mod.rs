@@ -35,8 +35,8 @@ pub struct Rule {
     id: String,
     /// Human-readable rule description.
     description: String,
-    /// Provider-defined category.
-    category: Category,
+    /// Provider-defined category, preserved for catalog metadata.
+    category: Option<Category>,
     /// Report severity.
     severity: Severity,
     /// Evidence confidence.
@@ -78,9 +78,9 @@ impl Rule {
     }
 
     #[must_use]
-    /// Borrow the provider category.
-    pub fn category(&self) -> &Category {
-        &self.category
+    /// Borrow the provider category, if set.
+    pub fn category(&self) -> Option<&Category> {
+        self.category.as_ref()
     }
 
     #[must_use]
@@ -187,7 +187,6 @@ impl RuleBuilder {
             return Err(RuleBuildError::TooManyQueries(self.queries.len()));
         }
         let description = required_string(self.description, RuleBuildError::MissingDescription)?;
-        let category = self.category.ok_or(RuleBuildError::MissingCategory)?;
         let severity = self.severity.ok_or(RuleBuildError::MissingSeverity)?;
         let confidence = self.confidence.ok_or(RuleBuildError::MissingConfidence)?;
 
@@ -201,7 +200,7 @@ impl RuleBuilder {
         Ok(Rule {
             id,
             description,
-            category,
+            category: self.category,
             severity,
             confidence,
             queries: self.queries,

@@ -5,7 +5,10 @@ use crate::api::{
     compiler::{
         contradiction::detect_event_contradictions,
         normalize_all::normalize_all_root,
-        normalized::{NormalizedEvent, NormalizedLifecycle, NormalizedRoot, NormalizedSubject},
+        normalized::{
+            CanonicalArgumentConstraints, NormalizedEvent, NormalizedLifecycle, NormalizedRoot,
+            NormalizedSubject,
+        },
         requirements::PlanRequirements,
         validate::QueryCompileError,
     },
@@ -97,15 +100,27 @@ fn canonicalize_normalized(root: &mut NormalizedRoot) {
 }
 
 fn canonicalize_event(ev: &mut NormalizedEvent) {
-    // Sort and deduplicate argument constraints by index then matcher.
-    let mut args: Vec<crate::api::rule::ArgumentConstraint> = ev.arguments.to_vec();
-    args.sort_by(|a, b| {
+    // NormalizedEvent already stores canonical constraints from construction.
+    // Re-linearize and rebuild to guard against future inconsistent paths.
+    let old = std::mem::replace(
+        &mut ev.arguments,
+        CanonicalArgumentConstraints {
+            groups: Box::new([]),
+        },
+    );
+    let mut tmp: Vec<ArgumentConstraint> = Vec::new();
+    for group in &old.groups {
+        for m in &group.predicates {
+            tmp.push(ArgumentConstraint::new(group.index, m.clone()));
+        }
+    }
+    tmp.sort_by(|a, b| {
         a.index()
             .cmp(&b.index())
             .then_with(|| a.predicate().cmp(b.predicate()))
     });
-    args.dedup();
-    ev.arguments = args.into_boxed_slice();
+    tmp.dedup();
+    ev.arguments = CanonicalArgumentConstraints::from_canonicalized(&tmp);
 }
 
 /// Validate a fully normalized query.
@@ -164,13 +179,17 @@ fn validate_normalized_root(root: &NormalizedRoot, is_top: bool) -> Result<(), Q
             Ok(())
         }
         NormalizedRoot::Event(ev) => {
-            if ev.arguments.windows(2).any(|pair| {
-                pair[0].index() > pair[1].index()
-                    || (pair[0].index() == pair[1].index()
-                        && pair[0].predicate() >= pair[1].predicate())
-            }) {
+            // CanonicalArgumentConstraints groups are already in order and
+            // each group's predicates are sorted and deduplicated. Verify
+            // that groups are in ascending index order.
+            if ev
+                .arguments
+                .groups()
+                .windows(2)
+                .any(|pair| pair[0].index() > pair[1].index())
+            {
                 return Err(QueryCompileError::InternalInvariant {
-                    detail: "normalized argument constraints are not canonical".into(),
+                    detail: "normalized argument constraint groups are not canonical".into(),
                 });
             }
             // Verify subject-specific invariants.
@@ -397,8 +416,11 @@ fn normalize_lifecycle_root(
     // and arguments match. Deterministic order is preserved (first wins).
     {
         use std::collections::BTreeSet;
-        let mut seen: BTreeSet<(EventSpec, Option<IdentitySpec>, Box<[ArgumentConstraint]>)> =
-            BTreeSet::new();
+        let mut seen: BTreeSet<(
+            EventSpec,
+            Option<IdentitySpec>,
+            CanonicalArgumentConstraints,
+        )> = BTreeSet::new();
         sources.retain(|s| {
             let key = (s.event.clone(), s.identity.clone(), s.arguments.clone());
             seen.insert(key)
@@ -441,7 +463,7 @@ fn normalize_event_from_query(
         event: eq.event.clone(),
         identity: Some(eq.identity.clone()),
         subject,
-        arguments: args.into_boxed_slice(),
+        arguments: CanonicalArgumentConstraints::from_canonicalized(&args),
     })
 }
 
