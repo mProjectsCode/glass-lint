@@ -41,7 +41,6 @@ impl NormalizedQuery {
 /// Evidence emission for a normalized query.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NormalizedEmission {
-    pub(crate) primary_slot: u32,
     pub(crate) kind: MatchKind,
     pub(crate) symbol: String,
 }

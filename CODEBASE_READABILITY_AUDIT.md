@@ -188,7 +188,7 @@ Track explicit rejection/exhaustion flags at each bounded owner and report incom
 
 Define normalized lifecycle source, requirement, sink, and completion variants that contain canonical paths and grouped constraints. Compile the physical flow directly from those variants, then delete `to_flat_vec` and the `from_matcher` adapters. Make this a breaking single-path migration; do not preserve a reverse compatibility conversion.
 
-#### READ-015 — Dense compiler slots survive after their consumers disappeared
+#### [x] READ-015 — Dense compiler slots survive after their consumers disappeared
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -198,6 +198,8 @@ Define normalized lifecycle source, requirement, sink, and completion variants t
 `NormalizedEmission::primary_slot` is alpha-renumbered, collected, remapped, and validated, but physical planning consumes only evidence kind and symbol. The same normalizer also linearizes already-canonical argument groups, clones and sorts them, then rebuilds the identical canonical type as a future-proofing adapter.
 
 Delete `primary_slot` and the alpha-renumbering machinery once validation proves the authored primary binding before normalization, retaining only object slots that physical correlation actually uses. Make canonical argument construction the sole validating constructor and remove the re-canonicalization pass. If future multi-event operators require slots, reintroduce a typed correlation table with an executable consumer rather than carrying dormant compiler scaffolding.
+
+Fix: normalized emissions no longer carry the unused primary slot, while object-slot alpha-renumbering remains for physical correlation. The normalizer now trusts the canonical argument constructor and no longer flattens, sorts, and rebuilds constraints on every query.
 
 #### READ-016 — `NormalizedEvent` permits invalid identity/subject combinations
 

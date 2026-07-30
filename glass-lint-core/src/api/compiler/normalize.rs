@@ -38,18 +38,9 @@ use crate::api::{
 pub(crate) fn normalize_query_decl(decl: &QueryDecl) -> Result<NormalizedQuery, QueryCompileError> {
     let mut root = normalize_root(&decl.expression, decl.emission())?;
 
-    // Step 3: Canonicalize semantic paths and predicate sets.
-    canonicalize_normalized(&mut root);
-
-    // Step 8: Alpha-normalize — renumber slots to dense 0..n order independent
-    // of author-assigned VarId values.
-    let slot_map = alpha_renumber_slots(&mut root);
-    let primary_slot = slot_map
-        .get(&decl.emission.primary_var().get())
-        .copied()
-        .ok_or_else(|| QueryCompileError::MissingBinding {
-            primary_var: decl.emission.primary_var(),
-        })?;
+    // Step 8: Alpha-normalize — renumber object slots to dense 0..n order
+    // independent of author-assigned VarId values.
+    alpha_renumber_slots(&mut root);
 
     // Step 9: Compute exact plan requirements.
     let req = PlanRequirements::for_root(&root);
@@ -57,7 +48,6 @@ pub(crate) fn normalize_query_decl(decl: &QueryDecl) -> Result<NormalizedQuery, 
     let nq = NormalizedQuery {
         root,
         emission: NormalizedEmission {
-            primary_slot,
             kind: decl.emission.kind,
             symbol: decl.emission.symbol.clone(),
         },
@@ -68,59 +58,6 @@ pub(crate) fn normalize_query_decl(decl: &QueryDecl) -> Result<NormalizedQuery, 
     validate_normalized(&nq)?;
 
     Ok(nq)
-}
-
-/// Canonicalize semantic paths and predicate sets in a normalized root.
-///
-/// Ensures:
-/// - `SymbolPath` segments are trimmed and non-empty.
-/// - `IdentitySpec` rooted/global/heuristic names are trimmed.
-/// - Argument constraints are sorted by index then matcher payload.
-/// - Predicate alternatives are sorted and deduplicated.
-///
-/// The normalizer already produces canonical forms from construction-time
-/// validation (Package 2) and the per-node sorting (Package 3).  This
-/// function makes the step explicit and catches any edge cases.
-fn canonicalize_normalized(root: &mut NormalizedRoot) {
-    match root {
-        NormalizedRoot::Event(ev) => {
-            canonicalize_event(ev);
-        }
-        NormalizedRoot::Any(branches) => {
-            for b in &mut **branches {
-                canonicalize_normalized(b);
-            }
-        }
-        NormalizedRoot::Lifecycle(lc) => {
-            for src in &mut lc.sources {
-                canonicalize_event(src);
-            }
-        }
-    }
-}
-
-fn canonicalize_event(ev: &mut NormalizedEvent) {
-    // NormalizedEvent already stores canonical constraints from construction.
-    // Re-linearize and rebuild to guard against future inconsistent paths.
-    let old = std::mem::replace(
-        &mut ev.arguments,
-        CanonicalArgumentConstraints {
-            groups: Box::new([]),
-        },
-    );
-    let mut tmp: Vec<ArgumentConstraint> = Vec::new();
-    for group in &old.groups {
-        for m in &group.predicates {
-            tmp.push(ArgumentConstraint::new(group.index, m.clone()));
-        }
-    }
-    tmp.sort_by(|a, b| {
-        a.index()
-            .cmp(&b.index())
-            .then_with(|| a.predicate().cmp(b.predicate()))
-    });
-    tmp.dedup();
-    ev.arguments = CanonicalArgumentConstraints::from_canonicalized(&tmp);
 }
 
 /// Validate a fully normalized query.
@@ -139,11 +76,6 @@ fn validate_normalized(nq: &NormalizedQuery) -> Result<(), QueryCompileError> {
     {
         return Err(QueryCompileError::InternalInvariant {
             detail: "normalized variable slots are not dense".into(),
-        });
-    }
-    if !slots.contains(&nq.emission.primary_slot) {
-        return Err(QueryCompileError::InternalInvariant {
-            detail: "normalized emission slot is not bound".into(),
         });
     }
     if nq.emission.symbol.trim().is_empty() {
