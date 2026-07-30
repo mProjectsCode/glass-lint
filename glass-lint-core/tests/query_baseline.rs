@@ -620,7 +620,7 @@ fn baseline_operation_counts_are_stable() {
     assert_eq!(ops.scc_rounds(), 0);
     assert_eq!(ops.effect_projections(), 0);
     assert_eq!(ops.evidence(), 1);
-    assert_eq!(ops.max_live_alternatives(), 1);
+    assert_eq!(ops.max_live_alternatives(), 0);
     assert_eq!(ops.trace_nodes(), 0);
     assert_eq!(ops.trace_heads(), 0);
     assert_eq!(ops.coalescing_comparisons(), 0);
