@@ -14,7 +14,7 @@ The recommended crate decisions are specific rather than blanket additions: use 
 
 ### High severity
 
-#### READ-001 — Flow joins use a hash as semantic identity
+#### [x] READ-001 — Flow joins use a hash as semantic identity
 
 - **Severity:** High
 - **Fix Complexity** High
@@ -24,6 +24,8 @@ The recommended crate decisions are specific rather than blanket additions: use 
 `join_paths` drops a path whenever its 64-bit `DefaultHasher` fingerprint was seen, without an equality check. A collision can therefore combine distinct path-local alternatives, while computing the purportedly O(1) fingerprint still walks and hashes every alias and nested flow-state entry.
 
 Restore collision-safe equality by storing canonical state IDs or hash buckets followed by full semantic equality. Cache or incrementally maintain the hash if profiling justifies it, but never let the hash alone establish semantic equivalence. Add a test hasher that deliberately collides so the equality fallback is exercised deterministically.
+
+**Fix:** Flow joins now retain canonical semantic snapshots and compare them for equality, so distinct path-local states cannot be coalesced by a 64-bit hash collision. The flow-state unit tests also verify that distinct snapshots remain distinct.
 
 #### READ-002 — The global flow-evidence limit is bypassed for existing keys
 

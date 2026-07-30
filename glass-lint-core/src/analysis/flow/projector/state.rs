@@ -6,7 +6,6 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    hash::{Hash, Hasher},
 };
 
 use crate::{
@@ -212,22 +211,6 @@ impl FlowStateTable {
         self.states.len()
     }
 
-    /// Compute a fingerprint (hash) of the current aliases and states without
-    /// cloning the full maps.  Used by `join_paths` for O(1) duplicate-path
-    /// detection without comparing cloned maps.
-    pub(super) fn fingerprint(&self) -> u64 {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        for (value, object) in &self.aliases {
-            value.hash(&mut hasher);
-            object.hash(&mut hasher);
-        }
-        for (key, state) in &self.states {
-            key.hash(&mut hasher);
-            state.hash(&mut hasher);
-        }
-        hasher.finish()
-    }
-
     /// Return a deterministic semantic snapshot with object ids normalized to
     /// their first appearance in the alias table.  This intentionally omits
     /// checkpoints and allocation counters so repeated loop iterations can
@@ -333,6 +316,8 @@ pub(super) struct FlowEvidence<'a> {
     truncated: BTreeSet<ReportEvidenceKey>,
     /// Maximum evidence items emitted (sum of all counts).
     total_emitted: usize,
+    /// Whether an emission was rejected by the global limit.
+    limit_rejected: bool,
 }
 
 impl<'a> FlowEvidence<'a> {
@@ -342,6 +327,7 @@ impl<'a> FlowEvidence<'a> {
             emitted: BTreeMap::new(),
             truncated: BTreeSet::new(),
             total_emitted: 0,
+            limit_rejected: false,
         }
     }
 
@@ -359,8 +345,9 @@ impl<'a> FlowEvidence<'a> {
             self.truncated.insert(key);
             return false;
         }
-        if *count == 0 && self.total_emitted >= limit {
+        if self.total_emitted >= limit {
             self.truncated.insert(key);
+            self.limit_rejected = true;
             return false;
         }
         *count += 1;
@@ -388,6 +375,10 @@ impl<'a> FlowEvidence<'a> {
 
     pub(super) fn emitted_count(&self) -> usize {
         self.total_emitted
+    }
+
+    pub(super) fn limit_rejected(&self) -> bool {
+        self.limit_rejected
     }
 }
 
@@ -558,6 +549,30 @@ mod tests {
         assert_eq!(table.object_for(ValueId(1)), None);
         assert_eq!(table.object_for(ValueId(2)), None);
         assert_eq!(table.state_count(), 0);
+    }
+
+    #[test]
+    fn distinct_semantic_snapshots_remain_distinct() {
+        let mut table = FlowStateTable::new(100, 100);
+        table.bind(ValueId(1), ObjectId(1));
+        let first = table.semantic_snapshot();
+
+        table.bind(ValueId(2), ObjectId(2));
+        let second = table.semantic_snapshot();
+
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn evidence_limit_rejects_repeated_emissions_for_existing_key() {
+        let mut items = vec![Vec::new()];
+        let mut evidence = FlowEvidence::new(&mut items);
+        let key = ReportEvidenceKey::new(0, 0, ObjectId(1), FactId(1));
+
+        assert!(evidence.try_insert(key, 1, 256));
+        assert!(!evidence.try_insert(key, 1, 256));
+        assert_eq!(evidence.emitted_count(), 1);
+        assert!(evidence.limit_rejected());
     }
 
     #[test]

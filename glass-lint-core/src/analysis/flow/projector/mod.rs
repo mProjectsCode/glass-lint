@@ -18,7 +18,6 @@ mod transfer;
 use std::collections::{BTreeMap, BTreeSet};
 
 use glass_lint_datastructures::{Budget, NameTable};
-use hashbrown::HashSet;
 use state::{AbruptExit, ControlFrame, FlowEnvironment, FlowEvidence, FlowStateTable};
 
 use crate::{
@@ -552,7 +551,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         self.observe_alternatives(paths.len());
         paths.retain(FlowEnvironment::is_reachable);
         let mut unique = Vec::with_capacity(paths.len());
-        let mut seen_fingerprints: HashSet<u64> = HashSet::default();
+        let mut seen_snapshots = Vec::with_capacity(paths.len());
         let mut first = true;
         for path in paths {
             if !self.charge_operation() {
@@ -562,14 +561,15 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 self.alternatives_complete = false;
                 continue;
             }
-            let fp = self.flow_state.fingerprint();
-            if !seen_fingerprints.insert(fp) {
+            let snapshot = self.flow_state.semantic_snapshot();
+            if seen_snapshots.iter().any(|seen| seen == &snapshot) {
                 continue;
             }
             if !first {
                 self.coalescing_comparisons = self.coalescing_comparisons.saturating_add(1);
             }
             first = false;
+            seen_snapshots.push(snapshot);
             unique.push(path);
         }
         paths = unique;
