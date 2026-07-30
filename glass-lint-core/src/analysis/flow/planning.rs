@@ -22,7 +22,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub(super) struct BoundFlowPlan<'rules> {
     flows: BTreeMap<FlowId, &'rules CompiledObjectFlow>,
-    sources: BTreeMap<NamePath, Vec<FlowId>>,
+    sources: BTreeMap<NamePath, Vec<BoundSource>>,
     sinks: BTreeMap<NamePath, Vec<FlowId>>,
     /// Pre-resolved requirement member paths per flow, indexed by
     /// requirement position.  `None` for PropertyWrite requirements
@@ -32,6 +32,13 @@ pub(super) struct BoundFlowPlan<'rules> {
     /// position.  Each entry lists every member-call chain that the
     /// compiled sink matches.
     sink_members: BTreeMap<FlowId, Vec<Vec<NamePath>>>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct BoundSource {
+    pub(super) flow: FlowId,
+    pub(super) arguments: Vec<crate::api::rule::ArgumentConstraint>,
+    pub(super) rooted: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -74,7 +81,7 @@ impl<'rules> BoundFlowPlan<'rules> {
         names: &NameTable,
     ) -> Self {
         let mut flows = BTreeMap::new();
-        let mut sources: BTreeMap<NamePath, Vec<FlowId>> = BTreeMap::new();
+        let mut sources: BTreeMap<NamePath, Vec<BoundSource>> = BTreeMap::new();
         let mut sinks: BTreeMap<NamePath, Vec<FlowId>> = BTreeMap::new();
         let mut req_members = BTreeMap::new();
         let mut sink_members = BTreeMap::new();
@@ -85,7 +92,11 @@ impl<'rules> BoundFlowPlan<'rules> {
 
             for source in &flow.sources {
                 if let Some(member) = names.lookup_path(&source.member_call) {
-                    sources.entry(member).or_default().push(id);
+                    sources.entry(member).or_default().push(BoundSource {
+                        flow: id,
+                        arguments: source.arguments.clone(),
+                        rooted: source.is_rooted,
+                    });
                 }
             }
 
@@ -102,7 +113,20 @@ impl<'rules> BoundFlowPlan<'rules> {
             sink_members.insert(id, paths.sink_members);
         }
 
-        for ids in sources.values_mut().chain(sinks.values_mut()) {
+        for candidates in sources.values_mut() {
+            candidates.sort_by(|left, right| {
+                left.flow
+                    .cmp(&right.flow)
+                    .then_with(|| left.rooted.cmp(&right.rooted))
+                    .then_with(|| left.arguments.cmp(&right.arguments))
+            });
+            candidates.dedup_by(|left, right| {
+                left.flow == right.flow
+                    && left.rooted == right.rooted
+                    && left.arguments == right.arguments
+            });
+        }
+        for ids in sinks.values_mut() {
             ids.sort_unstable();
             ids.dedup();
         }
@@ -121,8 +145,8 @@ impl<'rules> BoundFlowPlan<'rules> {
         self.flows.get(&id).copied()
     }
 
-    /// Look up flows whose source chain matches `member_call`.
-    pub(super) fn source_ids(&self, member_call: &NamePath) -> Option<&[FlowId]> {
+    /// Look up executable source candidates by their bound member chain.
+    pub(super) fn source_candidates(&self, member_call: &NamePath) -> Option<&[BoundSource]> {
         self.sources.get(member_call).map(Vec::as_slice)
     }
 

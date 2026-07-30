@@ -153,7 +153,7 @@ The resolver cache stores `Arc<ResolvedValue>`, and literals, unknowns, fresh ob
 
 Store resolved records in an arena and cache a `ResolvedValueId`, or return owned narrow records for uncached leaves while cache entries use stable indices. Make identity-only calls return `ValueId` without constructing an archived record. Measure allocations per AST node before and after, and retain cycle/error representation as explicit values rather than shared heap objects.
 
-#### READ-012 — The bound flow plan still reinterprets declarations in transfer loops
+#### [x] READ-012 — The bound flow plan still reinterprets declarations in transfer loops
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -163,6 +163,8 @@ Store resolved records in an arena and cache a `ResolvedValueId`, or return owne
 `BoundFlowPlan` indexes only `NamePath -> Vec<FlowId>` and keeps parallel per-flow vectors. Source matching then re-walks all sources and repeats `lookup_path`; sink and requirement handling scan declarations, linearly call `contains`, clone summaries, and allocate several `Vec`s for each event.
 
 Bind directly executable source, requirement, and sink candidates keyed by chain/property, including rootedness, argument selectors, flow ID, and declaration index. Replace tiny event-local vectors with streaming loops or the existing `SmallVec` dependency, and replace `CompiledObjectSinkArguments::present_indices`'s boxed iterator with a concrete enum iterator. Keep one canonical bound representation shared by local summaries and cross projection.
+
+Fix: bound source candidates now retain their resolved chain, flow ID, rootedness, and argument constraints in the plan. Source transfer consumes those executable candidates directly, deduplicating flow IDs once at the bound-plan boundary instead of re-resolving and re-walking source declarations per call.
 
 #### [x] READ-013 — Flow exhaustion is inferred from full capacity instead of failed work
 

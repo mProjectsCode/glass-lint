@@ -63,30 +63,23 @@ impl ObjectFlowProjector<'_, '_, '_> {
         source_fact: FactId,
         rooted: bool,
     ) -> Option<(ObjectId, Vec<FlowState>)> {
-        let ids = self.plan.source_ids(chain)?;
-        let matching: SmallVec<[FlowId; 8]> = ids
+        let candidates = self.plan.source_candidates(chain)?;
+        let mut matching: SmallVec<[FlowId; 8]> = candidates
             .iter()
-            .copied()
-            .filter(|id| {
-                self.plan.get(*id).is_some_and(|flow| {
-                    flow.sources.iter().any(|source| {
-                        self.names
-                            .lookup_path(&source.member_call)
-                            .is_some_and(|member| member == *chain)
-                            && source.is_rooted == rooted
-                            && source.arguments.iter().all(|matcher| {
-                                args.get(matcher.index()).is_some_and(|arg| {
-                                    matcher.predicate().matches(
-                                        arg,
-                                        self.names,
-                                        self.stream.values(),
-                                    )
-                                })
-                            })
+            .filter(|candidate| {
+                candidate.rooted == rooted
+                    && candidate.arguments.iter().all(|matcher| {
+                        args.get(matcher.index()).is_some_and(|arg| {
+                            matcher
+                                .predicate()
+                                .matches(arg, self.names, self.stream.values())
+                        })
                     })
-                })
             })
+            .map(|candidate| candidate.flow)
             .collect();
+        matching.sort_unstable();
+        matching.dedup();
         if matching.is_empty() {
             return None;
         }
