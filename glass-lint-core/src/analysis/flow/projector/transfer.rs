@@ -5,10 +5,14 @@
 //! later sinks cannot inherit stale state.
 
 use glass_lint_datastructures::NamePath;
+use smallvec::SmallVec;
 
-use crate::analysis::flow::{
-    effect::CallEffectRef,
-    projector::{CallArgInfo, FactId, FlowState, ObjectFlowProjector, ObjectId, ValueId},
+use crate::analysis::{
+    flow::{
+        effect::CallEffectRef,
+        projector::{CallArgInfo, FactId, FlowState, ObjectFlowProjector, ObjectId, ValueId},
+    },
+    model::flow::FlowId,
 };
 
 impl ObjectFlowProjector<'_, '_, '_> {
@@ -60,7 +64,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
         rooted: bool,
     ) -> Option<(ObjectId, Vec<FlowState>)> {
         let ids = self.plan.source_ids(chain)?;
-        let matching = ids
+        let matching: SmallVec<[FlowId; 8]> = ids
             .iter()
             .copied()
             .filter(|id| {
@@ -82,7 +86,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     })
                 })
             })
-            .collect::<Vec<_>>();
+            .collect();
         if matching.is_empty() {
             return None;
         }

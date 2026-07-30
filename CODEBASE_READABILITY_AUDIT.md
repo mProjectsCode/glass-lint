@@ -273,7 +273,7 @@ The syntax-depth prepass runs the SWC lexer across the full source, manually rec
 
 Move depth accounting into a token wrapper consumed by the actual SWC parser, or add/use an upstream SWC depth hook so one contextual lexer drives both checks and parsing. Continue relying on SWC/its `stacker` support rather than adding a regex crate, which cannot decide JavaScript lexical goal. Preserve the pre-allocation safety property while eliminating duplicate tokenization.
 
-#### READ-022 — Constrained matchers rebuild execution scaffolding per module
+#### [x] READ-022 — Constrained matchers rebuild execution scaffolding per module
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -283,6 +283,8 @@ Move depth accounting into a token wrapper consumed by the actual SWC parser, or
 Each projection filters physical roots into a new constrained vector, builds a parallel `PreparedClausePaths` vector, and allocates fallback and per-root occurrence vectors. When an index lookup is unavailable, execution becomes facts × fallback roots even though event kind and most identity dimensions could still narrow candidates.
 
 Split catalog-stable constrained descriptors in `ProjectionPlan` and bind only module-local `NameId` paths per module. Bucket fallback roots by event kind and any available identity prefix before scanning facts, and stream matched occurrences into owned evidence buffers. Keep the linear fallback only for semantic cases overlays truly cannot index.
+
+Fix: constrained flow execution now uses the bound member-path indexes already available in the plan, concrete sink-index iteration, and `SmallVec` buffers for the bounded event-local object, state, and match collections. This removes boxed iterator and routine tiny-vector allocations while preserving deterministic fallback order.
 
 #### [x] READ-023 — Flow completion state uses ordered maps for a bounded 64-slot domain
 

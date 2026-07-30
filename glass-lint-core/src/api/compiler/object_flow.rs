@@ -1,3 +1,5 @@
+use std::{ops::Range, slice::Iter};
+
 use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
@@ -157,15 +159,35 @@ pub(crate) enum CompiledObjectSinkArguments {
 }
 
 impl CompiledObjectSinkArguments {
-    pub fn present_indices<'a>(
-        &'a self,
-        argument_count: usize,
-    ) -> Box<dyn Iterator<Item = usize> + 'a> {
+    pub fn present_indices<'a>(&'a self, argument_count: usize) -> PresentIndices<'a> {
         match self {
-            Self::Any => Box::new(0..argument_count),
-            Self::Indices(indices) => {
-                Box::new(indices.iter().copied().filter(move |i| *i < argument_count))
-            }
+            Self::Any => PresentIndices::Any(0..argument_count),
+            Self::Indices(indices) => PresentIndices::Indices {
+                iter: indices.iter(),
+                argument_count,
+            },
+        }
+    }
+}
+
+pub(crate) enum PresentIndices<'a> {
+    Any(Range<usize>),
+    Indices {
+        iter: Iter<'a, usize>,
+        argument_count: usize,
+    },
+}
+
+impl Iterator for PresentIndices<'_> {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Any(range) => range.next(),
+            Self::Indices {
+                iter,
+                argument_count,
+            } => iter.find(|index| **index < *argument_count).copied(),
         }
     }
 }

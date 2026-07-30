@@ -5,6 +5,7 @@
 //! deduplicated by flow/object/event before the bounded result is returned.
 
 use glass_lint_datastructures::NamePath;
+use smallvec::SmallVec;
 
 use crate::{
     analysis::{
@@ -34,7 +35,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
         args: &[CallArgInfo],
         event: FactId,
     ) {
-        let objects: Vec<ObjectId> = match receiver {
+        let objects: SmallVec<[ObjectId; 4]> = match receiver {
             Some(value) => self.object_for(value).into_iter().collect(),
             None => self.flow_state.objects().collect(),
         };
@@ -84,12 +85,12 @@ impl ObjectFlowProjector<'_, '_, '_> {
         let Some(flow_ids) = self.plan.sink_ids(chain) else {
             return;
         };
-        let flow_ids: Vec<FlowId> = flow_ids.to_vec();
+        let flow_ids: SmallVec<[FlowId; 8]> = flow_ids.iter().copied().collect();
         for (argument_index, argument) in args.iter().enumerate() {
             let Some(object) = self.object_for(argument.value) else {
                 continue;
             };
-            let pairs: Vec<(FlowStateKey, FlowId)> = self
+            let pairs: SmallVec<[(FlowStateKey, FlowId); 8]> = self
                 .flow_state
                 .states_for(object)
                 .filter(|(key, _)| flow_ids.contains(&key.flow))
@@ -100,7 +101,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     continue;
                 };
                 let sink_members = self.plan.sink_member_calls(flow_id);
-                let matching_sinks: Vec<usize> =
+                let matching_sinks: SmallVec<[usize; 4]> =
                     flow.sinks
                         .iter()
                         .enumerate()
