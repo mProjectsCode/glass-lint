@@ -135,9 +135,8 @@ impl LifecycleEventBuilder {
         Ok(self)
     }
 
-    #[allow(clippy::unnecessary_wraps)]
-    pub fn build(self) -> Result<LifecycleEvent, QueryBuildError> {
-        Ok(LifecycleEvent { kind: self.event })
+    pub fn build(self) -> LifecycleEvent {
+        LifecycleEvent { kind: self.event }
     }
 }
 
@@ -160,7 +159,7 @@ impl IntoLifecycleEvent for Result<LifecycleEvent, QueryBuildError> {
 
 impl IntoLifecycleEvent for LifecycleEventBuilder {
     fn into_lifecycle_event(self) -> Result<LifecycleEvent, QueryBuildError> {
-        self.build()
+        Ok(self.build())
     }
 }
 
@@ -262,10 +261,10 @@ impl LifecycleCompletion {
         &self.kind
     }
 
-    pub fn configuration() -> Result<Self, QueryBuildError> {
-        Ok(Self {
+    pub fn configuration() -> Self {
+        Self {
             kind: LifecycleCompletionKind::Configuration,
-        })
+        }
     }
 
     pub fn any_sink<I, S>(sinks: I) -> Result<Self, QueryBuildError>
@@ -322,6 +321,23 @@ impl LifecycleCompletion {
         Ok(Self {
             kind: LifecycleCompletionKind::AllSinks(sinks),
         })
+    }
+}
+
+/// Fallible completion input accepted by lifecycle query builders.
+pub trait IntoLifecycleCompletion {
+    fn into_lifecycle_completion(self) -> Result<LifecycleCompletion, QueryBuildError>;
+}
+
+impl IntoLifecycleCompletion for LifecycleCompletion {
+    fn into_lifecycle_completion(self) -> Result<LifecycleCompletion, QueryBuildError> {
+        Ok(self)
+    }
+}
+
+impl IntoLifecycleCompletion for Result<LifecycleCompletion, QueryBuildError> {
+    fn into_lifecycle_completion(self) -> Result<LifecycleCompletion, QueryBuildError> {
+        self
     }
 }
 
@@ -446,8 +462,8 @@ impl LifecycleQueryBuilder {
         self
     }
 
-    pub fn completion(mut self, completion: Result<LifecycleCompletion, QueryBuildError>) -> Self {
-        let completion = match completion {
+    pub fn completion<C: IntoLifecycleCompletion>(mut self, completion: C) -> Self {
+        let completion = match completion.into_lifecycle_completion() {
             Ok(completion) => completion,
             Err(error) => {
                 self.invalid_operation = Some(error);
@@ -662,8 +678,7 @@ mod tests {
             .unwrap()
             .arg(0, ValueMatcher::static_string().equals("load"))
             .unwrap()
-            .build()
-            .unwrap();
+            .build();
         assert!(
             matches!(event.kind(), LifecycleEventKind::MemberCall { member, .. } if member == "addEventListener")
         );
@@ -725,7 +740,7 @@ mod tests {
 
     #[test]
     fn lifecycle_completion_configuration_has_no_sinks() {
-        let completion = LifecycleCompletion::configuration().unwrap();
+        let completion = LifecycleCompletion::configuration();
         assert!(matches!(
             completion.kind(),
             LifecycleCompletionKind::Configuration

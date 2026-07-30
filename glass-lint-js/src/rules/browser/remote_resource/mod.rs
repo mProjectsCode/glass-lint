@@ -81,13 +81,13 @@ fn remote_element_query(
         )
         .condition(LifecycleCondition::any_of([
             LifecycleEvent::property_write(property, remote_url.clone()),
-            LifecycleEvent::member_call("setAttribute")
+            Ok(LifecycleEvent::member_call("setAttribute")
                 .unwrap()
                 .arg(0, ValueMatcher::static_string().equals(property))
                 .unwrap()
                 .arg(1, remote_url)
                 .unwrap()
-                .build(),
+                .build()),
         ]))
         .completion(LifecycleCompletion::any_sink(
             [

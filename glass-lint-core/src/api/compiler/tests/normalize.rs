@@ -85,7 +85,7 @@ fn lifecycle_normalizes_to_lifecycle_root() {
             )
             .unwrap(),
         ),
-        Some(crate::api::rule::LifecycleCompletion::configuration().unwrap()),
+        Some(crate::api::rule::LifecycleCompletion::configuration()),
     );
     let d = QueryDecl {
         expression: QueryExpr::lifecycle(lc),
@@ -439,7 +439,7 @@ fn lifecycle_has_flow_requirements() {
             )
             .unwrap(),
         ),
-        Some(crate::api::rule::LifecycleCompletion::configuration().unwrap()),
+        Some(crate::api::rule::LifecycleCompletion::configuration()),
     );
     let d = QueryDecl {
         expression: QueryExpr::lifecycle(lc),
@@ -490,7 +490,7 @@ fn lifecycle_is_not_flattened_or_sorted() {
             )
             .unwrap(),
         ),
-        Some(crate::api::rule::LifecycleCompletion::configuration().unwrap()),
+        Some(crate::api::rule::LifecycleCompletion::configuration()),
     );
     let d = QueryDecl {
         expression: QueryExpr::lifecycle(lc),
@@ -890,7 +890,7 @@ fn distinct_lifecycle_conditions_never_compare_as_same_ordering_key() {
             )
             .unwrap(),
         ),
-        Some(crate::api::rule::LifecycleCompletion::configuration().unwrap()),
+        Some(crate::api::rule::LifecycleCompletion::configuration()),
     );
 
     let lc_b = lifecycle(
@@ -902,7 +902,7 @@ fn distinct_lifecycle_conditions_never_compare_as_same_ordering_key() {
             )
             .unwrap(),
         ),
-        Some(crate::api::rule::LifecycleCompletion::configuration().unwrap()),
+        Some(crate::api::rule::LifecycleCompletion::configuration()),
     );
 
     let d_a = QueryDecl {

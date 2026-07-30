@@ -26,13 +26,13 @@ pub fn rule() -> Rule {
                         "type",
                         ValueMatcher::static_string().equals("file"),
                     ),
-                    LifecycleEvent::member_call("setAttribute")
+                    Ok(LifecycleEvent::member_call("setAttribute")
                         .unwrap()
                         .arg(0, ValueMatcher::static_string().equals("type"))
                         .unwrap()
                         .arg(1, ValueMatcher::static_string().equals("file"))
                         .unwrap()
-                        .build(),
+                        .build()),
                 ]))
                 .completion(LifecycleCompletion::configuration())
                 .build(),

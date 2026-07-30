@@ -297,7 +297,7 @@ Use a completion `u64` mask plus compact per-index trace evidence, using the exi
 
 ### Low severity
 
-#### READ-025 — Lifecycle APIs retain compatibility-shaped always-successful `Result`s
+#### [x] READ-025 — Lifecycle APIs retain compatibility-shaped always-successful `Result`s
 
 - **Severity:** Low
 - **Fix Complexity** Low
@@ -307,6 +307,8 @@ Use a completion `u64` mask plus compact per-index trace evidence, using the exi
 `LifecycleEventBuilder::build` is explicitly allowed past `clippy::unnecessary_wraps`, and `LifecycleCompletion::configuration` also returns `Result` despite having no failure path. These signatures propagate extra `unwrap`/adapter plumbing and preserve the shape of an earlier builder API.
 
 Return the value directly and let fallible inputs remain accepted through focused `IntoLifecycleEvent`/completion adapters where useful. Update all callers in the same breaking change, as repository policy permits. Do not add a compatibility wrapper solely to retain the old return type.
+
+Fix: `LifecycleEventBuilder::build` and `LifecycleCompletion::configuration` now return their infallible values directly. `IntoLifecycleEvent` and the new `IntoLifecycleCompletion` adapter preserve fallible authoring inputs at the query-builder boundary, so callers no longer unwrap an always-successful result.
 
 ## Systemic Themes
 
