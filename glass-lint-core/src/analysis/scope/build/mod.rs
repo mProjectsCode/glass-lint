@@ -10,7 +10,7 @@
 
 use glass_lint_datastructures::{NameId, NameTable};
 use hashbrown::{HashMap, HashSet};
-use history::AssignmentEnvironment;
+use history::{AssignmentEnvironment, Cursor};
 use smol_str::SmolStr;
 use swc_common::BytePos;
 
@@ -25,7 +25,7 @@ mod assignments;
 mod bindings;
 mod callbacks;
 mod collector;
-pub(super) mod compact_pat;
+mod compact_pat;
 mod constants;
 mod freeze;
 mod history;
@@ -100,13 +100,16 @@ pub(super) struct ScopeCollector<'a> {
     /// function declaration into source-order collection of its parent.
     function_checkpoints: Vec<(CollectorCheckpoint, u32, usize)>,
     reachable: bool,
+    alternative_limit: usize,
     #[cfg(test)]
     scope_lookups: usize,
 }
 
+/// A cursor into the assignment environment's mutation log, with write-set
+/// and reachability for restore or join.
 #[derive(Debug, Clone)]
 struct CollectorCheckpoint {
-    environment: AssignmentEnvironment,
+    cursor: Cursor,
     writes: std::collections::BTreeSet<ScopedName>,
     reachable: bool,
 }

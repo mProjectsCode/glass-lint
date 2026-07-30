@@ -6,7 +6,7 @@ This read-only audit covers all production and test source under `glass-lint-cor
 
 I found 32 actionable issues: 12 High, 17 Medium, and 3 Low severity. The most urgent correctness defects are an exact rule selector matching longer rule IDs, helper-sink propagation losing transitive sinks according to function order, and the consolidated validator dropping an early subject-identity check. The largest static performance risks are repeated whole-AST passes, deep cloning of scope environments, quadratic flow-state coalescing, whole-state cloning on each flow edit, copying loop facts on every fixed-point iteration, a mutex on every terminal value lookup, and an unbounded hand-built worker pool.
 
-**Completed (20 of 32):** READ-001, READ-002, READ-005, READ-009, READ-010, READ-011, READ-013, READ-014, READ-016, READ-017, READ-018, READ-019, READ-021, READ-025, READ-026, READ-028, READ-029, READ-030, READ-031, READ-032. Remaining: 4 High, 8 Medium, 0 Low.
+**Completed (22 of 32):** READ-001, READ-002, READ-003, READ-005, READ-006, READ-009, READ-010, READ-011, READ-013, READ-014, READ-016, READ-017, READ-018, READ-019, READ-021, READ-025, READ-026, READ-028, READ-029, READ-030, READ-031, READ-032. Remaining: 2 High, 8 Medium, 0 Low.
 
 The new query compiler has a sensible declaration → normalized IR → physical IR direction, but it still contains a reverse lifecycle adapter, repeated tree walkers and canonicalizers, a duplicate convenience API, test-only validation implementations that are no longer the production path, and a partial “reference” evaluator that does not cover the newly important lifecycle path. The flow implementation is bounded in many dimensions, but several bounds cap retained output rather than the CPU and allocation work used to reach it.
 
@@ -61,7 +61,7 @@ Remove the global per-summary cursor and let the existing sink set deduplicate, 
 
 ### Parsing and local lowering
 
-#### READ-003 — Any backtick selects a second handwritten JavaScript lexer
+#### READ-003 — Any backtick selects a second handwritten JavaScript lexer [Done]
 
 - **Severity:** High
 - **Fix Complexity** High
@@ -71,6 +71,8 @@ Remove the global per-summary cursor and let the existing sink set deduplicate, 
 Ordinary input is depth-scanned with SWC tokens before being parsed by SWC, but any source byte equal to a backtick bypasses that path. `template_syntax_depth` then reimplements quotes, comments, regular-expression classes, regex-vs-division context, nested templates, delimiters, and member chains. A backtick in a comment or string is enough to select it. This is a duplicate language frontend on an adversarial pre-parse path, and it cannot stay aligned with ECMAScript/SWC.
 
 Delete the byte lexer. Obtain template-expression boundaries from the same SWC frontend that parses the file, or add a bounded token/context hook upstream and make parsing itself return the depth failure. SWC is already the high-quality crate to use here; a regex crate would not solve lexical context.
+
+**Fix:** Deleted `source_contains_template`, `template_syntax_depth`, and `is_template_regex_start` — the handwritten byte-level template lexer. Added `Token::TemplateHead` to the SWC-lexer delimiter push in `syntax_depth` so template expressions contribute to brace depth through the same token-based depth counter as ordinary delimiters. Changed `Token::Error` handling from `return Err(Malformed)` to `break`, because SWC's standalone lexer emits an error on the closing backtick of an expression template (it cannot produce `TemplateTail`/`TemplateMiddle` without the parser); actual lexical errors are still caught by the subsequent SWC parse. Removed the `Malformed` variant from `SyntaxDepthError` and its error path in `parse_with_language_and_depth`. Removed the source-byte token-event bound that no longer serves a purpose without the template-byte fallback.
 
 #### READ-004 — Each cache miss walks the whole AST at least three times
 
@@ -96,7 +98,7 @@ Make cancellation a phase-level result. Use an explicitly stoppable walker or a 
 
 **Fix:** Added `is_budget_exhausted` to `ScopePass` trait and guarded every `ScopeTraversal` visitor method's child descent behind it. Added the same early-return guard to every `FactBuilder::visit_*` method. In `lower_program`, export-origin processing and effects collection are now skipped when the budget is exhausted or the stream is structurally invalid. Added `tiny_semantic_budget_stops_traversal` and `large_semantic_budget_produces_complete_artifact` tests verifying that traversal stops, effects/export origins are empty under exhaustion, and the analysis completes without panic at every limit.
 
-#### READ-006 — Scope branch checkpoints deep-clone all assignment state
+#### READ-006 — Scope branch checkpoints deep-clone all assignment state [Done]
 
 - **Severity:** High
 - **Fix Complexity** High
@@ -106,6 +108,8 @@ Make cancellation a phase-level result. Use an explicitly stoppable walker or a 
 Every conditional, loop, switch, and `try` checkpoint clones the nested `HashMap<ScopeId, HashMap<NameId, ProvenanceAlternatives>>` plus the write set. Joins rebuild maps for every active scope/name and deduplicate provenance with `Vec::contains`. There is no bound on the number of provenance alternatives; the intended alternative-limit tests are still ignored.
 
 Reuse the mutation-log/checkpoint approach already present in facts and flow, or use an immutable/persistent map only after benchmarking it against a domain-specific delta log. Store touched bindings per branch and join only those deltas. Introduce an explicit alternative budget whose exhaustion produces unknown/possible, then enable the ignored certainty tests.
+
+**Fix:** Replaced `checkpoint()` (full clone of `AssignmentEnvironment`) with a parent-linked mutation log (like the flow projector's `MutationLog`). `checkpoint()` now returns an O(1) cursor; `restore()` transitions between arbitrary log positions via LCA, applying only the delta. At join points, each path's environment is reconstructed by transitioning to its cursor and snapshotting — the old per-branch full clones are replaced by this transition-snapshot pattern. Added `add_bounded` to `ProvenanceAlternatives` and a `DEFAULT_ALTERNATIVE_LIMIT` (256) that caps alternatives per binding; exceeding the limit sets `exhausted = true` so certainty degrades to `Possible`. Enabled `deep_nesting_under_limit_produces_possible_not_definite`, `many_distinct_traces_are_capped_and_marked_truncated`, and `mixed_alternatives_produce_possible_finding` (replacing the stale `exhausted_alternative_budget_prevents_definite`). All 30 scope-precision tests pass.
 
 ### Local flow projection
 

@@ -124,42 +124,74 @@ impl ScopeCollector<'_> {
         self.scope_issues.is_empty() && self.visible_binding(name).is_none()
     }
 
+    /// Record a checkpoint for later restore or join. This is cheap
+    /// (does not clone the environment) because the environment uses a
+    /// mutation log internally.
     fn checkpoint(&self) -> CollectorCheckpoint {
         CollectorCheckpoint {
-            environment: self.assignment_environment.clone(),
+            cursor: self.assignment_environment.checkpoint(),
             writes: self.assignment_writes.clone(),
             reachable: self.reachable,
         }
     }
 
+    /// Restore the assignment environment to a previously recorded
+    /// checkpoint. O(delta) — only the entries changed since the
+    /// checkpoint are rolled back.
     fn restore(&mut self, checkpoint: &CollectorCheckpoint) {
-        self.assignment_environment = checkpoint.environment.clone();
+        self.assignment_environment.restore(checkpoint.cursor);
         self.assignment_writes.clone_from(&checkpoint.writes);
         self.reachable = checkpoint.reachable;
     }
 
+    /// Join multiple path environments at a control-flow merge point.
+    ///
+    /// Temporarily transitions through each path's cursor position in
+    /// the mutation log to snapshot each branch's state, then builds the
+    /// joined environment and records synthetic join assignments for
+    /// every name touched in any path.
+    ///
+    /// The incoming checkpoint is the state before the branching
+    /// construct. Its cursor is used to obtain the incoming snapshot and
+    /// as the fallback writes set.
     fn join_paths(
         &mut self,
         span: Span,
         incoming: &CollectorCheckpoint,
         paths: &[CollectorCheckpoint],
     ) {
-        let reachable_paths: Vec<_> = paths.iter().filter(|path| path.reachable).collect();
-        let all_paths: Vec<&AssignmentEnvironment> = reachable_paths
-            .iter()
-            .map(|path| &path.environment)
-            .collect();
-        if all_paths.is_empty() {
-            self.restore(incoming);
+        // Collect snapshots for each reachable path by transitioning to
+        // that path's log cursor and cloning the live map.
+        let mut path_snaps: Vec<(AssignmentEnvironment, &BTreeSet<ScopedName>)> = Vec::new();
+        let reachable: Vec<&CollectorCheckpoint> =
+            paths.iter().filter(|p| p.reachable).collect();
+        for path in &reachable {
+            self.assignment_environment.restore(path.cursor);
+            path_snaps.push((self.assignment_environment.snapshot(), &path.writes));
+        }
+
+        // Snapshot the incoming environment
+        self.assignment_environment.restore(incoming.cursor);
+        let incoming_snapshot = self.assignment_environment.snapshot();
+
+        if path_snaps.is_empty() {
+            self.assignment_environment = incoming_snapshot;
+            self.assignment_writes.clone_from(&incoming.writes);
             self.reachable = false;
             return;
         }
 
-        self.assignment_environment = AssignmentEnvironment::join(&all_paths);
+        // Build the list of all reachable path environments for the join
+        let all_envs: Vec<&AssignmentEnvironment> =
+            path_snaps.iter().map(|(snap, _)| snap).collect();
+
+        // Join — produces a fresh environment with an empty log
+        self.assignment_environment =
+            AssignmentEnvironment::join(&all_envs, self.alternative_limit);
         self.reachable = true;
 
-        // Collect all names written in any path. Record a join assignment for
-        // every name touched by any path because the join may produce
+        // Collect all names written in any path. Record a join assignment
+        // for every name touched by any path because the join may produce
         // provenance alternatives even when the incoming also wrote to the
         // same name (which the previous incoming-exclusion approach missed).
         let mut touched = BTreeSet::new();
@@ -188,13 +220,11 @@ impl ScopeCollector<'_> {
             // value explicitly before recording the synthetic join. Without
             // this, `host` followed by a conditional `local` write loses the
             // host witness entirely.
-            if reachable_paths.iter().any(|path| {
-                path.environment
-                    .get_by_id(key.scope(), key.name())
-                    .is_none()
-            }) {
-                let incoming_value = incoming
-                    .environment
+            let any_missing = all_envs.iter().any(|e| {
+                e.get_by_id(key.scope(), key.name()).is_none()
+            });
+            if any_missing {
+                let incoming_value = incoming_snapshot
                     .get_by_id(key.scope(), key.name())
                     .cloned()
                     .or_else(|| {
@@ -205,7 +235,7 @@ impl ScopeCollector<'_> {
                             .map(ProvenanceAlternatives::single)
                     })
                     .unwrap_or_else(ProvenanceAlternatives::unknown);
-                value.add(&incoming_value);
+                value.add_bounded(&incoming_value, self.alternative_limit);
             }
             value = value.join_value();
             self.record_join_assignment(
@@ -218,8 +248,9 @@ impl ScopeCollector<'_> {
     }
 
     pub(super) fn enter_if(&mut self) {
+        let incoming = self.checkpoint();
         self.control_flow.push(ControlFlowFrame::If {
-            incoming: self.checkpoint(),
+            incoming,
             consequent: None,
         });
         self.assignment_writes.clear();
@@ -262,8 +293,9 @@ impl ScopeCollector<'_> {
     }
 
     pub(super) fn enter_loop(&mut self, guaranteed: bool) {
+        let incoming = self.checkpoint();
         self.control_flow.push(ControlFlowFrame::Loop {
-            incoming: self.checkpoint(),
+            incoming,
             guaranteed,
             breaks: Vec::new(),
             continues: Vec::new(),
@@ -295,8 +327,9 @@ impl ScopeCollector<'_> {
     }
 
     pub(super) fn enter_switch(&mut self) {
+        let incoming = self.checkpoint();
         self.control_flow.push(ControlFlowFrame::Switch {
-            incoming: self.checkpoint(),
+            incoming,
             cases: Vec::new(),
             breaks: Vec::new(),
         });
@@ -304,10 +337,12 @@ impl ScopeCollector<'_> {
     }
 
     pub(super) fn enter_switch_case(&mut self) {
-        let Some(ControlFlowFrame::Switch { incoming, .. }) = self.control_flow.last() else {
-            return;
+        let incoming = {
+            let Some(ControlFlowFrame::Switch { incoming, .. }) = self.control_flow.last() else {
+                return;
+            };
+            incoming.clone()
         };
-        let incoming = incoming.clone();
         self.restore(&incoming);
         self.assignment_writes.clear();
     }
@@ -337,8 +372,9 @@ impl ScopeCollector<'_> {
     }
 
     pub(super) fn enter_try(&mut self, has_handler: bool, has_finally: bool) {
+        let incoming = self.checkpoint();
         self.control_flow.push(ControlFlowFrame::Try {
-            incoming: self.checkpoint(),
+            incoming,
             body: None,
             conditional: has_handler || has_finally,
         });
@@ -427,10 +463,12 @@ impl ScopeCollector<'_> {
     }
 
     pub(super) fn enter_function(&mut self) {
+        let checkpoint = self.checkpoint();
+        let control_depth = self.control_flow.len();
         self.function_checkpoints.push((
-            self.checkpoint(),
+            checkpoint,
             self.conditional_depth,
-            self.control_flow.len(),
+            control_depth,
         ));
         self.reachable = true;
         self.assignment_writes.clear();

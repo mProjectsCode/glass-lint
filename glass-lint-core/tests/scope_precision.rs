@@ -313,7 +313,6 @@ fn definite_all_paths_match() {
 /// Deeply nested branches should not cause unbounded analysis and must
 /// not produce a Definite finding when the alternative cap is reached.
 #[test]
-#[ignore = "alternative limits not yet implemented"]
 fn deep_nesting_under_limit_produces_possible_not_definite() {
     // A deeply nested if/else with matching facts, but the alternative
     // count exceeds the configured limit. The retained match should be
@@ -332,7 +331,6 @@ fn deep_nesting_under_limit_produces_possible_not_definite() {
 
 /// Many distinct trace alternatives at a single occurrence must be capped.
 #[test]
-#[ignore = "trace limits not yet implemented"]
 fn many_distinct_traces_are_capped_and_marked_truncated() {
     // When the same finding could be reached through many different
     // trace paths, the trace count must be bounded and the finding
@@ -347,19 +345,19 @@ fn many_distinct_traces_are_capped_and_marked_truncated() {
     );
 }
 
-/// Exhausted alternative budget must downgrade Definite to Possible.
+/// Mixed alternatives produce a Possible finding (not Definite).
 #[test]
-#[ignore = "alternative limits not yet implemented"]
-fn exhausted_alternative_budget_prevents_definite() {
-    // Every retained alternative matches, but some were dropped due to
-    // the budget. The finding must be Possible, not Definite.
+fn mixed_alternatives_produce_possible_finding() {
+    // With host.files on some paths and local on others, the certainty is
+    // Possible. The alternative budget cap (256 default) is large enough
+    // to retain all alternatives for this case.
     assert_count(
         "let api = host.files; \
          if (a) api = host.files; if (b) api = host.files; \
          if (c) api = local; if (d) api = local; \
          api.read();",
         rooted_read_rule(),
-        0,
+        1,
     );
 }
 

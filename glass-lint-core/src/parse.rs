@@ -128,32 +128,15 @@ pub fn parse_with_language_and_depth(
     let file =
         source_map.new_source_file(FileName::Custom(filename.into()).into(), source.to_owned());
     let syntax = syntax_for(language);
-    match syntax_depth(&file, syntax, max_syntax_depth) {
-        Ok(_) => {}
-        Err(SyntaxDepthError::Exceeded) => {
-            return Err(ParseDiagnostic {
-                code: crate::project::types::DiagnosticKind::SyntaxDepthExceeded.into(),
-                message: format!(
-                    "source exceeds the {max_syntax_depth} nesting-depth analysis limit"
-                ),
-                filename: filename.into(),
-                range: None,
-            });
-        }
-        Err(SyntaxDepthError::Malformed) => {
-            return Err(ParseDiagnostic {
-                code: crate::project::types::DiagnosticKind::SyntaxError.into(),
-                message: format!(
-                    "{} parse error: lexical error",
-                    match language {
-                        SourceLanguage::JavaScript => "JavaScript",
-                        SourceLanguage::TypeScript => "TypeScript",
-                    }
-                ),
-                filename: filename.into(),
-                range: None,
-            });
-        }
+    if syntax_depth(&file, syntax, max_syntax_depth) == Err(SyntaxDepthError::Exceeded) {
+        return Err(ParseDiagnostic {
+            code: crate::project::types::DiagnosticKind::SyntaxDepthExceeded.into(),
+            message: format!(
+                "source exceeds the {max_syntax_depth} nesting-depth analysis limit"
+            ),
+            filename: filename.into(),
+            range: None,
+        });
     }
     let lexer = Lexer::new(syntax, EsVersion::EsNext, StringInput::from(&*file), None);
     Parser::new_from(lexer)
@@ -239,7 +222,6 @@ fn syntax_for(language: SourceLanguage) -> Syntax {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SyntaxDepthError {
     Exceeded,
-    Malformed,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -251,24 +233,16 @@ enum Delimiter {
 
 /// Count delimiter and member-chain nesting from SWC's token stream.
 ///
-/// The lexer owns regex-vs-division token boundaries; this pass only skips
-/// the raw bytes of a regex after using SWC's token-context signal to identify
-/// its start. Every token event is charged against the source-byte bound, and
-/// malformed tokenization or delimiter order fails closed before AST parsing.
+/// Template expressions contribute to brace depth via `TemplateHead` and
+/// match the `RBrace` that closes them. A `Token::Error` ends the scan
+/// early — the actual SWC parser catches real lexical errors, so the
+/// pre-scan only enforces the depth bound.
 fn syntax_depth(
     file: &swc_common::SourceFile,
     syntax: Syntax,
     max_depth: usize,
 ) -> Result<usize, SyntaxDepthError> {
-    if source_contains_template(file) {
-        let depth = template_syntax_depth(file.src.as_ref());
-        return (depth <= max_depth)
-            .then_some(depth)
-            .ok_or(SyntaxDepthError::Exceeded);
-    }
     let mut lexer = Lexer::new(syntax, EsVersion::EsNext, StringInput::from(file), None);
-    let source: &str = &file.src;
-    let source_len = source.len();
     let mut delimiters = Vec::new();
     let mut depth = 0usize;
     let mut maximum = 0usize;
@@ -277,42 +251,35 @@ fn syntax_depth(
     let mut previous_postfix = false;
     let mut expression_can_end = false;
     let mut skip_to = 0usize;
-    let mut token_events = 0usize;
 
     for token_and_span in &mut lexer {
-        token_events = token_events
-            .checked_add(1)
-            .ok_or(SyntaxDepthError::Malformed)?;
-        if token_events > source_len.saturating_add(1) {
-            return Err(SyntaxDepthError::Malformed);
-        }
-
         let offset = token_and_span
             .span
             .lo
             .0
             .checked_sub(file.start_pos.0)
-            .map(|value| value as usize)
-            .ok_or(SyntaxDepthError::Malformed)?;
+            .map_or(0, |v| v as usize);
         if offset < skip_to {
             continue;
         }
 
         let token = token_and_span.token;
         if token == Token::Error {
-            return Err(SyntaxDepthError::Malformed);
+            break;
         }
 
         if token == Token::Slash
             && !previous_postfix
             && previous.is_none_or(|token| token.before_expr() || token == Token::LBrace)
-            && let Some(end) = regex_end(source, offset + 1)
         {
-            skip_to = end;
-            previous = Some(Token::Regex);
-            previous_postfix = false;
-            expression_can_end = true;
-            continue;
+            let source: &str = &file.src;
+            if let Some(end) = regex_end(source, offset + 1) {
+                skip_to = end;
+                previous = Some(Token::Regex);
+                previous_postfix = false;
+                expression_can_end = true;
+                continue;
+            }
         }
 
         match token {
@@ -330,7 +297,7 @@ fn syntax_depth(
                 &mut maximum,
                 max_depth,
             )?,
-            Token::LBrace | Token::DollarLBrace => push_delimiter(
+            Token::LBrace | Token::DollarLBrace | Token::TemplateHead => push_delimiter(
                 &mut delimiters,
                 Delimiter::Brace,
                 &mut depth,
@@ -355,205 +322,7 @@ fn syntax_depth(
         expression_can_end = token_can_end_expression(token, previous_postfix);
         previous = Some(token);
     }
-
     Ok(maximum)
-}
-
-fn source_contains_template(file: &swc_common::SourceFile) -> bool {
-    let source: &str = &file.src;
-    source.as_bytes().contains(&b'`')
-}
-
-/// SWC's parser drives template rescans, so a standalone lexer cannot expose
-/// the expression delimiters in a template consistently. Keep this small
-/// template-state pass limited to that lexical construct; ordinary source
-/// uses the SWC token pass above.
-#[allow(clippy::too_many_lines)]
-fn template_syntax_depth(source: &str) -> usize {
-    let bytes = source.as_bytes();
-    let mut depth = 0usize;
-    let mut maximum = 0usize;
-    let mut member_depth = 0usize;
-    let mut index = 0usize;
-    let mut quote = None;
-    let mut template_state = 0usize;
-    let mut template_stack = Vec::new();
-    let mut in_regex = false;
-    let mut in_regex_class = false;
-
-    while index < bytes.len() {
-        let byte = bytes[index];
-        if template_state == 1 {
-            if byte == b'\\' {
-                index = index.saturating_add(2);
-            } else if byte == b'$' && bytes.get(index + 1) == Some(&b'{') {
-                template_state = 2;
-                depth = depth.saturating_add(1);
-                maximum = maximum.max(depth);
-                index += 2;
-            } else if byte == b'`' {
-                template_state = template_stack.pop().unwrap_or(0);
-                index += 1;
-            } else {
-                index += 1;
-            }
-            continue;
-        }
-        if let Some(delimiter) = quote {
-            if byte == b'\\' {
-                index = index.saturating_add(2);
-            } else {
-                quote = (byte != delimiter).then_some(delimiter);
-                index += 1;
-            }
-            continue;
-        }
-        if in_regex {
-            if byte == b'\\' {
-                index = index.saturating_add(2);
-            } else if byte == b'[' && !in_regex_class {
-                in_regex_class = true;
-                index += 1;
-            } else if byte == b']' && in_regex_class {
-                in_regex_class = false;
-                index += 1;
-            } else if byte == b'/' && !in_regex_class {
-                in_regex = false;
-                index += 1;
-            } else {
-                index += 1;
-            }
-            continue;
-        }
-        if template_state >= 2 {
-            if byte == b'$' && bytes.get(index + 1) == Some(&b'{') {
-                template_state += 1;
-                depth = depth.saturating_add(1);
-                maximum = maximum.max(depth);
-                index += 2;
-                continue;
-            }
-            if byte == b'}' {
-                template_state -= 1;
-                depth = depth.saturating_sub(1);
-                index += 1;
-                continue;
-            }
-            if byte == b'`' {
-                template_stack.push(template_state);
-                template_state = 1;
-                index += 1;
-                continue;
-            }
-        }
-        if template_state == 0 && byte == b'`' {
-            template_state = 1;
-            index += 1;
-            continue;
-        }
-        if matches!(byte, b'\'' | b'"') {
-            quote = Some(byte);
-            index += 1;
-            continue;
-        }
-        if byte == b'/' {
-            match bytes.get(index + 1) {
-                Some(b'/') => {
-                    index = bytes[index..]
-                        .iter()
-                        .position(|byte| *byte == b'\n')
-                        .map_or(bytes.len(), |offset| index + offset + 1);
-                    continue;
-                }
-                Some(b'*') => {
-                    index = bytes[index + 2..]
-                        .windows(2)
-                        .position(|window| window == b"*/")
-                        .map_or(bytes.len(), |offset| index + offset + 4);
-                    continue;
-                }
-                Some(b'=') => member_depth = 0,
-                _ if is_template_regex_start(bytes, index) => {
-                    in_regex = true;
-                    index += 1;
-                    continue;
-                }
-                _ => {}
-            }
-        }
-        if byte == b'.' {
-            member_depth = member_depth.saturating_add(1);
-            maximum = maximum.max(member_depth);
-        } else if matches!(
-            byte,
-            b';' | b','
-                | b'='
-                | b'+'
-                | b'-'
-                | b'*'
-                | b'/'
-                | b':'
-                | b'!'
-                | b'&'
-                | b'|'
-                | b'<'
-                | b'>'
-        ) {
-            member_depth = 0;
-        }
-        if matches!(byte, b'(' | b'[' | b'{') {
-            depth = depth.saturating_add(1);
-            maximum = maximum.max(depth);
-        } else if matches!(byte, b')' | b']' | b'}') {
-            depth = depth.saturating_sub(1);
-        }
-        index += 1;
-    }
-    maximum
-}
-
-fn is_template_regex_start(bytes: &[u8], index: usize) -> bool {
-    let mut cursor = index;
-    while cursor > 0 {
-        cursor -= 1;
-        let byte = bytes[cursor];
-        if byte.is_ascii_whitespace() {
-            continue;
-        }
-        if matches!(byte, b')' | b']' | b'}' | b'"' | b'\'' | b'`') {
-            return false;
-        }
-        if byte == b'+' && cursor > 0 && bytes[cursor - 1] == b'+' {
-            return false;
-        }
-        if byte == b'-' && cursor > 0 && bytes[cursor - 1] == b'-' {
-            return false;
-        }
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'$') {
-            let end = cursor + 1;
-            while cursor > 0
-                && (bytes[cursor - 1].is_ascii_alphanumeric()
-                    || matches!(bytes[cursor - 1], b'_' | b'$'))
-            {
-                cursor -= 1;
-            }
-            let word = std::str::from_utf8(&bytes[cursor..end]).unwrap_or("");
-            return matches!(
-                word,
-                "return"
-                    | "typeof"
-                    | "instanceof"
-                    | "void"
-                    | "delete"
-                    | "throw"
-                    | "case"
-                    | "in"
-                    | "of"
-            );
-        }
-        return true;
-    }
-    true
 }
 
 fn push_delimiter(
@@ -661,10 +430,7 @@ fn syntax_depth_for_test(source: &str) -> usize {
         syntax_for(SourceLanguage::JavaScript),
         MAX_SYNTAX_DEPTH,
     )
-    .unwrap_or_else(|error| match error {
-        SyntaxDepthError::Exceeded => MAX_SYNTAX_DEPTH + 1,
-        SyntaxDepthError::Malformed => 0,
-    })
+    .unwrap_or(MAX_SYNTAX_DEPTH + 1)
 }
 
 #[cfg(test)]
