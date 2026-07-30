@@ -147,7 +147,8 @@ impl PlanRequirements {
         if !event.arguments.is_empty() {
             set.insert(ValueResolutionRequirement::LocalStaticValues);
         }
-        if let Some(identity) = event_identity(event) {
+        {
+            let identity = event_identity(event);
             match identity {
                 IdentitySpec::ModuleExport { .. } | IdentitySpec::PackageModuleExport { .. } => {
                     set.insert(ValueResolutionRequirement::ModuleIdentityValues);
@@ -165,9 +166,8 @@ impl PlanRequirements {
 
     fn project_for_event(event: &NormalizedEvent) -> BTreeSet<ProjectRequirement> {
         let mut set = BTreeSet::new();
-        if let Some(identity) = event_identity(event)
-            && requires_project_overlay_spec(identity)
-        {
+        let identity = event_identity(event);
+        if requires_project_overlay_spec(identity) {
             match identity {
                 IdentitySpec::ModuleExport { .. } => {
                     set.insert(ProjectRequirement::ExactModuleExports);
@@ -190,11 +190,11 @@ impl PlanRequirements {
     }
 }
 
-fn event_identity(event: &NormalizedEvent) -> Option<&IdentitySpec> {
+fn event_identity(event: &NormalizedEvent) -> &IdentitySpec {
     match &event.subject {
-        NormalizedSubject::Direct { identity } => Some(identity),
-        NormalizedSubject::Returned { producer, .. } => Some(producer),
-        NormalizedSubject::Instance { constructor, .. } => Some(constructor),
+        NormalizedSubject::Direct { identity } => identity,
+        NormalizedSubject::Returned { producer, .. } => producer,
+        NormalizedSubject::Instance { constructor, .. } => constructor,
     }
 }
 

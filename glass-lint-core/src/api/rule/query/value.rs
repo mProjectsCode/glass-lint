@@ -320,7 +320,9 @@ impl ArgumentConstraintsBuilder {
         }
         *self.counts.entry(index).or_insert(0) += 1;
         self.constraints.push(ArgumentConstraint::new(
-            ArgumentIndex::new_unchecked(index as u8),
+            ArgumentIndex::new_unchecked(
+                u8::try_from(index).expect("argument index was validated against the public limit"),
+            ),
             matcher,
         ));
         Ok(())

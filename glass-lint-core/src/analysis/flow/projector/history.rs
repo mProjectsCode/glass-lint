@@ -12,9 +12,9 @@ pub(super) enum InverseDelta {
     AliasInsert(ValueId, ObjectId),
     AliasUpdate(ValueId, ObjectId, ObjectId),
     AliasRemove(ValueId, ObjectId),
-    StateInsert(FlowStateKey, FlowState),
-    StateUpdate(FlowStateKey, FlowState, FlowState),
-    StateRemove(FlowStateKey, FlowState),
+    StateInsert(FlowStateKey, Box<FlowState>),
+    StateUpdate(FlowStateKey, Box<FlowState>, Box<FlowState>),
+    StateRemove(FlowStateKey, Box<FlowState>),
     RequirementInsert(FlowStateKey, usize, FactId),
     RequirementRemove(FlowStateKey, usize, BTreeSet<FactId>),
     SinkInsert(FlowStateKey, usize, FactId),
@@ -175,10 +175,10 @@ fn apply_inverse(
             states.remove(key);
         }
         InverseDelta::StateUpdate(key, old, _) => {
-            states.insert(*key, old.clone());
+            states.insert(*key, (**old).clone());
         }
         InverseDelta::StateRemove(key, state) => {
-            states.insert(*key, state.clone());
+            states.insert(*key, (**state).clone());
         }
         InverseDelta::RequirementInsert(key, index, event) => {
             if let Some(state) = states.get_mut(key) {
@@ -219,10 +219,10 @@ fn apply_forward(
             decrement_ref(object_refs, *object);
         }
         InverseDelta::StateInsert(key, state) => {
-            states.insert(*key, state.clone());
+            states.insert(*key, (**state).clone());
         }
         InverseDelta::StateUpdate(key, _, new) => {
-            states.insert(*key, new.clone());
+            states.insert(*key, (**new).clone());
         }
         InverseDelta::StateRemove(key, _) => {
             states.remove(key);

@@ -82,7 +82,8 @@ impl FlowStateTable {
         self.object_refs.clear();
         let states = std::mem::take(&mut self.states);
         for (key, state) in states {
-            self.log.record(InverseDelta::StateRemove(key, state));
+            self.log
+                .record(InverseDelta::StateRemove(key, Box::new(state)));
         }
     }
 
@@ -206,14 +207,19 @@ impl FlowStateTable {
     pub(super) fn insert_state(&mut self, state: FlowState) -> bool {
         let key = state.key();
         if let Some(old) = self.states.insert(key, state.clone()) {
-            self.log.record(InverseDelta::StateUpdate(key, old, state));
+            self.log.record(InverseDelta::StateUpdate(
+                key,
+                Box::new(old),
+                Box::new(state),
+            ));
             true
         } else if self.states.len() > self.state_limit {
             self.states.remove(&key);
             self.state_limit_rejected = true;
             false
         } else {
-            self.log.record(InverseDelta::StateInsert(key, state));
+            self.log
+                .record(InverseDelta::StateInsert(key, Box::new(state)));
             true
         }
     }
@@ -301,7 +307,8 @@ impl FlowStateTable {
             .collect();
         for key in keys {
             if let Some(state) = self.states.remove(&key) {
-                self.log.record(InverseDelta::StateRemove(key, state));
+                self.log
+                    .record(InverseDelta::StateRemove(key, Box::new(state)));
             }
         }
     }

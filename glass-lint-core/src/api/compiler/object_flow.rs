@@ -117,7 +117,7 @@ impl CompiledObjectSource {
         Self {
             member_call,
             arguments: event.arguments().to_flat_vec(),
-            is_rooted: matches!(event.identity(), Some(IdentitySpec::Rooted { .. })),
+            is_rooted: matches!(event.identity(), IdentitySpec::Rooted { .. }),
         }
     }
 }
@@ -156,7 +156,7 @@ pub(crate) enum CompiledObjectSinkArguments {
 }
 
 impl CompiledObjectSinkArguments {
-    pub fn present_indices<'a>(&'a self, argument_count: usize) -> PresentIndices<'a> {
+    pub fn present_indices(&self, argument_count: usize) -> PresentIndices<'_> {
         match self {
             Self::Any => PresentIndices::Any(0..argument_count),
             Self::Indices(indices) => PresentIndices::Indices {

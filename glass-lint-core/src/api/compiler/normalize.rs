@@ -349,20 +349,17 @@ fn normalize_lifecycle_root(
     // and arguments match. Deterministic order is preserved (first wins).
     {
         use std::collections::BTreeSet;
-        let mut seen: BTreeSet<(
-            EventSpec,
-            Option<IdentitySpec>,
-            CanonicalArgumentConstraints,
-        )> = BTreeSet::new();
+        let mut seen: BTreeSet<(EventSpec, IdentitySpec, CanonicalArgumentConstraints)> =
+            BTreeSet::new();
         sources.retain(|s| {
-            let key = (s.event.clone(), s.identity().cloned(), s.arguments.clone());
+            let key = (s.event.clone(), s.identity().clone(), s.arguments.clone());
             seen.insert(key)
         });
         sources.sort_by(|a, b| {
             a.slot
                 .cmp(&b.slot)
                 .then_with(|| a.event.cmp(&b.event))
-                .then_with(|| a.identity().cmp(&b.identity()))
+                .then_with(|| a.identity().cmp(b.identity()))
                 .then_with(|| a.arguments.cmp(&b.arguments))
         });
     }
@@ -513,7 +510,7 @@ fn compare_roots(a: &NormalizedRoot, b: &NormalizedRoot) -> std::cmp::Ordering {
             .slot
             .cmp(&be.slot)
             .then_with(|| ae.event.cmp(&be.event))
-            .then_with(|| ae.identity().cmp(&be.identity()))
+            .then_with(|| ae.identity().cmp(be.identity()))
             .then_with(|| ae.arguments.cmp(&be.arguments)),
         (NormalizedRoot::Any(aa), NormalizedRoot::Any(ba)) => {
             aa.len().cmp(&ba.len()).then_with(|| {
@@ -537,7 +534,7 @@ fn compare_roots(a: &NormalizedRoot, b: &NormalizedRoot) -> std::cmp::Ordering {
                             a.slot
                                 .cmp(&b.slot)
                                 .then_with(|| a.event.cmp(&b.event))
-                                .then_with(|| a.identity().cmp(&b.identity()))
+                                .then_with(|| a.identity().cmp(b.identity()))
                                 .then_with(|| a.arguments.cmp(&b.arguments))
                         })
                     })

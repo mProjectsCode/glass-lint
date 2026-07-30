@@ -127,6 +127,7 @@ pub(super) fn collect_with_limits(
 }
 
 #[derive(Debug)]
+#[allow(clippy::struct_excessive_bools)]
 struct ObjectFlowProjector<'rules, 'stream, 'arena> {
     /// The canonical facts are the projector's only input. In particular, it
     /// must never inspect the AST or reconstruct resolution decisions.

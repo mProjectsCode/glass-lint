@@ -140,6 +140,20 @@ fn flow_metrics_charge_path_and_trace_work() {
 }
 
 #[test]
+fn flow_metrics_are_repeatable_for_the_same_source_and_limits() {
+    let source = "const script = document.createElement('script'); script.src = url; document.head.appendChild(script);";
+    let limits = FlowLimits::from_flow_operations(262_144);
+    let first = collect_source_with_outcome(source, &script_flow(), limits);
+    let second = collect_source_with_outcome(source, &script_flow(), limits);
+    assert_eq!(first.operations, second.operations);
+    assert_eq!(first.max_live_alternatives, second.max_live_alternatives);
+    assert_eq!(first.coalescing_comparisons, second.coalescing_comparisons);
+    assert_eq!(first.fixed_point_iterations, second.fixed_point_iterations);
+    assert_eq!(first.trace_heads, second.trace_heads);
+    assert_eq!(first.exhausted, second.exhausted);
+}
+
+#[test]
 fn equivalent_branch_paths_are_coalesced_and_counted() {
     let outcome = collect_source_with_outcome(
         "const script = document.createElement('script'); if (flag) { script.src = url; } else { script.src = url; } document.head.appendChild(script);",

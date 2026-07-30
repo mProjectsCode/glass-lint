@@ -166,11 +166,11 @@ impl NormalizedEvent {
         &self.event
     }
 
-    pub(crate) fn identity(&self) -> Option<&IdentitySpec> {
+    pub(crate) fn identity(&self) -> &IdentitySpec {
         match &self.subject {
-            NormalizedSubject::Direct { identity } => Some(identity),
-            NormalizedSubject::Returned { producer, .. } => Some(producer),
-            NormalizedSubject::Instance { constructor, .. } => Some(constructor),
+            NormalizedSubject::Direct { identity } => identity,
+            NormalizedSubject::Returned { producer, .. } => producer,
+            NormalizedSubject::Instance { constructor, .. } => constructor,
         }
     }
 

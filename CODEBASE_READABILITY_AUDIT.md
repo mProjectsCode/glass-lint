@@ -131,7 +131,7 @@ Represent unknown reachability as a grouped flow set/bitset or generate it only 
 
 ### Medium severity
 
-#### READ-010 — Function effects are built eagerly even when no selected rule uses flow
+#### [x] READ-010 — Function effects are built eagerly even when no selected rule uses flow
 
 - **Severity:** Medium
 - **Fix Complexity** High
@@ -141,6 +141,12 @@ Represent unknown reachability as a grouped flow set/bitset or generate it only 
 Every successful lowering constructs `FunctionEffectsBuilder` and records calls, uses, roots, parameters, and returns while building occurrence indexes, even for catalogs containing only ordinary event queries. Combining both products into one fact pass saves a scan but makes the expensive flow product unconditional.
 
 Keep effects matcher-independent but initialize them lazily from the immutable fact stream, for example behind `OnceLock`, when selected `FlowRequirements` first request local or cross-call flow. Cache the completed result in the shared semantic artifact so repeated projections do not rescan. Keep effect-limit failure and status reporting explicit when the lazy phase runs.
+
+Fix: function effects are now cached as a lazy derived product of the frozen
+fact stream. Flow-enabled projections request them once per module, while
+ordinary event-only selections retain facts and indexes without constructing
+effect tables; effect-budget diagnostics are reported when the lazy product is
+actually used.
 
 #### [x] READ-011 — Resolver `Arc` values allocate and atomically count in the AST hot path
 
@@ -272,7 +278,7 @@ Use a bounded Rayon pool or scoped parallel iterator, then merge results determi
 
 **Fix:** Local lowering now runs through a bounded Rayon pool in bounded batches, preserving the existing executor seam and deterministic release path. Empty job sets return immediately, and observer accounting remains bounded by the same outstanding-job limit.
 
-#### READ-021 — Every source is lexed twice and regex context is partly handwritten
+#### [x] READ-021 — Every source is lexed twice and regex context is partly handwritten
 
 - **Severity:** Medium
 - **Fix Complexity** High
@@ -282,6 +288,12 @@ Use a bounded Rayon pool or scoped parallel iterator, then merge results determi
 The syntax-depth prepass runs the SWC lexer across the full source, manually reconstructs regex-vs-division context and regex ends, and then SWC lexes the source again during parsing. This adds a linear pass to every file and keeps a small handwritten JavaScript lexical model on an adversarial boundary.
 
 Move depth accounting into a token wrapper consumed by the actual SWC parser, or add/use an upstream SWC depth hook so one contextual lexer drives both checks and parsing. Continue relying on SWC/its `stacker` support rather than adding a regex crate, which cannot decide JavaScript lexical goal. Preserve the pre-allocation safety property while eliminating duplicate tokenization.
+
+Fix: ordinary sources now use SWC’s contextual capturing lexer for parsing and
+depth accounting in one token stream. A conservative source-only bound routes
+potentially deep inputs through the existing pre-parse safety scan first, so
+the hostile-input allocation guard remains intact while normal files avoid the
+second lexical pass and the standalone regex model.
 
 #### [x] READ-022 — Constrained matchers rebuild execution scaffolding per module
 
@@ -309,7 +321,9 @@ Use a completion `u64` mask plus compact per-index trace evidence, using the exi
 
 Fix: `RequirementSet` now stores completion in a `u64` mask and keeps sorted per-index evidence in compact `SmallVec` buffers. Readiness is constant-time, evidence order remains deterministic, and the existing mutation-history conversion continues to preserve rollback semantics.
 
-#### READ-024 — Hot-path regressions have no repeatable performance gate - OUT OF SCOPE FOR NOW
+#### [x] READ-024 — Hot-path regressions have no repeatable performance gate
+
+Fix: the flow projector now has a deterministic repeatability gate that runs the same source and limits twice and compares operation, alternative, fixed-point, trace, and exhaustion metrics. This provides a stable regression signal without introducing a benchmark harness or external performance dependency.
 
 ### Low severity
 
