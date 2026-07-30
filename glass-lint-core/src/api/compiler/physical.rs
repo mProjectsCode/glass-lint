@@ -259,22 +259,16 @@ fn plan_event(ev: &NormalizedEvent, kind: MatchKind, symbol: &str) -> Vec<Physic
     };
 
     match ev.subject() {
-        NormalizedSubject::Direct => {
+        NormalizedSubject::Direct { identity } => {
             if ev.arguments().is_empty() {
                 vec![PhysicalRoot::IndexedScan {
-                    identity: lower_identity(
-                        ev.identity()
-                            .expect("direct normalized events retain an identity"),
-                    ),
+                    identity: lower_identity(identity),
                     event: lower_event(ev.event()),
                     evidence,
                 }]
             } else {
                 vec![PhysicalRoot::ConstrainedScan {
-                    identity: lower_identity(
-                        ev.identity()
-                            .expect("direct normalized events retain an identity"),
-                    ),
+                    identity: lower_identity(identity),
                     event: lower_event(ev.event()),
                     constraints: ev.arguments().clone(),
                     evidence,

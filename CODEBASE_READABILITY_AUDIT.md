@@ -205,7 +205,7 @@ Delete `primary_slot` and the alpha-renumbering machinery once validation proves
 
 Fix: normalized emissions no longer carry the unused primary slot, while object-slot alpha-renumbering remains for physical correlation. The normalizer now trusts the canonical argument constructor and no longer flattens, sorts, and rebuilds constraints on every query.
 
-#### READ-016 — `NormalizedEvent` permits invalid identity/subject combinations
+#### [x] READ-016 — `NormalizedEvent` permits invalid identity/subject combinations
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -215,6 +215,8 @@ Fix: normalized emissions no longer carry the unused primary slot, while object-
 An event stores `identity: Option<IdentitySpec>` separately from `NormalizedSubject`, so `Direct + None`, `Returned + Some`, and incompatible event/subject combinations are representable. Physical planning relies on `expect` and substitutes empty member paths for impossible variants, spreading one cross-field invariant across normalization, validation, and planning.
 
 Replace the pair with a sum type such as `Direct { identity }`, `Returned { producer, object_slot }`, and `Instance { constructor, object_slot }`, with event-compatible constructors. Let physical planning exhaustively match valid variants without `expect` or empty sentinels. Keep validation for authored errors, not for states the internal type can prevent.
+
+Fix: normalized events now store direct identity inside `NormalizedSubject::Direct`, alongside the existing returned and instance variants. Physical and reference planning exhaustively consume the subject sum, so a direct event can no longer carry a missing identity and no direct planning path needs an identity `expect`.
 
 #### [x] READ-017 — Lifecycle argument builders enforce the wrong dimension
 

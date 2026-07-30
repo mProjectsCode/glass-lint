@@ -191,11 +191,11 @@ impl PlanRequirements {
 }
 
 fn event_identity(event: &NormalizedEvent) -> Option<&IdentitySpec> {
-    event.identity.as_ref().or(match &event.subject {
+    match &event.subject {
+        NormalizedSubject::Direct { identity } => Some(identity),
         NormalizedSubject::Returned { producer, .. } => Some(producer),
         NormalizedSubject::Instance { constructor, .. } => Some(constructor),
-        NormalizedSubject::Direct => None,
-    })
+    }
 }
 
 fn requires_project_overlay_spec(identity: &IdentitySpec) -> bool {

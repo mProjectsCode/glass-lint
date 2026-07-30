@@ -107,7 +107,7 @@ fn merge_same_event(
 ) -> Result<NormalizedRoot, QueryCompileError> {
     let mut event_spec: Option<EventSpec> = None;
     let mut identity_spec: Option<IdentitySpec> = None;
-    let mut subject = NormalizedSubject::Direct;
+    let mut subject: Option<NormalizedSubject> = None;
     let mut constraints: Vec<ArgumentConstraint> = Vec::new();
 
     for branch in &all.branches {
@@ -151,10 +151,11 @@ fn merge_same_event(
                     if *event != event_var {
                         return Err(QueryCompileError::UncorrelatedConjunction);
                     }
-                    match &subject {
-                        NormalizedSubject::Returned { object_slot, .. }
-                        | NormalizedSubject::Instance { object_slot, .. }
-                            if *object_slot == var_to_slot(*object) => {}
+                    match subject.as_ref() {
+                        Some(
+                            NormalizedSubject::Returned { object_slot, .. }
+                            | NormalizedSubject::Instance { object_slot, .. },
+                        ) if *object_slot == var_to_slot(*object) => {}
                         _ => {
                             return Err(QueryCompileError::UncorrelatedConjunction);
                         }
@@ -186,16 +187,18 @@ fn merge_same_event(
     // Deduplicate.
     constraints.dedup();
 
+    let subject = subject.unwrap_or_else(|| NormalizedSubject::Direct {
+        identity: identity.clone(),
+    });
+
     // Detect contradictions on the merged event.
     detect_event_contradictions(event_var, &event, &identity, &subject, &constraints)?;
 
     let slot = var_to_slot(event_var);
-    let normalized_identity = matches!(subject, NormalizedSubject::Direct).then_some(identity);
 
     Ok(NormalizedRoot::Event(NormalizedEvent {
         slot,
         event,
-        identity: normalized_identity,
         subject,
         arguments: CanonicalArgumentConstraints::from_canonicalized(&constraints),
     }))
@@ -252,17 +255,15 @@ fn merge_identity(
 }
 
 fn merge_subject_relation(
-    target: &mut NormalizedSubject,
+    target: &mut Option<NormalizedSubject>,
     candidate: NormalizedSubject,
 ) -> Result<(), QueryCompileError> {
-    if !matches!(target, NormalizedSubject::Direct) && *target != candidate {
+    if target.as_ref().is_some_and(|target| *target != candidate) {
         return Err(QueryCompileError::ContradictoryPredicate {
             variable: VarId::new(0),
             detail: ContradictionKind::SubjectRelation,
         });
     }
-    if !matches!(candidate, NormalizedSubject::Direct) {
-        *target = candidate;
-    }
+    *target = Some(candidate);
     Ok(())
 }

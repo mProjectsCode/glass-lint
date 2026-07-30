@@ -149,7 +149,7 @@ fn validate_normalized_root(root: &NormalizedRoot, is_top: bool) -> Result<(), Q
                         });
                     }
                 }
-                NormalizedSubject::Direct => {}
+                NormalizedSubject::Direct { .. } => {}
             }
             Ok(())
         }
@@ -354,14 +354,14 @@ fn normalize_lifecycle_root(
             CanonicalArgumentConstraints,
         )> = BTreeSet::new();
         sources.retain(|s| {
-            let key = (s.event.clone(), s.identity.clone(), s.arguments.clone());
+            let key = (s.event.clone(), s.identity().cloned(), s.arguments.clone());
             seen.insert(key)
         });
         sources.sort_by(|a, b| {
             a.slot
                 .cmp(&b.slot)
                 .then_with(|| a.event.cmp(&b.event))
-                .then_with(|| a.identity.cmp(&b.identity))
+                .then_with(|| a.identity().cmp(&b.identity()))
                 .then_with(|| a.arguments.cmp(&b.arguments))
         });
     }
@@ -387,13 +387,14 @@ fn normalize_event_from_query(
     });
     args.dedup();
 
-    let subject = NormalizedSubject::Direct;
+    let subject = NormalizedSubject::Direct {
+        identity: eq.identity.clone(),
+    };
     detect_event_contradictions(eq.var, &eq.event, &eq.identity, &subject, &args)?;
 
     Ok(NormalizedEvent {
         slot: eq.var.get(),
         event: eq.event.clone(),
-        identity: Some(eq.identity.clone()),
         subject,
         arguments: CanonicalArgumentConstraints::from_canonicalized(&args),
     })
@@ -417,7 +418,7 @@ fn compare_roots(a: &NormalizedRoot, b: &NormalizedRoot) -> std::cmp::Ordering {
             .slot
             .cmp(&be.slot)
             .then_with(|| ae.event.cmp(&be.event))
-            .then_with(|| ae.identity.cmp(&be.identity))
+            .then_with(|| ae.identity().cmp(&be.identity()))
             .then_with(|| ae.arguments.cmp(&be.arguments)),
         (NormalizedRoot::Any(aa), NormalizedRoot::Any(ba)) => {
             aa.len().cmp(&ba.len()).then_with(|| {
@@ -441,7 +442,7 @@ fn compare_roots(a: &NormalizedRoot, b: &NormalizedRoot) -> std::cmp::Ordering {
                             a.slot
                                 .cmp(&b.slot)
                                 .then_with(|| a.event.cmp(&b.event))
-                                .then_with(|| a.identity.cmp(&b.identity))
+                                .then_with(|| a.identity().cmp(&b.identity()))
                                 .then_with(|| a.arguments.cmp(&b.arguments))
                         })
                     })

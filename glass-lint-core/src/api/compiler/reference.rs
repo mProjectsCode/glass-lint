@@ -142,9 +142,7 @@ fn evaluate_event_logical(ev: &NormalizedEvent, rows: &[ReferenceRow]) -> Vec<Re
         let identity = match ev.subject() {
             NormalizedSubject::Returned { producer, .. } => producer,
             NormalizedSubject::Instance { constructor, .. } => constructor,
-            NormalizedSubject::Direct => ev
-                .identity()
-                .expect("direct normalized events retain an identity"),
+            NormalizedSubject::Direct { identity } => identity,
         };
         if !matches_identity_logical(identity, &row.identity) {
             continue;
@@ -153,12 +151,12 @@ fn evaluate_event_logical(ev: &NormalizedEvent, rows: &[ReferenceRow]) -> Vec<Re
             continue;
         }
         match ev.subject() {
-            NormalizedSubject::Direct => {}
+            NormalizedSubject::Direct { .. } => {}
             subject => {
                 let kind = match subject {
                     NormalizedSubject::Returned { .. } => ReferenceSupportKind::Producer,
                     NormalizedSubject::Instance { .. } => ReferenceSupportKind::Constructor,
-                    NormalizedSubject::Direct => unreachable!(),
+                    NormalizedSubject::Direct { .. } => unreachable!(),
                 };
                 if !has_correlated_support(row, kind) {
                     continue;
@@ -173,7 +171,7 @@ fn evaluate_event_logical(ev: &NormalizedEvent, rows: &[ReferenceRow]) -> Vec<Re
         };
 
         let support_events = match ev.subject() {
-            NormalizedSubject::Direct => Vec::new(),
+            NormalizedSubject::Direct { .. } => Vec::new(),
             NormalizedSubject::Returned { .. } | NormalizedSubject::Instance { .. } => {
                 vec![row.support.as_ref().expect("checked above").event]
             }

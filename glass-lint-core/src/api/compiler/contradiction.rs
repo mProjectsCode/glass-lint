@@ -26,7 +26,7 @@ fn check_dimension_contradictions(
     identity: &IdentitySpec,
     subject: &NormalizedSubject,
 ) -> Result<(), QueryCompileError> {
-    if !matches!(subject, NormalizedSubject::Direct) {
+    if !matches!(subject, NormalizedSubject::Direct { .. }) {
         return Ok(());
     }
     let valid = match event {

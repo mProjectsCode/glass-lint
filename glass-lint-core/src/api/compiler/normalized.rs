@@ -158,7 +158,6 @@ impl ArgumentConstraintGroup {
 pub(crate) struct NormalizedEvent {
     pub(crate) slot: u32,
     pub(crate) event: EventSpec,
-    pub(crate) identity: Option<IdentitySpec>,
     pub(crate) subject: NormalizedSubject,
     pub(crate) arguments: CanonicalArgumentConstraints,
 }
@@ -169,7 +168,11 @@ impl NormalizedEvent {
     }
 
     pub(crate) fn identity(&self) -> Option<&IdentitySpec> {
-        self.identity.as_ref()
+        match &self.subject {
+            NormalizedSubject::Direct { identity } => Some(identity),
+            NormalizedSubject::Returned { producer, .. } => Some(producer),
+            NormalizedSubject::Instance { constructor, .. } => Some(constructor),
+        }
     }
 
     pub(crate) fn subject(&self) -> &NormalizedSubject {
@@ -184,7 +187,9 @@ impl NormalizedEvent {
 /// Subject relationship in a normalized event.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum NormalizedSubject {
-    Direct,
+    Direct {
+        identity: IdentitySpec,
+    },
     Returned {
         producer: IdentitySpec,
         object_slot: u32,
