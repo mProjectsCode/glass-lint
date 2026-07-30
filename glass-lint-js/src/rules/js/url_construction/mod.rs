@@ -1,6 +1,6 @@
 //! URL-constructor rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
 /// Detects construction through the unshadowed global `URL` and
 /// `URLSearchParams` constructors, selected static URL methods, and static
@@ -13,14 +13,14 @@ pub fn rule() -> Rule {
         .category(Category::new("language/network").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .query(QueryDecl::constructor_global("URL"))
-        .query(QueryDecl::constructor_global("URLSearchParams"))
-        .query(QueryDecl::member_call_rooted("URL.parse"))
-        .query(QueryDecl::member_call_rooted("URL.canParse"))
-        .query(QueryDecl::member_call_rooted("URL.createObjectURL"))
-        .query(QueryDecl::member_call_rooted("URL.revokeObjectURL"))
-        .query(QueryDecl::string_contains("http://"))
-        .query(QueryDecl::string_contains("https://"))
+        .query(EventQuery::constructor_global("URL"))
+        .query(EventQuery::constructor_global("URLSearchParams"))
+        .query(EventQuery::member_call_rooted("URL.parse"))
+        .query(EventQuery::member_call_rooted("URL.canParse"))
+        .query(EventQuery::member_call_rooted("URL.createObjectURL"))
+        .query(EventQuery::member_call_rooted("URL.revokeObjectURL"))
+        .query(EventQuery::string_contains("http://"))
+        .query(EventQuery::string_contains("https://"))
         .build()
         .unwrap()
 }

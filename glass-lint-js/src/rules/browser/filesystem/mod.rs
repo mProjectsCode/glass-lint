@@ -1,6 +1,6 @@
 //! Browser File System Access API rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, QueryDecl, Rule, Severity};
 
 /// Detects rooted directory-picker entry points and operations on directory
 /// handles returned by them. Nested file handles and arbitrary object wrappers
@@ -11,7 +11,7 @@ pub fn rule() -> Rule {
         .category(Category::new("browser/filesystem").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_rooted("showDirectoryPicker"))
+        .query(EventQuery::member_call_rooted("showDirectoryPicker"))
         .query(QueryDecl::member_call_returned(
             "showDirectoryPicker",
             "getFileHandle",

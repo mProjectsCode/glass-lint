@@ -1,6 +1,6 @@
 use glass_lint_core::rules::{
-    Category, Confidence, LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleQuery,
-    LifecycleSource, QueryDecl, Rule, Severity, ValueMatcher,
+    Category, Confidence, EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
+    LifecycleQuery, LifecycleSource, QueryDecl, Rule, Severity, ValueMatcher,
 };
 
 /// Detects an input created by `document.createElement("input")` whose direct
@@ -37,8 +37,8 @@ pub fn rule() -> Rule {
                 .completion(LifecycleCompletion::configuration())
                 .build(),
         ))
-        .query(QueryDecl::member_call_rooted("showOpenFilePicker"))
-        .query(QueryDecl::member_call_rooted("showSaveFilePicker"))
+        .query(EventQuery::member_call_rooted("showOpenFilePicker"))
+        .query(EventQuery::member_call_rooted("showSaveFilePicker"))
         .build()
         .unwrap()
 }

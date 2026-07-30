@@ -364,7 +364,9 @@ fn constrained_query_has_fact_stream() {
 
 #[test]
 fn module_query_has_project_overlay() {
-    let d = QueryDecl::call_module("fs", "readFile").unwrap();
+    let d = EventQuery::call_module("fs", "readFile")
+        .unwrap()
+        .into_query();
     let nq = normalize_ok(&d);
     let req = nq.requirements();
     assert!(req.needs_project_overlay());
@@ -388,8 +390,10 @@ fn global_query_does_not_need_project_overlay() {
 #[test]
 fn any_merges_requirements_from_branches() {
     let branches = vec![
-        QueryDecl::call_global("fetch").unwrap(),
-        QueryDecl::call_module("fs", "readFile").unwrap(),
+        EventQuery::call_global("fetch").unwrap().into_query(),
+        EventQuery::call_module("fs", "readFile")
+            .unwrap()
+            .into_query(),
     ];
     let any = QueryDecl::any(branches.into_iter().map(Ok)).unwrap();
     let d = any.with_evidence(MatchKind::Call, "test");
@@ -444,7 +448,7 @@ fn lifecycle_has_flow_requirements() {
 
 #[test]
 fn global_query_has_only_calls_requirement() {
-    let d = QueryDecl::call_global("fetch").unwrap();
+    let d = EventQuery::call_global("fetch").unwrap().into_query();
     let nq = normalize_ok(&d);
     let req = nq.requirements();
     assert!(req.value_resolution().is_empty());
@@ -700,7 +704,7 @@ fn normalized_any_branches_have_dense_slots() {
 
 #[test]
 fn normalized_query_compiles_through_full_pipeline() {
-    let d = QueryDecl::call_global("fetch").unwrap();
+    let d = EventQuery::call_global("fetch").unwrap().into_query();
     let nq = normalize::normalize_query_decl(&d).unwrap();
     let _plan = crate::api::compiler::physical::plan_normalized(&nq);
 }

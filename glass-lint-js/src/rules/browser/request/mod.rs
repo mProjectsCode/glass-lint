@@ -1,4 +1,4 @@
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
 /// Detects calls proven to target global `fetch`, rooted
 /// `navigator.sendBeacon`, and the global `XMLHttpRequest`, `WebSocket`, and
@@ -13,11 +13,11 @@ pub fn rule() -> Rule {
         .category(Category::new("browser/network").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::call_global("fetch"))
-        .query(QueryDecl::member_call_rooted("navigator.sendBeacon"))
-        .query(QueryDecl::constructor_global("XMLHttpRequest"))
-        .query(QueryDecl::constructor_global("WebSocket"))
-        .query(QueryDecl::constructor_global("EventSource"))
+        .query(EventQuery::call_global("fetch"))
+        .query(EventQuery::member_call_rooted("navigator.sendBeacon"))
+        .query(EventQuery::constructor_global("XMLHttpRequest"))
+        .query(EventQuery::constructor_global("WebSocket"))
+        .query(EventQuery::constructor_global("EventSource"))
         .build()
         .unwrap()
 }

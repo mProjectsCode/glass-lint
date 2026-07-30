@@ -6,7 +6,7 @@
 
 use glass_lint_core::{
     Environment, Linter, LinterConfig, RuleCatalog, SourceLanguage,
-    rules::{Category, Confidence, QueryDecl, Rule, Severity},
+    rules::{Category, Confidence, EventQuery, Rule, Severity},
 };
 
 /// Build the minimal TypeScript-capable linter used by every fixture.
@@ -16,7 +16,7 @@ fn linter() -> Linter {
         .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .query(QueryDecl::call_global("fetch"))
+        .query(EventQuery::call_global("fetch"))
         .build()
         .unwrap();
     let mut environment = Environment::default();

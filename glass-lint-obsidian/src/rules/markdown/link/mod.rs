@@ -1,6 +1,6 @@
 //! Markdown link-helper rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
 /// Detects calls to the exact `parseLinktext`, `normalizePath`, and
 /// `getLinkpath` exports of the `obsidian` module. ESM/CommonJS aliases retain
@@ -12,21 +12,21 @@ pub fn rule() -> Rule {
         .category(Category::new("markdown").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .query(QueryDecl::member_call_module("obsidian", "parseLinktext"))
-        .query(QueryDecl::member_call_module("obsidian", "normalizePath"))
-        .query(QueryDecl::member_call_module("obsidian", "getLinkpath"))
-        .query(QueryDecl::member_call_module("obsidian", "fileToLinktext"))
-        .query(QueryDecl::member_call_module(
+        .query(EventQuery::member_call_module("obsidian", "parseLinktext"))
+        .query(EventQuery::member_call_module("obsidian", "normalizePath"))
+        .query(EventQuery::member_call_module("obsidian", "getLinkpath"))
+        .query(EventQuery::member_call_module("obsidian", "fileToLinktext"))
+        .query(EventQuery::member_call_module(
             "obsidian",
             "generateMarkdownLink",
         ))
-        .query(QueryDecl::member_call_module("obsidian", "resolveSubpath"))
-        .query(QueryDecl::member_call_module("obsidian", "parseSubpath"))
-        .query(QueryDecl::member_call_module(
+        .query(EventQuery::member_call_module("obsidian", "resolveSubpath"))
+        .query(EventQuery::member_call_module("obsidian", "parseSubpath"))
+        .query(EventQuery::member_call_module(
             "obsidian",
             "parseFrontMatterAliases",
         ))
-        .query(QueryDecl::member_call_module(
+        .query(EventQuery::member_call_module(
             "obsidian",
             "parseFrontMatterTags",
         ))

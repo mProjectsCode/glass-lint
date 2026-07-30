@@ -49,7 +49,7 @@ mod tests {
         api::{
             classification::RuleIndex,
             compiler::{CompiledRuleRecord, CompiledRuleSelection, rule::CompiledMatcherPlan},
-            rule::{Confidence, QueryDecl},
+            rule::{Confidence, EventQuery},
         },
         project::{SourceFile, SourceText},
     };
@@ -86,7 +86,8 @@ mod tests {
         );
 
         let fetch_plan =
-            CompiledMatcherPlan::compile(&[QueryDecl::call_global("fetch").unwrap()]).unwrap();
+            CompiledMatcherPlan::compile(&[EventQuery::call_global("fetch").unwrap().into_query()])
+                .unwrap();
         let selected = [RuleIndex::new(0)];
         let fetch_rule = CompiledRuleRecord {
             description: "fetch".into(),
@@ -98,10 +99,11 @@ mod tests {
         let (_model, _outcome) =
             project.project(CompiledRuleSelection::new(&fetch_rules, &selected));
 
-        let member_plan = CompiledMatcherPlan::compile(&[QueryDecl::member_call_heuristic(
+        let member_plan = CompiledMatcherPlan::compile(&[EventQuery::member_call_heuristic(
             "document.createElement",
         )
-        .unwrap()])
+        .unwrap()
+        .into_query()])
         .unwrap();
         let member_rule = CompiledRuleRecord {
             description: "member".into(),

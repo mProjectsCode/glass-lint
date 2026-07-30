@@ -89,14 +89,14 @@ mod tests {
 
     #[test]
     fn active_window_is_a_configured_global_object() {
-        use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+        use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
         let rule = Rule::builder("test.eval")
             .description("eval")
             .category(Category::new("test").unwrap())
             .severity(Severity::Info)
             .confidence(Confidence::High)
-            .query(QueryDecl::call_global("eval"))
+            .query(EventQuery::call_global("eval"))
             .build()
             .unwrap();
         let report = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
@@ -111,14 +111,14 @@ mod tests {
 
     #[test]
     fn active_window_shares_the_configured_environment() {
-        use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+        use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
         let rule = Rule::builder("test.request")
             .description("request")
             .category(Category::new("test").unwrap())
             .severity(Severity::Info)
             .confidence(Confidence::High)
-            .query(QueryDecl::call_global("requestUrl"))
+            .query(EventQuery::call_global("requestUrl"))
             .build()
             .unwrap();
         let report = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(

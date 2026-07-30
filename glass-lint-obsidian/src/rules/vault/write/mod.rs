@@ -1,6 +1,6 @@
 //! Obsidian vault write rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
 /// Detects rooted calls to the eight configured vault write APIs: `create`,
 /// `createBinary`, `modify`, `modifyBinary`, `append`, `appendBinary`,
@@ -14,14 +14,14 @@ pub fn rule() -> Rule {
         .category(Category::new("vault").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_rooted("app.vault.create"))
-        .query(QueryDecl::member_call_rooted("app.vault.createBinary"))
-        .query(QueryDecl::member_call_rooted("app.vault.modify"))
-        .query(QueryDecl::member_call_rooted("app.vault.modifyBinary"))
-        .query(QueryDecl::member_call_rooted("app.vault.append"))
-        .query(QueryDecl::member_call_rooted("app.vault.appendBinary"))
-        .query(QueryDecl::member_call_rooted("app.vault.process"))
-        .query(QueryDecl::member_call_rooted("app.vault.createFolder"))
+        .query(EventQuery::member_call_rooted("app.vault.create"))
+        .query(EventQuery::member_call_rooted("app.vault.createBinary"))
+        .query(EventQuery::member_call_rooted("app.vault.modify"))
+        .query(EventQuery::member_call_rooted("app.vault.modifyBinary"))
+        .query(EventQuery::member_call_rooted("app.vault.append"))
+        .query(EventQuery::member_call_rooted("app.vault.appendBinary"))
+        .query(EventQuery::member_call_rooted("app.vault.process"))
+        .query(EventQuery::member_call_rooted("app.vault.createFolder"))
         .build()
         .unwrap()
 }

@@ -45,8 +45,8 @@ fn compile_rule(
 
 #[test]
 fn any_branches_compile_through_rule_catalog() {
-    let branch_a = QueryDecl::call_global("fetch").unwrap();
-    let branch_b = QueryDecl::call_global("navigate").unwrap();
+    let branch_a = EventQuery::call_global("fetch").unwrap().into_query();
+    let branch_b = EventQuery::call_global("navigate").unwrap().into_query();
     let query = QueryDecl::any([Ok(branch_a), Ok(branch_b)]).unwrap();
 
     let result = compile_rule("test.any", query);
@@ -68,8 +68,8 @@ fn any_branches_compile_through_rule_catalog() {
 fn any_requires_primary_evidence_on_every_branch() {
     // Branch A has $0 ("fetch"), branch B also has $0 ("navigate").
     // Both branches have the primary var, so compilation should succeed.
-    let branch_a = QueryDecl::call_global("fetch").unwrap();
-    let branch_b = QueryDecl::call_global("navigate").unwrap();
+    let branch_a = EventQuery::call_global("fetch").unwrap().into_query();
+    let branch_b = EventQuery::call_global("navigate").unwrap().into_query();
     let query = QueryDecl::any([Ok(branch_a), Ok(branch_b)]).unwrap();
 
     let result = compile_rule("test.any-evidence", query);
@@ -81,7 +81,7 @@ fn any_requires_primary_evidence_on_every_branch() {
 
 #[test]
 fn any_rejects_incompatible_evidence_at_construction() {
-    let first = QueryDecl::call_global("fetch").unwrap();
+    let first = EventQuery::call_global("fetch").unwrap().into_query();
     let second = EventQuery::member_call_rooted("document.navigate")
         .unwrap()
         .into_query();
@@ -616,7 +616,7 @@ fn predicate_alternatives_limit_plus_one_fails_at_construction() {
 #[test]
 fn query_roots_boundary_succeeds() {
     let queries: Vec<QueryDecl> = (0..256)
-        .map(|i| QueryDecl::call_global(format!("fn{i}")))
+        .map(|i| EventQuery::call_global(format!("fn{i}")).map(EventQuery::into_query))
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
     assert_eq!(queries.len(), 256);
@@ -630,7 +630,7 @@ fn query_roots_limit_plus_one_is_rejected_at_authoring() {
         .severity(glass_lint_core::Severity::Info)
         .confidence(Confidence::High);
     for i in 0..=256 {
-        builder = builder.query(QueryDecl::call_global(format!("fn{i}")));
+        builder = builder.query(EventQuery::call_global(format!("fn{i}")));
     }
 
     let error = builder.build().unwrap_err();

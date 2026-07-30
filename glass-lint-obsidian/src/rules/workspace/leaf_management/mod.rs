@@ -1,6 +1,6 @@
 //! Obsidian workspace-leaf management rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
 /// Detects rooted calls to workspace leaf creation, lookup, traversal, and
 /// management methods on `app.workspace`. Provenance follows `this.app`,
@@ -13,31 +13,33 @@ pub fn rule() -> Rule {
         .category(Category::new("workspace").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_rooted(
+        .query(EventQuery::member_call_rooted(
             "app.workspace.getLeavesOfType",
         ))
-        .query(QueryDecl::member_call_rooted(
+        .query(EventQuery::member_call_rooted(
             "app.workspace.detachLeavesOfType",
         ))
-        .query(QueryDecl::member_call_rooted("app.workspace.revealLeaf"))
-        .query(QueryDecl::member_call_rooted("app.workspace.getLeaf"))
-        .query(QueryDecl::member_call_rooted("app.workspace.getLeafById"))
-        .query(QueryDecl::member_call_rooted("app.workspace.getLeftLeaf"))
-        .query(QueryDecl::member_call_rooted("app.workspace.getRightLeaf"))
-        .query(QueryDecl::member_call_rooted(
+        .query(EventQuery::member_call_rooted("app.workspace.revealLeaf"))
+        .query(EventQuery::member_call_rooted("app.workspace.getLeaf"))
+        .query(EventQuery::member_call_rooted("app.workspace.getLeafById"))
+        .query(EventQuery::member_call_rooted("app.workspace.getLeftLeaf"))
+        .query(EventQuery::member_call_rooted("app.workspace.getRightLeaf"))
+        .query(EventQuery::member_call_rooted(
             "app.workspace.ensureSideLeaf",
         ))
-        .query(QueryDecl::member_call_rooted(
+        .query(EventQuery::member_call_rooted(
             "app.workspace.iterateRootLeaves",
         ))
-        .query(QueryDecl::member_call_rooted(
+        .query(EventQuery::member_call_rooted(
             "app.workspace.iterateAllLeaves",
         ))
-        .query(QueryDecl::member_call_rooted("app.workspace.setActiveLeaf"))
-        .query(QueryDecl::member_call_rooted(
+        .query(EventQuery::member_call_rooted(
+            "app.workspace.setActiveLeaf",
+        ))
+        .query(EventQuery::member_call_rooted(
             "app.workspace.moveLeafToPopout",
         ))
-        .query(QueryDecl::member_call_rooted(
+        .query(EventQuery::member_call_rooted(
             "app.workspace.openPopoutLeaf",
         ))
         .build()

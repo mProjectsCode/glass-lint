@@ -4,12 +4,14 @@
 //! They represent authored intent without exposing compiler IR. The compiler
 //! layer lowers these into physical execution plans.
 //!
-//! The primary authoring API consists of constructor methods on [`EventQuery`]
-//! and convenience constructors on [`QueryDecl`]. Rule authors compose queries
-//! and pass them to [`crate::api::rule::RuleBuilder::query`].
+//! The primary authoring API consists of constructor methods on [`EventQuery`].
+//! Rule authors create event queries and pass them directly to
+//! [`crate::api::rule::RuleBuilder::query`] (via the [`IntoQueryDecl`] adapter)
+//! or convert them with [`EventQuery::into_query`] when composing alternatives
+//! or conjunctions.
 //!
-//! [`EventQuery::call_global`], [`QueryDecl::call_global`], and the other
-//! identity/event combinators replace the former [`QueryDecl`] builder.
+//! [`EventQuery::call_global`] and the other identity/event combinators replace
+//! the former [`QueryDecl`] builder.
 use std::{collections::BTreeSet, fmt};
 
 use glass_lint_datastructures::SymbolPath;
@@ -849,68 +851,12 @@ pub struct QueryDecl {
 }
 
 impl QueryDecl {
-    /// Create a query declaration from an [`EventQuery`], inferring evidence
-    /// from the event kind and identity.
-    pub fn from_event_query(event_query: EventQuery) -> Self {
-        event_query.into_query()
-    }
-
     pub fn expression(&self) -> &QueryExpr {
         &self.expression
     }
 
     pub fn emission(&self) -> &EmissionDecl {
         &self.emission
-    }
-
-    // ── Convenience constructors ──────────────────────────────────
-    //
-    // These are thin wrappers over the corresponding `EventQuery` constructor
-    // followed by `into_query()`. They replace the former
-    // `QueryDecl::builder().<method>().build().unwrap()` pattern.
-
-    /// Global call, e.g. `fetch(...)`.
-    pub fn call_global(name: impl Into<String>) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::call_global(name)?.into_query())
-    }
-
-    /// Heuristic spelling call.
-    pub fn call_heuristic(name: impl Into<String>) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::call_heuristic(name)?.into_query())
-    }
-
-    /// Module-export call.
-    pub fn call_module(
-        module: impl Into<String>,
-        export: impl Into<String>,
-    ) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::call_module(module, export)?.into_query())
-    }
-
-    /// Package module export call.
-    pub fn call_package(
-        module: impl Into<String>,
-        export: impl Into<String>,
-    ) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::call_package(module, export)?.into_query())
-    }
-
-    /// Rooted member call, e.g. `document.createElement(...)`.
-    pub fn member_call_rooted(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::member_call_rooted(chain)?.into_query())
-    }
-
-    /// Heuristic member call.
-    pub fn member_call_heuristic(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::member_call_heuristic(chain)?.into_query())
-    }
-
-    /// Module-namespace member call.
-    pub fn member_call_module(
-        module: impl Into<String>,
-        member: impl Into<String>,
-    ) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::member_call_module(module, member)?.into_query())
     }
 
     /// Member call on an instance created by a module export.
@@ -970,14 +916,6 @@ impl QueryDecl {
         })
     }
 
-    /// Package module namespace member call.
-    pub fn member_call_package(
-        module: impl Into<String>,
-        member: impl Into<String>,
-    ) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::member_call_package(module, member)?.into_query())
-    }
-
     /// Member call on an object returned by a rooted source.
     pub fn member_call_returned(
         source: impl Into<String>,
@@ -1022,19 +960,6 @@ impl QueryDecl {
                 symbol: source_str,
             },
         })
-    }
-
-    /// Rooted member read.
-    pub fn member_read_rooted(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::member_read_rooted(chain)?.into_query())
-    }
-
-    /// Module-namespace member read.
-    pub fn member_read_module(
-        module: impl Into<String>,
-        member: impl Into<String>,
-    ) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::member_read_module(module, member)?.into_query())
     }
 
     /// Member read on an object returned by a rooted source.
@@ -1083,60 +1008,6 @@ impl QueryDecl {
         })
     }
 
-    /// Package module namespace member read.
-    pub fn member_read_package(
-        module: impl Into<String>,
-        member: impl Into<String>,
-    ) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::member_read_package(module, member)?.into_query())
-    }
-
-    /// Import exact module specifier.
-    pub fn import_exact(module: impl Into<String>) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::import_exact(module)?.into_query())
-    }
-
-    /// Import package pattern.
-    pub fn import_package(module: impl Into<String>) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::import_package(module)?.into_query())
-    }
-
-    /// Static string reference.
-    pub fn string_contains(value: impl Into<String>) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::string_contains(value)?.into_query())
-    }
-
-    /// Heuristic class reference.
-    pub fn class_heuristic(name: impl Into<String>) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::class_heuristic(name)?.into_query())
-    }
-
-    /// Module-export class reference.
-    pub fn class_module(
-        module: impl Into<String>,
-        export: impl Into<String>,
-    ) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::class_module(module, export)?.into_query())
-    }
-
-    /// Global constructor, e.g. `new URL(...)`.
-    pub fn constructor_global(name: impl Into<String>) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::constructor_global(name)?.into_query())
-    }
-
-    /// Heuristic constructor.
-    pub fn constructor_heuristic(name: impl Into<String>) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::constructor_heuristic(name)?.into_query())
-    }
-
-    /// Module-export constructor.
-    pub fn constructor_module(
-        module: impl Into<String>,
-        export: impl Into<String>,
-    ) -> Result<Self, QueryBuildError> {
-        Ok(EventQuery::constructor_module(module, export)?.into_query())
-    }
-
     // ── Evidence override ─────────────────────────────────────────
 
     /// Override the evidence kind and symbol.
@@ -1160,8 +1031,8 @@ impl QueryDecl {
     ///
     /// ```ignore
     /// QueryDecl::any([
-    ///     QueryDecl::call_global("fetch"),
-    ///     QueryDecl::call_global("navigate"),
+    ///     EventQuery::call_global("fetch").map(EventQuery::into_query),
+    ///     EventQuery::call_global("navigate").map(EventQuery::into_query),
     /// ])?;
     /// ```
     pub fn any(
@@ -1288,9 +1159,9 @@ impl QueryDecl {
     }
 }
 
-/// Sealed trait allowing [`RuleBuilder::query`] to accept either a
-/// [`QueryDecl`] or a [`Result<QueryDecl, QueryBuildError>`] without
-/// requiring the caller to unwrap.
+/// Sealed trait allowing [`RuleBuilder::query`] to accept a [`QueryDecl`],
+/// [`EventQuery`], or `Result` of either without requiring the caller to
+/// unwrap.
 pub trait IntoQueryDecl: private::Sealed {
     fn into_query_decl(self) -> Result<QueryDecl, QueryBuildError>;
 }
@@ -1307,10 +1178,24 @@ impl IntoQueryDecl for Result<QueryDecl, QueryBuildError> {
     }
 }
 
+impl IntoQueryDecl for EventQuery {
+    fn into_query_decl(self) -> Result<QueryDecl, QueryBuildError> {
+        Ok(self.into_query())
+    }
+}
+
+impl IntoQueryDecl for Result<EventQuery, QueryBuildError> {
+    fn into_query_decl(self) -> Result<QueryDecl, QueryBuildError> {
+        self.map(EventQuery::into_query)
+    }
+}
+
 mod private {
     pub trait Sealed {}
     impl Sealed for super::QueryDecl {}
     impl Sealed for Result<super::QueryDecl, super::QueryBuildError> {}
+    impl Sealed for super::EventQuery {}
+    impl Sealed for Result<super::EventQuery, super::QueryBuildError> {}
 }
 
 impl fmt::Display for QueryDecl {
@@ -1425,40 +1310,53 @@ mod tests {
         ));
     }
 
-    // ── Construction: every convenience constructor → valid QueryDecl ──
+    // ── Construction: every EventQuery constructor → valid QueryDecl ──
 
-    fn assert_event_query(decl: Result<QueryDecl, QueryBuildError>, expected_symbol: &str) {
-        let decl = decl.unwrap();
+    #[allow(clippy::needless_pass_by_value)]
+    fn assert_event_query(decl: QueryDecl, expected_symbol: &str) {
         assert_eq!(decl.emission.primary_var, VarId::new(0));
         assert_eq!(decl.emission.symbol, expected_symbol);
         assert!(matches!(&decl.expression.kind, QueryExprKind::Event(_)));
     }
 
-    fn assert_any_all_query(decl: Result<QueryDecl, QueryBuildError>, expected_symbol: &str) {
-        let decl = decl.unwrap();
+    #[allow(clippy::needless_pass_by_value)]
+    fn assert_any_all_query(decl: QueryDecl, expected_symbol: &str) {
         assert_eq!(decl.emission.primary_var, VarId::new(0));
         assert_eq!(decl.emission.symbol, expected_symbol);
     }
 
     #[test]
     fn lowers_call_global_to_query_decl() {
-        assert_event_query(QueryDecl::call_global("fetch"), "fetch");
+        assert_event_query(
+            EventQuery::call_global("fetch").unwrap().into_query(),
+            "fetch",
+        );
     }
 
     #[test]
     fn lowers_call_heuristic_to_query_decl() {
-        assert_event_query(QueryDecl::call_heuristic("fetch"), "fetch");
+        assert_event_query(
+            EventQuery::call_heuristic("fetch").unwrap().into_query(),
+            "fetch",
+        );
     }
 
     #[test]
     fn lowers_call_module_to_query_decl() {
-        assert_event_query(QueryDecl::call_module("fs", "readFile"), "fs.readFile");
+        assert_event_query(
+            EventQuery::call_module("fs", "readFile")
+                .unwrap()
+                .into_query(),
+            "fs.readFile",
+        );
     }
 
     #[test]
     fn lowers_call_package_to_query_decl() {
         assert_event_query(
-            QueryDecl::call_package("@scope/pkg", "method"),
+            EventQuery::call_package("@scope/pkg", "method")
+                .unwrap()
+                .into_query(),
             "@scope/pkg.method",
         );
     }
@@ -1466,25 +1364,37 @@ mod tests {
     #[test]
     fn lowers_member_call_rooted_to_query_decl() {
         assert_event_query(
-            QueryDecl::member_call_rooted("document.createElement"),
+            EventQuery::member_call_rooted("document.createElement")
+                .unwrap()
+                .into_query(),
             "document.createElement",
         );
     }
 
     #[test]
     fn lowers_member_call_heuristic_to_query_decl() {
-        assert_event_query(QueryDecl::member_call_heuristic("foo.bar"), "foo.bar");
+        assert_event_query(
+            EventQuery::member_call_heuristic("foo.bar")
+                .unwrap()
+                .into_query(),
+            "foo.bar",
+        );
     }
 
     #[test]
     fn lowers_member_call_module_to_query_decl() {
-        assert_event_query(QueryDecl::member_call_module("module", "method"), "module");
+        assert_event_query(
+            EventQuery::member_call_module("module", "method")
+                .unwrap()
+                .into_query(),
+            "module",
+        );
     }
 
     #[test]
     fn lowers_member_call_instance_to_query_decl() {
         assert_any_all_query(
-            QueryDecl::member_call_instance("pkg", "Client", "send"),
+            QueryDecl::member_call_instance("pkg", "Client", "send").unwrap(),
             "pkg.Client",
         );
     }
@@ -1492,20 +1402,27 @@ mod tests {
     #[test]
     fn lowers_member_call_package_to_query_decl() {
         assert_event_query(
-            QueryDecl::member_call_package("@scope/pkg", "method"),
+            EventQuery::member_call_package("@scope/pkg", "method")
+                .unwrap()
+                .into_query(),
             "@scope/pkg",
         );
     }
 
     #[test]
     fn lowers_member_call_returned_to_query_decl() {
-        assert_any_all_query(QueryDecl::member_call_returned("create", "send"), "create");
+        assert_any_all_query(
+            QueryDecl::member_call_returned("create", "send").unwrap(),
+            "create",
+        );
     }
 
     #[test]
     fn lowers_member_read_rooted_to_query_decl() {
         assert_event_query(
-            QueryDecl::member_read_rooted("window.location"),
+            EventQuery::member_read_rooted("window.location")
+                .unwrap()
+                .into_query(),
             "window.location",
         );
     }
@@ -1513,62 +1430,103 @@ mod tests {
     #[test]
     fn lowers_member_read_module_to_query_decl() {
         assert_event_query(
-            QueryDecl::member_read_module("module", "property"),
+            EventQuery::member_read_module("module", "property")
+                .unwrap()
+                .into_query(),
             "module",
         );
     }
 
     #[test]
     fn lowers_member_read_returned_to_query_decl() {
-        assert_any_all_query(QueryDecl::member_read_returned("create", "token"), "create");
+        assert_any_all_query(
+            QueryDecl::member_read_returned("create", "token").unwrap(),
+            "create",
+        );
     }
 
     #[test]
     fn lowers_member_read_package_to_query_decl() {
         assert_event_query(
-            QueryDecl::member_read_package("@scope/pkg", "property"),
+            EventQuery::member_read_package("@scope/pkg", "property")
+                .unwrap()
+                .into_query(),
             "@scope/pkg",
         );
     }
 
     #[test]
     fn lowers_import_exact_to_query_decl() {
-        assert_event_query(QueryDecl::import_exact("node:fs"), "node:fs");
+        assert_event_query(
+            EventQuery::import_exact("node:fs").unwrap().into_query(),
+            "node:fs",
+        );
     }
 
     #[test]
     fn lowers_import_package_to_query_decl() {
-        assert_event_query(QueryDecl::import_package("@scope/pkg"), "@scope/pkg");
+        assert_event_query(
+            EventQuery::import_package("@scope/pkg")
+                .unwrap()
+                .into_query(),
+            "@scope/pkg",
+        );
     }
 
     #[test]
     fn lowers_string_contains_to_query_decl() {
-        assert_event_query(QueryDecl::string_contains("https://"), "https://");
+        assert_event_query(
+            EventQuery::string_contains("https://")
+                .unwrap()
+                .into_query(),
+            "https://",
+        );
     }
 
     #[test]
     fn lowers_class_heuristic_to_query_decl() {
-        assert_event_query(QueryDecl::class_heuristic("Worker"), "Worker");
+        assert_event_query(
+            EventQuery::class_heuristic("Worker").unwrap().into_query(),
+            "Worker",
+        );
     }
 
     #[test]
     fn lowers_class_module_to_query_decl() {
-        assert_event_query(QueryDecl::class_module("module", "Klass"), "module.Klass");
+        assert_event_query(
+            EventQuery::class_module("module", "Klass")
+                .unwrap()
+                .into_query(),
+            "module.Klass",
+        );
     }
 
     #[test]
     fn lowers_constructor_global_to_query_decl() {
-        assert_event_query(QueryDecl::constructor_global("URL"), "URL");
+        assert_event_query(
+            EventQuery::constructor_global("URL").unwrap().into_query(),
+            "URL",
+        );
     }
 
     #[test]
     fn lowers_constructor_heuristic_to_query_decl() {
-        assert_event_query(QueryDecl::constructor_heuristic("Foo"), "Foo");
+        assert_event_query(
+            EventQuery::constructor_heuristic("Foo")
+                .unwrap()
+                .into_query(),
+            "Foo",
+        );
     }
 
     #[test]
     fn lowers_constructor_module_to_query_decl() {
-        assert_event_query(QueryDecl::constructor_module("pkg", "Klass"), "pkg.Klass");
+        assert_event_query(
+            EventQuery::constructor_module("pkg", "Klass")
+                .unwrap()
+                .into_query(),
+            "pkg.Klass",
+        );
     }
 
     #[test]
@@ -1594,8 +1552,9 @@ mod tests {
 
     #[test]
     fn lowers_evidence_override_to_query_decl() {
-        let q = QueryDecl::call_global("fetch")
+        let q = EventQuery::call_global("fetch")
             .unwrap()
+            .into_query()
             .with_evidence(MatchKind::CallArgument, "custom.fetch");
         assert_eq!(q.emission.kind, MatchKind::CallArgument);
         assert_eq!(q.emission.symbol, "custom.fetch");
@@ -1605,8 +1564,8 @@ mod tests {
 
     #[test]
     fn semantically_equivalent_decls_lower_equally() {
-        let q_a = QueryDecl::call_global("fetch").unwrap();
-        let q_b = QueryDecl::call_global("fetch").unwrap();
+        let q_a = EventQuery::call_global("fetch").unwrap().into_query();
+        let q_b = EventQuery::call_global("fetch").unwrap().into_query();
         assert_eq!(q_a, q_b);
     }
 
@@ -1731,7 +1690,7 @@ mod tests {
 
     #[test]
     fn query_decl_display_includes_symbol() {
-        let q = QueryDecl::call_global("fetch").unwrap();
+        let q = EventQuery::call_global("fetch").unwrap().into_query();
         let text = format!("{q}");
         assert!(text.contains("fetch"));
     }
@@ -1739,8 +1698,10 @@ mod tests {
     #[test]
     fn queries_lower_correctly() {
         let queries = [
-            QueryDecl::call_global("fetch").unwrap(),
-            QueryDecl::member_read_rooted("window.location").unwrap(),
+            EventQuery::call_global("fetch").unwrap().into_query(),
+            EventQuery::member_read_rooted("window.location")
+                .unwrap()
+                .into_query(),
         ];
         assert_eq!(queries.len(), 2);
     }

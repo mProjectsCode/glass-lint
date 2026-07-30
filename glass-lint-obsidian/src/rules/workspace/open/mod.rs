@@ -1,6 +1,6 @@
 //! Obsidian workspace-open rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, QueryDecl, Rule, Severity};
 
 /// Detects rooted calls to `app.workspace.openLinkText` and
 /// `app.workspace.getLeaf.openFile`. Provenance follows `this.app`, workspace
@@ -14,8 +14,8 @@ pub fn rule() -> Rule {
         .category(Category::new("workspace").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_rooted("app.workspace.openLinkText"))
-        .query(QueryDecl::member_call_rooted(
+        .query(EventQuery::member_call_rooted("app.workspace.openLinkText"))
+        .query(EventQuery::member_call_rooted(
             "app.workspace.getLeaf.openFile",
         ))
         .query(QueryDecl::member_call_returned(

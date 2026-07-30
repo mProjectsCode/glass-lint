@@ -19,7 +19,7 @@ fn ordinary() -> Rule {
     rule(
         "network.request",
         "Calls the network API",
-        QueryDecl::call_global("fetch").expect("valid identity"),
+        EventQuery::call_global("fetch").unwrap().into_query(),
     )
 }
 
@@ -33,8 +33,8 @@ fn constrained() -> Rule {
 
 fn alternatives() -> Rule {
     let query = QueryDecl::any([
-        Ok(QueryDecl::call_global("fetch").expect("valid identity")),
-        Ok(QueryDecl::call_global("XMLHttpRequest").expect("valid identity")),
+        EventQuery::call_global("fetch").map(EventQuery::into_query),
+        EventQuery::call_global("XMLHttpRequest").map(EventQuery::into_query),
     ])
     .expect("compatible alternatives");
     rule("network.alternative", "Uses a network API", query)
@@ -119,7 +119,7 @@ fn correlated_sinks() -> Rule {
 }
 
 fn structured_error() -> glass_lint_core::rules::QueryBuildError {
-    QueryDecl::call_global("").expect_err("empty identities are rejected")
+    EventQuery::call_global("").expect_err("empty identities are rejected")
 }
 
 fn main() {

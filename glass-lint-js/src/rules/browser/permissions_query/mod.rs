@@ -1,6 +1,6 @@
 //! Browser permission-query rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
 /// Detects calls to the rooted browser Permissions API. The matcher follows
 /// aliases and static computed properties while rejecting shadowed or dynamic
@@ -11,7 +11,9 @@ pub fn rule() -> Rule {
         .category(Category::new("browser/permissions").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_rooted("navigator.permissions.query"))
+        .query(EventQuery::member_call_rooted(
+            "navigator.permissions.query",
+        ))
         .build()
         .unwrap()
 }

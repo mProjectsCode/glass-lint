@@ -1,6 +1,6 @@
 //! Browser global-input listener rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
 const INPUT_EVENTS: [&str; 16] = [
     "keydown",
@@ -60,12 +60,12 @@ pub fn rule() -> Rule {
                 })
                 .unwrap(),
         )
-        .query(QueryDecl::member_read_rooted("document.onkeydown"))
-        .query(QueryDecl::member_read_rooted("document.onkeyup"))
-        .query(QueryDecl::member_read_rooted("document.onkeypress"))
-        .query(QueryDecl::member_read_rooted("document.onpaste"))
-        .query(QueryDecl::member_read_rooted("document.oncopy"))
-        .query(QueryDecl::member_read_rooted("document.oncut"))
+        .query(EventQuery::member_read_rooted("document.onkeydown"))
+        .query(EventQuery::member_read_rooted("document.onkeyup"))
+        .query(EventQuery::member_read_rooted("document.onkeypress"))
+        .query(EventQuery::member_read_rooted("document.onpaste"))
+        .query(EventQuery::member_read_rooted("document.oncopy"))
+        .query(EventQuery::member_read_rooted("document.oncut"))
         .build()
         .unwrap()
 }

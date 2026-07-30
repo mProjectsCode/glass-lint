@@ -241,7 +241,7 @@ mod tests {
             .category(cat)
             .severity(Severity::Info)
             .confidence(Confidence::High)
-            .query(QueryDecl::call_global("fetch"))
+            .query(EventQuery::call_global("fetch"))
             .build()
     }
 

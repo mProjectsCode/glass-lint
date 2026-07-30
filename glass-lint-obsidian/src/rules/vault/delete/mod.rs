@@ -1,6 +1,6 @@
 //! Obsidian vault deletion rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
 /// Detects rooted calls to the vault `delete`/`trash` APIs and the file
 /// manager's `trashFile` API. Rooted provenance follows `this.app`, direct
@@ -13,9 +13,9 @@ pub fn rule() -> Rule {
         .category(Category::new("vault").unwrap())
         .confidence(Confidence::High)
         .severity(Severity::Warning)
-        .query(QueryDecl::member_call_rooted("app.vault.delete"))
-        .query(QueryDecl::member_call_rooted("app.vault.trash"))
-        .query(QueryDecl::member_call_rooted("app.fileManager.trashFile"))
+        .query(EventQuery::member_call_rooted("app.vault.delete"))
+        .query(EventQuery::member_call_rooted("app.vault.trash"))
+        .query(EventQuery::member_call_rooted("app.fileManager.trashFile"))
         .build()
         .unwrap()
 }

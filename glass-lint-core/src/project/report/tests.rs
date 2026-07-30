@@ -3,7 +3,7 @@ use glass_lint_datastructures::{Position, SourceRange};
 use super::*;
 use crate::{
     RuleCatalog, RuleId, Severity,
-    api::rule::{Category, Confidence, QueryDecl, Rule, Severity as RuleSeverity},
+    api::rule::{Category, Confidence, EventQuery, Rule, Severity as RuleSeverity},
     project::{
         AnalysisDiagnostic, AnalysisOperationCounts, Diagnostic, EvidenceRole, EvidenceStep,
         EvidenceTrace, EvidenceTraces, FileReport, Finding, MatchCertainty, ProjectRelativePath,
@@ -339,7 +339,7 @@ fn direct_qualification_matches_one_file_project_shape() {
         .category(Category::new("network").unwrap())
         .severity(RuleSeverity::Warning)
         .confidence(Confidence::High)
-        .query(QueryDecl::call_global("fetch"))
+        .query(EventQuery::call_global("fetch"))
         .build()
         .unwrap();
     let mut environment = crate::Environment::default();
@@ -430,7 +430,7 @@ fn snippet_serializes_as_one_analysis_file_without_source_text() {
         .category(Category::new("network").unwrap())
         .severity(RuleSeverity::Warning)
         .confidence(Confidence::High)
-        .query(QueryDecl::call_global("fetch"))
+        .query(EventQuery::call_global("fetch"))
         .build()
         .unwrap();
     let mut environment = crate::Environment::default();
@@ -457,7 +457,7 @@ fn parse_and_valid_sources_each_produce_one_file_report() {
         .category(Category::new("network").unwrap())
         .severity(RuleSeverity::Warning)
         .confidence(Confidence::High)
-        .query(QueryDecl::call_global("fetch"))
+        .query(EventQuery::call_global("fetch"))
         .build()
         .unwrap();
     let mut environment = crate::Environment::default();

@@ -216,7 +216,7 @@ mod tests {
         Environment, LintConfigError, Linter, LinterConfig, RuleBaseline, RuleCatalog,
         RuleOverride, RuleSelection, RuleState,
         lint::ranges::remove_contained_ranges,
-        rules::{Category, Confidence, QueryDecl, Rule, Severity},
+        rules::{Category, Confidence, EventQuery, Rule, Severity},
     };
 
     #[test]
@@ -245,7 +245,7 @@ mod tests {
             .category(Category::new("network").unwrap())
             .severity(Severity::Warning)
             .confidence(Confidence::High)
-            .query(QueryDecl::call_global("fetch"))
+            .query(EventQuery::call_global("fetch"))
             .build()
             .unwrap();
         let mut environment = Environment::default();
@@ -294,7 +294,7 @@ mod tests {
             .category(Category::new("network").unwrap())
             .severity(Severity::Warning)
             .confidence(Confidence::High)
-            .query(QueryDecl::call_global("fetch"))
+            .query(EventQuery::call_global("fetch"))
             .build()
             .unwrap();
         let mut environment = Environment::default();

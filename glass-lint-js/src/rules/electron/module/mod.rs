@@ -1,6 +1,6 @@
 //! Electron module-boundary rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
 const MODULE_CALLS: &[&str] = &[
     "webContents.fromId",
@@ -73,19 +73,19 @@ pub fn rule() -> Rule {
         .category(Category::new("electron/module").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::import_exact("electron"))
-        .query(QueryDecl::import_exact("electron/main"))
-        .query(QueryDecl::import_exact("electron/renderer"))
-        .query(QueryDecl::import_exact("electron/common"))
-        .query(QueryDecl::import_exact("electron/utility"))
-        .query(QueryDecl::import_exact("electron/sandbox"))
-        .query(QueryDecl::constructor_module("electron", "BrowserWindow"));
+        .query(EventQuery::import_exact("electron"))
+        .query(EventQuery::import_exact("electron/main"))
+        .query(EventQuery::import_exact("electron/renderer"))
+        .query(EventQuery::import_exact("electron/common"))
+        .query(EventQuery::import_exact("electron/utility"))
+        .query(EventQuery::import_exact("electron/sandbox"))
+        .query(EventQuery::constructor_module("electron", "BrowserWindow"));
 
     for member in MODULE_CALLS {
-        builder = builder.query(QueryDecl::member_call_module("electron", *member));
+        builder = builder.query(EventQuery::member_call_module("electron", *member));
     }
     for member in MODULE_READS {
-        builder = builder.query(QueryDecl::member_read_module("electron", *member));
+        builder = builder.query(EventQuery::member_read_module("electron", *member));
     }
 
     builder.build().unwrap()

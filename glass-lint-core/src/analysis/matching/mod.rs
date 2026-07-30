@@ -242,7 +242,7 @@ mod tests {
             matching::occurrence::OccurrenceIndex,
             resolution::Resolver,
         },
-        api::{compiler::rule::CompiledMatcherPlan, rule::QueryDecl},
+        api::{compiler::rule::CompiledMatcherPlan, rule::EventQuery},
         parse,
     };
 
@@ -277,9 +277,9 @@ mod tests {
         facts.normalize_occurrences();
 
         let compiled =
-            CompiledMatcherPlan::compile(&[
-                QueryDecl::member_call_heuristic("client.request").unwrap()
-            ])
+            CompiledMatcherPlan::compile(&[EventQuery::member_call_heuristic("client.request")
+                .unwrap()
+                .into_query()])
             .unwrap();
         let evidence = facts.evidence_for(&compiled);
         let reference = facts

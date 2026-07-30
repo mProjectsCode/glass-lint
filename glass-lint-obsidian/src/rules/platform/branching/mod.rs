@@ -1,6 +1,6 @@
 //! Obsidian platform-branching rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
 /// Detects reads of the configured `obsidian.Platform` flags and resource path
 /// prefix. Module namespace aliases, optional chains, and static computed
@@ -12,52 +12,52 @@ pub fn rule() -> Rule {
         .category(Category::new("platform").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_read_module(
+        .query(EventQuery::member_read_module(
             "obsidian",
             "Platform.isMobile",
         ))
-        .query(QueryDecl::member_read_module(
+        .query(EventQuery::member_read_module(
             "obsidian",
             "Platform.isDesktop",
         ))
-        .query(QueryDecl::member_read_module(
+        .query(EventQuery::member_read_module(
             "obsidian",
             "Platform.isIosApp",
         ))
-        .query(QueryDecl::member_read_module(
+        .query(EventQuery::member_read_module(
             "obsidian",
             "Platform.isAndroidApp",
         ))
-        .query(QueryDecl::member_read_module(
+        .query(EventQuery::member_read_module(
             "obsidian",
             "Platform.isMacOS",
         ))
-        .query(QueryDecl::member_read_module("obsidian", "Platform.isWin"))
-        .query(QueryDecl::member_read_module(
+        .query(EventQuery::member_read_module("obsidian", "Platform.isWin"))
+        .query(EventQuery::member_read_module(
             "obsidian",
             "Platform.isLinux",
         ))
-        .query(QueryDecl::member_read_module(
+        .query(EventQuery::member_read_module(
             "obsidian",
             "Platform.isDesktopApp",
         ))
-        .query(QueryDecl::member_read_module(
+        .query(EventQuery::member_read_module(
             "obsidian",
             "Platform.isMobileApp",
         ))
-        .query(QueryDecl::member_read_module(
+        .query(EventQuery::member_read_module(
             "obsidian",
             "Platform.isPhone",
         ))
-        .query(QueryDecl::member_read_module(
+        .query(EventQuery::member_read_module(
             "obsidian",
             "Platform.isTablet",
         ))
-        .query(QueryDecl::member_read_module(
+        .query(EventQuery::member_read_module(
             "obsidian",
             "Platform.isSafari",
         ))
-        .query(QueryDecl::member_read_module(
+        .query(EventQuery::member_read_module(
             "obsidian",
             "Platform.resourcePathPrefix",
         ))

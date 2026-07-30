@@ -47,7 +47,7 @@ fn baseline_simple_global_call() {
     let report = single_lint(
         "fetch('/data');",
         rule("fetch")
-            .query(QueryDecl::call_global("fetch"))
+            .query(EventQuery::call_global("fetch"))
             .build()
             .unwrap(),
     );
@@ -239,7 +239,7 @@ fn baseline_project_module_identity() {
     let report = single_lint(
         "import { readFile } from 'fs'; readFile('/etc/passwd');",
         rule("module-call")
-            .query(QueryDecl::call_module("fs", "readFile"))
+            .query(EventQuery::call_module("fs", "readFile"))
             .build()
             .unwrap(),
     );
@@ -554,7 +554,7 @@ fn baseline_completion_is_complete_for_simple_query() {
     let report = single_lint(
         "fetch('/data');",
         rule("simple-complete")
-            .query(QueryDecl::call_global("fetch"))
+            .query(EventQuery::call_global("fetch"))
             .build()
             .unwrap(),
     );
@@ -568,14 +568,14 @@ fn baseline_finding_order_is_deterministic() {
     let report_a = single_lint(
         "fetch('/a'); fetch('/b');",
         rule("order-test")
-            .query(QueryDecl::call_global("fetch"))
+            .query(EventQuery::call_global("fetch"))
             .build()
             .unwrap(),
     );
     let report_b = single_lint(
         "fetch('/a'); fetch('/b');",
         rule("order-test")
-            .query(QueryDecl::call_global("fetch"))
+            .query(EventQuery::call_global("fetch"))
             .build()
             .unwrap(),
     );
@@ -607,7 +607,7 @@ fn baseline_operation_counts_are_stable() {
     let report = single_lint(
         "fetch('/data');",
         rule("ops-stable")
-            .query(QueryDecl::call_global("fetch"))
+            .query(EventQuery::call_global("fetch"))
             .build()
             .unwrap(),
     );
@@ -666,7 +666,7 @@ fn all_sink_correlation_has_deterministic_bounded_operations() {
 
 #[test]
 fn duplicate_query_roots_are_deduplicated_before_execution() {
-    let query = QueryDecl::call_global("fetch").unwrap();
+    let query = EventQuery::call_global("fetch").unwrap().into_query();
     let report = single_lint(
         "fetch('/data');",
         rule("duplicate-roots")

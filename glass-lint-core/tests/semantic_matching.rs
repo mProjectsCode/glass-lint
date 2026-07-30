@@ -36,7 +36,7 @@ fn assert_matches(source: &str, decl: impl IntoQueryDecl, expected: usize) {
 fn follows_default_import_namespace_members_through_aliases() {
     assert_matches(
         "import sdk from 'sdk'; const send = sdk.send; send('/x');",
-        QueryDecl::member_call_module("sdk", "send"),
+        EventQuery::member_call_module("sdk", "send"),
         1,
     );
 }
@@ -45,7 +45,7 @@ fn follows_default_import_namespace_members_through_aliases() {
 fn follows_destructured_esm_namespace_exports() {
     assert_matches(
         "import * as sdk from 'sdk'; const { send } = sdk; send('/x');",
-        QueryDecl::call_module("sdk", "send"),
+        EventQuery::call_module("sdk", "send"),
         1,
     );
 }
@@ -54,7 +54,7 @@ fn follows_destructured_esm_namespace_exports() {
 fn follows_destructured_esm_namespace_export_renames() {
     assert_matches(
         "import * as sdk from 'sdk'; const { send: dispatch } = sdk; dispatch('/x');",
-        QueryDecl::call_module("sdk", "send"),
+        EventQuery::call_module("sdk", "send"),
         1,
     );
 }
@@ -63,7 +63,7 @@ fn follows_destructured_esm_namespace_export_renames() {
 fn follows_interop_members_extracted_before_the_call() {
     assert_matches(
         "const send = __toESM(require('sdk')).send; send('/x');",
-        QueryDecl::call_module("sdk", "send"),
+        EventQuery::call_module("sdk", "send"),
         1,
     );
 }
@@ -72,7 +72,7 @@ fn follows_interop_members_extracted_before_the_call() {
 fn preserves_module_provenance_through_sequence_calls() {
     assert_matches(
         "const sdk = require('sdk'); (0, sdk.send)('/x');",
-        QueryDecl::call_module("sdk", "send"),
+        EventQuery::call_module("sdk", "send"),
         1,
     );
 }
@@ -81,7 +81,7 @@ fn preserves_module_provenance_through_sequence_calls() {
 fn preserves_module_provenance_through_bound_exports() {
     assert_matches(
         "const send = require('sdk').send.bind(null); send('/x');",
-        QueryDecl::call_module("sdk", "send"),
+        EventQuery::call_module("sdk", "send"),
         1,
     );
 }
@@ -90,7 +90,7 @@ fn preserves_module_provenance_through_bound_exports() {
 fn follows_destructured_rooted_members() {
     assert_matches(
         "const { read } = host.files; read('x');",
-        QueryDecl::member_call_rooted("host.files.read"),
+        EventQuery::member_call_rooted("host.files.read"),
         1,
     );
 }
@@ -99,7 +99,7 @@ fn follows_destructured_rooted_members() {
 fn follows_renamed_destructured_rooted_members() {
     assert_matches(
         "const { read: load } = host.files; load('x');",
-        QueryDecl::member_call_rooted("host.files.read"),
+        EventQuery::member_call_rooted("host.files.read"),
         1,
     );
 }
@@ -108,7 +108,7 @@ fn follows_renamed_destructured_rooted_members() {
 fn follows_nested_destructured_rooted_members() {
     assert_matches(
         "const { files: { read } } = host; read('x');",
-        QueryDecl::member_call_rooted("host.files.read"),
+        EventQuery::member_call_rooted("host.files.read"),
         1,
     );
 }
@@ -141,7 +141,7 @@ fn preserves_deep_module_member_provenance() {
         .join(".");
     let source = format!("import * as sdk from 'sdk'; sdk.{member}();");
 
-    assert_matches(&source, QueryDecl::member_call_module("sdk", &member), 1);
+    assert_matches(&source, EventQuery::member_call_module("sdk", &member), 1);
 }
 
 #[test]
@@ -153,7 +153,7 @@ fn a_deep_rooted_chain_fails_closed_after_an_earlier_prefix_mutation() {
     let chain = format!("app.{suffix}.execute");
     let source = format!("app.p0.p1 = replacement; {chain}();");
 
-    assert_matches(&source, QueryDecl::member_call_rooted(&chain), 0);
+    assert_matches(&source, EventQuery::member_call_rooted(&chain), 0);
 }
 
 #[test]
@@ -262,7 +262,7 @@ fn resolves_constant_template_literal_substitutions() {
 fn resolves_static_array_property_names_through_constant_indexes() {
     assert_matches(
         "const names = ['read']; const index = 0; host.files[names[index]]('x');",
-        QueryDecl::member_call_rooted("host.files.read"),
+        EventQuery::member_call_rooted("host.files.read"),
         1,
     );
 }
@@ -271,7 +271,7 @@ fn resolves_static_array_property_names_through_constant_indexes() {
 fn tracks_global_callbacks_through_immediately_invoked_arrows() {
     assert_matches(
         "((callback) => callback('/x'))(fetch);",
-        QueryDecl::call_global("fetch"),
+        EventQuery::call_global("fetch"),
         1,
     );
 }
@@ -280,7 +280,7 @@ fn tracks_global_callbacks_through_immediately_invoked_arrows() {
 fn tracks_global_callbacks_through_immediately_invoked_functions() {
     assert_matches(
         "(function(callback) { callback('/x'); })(fetch);",
-        QueryDecl::call_global("fetch"),
+        EventQuery::call_global("fetch"),
         1,
     );
 }
@@ -289,7 +289,7 @@ fn tracks_global_callbacks_through_immediately_invoked_functions() {
 fn tracks_global_callbacks_through_array_iteration() {
     assert_matches(
         "[fetch].forEach(callback => callback('/x'));",
-        QueryDecl::call_global("fetch"),
+        EventQuery::call_global("fetch"),
         1,
     );
 }
@@ -298,12 +298,12 @@ fn tracks_global_callbacks_through_array_iteration() {
 fn joins_matching_values_from_finite_array_callbacks() {
     assert_matches(
         "[fetch, fetch].forEach(callback => callback('/x'));",
-        QueryDecl::call_global("fetch"),
+        EventQuery::call_global("fetch"),
         1,
     );
     assert_matches(
         "[fetch, local].forEach(callback => callback('/x'));",
-        QueryDecl::call_global("fetch"),
+        EventQuery::call_global("fetch"),
         0,
     );
 }
@@ -312,7 +312,7 @@ fn joins_matching_values_from_finite_array_callbacks() {
 fn tracks_global_callbacks_through_promise_handlers() {
     assert_matches(
         "Promise.resolve(fetch).then(callback => callback('/x'));",
-        QueryDecl::call_global("fetch"),
+        EventQuery::call_global("fetch"),
         1,
     );
 }

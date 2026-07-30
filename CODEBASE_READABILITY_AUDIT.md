@@ -6,7 +6,7 @@ This read-only audit covers all production and test source under `glass-lint-cor
 
 I found 32 actionable issues: 12 High, 17 Medium, and 3 Low severity. The most urgent correctness defects are an exact rule selector matching longer rule IDs, helper-sink propagation losing transitive sinks according to function order, and the consolidated validator dropping an early subject-identity check. The largest static performance risks are repeated whole-AST passes, deep cloning of scope environments, quadratic flow-state coalescing, whole-state cloning on each flow edit, copying loop facts on every fixed-point iteration, a mutex on every terminal value lookup, and an unbounded hand-built worker pool.
 
-**Completed (19 of 32):** READ-001, READ-002, READ-005, READ-009, READ-010, READ-011, READ-013, READ-014, READ-016, READ-017, READ-018, READ-021, READ-025, READ-026, READ-028, READ-029, READ-030, READ-031, READ-032. Remaining: 5 High, 8 Medium, 0 Low.
+**Completed (20 of 32):** READ-001, READ-002, READ-005, READ-009, READ-010, READ-011, READ-013, READ-014, READ-016, READ-017, READ-018, READ-019, READ-021, READ-025, READ-026, READ-028, READ-029, READ-030, READ-031, READ-032. Remaining: 4 High, 8 Medium, 0 Low.
 
 The new query compiler has a sensible declaration → normalized IR → physical IR direction, but it still contains a reverse lifecycle adapter, repeated tree walkers and canonicalizers, a duplicate convenience API, test-only validation implementations that are no longer the production path, and a partial “reference” evaluator that does not cover the newly important lifecycle path. The flow implementation is bounded in many dimensions, but several bounds cap retained output rather than the CPU and allocation work used to reach it.
 
@@ -306,7 +306,7 @@ Remove the two unreferenced accessors. Keep the reference evaluator and plan exp
 
 **Fix:** Removed `PhysicalPlan::is_empty` (no callers). Gated `PhysicalPlan::summary`, `PhysicalPlan::explain`, `explain_root`, `CompiledMatcherPlan::plan_explanation`, `PlanRequirements::value_resolution`, and `PlanRequirements::project_requirements` with `#[cfg(test)]`. Removed the broad `#[allow(dead_code)]` from `impl PlanRequirements` and the individual `#[allow(dead_code)]` from the now-gated methods. `compile_argument_constraints` was already `#[cfg(test)]` and unchanged.
 
-#### READ-019 — `QueryDecl` duplicates the complete `EventQuery` constructor surface
+#### READ-019 — `QueryDecl` duplicates the complete `EventQuery` constructor surface [Done]
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -315,7 +315,9 @@ Remove the two unreferenced accessors. Keep the reference evaluator and plan exp
 
 The 1,787-line query module exposes the same large constructor matrix on `EventQuery` and again as forwarding conveniences on `QueryDecl`. Some wrappers are simple delegation while others repeat validation and construction, so every new event form expands two public APIs, docs, and tests.
 
-With breaking changes allowed, keep the validated constructors on the type that owns the event and one `IntoQueryDecl`/`into_query` conversion. Reserve `QueryDecl` constructors for genuine expression composition (`any`, `all`, lifecycle), not aliases for every event constructor.
+With breaking changes allowed, keep the validated constructors on `EventQuery`, the type that owns event identity and argument constraints, and remove the leaf-constructor aliases from `QueryDecl`. Preserve usability at the rule boundary by extending the existing sealed `IntoQueryDecl` adapter to accept `EventQuery` and `Result<EventQuery, QueryBuildError>` (and the analogous lifecycle values), so common rules remain concise as `.query(EventQuery::call_global("fetch"))` without an `unwrap().into_query()` tax; allow the same adapter for `QueryDecl::any` branches where that improves composition. Keep one explicit `EventQuery::into_query` conversion for callers building a full expression, and reserve `QueryDecl` constructors for genuine composition (`any`, `all`, and lifecycle); remove forwarding conversion aliases such as `from_event_query` if they do not add semantics. Add public-surface compile tests for direct, fallible, constrained, alternative, and lifecycle rule construction before migrating provider call sites, and document that construction errors remain deferred to `RuleBuilder::build`.
+
+**Fix:** Removed all 18 forwarding constructor aliases from `QueryDecl` (`call_global`, `call_heuristic`, `call_module`, `call_package`, `member_call_rooted`, `member_call_heuristic`, `member_call_module`, `member_call_package`, `member_read_rooted`, `member_read_module`, `member_read_package`, `import_exact`, `import_package`, `string_contains`, `class_heuristic`, `class_module`, `constructor_global`, `constructor_heuristic`, `constructor_module`). Removed `QueryDecl::from_event_query` (redundant with `into_query()`). Extended `IntoQueryDecl` with `impl IntoQueryDecl for EventQuery` and `impl IntoQueryDecl for Result<EventQuery, QueryBuildError>` so `.query(EventQuery::call_global("fetch"))` works directly. Kept genuine composition constructors (`any`, `all`, `lifecycle`, `member_call_instance`, `member_call_returned`, `member_read_returned`). Updated all 60+ provider rule files across glass-lint-js and glass-lint-obsidian, all test files, examples, and the CLI to use `EventQuery` constructors directly.
 
 #### READ-020 — The compiler “reference” evaluator omits the new flow semantics
 

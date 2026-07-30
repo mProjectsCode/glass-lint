@@ -24,19 +24,21 @@ fn assert_valid_query(decl: &QueryDecl) {
 
 #[test]
 fn valid_global_call_passes_well_formedness() {
-    let decl = QueryDecl::call_global("fetch").unwrap();
+    let decl = EventQuery::call_global("fetch").unwrap().into_query();
     assert!(pass_structure(&decl).is_ok());
 }
 
 #[test]
 fn valid_heuristic_call_passes_well_formedness() {
-    let decl = QueryDecl::call_heuristic("fetch").unwrap();
+    let decl = EventQuery::call_heuristic("fetch").unwrap().into_query();
     assert!(pass_structure(&decl).is_ok());
 }
 
 #[test]
 fn valid_rooted_member_call_passes_well_formedness() {
-    let decl = QueryDecl::member_call_rooted("document.createElement").unwrap();
+    let decl = EventQuery::member_call_rooted("document.createElement")
+        .unwrap()
+        .into_query();
     assert!(pass_structure(&decl).is_ok());
 }
 
@@ -499,28 +501,84 @@ fn valid_lifecycle_passes_lifecycle_validation() {
 
 #[test]
 fn all_query_forms_pass_validation() {
-    assert_valid_query(&QueryDecl::call_global("fetch").unwrap());
-    assert_valid_query(&QueryDecl::call_heuristic("fetch").unwrap());
-    assert_valid_query(&QueryDecl::call_module("fs", "readFile").unwrap());
-    assert_valid_query(&QueryDecl::call_package("@scope/pkg", "method").unwrap());
-    assert_valid_query(&QueryDecl::member_call_rooted("document.createElement").unwrap());
-    assert_valid_query(&QueryDecl::member_call_heuristic("foo.bar").unwrap());
-    assert_valid_query(&QueryDecl::member_call_module("module", "method").unwrap());
+    assert_valid_query(&EventQuery::call_global("fetch").unwrap().into_query());
+    assert_valid_query(&EventQuery::call_heuristic("fetch").unwrap().into_query());
+    assert_valid_query(
+        &EventQuery::call_module("fs", "readFile")
+            .unwrap()
+            .into_query(),
+    );
+    assert_valid_query(
+        &EventQuery::call_package("@scope/pkg", "method")
+            .unwrap()
+            .into_query(),
+    );
+    assert_valid_query(
+        &EventQuery::member_call_rooted("document.createElement")
+            .unwrap()
+            .into_query(),
+    );
+    assert_valid_query(
+        &EventQuery::member_call_heuristic("foo.bar")
+            .unwrap()
+            .into_query(),
+    );
+    assert_valid_query(
+        &EventQuery::member_call_module("module", "method")
+            .unwrap()
+            .into_query(),
+    );
     assert_valid_query(&QueryDecl::member_call_instance("pkg", "Client", "send").unwrap());
-    assert_valid_query(&QueryDecl::member_call_package("@scope/pkg", "method").unwrap());
+    assert_valid_query(
+        &EventQuery::member_call_package("@scope/pkg", "method")
+            .unwrap()
+            .into_query(),
+    );
     assert_valid_query(&QueryDecl::member_call_returned("create", "send").unwrap());
-    assert_valid_query(&QueryDecl::member_read_rooted("window.location").unwrap());
-    assert_valid_query(&QueryDecl::member_read_module("module", "property").unwrap());
+    assert_valid_query(
+        &EventQuery::member_read_rooted("window.location")
+            .unwrap()
+            .into_query(),
+    );
+    assert_valid_query(
+        &EventQuery::member_read_module("module", "property")
+            .unwrap()
+            .into_query(),
+    );
     assert_valid_query(&QueryDecl::member_read_returned("create", "token").unwrap());
-    assert_valid_query(&QueryDecl::member_read_package("@scope/pkg", "property").unwrap());
-    assert_valid_query(&QueryDecl::import_exact("node:fs").unwrap());
-    assert_valid_query(&QueryDecl::import_package("@scope/pkg").unwrap());
-    assert_valid_query(&QueryDecl::string_contains("https://").unwrap());
-    assert_valid_query(&QueryDecl::class_heuristic("Worker").unwrap());
-    assert_valid_query(&QueryDecl::class_module("module", "Klass").unwrap());
-    assert_valid_query(&QueryDecl::constructor_global("URL").unwrap());
-    assert_valid_query(&QueryDecl::constructor_heuristic("Foo").unwrap());
-    assert_valid_query(&QueryDecl::constructor_module("pkg", "Klass").unwrap());
+    assert_valid_query(
+        &EventQuery::member_read_package("@scope/pkg", "property")
+            .unwrap()
+            .into_query(),
+    );
+    assert_valid_query(&EventQuery::import_exact("node:fs").unwrap().into_query());
+    assert_valid_query(
+        &EventQuery::import_package("@scope/pkg")
+            .unwrap()
+            .into_query(),
+    );
+    assert_valid_query(
+        &EventQuery::string_contains("https://")
+            .unwrap()
+            .into_query(),
+    );
+    assert_valid_query(&EventQuery::class_heuristic("Worker").unwrap().into_query());
+    assert_valid_query(
+        &EventQuery::class_module("module", "Klass")
+            .unwrap()
+            .into_query(),
+    );
+    assert_valid_query(&EventQuery::constructor_global("URL").unwrap().into_query());
+    assert_valid_query(
+        &EventQuery::constructor_heuristic("Foo")
+            .unwrap()
+            .into_query(),
+    );
+    assert_valid_query(
+        &EventQuery::constructor_module("pkg", "Klass")
+            .unwrap()
+            .into_query(),
+    );
 }
 
 #[test]
@@ -695,8 +753,10 @@ fn well_formedness_error_precedes_projection_error() {
 
 #[test]
 fn any_with_incompatible_branch_types_fails() {
-    let branch_a = QueryDecl::call_global("fetch").unwrap();
-    let branch_b = QueryDecl::member_call_rooted("document.createElement").unwrap();
+    let branch_a = EventQuery::call_global("fetch").unwrap().into_query();
+    let branch_b = EventQuery::member_call_rooted("document.createElement")
+        .unwrap()
+        .into_query();
     let result = QueryDecl::any([Ok(branch_a), Ok(branch_b)]);
     assert!(matches!(
         result,
@@ -706,8 +766,8 @@ fn any_with_incompatible_branch_types_fails() {
 
 #[test]
 fn any_with_compatible_branch_types_passes() {
-    let branch_a = QueryDecl::call_global("fetch").unwrap();
-    let branch_b = QueryDecl::call_global("navigate").unwrap();
+    let branch_a = EventQuery::call_global("fetch").unwrap().into_query();
+    let branch_b = EventQuery::call_global("navigate").unwrap().into_query();
     let query = QueryDecl::any([Ok(branch_a), Ok(branch_b)]).unwrap();
     assert!(pass_scope_types(&query).is_ok());
 }

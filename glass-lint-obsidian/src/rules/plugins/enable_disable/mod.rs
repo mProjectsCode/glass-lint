@@ -1,6 +1,6 @@
 //! Obsidian plugin enable/disable rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
 /// Detects rooted plugin-manager calls that change another plugin's enabled
 /// state.
@@ -10,12 +10,12 @@ pub fn rule() -> Rule {
         .category(Category::new("plugins").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .query(QueryDecl::member_call_rooted("app.plugins.enablePlugin"))
-        .query(QueryDecl::member_call_rooted("app.plugins.disablePlugin"))
-        .query(QueryDecl::member_call_rooted(
+        .query(EventQuery::member_call_rooted("app.plugins.enablePlugin"))
+        .query(EventQuery::member_call_rooted("app.plugins.disablePlugin"))
+        .query(EventQuery::member_call_rooted(
             "app.plugins.enablePluginAndSave",
         ))
-        .query(QueryDecl::member_call_rooted(
+        .query(EventQuery::member_call_rooted(
             "app.plugins.disablePluginAndSave",
         ))
         .build()

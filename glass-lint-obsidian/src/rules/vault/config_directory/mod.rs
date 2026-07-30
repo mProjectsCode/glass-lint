@@ -1,6 +1,6 @@
 //! Obsidian configuration-directory indicator rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
 /// Detects string and static-template fragments containing the exact
 /// `.obsidian/` or `.obsidian\\` configuration-directory markers. This is a
@@ -13,9 +13,9 @@ pub fn rule() -> Rule {
         .category(Category::new("vault").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .query(QueryDecl::string_contains(".obsidian/"))
-        .query(QueryDecl::string_contains(".obsidian\\"))
-        .query(QueryDecl::member_read_rooted("app.vault.configDir"))
+        .query(EventQuery::string_contains(".obsidian/"))
+        .query(EventQuery::string_contains(".obsidian\\"))
+        .query(EventQuery::member_read_rooted("app.vault.configDir"))
         .build()
         .unwrap()
 }

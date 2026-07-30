@@ -11,7 +11,7 @@ use crate::api::{
         rule::{EventPredicate, EvidenceDescriptor, IdentityConstraint},
     },
     rule::{
-        ArgumentIndex, ArgumentMatcher, QueryDecl, ValueMatcher,
+        ArgumentIndex, ArgumentMatcher, EventQuery, QueryDecl, ValueMatcher,
         query::{QueryBuildError, VarId, limits},
     },
 };
@@ -34,7 +34,9 @@ fn decl(decl: Result<QueryDecl, QueryBuildError>) -> QueryDecl {
 
 #[test]
 fn global_call_produces_indexed_scan() {
-    let roots = physical_roots_from_decl(&decl(QueryDecl::call_global("fetch")));
+    let roots = physical_roots_from_decl(&decl(
+        EventQuery::call_global("fetch").map(EventQuery::into_query),
+    ));
     assert_eq!(roots.len(), 1);
     assert!(
         matches!(&roots[0], PhysicalRoot::IndexedScan { .. }),
@@ -44,7 +46,9 @@ fn global_call_produces_indexed_scan() {
 
 #[test]
 fn heuristic_call_produces_indexed_scan() {
-    let roots = physical_roots_from_decl(&decl(QueryDecl::call_heuristic("fetch")));
+    let roots = physical_roots_from_decl(&decl(
+        EventQuery::call_heuristic("fetch").map(EventQuery::into_query),
+    ));
     assert_eq!(roots.len(), 1);
     assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
 }
@@ -66,9 +70,9 @@ fn constrained_call_produces_constrained_scan() {
 
 #[test]
 fn rooted_member_call_produces_indexed_scan() {
-    let roots = physical_roots_from_decl(&decl(QueryDecl::member_call_rooted(
-        "document.createElement",
-    )));
+    let roots = physical_roots_from_decl(&decl(
+        EventQuery::member_call_rooted("document.createElement").map(EventQuery::into_query),
+    ));
     assert_eq!(roots.len(), 1);
     assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
 }
@@ -97,35 +101,45 @@ fn instance_subject_produces_instance_scan() {
 
 #[test]
 fn import_exact_produces_indexed_scan() {
-    let roots = physical_roots_from_decl(&decl(QueryDecl::import_exact("node:fs")));
+    let roots = physical_roots_from_decl(&decl(
+        EventQuery::import_exact("node:fs").map(EventQuery::into_query),
+    ));
     assert_eq!(roots.len(), 1);
     assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
 }
 
 #[test]
 fn string_contains_produces_indexed_scan() {
-    let roots = physical_roots_from_decl(&decl(QueryDecl::string_contains("https://")));
+    let roots = physical_roots_from_decl(&decl(
+        EventQuery::string_contains("https://").map(EventQuery::into_query),
+    ));
     assert_eq!(roots.len(), 1);
     assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
 }
 
 #[test]
 fn class_reference_produces_indexed_scan() {
-    let roots = physical_roots_from_decl(&decl(QueryDecl::class_heuristic("Worker")));
+    let roots = physical_roots_from_decl(&decl(
+        EventQuery::class_heuristic("Worker").map(EventQuery::into_query),
+    ));
     assert_eq!(roots.len(), 1);
     assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
 }
 
 #[test]
 fn constructor_global_produces_indexed_scan() {
-    let roots = physical_roots_from_decl(&decl(QueryDecl::constructor_global("URL")));
+    let roots = physical_roots_from_decl(&decl(
+        EventQuery::constructor_global("URL").map(EventQuery::into_query),
+    ));
     assert_eq!(roots.len(), 1);
     assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
 }
 
 #[test]
 fn module_call_produces_indexed_scan() {
-    let roots = physical_roots_from_decl(&decl(QueryDecl::call_module("fs", "readFile")));
+    let roots = physical_roots_from_decl(&decl(
+        EventQuery::call_module("fs", "readFile").map(EventQuery::into_query),
+    ));
     assert_eq!(roots.len(), 1);
     assert!(matches!(&roots[0], PhysicalRoot::IndexedScan { .. }));
 }
@@ -206,7 +220,9 @@ fn alternatives_from_any_produce_multiple_roots() {
 
 #[test]
 fn plan_summary_counts_roots() {
-    let summary = physical_summary(&decl(QueryDecl::call_global("fetch")));
+    let summary = physical_summary(&decl(
+        EventQuery::call_global("fetch").map(EventQuery::into_query),
+    ));
     assert_eq!(
         summary,
         "roots=1 indexed_scans=1 constrained_scans=0 returned_subjects=0 instance_subjects=0 lifecycle_plans=0 local_flow=no cross_call_flow=no project_overlay=no value_resolution={} project_requirements={}"
@@ -215,8 +231,10 @@ fn plan_summary_counts_roots() {
 
 #[test]
 fn plan_explanation_is_deterministic_and_names_operator_choice() {
-    let first = physical_summary(&decl(QueryDecl::call_global("fetch")));
-    let query = decl(QueryDecl::call_global("fetch"));
+    let first = physical_summary(&decl(
+        EventQuery::call_global("fetch").map(EventQuery::into_query),
+    ));
+    let query = decl(EventQuery::call_global("fetch").map(EventQuery::into_query));
     let normalized = normalize_query_decl(&query).unwrap();
     let plan = plan_normalized(&normalized);
     assert!(plan.explain().contains("indexed event=Call"));
@@ -227,13 +245,13 @@ fn plan_explanation_is_deterministic_and_names_operator_choice() {
 
 #[test]
 fn optimizer_deduplicates_only_identical_evidence_bearing_roots() {
-    let query = decl(QueryDecl::call_global("fetch"));
+    let query = decl(EventQuery::call_global("fetch").map(EventQuery::into_query));
     let normalized = normalize_query_decl(&query).unwrap();
     let root = plan_normalized(&normalized).roots()[0].clone();
     assert_eq!(optimize_roots(vec![root.clone(), root]).len(), 1);
 
-    let first = decl(QueryDecl::call_global("fetch"));
-    let second = decl(QueryDecl::call_global("fetch"))
+    let first = decl(EventQuery::call_global("fetch").map(EventQuery::into_query));
+    let second = decl(EventQuery::call_global("fetch").map(EventQuery::into_query))
         .with_evidence(MatchKind::CallArgument, "fetch-argument");
     let first = plan_normalized(&normalize_query_decl(&first).unwrap()).roots()[0].clone();
     let second = plan_normalized(&normalize_query_decl(&second).unwrap()).roots()[0].clone();
@@ -257,7 +275,9 @@ fn plan_summary_shows_constrained_scan() {
 
 #[test]
 fn plan_summary_shows_project_overlay_for_module_queries() {
-    let summary = physical_summary(&decl(QueryDecl::call_module("fs", "readFile")));
+    let summary = physical_summary(&decl(
+        EventQuery::call_module("fs", "readFile").map(EventQuery::into_query),
+    ));
     assert!(
         summary.contains("project_overlay=yes"),
         "summary: {summary}"
@@ -266,7 +286,9 @@ fn plan_summary_shows_project_overlay_for_module_queries() {
 
 #[test]
 fn plan_summary_shows_no_project_overlay_for_global_queries() {
-    let summary = physical_summary(&decl(QueryDecl::call_global("fetch")));
+    let summary = physical_summary(&decl(
+        EventQuery::call_global("fetch").map(EventQuery::into_query),
+    ));
     assert!(summary.contains("project_overlay=no"), "summary: {summary}");
 }
 
@@ -331,35 +353,51 @@ fn requirements_must_match_executable_roots() {
 
 #[test]
 fn equivalent_declarations_produce_identical_plans() {
-    let roots1 = physical_roots_from_decl(&decl(QueryDecl::call_global("fetch")));
-    let roots2 = physical_roots_from_decl(&decl(QueryDecl::call_global("fetch")));
+    let roots1 = physical_roots_from_decl(&decl(
+        EventQuery::call_global("fetch").map(EventQuery::into_query),
+    ));
+    let roots2 = physical_roots_from_decl(&decl(
+        EventQuery::call_global("fetch").map(EventQuery::into_query),
+    ));
     assert_eq!(roots1, roots2);
 }
 
 #[test]
 fn different_declarations_produce_different_plans() {
-    let roots1 = physical_roots_from_decl(&decl(QueryDecl::call_global("fetch")));
-    let roots2 = physical_roots_from_decl(&decl(QueryDecl::call_global("navigate")));
+    let roots1 = physical_roots_from_decl(&decl(
+        EventQuery::call_global("fetch").map(EventQuery::into_query),
+    ));
+    let roots2 = physical_roots_from_decl(&decl(
+        EventQuery::call_global("navigate").map(EventQuery::into_query),
+    ));
     assert_ne!(roots1, roots2);
 }
 
 #[test]
 fn plan_summary_is_stable_across_equal_queries() {
-    let s1 = physical_summary(&decl(QueryDecl::call_global("fetch")));
-    let s2 = physical_summary(&decl(QueryDecl::call_global("fetch")));
+    let s1 = physical_summary(&decl(
+        EventQuery::call_global("fetch").map(EventQuery::into_query),
+    ));
+    let s2 = physical_summary(&decl(
+        EventQuery::call_global("fetch").map(EventQuery::into_query),
+    ));
     assert_eq!(s1, s2);
 }
 
 #[test]
 fn plan_summary_shows_no_flow_for_global_query() {
-    let summary = physical_summary(&decl(QueryDecl::call_global("fetch")));
+    let summary = physical_summary(&decl(
+        EventQuery::call_global("fetch").map(EventQuery::into_query),
+    ));
     assert!(summary.contains("local_flow=no"), "summary: {summary}");
     assert!(summary.contains("cross_call_flow=no"), "summary: {summary}");
 }
 
 #[test]
 fn plan_summary_shows_no_flow_for_module_query() {
-    let summary = physical_summary(&decl(QueryDecl::call_module("fs", "readFile")));
+    let summary = physical_summary(&decl(
+        EventQuery::call_module("fs", "readFile").map(EventQuery::into_query),
+    ));
     assert!(summary.contains("local_flow=no"), "summary: {summary}");
     assert!(summary.contains("cross_call_flow=no"), "summary: {summary}");
     assert!(

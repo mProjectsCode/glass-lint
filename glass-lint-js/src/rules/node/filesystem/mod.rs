@@ -1,6 +1,6 @@
 //! Node filesystem and path module rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
 const PATH_MODULES: &[&str] = &["path", "node:path"];
 const PATH_METHODS: &[&str] = &[
@@ -29,31 +29,31 @@ pub fn rule() -> Rule {
         .category(Category::new("node/filesystem").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::import_exact("fs"))
-        .query(QueryDecl::import_exact("fs/promises"))
-        .query(QueryDecl::import_exact("node:fs"))
-        .query(QueryDecl::import_exact("node:fs/promises"))
-        .query(QueryDecl::import_package("fs-extra"))
-        .query(QueryDecl::import_package("graceful-fs"))
-        .query(QueryDecl::import_package("memfs"))
-        .query(QueryDecl::import_package("unionfs"))
-        .query(QueryDecl::import_package("chokidar"))
-        .query(QueryDecl::import_package("proper-lockfile"))
-        .query(QueryDecl::import_package("tmp"))
-        .query(QueryDecl::import_package("tmp-promise"))
-        .query(QueryDecl::import_package("rimraf"))
-        .query(QueryDecl::import_package("mkdirp"))
-        .query(QueryDecl::import_package("make-dir"))
-        .query(QueryDecl::import_package("write-file-atomic"))
-        .query(QueryDecl::import_package("fs-monkey"))
-        .query(QueryDecl::import_package("mock-fs"))
-        .query(QueryDecl::import_package("watchpack"))
-        .query(QueryDecl::import_package("fsevents"));
+        .query(EventQuery::import_exact("fs"))
+        .query(EventQuery::import_exact("fs/promises"))
+        .query(EventQuery::import_exact("node:fs"))
+        .query(EventQuery::import_exact("node:fs/promises"))
+        .query(EventQuery::import_package("fs-extra"))
+        .query(EventQuery::import_package("graceful-fs"))
+        .query(EventQuery::import_package("memfs"))
+        .query(EventQuery::import_package("unionfs"))
+        .query(EventQuery::import_package("chokidar"))
+        .query(EventQuery::import_package("proper-lockfile"))
+        .query(EventQuery::import_package("tmp"))
+        .query(EventQuery::import_package("tmp-promise"))
+        .query(EventQuery::import_package("rimraf"))
+        .query(EventQuery::import_package("mkdirp"))
+        .query(EventQuery::import_package("make-dir"))
+        .query(EventQuery::import_package("write-file-atomic"))
+        .query(EventQuery::import_package("fs-monkey"))
+        .query(EventQuery::import_package("mock-fs"))
+        .query(EventQuery::import_package("watchpack"))
+        .query(EventQuery::import_package("fsevents"));
 
     for module in PATH_MODULES {
         for method in PATH_METHODS {
-            builder = builder.query(QueryDecl::member_call_module(*module, *method));
-            builder = builder.query(QueryDecl::call_module(*module, *method));
+            builder = builder.query(EventQuery::member_call_module(*module, *method));
+            builder = builder.query(EventQuery::call_module(*module, *method));
         }
     }
 

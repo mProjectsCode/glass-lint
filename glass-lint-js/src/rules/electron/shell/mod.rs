@@ -1,6 +1,6 @@
 //! Electron shell rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
 /// Detects Electron `shell.openExternal` and `shell.openPath` calls through a
 /// proven `electron` module namespace. ESM/CommonJS namespace aliases and
@@ -14,22 +14,25 @@ pub fn rule() -> Rule {
         .category(Category::new("electron/shell").unwrap())
         .confidence(Confidence::High)
         .severity(Severity::Warning)
-        .query(QueryDecl::member_call_module(
+        .query(EventQuery::member_call_module(
             "electron",
             "shell.openExternal",
         ))
-        .query(QueryDecl::member_call_module("electron", "shell.openPath"))
-        .query(QueryDecl::member_call_module(
+        .query(EventQuery::member_call_module("electron", "shell.openPath"))
+        .query(EventQuery::member_call_module(
             "electron",
             "shell.showItemInFolder",
         ))
-        .query(QueryDecl::member_call_module("electron", "shell.trashItem"))
-        .query(QueryDecl::member_call_module("electron", "shell.beep"))
-        .query(QueryDecl::member_call_module(
+        .query(EventQuery::member_call_module(
+            "electron",
+            "shell.trashItem",
+        ))
+        .query(EventQuery::member_call_module("electron", "shell.beep"))
+        .query(EventQuery::member_call_module(
             "electron",
             "shell.readShortcutLink",
         ))
-        .query(QueryDecl::member_call_module(
+        .query(EventQuery::member_call_module(
             "electron",
             "shell.writeShortcutLink",
         ))

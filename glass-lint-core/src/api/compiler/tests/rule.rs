@@ -12,14 +12,22 @@ use crate::api::{
 #[test]
 fn every_declaration_compiles_into_one_plan() {
     let queries = vec![
-        QueryDecl::call_global("fetch").unwrap(),
-        QueryDecl::member_call_rooted("window.open").unwrap(),
-        QueryDecl::member_read_rooted("window.location").unwrap(),
-        QueryDecl::import_exact("node:fs").unwrap(),
-        QueryDecl::import_package("@scope/pkg").unwrap(),
-        QueryDecl::string_contains("https://").unwrap(),
-        QueryDecl::class_heuristic("Worker").unwrap(),
-        QueryDecl::constructor_global("URL").unwrap(),
+        EventQuery::call_global("fetch").unwrap().into_query(),
+        EventQuery::member_call_rooted("window.open")
+            .unwrap()
+            .into_query(),
+        EventQuery::member_read_rooted("window.location")
+            .unwrap()
+            .into_query(),
+        EventQuery::import_exact("node:fs").unwrap().into_query(),
+        EventQuery::import_package("@scope/pkg")
+            .unwrap()
+            .into_query(),
+        EventQuery::string_contains("https://")
+            .unwrap()
+            .into_query(),
+        EventQuery::class_heuristic("Worker").unwrap().into_query(),
+        EventQuery::constructor_global("URL").unwrap().into_query(),
         QueryDecl::member_call_returned("create", "send").unwrap(),
         QueryDecl::member_read_returned("create", "token").unwrap(),
         QueryDecl::member_call_instance("pkg", "Client", "send").unwrap(),
@@ -56,12 +64,16 @@ fn argument_matcher_compiles_to_constrained_scan() {
 #[test]
 fn equivalent_declarations_compile_to_identical_queries() {
     let first = vec![
-        QueryDecl::call_global("fetch").unwrap(),
-        QueryDecl::member_read_rooted("location.href").unwrap(),
+        EventQuery::call_global("fetch").unwrap().into_query(),
+        EventQuery::member_read_rooted("location.href")
+            .unwrap()
+            .into_query(),
     ];
     let second = vec![
-        QueryDecl::member_read_rooted("location.href").unwrap(),
-        QueryDecl::call_global("fetch").unwrap(),
+        EventQuery::member_read_rooted("location.href")
+            .unwrap()
+            .into_query(),
+        EventQuery::call_global("fetch").unwrap().into_query(),
     ];
 
     let first = CompiledMatcherPlan::compile(&first).unwrap();
@@ -73,12 +85,16 @@ fn equivalent_declarations_compile_to_identical_queries() {
 fn query_plan_compiles_declarations_into_physical_roots() {
     let roots = {
         let queries = vec![
-            QueryDecl::call_global("fetch").unwrap(),
-            QueryDecl::member_call_rooted("window.open").unwrap(),
+            EventQuery::call_global("fetch").unwrap().into_query(),
+            EventQuery::member_call_rooted("window.open")
+                .unwrap()
+                .into_query(),
             QueryDecl::member_read_returned("create", "token").unwrap(),
             QueryDecl::member_call_instance("pkg", "Client", "send").unwrap(),
-            QueryDecl::import_exact("node:fs").unwrap(),
-            QueryDecl::string_contains("https://").unwrap(),
+            EventQuery::import_exact("node:fs").unwrap().into_query(),
+            EventQuery::string_contains("https://")
+                .unwrap()
+                .into_query(),
         ];
         let plan = CompiledMatcherPlan::compile(&queries).unwrap();
         plan.physical_roots().to_vec()
@@ -130,12 +146,16 @@ fn query_plan_compiles_declarations_into_physical_roots() {
 #[test]
 fn query_plan_normalization_is_idempotent_and_order_independent() {
     let first = vec![
-        QueryDecl::call_heuristic("fetch").unwrap(),
-        QueryDecl::member_read_rooted("location.href").unwrap(),
+        EventQuery::call_heuristic("fetch").unwrap().into_query(),
+        EventQuery::member_read_rooted("location.href")
+            .unwrap()
+            .into_query(),
     ];
     let second = vec![
-        QueryDecl::member_read_rooted("location.href").unwrap(),
-        QueryDecl::call_heuristic("fetch").unwrap(),
+        EventQuery::member_read_rooted("location.href")
+            .unwrap()
+            .into_query(),
+        EventQuery::call_heuristic("fetch").unwrap().into_query(),
     ];
     let first = CompiledMatcherPlan::compile(&first).unwrap();
     let second = CompiledMatcherPlan::compile(&second).unwrap();

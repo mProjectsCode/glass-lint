@@ -93,7 +93,7 @@ fn witnesses_equal(
 
 #[test]
 fn empty_rows_produce_no_witnesses() {
-    let decl = QueryDecl::call_global("fetch").unwrap();
+    let decl = EventQuery::call_global("fetch").unwrap().into_query();
     let nq = normalize_query_decl(&decl).unwrap();
     let plan = plan_normalized(&nq);
     assert!(witnesses_equal(&nq, &plan, &[]));
@@ -103,7 +103,7 @@ fn empty_rows_produce_no_witnesses() {
 
 #[test]
 fn matching_rows_produce_witnesses() {
-    let decl = QueryDecl::call_global("fetch").unwrap();
+    let decl = EventQuery::call_global("fetch").unwrap().into_query();
     let nq = normalize_query_decl(&decl).unwrap();
     let plan = plan_normalized(&nq);
 
@@ -121,7 +121,7 @@ fn matching_rows_produce_witnesses() {
 
 #[test]
 fn non_matching_rows_produce_no_witnesses() {
-    let decl = QueryDecl::call_global("fetch").unwrap();
+    let decl = EventQuery::call_global("fetch").unwrap().into_query();
     let nq = normalize_query_decl(&decl).unwrap();
     let plan = plan_normalized(&nq);
 
@@ -139,7 +139,7 @@ fn non_matching_rows_produce_no_witnesses() {
 
 #[test]
 fn duplicate_rows_produce_deduplicated_witnesses() {
-    let decl = QueryDecl::call_global("fetch").unwrap();
+    let decl = EventQuery::call_global("fetch").unwrap().into_query();
     let nq = normalize_query_decl(&decl).unwrap();
     let plan = plan_normalized(&nq);
 
@@ -168,13 +168,13 @@ fn duplicate_rows_produce_deduplicated_witnesses() {
 #[test]
 fn any_branch_order_produces_same_witnesses() {
     let decl_a = QueryDecl::any([
-        Ok(QueryDecl::call_global("fetch").unwrap()),
-        Ok(QueryDecl::call_global("navigate").unwrap()),
+        Ok(EventQuery::call_global("fetch").unwrap().into_query()),
+        Ok(EventQuery::call_global("navigate").unwrap().into_query()),
     ])
     .unwrap();
     let decl_b = QueryDecl::any([
-        Ok(QueryDecl::call_global("navigate").unwrap()),
-        Ok(QueryDecl::call_global("fetch").unwrap()),
+        Ok(EventQuery::call_global("navigate").unwrap().into_query()),
+        Ok(EventQuery::call_global("fetch").unwrap().into_query()),
     ])
     .unwrap();
 
@@ -213,7 +213,7 @@ fn any_branch_order_produces_same_witnesses() {
 
 #[test]
 fn unknown_row_produces_possible_witness() {
-    let decl = QueryDecl::call_global("fetch").unwrap();
+    let decl = EventQuery::call_global("fetch").unwrap().into_query();
     let nq = normalize_query_decl(&decl).unwrap();
     let plan = plan_normalized(&nq);
 
@@ -233,7 +233,7 @@ fn unknown_row_produces_possible_witness() {
 
 #[test]
 fn complete_row_produces_definite_witness() {
-    let decl = QueryDecl::call_global("fetch").unwrap();
+    let decl = EventQuery::call_global("fetch").unwrap().into_query();
     let nq = normalize_query_decl(&decl).unwrap();
 
     let rows = vec![row(
@@ -251,8 +251,8 @@ fn complete_row_produces_definite_witness() {
 #[test]
 fn unknown_alternative_does_not_erase_complete_witness() {
     let decl = QueryDecl::any([
-        Ok(QueryDecl::call_global("fetch").unwrap()),
-        Ok(QueryDecl::call_global("navigate").unwrap()),
+        Ok(EventQuery::call_global("fetch").unwrap().into_query()),
+        Ok(EventQuery::call_global("navigate").unwrap().into_query()),
     ])
     .unwrap();
     let nq = normalize_query_decl(&decl).unwrap();
@@ -275,8 +275,8 @@ fn unknown_alternative_does_not_erase_complete_witness() {
 #[test]
 fn witnesses_are_sorted_deterministically() {
     let decl = QueryDecl::any([
-        Ok(QueryDecl::call_global("navigate").unwrap()),
-        Ok(QueryDecl::call_global("fetch").unwrap()),
+        Ok(EventQuery::call_global("navigate").unwrap().into_query()),
+        Ok(EventQuery::call_global("fetch").unwrap().into_query()),
     ])
     .unwrap();
     let nq = normalize_query_decl(&decl).unwrap();
@@ -457,8 +457,8 @@ fn returned_subject_produces_support_evidence() {
 #[test]
 fn different_path_keys_produce_separate_witnesses() {
     let decl = QueryDecl::any([
-        Ok(QueryDecl::call_global("fetch").unwrap()),
-        Ok(QueryDecl::call_global("navigate").unwrap()),
+        Ok(EventQuery::call_global("fetch").unwrap().into_query()),
+        Ok(EventQuery::call_global("navigate").unwrap().into_query()),
     ])
     .unwrap();
     let nq = normalize_query_decl(&decl).unwrap();

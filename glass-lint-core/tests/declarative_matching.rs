@@ -90,11 +90,11 @@ fn classify_with_environment(
 fn canonicalizes_configured_global_object_aliases_for_rooted_members() {
     let rules = [
         rule("test.navigator-call")
-            .query(QueryDecl::member_call_rooted("navigator.sendBeacon"))
+            .query(EventQuery::member_call_rooted("navigator.sendBeacon"))
             .build()
             .unwrap(),
         rule("test.navigator-read")
-            .query(QueryDecl::member_read_rooted("navigator.userAgent"))
+            .query(EventQuery::member_read_rooted("navigator.userAgent"))
             .build()
             .unwrap(),
     ];
@@ -115,7 +115,7 @@ fn rooted_configured_global_member_calls_match_direct_globals() {
         "test",
         vec![
             rule("crypto")
-                .query(QueryDecl::member_call_rooted("crypto.subtle.digest"))
+                .query(EventQuery::member_call_rooted("crypto.subtle.digest"))
                 .build()
                 .unwrap(),
         ],
@@ -133,7 +133,7 @@ fn rooted_global_member_survives_unrelated_crypto_imports() {
     let mut environment = support::test_environment();
     environment.add_global("crypto").unwrap();
     let rules = [rule("crypto")
-        .query(QueryDecl::member_call_rooted("crypto.subtle.digest"))
+        .query(EventQuery::member_call_rooted("crypto.subtle.digest"))
         .build()
         .unwrap()];
     let result = classify_with_environment(
@@ -147,7 +147,7 @@ fn rooted_global_member_survives_unrelated_crypto_imports() {
 #[test]
 fn rooted_member_read_matches_direct_read() {
     let rules = [rule("document")
-        .query(QueryDecl::member_read_rooted("document.onkeydown"))
+        .query(EventQuery::member_read_rooted("document.onkeydown"))
         .build()
         .unwrap()];
     assert_eq!(classify("document.onkeydown;", &rules).finding_count, 1);
@@ -162,11 +162,11 @@ fn rooted_global_object_aliases_respect_restricted_members_and_mutations() {
         .unwrap();
     let rules = [
         rule("test.navigator")
-            .query(QueryDecl::member_call_rooted("navigator.sendBeacon"))
+            .query(EventQuery::member_call_rooted("navigator.sendBeacon"))
             .build()
             .unwrap(),
         rule("test.fetch")
-            .query(QueryDecl::member_call_rooted("fetch"))
+            .query(EventQuery::member_call_rooted("fetch"))
             .build()
             .unwrap(),
     ];
@@ -198,7 +198,7 @@ fn rooted_global_object_alias_mutations_invalidate_the_canonical_root() {
     let mut environment = Environment::default();
     environment.add_global("navigator").unwrap();
     let rules = [rule("test.navigator")
-        .query(QueryDecl::member_call_rooted("navigator.sendBeacon"))
+        .query(EventQuery::member_call_rooted("navigator.sendBeacon"))
         .build()
         .unwrap()];
     let catalog = RuleCatalog::new("test", rules.to_vec()).unwrap();
@@ -243,8 +243,8 @@ fn extracted_instance_callables_follow_aliases_and_bind_but_not_reassignment() {
 #[test]
 fn package_import_patterns_match_subpaths_without_lookalikes() {
     let rules = [rule("package")
-        .query(QueryDecl::import_package("@scope/pkg"))
-        .query(QueryDecl::import_package("openai"))
+        .query(EventQuery::import_package("@scope/pkg"))
+        .query(EventQuery::import_package("openai"))
         .build()
         .unwrap()];
     let result = classify(
@@ -262,9 +262,9 @@ fn package_import_patterns_match_subpaths_without_lookalikes() {
 #[test]
 fn package_provenance_matches_exports_and_namespace_members_at_boundaries() {
     let rules = [rule("package-provenance")
-        .query(QueryDecl::call_package("sdk", "send"))
-        .query(QueryDecl::member_call_package("sdk", "client.request"))
-        .query(QueryDecl::member_read_package("sdk", "version"))
+        .query(EventQuery::call_package("sdk", "send"))
+        .query(EventQuery::member_call_package("sdk", "client.request"))
+        .query(EventQuery::member_read_package("sdk", "version"))
         .build()
         .unwrap()];
     let result = classify(
@@ -311,7 +311,7 @@ fn assert_capability_count(result: &Classification, id: &str, expected: usize) {
 #[test]
 fn resolves_module_provenance_and_rejects_local_lookalikes() {
     let rules = [rule("test.module")
-        .query(QueryDecl::call_module("example-sdk", "send"))
+        .query(EventQuery::call_module("example-sdk", "send"))
         .build()
         .unwrap()];
     let result = classify(
@@ -324,7 +324,7 @@ fn resolves_module_provenance_and_rejects_local_lookalikes() {
 #[test]
 fn resolves_commonjs_destructured_module_exports() {
     let rules = [rule("test.module")
-        .query(QueryDecl::call_module("example-sdk", "send"))
+        .query(EventQuery::call_module("example-sdk", "send"))
         .build()
         .unwrap()];
     let result = classify(
@@ -337,7 +337,7 @@ fn resolves_commonjs_destructured_module_exports() {
 #[test]
 fn follows_rooted_aliases_and_reassignment_order() {
     let rules = [rule("test.alias")
-        .query(QueryDecl::member_call_rooted("host.files.read"))
+        .query(EventQuery::member_call_rooted("host.files.read"))
         .build()
         .unwrap()];
     let result = classify(
@@ -350,7 +350,7 @@ fn follows_rooted_aliases_and_reassignment_order() {
 #[test]
 fn rejects_aliases_after_shadowing_reassignment() {
     let rules = [rule("test.fetch")
-        .query(QueryDecl::call_global("fetch"))
+        .query(EventQuery::call_global("fetch"))
         .build()
         .unwrap()];
     let result = classify(
@@ -420,7 +420,7 @@ fn global_call_matchers_cover_proven_global_object_callable_forms() {
 #[test]
 fn global_object_callable_forms_respect_shadowing_and_property_mutation() {
     let rules = [rule("test.global-callable")
-        .query(QueryDecl::call_global("eval"))
+        .query(EventQuery::call_global("eval"))
         .build()
         .unwrap()];
     let result = classify(
@@ -439,7 +439,7 @@ fn global_object_callable_forms_respect_shadowing_and_property_mutation() {
 #[test]
 fn host_globals_require_explicit_environment_configuration() {
     let rule = rule("test.fetch")
-        .query(QueryDecl::call_global("fetch"))
+        .query(EventQuery::call_global("fetch"))
         .build()
         .unwrap();
     let default_catalog = RuleCatalog::new("test", vec![rule.clone()]).unwrap();
@@ -475,7 +475,7 @@ fn host_globals_require_explicit_environment_configuration() {
 #[test]
 fn rooted_host_globals_also_require_environment_configuration() {
     let rule = rule("test.host")
-        .query(QueryDecl::member_call_rooted("host.open"))
+        .query(EventQuery::member_call_rooted("host.open"))
         .build()
         .unwrap();
     let default_catalog = RuleCatalog::new("test", vec![rule.clone()]).unwrap();
@@ -511,7 +511,7 @@ fn rooted_host_globals_also_require_environment_configuration() {
 #[test]
 fn custom_global_objects_do_not_make_unconfigured_members_global() {
     let rule = rule("test.fetch")
-        .query(QueryDecl::call_global("fetch"))
+        .query(EventQuery::call_global("fetch"))
         .build()
         .unwrap();
     let mut environment = Environment::default();
@@ -531,11 +531,11 @@ fn custom_global_objects_do_not_make_unconfigured_members_global() {
 fn future_declarations_fail_closed_at_the_use_position() {
     let rules = [
         rule("test.require")
-            .query(QueryDecl::import_exact("sdk"))
+            .query(EventQuery::import_exact("sdk"))
             .build()
             .unwrap(),
         rule("test.fetch")
-            .query(QueryDecl::call_global("fetch"))
+            .query(EventQuery::call_global("fetch"))
             .build()
             .unwrap(),
     ];
@@ -550,15 +550,15 @@ fn future_declarations_fail_closed_at_the_use_position() {
 fn future_declarations_shadow_all_builtin_provenance_seeds() {
     let rules = [
         rule("test.import")
-            .query(QueryDecl::import_exact("sdk"))
+            .query(EventQuery::import_exact("sdk"))
             .build()
             .unwrap(),
         rule("test.fetch")
-            .query(QueryDecl::call_global("fetch"))
+            .query(EventQuery::call_global("fetch"))
             .build()
             .unwrap(),
         rule("test.global-fetch")
-            .query(QueryDecl::member_call_rooted("globalThis.fetch"))
+            .query(EventQuery::member_call_rooted("globalThis.fetch"))
             .build()
             .unwrap(),
     ];
@@ -575,7 +575,7 @@ fn future_declarations_shadow_all_builtin_provenance_seeds() {
 #[test]
 fn numeric_addition_is_not_a_static_property_string() {
     let rules = [rule("test.member")
-        .query(QueryDecl::member_call_rooted("app.12"))
+        .query(EventQuery::member_call_rooted("app.12"))
         .build()
         .unwrap()];
     assert_eq!(
@@ -610,7 +610,7 @@ fn tracks_rooted_expression_arguments_through_aliases() {
 #[test]
 fn tracks_simple_parameter_aliases_into_named_functions() {
     let rules = [rule("test.fetch")
-        .query(QueryDecl::call_global("fetch"))
+        .query(EventQuery::call_global("fetch"))
         .build()
         .unwrap()];
     let result = classify(
@@ -623,7 +623,7 @@ fn tracks_simple_parameter_aliases_into_named_functions() {
 #[test]
 fn named_helper_summaries_are_lexically_scoped() {
     let rules = [rule("test.fetch")
-        .query(QueryDecl::call_global("fetch"))
+        .query(EventQuery::call_global("fetch"))
         .build()
         .unwrap()];
     let result = classify(
@@ -638,7 +638,7 @@ fn named_helper_summaries_are_lexically_scoped() {
 #[test]
 fn tracks_parameter_aliases_into_arrow_functions() {
     let rules = [rule("test.fetch")
-        .query(QueryDecl::call_global("fetch"))
+        .query(EventQuery::call_global("fetch"))
         .build()
         .unwrap()];
     let result = classify(
@@ -670,7 +670,7 @@ fn matches_optional_chained_calls_with_static_arguments() {
 #[test]
 fn resolves_literal_computed_properties_through_constant_aliases() {
     let rules = [rule("test.computed")
-        .query(QueryDecl::member_call_rooted("fetch"))
+        .query(EventQuery::member_call_rooted("fetch"))
         .build()
         .unwrap()];
     let result = classify("const method = 'fetch'; window[method]('/remote');", &rules);

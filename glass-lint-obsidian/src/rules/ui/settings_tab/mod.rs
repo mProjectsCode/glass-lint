@@ -1,6 +1,6 @@
 //! Obsidian settings-tab rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, QueryDecl, Rule, Severity};
 
 /// Detects syntactic `this.addSettingTab()` registration calls and
 /// `PluginSettingTab` constructors/subclasses. The registration form requires
@@ -18,12 +18,12 @@ pub fn rule() -> Rule {
             "Plugin",
             "addSettingTab",
         ))
-        .query(QueryDecl::constructor_heuristic("PluginSettingTab"))
-        .query(QueryDecl::constructor_module(
+        .query(EventQuery::constructor_heuristic("PluginSettingTab"))
+        .query(EventQuery::constructor_module(
             "obsidian",
             "PluginSettingTab",
         ))
-        .query(QueryDecl::class_module("obsidian", "PluginSettingTab"))
+        .query(EventQuery::class_module("obsidian", "PluginSettingTab"))
         .build()
         .unwrap()
 }

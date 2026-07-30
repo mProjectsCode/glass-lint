@@ -1,6 +1,6 @@
 //! Electron IPC rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
 const RECEIVERS: &[(&str, &[&str])] = &[
     (
@@ -75,7 +75,7 @@ pub fn rule() -> Rule {
         .confidence(Confidence::High);
     for &(receiver, methods) in RECEIVERS {
         for &method in methods {
-            builder = builder.query(QueryDecl::member_call_module(
+            builder = builder.query(EventQuery::member_call_module(
                 "electron",
                 format!("{receiver}.{method}"),
             ));

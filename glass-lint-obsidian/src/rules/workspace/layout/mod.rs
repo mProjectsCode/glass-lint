@@ -1,6 +1,6 @@
 //! Obsidian workspace-layout rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
 /// Detects rooted calls to `getLayout`, `changeLayout`, and
 /// `requestSaveLayout` on `app.workspace`. Provenance follows `this.app`,
@@ -13,9 +13,9 @@ pub fn rule() -> Rule {
         .category(Category::new("workspace").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .query(QueryDecl::member_call_rooted("app.workspace.getLayout"))
-        .query(QueryDecl::member_call_rooted("app.workspace.changeLayout"))
-        .query(QueryDecl::member_call_rooted(
+        .query(EventQuery::member_call_rooted("app.workspace.getLayout"))
+        .query(EventQuery::member_call_rooted("app.workspace.changeLayout"))
+        .query(EventQuery::member_call_rooted(
             "app.workspace.requestSaveLayout",
         ))
         .build()

@@ -1,6 +1,6 @@
 //! Obsidian modal rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
 /// Detects `Modal` constructors and subclass expressions proven to originate
 /// from the `obsidian` module through ESM, CommonJS, or namespace aliases.
@@ -12,8 +12,8 @@ pub fn rule() -> Rule {
         .category(Category::new("ui").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(QueryDecl::constructor_module("obsidian", "Modal"))
-        .query(QueryDecl::class_module("obsidian", "Modal"))
+        .query(EventQuery::constructor_module("obsidian", "Modal"))
+        .query(EventQuery::class_module("obsidian", "Modal"))
         .build()
         .unwrap()
 }
