@@ -663,6 +663,102 @@ fn exact_and_non_contradictory_prefix_passes() {
 }
 
 #[test]
+fn three_pairwise_overlapping_exact_sets_can_still_be_contradictory() {
+    let eq = EventQuery::call_global("fetch")
+        .unwrap()
+        .with_arg(
+            0,
+            ValueMatcher::static_string()
+                .equals_any(["a", "b"])
+                .unwrap(),
+        )
+        .unwrap()
+        .with_arg(
+            0,
+            ValueMatcher::static_string()
+                .equals_any(["b", "c"])
+                .unwrap(),
+        )
+        .unwrap()
+        .with_arg(
+            0,
+            ValueMatcher::static_string()
+                .equals_any(["a", "c"])
+                .unwrap(),
+        )
+        .unwrap();
+    assert!(matches!(
+        normalize::normalize_query_decl(&eq.into_query()),
+        Err(
+            crate::api::compiler::validate::QueryCompileError::ContradictoryPredicate {
+                detail: crate::api::compiler::validate::ContradictionKind::StaticExactValues,
+                ..
+            }
+        )
+    ));
+}
+
+#[test]
+fn exact_value_must_satisfy_every_prefix_conjunct() {
+    let eq = EventQuery::call_global("fetch")
+        .unwrap()
+        .with_arg(0, ValueMatcher::static_string().equals("foobar"))
+        .unwrap()
+        .with_arg(
+            0,
+            ValueMatcher::static_string()
+                .starts_with_any(["foo"])
+                .unwrap(),
+        )
+        .unwrap()
+        .with_arg(
+            0,
+            ValueMatcher::static_string()
+                .starts_with_any(["bar"])
+                .unwrap(),
+        )
+        .unwrap();
+    assert!(matches!(
+        normalize::normalize_query_decl(&eq.into_query()),
+        Err(
+            crate::api::compiler::validate::QueryCompileError::ContradictoryPredicate {
+                detail: crate::api::compiler::validate::ContradictionKind::StaticExactAndPrefix,
+                ..
+            }
+        )
+    ));
+}
+
+#[test]
+fn incompatible_prefix_only_conjunction_is_contradictory() {
+    let eq = EventQuery::call_global("fetch")
+        .unwrap()
+        .with_arg(
+            0,
+            ValueMatcher::static_string()
+                .starts_with_any(["ab"])
+                .unwrap(),
+        )
+        .unwrap()
+        .with_arg(
+            0,
+            ValueMatcher::static_string()
+                .starts_with_any(["cd"])
+                .unwrap(),
+        )
+        .unwrap();
+    assert!(matches!(
+        normalize::normalize_query_decl(&eq.into_query()),
+        Err(
+            crate::api::compiler::validate::QueryCompileError::ContradictoryPredicate {
+                detail: crate::api::compiler::validate::ContradictionKind::StaticExactAndPrefix,
+                ..
+            }
+        )
+    ));
+}
+
+#[test]
 fn empty_exact_set_is_rejected_at_construction() {
     let empty: Vec<&str> = vec![];
     assert!(matches!(

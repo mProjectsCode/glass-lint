@@ -66,8 +66,7 @@ fn check_argument_contradictions(
 
     for matchers in by_index.values() {
         check_empty_accepted_sets(var, matchers)?;
-        check_disjoint_exact_sets(var, matchers)?;
-        check_exact_prefix_contradiction(var, matchers)?;
+        check_static_intersection(var, matchers)?;
     }
     Ok(())
 }
@@ -85,6 +84,7 @@ fn check_empty_accepted_sets(
                 &sp.kind,
                 StaticStringPredicateKind::Exact(values)
                 | StaticStringPredicateKind::ContainsAny(values)
+                | StaticStringPredicateKind::Prefix(values)
                 | StaticStringPredicateKind::ContainsAll(values)
                     if values.is_empty()
             );
@@ -99,90 +99,100 @@ fn check_empty_accepted_sets(
     Ok(())
 }
 
-fn check_disjoint_exact_sets(
+fn check_static_intersection(
     var: VarId,
     matchers: &[&crate::api::rule::ArgumentMatcher],
 ) -> Result<(), QueryCompileError> {
     use crate::api::rule::{ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcherKind};
-    let exact_sets: Vec<std::collections::BTreeSet<String>> = matchers
+    let predicates: Vec<&StaticStringPredicateKind> = matchers
         .iter()
-        .filter_map(|m| match m.kind() {
+        .filter_map(|matcher| match matcher.kind() {
             ArgumentMatcherKind::Value(vm) => match &vm.kind {
-                ValueMatcherKind::StaticString(sp) => match &sp.kind {
-                    StaticStringPredicateKind::Exact(values) if !values.is_empty() => {
-                        Some(values.iter().cloned().collect())
-                    }
-                    _ => None,
-                },
+                ValueMatcherKind::StaticString(predicate) => Some(&predicate.kind),
                 ValueMatcherKind::Any => None,
             },
             _ => None,
         })
         .collect();
 
-    if exact_sets.len() >= 2 {
-        for i in 0..exact_sets.len() {
-            for j in (i + 1)..exact_sets.len() {
-                if exact_sets[i].is_disjoint(&exact_sets[j]) {
-                    return Err(QueryCompileError::ContradictoryPredicate {
-                        variable: var,
-                        detail: ContradictionKind::StaticExactValues,
-                    });
+    let mut exact_candidates: Option<std::collections::BTreeSet<String>> = None;
+    let mut prefix_sets = Vec::new();
+    for predicate in &predicates {
+        match predicate {
+            StaticStringPredicateKind::Exact(values) => {
+                let values = values
+                    .iter()
+                    .cloned()
+                    .collect::<std::collections::BTreeSet<_>>();
+                exact_candidates = Some(match exact_candidates {
+                    Some(candidates) => candidates.intersection(&values).cloned().collect(),
+                    None => values,
+                });
+            }
+            StaticStringPredicateKind::Prefix(values) => prefix_sets.push(values),
+            _ => {}
+        }
+    }
+
+    if let Some(candidates) = exact_candidates {
+        if candidates.is_empty() {
+            return Err(QueryCompileError::ContradictoryPredicate {
+                variable: var,
+                detail: ContradictionKind::StaticExactValues,
+            });
+        }
+        let compatible = candidates.iter().any(|candidate| {
+            predicates
+                .iter()
+                .all(|predicate| accepts(predicate, candidate))
+        });
+        if !compatible {
+            return Err(QueryCompileError::ContradictoryPredicate {
+                variable: var,
+                detail: ContradictionKind::StaticExactAndPrefix,
+            });
+        }
+        return Ok(());
+    }
+
+    let mut possible_prefixes = vec![String::new()];
+    for prefixes in prefix_sets {
+        let mut next = Vec::new();
+        for current in &possible_prefixes {
+            for prefix in prefixes {
+                if current.starts_with(prefix) {
+                    next.push(current.clone());
+                } else if prefix.starts_with(current) {
+                    next.push(prefix.clone());
                 }
             }
+        }
+        next.sort_unstable();
+        next.dedup();
+        possible_prefixes = next;
+        if possible_prefixes.is_empty() {
+            return Err(QueryCompileError::ContradictoryPredicate {
+                variable: var,
+                detail: ContradictionKind::StaticExactAndPrefix,
+            });
         }
     }
     Ok(())
 }
 
-fn check_exact_prefix_contradiction(
-    var: VarId,
-    matchers: &[&crate::api::rule::ArgumentMatcher],
-) -> Result<(), QueryCompileError> {
-    use crate::api::rule::{ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcherKind};
-    let exact_values: Vec<&String> = matchers
-        .iter()
-        .filter_map(|m| match m.kind() {
-            ArgumentMatcherKind::Value(vm) => match &vm.kind {
-                ValueMatcherKind::StaticString(sp) => match &sp.kind {
-                    StaticStringPredicateKind::Exact(values) => Some(values.iter()),
-                    _ => None,
-                },
-                ValueMatcherKind::Any => None,
-            },
-            _ => None,
-        })
-        .flatten()
-        .collect();
-
-    let prefix_sets: Vec<&Vec<String>> = matchers
-        .iter()
-        .filter_map(|m| match m.kind() {
-            ArgumentMatcherKind::Value(vm) => match &vm.kind {
-                ValueMatcherKind::StaticString(sp) => match &sp.kind {
-                    StaticStringPredicateKind::Prefix(values) => Some(values),
-                    _ => None,
-                },
-                ValueMatcherKind::Any => None,
-            },
-            _ => None,
-        })
-        .collect();
-
-    if exact_values.is_empty() || prefix_sets.is_empty() {
-        return Ok(());
+fn accepts(predicate: &crate::api::rule::StaticStringPredicateKind, candidate: &str) -> bool {
+    use crate::api::rule::StaticStringPredicateKind;
+    match predicate {
+        StaticStringPredicateKind::Any => true,
+        StaticStringPredicateKind::Exact(values) => values.iter().any(|value| value == candidate),
+        StaticStringPredicateKind::Prefix(values) => {
+            values.iter().any(|prefix| candidate.starts_with(prefix))
+        }
+        StaticStringPredicateKind::ContainsAny(values) => {
+            values.iter().any(|value| candidate.contains(value))
+        }
+        StaticStringPredicateKind::ContainsAll(values) => {
+            values.iter().all(|value| candidate.contains(value))
+        }
     }
-
-    let any_compatible = exact_values.iter().any(|e| {
-        prefix_sets
-            .iter()
-            .any(|prefixes| prefixes.iter().any(|p| e.starts_with(p.as_str())))
-    });
-    if !any_compatible {
-        return Err(QueryCompileError::ContradictoryPredicate {
-            variable: var,
-            detail: ContradictionKind::StaticExactAndPrefix,
-        });
-    }
-    Ok(())
 }

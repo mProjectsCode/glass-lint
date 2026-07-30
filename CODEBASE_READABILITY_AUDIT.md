@@ -79,7 +79,7 @@ Replace the raw `usize`/open-count protocol with an explicit branch transaction 
 
 **Fix:** Origin-map checkpoints are now single-use transaction tokens with separate restore and close operations. Ternary arms restore both instance and class origins to the incoming state, then retain only origins proven in both arms. Tests cover incompatible instance and class assignments in both arm orders.
 
-#### READ-006 — Predicate contradiction checking is pairwise, not conjunctive
+#### [x] READ-006 — Predicate contradiction checking is pairwise, not conjunctive
 
 - **Severity:** High
 - **Fix Complexity** Medium
@@ -89,6 +89,8 @@ Replace the raw `usize`/open-count protocol with an explicit branch transaction 
 Exact sets are rejected only when a pair is disjoint, although three pairwise-overlapping sets can have an empty total intersection. Exact/prefix checking accepts when any exact value matches any prefix set, rather than requiring one candidate to satisfy every conjunct; incompatible prefix-only conjunctions are not checked.
 
 Implement one small predicate-intersection algebra per argument: intersect exact candidates across all exact constraints, then filter those candidates through every prefix/contains conjunct. Handle prefix-only intersection structurally and fail only when emptiness is proven. Keep this domain implementation instead of introducing a regex automaton crate, and add three-way and pairwise-overlap adversarial tests.
+
+**Fix:** Argument contradiction checking now intersects all exact candidate sets, evaluates every exact candidate against every prefix/contains predicate, and computes prefix-only compatibility by combining comparable prefixes. Tests cover pairwise-overlapping exact sets with empty total intersection, multiple prefix conjuncts, and incompatible prefix-only constraints.
 
 #### READ-007 — `lower_program` still performs three full AST traversals
 
