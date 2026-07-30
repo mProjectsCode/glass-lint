@@ -92,8 +92,7 @@ pub(in crate::analysis) fn collect(
         Budget::new(FlowLimits::from_flow_operations(project.flow_limit()).operation_limit());
     let (sources, return_budget_exhausted) =
         FlowSources::collect(project, &flows, &call_graph, &mut source_budget);
-    let flow_ids: Vec<FlowId> = flows.keys().copied().collect();
-    let mut worklist = ContextWorklist::seed(project, &sources, &call_graph, &flow_ids);
+    let mut worklist = ContextWorklist::seed(project, &sources, &call_graph);
 
     let mut flow_plan_cache: HashMap<(FlowId, ModuleId), FlowPathPlan> = HashMap::new();
 

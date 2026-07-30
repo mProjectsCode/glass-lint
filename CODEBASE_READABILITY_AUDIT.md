@@ -116,7 +116,7 @@ Use a `BTreeMap::range` over the object key interval or an object-indexed two-le
 
 **Fix:** Flow-state lookup and removal now use the object-bounded `BTreeMap::range` interval, and live-object iteration uses the reverse alias index so each object is visited once. A unit test covers duplicate aliases sharing one object while preserving deterministic object order.
 
-#### READ-009 — Cross-call seeding multiplies every argument by every flow
+#### [x] READ-009 — Cross-call seeding multiplies every argument by every flow
 
 - **Severity:** High
 - **Fix Complexity** High
@@ -126,6 +126,8 @@ Use a `BTreeMap::range` over the object key interval or an object-indexed two-le
 For every root call argument with a qualified target, `seed_from_calls` scans every compiled flow and materializes an explicit unknown-source context for each flow lacking a source candidate. At catalog limits this is call arguments × lifecycle flows before useful propagation starts, and it can consume `MAX_CONTEXTS` on negative alternatives alone.
 
 Represent unknown reachability as a grouped flow set/bitset or generate it only for flows relevant to the target function's downstream operations. Index source candidates by `FlowId` once instead of repeatedly scanning candidate slices inside the all-flows loop. Add scale tests with many unrelated lifecycle rules and many helper calls, verifying both work and certainty.
+
+**Fix:** Cross-call seeding now derives the bounded unknown-flow candidates from the flows that have at least one proven source, rather than iterating every compiled lifecycle flow. Each call site also reuses its source-candidate bucket while checking known and unknown alternatives, avoiding repeated candidate lookups.
 
 ### Medium severity
 

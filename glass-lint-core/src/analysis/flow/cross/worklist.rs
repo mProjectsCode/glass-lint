@@ -110,11 +110,14 @@ impl ContextWorklist {
         project: &ProjectSemanticModel,
         sources: &FlowSources,
         call_graph: &QualifiedCallGraph,
-        flows: &[crate::analysis::model::flow::FlowId],
     ) -> Self {
         let mut worklist = Self::new(MAX_CONTEXTS);
         worklist.seed_from_sources(project, sources);
-        worklist.seed_from_calls(project, sources, call_graph, flows);
+        let source_flows = sources
+            .iter()
+            .flat_map(|(_, candidates)| candidates.iter().map(|candidate| candidate.flow))
+            .collect::<BTreeSet<_>>();
+        worklist.seed_from_calls(project, sources, call_graph, &source_flows);
         worklist
     }
 
@@ -149,7 +152,7 @@ impl ContextWorklist {
         project: &ProjectSemanticModel,
         sources: &FlowSources,
         call_graph: &QualifiedCallGraph,
-        flows: &[crate::analysis::model::flow::FlowId],
+        source_flows: &BTreeSet<crate::analysis::model::flow::FlowId>,
     ) {
         for module in project.modules() {
             if self.is_exhausted() {
@@ -170,7 +173,8 @@ impl ContextWorklist {
                             .value_root(argument.value())
                             .unwrap_or_else(|| argument.value());
                         let source_key = SourceKey::new(module.id(), effect.id(), root);
-                        if let Some(candidates) = sources.get(&source_key) {
+                        let candidates = sources.get(&source_key);
+                        if let Some(candidates) = candidates {
                             for candidate in candidates {
                                 let state = CrossFlowState {
                                     flow: candidate.flow,
@@ -197,9 +201,8 @@ impl ContextWorklist {
                         // same parameter/call projection with an explicit
                         // unknown source so it can downgrade a matching
                         // witness to Possible without contributing evidence.
-                        for &flow in flows {
-                            let has_source = sources
-                                .get(&source_key)
+                        for &flow in source_flows {
+                            let has_source = candidates
                                 .is_some_and(|items| items.iter().any(|item| item.flow == flow));
                             if has_source {
                                 continue;

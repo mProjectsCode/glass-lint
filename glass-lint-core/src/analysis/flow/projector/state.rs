@@ -391,10 +391,6 @@ impl<'a> FlowEvidence<'a> {
         }
     }
 
-    pub(super) fn emitted_count(&self) -> usize {
-        self.total_emitted
-    }
-
     pub(super) fn limit_rejected(&self) -> bool {
         self.limit_rejected
     }
