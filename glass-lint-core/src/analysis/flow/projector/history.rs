@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::analysis::{
     facts::FactId,
@@ -15,6 +15,9 @@ pub(super) enum InverseDelta {
     StateInsert(FlowStateKey, FlowState),
     StateUpdate(FlowStateKey, FlowState, FlowState),
     StateRemove(FlowStateKey, FlowState),
+    RequirementInsert(FlowStateKey, usize, FactId),
+    RequirementRemove(FlowStateKey, usize, BTreeSet<FactId>),
+    SinkInsert(FlowStateKey, usize, FactId),
 }
 
 /// A position in the persistent mutation history that acts as a checkpoint.
@@ -177,6 +180,21 @@ fn apply_inverse(
         InverseDelta::StateRemove(key, state) => {
             states.insert(*key, state.clone());
         }
+        InverseDelta::RequirementInsert(key, index, event) => {
+            if let Some(state) = states.get_mut(key) {
+                state.remove_requirement_event(*index, *event);
+            }
+        }
+        InverseDelta::RequirementRemove(key, index, events) => {
+            if let Some(state) = states.get_mut(key) {
+                state.restore_requirement(*index, events);
+            }
+        }
+        InverseDelta::SinkInsert(key, index, event) => {
+            if let Some(state) = states.get_mut(key) {
+                state.remove_sink_event(*index, *event);
+            }
+        }
     }
 }
 
@@ -208,6 +226,24 @@ fn apply_forward(
         }
         InverseDelta::StateRemove(key, _) => {
             states.remove(key);
+        }
+        InverseDelta::RequirementInsert(key, index, event) => {
+            if let Some(state) = states.get_mut(key) {
+                state.record_requirement(*index, *event);
+            }
+        }
+        InverseDelta::RequirementRemove(key, index, events) => {
+            if let Some(state) = states.get_mut(key) {
+                state.clear_requirement(*index);
+                for event in events {
+                    state.record_requirement(*index, *event);
+                }
+            }
+        }
+        InverseDelta::SinkInsert(key, index, event) => {
+            if let Some(state) = states.get_mut(key) {
+                state.record_sink(*index, *event);
+            }
         }
     }
 }

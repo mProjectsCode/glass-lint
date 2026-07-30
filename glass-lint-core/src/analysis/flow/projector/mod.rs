@@ -631,9 +631,6 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             let Some(flow) = self.plan.get(key.flow) else {
                 continue;
             };
-            let Some(mut state) = self.flow_state.state_mut(key.object, key.flow) else {
-                continue;
-            };
             for (index, requirement) in flow.requirements.iter().enumerate() {
                 if let CompiledObjectRequirement::PropertyWrite {
                     property: expected,
@@ -641,13 +638,14 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 } = requirement
                     && (property.is_none() || property == Some(expected.as_str()))
                 {
-                    state.clear_requirement(index);
+                    self.flow_state
+                        .clear_requirement(key.object, key.flow, index);
                     if property == Some(expected.as_str()) && matcher.matches_flow_value(value) {
-                        state.record_requirement(index, event);
+                        self.flow_state
+                            .record_requirement(key.object, key.flow, index, event);
                     }
                 }
             }
-            drop(state);
             self.emit_if_ready(key.flow, key.object, event);
         }
     }

@@ -7,7 +7,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     hash::{Hash, Hasher},
-    ops::{Deref, DerefMut},
 };
 
 use crate::{
@@ -136,16 +135,61 @@ impl FlowStateTable {
         self.states.get(&key)
     }
 
-    pub(super) fn state_mut(&mut self, object: ObjectId, flow: FlowId) -> Option<StateEdit<'_>> {
+    pub(super) fn record_requirement(
+        &mut self,
+        object: ObjectId,
+        flow: FlowId,
+        index: usize,
+        event: crate::analysis::facts::FactId,
+    ) -> bool {
         let key = FlowStateKey { object, flow };
-        let old = self.states.get(&key)?.clone();
-        let state_ptr = std::ptr::from_mut(self.states.get_mut(&key).unwrap());
-        Some(StateEdit {
-            table: self,
-            key,
-            state_ptr,
-            old,
-        })
+        let Some(state) = self.states.get_mut(&key) else {
+            return false;
+        };
+        if state.record_requirement(index, event) {
+            self.log
+                .record(InverseDelta::RequirementInsert(key, index, event));
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(super) fn clear_requirement(
+        &mut self,
+        object: ObjectId,
+        flow: FlowId,
+        index: usize,
+    ) -> bool {
+        let key = FlowStateKey { object, flow };
+        let Some(state) = self.states.get_mut(&key) else {
+            return false;
+        };
+        let Some(events) = state.clear_requirement(index) else {
+            return false;
+        };
+        self.log
+            .record(InverseDelta::RequirementRemove(key, index, events));
+        true
+    }
+
+    pub(super) fn record_sink(
+        &mut self,
+        object: ObjectId,
+        flow: FlowId,
+        index: usize,
+        event: crate::analysis::facts::FactId,
+    ) -> bool {
+        let key = FlowStateKey { object, flow };
+        let Some(state) = self.states.get_mut(&key) else {
+            return false;
+        };
+        if state.record_sink(index, event) {
+            self.log.record(InverseDelta::SinkInsert(key, index, event));
+            true
+        } else {
+            false
+        }
     }
 
     /// Insert or update a state. Returns `false` when the state limit has been
@@ -270,40 +314,6 @@ impl FlowStateTable {
             environment.reachable
         } else {
             false
-        }
-    }
-}
-
-pub(super) struct StateEdit<'a> {
-    table: &'a mut FlowStateTable,
-    key: FlowStateKey,
-    state_ptr: *mut FlowState,
-    old: FlowState,
-}
-
-impl Deref for StateEdit<'_> {
-    type Target = FlowState;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.state_ptr }
-    }
-}
-
-impl DerefMut for StateEdit<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.state_ptr }
-    }
-}
-
-impl Drop for StateEdit<'_> {
-    fn drop(&mut self) {
-        let new = unsafe { &*self.state_ptr };
-        if *new != self.old {
-            self.table.log.record(InverseDelta::StateUpdate(
-                self.key,
-                self.old.clone(),
-                new.clone(),
-            ));
         }
     }
 }
@@ -551,16 +561,48 @@ mod tests {
     }
 
     #[test]
-    fn state_mut_allows_in_place_update() {
+    fn fine_grained_state_edits_restore_across_checkpoints() {
         let mut table = FlowStateTable::new(100, 100);
         let flow = FlowId::new(RuleIndex::new(0), 0);
         let state = FlowState::new(flow, FactId(1), ObjectId(10));
         table.insert_state(state);
-        table
-            .state_mut(ObjectId(10), flow)
-            .unwrap()
-            .record_requirement(0, FactId(5));
+        let base = table.capture(true);
+        assert!(table.record_requirement(ObjectId(10), flow, 0, FactId(5)));
+        assert!(table.record_requirement(ObjectId(10), flow, 0, FactId(7)));
+        assert!(table.record_sink(ObjectId(10), flow, 0, FactId(6)));
         let retrieved = table.state(ObjectId(10), flow).unwrap();
         assert_eq!(retrieved.source_event(), FactId(1));
+        assert_eq!(retrieved.requirement_keys().count(), 1);
+        assert_eq!(retrieved.sink_keys().count(), 1);
+
+        let configured = table.capture(true);
+        assert!(table.clear_requirement(ObjectId(10), flow, 0));
+        assert_eq!(
+            table
+                .state(ObjectId(10), flow)
+                .unwrap()
+                .requirement_keys()
+                .count(),
+            0
+        );
+        assert!(table.restore(configured));
+        let restored = table.state(ObjectId(10), flow).unwrap();
+        assert_eq!(restored.requirement_keys().next().unwrap().1.len(), 2);
+
+        assert!(table.restore(base));
+        let restored = table.state(ObjectId(10), flow).unwrap();
+        assert_eq!(restored.requirement_keys().count(), 0);
+        assert_eq!(restored.sink_keys().count(), 0);
+
+        assert!(table.record_requirement(ObjectId(10), flow, 1, FactId(7)));
+        assert!(table.restore(base));
+        assert_eq!(
+            table
+                .state(ObjectId(10), flow)
+                .unwrap()
+                .requirement_keys()
+                .count(),
+            0
+        );
     }
 }

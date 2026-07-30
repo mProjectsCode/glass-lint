@@ -166,15 +166,32 @@ impl<K> Default for RequirementSet<K> {
 }
 
 impl<K: Clone + Ord> RequirementSet<K> {
-    pub fn insert(&mut self, parameter: usize, value: K) {
+    pub fn insert(&mut self, parameter: usize, value: K) -> bool {
         Arc::make_mut(&mut self.0)
             .entry(parameter)
             .or_default()
-            .insert(value);
+            .insert(value)
     }
 
-    pub fn remove(&mut self, parameter: usize) {
-        Arc::make_mut(&mut self.0).remove(&parameter);
+    pub fn remove(&mut self, parameter: usize) -> Option<BTreeSet<K>> {
+        Arc::make_mut(&mut self.0).remove(&parameter)
+    }
+
+    pub fn remove_value(&mut self, parameter: usize, value: &K) -> bool {
+        let values = Arc::make_mut(&mut self.0)
+            .get_mut(&parameter)
+            .is_some_and(|values| values.remove(value));
+        if values {
+            let map = Arc::make_mut(&mut self.0);
+            if map.get(&parameter).is_some_and(BTreeSet::is_empty) {
+                map.remove(&parameter);
+            }
+        }
+        values
+    }
+
+    pub fn restore(&mut self, parameter: usize, values: BTreeSet<K>) {
+        Arc::make_mut(&mut self.0).insert(parameter, values);
     }
 
     pub fn len(&self) -> usize {
@@ -249,12 +266,20 @@ impl FlowState {
         self.source_event
     }
 
-    pub fn record_requirement(&mut self, index: usize, event: FactId) {
-        self.requirements.insert(index, event);
+    pub fn record_requirement(&mut self, index: usize, event: FactId) -> bool {
+        self.requirements.insert(index, event)
     }
 
-    pub fn clear_requirement(&mut self, index: usize) {
-        self.requirements.remove(index);
+    pub fn clear_requirement(&mut self, index: usize) -> Option<BTreeSet<FactId>> {
+        self.requirements.remove(index)
+    }
+
+    pub fn remove_requirement_event(&mut self, index: usize, event: FactId) -> bool {
+        self.requirements.remove_value(index, &event)
+    }
+
+    pub fn restore_requirement(&mut self, index: usize, events: &BTreeSet<FactId>) {
+        self.requirements.restore(index, events.clone());
     }
 
     pub fn is_ready(&self, flow: &CompiledObjectFlow) -> bool {
@@ -264,8 +289,12 @@ impl FlowState {
         }
     }
 
-    pub fn record_sink(&mut self, index: usize, event: FactId) {
-        self.sinks.insert(index, event);
+    pub fn record_sink(&mut self, index: usize, event: FactId) -> bool {
+        self.sinks.insert(index, event)
+    }
+
+    pub fn remove_sink_event(&mut self, index: usize, event: FactId) -> bool {
+        self.sinks.remove_value(index, &event)
     }
 
     pub fn sinks_ready(&self, flow: &CompiledObjectFlow) -> bool {

@@ -48,9 +48,6 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 let Some(flow) = self.plan.get(key.flow) else {
                     continue;
                 };
-                let Some(mut state) = self.flow_state.state_mut(key.object, key.flow) else {
-                    continue;
-                };
                 let req_members = self.plan.requirement_members(key.flow);
                 for (index, member) in req_members.iter().enumerate() {
                     if let Some(member) = member
@@ -67,10 +64,10 @@ impl ObjectFlowProjector<'_, '_, '_> {
                             })
                         })
                     {
-                        state.record_requirement(index, event);
+                        self.flow_state
+                            .record_requirement(key.object, key.flow, index, event);
                     }
                 }
-                drop(state);
                 self.emit_if_ready(key.flow, key.object, event);
             }
         }
@@ -121,10 +118,9 @@ impl ObjectFlowProjector<'_, '_, '_> {
                         })
                         .collect();
                 if !matching_sinks.is_empty() {
-                    if let Some(mut state) = self.flow_state.state_mut(key.object, key.flow) {
-                        for index in matching_sinks {
-                            state.record_sink(index, sink_fact);
-                        }
+                    for index in matching_sinks {
+                        self.flow_state
+                            .record_sink(key.object, key.flow, index, sink_fact);
                     }
                     let state = self.flow_state.state(key.object, key.flow).cloned();
                     let Some(state) = state else {

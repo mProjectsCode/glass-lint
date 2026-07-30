@@ -126,7 +126,7 @@ Give each mutation-log state a canonical incremental fingerprint or interned sta
 
 **Fix:** Added `fingerprint()` to `FlowStateTable` — a deterministic hash of aliases and states computed without cloning the full maps. Replaced the O(n²) snapshot comparison loop in `join_paths` with an O(1) `HashSet<u64>` membership check on the fingerprint. Added `Hash` to `FlowStateKey` and `Hash` for `FlowState`. Removed the now-dead `snapshot()` method. The next non-first unique path increments `coalescing_comparisons`. All 700+ unit tests pass, and no new clippy warnings are introduced.
 
-#### READ-008 — Every flow-state edit deep-copies COW maps and uses an unsafe guard
+#### READ-008 — Every flow-state edit deep-copies COW maps and uses an unsafe guard [Done]
 
 - **Severity:** High
 - **Fix Complexity** High
@@ -136,6 +136,8 @@ Give each mutation-log state a canonical incremental fingerprint or interned sta
 `state_mut` clones the entire old `FlowState`, obtains a raw pointer into the map, and returns a `StateEdit` that dereferences it unsafely. Because `RequirementSet` is `Arc<BTreeMap<...>>`, cloning the old state increments the `Arc`; the first edit then makes `Arc::make_mut` copy the whole requirement or sink map. `Drop` clones the new state again to record the inverse delta.
 
 Put fine-grained mutation methods on `FlowStateTable` and log typed deltas such as requirement inserted/removed or sink inserted/removed. That removes the raw pointer, full-state snapshots, and accidental COW deep copies. The table—not a deref guard—owns both the state and its rollback invariant.
+
+**Fix:** Removed the unsafe `StateEdit` guard and routed requirement/sink updates through `FlowStateTable`. Mutation history now records typed requirement-insert, requirement-remove, and sink-insert deltas, replaying only the affected entries instead of cloning complete `FlowState` values for ordinary edits. Added checkpoint replay coverage for fine-grained edits; the core test suite passes.
 
 #### READ-009 — Loop fixed-point replay clones the entire fact slice each iteration [Done]
 
