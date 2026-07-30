@@ -66,7 +66,7 @@ Store depth and compute the LCA by walking parent links as the flow mutation log
 
 **Fix:** Scope joins now transition the existing parent-linked assignment history and read only branch-touched bindings, avoiding complete environment snapshots. The write set is also checkpointed through generation-tagged deltas with deterministic sorting at the join boundary. Regression tests cover assignment restoration, branch-local write restoration, and the existing scope precision suite.
 
-#### READ-005 — Ternary branches leak and stitch fact-builder origins
+#### [x] READ-005 — Ternary branches leak and stitch fact-builder origins
 
 - **Severity:** High
 - **Fix Complexity** High
@@ -76,6 +76,8 @@ Store depth and compute the LCA by walking parent links as the flow mutation log
 `record_conditional` rolls `instance_origins` back after the consequent, which decrements and closes its only checkpoint; alternate-branch mutations are then unlogged, so the second rollback is ineffective. `class_origins` is not restored between the branches at all, allowing the alternate traversal to observe origins established only by the incompatible consequent.
 
 Replace the raw `usize`/open-count protocol with an explicit branch transaction that captures incoming state, evaluates each arm independently, and joins only common proven origins. Make checkpoint close/commit single-use through a token or guard so a rollback cannot silently disable later logging. Add adversarial ternary tests for instance and class origins in both arm orders, including assignments and calls inside the alternate arm.
+
+**Fix:** Origin-map checkpoints are now single-use transaction tokens with separate restore and close operations. Ternary arms restore both instance and class origins to the incoming state, then retain only origins proven in both arms. Tests cover incompatible instance and class assignments in both arm orders.
 
 #### READ-006 — Predicate contradiction checking is pairwise, not conjunctive
 

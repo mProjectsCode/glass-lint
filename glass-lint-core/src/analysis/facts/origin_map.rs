@@ -19,6 +19,13 @@ pub(in crate::analysis) struct OriginMap<V> {
     open_checkpoints: usize,
 }
 
+/// Single-use transaction token for one origin-map branch.
+#[derive(Debug)]
+pub(in crate::analysis) struct OriginCheckpoint {
+    position: usize,
+    active: bool,
+}
+
 enum LogEntry<V> {
     Upsert { key: ValueId, had_old: Option<V> },
 }
@@ -33,14 +40,20 @@ impl<V: Clone> OriginMap<V> {
     }
 
     /// Record a checkpoint. Returns the current log position.
-    pub fn checkpoint(&mut self) -> usize {
+    pub fn checkpoint(&mut self) -> OriginCheckpoint {
         self.open_checkpoints += 1;
-        self.log.len()
+        OriginCheckpoint {
+            position: self.log.len(),
+            active: true,
+        }
     }
 
     /// Undo all mutations since `checkpoint`.
-    pub fn rollback(&mut self, checkpoint: usize) {
-        while self.log.len() > checkpoint {
+    pub fn restore(&mut self, checkpoint: &OriginCheckpoint) {
+        if !checkpoint.active {
+            return;
+        }
+        while self.log.len() > checkpoint.position {
             match self.log.pop().unwrap() {
                 LogEntry::Upsert { key, had_old } => match had_old {
                     Some(old) => {
@@ -52,19 +65,33 @@ impl<V: Clone> OriginMap<V> {
                 },
             }
         }
+    }
+
+    /// Undo all mutations since `checkpoint` and close the transaction.
+    pub fn rollback(&mut self, checkpoint: &mut OriginCheckpoint) {
+        if !checkpoint.active {
+            return;
+        }
+        self.restore(checkpoint);
         self.open_checkpoints = self.open_checkpoints.saturating_sub(1);
         if self.open_checkpoints == 0 {
             self.log.clear();
         }
+        checkpoint.active = false;
     }
 
     /// Discard all log entries up to `checkpoint`. These entries belong to
     /// completed control regions whose mutations are now permanent; they will
     /// never need to be rolled back.
-    pub fn commit(&mut self, checkpoint: usize) {
-        if checkpoint > 0 && checkpoint <= self.log.len() {
-            self.log.drain(..checkpoint);
+    pub fn commit(&mut self, checkpoint: &mut OriginCheckpoint) {
+        if !checkpoint.active {
+            return;
         }
+        self.open_checkpoints = self.open_checkpoints.saturating_sub(1);
+        if self.open_checkpoints == 0 {
+            self.log.clear();
+        }
+        checkpoint.active = false;
     }
 
     /// Clone the underlying map for callers that need a full immutable

@@ -44,22 +44,27 @@ impl FactBuilder<'_, '_> {
     }
 
     pub(super) fn record_if(&mut self, stmt: &IfStmt) {
-        let cp = self.instance_origins.checkpoint();
-        let cp_classes = self.class_origins.checkpoint();
+        let mut cp = self.instance_origins.checkpoint();
+        let mut cp_classes = self.class_origins.checkpoint();
         let region = self.next_control_region();
         self.emit_control(stmt.span(), ControlKind::BranchStart, region);
         stmt.test.visit_with(self);
         self.emit_control(stmt.cons.span(), ControlKind::BranchThen, region);
         stmt.cons.visit_with(self);
         let then_origins = self.instance_origins.snapshot(self.resolver.budget);
-        self.instance_origins.rollback(cp);
-        self.instance_origins.commit(cp);
+        let then_classes = self.class_origins.snapshot(self.resolver.budget);
+        self.instance_origins.restore(&cp);
+        self.class_origins.restore(&cp_classes);
         if let Some(alt) = &stmt.alt {
             self.emit_control(alt.span(), ControlKind::BranchElse, region);
             alt.visit_with(self);
             self.retain_common_instance_origins(&then_origins);
+            self.retain_common_class_origins(&then_classes);
+            self.class_origins.commit(&mut cp_classes);
+        } else {
+            self.class_origins.rollback(&mut cp_classes);
         }
-        self.class_origins.rollback(cp_classes);
+        self.instance_origins.commit(&mut cp);
         self.emit_control(stmt.span(), ControlKind::BranchEnd, region);
     }
 
@@ -67,8 +72,8 @@ impl FactBuilder<'_, '_> {
         if let Some(init) = &stmt.init {
             init.visit_with(self);
         }
-        let cp = self.instance_origins.checkpoint();
-        let cp_classes = self.class_origins.checkpoint();
+        let mut cp = self.instance_origins.checkpoint();
+        let mut cp_classes = self.class_origins.checkpoint();
         let region = self.next_control_region();
         self.emit_control(
             stmt.span(),
@@ -83,9 +88,9 @@ impl FactBuilder<'_, '_> {
             self.emit_control(stmt.span(), ControlKind::LoopUpdate, region);
             update.visit_with(self);
         }
-        self.instance_origins.rollback(cp);
-        self.instance_origins.commit(cp);
-        self.class_origins.rollback(cp_classes);
+        self.instance_origins.restore(&cp);
+        self.class_origins.rollback(&mut cp_classes);
+        self.instance_origins.commit(&mut cp);
         self.emit_control(stmt.span(), ControlKind::LoopEnd, region);
     }
 
@@ -120,20 +125,20 @@ impl FactBuilder<'_, '_> {
     }
 
     fn record_loop(&mut self, span: Span, guaranteed: bool, visit_body: impl FnOnce(&mut Self)) {
-        let cp = self.instance_origins.checkpoint();
-        let cp_classes = self.class_origins.checkpoint();
+        let mut cp = self.instance_origins.checkpoint();
+        let mut cp_classes = self.class_origins.checkpoint();
         let region = self.next_control_region();
         self.emit_control(span, ControlKind::LoopStart { guaranteed }, region);
         visit_body(self);
-        self.instance_origins.rollback(cp);
-        self.instance_origins.commit(cp);
-        self.class_origins.rollback(cp_classes);
+        self.instance_origins.restore(&cp);
+        self.class_origins.rollback(&mut cp_classes);
+        self.instance_origins.commit(&mut cp);
         self.emit_control(span, ControlKind::LoopEnd, region);
     }
 
     pub(super) fn record_switch(&mut self, stmt: &SwitchStmt) {
-        let cp = self.instance_origins.checkpoint();
-        let cp_classes = self.class_origins.checkpoint();
+        let mut cp = self.instance_origins.checkpoint();
+        let mut cp_classes = self.class_origins.checkpoint();
         let region = self.next_control_region();
         self.emit_control(stmt.span(), ControlKind::SwitchStart, region);
         stmt.discriminant.visit_with(self);
@@ -146,22 +151,22 @@ impl FactBuilder<'_, '_> {
                 region,
             );
             case.visit_with(self);
-            self.instance_origins.rollback(cp);
+            self.instance_origins.restore(&cp);
         }
-        self.instance_origins.commit(cp);
-        self.class_origins.rollback(cp_classes);
+        self.instance_origins.commit(&mut cp);
+        self.class_origins.rollback(&mut cp_classes);
         self.emit_control(stmt.span(), ControlKind::SwitchEnd, region);
     }
 
     pub(super) fn record_try(&mut self, stmt: &TryStmt) {
-        let cp = self.instance_origins.checkpoint();
+        let mut cp = self.instance_origins.checkpoint();
         let incoming_snapshot = self.instance_origins.snapshot(self.resolver.budget);
-        let cp_classes = self.class_origins.checkpoint();
+        let mut cp_classes = self.class_origins.checkpoint();
         let region = self.next_control_region();
         self.emit_control(stmt.span(), ControlKind::TryStart, region);
         stmt.block.visit_with(self);
         let try_origins = self.instance_origins.snapshot(self.resolver.budget);
-        self.instance_origins.rollback(cp);
+        self.instance_origins.restore(&cp);
         if let Some(handler) = &stmt.handler {
             self.emit_control(handler.span(), ControlKind::CatchStart, region);
             handler.visit_with(self);
@@ -180,38 +185,52 @@ impl FactBuilder<'_, '_> {
             finalizer.visit_with(self);
             self.instance_origins = OriginMap::from(incoming_snapshot);
         }
-        self.instance_origins.commit(cp);
-        self.class_origins.rollback(cp_classes);
+        self.instance_origins.commit(&mut cp);
+        self.class_origins.rollback(&mut cp_classes);
         self.emit_control(stmt.span(), ControlKind::TryEnd, region);
     }
 
     pub(super) fn record_conditional(&mut self, expr: &CondExpr) {
-        let cp = self.instance_origins.checkpoint();
-        let cp_classes = self.class_origins.checkpoint();
+        let mut cp = self.instance_origins.checkpoint();
+        let mut cp_classes = self.class_origins.checkpoint();
         let region = self.next_control_region();
         self.emit_control(expr.span(), ControlKind::BranchStart, region);
         expr.test.visit_with(self);
         self.emit_control(expr.cons.span(), ControlKind::BranchThen, region);
         expr.cons.visit_with(self);
-        self.instance_origins.rollback(cp);
-        self.instance_origins.commit(cp);
+        let then_origins = self.instance_origins.snapshot(self.resolver.budget);
+        let then_classes = self.class_origins.snapshot(self.resolver.budget);
+        self.instance_origins.restore(&cp);
+        self.class_origins.restore(&cp_classes);
         self.emit_control(expr.alt.span(), ControlKind::BranchElse, region);
         expr.alt.visit_with(self);
-        self.instance_origins.rollback(cp);
-        self.instance_origins.commit(cp);
-        self.class_origins.rollback(cp_classes);
+        self.retain_common_instance_origins(&then_origins);
+        self.retain_common_class_origins(&then_classes);
+        self.instance_origins.commit(&mut cp);
+        self.class_origins.commit(&mut cp_classes);
         self.emit_control(expr.span(), ControlKind::BranchEnd, region);
     }
 
     fn retain_common_instance_origins(&mut self, other: &HashMap<ValueId, (SmolStr, SmolStr)>) {
-        let to_remove: Vec<ValueId> = self
-            .instance_origins
+        Self::retain_common_origins(&mut self.instance_origins, other, self.resolver.budget);
+    }
+
+    fn retain_common_class_origins(&mut self, other: &HashMap<ValueId, (SmolStr, SmolStr)>) {
+        Self::retain_common_origins(&mut self.class_origins, other, self.resolver.budget);
+    }
+
+    fn retain_common_origins(
+        origins: &mut OriginMap<(SmolStr, SmolStr)>,
+        other: &HashMap<ValueId, (SmolStr, SmolStr)>,
+        budget: &crate::analysis::SemanticBudget,
+    ) {
+        let to_remove: Vec<ValueId> = origins
             .iter()
             .filter(|(value, origin)| other.get(*value) != Some(*origin))
             .map(|(value, _)| *value)
             .collect();
         for key in to_remove {
-            self.instance_origins.remove(key, self.resolver.budget);
+            origins.remove(key, budget);
         }
     }
 }
@@ -245,6 +264,53 @@ mod tests {
                 )
             })
             .count()
+    }
+
+    fn count_method_instance_calls(stream: &crate::analysis::facts::FactStream<Frozen>) -> usize {
+        stream
+            .facts()
+            .iter()
+            .filter(|f| {
+                matches!(
+                    &f.payload,
+                    FactPayload::Call {
+                        callee_name: Some(name),
+                        instance_class: Some(_),
+                        ..
+                    } if stream.names().resolve(*name) == Some("method")
+                )
+            })
+            .count()
+    }
+
+    #[test]
+    fn ternary_instance_origins_do_not_cross_incompatible_arms() {
+        for source in [
+            "import { Foo } from 'a'; import { Bar } from 'b'; let value; flag ? value = new Foo() : value = new Bar(); value.method();",
+            "import { Foo } from 'a'; import { Bar } from 'b'; let value; flag ? value = new Bar() : value = new Foo(); value.method();",
+        ] {
+            let stream = build_facts(source, "ternary-instance.js");
+            assert_eq!(
+                count_method_instance_calls(&stream),
+                0,
+                "incompatible ternary arms must not share an instance origin"
+            );
+        }
+    }
+
+    #[test]
+    fn ternary_class_origins_do_not_cross_incompatible_arms() {
+        for source in [
+            "import { Foo } from 'a'; import { Bar } from 'b'; let ctor; flag ? ctor = Foo : ctor = Bar; const value = new ctor(); value.method();",
+            "import { Foo } from 'a'; import { Bar } from 'b'; let ctor; flag ? ctor = Bar : ctor = Foo; const value = new ctor(); value.method();",
+        ] {
+            let stream = build_facts(source, "ternary-class.js");
+            assert_eq!(
+                count_method_instance_calls(&stream),
+                0,
+                "incompatible ternary arms must not share a class origin"
+            );
+        }
     }
 
     /// Construction in try is visible to a call inside try.
