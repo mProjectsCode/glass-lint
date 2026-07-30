@@ -4,13 +4,13 @@
 
 This read-only audit covers all production and test source under `glass-lint-core`, with extra attention to the recent query API/compiler and flow-matcher work and to hot paths beginning at `lower_program`. The crate's `src` tree contains 51,776 lines of Rust: 30,408 in `analysis`, 11,551 in `api`, 5,485 in `project`, 1,316 in `lint`, and 652 in terminal report rendering.
 
-I found 29 actionable issues: 11 High, 16 Medium, and 2 Low severity. The most urgent correctness defects are an exact rule selector matching longer rule IDs and helper-sink propagation losing transitive sinks according to function order. The largest static performance risks are repeated whole-AST passes, deep cloning of scope environments, quadratic flow-state coalescing, whole-state cloning on each flow edit, copying loop facts on every fixed-point iteration, a mutex on every terminal value lookup, and an unbounded hand-built worker pool.
+I found 32 actionable issues: 12 High, 17 Medium, and 3 Low severity. The most urgent correctness defects are an exact rule selector matching longer rule IDs, helper-sink propagation losing transitive sinks according to function order, and the consolidated validator dropping an early subject-identity check. The largest static performance risks are repeated whole-AST passes, deep cloning of scope environments, quadratic flow-state coalescing, whole-state cloning on each flow edit, copying loop facts on every fixed-point iteration, a mutex on every terminal value lookup, and an unbounded hand-built worker pool.
 
-**Completed (15 of 29):** READ-001, READ-002, READ-005, READ-009, READ-010, READ-011, READ-013, READ-014, READ-016, READ-017, READ-021, READ-025, READ-026, READ-028, READ-029. Remaining: 5 High, 9 Medium.
+**Completed (16 of 32):** READ-001, READ-002, READ-005, READ-009, READ-010, READ-011, READ-013, READ-014, READ-016, READ-017, READ-018, READ-021, READ-025, READ-026, READ-028, READ-029. Remaining: 6 High, 9 Medium, 1 Low.
 
-The new query compiler has a sensible declaration → normalized IR → physical IR direction, but it still contains a reverse lifecycle adapter, repeated tree walkers and canonicalizers, a duplicate convenience API, and a partial “reference” evaluator that does not cover the newly important lifecycle path. The flow implementation is bounded in many dimensions, but several bounds cap retained output rather than the CPU and allocation work used to reach it.
+The new query compiler has a sensible declaration → normalized IR → physical IR direction, but it still contains a reverse lifecycle adapter, repeated tree walkers and canonicalizers, a duplicate convenience API, test-only validation implementations that are no longer the production path, and a partial “reference” evaluator that does not cover the newly important lifecycle path. The flow implementation is bounded in many dimensions, but several bounds cap retained output rather than the CPU and allocation work used to reach it.
 
-`cargo test -p glass-lint-core --all-features` passed: 682 unit tests plus all integration and doc-test binaries. Five tests remain ignored, including the three limit/certainty tests discussed in READ-027. `cargo clippy -p glass-lint-core --all-targets --all-features -- -W clippy::pedantic` also completed successfully; its 272 library warnings and 283 test-build warnings were predominantly documentation and `must_use` suggestions and are not repeated as findings.
+`cargo test -p glass-lint-core --all-features` passed: 697 unit tests plus all integration and doc-test binaries. Five tests remain ignored, including the three limit/certainty tests discussed in READ-027. `cargo clippy -p glass-lint-core --all-targets --all-features -- -W clippy::pedantic` also completed successfully; its 272 library warnings and 283 test-build warnings were predominantly documentation and `must_use` suggestions and are not repeated as findings.
 
 ## Architecture Summary
 
@@ -254,7 +254,7 @@ Add one internal `QueryExpr` walker/fold with explicit bound/reference callbacks
 
 **Fix:** Added `QueryExpr::walk_vars` (with `VarRole::Binding`/`VarRole::Reference` callbacks) and reimplemented `vars()`, `contains_var()`, and `binding_vars()` in terms of it. Replaced the five duplicate recursive match trees: removed `collect_vars`/`expr_contains_var` from `error.rs`, `collect_binding_vars`/`expr_references_var`/`collect_expr_vars` from `normalize_all.rs`, and updated callers in `pass4_10.rs`. Moved `CompiledArgumentConstraints`/`ArgumentConstraintGroup` from `physical.rs` into `normalized.rs` as `CanonicalArgumentConstraints` (the invariant-bearing canonical type). `NormalizedEvent` now stores `CanonicalArgumentConstraints` directly. `canonicalize_event` constructs it via a two-pass allocation strategy, eliminating `contains` checks and repeated `Box<[_]>`→`Vec`→`Box<[_]>` conversions. Physical lowering (`plan_event`) clones the already-canonical constraints instead of recompiling them.
 
-#### READ-018 — Ten compiler passes repeatedly traverse a bounded, already-validated tree
+#### READ-018 — Ten compiler passes repeatedly traverse a bounded, already-validated tree [Done]
 
 - **Severity:** Medium
 - **Fix Complexity** High
@@ -264,6 +264,41 @@ Add one internal `QueryExpr` walker/fold with explicit bound/reference callbacks
 Every declaration runs ten validation passes, normalization, post-normalization validation (including recomputing requirements), planning, and whole-plan validation. Query limits make this cold compared with source analysis, but the number of independent semantic passes is why checks and walkers have drifted. Numerous `allow(dead_code)` and unused re-exports in the recently split compiler show that old phase seams remain.
 
 Define one trusted transition from authoring AST to typed normalized IR and combine related validation while types are already in hand. Keep normalized/physical invariant validation in debug and test builds unless it validates untrusted deserialization. Delete dead explain/accessor surfaces after the new compiler API stabilizes.
+
+**Fix:** Replaced the ten individual validation passes with three consolidated traversals: `pass_structure` (well-formedness, operator compatibility, boundedness, relation availability, lifecycle validation), `pass_scope_types` (variable binding collection and type inference in one walk), and `pass_correlation_evidence` (multi-event correlation and evidence projection). Removed `pass_final_invariants` (duplicate of evidence projection). Removed unused `validate_normalized_decl`, `exact_root_matches`, `identity_module_matches`, `pass_operator_compatibility`, and the unused `EvidenceProjection` variant from `ContradictionKind`. Gated old individual passes with `#[cfg(test)]` and cleaned up `allow(dead_code)`/`allow(unused_imports)` annotations and re-exports.
+
+#### READ-030 — Test-only legacy passes preserve an obsolete validation implementation
+
+- **Severity:** Medium
+- **Fix Complexity** Medium
+- **Category:** Testing
+- **Location:** `glass-lint-core/src/api/compiler/validate/pass1_3.rs:11-376`, `glass-lint-core/src/api/compiler/validate/pass4_10.rs:11-361`, `glass-lint-core/src/api/compiler/tests/validate.rs:26-835`
+
+Twenty-four validation tests call the old individual passes directly, while production compilation calls only `validate_query_decl` and its three consolidated passes. These tests are valuable semantic cases, but they currently prove the retired implementation; the two direct production-entrypoint tests do not cover the old pass matrix or the consolidated negative paths comprehensively.
+
+Delete the old pass implementations and their test-only re-exports after moving each meaningful case to `validate_query_decl` (or a small production-owned helper only when the behavior is intentionally independently testable). Keep tests for duplicate/reference ordering, type compatibility, lifecycle structure, bounds, correlation, evidence, and stable errors, but make them assert the production compiler path. Add invalid returned/constructed subject cases before deleting the legacy code, because the consolidation currently has a validation gap recorded in READ-031.
+
+#### READ-031 — Consolidated structural validation omits subject-relation checks
+
+- **Severity:** High
+- **Fix Complexity** Low
+- **Category:** API
+- **Location:** `glass-lint-core/src/api/compiler/validate/pass1_3.rs:39-64`, `glass-lint-core/src/api/compiler/validate/pass4_10.rs:394-445`
+
+The former well-formedness walk rejected `ReturnedObject` unless its identity was rooted and `ConstructedObject` unless its identity was a module export. The new `check_structure` returns `Ok(())` for every `Require` atom, so malformed subject declarations proceed into normalization and are rejected later as lowered-plan errors, changing the validation boundary and diagnostic classification.
+
+Fold the two subject-identity checks into the consolidated structural walk before removing the old helper. Add production-entrypoint tests for both invalid identities and valid returned/constructed subjects, asserting the intended `UnsupportedRelation` versus lowered-plan error boundary. Keep physical-plan validation as a defense-in-depth check for malformed internal IR.
+
+#### READ-032 — Dead compiler accessors are hidden by broad dead-code allowances
+
+- **Severity:** Low
+- **Fix Complexity** Low
+- **Category:** Other
+- **Location:** `glass-lint-core/src/api/compiler/mod.rs:243-251`, `glass-lint-core/src/api/compiler/physical.rs:104-157`, `glass-lint-core/src/api/compiler/requirements.rs:50-63`
+
+`CompiledMatcherPlan::plan_summary` has no callers and still emits a `dead_code` warning in the test build; `PhysicalPlan::is_empty` also has no callers. `PhysicalPlan::summary`/`explain` and `compile_argument_constraints` are test support with real deterministic-plan and matcher-evaluator coverage, while `PlanRequirements` uses a broad `allow(dead_code)` that can conceal future unused accessors.
+
+Remove the two unreferenced accessors. Keep the reference evaluator and plan explanation surfaces because their tests exercise logical/physical equivalence and deterministic operator choice, but mark genuinely test-only APIs `cfg(test)` or move them into test support where feasible. Replace broad allowances with narrow attributes or no allowance so new dead compiler APIs are visible to the build.
 
 #### READ-019 — `QueryDecl` duplicates the complete `EventQuery` constructor surface
 
@@ -427,6 +462,7 @@ No unresolved questions remain from this audit. The decisions are:
 6. **Rule selectors:** fix exact anchoring in the current tiny `*` matcher. Do not add `globset` unless selector syntax or bulk matching grows enough to justify it.
 7. **Identifiers:** the API currently promises JavaScript identifiers, so support Unicode with the SWC-compatible `unicode-id-start` tables plus JavaScript's additional characters and an explicit keyword policy. The preferred decision is full ECMAScript identifier support, not renaming the contract to ASCII.
 8. **Failure policy:** budget exhaustion, ambiguity, unsupported semantics, and dropped alternatives remain incomplete/possible and must never promote a witness to definite. Limits must report the resource actually exhausted.
+9. **Validation migration:** treat the old individual validator tests as cases to migrate, not as a reason to retain duplicate implementations. Restore subject-relation validation and move the cases to the consolidated production entrypoint before deleting the `cfg(test)` passes.
 
 ## Coverage
 

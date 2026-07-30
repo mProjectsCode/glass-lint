@@ -77,14 +77,12 @@ impl QueryCompileError {
 /// Classification of a contradiction between two predicates on the same
 /// variable or argument.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)]
 pub(crate) enum ContradictionKind {
     EventKind,
     StrictIdentity,
     SubjectRelation,
     StaticExactValues,
     StaticExactAndPrefix,
-    EvidenceProjection,
 }
 
 impl std::fmt::Display for ContradictionKind {
@@ -97,7 +95,6 @@ impl std::fmt::Display for ContradictionKind {
             Self::StaticExactAndPrefix => {
                 f.write_str("exact and prefix values that cannot both match")
             }
-            Self::EvidenceProjection => f.write_str("incompatible evidence projections"),
         }
     }
 }

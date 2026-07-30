@@ -136,17 +136,6 @@ impl IdentityConstraint {
         matches!(self, Self::Rooted { path } if matches_global_object_alias(path, source, environment)
             || source.is_equal_or_descendant_of(path))
     }
-
-    #[allow(dead_code)]
-    pub(crate) fn exact_root_matches(&self, source: &SymbolPath) -> bool {
-        matches!(self, Self::Rooted { path } if path == source)
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn identity_module_matches(&self, module: &str, export: &str) -> bool {
-        matches!(self, Self::ModuleExport { module: expected_module, export: expected_export } if expected_module == module && expected_export == export)
-            || matches!(self, Self::PackageModuleExport { module: expected_module, export: expected_export } if expected_module.matches(module) && expected_export == export)
-    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -250,13 +239,8 @@ impl CompiledMatcherPlan {
         self.physical_plan.roots()
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn plan_summary(&self) -> String {
-        self.physical_plan.summary()
-    }
-
     /// Explain the canonical executable plan for tests and profiling.
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn plan_explanation(&self) -> String {
         self.physical_plan.explain()
     }
