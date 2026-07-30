@@ -164,7 +164,7 @@ Store resolved records in an arena and cache a `ResolvedValueId`, or return owne
 
 Bind directly executable source, requirement, and sink candidates keyed by chain/property, including rootedness, argument selectors, flow ID, and declaration index. Replace tiny event-local vectors with streaming loops or the existing `SmallVec` dependency, and replace `CompiledObjectSinkArguments::present_indices`'s boxed iterator with a concrete enum iterator. Keep one canonical bound representation shared by local summaries and cross projection.
 
-#### READ-013 — Flow exhaustion is inferred from full capacity instead of failed work
+#### [x] READ-013 — Flow exhaustion is inferred from full capacity instead of failed work
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -174,6 +174,8 @@ Bind directly executable source, requirement, and sink candidates keyed by chain
 The outcome is marked exhausted when object, state, or emission counts are exactly equal to their limits, even if no insertion was rejected. The configured `flow_operations` also silently becomes a per-module local allowance multiplied by 16, while cross flow receives the original amount, so the public limit does not describe one comprehensible unit or aggregate bound.
 
 Track explicit rejection/exhaustion flags at each bounded owner and report incomplete only after an attempted operation fails. Define and document whether flow operations are per module, per phase, or per project, then allocate from that budget without an unexplained multiplier. Use the shared `Budget` semantics consistently: reaching capacity is valid; exceeding it is exhaustion.
+
+**Fix:** Local flow now records object and state-limit rejections explicitly, while evidence and operation budgets already expose failed-work state; outcome exhaustion is based on those rejection flags rather than exact capacity. Local operations use the configured per-module allowance without the unexplained 16× multiplier, and cross propagation retains its project-phase budget.
 
 #### READ-014 — “Normalized” lifecycle IR retains public authoring types
 

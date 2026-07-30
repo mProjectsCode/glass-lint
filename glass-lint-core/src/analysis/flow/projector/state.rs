@@ -59,6 +59,7 @@ pub(super) struct FlowStateTable {
     log: MutationLog,
     /// Maximum number of state entries allowed.
     state_limit: usize,
+    state_limit_rejected: bool,
 }
 
 impl FlowStateTable {
@@ -69,6 +70,7 @@ impl FlowStateTable {
             states: BTreeMap::new(),
             log: MutationLog::new(mutation_limit),
             state_limit,
+            state_limit_rejected: false,
         }
     }
 
@@ -208,6 +210,7 @@ impl FlowStateTable {
             true
         } else if self.states.len() > self.state_limit {
             self.states.remove(&key);
+            self.state_limit_rejected = true;
             false
         } else {
             self.log.record(InverseDelta::StateInsert(key, state));
@@ -269,6 +272,14 @@ impl FlowStateTable {
 
     pub(super) fn mutation_exhausted(&self) -> bool {
         self.log.is_budget_exhausted()
+    }
+
+    pub(super) fn state_limit_rejected(&self) -> bool {
+        self.state_limit_rejected
+    }
+
+    pub(super) fn mark_state_limit_rejected(&mut self) {
+        self.state_limit_rejected = true;
     }
 
     pub(super) fn remove_states_for(&mut self, object: ObjectId) {
@@ -375,6 +386,11 @@ impl<'a> FlowEvidence<'a> {
 
     pub(super) fn record(&mut self, rule_index: usize, evidence: ClassificationEvidence) {
         self.items[rule_index].push(evidence);
+    }
+
+    #[cfg(test)]
+    pub(super) fn emitted_count(&self) -> usize {
+        self.total_emitted
     }
 
     pub(super) fn mark_truncated(&mut self) {

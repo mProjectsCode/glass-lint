@@ -30,6 +30,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 if self.flow_state.state_count().saturating_add(states.len())
                     > self.limits.state_limit()
                 {
+                    self.flow_state.mark_state_limit_rejected();
                     return;
                 }
                 self.bind_value(target, object);

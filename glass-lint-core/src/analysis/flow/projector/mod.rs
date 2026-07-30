@@ -144,6 +144,7 @@ struct ObjectFlowProjector<'rules, 'stream, 'arena> {
     flow_state: FlowStateTable,
     /// Object IDs are local to one projection and bounded by `limits`.
     next_object_id: u32,
+    object_limit_rejected: bool,
     /// Per-run hard limits for objects, states, and evidence emissions.
     limits: FlowLimits,
     /// Nested branch/function frames used to restore environments at joins.
@@ -218,6 +219,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             flow_evidence: FlowEvidence::new(evidence),
             flow_state: FlowStateTable::new(limits.state_limit(), limits.mutation_limit()),
             next_object_id: 0,
+            object_limit_rejected: false,
             limits,
             control: Vec::new(),
             paths: vec![FlowEnvironment::initial()],
@@ -699,6 +701,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
 
     fn allocate_object_id(&mut self) -> Option<ObjectId> {
         if self.next_object_id >= self.limits.object_limit() {
+            self.object_limit_rejected = true;
             return None;
         }
         let object = ObjectId(self.next_object_id);
@@ -711,8 +714,8 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         let mut flow_evidence = self.flow_evidence;
         flow_evidence.mark_truncated();
         let exhausted = self.summary_exhausted
-            || self.next_object_id >= self.limits.object_limit()
-            || self.flow_state.state_count() >= self.limits.state_limit()
+            || self.object_limit_rejected
+            || self.flow_state.state_limit_rejected()
             || flow_evidence.limit_rejected()
             || self.flow_state.mutation_exhausted()
             || !self.alternatives_complete

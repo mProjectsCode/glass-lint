@@ -52,11 +52,9 @@ impl FlowLimits {
             alternatives: ((DEFAULT_ALTERNATIVES as u64 * flow / DEFAULT_FLOW_OPERATIONS) as usize)
                 .max(MIN_ALTERNATIVES),
             operations: flow_operations,
-            // Local projection charges path transfers and comparisons, so it
-            // receives a bounded allowance derived from the shared flow
-            // budget without changing the established cross-module limit
-            // thresholds.
-            local_operations: flow_operations.saturating_mul(16),
+            // Local projection owns one budget per module; cross-file
+            // propagation owns one budget for the project phase.
+            local_operations: flow_operations,
         }
     }
 
@@ -350,7 +348,7 @@ mod tests {
     fn flow_operation_limit_tracks_the_configured_budget() {
         let limits = FlowLimits::from_flow_operations(1234);
         assert_eq!(limits.operation_limit(), 1234);
-        assert_eq!(limits.local_operation_limit(), 1234 * 16);
+        assert_eq!(limits.local_operation_limit(), 1234);
     }
 
     #[test]
