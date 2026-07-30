@@ -282,7 +282,7 @@ Each projection filters physical roots into a new constrained vector, builds a p
 
 Split catalog-stable constrained descriptors in `ProjectionPlan` and bind only module-local `NameId` paths per module. Bucket fallback roots by event kind and any available identity prefix before scanning facts, and stream matched occurrences into owned evidence buffers. Keep the linear fallback only for semantic cases overlays truly cannot index.
 
-#### READ-023 — Flow completion state uses ordered maps for a bounded 64-slot domain
+#### [x] READ-023 — Flow completion state uses ordered maps for a bounded 64-slot domain
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -292,6 +292,8 @@ Split catalog-stable constrained descriptors in `ProjectionPlan` and bind only m
 `RequirementSet` is an `Arc<BTreeMap<usize, BTreeSet<K>>>` even though lifecycle requirements and sinks are capped at 64. Hot-path cloning, hashing, readiness, mutation logging, and fingerprinting therefore traverse tree nodes and trigger copy-on-write maps for what is fundamentally a small indexed domain.
 
 Use a completion `u64` mask plus compact per-index trace evidence, using the existing `SmallVec` where multiple facts must be retained. If the 64 cap is intentionally removed later, `fixedbitset` is the appropriate established crate; under the present invariant a domain newtype over `u64` is simpler. Keep evidence order explicit and deterministic rather than deriving it from general-purpose map order.
+
+Fix: `RequirementSet` now stores completion in a `u64` mask and keeps sorted per-index evidence in compact `SmallVec` buffers. Readiness is constant-time, evidence order remains deterministic, and the existing mutation-history conversion continues to preserve rollback semantics.
 
 #### READ-024 — Hot-path regressions have no repeatable performance gate - OUT OF SCOPE FOR NOW
 

@@ -1,8 +1,9 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     hash::{Hash, Hasher},
-    sync::Arc,
 };
+
+use smallvec::SmallVec;
 
 use crate::{
     analysis::model::{fact::FactId, scope::FunctionId, value::ObjectId},
@@ -143,12 +144,24 @@ impl FlowId {
     }
 }
 
+pub type RequirementValues<K> = SmallVec<[K; 1]>;
+
+/// Bounded completion evidence keyed by lifecycle requirement index.
+///
+/// The mask owns readiness checks; the sorted compact entries retain the
+/// deterministic evidence needed for traces. Lifecycle declarations cap the
+/// key domain at 64, so a tree-backed map adds copy-on-write and node-walk
+/// overhead without providing a useful invariant.
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
-pub struct RequirementSet<K = FactId>(Arc<BTreeMap<usize, BTreeSet<K>>>);
+pub struct RequirementSet<K = FactId> {
+    mask: u64,
+    entries: SmallVec<[(usize, RequirementValues<K>); 4]>,
+}
 
 impl<K: Hash> Hash for RequirementSet<K> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        for (k, vals) in self.0.iter() {
+        self.mask.hash(state);
+        for (k, vals) in &self.entries {
             k.hash(state);
             for v in vals {
                 v.hash(state);
@@ -159,53 +172,96 @@ impl<K: Hash> Hash for RequirementSet<K> {
 
 impl<K> Default for RequirementSet<K> {
     fn default() -> Self {
-        Self(Arc::new(BTreeMap::new()))
+        Self {
+            mask: 0,
+            entries: SmallVec::new(),
+        }
     }
 }
 
 impl<K: Clone + Ord> RequirementSet<K> {
     pub fn insert(&mut self, parameter: usize, value: K) -> bool {
-        Arc::make_mut(&mut self.0)
-            .entry(parameter)
-            .or_default()
-            .insert(value)
+        let Some(bit) = Self::bit(parameter) else {
+            return false;
+        };
+        match self
+            .entries
+            .binary_search_by_key(&parameter, |(index, _)| *index)
+        {
+            Ok(position) => {
+                let values = &mut self.entries[position].1;
+                match values.binary_search(&value) {
+                    Ok(_) => false,
+                    Err(position) => {
+                        values.insert(position, value);
+                        true
+                    }
+                }
+            }
+            Err(position) => {
+                let mut values = RequirementValues::new();
+                values.push(value);
+                self.entries.insert(position, (parameter, values));
+                self.mask |= bit;
+                true
+            }
+        }
     }
 
-    pub fn remove(&mut self, parameter: usize) -> Option<BTreeSet<K>> {
-        Arc::make_mut(&mut self.0).remove(&parameter)
+    pub fn remove(&mut self, parameter: usize) -> Option<RequirementValues<K>> {
+        let position = self
+            .entries
+            .binary_search_by_key(&parameter, |(index, _)| *index)
+            .ok()?;
+        self.mask &= !Self::bit(parameter).expect("stored requirement index is bounded");
+        Some(self.entries.remove(position).1)
     }
 
     pub fn remove_value(&mut self, parameter: usize, value: &K) -> bool {
-        let values = Arc::make_mut(&mut self.0)
-            .get_mut(&parameter)
-            .is_some_and(|values| values.remove(value));
-        if values {
-            let map = Arc::make_mut(&mut self.0);
-            if map.get(&parameter).is_some_and(BTreeSet::is_empty) {
-                map.remove(&parameter);
-            }
+        let Ok(position) = self
+            .entries
+            .binary_search_by_key(&parameter, |(index, _)| *index)
+        else {
+            return false;
+        };
+        let Ok(value_position) = self.entries[position].1.binary_search(value) else {
+            return false;
+        };
+        self.entries[position].1.remove(value_position);
+        if self.entries[position].1.is_empty() {
+            self.entries.remove(position);
+            self.mask &= !Self::bit(parameter).expect("stored requirement index is bounded");
         }
-        values
+        true
     }
 
-    pub fn restore(&mut self, parameter: usize, values: BTreeSet<K>) {
-        Arc::make_mut(&mut self.0).insert(parameter, values);
+    pub fn restore<I>(&mut self, parameter: usize, values: I)
+    where
+        I: IntoIterator<Item = K>,
+    {
+        for value in values {
+            self.insert(parameter, value);
+        }
     }
 
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.mask.count_ones() as usize
     }
 
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.mask == 0
     }
 
     pub fn values(&self) -> impl Iterator<Item = &K> {
-        self.0.values().flatten()
+        self.entries.iter().flat_map(|(_, values)| values.iter())
     }
 
-    pub fn iter_by_key(&self) -> impl Iterator<Item = (usize, &BTreeSet<K>)> {
-        self.0.iter().map(|(k, v)| (*k, v))
+    pub fn iter_by_key(&self) -> impl Iterator<Item = (usize, &RequirementValues<K>)> {
+        self.entries.iter().map(|(index, values)| (*index, values))
+    }
+
+    fn bit(parameter: usize) -> Option<u64> {
+        (parameter < u64::BITS as usize).then(|| 1u64 << parameter)
     }
 }
 
@@ -269,7 +325,9 @@ impl FlowState {
     }
 
     pub fn clear_requirement(&mut self, index: usize) -> Option<BTreeSet<FactId>> {
-        self.requirements.remove(index)
+        self.requirements
+            .remove(index)
+            .map(|events| events.into_iter().collect())
     }
 
     pub fn remove_requirement_event(&mut self, index: usize, event: FactId) -> bool {
@@ -277,7 +335,7 @@ impl FlowState {
     }
 
     pub fn restore_requirement(&mut self, index: usize, events: &BTreeSet<FactId>) {
-        self.requirements.restore(index, events.clone());
+        self.requirements.restore(index, events.iter().copied());
     }
 
     pub fn is_ready(&self, flow: &CompiledObjectFlow) -> bool {
@@ -300,11 +358,11 @@ impl FlowState {
             || self.sinks.len() == flow.sinks.len()
     }
 
-    pub fn requirement_keys(&self) -> impl Iterator<Item = (usize, &BTreeSet<FactId>)> {
+    pub fn requirement_keys(&self) -> impl Iterator<Item = (usize, &RequirementValues<FactId>)> {
         self.requirements.iter_by_key()
     }
 
-    pub fn sink_keys(&self) -> impl Iterator<Item = (usize, &BTreeSet<FactId>)> {
+    pub fn sink_keys(&self) -> impl Iterator<Item = (usize, &RequirementValues<FactId>)> {
         self.sinks.iter_by_key()
     }
 }
@@ -408,6 +466,15 @@ mod tests {
         assert!(values.contains(&FactId(10)));
         assert!(values.contains(&FactId(20)));
         assert_eq!(set.len(), 1);
+    }
+
+    #[test]
+    fn requirement_set_uses_all_64_completion_bits_and_rejects_overflow() {
+        let mut set: RequirementSet = RequirementSet::default();
+        assert!(set.insert(63, FactId(63)));
+        assert!(!set.insert(64, FactId(64)));
+        assert_eq!(set.len(), 1);
+        assert_eq!(set.values().copied().collect::<Vec<_>>(), [FactId(63)]);
     }
 
     #[test]
