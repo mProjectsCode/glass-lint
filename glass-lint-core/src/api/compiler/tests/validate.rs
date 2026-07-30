@@ -768,7 +768,7 @@ fn any_with_incompatible_branch_types_fails() {
 fn any_with_compatible_branch_types_passes() {
     let branch_a = EventQuery::call_global("fetch").unwrap().into_query();
     let branch_b = EventQuery::call_global("navigate").unwrap().into_query();
-    let query = QueryDecl::any([Ok(branch_a), Ok(branch_b)]).unwrap();
+    let query = QueryDecl::any_with_evidence([Ok(branch_a), Ok(branch_b)], "test").unwrap();
     assert!(pass_scope_types(&query).is_ok());
 }
 

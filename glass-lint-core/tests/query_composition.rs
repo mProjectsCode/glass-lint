@@ -47,7 +47,7 @@ fn compile_rule(
 fn any_branches_compile_through_rule_catalog() {
     let branch_a = EventQuery::call_global("fetch").unwrap().into_query();
     let branch_b = EventQuery::call_global("navigate").unwrap().into_query();
-    let query = QueryDecl::any([Ok(branch_a), Ok(branch_b)]).unwrap();
+    let query = QueryDecl::any_with_evidence([Ok(branch_a), Ok(branch_b)], "network").unwrap();
 
     let result = compile_rule("test.any", query);
     assert!(
@@ -70,7 +70,7 @@ fn any_requires_primary_evidence_on_every_branch() {
     // Both branches have the primary var, so compilation should succeed.
     let branch_a = EventQuery::call_global("fetch").unwrap().into_query();
     let branch_b = EventQuery::call_global("navigate").unwrap().into_query();
-    let query = QueryDecl::any([Ok(branch_a), Ok(branch_b)]).unwrap();
+    let query = QueryDecl::any_with_evidence([Ok(branch_a), Ok(branch_b)], "network").unwrap();
 
     let result = compile_rule("test.any-evidence", query);
     assert!(

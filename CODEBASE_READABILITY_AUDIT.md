@@ -234,7 +234,7 @@ The 1,600-line query module repeats empty/module/chain checks across constructor
 
 Introduce private validated `IdentityName`, `ModuleName`, `MemberChain`, `PropertyName`, and non-empty static-value constructors, then make every public combinator delegate to them. Decide canonical whitespace semantics once at construction and store only the canonical value. Keep `SymbolPath` as the established path parser; do not add a parser crate for this small grammar.
 
-#### READ-019 — `QueryDecl::any` silently chooses the first branch’s evidence symbol
+#### [x] READ-019 — `QueryDecl::any` silently chooses the first branch’s evidence symbol
 
 - **Severity:** Medium
 - **Fix Complexity** Low
@@ -244,6 +244,8 @@ Introduce private validated `IdentityName`, `ModuleName`, `MemberChain`, `Proper
 Alternative construction verifies primary variable and `MatchKind` but not the evidence symbol, then stores the first branch's emission. The documented `fetch | navigate` example therefore labels every branch with `fetch`, making evidence dependent on declaration order.
 
 Require identical emission descriptors across branches, or add an explicit `any_with_evidence`/named-alternative API and require the caller to choose the aggregate symbol. Do not silently derive an aggregate label from the first branch. Add permutation tests proving branch order cannot change evidence metadata.
+
+**Fix:** `QueryDecl::any` now rejects alternatives with different evidence symbols, while `any_with_evidence` lets callers provide an explicit aggregate label after the branch kind and primary variable are validated. Existing alternative callers were migrated to the explicit API so branch order no longer selects metadata implicitly.
 
 #### READ-020 — Project execution maintains a bespoke thread pool per call
 

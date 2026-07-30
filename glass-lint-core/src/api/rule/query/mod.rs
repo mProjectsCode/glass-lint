@@ -921,13 +921,35 @@ impl QueryDecl {
     /// # Example
     ///
     /// ```ignore
-    /// QueryDecl::any([
+    /// QueryDecl::any_with_evidence([
     ///     EventQuery::call_global("fetch").map(EventQuery::into_query),
     ///     EventQuery::call_global("navigate").map(EventQuery::into_query),
-    /// ])?;
+    /// ], "network.request")?;
     /// ```
     pub fn any(
         branches: impl IntoIterator<Item = Result<Self, QueryBuildError>>,
+    ) -> Result<Self, QueryBuildError> {
+        Self::any_impl(branches, None)
+    }
+
+    /// Construct alternatives with an explicit aggregate evidence symbol.
+    ///
+    /// Use this when branches intentionally select different identities but
+    /// should be reported under one caller-chosen symbol.
+    pub fn any_with_evidence(
+        branches: impl IntoIterator<Item = Result<Self, QueryBuildError>>,
+        symbol: impl Into<String>,
+    ) -> Result<Self, QueryBuildError> {
+        let symbol = symbol.into();
+        if symbol.trim().is_empty() {
+            return Err(QueryBuildError::EmptyIdentityName);
+        }
+        Self::any_impl(branches, Some(symbol))
+    }
+
+    fn any_impl(
+        branches: impl IntoIterator<Item = Result<Self, QueryBuildError>>,
+        explicit_symbol: Option<String>,
     ) -> Result<Self, QueryBuildError> {
         let mut exprs = Vec::new();
         let mut first_emission: Option<EmissionDecl> = None;
@@ -938,6 +960,7 @@ impl QueryDecl {
                 if !primary_present
                     || decl.emission.primary_var != first.primary_var
                     || decl.emission.kind != first.kind
+                    || (explicit_symbol.is_none() && decl.emission.symbol != first.symbol)
                 {
                     return Err(QueryBuildError::EvidenceProjection);
                 }
@@ -949,7 +972,10 @@ impl QueryDecl {
         if exprs.is_empty() {
             return Err(QueryBuildError::EmptyAlternatives);
         }
-        let first = first_emission.unwrap_or_else(Self::default_emission);
+        let mut first = first_emission.unwrap_or_else(Self::default_emission);
+        if let Some(symbol) = explicit_symbol {
+            first.symbol = symbol;
+        }
         Ok(Self {
             expression: QueryExpr::any(AnyExpr::new(exprs)?),
             emission: first,

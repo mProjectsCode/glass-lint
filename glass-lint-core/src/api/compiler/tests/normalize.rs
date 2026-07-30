@@ -408,7 +408,7 @@ fn any_merges_requirements_from_branches() {
             .unwrap()
             .into_query(),
     ];
-    let any = QueryDecl::any(branches.into_iter().map(Ok)).unwrap();
+    let any = QueryDecl::any_with_evidence(branches.into_iter().map(Ok), "test").unwrap();
     let d = any.with_evidence(MatchKind::Call, "test");
     let nq = normalize_ok(&d);
     let req = nq.requirements();
