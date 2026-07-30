@@ -4,7 +4,9 @@ use glass_lint_datastructures::{Position, SourceRange};
 use swc_common::{FileName, GLOBALS, Globals, Mark, SourceMap, Spanned, sync::Lrc};
 use swc_ecma_ast::{EsVersion, Program};
 use swc_ecma_parser::{
-    EsSyntax, Parser, StringInput, Syntax, TsSyntax, lexer::Lexer, unstable::Token,
+    EsSyntax, Parser, StringInput, Syntax, TsSyntax,
+    lexer::Lexer,
+    unstable::{Capturing, Token, TokenAndSpan},
 };
 use swc_ecma_transforms_base::resolver;
 use swc_ecma_transforms_typescript::strip;
@@ -128,7 +130,10 @@ pub fn parse_with_language_and_depth(
     let file =
         source_map.new_source_file(FileName::Custom(filename.into()).into(), source.to_owned());
     let syntax = syntax_for(language);
-    if syntax_depth(&file, syntax, max_syntax_depth) == Err(SyntaxDepthError::Exceeded) {
+    let requires_depth_prescan = raw_depth_bound(source) > max_syntax_depth;
+    if requires_depth_prescan
+        && syntax_depth(&file, syntax, max_syntax_depth) == Err(SyntaxDepthError::Exceeded)
+    {
         return Err(ParseDiagnostic {
             code: crate::project::types::DiagnosticKind::SyntaxDepthExceeded.into(),
             message: format!("source exceeds the {max_syntax_depth} nesting-depth analysis limit"),
@@ -137,8 +142,20 @@ pub fn parse_with_language_and_depth(
         });
     }
     let lexer = Lexer::new(syntax, EsVersion::EsNext, StringInput::from(&*file), None);
-    Parser::new_from(lexer)
-        .parse_program()
+    let mut parser = Parser::new_from(Capturing::new(lexer));
+    let parsed = parser.parse_program();
+    if !requires_depth_prescan
+        && syntax_depth_tokens(parser.input().iter.tokens(), max_syntax_depth)
+            == Err(SyntaxDepthError::Exceeded)
+    {
+        return Err(ParseDiagnostic {
+            code: crate::project::types::DiagnosticKind::SyntaxDepthExceeded.into(),
+            message: format!("source exceeds the {max_syntax_depth} nesting-depth analysis limit"),
+            filename: filename.into(),
+            range: None,
+        });
+    }
+    parsed
         .map(|program| {
             let program = match language {
                 SourceLanguage::JavaScript => program,
@@ -227,6 +244,74 @@ enum Delimiter {
     Parenthesis,
     Bracket,
     Brace,
+}
+
+/// A conservative source-only upper bound used to decide whether a parser
+/// token stream is safe to inspect after parsing. Every delimiter and member
+/// separator that can increase the tracked depth is counted, including ones
+/// inside literals and comments, so false positives take the safe pre-scan
+/// path while false negatives cannot bypass the bound.
+fn raw_depth_bound(source: &str) -> usize {
+    source
+        .bytes()
+        .filter(|byte| matches!(byte, b'(' | b'[' | b'{' | b'.'))
+        .count()
+}
+
+fn syntax_depth_tokens(
+    tokens: &[TokenAndSpan],
+    max_depth: usize,
+) -> Result<usize, SyntaxDepthError> {
+    let mut delimiters = Vec::new();
+    let mut depth = 0usize;
+    let mut maximum = 0usize;
+    let mut member_depth = 0usize;
+    let mut expression_can_end = false;
+
+    for token_and_span in tokens {
+        let token = token_and_span.token;
+        if token == Token::Error {
+            break;
+        }
+        match token {
+            Token::LParen => push_delimiter(
+                &mut delimiters,
+                Delimiter::Parenthesis,
+                &mut depth,
+                &mut maximum,
+                max_depth,
+            )?,
+            Token::LBracket => push_delimiter(
+                &mut delimiters,
+                Delimiter::Bracket,
+                &mut depth,
+                &mut maximum,
+                max_depth,
+            )?,
+            Token::LBrace | Token::DollarLBrace | Token::TemplateHead => push_delimiter(
+                &mut delimiters,
+                Delimiter::Brace,
+                &mut depth,
+                &mut maximum,
+                max_depth,
+            )?,
+            Token::RParen => pop_delimiter(&mut delimiters, Delimiter::Parenthesis, &mut depth),
+            Token::RBracket => pop_delimiter(&mut delimiters, Delimiter::Bracket, &mut depth),
+            Token::RBrace => pop_delimiter(&mut delimiters, Delimiter::Brace, &mut depth),
+            Token::Dot | Token::OptionalChain => {
+                member_depth = member_depth.saturating_add(1);
+                maximum = maximum.max(member_depth);
+                if maximum > max_depth {
+                    return Err(SyntaxDepthError::Exceeded);
+                }
+            }
+            token if resets_member_depth(token) => member_depth = 0,
+            _ => {}
+        }
+        let postfix = matches!(token, Token::PlusPlus | Token::MinusMinus) && expression_can_end;
+        expression_can_end = token_can_end_expression(token, postfix);
+    }
+    Ok(maximum)
 }
 
 /// Count delimiter and member-chain nesting from SWC's token stream.
