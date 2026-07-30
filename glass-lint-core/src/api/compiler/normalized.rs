@@ -1,12 +1,11 @@
+use smol_str::SmolStr;
+
 use super::requirements::PlanRequirements;
 use crate::api::{
     classification::MatchKind,
     rule::{
         ArgumentConstraint, ArgumentIndex, ArgumentMatcher,
-        query::{
-            EventSpec, IdentitySpec,
-            lifecycle::{LifecycleCompletion, LifecycleCondition},
-        },
+        query::{EventSpec, IdentitySpec},
     },
 };
 
@@ -200,12 +199,43 @@ pub(crate) enum NormalizedSubject {
     },
 }
 
-/// Normalized lifecycle — preserves sources, condition, and completion.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum NormalizedLifecycleEvent {
+    PropertyWrite {
+        property: SmolStr,
+        value: crate::api::rule::ValueMatcher,
+    },
+    MemberCall {
+        member: SmolStr,
+        arguments: CanonicalArgumentConstraints,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum NormalizedLifecycleCondition {
+    AnyOf(Box<[NormalizedLifecycleEvent]>),
+    AllOf(Box<[NormalizedLifecycleEvent]>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum NormalizedLifecycleSink {
+    ArgumentOf { chain: SmolStr, index: usize },
+    AnyArgumentOf { chain: SmolStr },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum NormalizedLifecycleCompletion {
+    Configuration,
+    AnySink(Box<[NormalizedLifecycleSink]>),
+    AllSinks(Box<[NormalizedLifecycleSink]>),
+}
+
+/// Normalized lifecycle — compiler-owned sources, conditions, and completion.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NormalizedLifecycle {
     pub(crate) sources: Vec<NormalizedEvent>,
-    pub(crate) condition: Option<LifecycleCondition>,
-    pub(crate) completion: Option<LifecycleCompletion>,
+    pub(crate) condition: Option<NormalizedLifecycleCondition>,
+    pub(crate) completion: Option<NormalizedLifecycleCompletion>,
 }
 
 impl NormalizedLifecycle {
@@ -213,11 +243,11 @@ impl NormalizedLifecycle {
         &self.sources
     }
 
-    pub(crate) fn condition(&self) -> Option<&LifecycleCondition> {
+    pub(crate) fn condition(&self) -> Option<&NormalizedLifecycleCondition> {
         self.condition.as_ref()
     }
 
-    pub(crate) fn completion(&self) -> Option<&LifecycleCompletion> {
+    pub(crate) fn completion(&self) -> Option<&NormalizedLifecycleCompletion> {
         self.completion.as_ref()
     }
 }

@@ -181,7 +181,7 @@ Track explicit rejection/exhaustion flags at each bounded owner and report incom
 
 **Fix:** Local flow now records object and state-limit rejections explicitly, while evidence and operation budgets already expose failed-work state; outcome exhaustion is based on those rejection flags rather than exact capacity. Local operations use the configured per-module allowance without the unexplained 16× multiplier, and cross propagation retains its project-phase budget.
 
-#### READ-014 — “Normalized” lifecycle IR retains public authoring types
+#### [x] READ-014 — “Normalized” lifecycle IR retains public authoring types
 
 - **Severity:** Medium
 - **Fix Complexity** High
@@ -191,6 +191,8 @@ Track explicit rejection/exhaustion flags at each bounded owner and report incom
 `NormalizedLifecycle` stores `LifecycleCondition` and `LifecycleCompletion` from the public API, and physical lowering reinterprets their authoring enums. Sources also flatten `CanonicalArgumentConstraints` back into `Vec<ArgumentConstraint>`, recreating the representation normalization just removed.
 
 Define normalized lifecycle source, requirement, sink, and completion variants that contain canonical paths and grouped constraints. Compile the physical flow directly from those variants, then delete `to_flat_vec` and the `from_matcher` adapters. Make this a breaking single-path migration; do not preserve a reverse compatibility conversion.
+
+Fix: lifecycle conditions, completion modes, sinks, and requirement events now lower into compiler-owned normalized enums with canonical argument groups. Physical flow compilation consumes those enums directly, so the normalized layer no longer stores public lifecycle authoring containers.
 
 #### [x] READ-015 — Dense compiler slots survive after their consumers disappeared
 

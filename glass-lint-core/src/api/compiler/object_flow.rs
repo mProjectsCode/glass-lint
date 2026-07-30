@@ -4,16 +4,13 @@ use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
 use crate::api::{
-    compiler::normalized::{NormalizedEvent, NormalizedLifecycle},
+    compiler::normalized::{
+        NormalizedEvent, NormalizedLifecycle, NormalizedLifecycleCompletion,
+        NormalizedLifecycleCondition, NormalizedLifecycleEvent, NormalizedLifecycleSink,
+    },
     rule::{
         ArgumentConstraint, ValueMatcher,
-        query::{
-            EventSpec, IdentitySpec,
-            lifecycle::{
-                LifecycleCompletionKind, LifecycleConditionKind, LifecycleEvent,
-                LifecycleEventKind, LifecycleSink, LifecycleSinkKind,
-            },
-        },
+        query::{EventSpec, IdentitySpec},
     },
 };
 
@@ -56,15 +53,15 @@ impl CompiledObjectFlow {
     pub(crate) fn from_normalized_lifecycle(lc: &NormalizedLifecycle, symbol: &str) -> Self {
         let (requirements, requirement_mode) = lc.condition().map_or_else(
             || (Vec::new(), RequirementMode::AnyRequired),
-            |cond| match cond.kind() {
-                LifecycleConditionKind::AnyOf(events) => (
+            |cond| match cond {
+                NormalizedLifecycleCondition::AnyOf(events) => (
                     events
                         .iter()
                         .map(CompiledObjectRequirement::from_matcher)
                         .collect(),
                     RequirementMode::AnyRequired,
                 ),
-                LifecycleConditionKind::AllOf(events) => (
+                NormalizedLifecycleCondition::AllOf(events) => (
                     events
                         .iter()
                         .map(CompiledObjectRequirement::from_matcher)
@@ -75,15 +72,15 @@ impl CompiledObjectFlow {
         );
         let (sinks, completion_mode) = lc.completion().map_or_else(
             || (Vec::new(), CompletionMode::AnySink),
-            |comp| match comp.kind() {
-                LifecycleCompletionKind::Configuration => {
+            |comp| match comp {
+                NormalizedLifecycleCompletion::Configuration => {
                     (Vec::new(), CompletionMode::Configuration)
                 }
-                LifecycleCompletionKind::AnySink(sinks) => (
+                NormalizedLifecycleCompletion::AnySink(sinks) => (
                     sinks.iter().map(CompiledObjectSink::from_matcher).collect(),
                     CompletionMode::AnySink,
                 ),
-                LifecycleCompletionKind::AllSinks(sinks) => (
+                NormalizedLifecycleCompletion::AllSinks(sinks) => (
                     sinks.iter().map(CompiledObjectSink::from_matcher).collect(),
                     CompletionMode::AllSinks,
                 ),
@@ -138,15 +135,15 @@ pub(crate) enum CompiledObjectRequirement {
 }
 
 impl CompiledObjectRequirement {
-    fn from_matcher(event: &LifecycleEvent) -> Self {
-        match event.kind() {
-            LifecycleEventKind::PropertyWrite { property, value } => Self::PropertyWrite {
+    fn from_matcher(event: &NormalizedLifecycleEvent) -> Self {
+        match event {
+            NormalizedLifecycleEvent::PropertyWrite { property, value } => Self::PropertyWrite {
                 property: property.clone(),
                 value: value.clone(),
             },
-            LifecycleEventKind::MemberCall { member, arguments } => Self::MemberCall {
+            NormalizedLifecycleEvent::MemberCall { member, arguments } => Self::MemberCall {
                 member: SymbolPath::from(member.as_str()),
-                arguments: arguments.clone(),
+                arguments: arguments.to_flat_vec(),
             },
         }
     }
@@ -200,14 +197,14 @@ pub(crate) struct CompiledObjectSink {
 }
 
 impl CompiledObjectSink {
-    fn from_matcher(sink: &LifecycleSink) -> Self {
-        match sink.kind() {
-            LifecycleSinkKind::ArgumentOf { chain, index } => Self {
+    fn from_matcher(sink: &NormalizedLifecycleSink) -> Self {
+        match sink {
+            NormalizedLifecycleSink::ArgumentOf { chain, index } => Self {
                 member_calls: vec![SymbolPath::from(chain.as_str())],
                 args: CompiledObjectSinkArguments::Indices(vec![*index]),
                 is_rooted: true,
             },
-            LifecycleSinkKind::AnyArgumentOf { chain } => Self {
+            NormalizedLifecycleSink::AnyArgumentOf { chain } => Self {
                 member_calls: vec![SymbolPath::from(chain.as_str())],
                 args: CompiledObjectSinkArguments::Any,
                 is_rooted: true,
