@@ -4,9 +4,7 @@
 //! retains a bounded collection of these checkpoints so aliases and lifecycle
 //! requirements stay correlated across control-flow merges.
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-};
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
     analysis::{

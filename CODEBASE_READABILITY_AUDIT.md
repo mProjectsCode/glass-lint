@@ -53,7 +53,7 @@ Return immediately when `flow_matchers.is_empty()` and make that fast path obser
 
 **Fix:** Semantic projection now returns after ordinary constrained matching when no lifecycle matcher is selected, and the flow collector has the same defensive empty-input fast path. A focused projector test verifies that an empty flow catalog performs no flow operations.
 
-#### READ-004 — Scope checkpoints still clone whole environments at every join
+#### [x] READ-004 — Scope checkpoints still clone whole environments at every join
 
 - **Severity:** High
 - **Fix Complexity** High
@@ -63,6 +63,8 @@ Return immediately when `flow_matchers.is_empty()` and make that fast path obser
 Checkpoints are O(1), but every restore allocates two complete root paths, every reachable join arm clones the full nested assignment map, the incoming map is cloned again, and `AssignmentEnvironment::join` scans every stored scope/name. `CollectorCheckpoint` also clones the complete `BTreeSet` of writes, so sequential branch-heavy files can approach quadratic work despite the new mutation log.
 
 Store depth and compute the LCA by walking parent links as the flow mutation log already does. Join only branch-local touched bindings against the incoming value, and represent the write set as a checkpointed delta or dense/hash set with deterministic sorting only when freezing. Benchmark a domain delta design before considering `im` or `rpds`; a generic persistent map is not automatically a win for these short-lived, write-heavy environments.
+
+**Fix:** Scope joins now transition the existing parent-linked assignment history and read only branch-touched bindings, avoiding complete environment snapshots. The write set is also checkpointed through generation-tagged deltas with deterministic sorting at the join boundary. Regression tests cover assignment restoration, branch-local write restoration, and the existing scope precision suite.
 
 #### READ-005 — Ternary branches leak and stitch fact-builder origins
 

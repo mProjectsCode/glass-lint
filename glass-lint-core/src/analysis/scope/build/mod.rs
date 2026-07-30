@@ -10,7 +10,7 @@
 
 use glass_lint_datastructures::{NameId, NameTable};
 use hashbrown::{HashMap, HashSet};
-use history::{AssignmentEnvironment, Cursor};
+use history::{AssignmentEnvironment, Cursor, WriteCheckpoint, WriteSet};
 use smol_str::SmolStr;
 use swc_common::BytePos;
 
@@ -91,7 +91,7 @@ pub(super) struct ScopeCollector<'a> {
     /// Path-sensitive assignment state for source-order provenance.
     assignment_environment: AssignmentEnvironment,
     /// Writes made since the current control-flow checkpoint.
-    assignment_writes: std::collections::BTreeSet<ScopedName>,
+    assignment_writes: WriteSet,
     /// An explicit local value used when a path join disagrees.
     unknown_provenance: BindingProvenance,
     /// Active control-flow joins owned by the collector.
@@ -110,7 +110,7 @@ pub(super) struct ScopeCollector<'a> {
 #[derive(Debug, Clone)]
 struct CollectorCheckpoint {
     cursor: Cursor,
-    writes: std::collections::BTreeSet<ScopedName>,
+    writes: WriteCheckpoint,
     reachable: bool,
 }
 

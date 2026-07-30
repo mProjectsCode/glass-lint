@@ -7,8 +7,7 @@ use crate::analysis::{
     scope::{
         BindingProvenance, ScopeId, ScopedName,
         build::{
-            CollectorCheckpoint, ControlFlowFrame, ScopeCollector,
-            history::{AssignmentEnvironment, ProvenanceAlternatives},
+            CollectorCheckpoint, ControlFlowFrame, ScopeCollector, history::ProvenanceAlternatives,
         },
         query::rooted::rooted_expr_chain_with,
     },
@@ -130,7 +129,7 @@ impl ScopeCollector<'_> {
     fn checkpoint(&self) -> CollectorCheckpoint {
         CollectorCheckpoint {
             cursor: self.assignment_environment.checkpoint(),
-            writes: self.assignment_writes.clone(),
+            writes: self.assignment_writes.checkpoint(),
             reachable: self.reachable,
         }
     }
@@ -140,55 +139,28 @@ impl ScopeCollector<'_> {
     /// checkpoint are rolled back.
     fn restore(&mut self, checkpoint: &CollectorCheckpoint) {
         self.assignment_environment.restore(checkpoint.cursor);
-        self.assignment_writes.clone_from(&checkpoint.writes);
+        self.assignment_writes.restore(checkpoint.writes);
         self.reachable = checkpoint.reachable;
     }
 
     /// Join multiple path environments at a control-flow merge point.
     ///
-    /// Temporarily transitions through each path's cursor position in
-    /// the mutation log to snapshot each branch's state, then builds the
-    /// joined environment and records synthetic join assignments for
-    /// every name touched in any path.
-    ///
-    /// The incoming checkpoint is the state before the branching
-    /// construct. Its cursor is used to obtain the incoming snapshot and
-    /// as the fallback writes set.
+    /// Only keys written by a branch are read from each checkpoint. The
+    /// live assignment table is transitioned between parent-linked cursors;
+    /// no complete environment snapshot is allocated for a branch.
     fn join_paths(
         &mut self,
         span: Span,
         incoming: &CollectorCheckpoint,
         paths: &[CollectorCheckpoint],
     ) {
-        // Collect snapshots for each reachable path by transitioning to
-        // that path's log cursor and cloning the live map.
-        let mut path_snaps: Vec<(AssignmentEnvironment, &BTreeSet<ScopedName>)> = Vec::new();
         let reachable: Vec<&CollectorCheckpoint> = paths.iter().filter(|p| p.reachable).collect();
-        for path in &reachable {
-            self.assignment_environment.restore(path.cursor);
-            path_snaps.push((self.assignment_environment.snapshot(), &path.writes));
-        }
 
-        // Snapshot the incoming environment
-        self.assignment_environment.restore(incoming.cursor);
-        let incoming_snapshot = self.assignment_environment.snapshot();
-
-        if path_snaps.is_empty() {
-            self.assignment_writes.clone_from(&incoming.writes);
+        if reachable.is_empty() {
+            self.restore(incoming);
             self.reachable = false;
             return;
         }
-
-        // Build the list of all reachable path environments for the join
-        let all_envs: Vec<&AssignmentEnvironment> =
-            path_snaps.iter().map(|(snap, _)| snap).collect();
-
-        // Compute the joined values separately, but keep the live environment
-        // and its mutation log. Outer control-flow frames may still hold
-        // checkpoints into that log; replacing it would make those cursors
-        // point past the new log and cause a later restore to panic.
-        let joined_environment = AssignmentEnvironment::join(&all_envs, self.alternative_limit);
-        self.reachable = true;
 
         // Collect all names written in any path. Record a join assignment
         // for every name touched by any path because the join may produce
@@ -196,11 +168,14 @@ impl ScopeCollector<'_> {
         // same name (which the previous incoming-exclusion approach missed).
         let mut touched = BTreeSet::new();
         for path in paths {
-            touched.extend(path.writes.iter().cloned());
+            self.assignment_writes.restore(path.writes);
+            touched.extend(self.assignment_writes.iter());
         }
-        self.assignment_writes.clone_from(&incoming.writes);
+
+        self.restore(incoming);
         for key in touched {
-            let mut value = joined_environment
+            let incoming_value = self
+                .assignment_environment
                 .get_by_id(key.scope(), key.name())
                 .cloned()
                 .unwrap_or_else(|| {
@@ -214,29 +189,23 @@ impl ScopeCollector<'_> {
                         )
                 });
 
-            // A missing branch entry means that branch retains the incoming
-            // value. The environment only stores writes, so materialize that
-            // value explicitly before recording the synthetic join. Without
-            // this, `host` followed by a conditional `local` write loses the
-            // host witness entirely.
-            let any_missing = all_envs
-                .iter()
-                .any(|e| e.get_by_id(key.scope(), key.name()).is_none());
-            if any_missing {
-                let incoming_value = incoming_snapshot
+            let mut value = ProvenanceAlternatives {
+                provenances: Vec::new(),
+                unknown: false,
+                joined: true,
+                exhausted: false,
+            };
+            for path in &reachable {
+                self.assignment_environment.restore(path.cursor);
+                let path_value = self
+                    .assignment_environment
                     .get_by_id(key.scope(), key.name())
                     .cloned()
-                    .or_else(|| {
-                        self.scopes[key.scope().index()]
-                            .bindings
-                            .get(&key.name())
-                            .cloned()
-                            .map(ProvenanceAlternatives::single)
-                    })
-                    .unwrap_or_else(ProvenanceAlternatives::unknown);
-                value.add_bounded(&incoming_value, self.alternative_limit);
+                    .unwrap_or_else(|| incoming_value.clone());
+                value.add_bounded(&path_value, self.alternative_limit);
             }
             value = value.join_value();
+            self.restore(incoming);
             self.record_join_assignment(
                 Span::new(span.hi, span.hi),
                 key.scope(),

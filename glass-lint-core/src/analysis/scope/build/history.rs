@@ -10,9 +10,9 @@
 //! approach as the flow projector's `MutationLog`.
 
 use glass_lint_datastructures::NameId;
-use hashbrown::{HashMap, HashSet};
+use hashbrown::HashMap;
 
-use crate::analysis::scope::{BindingProvenance, ScopeId};
+use crate::analysis::scope::{BindingProvenance, ScopeId, ScopedName};
 
 /// Default cap on the number of provenance alternatives per (scope, name)
 /// pair. When exceeded, the assignment is marked exhausted and subsequent
@@ -99,9 +99,6 @@ pub(super) struct AssignmentEnvironment {
     log: Vec<LogEntry>,
     /// Current position in the mutation tree. 0 = root (no entries applied).
     cursor: usize,
-    /// Maximum number of provenance alternatives per binding before
-    /// exhaustion is signalled.
-    alternative_limit: usize,
 }
 
 impl AssignmentEnvironment {
@@ -110,7 +107,6 @@ impl AssignmentEnvironment {
             assignments: HashMap::new(),
             log: Vec::new(),
             cursor: 0,
-            alternative_limit: DEFAULT_ALTERNATIVE_LIMIT,
         }
     }
 
@@ -240,62 +236,136 @@ impl AssignmentEnvironment {
 
         self.cursor = target.0;
     }
+}
 
-    /// Full clone of the environment for joining. Call only at join points.
-    pub(super) fn snapshot(&self) -> Self {
+/// A checkpointed write set for one control-flow branch.
+///
+/// Writes are tagged with a generation instead of copied into every
+/// checkpoint. Restoring a checkpoint changes only parent-linked deltas,
+/// while iteration filters the compact current generation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct WriteCheckpoint(pub(super) usize);
+
+#[derive(Debug, Clone)]
+enum WriteDelta {
+    Insert {
+        key: ScopedName,
+        old: Option<u64>,
+        new: u64,
+    },
+    Generation {
+        old: u64,
+        new: u64,
+    },
+}
+
+#[derive(Debug, Clone)]
+struct WriteLogEntry {
+    parent: usize,
+    delta: WriteDelta,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct WriteSet {
+    entries: HashMap<ScopedName, u64>,
+    generation: u64,
+    log: Vec<WriteLogEntry>,
+    cursor: usize,
+}
+
+impl WriteSet {
+    pub(super) fn new() -> Self {
         Self {
-            assignments: self.assignments.clone(),
+            entries: HashMap::new(),
+            generation: 0,
             log: Vec::new(),
             cursor: 0,
-            alternative_limit: self.alternative_limit,
         }
     }
 
-    /// Join path environments. Missing entries mean that the incoming value
-    /// reaches that path unchanged. Collects distinct provenances from all
-    /// paths into alternatives, bounded by `alternative_limit`.
-    pub(super) fn join(paths: &[&Self], alternative_limit: usize) -> Self {
-        let mut active_scopes = paths
-            .iter()
-            .flat_map(|path| path.assignments.keys().copied())
-            .collect::<Vec<_>>();
-        active_scopes.sort_unstable();
-        active_scopes.dedup();
-
-        let mut joined = HashMap::new();
-
-        for scope in active_scopes {
-            let mut result_map = HashMap::new();
-            let mut all_names = HashSet::new();
-            for path in paths {
-                if let Some(map) = path.assignments.get(&scope) {
-                    all_names.extend(map.keys().copied());
-                }
-            }
-            for name in all_names {
-                let mut value = ProvenanceAlternatives {
-                    provenances: Vec::new(),
-                    unknown: false,
-                    joined: true,
-                    exhausted: false,
-                };
-                for path in paths {
-                    if let Some(alt) = path.get_by_id(scope, name) {
-                        value.add_bounded(alt, alternative_limit);
-                    }
-                }
-                result_map.insert(name, value);
-            }
-            if !result_map.is_empty() {
-                joined.insert(scope, result_map);
-            }
+    pub(super) fn insert(&mut self, key: ScopedName) {
+        if self.entries.get(&key) == Some(&self.generation) {
+            return;
         }
+        let old = self.entries.insert(key.clone(), self.generation);
+        self.record(WriteDelta::Insert {
+            key,
+            old,
+            new: self.generation,
+        });
+    }
 
-        Self {
-            assignments: joined,
-            log: Vec::new(),
-            cursor: 0,
-            alternative_limit,
+    pub(super) fn clear(&mut self) {
+        let old = self.generation;
+        let new = old.saturating_add(1);
+        self.generation = new;
+        self.record(WriteDelta::Generation { old, new });
+    }
+
+    pub(super) fn checkpoint(&self) -> WriteCheckpoint {
+        WriteCheckpoint(self.cursor)
+    }
+
+    pub(super) fn restore(&mut self, target: WriteCheckpoint) {
+        let mut source_path = self.path_to_root(self.cursor);
+        let mut target_path = self.path_to_root(target.0);
+        let common = source_path
+            .iter()
+            .zip(&target_path)
+            .take_while(|(source, target)| source == target)
+            .count();
+
+        for entry in source_path.drain(common..).rev() {
+            self.apply_inverse(entry);
+        }
+        for entry in target_path.drain(common..) {
+            self.apply_forward(entry);
+        }
+        self.cursor = target.0;
+    }
+
+    pub(super) fn iter(&self) -> impl Iterator<Item = ScopedName> + '_ {
+        self.entries
+            .iter()
+            .filter(move |(_, generation)| **generation == self.generation)
+            .map(|(key, _)| key.clone())
+    }
+
+    fn record(&mut self, delta: WriteDelta) {
+        let parent = self.cursor;
+        self.log.push(WriteLogEntry { parent, delta });
+        self.cursor = self.log.len();
+    }
+
+    fn path_to_root(&self, mut cursor: usize) -> Vec<usize> {
+        let mut path = Vec::new();
+        while cursor > 0 {
+            path.push(cursor - 1);
+            cursor = self.log[cursor - 1].parent;
+        }
+        path.reverse();
+        path
+    }
+
+    fn apply_inverse(&mut self, entry: usize) {
+        match &self.log[entry].delta {
+            WriteDelta::Insert { key, old, .. } => {
+                if let Some(old) = old {
+                    self.entries.insert(key.clone(), *old);
+                } else {
+                    self.entries.remove(key);
+                }
+            }
+            WriteDelta::Generation { old, .. } => self.generation = *old,
+        }
+    }
+
+    fn apply_forward(&mut self, entry: usize) {
+        match &self.log[entry].delta {
+            WriteDelta::Insert { key, new, .. } => {
+                self.entries.insert(key.clone(), *new);
+            }
+            WriteDelta::Generation { new, .. } => self.generation = *new,
         }
     }
 }
@@ -306,64 +376,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn joins_equal_values_and_collects_distinct_alternatives() {
+    fn assignment_checkpoints_still_restore_values() {
         let mut names = NameTable::default();
         let name = names.intern("value").unwrap();
         let scope = ScopeId::from(1);
-        let mut first = AssignmentEnvironment::new();
-        first.record_known(scope, name, BindingProvenance::Local);
-        let second = first.clone();
-        let joined = AssignmentEnvironment::join(&[&first, &second], DEFAULT_ALTERNATIVE_LIMIT);
+        let mut environment = AssignmentEnvironment::new();
+        environment.record_known(scope, name, BindingProvenance::Local);
+        let base = environment.checkpoint();
+        environment.record_unknown(scope, name);
+        environment.restore(base);
         assert_eq!(
-            joined.get_by_id(scope, name).map(|a| &a.provenances[..]),
-            Some(&[BindingProvenance::Local][..])
-        );
-
-        let mut third = AssignmentEnvironment::new();
-        third.record_unknown(scope, name);
-        let joined2 = AssignmentEnvironment::join(&[&first, &third], DEFAULT_ALTERNATIVE_LIMIT);
-        assert_eq!(
-            joined2.get_by_id(scope, name).map(|a| &a.provenances[..]),
-            Some(&[BindingProvenance::Local][..])
-        );
-    }
-
-    #[test]
-    fn join_unions_distinct_provenances() {
-        let mut names = NameTable::default();
-        let name = names.intern("api").unwrap();
-        let scope = ScopeId::from(1);
-        let mut path_a = AssignmentEnvironment::new();
-        path_a.record_known(
-            scope,
-            name,
-            BindingProvenance::ValueAlias {
-                target: glass_lint_datastructures::NamePath::new(),
-            },
-        );
-        let mut path_b = AssignmentEnvironment::new();
-        path_b.record_known(scope, name, BindingProvenance::Local);
-        let joined = AssignmentEnvironment::join(&[&path_a, &path_b], DEFAULT_ALTERNATIVE_LIMIT);
-        let alts = joined.get_by_id(scope, name).unwrap();
-        assert_eq!(alts.provenances.len(), 2);
-    }
-
-    #[test]
-    fn sparse_scope_join_does_not_materialize_empty_scopes() {
-        let mut names = NameTable::default();
-        let name = names.intern("value").unwrap();
-        let scope = ScopeId::from(100_000);
-        let mut first = AssignmentEnvironment::new();
-        first.record_known(scope, name, BindingProvenance::Local);
-
-        let joined = AssignmentEnvironment::join(&[&first], DEFAULT_ALTERNATIVE_LIMIT);
-
-        assert_eq!(joined.assignments.len(), 1);
-        assert_eq!(
-            joined
+            environment
                 .get_by_id(scope, name)
                 .map(|value| &value.provenances[..]),
             Some(&[BindingProvenance::Local][..])
         );
+    }
+
+    #[test]
+    fn write_set_restores_branch_local_deltas() {
+        let mut writes = WriteSet::new();
+        let mut names = NameTable::default();
+        let first_name = names.intern("first").unwrap();
+        let second_name = names.intern("second").unwrap();
+        let first = ScopedName::new(ScopeId::from(1), first_name);
+        let second = ScopedName::new(ScopeId::from(1), second_name);
+        writes.insert(first.clone());
+        let base = writes.checkpoint();
+        writes.clear();
+        writes.insert(second.clone());
+        let branch = writes.checkpoint();
+
+        writes.restore(base);
+        assert_eq!(writes.iter().collect::<Vec<_>>(), vec![first]);
+        writes.restore(branch);
+        assert_eq!(writes.iter().collect::<Vec<_>>(), vec![second]);
     }
 }

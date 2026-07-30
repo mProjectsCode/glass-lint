@@ -713,7 +713,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         let exhausted = self.summary_exhausted
             || self.next_object_id >= self.limits.object_limit()
             || self.flow_state.state_count() >= self.limits.state_limit()
-            || flow_evidence.emitted_count() >= self.limits.emission_limit()
+            || flow_evidence.limit_rejected()
             || self.flow_state.mutation_exhausted()
             || !self.alternatives_complete
             || self.trace_arena.is_exhausted();
