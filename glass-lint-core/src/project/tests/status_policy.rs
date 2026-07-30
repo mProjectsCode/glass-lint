@@ -212,6 +212,33 @@ fn assert_limit_triplet(
     }
 }
 
+fn assert_flow_limit_transition(
+    configure: fn(AnalysisLimits) -> crate::Linter,
+    setter: fn(&mut AnalysisLimits, usize),
+    code: &str,
+    analyze: impl Fn(&crate::Linter) -> AnalysisReport,
+) {
+    for (limit, expected, expect_finding) in [
+        (1, ReportCompletion::Partial, false),
+        (21, ReportCompletion::Partial, true),
+        (22, ReportCompletion::Complete, true),
+        (23, ReportCompletion::Complete, true),
+    ] {
+        let mut limits = AnalysisLimits::default();
+        setter(&mut limits, limit);
+        let report = analyze(&configure(limits));
+        assert_eq!(report.completion(), expected, "{code} limit={limit}");
+        assert_eq!(
+            report
+                .files()
+                .iter()
+                .any(|file| !file.findings().is_empty()),
+            expect_finding,
+            "{code} finding state at limit={limit}"
+        );
+    }
+}
+
 #[test]
 fn facts_effects_flow_and_link_limits_cover_below_at_above() {
     let facts = |linter: &crate::Linter| {
@@ -277,12 +304,10 @@ fn facts_effects_flow_and_link_limits_cover_below_at_above() {
         );
         fixture.finish()
     };
-    assert_limit_triplet(
+    assert_flow_limit_transition(
         configured_flow_linter,
         AnalysisLimits::set_flow_operations,
-        2,
         "flow_link_budget_exhausted",
-        None,
         flow,
     );
 }

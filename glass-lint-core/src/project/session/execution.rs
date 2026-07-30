@@ -7,6 +7,8 @@ use std::num::NonZeroUsize;
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use rayon::prelude::*;
+
 use crate::{
     ParseDiagnostic,
     analysis::{ArtifactCacheKey, LoweredSource, Lowerer},
@@ -176,75 +178,47 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
         release: &mut dyn FnMut(LocalJobResult),
     ) -> Result<(), LocalExecutionError> {
         let all_jobs: Vec<LocalJob> = jobs.collect();
+        if all_jobs.is_empty() {
+            return Ok(());
+        }
         let worker_count = worker_limit.get().min(all_jobs.len()).max(1);
         let bound =
             outstanding_job_bound(NonZeroUsize::new(worker_count).unwrap_or(NonZeroUsize::MIN));
-        let (job_tx, job_rx) = std::sync::mpsc::sync_channel::<LocalJob>(bound);
-        let (result_tx, result_rx) = std::sync::mpsc::sync_channel(bound);
-        let queue = std::sync::Mutex::new(job_rx);
-        std::thread::scope(|scope| {
-            let mut handles = Vec::new();
-            for _ in 0..worker_count {
-                let queue_ref = &queue;
-                let result_tx = result_tx.clone();
-                handles.push(scope.spawn(move || {
-                    loop {
-                        let job = queue_ref
-                            .lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner)
-                            .recv();
-                        let Ok(job) = job else {
-                            break;
-                        };
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(worker_count)
+            .build()
+            .map_err(|_| LocalExecutionError::WorkerPanic)?;
+        let mut pending = all_jobs.into_iter();
+        loop {
+            let batch = pending.by_ref().take(bound).collect::<Vec<_>>();
+            if batch.is_empty() {
+                break;
+            }
+            for _ in &batch {
+                observer.observe(ExecutionEvent::Submitted);
+            }
+            let results = pool.install(|| {
+                batch
+                    .into_par_iter()
+                    .map(|job| {
                         observer.observe(ExecutionEvent::Started);
                         observer.observe(ExecutionEvent::ParseAttempted);
                         observer.observe(ExecutionEvent::LowerAttempted);
                         let result = lowerer.lower_source(&job.source);
                         observer.observe(ExecutionEvent::Finished);
-                        result_tx
-                            .send(LocalJobResult {
-                                path: job.path,
-                                key: job.key,
-                                result,
-                            })
-                            .map_err(|_| LocalExecutionError::WorkerPanic)?;
-                    }
-                    Ok::<_, LocalExecutionError>(())
-                }));
+                        LocalJobResult {
+                            path: job.path,
+                            key: job.key,
+                            result,
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            });
+            for result in results {
+                release(result);
             }
-
-            let mut outstanding = 0usize;
-            for job in all_jobs {
-                observer.observe(ExecutionEvent::Submitted);
-                job_tx
-                    .send(job)
-                    .map_err(|_| LocalExecutionError::WorkerPanic)?;
-                outstanding += 1;
-                if outstanding == bound {
-                    release(
-                        result_rx
-                            .recv()
-                            .map_err(|_| LocalExecutionError::WorkerPanic)?,
-                    );
-                    outstanding -= 1;
-                }
-            }
-            drop(job_tx);
-            while outstanding != 0 {
-                release(
-                    result_rx
-                        .recv()
-                        .map_err(|_| LocalExecutionError::WorkerPanic)?,
-                );
-                outstanding -= 1;
-            }
-            for handle in handles {
-                handle
-                    .join()
-                    .map_err(|_| LocalExecutionError::WorkerPanic)??;
-            }
-            Ok(())
-        })
+        }
+        Ok(())
     }
 }
 

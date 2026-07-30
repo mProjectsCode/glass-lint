@@ -247,7 +247,7 @@ Require identical emission descriptors across branches, or add an explicit `any_
 
 **Fix:** `QueryDecl::any` now rejects alternatives with different evidence symbols, while `any_with_evidence` lets callers provide an explicit aggregate label after the branch kind and primary variable are validated. Existing alternative callers were migrated to the explicit API so branch order no longer selects metadata implicitly.
 
-#### READ-020 — Project execution maintains a bespoke thread pool per call
+#### [x] READ-020 — Project execution maintains a bespoke thread pool per call
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -257,6 +257,8 @@ Require identical emission descriptors across branches, or add an explicit `any_
 Each `analyze_sources` call collects all jobs, creates two channels, wraps the receiver in a contended mutex, spawns fresh OS threads, and manually joins them. An empty job set still computes one worker and spawns a thread, and the implementation duplicates mature scheduling, panic, and worker-reuse behavior.
 
 Use a bounded Rayon pool or scoped parallel iterator, then merge results deterministically in the existing canonical maps. Rayon is the established crate justified here; keep the `LocalJobExecutor` seam for deterministic tests. Add an immediate zero-job return regardless of the eventual executor.
+
+**Fix:** Local lowering now runs through a bounded Rayon pool in bounded batches, preserving the existing executor seam and deterministic release path. Empty job sets return immediately, and observer accounting remains bounded by the same outstanding-job limit.
 
 #### READ-021 — Every source is lexed twice and regex context is partly handwritten
 

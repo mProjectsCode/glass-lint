@@ -8,6 +8,7 @@ license.workspace = true
 glass-lint-datastructures = { path = "../glass-lint-datastructures" }
 hashbrown.workspace = true
 petgraph.workspace = true
+rayon.workspace = true
 serde = { workspace = true, optional = true }
 tracing.workspace = true
 swc_common.workspace = true
