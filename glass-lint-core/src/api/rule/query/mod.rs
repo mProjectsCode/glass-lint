@@ -12,7 +12,7 @@
 //!
 //! [`EventQuery::call_global`] and the other identity/event combinators replace
 //! the former [`QueryDecl`] builder.
-use std::{collections::BTreeSet, fmt};
+use std::fmt;
 
 use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
@@ -23,7 +23,10 @@ use crate::api::{
         ModuleSpecifierPattern,
         query::{
             lifecycle::{LifecycleCompletion, LifecycleCondition},
-            value::{ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ValueMatcher},
+            value::{
+                ArgumentConstraint, ArgumentConstraintsBuilder, ArgumentIndex, ArgumentMatcher,
+                ValueMatcher,
+            },
         },
     },
 };
@@ -164,25 +167,6 @@ fn is_chain_malformed(chain: &str) -> bool {
         || chain.contains("..")
         || chain.starts_with('.')
         || chain.ends_with('.')
-}
-
-fn validate_argument_constraints(
-    constraints: &[ArgumentConstraint],
-) -> Result<(), QueryBuildError> {
-    let groups: BTreeSet<usize> = constraints.iter().map(ArgumentConstraint::index).collect();
-    if groups.len() > limits::MAX_ARGUMENT_GROUPS {
-        return Err(QueryBuildError::ExcessiveArgumentGroups(groups.len()));
-    }
-    for index in groups {
-        let count = constraints
-            .iter()
-            .filter(|constraint| constraint.index() == index)
-            .count();
-        if count > limits::MAX_PREDICATES_PER_ARGUMENT {
-            return Err(QueryBuildError::ExcessivePredicates { index, count });
-        }
-    }
-    Ok(())
 }
 
 fn evidence_kind_for_event(event: &EventSpec) -> MatchKind {
@@ -537,29 +521,23 @@ impl EventQuery {
             return Err(QueryBuildError::InvalidArgumentIndex(index));
         }
         let arg_idx = ArgumentIndex::new_unchecked(index as u8);
-        self.constraints
-            .push(ArgumentConstraint::new(arg_idx, matcher));
-        validate_argument_constraints(&self.constraints)?;
+        let mut builder = ArgumentConstraintsBuilder::from_constraints(&self.constraints)?;
+        builder.push(arg_idx.get(), matcher)?;
+        self.constraints = builder.finish();
         Ok(self)
     }
 
     /// Add a static-string argument constraint.
-    pub fn with_arg_static_string(mut self, index: usize) -> Result<Self, QueryBuildError> {
+    pub fn with_arg_static_string(self, index: usize) -> Result<Self, QueryBuildError> {
         if index > limits::MAX_ARGUMENT_INDEX {
             return Err(QueryBuildError::InvalidArgumentIndex(index));
         }
-        let arg_idx = ArgumentIndex::new_unchecked(index as u8);
-        self.constraints.push(ArgumentConstraint::new(
-            arg_idx,
-            ValueMatcher::static_string(),
-        ));
-        validate_argument_constraints(&self.constraints)?;
-        Ok(self)
+        self.with_arg(index, ValueMatcher::static_string())
     }
 
     /// Add a static-string constraint with allowed values.
     pub fn with_arg_static_strings<I, S>(
-        mut self,
+        self,
         index: usize,
         values: I,
     ) -> Result<Self, QueryBuildError>
@@ -570,18 +548,12 @@ impl EventQuery {
         if index > limits::MAX_ARGUMENT_INDEX {
             return Err(QueryBuildError::InvalidArgumentIndex(index));
         }
-        let arg_idx = ArgumentIndex::new_unchecked(index as u8);
-        self.constraints.push(ArgumentConstraint::new(
-            arg_idx,
-            ValueMatcher::static_string().equals_any(values)?,
-        ));
-        validate_argument_constraints(&self.constraints)?;
-        Ok(self)
+        self.with_arg(index, ValueMatcher::static_string().equals_any(values)?)
     }
 
     /// Add a static-string contains constraint.
     pub fn with_arg_static_string_contains<I, S>(
-        mut self,
+        self,
         index: usize,
         values: I,
     ) -> Result<Self, QueryBuildError>
@@ -592,18 +564,12 @@ impl EventQuery {
         if index > limits::MAX_ARGUMENT_INDEX {
             return Err(QueryBuildError::InvalidArgumentIndex(index));
         }
-        let arg_idx = ArgumentIndex::new_unchecked(index as u8);
-        self.constraints.push(ArgumentConstraint::new(
-            arg_idx,
-            ValueMatcher::static_string().contains_any(values)?,
-        ));
-        validate_argument_constraints(&self.constraints)?;
-        Ok(self)
+        self.with_arg(index, ValueMatcher::static_string().contains_any(values)?)
     }
 
     /// Add an object property value constraint.
     pub fn with_arg_object_property_value(
-        mut self,
+        self,
         index: usize,
         property: impl Into<String>,
         value: ValueMatcher,
@@ -611,21 +577,14 @@ impl EventQuery {
         if index > limits::MAX_ARGUMENT_INDEX {
             return Err(QueryBuildError::InvalidArgumentIndex(index));
         }
-        let arg_idx = ArgumentIndex::new_unchecked(index as u8);
-        self.constraints.push(ArgumentConstraint::new(
-            arg_idx,
+        self.with_arg(
+            index,
             ArgumentMatcher::object_property_value(property, value),
-        ));
-        validate_argument_constraints(&self.constraints)?;
-        Ok(self)
+        )
     }
 
     /// Add an object keys constraint.
-    pub fn with_arg_object_keys<I, S>(
-        mut self,
-        index: usize,
-        keys: I,
-    ) -> Result<Self, QueryBuildError>
+    pub fn with_arg_object_keys<I, S>(self, index: usize, keys: I) -> Result<Self, QueryBuildError>
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
@@ -633,13 +592,7 @@ impl EventQuery {
         if index > limits::MAX_ARGUMENT_INDEX {
             return Err(QueryBuildError::InvalidArgumentIndex(index));
         }
-        let arg_idx = ArgumentIndex::new_unchecked(index as u8);
-        self.constraints.push(ArgumentConstraint::new(
-            arg_idx,
-            ArgumentMatcher::object_keys(keys)?,
-        ));
-        validate_argument_constraints(&self.constraints)?;
-        Ok(self)
+        self.with_arg(index, ArgumentMatcher::object_keys(keys)?)
     }
 
     /// Convert this event query into a [`QueryDecl`] with inferred evidence

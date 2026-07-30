@@ -3,7 +3,7 @@ use smol_str::SmolStr;
 
 use crate::api::rule::query::{
     limits,
-    value::{ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ValueMatcher},
+    value::{ArgumentConstraint, ArgumentConstraintsBuilder, ArgumentMatcher, ValueMatcher},
 };
 
 // ── LifecycleSource ───────────────────────────────────────────────────
@@ -45,17 +45,9 @@ impl LifecycleSource {
         if index > limits::MAX_ARGUMENT_INDEX {
             return Err(QueryBuildError::InvalidArgumentIndex(index));
         }
-        let arg_idx = ArgumentIndex::new_unchecked(
-            u8::try_from(index).map_err(|_| QueryBuildError::InvalidArgumentIndex(index))?,
-        );
-        self.arguments
-            .push(ArgumentConstraint::new(arg_idx, matcher));
-        if self.arguments.len() > limits::MAX_PREDICATES_PER_ARGUMENT {
-            return Err(QueryBuildError::ExcessivePredicates {
-                index,
-                count: self.arguments.len(),
-            });
-        }
+        let mut builder = ArgumentConstraintsBuilder::from_constraints(&self.arguments)?;
+        builder.push(index, matcher)?;
+        self.arguments = builder.finish();
         Ok(self)
     }
 
@@ -136,18 +128,9 @@ impl LifecycleEventBuilder {
             return Err(QueryBuildError::InvalidArgumentIndex(index));
         }
         if let LifecycleEventKind::MemberCall { arguments, .. } = &mut self.event {
-            let arg_idx = ArgumentIndex::new_unchecked(
-                u8::try_from(index).map_err(|_| QueryBuildError::InvalidArgumentIndex(index))?,
-            );
-            arguments.push(ArgumentConstraint::new(arg_idx, matcher));
-        }
-        if let LifecycleEventKind::MemberCall { arguments, .. } = &self.event
-            && arguments.len() > limits::MAX_PREDICATES_PER_ARGUMENT
-        {
-            return Err(QueryBuildError::ExcessivePredicates {
-                index,
-                count: arguments.len(),
-            });
+            let mut builder = ArgumentConstraintsBuilder::from_constraints(arguments)?;
+            builder.push(index, matcher)?;
+            *arguments = builder.finish();
         }
         Ok(self)
     }
@@ -633,6 +616,35 @@ mod tests {
         let s = s.unwrap();
         assert_eq!(s.arguments().len(), 1);
         assert_eq!(s.arguments()[0].index(), 0);
+    }
+
+    #[test]
+    fn lifecycle_argument_limits_count_groups_and_per_group_predicates() {
+        let mut source = LifecycleSource::returned_by("foo.bar").unwrap();
+        for index in 0..limits::MAX_ARGUMENT_GROUPS {
+            source = source.arg(index, ValueMatcher::any_value()).unwrap();
+        }
+        assert_eq!(source.arguments().len(), limits::MAX_ARGUMENT_GROUPS);
+        assert!(matches!(
+            source.arg(limits::MAX_ARGUMENT_GROUPS, ValueMatcher::any_value()),
+            Err(QueryBuildError::ExcessiveArgumentGroups(_))
+        ));
+
+        let mut event = LifecycleEvent::member_call("foo").unwrap();
+        for _ in 0..limits::MAX_PREDICATES_PER_ARGUMENT {
+            event = event.arg(0, ValueMatcher::any_value()).unwrap();
+        }
+        assert!(matches!(
+            event.arg(0, ValueMatcher::any_value()),
+            Err(QueryBuildError::ExcessivePredicates { index: 0, .. })
+        ));
+
+        let query = crate::api::rule::EventQuery::call_global("foo").unwrap();
+        let mut query = query;
+        for index in 0..limits::MAX_ARGUMENT_GROUPS {
+            query = query.with_arg(index, ValueMatcher::any_value()).unwrap();
+        }
+        assert_eq!(query.constraints().len(), limits::MAX_ARGUMENT_GROUPS);
     }
 
     #[test]

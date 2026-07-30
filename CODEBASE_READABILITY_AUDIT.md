@@ -210,7 +210,7 @@ An event stores `identity: Option<IdentitySpec>` separately from `NormalizedSubj
 
 Replace the pair with a sum type such as `Direct { identity }`, `Returned { producer, object_slot }`, and `Instance { constructor, object_slot }`, with event-compatible constructors. Let physical planning exhaustively match valid variants without `expect` or empty sentinels. Keep validation for authored errors, not for states the internal type can prevent.
 
-#### READ-017 — Lifecycle argument builders enforce the wrong dimension
+#### [x] READ-017 — Lifecycle argument builders enforce the wrong dimension
 
 - **Severity:** Medium
 - **Fix Complexity** Low
@@ -220,6 +220,8 @@ Replace the pair with a sum type such as `Direct { identity }`, `Returned { prod
 `LifecycleSource::with_arg` and `LifecycleEventBuilder::arg` compare total constraint count with `MAX_PREDICATES_PER_ARGUMENT`. They therefore reject 33 distinct argument groups although ordinary `EventQuery` allows 64, and their reported index/count do not necessarily describe the group that exceeded its bound.
 
 Move one bounded `ArgumentConstraintsBuilder` beside the value API and use it from event, lifecycle-source, and lifecycle-event construction. Enforce group count and per-index predicate count incrementally, then freeze directly into canonical groups. Add exact-boundary tests for many groups, many predicates on one group, duplicates, and mixed indices.
+
+**Fix:** A shared incremental `ArgumentConstraintsBuilder` now enforces the 64-group and 32-predicate-per-index limits for ordinary events, lifecycle sources, and lifecycle events, then freezes constraints in canonical order. Boundary tests cover maximum groups and per-index predicate counts.
 
 #### READ-018 — Public query strings are validated repeatedly but not normalized consistently
 
