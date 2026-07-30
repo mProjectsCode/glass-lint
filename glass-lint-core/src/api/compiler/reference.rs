@@ -1,10 +1,10 @@
 //! Test-only logical/physical equivalence oracle.
 //!
 //! Provides a small synthetic relation store and two evaluators
-//! (`evaluate_logical` and `evaluate_physical`) that produce
-//! deterministic witnesses.  The oracle compares the sorted witness
-//! lists to verify that the physical planner has the same semantics
-//! as the logical query over the same small domain.
+//! (`evaluate_supported_logical` and `evaluate_supported_physical`) that
+//! produce deterministic witnesses. The oracle compares the sorted witness
+//! lists to verify that the physical planner has the same semantics as the
+//! logical query over the supported event subset.
 
 #![cfg(test)]
 
@@ -107,7 +107,7 @@ pub(crate) enum ReferenceCertainty {
 /// Evaluate a logical [`NormalizedQuery`] against a set of reference rows.
 ///
 /// Returns sorted witnesses for comparison against physical evaluation.
-pub(crate) fn evaluate_logical(
+pub(crate) fn evaluate_supported_logical(
     query: &NormalizedQuery,
     rows: &[ReferenceRow],
 ) -> Vec<ReferenceWitness> {
@@ -128,8 +128,7 @@ fn evaluate_root_logical(root: &NormalizedRoot, rows: &[ReferenceRow]) -> Vec<Re
             witnesses
         }
         NormalizedRoot::Lifecycle(_) => {
-            // Lifecycle evaluation not implemented in Phase 12 oracle.
-            Vec::new()
+            panic!("reference evaluator does not support lifecycle roots")
         }
     }
 }
@@ -224,7 +223,7 @@ fn matches_arguments_logical(
 ///
 /// Dispatches only on physical root fields. Returns sorted witnesses
 /// for comparison against logical evaluation.
-pub(crate) fn evaluate_physical(
+pub(crate) fn evaluate_supported_physical(
     plan: &PhysicalPlan,
     rows: &[ReferenceRow],
 ) -> Vec<ReferenceWitness> {
@@ -263,9 +262,8 @@ fn evaluate_physical_root(root: &PhysicalRoot, rows: &[ReferenceRow]) -> Vec<Ref
             evidence: _,
             object_slot: _,
         } => evaluate_instance_subject(constructor, member, rows),
-        PhysicalRoot::Lifecycle { flow: _ } => {
-            // Lifecycle evaluation not implemented in Phase 12 oracle.
-            Vec::new()
+        PhysicalRoot::Lifecycle { .. } => {
+            panic!("reference evaluator does not support lifecycle roots")
         }
     }
 }
@@ -371,12 +369,16 @@ fn evaluate_returned_subject(
 
 fn evaluate_instance_subject(
     constructor: &IdentityConstraint,
-    _member: &glass_lint_datastructures::SymbolPath,
+    member: &glass_lint_datastructures::SymbolPath,
     rows: &[ReferenceRow],
 ) -> Vec<ReferenceWitness> {
     let mut witnesses = Vec::new();
     for row in rows {
         if !has_correlated_support(row, ReferenceSupportKind::Constructor) {
+            continue;
+        }
+        if !matches!(&row.event_kind, EventSpec::MemberCall { member: actual } if actual == member)
+        {
             continue;
         }
         if !matches_identity_constraint(constructor, &row.identity) {
@@ -415,43 +417,7 @@ fn matches_event_physical(expected: &EventPredicate, actual: &EventSpec) -> bool
 }
 
 fn matches_identity_constraint(expected: &IdentityConstraint, actual: &IdentitySpec) -> bool {
-    // Lower the identity spec and compare.
-    let lowered = lower_identity(actual);
-    // For Global constraints, compare name and strength.
-    match (expected, &lowered) {
-        (
-            IdentityConstraint::Global {
-                name: en,
-                strength: es,
-            }
-            | IdentityConstraint::Any {
-                name: en,
-                strength: es,
-            },
-            IdentityConstraint::Global {
-                name: an,
-                strength: as_,
-            }
-            | IdentityConstraint::Any {
-                name: an,
-                strength: as_,
-            },
-        ) => en == an && es == as_,
-        (
-            IdentityConstraint::ModuleExport {
-                module: em,
-                export: ee,
-            },
-            IdentityConstraint::ModuleExport {
-                module: am,
-                export: ae,
-            },
-        ) => em == am && ee == ae,
-        (IdentityConstraint::Rooted { path: ep }, IdentityConstraint::Rooted { path: ap }) => {
-            ep == ap
-        }
-        _ => false,
-    }
+    expected == &lower_identity(actual)
 }
 
 fn matches_arguments_physical(

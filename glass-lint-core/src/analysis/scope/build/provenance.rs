@@ -143,7 +143,7 @@ impl ScopeCollector<'_> {
     }
 
     /// Convert a bounded constant result into collector provenance.
-    pub(super) fn const_provenance(&self, init: &Expr) -> Option<BindingProvenance> {
+    pub(super) fn const_provenance(&mut self, init: &Expr) -> Option<BindingProvenance> {
         match constant::evaluate(init, self) {
             ConstValue::String(value) => Some(BindingProvenance::StaticString(value)),
             ConstValue::NonNegativeInteger(value) => Some(BindingProvenance::StaticNumber(value)),
@@ -156,7 +156,7 @@ impl ScopeCollector<'_> {
             ConstValue::Object(values) => Some(BindingProvenance::StaticObjectKeys(
                 values
                     .keys()
-                    .map(|key| self.names.lookup(key).ok_or(()))
+                    .map(|key| self.lookup_or_intern_name(key).ok_or(()))
                     .collect::<Result<Vec<_>, _>>()
                     .ok()?,
             )),
@@ -165,7 +165,7 @@ impl ScopeCollector<'_> {
     }
 
     /// Resolve the strict provenance forms accepted for a call argument.
-    pub(super) fn argument_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {
+    pub(super) fn argument_provenance(&mut self, expr: &Expr) -> Option<BindingProvenance> {
         self.constructed_instance_provenance(expr)
             .or_else(|| self.module_alias_provenance(expr))
             .or_else(|| self.returned_object_provenance(expr))
@@ -187,7 +187,7 @@ impl ScopeCollector<'_> {
     }
 
     /// Preserve a callable identity and supported static `.bind` arguments.
-    pub(super) fn bound_callable_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {
+    pub(super) fn bound_callable_provenance(&mut self, expr: &Expr) -> Option<BindingProvenance> {
         let Expr::Call(call) = expr else {
             return None;
         };
@@ -235,7 +235,7 @@ impl ScopeCollector<'_> {
     }
 
     /// Track an object returned from a rooted callable for later member use.
-    pub(super) fn returned_object_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {
+    pub(super) fn returned_object_provenance(&mut self, expr: &Expr) -> Option<BindingProvenance> {
         // Recursive match over Expr variants with shared call/member/ident
         // resolution logic that is clearest when read as a single recursion.
         match expr {
@@ -286,7 +286,7 @@ impl ScopeCollector<'_> {
     }
 
     /// Build a static object-value map only when every property is rooted.
-    pub(super) fn static_object_values(&self, expr: &Expr) -> Option<BindingProvenance> {
+    pub(super) fn static_object_values(&mut self, expr: &Expr) -> Option<BindingProvenance> {
         let Expr::Object(object) = expr else {
             return None;
         };
@@ -300,7 +300,7 @@ impl ScopeCollector<'_> {
             };
             let target = self.rooted_name_path(&property.value)?;
             let key = property_name(&property.key)?;
-            values.insert(self.names.lookup(key.as_str())?, target);
+            values.insert(self.lookup_or_intern_name(key.as_str())?, target);
         }
         Some(BindingProvenance::StaticObjectValues(values))
     }

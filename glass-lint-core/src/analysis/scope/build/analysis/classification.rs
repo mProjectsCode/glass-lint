@@ -43,7 +43,7 @@ impl std::fmt::Debug for DeclarationClassification {
 }
 
 pub fn classify_declaration(
-    collector: &ScopeCollector,
+    collector: &mut ScopeCollector,
     expr: &Expr,
     pat: &Pat,
     derived_function_pattern: bool,
@@ -105,7 +105,7 @@ pub fn classify_declaration(
 
 #[allow(clippy::needless_pass_by_value)]
 fn klassify_call(
-    collector: &ScopeCollector,
+    collector: &mut ScopeCollector,
     call: &swc_ecma_ast::CallExpr,
     expr: &Expr,
     name: Option<String>,
@@ -167,7 +167,7 @@ fn klassify_call(
 
 #[allow(clippy::needless_pass_by_value)]
 fn klassify_member(
-    collector: &ScopeCollector,
+    collector: &mut ScopeCollector,
     expr: &Expr,
     name: Option<String>,
     derived_function_pattern: bool,
@@ -205,7 +205,7 @@ fn klassify_member(
 
 #[allow(clippy::needless_pass_by_value)]
 fn klassify_ident(
-    collector: &ScopeCollector,
+    collector: &mut ScopeCollector,
     expr: &Expr,
     mut name: Option<String>,
     derived_function_pattern: bool,

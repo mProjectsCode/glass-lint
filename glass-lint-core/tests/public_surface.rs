@@ -25,7 +25,7 @@ fn supported_public_operations_do_not_require_engine_storage() {
             .with_limits(AnalysisLimits::default()),
     )
     .unwrap();
-    let mut session = linter.begin_project("/project").unwrap();
+    let mut session = linter.begin_project().unwrap();
     session
         .analyze_source(SourceFile::new("main.js", "fetch('/remote');").unwrap())
         .unwrap();

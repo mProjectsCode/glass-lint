@@ -1,12 +1,10 @@
 use std::collections::BTreeMap;
 
-use glass_lint_datastructures::{NamePath, NameTable};
-
 use crate::{
     analysis::{
-        ProjectSemanticModel, facts::FactId, project::state::LinkingSession, value::FunctionId,
+        ProjectSemanticModel, facts::FactId, flow::planning::BoundFlowPaths,
+        project::state::LinkingSession, value::FunctionId,
     },
-    api::compiler::{CompiledObjectFlow, CompiledObjectRequirement},
     project::ModuleId,
 };
 
@@ -50,36 +48,4 @@ impl QualifiedCallGraph {
     }
 }
 
-/// Pre-resolved requirement and sink member paths for one (flow, names) pair.
-/// Built once and reused across all contexts for the same flow and module.
-pub(super) struct FlowPathPlan {
-    pub(super) req_members: Vec<Option<NamePath>>,
-    pub(super) sink_members: Vec<Vec<NamePath>>,
-}
-
-impl FlowPathPlan {
-    pub(super) fn build(flow: &CompiledObjectFlow, names: &NameTable) -> Self {
-        let req_members = flow
-            .requirements
-            .iter()
-            .map(|req| match req {
-                CompiledObjectRequirement::MemberCall { member, .. } => names.lookup_path(member),
-                CompiledObjectRequirement::PropertyWrite { .. } => None,
-            })
-            .collect();
-        let sink_members = flow
-            .sinks
-            .iter()
-            .map(|sink| {
-                sink.member_calls
-                    .iter()
-                    .filter_map(|mc| names.lookup_path(mc))
-                    .collect()
-            })
-            .collect();
-        Self {
-            req_members,
-            sink_members,
-        }
-    }
-}
+pub(super) type FlowPathPlan = BoundFlowPaths;

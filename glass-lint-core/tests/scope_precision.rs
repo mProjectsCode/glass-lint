@@ -305,39 +305,33 @@ fn definite_all_paths_match() {
     );
 }
 
-/// Limit-exhaustion: when analysis limits prevent a complete result,
-/// the certainty must never be Definite even if all retained alternatives
-/// happen to match. These tests will be enabled once bounded alternative
-/// environments and their explicit limits are implemented.
-///
-/// Deeply nested branches should not cause unbounded analysis and must
-/// not produce a Definite finding when the alternative cap is reached.
+/// Deeply nested branches should remain bounded without losing the rooted
+/// finding when matching and nonmatching paths coexist.
 #[test]
-fn deep_nesting_under_limit_produces_possible_not_definite() {
-    // A deeply nested if/else with matching facts, but the alternative
-    // count exceeds the configured limit. The retained match should be
-    // Possible, not Definite.
+fn deep_nesting_under_limit_preserves_the_rooted_finding() {
+    // A long sequence of branch alternatives exercises bounded provenance
+    // retention without relying on a wall-clock limit. Certainty semantics
+    // for flow alternatives are covered by the projector tests.
     use std::fmt::Write;
     let mut source = String::from("let api = host.files;\n");
     for i in 0..100 {
         let _ = writeln!(
             source,
-            "if (flag{i}) api = host.files; else {{ api = local.files; return; }}"
+            "if (flag{i}) api = host.files; else {{ api = local.files; }}"
         );
     }
     source.push_str("api.read();");
     assert_count(&source, rooted_read_rule(), 1);
 }
 
-/// Many distinct trace alternatives at a single occurrence must be capped.
+/// Many distinct trace alternatives at a single occurrence remain bounded.
 #[test]
-fn many_distinct_traces_are_capped_and_marked_truncated() {
-    // When the same finding could be reached through many different
-    // trace paths, the trace count must be bounded and the finding
-    // must report truncation.
+fn many_distinct_traces_preserve_a_bounded_finding_count() {
+    // This scope case exercises the bounded alternative shape. Trace
+    // truncation itself is asserted by the evidence-normalization tests.
     assert_count(
         "let api = host.files; \
-         if (a) api = host.files; if (b) api = host.files; \
+         if (a) api = local.files; if (b) api = host.files; \
          if (c) api = host.files; if (d) api = host.files; \
          api.read();",
         rooted_read_rule(),
@@ -345,16 +339,15 @@ fn many_distinct_traces_are_capped_and_marked_truncated() {
     );
 }
 
-/// Mixed alternatives produce a Possible finding (not Definite).
+/// Mixed alternatives preserve a finding without promoting a local lookalike.
 #[test]
-fn mixed_alternatives_produce_possible_finding() {
-    // With host.files on some paths and local on others, the certainty is
-    // Possible. The alternative budget cap (256 default) is large enough
-    // to retain all alternatives for this case.
+fn mixed_alternatives_preserve_the_rooted_finding() {
+    // With host.files on some paths and local on others, the scope matcher
+    // keeps the rooted finding. Flow certainty is asserted separately.
     assert_count(
         "let api = host.files; \
          if (a) api = host.files; if (b) api = host.files; \
-         if (c) api = local; if (d) api = local; \
+         if (c) api = local.files; if (d) api = local.files; \
          api.read();",
         rooted_read_rule(),
         1,
@@ -416,6 +409,18 @@ fn assignment_provenance_preserves_alternatives_across_control_flow() {
 fn abrupt_branch_exit_does_not_poison_the_reachable_join() {
     assert_count(
         "function run(flag) { let api = host.files; if (flag) { api = local.files; return; } api.read(); }",
+        rooted_read_rule(),
+        1,
+    );
+}
+
+#[test]
+fn unreachable_nested_join_preserves_outer_checkpoints() {
+    // The nested conditional is unreachable after return, but its traversal
+    // still exercises the collector's control-flow bookkeeping. The outer
+    // join must be able to restore its pre-branch cursor afterwards.
+    assert_count(
+        "function run(outer, inner) { let first = host.files; let second = host.files; let third = host.files; let api = host.files; if (outer) { return; if (inner) api = local.files; } api.read(); }",
         rooted_read_rule(),
         1,
     );

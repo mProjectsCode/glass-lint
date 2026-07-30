@@ -459,7 +459,7 @@ impl<'a> ProjectLoadState<'a> {
         selection: &ProjectSelection,
         deadline: Instant,
     ) -> Result<Self, ProjectLoadError> {
-        let session = linter.begin_project(admission.canonical_root())?;
+        let session = linter.begin_project()?;
         let resolver = ProjectResolver::new(admission.clone(), selection)?;
         let max_files = admission.options().max_files();
         Ok(Self {

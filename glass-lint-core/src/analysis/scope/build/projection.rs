@@ -38,7 +38,7 @@ pub(in crate::analysis::scope) fn project_destructuring(
     pat: &Pat,
     base: &NamePath,
     is_assignment: bool,
-    append_segment: &impl Fn(&NamePath, &str) -> Option<NamePath>,
+    append_segment: &mut impl FnMut(&NamePath, &str) -> Option<NamePath>,
 ) -> Result<Vec<(SmolStr, NamePath)>, ProjectionError> {
     match pat {
         Pat::Ident(ident) => Ok(vec![(ident.id.sym.to_smolstr(), base.clone())]),

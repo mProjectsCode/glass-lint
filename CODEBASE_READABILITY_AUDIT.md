@@ -2,15 +2,17 @@
 
 ## Summary
 
-This read-only audit covers all production and test source under `glass-lint-core`, with extra attention to the recent query API/compiler and flow-matcher work and to hot paths beginning at `lower_program`. The crate's `src` tree contains 51,776 lines of Rust: 30,408 in `analysis`, 11,551 in `api`, 5,485 in `project`, 1,316 in `lint`, and 652 in terminal report rendering.
+This audit covers all production and test source under `glass-lint-core`, with extra attention to the recent query API/compiler and flow-matcher work and to hot paths beginning at `lower_program`. The original core `src` tree contained 51,776 lines of Rust: 30,408 in `analysis`, 11,551 in `api`, 5,485 in `project`, 1,316 in `lint`, and 652 in terminal report rendering.
 
 I found 32 actionable issues: 12 High, 17 Medium, and 3 Low severity. The most urgent correctness defects are an exact rule selector matching longer rule IDs, helper-sink propagation losing transitive sinks according to function order, and the consolidated validator dropping an early subject-identity check. The largest static performance risks are repeated whole-AST passes, deep cloning of scope environments, quadratic flow-state coalescing, whole-state cloning on each flow edit, copying loop facts on every fixed-point iteration, a mutex on every terminal value lookup, and an unbounded hand-built worker pool.
 
-**Completed (23 of 32):** READ-001, READ-002, READ-003, READ-005, READ-006, READ-007, READ-009, READ-010, READ-011, READ-013, READ-014, READ-016, READ-017, READ-018, READ-019, READ-021, READ-025, READ-026, READ-028, READ-029, READ-030, READ-031, READ-032. Remaining: 1 High, 8 Medium, 0 Low.
+**Completed (31 of 32):** READ-001, READ-002, READ-003, READ-005, READ-006, READ-007, READ-008, READ-009, READ-010, READ-011, READ-012, READ-013, READ-014, READ-015, READ-016, READ-017, READ-018, READ-019, READ-020, READ-021, READ-022, READ-023, READ-024, READ-025, READ-026, READ-027, READ-028, READ-029, READ-030, READ-031, READ-032. Remaining: 1 High, 0 Medium, 0 Low.
 
-The new query compiler has a sensible declaration → normalized IR → physical IR direction, but it still contains a reverse lifecycle adapter, repeated tree walkers and canonicalizers, a duplicate convenience API, test-only validation implementations that are no longer the production path, and a partial “reference” evaluator that does not cover the newly important lifecycle path. The flow implementation is bounded in many dimensions, but several bounds cap retained output rather than the CPU and allocation work used to reach it.
+READ-004 is partially addressed: lowering now derives occurrence indexes and function effects in one frozen-fact pass, while the three AST traversals remain open for a larger scope/resolution redesign.
 
-`cargo test -p glass-lint-core --all-features` passed: 697 unit tests plus all integration and doc-test binaries. Five tests remain ignored, including the three limit/certainty tests discussed in READ-027. `cargo clippy -p glass-lint-core --all-targets --all-features -- -W clippy::pedantic` also completed successfully; its 272 library warnings and 283 test-build warnings were predominantly documentation and `must_use` suggestions and are not repeated as findings.
+The new query compiler has a sensible declaration → normalized IR → physical IR direction, with repeated tree walkers and canonicalizers, a duplicate convenience API, test-only validation implementations that are no longer the production path, and a partial “reference” evaluator that does not cover the newly important lifecycle path. The flow implementation is bounded in many dimensions, but several bounds cap retained output rather than the CPU and allocation work used to reach it.
+
+`cargo test --workspace --all-features --no-fail-fast` passed, including 702 core unit tests, the relocated 11-test output-rendering contract suite, all integration tests, and all doc-test binaries. The focused limit/certainty tests are enabled. `cargo clippy -p glass-lint-core --all-targets --all-features -- -W clippy::pedantic` also completed successfully; its 272 library warnings and 283 test-build warnings were predominantly documentation and `must_use` suggestions and are not repeated as findings.
 
 ## Architecture Summary
 
@@ -74,16 +76,18 @@ Delete the byte lexer. Obtain template-expression boundaries from the same SWC f
 
 **Fix:** Deleted `source_contains_template`, `template_syntax_depth`, and `is_template_regex_start` — the handwritten byte-level template lexer. Added `Token::TemplateHead` to the SWC-lexer delimiter push in `syntax_depth` so template expressions contribute to brace depth through the same token-based depth counter as ordinary delimiters. Changed `Token::Error` handling from `return Err(Malformed)` to `break`, because SWC's standalone lexer emits an error on the closing backtick of an expression template (it cannot produce `TemplateTail`/`TemplateMiddle` without the parser); actual lexical errors are still caught by the subsequent SWC parse. Removed the `Malformed` variant from `SyntaxDepthError` and its error path in `parse_with_language_and_depth`. Removed the source-byte token-event bound that no longer serves a purpose without the template-byte fallback.
 
-#### READ-004 — Each cache miss walks the whole AST at least three times
+#### READ-004 — Local lowering traverses every AST node in three independent passes [Partially addressed]
 
 - **Severity:** High
 - **Fix Complexity** Extreme
 - **Category:** Complexity
-- **Location:** `glass-lint-core/src/analysis/lowering/mod.rs:119-135`, `glass-lint-core/src/analysis/lowering/mod.rs:231-300`, `glass-lint-core/src/analysis/scope/mod.rs:88-103`, `glass-lint-core/src/analysis/scope/build/plan.rs:176-215`
+- **Location:** `glass-lint-core/src/analysis/lowering/mod.rs:119-135`, `glass-lint-core/src/analysis/lowering/mod.rs:248-317`, `glass-lint-core/src/analysis/scope/mod.rs:88-103`, `glass-lint-core/src/analysis/scope/build/plan.rs:176-215`, `glass-lint-core/src/analysis/facts/mod.rs:467-482`, `glass-lint-core/src/analysis/flow/effect/mod.rs:527-612`
 
-`ScopeGraph::collect_scoped_program` performs a planning traversal and a collection traversal, after which `FactBuilder` performs a third complete SWC traversal. The planner visits every identifier, member, and property to seed names, not only declarations needed for hoisting. The frozen fact stream is then scanned again to construct `SemanticFacts` indexes and again to collect `FunctionEffects`.
+`ScopeGraph::collect_scoped_program` runs `ScopePlanner` and `ScopeCollector` as two complete SWC visitor passes. The planner's identifier/member/property census has now been removed, but the shared traversal still descends through expression nodes while establishing declaration visibility. `FactBuilder` then performs a third complete SWC traversal over the same `Program` to emit the canonical facts. The former second frozen-fact scan for `FunctionEffects` has been removed, but the three AST passes still impose repeated traversal and dispatch costs before matching begins.
 
-Retain a narrow hoisting/scope-shape prepass, but stop using it as a general name census. Design one semantic frontend traversal that collects source-order scope state and emits facts against the frozen declaration plan, then build occurrence indexes and effects in one fact-stream pass. Because this is the central semantic invariant, require lowering benchmarks and adversarial semantic parity tests before merging phases.
+Retain a narrow hoisting/scope-shape prepass, but stop using it as a general name census; prove that names can be interned lazily or collected only where the declaration plan requires them. Design one semantic frontend traversal that collects source-order scope state and emits facts against the frozen declaration plan; keep the new shared derived fact-stream pass as the only index/effect projection. Preserve the current fail-closed behavior for budget, name, path, and structural exhaustion, and require lowering benchmarks plus adversarial semantic-parity tests before merging phases.
+
+**Implemented (partial):** Added a private `FunctionEffectsBuilder` and made lowering feed it and `OccurrenceIndexes` from one deterministic frozen-stream loop, with a parity test against standalone effect collection. Removed the planner's general name census and added lazy path-segment interning to the source-order collector; compact, scope-precision, and full core suites preserve rooted-path behavior. The remaining AST-pass consolidation is open because facts still require a resolver over the collector's finalized assignment index; merging those stages would require a live scope-query/resolver design rather than another independent traversal or compatibility wrapper.
 
 #### READ-005 — Exhausting a semantic budget does not stop AST traversal [Done]
 
@@ -184,16 +188,18 @@ Use a bounded Rayon pool (or accept an executor from the host) and cap active wo
 
 ### Query compiler: lifecycle physical planning
 
-#### READ-012 — Lifecycle compilation reverses normalized IR back into the public API
+#### READ-012 — Lifecycle compilation reverses normalized IR back into the public API [Done]
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
 - **Category:** Architecture
-- **Location:** `glass-lint-core/src/api/compiler/physical.rs:377-402`, `glass-lint-core/src/api/compiler/object_flow.rs:15-79`
+- **Location:** `glass-lint-core/src/api/compiler/physical.rs:320-324`, `glass-lint-core/src/api/compiler/object_flow.rs:15-105`
 
-`plan_lifecycle` clones a `NormalizedLifecycle` into public `EventQuery` values, invents the name `"lifecycle"`, reconstructs a validated `LifecycleQuery`, calls `.expect`, and then has `CompiledObjectFlow` interpret that query again. This is a legacy reverse adapter inside the new forward compiler.
+Before the fix, `plan_lifecycle` cloned a `NormalizedLifecycle` into public `EventQuery` values, invented the name `"lifecycle"`, reconstructed a validated `LifecycleQuery`, called `.expect`, and had `CompiledObjectFlow` interpret that query again. This was a legacy reverse adapter inside the new forward compiler.
 
 Compile `NormalizedLifecycle` directly into the physical flow IR. The normalized representation has already established source slots, canonical constraints, condition, and completion; rebuilding an authoring type adds allocations, a panic assertion, and a second interpretation of invariants.
+
+**Fix:** Added `CompiledObjectFlow::from_normalized_lifecycle`, which lowers normalized source events, canonical argument constraints, conditions, and completion directly into the physical flow representation. Removed the reverse `LifecycleQuery` adapter and its `.expect`; projector tests now pass through declaration normalization before invoking the same direct lowering path.
 
 ### Compiled flow representation and fixed points
 
@@ -223,7 +229,7 @@ Run worklists until stable or until the typed operation/state budget is exhauste
 
 **Fix:** Removed `MAX_SUMMARY_ROUNDS` (64) from summary propagation — the loop now runs until the worklist is empty or the `Budget`/sink-capacity limits are exhausted. Replaced `MAX_SOURCE_REFINEMENT_ROUNDS` (64) and the round-based `SourceBudget` with a per-transfer `Budget` that charges each candidate insertion. The source worklist now also runs until stable (empty pending) or budget exhausted. `FlowLimits` operations budget is passed from the cross-module collector into source propagation.
 
-#### READ-015 — Local and cross flow independently pre-resolve the same paths
+#### READ-015 — Local and cross flow independently pre-resolve the same paths [Done]
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -233,6 +239,8 @@ Run worklists until stable or until the typed operation/state budget is exhauste
 `BoundFlowPlan` and `FlowPathPlan` both walk every compiled requirement and sink and convert the same `SymbolPath` values through the same module `NameTable`. One serves local projection and the other cross-flow contexts, so the recent flow split created duplicate planning logic and storage.
 
 Build one module-bound flow plan containing source, requirement, and sink paths and share it across local, summary, and cross-module stages. This also gives one place to choose hot hash indexes and to enforce deterministic iteration at freeze time.
+
+**Fix:** Added `BoundFlowPaths` as the single module-bound path resolver. `BoundFlowPlan` and cross-module graph planning now use that shared builder, so requirement and sink path resolution has one implementation and deterministic ordering policy.
 
 ### Query compiler: validation, normalization, and tests
 
@@ -327,7 +335,7 @@ With breaking changes allowed, keep the validated constructors on `EventQuery`, 
 
 **Fix:** Removed all 18 forwarding constructor aliases from `QueryDecl` (`call_global`, `call_heuristic`, `call_module`, `call_package`, `member_call_rooted`, `member_call_heuristic`, `member_call_module`, `member_call_package`, `member_read_rooted`, `member_read_module`, `member_read_package`, `import_exact`, `import_package`, `string_contains`, `class_heuristic`, `class_module`, `constructor_global`, `constructor_heuristic`, `constructor_module`). Removed `QueryDecl::from_event_query` (redundant with `into_query()`). Extended `IntoQueryDecl` with `impl IntoQueryDecl for EventQuery` and `impl IntoQueryDecl for Result<EventQuery, QueryBuildError>` so `.query(EventQuery::call_global("fetch"))` works directly. Kept genuine composition constructors (`any`, `all`, `lifecycle`, `member_call_instance`, `member_call_returned`, `member_read_returned`). Updated all 60+ provider rule files across glass-lint-js and glass-lint-obsidian, all test files, examples, and the CLI to use `EventQuery` constructors directly.
 
-#### READ-020 — The compiler “reference” evaluator omits the new flow semantics
+#### READ-020 — The compiler “reference” evaluator omits the new flow semantics [Done]
 
 - **Severity:** Medium
 - **Fix Complexity** High
@@ -337,6 +345,8 @@ With breaking changes allowed, keep the validated constructors on `EventQuery`, 
 Both logical and physical reference evaluation return an empty result for lifecycle roots. Returned/instance subject evaluators ignore the member path, and identity comparison supports only a subset of variants. The oracle is test-only, but its name suggests broader differential coverage than it provides precisely where recent compiler and flow changes are riskiest.
 
 Either extend it into an independent lifecycle/correlation interpreter and generate bounded query/row cases, or rename it to the subset it actually covers and make unsupported capabilities explicit test failures rather than empty matches. Add differential tests for every physical root and identity variant before relying on it as a compiler oracle.
+
+**Fix:** Renamed the supported logical/physical helpers to make their scope explicit. Lifecycle roots now fail loudly as unsupported instead of silently returning an empty match; instance rows verify the requested member; and identity comparison covers the complete identity set through the canonical lowered identity. The existing reference tests call the renamed helpers, so unsupported semantics cannot masquerade as a valid zero-result oracle.
 
 ### Lowering status and budget observability
 
@@ -355,7 +365,7 @@ Use separate semantic-step, fact-count, path, name, and value limits or a typed 
 
 ### Project reporting, session ownership, and crate boundaries
 
-#### READ-022 — Report assembly repeats range work under a long-lived arena lock
+#### READ-022 — Report assembly repeats range work under a long-lived arena lock [Done]
 
 - **Severity:** Medium
 - **Fix Complexity** High
@@ -366,7 +376,9 @@ The finalized project owns `Mutex<TraceArena>`. Projection locks it for the whol
 
 Make the arena a mutable projection-stage owner and freeze/move it into `ProjectionOutcome`; report assembly should borrow an immutable arena without locking. Build converted occurrence records once, index them by retained range, and deduplicate traces with `IndexSet`/`HashSet` while retaining deterministic insertion order.
 
-#### READ-023 — Project session state retains unused and duplicated ownership
+**Fix:** Replaced the report-owned `Mutex<TraceArena>` with a projection-owned arena and an immutable report-stage borrow. Report assembly now indexes converted occurrence ranges once by evidence occurrence and uses a deterministic ordered set for trace deduplication.
+
+#### READ-023 — Project session state retains unused and duplicated ownership [Done]
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -377,7 +389,9 @@ Make the arena a mutable projection-stage owner and freeze/move it into `Project
 
 Remove the duplicate cache field and the meaningless core root parameter; the `glass-lint-project` crate already owns filesystem/project boundaries. Split source metadata needed by linking from source text/context needed by reports, or make the link builder consume and return the map, so a stage transition does not clone the complete project table.
 
-#### READ-024 — Terminal presentation and subscriber configuration belong outside core
+**Fix:** Removed the duplicate direct artifact-cache field, the unused core root parameter and normalization helper, and changed link-input construction to borrow the source map while removing analyzed entries into the link-owned map. Filesystem root ownership remains in `glass-lint-project`.
+
+#### READ-024 — Terminal presentation and subscriber configuration belong outside core [Done]
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -387,6 +401,8 @@ Remove the duplicate cache field and the meaningless core root parameter; the `g
 Terminal rendering is consumed by `glass-lint-cli`; telemetry subscriber setup is consumed by the CLI crates. Nevertheless core depends on `console` and optional `tracing-subscriber`, and its telemetry filter hard-codes higher-level crate targets (`glass_lint_project`, CLI, and harness). That is a dependency inversion and the cleanest available crate split.
 
 Move terminal rendering to a small `glass-lint-output` crate. Move subscriber/options setup to CLI support; core should only emit `tracing` events. Do not split lowering/scope/facts/flow or the query compiler into crates yet: their private IDs and stage invariants are still too coupled, and a crate boundary would force internal execution IR public. Reassess a `glass-lint-query` crate only after READ-012 and READ-017 establish an opaque stable compiler boundary and cargo-timing data shows a build benefit.
+
+**Fix:** Added `glass-lint-output` for terminal report types and rendering, with the full pretty-rendering integration suite relocated there. Removed `console` and subscriber setup from core; CLI and harness CLI now own their telemetry levels, filters, and subscriber initialization while core emits only tracing events.
 
 ### Public rule and environment APIs
 
@@ -418,7 +434,7 @@ Choose and name the exact grammar (`IdentifierName` versus `BindingIdentifier`).
 
 ### Bounded-analysis tests
 
-#### READ-027 — Limit and certainty regressions are still disabled
+#### READ-027 — Limit and certainty regressions are still disabled [Done]
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -428,6 +444,8 @@ Choose and name the exact grammar (`IdentifierName` versus `BindingIdentifier`).
 Three adversarial tests remain ignored with messages saying alternative or trace limits are “not yet implemented,” although recent flow work now exposes alternative, trace, mutation, and operation limits. The tests only assert finding counts and do not inspect completion status, certainty, or truncation, so the most security-relevant bounded-analysis contract remains unverified.
 
 Decide which phase each test exercises, configure small explicit limits, and assert status plus certainty/truncation. Enable them in the default suite. Add separate lower-scope, local-flow, cross-flow, and report-limit boundary tables so one phase's cap cannot accidentally satisfy another phase's test.
+
+**Fix:** Enabled the three adversarial scope cases and removed their stale ignored status. The flow projector suite now has enabled boundary tests for operation, object, state, mutation, and emission exhaustion, plus explicit possible/definite certainty assertions; evidence normalization retains a focused truncation assertion. The output crate also preserves the possible-certainty rendering contract.
 
 ### Legacy API and terminal rendering
 
@@ -461,17 +479,17 @@ When moving rendering per READ-024, write escaped characters directly into one o
 
 - **Bounds cap retained results more reliably than work.** AST visitors, scope snapshots, path coalescing, state edits, loop replay, and reporting can do substantial cloning or traversal before a count is rejected. Charge and stop actual visits, comparisons, transfers, and allocations.
 - **Phase ownership is not encoded strongly enough.** Immutable artifacts with mutexes, unsafe edit guards, COW maps forced to clone, and reverse adapters are symptoms of one type spanning construction, execution, and frozen phases.
-- **The same semantics are represented several times.** Query variables, constraint canonicalization, lifecycle forms, and bound flow paths each have duplicate walkers or conversion layers. Establish one validated transition and invariant-bearing types.
+- **The same semantics are represented several times.** Query variables, constraint canonicalization, and lifecycle forms previously had duplicate walkers or conversion layers; the remaining open duplication is the scope/resolution frontend described in READ-004. Establish one validated transition and invariant-bearing types.
 - **Determinism is paid for in hot internal state.** `BTreeMap`/`BTreeSet` are useful at observable boundaries, but joins and membership tests should use dense/hash/interned structures and sort only when freezing output.
 - **Recent tests emphasize examples more than invariants.** The suite is large and green, but order independence, deep transitive propagation, exact selector anchoring, and limit-to-certainty behavior need permutation/property and boundary tests.
 - **Commodity implementations should be delegated selectively.** Use SWC for JavaScript lexical context, Rayon for bounded parallel execution, and the SWC-compatible `unicode-id-start` tables for ECMAScript identifier classes. Retain the tiny selector grammar, domain-specific flow joins, and path normalization rather than adding crates that do not encode Glass Lint's semantics.
 
 ## Open Questions
 
-No unresolved questions remain from this audit. The decisions are:
+The completed items have settled their design questions. READ-004 remains the one open implementation item because safely merging scope resolution with fact construction requires a larger semantic-frontend redesign. The current decisions are:
 
 1. **Crate split:** move terminal rendering and telemetry subscriber setup out of `glass-lint-core` now. Keep parsing, lowering, facts, linking, matching, and flow together until their shared private IDs and stage invariants are reduced. Do not create a query/compiler crate during the current API churn; reconsider after normalized-to-physical compilation is one-way and opaque.
-2. **Lowering passes:** retain only a declaration/hoisting prepass. Target one subsequent semantic AST traversal and one derived fact-stream pass; prove the change with benchmarks and semantic parity tests.
+2. **Lowering passes:** the current safe step is to retain the declaration/hoisting prepass and the shared derived fact-stream pass. The remaining target is one semantic AST traversal; prove that change with benchmarks and semantic parity tests before removing the current resolver boundary.
 3. **Persistent collections:** first implement domain-specific delta logs and state interning because the code already has those concepts. Evaluate `im` or `rpds` only against branch-heavy benchmarks; do not adopt either speculatively.
 4. **JavaScript lexing:** SWC is the sole lexical authority. Do not maintain a template/regex byte lexer and do not substitute a regex crate.
 5. **Parallelism:** use a bounded Rayon pool or host executor, capped by jobs and available parallelism. Determinism belongs in result assembly, not in a custom thread/channel implementation.
@@ -488,7 +506,7 @@ Reviewed all production and test modules under `glass-lint-core/src` and `glass-
 - local lowering, scope planning/collection/query, assignment provenance, resolution, values, facts, indexes, and function effects;
 - occurrence matching, argument evaluation, local object flow, summaries, loop projection, cross-call/cross-file flow, evidence, traces, and status propagation;
 - rule/query authoring, lifecycle declarations, validation passes, normalization, requirements, physical planning, compiled catalogs, selection, and the reference evaluator;
-- staged project collection, caching, worker execution, resolution/link input, project linking/SCCs, projection, report assembly, public report types, pretty rendering, and telemetry;
+- staged project collection, caching, worker execution, resolution/link input, project linking/SCCs, projection, report assembly, public report types, output-crate pretty rendering, and CLI telemetry;
 - crate manifests, workspace architecture/testing/contribution guidance, recent `glass-lint-core` commit history, current dependency tree, and the prior audit report.
 
-Validation was read-only apart from replacing this report. No Rust source, tests, configuration, dependencies, or other documentation were intentionally changed.
+The implementation pass changed the owning crates, tests, manifests, and this report. All unrelated pre-existing worktree changes were preserved.

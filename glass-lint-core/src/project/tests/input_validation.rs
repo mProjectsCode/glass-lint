@@ -7,7 +7,7 @@ use crate::project::{
 #[test]
 fn staged_session_normalizes_and_sorts_sources() {
     let linter = test_linter();
-    let mut collection = linter.begin_project("/project").unwrap();
+    let mut collection = linter.begin_project().unwrap();
     collection
         .analyze_source(source_file("./z.js", ""))
         .unwrap();
@@ -21,7 +21,7 @@ fn staged_session_normalizes_and_sorts_sources() {
 #[test]
 fn staged_session_rejects_duplicate_sources() {
     let linter = test_linter();
-    let mut collection = linter.begin_project("/project").unwrap();
+    let mut collection = linter.begin_project().unwrap();
     assert!(collection.analyze_source(source_file("a.js", "")).is_ok());
     let result = collection.analyze_source(source_file("a.js", ""));
     assert!(result.is_err());
@@ -31,7 +31,7 @@ fn staged_session_rejects_duplicate_sources() {
 #[test]
 fn staged_session_rejects_unknown_resolution_importers() {
     let linter = test_linter();
-    let mut collection = linter.begin_project("/project").unwrap();
+    let mut collection = linter.begin_project().unwrap();
     assert!(collection.analyze_source(source_file("a.js", "")).is_ok());
     let result = collection.finish_local().resolve([(
         ResolutionRequestKey {

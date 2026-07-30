@@ -124,7 +124,7 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
         )?
         .report
     } else {
-        let mut session = linter.begin_project(project.root())?;
+        let mut session = linter.begin_project()?;
         let mut authored = Vec::new();
         let mut outcomes = Vec::new();
         for file in project.files() {

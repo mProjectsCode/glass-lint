@@ -678,68 +678,6 @@ pub struct LifecycleQuery {
 }
 
 impl LifecycleQuery {
-    /// Create a lifecycle query with the given components.
-    #[doc(hidden)]
-    pub(crate) fn new(
-        symbol: impl Into<String>,
-        sources: Vec<EventQuery>,
-        condition: Option<LifecycleCondition>,
-        completion: Option<LifecycleCompletion>,
-    ) -> Result<Self, QueryBuildError> {
-        if sources.is_empty() {
-            return Err(QueryBuildError::MissingLifecycleSources);
-        }
-        if sources.len() > limits::MAX_LIFECYCLE_SOURCES {
-            return Err(QueryBuildError::CollectionTooLarge(
-                "lifecycle sources",
-                sources.len(),
-            ));
-        }
-        let completion = completion.ok_or(QueryBuildError::MissingLifecycleCompletion)?;
-        if let Some(condition) = &condition {
-            let count = match condition.kind() {
-                crate::api::rule::query::lifecycle::LifecycleConditionKind::AnyOf(events)
-                | crate::api::rule::query::lifecycle::LifecycleConditionKind::AllOf(events) => {
-                    if events.is_empty() {
-                        return Err(QueryBuildError::EmptyLifecycleCondition);
-                    }
-                    events.len()
-                }
-            };
-            if count > limits::MAX_LIFECYCLE_EVENTS {
-                return Err(QueryBuildError::CollectionTooLarge(
-                    "lifecycle condition events",
-                    count,
-                ));
-            }
-        }
-        match completion.kind() {
-            crate::api::rule::query::lifecycle::LifecycleCompletionKind::Configuration => {
-                if condition.is_none() {
-                    return Err(QueryBuildError::MissingLifecycleCondition);
-                }
-            }
-            crate::api::rule::query::lifecycle::LifecycleCompletionKind::AnySink(sinks)
-            | crate::api::rule::query::lifecycle::LifecycleCompletionKind::AllSinks(sinks) => {
-                if sinks.is_empty() {
-                    return Err(QueryBuildError::EmptyLifecycleSinks);
-                }
-                if sinks.len() > limits::MAX_LIFECYCLE_SINKS {
-                    return Err(QueryBuildError::CollectionTooLarge(
-                        "lifecycle completion sinks",
-                        sinks.len(),
-                    ));
-                }
-            }
-        }
-        Ok(Self {
-            symbol: symbol.into(),
-            sources,
-            condition,
-            completion: Some(completion),
-        })
-    }
-
     /// Return the evidence symbol.
     pub fn symbol(&self) -> &str {
         &self.symbol

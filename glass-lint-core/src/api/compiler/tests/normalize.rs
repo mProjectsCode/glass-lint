@@ -39,6 +39,20 @@ fn decl(expr: QueryExpr, primary_var: u32, symbol: &str) -> QueryDecl {
     }
 }
 
+fn lifecycle(
+    symbol: &str,
+    sources: Vec<EventQuery>,
+    condition: Option<crate::api::rule::LifecycleCondition>,
+    completion: Option<crate::api::rule::LifecycleCompletion>,
+) -> LifecycleQuery {
+    LifecycleQuery {
+        symbol: symbol.into(),
+        sources,
+        condition,
+        completion,
+    }
+}
+
 fn normalize_ok(decl: &QueryDecl) -> NormalizedQuery {
     normalize::normalize_query_decl(decl).unwrap()
 }
@@ -62,7 +76,7 @@ fn lifecycle_normalizes_to_lifecycle_root() {
         },
         constraints: vec![],
     };
-    let lc = LifecycleQuery::new(
+    let lc = lifecycle(
         "remote-script",
         vec![source],
         Some(
@@ -72,8 +86,7 @@ fn lifecycle_normalizes_to_lifecycle_root() {
             .unwrap(),
         ),
         Some(crate::api::rule::LifecycleCompletion::configuration().unwrap()),
-    )
-    .unwrap();
+    );
     let d = QueryDecl {
         expression: QueryExpr::lifecycle(lc),
         emission: EmissionDecl {
@@ -417,7 +430,7 @@ fn lifecycle_has_flow_requirements() {
         },
         constraints: vec![],
     };
-    let lc = LifecycleQuery::new(
+    let lc = lifecycle(
         "test",
         vec![source],
         Some(
@@ -427,8 +440,7 @@ fn lifecycle_has_flow_requirements() {
             .unwrap(),
         ),
         Some(crate::api::rule::LifecycleCompletion::configuration().unwrap()),
-    )
-    .unwrap();
+    );
     let d = QueryDecl {
         expression: QueryExpr::lifecycle(lc),
         emission: EmissionDecl {
@@ -469,7 +481,7 @@ fn lifecycle_is_not_flattened_or_sorted() {
         },
         constraints: vec![],
     };
-    let lc = LifecycleQuery::new(
+    let lc = lifecycle(
         "test",
         vec![source],
         Some(
@@ -479,8 +491,7 @@ fn lifecycle_is_not_flattened_or_sorted() {
             .unwrap(),
         ),
         Some(crate::api::rule::LifecycleCompletion::configuration().unwrap()),
-    )
-    .unwrap();
+    );
     let d = QueryDecl {
         expression: QueryExpr::lifecycle(lc),
         emission: EmissionDecl {
@@ -774,7 +785,7 @@ fn distinct_lifecycle_conditions_never_compare_as_same_ordering_key() {
         constraints: vec![],
     };
 
-    let lc_a = LifecycleQuery::new(
+    let lc_a = lifecycle(
         "test-a",
         vec![source_a],
         Some(
@@ -784,10 +795,9 @@ fn distinct_lifecycle_conditions_never_compare_as_same_ordering_key() {
             .unwrap(),
         ),
         Some(crate::api::rule::LifecycleCompletion::configuration().unwrap()),
-    )
-    .unwrap();
+    );
 
-    let lc_b = LifecycleQuery::new(
+    let lc_b = lifecycle(
         "test-b",
         vec![source_b],
         Some(
@@ -797,8 +807,7 @@ fn distinct_lifecycle_conditions_never_compare_as_same_ordering_key() {
             .unwrap(),
         ),
         Some(crate::api::rule::LifecycleCompletion::configuration().unwrap()),
-    )
-    .unwrap();
+    );
 
     let d_a = QueryDecl {
         expression: QueryExpr::lifecycle(lc_a),

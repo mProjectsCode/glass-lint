@@ -62,7 +62,7 @@ fn find_first_assign(program: &swc_ecma_ast::Program) -> Expr {
 }
 
 fn declare_classify(
-    collector: &ScopeCollector,
+    collector: &mut ScopeCollector,
     source: &str,
     derived_function_pattern: bool,
 ) -> (DeclarationClassification, Expr, VarDeclKind) {
@@ -72,7 +72,7 @@ fn declare_classify(
     (classification, expr, kind)
 }
 
-fn assign_prov(collector: &ScopeCollector, source: &str) -> BindingProvenance {
+fn assign_prov(collector: &mut ScopeCollector, source: &str) -> BindingProvenance {
     let parsed = crate::parse(source, "facts.js").expect("source should parse");
     let expr = find_first_assign(&parsed.program);
     assignment_provenance(collector, &expr)
@@ -81,9 +81,13 @@ fn assign_prov(collector: &ScopeCollector, source: &str) -> BindingProvenance {
 #[test]
 fn caches_subresults_so_views_share_one_classification() {
     let source = "var config = { flag: host.value }; use(config);";
-    let collector = run(source);
-    let (classification, expr, kind) = declare_classify(&collector, source, false);
-    assert!(expression_is_mutable_static_object(&collector, &expr, kind));
+    let mut collector = run(source);
+    let (classification, expr, kind) = declare_classify(&mut collector, source, false);
+    assert!(expression_is_mutable_static_object(
+        &mut collector,
+        &expr,
+        kind
+    ));
     assert!(
         matches!(
             classification,
@@ -99,8 +103,8 @@ fn caches_subresults_so_views_share_one_classification() {
 #[test]
 fn classifies_direct_require_as_require_module() {
     let source = "const { send } = require('sdk');";
-    let collector = run(source);
-    let (classification, ..) = declare_classify(&collector, source, false);
+    let mut collector = run(source);
+    let (classification, ..) = declare_classify(&mut collector, source, false);
     assert!(
         matches!(classification, DeclarationClassification::Require { .. }),
         "expected Require classification, got {classification:?}",
@@ -110,8 +114,8 @@ fn classifies_direct_require_as_require_module() {
 #[test]
 fn root_member_alias_produces_returned_object_binding() {
     let source = "const api = host.files; use(api);";
-    let collector = run(source);
-    let (classification, ..) = declare_classify(&collector, source, false);
+    let mut collector = run(source);
+    let (classification, ..) = declare_classify(&mut collector, source, false);
     assert!(
         matches!(
             classification,
@@ -127,8 +131,8 @@ fn root_member_alias_produces_returned_object_binding() {
 #[test]
 fn reassignment_provenance_uses_the_latest_visible_binding() {
     let source = "let api = host.files; api = host.cache; use(api);";
-    let collector = run(source);
-    let provenance = assign_prov(&collector, source);
+    let mut collector = run(source);
+    let provenance = assign_prov(&mut collector, source);
     assert!(
         matches!(provenance, BindingProvenance::ReturnedObject { .. }),
         "expected ReturnedObject assignment provenance, got {provenance:?}",
@@ -138,8 +142,8 @@ fn reassignment_provenance_uses_the_latest_visible_binding() {
 #[test]
 fn assignment_provenance_prefers_bound_callable_over_rooted_alias() {
     let source = "let open = null; open = host.open.bind(null, host.file); use(open);";
-    let collector = run(source);
-    let provenance = assign_prov(&collector, source);
+    let mut collector = run(source);
+    let provenance = assign_prov(&mut collector, source);
     assert!(
         matches!(provenance, BindingProvenance::BoundCallable { .. }),
         "bound callable must outrank ValueAlias, got {provenance:?}",
@@ -149,8 +153,8 @@ fn assignment_provenance_prefers_bound_callable_over_rooted_alias() {
 #[test]
 fn assignment_provenance_falls_through_to_local_for_dynamic_values() {
     let source = "let value = 0; value = dynamicThing(); use(value);";
-    let collector = run(source);
-    let provenance = assign_prov(&collector, source);
+    let mut collector = run(source);
+    let provenance = assign_prov(&mut collector, source);
     assert!(
         !matches!(
             provenance,
@@ -171,16 +175,16 @@ fn assignment_provenance_falls_through_to_local_for_dynamic_values() {
 #[test]
 fn mutability_requires_var_declaration_kind() {
     let source = "const config = { flag: host.value }; use(config);";
-    let collector = run(source);
+    let mut collector = run(source);
     let parsed = crate::parse(source, "facts.js").expect("source should parse");
     let (_, expr, _) = find_first_declarator(&parsed.program);
     assert!(!expression_is_mutable_static_object(
-        &collector,
+        &mut collector,
         &expr,
         VarDeclKind::Const
     ));
     assert!(!expression_is_mutable_static_object(
-        &collector,
+        &mut collector,
         &expr,
         VarDeclKind::Let
     ));
@@ -189,8 +193,8 @@ fn mutability_requires_var_declaration_kind() {
 #[test]
 fn returned_object_chain_does_not_become_a_constant() {
     let source = "const send = host.create().send; use(send);";
-    let collector = run(source);
-    let (classification, ..) = declare_classify(&collector, source, false);
+    let mut collector = run(source);
+    let (classification, ..) = declare_classify(&mut collector, source, false);
     assert!(
         matches!(
             classification,
@@ -206,8 +210,8 @@ fn returned_object_chain_does_not_become_a_constant() {
 #[test]
 fn destructuring_pattern_classifies_its_outer_declarator() {
     let source = "const { read } = host.files; use(read);";
-    let collector = run(source);
-    let (classification, ..) = declare_classify(&collector, source, false);
+    let mut collector = run(source);
+    let (classification, ..) = declare_classify(&mut collector, source, false);
     assert!(
         !matches!(classification, DeclarationClassification::Binding { .. }),
         "destructuring pattern must not produce a binding provenance, got {classification:?}",
@@ -217,8 +221,8 @@ fn destructuring_pattern_classifies_its_outer_declarator() {
 #[test]
 fn destructured_require_records_individual_named_exports() {
     let source = "const { read } = require('sdk'); use(read);";
-    let collector = run(source);
-    let (classification, ..) = declare_classify(&collector, source, false);
+    let mut collector = run(source);
+    let (classification, ..) = declare_classify(&mut collector, source, false);
     assert!(
         matches!(classification, DeclarationClassification::Require { .. }),
         "expected Require classification for destructured require, got {classification:?}",
@@ -228,8 +232,8 @@ fn destructured_require_records_individual_named_exports() {
 #[test]
 fn precedence_picks_bound_callable_over_constant_for_aliased_calls() {
     let source = "let open = null; open = host.open.bind(null, 'GET'); use(open);";
-    let collector = run(source);
-    let provenance = assign_prov(&collector, source);
+    let mut collector = run(source);
+    let provenance = assign_prov(&mut collector, source);
     assert!(
         matches!(provenance, BindingProvenance::BoundCallable { .. }),
         "bound callable must outrank literal constant, got {provenance:?}",

@@ -202,14 +202,11 @@ impl ScopeCollector<'_> {
         let Some(Expr::Arrow(callback)) = call.args.first().map(|arg| &*arg.expr) else {
             return;
         };
-        self.bind_inline_parameters(
-            callback.span,
-            callback.params.iter(),
-            [resolve
-                .args
-                .first()
-                .and_then(|arg| self.argument_provenance(&arg.expr))],
-        );
+        let value = resolve
+            .args
+            .first()
+            .and_then(|arg| self.argument_provenance(&arg.expr));
+        self.bind_inline_parameters(callback.span, callback.params.iter(), [value]);
     }
 
     pub(super) fn record_modeled_callbacks(&mut self, call: &CallExpr) {
@@ -220,22 +217,21 @@ impl ScopeCollector<'_> {
             Expr::Paren(paren) => &*paren.expr,
             callee => callee,
         };
-        let arguments = || {
-            call.args
-                .iter()
-                .map(|arg| self.argument_provenance(&arg.expr))
-                .collect::<Vec<_>>()
-        };
+        let arguments = call
+            .args
+            .iter()
+            .map(|arg| self.argument_provenance(&arg.expr))
+            .collect::<Vec<_>>();
         match callee {
             Expr::Arrow(arrow) => {
-                self.bind_inline_parameters(arrow.span, arrow.params.iter(), arguments());
+                self.bind_inline_parameters(arrow.span, arrow.params.iter(), arguments);
                 return;
             }
             Expr::Fn(function) => {
                 self.bind_inline_parameters(
                     function.function.span,
                     function.function.params.iter().map(|param| &param.pat),
-                    arguments(),
+                    arguments,
                 );
                 return;
             }

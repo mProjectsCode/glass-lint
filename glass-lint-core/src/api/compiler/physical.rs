@@ -318,30 +318,8 @@ fn plan_event(ev: &NormalizedEvent, kind: MatchKind, symbol: &str) -> Vec<Physic
 }
 
 fn plan_lifecycle(lc: &NormalizedLifecycle, symbol: &str) -> PhysicalRoot {
-    // Convert NormalizedLifecycle back to a LifecycleQuery for compilation.
-    let sources: Vec<crate::api::rule::query::EventQuery> = lc
-        .sources()
-        .iter()
-        .map(|sev| crate::api::rule::query::EventQuery {
-            var: crate::api::rule::query::VarId::new(sev.slot()),
-            event: sev.event().clone(),
-            identity: sev
-                .identity()
-                .expect("lifecycle sources retain an identity")
-                .clone(),
-            constraints: sev.arguments().to_flat_vec(),
-        })
-        .collect();
-
-    let lc_query = crate::api::rule::query::LifecycleQuery::new(
-        "lifecycle",
-        sources,
-        lc.condition().cloned(),
-        lc.completion().cloned(),
-    )
-    .expect("normalized lifecycle must be valid");
     PhysicalRoot::Lifecycle {
-        flow: CompiledObjectFlow::from_lifecycle_query(&lc_query, symbol),
+        flow: CompiledObjectFlow::from_normalized_lifecycle(lc, symbol),
     }
 }
 

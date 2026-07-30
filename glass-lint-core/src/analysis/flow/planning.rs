@@ -34,6 +34,39 @@ pub(super) struct BoundFlowPlan<'rules> {
     sink_members: BTreeMap<FlowId, Vec<Vec<NamePath>>>,
 }
 
+#[derive(Debug, Clone)]
+pub(super) struct BoundFlowPaths {
+    pub(super) req_members: Vec<Option<NamePath>>,
+    pub(super) sink_members: Vec<Vec<NamePath>>,
+}
+
+impl BoundFlowPaths {
+    pub(super) fn build(flow: &CompiledObjectFlow, names: &NameTable) -> Self {
+        let req_members = flow
+            .requirements
+            .iter()
+            .map(|req| match req {
+                CompiledObjectRequirement::MemberCall { member, .. } => names.lookup_path(member),
+                CompiledObjectRequirement::PropertyWrite { .. } => None,
+            })
+            .collect();
+        let sink_members = flow
+            .sinks
+            .iter()
+            .map(|sink| {
+                sink.member_calls
+                    .iter()
+                    .filter_map(|member| names.lookup_path(member))
+                    .collect()
+            })
+            .collect();
+        Self {
+            req_members,
+            sink_members,
+        }
+    }
+}
+
 impl<'rules> BoundFlowPlan<'rules> {
     /// Build a plan from compiled flow matchers.
     pub(super) fn new(
@@ -64,29 +97,9 @@ impl<'rules> BoundFlowPlan<'rules> {
                 }
             }
 
-            let reqs: Vec<Option<NamePath>> = flow
-                .requirements
-                .iter()
-                .map(|req| match req {
-                    CompiledObjectRequirement::MemberCall { member, .. } => {
-                        names.lookup_path(member)
-                    }
-                    CompiledObjectRequirement::PropertyWrite { .. } => None,
-                })
-                .collect();
-            req_members.insert(id, reqs);
-
-            let sink_data: Vec<Vec<NamePath>> = flow
-                .sinks
-                .iter()
-                .map(|sink| {
-                    sink.member_calls
-                        .iter()
-                        .filter_map(|mc| names.lookup_path(mc))
-                        .collect()
-                })
-                .collect();
-            sink_members.insert(id, sink_data);
+            let paths = BoundFlowPaths::build(flow, names);
+            req_members.insert(id, paths.req_members);
+            sink_members.insert(id, paths.sink_members);
         }
 
         for ids in sources.values_mut().chain(sinks.values_mut()) {

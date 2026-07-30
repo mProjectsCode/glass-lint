@@ -32,7 +32,7 @@ use crate::{
     project::{
         AnalysisReport, ModuleId, ProjectInputError, ProjectRelativePath, ResolutionRequest,
         ResolutionRequestKey, ResolverOutcome, SourceFile,
-        input::{normalize_relative, normalize_resolution_key, normalize_result, normalize_root},
+        input::{normalize_relative, normalize_resolution_key, normalize_result},
         tables::{ResolutionTable, SourceTable},
     },
 };
@@ -67,11 +67,9 @@ impl<'a> SessionState<'a> {
 }
 
 pub struct ProjectCollection<'a> {
-    state: SessionState<'a>,
-    pub(super) _root: std::path::PathBuf,
+    pub(super) state: SessionState<'a>,
     pub(super) sources: SourceTable,
     artifacts: AnalysisArtifacts,
-    pub(super) artifact_cache: ArtifactCacheHandle,
     #[cfg(test)]
     fingerprint_engine_version: &'static str,
     #[cfg(test)]
@@ -141,7 +139,7 @@ impl<'a> ProjectCollection<'a> {
     /// lowered source or the key needed to lower and cache it.
     fn check_cache(&self, source: &SourceFile, observer: &dyn ExecutionObserver) -> CacheLookup {
         let key = self.artifact_fingerprint(source);
-        self.artifact_cache.get(&key).map_or_else(
+        self.state.artifact_cache.get(&key).map_or_else(
             || {
                 observer.observe(ExecutionEvent::CacheMiss);
                 CacheLookup::Miss(key)
@@ -154,17 +152,11 @@ impl<'a> ProjectCollection<'a> {
     }
 
     /// Start an empty parse-once project session under a canonical root.
-    pub fn new(
-        state: SessionState<'a>,
-        root: impl Into<std::path::PathBuf>,
-    ) -> Result<Self, ProjectInputError> {
-        let artifact_cache = state.artifact_cache.clone();
+    pub fn new(state: SessionState<'a>) -> Result<Self, ProjectInputError> {
         Ok(Self {
             state,
-            _root: normalize_root(&root.into())?,
             sources: SourceTable::default(),
             artifacts: AnalysisArtifacts::default(),
-            artifact_cache,
             #[cfg(test)]
             fingerprint_engine_version: env!("CARGO_PKG_VERSION"),
             #[cfg(test)]
@@ -220,7 +212,7 @@ impl<'a> ProjectCollection<'a> {
                         return Ok(Vec::new());
                     }
                 };
-                artifacts::insert_and_notify(&self.artifact_cache, key, &lowered, observer);
+                artifacts::insert_and_notify(&self.state.artifact_cache, key, &lowered, observer);
                 lowered
             }
         };
@@ -318,7 +310,7 @@ impl<'a> ProjectCollection<'a> {
             }
         }
 
-        let artifact_cache = self.artifact_cache.clone();
+        let artifact_cache = self.state.artifact_cache.clone();
         let artifacts = &mut self.artifacts;
         let mut release = |result: execution::LocalJobResult| {
             match result.result {
@@ -461,7 +453,7 @@ impl<'a> LocallyAnalyzedProject<'a> {
             .collect();
 
         let link_input = ResolvedLinkInput::build(
-            source_map.clone(),
+            &source_map,
             self.artifacts.analyzed,
             &module_ids,
             resolution_map,

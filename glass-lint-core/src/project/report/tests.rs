@@ -353,7 +353,7 @@ fn direct_qualification_matches_one_file_project_shape() {
     let (_, _, mut snippet_files, _, _, _) =
         linter.lint_snippet(source, "main.js").unwrap().into_parts();
     let direct = snippet_files.remove(0);
-    let mut manual_session = linter.begin_project("/project").unwrap();
+    let mut manual_session = linter.begin_project().unwrap();
     manual_session
         .analyze_source(source_file("main.js", source))
         .unwrap();
@@ -469,7 +469,7 @@ fn parse_and_valid_sources_each_produce_one_file_report() {
     .unwrap();
 
     // One valid file, one parse-failure file
-    let mut collection = linter.begin_project("/project").unwrap();
+    let mut collection = linter.begin_project().unwrap();
     collection
         .analyze_source(source_file("valid.js", "fetch('/a');"))
         .unwrap();

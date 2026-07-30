@@ -375,12 +375,12 @@ impl FailOn {
 impl Verbosity {
     /// Map the CLI level to the core telemetry level without exposing core
     /// telemetry types in the serialized configuration schema.
-    pub fn telemetry(self) -> glass_lint_core::telemetry::TelemetryLevel {
+    pub fn telemetry(self) -> crate::telemetry::TelemetryLevel {
         match self {
-            Self::Quiet => glass_lint_core::telemetry::TelemetryLevel::Quiet,
-            Self::Normal => glass_lint_core::telemetry::TelemetryLevel::Normal,
-            Self::Verbose => glass_lint_core::telemetry::TelemetryLevel::Verbose,
-            Self::Trace => glass_lint_core::telemetry::TelemetryLevel::Trace,
+            Self::Quiet => crate::telemetry::TelemetryLevel::Quiet,
+            Self::Normal => crate::telemetry::TelemetryLevel::Normal,
+            Self::Verbose => crate::telemetry::TelemetryLevel::Verbose,
+            Self::Trace => crate::telemetry::TelemetryLevel::Trace,
         }
     }
 }

@@ -8,7 +8,6 @@ license.workspace = true
 glass-lint-datastructures = { path = "../glass-lint-datastructures" }
 hashbrown.workspace = true
 petgraph.workspace = true
-console.workspace = true
 serde = { workspace = true, optional = true }
 tracing.workspace = true
 swc_common.workspace = true
@@ -24,11 +23,7 @@ smol_str.workspace = true
 [features]
 default = []
 serde = ["dep:serde", "smol_str/serde", "glass-lint-datastructures/serde"]
-telemetry = ["dep:tracing-subscriber"]
-
-[dependencies.tracing-subscriber]
-workspace = true
-optional = true
+telemetry = []
 
 [dev-dependencies]
 serde_json.workspace = true

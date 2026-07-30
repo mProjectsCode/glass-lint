@@ -174,7 +174,6 @@ impl ScopeCollector<'_> {
         let incoming_snapshot = self.assignment_environment.snapshot();
 
         if path_snaps.is_empty() {
-            self.assignment_environment = incoming_snapshot;
             self.assignment_writes.clone_from(&incoming.writes);
             self.reachable = false;
             return;
@@ -184,9 +183,11 @@ impl ScopeCollector<'_> {
         let all_envs: Vec<&AssignmentEnvironment> =
             path_snaps.iter().map(|(snap, _)| snap).collect();
 
-        // Join — produces a fresh environment with an empty log
-        self.assignment_environment =
-            AssignmentEnvironment::join(&all_envs, self.alternative_limit);
+        // Compute the joined values separately, but keep the live environment
+        // and its mutation log. Outer control-flow frames may still hold
+        // checkpoints into that log; replacing it would make those cursors
+        // point past the new log and cause a later restore to panic.
+        let joined_environment = AssignmentEnvironment::join(&all_envs, self.alternative_limit);
         self.reachable = true;
 
         // Collect all names written in any path. Record a join assignment
@@ -199,8 +200,7 @@ impl ScopeCollector<'_> {
         }
         self.assignment_writes.clone_from(&incoming.writes);
         for key in touched {
-            let mut value = self
-                .assignment_environment
+            let mut value = joined_environment
                 .get_by_id(key.scope(), key.name())
                 .cloned()
                 .unwrap_or_else(|| {

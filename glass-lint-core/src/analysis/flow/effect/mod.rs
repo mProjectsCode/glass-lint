@@ -523,21 +523,39 @@ impl FunctionEffects {
         self.operation_count
     }
 
-    #[allow(clippy::too_many_lines)]
+    #[cfg(test)]
     pub(in crate::analysis) fn collect(stream: &FactStream<Frozen>, limit: usize) -> Self {
-        let mut effects = Self {
-            by_id: FunctionTable::new(stream.function_count()),
-            budget_exhausted: false,
-            operation_count: 0,
-        };
-        if !stream.is_valid() {
-            return effects;
+        let mut builder = FunctionEffectsBuilder::new(stream, limit);
+        for fact in stream.facts() {
+            builder.consume(fact, stream);
         }
-        let mut budget = Budget::new(limit);
-        let mut value_provenance = HashMap::new();
+        builder.finish()
+    }
+}
 
-        if budget.try_push() {
-            let _ = effects.by_id.insert(
+/// Mutable construction state for function effects.
+///
+/// Lowering can feed this builder while it projects the same frozen fact tape
+/// into occurrence indexes. Keeping construction separate from the immutable
+/// `FunctionEffects` value makes the shared derived pass explicit without
+/// exposing either consumer's storage.
+pub(in crate::analysis) struct FunctionEffectsBuilder {
+    by_id: FunctionTable<FunctionEffect>,
+    budget: Budget,
+    value_provenance: HashMap<ValueId, SymbolCallProvenance>,
+    enabled: bool,
+}
+
+impl FunctionEffectsBuilder {
+    pub(in crate::analysis) fn new(stream: &FactStream<Frozen>, limit: usize) -> Self {
+        let mut builder = Self {
+            by_id: FunctionTable::new(stream.function_count()),
+            budget: Budget::new(limit),
+            value_provenance: HashMap::new(),
+            enabled: stream.is_valid(),
+        };
+        if builder.enabled && builder.budget.try_push() {
+            let _ = builder.by_id.insert(
                 FunctionId(0),
                 FunctionEffect {
                     id: FunctionId(0),
@@ -550,86 +568,105 @@ impl FunctionEffects {
                 },
             );
         }
+        builder
+    }
 
-        for fact in stream.facts() {
-            if let FactPayload::Function {
-                id,
-                boundary: FunctionBoundary::Enter,
-                ..
-            } = &fact.payload
-            {
-                if !effects.by_id.contains(*id) && !budget.try_push() {
-                    continue;
-                }
-                let params = stream.function_parameters(*id);
-                let _ = effects.by_id.insert(
-                    *id,
-                    FunctionEffect {
-                        id: *id,
-                        calls: Vec::new(),
-                        uses: Vec::new(),
-                        returns: Vec::new(),
-                        invalid: false,
-                        value_roots: params.iter().map(|p| (p.value, p.value)).collect(),
-                        parameter_index: params
-                            .iter()
-                            .map(|p| {
-                                (
-                                    p.value,
-                                    ParameterRef {
-                                        index: p.parameter_index,
-                                        path: p.path,
-                                    },
-                                )
-                            })
-                            .collect(),
-                    },
-                );
-                continue;
-            }
-
-            let Some(effect) = effects.by_id.get_mut(fact.function) else {
-                continue;
-            };
-            match &fact.payload {
-                FactPayload::Reference { value, provenance } => {
-                    effect.record_reference(*value, provenance, &mut value_provenance);
-                }
-                FactPayload::Declaration { target, source }
-                | FactPayload::Assignment {
-                    target,
-                    source,
-                    receiver: None,
-                } => effect.record_copy(*target, *source),
-                FactPayload::Assignment {
-                    receiver: Some(_), ..
-                } => effect.invalid = true,
-                FactPayload::PropertyWrite {
-                    receiver,
-                    property,
-                    value: _,
-                } => effect.record_property_write(
-                    fact.id,
-                    *receiver,
-                    property.and_then(|id| stream.resolve_name(id)),
-                    stream,
-                    &mut budget,
-                ),
-                FactPayload::Call { .. } => effect.record_call(fact, stream, &mut budget),
-                FactPayload::Control {
-                    kind: ControlKind::Return,
-                    return_value,
-                    ..
-                } => {
-                    effect.record_return(*return_value, &value_provenance, stream, &mut budget);
-                }
-                _ => {}
-            }
-            effect.mark_unsupported_control(&fact.payload);
+    pub(in crate::analysis) fn consume(
+        &mut self,
+        fact: &SemanticFact,
+        stream: &FactStream<Frozen>,
+    ) {
+        if !self.enabled {
+            return;
         }
-        effects.budget_exhausted = budget.exhausted();
-        effects.operation_count = budget.used();
-        effects
+        if let FactPayload::Function {
+            id,
+            boundary: FunctionBoundary::Enter,
+            ..
+        } = &fact.payload
+        {
+            if !self.by_id.contains(*id) && !self.budget.try_push() {
+                return;
+            }
+            let params = stream.function_parameters(*id);
+            let _ = self.by_id.insert(
+                *id,
+                FunctionEffect {
+                    id: *id,
+                    calls: Vec::new(),
+                    uses: Vec::new(),
+                    returns: Vec::new(),
+                    invalid: false,
+                    value_roots: params.iter().map(|p| (p.value, p.value)).collect(),
+                    parameter_index: params
+                        .iter()
+                        .map(|p| {
+                            (
+                                p.value,
+                                ParameterRef {
+                                    index: p.parameter_index,
+                                    path: p.path,
+                                },
+                            )
+                        })
+                        .collect(),
+                },
+            );
+            return;
+        }
+
+        let Some(effect) = self.by_id.get_mut(fact.function) else {
+            return;
+        };
+        match &fact.payload {
+            FactPayload::Reference { value, provenance } => {
+                effect.record_reference(*value, provenance, &mut self.value_provenance);
+            }
+            FactPayload::Declaration { target, source }
+            | FactPayload::Assignment {
+                target,
+                source,
+                receiver: None,
+            } => effect.record_copy(*target, *source),
+            FactPayload::Assignment {
+                receiver: Some(_), ..
+            } => effect.invalid = true,
+            FactPayload::PropertyWrite {
+                receiver,
+                property,
+                value: _,
+            } => effect.record_property_write(
+                fact.id,
+                *receiver,
+                property.and_then(|id| stream.resolve_name(id)),
+                stream,
+                &mut self.budget,
+            ),
+            FactPayload::Call { .. } => effect.record_call(fact, stream, &mut self.budget),
+            FactPayload::Control {
+                kind: ControlKind::Return,
+                return_value,
+                ..
+            } => effect.record_return(
+                *return_value,
+                &self.value_provenance,
+                stream,
+                &mut self.budget,
+            ),
+            _ => {}
+        }
+        effect.mark_unsupported_control(&fact.payload);
+    }
+
+    pub(in crate::analysis) fn finish(self) -> FunctionEffects {
+        if !self.enabled {
+            return FunctionEffects::default();
+        }
+        FunctionEffects {
+            by_id: self.by_id,
+            budget_exhausted: self.budget.exhausted(),
+            operation_count: self.budget.used(),
+        }
     }
 }
 

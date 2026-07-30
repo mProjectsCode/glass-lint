@@ -3,7 +3,7 @@ use crate::project::tests::*;
 #[test]
 fn project_keeps_sorted_parse_failures_separate_from_valid_modules() {
     let linter = test_linter();
-    let mut session = linter.begin_project("/project").unwrap();
+    let mut session = linter.begin_project().unwrap();
     session
         .analyze_source(source_file("z.js", "function {"))
         .unwrap();
@@ -27,7 +27,7 @@ fn project_keeps_sorted_parse_failures_separate_from_valid_modules() {
 #[test]
 fn session_returns_static_import_dynamic_import_require_and_reexport_requests() {
     let linter = test_linter();
-    let mut session = linter.begin_project("/project").unwrap();
+    let mut session = linter.begin_project().unwrap();
     let requests = session
         .analyze_source(source_file(
             "main.js",
@@ -58,7 +58,7 @@ fn session_returns_static_import_dynamic_import_require_and_reexport_requests() 
 #[test]
 fn session_rejects_resolution_for_an_unauthored_request() {
     let linter = test_linter();
-    let mut session = linter.begin_project("/project").unwrap();
+    let mut session = linter.begin_project().unwrap();
     session
         .analyze_source(source_file("main.js", "fetch('/remote');"))
         .unwrap();
@@ -71,7 +71,7 @@ fn session_rejects_resolution_for_an_unauthored_request() {
 #[test]
 fn rejected_duplicate_source_does_not_replace_the_original() {
     let linter = test_linter();
-    let mut session = linter.begin_project("/project").unwrap();
+    let mut session = linter.begin_project().unwrap();
     session
         .analyze_source(source_file("main.js", "fetch('/remote');"))
         .unwrap();
@@ -84,7 +84,7 @@ fn rejected_duplicate_source_does_not_replace_the_original() {
 #[test]
 fn type_only_reexports_do_not_create_runtime_requests() {
     let linter = test_linter();
-    let mut session = linter.begin_project("/project").unwrap();
+    let mut session = linter.begin_project().unwrap();
     let requests = session
         .analyze_source(source_file(
             "types.ts",

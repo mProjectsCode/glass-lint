@@ -33,20 +33,25 @@ impl OccurrenceIndexes {
         {
             self.test_names = stream.names().clone();
         }
-        // This is the sole projection from semantic facts into shared matcher
-        // indexes. Rule selection must happen later, in query code.
         let values = stream.values();
-        stream.facts().iter().for_each(|fact| {
+        for fact in stream.facts() {
             self.record_fact(fact, stream.names(), values);
-        });
+        }
     }
 
-    fn record_fact(
+    #[cfg(test)]
+    pub(in crate::analysis) fn set_stream_names(&mut self, stream: &FactStream<Frozen>) {
+        self.test_names = stream.names().clone();
+    }
+
+    pub(in crate::analysis) fn record_fact(
         &mut self,
         fact: &SemanticFact,
         names: &NameTable,
         values: &crate::analysis::value::ValueTable,
     ) {
+        // This is the sole projection from semantic facts into shared matcher
+        // indexes. Rule selection must happen later, in query code.
         match &fact.payload {
             FactPayload::Call { .. } => self.record_call_fact(fact, names),
 

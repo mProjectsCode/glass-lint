@@ -8,6 +8,7 @@ pub mod args;
 
 mod compare;
 mod profile;
+mod telemetry;
 
 use std::path::PathBuf;
 
@@ -73,11 +74,9 @@ fn adapters(configured: Vec<(String, PathBuf)>) -> Vec<Box<dyn Adapter>> {
 
 fn init_telemetry() {
     // CLI diagnostics belong on stderr and must not alter report stdout.
-    let _ = glass_lint_core::telemetry::try_init(
-        glass_lint_core::telemetry::TelemetryOptions::new(
-            glass_lint_core::telemetry::TelemetryLevel::Quiet,
-        )
-        .color(console::colors_enabled_stderr()),
+    let _ = telemetry::try_init(
+        telemetry::TelemetryOptions::new(telemetry::TelemetryLevel::Quiet)
+            .color(console::colors_enabled_stderr()),
         std::io::stderr,
     );
 }

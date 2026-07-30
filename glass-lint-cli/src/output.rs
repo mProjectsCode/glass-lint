@@ -9,9 +9,10 @@ use std::{
 use anyhow::{Result, bail};
 use console::{Style, measure_text_width};
 use glass_lint_core::{
-    PrettyFile, PrettyOptions, PrettyReports, RuleMetadata,
+    RuleMetadata,
     project::{AnalysisReport, AnalysisReportSummary, ProjectRelativePath, SourceText},
 };
+use glass_lint_output::{PrettyFile, PrettyOptions, PrettyReports};
 
 use crate::config::{Config, OutputFormat};
 
@@ -65,7 +66,7 @@ pub fn write_mode(config: &Config, mode: &str, path: &Path) -> Result<()> {
             stdout,
             "mode: {} ({})",
             mode,
-            glass_lint_core::visible_text(&path.display().to_string())
+            glass_lint_output::visible_text(&path.display().to_string())
         )?;
         stdout.flush()?;
     }
@@ -294,8 +295,8 @@ fn write_project_pretty<W: Write>(
                 out,
                 "diagnostic [{}] {} ({}:{}:{})",
                 diagnostic.code(),
-                glass_lint_core::visible_text(diagnostic.message()),
-                glass_lint_core::visible_text(location.0.as_str()),
+                glass_lint_output::visible_text(diagnostic.message()),
+                glass_lint_output::visible_text(location.0.as_str()),
                 location.1.start().line(),
                 location.1.start().column()
             )?;
@@ -304,7 +305,7 @@ fn write_project_pretty<W: Write>(
                 out,
                 "diagnostic [{}] {}",
                 diagnostic.code(),
-                glass_lint_core::visible_text(diagnostic.message())
+                glass_lint_output::visible_text(diagnostic.message())
             )?;
         }
     }

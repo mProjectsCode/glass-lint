@@ -13,10 +13,7 @@ mod limits;
 mod lint;
 mod parse;
 pub mod project;
-mod report;
 mod rule_id;
-#[cfg(feature = "telemetry")]
-pub mod telemetry;
 
 pub use api::rule::{Rule, RuleBuildError};
 pub use config::CoreConfig;
@@ -29,7 +26,6 @@ pub use lint::{
 };
 pub use parse::{ParseDiagnostic, SourceLanguage};
 pub use project::MatchCertainty;
-pub use report::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports, visible_text};
 pub use rule_id::RuleId;
 pub mod rules {
     pub use crate::api::{

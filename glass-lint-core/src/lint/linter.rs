@@ -89,10 +89,7 @@ impl Clone for Linter {
 
 impl Linter {
     /// Starts a deterministic project collection session.
-    pub fn begin_project(
-        &self,
-        root: impl Into<std::path::PathBuf>,
-    ) -> Result<ProjectCollection<'_>, ProjectInputError> {
+    pub fn begin_project(&self) -> Result<ProjectCollection<'_>, ProjectInputError> {
         let state = SessionState::new(
             self.analysis_environment(),
             self.analysis_limits(),
@@ -101,7 +98,7 @@ impl Linter {
             &self.shared.enabled,
             self.shared.limits.evidence_items(),
         );
-        ProjectCollection::new(state, root)
+        ProjectCollection::new(state)
     }
 
     /// Construct a linter from validated catalogs, environment, rule
@@ -199,7 +196,7 @@ impl Linter {
         filename: &str,
     ) -> Result<AnalysisReport, ProjectInputError> {
         let filename = crate::project::ProjectRelativePath::new(filename)?;
-        let mut collection = self.begin_project(".")?;
+        let mut collection = self.begin_project()?;
         collection.analyze_source(crate::project::SourceFile::new(
             filename.to_string(),
             source,

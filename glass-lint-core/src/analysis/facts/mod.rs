@@ -1,8 +1,9 @@
 //! Semantic fact orchestration over one immutable stream.
 //!
 //! This module owns the matcher-independent boundary: scope predeclaration is
-//! followed by one fact-building AST traversal that produces facts, occurrence
-//! indexes, and a module interface. Matcher
+//! followed by one fact-building AST traversal that produces facts and a
+//! module interface. Matcher indexes and function effects are derived together
+//! from the resulting frozen stream. Matcher
 //! selection is applied only by [`SemanticFacts::project`] after that shared
 //! state has been built.
 
@@ -14,7 +15,7 @@ use hashbrown::HashMap;
 use crate::{
     analysis::{
         flow::{
-            effect::FunctionEffects,
+            effect::{FunctionEffects, FunctionEffectsBuilder},
             projector::{self as object_flow, LocalFlowProjectionOutcome},
         },
         matching::{self, LinkedOccurrenceView, ModuleIdentityMap, OccurrenceIndexes},
@@ -471,18 +472,56 @@ impl SemanticFacts {
         interface: ModuleInterface,
         environment: &crate::Environment,
     ) -> Self {
-        // Project the fact stream into rule-independent occurrence indexes.
-        let mut index = OccurrenceIndexes::with_environment(environment);
-        if stream.is_valid() {
-            index.build_from_stream(&stream);
-            index.normalize_occurrences();
-        }
-
+        let index = Self::build_index(&stream, environment);
         Self {
             stream,
             index,
             interface,
         }
+    }
+
+    /// Assemble occurrence indexes and function effects in one pass over the
+    /// frozen fact tape. Both products are matcher-independent derived state;
+    /// keeping their construction together avoids replaying the same stream
+    /// during ordinary lowering.
+    pub(in crate::analysis) fn from_lowering_with_effects(
+        stream: FactStream<Frozen>,
+        interface: ModuleInterface,
+        environment: &crate::Environment,
+        effect_limit: usize,
+    ) -> (Self, FunctionEffects) {
+        let mut index = OccurrenceIndexes::with_environment(environment);
+        let mut effects = FunctionEffectsBuilder::new(&stream, effect_limit);
+        if stream.is_valid() {
+            #[cfg(test)]
+            index.set_stream_names(&stream);
+            let values = stream.values();
+            for fact in stream.facts() {
+                index.record_fact(fact, stream.names(), values);
+                effects.consume(fact, &stream);
+            }
+            index.normalize_occurrences();
+        }
+        (
+            Self {
+                stream,
+                index,
+                interface,
+            },
+            effects.finish(),
+        )
+    }
+
+    fn build_index(
+        stream: &FactStream<Frozen>,
+        environment: &crate::Environment,
+    ) -> OccurrenceIndexes {
+        let mut index = OccurrenceIndexes::with_environment(environment);
+        if stream.is_valid() {
+            index.build_from_stream(stream);
+            index.normalize_occurrences();
+        }
+        index
     }
 
     /// Borrow the canonical facts in deterministic source traversal order.
@@ -715,6 +754,58 @@ mod tests {
         assert_eq!(forward, build(vec![&first, &second], &[1, 0]));
         assert_eq!(forward, build(vec![&first, &second], &[]));
         assert_eq!(forward, build(vec![&second, &first], &[0, 1]));
+    }
+
+    #[test]
+    fn lowering_shared_derived_pass_matches_standalone_effect_collection() {
+        let source = "function helper(value) { return value; } helper('/api');";
+        let parsed = crate::parse(source, "shared-derived-pass.js").expect("source should parse");
+        let mut resolver = Resolver::collect(&parsed.program, source);
+        let mut builder = FactBuilder::new(&mut resolver);
+        swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
+        let (stream, interface) = builder.into_parts();
+        let (names, values) = resolver.into_parts();
+        let stream = stream.freeze(names, values);
+
+        let (facts, combined_effects) = SemanticFacts::from_lowering_with_effects(
+            stream,
+            interface,
+            &crate::Environment::default(),
+            usize::MAX,
+        );
+        let standalone_effects = FunctionEffects::collect(facts.stream(), usize::MAX);
+
+        let summarize = |effects: &FunctionEffects| {
+            effects
+                .iter_effects()
+                .map(|effect| {
+                    (
+                        effect.id(),
+                        effect.calls().len(),
+                        effect.uses().len(),
+                        effect.returns().len(),
+                        effect.is_invalid(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            summarize(&combined_effects),
+            summarize(&standalone_effects),
+            "sharing the fact-tape pass must preserve function effects"
+        );
+        assert_eq!(
+            combined_effects.operation_count(),
+            standalone_effects.operation_count()
+        );
+        assert_eq!(
+            combined_effects.budget_exhausted(),
+            standalone_effects.budget_exhausted()
+        );
+        assert!(
+            !facts.matcher_index().is_empty(),
+            "the same pass must still populate occurrence indexes"
+        );
     }
 
     /// Verify that the fact-driven index populates expected occurrence maps

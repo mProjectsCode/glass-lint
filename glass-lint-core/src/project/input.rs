@@ -4,8 +4,6 @@
 //! [`crate::project::session`]. The functions here are shared utilities used
 //! by the session, types, and CLI loading code.
 
-use std::path::{Path, PathBuf};
-
 use crate::project::{
     BuiltinModuleName, NormalizedOutsidePath, PackageSpecifier, ProjectInputError,
     ProjectRelativePath, ResolutionRequestKey, ResolverOutcome,
@@ -25,15 +23,6 @@ fn is_absolute_form(path: &str) -> bool {
 fn is_drive_prefix(s: &str) -> bool {
     let bytes = s.as_bytes();
     bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
-}
-
-/// Validate the root path that anchors project-relative normalization.
-pub fn normalize_root(path: &Path) -> Result<PathBuf, ProjectInputError> {
-    if path.as_os_str().is_empty() {
-        Err(ProjectInputError::InvalidPath(String::new()))
-    } else {
-        Ok(path.to_path_buf())
-    }
 }
 
 /// Normalize a project-relative path and reject escapes/absolute paths.

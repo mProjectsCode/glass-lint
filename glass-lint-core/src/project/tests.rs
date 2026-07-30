@@ -24,7 +24,7 @@ fn admitted_sources_have_identical_reports_across_worker_counts() {
     let mut reports = Vec::new();
     for workers in [0, 1, 2, 4] {
         let linter = test_linter();
-        let mut session = linter.begin_project("/project").unwrap();
+        let mut session = linter.begin_project().unwrap();
         session
             .analyze_sources(
                 sources.iter().cloned(),
@@ -45,7 +45,7 @@ fn admitted_sources_have_identical_reports_across_worker_counts() {
 #[test]
 fn consuming_project_phases_validate_requests_at_the_boundary() {
     let linter = test_linter();
-    let mut collection = linter.begin_project("/project").unwrap();
+    let mut collection = linter.begin_project().unwrap();
     let analysis = collection
         .analyze_source(source_file(
             "main.js",
@@ -65,7 +65,7 @@ fn consuming_project_phases_validate_requests_at_the_boundary() {
 #[test]
 fn consuming_resolution_rejects_unknown_and_duplicate_outcomes() {
     let linter = test_linter();
-    let mut collection = linter.begin_project("/project").unwrap();
+    let mut collection = linter.begin_project().unwrap();
     let analysis = collection
         .analyze_source(source_file(
             "main.js",
@@ -84,7 +84,7 @@ fn consuming_resolution_rejects_unknown_and_duplicate_outcomes() {
         crate::project::ProjectInputError::UnknownRequest(_)
     ));
 
-    let mut collection = linter.begin_project("/project").unwrap();
+    let mut collection = linter.begin_project().unwrap();
     let analysis = collection
         .analyze_source(source_file(
             "main.js",
@@ -125,7 +125,7 @@ fn controlled_release_orders_produce_identical_full_report() {
         ControlledReleaseOrder::Interleaved,
     ] {
         let linter = test_linter_with_limits(limits.clone());
-        let mut session = linter.begin_project("/project").unwrap();
+        let mut session = linter.begin_project().unwrap();
         session
             .analyze_sources_controlled(sources.iter().cloned(), 2, order)
             .unwrap();
@@ -171,7 +171,7 @@ fn controlled_release_orders_produce_identical_full_report() {
 fn active_and_outstanding_use_the_production_bound() {
     for requested in [0, 1, 2, 4] {
         let linter = test_linter();
-        let mut session = linter.begin_project("/project").unwrap();
+        let mut session = linter.begin_project().unwrap();
         let sources = (0..12).map(|index| source_file(format!("{index:02}.js"), "fetch('x');"));
         let observer = CountingExecutionObserver::new();
         session
@@ -224,7 +224,7 @@ fn session_uses_project_analysis_and_preserves_single_file_findings() {
     let source = "fetch('/remote');\n";
     let direct = linter.lint_snippet(source, "a.js").unwrap();
 
-    let mut session = linter.begin_project("/project").unwrap();
+    let mut session = linter.begin_project().unwrap();
     session.analyze_source(source_file("a.js", source)).unwrap();
     let project = session
         .finish_local()

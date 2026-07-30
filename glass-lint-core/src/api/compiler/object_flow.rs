@@ -1,13 +1,16 @@
 use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
-use crate::api::rule::{
-    ArgumentConstraint, ValueMatcher,
-    query::{
-        LifecycleQuery,
-        lifecycle::{
-            LifecycleCompletionKind, LifecycleConditionKind, LifecycleEvent, LifecycleEventKind,
-            LifecycleSink, LifecycleSinkKind,
+use crate::api::{
+    compiler::normalized::{NormalizedEvent, NormalizedLifecycle},
+    rule::{
+        ArgumentConstraint, ValueMatcher,
+        query::{
+            EventSpec, IdentitySpec,
+            lifecycle::{
+                LifecycleCompletionKind, LifecycleConditionKind, LifecycleEvent,
+                LifecycleEventKind, LifecycleSink, LifecycleSinkKind,
+            },
         },
     },
 };
@@ -47,9 +50,9 @@ impl CompiledObjectFlow {
         }
     }
 
-    /// Build a compiled flow from a [`LifecycleQuery`] and evidence symbol.
-    pub fn from_lifecycle_query(lc: &LifecycleQuery, symbol: &str) -> Self {
-        let (requirements, requirement_mode) = lc.condition.as_ref().map_or_else(
+    /// Build a compiled flow directly from the normalized lifecycle IR.
+    pub(crate) fn from_normalized_lifecycle(lc: &NormalizedLifecycle, symbol: &str) -> Self {
+        let (requirements, requirement_mode) = lc.condition().map_or_else(
             || (Vec::new(), RequirementMode::AnyRequired),
             |cond| match cond.kind() {
                 LifecycleConditionKind::AnyOf(events) => (
@@ -68,7 +71,7 @@ impl CompiledObjectFlow {
                 ),
             },
         );
-        let (sinks, completion_mode) = lc.completion.as_ref().map_or_else(
+        let (sinks, completion_mode) = lc.completion().map_or_else(
             || (Vec::new(), CompletionMode::AnySink),
             |comp| match comp.kind() {
                 LifecycleCompletionKind::Configuration => {
@@ -87,9 +90,9 @@ impl CompiledObjectFlow {
         Self {
             symbol: SmolStr::new(symbol),
             sources: lc
-                .sources
+                .sources()
                 .iter()
-                .map(CompiledObjectSource::from_event_query)
+                .map(CompiledObjectSource::from_normalized_event)
                 .collect(),
             requirements,
             sinks,
@@ -107,15 +110,15 @@ pub(crate) struct CompiledObjectSource {
 }
 
 impl CompiledObjectSource {
-    fn from_event_query(eq: &crate::api::rule::query::EventQuery) -> Self {
-        let member_call = match &eq.event {
-            crate::api::rule::query::EventSpec::MemberCall { member } => member.clone(),
+    fn from_normalized_event(event: &NormalizedEvent) -> Self {
+        let member_call = match event.event() {
+            EventSpec::MemberCall { member } => member.clone(),
             _ => SymbolPath::default(),
         };
         Self {
             member_call,
-            arguments: eq.constraints.clone(),
-            is_rooted: true,
+            arguments: event.arguments().to_flat_vec(),
+            is_rooted: matches!(event.identity(), Some(IdentitySpec::Rooted { .. })),
         }
     }
 }

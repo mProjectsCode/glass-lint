@@ -11,7 +11,7 @@ use crate::{
 #[test]
 fn cache_hit_attaches_only_current_path() {
     let linter = test_linter();
-    let mut session = linter.begin_project("/project").unwrap();
+    let mut session = linter.begin_project().unwrap();
     let observer = CountingExecutionObserver::new();
     session
         .admit_test_source(source_file("a.js", "fetch('x');"))
@@ -36,7 +36,7 @@ fn cache_hit_attaches_only_current_path() {
 #[test]
 fn identical_successful_source_lowers_once_then_hits() {
     let linter = test_linter();
-    let mut session = linter.begin_project("/project").unwrap();
+    let mut session = linter.begin_project().unwrap();
     session
         .admit_test_source(source_file("main.js", "fetch('/api');"))
         .unwrap();
@@ -65,7 +65,7 @@ fn identical_successful_source_lowers_once_then_hits() {
 fn separate_sessions_on_one_linter_reuse_the_artifact_cache() {
     let linter = test_linter();
     let first_observer = CountingExecutionObserver::new();
-    let mut first = linter.begin_project("/project").unwrap();
+    let mut first = linter.begin_project().unwrap();
     first
         .admit_test_source(source_file("first.js", "fetch('/api');"))
         .unwrap();
@@ -75,7 +75,7 @@ fn separate_sessions_on_one_linter_reuse_the_artifact_cache() {
     finish_collection(first);
 
     let second_observer = CountingExecutionObserver::new();
-    let mut second = linter.begin_project("/project").unwrap();
+    let mut second = linter.begin_project().unwrap();
     second
         .admit_test_source(source_file("second.js", "fetch('/api');"))
         .unwrap();
@@ -96,7 +96,7 @@ fn separate_sessions_on_one_linter_reuse_the_artifact_cache() {
 #[test]
 fn session_retry_does_not_cache_parse_failure() {
     let linter = test_linter();
-    let mut session = linter.begin_project("/project").unwrap();
+    let mut session = linter.begin_project().unwrap();
     session
         .admit_test_source(source_file("broken.js", "fetch("))
         .unwrap();
@@ -125,7 +125,7 @@ fn session_reuses_exhausted_artifact_with_partial_status() {
         .with_semantic_operations(1)
         .unwrap();
     let linter = test_linter_with_limits(limits);
-    let mut session = linter.begin_project("/project").unwrap();
+    let mut session = linter.begin_project().unwrap();
     session
         .admit_test_source(source_file("bounded.js", "fetch('/api');"))
         .unwrap();
@@ -151,7 +151,7 @@ fn session_reuses_exhausted_artifact_with_partial_status() {
 #[test]
 fn rule_selection_changes_projection_without_relowering() {
     let enabled = test_linter();
-    let mut first = enabled.begin_project("/project").unwrap();
+    let mut first = enabled.begin_project().unwrap();
     first
         .admit_test_source(source_file("enabled.js", "fetch('/api');"))
         .unwrap();
@@ -159,15 +159,15 @@ fn rule_selection_changes_projection_without_relowering() {
     first
         .analyze_source_counted("enabled.js", &first_observer)
         .unwrap();
-    let cache = std::mem::take(&mut first.artifact_cache);
+    let cache = std::mem::take(&mut first.state.artifact_cache);
     assert_eq!(finish_collection(first).files()[0].findings().len(), 1);
 
     let disabled = test_linter_with_selection(
         RuleSelection::new(RuleBaseline::None),
         AnalysisLimits::default(),
     );
-    let mut second = disabled.begin_project("/project").unwrap();
-    second.artifact_cache = cache;
+    let mut second = disabled.begin_project().unwrap();
+    second.state.artifact_cache = cache;
     second
         .admit_test_source(source_file("disabled.js", "fetch('/api');"))
         .unwrap();
@@ -182,14 +182,14 @@ fn rule_selection_changes_projection_without_relowering() {
 
 fn setup_baseline_and_base_cache() -> (crate::Linter, crate::analysis::ArtifactCacheHandle) {
     let base_linter = test_linter();
-    let mut baseline = base_linter.begin_project("/project").unwrap();
+    let mut baseline = base_linter.begin_project().unwrap();
     baseline
         .admit_test_source(source_file("base.js", "fetch('/api');"))
         .unwrap();
     baseline
         .analyze_source_at_path(&crate::project::ProjectRelativePath::new("base.js").unwrap())
         .unwrap();
-    let base_cache = baseline.artifact_cache.clone();
+    let base_cache = baseline.state.artifact_cache.clone();
     (base_linter, base_cache)
 }
 
@@ -200,8 +200,8 @@ fn assert_miss_for(
     configure: fn(&mut crate::project::ProjectCollection<'_>),
 ) {
     let path = source.path().to_string();
-    let mut session = linter.begin_project("/project").unwrap();
-    session.artifact_cache = base_cache.clone();
+    let mut session = linter.begin_project().unwrap();
+    session.state.artifact_cache = base_cache.clone();
     configure(&mut session);
     session.admit_test_source(source).unwrap();
     let observer = CountingExecutionObserver::new();
@@ -217,8 +217,8 @@ fn assert_hit_for(
     configure: fn(&mut crate::project::ProjectCollection<'_>),
 ) {
     let path = source.path().to_string();
-    let mut session = linter.begin_project("/project").unwrap();
-    session.artifact_cache = base_cache.clone();
+    let mut session = linter.begin_project().unwrap();
+    session.state.artifact_cache = base_cache.clone();
     configure(&mut session);
     session.admit_test_source(source).unwrap();
     let observer = CountingExecutionObserver::new();
@@ -322,7 +322,7 @@ fn all_fingerprint_dimensions_have_independent_hit_miss_tests() {
 #[test]
 fn cache_eviction_is_bounded_and_deterministic() {
     let linter = test_linter();
-    let mut session = linter.begin_project("/project").unwrap();
+    let mut session = linter.begin_project().unwrap();
     let capacity = ArtifactCacheHandle::capacity();
     for index in 0..=capacity {
         session

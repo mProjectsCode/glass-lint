@@ -1,9 +1,12 @@
 use super::*;
 use crate::{
     analysis::{resolution::Resolver, trace::TraceArena},
-    api::rule::{
-        LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleQuery, LifecycleSink,
-        LifecycleSource, ValueMatcher,
+    api::{
+        compiler::{normalize::normalize_query_decl, normalized::NormalizedRoot},
+        rule::{
+            LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleQuery, LifecycleSink,
+            LifecycleSource, QueryDecl, ValueMatcher,
+        },
     },
     project::ModuleId,
 };
@@ -27,12 +30,21 @@ fn collect_with_limits_test(
     )
 }
 
+fn compile_flow(query: &LifecycleQuery) -> CompiledObjectFlow {
+    let declaration = QueryDecl::lifecycle(Ok(query.clone())).expect("lifecycle should build");
+    let normalized = normalize_query_decl(&declaration).expect("lifecycle should normalize");
+    let NormalizedRoot::Lifecycle(lifecycle) = normalized.root() else {
+        panic!("lifecycle declaration should normalize to a lifecycle root");
+    };
+    CompiledObjectFlow::from_normalized_lifecycle(lifecycle, normalized.emission().symbol())
+}
+
 fn collect_source(source: &str, query: &LifecycleQuery) -> Vec<Vec<ClassificationEvidence>> {
     let parsed = crate::parse(source, "fact-flow.js").expect("source should parse");
     let mut resolver = Resolver::collect(&parsed.program, source);
     let stream = crate::analysis::facts::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
-    let flow = CompiledObjectFlow::from_lifecycle_query(query, query.symbol());
+    let flow = compile_flow(query);
     let (evidence, _outcome) = collect_with_limits_test(
         &stream,
         &effects,
@@ -52,7 +64,7 @@ fn collect_source_with_outcome(
     let mut resolver = Resolver::collect(&parsed.program, source);
     let stream = crate::analysis::facts::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
-    let flow = CompiledObjectFlow::from_lifecycle_query(query, query.symbol());
+    let flow = compile_flow(query);
     let (_evidence, outcome) = collect_with_limits_test(
         &stream,
         &effects,
@@ -464,7 +476,7 @@ fn flow_evidence_is_anchored_at_the_sink_event() {
         })
         .expect("sink call should be present");
     let lc = script_flow();
-    let flow = CompiledObjectFlow::from_lifecycle_query(&lc, lc.symbol());
+    let flow = compile_flow(&lc);
     let (evidence, _outcome) = collect_with_limits_test(
         &stream,
         &effects,
@@ -503,7 +515,7 @@ fn requirement_only_evidence_is_anchored_at_the_configuration_event() {
                 .then_some((fact.id, fact.span))
         })
         .expect("configuration write should be present");
-    let flow = CompiledObjectFlow::from_lifecycle_query(&flow, flow.symbol());
+    let flow = compile_flow(&flow);
     let (evidence, _outcome) = collect_with_limits_test(
         &stream,
         &effects,
@@ -524,7 +536,7 @@ fn object_limit_exhaustion_returns_exhausted_outcome() {
     let mut resolver = Resolver::collect(&parsed.program, source);
     let stream = crate::analysis::facts::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
-    let flow = CompiledObjectFlow::from_lifecycle_query(&query, query.symbol());
+    let flow = compile_flow(&query);
     let limits = FlowLimits::test_new(1, 262_144, 65_536, 4096);
     let (evidence, outcome) = collect_with_limits_test(
         &stream,
@@ -553,7 +565,7 @@ fn mutation_log_exhaustion_returns_exhausted_outcome() {
     let mut resolver = Resolver::collect(&parsed.program, source);
     let stream = crate::analysis::facts::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
-    let flow = CompiledObjectFlow::from_lifecycle_query(&query, query.symbol());
+    let flow = compile_flow(&query);
     let limits = FlowLimits::test_new(65_536, 262_144, 65_536, 1);
     let (_evidence, outcome) = collect_with_limits_test(
         &stream,
@@ -574,7 +586,7 @@ fn state_limit_exhaustion_returns_exhausted_outcome() {
     let mut resolver = Resolver::collect(&parsed.program, source);
     let stream = crate::analysis::facts::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
-    let flow = CompiledObjectFlow::from_lifecycle_query(&query, query.symbol());
+    let flow = compile_flow(&query);
     let limits = FlowLimits::test_new(65_536, 0, 65_536, 4096);
     let (_evidence, outcome) = collect_with_limits_test(
         &stream,
@@ -595,7 +607,7 @@ fn emission_limit_exhaustion_returns_exhausted_outcome() {
     let mut resolver = Resolver::collect(&parsed.program, source);
     let stream = crate::analysis::facts::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
-    let flow = CompiledObjectFlow::from_lifecycle_query(&query, query.symbol());
+    let flow = compile_flow(&query);
     let limits = FlowLimits::test_new(65_536, 262_144, 0, 4096);
     let (_evidence, outcome) = collect_with_limits_test(
         &stream,

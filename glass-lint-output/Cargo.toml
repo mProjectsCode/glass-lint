@@ -1,0 +1,13 @@
+[package]
+name = "glass-lint-output"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+console.workspace = true
+glass-lint-core = { path = "../glass-lint-core" }
+glass-lint-datastructures = { path = "../glass-lint-datastructures" }
+
+[lints]
+workspace = true

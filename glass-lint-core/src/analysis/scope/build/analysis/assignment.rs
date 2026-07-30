@@ -3,7 +3,7 @@ use swc_ecma_ast::{Expr, VarDeclKind};
 use crate::analysis::scope::{BindingProvenance, build::ScopeCollector};
 
 pub fn expression_is_mutable_static_object(
-    collector: &ScopeCollector,
+    collector: &mut ScopeCollector,
     expr: &Expr,
     kind: VarDeclKind,
 ) -> bool {
@@ -18,7 +18,7 @@ pub fn expression_is_mutable_static_object(
     )
 }
 
-pub fn assignment_provenance(collector: &ScopeCollector, expr: &Expr) -> BindingProvenance {
+pub fn assignment_provenance(collector: &mut ScopeCollector, expr: &Expr) -> BindingProvenance {
     collector
         .constructed_instance_provenance(expr)
         .or_else(|| collector.bound_callable_provenance(expr))

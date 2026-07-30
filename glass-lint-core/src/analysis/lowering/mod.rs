@@ -117,9 +117,10 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Lower one source file into an immutable semantic artifact. The lowering
-    /// runs three sequential passes: scope planning, collection against the
-    /// plan, and fact building against the frozen resolver. The result is ready
-    /// for project linking and matcher projection.
+    /// runs scope planning, collection against the plan, and fact building
+    /// against the frozen resolver. Matcher indexes and function effects are
+    /// then derived together from the frozen fact tape. The result is ready for
+    /// project linking and matcher projection.
     pub fn lower_source(&self, source: &SourceFile) -> Result<LoweredSource, ParseDiagnostic> {
         let parsed = crate::parse::parse_with_language_and_depth(
             source.source(),
@@ -310,15 +311,22 @@ impl LocalLowering<'_> {
         let (names, values) = resolver.into_parts();
         let stream = stream.freeze(names, values);
 
-        let facts = SemanticFacts::from_lowering(stream, interface, environment);
-        let effects = if budget_exhausted {
-            FunctionEffects::default()
+        let (facts, effects) = if budget_exhausted {
+            (
+                SemanticFacts::from_lowering(stream, interface, environment),
+                FunctionEffects::default(),
+            )
         } else {
-            let effects = FunctionEffects::collect(facts.stream(), limits.effect_operations());
+            let (facts, effects) = SemanticFacts::from_lowering_with_effects(
+                stream,
+                interface,
+                environment,
+                limits.effect_operations(),
+            );
             if let Some(reason) = check_effects_budget(&effects, limits) {
                 status.record(StatusScope::Project, reason);
             }
-            effects
+            (facts, effects)
         };
 
         SemanticArtifact::from_lowering(facts, export_origins, effects, status)

@@ -519,18 +519,19 @@ dependencies = [
  "glass-lint-core",
  "glass-lint-js",
  "glass-lint-obsidian",
+ "glass-lint-output",
  "glass-lint-project",
  "serde",
  "serde_json",
  "toml",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
 name = "glass-lint-core"
 version = "0.1.0"
 dependencies = [
- "console",
  "glass-lint-datastructures",
  "hashbrown 0.17.1",
  "indexmap",
@@ -546,7 +547,6 @@ dependencies = [
  "swc_ecma_transforms_typescript",
  "swc_ecma_visit",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -609,6 +609,15 @@ version = "0.1.0"
 dependencies = [
  "glass-lint-core",
  "glass-lint-js",
+]
+
+[[package]]
+name = "glass-lint-output"
+version = "0.1.0"
+dependencies = [
+ "console",
+ "glass-lint-core",
+ "glass-lint-datastructures",
 ]
 
 [[package]]

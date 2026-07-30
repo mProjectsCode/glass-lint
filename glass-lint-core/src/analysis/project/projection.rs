@@ -15,6 +15,7 @@ use crate::{
         matching::{LinkedOccurrenceView, OccurrenceIndexes},
         model::flow::FlowLimits,
         project::state::LinkingSession,
+        trace::TraceArena,
     },
     api::{
         classification::{ClassificationEvidence, RuleIndex},
@@ -60,105 +61,61 @@ pub struct ProjectionOutcome {
     pub fixed_point_iterations: usize,
 }
 
+#[derive(Default)]
+struct LocalProjectionOutcome {
+    exhausted: bool,
+    max_live_alternatives: usize,
+    coalescing_comparisons: usize,
+    fixed_point_iterations: usize,
+    trace_heads: usize,
+    operations: usize,
+}
+
 impl ProjectSemanticModel {
     /// Project a linked semantic model into matcher queries without rewalking
     /// any source AST.  Side effects such as budget exhaustion and projection
     /// counts are returned in a `ProjectionOutcome` instead of being written
     /// back into `self`.
     #[allow(clippy::too_many_lines)]
+    #[cfg(test)]
     pub fn project<'project, 'matchers>(
         &'project self,
         matchers: CompiledRuleSelection<'matchers>,
     ) -> (ProjectMatcherModel<'project, 'matchers>, ProjectionOutcome) {
+        let mut arena = TraceArena::new(self.trace_limit());
+        self.project_with_arena(matchers, &mut arena)
+    }
+
+    pub(crate) fn project_with_arena<'project, 'matchers>(
+        &'project self,
+        matchers: CompiledRuleSelection<'matchers>,
+        arena: &mut TraceArena,
+    ) -> (ProjectMatcherModel<'project, 'matchers>, ProjectionOutcome) {
         let plan = ProjectionPlan::from_selection(&matchers);
         let flow_limits = FlowLimits::from_flow_operations(self.flow_limit());
-        let mut local_exhausted = false;
-        let mut max_live_alternatives: usize = 0;
-        let mut coalescing_comparisons: usize = 0;
-        let mut fixed_point_iterations: usize = 0;
-        let mut local_trace_heads: usize = 0;
-        let mut local_operations: usize = 0;
         let mut session = LinkingSession::new(self.flow_limit());
-        let mut arena = self.trace_arena.lock().unwrap();
 
-        let need_module_ids = plan.needs_module_identities() || plan.needs_overlay();
-        let need_result_ids = plan.needs_call_result_identities();
         let has_flow = plan.flow_requirements().local
             || plan.flow_requirements().cross_call
             || plan.flow_requirements().cross_file;
-
-        let projections: BTreeMap<ModuleId, ProjectModuleProjection<'project>> = self
-            .modules
-            .values()
-            .map(|module| {
-                let index = module.local().facts().matcher_index();
-                let identities = if need_module_ids {
-                    Some(self.module_identities(module.id(), &mut session))
-                } else {
-                    None
-                };
-                let result_identities = if need_result_ids {
-                    Some(self.call_result_identities(module.id(), &mut session))
-                } else {
-                    None
-                };
-                let (overlay, overlay_ops) = if plan.needs_overlay() {
-                    identities.as_ref().map_or((None, 0), |ids| {
-                        let (view, ops) = index.module_overlay(ids);
-                        (Some(view), ops)
-                    })
-                } else {
-                    (None, 0)
-                };
-                local_operations = local_operations.saturating_add(overlay_ops);
-                let (projected, local_outcome) = module.local().facts().project(
-                    module.local().effects(),
-                    &plan,
-                    identities.as_ref(),
-                    result_identities.as_ref(),
-                    overlay.as_ref(),
-                    flow_limits,
-                    module.id(),
-                    &mut arena,
-                );
-                if local_outcome.exhausted {
-                    local_exhausted = true;
-                }
-                max_live_alternatives =
-                    max_live_alternatives.max(local_outcome.max_live_alternatives);
-                coalescing_comparisons =
-                    coalescing_comparisons.saturating_add(local_outcome.coalescing_comparisons);
-                fixed_point_iterations =
-                    fixed_point_iterations.saturating_add(local_outcome.fixed_point_iterations);
-                local_trace_heads = local_trace_heads.saturating_add(local_outcome.trace_heads);
-                local_operations = local_operations.saturating_add(local_outcome.operations);
-                (
-                    module.id(),
-                    ProjectModuleProjection {
-                        index,
-                        overlay,
-                        projected,
-                    },
-                )
-            })
-            .collect();
+        let (projections, local) = self.project_modules(&plan, flow_limits, arena, &mut session);
 
         let (cross, cross_outcome) = if has_flow {
-            flow::cross::collect(self, &matchers, &mut session, &mut arena)
+            flow::cross::collect(self, &matchers, &mut session, arena)
         } else {
             Default::default()
         };
-        let exhausted = local_exhausted || cross_outcome.exhausted;
-        let flow_operations = local_operations.saturating_add(cross_outcome.operations);
+        let exhausted = local.exhausted || cross_outcome.exhausted;
+        let flow_operations = local.operations.saturating_add(cross_outcome.operations);
         let outcome = ProjectionOutcome {
             flow_exhausted: exhausted,
             effect_projections: cross_outcome.projections,
             flow_observed: exhausted.then_some(flow_operations),
-            local_exhausted,
-            trace_heads: local_trace_heads.saturating_add(cross_outcome.trace_heads),
-            max_live_alternatives,
-            coalescing_comparisons,
-            fixed_point_iterations,
+            local_exhausted: local.exhausted,
+            trace_heads: local.trace_heads.saturating_add(cross_outcome.trace_heads),
+            max_live_alternatives: local.max_live_alternatives,
+            coalescing_comparisons: local.coalescing_comparisons,
+            fixed_point_iterations: local.fixed_point_iterations,
         };
 
         let mut projections = projections;
@@ -177,6 +134,72 @@ impl ProjectSemanticModel {
             },
             outcome,
         )
+    }
+
+    fn project_modules<'project>(
+        &'project self,
+        plan: &ProjectionPlan<'_>,
+        flow_limits: FlowLimits,
+        arena: &mut TraceArena,
+        session: &mut LinkingSession,
+    ) -> (
+        BTreeMap<ModuleId, ProjectModuleProjection<'project>>,
+        LocalProjectionOutcome,
+    ) {
+        let need_module_ids = plan.needs_module_identities() || plan.needs_overlay();
+        let need_result_ids = plan.needs_call_result_identities();
+        let mut outcome = LocalProjectionOutcome::default();
+        let projections = self
+            .modules
+            .values()
+            .map(|module| {
+                let index = module.local().facts().matcher_index();
+                let identities =
+                    need_module_ids.then(|| self.module_identities(module.id(), session));
+                let result_identities =
+                    need_result_ids.then(|| self.call_result_identities(module.id(), session));
+                let (overlay, overlay_ops) = if plan.needs_overlay() {
+                    identities.as_ref().map_or((None, 0), |ids| {
+                        let (view, ops) = index.module_overlay(ids);
+                        (Some(view), ops)
+                    })
+                } else {
+                    (None, 0)
+                };
+                outcome.operations = outcome.operations.saturating_add(overlay_ops);
+                let (projected, local) = module.local().facts().project(
+                    module.local().effects(),
+                    plan,
+                    identities.as_ref(),
+                    result_identities.as_ref(),
+                    overlay.as_ref(),
+                    flow_limits,
+                    module.id(),
+                    arena,
+                );
+                outcome.exhausted |= local.exhausted;
+                outcome.max_live_alternatives = outcome
+                    .max_live_alternatives
+                    .max(local.max_live_alternatives);
+                outcome.coalescing_comparisons = outcome
+                    .coalescing_comparisons
+                    .saturating_add(local.coalescing_comparisons);
+                outcome.fixed_point_iterations = outcome
+                    .fixed_point_iterations
+                    .saturating_add(local.fixed_point_iterations);
+                outcome.trace_heads = outcome.trace_heads.saturating_add(local.trace_heads);
+                outcome.operations = outcome.operations.saturating_add(local.operations);
+                (
+                    module.id(),
+                    ProjectModuleProjection {
+                        index,
+                        overlay,
+                        projected,
+                    },
+                )
+            })
+            .collect();
+        (projections, outcome)
     }
 
     /// Record flow exhaustion status from a projection outcome.

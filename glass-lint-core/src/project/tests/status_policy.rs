@@ -20,7 +20,7 @@ fn configured_flow_linter(limits: AnalysisLimits) -> crate::Linter {
 }
 
 fn lint_one(linter: &crate::Linter, path: &str, source: &str) -> AnalysisReport {
-    let mut session = linter.begin_project("/project").unwrap();
+    let mut session = linter.begin_project().unwrap();
     session.analyze_source(source_file(path, source)).unwrap();
     finish_collection(session)
 }

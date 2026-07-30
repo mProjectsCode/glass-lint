@@ -137,17 +137,22 @@ impl ScopeCollector<'_> {
         self.names.lookup(name)
     }
 
-    pub(super) fn name_path(&self, path: &SymbolPath) -> Option<NamePath> {
-        self.names.lookup_path(path)
+    pub(super) fn name_path(&mut self, path: &SymbolPath) -> Option<NamePath> {
+        let mut resolved = NamePath::new();
+        for segment in path.segments() {
+            let id = self.lookup_or_intern_name(segment.as_str())?;
+            resolved.append(id);
+        }
+        Some(resolved)
     }
 
-    pub(super) fn rooted_name_path(&self, expr: &Expr) -> Option<NamePath> {
+    pub(super) fn rooted_name_path(&mut self, expr: &Expr) -> Option<NamePath> {
         self.rooted_expr_name(expr)
             .and_then(|path| self.name_path(&path))
     }
 
-    pub(super) fn append_name_path(&self, path: &NamePath, segment: &str) -> Option<NamePath> {
-        let id = self.names.lookup(segment)?;
+    pub(super) fn append_name_path(&mut self, path: &NamePath, segment: &str) -> Option<NamePath> {
+        let id = self.lookup_or_intern_name(segment)?;
         Some(path.append_path(&NamePath::from_ids([id])))
     }
 

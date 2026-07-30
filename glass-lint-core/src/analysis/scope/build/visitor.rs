@@ -243,14 +243,13 @@ impl ScopePass for ScopeCollector<'_> {
             }
             self.budget.try_charge();
             if let Some(callee_name) = self.lookup_or_intern_name(callee.sym.as_ref()) {
-                self.calls.push((
-                    self.current_scope(),
-                    callee_name,
-                    call.args
-                        .iter()
-                        .map(|argument| self.argument_provenance(&argument.expr))
-                        .collect(),
-                ));
+                let arguments = call
+                    .args
+                    .iter()
+                    .map(|argument| self.argument_provenance(&argument.expr))
+                    .collect();
+                self.calls
+                    .push((self.current_scope(), callee_name, arguments));
             }
         }
     }

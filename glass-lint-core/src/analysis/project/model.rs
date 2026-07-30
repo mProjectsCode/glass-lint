@@ -2,7 +2,7 @@
 //! identities remain owned by their module; the overlay stores qualified
 //! resolution results rather than merging lexical arenas.
 
-use std::{collections::BTreeMap, sync::Mutex};
+use std::collections::BTreeMap;
 
 use glass_lint_datastructures::NameTable;
 use smol_str::SmolStr;
@@ -109,18 +109,18 @@ pub struct ResolvedLinkInput {
 
 impl ResolvedLinkInput {
     pub(crate) fn build(
-        source_map: BTreeMap<ProjectRelativePath, SourceFile>,
+        source_map: &BTreeMap<ProjectRelativePath, SourceFile>,
         mut analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
         module_ids: &BTreeMap<ProjectRelativePath, ModuleId>,
         resolution_map: BTreeMap<ResolutionRequestKey, ResolverOutcome>,
         request_ids: &BTreeMap<ResolutionRequestKey, QualifiedRequestId>,
     ) -> Result<Self, ProjectInputError> {
         let mut modules = BTreeMap::new();
-        for (path, _source) in source_map {
-            let Some(local) = analyzed.remove(&path) else {
+        for path in source_map.keys() {
+            let Some(local) = analyzed.remove(path) else {
                 continue;
             };
-            let Some(id) = module_ids.get(&path).copied() else {
+            let Some(id) = module_ids.get(path).copied() else {
                 return Err(ProjectInputError::InvalidTarget(path.to_string()));
             };
             modules.insert(id, ProjectModule::new(id, local));
@@ -206,7 +206,9 @@ pub struct ProjectSemanticModel {
     pub(super) status: AnalysisStatus,
     pub(super) flow_limit: usize,
     pub(super) trace_limit: usize,
-    pub(super) trace_arena: Mutex<TraceArena>,
+    /// Trace storage is mutable only while projection runs, then remains
+    /// immutably owned by the linked project for report assembly.
+    pub(super) trace_arena: TraceArena,
 }
 
 impl ProjectSemanticModel {
@@ -242,7 +244,7 @@ impl ProjectSemanticModel {
             status,
             flow_limit: limits.flow_operations(),
             trace_limit: limits.trace_nodes(),
-            trace_arena: Mutex::new(TraceArena::new(limits.trace_nodes())),
+            trace_arena: TraceArena::new(limits.trace_nodes()),
         }
     }
 
@@ -272,7 +274,7 @@ impl ProjectSemanticModel {
             status: outcome.status,
             flow_limit: limits.flow_operations(),
             trace_limit: limits.trace_nodes(),
-            trace_arena: Mutex::new(TraceArena::new(limits.trace_nodes())),
+            trace_arena: TraceArena::new(limits.trace_nodes()),
         }
     }
 
@@ -406,7 +408,7 @@ impl ProjectSemanticModel {
         self.trace_limit
     }
 
-    pub fn trace_arena(&self) -> &Mutex<TraceArena> {
+    pub fn trace_arena(&self) -> &TraceArena {
         &self.trace_arena
     }
 
@@ -427,39 +429,44 @@ impl ProjectSemanticModel {
     }
 
     pub fn classify_with_evidence_limit(
-        &self,
+        &mut self,
         records: &[CompiledRuleRecord],
         selected: &[RuleIndex],
         evidence_limit: usize,
     ) -> (BTreeMap<ModuleId, ClassificationResult>, ProjectionOutcome) {
-        let (matcher_catalog, outcome) =
-            self.project(CompiledRuleSelection::new(records, selected));
+        let trace_limit = self.trace_limit;
+        let mut arena = std::mem::replace(&mut self.trace_arena, TraceArena::new(trace_limit));
+        let (results, outcome) = {
+            let (matcher_catalog, outcome) =
+                self.project_with_arena(CompiledRuleSelection::new(records, selected), &mut arena);
+            let results = self
+                .modules()
+                .map(|module| {
+                    let mut result = ClassificationResult::default();
+                    for rule_index in selected {
+                        let index = rule_index.get();
+                        let Some(record) = records.get(index) else {
+                            continue;
+                        };
+                        let evidence =
+                            matcher_catalog.evidence_for(module, *rule_index, evidence_limit);
+                        if evidence.is_empty() {
+                            continue;
+                        }
 
-        let results = self
-            .modules()
-            .map(|module| {
-                let mut result = ClassificationResult::default();
-                for rule_index in selected {
-                    let index = rule_index.get();
-                    let Some(record) = records.get(index) else {
-                        continue;
-                    };
-                    let evidence =
-                        matcher_catalog.evidence_for(module, *rule_index, evidence_limit);
-                    if evidence.is_empty() {
-                        continue;
+                        result.capabilities.push(MatchedCapability {
+                            rule_index: *rule_index,
+                            label: record.description.clone(),
+                            severity: record.severity,
+                            evidence,
+                        });
                     }
-
-                    result.capabilities.push(MatchedCapability {
-                        rule_index: *rule_index,
-                        label: record.description.clone(),
-                        severity: record.severity,
-                        evidence,
-                    });
-                }
-                (module.id(), result)
-            })
-            .collect();
+                    (module.id(), result)
+                })
+                .collect();
+            (results, outcome)
+        };
+        self.trace_arena = arena;
         (results, outcome)
     }
 }

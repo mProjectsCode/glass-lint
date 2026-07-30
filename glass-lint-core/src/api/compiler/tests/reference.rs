@@ -10,8 +10,8 @@ use crate::api::{
         physical::plan_normalized,
         reference::{
             ReferenceCertainty, ReferenceCompleteness, ReferenceRow, ReferenceSupport,
-            ReferenceSupportKind, ReferenceValue, ReferenceWitness, evaluate_logical,
-            evaluate_physical,
+            ReferenceSupportKind, ReferenceValue, ReferenceWitness, evaluate_supported_logical,
+            evaluate_supported_physical,
         },
     },
     rule::{
@@ -71,14 +71,14 @@ fn row_unknown(
 }
 
 fn logical_witnesses(query: &NormalizedQuery, rows: &[ReferenceRow]) -> Vec<ReferenceWitness> {
-    evaluate_logical(query, rows)
+    evaluate_supported_logical(query, rows)
 }
 
 fn physical_witnesses(
     plan: &crate::api::compiler::physical::PhysicalPlan,
     rows: &[ReferenceRow],
 ) -> Vec<ReferenceWitness> {
-    evaluate_physical(plan, rows)
+    evaluate_supported_physical(plan, rows)
 }
 
 fn witnesses_equal(

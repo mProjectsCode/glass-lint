@@ -165,10 +165,6 @@ pub(crate) struct NormalizedEvent {
 }
 
 impl NormalizedEvent {
-    pub(crate) fn slot(&self) -> u32 {
-        self.slot
-    }
-
     pub(crate) fn event(&self) -> &EventSpec {
         &self.event
     }

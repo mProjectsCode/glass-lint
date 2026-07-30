@@ -10,7 +10,6 @@ use crate::report::types::{self, Cell, PrettyFile, PrettyReport, PrettyReports};
 
 type RuleGroupEntry<'a> = (&'a PrettyFile<'a>, &'a crate::project::types::Finding);
 
-/// Escape control characters before placing text in terminal-oriented output.
 pub fn visible_text(value: &str) -> String {
     let mut result = String::with_capacity(value.len());
     for ch in value.chars() {
@@ -29,9 +28,6 @@ pub fn visible_text(value: &str) -> String {
 }
 
 impl PrettyReport<'_> {
-    /// Select a visible window of cells for the excerpt display, returning
-    /// the window range and whether leading/trailing ellipsis markers are
-    /// needed.
     fn select_window(
         cells: &[Cell],
         total_width: usize,
@@ -104,8 +100,9 @@ impl PrettyReport<'_> {
         if let Some(cache) = self.line_cache
             && !cache.borrow().contains_key(&line_idx)
         {
-            let cells = Self::cells_from_line(line);
-            cache.borrow_mut().insert(line_idx, cells);
+            cache
+                .borrow_mut()
+                .insert(line_idx, Self::cells_from_line(line));
         }
         if let Some(cache) = self.line_cache {
             let cached = cache.borrow();
@@ -129,10 +126,6 @@ impl PrettyReport<'_> {
         let total_width = cells.last().map_or(0, |cell| cell.start + cell.width);
         let logical_start = range.start().column().saturating_sub(1) as usize;
         let logical_end = range.end().column().saturating_sub(1) as usize;
-        // Source columns count characters, while the excerpt uses terminal
-        // display columns. Tabs and wide Unicode characters therefore need
-        // to be translated through the already-built cells before selecting
-        // a window or placing the caret.
         let start = cells
             .get(logical_start)
             .map_or(total_width, |cell| cell.start);
@@ -143,7 +136,6 @@ impl PrettyReport<'_> {
             .max(start.saturating_add(1));
         let (window_start, window_end, leading, trailing) =
             Self::select_window(cells, total_width, start, width);
-
         let mut text = String::new();
         if leading {
             text.push_str("...");
@@ -155,7 +147,6 @@ impl PrettyReport<'_> {
             text.push_str("...");
         }
         writeln!(out, "{gutter}{text}")?;
-
         let origin = cells.get(window_start).map_or(0, |cell| cell.start);
         let caret_start = if leading { 3 } else { 0 } + start.saturating_sub(origin);
         let text_width = types::display_width_str(&text);
@@ -163,7 +154,6 @@ impl PrettyReport<'_> {
             .saturating_sub(start)
             .max(1)
             .min(text_width.saturating_sub(caret_start).max(1));
-
         writeln!(
             out,
             "{gutter}{}{}",
@@ -191,8 +181,10 @@ impl PrettyReports<'_> {
         let mut groups = BTreeMap::new();
         for file in self.files {
             for finding in file.report.findings() {
-                let entries = groups.entry(finding.rule_id()).or_insert_with(Vec::new);
-                entries.push((file, finding));
+                groups
+                    .entry(finding.rule_id())
+                    .or_insert_with(Vec::new)
+                    .push((file, finding));
             }
         }
         groups
@@ -200,10 +192,9 @@ impl PrettyReports<'_> {
 
     fn write_rule_groups(&self, f: &mut fmt::Formatter<'_>) -> Result<bool, fmt::Error> {
         let mut groups = self.collect_rule_groups();
-
         let mut wrote_group = false;
         for entries in groups.values_mut() {
-            entries.sort_by(|left, right| Self::cmp_group_entries(left, right));
+            entries.sort_by(Self::cmp_group_entries);
             if wrote_group {
                 writeln!(f)?;
             }
@@ -211,7 +202,6 @@ impl PrettyReports<'_> {
             self.write_rule_group_header(entries, f)?;
             self.write_rule_group_entries(entries, f)?;
         }
-
         Ok(wrote_group)
     }
 
@@ -264,14 +254,14 @@ impl PrettyReports<'_> {
                     crate::Severity::Warning => Style::new().yellow(),
                     crate::Severity::Error => Style::new().red(),
                 },
-                finding.severity().to_string(),
+                finding.severity().to_string()
             ),
             PrettyReport::style(
                 self.options.color,
                 Style::new().cyan(),
-                finding.rule_id().to_string(),
+                finding.rule_id().to_string()
             ),
-            PrettyReport::style(self.options.color, Style::new().dim(), certainty_label,),
+            PrettyReport::style(self.options.color, Style::new().dim(), certainty_label),
             visible_text(finding.message())
         )
     }
@@ -312,7 +302,7 @@ impl PrettyReports<'_> {
             visible_text(location.path().as_str()),
             range.start().line(),
             range.start().column(),
-            visible_text(step.message()),
+            visible_text(step.message())
         )?;
         if self.options.show_evidence_source
             && let Some(step_file) = self.file_index.get(location.path().as_str())
@@ -342,7 +332,7 @@ impl PrettyReports<'_> {
             PrettyReport::style(
                 self.options.color,
                 Style::new().dim(),
-                format!("trace {}:", trace_index + 1),
+                format!("trace {}:", trace_index + 1)
             )
         )?;
         for step in trace.steps() {
@@ -364,7 +354,7 @@ impl PrettyReports<'_> {
                 visible_text(file.filename),
                 range.start().line(),
                 range.start().column(),
-                visible_text(Self::primary_evidence_message(finding, &range)),
+                visible_text(Self::primary_evidence_message(finding, &range))
             );
             writeln!(
                 f,
@@ -378,8 +368,8 @@ impl PrettyReports<'_> {
                     PrettyReport::style(
                         self.options.color,
                         Style::new().dim(),
-                        "Proven on at least one modeled control-flow path; runtime reachability is not established.",
-                    ),
+                        "Proven on at least one modeled control-flow path; runtime reachability is not established."
+                    )
                 )?;
             }
             let has_detailed_traces = traces.traces().len() > 1
@@ -410,7 +400,7 @@ impl PrettyReports<'_> {
                     PrettyReport::style(
                         self.options.color,
                         Style::new().dim(),
-                        "... additional traces omitted",
+                        "... additional traces omitted"
                     )
                 )?;
             }
@@ -482,7 +472,6 @@ impl PrettyReports<'_> {
                 )?;
             }
         }
-
         Ok(())
     }
 }

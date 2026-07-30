@@ -8,15 +8,12 @@ use console::measure_text_width;
 use crate::project::FileReport;
 
 #[derive(Clone, Copy, Debug)]
-/// Display controls for pretty report rendering.
 pub struct PrettyOptions {
-    /// Maximum display width including the excerpt gutter.
     pub max_width: usize,
-    /// Whether ANSI colors are enabled.
     pub color: bool,
-    /// Whether evidence rows include source excerpts and carets.
     pub show_evidence_source: bool,
 }
+
 impl Default for PrettyOptions {
     fn default() -> Self {
         Self {
@@ -27,7 +24,6 @@ impl Default for PrettyOptions {
     }
 }
 
-/// One report/source pair rendered as a file section.
 pub struct PrettyReport<'a> {
     pub(crate) report: &'a FileReport,
     pub(crate) filename: &'a str,
@@ -38,7 +34,6 @@ pub struct PrettyReport<'a> {
 }
 
 #[derive(Clone)]
-/// Borrowed report/source input used by grouped rendering.
 pub struct PrettyFile<'a> {
     pub(crate) report: &'a FileReport,
     pub(crate) filename: &'a str,
@@ -48,7 +43,6 @@ pub struct PrettyFile<'a> {
 }
 
 impl<'a> PrettyFile<'a> {
-    /// Pair a report with its authored filename and source text.
     pub fn new(report: &'a FileReport, filename: &'a str, source: &'a str) -> Self {
         let mut line_starts = vec![0];
         line_starts.extend(source.match_indices('\n').map(|(offset, _)| offset + 1));
@@ -62,7 +56,6 @@ impl<'a> PrettyFile<'a> {
     }
 }
 
-/// Multiple file reports rendered in deterministic order.
 pub struct PrettyReports<'a> {
     pub(crate) files: &'a [PrettyFile<'a>],
     pub(crate) options: PrettyOptions,
@@ -70,7 +63,6 @@ pub struct PrettyReports<'a> {
 }
 
 impl<'a> PrettyReports<'a> {
-    /// Construct a grouped renderer with display options.
     pub fn new(files: &'a [PrettyFile<'a>], options: PrettyOptions) -> Self {
         let file_index = files.iter().map(|f| (f.filename, f)).collect();
         Self {
@@ -82,7 +74,6 @@ impl<'a> PrettyReports<'a> {
 }
 
 impl<'a> PrettyReport<'a> {
-    /// Construct a renderer for one report and source file.
     pub fn new(
         report: &'a FileReport,
         filename: &'a str,
@@ -146,8 +137,7 @@ pub fn display_width(ch: char, column: usize) -> usize {
         4 - (column % 4)
     } else {
         let mut buf = [0u8; 4];
-        let s = ch.encode_utf8(&mut buf);
-        measure_text_width(s)
+        measure_text_width(ch.encode_utf8(&mut buf))
     }
 }
 

@@ -25,8 +25,8 @@ impl ScopeCollector<'_> {
     /// warrants, so callers should leave the binding unresolved instead.
     pub(super) fn collect_value_aliases(&mut self, pat: &Pat, target: &NamePath, scope: ScopeId) {
         let result = {
-            let append = |path: &NamePath, segment: &str| self.append_name_path(path, segment);
-            project_destructuring(pat, target, false, &append)
+            let mut append = |path: &NamePath, segment: &str| self.append_name_path(path, segment);
+            project_destructuring(pat, target, false, &mut append)
         };
         match result {
             Ok(bindings) => {
@@ -50,8 +50,8 @@ impl ScopeCollector<'_> {
         scope: ScopeId,
     ) {
         let result = {
-            let append = |path: &NamePath, segment: &str| self.append_name_path(path, segment);
-            project_destructuring(pat, target, true, &append)
+            let mut append = |path: &NamePath, segment: &str| self.append_name_path(path, segment);
+            project_destructuring(pat, target, true, &mut append)
         };
         match result {
             Ok(bindings) => {

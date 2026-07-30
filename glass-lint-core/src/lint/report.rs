@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use glass_lint_datastructures::{Position, SourceRange};
 
@@ -189,9 +189,9 @@ impl<'a> ReportAssembly<'a> {
         if evidence_items.is_empty() {
             return Vec::new();
         }
-        let mut by_range: BTreeMap<SourceRange, Vec<usize>> = BTreeMap::new();
+        let mut by_range: BTreeMap<SourceRange, Vec<(usize, usize)>> = BTreeMap::new();
         for (ev_idx, evidence) in evidence_items.iter().enumerate() {
-            for occurrence in &evidence.occurrences {
+            for (occurrence_idx, occurrence) in evidence.occurrences.iter().enumerate() {
                 let span = occurrence.span;
                 if span.is_empty() {
                     continue;
@@ -199,15 +199,18 @@ impl<'a> ReportAssembly<'a> {
                 let Ok(range) = lines.try_range(span) else {
                     continue;
                 };
-                by_range.entry(range).or_default().push(ev_idx);
+                by_range
+                    .entry(range)
+                    .or_default()
+                    .push((ev_idx, occurrence_idx));
             }
         }
-        let entries: Vec<(SourceRange, Vec<usize>)> = by_range.into_iter().collect();
+        let entries: Vec<(SourceRange, Vec<(usize, usize)>)> = by_range.into_iter().collect();
         let mut ranges: Vec<SourceRange> = entries.iter().map(|(r, _)| r.clone()).collect();
         crate::lint::ranges::remove_contained_ranges(&mut ranges);
         let label = capability.label();
         let severity = capability.severity();
-        let mut groups: Vec<Vec<(usize, &SourceRange)>> = vec![Vec::new(); ranges.len()];
+        let mut groups: Vec<Vec<(usize, usize)>> = vec![Vec::new(); ranges.len()];
         let mut entry_cursor = 0usize;
         for (retained_idx, retained) in ranges.iter().enumerate() {
             while entry_cursor < entries.len() && entries[entry_cursor].0.end() < retained.start() {
@@ -216,56 +219,40 @@ impl<'a> ReportAssembly<'a> {
             let mut scan = entry_cursor;
             while scan < entries.len() && entries[scan].0.start() <= retained.end() {
                 if retained.contains(&entries[scan].0) {
-                    for ev_idx in &entries[scan].1 {
-                        groups[retained_idx].push((*ev_idx, &entries[scan].0));
+                    for &(ev_idx, occurrence_idx) in &entries[scan].1 {
+                        groups[retained_idx].push((ev_idx, occurrence_idx));
                     }
                 }
                 scan += 1;
             }
         }
-        let arena = project.trace_arena().lock().unwrap();
+        let arena = project.trace_arena();
         ranges
             .into_iter()
             .enumerate()
             .map(|(retained_idx, range)| {
-                let mut traces: Vec<EvidenceTrace> = Vec::new();
-                for (ev_idx, item_range) in &groups[retained_idx] {
+                let mut traces = BTreeSet::new();
+                for (ev_idx, occurrence_idx) in &groups[retained_idx] {
                     let ev = &evidence_items[*ev_idx];
-                    let occurrences = ev
-                        .occurrences
-                        .iter()
-                        .filter(|o| lines.try_range(o.span).ok().as_ref() == Some(item_range))
-                        .collect::<Vec<_>>();
-                    if occurrences.is_empty() {
-                        traces.push(EvidenceTrace::new(Self::fallback_trace(
-                            ev, path, item_range,
-                        )));
+                    let Some(occurrence) = ev.occurrences.get(*occurrence_idx) else {
                         continue;
-                    }
-                    for occurrence in occurrences {
-                        let steps = occurrence.trace.map_or_else(
-                            || Some(Self::fallback_trace(ev, path, item_range)),
-                            |trace_id| Self::resolve_trace(&arena, trace_id, project, path),
-                        );
-                        if let Some(s) = steps
-                            && !s.is_empty()
-                        {
-                            traces.push(EvidenceTrace::new(s));
-                        }
+                    };
+                    let steps = occurrence.trace.map_or_else(
+                        || Some(Self::fallback_trace(ev, path, &range)),
+                        |trace_id| Self::resolve_trace(arena, trace_id, project, path),
+                    );
+                    if let Some(s) = steps
+                        && !s.is_empty()
+                    {
+                        traces.insert(EvidenceTrace::new(s));
                     }
                 }
                 if traces.is_empty() {
-                    traces.push(EvidenceTrace::new(vec![EvidenceStep::new(
+                    traces.insert(EvidenceTrace::new(vec![EvidenceStep::new(
                         EvidenceRole::Occurrence,
                         "evidence occurrence".into(),
                         SourceLocation::new(path.clone(), range.clone()),
                     )]));
-                }
-                let mut distinct_traces = Vec::with_capacity(traces.len());
-                for trace in traces {
-                    if !distinct_traces.contains(&trace) {
-                        distinct_traces.push(trace);
-                    }
                 }
                 let truncated = groups[retained_idx]
                     .iter()
@@ -284,7 +271,7 @@ impl<'a> ReportAssembly<'a> {
                     label.to_string(),
                     severity,
                     SourceLocation::new(path.clone(), range),
-                    EvidenceTraces::with_truncation(distinct_traces, truncated),
+                    EvidenceTraces::with_truncation(traces.into_iter().collect(), truncated),
                     certainty,
                 )
             })
@@ -436,10 +423,7 @@ impl<'a> ReportAssembly<'a> {
         let mut operations = project.operation_counts(evidence);
         operations.set_effect_projections(outcome.effect_projections);
 
-        let trace_nodes = project
-            .trace_arena()
-            .lock()
-            .map_or(0, |arena| arena.node_count());
+        let trace_nodes = project.trace_arena().node_count();
 
         operations.set_path_metrics(
             outcome.max_live_alternatives,
