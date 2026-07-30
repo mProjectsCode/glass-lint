@@ -238,6 +238,9 @@ impl EventQuery {
         export: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
         let export: SmolStr = export.into().into();
+        if export.trim().is_empty() {
+            return Err(QueryBuildError::EmptyIdentityName);
+        }
         let module = ModuleSpecifierPattern::package(module)
             .map_err(|_| QueryBuildError::InvalidScopePackage)?;
         Ok(Self {
@@ -579,7 +582,7 @@ impl EventQuery {
         }
         self.with_arg(
             index,
-            ArgumentMatcher::object_property_value(property, value),
+            ArgumentMatcher::object_property_value(property, value)?,
         )
     }
 

@@ -702,7 +702,8 @@ mod tests {
                 ArgumentMatcher::object_property_value(
                     "method",
                     ValueMatcher::static_string().equals("POST"),
-                ),
+                )
+                .unwrap(),
             )]),
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,
@@ -843,7 +844,8 @@ mod tests {
                 ArgumentMatcher::object_property_value(
                     "method",
                     ValueMatcher::static_string().equals("POST"),
-                ),
+                )
+                .unwrap(),
             ),
         ]);
         let root = PhysicalRoot::ConstrainedScan {

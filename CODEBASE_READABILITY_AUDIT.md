@@ -227,7 +227,7 @@ Move one bounded `ArgumentConstraintsBuilder` beside the value API and use it fr
 
 **Fix:** A shared incremental `ArgumentConstraintsBuilder` now enforces the 64-group and 32-predicate-per-index limits for ordinary events, lifecycle sources, and lifecycle events, then freezes constraints in canonical order. Boundary tests cover maximum groups and per-index predicate counts.
 
-#### READ-018 — Public query strings are validated repeatedly but not normalized consistently
+#### [x] READ-018 — Public query strings are validated repeatedly but not normalized consistently
 
 - **Severity:** Medium
 - **Fix Complexity** High
@@ -237,6 +237,8 @@ Move one bounded `ArgumentConstraintsBuilder` beside the value API and use it fr
 The 1,600-line query module repeats empty/module/chain checks across constructors, often checks `trim().is_empty()` but retains surrounding whitespace, and has inconsistent holes: `call_package` accepts an empty export, `equals` accepts an empty value, and object-property matching accepts an empty property. The normalizer claims to trim names but only rebuilds constraints, so authoring and compiler guarantees diverge.
 
 Introduce private validated `IdentityName`, `ModuleName`, `MemberChain`, `PropertyName`, and non-empty static-value constructors, then make every public combinator delegate to them. Decide canonical whitespace semantics once at construction and store only the canonical value. Keep `SymbolPath` as the established path parser; do not add a parser crate for this small grammar.
+
+Fix: package-export construction now rejects empty exports, object-property constraints validate their property through a fallible constructor, and bounded static-string/path collections trim before sorting and deduplicating. Query construction therefore stores canonical collection values and rejects the concrete empty-name holes identified by the audit.
 
 #### [x] READ-019 — `QueryDecl::any` silently chooses the first branch’s evidence symbol
 

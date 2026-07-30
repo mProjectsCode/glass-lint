@@ -55,6 +55,9 @@ impl StaticStringPredicate {
 }
 
 fn canonicalize_strings(values: &mut Vec<String>) {
+    for value in values.iter_mut() {
+        *value = value.trim().to_owned();
+    }
     values.sort();
     values.dedup();
 }
@@ -224,13 +227,20 @@ impl ArgumentMatcher {
         })
     }
 
-    pub fn object_property_value(property: impl Into<String>, value: ValueMatcher) -> Self {
-        Self {
+    pub fn object_property_value(
+        property: impl Into<String>,
+        value: ValueMatcher,
+    ) -> Result<Self, QueryBuildError> {
+        let property = property.into();
+        if property.trim().is_empty() {
+            return Err(QueryBuildError::EmptyIdentityName);
+        }
+        Ok(Self {
             kind: ArgumentMatcherKind::ObjectPropertyValue {
-                property: property.into(),
+                property: property.trim().to_owned(),
                 value,
             },
-        }
+        })
     }
 }
 
@@ -429,7 +439,7 @@ mod tests {
     #[test]
     fn argument_matcher_object_property_value_holds_property_and_matcher() {
         let value = ValueMatcher::static_string().equals("file");
-        let m = ArgumentMatcher::object_property_value("type", value);
+        let m = ArgumentMatcher::object_property_value("type", value).unwrap();
         assert!(
             matches!(m.kind(), ArgumentMatcherKind::ObjectPropertyValue { property, .. } if property == "type")
         );
