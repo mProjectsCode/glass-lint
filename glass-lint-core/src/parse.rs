@@ -131,9 +131,7 @@ pub fn parse_with_language_and_depth(
     if syntax_depth(&file, syntax, max_syntax_depth) == Err(SyntaxDepthError::Exceeded) {
         return Err(ParseDiagnostic {
             code: crate::project::types::DiagnosticKind::SyntaxDepthExceeded.into(),
-            message: format!(
-                "source exceeds the {max_syntax_depth} nesting-depth analysis limit"
-            ),
+            message: format!("source exceeds the {max_syntax_depth} nesting-depth analysis limit"),
             filename: filename.into(),
             range: None,
         });

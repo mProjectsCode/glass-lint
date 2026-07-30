@@ -6,6 +6,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
+    hash::{Hash, Hasher},
     ops::{Deref, DerefMut},
 };
 
@@ -167,13 +168,20 @@ impl FlowStateTable {
         self.states.len()
     }
 
-    pub(super) fn snapshot(
-        &self,
-    ) -> (
-        BTreeMap<ValueId, ObjectId>,
-        BTreeMap<FlowStateKey, FlowState>,
-    ) {
-        (self.aliases.clone(), self.states.clone())
+    /// Compute a fingerprint (hash) of the current aliases and states without
+    /// cloning the full maps.  Used by `join_paths` for O(1) duplicate-path
+    /// detection without comparing cloned maps.
+    pub(super) fn fingerprint(&self) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        for (value, object) in &self.aliases {
+            value.hash(&mut hasher);
+            object.hash(&mut hasher);
+        }
+        for (key, state) in &self.states {
+            key.hash(&mut hasher);
+            state.hash(&mut hasher);
+        }
+        hasher.finish()
     }
 
     /// Return a deterministic semantic snapshot with object ids normalized to

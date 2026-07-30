@@ -203,7 +203,17 @@ pub struct FlowState {
     sinks: RequirementSet,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+impl Hash for FlowState {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.flow.hash(state);
+        self.source_event.hash(state);
+        self.object_id.hash(state);
+        self.requirements.hash(state);
+        self.sinks.hash(state);
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct FlowStateKey {
     pub object: ObjectId,
     pub flow: FlowId,

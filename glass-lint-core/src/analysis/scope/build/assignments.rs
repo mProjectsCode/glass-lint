@@ -163,8 +163,7 @@ impl ScopeCollector<'_> {
         // Collect snapshots for each reachable path by transitioning to
         // that path's log cursor and cloning the live map.
         let mut path_snaps: Vec<(AssignmentEnvironment, &BTreeSet<ScopedName>)> = Vec::new();
-        let reachable: Vec<&CollectorCheckpoint> =
-            paths.iter().filter(|p| p.reachable).collect();
+        let reachable: Vec<&CollectorCheckpoint> = paths.iter().filter(|p| p.reachable).collect();
         for path in &reachable {
             self.assignment_environment.restore(path.cursor);
             path_snaps.push((self.assignment_environment.snapshot(), &path.writes));
@@ -220,9 +219,9 @@ impl ScopeCollector<'_> {
             // value explicitly before recording the synthetic join. Without
             // this, `host` followed by a conditional `local` write loses the
             // host witness entirely.
-            let any_missing = all_envs.iter().any(|e| {
-                e.get_by_id(key.scope(), key.name()).is_none()
-            });
+            let any_missing = all_envs
+                .iter()
+                .any(|e| e.get_by_id(key.scope(), key.name()).is_none());
             if any_missing {
                 let incoming_value = incoming_snapshot
                     .get_by_id(key.scope(), key.name())
@@ -465,11 +464,8 @@ impl ScopeCollector<'_> {
     pub(super) fn enter_function(&mut self) {
         let checkpoint = self.checkpoint();
         let control_depth = self.control_flow.len();
-        self.function_checkpoints.push((
-            checkpoint,
-            self.conditional_depth,
-            control_depth,
-        ));
+        self.function_checkpoints
+            .push((checkpoint, self.conditional_depth, control_depth));
         self.reachable = true;
         self.assignment_writes.clear();
     }

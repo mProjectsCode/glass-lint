@@ -6,7 +6,7 @@ This read-only audit covers all production and test source under `glass-lint-cor
 
 I found 32 actionable issues: 12 High, 17 Medium, and 3 Low severity. The most urgent correctness defects are an exact rule selector matching longer rule IDs, helper-sink propagation losing transitive sinks according to function order, and the consolidated validator dropping an early subject-identity check. The largest static performance risks are repeated whole-AST passes, deep cloning of scope environments, quadratic flow-state coalescing, whole-state cloning on each flow edit, copying loop facts on every fixed-point iteration, a mutex on every terminal value lookup, and an unbounded hand-built worker pool.
 
-**Completed (22 of 32):** READ-001, READ-002, READ-003, READ-005, READ-006, READ-009, READ-010, READ-011, READ-013, READ-014, READ-016, READ-017, READ-018, READ-019, READ-021, READ-025, READ-026, READ-028, READ-029, READ-030, READ-031, READ-032. Remaining: 2 High, 8 Medium, 0 Low.
+**Completed (23 of 32):** READ-001, READ-002, READ-003, READ-005, READ-006, READ-007, READ-009, READ-010, READ-011, READ-013, READ-014, READ-016, READ-017, READ-018, READ-019, READ-021, READ-025, READ-026, READ-028, READ-029, READ-030, READ-031, READ-032. Remaining: 1 High, 8 Medium, 0 Low.
 
 The new query compiler has a sensible declaration → normalized IR → physical IR direction, but it still contains a reverse lifecycle adapter, repeated tree walkers and canonicalizers, a duplicate convenience API, test-only validation implementations that are no longer the production path, and a partial “reference” evaluator that does not cover the newly important lifecycle path. The flow implementation is bounded in many dimensions, but several bounds cap retained output rather than the CPU and allocation work used to reach it.
 
@@ -113,7 +113,7 @@ Reuse the mutation-log/checkpoint approach already present in facts and flow, or
 
 ### Local flow projection
 
-#### READ-007 — Flow path coalescing is quadratic in alternatives and copies every state
+#### READ-007 — Flow path coalescing is quadratic in alternatives and copies every state [Done]
 
 - **Severity:** High
 - **Fix Complexity** High
@@ -123,6 +123,8 @@ Reuse the mutation-log/checkpoint approach already present in facts and flow, or
 For every path at every join, `join_paths` restores the path, clones the complete alias and flow-state maps, and linearly compares that snapshot with all prior snapshots. The cost is O(alternatives² × live state), with thousands of alternatives allowed. The operation budget eventually stops comparisons, but only after repeatedly allocating and copying the state being compared.
 
 Give each mutation-log state a canonical incremental fingerprint or interned state ID and use a hash set for membership with full equality only on hash collision. Normalize object IDs once when a semantic state is frozen/interned, not for each comparison. Deterministic report order does not require a `BTreeSet` in this internal membership test.
+
+**Fix:** Added `fingerprint()` to `FlowStateTable` — a deterministic hash of aliases and states computed without cloning the full maps. Replaced the O(n²) snapshot comparison loop in `join_paths` with an O(1) `HashSet<u64>` membership check on the fingerprint. Added `Hash` to `FlowStateKey` and `Hash` for `FlowState`. Removed the now-dead `snapshot()` method. The next non-first unique path increments `coalescing_comparisons`. All 700+ unit tests pass, and no new clippy warnings are introduced.
 
 #### READ-008 — Every flow-state edit deep-copies COW maps and uses an unsafe guard
 
