@@ -27,7 +27,7 @@ Restore collision-safe equality by storing canonical state IDs or hash buckets f
 
 **Fix:** Flow joins now retain canonical semantic snapshots and compare them for equality, so distinct path-local states cannot be coalesced by a 64-bit hash collision. The flow-state unit tests also verify that distinct snapshots remain distinct.
 
-#### READ-002 — The global flow-evidence limit is bypassed for existing keys
+#### [x] READ-002 — The global flow-evidence limit is bypassed for existing keys
 
 - **Severity:** High
 - **Fix Complexity** Low
@@ -37,6 +37,8 @@ Restore collision-safe equality by storing canonical state IDs or hash buckets f
 `FlowEvidence::try_insert` checks `total_emitted >= limit` only when the per-key count is zero. Once a key exists, up to 256 more traces for that key can be appended after the global limit, contradicting the method contract and allowing retained output and trace work to exceed the configured bound.
 
 Check the global cap before every successful increment, while keeping the separate per-key cap. Track an explicit `limit_rejected` flag so exhaustion means an attempted operation failed, not merely that capacity was exactly filled. Add boundary tests with repeated emissions for one existing key and for several existing keys.
+
+**Fix:** `FlowEvidence` now checks the global cap before every emission, including emissions for keys that already have retained traces, and records whether the cap rejected work. Boundary tests cover repeated emissions for one key and multiple existing keys.
 
 #### READ-003 — No-flow catalogs still run local flow setup and full-stream passes
 

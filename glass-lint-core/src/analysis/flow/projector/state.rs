@@ -576,6 +576,21 @@ mod tests {
     }
 
     #[test]
+    fn evidence_limit_rejects_new_keys_after_capacity_is_full() {
+        let mut items = vec![Vec::new()];
+        let mut evidence = FlowEvidence::new(&mut items);
+        let first = ReportEvidenceKey::new(0, 0, ObjectId(1), FactId(1));
+        let second = ReportEvidenceKey::new(0, 0, ObjectId(2), FactId(2));
+
+        assert!(evidence.try_insert(first, 2, 256));
+        assert!(evidence.try_insert(second, 2, 256));
+        assert!(!evidence.try_insert(first, 2, 256));
+        assert!(!evidence.try_insert(second, 2, 256));
+        assert_eq!(evidence.emitted_count(), 2);
+        assert!(evidence.limit_rejected());
+    }
+
+    #[test]
     fn fine_grained_state_edits_restore_across_checkpoints() {
         let mut table = FlowStateTable::new(100, 100);
         let flow = FlowId::new(RuleIndex::new(0), 0);
