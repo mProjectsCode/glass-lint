@@ -298,7 +298,13 @@ impl LocalLowering<'_> {
         let stream = stream.freeze(names, values);
 
         let facts = SemanticFacts::from_lowering(stream, interface, environment);
-        SemanticArtifact::from_lowering(facts, export_origins, limits.effect_operations(), status)
+        SemanticArtifact::from_lowering(
+            facts,
+            export_origins,
+            limits.effect_operations(),
+            !budget_exhausted,
+            status,
+        )
     }
 }
 
