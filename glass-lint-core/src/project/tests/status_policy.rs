@@ -260,7 +260,7 @@ fn facts_effects_flow_and_link_limits_cover_below_at_above() {
     let effects =
         |linter: &crate::Linter| lint_one(linter, "main.js", "function f(value) { return value; }");
     assert_limit_triplet(
-        configured_linter,
+        configured_flow_linter,
         AnalysisLimits::set_effect_operations,
         3,
         "effect_size_budget_exhausted",

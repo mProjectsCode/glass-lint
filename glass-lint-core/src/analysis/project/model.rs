@@ -205,6 +205,7 @@ pub struct ProjectSemanticModel {
     pub(super) diagnostics: Vec<AnalysisDiagnostic>,
     pub(super) status: AnalysisStatus,
     pub(super) flow_limit: usize,
+    pub(super) effect_limit: usize,
     pub(super) trace_limit: usize,
     /// Trace storage is mutable only while projection runs, then remains
     /// immutably owned by the linked project for report assembly.
@@ -243,6 +244,7 @@ impl ProjectSemanticModel {
             diagnostics: Vec::new(),
             status,
             flow_limit: limits.flow_operations(),
+            effect_limit: limits.effect_operations(),
             trace_limit: limits.trace_nodes(),
             trace_arena: TraceArena::new(limits.trace_nodes()),
         }
@@ -273,6 +275,7 @@ impl ProjectSemanticModel {
             diagnostics: outcome.diagnostics,
             status: outcome.status,
             flow_limit: limits.flow_operations(),
+            effect_limit: limits.effect_operations(),
             trace_limit: limits.trace_nodes(),
             trace_arena: TraceArena::new(limits.trace_nodes()),
         }
@@ -401,6 +404,10 @@ impl ProjectSemanticModel {
 
     pub(in crate::analysis) fn flow_limit(&self) -> usize {
         self.flow_limit
+    }
+
+    pub(in crate::analysis) fn effect_limit(&self) -> usize {
+        self.effect_limit
     }
 
     #[allow(dead_code)]

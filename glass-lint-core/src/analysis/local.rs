@@ -6,7 +6,7 @@
 
 use std::{
     collections::{BTreeMap, VecDeque},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use facts::SemanticFacts;
@@ -315,8 +315,9 @@ pub struct SemanticArtifact {
     facts: SemanticFacts,
     /// Proven origins for locally named exports.
     export_origins: BTreeMap<SmolStr, SymbolCallProvenance>,
-    /// Matcher-independent function effects for project flow.
-    effects: FunctionEffects,
+    /// Lazily derived function effects for project flow.
+    effects: OnceLock<FunctionEffects>,
+    effect_limit: usize,
     status: AnalysisStatus,
 }
 
@@ -324,13 +325,14 @@ impl SemanticArtifact {
     pub(in crate::analysis) fn from_lowering(
         facts: SemanticFacts,
         export_origins: BTreeMap<SmolStr, SymbolCallProvenance>,
-        effects: FunctionEffects,
+        effect_limit: usize,
         status: AnalysisStatus,
     ) -> Self {
         Self {
             facts,
             export_origins,
-            effects,
+            effects: OnceLock::new(),
+            effect_limit,
             status,
         }
     }
@@ -345,7 +347,13 @@ impl SemanticArtifact {
     }
 
     pub(in crate::analysis) fn effects(&self) -> &FunctionEffects {
-        &self.effects
+        self.effects
+            .get_or_init(|| FunctionEffects::collect(self.facts.stream(), self.effect_limit))
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) fn effects_initialized(&self) -> bool {
+        self.effects.get().is_some()
     }
 
     pub(in crate::analysis) fn status(&self) -> &AnalysisStatus {
@@ -453,6 +461,19 @@ mod tests {
     }
 
     #[test]
+    fn function_effects_are_derived_only_when_requested() {
+        let artifact = SemanticArtifact::from_lowering(
+            crate::analysis::facts::SemanticFacts::default(),
+            BTreeMap::new(),
+            usize::MAX,
+            crate::analysis::lowering::status::AnalysisStatus::default(),
+        );
+        assert!(!artifact.effects_initialized());
+        let _ = artifact.effects();
+        assert!(artifact.effects_initialized());
+    }
+
+    #[test]
     fn source_context_reuses_one_line_index() {
         let source = crate::project::SourceFile::new("main.js", "fetch('/');").unwrap();
         let context = LocatedSourceContext::new(&source);
@@ -470,7 +491,7 @@ mod tests {
             semantic: Arc::new(SemanticArtifact::from_lowering(
                 crate::analysis::facts::SemanticFacts::default(),
                 BTreeMap::new(),
-                crate::analysis::flow::effect::FunctionEffects::default(),
+                usize::MAX,
                 crate::analysis::lowering::status::AnalysisStatus::default(),
             )),
             source_index: Arc::new(SourceLineIndex::new("")),
@@ -493,7 +514,7 @@ mod tests {
                 semantic: Arc::new(SemanticArtifact::from_lowering(
                     crate::analysis::facts::SemanticFacts::default(),
                     BTreeMap::new(),
-                    crate::analysis::flow::effect::FunctionEffects::default(),
+                    usize::MAX,
                     crate::analysis::lowering::status::AnalysisStatus::default(),
                 )),
                 source_index: Arc::new(SourceLineIndex::new("")),
@@ -525,7 +546,7 @@ mod tests {
             semantic: Arc::new(SemanticArtifact::from_lowering(
                 crate::analysis::facts::SemanticFacts::default(),
                 BTreeMap::new(),
-                crate::analysis::flow::effect::FunctionEffects::default(),
+                usize::MAX,
                 crate::analysis::lowering::status::AnalysisStatus::default(),
             )),
             source_index: Arc::new(SourceLineIndex::new("")),
@@ -534,7 +555,7 @@ mod tests {
             semantic: Arc::new(SemanticArtifact::from_lowering(
                 crate::analysis::facts::SemanticFacts::default(),
                 BTreeMap::new(),
-                crate::analysis::flow::effect::FunctionEffects::default(),
+                usize::MAX,
                 crate::analysis::lowering::status::AnalysisStatus::default(),
             )),
             source_index: Arc::new(SourceLineIndex::new("")),
@@ -554,7 +575,7 @@ mod tests {
             semantic: Arc::new(SemanticArtifact::from_lowering(
                 crate::analysis::facts::SemanticFacts::default(),
                 BTreeMap::new(),
-                crate::analysis::flow::effect::FunctionEffects::default(),
+                usize::MAX,
                 crate::analysis::lowering::status::AnalysisStatus::default(),
             )),
             source_index: Arc::new(SourceLineIndex::new("")),

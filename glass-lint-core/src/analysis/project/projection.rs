@@ -51,6 +51,12 @@ pub struct ProjectionOutcome {
     pub effect_projections: usize,
     /// Operation count when exhaustion was reached, if applicable.
     pub flow_observed: Option<usize>,
+    /// Whether lazy function-effect extraction reached its budget.
+    pub effect_exhausted: bool,
+    /// Effect operations consumed when the effect budget was exhausted.
+    pub effect_observed: Option<usize>,
+    /// Modules whose effect extraction was incomplete.
+    effect_exhausted_modules: Vec<ModuleId>,
     /// Complete trace heads emitted by local and cross-module flow.
     pub trace_heads: usize,
     /// Maximum live local semantic alternatives.
@@ -64,6 +70,9 @@ pub struct ProjectionOutcome {
 #[derive(Default)]
 struct LocalProjectionOutcome {
     exhausted: bool,
+    effect_exhausted: bool,
+    effect_observed: Option<usize>,
+    effect_exhausted_modules: Vec<ModuleId>,
     max_live_alternatives: usize,
     coalescing_comparisons: usize,
     fixed_point_iterations: usize,
@@ -111,6 +120,9 @@ impl ProjectSemanticModel {
             flow_exhausted: exhausted,
             effect_projections: cross_outcome.projections,
             flow_observed: exhausted.then_some(flow_operations),
+            effect_exhausted: local.effect_exhausted,
+            effect_observed: local.effect_observed,
+            effect_exhausted_modules: local.effect_exhausted_modules,
             local_exhausted: local.exhausted,
             trace_heads: local.trace_heads.saturating_add(cross_outcome.trace_heads),
             max_live_alternatives: local.max_live_alternatives,
@@ -167,8 +179,21 @@ impl ProjectSemanticModel {
                     (None, 0)
                 };
                 outcome.operations = outcome.operations.saturating_add(overlay_ops);
+                let effects = plan.needs_flow().then(|| module.local().effects());
+                if let Some(effects) = effects
+                    && effects.budget_exhausted()
+                {
+                    outcome.effect_exhausted = true;
+                    outcome.effect_exhausted_modules.push(module.id());
+                    outcome.effect_observed = Some(
+                        outcome
+                            .effect_observed
+                            .unwrap_or_default()
+                            .saturating_add(effects.operation_count()),
+                    );
+                }
                 let (projected, local) = module.local().facts().project(
-                    module.local().effects(),
+                    effects,
                     plan,
                     identities.as_ref(),
                     result_identities.as_ref(),
@@ -204,6 +229,20 @@ impl ProjectSemanticModel {
 
     /// Record flow exhaustion status from a projection outcome.
     pub(crate) fn record_flow_exhaustion(&mut self, outcome: &ProjectionOutcome) {
+        if outcome.effect_exhausted {
+            for module in &outcome.effect_exhausted_modules {
+                if let Some(module) = self.modules.get(module) {
+                    self.status.record(
+                        StatusScope::File(module.path().clone()),
+                        IncompleteReason::BudgetExhausted {
+                            component: AnalysisComponent::Effects,
+                            limit: self.effect_limit(),
+                            observed: outcome.effect_observed,
+                        },
+                    );
+                }
+            }
+        }
         if outcome.local_exhausted || outcome.flow_exhausted {
             self.status.record(
                 StatusScope::Project,

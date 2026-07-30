@@ -15,7 +15,7 @@ use hashbrown::HashMap;
 use crate::{
     analysis::{
         flow::{
-            effect::{FunctionEffects, FunctionEffectsBuilder},
+            effect::FunctionEffects,
             projector::{self as object_flow, LocalFlowProjectionOutcome},
         },
         matching::{self, LinkedOccurrenceView, ModuleIdentityMap, OccurrenceIndexes},
@@ -384,6 +384,10 @@ impl<'a> ProjectionPlan<'a> {
         &self.flow_requirements
     }
 
+    pub(in crate::analysis) fn needs_flow(&self) -> bool {
+        !self.flow_matchers.is_empty()
+    }
+
     pub(in crate::analysis) fn from_selection(selection: &'a CompiledRuleSelection<'a>) -> Self {
         let constrained_roots = selection
             .selected_matchers()
@@ -480,10 +484,10 @@ impl SemanticFacts {
         }
     }
 
-    /// Assemble occurrence indexes and function effects in one pass over the
-    /// frozen fact tape. Both products are matcher-independent derived state;
-    /// keeping their construction together avoids replaying the same stream
-    /// during ordinary lowering.
+    /// Assemble occurrence indexes from the frozen fact tape. Function effects
+    /// are a separate lazy product because only flow-enabled projections need
+    /// them.
+    #[cfg(test)]
     pub(in crate::analysis) fn from_lowering_with_effects(
         stream: FactStream<Frozen>,
         interface: ModuleInterface,
@@ -491,14 +495,13 @@ impl SemanticFacts {
         effect_limit: usize,
     ) -> (Self, FunctionEffects) {
         let mut index = OccurrenceIndexes::with_environment(environment);
-        let mut effects = FunctionEffectsBuilder::new(&stream, effect_limit);
+        let effects = FunctionEffects::collect(&stream, effect_limit);
         if stream.is_valid() {
             #[cfg(test)]
             index.set_stream_names(&stream);
             let values = stream.values();
             for fact in stream.facts() {
                 index.record_fact(fact, stream.names(), values);
-                effects.consume(fact, &stream);
             }
             index.normalize_occurrences();
         }
@@ -508,7 +511,7 @@ impl SemanticFacts {
                 index,
                 interface,
             },
-            effects.finish(),
+            effects,
         )
     }
 
@@ -553,7 +556,7 @@ impl SemanticFacts {
     #[allow(clippy::too_many_arguments)]
     pub(in crate::analysis) fn project(
         &self,
-        effects: &FunctionEffects,
+        effects: Option<&FunctionEffects>,
         plan: &ProjectionPlan<'_>,
         identities: Option<&ModuleIdentityMap>,
         result_identities: Option<&BTreeMap<ValueId, ExportResolution>>,
@@ -581,6 +584,9 @@ impl SemanticFacts {
         if plan.flow_matchers.is_empty() {
             return (projected_evidence, LocalFlowProjectionOutcome::default());
         }
+        let Some(effects) = effects else {
+            return (projected_evidence, LocalFlowProjectionOutcome::default());
+        };
         let outcome = object_flow::collect_into(
             &self.stream,
             effects,

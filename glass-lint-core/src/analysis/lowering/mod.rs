@@ -18,7 +18,6 @@ use crate::{
     analysis::{
         LocatedSourceContext, SemanticArtifact, SemanticBudget,
         facts::{self, SemanticFacts},
-        flow::effect::FunctionEffects,
         lowering::status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
         module, resolution,
         scope::ScopeGraph,
@@ -199,19 +198,6 @@ fn check_name_exhaustion(resolver: &resolution::Resolver) -> Option<IncompleteRe
         })
 }
 
-fn check_effects_budget(
-    effects: &FunctionEffects,
-    limits: &AnalysisLimits,
-) -> Option<IncompleteReason> {
-    effects
-        .budget_exhausted()
-        .then_some(IncompleteReason::BudgetExhausted {
-            component: AnalysisComponent::Effects,
-            limit: limits.effect_operations(),
-            observed: Some(effects.operation_count()),
-        })
-}
-
 fn lower_program_with_name_limit(
     program: &Program,
     environment: &Environment,
@@ -311,25 +297,8 @@ impl LocalLowering<'_> {
         let (names, values) = resolver.into_parts();
         let stream = stream.freeze(names, values);
 
-        let (facts, effects) = if budget_exhausted {
-            (
-                SemanticFacts::from_lowering(stream, interface, environment),
-                FunctionEffects::default(),
-            )
-        } else {
-            let (facts, effects) = SemanticFacts::from_lowering_with_effects(
-                stream,
-                interface,
-                environment,
-                limits.effect_operations(),
-            );
-            if let Some(reason) = check_effects_budget(&effects, limits) {
-                status.record(StatusScope::Project, reason);
-            }
-            (facts, effects)
-        };
-
-        SemanticArtifact::from_lowering(facts, export_origins, effects, status)
+        let facts = SemanticFacts::from_lowering(stream, interface, environment);
+        SemanticArtifact::from_lowering(facts, export_origins, limits.effect_operations(), status)
     }
 }
 

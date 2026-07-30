@@ -523,7 +523,6 @@ impl FunctionEffects {
         self.operation_count
     }
 
-    #[cfg(test)]
     pub(in crate::analysis) fn collect(stream: &FactStream<Frozen>, limit: usize) -> Self {
         let mut builder = FunctionEffectsBuilder::new(stream, limit);
         for fact in stream.facts() {
