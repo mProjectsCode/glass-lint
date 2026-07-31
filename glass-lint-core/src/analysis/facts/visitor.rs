@@ -248,43 +248,37 @@ impl Visit for FactBuilder<'_, '_> {
             self.instance_origins
                 .insert(result, instance_class, self.resolver.budget);
         }
-        let resolved = self.resolver.resolve_expr(&new_expr.callee);
-        let callee_span = new_expr.callee.span();
+        let effective_callee = effective_callee_expr(&new_expr.callee);
+        let resolved = self.resolver.resolve_expr(effective_callee);
+        let callee_span = effective_callee.span();
 
         // Resolve callee name and provenance for member expression callees
         // like `new globalThis.URL(...)` or `new mod.Foo(...)`.
-        let (callee_name, provenance) =
-            match &*new_expr.callee {
-                Expr::Ident(ident) => {
-                    let p = resolved.call.clone();
+        let (callee_name, provenance) = match effective_callee {
+            Expr::Ident(ident) => {
+                let p = resolved.call.clone();
+                (Some(ident.sym.to_smolstr()), p)
+            }
+            Expr::Member(member) => {
+                let member_resolved = self.resolver.resolve_member(member);
+                if let Some(SymbolMemberProvenance::ModuleNamespace {
+                    ref module,
+                    member: ref member_name,
+                }) = member_resolved.module_member
+                {
                     (
-                        Some(resolved.rooted_chain.clone().map_or_else(
-                            || ident.sym.to_smolstr(),
-                            |chain| chain.to_string().into(),
-                        )),
-                        p,
+                        Some(member_name.clone()),
+                        SymbolCallProvenance::ModuleExport {
+                            module: module.clone(),
+                            export: member_name.clone(),
+                        },
                     )
+                } else {
+                    (member_property_name(&member.prop), resolved.call.clone())
                 }
-                Expr::Member(member) => {
-                    let member_resolved = self.resolver.resolve_member(member);
-                    if let Some(SymbolMemberProvenance::ModuleNamespace {
-                        ref module,
-                        member: ref member_name,
-                    }) = member_resolved.module_member
-                    {
-                        (
-                            Some(member_name.clone()),
-                            SymbolCallProvenance::ModuleExport {
-                                module: module.clone(),
-                                export: member_name.clone(),
-                            },
-                        )
-                    } else {
-                        (None, resolved.call.clone())
-                    }
-                }
-                _ => (None, resolved.call.clone()),
-            };
+            }
+            _ => (None, resolved.call.clone()),
+        };
         new_expr.visit_children_with(self);
         let Some(callee_span) = self.byte_range(callee_span) else {
             return;
@@ -373,19 +367,31 @@ impl Visit for FactBuilder<'_, '_> {
         if self.resolver.budget.exhausted() {
             return;
         }
-        for quasi in &template.quasis {
-            let literal = quasi.cooked.as_ref().map_or_else(
-                || quasi.raw.to_string(),
-                |value| value.to_string_lossy().to_string(),
-            );
-            let resolved = self
-                .resolver
-                .static_value(crate::analysis::value::Value::StaticString(literal));
+        let complete = self.resolver.resolve_expr(&Expr::Tpl(template.clone())).id;
+        if self.resolver.static_string_value(complete).is_none() {
+            for quasi in &template.quasis {
+                let literal = quasi.cooked.as_ref().map_or_else(
+                    || quasi.raw.to_string(),
+                    |value| value.to_string_lossy().to_string(),
+                );
+                let resolved = self
+                    .resolver
+                    .static_value(crate::analysis::value::Value::StaticString(literal));
+                self.emit(
+                    FactKind::Reference,
+                    quasi.span,
+                    FactPayload::Reference {
+                        value: resolved.id,
+                        provenance: SymbolCallProvenance::Local,
+                    },
+                );
+            }
+        } else {
             self.emit(
                 FactKind::Reference,
-                quasi.span,
+                template.span,
                 FactPayload::Reference {
-                    value: resolved.id,
+                    value: complete,
                     provenance: SymbolCallProvenance::Local,
                 },
             );
@@ -410,6 +416,19 @@ impl Visit for FactBuilder<'_, '_> {
     fn visit_bin_expr(&mut self, binary: &BinExpr) {
         if self.resolver.budget.exhausted() {
             return;
+        }
+        if binary.op != swc_ecma_ast::BinaryOp::InstanceOf {
+            let complete = self.resolver.resolve_expr(&Expr::Bin(binary.clone())).id;
+            if self.resolver.static_string_value(complete).is_some() {
+                self.emit(
+                    FactKind::Reference,
+                    binary.span(),
+                    FactPayload::Reference {
+                        value: complete,
+                        provenance: SymbolCallProvenance::Local,
+                    },
+                );
+            }
         }
         self.record_instanceof(binary);
     }

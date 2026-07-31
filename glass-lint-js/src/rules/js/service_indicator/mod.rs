@@ -5,8 +5,9 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 /// Detects static ESM or unshadowed CommonJS loads of the listed service SDKs
 /// and string literals containing configured service endpoint markers. Module
 /// matches use exact module provenance; literal matches are medium-confidence
-/// substring heuristics over literals and template quasis, so they do not
-/// prove network use or reconstruct arbitrary concatenated or dynamic values.
+/// substring heuristics over literals, template quasis, and bounded constant
+/// compositions, so they do not prove network use or reconstruct arbitrary
+/// dynamic values.
 /// This is intentionally a low-confidence dependency/literal indicator, not
 /// an operation witness.
 #[allow(clippy::too_many_lines)]

@@ -151,6 +151,11 @@ pub enum BindingProvenance {
         module: SmolStr,
         export: SmolStr,
     },
+    /// A default ESM import is callable as the module's `default` export and
+    /// also acts as a namespace-like object for member access.
+    DefaultImport {
+        module: SmolStr,
+    },
     ModuleNamespace {
         module: SmolStr,
     },

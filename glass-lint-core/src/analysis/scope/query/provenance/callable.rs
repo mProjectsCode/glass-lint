@@ -45,6 +45,12 @@ impl FrozenScopeGraph {
                     export: export.clone(),
                 }
             }
+            Some(BindingProvenance::DefaultImport { module }) => {
+                SymbolCallProvenance::ModuleExport {
+                    module: module.clone(),
+                    export: "default".into(),
+                }
+            }
             Some(BindingProvenance::ValueAlias { target }) => {
                 let Some(path) = self.symbol_path(target) else {
                     return SymbolCallProvenance::Local;
@@ -146,7 +152,8 @@ impl FrozenScopeGraph {
     ) -> Option<SymbolCallProvenance> {
         let (root, export) = chain.split_once('.')?;
         match self.binding_at(root, span)? {
-            BindingProvenance::ModuleNamespace { module } => {
+            BindingProvenance::DefaultImport { module }
+            | BindingProvenance::ModuleNamespace { module } => {
                 Some(SymbolCallProvenance::ModuleExport {
                     module: module.clone(),
                     export: export.to_smolstr(),
@@ -173,12 +180,13 @@ impl FrozenScopeGraph {
         }
         let member = chain.segments().get(1..)?.join(".");
         match self.binding_at(root.sym.as_ref(), root.span) {
-            Some(BindingProvenance::ModuleNamespace { module }) => {
-                Some(SymbolMemberProvenance::ModuleNamespace {
-                    module: module.clone(),
-                    member: member.to_smolstr(),
-                })
-            }
+            Some(
+                BindingProvenance::DefaultImport { module }
+                | BindingProvenance::ModuleNamespace { module },
+            ) => Some(SymbolMemberProvenance::ModuleNamespace {
+                module: module.clone(),
+                member: member.to_smolstr(),
+            }),
             _ => None,
         }
     }

@@ -254,44 +254,48 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
             .record_export_decl(declaration, self.resolver);
     }
 
-    pub(super) fn record_module_call_request(&mut self, call: &CallExpr) {
+    pub(super) fn record_module_call_request(
+        &mut self,
+        call: &CallExpr,
+    ) -> Option<(String, swc_common::Span)> {
         use swc_ecma_ast::Callee;
         match &call.callee {
             Callee::Import(_) => {
                 let Some(Expr::Lit(swc_ecma_ast::Lit::Str(specifier))) =
                     call.args.first().map(|a| &*a.expr)
                 else {
-                    return;
+                    return None;
                 };
-                let Some(span) = self.byte_range(specifier.span) else {
-                    return;
-                };
+                let span = self.byte_range(specifier.span)?;
                 self.interface.record_import_request(span, specifier);
+                Some((
+                    specifier.value.to_string_lossy().to_string(),
+                    specifier.span,
+                ))
             }
             Callee::Expr(callee) => {
                 let Expr::Ident(ident) = &**callee else {
-                    return;
+                    return None;
                 };
                 if !self
                     .resolver
                     .is_unshadowed_commonjs_name(ident, crate::analysis::module::COMMONJS_REQUIRE)
                 {
-                    return;
+                    return None;
                 }
                 if call.args.len() != 1 {
-                    return;
+                    return None;
                 }
                 let Some(Expr::Lit(swc_ecma_ast::Lit::Str(specifier))) =
                     call.args.first().map(|a| &*a.expr)
                 else {
-                    return;
+                    return None;
                 };
-                let Some(span) = self.byte_range(specifier.span) else {
-                    return;
-                };
+                let span = self.byte_range(specifier.span)?;
                 self.interface.record_require_request(span, specifier);
+                None
             }
-            Callee::Super(_) => {}
+            Callee::Super(_) => None,
         }
     }
 

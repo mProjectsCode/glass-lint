@@ -51,7 +51,8 @@ impl FrozenScopeGraph {
                 BindingProvenance::ModuleExport { module, export } => {
                     Some((module.clone(), Some(export.clone())))
                 }
-                BindingProvenance::ModuleNamespace { module } => Some((module.clone(), None)),
+                BindingProvenance::DefaultImport { module }
+                | BindingProvenance::ModuleNamespace { module } => Some((module.clone(), None)),
                 _ => None,
             },
             Expr::Member(member) => {
@@ -109,6 +110,13 @@ impl FrozenScopeGraph {
                     return None;
                 };
                 let source = self.rooted_expr_chain(callee)?;
+                (!source.is_root()).then_some(source)
+            }
+            Expr::OptChain(chain) => {
+                let swc_ecma_ast::OptChainBase::Call(call) = &*chain.base else {
+                    return None;
+                };
+                let source = self.rooted_expr_chain(&call.callee)?;
                 (!source.is_root()).then_some(source)
             }
             Expr::Ident(ident) => match self.binding_at(ident.sym.as_ref(), ident.span)? {

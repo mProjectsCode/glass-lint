@@ -64,6 +64,17 @@ pub fn classify_declaration(
             DeclarationClassification::None
         }
         Expr::Call(call) => klassify_call(collector, call, expr, name, derived_function_pattern),
+        Expr::OptChain(chain) if matches!(&*chain.base, swc_ecma_ast::OptChainBase::Call(_)) => {
+            if let Some(name) = name
+                && let Some(provenance) = collector.returned_object_provenance(expr)
+            {
+                return DeclarationClassification::Binding { name, provenance };
+            }
+            if !derived_function_pattern && let Some(target) = collector.rooted_name_path(expr) {
+                return DeclarationClassification::ValueAlias { target };
+            }
+            DeclarationClassification::None
+        }
         Expr::Member(_) => klassify_member(collector, expr, name, derived_function_pattern),
         Expr::Object(_) | Expr::Array(_) => {
             if let (Some(name), Some(provenance)) = (
@@ -137,7 +148,9 @@ fn klassify_call(
         if let Some(name) = name.clone() {
             return DeclarationClassification::Binding { name, provenance };
         }
-        if let BindingProvenance::ModuleNamespace { module } = provenance {
+        if let BindingProvenance::ModuleNamespace { module }
+        | BindingProvenance::DefaultImport { module } = provenance
+        {
             return DeclarationClassification::Require { module };
         }
     }
@@ -176,7 +189,9 @@ fn klassify_member(
         if let Some(name) = name.clone() {
             return DeclarationClassification::Binding { name, provenance };
         }
-        if let BindingProvenance::ModuleNamespace { module } = provenance {
+        if let BindingProvenance::ModuleNamespace { module }
+        | BindingProvenance::DefaultImport { module } = provenance
+        {
             return DeclarationClassification::Require { module };
         }
     }
@@ -214,7 +229,9 @@ fn klassify_ident(
         if let Some(name) = name.clone() {
             return DeclarationClassification::Binding { name, provenance };
         }
-        if let BindingProvenance::ModuleNamespace { module } = provenance {
+        if let BindingProvenance::ModuleNamespace { module }
+        | BindingProvenance::DefaultImport { module } = provenance
+        {
             return DeclarationClassification::Require { module };
         }
     }

@@ -16,8 +16,9 @@ const ordinaryAnalytics = "analytics.example.net";
 // @expect-no-error glass-lint rule=js:network.telemetry-indicator
 const unrelatedCollector = "https://api.amplitude.example";
 
-// Literal matching does not reconstruct concatenated or dynamic values.
-const concatenated = "sent" + "ry.io";
+// Literal matching does not reconstruct dynamic values.
+// @expect-no-error glass-lint rule=js:network.telemetry-indicator
+const concatenated = "sent" + getSuffix();
 const host = getHost();
 // @expect-no-error glass-lint rule=js:network.telemetry-indicator
 const dynamicEndpoint = "https://" + host;

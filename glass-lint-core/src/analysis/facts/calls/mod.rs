@@ -1,5 +1,5 @@
 use swc_common::{Span, Spanned};
-use swc_ecma_ast::{CallExpr, Callee, Expr, ExprOrSpread};
+use swc_ecma_ast::{CallExpr, Callee, Expr, ExprOrSpread, OptChainBase};
 use swc_ecma_visit::VisitWith;
 
 use crate::analysis::{
@@ -14,7 +14,7 @@ mod wrapper;
 
 impl FactBuilder<'_, '_> {
     pub(in crate::analysis::facts) fn record_call_expr(&mut self, call: &CallExpr) {
-        self.record_module_call_request(call);
+        let dynamic_import = self.record_module_call_request(call);
         let Callee::Expr(callee_expr) = &call.callee else {
             let Some(callee_span) = self.byte_range(call.span) else {
                 return;
@@ -26,6 +26,9 @@ impl FactBuilder<'_, '_> {
                 self.call_result(call.span())
             };
             let args = self.args_info(&call.args);
+            if let Some((module, span)) = dynamic_import {
+                self.emit(FactKind::Declaration, span, FactPayload::Import { module });
+            }
             self.emit(
                 FactKind::Call,
                 call.span(),
@@ -132,12 +135,17 @@ impl FactBuilder<'_, '_> {
     }
 
     pub(in crate::analysis::facts) fn value_for_expr(&mut self, expr: &Expr) -> ValueId {
-        if let Expr::Call(call) = expr {
-            if matches!(call.callee, swc_ecma_ast::Callee::Import(_)) {
-                return self.resolver.resolve_expr_id(expr);
+        match expr {
+            Expr::Call(call) => {
+                if matches!(call.callee, swc_ecma_ast::Callee::Import(_)) {
+                    return self.resolver.resolve_expr_id(expr);
+                }
+                self.call_result(call.span())
             }
-            return self.call_result(call.span());
+            Expr::OptChain(chain) if matches!(&*chain.base, OptChainBase::Call(_)) => {
+                self.call_result(expr.span())
+            }
+            _ => self.resolver.resolve_expr_id(expr),
         }
-        self.resolver.resolve_expr_id(expr)
     }
 }

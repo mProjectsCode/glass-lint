@@ -21,3 +21,7 @@ adapter.getResourcePath(file);
 const callbackUrl = "obsidian://open?vault=demo";
 // @expect-error glass-lint rule=obsidian:vault.resource-url
 const templateCallbackUrl = `obsidian://open?vault=${vault}`;
+
+let reassignedVault = app.vault;
+// @expect-error glass-lint rule=obsidian:vault.resource-url
+reassignedVault.getResourcePath(file);

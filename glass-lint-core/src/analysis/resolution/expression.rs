@@ -262,12 +262,16 @@ impl Resolver<'_> {
                     .collect();
                 self.static_value(Value::StaticArray(values))
             }
-            Expr::Object(_) => {
+            Expr::Object(_) | Expr::Bin(_) | Expr::Tpl(_) => {
                 let id = self.intern_const_value(syntax_constant::evaluate(expr, self), None);
                 Self::archive_local(id)
             }
             Expr::Call(call) => self.resolve_call_expression(call),
             Expr::Await(await_expr) => self.resolve_expr(&await_expr.arg),
+            Expr::TsAs(value) => self.resolve_expr(&value.expr),
+            Expr::TsNonNull(value) => self.resolve_expr(&value.expr),
+            Expr::TsSatisfies(value) => self.resolve_expr(&value.expr),
+            Expr::TsTypeAssertion(value) => self.resolve_expr(&value.expr),
             Expr::New(new_expr) => self.fresh_object_value_at(new_expr.span),
             _ => Self::unknown(),
         }

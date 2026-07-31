@@ -5,8 +5,9 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, QueryDecl, Rule, 
 /// Detects syntactic `this.addSettingTab()` registration calls and
 /// `PluginSettingTab` constructors/subclasses. The registration form requires
 /// a proven Obsidian `Plugin` receiver and does not follow aliases or
-/// reassignment; constructor forms follow ESM, namespace, and CommonJS
-/// `obsidian` provenance, while arguments and class bodies are ignored.
+/// reassignment; strict constructor and class forms follow ESM, namespace,
+/// and CommonJS `obsidian` provenance, while the heuristic constructor form
+/// uses static spelling. Arguments and class bodies are ignored.
 pub fn rule() -> Rule {
     Rule::builder("ui.settings-tab")
         .description("Registers plugin settings UI")

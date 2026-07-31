@@ -4,9 +4,9 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
 /// Detects string literals containing the configured `Authorization` and
 /// `User-Agent` marker substrings. This is an opt-in heuristic indicator: it
-/// does not prove that a literal is used as a request header, does not parse
-/// computed or concatenated values, and intentionally excludes other casing
-/// and unrelated lookalike prose.
+/// does not prove that a literal is used as a request header, rejects dynamic
+/// values, and intentionally excludes other casing and unrelated lookalike
+/// prose. Bounded constant compositions are evaluated by core.
 pub fn rule() -> Rule {
     Rule::builder("network.header-indicator")
         .description("References authorization or user-agent headers")

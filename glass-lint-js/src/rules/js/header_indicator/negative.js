@@ -4,10 +4,10 @@
 // @expect-no-error glass-lint rule=js:network.header-indicator
 const ordinaryHeader = "Content-Type";
 
-// A computed or concatenated value is not reconstructed by this literal rule.
+// Dynamic compositions remain unknown to the literal matcher.
 const prefix = "Auth";
 // @expect-no-error glass-lint rule=js:network.header-indicator
-const computedHeader = prefix + "orization";
+const computedHeader = prefix + getHeaderSuffix();
 
 // Unrelated prose without a configured marker is ignored.
 const headerProse = "mastodon posthog headers";

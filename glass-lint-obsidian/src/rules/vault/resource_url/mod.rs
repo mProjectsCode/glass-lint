@@ -7,7 +7,8 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 /// follows `this.app`, direct receiver aliases, static computed properties,
 /// source-ordered reassignment, and lexical shadowing; the URL marker remains
 /// a raw literal heuristic. Arguments, dynamic string reconstruction, and
-/// other URL schemes are not analyzed.
+/// other URL schemes are not analyzed. Bounded constant compositions are
+/// evaluated by core; dynamic values remain unknown.
 pub fn rule() -> Rule {
     Rule::builder("vault.resource-url")
         .description("Accesses attachment resource paths")

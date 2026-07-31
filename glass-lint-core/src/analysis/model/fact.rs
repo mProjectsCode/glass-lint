@@ -241,6 +241,7 @@ pub enum ControlKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClassFactRole {
     Declaration,
+    SuperclassOperand,
     InstanceofOperand,
 }
 

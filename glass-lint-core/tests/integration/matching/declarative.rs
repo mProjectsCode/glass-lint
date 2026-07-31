@@ -873,7 +873,9 @@ fn import_queries_match_dynamic_imports() {
          await import('sdk/client');",
         &rules,
     );
-    assert_eq!(result.finding_count, 2);
+    // The exact rule reports `sdk` once; the package rule reports both
+    // `sdk` and `sdk/client`.
+    assert_eq!(result.finding_count, 3);
 }
 
 #[test]

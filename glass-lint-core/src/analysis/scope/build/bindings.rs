@@ -49,7 +49,7 @@ pub(super) fn for_each_import_binding(
             ),
             ImportSpecifier::Default(default) => f(
                 default.local.sym.to_smolstr(),
-                BindingProvenance::ModuleNamespace {
+                BindingProvenance::DefaultImport {
                     module: module.clone(),
                 },
             ),

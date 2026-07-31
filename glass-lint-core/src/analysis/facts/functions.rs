@@ -8,9 +8,12 @@ use smol_str::{SmolStr, ToSmolStr};
 use swc_common::Spanned;
 use swc_ecma_ast::ClassMethod;
 
-use crate::analysis::facts::{
-    ArrowExpr, BinExpr, BinaryOp, ClassDecl, ClassExpr, ClassFactRole, FactBuilder, FactKind,
-    FactPayload, FnDecl, Function, FunctionBoundary, Pat, PathId, Span, VisitWith,
+use crate::analysis::{
+    facts::{
+        ArrowExpr, BinExpr, BinaryOp, ClassDecl, ClassExpr, ClassFactRole, Expr, FactBuilder,
+        FactKind, FactPayload, FnDecl, Function, FunctionBoundary, Pat, PathId, Span, VisitWith,
+    },
+    syntax::member_property_name,
 };
 
 impl FactBuilder<'_, '_> {
@@ -153,6 +156,7 @@ impl FactBuilder<'_, '_> {
                 provenance: provenance.clone(),
             },
         );
+        self.record_class_operand(class_decl.class.super_class.as_deref());
         self.traversal.enter_class(provenance);
         class_decl.visit_children_with(self);
         self.traversal.leave_class();
@@ -175,6 +179,7 @@ impl FactBuilder<'_, '_> {
                 },
             );
         }
+        self.record_class_operand(class_expr.class.super_class.as_deref());
         self.traversal.enter_class(provenance);
         class_expr.visit_children_with(self);
         self.traversal.leave_class();
@@ -187,12 +192,45 @@ impl FactBuilder<'_, '_> {
                 FactKind::Reference,
                 binary.right.span(),
                 FactPayload::Class {
-                    name: None,
+                    name: Self::class_operand_name(&binary.right),
                     role: ClassFactRole::InstanceofOperand,
                     provenance,
                 },
             );
         }
         binary.visit_children_with(self);
+    }
+
+    fn record_class_operand(&mut self, expr: Option<&Expr>) {
+        let Some(expr) = expr else {
+            return;
+        };
+        let provenance = self.resolver.class_provenance(expr);
+        self.emit(
+            FactKind::Reference,
+            expr.span(),
+            FactPayload::Class {
+                name: Self::class_operand_name(expr),
+                role: ClassFactRole::SuperclassOperand,
+                provenance,
+            },
+        );
+    }
+
+    fn class_operand_name(expr: &Expr) -> Option<SmolStr> {
+        match expr {
+            Expr::Ident(ident) => Some(ident.sym.to_smolstr()),
+            Expr::Member(member) => member_property_name(&member.prop),
+            Expr::Paren(paren) => Self::class_operand_name(&paren.expr),
+            Expr::Seq(sequence) => sequence
+                .exprs
+                .last()
+                .and_then(|expr| Self::class_operand_name(expr)),
+            Expr::TsAs(value) => Self::class_operand_name(&value.expr),
+            Expr::TsNonNull(value) => Self::class_operand_name(&value.expr),
+            Expr::TsSatisfies(value) => Self::class_operand_name(&value.expr),
+            Expr::TsTypeAssertion(value) => Self::class_operand_name(&value.expr),
+            _ => None,
+        }
     }
 }

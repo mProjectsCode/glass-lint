@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 
 use smol_str::{SmolStr, ToSmolStr};
-use swc_ecma_ast::{CallExpr, Callee, Expr, Lit};
+use swc_ecma_ast::{CallExpr, Callee, Expr, Lit, OptChainBase};
 
 use crate::analysis::{
     scope::{
@@ -45,11 +45,13 @@ impl ScopeCollector<'_> {
         match expr {
             Expr::Ident(ident) => match self.visible_binding(ident.sym.as_ref())? {
                 provenance @ (BindingProvenance::ModuleExport { .. }
+                | BindingProvenance::DefaultImport { .. }
                 | BindingProvenance::ModuleNamespace { .. }) => Some(provenance.clone()),
                 _ => None,
             },
             Expr::Member(member) => match self.module_alias_provenance(&member.obj)? {
-                BindingProvenance::ModuleNamespace { module } => {
+                BindingProvenance::DefaultImport { module }
+                | BindingProvenance::ModuleNamespace { module } => {
                     Some(BindingProvenance::ModuleExport {
                         module,
                         export: member_property_name(&member.prop)?,
@@ -253,6 +255,23 @@ impl ScopeCollector<'_> {
                         .rooted_member_chain(member)
                         .and_then(|path| self.name_path(&path))?,
                     _ => self.rooted_name_path(callee)?,
+                };
+                (!source.is_root()).then_some(BindingProvenance::ReturnedObject { source })
+            }
+            Expr::OptChain(chain) => {
+                let OptChainBase::Call(call) = &*chain.base else {
+                    return None;
+                };
+                if let Expr::Member(member) = &*call.callee
+                    && member_property_name(&member.prop).as_deref() == Some("bind")
+                {
+                    return None;
+                }
+                let source = match &*call.callee {
+                    Expr::Member(member) => self
+                        .rooted_member_chain(member)
+                        .and_then(|path| self.name_path(&path))?,
+                    _ => self.rooted_name_path(&call.callee)?,
                 };
                 (!source.is_root()).then_some(BindingProvenance::ReturnedObject { source })
             }

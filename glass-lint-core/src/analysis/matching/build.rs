@@ -90,14 +90,14 @@ impl OccurrenceIndexes {
                 provenance,
                 role,
             } => {
-                if matches!(role, ClassFactRole::Declaration)
-                    && let Some(name) = name
-                {
+                if let Some(name) = name {
                     self.constructions
                         .classes
                         .push(name.clone(), fact.id, fact.span);
                 }
-                if let Some((module, export)) = provenance {
+                if !matches!(role, ClassFactRole::Declaration)
+                    && let Some((module, export)) = provenance
+                {
                     self.constructions.module_classes.push(
                         ModuleExportKey::new(module.clone(), export.clone()),
                         fact.id,
@@ -254,9 +254,6 @@ impl OccurrenceIndexes {
                 fact.id,
                 fact.span,
             );
-            self.constructions
-                .classes
-                .push(member.clone(), fact.id, fact.span);
         }
         if let Some((source, member)) = returned_member {
             self.members.returned_reads.push(
@@ -277,9 +274,7 @@ impl OccurrenceIndexes {
         else {
             return;
         };
-        if let Some(name) = callee_name
-            && matches!(provenance, SymbolCallProvenance::Global { .. })
-        {
+        if let Some(name) = callee_name {
             self.constructions
                 .constructors
                 .push(*name, fact.id, *callee_span);

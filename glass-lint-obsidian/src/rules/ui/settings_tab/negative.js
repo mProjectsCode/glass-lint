@@ -13,9 +13,18 @@ this[dynamicProperty](tab);
 // @expect-no-error glass-lint rule=obsidian:ui.settings-tab
 this.addSettingsTab(tab);
 
-function shadowed(PluginSettingTab) {
+import { Plugin } from "obsidian";
+class ReassignedPlugin extends Plugin {
+  run() {
+    this.addSettingTab = replacement;
+    // @expect-no-error glass-lint rule=obsidian:ui.settings-tab
+    this.addSettingTab(thirdTab);
+  }
+}
+
+function shadowed(LocalSettingTab) {
   // @expect-no-error glass-lint rule=obsidian:ui.settings-tab
-  new PluginSettingTab();
+  new LocalSettingTab();
 }
 
 class LocalSettingTab {}

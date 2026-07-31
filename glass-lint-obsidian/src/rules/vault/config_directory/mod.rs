@@ -5,8 +5,9 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 /// Detects string and static-template fragments containing the exact
 /// `.obsidian/` or `.obsidian\\` configuration-directory markers. This is a
 /// medium-confidence literal heuristic: it does not establish vault or path
-/// provenance, reconstruct dynamic values or concatenations, or normalize
-/// casing and separators beyond the two configured spellings.
+/// provenance, reconstruct dynamic values, or normalize casing and separators
+/// beyond the two configured spellings. Bounded constant compositions are
+/// evaluated by core.
 pub fn rule() -> Rule {
     Rule::builder("vault.config-directory")
         .description("References .obsidian configuration paths")

@@ -5,9 +5,10 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 /// Detects static ESM or unshadowed CommonJS loads of the listed telemetry
 /// SDKs and string literals containing configured telemetry endpoint markers.
 /// Module matches use exact module provenance; literal matches are
-/// medium-confidence substring heuristics over literals and template quasis,
-/// not proof that a request or telemetry event occurs. This is intentionally
-/// a low-confidence dependency/literal indicator, not an operation witness.
+/// medium-confidence substring heuristics over literals, template quasis, and
+/// bounded constant compositions, not proof that a request or telemetry event
+/// occurs. This is intentionally a low-confidence dependency/literal
+/// indicator, not an operation witness.
 #[allow(clippy::too_many_lines)]
 pub fn rule() -> Rule {
     Rule::builder("network.telemetry-indicator")

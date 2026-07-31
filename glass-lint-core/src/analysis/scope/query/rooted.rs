@@ -30,6 +30,7 @@ impl RootedExprContext for FrozenScopeGraph {
                 BindingProvenance::BoundModuleCallable { .. }
                 | BindingProvenance::Local
                 | BindingProvenance::ModuleExport { .. }
+                | BindingProvenance::DefaultImport { .. }
                 | BindingProvenance::ModuleNamespace { .. }
                 | BindingProvenance::ConstructedInstance { .. }
                 | BindingProvenance::StaticString(_)

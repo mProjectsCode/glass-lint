@@ -14,7 +14,7 @@ app.vault[method](file);
 // @expect-no-error glass-lint rule=obsidian:vault.resource-url
 app.vault.getAttachmentPath(file);
 // @expect-no-error glass-lint rule=obsidian:vault.resource-url
-const splitUrl = "obsidian:" + "//open?vault=demo";
+const splitUrl = scheme + "//open?vault=demo";
 // @expect-no-error glass-lint rule=obsidian:vault.resource-url
 const dynamicUrl = scheme + "//open?vault=demo";
 // @expect-no-error glass-lint rule=obsidian:vault.resource-url
@@ -22,9 +22,7 @@ const otherScheme = "https://example.test";
 // @expect-no-error glass-lint rule=obsidian:vault.resource-url
 const wrongCase = "Obsidian://open?vault=demo";
 
-let vault = app.vault;
-// @expect-error glass-lint rule=obsidian:vault.resource-url
-vault.getResourcePath(file);
-vault = localVault;
+let reassignedVault = app.vault;
+reassignedVault = localVault;
 // @expect-no-error glass-lint rule=obsidian:vault.resource-url
-vault.getResourcePath(file);
+reassignedVault.getResourcePath(file);

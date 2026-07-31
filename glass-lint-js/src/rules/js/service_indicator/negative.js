@@ -18,8 +18,9 @@ const unrelatedEndpoint = "https://api.sendgrid.example";
 // @expect-no-error glass-lint rule=js:network.service-indicator
 const unrelatedProvider = "mastodon posthog headers";
 
-// Literal matching does not reconstruct concatenated or dynamic values.
-const concatenated = "https://api." + "openai.com";
+// Literal matching does not reconstruct dynamic values.
+// @expect-no-error glass-lint rule=js:network.service-indicator
+const concatenated = "https://api." + getHost();
 const host = getHost();
 // @expect-no-error glass-lint rule=js:network.service-indicator
 const dynamicEndpoint = "https://" + host;

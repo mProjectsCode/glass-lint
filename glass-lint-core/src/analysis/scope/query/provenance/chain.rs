@@ -52,20 +52,13 @@ impl FrozenScopeGraph {
         &self,
         member: &MemberExpr,
     ) -> Option<SymbolPath> {
-        let syntactic_chain = self.member_expression_chain(member).or_else(|| {
-            let object = expression_name(&member.obj)?;
-            let property = self.member_property_name(member)?;
-            Some(object.append_chain(&property))
-        })?;
-        let root = member_root_identifier(member)?;
-        if self
-            .binding_alternatives_at(root.sym.as_ref(), root.span)
-            .is_empty()
-            && self.is_global(root.sym.as_ref())
-        {
-            return Some(syntactic_chain);
-        }
-        self.resolve_member_chain(member, &syntactic_chain)
+        let property = self.member_property_name(member)?;
+        // Resolve only the receiver. Resolving the complete member chain here
+        // would consult writes to `property` at the current span and erase
+        // the write occurrence itself. Ancestor/receiver mutations are still
+        // checked by rooted_expr_chain before the property is appended.
+        let receiver = self.rooted_expr_chain(&member.obj)?;
+        Some(receiver.append_chain(&property))
     }
 
     // Kept as a single linear algorithm: the prefix-backtracking loop and
@@ -123,6 +116,7 @@ impl FrozenScopeGraph {
                 BindingProvenance::ReturnedObject { source } => source,
                 BindingProvenance::Local
                 | BindingProvenance::ModuleExport { .. }
+                | BindingProvenance::DefaultImport { .. }
                 | BindingProvenance::ModuleNamespace { .. }
                 | BindingProvenance::ConstructedInstance { .. }
                 | BindingProvenance::BoundModuleCallable { .. }

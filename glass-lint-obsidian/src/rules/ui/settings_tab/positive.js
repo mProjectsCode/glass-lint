@@ -8,9 +8,6 @@ this.addSettingTab(tab);
 
 // @expect-error glass-lint rule=obsidian:ui.settings-tab
 this["addSettingTab"](secondTab);
-this.addSettingTab = replacement;
-// @expect-no-error glass-lint rule=obsidian:ui.settings-tab
-this.addSettingTab(thirdTab);
   }
 }
 
