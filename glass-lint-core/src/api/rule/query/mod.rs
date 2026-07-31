@@ -1429,10 +1429,10 @@ fn explain_lifecycle_completion(completion: &lifecycle::LifecycleCompletion) -> 
 
 fn explain_lifecycle_sink(sink: &lifecycle::LifecycleSink) -> String {
     match sink.kind() {
-        lifecycle::LifecycleSinkKind::ArgumentOf { chain, index } => {
+        lifecycle::LifecycleSinkKind::ArgumentOf { chain, index, .. } => {
             format!("`{chain}` argument {index}")
         }
-        lifecycle::LifecycleSinkKind::AnyArgumentOf { chain } => {
+        lifecycle::LifecycleSinkKind::AnyArgumentOf { chain, .. } => {
             format!("any argument of `{chain}`")
         }
     }

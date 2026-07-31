@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use glass_lint_datastructures::{Budget, NamePath, NameTable};
 use hashbrown::HashMap;
+use smol_str::SmolStr;
 
 use crate::{
     analysis::{
@@ -124,20 +125,33 @@ impl FlowSources {
     }
 }
 
-/// Build a per-module source index mapping NamePath to matching flow IDs.
+#[derive(Default)]
+struct SourceIndex {
+    members: BTreeMap<NamePath, Vec<FlowId>>,
+    globals: BTreeMap<SmolStr, Vec<FlowId>>,
+}
+
+/// Build a per-module source index mapping typed call targets to flow IDs.
 fn build_source_index(
     flows: &HashMap<FlowId, &CompiledObjectFlow>,
     names: &NameTable,
-) -> BTreeMap<NamePath, Vec<FlowId>> {
-    let mut index: BTreeMap<NamePath, Vec<FlowId>> = BTreeMap::new();
+) -> SourceIndex {
+    let mut index = SourceIndex::default();
     for (id, flow) in flows {
         for source in &flow.sources {
-            if let Some(member) = names.lookup_path(&source.member_call) {
-                index.entry(member).or_default().push(*id);
+            match &source.target {
+                crate::api::rule::query::lifecycle::LifecycleCallTarget::RootedMember(path) => {
+                    if let Some(member) = names.lookup_path(path) {
+                        index.members.entry(member).or_default().push(*id);
+                    }
+                }
+                crate::api::rule::query::lifecycle::LifecycleCallTarget::Global(name) => {
+                    index.globals.entry(name.clone()).or_default().push(*id);
+                }
             }
         }
     }
-    for ids in index.values_mut() {
+    for ids in index.members.values_mut().chain(index.globals.values_mut()) {
         ids.sort_unstable();
         ids.dedup();
     }
@@ -176,10 +190,14 @@ impl FlowSources {
                 }
                 for call in effect.calls() {
                     let cref = call.as_ref(stream);
-                    let Some(chain) = cref.chain() else {
-                        continue;
-                    };
-                    let Some(candidates) = source_index.get(chain) else {
+                    let candidates = cref
+                        .global_name()
+                        .and_then(|name| source_index.globals.get(name))
+                        .or_else(|| {
+                            cref.chain()
+                                .and_then(|chain| source_index.members.get(chain))
+                        });
+                    let Some(candidates) = candidates else {
                         continue;
                     };
                     for flow_id in candidates {

@@ -5,7 +5,7 @@
 
 use glass_lint_core::rules::{
     ArgumentMatcher, EventQuery, IntoQueryDecl, LifecycleCompletion, LifecycleCondition,
-    LifecycleEvent, LifecycleQuery, LifecycleSink, LifecycleSource, QueryDecl, ValueMatcher,
+    LifecycleEvent, LifecycleQuery, LifecycleSink, QueryDecl, ValueMatcher,
 };
 
 use crate::support;
@@ -367,9 +367,9 @@ fn tracks_object_argument_keys_through_member_function_aliases() {
 fn script_insertion_flow() -> LifecycleQuery {
     LifecycleQuery::builder("script insertion")
         .source(
-            LifecycleSource::returned_by("document.createElement")
+            EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
-                .arg(0, ValueMatcher::static_string().equals("script")),
+                .with_arg(0, ValueMatcher::static_string().equals("script")),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",

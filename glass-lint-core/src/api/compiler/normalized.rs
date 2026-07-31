@@ -219,8 +219,13 @@ pub(crate) enum NormalizedLifecycleCondition {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum NormalizedLifecycleSink {
-    ArgumentOf { chain: SmolStr, index: usize },
-    AnyArgumentOf { chain: SmolStr },
+    ArgumentOf {
+        target: crate::api::rule::query::lifecycle::LifecycleCallTarget,
+        index: usize,
+    },
+    AnyArgumentOf {
+        target: crate::api::rule::query::lifecycle::LifecycleCallTarget,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]

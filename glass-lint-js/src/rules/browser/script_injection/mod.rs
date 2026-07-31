@@ -2,7 +2,7 @@
 
 use glass_lint_core::rules::{
     Category, Confidence, EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
-    LifecycleQuery, LifecycleSink, LifecycleSource, QueryDecl, Rule, Severity, ValueMatcher,
+    LifecycleQuery, LifecycleSink, QueryDecl, Rule, Severity, ValueMatcher,
 };
 
 /// Detects rooted script elements whose executable content is configured and
@@ -17,9 +17,9 @@ pub fn rule() -> Rule {
         .query(QueryDecl::lifecycle(
             LifecycleQuery::builder("script-element")
                 .source(
-                    LifecycleSource::returned_by("document.createElement")
+                    EventQuery::member_call_rooted("document.createElement")
                         .unwrap()
-                        .arg(0, ValueMatcher::static_string().equals("script")),
+                        .with_arg(0, ValueMatcher::static_string().equals("script")),
                 )
                 .condition(LifecycleCondition::any_of([
                     LifecycleEvent::property_write("src", ValueMatcher::static_string()),

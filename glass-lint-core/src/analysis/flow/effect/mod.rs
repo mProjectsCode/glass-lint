@@ -201,6 +201,29 @@ impl CallEffectRef<'_> {
         }
     }
 
+    pub(in crate::analysis) fn global_name(&self) -> Option<&SmolStr> {
+        match self.provenance()? {
+            SymbolCallProvenance::Global { name } => Some(name),
+            _ => None,
+        }
+    }
+
+    pub(in crate::analysis) fn matches_target(
+        &self,
+        target: &crate::api::rule::query::lifecycle::LifecycleCallTarget,
+        names: &NameTable,
+    ) -> bool {
+        match target {
+            crate::api::rule::query::lifecycle::LifecycleCallTarget::Global(name) => {
+                self.global_name().is_some_and(|found| found == name)
+            }
+            crate::api::rule::query::lifecycle::LifecycleCallTarget::RootedMember(path) => self
+                .chain()
+                .and_then(|chain| names.lookup_path(path).map(|member| (member, chain)))
+                .is_some_and(|(member, chain)| member == *chain && self.rooted()),
+        }
+    }
+
     pub(in crate::analysis) fn target(&self) -> Option<FunctionId> {
         match self.call_fact() {
             Some(FactPayload::Call {
@@ -230,14 +253,8 @@ impl CallEffectRef<'_> {
             return false;
         };
         let values = self.stream.values();
-        let Some(chain) = self.chain() else {
-            return false;
-        };
         flow.sources.iter().any(|source| {
-            names
-                .lookup_path(&source.member_call)
-                .is_some_and(|member| member == *chain)
-                && source.is_rooted == self.rooted()
+            self.matches_target(&source.target, names)
                 && source.arguments.iter().all(|matcher| {
                     args.get(matcher.index()).is_some_and(|argument| {
                         matcher.predicate().matches(argument, names, values)

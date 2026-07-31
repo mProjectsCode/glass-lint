@@ -201,28 +201,24 @@ impl FunctionSummary {
         paths: &mut SummaryPathStore<'_>,
         call_id: FactId,
     ) {
-        let Some(FactPayload::Call {
-            syntactic_path,
-            rooted_chain,
-            args,
-            ..
-        }) = stream.fact(call_id).map(|fact| &fact.payload)
+        let Some(FactPayload::Call { args, .. }) = stream.fact(call_id).map(|fact| &fact.payload)
         else {
             return;
         };
-        let Some(chain) = rooted_chain.as_ref().or(syntactic_path.as_ref()) else {
-            return;
+        let cref = crate::analysis::flow::effect::CallEffectRef {
+            stream,
+            event: call_id,
         };
-        for flow_id in plan.sink_ids(chain).into_iter().flatten() {
+        let flow_ids = cref
+            .global_name()
+            .and_then(|name| plan.global_sink_ids(name))
+            .or_else(|| cref.chain().and_then(|chain| plan.sink_ids(chain)));
+        for flow_id in flow_ids.into_iter().flatten() {
             let Some(flow) = plan.get(*flow_id) else {
                 continue;
             };
-            let sink_members = plan.sink_member_calls(*flow_id);
-            for (i, sink) in flow.sinks.iter().enumerate() {
-                if !sink_members
-                    .get(i)
-                    .is_some_and(|members| members.iter().any(|member| member == chain))
-                {
+            for sink in &flow.sinks {
+                if !cref.matches_target(&sink.target, stream.names()) {
                     continue;
                 }
                 for argument_index in sink.args.present_indices(args.len()) {

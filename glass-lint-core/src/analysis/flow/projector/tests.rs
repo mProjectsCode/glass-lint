@@ -4,8 +4,8 @@ use crate::{
     api::{
         compiler::{normalize::normalize_query_decl, normalized::NormalizedRoot},
         rule::{
-            LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleQuery, LifecycleSink,
-            LifecycleSource, QueryDecl, ValueMatcher,
+            EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleQuery,
+            LifecycleSink, QueryDecl, ValueMatcher,
         },
     },
     project::ModuleId,
@@ -95,9 +95,9 @@ fn empty_flow_catalog_skips_projection_work() {
 fn script_flow() -> LifecycleQuery {
     LifecycleQuery::builder("script insertion")
         .source(
-            LifecycleSource::returned_by("document.createElement")
+            EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
-                .arg(0, ValueMatcher::static_string().equals("script")),
+                .with_arg(0, ValueMatcher::static_string().equals("script")),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
@@ -186,9 +186,9 @@ fn exhausted_flow_operation_budget_is_reported_as_incomplete() {
 fn member_call_configuration_stays_with_its_receiver() {
     let flow = LifecycleQuery::builder("configured script")
         .source(
-            LifecycleSource::returned_by("document.createElement")
+            EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
-                .arg(0, ValueMatcher::static_string().equals("script")),
+                .with_arg(0, ValueMatcher::static_string().equals("script")),
         )
         .condition(LifecycleCondition::event(
             LifecycleEvent::member_call("configure")
@@ -520,9 +520,9 @@ fn flow_evidence_is_anchored_at_the_sink_event() {
 fn requirement_only_evidence_is_anchored_at_the_configuration_event() {
     let flow = LifecycleQuery::builder("configured input")
         .source(
-            LifecycleSource::returned_by("document.createElement")
+            EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
-                .arg(0, ValueMatcher::static_string().equals("input")),
+                .with_arg(0, ValueMatcher::static_string().equals("input")),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "type",

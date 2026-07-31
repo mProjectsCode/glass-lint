@@ -1,8 +1,8 @@
 //! Browser remote-DOM-resource flow rule definition.
 
 use glass_lint_core::rules::{
-    Category, Confidence, LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleQuery,
-    LifecycleSink, LifecycleSource, QueryBuildError, QueryDecl, Rule, Severity, ValueMatcher,
+    Category, Confidence, EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
+    LifecycleQuery, LifecycleSink, QueryBuildError, QueryDecl, Rule, Severity, ValueMatcher,
 };
 
 /// Detects selected remote DOM resource elements created by
@@ -76,9 +76,9 @@ fn remote_element_query(
         .unwrap();
     LifecycleQuery::builder(symbol)
         .source(
-            LifecycleSource::returned_by("document.createElement")
+            EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
-                .arg(0, ValueMatcher::static_string().equals(tag)),
+                .with_arg(0, ValueMatcher::static_string().equals(tag)),
         )
         .condition(LifecycleCondition::any_of([
             LifecycleEvent::property_write(property, remote_url.clone()),

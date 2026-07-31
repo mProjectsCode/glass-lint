@@ -1,6 +1,6 @@
 use glass_lint_core::rules::{
     Category, Confidence, EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
-    LifecycleQuery, LifecycleSource, QueryDecl, Rule, Severity, ValueMatcher,
+    LifecycleQuery, QueryDecl, Rule, Severity, ValueMatcher,
 };
 
 /// Detects an input created by `document.createElement("input")` whose direct
@@ -17,9 +17,9 @@ pub fn rule() -> Rule {
         .query(QueryDecl::lifecycle(
             LifecycleQuery::builder("file input element")
                 .source(
-                    LifecycleSource::returned_by("document.createElement")
+                    EventQuery::member_call_rooted("document.createElement")
                         .unwrap()
-                        .arg(0, ValueMatcher::static_string().equals("input")),
+                        .with_arg(0, ValueMatcher::static_string().equals("input")),
                 )
                 .condition(LifecycleCondition::any_of([
                     LifecycleEvent::property_write(

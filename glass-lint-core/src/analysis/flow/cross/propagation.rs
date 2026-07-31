@@ -159,27 +159,22 @@ impl UsageProjector<'_> {
             return;
         };
         let cref = CallEffectRef { stream, event };
-        let chain = cref.chain();
-        let rooted = cref.rooted();
-        let matching_sinks: Vec<usize> =
-            self.flow
-                .sinks
-                .iter()
-                .enumerate()
-                .filter_map(|(i, sink)| {
-                    let matches =
-                        self.flow_plan.sink_members.get(i).is_some_and(|members| {
-                            members.iter().any(|member| chain == Some(member))
-                        }) && sink.is_rooted == rooted
-                            && match &sink.args {
-                                CompiledObjectSinkArguments::Any => true,
-                                CompiledObjectSinkArguments::Indices(indices) => {
-                                    indices.contains(&argument)
-                                }
-                            };
-                    matches.then_some(i)
-                })
-                .collect();
+        let matching_sinks: Vec<usize> = self
+            .flow
+            .sinks
+            .iter()
+            .enumerate()
+            .filter_map(|(i, sink)| {
+                let matches = cref.matches_target(&sink.target, self.names)
+                    && match &sink.args {
+                        CompiledObjectSinkArguments::Any => true,
+                        CompiledObjectSinkArguments::Indices(indices) => {
+                            indices.contains(&argument)
+                        }
+                    };
+                matches.then_some(i)
+            })
+            .collect();
         if !matching_sinks.is_empty() && self.context.crossed {
             for index in matching_sinks {
                 self.state.sinks.insert(

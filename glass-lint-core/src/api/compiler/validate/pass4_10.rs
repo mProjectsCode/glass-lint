@@ -19,15 +19,13 @@ fn validate_lifecycle(lc: &LifecycleQuery) -> Result<(), QueryCompileError> {
     for src in lc.sources() {
         validate_event_query(src)?;
 
-        if !matches!(src.event(), EventSpec::MemberCall { .. }) {
+        if !matches!(
+            (src.identity(), src.event()),
+            (IdentitySpec::Global { .. }, EventSpec::Call)
+                | (IdentitySpec::Rooted { .. }, EventSpec::MemberCall { .. })
+        ) {
             return Err(QueryCompileError::InvalidLifecycle {
-                detail: "lifecycle source event must be a member call".into(),
-            });
-        }
-
-        if !matches!(src.identity(), IdentitySpec::Rooted { .. }) {
-            return Err(QueryCompileError::InvalidLifecycle {
-                detail: "lifecycle source identity must be rooted".into(),
+                detail: "lifecycle source must be a global call or rooted member call".into(),
             });
         }
     }

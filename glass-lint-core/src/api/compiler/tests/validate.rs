@@ -418,12 +418,7 @@ fn lifecycle_source_must_be_member_call() {
             symbol: "test".into(),
         },
     };
-    assert_eq!(
-        pass_structure(&decl),
-        Err(QueryCompileError::InvalidLifecycle {
-            detail: "lifecycle source event must be a member call".into(),
-        })
-    );
+    assert!(pass_structure(&decl).is_ok());
 }
 
 #[test]
@@ -460,7 +455,7 @@ fn lifecycle_source_must_be_rooted() {
     assert_eq!(
         pass_structure(&decl),
         Err(QueryCompileError::InvalidLifecycle {
-            detail: "lifecycle source identity must be rooted".into(),
+            detail: "lifecycle source must be a global call or rooted member call".into(),
         })
     );
 }

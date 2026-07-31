@@ -2,62 +2,17 @@ use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
 use crate::api::rule::query::{
-    limits,
+    EventQuery, QueryBuildError, limits,
     value::{ArgumentConstraint, ArgumentConstraintsBuilder, ArgumentMatcher, ValueMatcher},
 };
 
-// ── LifecycleSource ───────────────────────────────────────────────────
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct LifecycleSource {
-    chain: String,
-    arguments: Vec<ArgumentConstraint>,
-}
-
-impl LifecycleSource {
-    pub fn returned_by(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let chain = chain.into();
-        if chain.trim().is_empty() {
-            return Err(QueryBuildError::EmptyIdentityName);
-        }
-        if chain.starts_with('.') || chain.ends_with('.') || chain.contains("..") {
-            return Err(QueryBuildError::MalformedChain(chain));
-        }
-        Ok(Self {
-            chain,
-            arguments: Vec::new(),
-        })
-    }
-
-    pub fn chain(&self) -> &str {
-        &self.chain
-    }
-
-    pub fn arguments(&self) -> &[ArgumentConstraint] {
-        &self.arguments
-    }
-
-    pub fn with_arg(
-        mut self,
-        index: usize,
-        matcher: impl Into<ArgumentMatcher>,
-    ) -> Result<Self, QueryBuildError> {
-        if index > limits::MAX_ARGUMENT_INDEX {
-            return Err(QueryBuildError::InvalidArgumentIndex(index));
-        }
-        let mut builder = ArgumentConstraintsBuilder::from_constraints(&self.arguments)?;
-        builder.push(index, matcher)?;
-        self.arguments = builder.finish();
-        Ok(self)
-    }
-
-    pub fn arg(
-        self,
-        index: usize,
-        matcher: impl Into<ArgumentMatcher>,
-    ) -> Result<Self, QueryBuildError> {
-        self.with_arg(index, matcher)
-    }
+/// The identity kind of a lifecycle call endpoint. This is parsed when the
+/// query is authored and remains typed through normalization and execution;
+/// later phases never infer identity from the endpoint's display spelling.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) enum LifecycleCallTarget {
+    Global(SmolStr),
+    RootedMember(SymbolPath),
 }
 
 // ── LifecycleEvent ────────────────────────────────────────────────────
@@ -345,8 +300,15 @@ impl IntoLifecycleCompletion for Result<LifecycleCompletion, QueryBuildError> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum LifecycleSinkKind {
-    ArgumentOf { chain: String, index: usize },
-    AnyArgumentOf { chain: String },
+    ArgumentOf {
+        chain: String,
+        target: LifecycleCallTarget,
+        index: usize,
+    },
+    AnyArgumentOf {
+        chain: String,
+        target: LifecycleCallTarget,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -359,8 +321,41 @@ impl LifecycleSink {
         &self.kind
     }
 
-    pub fn argument_of(chain: impl Into<String>, index: usize) -> Result<Self, QueryBuildError> {
+    /// Sink argument of a strict configured global call, e.g. `fetch(value)`.
+    pub fn argument_of_global(
+        name: impl Into<String>,
+        index: usize,
+    ) -> Result<Self, QueryBuildError> {
+        let name = name.into();
+        Self::build_argument_sink(
+            name.clone(),
+            LifecycleCallTarget::Global(name.into()),
+            index,
+        )
+    }
+
+    /// Sink argument of a rooted member call, e.g.
+    /// `document.body.appendChild(value)`.
+    pub fn argument_of_member(
+        chain: impl Into<String>,
+        index: usize,
+    ) -> Result<Self, QueryBuildError> {
         let chain = chain.into();
+        if chain.starts_with('.') || chain.ends_with('.') || chain.contains("..") {
+            return Err(QueryBuildError::MalformedChain(chain));
+        }
+        Self::build_argument_sink(
+            chain.clone(),
+            LifecycleCallTarget::RootedMember(SymbolPath::from_chain(&chain)),
+            index,
+        )
+    }
+
+    fn build_argument_sink(
+        chain: String,
+        target: LifecycleCallTarget,
+        index: usize,
+    ) -> Result<Self, QueryBuildError> {
         if chain.trim().is_empty() {
             return Err(QueryBuildError::EmptyIdentityName);
         }
@@ -368,24 +363,59 @@ impl LifecycleSink {
             return Err(QueryBuildError::InvalidArgumentIndex(index));
         }
         Ok(Self {
-            kind: LifecycleSinkKind::ArgumentOf { chain, index },
+            kind: LifecycleSinkKind::ArgumentOf {
+                chain,
+                target,
+                index,
+            },
         })
     }
 
-    pub fn any_argument_of(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
+    /// Legacy spelling retained for source compatibility. New declarations
+    /// should choose `argument_of_global` or `argument_of_member` explicitly.
+    pub fn argument_of(chain: impl Into<String>, index: usize) -> Result<Self, QueryBuildError> {
+        Self::argument_of_member(chain, index)
+    }
+
+    /// Sink of any argument of a strict configured global call.
+    pub fn any_argument_of_global(name: impl Into<String>) -> Result<Self, QueryBuildError> {
+        let name = name.into();
+        if name.trim().is_empty() {
+            return Err(QueryBuildError::EmptyIdentityName);
+        }
+        Ok(Self {
+            kind: LifecycleSinkKind::AnyArgumentOf {
+                chain: name.clone(),
+                target: LifecycleCallTarget::Global(name.into()),
+            },
+        })
+    }
+
+    /// Sink of any argument of a rooted member call.
+    pub fn any_argument_of_member(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
         let chain = chain.into();
         if chain.trim().is_empty() {
             return Err(QueryBuildError::EmptyIdentityName);
         }
+        if chain.starts_with('.') || chain.ends_with('.') || chain.contains("..") {
+            return Err(QueryBuildError::MalformedChain(chain));
+        }
         Ok(Self {
-            kind: LifecycleSinkKind::AnyArgumentOf { chain },
+            kind: LifecycleSinkKind::AnyArgumentOf {
+                target: LifecycleCallTarget::RootedMember(SymbolPath::from_chain(&chain)),
+                chain,
+            },
         })
+    }
+
+    pub fn any_argument_of(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
+        Self::any_argument_of_member(chain)
     }
 
     pub fn chain(&self) -> &str {
         match &self.kind {
             LifecycleSinkKind::ArgumentOf { chain, .. }
-            | LifecycleSinkKind::AnyArgumentOf { chain } => chain,
+            | LifecycleSinkKind::AnyArgumentOf { chain, .. } => chain,
         }
     }
 }
@@ -407,11 +437,38 @@ impl IntoLifecycleSink for Result<LifecycleSink, QueryBuildError> {
     }
 }
 
+/// Fallible source input accepted by [`LifecycleQueryBuilder::source`].
+///
+/// Sources deliberately accept the existing leaf [`EventQuery`] rather than
+/// a full [`QueryDecl`]. The compiler later restricts the event to a global
+/// call or rooted member call because only those forms produce a tracked
+/// returned object in the flow engine.
+pub trait IntoLifecycleSource: private::Sealed {
+    fn into_lifecycle_source(self) -> Result<EventQuery, QueryBuildError>;
+}
+
+impl IntoLifecycleSource for EventQuery {
+    fn into_lifecycle_source(self) -> Result<EventQuery, QueryBuildError> {
+        Ok(self)
+    }
+}
+
+impl IntoLifecycleSource for Result<EventQuery, QueryBuildError> {
+    fn into_lifecycle_source(self) -> Result<EventQuery, QueryBuildError> {
+        self
+    }
+}
+
+mod private {
+    pub trait Sealed {}
+
+    impl Sealed for super::EventQuery {}
+    impl Sealed for Result<super::EventQuery, super::QueryBuildError> {}
+}
+
 // ── LifecycleQueryBuilder ─────────────────────────────────────────────
 
-use crate::api::rule::query::{
-    EventQuery, EventSpec, IdentitySpec, LifecycleQuery, QueryBuildError, VarId,
-};
+use crate::api::rule::query::LifecycleQuery;
 
 #[derive(Debug, Clone)]
 pub struct LifecycleQueryBuilder {
@@ -423,26 +480,15 @@ pub struct LifecycleQueryBuilder {
 }
 
 impl LifecycleQueryBuilder {
-    #[allow(clippy::needless_pass_by_value)]
-    pub fn source(mut self, source: Result<LifecycleSource, QueryBuildError>) -> Self {
-        let source = match source {
+    pub fn source<S: IntoLifecycleSource>(mut self, source: S) -> Self {
+        let source = match source.into_lifecycle_source() {
             Ok(source) => source,
             Err(error) => {
                 self.invalid_operation = Some(error);
                 return self;
             }
         };
-        let eq = EventQuery {
-            var: VarId::new(0),
-            event: EventSpec::MemberCall {
-                member: SymbolPath::from(source.chain()),
-            },
-            identity: IdentitySpec::Rooted {
-                path: SymbolPath::from(source.chain()),
-            },
-            constraints: source.arguments().to_vec(),
-        };
-        self.sources.push(eq);
+        self.sources.push(source);
         self
     }
 
@@ -560,8 +606,8 @@ impl LifecycleQuery {
 mod tests {
     use super::*;
 
-    fn source() -> Result<LifecycleSource, QueryBuildError> {
-        LifecycleSource::returned_by("document.createElement")
+    fn source() -> Result<EventQuery, QueryBuildError> {
+        EventQuery::member_call_rooted("document.createElement")
     }
 
     #[test]
@@ -590,10 +636,21 @@ mod tests {
     }
 
     #[test]
-    fn lifecycle_source_returned_by_has_expected_chain() {
-        let s = LifecycleSource::returned_by("foo.bar").unwrap();
-        assert_eq!(s.chain(), "foo.bar");
-        assert!(s.arguments().is_empty());
+    fn lifecycle_source_accepts_event_query() {
+        let query = EventQuery::call_global("fetch").unwrap();
+        let lifecycle = LifecycleQuery::builder("fetch result")
+            .source(query)
+            .condition(LifecycleCondition::event(LifecycleEvent::property_write(
+                "url",
+                ValueMatcher::any_value(),
+            )))
+            .completion(LifecycleCompletion::configuration())
+            .build()
+            .unwrap();
+        assert_eq!(
+            lifecycle.sources(),
+            &[EventQuery::call_global("fetch").unwrap()]
+        );
     }
 
     #[test]
@@ -626,23 +683,23 @@ mod tests {
 
     #[test]
     fn lifecycle_source_arg_adds_argument_constraint() {
-        let s = LifecycleSource::returned_by("foo.bar")
+        let s = EventQuery::member_call_rooted("foo.bar")
             .unwrap()
-            .arg(0, ValueMatcher::static_string().equals("val"));
+            .with_arg(0, ValueMatcher::static_string().equals("val"));
         let s = s.unwrap();
-        assert_eq!(s.arguments().len(), 1);
-        assert_eq!(s.arguments()[0].index(), 0);
+        assert_eq!(s.constraints().len(), 1);
+        assert_eq!(s.constraints()[0].index(), 0);
     }
 
     #[test]
     fn lifecycle_argument_limits_count_groups_and_per_group_predicates() {
-        let mut source = LifecycleSource::returned_by("foo.bar").unwrap();
+        let mut source = EventQuery::member_call_rooted("foo.bar").unwrap();
         for index in 0..limits::MAX_ARGUMENT_GROUPS {
-            source = source.arg(index, ValueMatcher::any_value()).unwrap();
+            source = source.with_arg(index, ValueMatcher::any_value()).unwrap();
         }
-        assert_eq!(source.arguments().len(), limits::MAX_ARGUMENT_GROUPS);
+        assert_eq!(source.constraints().len(), limits::MAX_ARGUMENT_GROUPS);
         assert!(matches!(
-            source.arg(limits::MAX_ARGUMENT_GROUPS, ValueMatcher::any_value()),
+            source.with_arg(limits::MAX_ARGUMENT_GROUPS, ValueMatcher::any_value()),
             Err(QueryBuildError::ExcessiveArgumentGroups(_))
         ));
 

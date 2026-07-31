@@ -17,7 +17,7 @@ pub use query::{
     EventQuery, EventRequirement, EventSpec, IdentitySpec, IntoQueryDecl, LifecycleQuery,
     QueryBuildError, QueryDecl, QueryDiagnostic, VarId,
     lifecycle::{
-        LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleSink, LifecycleSource,
+        IntoLifecycleSource, LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleSink,
     },
     value::{ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ValueMatcher, ValueMatcherKind},
 };

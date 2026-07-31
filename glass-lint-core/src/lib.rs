@@ -32,9 +32,9 @@ pub mod rules {
         classification::MatchKind,
         rule::{
             ArgumentMatcher, Category, Confidence, EventQuery, EventRequirement, EventSpec,
-            IdentitySpec, IntoQueryDecl, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
-            LifecycleQuery, LifecycleSink, LifecycleSource, QueryBuildError, QueryDecl, Rule,
-            RuleBuildError, RuleBuilder as Builder, Severity, ValueMatcher, VarId,
+            IdentitySpec, IntoLifecycleSource, IntoQueryDecl, LifecycleCompletion,
+            LifecycleCondition, LifecycleEvent, LifecycleQuery, LifecycleSink, QueryBuildError,
+            QueryDecl, Rule, RuleBuildError, RuleBuilder as Builder, Severity, ValueMatcher, VarId,
         },
     };
 }

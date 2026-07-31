@@ -148,10 +148,10 @@ fn contradictory_same_event_all_fails_at_compilation() {
 fn multiple_lifecycle_sources_compile() {
     use glass_lint_core::rules::LifecycleCompletion;
 
-    let src_a = glass_lint_core::rules::LifecycleSource::returned_by("document.createElement");
+    let src_a = glass_lint_core::rules::EventQuery::member_call_rooted("document.createElement");
     // Second source uses the same object variable — valid Any-of-source semantics
     // where either independently valid source can start the lifecycle.
-    let src_b = glass_lint_core::rules::LifecycleSource::returned_by("document.createTextNode");
+    let src_b = glass_lint_core::rules::EventQuery::member_call_rooted("document.createTextNode");
     let lifecycle = LifecycleQuery::builder("test.lifecycle")
         .source(src_a)
         .source(src_b)
@@ -419,7 +419,7 @@ fn lifecycle_sources_at_limit_succeeds() {
     );
     let mut builder = LifecycleQuery::builder("test").condition(condition);
     for i in 0..64 {
-        builder = builder.source(glass_lint_core::rules::LifecycleSource::returned_by(
+        builder = builder.source(glass_lint_core::rules::EventQuery::member_call_rooted(
             format!("a.b{i}"),
         ));
     }
@@ -437,7 +437,7 @@ fn lifecycle_sources_exceeding_limit_fails() {
     );
     let mut builder = LifecycleQuery::builder("test").condition(condition);
     for i in 0..65 {
-        builder = builder.source(glass_lint_core::rules::LifecycleSource::returned_by(
+        builder = builder.source(glass_lint_core::rules::EventQuery::member_call_rooted(
             format!("a.b{i}"),
         ));
     }
@@ -462,7 +462,7 @@ fn lifecycle_event_and_sink_limits_are_enforced_at_construction() {
         .map(|index| glass_lint_core::rules::LifecycleSink::any_argument_of(format!("sink{index}")))
         .collect::<Vec<_>>();
     let valid = LifecycleQuery::builder("limits")
-        .source(glass_lint_core::rules::LifecycleSource::returned_by(
+        .source(glass_lint_core::rules::EventQuery::member_call_rooted(
             "document.createElement",
         ))
         .condition(glass_lint_core::rules::LifecycleCondition::any_of(events))
@@ -479,7 +479,7 @@ fn lifecycle_event_and_sink_limits_are_enforced_at_construction() {
         })
         .collect::<Vec<_>>();
     let event_error = LifecycleQuery::builder("too-many-events")
-        .source(glass_lint_core::rules::LifecycleSource::returned_by(
+        .source(glass_lint_core::rules::EventQuery::member_call_rooted(
             "document.createElement",
         ))
         .condition(glass_lint_core::rules::LifecycleCondition::any_of(
@@ -497,7 +497,7 @@ fn lifecycle_event_and_sink_limits_are_enforced_at_construction() {
         .map(|index| glass_lint_core::rules::LifecycleSink::any_argument_of(format!("sink{index}")))
         .collect::<Vec<_>>();
     let sink_error = LifecycleQuery::builder("too-many-sinks")
-        .source(glass_lint_core::rules::LifecycleSource::returned_by(
+        .source(glass_lint_core::rules::EventQuery::member_call_rooted(
             "document.createElement",
         ))
         .condition(glass_lint_core::rules::LifecycleCondition::event(
@@ -520,14 +520,14 @@ fn lifecycle_event_and_sink_limits_are_enforced_at_construction() {
 #[test]
 fn lifecycle_source_and_sink_indices_are_checked_without_truncation() {
     let source =
-        glass_lint_core::rules::LifecycleSource::returned_by("document.createElement").unwrap();
+        glass_lint_core::rules::EventQuery::member_call_rooted("document.createElement").unwrap();
     assert!(matches!(
         source.with_arg(256, ValueMatcher::any_value()),
         Err(QueryBuildError::InvalidArgumentIndex(256))
     ));
     assert!(matches!(
-        glass_lint_core::rules::LifecycleSource::returned_by(""),
-        Err(QueryBuildError::EmptyIdentityName)
+        glass_lint_core::rules::EventQuery::member_call_rooted(""),
+        Err(QueryBuildError::MalformedChain(_))
     ));
     assert!(matches!(
         glass_lint_core::rules::LifecycleSink::argument_of("sink", 256),
@@ -618,7 +618,7 @@ fn empty_lifecycle_sources_rejected() {
 #[test]
 fn empty_lifecycle_evidence_symbol_rejected() {
     let err = LifecycleQuery::builder(" ")
-        .source(glass_lint_core::rules::LifecycleSource::returned_by(
+        .source(glass_lint_core::rules::EventQuery::member_call_rooted(
             "document.create",
         ))
         .completion(glass_lint_core::rules::LifecycleCompletion::any_sink([

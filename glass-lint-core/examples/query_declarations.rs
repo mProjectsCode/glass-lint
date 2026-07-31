@@ -1,7 +1,6 @@
 use glass_lint_core::rules::{
     Category, Confidence, EventQuery, EventRequirement, LifecycleCompletion, LifecycleCondition,
-    LifecycleEvent, LifecycleQuery, LifecycleSink, LifecycleSource, QueryDecl, Rule, Severity,
-    ValueMatcher,
+    LifecycleEvent, LifecycleQuery, LifecycleSink, QueryDecl, Rule, Severity, ValueMatcher,
 };
 
 fn rule<Q: glass_lint_core::rules::IntoQueryDecl>(id: &str, description: &str, query: Q) -> Rule {
@@ -73,9 +72,9 @@ fn returned_and_instance() -> (Rule, Rule) {
 
 fn lifecycle() -> Rule {
     let lifecycle = LifecycleQuery::builder("remote element")
-        .source(Ok(LifecycleSource::returned_by("document.createElement")
+        .source(Ok(EventQuery::member_call_rooted("document.createElement")
             .expect("valid source")
-            .arg(0, ValueMatcher::static_string().equals("script"))
+            .with_arg(0, ValueMatcher::static_string().equals("script"))
             .expect("valid source argument")))
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
@@ -99,7 +98,7 @@ fn lifecycle() -> Rule {
 fn correlated_sinks() -> Rule {
     let lifecycle = LifecycleQuery::builder("two sinks")
         .source(Ok(
-            LifecycleSource::returned_by("document.createElement").expect("valid source")
+            EventQuery::member_call_rooted("document.createElement").expect("valid source")
         ))
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",

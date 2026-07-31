@@ -1,6 +1,6 @@
 use glass_lint_core::rules::{
-    LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleQuery, LifecycleSink,
-    LifecycleSource,
+    EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleQuery,
+    LifecycleSink,
 };
 
 use super::{QueryDecl, ValueMatcher, classify, rule, script_insertion_flow};
@@ -150,9 +150,9 @@ fn value_flow_supports_member_call_configuration_and_helper_sinks() {
         .query(QueryDecl::lifecycle(
             LifecycleQuery::builder("script insertion")
                 .source(
-                    LifecycleSource::returned_by("document.createElement")
+                    EventQuery::member_call_rooted("document.createElement")
                         .unwrap()
-                        .arg(0, ValueMatcher::static_string().equals("script")),
+                        .with_arg(0, ValueMatcher::static_string().equals("script")),
                 )
                 .condition(LifecycleCondition::event(
                     LifecycleEvent::member_call("setAttribute")
@@ -315,9 +315,9 @@ fn value_flow_static_prefix_requires_static_values() {
         .query(QueryDecl::lifecycle(
             LifecycleQuery::builder("remote element")
                 .source(
-                    LifecycleSource::returned_by("document.createElement")
+                    EventQuery::member_call_rooted("document.createElement")
                         .unwrap()
-                        .arg(0, ValueMatcher::static_string().equals("img")),
+                        .with_arg(0, ValueMatcher::static_string().equals("img")),
                 )
                 .condition(LifecycleCondition::event(LifecycleEvent::property_write(
                     "src",
@@ -348,9 +348,9 @@ fn flow_can_require_all_requirements() {
         .query(QueryDecl::lifecycle(
             LifecycleQuery::builder("remote stylesheet")
                 .source(
-                    LifecycleSource::returned_by("document.createElement")
+                    EventQuery::member_call_rooted("document.createElement")
                         .unwrap()
-                        .arg(0, ValueMatcher::static_string().equals("link")),
+                        .with_arg(0, ValueMatcher::static_string().equals("link")),
                 )
                 .condition(LifecycleCondition::all_of([
                     LifecycleEvent::property_write(
@@ -383,7 +383,7 @@ fn flow_can_require_all_requirements() {
 #[test]
 fn flow_can_require_all_sinks_on_one_object() {
     let lifecycle = LifecycleQuery::builder("two-stage-object-use")
-        .source(LifecycleSource::returned_by("document.createElement"))
+        .source(EventQuery::member_call_rooted("document.createElement"))
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
             ValueMatcher::any_value(),

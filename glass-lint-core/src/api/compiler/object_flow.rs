@@ -10,7 +10,7 @@ use crate::api::{
     },
     rule::{
         ArgumentConstraint, ValueMatcher,
-        query::{EventSpec, IdentitySpec},
+        query::{EventSpec, IdentitySpec, lifecycle::LifecycleCallTarget},
     },
 };
 
@@ -103,21 +103,24 @@ impl CompiledObjectFlow {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct CompiledObjectSource {
-    pub(crate) member_call: SymbolPath,
+    pub(crate) target: LifecycleCallTarget,
     pub(crate) arguments: Vec<ArgumentConstraint>,
-    pub(crate) is_rooted: bool,
 }
 
 impl CompiledObjectSource {
     fn from_normalized_event(event: &NormalizedEvent) -> Self {
-        let member_call = match event.event() {
-            EventSpec::MemberCall { member } => member.clone(),
-            _ => SymbolPath::default(),
+        let target = match (event.event(), event.identity()) {
+            (EventSpec::Call, IdentitySpec::Global { name }) => {
+                LifecycleCallTarget::Global(name.clone())
+            }
+            (EventSpec::MemberCall { member }, IdentitySpec::Rooted { .. }) => {
+                LifecycleCallTarget::RootedMember(member.clone())
+            }
+            _ => LifecycleCallTarget::RootedMember(SymbolPath::default()),
         };
         Self {
-            member_call,
+            target,
             arguments: event.arguments().to_flat_vec(),
-            is_rooted: matches!(event.identity(), IdentitySpec::Rooted { .. }),
         }
     }
 }
@@ -191,23 +194,20 @@ impl Iterator for PresentIndices<'_> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct CompiledObjectSink {
-    pub(crate) member_calls: Vec<SymbolPath>,
+    pub(crate) target: LifecycleCallTarget,
     pub(crate) args: CompiledObjectSinkArguments,
-    pub(crate) is_rooted: bool,
 }
 
 impl CompiledObjectSink {
     fn from_matcher(sink: &NormalizedLifecycleSink) -> Self {
         match sink {
-            NormalizedLifecycleSink::ArgumentOf { chain, index } => Self {
-                member_calls: vec![SymbolPath::from(chain.as_str())],
+            NormalizedLifecycleSink::ArgumentOf { target, index } => Self {
+                target: target.clone(),
                 args: CompiledObjectSinkArguments::Indices(vec![*index]),
-                is_rooted: true,
             },
-            NormalizedLifecycleSink::AnyArgumentOf { chain } => Self {
-                member_calls: vec![SymbolPath::from(chain.as_str())],
+            NormalizedLifecycleSink::AnyArgumentOf { target } => Self {
+                target: target.clone(),
                 args: CompiledObjectSinkArguments::Any,
-                is_rooted: true,
             },
         }
     }

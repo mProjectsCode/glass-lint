@@ -77,12 +77,15 @@ impl ObjectFlowProjector<'_, '_, '_> {
     /// Check sink arguments against live states and emit completed flows.
     pub(super) fn record_sinks(
         &mut self,
-        chain: &NamePath,
+        call: &crate::analysis::flow::effect::CallEffectRef<'_>,
         args: &[CallArgInfo],
         sink_fact: FactId,
-        rooted: bool,
     ) {
-        let Some(flow_ids) = self.plan.sink_ids(chain) else {
+        let flow_ids = call
+            .global_name()
+            .and_then(|name| self.plan.global_sink_ids(name))
+            .or_else(|| call.chain().and_then(|chain| self.plan.sink_ids(chain)));
+        let Some(flow_ids) = flow_ids else {
             return;
         };
         let flow_ids: SmallVec<[FlowId; 8]> = flow_ids.iter().copied().collect();
@@ -100,24 +103,21 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 let Some(flow) = self.plan.get(flow_id) else {
                     continue;
                 };
-                let sink_members = self.plan.sink_member_calls(flow_id);
-                let matching_sinks: SmallVec<[usize; 4]> =
-                    flow.sinks
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(i, sink)| {
-                            let matches = sink_members.get(i).is_some_and(|members| {
-                                members.iter().any(|member| member == chain)
-                            }) && sink.is_rooted == rooted
-                                && match &sink.args {
-                                    CompiledObjectSinkArguments::Any => true,
-                                    CompiledObjectSinkArguments::Indices(indices) => {
-                                        indices.contains(&argument_index)
-                                    }
-                                };
-                            matches.then_some(i)
-                        })
-                        .collect();
+                let matching_sinks: SmallVec<[usize; 4]> = flow
+                    .sinks
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, sink)| {
+                        let matches = call.matches_target(&sink.target, self.names)
+                            && match &sink.args {
+                                CompiledObjectSinkArguments::Any => true,
+                                CompiledObjectSinkArguments::Indices(indices) => {
+                                    indices.contains(&argument_index)
+                                }
+                            };
+                        matches.then_some(i)
+                    })
+                    .collect();
                 if !matching_sinks.is_empty() {
                     for index in matching_sinks {
                         self.flow_state

@@ -4,7 +4,6 @@
 //! flow result or live alias. Unknown and invalidated values are unbound so
 //! later sinks cannot inherit stale state.
 
-use glass_lint_datastructures::NamePath;
 use smallvec::SmallVec;
 
 use crate::analysis::{
@@ -27,9 +26,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 event: fact_id,
             };
             if let Some(args) = cref.effective_args()
-                && let Some(chain) = cref.chain_owned(self.names)
-                && let Some((object, states)) =
-                    self.match_source(&chain, args, fact_id, cref.rooted())
+                && let Some((object, states)) = self.match_source(&cref, args, fact_id)
             {
                 if self.flow_state.state_count().saturating_add(states.len())
                     > self.limits.state_limit()
@@ -58,23 +55,29 @@ impl ObjectFlowProjector<'_, '_, '_> {
     /// relationship without duplicating the source event.
     fn match_source(
         &mut self,
-        chain: &NamePath,
+        call: &CallEffectRef<'_>,
         args: &[CallArgInfo],
         source_fact: FactId,
-        rooted: bool,
     ) -> Option<(ObjectId, Vec<FlowState>)> {
-        let candidates = self.plan.source_candidates(chain)?;
+        let candidates = call
+            .global_name()
+            .and_then(|name| self.plan.global_source_candidates(name))
+            .or_else(|| {
+                call.rooted()
+                    .then(|| call.chain())
+                    .flatten()
+                    .and_then(|chain| self.plan.source_candidates(chain))
+            })?;
         let mut matching: SmallVec<[FlowId; 8]> = candidates
             .iter()
             .filter(|candidate| {
-                candidate.rooted == rooted
-                    && candidate.arguments.iter().all(|matcher| {
-                        args.get(matcher.index()).is_some_and(|arg| {
-                            matcher
-                                .predicate()
-                                .matches(arg, self.names, self.stream.values())
-                        })
+                candidate.arguments.iter().all(|matcher| {
+                    args.get(matcher.index()).is_some_and(|arg| {
+                        matcher
+                            .predicate()
+                            .matches(arg, self.names, self.stream.values())
                     })
+                })
             })
             .map(|candidate| candidate.flow)
             .collect();
