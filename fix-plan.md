@@ -1,162 +1,153 @@
-# Fix plan for the new declarative matcher regressions
+# Fix guidance for the second declarative matcher audit
 
-## Goal and current baseline
+## Baseline and scope
 
-Make the new provider-neutral matcher contracts pass without adding rule-specific traversal or weakening strict provenance. Keep fact construction query-independent, preserve deterministic evidence, and keep all changes in `glass-lint-core`.
+Commit `8de1da5` fixes the previous declarative regressions, and the clean baseline passes `make ci`:
 
-The initial `make ci` run passes workspace checking, Clippy, all core unit tests, and every integration test before `matching::declarative`; it then reports the eight failures introduced by commit `6b6d81a`. The independent harness gates still pass:
+- all workspace unit, integration, and documentation tests pass;
+- all 14 end-to-end cases pass;
+- all 70 JavaScript and 98 Obsidian provider cases pass;
+- generated rules and core examples pass their checks.
 
-- `make test-e2e`: 14/14 cases passed.
-- `make test-rules`: 70/70 JavaScript and 98/98 Obsidian cases passed.
+This audit adds seven focused failing tests to `glass-lint-core/tests/integration/matching/declarative.rs`. The focused declarative suite now reports 69 passed and 7 failed. All seven are false negatives; no production code is changed in this audit.
 
-Five adjacent gaps and one repeated-write edge case were added to `glass-lint-core/tests/integration/matching/declarative.rs`. The focused suite now has 14 intentional failures and 55 passing tests. Implement the fixes below as one coherent core migration, then leave no compatibility-only path behind.
+Keep the implementation provider-neutral and inside `glass-lint-core`. Extend the existing scope, fact, resolution, and matcher-independent models rather than adding rule callbacks or selected-rule traversal.
 
-## 1. Resolve rooted property-write receivers before the write
-
-Failing tests:
-
-- `rooted_property_writes_follow_receiver_aliases`
-- `rooted_property_writes_keep_receiver_identity_after_prior_writes` (added during investigation)
-
-Root cause: `FactBuilder::record_member_assignment` correctly asks `FrozenScopeGraph::rooted_write_member_chain` for write-specific provenance, but that method delegates alias resolution to `resolve_member_chain`. The ordinary read resolver considers property-alias mutations at or before the use. The current assignment is therefore seen as an alias entry with no target and returns `None`; merely changing `<=` to `<` would still lose the path after an earlier write to the same property. A write changes the property value, not the already-proven identity of its receiver.
-
-Implementation:
-
-1. In `analysis/scope/query/provenance/chain.rs`, split receiver resolution from property-read availability. Add a write-specific path that resolves the receiver binding/alias at the assignment position and appends the statically known property without consulting writes to that property.
-2. Continue honoring receiver shadowing, receiver reassignment, dynamic computed properties, dynamic scopes, global-object canonicalization, and mutations that replace an ancestor/receiver. Do not reuse the relaxed write path for member reads or calls.
-3. Keep `analysis/facts/assignments.rs` as the sole emitter of `FactPayload::PropertyWrite`, with the canonical alias-expanded `rooted_chain` stored on the fact before downstream invalidation.
-4. Add focused scope/fact tests for a direct alias, repeated writes, a multi-hop alias, receiver reassignment to a local object, a shadowed lookalike, and a dynamic property. Assert exact rooted paths and source order.
-
-Acceptance: both writes through `const nav = navigator` are indexed as `navigator.onLine`; reads/calls after invalidating mutations remain fail-closed.
-
-## 2. Index heuristic constructor spellings independently of strict provenance
-
-Failing tests:
-
-- `heuristic_constructors_match_unconfigured_names`
-- `heuristic_constructors_follow_transparent_callee_wrappers` (added during investigation)
-
-Root cause: construction facts retain a `callee_name` only for direct identifier/member shapes, and `OccurrenceIndexes::record_construction_fact` adds that name to the heuristic constructor index only when provenance is `Global`. Heuristic calls already index their syntactic spelling independently of environment/provenance; heuristic constructors do not. Parenthesized and sequence-wrapped constructor targets also lose their spelling in `visit_new_expr`.
-
-Implementation:
-
-1. In `analysis/facts/visitor.rs`, resolve the effective constructor target through the same transparent parenthesis/sequence logic used for calls. Store its stable identifier spelling and effective span on `FactPayload::Construction`; unsupported/dynamic targets keep `callee_name = None`.
-2. In `analysis/matching/build.rs`, always add a present `callee_name` to `constructions.constructors`. Continue populating `global_constructors` and `module_constructors` only from proven strict provenance.
-3. Add fact/index tests covering direct, parenthesized, and sequence-wrapped heuristic constructors. Add negatives for computed/dynamic constructor expressions. Re-run existing strict global/module shadowing tests to prove the heuristic index does not leak into strict indexes.
-
-Acceptance: heuristic constructor queries behave like heuristic call queries, while `constructor_global` and `constructor_module` retain their current strict identity rules.
-
-## 3. Model default imports as callable default exports while preserving member behavior
-
-Failing tests:
-
-- `default_imports_preserve_module_export_identity`
-- `default_import_aliases_preserve_module_export_identity` (added during investigation)
-
-Root cause: `for_each_import_binding` classifies `ImportSpecifier::Default` as `BindingProvenance::ModuleNamespace`. Direct calls, constructions, superclass references, and aliases therefore never carry `(module, "default")` provenance. Simply changing the binding to `ModuleExport("default")` would break the existing contract `follows_default_import_namespace_members_through_aliases`, because default-import objects are also used as SDK clients for member queries.
-
-Implementation:
-
-1. Introduce one internal semantic representation for a default import (for example `BindingProvenance::DefaultImport { module }`) in `analysis/model/scope.rs`; do not scatter checks for the string `"default"` through the resolver.
-2. Produce that provenance from `analysis/scope/build/bindings.rs` in both scope passes.
-3. Centralize its contextual lowering in the scope query layer:
-   - direct call/constructor/class use lowers to `SymbolCallProvenance::ModuleExport { export: "default" }`;
-   - aliases preserve the default-import identity until the use site;
-   - member access continues to lower to the existing module-member identity so `import sdk from "sdk"; sdk.send()` and extracted/deep member aliases keep working;
-   - `.bind`, parentheses, sequences, and supported TypeScript-transparent wrappers preserve the same identity;
-   - reassignment, ambiguity, and local lookalikes fail closed.
-4. Update exhaustive provenance handling in `analysis/scope/query/provenance/{callable,object,chain}.rs`, scope collection/classification, and resolution helpers. Avoid a second module-provenance model.
-5. Add unit tests for provenance construction and integration tests for direct and aliased call/construct/extends forms, existing default-import member calls, `{ default as Name }` parity, and alias reassignment negatives.
-
-Acceptance: the two failing tests each produce three findings, and the existing default-import member/namespace tests remain unchanged.
-
-## 4. Treat ordinary and optional calls as one returned-object source shape
-
-Failing tests:
-
-- `lifecycle_sources_follow_optional_calls`
-- `returned_member_queries_follow_optional_producer_calls`
-- `returned_member_queries_follow_optional_receiver_calls` (added during investigation)
-
-Root cause: optional calls already emit one `Call` fact, but returned-object provenance and value identity only recognize `Expr::Call`. `ScopeCollector::returned_object_provenance`, `FrozenScopeGraph::returned_object_source`, and `FactBuilder::value_for_expr` omit `Expr::OptChain(OptChainBase::Call)`. As a result, the declaration target is not connected to the optional call's result ID, and later member/lifecycle events cannot correlate with the producer.
-
-Implementation:
-
-1. Add one bounded internal call-like expression helper in the syntax/analysis layer that exposes the effective callee, arguments, and result span for ordinary calls and both optional forms (`object.method?.()` and `object?.method()`). Use it instead of duplicating AST shape matching.
-2. Extend `ScopeCollector::returned_object_provenance` in `analysis/scope/build/provenance.rs` and `FrozenScopeGraph::returned_object_source` in `analysis/scope/query/provenance/object.rs` through that helper. Preserve rooted producer identity and reject bind/dynamic/unrooted producers exactly as ordinary calls do.
-3. Extend `FactBuilder::value_for_expr` in `analysis/facts/calls/mod.rs` so an optional-call initializer uses the same `call_result(span)` ID that `visit_opt_chain_expr` stores on its `Call` fact. Include transparent parentheses/sequences/TypeScript wrappers if they currently hide that same result identity.
-4. Confirm the flow projector requires no optional-specific branch: it should consume the repaired declaration-to-call-result identity and existing returned/lifecycle indexes.
-5. Add fact tests asserting exactly one optional `Call` fact and an identical declaration source/result ID, plus returned-member and lifecycle positives for both optional forms. Add negatives for dynamic producer properties, reassignment before the sink, disconnected objects, and optional local lookalikes.
-
-Acceptance: all three tests match through the ordinary returned-object/lifecycle pipeline without a rule-specific traversal or optional-only matcher.
-
-## 5. Emit dynamic-import occurrences into the canonical import fact stream
+## 1. Emit compound member assignments as property writes
 
 Failing test:
 
-- `import_queries_match_dynamic_imports`
+- `compound_assignments_are_rooted_property_writes`
 
-Root cause: `record_module_call_request` creates a resolver request for literal `import(...)`, but the `Callee::Import` call path emits only `FactPayload::Call`. Static imports and proven CommonJS requires also emit `FactPayload::Import`, which is the sole input to `literals.imports`; dynamic imports therefore never reach import queries.
+Observed behavior: `document.cookie += suffix` and `document.cookie ||= fallback` produce no `property_write_rooted("document.cookie")` findings.
 
-Implementation:
+Root cause: `FactBuilder::record_member_assignment` emits `FactPayload::PropertyWrite` only for `AssignOp::Assign`. Every compound or logical assignment is lowered to a generic `FactPayload::Assignment` with an unknown source and receiver. That generic fact invalidates flow state but is not indexed as a property-write occurrence, even though the source performs a statically rooted member write. It also invalidates the entire receiver object instead of the written property.
 
-1. Refactor literal module-call recognition in `analysis/facts/mod.rs` so the validated specifier/span is computed once and used for both the dynamic resolution request and a single `FactPayload::Import` emission.
-2. Keep dynamic/non-literal specifiers unknown and unindexed. Do not infer a module from arbitrary runtime strings.
-3. Anchor evidence consistently at the module specifier span and ensure the import fact is emitted exactly once for bare, awaited, parenthesized, and assigned dynamic imports.
-4. Add fact/index tests for exact and package matching, a subpath, a non-literal negative, and deterministic ordering alongside static import/require occurrences.
+Implementation guidance:
 
-Acceptance: the exact rule matches `sdk`, the package rule covers both `sdk` and `sdk/client`, producing the two expected rule findings without duplicate evidence.
+1. In `analysis/facts/assignments.rs`, use one member-write path for all `AssignOp` variants after evaluating the receiver, computed key, and RHS in source order.
+2. Preserve the current precise RHS value only for plain `=`. For arithmetic, bitwise, and logical compound assignments, store `ValueId::UNKNOWN` because the resulting property value depends on the prior value and, for logical assignments, runtime control.
+3. Still record the static property name and the write-specific canonical rooted chain for compound assignments. Dynamic computed keys must remain unknown and must not match a rooted property query.
+4. Do not also emit the old receiver-wide generic assignment for the same member write. `FactPayload::PropertyWrite` already gives the flow projector enough information to clear the affected property requirement; double emission would over-invalidate state and perturb operation counts.
+5. Keep identifier compound assignments on the existing generic assignment path. This change is specifically about statically identified member writes.
 
-## 6. Represent class declarations and class-reference operands separately
+Required lower-layer coverage:
 
-Failing tests:
+- fact tests for `=`, `+=`, `||=`, `??=`, and a dynamic computed key;
+- exact rooted paths through direct globals, aliases, and static computed properties;
+- receiver reassignment and shadowed/local lookalike negatives;
+- flow tests proving a compound write clears only the affected property requirement and cannot satisfy a static-value matcher from its unknown result;
+- deterministic fact/evidence order and exact assignment spans.
 
-- `heuristic_class_queries_match_instanceof_operands`
-- `heuristic_class_queries_match_superclass_operands` (added during investigation)
+Acceptance: the failing test reports two property-write findings, while compound writes never invent a static assigned value or a rooted identity.
 
-Root cause: `record_instanceof` emits a class fact with provenance but `name = None`, while `OccurrenceIndexes` only indexes heuristic class names for `ClassFactRole::Declaration`. A derived-class declaration stores the child name and superclass module provenance on one fact, so there is no heuristic occurrence for the `extends` operand. The current payload conflates declaration identity with referenced superclass identity.
-
-Implementation:
-
-1. Make class fact roles explicit in `analysis/model/fact.rs`: retain declaration facts and add/reference operand roles for `extends` and `instanceof` (for example `SuperclassOperand` and `InstanceofOperand`). Each operand fact should carry its own static spelling, exact operand span, and optional strict module provenance.
-2. In `analysis/facts/functions.rs`, emit the declaration fact for the declared class name and a separate superclass operand fact when present; do the same for class expressions. Emit `instanceof` operand names for supported identifier/member spellings. Visit children once and keep fact order deterministic.
-3. In `analysis/matching/build.rs`, index heuristic class names from every supported class-name/reference role. Index module class provenance from reference operands exactly once; avoid double-counting the old declaration-plus-provenance representation.
-4. Update fact model tests and the existing `module_class_references_preserve_class_provenance` contract to assert two occurrences (extends and instanceof) at their operand locations. Add local lookalike, dynamic RHS, member spelling, class expression, and shadowing coverage.
-
-Acceptance: heuristic class queries match declarations, superclass operands, and `instanceof` operands by spelling; module class queries still require proven module provenance and emit no duplicate occurrence.
-
-## 7. Index complete statically evaluated string expressions
+## 2. Canonicalize recursive ESM binding and member provenance
 
 Failing tests:
 
-- `string_queries_match_constant_compositions`
-- `string_queries_match_compositions_of_constant_aliases` (added during investigation)
+- `named_default_imports_share_default_import_member_semantics`
+- `default_import_bound_callables_preserve_default_export_identity`
+- `esm_export_bound_callables_preserve_module_provenance`
+- `extracted_deep_default_import_members_preserve_module_provenance`
+- `extracted_named_export_members_preserve_deep_module_provenance`
 
-Root cause: the bounded constant evaluator already resolves string addition and template substitutions, including constant aliases, but fact construction emits references only for literal strings, template quasis, and later identifier uses. It never emits a reference for the complete binary/template expression at its declaration, so the matcher sees `"to"` and `"ken"` but not `"token"`.
+These are one semantic gap, not five special cases.
 
-Implementation:
+### Root causes
 
-1. Reuse `analysis/syntax/constant` through the resolver; do not add another evaluator. Extend `Resolver::resolve_expr` (or a focused resolver-owned helper) to intern bounded static results for supported `+`, template, and transparent TypeScript expression shapes.
-2. In the fact visitor, visit child expressions in evaluation order and emit one `Reference` fact for the complete expression when its resolved value is `StaticString`. Use the full expression span.
-3. Preserve useful quasi references only when the complete template is unknown, or otherwise deduplicate the full/no-substitution template case. Ensure a composed expression produces one composite occurrence, not one per evaluator path.
-4. Keep numeric addition, dynamic substitutions, unsupported coercions, oversized strings, and exhausted constant budgets unknown. They must not establish a witness.
-5. Add fact/index tests for literal composition, constant-alias composition, nested addition, constant template substitutions, dynamic negatives, numeric addition, bounds, exact locations, and deterministic evidence order.
+`for_each_import_binding` creates `BindingProvenance::DefaultImport` only for `import Default from "sdk"`. The equivalent `import { default as Default } from "sdk"` becomes `ModuleExport { export: "default" }`, so the two syntaxes diverge for namespace-like member access.
 
-Acceptance: each complete `"token"` expression in the two failing tests contributes one finding, with no duplicate for its component literals or quasis.
+`ScopeCollector::module_alias_provenance` projects one member from a namespace/default import, but it does not append a static property to an existing `ModuleExport`. Consequently, an extracted deep callable such as `const send = client.send` loses `sdk:client.send` identity whether `client` came from a named export or a default import.
+
+`ScopeCollector::bound_callable_provenance` requires `rooted_name_path(member.obj)` before checking module provenance. ESM bindings deliberately are not rooted globals, so `send.bind(...)` and `DefaultExport.bind(...)` return early and never become `BoundModuleCallable` values.
+
+### Implementation guidance
+
+1. Normalize both default-import syntaxes at import binding construction. A named import whose imported name is exactly `default` must use the same internal `DefaultImport` representation as `ImportSpecifier::Default`. Do not branch later on source syntax.
+2. Give the scope model one recursive operation for projecting a static member from module provenance:
+   - namespace/default-import plus `member` becomes `ModuleExport(module, member)` under the repository's existing default-import member contract;
+   - `ModuleExport(module, export)` plus `member` becomes `ModuleExport(module, export.member)`;
+   - a static `.bind` access preserves the underlying callable export rather than appending `bind`;
+   - dynamic properties, unsupported optional shapes, ambiguity, and exhausted name/path storage fail closed.
+3. Use that operation from `module_alias_provenance`, member-value seeding, destructuring/extracted alias collection, callable resolution, and class/constructor provenance. Do not create parallel shallow and deep module-member algorithms.
+4. Refactor `bound_callable_provenance` to resolve module provenance before demanding a rooted target:
+   - `ModuleExport` maps directly to `BoundModuleCallable` with its complete export path;
+   - `DefaultImport` maps to `BoundModuleCallable` with export `default`;
+   - only the non-module fallback requires a rooted target and produces `BoundCallable`.
+5. Preserve bounded static bound arguments exactly as today. Reassignment of the source export or bound alias must invalidate later strict calls.
+6. Keep direct namespace/default-import member behavior and project overlay keys consistent with the same canonical export string. Deep paths such as `client.send` must not be split differently between local matching and project linking.
+
+Required lower-layer and adversarial coverage:
+
+- binding tests proving the two default-import syntaxes normalize identically;
+- direct, extracted, destructured, deep, computed-static, `.bind`, `.call`, and `.apply` positives for namespace, default, named-default, and named-export imports;
+- CommonJS and interop forms as regression controls;
+- reassignment before/after extraction, local lookalikes, dynamic properties, lexical shadowing, and incompatible-branch negatives;
+- exact module/export keys and evidence locations for a deep alias;
+- a project-linking case that carries a deep export through an explicit resolution record;
+- deterministic behavior at path/name budgets.
+
+Acceptance:
+
+- both default import syntaxes produce the same two `sdk:send` member findings;
+- bound default and named ESM exports retain their original export identity;
+- extracted `sdk.client.send` callables match `call_module("sdk", "client.send")` for default and named-export roots;
+- strict module queries still reject reassigned, dynamic, and local same-name values.
+
+## 3. Admit bounded static expressions as dynamic-import specifiers
+
+Failing test:
+
+- `import_queries_match_static_template_dynamic_imports`
+
+The test covers both ``import(`sdk`)`` and `import("s" + "dk")`.
+
+Root cause: `record_module_call_request` accepts only `Expr::Lit(Lit::Str)` as a dynamic-import argument. The existing bounded constant evaluator and resolver can already prove both test expressions equal the static string `sdk`, but module request construction and import-fact emission bypass that semantic value path. The import query therefore sees no occurrence, and project resolution would receive no request.
+
+Implementation guidance:
+
+1. Add one provider-neutral helper for a bounded static module specifier. It should use `analysis/syntax/constant` with the owning scope/resolver lookup and return the proven string plus the original argument span.
+2. Use the helper consistently in:
+   - `FactBuilder::record_module_call_request` for `ResolutionRequestKind::DynamicImport`;
+   - `FactPayload::Import` emission for local import queries;
+   - `ScopeCollector::module_alias_provenance` for values returned by `import(...)`/`await import(...)`;
+   - any project interface path that currently assumes an AST `Str` node.
+3. Change `ModuleInterfaceBuilder::record_import_request` to accept the validated specifier value and span rather than an AST string node. SWC types should not become part of the retained interface.
+4. Accept only complete bounded static strings. Unknown identifiers, reassigned aliases, dynamic template substitutions, unsupported coercions, spreads, and exhausted evaluation must produce neither an import fact nor a resolution request.
+5. Emit exactly one import fact and one resolution request per dynamic import. Anchor evidence at the complete argument expression, not an invented literal span or each component literal.
+6. Preserve the optional second dynamic-import options argument; only the first argument determines the module specifier.
+
+Required lower-layer and adversarial coverage:
+
+- literal, no-substitution template, constant template substitution, string addition, and stable constant-alias positives;
+- dynamic/reassigned alias, unknown template substitution, oversized string, non-string, and spread negatives;
+- exact/package query behavior for subpaths;
+- bare, awaited, parenthesized, and assigned dynamic-import expressions without duplicate facts;
+- module-interface tests asserting the exact request kind, specifier, and source span;
+- a virtual-project linking test for a statically composed relative specifier;
+- stable fact fingerprints and operation counts.
+
+Acceptance: the failing test reports two exact import findings for `sdk`, while non-static expressions remain absent from both matcher indexes and project resolution requests.
 
 ## Suggested implementation order
 
-1. Repair/default the shared semantic representations: default-import provenance, call-like optional expressions, and class operand facts.
-2. Update fact construction for optional call result IDs, dynamic imports, constructors, class operands, property writes, and composite strings.
-3. Update matcher indexes only where facts now expose the missing reusable identity/name/value.
-4. Add the focused unit/adversarial tests listed above, then run the declarative integration suite.
-5. Run `cargo test -p glass-lint-core`, followed by the full `make ci` gate.
+1. Canonicalize module provenance first, because dynamic-import return values also consume module provenance.
+2. Add the shared static-module-specifier helper and migrate fact/interface/scope consumers together.
+3. Change compound member assignments to emit property-write facts and update flow invalidation tests.
+4. Run the focused suite:
+
+   ```sh
+   cargo test -p glass-lint-core --test integration matching::declarative
+   ```
+
+5. Run `cargo test -p glass-lint-core`, then the full `make ci` gate.
 
 ## Completion checklist
 
-- All 14 currently failing declarative tests pass.
-- Existing default-import member behavior, strict global/module shadowing, optional-call deduplication, and module class counts remain green.
-- New facts/indexes are built once per file and do not consult selected rules.
-- Dynamic, shadowed, reassigned, ambiguous, and unsupported forms remain non-witnesses.
-- Evidence spans, occurrence order, fact counts, fingerprints, and plan operation counts are deterministic; update explicit baselines only for intentional new facts/work.
-- No provider names or policies enter core, no compatibility wrapper remains, and `make ci` passes.
+- All seven new declarative tests pass.
+- Existing default-import, optional-call, class, constructor, literal-composition, and direct property-write regressions remain green.
+- Matching remains query-independent and fact construction still runs once per file.
+- No dynamic, reassigned, ambiguous, shadowed, or budget-exhausted value establishes strict module/rooted provenance.
+- Evidence counts, locations, certainty, fact fingerprints, and operation counts are deterministic.
+- Provider fixtures and generated `RULES.md` remain unchanged unless behavior intentionally adds a provider finding that requires an explicit fixture expectation.
+- `make ci` passes.

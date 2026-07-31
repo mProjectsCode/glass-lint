@@ -1004,3 +1004,107 @@ fn string_queries_match_compositions_of_constant_aliases() {
     );
     assert_capability_count(&result, "test.string-aliases", 2);
 }
+
+#[test]
+fn compound_assignments_are_rooted_property_writes() {
+    let rules = [rule("test.compound-property-write")
+        .query(EventQuery::property_write_rooted("document.cookie"))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "document.cookie += suffix;
+         document.cookie ||= fallback;",
+        &rules,
+    );
+    assert_capability_count(&result, "test.compound-property-write", 2);
+}
+
+#[test]
+fn named_default_imports_share_default_import_member_semantics() {
+    let rules = [rule("test.default-member-parity")
+        .query(EventQuery::member_call_module("sdk", "send"))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "import DefaultSyntax from 'sdk';
+         import { default as NamedSyntax } from 'sdk';
+         DefaultSyntax.send();
+         NamedSyntax.send();",
+        &rules,
+    );
+    assert_capability_count(&result, "test.default-member-parity", 2);
+}
+
+#[test]
+fn default_import_bound_callables_preserve_default_export_identity() {
+    let rules = [rule("test.default-bind")
+        .query(EventQuery::call_module("sdk", "default"))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "import DefaultExport from 'sdk';
+         const bound = DefaultExport.bind(null);
+         bound();",
+        &rules,
+    );
+    assert_capability_count(&result, "test.default-bind", 1);
+}
+
+#[test]
+fn extracted_deep_default_import_members_preserve_module_provenance() {
+    let rules = [rule("test.deep-default-member")
+        .query(EventQuery::call_module("sdk", "client.send"))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "import sdk from 'sdk';
+         const send = sdk.client.send;
+         send();",
+        &rules,
+    );
+    assert_capability_count(&result, "test.deep-default-member", 1);
+}
+
+#[test]
+fn import_queries_match_static_template_dynamic_imports() {
+    let rules = [rule("test.template-import")
+        .query(EventQuery::import_exact("sdk"))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "await import(`sdk`);
+         await import('s' + 'dk');",
+        &rules,
+    );
+    assert_capability_count(&result, "test.template-import", 2);
+}
+
+#[test]
+fn esm_export_bound_callables_preserve_module_provenance() {
+    let rules = [rule("test.esm-bind")
+        .query(EventQuery::call_module("sdk", "send"))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "import { send } from 'sdk';
+         const bound = send.bind(null);
+         bound();",
+        &rules,
+    );
+    assert_capability_count(&result, "test.esm-bind", 1);
+}
+
+#[test]
+fn extracted_named_export_members_preserve_deep_module_provenance() {
+    let rules = [rule("test.deep-named-member")
+        .query(EventQuery::call_module("sdk", "client.send"))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "import { client } from 'sdk';
+         const send = client.send;
+         send();",
+        &rules,
+    );
+    assert_capability_count(&result, "test.deep-named-member", 1);
+}
