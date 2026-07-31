@@ -771,3 +771,133 @@ fn instance_matchers_do_not_track_chained_constructor_calls() {
     );
     assert_eq!(result.finding_count, 1);
 }
+
+/// Rooted property writes should retain the same receiver identity through a
+/// local alias as rooted member calls and reads do.
+#[test]
+fn rooted_property_writes_follow_receiver_aliases() {
+    let rules = [rule("test.property-write")
+        .query(EventQuery::property_write_rooted("navigator.onLine"))
+        .build()
+        .unwrap()];
+    let result = classify("const nav = navigator; nav.onLine = value;", &rules);
+    assert_capability_count(&result, "test.property-write", 1);
+}
+
+/// A heuristic constructor is intentionally independent of the configured
+/// global environment and should match its spelling like heuristic calls do.
+#[test]
+fn heuristic_constructors_match_unconfigured_names() {
+    let rules = [rule("test.constructor")
+        .query(EventQuery::constructor_heuristic("PluginSettingTab"))
+        .build()
+        .unwrap()];
+    let result = classify("new PluginSettingTab();", &rules);
+    assert_capability_count(&result, "test.constructor", 1);
+}
+
+/// Default imports are module exports too; all three author-visible event
+/// forms should preserve the `default` export identity.
+#[test]
+fn default_imports_preserve_module_export_identity() {
+    let rules = [
+        rule("test.call")
+            .query(EventQuery::call_module("sdk", "default"))
+            .build()
+            .unwrap(),
+        rule("test.construct")
+            .query(EventQuery::constructor_module("sdk", "default"))
+            .build()
+            .unwrap(),
+        rule("test.class")
+            .query(EventQuery::class_module("sdk", "default"))
+            .build()
+            .unwrap(),
+    ];
+    let result = classify(
+        "import DefaultExport from 'sdk';
+         DefaultExport();
+         new DefaultExport();
+         class Child extends DefaultExport {}",
+        &rules,
+    );
+    assert_eq!(result.finding_count, 3);
+}
+
+/// Lifecycle producers support aliases and callable wrappers, but optional
+/// calls currently lose the returned-object provenance at the source stage.
+#[test]
+fn lifecycle_sources_follow_optional_calls() {
+    let rules = [rule("test.optional-source")
+        .query(QueryDecl::lifecycle(Ok(script_insertion_flow())))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "const script = document.createElement?.('script');
+         script.src = url;
+         document.head.appendChild(script);",
+        &rules,
+    );
+    assert_capability_count(&result, "test.optional-source", 1);
+}
+
+#[test]
+fn import_queries_match_dynamic_imports() {
+    let rules = [
+        rule("test.exact")
+            .query(EventQuery::import_exact("sdk"))
+            .build()
+            .unwrap(),
+        rule("test.package")
+            .query(EventQuery::import_package("sdk"))
+            .build()
+            .unwrap(),
+    ];
+    let result = classify(
+        "await import('sdk');
+         await import('sdk/client');",
+        &rules,
+    );
+    assert_eq!(result.finding_count, 2);
+}
+
+#[test]
+fn returned_member_queries_follow_optional_producer_calls() {
+    let rules = [rule("test.returned-optional")
+        .query(QueryDecl::member_call_returned(
+            "document.createElement",
+            "appendChild",
+        ))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "const node = document.createElement?.('div');
+         node.appendChild(child);",
+        &rules,
+    );
+    assert_capability_count(&result, "test.returned-optional", 1);
+}
+
+#[test]
+fn heuristic_class_queries_match_instanceof_operands() {
+    let rules = [rule("test.class")
+        .query(EventQuery::class_heuristic("PluginSettingTab"))
+        .build()
+        .unwrap()];
+    let result = classify("value instanceof PluginSettingTab;", &rules);
+    assert_capability_count(&result, "test.class", 1);
+}
+
+#[test]
+fn string_queries_match_constant_compositions() {
+    let rules = [rule("test.string")
+        .query(EventQuery::string_contains("token"))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "const concatenated = 'to' + 'ken';
+         const templated = `to${'ken'}`;",
+        &rules,
+    );
+    assert_capability_count(&result, "test.string", 2);
+}
