@@ -42,6 +42,7 @@ impl Visit for FactBuilder<'_, '_> {
             FactPayload::Reference {
                 value: resolved.id,
                 provenance: resolved.call.clone(),
+                static_string_origin: self.static_string_origin(resolved.id),
             },
         );
     }
@@ -119,6 +120,7 @@ impl Visit for FactBuilder<'_, '_> {
             targets.push(ValueId::UNKNOWN);
         }
         for target in targets {
+            self.remember_static_string_alias(target, source);
             self.emit(
                 FactKind::Declaration,
                 declarator.span(),
@@ -359,8 +361,14 @@ impl Visit for FactBuilder<'_, '_> {
             FactPayload::Reference {
                 value: id,
                 provenance: SymbolCallProvenance::Local,
+                static_string_origin: None,
             },
         );
+        if let Some(terminal_id) = self.resolver.static_string_terminal_id(id)
+            && let Ok(span) = self.resolver.normalize_span(value.span())
+        {
+            self.static_string_origins.insert(terminal_id, span);
+        }
     }
 
     fn visit_tpl(&mut self, template: &Tpl) {
@@ -383,6 +391,7 @@ impl Visit for FactBuilder<'_, '_> {
                     FactPayload::Reference {
                         value: resolved.id,
                         provenance: SymbolCallProvenance::Local,
+                        static_string_origin: None,
                     },
                 );
             }
@@ -393,6 +402,7 @@ impl Visit for FactBuilder<'_, '_> {
                 FactPayload::Reference {
                     value: complete,
                     provenance: SymbolCallProvenance::Local,
+                    static_string_origin: None,
                 },
             );
         }
@@ -426,6 +436,7 @@ impl Visit for FactBuilder<'_, '_> {
                     FactPayload::Reference {
                         value: complete,
                         provenance: SymbolCallProvenance::Local,
+                        static_string_origin: None,
                     },
                 );
             }

@@ -20,6 +20,7 @@ pub mod flow;
 mod local;
 mod lowering;
 mod matching;
+pub use matching::private_network_match;
 pub mod module;
 pub mod project;
 mod resolution;

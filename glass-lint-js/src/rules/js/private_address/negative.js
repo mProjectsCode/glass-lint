@@ -10,6 +10,13 @@ const other172Range = "http://172.40.32.4";
 // @expect-error glass-lint rule=js:network.private-address
 const missingPrefix = "192.168.1.2";
 
+// Regex source that contains punctuation and numeric quantifiers is not a
+// private address.
+// @expect-no-error glass-lint rule=js:network.private-address
+const timezonePattern = "^\\s*(?:\\(?(?:GMT|UTC)\\s?)?([+-])(\\d{1,2})(?::?(\\d{2}))?\\)?";
+// @expect-no-error glass-lint rule=js:network.private-address
+const datePattern = "([0-9]{4})\\-([0-9]{1,2})\\-([0-9]{1,2})(?:T([0-9]{1,2}):([0-9]{1,2})(?::([0-9]{1,2}))?)?";
+
 // Partial markers are not expanded into URL or IP ranges.
 const version = "10.4.2";
 const partialPrivateRange = "172.20.1";

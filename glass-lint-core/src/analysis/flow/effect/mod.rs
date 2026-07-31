@@ -638,7 +638,9 @@ impl FunctionEffectsBuilder {
             return;
         };
         match &fact.payload {
-            FactPayload::Reference { value, provenance } => {
+            FactPayload::Reference {
+                value, provenance, ..
+            } => {
                 effect.record_reference(*value, provenance, &mut self.value_provenance);
             }
             FactPayload::Declaration { target, source }

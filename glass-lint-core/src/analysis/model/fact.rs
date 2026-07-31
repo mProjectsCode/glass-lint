@@ -119,6 +119,7 @@ mod semantic_fact_tests {
             FactPayload::Reference {
                 value: ValueId::UNKNOWN,
                 provenance: crate::analysis::syntax::SymbolCallProvenance::Local,
+                static_string_origin: None,
             },
         );
         assert_eq!(fact.id(), FactId(1));
@@ -325,6 +326,9 @@ pub enum FactPayload {
     Reference {
         value: ValueId,
         provenance: SymbolCallProvenance,
+        /// Source span of the defining literal for a direct static-string
+        /// alias, when it is available in this file.
+        static_string_origin: Option<ByteRange>,
     },
     MemberRead {
         syntactic_path: Option<NamePath>,

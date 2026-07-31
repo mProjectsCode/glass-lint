@@ -280,6 +280,12 @@ impl Resolver<'_> {
         self.const_value(id).string().map(str::to_owned)
     }
 
+    pub(in crate::analysis) fn static_string_terminal_id(&self, id: ValueId) -> Option<ValueId> {
+        self.values
+            .static_string(id)
+            .and_then(|_| self.values.resolve_id(id))
+    }
+
     pub(in crate::analysis) fn value_arena_exhausted(&self) -> bool {
         self.values.exhausted()
     }

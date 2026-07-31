@@ -170,6 +170,7 @@ fn is_chain_malformed(chain: &str) -> bool {
 }
 
 pub(crate) const PRIVATE_NETWORK_LITERAL: &str = "__glass_lint_private_network_literal__";
+pub(crate) const PRIVATE_NETWORK_EVIDENCE_SYMBOL: &str = "private network address";
 
 fn evidence_kind_for_event(event: &EventSpec) -> MatchKind {
     match event {
@@ -637,7 +638,16 @@ impl EventQuery {
     pub fn into_query(self) -> QueryDecl {
         let var = self.var;
         let kind = evidence_kind_for_event(&self.event);
-        let symbol = self.identity.display_name();
+        let symbol = if kind == MatchKind::StringContains
+            && matches!(
+                &self.identity,
+                IdentitySpec::LiteralString { predicate }
+                    if predicate == PRIVATE_NETWORK_LITERAL
+            ) {
+            PRIVATE_NETWORK_EVIDENCE_SYMBOL.to_owned()
+        } else {
+            self.identity.display_name()
+        };
         QueryDecl {
             expression: QueryExpr::event(self),
             emission: EmissionDecl {

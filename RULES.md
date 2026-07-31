@@ -37,7 +37,7 @@ Default severity: `info`
 
 Queries:
 
-- Emit `__glass_lint_private_network_literal__` when a string reference containing `__glass_lint_private_network_literal__`.
+- Emit `private network address` when a string reference containing `private network address`.
 
 #### `js:network.service-indicator`
 

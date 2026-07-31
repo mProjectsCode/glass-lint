@@ -74,14 +74,20 @@ impl OccurrenceIndexes {
                     .push(module.clone().into(), fact.id, fact.span);
             }
 
-            FactPayload::Reference { value, .. } => {
+            FactPayload::Reference {
+                value,
+                static_string_origin,
+                ..
+            } => {
                 if let Some(static_string) = values.get(*value).and_then(|val| match val {
                     crate::analysis::value::Value::StaticString(s) => Some(s),
                     _ => None,
                 }) {
-                    self.literals
-                        .strings
-                        .push(static_string.clone().into(), fact.id, fact.span);
+                    self.literals.strings.push(
+                        static_string.clone().into(),
+                        fact.id,
+                        static_string_origin.unwrap_or(fact.span),
+                    );
                 }
             }
 

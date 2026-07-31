@@ -195,6 +195,13 @@ impl SourceLineIndex {
         }
         Ok(self.range(start, end - start))
     }
+
+    /// Borrow the source covered by a validated byte range.
+    pub(crate) fn source_slice(&self, range: ByteRange) -> Option<&str> {
+        let start = usize::try_from(range.start()).ok()?;
+        let end = usize::try_from(range.end()).ok()?;
+        self.source.get(start..end)
+    }
 }
 
 #[derive(Clone, Debug)]

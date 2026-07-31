@@ -920,6 +920,51 @@ fn string_queries_match_constant_compositions() {
 }
 
 #[test]
+fn string_query_findings_cover_only_the_matched_text() {
+    let rule = rule("test.string-location")
+        .query(EventQuery::string_contains("localhost"))
+        .build()
+        .unwrap();
+    let report = support::lint_report(r#"const endpoint = "http://localhost:3000";"#, rule);
+    let range = report.files()[0].findings()[0].location().range();
+    assert_eq!(range.start().column(), 26);
+    assert_eq!(range.end().column(), 35);
+}
+
+#[test]
+fn string_query_aliases_keep_the_defining_literal_location() {
+    let rule = rule("test.string-alias-location")
+        .query(EventQuery::string_contains("localhost"))
+        .build()
+        .unwrap();
+    let report = support::lint_report(
+        r#"const endpoint = "http://localhost:3000"; const alias = endpoint; use(alias);"#,
+        rule,
+    );
+    assert_eq!(report.files()[0].findings().len(), 1);
+    let range = report.files()[0].findings()[0].location().range();
+    assert_eq!(range.start().column(), 26);
+    assert_eq!(range.end().column(), 35);
+}
+
+#[test]
+fn private_network_findings_cover_only_the_address() {
+    let rule = rule("test.private-network")
+        .query(EventQuery::string_private_network_address())
+        .build()
+        .unwrap();
+    let report = support::lint_report(r#"const endpoint = "http://192.168.1.2:8080/path";"#, rule);
+    let range = report.files()[0].findings()[0].location().range();
+    assert_eq!(range.start().column(), 26);
+    assert_eq!(range.end().column(), 37);
+    assert!(
+        report.files()[0].findings()[0].evidence().traces()[0].steps()[0]
+            .message()
+            .contains("private network address")
+    );
+}
+
+#[test]
 fn heuristic_constructors_follow_transparent_callee_wrappers() {
     let rules = [rule("test.constructor-wrappers")
         .query(EventQuery::constructor_heuristic("PluginSettingTab"))

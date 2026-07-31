@@ -99,12 +99,31 @@ pub struct FactBuilder<'builder, 'resolver> {
     /// Local class values whose superclass is a proven module export, with
     /// checkpoint/rollback.
     class_origins: OriginMap<(SmolStr, SmolStr)>,
+    /// Defining spans for static string literals encountered during this
+    /// traversal, keyed by their terminal value identity. Direct identifier
+    /// aliases can then retain the literal location for evidence rendering.
+    static_string_origins: HashMap<ValueId, ByteRange>,
     /// Module requests and export slots collected during the same canonical
     /// walk as the semantic facts, owned by a focused interface builder.
     interface: interface::ModuleInterfaceBuilder,
 }
 
 impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
+    pub(super) fn static_string_origin(&self, value: ValueId) -> Option<ByteRange> {
+        self.static_string_origins.get(&value).copied().or_else(|| {
+            self.resolver
+                .static_string_terminal_id(value)
+                .and_then(|terminal| self.static_string_origins.get(&terminal).copied())
+        })
+    }
+
+    pub(super) fn remember_static_string_alias(&mut self, target: ValueId, source: ValueId) {
+        self.static_string_origins.remove(&target);
+        if let Some(origin) = self.static_string_origin(source) {
+            self.static_string_origins.insert(target, origin);
+        }
+    }
+
     pub(super) fn name_path(&self, path: &SymbolPath) -> Option<NamePath> {
         self.resolver.name_path(path)
     }
@@ -134,6 +153,7 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
             instance_callables: HashMap::new(),
             instance_origins: OriginMap::new(),
             class_origins: OriginMap::new(),
+            static_string_origins: HashMap::new(),
             interface: interface::ModuleInterfaceBuilder::new(),
         }
     }
@@ -664,6 +684,7 @@ mod stream_tests {
                 FactKind::Reference => FactPayload::Reference {
                     value: ValueId::UNKNOWN,
                     provenance: SymbolCallProvenance::Local,
+                    static_string_origin: None,
                 },
                 FactKind::Function => FactPayload::Function {
                     id: FunctionId(0),
