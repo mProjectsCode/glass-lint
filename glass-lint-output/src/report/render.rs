@@ -10,6 +10,7 @@ use crate::report::types::{self, Cell, PrettyFile, PrettyReport, PrettyReports};
 
 type RuleGroupEntry<'a> = (&'a PrettyFile<'a>, &'a crate::project::types::Finding);
 
+/// Escape control characters for safe inclusion in terminal text.
 pub fn visible_text(value: &str) -> String {
     let mut result = String::with_capacity(value.len());
     for ch in value.chars() {

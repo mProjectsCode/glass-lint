@@ -27,6 +27,7 @@ pub use lint::{
 pub use parse::{ParseDiagnostic, SourceLanguage};
 pub use project::MatchCertainty;
 pub use rule_id::RuleId;
+/// Public rule-authoring and matcher types.
 pub mod rules {
     pub use crate::api::{
         classification::MatchKind,
@@ -42,5 +43,7 @@ pub mod rules {
 #[cfg(test)]
 pub(crate) use parse::parse;
 
+/// Version of the serialized analysis-report schema.
 pub const REPORT_VERSION: u32 = 6;
+/// Maximum source size accepted by core, in bytes.
 pub const MAX_SOURCE_BYTES: usize = 8 * 1024 * 1024;

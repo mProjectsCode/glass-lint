@@ -74,9 +74,9 @@ pub fn read_source_bytes(
 
 /// A bounded source corpus with one canonical project root.
 ///
-/// Construction establishes one canonical [`SourceAdmission`] from either the
-/// configured policy root or the first discovery root. That same admission is
-/// reused for every discovery and load operation within the corpus, so the
+/// Construction establishes one canonical source-admission boundary from either
+/// the configured policy root or the first discovery root. That same admission
+/// is reused for every discovery and load operation within the corpus, so the
 /// containment boundary, exclusion rules, and extension policy are applied
 /// consistently across all files.
 pub struct SourceCorpus {
@@ -105,7 +105,7 @@ impl SourceCorpus {
     /// Create a corpus with an explicit canonical project root.
     ///
     /// The root is canonicalized immediately; discovery roots passed to
-    /// [`discover_filtered`] must be inside this root or equal to it.
+    /// [`Self::discover_filtered`] must be inside this root or equal to it.
     pub fn with_root(
         options: &ValidatedProjectLoadOptions,
         root: &Path,

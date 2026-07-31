@@ -31,7 +31,10 @@ let linter = Linter::new(LinterConfig::new(
 ))?;
 let report = linter.lint_snippet("fetch('/data');", "main.js")?;
 
-assert_eq!(report.files[0].findings[0].rule_id.as_str(), "example:network.request");
+assert_eq!(
+    report.files()[0].findings()[0].rule_id().as_str(),
+    "example:network.request"
+);
 ```
 
 `LinterConfig` accepts one or more catalogs, one complete host environment, a
@@ -48,7 +51,7 @@ spelling alone. The public builder API covers:
 - rooted, returned-object, instance, and module member behavior;
 - imports and parsed literals;
 - static value and rooted-expression argument constraints; and
-- bounded object lifecycles and connected source-to-sink flow.
+- bounded object lifecycles and connected source-to-sink flow;
 - multi-event object flow with `LifecycleCompletion::all_sinks`, which
   requires several later sinks to consume the same tracked object.
 

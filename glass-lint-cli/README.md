@@ -44,8 +44,8 @@ pretty_max_width = 120
 show_evidence_source = true
 
 [cli.project]
-max_bytes = 8388608
-max_project_bytes = 536870912
+max_source_bytes = 8388608
+max_project_source_bytes = 536870912
 max_visited_entries = 250000
 max_timeout_ms = 300000
 ```

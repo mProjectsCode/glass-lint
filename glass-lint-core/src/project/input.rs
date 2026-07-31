@@ -1,7 +1,8 @@
 //! Normalization and validation of the public project input contract.
 //!
 //! The staged project session owns the canonical normalization pipeline via
-//! [`crate::project::session`]. The functions here are shared utilities used
+//! The private project-session module owns the canonical normalization
+//! pipeline. The functions here are shared utilities used
 //! by the session, types, and CLI loading code.
 
 use crate::project::{

@@ -23,18 +23,22 @@ pub fn rule_metadata() -> Vec<RuleMetadata> {
 }
 
 #[must_use]
+/// Return the isolated JavaScript catalog.
 pub fn js_catalog() -> RuleCatalog {
     RuleCatalog::new("js", rules::js()).expect("valid JS catalog")
 }
 #[must_use]
+/// Return the isolated browser catalog.
 pub fn browser_catalog() -> RuleCatalog {
     RuleCatalog::new("browser", rules::browser()).expect("valid browser catalog")
 }
 #[must_use]
+/// Return the isolated Electron catalog.
 pub fn electron_catalog() -> RuleCatalog {
     RuleCatalog::new("electron", rules::electron()).expect("valid Electron catalog")
 }
 #[must_use]
+/// Return the isolated Node.js catalog.
 pub fn node_catalog() -> RuleCatalog {
     RuleCatalog::new("node", rules::node()).expect("valid Node catalog")
 }
@@ -72,6 +76,7 @@ pub fn electron_config() -> LinterConfig {
 }
 
 #[must_use]
+/// Return the host-independent JavaScript environment.
 pub fn js_environment() -> Environment {
     let mut environment = Environment::default();
     environment
@@ -89,6 +94,7 @@ pub fn js_environment() -> Environment {
 }
 
 #[must_use]
+/// Return the browser and DOM environment layered over JavaScript globals.
 pub fn browser_environment() -> Environment {
     let mut environment = js_environment();
     environment
@@ -129,6 +135,7 @@ pub fn browser_environment() -> Environment {
 }
 
 #[must_use]
+/// Return the Node.js environment layered over JavaScript globals.
 pub fn node_environment() -> Environment {
     let mut environment = js_environment();
     environment
@@ -151,6 +158,7 @@ pub fn node_environment() -> Environment {
 }
 
 #[must_use]
+/// Return the Electron renderer environment layered over browser and Node.js.
 pub fn electron_environment() -> Environment {
     let mut environment = browser_environment();
     environment

@@ -437,10 +437,11 @@ impl IntoLifecycleSink for Result<LifecycleSink, QueryBuildError> {
     }
 }
 
-/// Fallible source input accepted by [`LifecycleQueryBuilder::source`].
+/// Fallible source input accepted by the lifecycle query builder's `source`
+/// method.
 ///
 /// Sources deliberately accept the existing leaf [`EventQuery`] rather than
-/// a full [`QueryDecl`]. The compiler later restricts the event to a global
+/// a full `QueryDecl`. The compiler later restricts the event to a global
 /// call or rooted member call because only those forms produce a tracked
 /// returned object in the flow engine.
 pub trait IntoLifecycleSource: private::Sealed {

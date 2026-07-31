@@ -14,7 +14,7 @@ let report = linter.lint_snippet(source, "bundle.js")?;
 - `js_catalog()`, `browser_catalog()`, `node_catalog()`, and
   `electron_catalog()` return isolated catalogs.
 - The matching `*_environment()` functions return complete host environments.
-- `rule_catalog()` returns metadata for every JavaScript-provider rule.
+- `rule_metadata()` returns metadata for every JavaScript-provider rule.
 
 Extend a complete host environment for additional bindings:
 
@@ -28,7 +28,8 @@ let linter = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
 ```
 
 Use `add_global_object_with_members` when another realm exposes only known
-members. The no-argument constructors use the default environment.
+members. The no-argument environment functions return complete built-in host
+environments.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for provider boundaries and
 [TESTING.md](../TESTING.md) for fixture conventions.

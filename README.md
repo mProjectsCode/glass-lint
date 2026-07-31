@@ -9,9 +9,10 @@ Strict rules require lexical identity, module provenance, static values, or
 connected value flow. The broader `heuristic` profile adds syntactic and
 literal-based discovery.
 
-> [!NOTE]
-> Glass Lint is under active development. Rust APIs, report schemas, and rule
-> IDs may change before a stable release.
+> [!WARNING]
+> Glass Lint is alpha software. Rust APIs, report schemas, rule IDs, and
+> matching behavior may change between alpha releases. Pin a release when
+> integrating it into an automated workflow.
 
 ## Supported input
 
@@ -75,9 +76,7 @@ Provider crates expose catalogs and complete host environments; core constructs
 the linter:
 
 ```rust
-let linter = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
-    vec![glass_lint_obsidian::catalog()], glass_lint_obsidian::environment(),
-))?;
+let linter = glass_lint_core::Linter::new(glass_lint_obsidian::obsidian_config())?;
 let report = linter.lint_snippet(source, "main.js")?;
 ```
 
@@ -93,8 +92,8 @@ evidence, structured diagnostics, and an explicit completion state.
 - [Contributing](CONTRIBUTING.md) lists the development workflow and commands.
 - [Testing](TESTING.md) defines test placement and fixture syntax.
 - [Rule reference](RULES.md) lists every generated rule and what it matches.
-- Each crate has a usage README and an `ARCHITECTURE.md` for its internal
-  design.
+- Crate-specific READMEs document public usage where applicable; architecture
+  documents describe internal design and invariants.
 
 ## License
 

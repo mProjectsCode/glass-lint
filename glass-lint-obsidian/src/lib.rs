@@ -19,12 +19,14 @@ pub fn rule_metadata() -> Vec<RuleMetadata> {
 }
 
 #[must_use]
+/// Return the isolated Obsidian rule catalog.
 pub fn obsidian_catalog() -> RuleCatalog {
     RuleCatalog::new("obsidian", catalog::obsidian_rules().to_vec())
         .expect("valid Obsidian catalog")
 }
 
 #[must_use]
+/// Return the complete Obsidian renderer environment.
 pub fn obsidian_environment() -> Environment {
     let mut environment = glass_lint_js::electron_environment();
     environment

@@ -7,14 +7,14 @@ sources and typed resolutions to `glass-lint-core`.
 ## Load and analyze
 
 ```rust
-use glass_lint_project::{ProjectLoadOptions, ProjectLoader, ProjectSelection};
+use glass_lint_project::{ProjectLoader, ProjectSelection, ValidatedProjectLoadOptions};
 
-let options = ProjectLoadOptions::builder().build()?.validated()?;
+let options = ValidatedProjectLoadOptions::builder().build()?;
 let loader = ProjectLoader::new(options);
 let selection = ProjectSelection::entry("src/main.ts");
 let outcome = loader.load_and_lint(&linter, &selection)?;
 
-if let Some(boundary) = outcome.error {
+if let Some(boundary) = outcome.partial_reason {
     eprintln!("partial project: {boundary}");
 }
 let report = outcome.report;
@@ -23,7 +23,7 @@ let report = outcome.report;
 Use `ProjectSelection::entry` for one entry and reachable internal imports,
 `directory` for all admitted sources below a directory, or `tsconfig` for
 TypeScript configuration membership. Configure limits through the checked
-`ProjectLoadOptions::builder()` before calling `validated()`.
+`ValidatedProjectLoadOptions::builder()` before loading.
 
 ## Policy
 

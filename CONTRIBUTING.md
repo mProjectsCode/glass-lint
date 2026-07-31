@@ -103,7 +103,7 @@ comparison setup.
 
 - Root `README.md`: user entry point
 - Root `ARCHITECTURE.md`: crate graph and workspace boundaries only
-- Crate `README.md`: public purpose and usage
+- Crate `README.md` (when present): public purpose and usage
 - Crate `ARCHITECTURE.md`: internal design and invariants
 - `TESTING.md`: test placement and fixture authoring
 - `AGENTS.md`: concise coding-agent instructions

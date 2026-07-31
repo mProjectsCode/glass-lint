@@ -126,7 +126,7 @@ pub(crate) enum QueryPredicate {
 ///
 /// This is a leaf predicate — it selects an event occurrence and optionally
 /// constrains its identity and arguments. Evidence metadata is not stored
-/// here; it lives in the owning [`EmissionDecl`].
+/// here; it lives in the query's emission metadata.
 ///
 /// Construct instances through the typed combinator methods such as
 /// [`EventQuery::call_global`], [`EventQuery::member_call_rooted`], etc.
@@ -751,7 +751,7 @@ impl EventRequirement {
     ///
     /// The `index` is the 0-based argument position. Returns
     /// [`QueryBuildError::InvalidArgumentIndex`] when the index exceeds
-    /// [`limits::MAX_ARGUMENT_INDEX`].
+    /// the engine's bounded maximum argument index.
     pub fn argument(
         index: usize,
         matcher: impl Into<ArgumentMatcher>,
@@ -1116,7 +1116,7 @@ impl QueryDecl {
 
     /// Wrap a [`LifecycleQuery`] into a [`QueryDecl`] with inferred evidence.
     /// Accepts a `Result` from a builder for direct use in
-    /// [`RuleBuilder::query`].
+    /// the rule builder's `query` method.
     pub fn lifecycle(
         lc_result: Result<LifecycleQuery, QueryBuildError>,
     ) -> Result<Self, QueryBuildError> {
@@ -1135,9 +1135,9 @@ impl QueryDecl {
     }
 }
 
-/// Sealed trait allowing [`RuleBuilder::query`] to accept a [`QueryDecl`],
-/// [`EventQuery`], or `Result` of either without requiring the caller to
-/// unwrap.
+/// Sealed trait allowing the rule builder's `query` method to accept a
+/// `QueryDecl`, [`EventQuery`], or `Result` of either without requiring the
+/// caller to unwrap.
 pub trait IntoQueryDecl: private::Sealed {
     fn into_query_decl(self) -> Result<QueryDecl, QueryBuildError>;
 }

@@ -8,9 +8,13 @@ use console::measure_text_width;
 use crate::project::FileReport;
 
 #[derive(Clone, Copy, Debug)]
+/// Formatting options for terminal report rendering.
 pub struct PrettyOptions {
+    /// Maximum rendered line width before evidence is abbreviated.
     pub max_width: usize,
+    /// Whether severity and certainty labels use terminal colors.
     pub color: bool,
+    /// Whether evidence includes source excerpts and carets.
     pub show_evidence_source: bool,
 }
 
@@ -24,6 +28,7 @@ impl Default for PrettyOptions {
     }
 }
 
+/// Formatter for one file's findings and evidence.
 pub struct PrettyReport<'a> {
     pub(crate) report: &'a FileReport,
     pub(crate) filename: &'a str,
@@ -34,6 +39,7 @@ pub struct PrettyReport<'a> {
 }
 
 #[derive(Clone)]
+/// A source-backed file report ready for grouped rendering.
 pub struct PrettyFile<'a> {
     pub(crate) report: &'a FileReport,
     pub(crate) filename: &'a str,
@@ -43,6 +49,7 @@ pub struct PrettyFile<'a> {
 }
 
 impl<'a> PrettyFile<'a> {
+    /// Associate a core file report with its filename and source text.
     pub fn new(report: &'a FileReport, filename: &'a str, source: &'a str) -> Self {
         let mut line_starts = vec![0];
         line_starts.extend(source.match_indices('\n').map(|(offset, _)| offset + 1));
@@ -56,6 +63,7 @@ impl<'a> PrettyFile<'a> {
     }
 }
 
+/// Formatter for findings grouped across multiple files.
 pub struct PrettyReports<'a> {
     pub(crate) files: &'a [PrettyFile<'a>],
     pub(crate) options: PrettyOptions,
@@ -63,6 +71,7 @@ pub struct PrettyReports<'a> {
 }
 
 impl<'a> PrettyReports<'a> {
+    /// Create a grouped renderer for a set of files.
     pub fn new(files: &'a [PrettyFile<'a>], options: PrettyOptions) -> Self {
         let file_index = files.iter().map(|f| (f.filename, f)).collect();
         Self {
@@ -74,6 +83,7 @@ impl<'a> PrettyReports<'a> {
 }
 
 impl<'a> PrettyReport<'a> {
+    /// Create a renderer for one file report.
     pub fn new(
         report: &'a FileReport,
         filename: &'a str,
@@ -132,6 +142,7 @@ impl Cell {
     }
 }
 
+/// Return the terminal width of one character at a display column.
 pub fn display_width(ch: char, column: usize) -> usize {
     if ch == '\t' {
         4 - (column % 4)
@@ -141,6 +152,7 @@ pub fn display_width(ch: char, column: usize) -> usize {
     }
 }
 
+/// Return the terminal width of a string.
 pub fn display_width_str(text: &str) -> usize {
     measure_text_width(text)
 }

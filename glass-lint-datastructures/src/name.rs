@@ -31,9 +31,9 @@ pub struct NameExhausted {
 /// A bidirectional mapping between human-readable names and compact
 /// [`NameId`]s.
 ///
-/// Uses an [`IndexSet`] so both intern (name → id) and resolve (id → name)
-/// are O(1) average case.  Names are stored as [`SmolStr`] for small-string
-/// optimisation.
+/// Uses an [`indexmap::IndexSet`] so both intern (name → id) and resolve (id →
+/// name) are O(1) average case.  Names are stored as [`SmolStr`] for
+/// small-string optimisation.
 #[derive(Clone, Debug)]
 pub struct NameTable {
     names: FastIndexSet<SmolStr>,
