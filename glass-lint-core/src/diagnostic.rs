@@ -205,6 +205,8 @@ pub struct RuleMetadata {
     pub id: RuleId,
     /// Provider-facing description of what the rule detects.
     pub description: String,
+    /// Generated explanations of the validated query declarations.
+    pub query_explanations: Vec<String>,
     /// Default severity assigned when the rule reports a finding.
     pub default_severity: Severity,
 }

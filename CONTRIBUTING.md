@@ -43,6 +43,8 @@ default.
 | `make test-e2e` | Verify `tests/e2e` |
 | `make test-projects` | Verify `tests/projects` |
 | `make test-rules` | Verify provider rule fixtures |
+| `make generate-rules` | Regenerate the repository-wide `RULES.md` reference |
+| `make check-rules` | Verify that `RULES.md` matches the provider catalogs |
 | `make ci` | Run the complete validation gate |
 | `make profile` | Build and record a Samply profile |
 | `make compare` | Regenerate `reports/COMPARISON.md` |
@@ -74,6 +76,10 @@ rules/<area>/<rule>/
 Document the intended match, precision boundary, and known limitations in the
 rule's Rust doc comment. [TESTING.md](TESTING.md) defines the required
 adversarial coverage and fixture directives.
+
+`RULES.md` is generated from catalog metadata and validated query declarations.
+Run `make generate-rules` after adding or changing a rule or its description;
+do not edit the generated document by hand.
 
 ## Profiling and external comparison
 

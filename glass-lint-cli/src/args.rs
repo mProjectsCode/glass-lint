@@ -24,6 +24,15 @@ pub struct Args {
 pub enum Command {
     /// List the rules in the selected provider/profile catalog.
     Rules,
+    /// Generate or verify the repository-wide rule reference.
+    GenerateRules {
+        /// Destination of the generated Markdown document.
+        #[arg(short, long, default_value = "RULES.md")]
+        output: PathBuf,
+        /// Check that the destination is current without changing it.
+        #[arg(long)]
+        check: bool,
+    },
     /// Analyze a project entry, directory, or `tsconfig.json`.
     Check {
         /// Entry file, directory, or `tsconfig.json` to load as a project.

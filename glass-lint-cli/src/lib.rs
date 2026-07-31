@@ -9,6 +9,7 @@ pub mod args;
 mod config;
 mod lint;
 mod output;
+mod rules_doc;
 mod telemetry;
 
 use std::io;
@@ -18,6 +19,11 @@ use clap::Parser;
 
 /// Execute the command-line application from parsed arguments.
 pub fn run(args: args::Args) -> Result<bool> {
+    if let args::Command::GenerateRules { output, check } = &args.command {
+        rules_doc::write_or_check(output, *check)?;
+        return Ok(false);
+    }
+
     // The boolean is deliberately separate from `Result`: operational errors
     // are exit code 2, while a valid report that crosses `fail_on` is exit 1.
     let config = config::load(&args)?;

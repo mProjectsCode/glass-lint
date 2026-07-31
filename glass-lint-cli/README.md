@@ -8,11 +8,13 @@ and maps outcomes to process exit statuses.
 
 ```sh
 cargo run -p glass-lint-cli --bin glass-lint -- rules
+cargo run -p glass-lint-cli --bin glass-lint -- generate-rules --output RULES.md
 cargo run -p glass-lint-cli --bin glass-lint -- check path/to/project
 cargo run -p glass-lint-cli --bin glass-lint -- snippet path/to/source.js
 ```
 
 - `rules` lists metadata for the selected provider and profile.
+- `generate-rules` writes or verifies the complete repository-wide [`RULES.md`](../RULES.md) reference.
 - `check` analyzes an entry file, directory, or explicit `tsconfig.json` as one
   bounded project, including admitted internal imports.
 - `snippet` analyzes exactly one source file without cross-file linking.

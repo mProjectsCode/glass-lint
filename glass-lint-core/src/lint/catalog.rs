@@ -146,6 +146,7 @@ impl RuleCatalog {
             .map(|(record, id)| RuleMetadata {
                 id: id.clone(),
                 description: record.description.clone(),
+                query_explanations: record.query_explanations.clone(),
                 default_severity: record.severity,
             })
             .collect()

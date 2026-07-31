@@ -46,6 +46,7 @@ Build from source with a recent Rust toolchain:
 ```sh
 cargo build --workspace
 cargo run -p glass-lint-cli --bin glass-lint -- rules
+cargo run -p glass-lint-cli --bin glass-lint -- generate-rules --output RULES.md
 cargo run -p glass-lint-cli --bin glass-lint -- check path/to/project
 ```
 
@@ -91,6 +92,7 @@ evidence, structured diagnostics, and an explicit completion state.
   ownership.
 - [Contributing](CONTRIBUTING.md) lists the development workflow and commands.
 - [Testing](TESTING.md) defines test placement and fixture syntax.
+- [Rule reference](RULES.md) lists every generated rule and what it matches.
 - Each crate has a usage README and an `ARCHITECTURE.md` for its internal
   design.
 

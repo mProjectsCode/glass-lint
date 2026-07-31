@@ -42,6 +42,9 @@ pub fn run(config: &Config, command: Command) -> Result<bool> {
             lint_files(config, &linter, paths)
         }
         Command::Rules => unreachable!("rules are handled before lint execution"),
+        Command::GenerateRules { .. } => {
+            unreachable!("generated rule documents are handled before lint execution")
+        }
     }
 }
 

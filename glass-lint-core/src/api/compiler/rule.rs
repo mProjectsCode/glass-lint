@@ -46,6 +46,7 @@ impl<'a> CompiledRuleSelection<'a> {
 #[derive(Debug, Clone)]
 pub(crate) struct CompiledRuleRecord {
     pub(crate) description: String,
+    pub(crate) query_explanations: Vec<String>,
     pub(crate) severity: Severity,
     pub(crate) confidence: Confidence,
     pub(crate) matcher: CompiledMatcherPlan,
@@ -56,6 +57,11 @@ impl CompiledRuleRecord {
         let plan = CompiledMatcherPlan::compile(rule.queries())?;
         Ok(Self {
             description: rule.description().to_owned(),
+            query_explanations: rule
+                .queries()
+                .iter()
+                .map(crate::api::rule::QueryDecl::explanation)
+                .collect(),
             severity: rule.severity(),
             confidence: rule.confidence(),
             matcher: plan,

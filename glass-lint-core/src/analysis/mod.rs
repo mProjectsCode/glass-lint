@@ -91,6 +91,7 @@ mod tests {
         let selected = [RuleIndex::new(0)];
         let fetch_rule = CompiledRuleRecord {
             description: "fetch".into(),
+            query_explanations: Vec::new(),
             severity: Severity::Warning,
             confidence: Confidence::High,
             matcher: fetch_plan,
@@ -107,6 +108,7 @@ mod tests {
         .unwrap();
         let member_rule = CompiledRuleRecord {
             description: "member".into(),
+            query_explanations: Vec::new(),
             severity: Severity::Warning,
             confidence: Confidence::High,
             matcher: member_plan,
