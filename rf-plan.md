@@ -958,11 +958,11 @@ Place private algebra and invariant tests beside:
 
 Use:
 
-- `glass-lint-core/tests/scope_precision.rs` for conditional provenance,
+- `glass-lint-core/tests/integration/matching/scope.rs` for conditional provenance,
   shadowing, aliases, and reassignment;
-- `glass-lint-core/tests/declarative_matching/flow.rs` for public object-flow
+- `glass-lint-core/tests/integration/matching/declarative/flow.rs` for public object-flow
   matcher behavior;
-- `glass-lint-core/tests/compact_source.rs` for constructed-instance and
+- `glass-lint-core/tests/integration/matching/compact.rs` for constructed-instance and
   compact/minified shapes;
 - project tests for cross-file certainty and trace locations; and
 - report tests for exact serialized and pretty output.
@@ -994,8 +994,8 @@ Add bundled-style examples under `tests/e2e` that verify:
 Run the narrowest relevant command after each phase:
 
 ```sh
-cargo test -p glass-lint-core --test scope_precision
-cargo test -p glass-lint-core --test declarative_matching
+cargo test -p glass-lint-core --test integration matching::scope
+cargo test -p glass-lint-core --test integration matching::declarative
 cargo test -p glass-lint-core flow::projector
 cargo test -p glass-lint-core project::report
 cargo test -p glass-lint-core --test report_pretty

@@ -11,10 +11,12 @@ use std::panic::catch_unwind;
 use glass_lint_core::{
     RuleCatalog,
     rules::{
-        Category, Confidence, EventQuery, EventRequirement, LifecycleCondition, LifecycleEvent,
-        LifecycleQuery, LifecycleSink, QueryBuildError, QueryDecl, Rule, ValueMatcher,
+        EventQuery, EventRequirement, LifecycleCondition, LifecycleEvent, LifecycleQuery,
+        LifecycleSink, QueryBuildError, QueryDecl, ValueMatcher,
     },
 };
+
+use crate::support::rule;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -23,14 +25,7 @@ fn compile_rule(
     id: &str,
     query: QueryDecl,
 ) -> Result<RuleCatalog, glass_lint_core::ProviderCatalogError> {
-    let rule = Rule::builder(id)
-        .description("test")
-        .category(Category::new("test").unwrap())
-        .severity(glass_lint_core::Severity::Info)
-        .confidence(Confidence::High)
-        .query(query)
-        .build()
-        .unwrap();
+    let rule = rule(id).query(query).build().unwrap();
     RuleCatalog::new("test", vec![rule])
 }
 
@@ -53,29 +48,6 @@ fn any_branches_compile_through_rule_catalog() {
     assert!(
         result.is_ok(),
         "Any with alpha-aligned variables should compile through RuleCatalog: {result:?}"
-    );
-}
-
-// ── Test 2: Any requires primary evidence on every branch ───────────────
-//
-// An Any whose emission primary variable is unavailable on one branch must
-// produce a stable structured compile error.
-//
-// Currently passes validation because pass_evidence_projection only checks
-// that the primary var exists somewhere in the tree (Package 3 will fix).
-
-#[test]
-fn any_requires_primary_evidence_on_every_branch() {
-    // Branch A has $0 ("fetch"), branch B also has $0 ("navigate").
-    // Both branches have the primary var, so compilation should succeed.
-    let branch_a = EventQuery::call_global("fetch").unwrap().into_query();
-    let branch_b = EventQuery::call_global("navigate").unwrap().into_query();
-    let query = QueryDecl::any_with_evidence([Ok(branch_a), Ok(branch_b)], "network").unwrap();
-
-    let result = compile_rule("test.any-evidence", query);
-    assert!(
-        result.is_ok(),
-        "Any with primary var on every branch should compile: {result:?}"
     );
 }
 
@@ -624,11 +596,7 @@ fn query_roots_boundary_succeeds() {
 
 #[test]
 fn query_roots_limit_plus_one_is_rejected_at_authoring() {
-    let mut builder = Rule::builder("test.too-many-roots")
-        .description("test")
-        .category(Category::new("test").unwrap())
-        .severity(glass_lint_core::Severity::Info)
-        .confidence(Confidence::High);
+    let mut builder = rule("test.too-many-roots");
     for i in 0..=256 {
         builder = builder.query(EventQuery::call_global(format!("fn{i}")));
     }

@@ -11,6 +11,8 @@ use glass_lint_core::{
     rules::{Category, Confidence, EventQuery, Rule, Severity},
 };
 
+use crate::support;
+
 fn catalog() -> RuleCatalog {
     let rule = Rule::builder("network.fetch")
         .description("Uses fetch")
@@ -24,7 +26,7 @@ fn catalog() -> RuleCatalog {
 }
 
 fn test_linter(catalog: RuleCatalog, environment: Environment) -> Linter {
-    Linter::new(LinterConfig::new(vec![catalog], environment)).unwrap()
+    support::linter_from_catalog(catalog, environment)
 }
 
 fn catalog_linter(catalog: RuleCatalog) -> Linter {

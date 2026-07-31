@@ -343,8 +343,14 @@ pub fn build_test_stream<'a>(
 }
 
 #[cfg(test)]
-#[path = "build_tests.rs"]
-mod build_tests;
+pub fn build_test_facts(source: &str, filename: &str) -> FactStream<Frozen> {
+    let parsed = crate::parse(source, filename).expect("source should parse");
+    let mut resolver = Resolver::collect(&parsed.program, source);
+    build_test_stream(&parsed.program, &mut resolver)
+}
+
+#[cfg(test)]
+mod tests;
 
 /// Facts collected by the source-order visitor before names and values are
 /// frozen into the immutable semantic artifact.
@@ -613,7 +619,7 @@ impl Default for SemanticFacts {
 }
 
 #[cfg(test)]
-mod tests {
+mod stream_tests {
     use glass_lint_datastructures::ByteRange;
 
     use super::*;

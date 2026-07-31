@@ -4,27 +4,21 @@
 //! collection, semantic resolution, and matcher execution together.
 
 use glass_lint_core::{
-    Environment, Linter, LinterConfig, MatchCertainty, RuleCatalog,
+    MatchCertainty,
     rules::{EventQuery, Rule},
 };
 
-#[path = "support/mod.rs"]
-mod support;
-
-use support::rule;
+use crate::support::{self, rule};
 
 /// Assert exact findings and reject parser diagnostics before checking
 /// semantics.
 fn assert_count(source: &str, rule: Rule, expected: usize) {
-    let mut environment = Environment::default();
-    environment
-        .add_globals(["fetch", "host", "require"])
-        .unwrap();
-    let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
-    let report = Linter::new(LinterConfig::new(vec![catalog], environment))
-        .unwrap()
-        .lint_snippet(source, "scope-precision.js")
-        .unwrap();
+    let report = support::lint_report_with_globals(
+        source,
+        "scope-precision.js",
+        rule,
+        ["fetch", "host", "require"],
+    );
     assert!(!report.files()[0].has_parse_diagnostics(), "{source}");
     let count = report.files()[0].findings().len();
     if count != expected {
@@ -37,15 +31,12 @@ fn assert_count(source: &str, rule: Rule, expected: usize) {
 }
 
 fn assert_certainty(source: &str, rule: Rule, expected: MatchCertainty) {
-    let mut environment = Environment::default();
-    environment
-        .add_globals(["fetch", "host", "require"])
-        .unwrap();
-    let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
-    let report = Linter::new(LinterConfig::new(vec![catalog], environment))
-        .unwrap()
-        .lint_snippet(source, "scope-precision.js")
-        .unwrap();
+    let report = support::lint_report_with_globals(
+        source,
+        "scope-precision.js",
+        rule,
+        ["fetch", "host", "require"],
+    );
     assert!(!report.files()[0].has_parse_diagnostics(), "{source}");
     assert_eq!(report.files()[0].findings().len(), 1, "{source}");
     assert_eq!(report.files()[0].findings()[0].certainty(), expected);

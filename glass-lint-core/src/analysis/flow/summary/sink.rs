@@ -264,10 +264,9 @@ mod tests {
     use super::*;
     use crate::{
         analysis::{
-            facts::{CallArgInfo, FactPayload, build_test_stream},
+            facts::{CallArgInfo, FactPayload, build_test_facts},
             flow::summary::SummaryPathStore,
             model::{fact::Frozen, flow::FlowId},
-            resolution::Resolver,
             value::FunctionId,
         },
         api::classification::RuleIndex,
@@ -282,9 +281,7 @@ mod tests {
     }
 
     fn make_stream(source: &str) -> FactStream<Frozen> {
-        let parsed = crate::parse(source, "sink-test.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program, source);
-        build_test_stream(&parsed.program, &mut resolver)
+        build_test_facts(source, "sink-test.js")
     }
 
     fn ri(value: usize) -> RuleIndex {

@@ -209,13 +209,10 @@ fn project_relative_paths_validate_construction_and_deserialization() {
     assert_eq!(json, "\"src/unicode/é.js\"");
 }
 
-#[path = "tests/support.rs"]
 mod support;
 pub use support::*;
 
-#[path = "tests/cache_and_session.rs"]
 mod cache_and_session;
-#[path = "tests/input_validation.rs"]
 mod input_validation;
 
 #[test]
@@ -256,9 +253,6 @@ fn session_uses_project_analysis_and_preserves_single_file_findings() {
     );
 }
 
-#[path = "tests/linking_and_flow.rs"]
 mod linking_and_flow;
-#[path = "tests/session_and_link_validation.rs"]
 mod session_and_link_validation;
-#[path = "tests/status_policy.rs"]
 mod status_policy;

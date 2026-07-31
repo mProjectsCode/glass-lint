@@ -2,7 +2,7 @@
 
 This document records deterministic regression baselines for representative
 query shapes. The exact executable assertions live in
-`glass-lint-core/tests/query_baseline.rs`; this file explains the baseline
+`glass-lint-core/tests/integration/query/baseline.rs`; this file explains the baseline
 design, source inputs, environment, and expected output invariants.
 
 ## Regeneration
@@ -10,11 +10,11 @@ design, source inputs, environment, and expected output invariants.
 Run the baseline tests to verify:
 
 ```sh
-cargo test -p glass-lint-core --test query_baseline -- --quiet
+cargo test -p glass-lint-core --test integration query::baseline -- --quiet
 ```
 
 If operation counts or physical plan summaries change intentionally, update
-the assertions in `query_baseline.rs` to match the new expected values.
+the assertions in `integration/query/baseline.rs` to match the new expected values.
 
 ## Baseline cases
 
@@ -112,8 +112,8 @@ field so that intentional changes require targeted updates.
 The baseline and repository migration surfaces were reviewed with:
 
 ```sh
-cargo test -p glass-lint-core --test query_baseline
-cargo test -p glass-lint-core --test query_composition
+cargo test -p glass-lint-core --test integration query::baseline
+cargo test -p glass-lint-core --test integration query::composition
 make ci
 ```
 

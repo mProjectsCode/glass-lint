@@ -3,35 +3,17 @@
 //! The helpers intentionally build a new catalog per case so rule selection,
 //! environment configuration, and finding counts remain independently visible.
 
-use std::collections::BTreeSet;
-
 use glass_lint_core::{
-    Environment, Linter, LinterConfig, MatchCertainty, RuleCatalog,
+    Environment, Linter, LinterConfig, RuleCatalog,
     rules::{
         ArgumentMatcher, EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
-        LifecycleQuery, LifecycleSink, LifecycleSource, QueryDecl, Rule, ValueMatcher,
+        LifecycleQuery, LifecycleSink, LifecycleSource, QueryDecl, ValueMatcher,
     },
 };
 
-#[path = "declarative_matching/flow.rs"]
 mod flow;
 
-#[path = "support/mod.rs"]
-mod support;
-
-use support::rule;
-
-struct Classification {
-    finding_count: usize,
-    rule_ids: BTreeSet<String>,
-    certainties: Vec<MatchCertainty>,
-}
-
-impl Classification {
-    fn has_capability(&self, id: &str) -> bool {
-        self.rule_ids.contains(&format!("test:{id}"))
-    }
-}
+use crate::support::{self, Classification, classify, classify_with_environment, rule};
 
 /// Construct the multi-step flow used by source/configuration/sink tests.
 fn script_insertion_flow() -> LifecycleQuery {
@@ -51,39 +33,6 @@ fn script_insertion_flow() -> LifecycleQuery {
         )]))
         .build()
         .unwrap()
-}
-
-/// Lint one source with exactly the supplied rules and record matched IDs.
-fn classify(source: &str, rules: &[Rule]) -> Classification {
-    classify_with_environment(source, rules, support::test_environment())
-}
-
-fn classify_with_environment(
-    source: &str,
-    rules: &[Rule],
-    environment: glass_lint_core::Environment,
-) -> Classification {
-    let catalog = glass_lint_core::RuleCatalog::new("test", rules.to_vec()).unwrap();
-    let report = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
-        vec![catalog],
-        environment,
-    ))
-    .unwrap()
-    .lint_snippet(source, "matcher.js")
-    .unwrap();
-    Classification {
-        finding_count: report.files()[0].findings().len(),
-        rule_ids: report.files()[0]
-            .findings()
-            .iter()
-            .map(|finding| finding.rule_id().as_str().to_owned())
-            .collect(),
-        certainties: report.files()[0]
-            .findings()
-            .iter()
-            .map(glass_lint_core::project::Finding::certainty)
-            .collect(),
-    }
 }
 
 #[test]

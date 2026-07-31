@@ -10,16 +10,17 @@ use glass_lint_core::{
     rules::{ArgumentMatcher, EventQuery, QueryDecl, Rule, ValueMatcher},
 };
 
-#[path = "compact_source/constructors.rs"]
 mod constructors;
 
-#[path = "support/mod.rs"]
-mod support;
-
-use support::rule;
+use crate::support::{self, rule};
 
 fn assert_count(source: &str, rule: Rule, expected: usize) {
-    support::assert_count_with_env(source, rule, expected, &test_environment());
+    let count =
+        support::lint_report_with_environment(source, "compact.js", rule, test_environment())
+            .files()[0]
+            .findings()
+            .len();
+    assert_eq!(count, expected, "{source}");
 }
 
 /// Seed only the globals whose provenance the compact cases are meant to test.

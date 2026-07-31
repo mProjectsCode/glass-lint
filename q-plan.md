@@ -14,8 +14,8 @@ Current evidence is maintained in:
   normalized relation and runtime owner for each supported capability;
 - [query migration baseline](reports/QUERY_MIGRATION_BASELINE.md), including
   exact operation assertions and reviewed fixture commands;
-- [query composition and baseline tests](glass-lint-core/tests/query_composition.rs)
-  and [query baseline tests](glass-lint-core/tests/query_baseline.rs); and
+- [query composition and baseline tests](glass-lint-core/tests/integration/query/composition.rs)
+  and [query baseline tests](glass-lint-core/tests/integration/query/baseline.rs); and
 - [the final completion checklist](q-fix.md).
 
 The migration is one forward path: provider rules construct validated logical

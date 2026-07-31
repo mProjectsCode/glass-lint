@@ -315,7 +315,6 @@ mod tests {
     use crate::analysis::{
         facts,
         flow::{effect::FunctionEffects, planning::BoundFlowPlan},
-        resolution::Resolver,
     };
 
     fn unlimited_budget() -> Budget {
@@ -325,9 +324,7 @@ mod tests {
     #[test]
     fn same_name_siblings_are_keyed_by_function_id() {
         let source = "function first(x) { document.body.appendChild(x); } function second(x) { console.log(x); }";
-        let parsed = crate::parse(source, "summary-siblings.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program, source);
-        let stream = facts::build_test_stream(&parsed.program, &mut resolver);
+        let stream = facts::build_test_facts(source, "summary-siblings.js");
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let plan = BoundFlowPlan::new(&[], stream.names());
         let mut budget = unlimited_budget();
@@ -350,9 +347,7 @@ mod tests {
             function sink(x) { document.body.appendChild(x); }\
             function bridge(y) { sink(y); }\
         ";
-        let parsed = crate::parse(source, "sink-propagation.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program, source);
-        let stream = facts::build_test_stream(&parsed.program, &mut resolver);
+        let stream = facts::build_test_facts(source, "sink-propagation.js");
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let plan = BoundFlowPlan::new(&[], stream.names());
         let mut budget = unlimited_budget();
@@ -372,9 +367,7 @@ mod tests {
             function a() { return 1; }\
             function b(x) { return x; }\
         ";
-        let parsed = crate::parse(source, "multiple-functions.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program, source);
-        let stream = facts::build_test_stream(&parsed.program, &mut resolver);
+        let stream = facts::build_test_facts(source, "multiple-functions.js");
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let plan = BoundFlowPlan::new(&[], stream.names());
         let mut budget = unlimited_budget();
@@ -392,9 +385,7 @@ mod tests {
     #[test]
     fn invoke_compatible_rejects_too_many_args() {
         let source = "function f(a) {} f(1, 2, 3);";
-        let parsed = crate::parse(source, "too-many-args.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program, source);
-        let stream = facts::build_test_stream(&parsed.program, &mut resolver);
+        let stream = facts::build_test_facts(source, "too-many-args.js");
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let plan = BoundFlowPlan::new(&[], stream.names());
         let mut budget = unlimited_budget();
@@ -417,9 +408,7 @@ mod tests {
     #[test]
     fn invoke_compatible_rejects_spread_args() {
         let source = "function f(a) {} f(...args);";
-        let parsed = crate::parse(source, "spread-args.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program, source);
-        let stream = facts::build_test_stream(&parsed.program, &mut resolver);
+        let stream = facts::build_test_facts(source, "spread-args.js");
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let plan = BoundFlowPlan::new(&[], stream.names());
         let mut budget = unlimited_budget();

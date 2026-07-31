@@ -8,36 +8,20 @@
 //! See `reports/QUERY_MIGRATION_BASELINE.md` for the explanatory report.
 
 use glass_lint_core::{
-    Linter, LinterConfig, MatchCertainty, RuleCatalog,
+    MatchCertainty,
     project::ReportCompletion,
     rules::{
-        Category, Confidence, EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
-        LifecycleQuery, LifecycleSink, LifecycleSource, QueryDecl, Rule, Severity, ValueMatcher,
+        EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleQuery,
+        LifecycleSink, LifecycleSource, QueryDecl, Rule, ValueMatcher,
     },
 };
 
-#[path = "support/mod.rs"]
-mod support;
-
-use support::test_environment;
+use crate::support::{self, rule};
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-fn rule(id: &str) -> glass_lint_core::rules::Builder {
-    Rule::builder(id)
-        .description(id)
-        .category(Category::new("test").unwrap())
-        .severity(Severity::Info)
-        .confidence(Confidence::High)
-}
-
 fn single_lint(source: &str, rule: Rule) -> glass_lint_core::project::AnalysisReport {
-    let env = test_environment();
-    let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
-    Linter::new(LinterConfig::new(vec![catalog], env))
-        .unwrap()
-        .lint_snippet(source, "test.js")
-        .unwrap()
+    support::lint_report(source, rule)
 }
 
 // ── 1. Simple indexed query (global call) ─────────────────────────────

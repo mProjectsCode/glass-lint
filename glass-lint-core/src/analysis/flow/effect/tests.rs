@@ -4,16 +4,11 @@ use super::*;
 use crate::analysis::{
     facts,
     facts::{FactId, FactPayload, FactStream, Frozen},
-    resolution::Resolver,
     value::{FunctionId, ValueId},
 };
 
 fn collect_effects(source: &str) -> (FactStream<Frozen>, FunctionEffects) {
-    let parsed = crate::parse(source, "test.js").expect("source should parse");
-    let mut resolver = Resolver::collect(&parsed.program, source);
-    let stream = facts::build_test_stream(&parsed.program, &mut resolver);
-    let effects = FunctionEffects::collect(&stream, usize::MAX);
-    (stream, effects)
+    collect_effects_with_limit(source, usize::MAX)
 }
 
 #[test]
@@ -277,9 +272,7 @@ fn effect_call_id_is_newtype() {
 }
 
 fn collect_effects_with_limit(source: &str, limit: usize) -> (FactStream<Frozen>, FunctionEffects) {
-    let parsed = crate::parse(source, "test.js").expect("source should parse");
-    let mut resolver = Resolver::collect(&parsed.program, source);
-    let stream = facts::build_test_stream(&parsed.program, &mut resolver);
+    let stream = facts::build_test_facts(source, "test.js");
     let effects = FunctionEffects::collect(&stream, limit);
     (stream, effects)
 }

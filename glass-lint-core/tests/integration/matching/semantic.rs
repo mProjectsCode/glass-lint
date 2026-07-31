@@ -8,23 +8,14 @@ use glass_lint_core::rules::{
     LifecycleEvent, LifecycleQuery, LifecycleSink, LifecycleSource, QueryDecl, ValueMatcher,
 };
 
-#[path = "support/mod.rs"]
-mod support;
+use crate::support;
 
 /// Execute one matcher through a fresh strict catalog and return its count.
 fn findings(source: &str, decl: impl IntoQueryDecl) -> usize {
     let rule = support::rule("semantic.match").query(decl).build().unwrap();
-    let environment = support::test_environment();
-    let catalog = glass_lint_core::RuleCatalog::new("test", vec![rule]).unwrap();
-    let (_, _, files, _, _, _) = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
-        vec![catalog],
-        environment,
-    ))
-    .unwrap()
-    .lint_snippet(source, "semantic-matching.js")
-    .unwrap()
-    .into_parts();
-    files[0].findings().len()
+    support::lint_report(source, rule).files()[0]
+        .findings()
+        .len()
 }
 
 /// Assert the exact match count for a provenance or value-flow scenario.
@@ -399,17 +390,9 @@ fn findings_for_flow(source: &str, flow: LifecycleQuery) -> usize {
         .query(QueryDecl::lifecycle(Ok(flow)))
         .build()
         .unwrap();
-    let environment = support::test_environment();
-    let catalog = glass_lint_core::RuleCatalog::new("test", vec![rule]).unwrap();
-    let (_, _, files, _, _, _) = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
-        vec![catalog],
-        environment,
-    ))
-    .unwrap()
-    .lint_snippet(source, "semantic-matching.js")
-    .unwrap()
-    .into_parts();
-    files[0].findings().len()
+    support::lint_report(source, rule).files()[0]
+        .findings()
+        .len()
 }
 
 #[test]

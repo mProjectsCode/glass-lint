@@ -483,7 +483,7 @@ and focused test coverage.
 
 Every capability row above links to:
 - **Unit tests** in `api::compiler::physical::tests`, `api::compiler::normalize::tests`, `api::compiler::validate::tests`, `api::rule::query::mod::tests`
-- **Core integration tests** in `glass-lint-core/tests/declarative_matching.rs`, `tests/semantic_matching.rs`, `tests/query_composition.rs`, `tests/query_baseline.rs`
+- **Core integration tests** in `glass-lint-core/tests/integration/matching/declarative.rs`, `tests/integration/matching/semantic.rs`, `tests/integration/query/composition.rs`, `tests/integration/query/baseline.rs`
 - **Project tests** in `tests/projects/`
 - **Provider fixture tests** in `glass-lint-js/src/rules/` and `glass-lint-obsidian/src/rules/`
 - **E2E tests** in `tests/e2e/`

@@ -123,7 +123,7 @@ cases.
 Run a narrow test first:
 
 ```sh
-cargo test -p glass-lint-core --test scope_precision
+cargo test -p glass-lint-core --test integration matching::scope
 cargo test -p glass-lint-project
 cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- \
   verify glass-lint-obsidian/src/rules/network/request

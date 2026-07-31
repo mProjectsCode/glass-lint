@@ -1,4 +1,15 @@
-use super::*;
+use glass_lint_core::rules::{
+    LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleQuery, LifecycleSink,
+    LifecycleSource,
+};
+
+use super::{QueryDecl, ValueMatcher, classify, rule, script_insertion_flow};
+use crate::support::Classification;
+
+fn assert_capability_count(result: &Classification, id: &str, expected: usize) {
+    assert!(result.has_capability(id));
+    assert_eq!(result.finding_count, expected);
+}
 
 /// Central correctness invariant: incompatible branch facts must never combine.
 ///

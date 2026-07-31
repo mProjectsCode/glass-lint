@@ -365,7 +365,7 @@ Covers hit/miss logic, parse-failure exclusion, cross-session reuse, partial-sta
 
 ## Integration tests (`glass-lint-core/tests/`)
 
-### `public_surface.rs` — 3 tests
+### `integration/public_surface.rs` — 3 tests
 
 | Test name | Name | Assertions | Component |
 |---|---|---|---|
@@ -381,13 +381,13 @@ Covers grouping+sorting, evidence source toggle, empty reports, escape sanitizat
 
 **Coverage: Comprehensive.** Missing: very wide max_width, multi-line excerpts exceeding width.
 
-### `typescript_input.rs` — 9 tests
+### `integration/typescript.rs` — 9 tests
 
 Covers TS type stripping, type-only exclusion, enum/namespace, CRLF+unicode, filename mapping, module extensions (cts/mts/cjs/mjs), parse error reporting.
 
 **Coverage: Solid TS coverage.** Missing: `.jsx`/`.tsx`, source maps, `declare module`, triple-slash directives.
 
-### `compact_source.rs` — 39 + 7 constructor tests
+### `integration/matching/compact.rs` — 39 + 7 constructor tests
 
 | Area | Tests | Assessment |
 |---|---|---|
@@ -406,7 +406,7 @@ Covers TS type stripping, type-only exclusion, enum/namespace, CRLF+unicode, fil
 
 Removed `constructor_global_alias` — it duplicated `rooted_global_constructors_and_their_aliases_match_global_constructors`.
 
-### `semantic_matching.rs` — 32 tests
+### `integration/matching/semantic.rs` — 32 tests
 
 | Area | Tests | Assessment |
 |---|---|---|
@@ -423,13 +423,13 @@ Removed `constructor_global_alias` — it duplicated `rooted_global_constructors
 
 **Coverage: Very thorough.** Missing: `member_read_module`, `call_package`, dynamic import.
 
-### `scope_precision.rs` — 10 tests
+### `integration/matching/scope.rs` — 10 tests
 
 Covers loop lexical scoping (for-let, for-in), var hoisting, switch block scoping, property alias receiver tracking, `import_exact` shadowing, dynamic scope (with/eval), rooted reassignment, bound callable precedence, destructured require, dynamic value fail-closed.
 
 **Coverage: Excellent.** Missing: `catch` scope, `try`/`finally`, class static blocks, module-vs-function scope.
 
-### `declarative_matching.rs` — 35 tests + 15 flow sub-tests
+### `integration/matching/declarative.rs` — 35 tests + 15 flow sub-tests
 
 | Area | Tests | Assessment |
 |---|---|---|
@@ -454,7 +454,7 @@ Covers loop lexical scoping (for-let, for-in), var hoisting, switch block scopin
 | End-to-end flow | 1 | Good |
 | **Flow sub-tests** | 15 | **Excellent** |
 
-The 15 `declarative_matching/flow.rs` tests cover: call/apply in flow, control boundaries (loops/try/destructuring), branching dedup, ordering kills, compound/update/delete kills, member call events, helper scope/reassign/arrows/destructuring/recursion/defaults/aliases/arity, static prefix, `all_of`.
+The 15 `integration/matching/declarative/flow.rs` tests cover: call/apply in flow, control boundaries (loops/try/destructuring), branching dedup, ordering kills, compound/update/delete kills, member call events, helper scope/reassign/arrows/destructuring/recursion/defaults/aliases/arity, static prefix, `all_of`.
 
 **Coverage: Very comprehensive.** Missing: `member_call_returned`, `member_read_returned`, dynamic import, `import.meta`.
 
