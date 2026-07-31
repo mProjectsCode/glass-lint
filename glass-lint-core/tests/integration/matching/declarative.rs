@@ -784,6 +784,21 @@ fn rooted_property_writes_follow_receiver_aliases() {
     assert_capability_count(&result, "test.property-write", 1);
 }
 
+#[test]
+fn rooted_property_writes_keep_receiver_identity_after_prior_writes() {
+    let rules = [rule("test.repeated-property-write")
+        .query(EventQuery::property_write_rooted("navigator.onLine"))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "const nav = navigator;
+         nav.onLine = first;
+         nav.onLine = second;",
+        &rules,
+    );
+    assert_capability_count(&result, "test.repeated-property-write", 2);
+}
+
 /// A heuristic constructor is intentionally independent of the configured
 /// global environment and should match its spelling like heuristic calls do.
 #[test]
@@ -900,4 +915,90 @@ fn string_queries_match_constant_compositions() {
         &rules,
     );
     assert_capability_count(&result, "test.string", 2);
+}
+
+#[test]
+fn heuristic_constructors_follow_transparent_callee_wrappers() {
+    let rules = [rule("test.constructor-wrappers")
+        .query(EventQuery::constructor_heuristic("PluginSettingTab"))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "new (PluginSettingTab)();
+         new (0, PluginSettingTab)();",
+        &rules,
+    );
+    assert_capability_count(&result, "test.constructor-wrappers", 2);
+}
+
+#[test]
+fn default_import_aliases_preserve_module_export_identity() {
+    let rules = [
+        rule("test.call-alias")
+            .query(EventQuery::call_module("sdk", "default"))
+            .build()
+            .unwrap(),
+        rule("test.construct-alias")
+            .query(EventQuery::constructor_module("sdk", "default"))
+            .build()
+            .unwrap(),
+        rule("test.class-alias")
+            .query(EventQuery::class_module("sdk", "default"))
+            .build()
+            .unwrap(),
+    ];
+    let result = classify(
+        "import DefaultExport from 'sdk';
+         const callAlias = DefaultExport;
+         const ConstructorAlias = DefaultExport;
+         const BaseAlias = DefaultExport;
+         callAlias();
+         new ConstructorAlias();
+         class Child extends BaseAlias {}",
+        &rules,
+    );
+    assert_eq!(result.finding_count, 3);
+}
+
+#[test]
+fn returned_member_queries_follow_optional_receiver_calls() {
+    let rules = [rule("test.returned-optional-receiver")
+        .query(QueryDecl::member_call_returned(
+            "document.createElement",
+            "appendChild",
+        ))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "const node = document?.createElement('div');
+         node.appendChild(child);",
+        &rules,
+    );
+    assert_capability_count(&result, "test.returned-optional-receiver", 1);
+}
+
+#[test]
+fn heuristic_class_queries_match_superclass_operands() {
+    let rules = [rule("test.class-super")
+        .query(EventQuery::class_heuristic("PluginSettingTab"))
+        .build()
+        .unwrap()];
+    let result = classify("class Child extends PluginSettingTab {}", &rules);
+    assert_capability_count(&result, "test.class-super", 1);
+}
+
+#[test]
+fn string_queries_match_compositions_of_constant_aliases() {
+    let rules = [rule("test.string-aliases")
+        .query(EventQuery::string_contains("token"))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "const prefix = 'to';
+         const suffix = 'ken';
+         const concatenated = prefix + suffix;
+         const templated = `${prefix}${suffix}`;",
+        &rules,
+    );
+    assert_capability_count(&result, "test.string-aliases", 2);
 }
