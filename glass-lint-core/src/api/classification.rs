@@ -76,6 +76,8 @@ pub enum MatchKind {
     MemberCall,
     /// Non-call member access.
     MemberRead,
+    /// Assignment to a member property.
+    PropertyWrite,
     /// A module import occurrence.
     Import,
     /// A matched static string occurrence.
@@ -109,6 +111,7 @@ impl MatchKind {
             Self::Call => "call",
             Self::MemberCall => "member_call",
             Self::MemberRead => "member_read",
+            Self::PropertyWrite => "property_write",
             Self::Import => "import",
             Self::StringContains => "string_contains",
             Self::Class => "class",

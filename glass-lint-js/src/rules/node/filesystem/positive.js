@@ -12,10 +12,10 @@ import nodeFs from "node:fs";
 import nodePromises from "node:fs/promises";
 import nodePath from "node:path";
 import path from "path";
-// Path imports are classified when an API is actually called.
-// @expect-error glass-lint rule=node:node.filesystem
+// Path manipulation is intentionally excluded from filesystem I/O.
+// @expect-no-error glass-lint rule=node:node.filesystem
 nodePath.join("root", "file.txt");
-// @expect-error glass-lint rule=node:node.filesystem
+// @expect-no-error glass-lint rule=node:node.filesystem
 path.resolve("root", "file.txt");
 // Unshadowed static CommonJS loads retain module provenance.
 // @expect-error glass-lint rule=node:node.filesystem
@@ -23,12 +23,19 @@ const loadedFs = require("fs");
 // @expect-error glass-lint rule=node:node.filesystem
 const loadedPromises = require("node:fs/promises");
 const loadedPath = require("path");
-// @expect-error glass-lint rule=node:node.filesystem
+// @expect-no-error glass-lint rule=node:node.filesystem
 loadedPath.basename("/tmp/file.txt");
 // Named path imports retain module provenance.
 import { relative } from "node:path";
-// @expect-error glass-lint rule=node:node.filesystem
+// @expect-no-error glass-lint rule=node:node.filesystem
 relative("a", "b");
+
+// @expect-error glass-lint rule=node:node.filesystem
+import * as fsApi from "node:fs";
+// @expect-error glass-lint rule=node:node.filesystem
+fsApi.readFile("notes.md", callback);
+// @expect-error glass-lint rule=node:node.filesystem
+fsApi.writeFile("notes.md", contents, callback);
 // @expect-error glass-lint rule=node:node.filesystem
 import extra from "fs-extra";
 // @expect-error glass-lint rule=node:node.filesystem

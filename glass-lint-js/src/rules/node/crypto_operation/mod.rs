@@ -41,6 +41,32 @@ pub fn rule() -> Rule {
         .query(EventQuery::member_call_rooted("crypto.subtle.exportKey"))
         .query(EventQuery::member_call_rooted("crypto.subtle.wrapKey"))
         .query(EventQuery::member_call_rooted("crypto.subtle.unwrapKey"))
+        .query(EventQuery::member_call_rooted(
+            "globalThis.crypto.subtle.digest",
+        ))
+        .query(EventQuery::member_call_rooted(
+            "globalThis.crypto.subtle.encrypt",
+        ))
+        .query(EventQuery::member_call_rooted(
+            "globalThis.crypto.subtle.decrypt",
+        ))
+        .query(EventQuery::member_call_rooted("webcrypto.subtle.digest"))
+        .query(EventQuery::member_call_rooted("webcrypto.subtle.encrypt"))
+        .query(EventQuery::member_call_rooted("webcrypto.subtle.decrypt"))
+        .query(EventQuery::member_call_module("crypto", "createHash"))
+        .query(EventQuery::member_call_module("node:crypto", "createHash"))
+        .query(EventQuery::member_call_module("crypto", "createCipheriv"))
+        .query(EventQuery::member_call_module(
+            "node:crypto",
+            "createCipheriv",
+        ))
+        .query(EventQuery::member_call_module("crypto", "generateKeyPair"))
+        .query(EventQuery::member_call_module(
+            "node:crypto",
+            "generateKeyPair",
+        ))
+        .query(EventQuery::member_call_module("crypto", "sign"))
+        .query(EventQuery::member_call_module("node:crypto", "sign"))
         .build()
         .unwrap()
 }

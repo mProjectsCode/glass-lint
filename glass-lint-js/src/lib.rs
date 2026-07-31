@@ -135,11 +135,13 @@ pub fn node_environment() -> Environment {
         .add_globals([
             "Buffer",
             "crypto",
+            "webcrypto",
             "module",
             "process",
             "require",
             "setImmediate",
             "clearImmediate",
+            "Worker",
         ])
         .expect("valid Node globals");
     environment

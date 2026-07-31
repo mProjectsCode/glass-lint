@@ -313,6 +313,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 receiver,
                 property,
                 value,
+                rooted_chain: _,
             } => {
                 let static_string = self.stream.values().static_string(*value);
                 self.record_property_write(

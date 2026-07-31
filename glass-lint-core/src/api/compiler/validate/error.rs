@@ -188,7 +188,9 @@ pub(crate) fn is_direct_dimension_valid(identity: &IdentitySpec, event: &EventSp
                 | IdentitySpec::Heuristic { .. }
                 | IdentitySpec::ModuleNamespace { .. }
                 | IdentitySpec::PackageModuleNamespace { .. },
-            EventSpec::MemberCall { .. } | EventSpec::MemberRead { .. }
+            EventSpec::MemberCall { .. }
+                | EventSpec::MemberRead { .. }
+                | EventSpec::PropertyWrite { .. }
         ) | (
             IdentitySpec::ModuleExport { .. }
                 | IdentitySpec::PackageModuleExport { .. }
@@ -209,11 +211,15 @@ pub(crate) fn is_subject_identity_consistent(identity: &IdentitySpec, event: &Ev
     match (identity, event) {
         (
             IdentitySpec::Heuristic { name },
-            EventSpec::MemberCall { member } | EventSpec::MemberRead { member },
+            EventSpec::MemberCall { member }
+            | EventSpec::MemberRead { member }
+            | EventSpec::PropertyWrite { property: member },
         ) => member.eq_chain(name),
         (
             IdentitySpec::Rooted { path },
-            EventSpec::MemberCall { member } | EventSpec::MemberRead { member },
+            EventSpec::MemberCall { member }
+            | EventSpec::MemberRead { member }
+            | EventSpec::PropertyWrite { property: member },
         ) => *path == *member,
         _ => true,
     }

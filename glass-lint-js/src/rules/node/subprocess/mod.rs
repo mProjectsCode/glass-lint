@@ -2,10 +2,9 @@
 
 use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
-/// Detects static ESM or unshadowed CommonJS loads of Node's exact
-/// `child_process` module names and configured subprocess packages. It reports
-/// module loading rather than a particular spawn API, and excludes similar
-/// modules and shadowed loaders.
+/// Detects subprocess module indicators and calls to the principal
+/// `child_process`, `cluster`, and worker APIs. Imports alone remain an
+/// indicator; operation calls are reported only with module provenance.
 #[allow(clippy::too_many_lines)]
 pub fn rule() -> Rule {
     Rule::builder("node.subprocess")
@@ -31,6 +30,23 @@ pub fn rule() -> Rule {
         .query(EventQuery::import_package("concurrently"))
         .query(EventQuery::import_package("npm-run-all"))
         .query(EventQuery::import_package("sudo-prompt"))
+        .query(EventQuery::member_call_module("child_process", "spawn"))
+        .query(EventQuery::member_call_module("child_process", "exec"))
+        .query(EventQuery::member_call_module("child_process", "execFile"))
+        .query(EventQuery::member_call_module("child_process", "fork"))
+        .query(EventQuery::member_call_module(
+            "node:child_process",
+            "spawn",
+        ))
+        .query(EventQuery::member_call_module("node:child_process", "exec"))
+        .query(EventQuery::member_call_module(
+            "node:child_process",
+            "execFile",
+        ))
+        .query(EventQuery::member_call_module("node:child_process", "fork"))
+        .query(EventQuery::member_call_module("cluster", "fork"))
+        .query(EventQuery::member_call_module("node:cluster", "fork"))
+        .query(EventQuery::constructor_global("Worker"))
         .build()
         .unwrap()
 }

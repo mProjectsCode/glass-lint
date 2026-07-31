@@ -37,7 +37,9 @@ fn check_dimension_contradictions(
                 | IdentitySpec::ModuleExport { .. }
                 | IdentitySpec::PackageModuleExport { .. }
         ),
-        EventSpec::MemberCall { .. } | EventSpec::MemberRead { .. } => matches!(
+        EventSpec::MemberCall { .. }
+        | EventSpec::MemberRead { .. }
+        | EventSpec::PropertyWrite { .. } => matches!(
             identity,
             IdentitySpec::Rooted { .. }
                 | IdentitySpec::Heuristic { .. }

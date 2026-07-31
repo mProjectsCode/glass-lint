@@ -58,7 +58,9 @@ fn is_more_specific(candidate: VarType, existing: VarType) -> bool {
 fn var_type_for_event(event: &EventSpec, _identity: &IdentitySpec) -> VarType {
     match event {
         EventSpec::Call | EventSpec::Construct => VarType::CallEvent,
-        EventSpec::MemberCall { .. } | EventSpec::MemberRead { .. } => VarType::MemberEvent,
+        EventSpec::MemberCall { .. }
+        | EventSpec::MemberRead { .. }
+        | EventSpec::PropertyWrite { .. } => VarType::MemberEvent,
         EventSpec::ClassReference | EventSpec::Import | EventSpec::StringReference => {
             VarType::Event
         }
@@ -68,7 +70,9 @@ fn var_type_for_event(event: &EventSpec, _identity: &IdentitySpec) -> VarType {
 fn var_type_for_event_kind(kind: &EventSpec) -> VarType {
     match kind {
         EventSpec::Call | EventSpec::Construct => VarType::CallEvent,
-        EventSpec::MemberCall { .. } | EventSpec::MemberRead { .. } => VarType::MemberEvent,
+        EventSpec::MemberCall { .. }
+        | EventSpec::MemberRead { .. }
+        | EventSpec::PropertyWrite { .. } => VarType::MemberEvent,
         EventSpec::ClassReference | EventSpec::Import | EventSpec::StringReference => {
             VarType::Event
         }

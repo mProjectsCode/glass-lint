@@ -15,13 +15,13 @@ pub fn rule() -> Rule {
         .query(EventQuery::member_call_module("obsidian", "parseLinktext"))
         .query(EventQuery::member_call_module("obsidian", "normalizePath"))
         .query(EventQuery::member_call_module("obsidian", "getLinkpath"))
-        .query(EventQuery::member_call_module("obsidian", "fileToLinktext"))
-        .query(EventQuery::member_call_module(
-            "obsidian",
-            "generateMarkdownLink",
+        .query(EventQuery::member_call_rooted(
+            "app.metadataCache.fileToLinktext",
+        ))
+        .query(EventQuery::member_call_rooted(
+            "app.fileManager.generateMarkdownLink",
         ))
         .query(EventQuery::member_call_module("obsidian", "resolveSubpath"))
-        .query(EventQuery::member_call_module("obsidian", "parseSubpath"))
         .query(EventQuery::member_call_module(
             "obsidian",
             "parseFrontMatterAliases",

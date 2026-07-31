@@ -2,26 +2,38 @@
 
 use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
-const PATH_MODULES: &[&str] = &["path", "node:path"];
-const PATH_METHODS: &[&str] = &[
-    "normalize",
-    "join",
-    "resolve",
-    "isAbsolute",
-    "relative",
-    "toNamespacedPath",
-    "dirname",
-    "basename",
-    "extname",
-    "format",
-    "parse",
+const FS_MODULES: &[&str] = &["fs", "fs/promises", "node:fs", "node:fs/promises"];
+const FS_METHODS: &[&str] = &[
+    "readFile",
+    "readFileSync",
+    "writeFile",
+    "writeFileSync",
+    "appendFile",
+    "appendFileSync",
+    "mkdir",
+    "mkdirSync",
+    "rm",
+    "rmSync",
+    "unlink",
+    "unlinkSync",
+    "rename",
+    "renameSync",
+    "copyFile",
+    "copyFileSync",
+    "readdir",
+    "readdirSync",
+    "stat",
+    "statSync",
+    "open",
+    "openSync",
+    "watch",
+    "watchFile",
 ];
 
 /// Detects static ESM or unshadowed CommonJS loads of the exact Node filesystem
-/// and path module names and configured filesystem packages. The finding is
-/// attached to the module load and does not infer later API use, local names,
-/// or similarly named packages; shadowed loaders and non-listed modules are
-/// excluded.
+/// and configured filesystem packages. Path manipulation is deliberately not
+/// included: normalization and joining paths are not filesystem I/O. The
+/// rule reports both dependency indicators and proven operations.
 #[allow(clippy::too_many_lines)]
 pub fn rule() -> Rule {
     let mut builder = Rule::builder("node.filesystem")
@@ -50,8 +62,8 @@ pub fn rule() -> Rule {
         .query(EventQuery::import_package("watchpack"))
         .query(EventQuery::import_package("fsevents"));
 
-    for module in PATH_MODULES {
-        for method in PATH_METHODS {
+    for module in FS_MODULES {
+        for method in FS_METHODS {
             builder = builder.query(EventQuery::member_call_module(*module, *method));
             builder = builder.query(EventQuery::call_module(*module, *method));
         }

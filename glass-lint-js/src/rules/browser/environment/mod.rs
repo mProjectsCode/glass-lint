@@ -13,6 +13,10 @@ pub fn rule() -> Rule {
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .query(EventQuery::member_read_rooted("navigator.userAgent"))
+        .query(EventQuery::member_read_rooted("navigator.userAgentData"))
+        .query(EventQuery::member_read_rooted(
+            "navigator.globalPrivacyControl",
+        ))
         .query(EventQuery::member_read_rooted("navigator.platform"))
         .query(EventQuery::member_read_rooted("navigator.language"))
         .query(EventQuery::member_read_rooted("screen.width"))
@@ -21,6 +25,9 @@ pub fn rule() -> Rule {
         .query(EventQuery::member_read_rooted("screen.availHeight"))
         .query(EventQuery::member_read_rooted("screen.colorDepth"))
         .query(EventQuery::member_read_rooted("screen.pixelDepth"))
+        .query(EventQuery::member_read_rooted("screen.orientation"))
+        .query(EventQuery::member_read_rooted("screen.availLeft"))
+        .query(EventQuery::member_read_rooted("screen.availTop"))
         .query(EventQuery::member_read_rooted("navigator.languages"))
         .query(EventQuery::member_read_rooted(
             "navigator.hardwareConcurrency",

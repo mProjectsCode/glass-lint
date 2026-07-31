@@ -46,6 +46,10 @@ pub fn rule() -> Rule {
             "app.metadataCache.getFileCache",
             *field,
         ));
+        builder = builder.query(QueryDecl::member_read_returned(
+            "app.metadataCache.getCache",
+            *field,
+        ));
     }
 
     builder.build().unwrap()

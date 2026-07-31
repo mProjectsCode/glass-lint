@@ -26,3 +26,5 @@ vault.on("delete", handler);
 app.vault.on("changed", handler);
 // @expect-no-error glass-lint rule=obsidian:vault.events
 app.vault.on("created", handler);
+// @expect-no-error glass-lint rule=obsidian:vault.events
+app.vault.on("closed", handler);

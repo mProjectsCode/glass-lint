@@ -1,4 +1,8 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    str::FromStr,
+};
 
 use glass_lint_datastructures::{NamePath, NameTable, SymbolPath};
 use smol_str::SmolStr;
@@ -140,7 +144,9 @@ impl<'a> EventIndexView<'a> {
         }
         if let (
             Some(path_index),
-            EventPredicate::MemberCall { member } | EventPredicate::MemberRead { member },
+            EventPredicate::MemberCall { member }
+            | EventPredicate::MemberRead { member }
+            | EventPredicate::PropertyWrite { property: member },
         ) = (self.path_any, event)
             && let Some(path) = names.lookup_path(member)
             && let Some(result) = path_index.get(&path)
@@ -195,7 +201,9 @@ impl<'a> EventIndexView<'a> {
         event: &'a EventPredicate,
     ) -> Option<CandidateOccurrences<'a>> {
         let key = match event {
-            EventPredicate::MemberCall { member } | EventPredicate::MemberRead { member } => {
+            EventPredicate::MemberCall { member }
+            | EventPredicate::MemberRead { member }
+            | EventPredicate::PropertyWrite { property: member } => {
                 ModuleExportKey::new(module.clone(), member.to_string())
             }
             _ => return None,
@@ -231,8 +239,9 @@ impl<'a> EventIndexView<'a> {
         event: &'a EventPredicate,
         names: &NameTable,
     ) -> Option<CandidateOccurrences<'a>> {
-        let (EventPredicate::MemberCall { member: _ } | EventPredicate::MemberRead { member: _ }) =
-            event
+        let (EventPredicate::MemberCall { member: _ }
+        | EventPredicate::MemberRead { member: _ }
+        | EventPredicate::PropertyWrite { property: _ }) = event
         else {
             return None;
         };
@@ -252,9 +261,15 @@ impl<'a> EventIndexView<'a> {
                 .literal?
                 .get(&SmolStr::new(predicate))
                 .map(CandidateOccurrences::Indexed),
-            EventPredicate::StringReference => self
-                .literal?
-                .matching(|literal| literal.contains(predicate)),
+            EventPredicate::StringReference => {
+                if predicate == crate::api::rule::query::PRIVATE_NETWORK_LITERAL {
+                    self.literal?
+                        .matching(|literal| contains_private_network_address(literal))
+                } else {
+                    self.literal?
+                        .matching(|literal| literal.contains(predicate))
+                }
+            }
             _ => None,
         }
     }
@@ -266,4 +281,94 @@ impl<'a> EventIndexView<'a> {
         self.literal?
             .matching(|specifier| pattern.matches(specifier))
     }
+}
+
+fn contains_private_network_address(value: &str) -> bool {
+    contains_localhost(value) || contains_private_ipv4(value) || contains_private_ipv6(value)
+}
+
+fn contains_localhost(value: &str) -> bool {
+    let lowered = value.to_ascii_lowercase();
+    let bytes = lowered.as_bytes();
+    lowered.match_indices("localhost").any(|(index, _)| {
+        let before = index.checked_sub(1).and_then(|i| bytes.get(i));
+        let after = bytes.get(index + "localhost".len());
+        before.is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'.')
+            && after.is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'.')
+    })
+}
+
+fn contains_private_ipv4(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let mut start = 0;
+    while start < bytes.len() {
+        if !bytes[start].is_ascii_digit()
+            || (start > 0 && (bytes[start - 1].is_ascii_alphanumeric() || bytes[start - 1] == b'.'))
+        {
+            start += 1;
+            continue;
+        }
+        let mut end = start;
+        while end < bytes.len() && (bytes[end].is_ascii_digit() || bytes[end] == b'.') {
+            end += 1;
+        }
+        let candidate = &value[start..end];
+        let boundary =
+            end == bytes.len() || (!bytes[end].is_ascii_alphanumeric() && bytes[end] != b'.');
+        if candidate.matches('.').count() == 3
+            && boundary
+            && IpAddr::from_str(candidate).is_ok_and(|ip| match ip {
+                IpAddr::V4(ip) => private_ipv4(ip),
+                IpAddr::V6(ip) => private_ipv6(ip),
+            })
+        {
+            return true;
+        }
+        start = end.max(start + 1);
+    }
+    false
+}
+
+fn contains_private_ipv6(value: &str) -> bool {
+    value
+        .split(|character: char| {
+            character.is_whitespace()
+                || matches!(character, '"' | '\'' | '(' | ')' | ',' | '=' | '?' | '#')
+        })
+        .any(|token| {
+            let token = token
+                .trim_start_matches("http://")
+                .trim_start_matches("https://")
+                .split('/')
+                .next()
+                .unwrap_or(token);
+            let host = token.strip_prefix('[').map_or(token, |bracketed| {
+                bracketed.split(']').next().unwrap_or(bracketed)
+            });
+            host.contains(':') && Ipv6Addr::from_str(host).is_ok_and(private_ipv6)
+        })
+}
+
+fn private_ipv4(ip: Ipv4Addr) -> bool {
+    let [a, b, c, d] = ip.octets();
+    (a == 0 && b == 0 && c == 0 && d == 0)
+        || a == 10
+        || a == 127
+        || (a == 169 && b == 254)
+        || (a == 172 && (16..=31).contains(&b))
+        || (a == 192 && b == 168)
+        || (a == 100 && (64..=127).contains(&b))
+        || (a == 192 && b == 0 && c == 0)
+        || (a == 198 && (18..=19).contains(&b))
+        || (a == 198 && b == 51 && c == 100)
+        || (a == 203 && b == 0 && c == 113)
+}
+
+fn private_ipv6(ip: Ipv6Addr) -> bool {
+    let segments = ip.segments();
+    (segments[0] & 0xfe00) == 0xfc00
+        || (segments[0] & 0xffc0) == 0xfe80
+        || ip == Ipv6Addr::LOCALHOST
+        || ip.is_unspecified()
+        || ip.to_ipv4().is_some_and(private_ipv4)
 }

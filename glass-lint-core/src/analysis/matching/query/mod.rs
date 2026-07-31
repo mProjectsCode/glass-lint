@@ -190,6 +190,11 @@ impl OccurrenceIndexes {
                 masked: overlay.map(|o| &o.masked),
                 ..EventIndexView::base(env)
             },
+            EventPredicate::PropertyWrite { .. } => EventIndexView {
+                path_any: Some(&self.members.rooted_writes),
+                rooted: Some(&self.members.rooted_writes),
+                ..EventIndexView::base(env)
+            },
             EventPredicate::ClassReference => EventIndexView {
                 string_any: Some(&self.constructions.classes),
                 module: Some(&self.constructions.module_classes),
@@ -242,6 +247,17 @@ impl OccurrenceIndexes {
                     .map(|segment| self.test_name(segment))
                     .collect::<Vec<_>>();
                 self.members.reads.push(
+                    glass_lint_datastructures::NamePath::from_ids(key),
+                    FactId(u32::MAX),
+                    span,
+                );
+            }
+            MatchKind::PropertyWrite => {
+                let key = symbol
+                    .split('.')
+                    .map(|segment| self.test_name(segment))
+                    .collect::<Vec<_>>();
+                self.members.rooted_writes.push(
                     glass_lint_datastructures::NamePath::from_ids(key),
                     FactId(u32::MAX),
                     span,

@@ -23,8 +23,9 @@ const COOKIE_METHODS: &[&str] = &["get", "getAll", "set", "delete"];
 /// `removeItem`, `clear`, and `key` on those stores, plus `indexedDB.open` and
 /// `caches.open`. It also covers window/worker-qualified storage roots and
 /// exact Cookie Store operations through the configured `window.cookieStore`
-/// root. Direct property access, shadowed globals, and reassigned aliases are
-/// outside this rule's scope.
+/// root. Cookie writes and the stable `Storage.length` read are included;
+/// arbitrary direct key properties remain outside this bounded call-oriented
+/// rule.
 pub fn rule() -> Rule {
     let mut builder = Rule::builder("browser.persistent-storage")
         .description("Uses persistent browser storage")
@@ -32,6 +33,13 @@ pub fn rule() -> Rule {
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(EventQuery::member_read_rooted("document.cookie"));
+
+    for root in ["document", "window", "self", "globalThis"] {
+        builder = builder.query(EventQuery::property_write_rooted(format!("{root}.cookie")));
+    }
+    for root in ["localStorage", "sessionStorage"] {
+        builder = builder.query(EventQuery::member_read_rooted(format!("{root}.length")));
+    }
 
     for root in WEB_STORAGE_ROOTS {
         for method in WEB_STORAGE_METHODS {

@@ -2,7 +2,7 @@
 
 use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
-const INPUT_EVENTS: [&str; 16] = [
+const INPUT_EVENTS: [&str; 27] = [
     "keydown",
     "keyup",
     "paste",
@@ -19,14 +19,24 @@ const INPUT_EVENTS: [&str; 16] = [
     "dragstart",
     "drop",
     "input",
+    "beforeinput",
+    "compositionstart",
+    "compositionupdate",
+    "compositionend",
+    "contextmenu",
+    "wheel",
+    "pointercancel",
+    "touchmove",
+    "touchcancel",
+    "dragover",
+    "dragend",
 ];
 
 /// Detects rooted `document`, `window`, `self`, `globalThis`, and
 /// `document.body` event-listener registrations for the listed keyboard,
-/// clipboard, pointer, touch, drag/drop, and input events. The direct
-/// `on*` property paths require rooted identity; property writes are retained
-/// for invalidation but are not reported because the declarative vocabulary
-/// has no rooted property-write occurrence.
+/// clipboard, pointer, touch, drag/drop, composition, and input events. It
+/// also reports writes to rooted `on*` handler properties, while reads remain
+/// outside the rule.
 pub fn rule() -> Rule {
     Rule::builder("browser.global-input-hook")
         .description("Registers global input handlers")
@@ -60,12 +70,24 @@ pub fn rule() -> Rule {
                 })
                 .unwrap(),
         )
-        .query(EventQuery::member_read_rooted("document.onkeydown"))
-        .query(EventQuery::member_read_rooted("document.onkeyup"))
-        .query(EventQuery::member_read_rooted("document.onkeypress"))
-        .query(EventQuery::member_read_rooted("document.onpaste"))
-        .query(EventQuery::member_read_rooted("document.oncopy"))
-        .query(EventQuery::member_read_rooted("document.oncut"))
+        .query(EventQuery::property_write_rooted("document.onkeydown"))
+        .query(EventQuery::property_write_rooted("document.onkeyup"))
+        .query(EventQuery::property_write_rooted("document.onkeypress"))
+        .query(EventQuery::property_write_rooted("document.onpaste"))
+        .query(EventQuery::property_write_rooted("document.oncopy"))
+        .query(EventQuery::property_write_rooted("document.oncut"))
+        .query(EventQuery::property_write_rooted("window.onkeydown"))
+        .query(EventQuery::property_write_rooted("window.onkeyup"))
+        .query(EventQuery::property_write_rooted("window.onpaste"))
+        .query(EventQuery::property_write_rooted("window.oncopy"))
+        .query(EventQuery::property_write_rooted("window.oncut"))
+        .query(EventQuery::property_write_rooted("self.onkeydown"))
+        .query(EventQuery::property_write_rooted("self.onkeyup"))
+        .query(EventQuery::property_write_rooted("self.onpaste"))
+        .query(EventQuery::property_write_rooted("globalThis.onkeydown"))
+        .query(EventQuery::property_write_rooted("globalThis.onkeyup"))
+        .query(EventQuery::property_write_rooted("document.body.onkeydown"))
+        .query(EventQuery::property_write_rooted("document.body.onkeyup"))
         .build()
         .unwrap()
 }

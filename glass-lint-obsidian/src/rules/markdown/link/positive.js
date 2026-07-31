@@ -24,13 +24,19 @@ import {
   parseFrontMatterAliases,
   parseFrontMatterTags,
 } from "obsidian";
-// @expect-error glass-lint rule=obsidian:markdown.link
+// @expect-no-error glass-lint rule=obsidian:markdown.link
 fileToLinktext(file, sourcePath);
-// @expect-error glass-lint rule=obsidian:markdown.link
+// @expect-no-error glass-lint rule=obsidian:markdown.link
 generateMarkdownLink(file, sourcePath);
+// Owning Obsidian objects expose these helpers publicly.
+// @expect-error glass-lint rule=obsidian:markdown.link
+app.metadataCache.fileToLinktext(file, sourcePath);
+// @expect-error glass-lint rule=obsidian:markdown.link
+app.fileManager.generateMarkdownLink(file, sourcePath);
 // @expect-error glass-lint rule=obsidian:markdown.link
 resolveSubpath(path);
-// @expect-error glass-lint rule=obsidian:markdown.link
+// Top-level lookalikes are intentionally not treated as public helpers.
+// @expect-no-error glass-lint rule=obsidian:markdown.link
 parseSubpath(path);
 // Frontmatter helpers are part of the same exact module export set.
 // @expect-error glass-lint rule=obsidian:markdown.link

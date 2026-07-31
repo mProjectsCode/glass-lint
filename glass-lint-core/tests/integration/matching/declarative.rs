@@ -103,6 +103,18 @@ fn rooted_member_read_matches_direct_read() {
 }
 
 #[test]
+fn rooted_property_write_matches_direct_assignment() {
+    let rules = [rule("document")
+        .query(EventQuery::property_write_rooted("document.onkeydown"))
+        .build()
+        .unwrap()];
+    assert_eq!(
+        classify("document.onkeydown = handler;", &rules).finding_count,
+        1
+    );
+}
+
+#[test]
 fn rooted_global_object_aliases_respect_restricted_members_and_mutations() {
     let mut environment = Environment::default();
     environment.add_global("navigator").unwrap();

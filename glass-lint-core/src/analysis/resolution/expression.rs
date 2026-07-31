@@ -157,6 +157,13 @@ impl Resolver<'_> {
         self.resolve_member_uncached(member)
     }
 
+    pub(in crate::analysis) fn rooted_write_chain(
+        &self,
+        member: &MemberExpr,
+    ) -> Option<SymbolPath> {
+        self.scopes.rooted_write_member_chain(member)
+    }
+
     fn resolve_member_uncached(&mut self, member: &MemberExpr) -> Arc<ResolvedValue> {
         let key = ResolutionKey::Member {
             range: member.span.into(),

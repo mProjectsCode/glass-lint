@@ -7,7 +7,7 @@ const publicAddress = "https://example.com";
 const unlistedRange = "http://172.32.1.4";
 // @expect-no-error glass-lint rule=js:network.private-address
 const other172Range = "http://172.40.32.4";
-// @expect-no-error glass-lint rule=js:network.private-address
+// @expect-error glass-lint rule=js:network.private-address
 const missingPrefix = "192.168.1.2";
 
 // Partial markers are not expanded into URL or IP ranges.
@@ -16,6 +16,7 @@ const partialPrivateRange = "172.20.1";
 const partialPrivatePrefix = "192.168.";
 
 // Concatenated and dynamic values are not reconstructed.
+// @expect-error glass-lint rule=js:network.private-address
 const host = "10.0.0.2";
 const scheme = getScheme();
 // @expect-no-error glass-lint rule=js:network.private-address

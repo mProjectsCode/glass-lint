@@ -13,6 +13,9 @@ shadowed({ vault: { getFiles() {} } });
 app.vault[method]();
 // @expect-no-error glass-lint rule=obsidian:vault.enumerate
 app.vault.getUnlistedFileByPath(path);
+// The public API declares recurseChildren as static on Vault.
+// @expect-no-error glass-lint rule=obsidian:vault.enumerate
+app.vault.recurseChildren(folder, callback);
 
 let vault = app.vault;
 // @expect-error glass-lint rule=obsidian:vault.enumerate

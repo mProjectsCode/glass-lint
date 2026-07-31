@@ -18,6 +18,8 @@ app.vault.getFileByPath(path);
 // @expect-error glass-lint rule=obsidian:vault.enumerate
 app.vault.getAbstractFileByPath(path);
 // @expect-error glass-lint rule=obsidian:vault.enumerate
+Vault.recurseChildren(folder, callback);
+// @expect-no-error glass-lint rule=obsidian:vault.enumerate
 app.vault.recurseChildren(folder, callback);
 
 const vault = app.vault;

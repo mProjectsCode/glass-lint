@@ -1,8 +1,8 @@
 // @case description negative fixture for browser:browser.environment
 // @tool glass-lint rules=browser:browser.environment
 // @expect-no-error glass-lint rule=browser:browser.environment
-// Unlisted environment properties are ignored.
-// @expect-no-error glass-lint rule=browser:browser.environment
+// Orientation is an explicit privacy-signal allowlist member.
+// @expect-error glass-lint rule=browser:browser.environment
 screen.orientation;
 function localEnvironment(navigator) {
     // @expect-no-error glass-lint rule=browser:browser.environment

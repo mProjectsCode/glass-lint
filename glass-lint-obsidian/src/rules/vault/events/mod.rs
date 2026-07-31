@@ -6,7 +6,7 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity, V
 /// direct receiver aliases, and static computed properties. Source-ordered
 /// reassignment and lexical shadowing are respected. Argument zero must be a
 /// static string in the public vault-event set (`create`, `delete`, `modify`,
-/// `rename`, or `closed`); handler identity, remaining arguments, and other
+/// `rename`); handler identity, remaining arguments, and other
 /// event methods are ignored.
 pub fn rule() -> Rule {
     Rule::builder("vault.events")
@@ -20,7 +20,7 @@ pub fn rule() -> Rule {
                     q.with_arg(
                         0,
                         ValueMatcher::static_string()
-                            .equals_any(["create", "delete", "modify", "rename", "closed"])
+                            .equals_any(["create", "delete", "modify", "rename"])
                             .unwrap(),
                     )
                     .unwrap()

@@ -18,6 +18,9 @@ pub fn rule() -> Rule {
         .query(EventQuery::member_call_rooted(
             "self.registration.showNotification",
         ))
+        .query(EventQuery::member_call_rooted(
+            "registration.showNotification",
+        ))
         .query(EventQuery::constructor_global("Notification"))
         .build()
         .unwrap()

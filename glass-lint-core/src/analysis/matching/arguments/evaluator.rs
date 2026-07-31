@@ -33,9 +33,9 @@ impl PreparedClausePaths {
         names: &NameTable,
     ) -> Self {
         let member = match event {
-            EventPredicate::MemberCall { member } | EventPredicate::MemberRead { member } => {
-                names.lookup_path(member)
-            }
+            EventPredicate::MemberCall { member }
+            | EventPredicate::MemberRead { member }
+            | EventPredicate::PropertyWrite { property: member } => names.lookup_path(member),
             _ => None,
         };
         let rooted = match identity {

@@ -30,6 +30,11 @@ pub fn rule() -> Rule {
                                 "editor-drop",
                                 "file-menu",
                                 "editor-menu",
+                                "quick-preview",
+                                "resize",
+                                "css-change",
+                                "files-menu",
+                                "url-menu",
                             ])
                             .unwrap(),
                     )

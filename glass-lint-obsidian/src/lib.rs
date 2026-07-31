@@ -5,8 +5,12 @@
 
 use glass_lint_core::{Environment, LinterConfig, RuleCatalog, RuleMetadata};
 
+pub mod api_manifest;
 mod catalog;
 mod rules;
+
+/// Version-pinned runtime source for the plugin-manager API rules.
+pub const PLUGIN_API_SOURCE: &str = "obsidian-runtime-plugin-manager@2026-07-31";
 
 #[must_use]
 /// Return metadata for every rule in the `obsidian:` provider catalog.
@@ -16,7 +20,7 @@ pub fn rule_metadata() -> Vec<RuleMetadata> {
 
 #[must_use]
 pub fn obsidian_catalog() -> RuleCatalog {
-    RuleCatalog::new("obsidian", catalog::obsidian_api_rules().to_vec())
+    RuleCatalog::new("obsidian", catalog::obsidian_rules().to_vec())
         .expect("valid Obsidian catalog")
 }
 
@@ -36,6 +40,9 @@ pub fn obsidian_environment() -> Environment {
     environment
         .add_global_object("activeWindow")
         .expect("valid Obsidian global object");
+    environment
+        .add_global_object("Vault")
+        .expect("valid Obsidian Vault global object");
     environment
 }
 
@@ -84,6 +91,37 @@ mod tests {
             environment
                 .global_objects()
                 .any(|name| name == "activeWindow")
+        );
+        assert!(
+            catalog
+                .iter()
+                .any(|rule| rule.id.as_str() == "obsidian:plugins.access")
+        );
+        assert!(
+            catalog
+                .iter()
+                .any(|rule| rule.id.as_str() == "obsidian:plugins.enable-disable")
+        );
+        assert!(
+            catalog
+                .iter()
+                .any(|rule| rule.id.as_str() == "obsidian:plugins.load-unload")
+        );
+        assert_eq!(
+            PLUGIN_API_SOURCE,
+            "obsidian-runtime-plugin-manager@2026-07-31"
+        );
+        assert_eq!(api_manifest::PUBLIC_API.version, "obsidian-api@2026-07-31");
+        assert!(!api_manifest::PUBLIC_API.vault_events.contains(&"closed"));
+        assert!(
+            !api_manifest::PUBLIC_API
+                .metadata_events
+                .contains(&"finished")
+        );
+        assert!(
+            !api_manifest::PUBLIC_API
+                .top_level_helpers
+                .contains(&"parseSubpath")
         );
     }
 
@@ -160,5 +198,19 @@ mod tests {
         assert_eq!(findings.len(), 2);
         assert_eq!(findings[0].location().range().start().line(), 2);
         assert_eq!(findings[1].location().range().start().line(), 3);
+    }
+
+    #[test]
+    fn default_config_reports_plugin_manager_usage() {
+        let report = glass_lint_core::Linter::new(obsidian_config())
+            .unwrap()
+            .lint_snippet("app.plugins.getPlugin('dataview');", "main.js")
+            .unwrap();
+        assert!(
+            report.files()[0]
+                .findings()
+                .iter()
+                .any(|finding| { finding.rule_id().as_str() == "obsidian:plugins.access" })
+        );
     }
 }

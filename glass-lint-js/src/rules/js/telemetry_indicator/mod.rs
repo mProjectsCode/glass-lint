@@ -6,14 +6,15 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 /// SDKs and string literals containing configured telemetry endpoint markers.
 /// Module matches use exact module provenance; literal matches are
 /// medium-confidence substring heuristics over literals and template quasis,
-/// not proof that a request or telemetry event occurs.
+/// not proof that a request or telemetry event occurs. This is intentionally
+/// a low-confidence dependency/literal indicator, not an operation witness.
 #[allow(clippy::too_many_lines)]
 pub fn rule() -> Rule {
     Rule::builder("network.telemetry-indicator")
         .description("References telemetry SDKs or endpoints")
         .category(Category::new("browser/network").unwrap())
         .severity(Severity::Info)
-        .confidence(Confidence::Medium)
+        .confidence(Confidence::Low)
         .query(EventQuery::import_package("@sentry/browser"))
         .query(EventQuery::import_package("@sentry/node"))
         .query(EventQuery::import_package("posthog-js"))

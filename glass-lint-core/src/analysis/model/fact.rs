@@ -343,6 +343,7 @@ pub enum FactPayload {
     PropertyWrite {
         receiver: ValueId,
         property: Option<NameId>,
+        rooted_chain: Option<NamePath>,
         value: ValueId,
     },
     Call {

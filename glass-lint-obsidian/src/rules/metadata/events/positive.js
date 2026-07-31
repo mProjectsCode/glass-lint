@@ -8,8 +8,6 @@ app.metadataCache.on("deleted", handler);
 app.metadataCache.on("resolved", handler);
 // @expect-error glass-lint rule=obsidian:metadata.events
 app.metadataCache.on("resolve", handler);
-// @expect-error glass-lint rule=obsidian:metadata.events
-app.metadataCache.on("finished", handler);
 
 const metadataCache = app.metadataCache;
 // @expect-error glass-lint rule=obsidian:metadata.events

@@ -107,14 +107,17 @@ impl FactBuilder<'_, '_> {
         let target = resolved_member.id;
         let receiver = self.resolver.resolve_expr_id(&member.obj);
         if assignment.op == AssignOp::Assign {
-            let property = self.intern_name(member_property_name(&member.prop).as_deref());
+            let property_name = member_property_name(&member.prop);
+            let property = self.intern_name(property_name.as_deref());
             let value = self.resolver.resolve_expr_id(&assignment.right);
+            let rooted_chain = self.resolver.rooted_write_chain(member);
             self.emit(
                 FactKind::PropertyWrite,
                 assignment.span(),
                 FactPayload::PropertyWrite {
                     receiver,
                     property,
+                    rooted_chain: self.rooted_path(rooted_chain.as_ref()),
                     value,
                 },
             );

@@ -19,3 +19,5 @@ app.metadataCache.on(dynamicEvent, handler);
 
 // @expect-no-error glass-lint rule=obsidian:metadata.events
 app.metadataCache.on('renamed', handler);
+// @expect-no-error glass-lint rule=obsidian:metadata.events
+app.metadataCache.on('finished', handler);

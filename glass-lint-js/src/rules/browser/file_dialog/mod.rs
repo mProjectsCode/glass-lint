@@ -6,8 +6,8 @@ use glass_lint_core::rules::{
 /// Detects an input created by `document.createElement("input")` whose direct
 /// `type` property is assigned the static value `"file"`. The bounded flow
 /// follows direct aliases and respects reassignment. Static computed property
-/// names are normalized; `setAttribute` and non-static type values are not
-/// recognized as configuration evidence.
+/// names and `setAttribute("type", "file")` are recognized; non-static type
+/// values are not.
 pub fn rule() -> Rule {
     Rule::builder("browser.file-dialog")
         .description("Uses browser file input dialogs")

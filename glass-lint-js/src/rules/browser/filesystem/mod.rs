@@ -3,8 +3,9 @@
 use glass_lint_core::rules::{Category, Confidence, EventQuery, QueryDecl, Rule, Severity};
 
 /// Detects rooted directory-picker entry points and operations on directory
-/// handles returned by them. Nested file handles and arbitrary object wrappers
-/// remain outside this bounded rule.
+/// handles returned by them. Nested file handles and writable streams are
+/// followed through bounded returned-object paths; arbitrary wrappers remain
+/// outside this rule.
 pub fn rule() -> Rule {
     Rule::builder("browser.filesystem")
         .description("Uses browser file-system access")
@@ -51,6 +52,30 @@ pub fn rule() -> Rule {
         .query(QueryDecl::member_call_returned(
             "showDirectoryPicker",
             "isSameEntry",
+        ))
+        .query(QueryDecl::member_call_returned(
+            "showDirectoryPicker.getFileHandle",
+            "getFile",
+        ))
+        .query(QueryDecl::member_call_returned(
+            "showDirectoryPicker.getFileHandle",
+            "createWritable",
+        ))
+        .query(QueryDecl::member_call_returned(
+            "showDirectoryPicker.getFileHandle.createWritable",
+            "write",
+        ))
+        .query(QueryDecl::member_call_returned(
+            "showDirectoryPicker.getFileHandle.createWritable",
+            "seek",
+        ))
+        .query(QueryDecl::member_call_returned(
+            "showDirectoryPicker.getFileHandle.createWritable",
+            "truncate",
+        ))
+        .query(QueryDecl::member_call_returned(
+            "showDirectoryPicker.getFileHandle.createWritable",
+            "close",
         ))
         .build()
         .unwrap()

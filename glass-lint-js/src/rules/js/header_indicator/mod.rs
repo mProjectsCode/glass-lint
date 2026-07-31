@@ -45,8 +45,6 @@ pub fn rule() -> Rule {
         .query(EventQuery::string_contains("AUTHORIZATION"))
         .query(EventQuery::string_contains("Cookie"))
         .query(EventQuery::string_contains("COOKIE"))
-        .query(EventQuery::string_contains("Set-Cookie"))
-        .query(EventQuery::string_contains("SET-COOKIE"))
         .query(EventQuery::string_contains("Proxy-Authorization"))
         .query(EventQuery::string_contains("PROXY-AUTHORIZATION"))
         .query(EventQuery::string_contains("X-API-Key"))

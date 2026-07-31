@@ -138,7 +138,9 @@ fn validate_normalized_root(root: &NormalizedRoot, is_top: bool) -> Result<(), Q
                     // Returned/Instance must have a member event, not a bare call.
                     if !matches!(
                         ev.event,
-                        EventSpec::MemberCall { .. } | EventSpec::MemberRead { .. }
+                        EventSpec::MemberCall { .. }
+                            | EventSpec::MemberRead { .. }
+                            | EventSpec::PropertyWrite { .. }
                     ) {
                         return Err(QueryCompileError::InternalInvariant {
                             detail: "returned/instance subject on non-member event".into(),
@@ -323,7 +325,9 @@ fn branch_var_type(root: &NormalizedRoot, _var: VarId) -> Option<&'static str> {
     match root {
         NormalizedRoot::Event(ev) => match ev.event {
             EventSpec::Call | EventSpec::Construct => Some("call_event"),
-            EventSpec::MemberCall { .. } | EventSpec::MemberRead { .. } => Some("member_event"),
+            EventSpec::MemberCall { .. }
+            | EventSpec::MemberRead { .. }
+            | EventSpec::PropertyWrite { .. } => Some("member_event"),
             EventSpec::ClassReference | EventSpec::Import | EventSpec::StringReference => {
                 Some("event")
             }

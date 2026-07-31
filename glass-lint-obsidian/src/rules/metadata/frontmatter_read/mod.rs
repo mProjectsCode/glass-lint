@@ -19,6 +19,10 @@ pub fn rule() -> Rule {
             "app.metadataCache.getFileCache",
             "frontmatter",
         ))
+        .query(QueryDecl::member_read_returned(
+            "app.metadataCache.getCache",
+            "frontmatter",
+        ))
         .query(EventQuery::member_call_module(
             "obsidian",
             "parseFrontMatterAliases",
@@ -26,6 +30,14 @@ pub fn rule() -> Rule {
         .query(EventQuery::member_call_module(
             "obsidian",
             "parseFrontMatterTags",
+        ))
+        .query(EventQuery::member_call_module(
+            "obsidian",
+            "parseFrontMatterEntry",
+        ))
+        .query(EventQuery::member_call_module(
+            "obsidian",
+            "parseFrontMatterStringArray",
         ))
         .build()
         .unwrap()

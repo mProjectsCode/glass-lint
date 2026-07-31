@@ -634,6 +634,7 @@ impl FunctionEffectsBuilder {
                 receiver,
                 property,
                 value: _,
+                rooted_chain: _,
             } => effect.record_property_write(
                 fact.id,
                 *receiver,

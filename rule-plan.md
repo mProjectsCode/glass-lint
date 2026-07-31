@@ -625,6 +625,8 @@ not appear in that public source.
   this from public API coverage, and test that returned-plugin flow cannot
   combine a plugin object from one branch with a load/unload call from another.
 
+SEE: https://obsidian-typings.github.io/obsidian-typings/public/api/obsidian/internals/plugins/Plugins/
+
 ## Proposed implementation order
 
 1. Fix P0 API drift and public/internal catalog separation: Vault/metadata

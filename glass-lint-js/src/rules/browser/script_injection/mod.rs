@@ -25,10 +25,19 @@ pub fn rule() -> Rule {
                     LifecycleEvent::property_write("src", ValueMatcher::static_string()),
                     LifecycleEvent::property_write("text", ValueMatcher::static_string()),
                     LifecycleEvent::property_write("textContent", ValueMatcher::static_string()),
+                    Ok(LifecycleEvent::member_call("setAttribute")
+                        .unwrap()
+                        .arg(0, ValueMatcher::static_string().equals("src"))
+                        .unwrap()
+                        .arg(1, ValueMatcher::static_string())
+                        .unwrap()
+                        .build()),
                 ]))
                 .completion(LifecycleCompletion::any_sink([
                     LifecycleSink::argument_of("document.head.appendChild", 0),
                     LifecycleSink::argument_of("document.body.appendChild", 0),
+                    LifecycleSink::argument_of("document.documentElement.appendChild", 0),
+                    LifecycleSink::argument_of("document.documentElement.insertBefore", 0),
                 ]))
                 .build(),
         ))
@@ -51,6 +60,34 @@ pub fn rule() -> Rule {
                 .map(|q| {
                     q.with_arg(
                         0,
+                        ValueMatcher::static_string()
+                            .contains_any(["<script", "javascript:"])
+                            .unwrap(),
+                    )
+                    .unwrap()
+                    .into_query()
+                })
+                .unwrap(),
+        )
+        .query(
+            EventQuery::member_call_rooted("document.body.insertAdjacentHTML")
+                .map(|q| {
+                    q.with_arg(
+                        1,
+                        ValueMatcher::static_string()
+                            .contains_any(["<script", "javascript:"])
+                            .unwrap(),
+                    )
+                    .unwrap()
+                    .into_query()
+                })
+                .unwrap(),
+        )
+        .query(
+            EventQuery::member_call_rooted("document.documentElement.insertAdjacentHTML")
+                .map(|q| {
+                    q.with_arg(
+                        1,
                         ValueMatcher::static_string()
                             .contains_any(["<script", "javascript:"])
                             .unwrap(),

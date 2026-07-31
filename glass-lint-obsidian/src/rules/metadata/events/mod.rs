@@ -3,8 +3,8 @@
 use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
 /// Detects rooted `app.metadataCache.on` registrations only when the first
-/// argument is a literal event name: `changed`, `deleted`, `finished`,
-/// `resolve`, or `resolved`.
+/// argument is a literal event name: `changed`, `deleted`, `resolve`, or
+/// `resolved`.
 /// Rooted aliases are followed; shadowing, reassignment, dynamic event values,
 /// computed member chains, and other event names are excluded.
 pub fn rule() -> Rule {
@@ -16,12 +16,9 @@ pub fn rule() -> Rule {
         .query(
             EventQuery::member_call_rooted("app.metadataCache.on")
                 .map(|q| {
-                    q.with_arg_static_strings(
-                        0,
-                        ["changed", "deleted", "finished", "resolve", "resolved"],
-                    )
-                    .unwrap()
-                    .into_query()
+                    q.with_arg_static_strings(0, ["changed", "deleted", "resolve", "resolved"])
+                        .unwrap()
+                        .into_query()
                 })
                 .unwrap(),
         )

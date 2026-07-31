@@ -43,6 +43,31 @@ impl FrozenScopeGraph {
         self.resolve_member_chain(member, &syntactic_chain)
     }
 
+    /// Resolve an assignment target before the target write invalidates its
+    /// own rooted property identity. The ordinary read resolver intentionally
+    /// rejects a path mutated at the current span; a write occurrence needs
+    /// the receiver identity at that same span so the assignment itself can
+    /// be reported while later reads remain invalidated.
+    pub(in crate::analysis) fn rooted_write_member_chain(
+        &self,
+        member: &MemberExpr,
+    ) -> Option<SymbolPath> {
+        let syntactic_chain = self.member_expression_chain(member).or_else(|| {
+            let object = expression_name(&member.obj)?;
+            let property = self.member_property_name(member)?;
+            Some(object.append_chain(&property))
+        })?;
+        let root = member_root_identifier(member)?;
+        if self
+            .binding_alternatives_at(root.sym.as_ref(), root.span)
+            .is_empty()
+            && self.is_global(root.sym.as_ref())
+        {
+            return Some(syntactic_chain);
+        }
+        self.resolve_member_chain(member, &syntactic_chain)
+    }
+
     // Kept as a single linear algorithm: the prefix-backtracking loop and
     // closing match over provenance share mutable symbol-path state.
     pub fn resolve_member_chain(

@@ -37,53 +37,7 @@ Default severity: `info`
 
 Queries:
 
-- Emit `localhost` when a string reference containing `localhost`.
-- Emit `127.0.0.1` when a string reference containing `127.0.0.1`.
-- Emit `http://127.` when a string reference containing `http://127.`.
-- Emit `https://127.` when a string reference containing `https://127.`.
-- Emit `0.0.0.0` when a string reference containing `0.0.0.0`.
-- Emit `http://192.168.` when a string reference containing `http://192.168.`.
-- Emit `https://192.168.` when a string reference containing `https://192.168.`.
-- Emit `http://10.` when a string reference containing `http://10.`.
-- Emit `https://10.` when a string reference containing `https://10.`.
-- Emit `http://172.16.` when a string reference containing `http://172.16.`.
-- Emit `https://172.16.` when a string reference containing `https://172.16.`.
-- Emit `http://169.254.` when a string reference containing `http://169.254.`.
-- Emit `https://169.254.` when a string reference containing `https://169.254.`.
-- Emit `::1` when a string reference containing `::1`.
-- Emit `fc00:` when a string reference containing `fc00:`.
-- Emit `fd00:` when a string reference containing `fd00:`.
-- Emit `fe80:` when a string reference containing `fe80:`.
-- Emit `http://172.17.` when a string reference containing `http://172.17.`.
-- Emit `https://172.17.` when a string reference containing `https://172.17.`.
-- Emit `http://172.18.` when a string reference containing `http://172.18.`.
-- Emit `https://172.18.` when a string reference containing `https://172.18.`.
-- Emit `http://172.19.` when a string reference containing `http://172.19.`.
-- Emit `https://172.19.` when a string reference containing `https://172.19.`.
-- Emit `http://172.20.` when a string reference containing `http://172.20.`.
-- Emit `https://172.20.` when a string reference containing `https://172.20.`.
-- Emit `http://172.21.` when a string reference containing `http://172.21.`.
-- Emit `https://172.21.` when a string reference containing `https://172.21.`.
-- Emit `http://172.22.` when a string reference containing `http://172.22.`.
-- Emit `https://172.22.` when a string reference containing `https://172.22.`.
-- Emit `http://172.23.` when a string reference containing `http://172.23.`.
-- Emit `https://172.23.` when a string reference containing `https://172.23.`.
-- Emit `http://172.24.` when a string reference containing `http://172.24.`.
-- Emit `https://172.24.` when a string reference containing `https://172.24.`.
-- Emit `http://172.25.` when a string reference containing `http://172.25.`.
-- Emit `https://172.25.` when a string reference containing `https://172.25.`.
-- Emit `http://172.26.` when a string reference containing `http://172.26.`.
-- Emit `https://172.26.` when a string reference containing `https://172.26.`.
-- Emit `http://172.27.` when a string reference containing `http://172.27.`.
-- Emit `https://172.27.` when a string reference containing `https://172.27.`.
-- Emit `http://172.28.` when a string reference containing `http://172.28.`.
-- Emit `https://172.28.` when a string reference containing `https://172.28.`.
-- Emit `http://172.29.` when a string reference containing `http://172.29.`.
-- Emit `https://172.29.` when a string reference containing `https://172.29.`.
-- Emit `http://172.30.` when a string reference containing `http://172.30.`.
-- Emit `https://172.30.` when a string reference containing `https://172.30.`.
-- Emit `http://172.31.` when a string reference containing `http://172.31.`.
-- Emit `https://172.31.` when a string reference containing `https://172.31.`.
+- Emit `__glass_lint_private_network_literal__` when a string reference containing `__glass_lint_private_network_literal__`.
 
 #### `js:network.service-indicator`
 
@@ -166,8 +120,6 @@ Queries:
 - Emit `AUTHORIZATION` when a string reference containing `AUTHORIZATION`.
 - Emit `Cookie` when a string reference containing `Cookie`.
 - Emit `COOKIE` when a string reference containing `COOKIE`.
-- Emit `Set-Cookie` when a string reference containing `Set-Cookie`.
-- Emit `SET-COOKIE` when a string reference containing `SET-COOKIE`.
 - Emit `Proxy-Authorization` when a string reference containing `Proxy-Authorization`.
 - Emit `PROXY-AUTHORIZATION` when a string reference containing `PROXY-AUTHORIZATION`.
 - Emit `X-API-Key` when a string reference containing `X-API-Key`.
@@ -222,6 +174,12 @@ Default severity: `info`
 Queries:
 
 - Emit `document.cookie` when a member read of `document.cookie` on the rooted path `document.cookie`.
+- Emit `document.cookie` when a property write to `document.cookie` on the rooted path `document.cookie`.
+- Emit `window.cookie` when a property write to `window.cookie` on the rooted path `window.cookie`.
+- Emit `self.cookie` when a property write to `self.cookie` on the rooted path `self.cookie`.
+- Emit `globalThis.cookie` when a property write to `globalThis.cookie` on the rooted path `globalThis.cookie`.
+- Emit `localStorage.length` when a member read of `localStorage.length` on the rooted path `localStorage.length`.
+- Emit `sessionStorage.length` when a member read of `sessionStorage.length` on the rooted path `sessionStorage.length`.
 - Emit `localStorage.getItem` when a member call to `localStorage.getItem` on the rooted path `localStorage.getItem`.
 - Emit `localStorage.setItem` when a member call to `localStorage.setItem` on the rooted path `localStorage.setItem`.
 - Emit `localStorage.removeItem` when a member call to `localStorage.removeItem` on the rooted path `localStorage.removeItem`.
@@ -298,6 +256,7 @@ Queries:
 
 - Emit `Notification.requestPermission` when a member call to `Notification.requestPermission` on the rooted path `Notification.requestPermission`.
 - Emit `self.registration.showNotification` when a member call to `self.registration.showNotification` on the rooted path `self.registration.showNotification`.
+- Emit `registration.showNotification` when a member call to `registration.showNotification` on the rooted path `registration.showNotification`.
 - Emit `Notification` when a constructor call to the global `Notification`.
 
 #### `browser:browser.permissions-query`
@@ -315,6 +274,8 @@ Default severity: `info`
 Queries:
 
 - Emit `navigator.userAgent` when a member read of `navigator.userAgent` on the rooted path `navigator.userAgent`.
+- Emit `navigator.userAgentData` when a member read of `navigator.userAgentData` on the rooted path `navigator.userAgentData`.
+- Emit `navigator.globalPrivacyControl` when a member read of `navigator.globalPrivacyControl` on the rooted path `navigator.globalPrivacyControl`.
 - Emit `navigator.platform` when a member read of `navigator.platform` on the rooted path `navigator.platform`.
 - Emit `navigator.language` when a member read of `navigator.language` on the rooted path `navigator.language`.
 - Emit `screen.width` when a member read of `screen.width` on the rooted path `screen.width`.
@@ -323,6 +284,9 @@ Queries:
 - Emit `screen.availHeight` when a member read of `screen.availHeight` on the rooted path `screen.availHeight`.
 - Emit `screen.colorDepth` when a member read of `screen.colorDepth` on the rooted path `screen.colorDepth`.
 - Emit `screen.pixelDepth` when a member read of `screen.pixelDepth` on the rooted path `screen.pixelDepth`.
+- Emit `screen.orientation` when a member read of `screen.orientation` on the rooted path `screen.orientation`.
+- Emit `screen.availLeft` when a member read of `screen.availLeft` on the rooted path `screen.availLeft`.
+- Emit `screen.availTop` when a member read of `screen.availTop` on the rooted path `screen.availTop`.
 - Emit `navigator.languages` when a member read of `navigator.languages` on the rooted path `navigator.languages`.
 - Emit `navigator.hardwareConcurrency` when a member read of `navigator.hardwareConcurrency` on the rooted path `navigator.hardwareConcurrency`.
 - Emit `navigator.deviceMemory` when a member read of `navigator.deviceMemory` on the rooted path `navigator.deviceMemory`.
@@ -344,15 +308,27 @@ Default severity: `info`
 
 Queries:
 
-- Emit `document.addEventListener` when a member call to `document.addEventListener` on the rooted path `document.addEventListener` with argument 0 matches one of the exact strings `copy`, `cut`, `dragstart`, `drop`, `input`, `keydown`, `keyup`, `mousedown`, `mousemove`, `mouseup`, `paste`, `pointerdown`, `pointermove`, `pointerup`, `touchend`, `touchstart`.
-- Emit `addEventListener` when a member call to `addEventListener` on the rooted path `addEventListener` with argument 0 matches one of the exact strings `copy`, `cut`, `dragstart`, `drop`, `input`, `keydown`, `keyup`, `mousedown`, `mousemove`, `mouseup`, `paste`, `pointerdown`, `pointermove`, `pointerup`, `touchend`, `touchstart`.
-- Emit `document.body.addEventListener` when a member call to `document.body.addEventListener` on the rooted path `document.body.addEventListener` with argument 0 matches one of the exact strings `copy`, `cut`, `dragstart`, `drop`, `input`, `keydown`, `keyup`, `mousedown`, `mousemove`, `mouseup`, `paste`, `pointerdown`, `pointermove`, `pointerup`, `touchend`, `touchstart`.
-- Emit `document.onkeydown` when a member read of `document.onkeydown` on the rooted path `document.onkeydown`.
-- Emit `document.onkeyup` when a member read of `document.onkeyup` on the rooted path `document.onkeyup`.
-- Emit `document.onkeypress` when a member read of `document.onkeypress` on the rooted path `document.onkeypress`.
-- Emit `document.onpaste` when a member read of `document.onpaste` on the rooted path `document.onpaste`.
-- Emit `document.oncopy` when a member read of `document.oncopy` on the rooted path `document.oncopy`.
-- Emit `document.oncut` when a member read of `document.oncut` on the rooted path `document.oncut`.
+- Emit `document.addEventListener` when a member call to `document.addEventListener` on the rooted path `document.addEventListener` with argument 0 matches one of the exact strings `beforeinput`, `compositionend`, `compositionstart`, `compositionupdate`, `contextmenu`, `copy`, `cut`, `dragend`, `dragover`, `dragstart`, `drop`, `input`, `keydown`, `keyup`, `mousedown`, `mousemove`, `mouseup`, `paste`, `pointercancel`, `pointerdown`, `pointermove`, `pointerup`, `touchcancel`, `touchend`, `touchmove`, `touchstart`, `wheel`.
+- Emit `addEventListener` when a member call to `addEventListener` on the rooted path `addEventListener` with argument 0 matches one of the exact strings `beforeinput`, `compositionend`, `compositionstart`, `compositionupdate`, `contextmenu`, `copy`, `cut`, `dragend`, `dragover`, `dragstart`, `drop`, `input`, `keydown`, `keyup`, `mousedown`, `mousemove`, `mouseup`, `paste`, `pointercancel`, `pointerdown`, `pointermove`, `pointerup`, `touchcancel`, `touchend`, `touchmove`, `touchstart`, `wheel`.
+- Emit `document.body.addEventListener` when a member call to `document.body.addEventListener` on the rooted path `document.body.addEventListener` with argument 0 matches one of the exact strings `beforeinput`, `compositionend`, `compositionstart`, `compositionupdate`, `contextmenu`, `copy`, `cut`, `dragend`, `dragover`, `dragstart`, `drop`, `input`, `keydown`, `keyup`, `mousedown`, `mousemove`, `mouseup`, `paste`, `pointercancel`, `pointerdown`, `pointermove`, `pointerup`, `touchcancel`, `touchend`, `touchmove`, `touchstart`, `wheel`.
+- Emit `document.onkeydown` when a property write to `document.onkeydown` on the rooted path `document.onkeydown`.
+- Emit `document.onkeyup` when a property write to `document.onkeyup` on the rooted path `document.onkeyup`.
+- Emit `document.onkeypress` when a property write to `document.onkeypress` on the rooted path `document.onkeypress`.
+- Emit `document.onpaste` when a property write to `document.onpaste` on the rooted path `document.onpaste`.
+- Emit `document.oncopy` when a property write to `document.oncopy` on the rooted path `document.oncopy`.
+- Emit `document.oncut` when a property write to `document.oncut` on the rooted path `document.oncut`.
+- Emit `window.onkeydown` when a property write to `window.onkeydown` on the rooted path `window.onkeydown`.
+- Emit `window.onkeyup` when a property write to `window.onkeyup` on the rooted path `window.onkeyup`.
+- Emit `window.onpaste` when a property write to `window.onpaste` on the rooted path `window.onpaste`.
+- Emit `window.oncopy` when a property write to `window.oncopy` on the rooted path `window.oncopy`.
+- Emit `window.oncut` when a property write to `window.oncut` on the rooted path `window.oncut`.
+- Emit `self.onkeydown` when a property write to `self.onkeydown` on the rooted path `self.onkeydown`.
+- Emit `self.onkeyup` when a property write to `self.onkeyup` on the rooted path `self.onkeyup`.
+- Emit `self.onpaste` when a property write to `self.onpaste` on the rooted path `self.onpaste`.
+- Emit `globalThis.onkeydown` when a property write to `globalThis.onkeydown` on the rooted path `globalThis.onkeydown`.
+- Emit `globalThis.onkeyup` when a property write to `globalThis.onkeyup` on the rooted path `globalThis.onkeyup`.
+- Emit `document.body.onkeydown` when a property write to `document.body.onkeydown` on the rooted path `document.body.onkeydown`.
+- Emit `document.body.onkeyup` when a property write to `document.body.onkeyup` on the rooted path `document.body.onkeyup`.
 
 #### `browser:browser.file-dialog`
 
@@ -381,6 +357,12 @@ Queries:
 - Emit `showDirectoryPicker` when all of: event $0 is selected; event $0 is a member call to `keys`; event $0 has identity the rooted path `showDirectoryPicker`; object $1 is returned by the rooted path `showDirectoryPicker`; event $0 uses object $1 as its member receiver.
 - Emit `showDirectoryPicker` when all of: event $0 is selected; event $0 is a member call to `values`; event $0 has identity the rooted path `showDirectoryPicker`; object $1 is returned by the rooted path `showDirectoryPicker`; event $0 uses object $1 as its member receiver.
 - Emit `showDirectoryPicker` when all of: event $0 is selected; event $0 is a member call to `isSameEntry`; event $0 has identity the rooted path `showDirectoryPicker`; object $1 is returned by the rooted path `showDirectoryPicker`; event $0 uses object $1 as its member receiver.
+- Emit `showDirectoryPicker.getFileHandle` when all of: event $0 is selected; event $0 is a member call to `getFile`; event $0 has identity the rooted path `showDirectoryPicker.getFileHandle`; object $1 is returned by the rooted path `showDirectoryPicker.getFileHandle`; event $0 uses object $1 as its member receiver.
+- Emit `showDirectoryPicker.getFileHandle` when all of: event $0 is selected; event $0 is a member call to `createWritable`; event $0 has identity the rooted path `showDirectoryPicker.getFileHandle`; object $1 is returned by the rooted path `showDirectoryPicker.getFileHandle`; event $0 uses object $1 as its member receiver.
+- Emit `showDirectoryPicker.getFileHandle.createWritable` when all of: event $0 is selected; event $0 is a member call to `write`; event $0 has identity the rooted path `showDirectoryPicker.getFileHandle.createWritable`; object $1 is returned by the rooted path `showDirectoryPicker.getFileHandle.createWritable`; event $0 uses object $1 as its member receiver.
+- Emit `showDirectoryPicker.getFileHandle.createWritable` when all of: event $0 is selected; event $0 is a member call to `seek`; event $0 has identity the rooted path `showDirectoryPicker.getFileHandle.createWritable`; object $1 is returned by the rooted path `showDirectoryPicker.getFileHandle.createWritable`; event $0 uses object $1 as its member receiver.
+- Emit `showDirectoryPicker.getFileHandle.createWritable` when all of: event $0 is selected; event $0 is a member call to `truncate`; event $0 has identity the rooted path `showDirectoryPicker.getFileHandle.createWritable`; object $1 is returned by the rooted path `showDirectoryPicker.getFileHandle.createWritable`; event $0 uses object $1 as its member receiver.
+- Emit `showDirectoryPicker.getFileHandle.createWritable` when all of: event $0 is selected; event $0 is a member call to `close`; event $0 has identity the rooted path `showDirectoryPicker.getFileHandle.createWritable`; object $1 is returned by the rooted path `showDirectoryPicker.getFileHandle.createWritable`; event $0 uses object $1 as its member receiver.
 
 #### `browser:network.request`
 
@@ -416,9 +398,11 @@ Default severity: `warning`
 
 Queries:
 
-- Emit `script-element` when a lifecycle object produced by a member call to `document.createElement` on the rooted path `document.createElement` with argument 0 matches one of the exact strings `script`; it requires any of a write to `src` matching any static string; a write to `text` matching any static string; a write to `textContent` matching any static string; it completes when any sink `document.body.appendChild` argument 0, `document.head.appendChild` argument 0 receives the object.
+- Emit `script-element` when a lifecycle object produced by a member call to `document.createElement` on the rooted path `document.createElement` with argument 0 matches one of the exact strings `script`; it requires any of a write to `src` matching any static string; a write to `text` matching any static string; a write to `textContent` matching any static string; a member call to `setAttribute` with argument 0 matches one of the exact strings `src` and argument 1 matches any static string; it completes when any sink `document.body.appendChild` argument 0, `document.documentElement.appendChild` argument 0, `document.documentElement.insertBefore` argument 0, `document.head.appendChild` argument 0 receives the object.
 - Emit `document.write` when a member call to `document.write` on the rooted path `document.write` with argument 0 matches a string containing any of `<script`, `javascript:`.
 - Emit `document.writeln` when a member call to `document.writeln` on the rooted path `document.writeln` with argument 0 matches a string containing any of `<script`, `javascript:`.
+- Emit `document.body.insertAdjacentHTML` when a member call to `document.body.insertAdjacentHTML` on the rooted path `document.body.insertAdjacentHTML` with argument 1 matches a string containing any of `<script`, `javascript:`.
+- Emit `document.documentElement.insertAdjacentHTML` when a member call to `document.documentElement.insertAdjacentHTML` on the rooted path `document.documentElement.insertAdjacentHTML` with argument 1 matches a string containing any of `<script`, `javascript:`.
 
 ### `node` catalog (6 rules)
 
@@ -494,50 +478,198 @@ Queries:
 - Emit `mock-fs` when an import of the package specifier `mock-fs`.
 - Emit `watchpack` when an import of the package specifier `watchpack`.
 - Emit `fsevents` when an import of the package specifier `fsevents`.
-- Emit `path` when a member call to `normalize` on the namespace imported from module `path`.
-- Emit `path.normalize` when a call to the `normalize` export from module `path`.
-- Emit `path` when a member call to `join` on the namespace imported from module `path`.
-- Emit `path.join` when a call to the `join` export from module `path`.
-- Emit `path` when a member call to `resolve` on the namespace imported from module `path`.
-- Emit `path.resolve` when a call to the `resolve` export from module `path`.
-- Emit `path` when a member call to `isAbsolute` on the namespace imported from module `path`.
-- Emit `path.isAbsolute` when a call to the `isAbsolute` export from module `path`.
-- Emit `path` when a member call to `relative` on the namespace imported from module `path`.
-- Emit `path.relative` when a call to the `relative` export from module `path`.
-- Emit `path` when a member call to `toNamespacedPath` on the namespace imported from module `path`.
-- Emit `path.toNamespacedPath` when a call to the `toNamespacedPath` export from module `path`.
-- Emit `path` when a member call to `dirname` on the namespace imported from module `path`.
-- Emit `path.dirname` when a call to the `dirname` export from module `path`.
-- Emit `path` when a member call to `basename` on the namespace imported from module `path`.
-- Emit `path.basename` when a call to the `basename` export from module `path`.
-- Emit `path` when a member call to `extname` on the namespace imported from module `path`.
-- Emit `path.extname` when a call to the `extname` export from module `path`.
-- Emit `path` when a member call to `format` on the namespace imported from module `path`.
-- Emit `path.format` when a call to the `format` export from module `path`.
-- Emit `path` when a member call to `parse` on the namespace imported from module `path`.
-- Emit `path.parse` when a call to the `parse` export from module `path`.
-- Emit `node:path` when a member call to `normalize` on the namespace imported from module `node:path`.
-- Emit `node:path.normalize` when a call to the `normalize` export from module `node:path`.
-- Emit `node:path` when a member call to `join` on the namespace imported from module `node:path`.
-- Emit `node:path.join` when a call to the `join` export from module `node:path`.
-- Emit `node:path` when a member call to `resolve` on the namespace imported from module `node:path`.
-- Emit `node:path.resolve` when a call to the `resolve` export from module `node:path`.
-- Emit `node:path` when a member call to `isAbsolute` on the namespace imported from module `node:path`.
-- Emit `node:path.isAbsolute` when a call to the `isAbsolute` export from module `node:path`.
-- Emit `node:path` when a member call to `relative` on the namespace imported from module `node:path`.
-- Emit `node:path.relative` when a call to the `relative` export from module `node:path`.
-- Emit `node:path` when a member call to `toNamespacedPath` on the namespace imported from module `node:path`.
-- Emit `node:path.toNamespacedPath` when a call to the `toNamespacedPath` export from module `node:path`.
-- Emit `node:path` when a member call to `dirname` on the namespace imported from module `node:path`.
-- Emit `node:path.dirname` when a call to the `dirname` export from module `node:path`.
-- Emit `node:path` when a member call to `basename` on the namespace imported from module `node:path`.
-- Emit `node:path.basename` when a call to the `basename` export from module `node:path`.
-- Emit `node:path` when a member call to `extname` on the namespace imported from module `node:path`.
-- Emit `node:path.extname` when a call to the `extname` export from module `node:path`.
-- Emit `node:path` when a member call to `format` on the namespace imported from module `node:path`.
-- Emit `node:path.format` when a call to the `format` export from module `node:path`.
-- Emit `node:path` when a member call to `parse` on the namespace imported from module `node:path`.
-- Emit `node:path.parse` when a call to the `parse` export from module `node:path`.
+- Emit `fs` when a member call to `readFile` on the namespace imported from module `fs`.
+- Emit `fs.readFile` when a call to the `readFile` export from module `fs`.
+- Emit `fs` when a member call to `readFileSync` on the namespace imported from module `fs`.
+- Emit `fs.readFileSync` when a call to the `readFileSync` export from module `fs`.
+- Emit `fs` when a member call to `writeFile` on the namespace imported from module `fs`.
+- Emit `fs.writeFile` when a call to the `writeFile` export from module `fs`.
+- Emit `fs` when a member call to `writeFileSync` on the namespace imported from module `fs`.
+- Emit `fs.writeFileSync` when a call to the `writeFileSync` export from module `fs`.
+- Emit `fs` when a member call to `appendFile` on the namespace imported from module `fs`.
+- Emit `fs.appendFile` when a call to the `appendFile` export from module `fs`.
+- Emit `fs` when a member call to `appendFileSync` on the namespace imported from module `fs`.
+- Emit `fs.appendFileSync` when a call to the `appendFileSync` export from module `fs`.
+- Emit `fs` when a member call to `mkdir` on the namespace imported from module `fs`.
+- Emit `fs.mkdir` when a call to the `mkdir` export from module `fs`.
+- Emit `fs` when a member call to `mkdirSync` on the namespace imported from module `fs`.
+- Emit `fs.mkdirSync` when a call to the `mkdirSync` export from module `fs`.
+- Emit `fs` when a member call to `rm` on the namespace imported from module `fs`.
+- Emit `fs.rm` when a call to the `rm` export from module `fs`.
+- Emit `fs` when a member call to `rmSync` on the namespace imported from module `fs`.
+- Emit `fs.rmSync` when a call to the `rmSync` export from module `fs`.
+- Emit `fs` when a member call to `unlink` on the namespace imported from module `fs`.
+- Emit `fs.unlink` when a call to the `unlink` export from module `fs`.
+- Emit `fs` when a member call to `unlinkSync` on the namespace imported from module `fs`.
+- Emit `fs.unlinkSync` when a call to the `unlinkSync` export from module `fs`.
+- Emit `fs` when a member call to `rename` on the namespace imported from module `fs`.
+- Emit `fs.rename` when a call to the `rename` export from module `fs`.
+- Emit `fs` when a member call to `renameSync` on the namespace imported from module `fs`.
+- Emit `fs.renameSync` when a call to the `renameSync` export from module `fs`.
+- Emit `fs` when a member call to `copyFile` on the namespace imported from module `fs`.
+- Emit `fs.copyFile` when a call to the `copyFile` export from module `fs`.
+- Emit `fs` when a member call to `copyFileSync` on the namespace imported from module `fs`.
+- Emit `fs.copyFileSync` when a call to the `copyFileSync` export from module `fs`.
+- Emit `fs` when a member call to `readdir` on the namespace imported from module `fs`.
+- Emit `fs.readdir` when a call to the `readdir` export from module `fs`.
+- Emit `fs` when a member call to `readdirSync` on the namespace imported from module `fs`.
+- Emit `fs.readdirSync` when a call to the `readdirSync` export from module `fs`.
+- Emit `fs` when a member call to `stat` on the namespace imported from module `fs`.
+- Emit `fs.stat` when a call to the `stat` export from module `fs`.
+- Emit `fs` when a member call to `statSync` on the namespace imported from module `fs`.
+- Emit `fs.statSync` when a call to the `statSync` export from module `fs`.
+- Emit `fs` when a member call to `open` on the namespace imported from module `fs`.
+- Emit `fs.open` when a call to the `open` export from module `fs`.
+- Emit `fs` when a member call to `openSync` on the namespace imported from module `fs`.
+- Emit `fs.openSync` when a call to the `openSync` export from module `fs`.
+- Emit `fs` when a member call to `watch` on the namespace imported from module `fs`.
+- Emit `fs.watch` when a call to the `watch` export from module `fs`.
+- Emit `fs` when a member call to `watchFile` on the namespace imported from module `fs`.
+- Emit `fs.watchFile` when a call to the `watchFile` export from module `fs`.
+- Emit `fs/promises` when a member call to `readFile` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.readFile` when a call to the `readFile` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `readFileSync` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.readFileSync` when a call to the `readFileSync` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `writeFile` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.writeFile` when a call to the `writeFile` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `writeFileSync` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.writeFileSync` when a call to the `writeFileSync` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `appendFile` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.appendFile` when a call to the `appendFile` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `appendFileSync` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.appendFileSync` when a call to the `appendFileSync` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `mkdir` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.mkdir` when a call to the `mkdir` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `mkdirSync` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.mkdirSync` when a call to the `mkdirSync` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `rm` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.rm` when a call to the `rm` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `rmSync` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.rmSync` when a call to the `rmSync` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `unlink` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.unlink` when a call to the `unlink` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `unlinkSync` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.unlinkSync` when a call to the `unlinkSync` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `rename` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.rename` when a call to the `rename` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `renameSync` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.renameSync` when a call to the `renameSync` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `copyFile` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.copyFile` when a call to the `copyFile` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `copyFileSync` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.copyFileSync` when a call to the `copyFileSync` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `readdir` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.readdir` when a call to the `readdir` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `readdirSync` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.readdirSync` when a call to the `readdirSync` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `stat` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.stat` when a call to the `stat` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `statSync` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.statSync` when a call to the `statSync` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `open` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.open` when a call to the `open` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `openSync` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.openSync` when a call to the `openSync` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `watch` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.watch` when a call to the `watch` export from module `fs/promises`.
+- Emit `fs/promises` when a member call to `watchFile` on the namespace imported from module `fs/promises`.
+- Emit `fs/promises.watchFile` when a call to the `watchFile` export from module `fs/promises`.
+- Emit `node:fs` when a member call to `readFile` on the namespace imported from module `node:fs`.
+- Emit `node:fs.readFile` when a call to the `readFile` export from module `node:fs`.
+- Emit `node:fs` when a member call to `readFileSync` on the namespace imported from module `node:fs`.
+- Emit `node:fs.readFileSync` when a call to the `readFileSync` export from module `node:fs`.
+- Emit `node:fs` when a member call to `writeFile` on the namespace imported from module `node:fs`.
+- Emit `node:fs.writeFile` when a call to the `writeFile` export from module `node:fs`.
+- Emit `node:fs` when a member call to `writeFileSync` on the namespace imported from module `node:fs`.
+- Emit `node:fs.writeFileSync` when a call to the `writeFileSync` export from module `node:fs`.
+- Emit `node:fs` when a member call to `appendFile` on the namespace imported from module `node:fs`.
+- Emit `node:fs.appendFile` when a call to the `appendFile` export from module `node:fs`.
+- Emit `node:fs` when a member call to `appendFileSync` on the namespace imported from module `node:fs`.
+- Emit `node:fs.appendFileSync` when a call to the `appendFileSync` export from module `node:fs`.
+- Emit `node:fs` when a member call to `mkdir` on the namespace imported from module `node:fs`.
+- Emit `node:fs.mkdir` when a call to the `mkdir` export from module `node:fs`.
+- Emit `node:fs` when a member call to `mkdirSync` on the namespace imported from module `node:fs`.
+- Emit `node:fs.mkdirSync` when a call to the `mkdirSync` export from module `node:fs`.
+- Emit `node:fs` when a member call to `rm` on the namespace imported from module `node:fs`.
+- Emit `node:fs.rm` when a call to the `rm` export from module `node:fs`.
+- Emit `node:fs` when a member call to `rmSync` on the namespace imported from module `node:fs`.
+- Emit `node:fs.rmSync` when a call to the `rmSync` export from module `node:fs`.
+- Emit `node:fs` when a member call to `unlink` on the namespace imported from module `node:fs`.
+- Emit `node:fs.unlink` when a call to the `unlink` export from module `node:fs`.
+- Emit `node:fs` when a member call to `unlinkSync` on the namespace imported from module `node:fs`.
+- Emit `node:fs.unlinkSync` when a call to the `unlinkSync` export from module `node:fs`.
+- Emit `node:fs` when a member call to `rename` on the namespace imported from module `node:fs`.
+- Emit `node:fs.rename` when a call to the `rename` export from module `node:fs`.
+- Emit `node:fs` when a member call to `renameSync` on the namespace imported from module `node:fs`.
+- Emit `node:fs.renameSync` when a call to the `renameSync` export from module `node:fs`.
+- Emit `node:fs` when a member call to `copyFile` on the namespace imported from module `node:fs`.
+- Emit `node:fs.copyFile` when a call to the `copyFile` export from module `node:fs`.
+- Emit `node:fs` when a member call to `copyFileSync` on the namespace imported from module `node:fs`.
+- Emit `node:fs.copyFileSync` when a call to the `copyFileSync` export from module `node:fs`.
+- Emit `node:fs` when a member call to `readdir` on the namespace imported from module `node:fs`.
+- Emit `node:fs.readdir` when a call to the `readdir` export from module `node:fs`.
+- Emit `node:fs` when a member call to `readdirSync` on the namespace imported from module `node:fs`.
+- Emit `node:fs.readdirSync` when a call to the `readdirSync` export from module `node:fs`.
+- Emit `node:fs` when a member call to `stat` on the namespace imported from module `node:fs`.
+- Emit `node:fs.stat` when a call to the `stat` export from module `node:fs`.
+- Emit `node:fs` when a member call to `statSync` on the namespace imported from module `node:fs`.
+- Emit `node:fs.statSync` when a call to the `statSync` export from module `node:fs`.
+- Emit `node:fs` when a member call to `open` on the namespace imported from module `node:fs`.
+- Emit `node:fs.open` when a call to the `open` export from module `node:fs`.
+- Emit `node:fs` when a member call to `openSync` on the namespace imported from module `node:fs`.
+- Emit `node:fs.openSync` when a call to the `openSync` export from module `node:fs`.
+- Emit `node:fs` when a member call to `watch` on the namespace imported from module `node:fs`.
+- Emit `node:fs.watch` when a call to the `watch` export from module `node:fs`.
+- Emit `node:fs` when a member call to `watchFile` on the namespace imported from module `node:fs`.
+- Emit `node:fs.watchFile` when a call to the `watchFile` export from module `node:fs`.
+- Emit `node:fs/promises` when a member call to `readFile` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.readFile` when a call to the `readFile` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `readFileSync` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.readFileSync` when a call to the `readFileSync` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `writeFile` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.writeFile` when a call to the `writeFile` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `writeFileSync` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.writeFileSync` when a call to the `writeFileSync` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `appendFile` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.appendFile` when a call to the `appendFile` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `appendFileSync` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.appendFileSync` when a call to the `appendFileSync` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `mkdir` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.mkdir` when a call to the `mkdir` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `mkdirSync` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.mkdirSync` when a call to the `mkdirSync` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `rm` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.rm` when a call to the `rm` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `rmSync` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.rmSync` when a call to the `rmSync` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `unlink` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.unlink` when a call to the `unlink` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `unlinkSync` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.unlinkSync` when a call to the `unlinkSync` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `rename` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.rename` when a call to the `rename` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `renameSync` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.renameSync` when a call to the `renameSync` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `copyFile` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.copyFile` when a call to the `copyFile` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `copyFileSync` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.copyFileSync` when a call to the `copyFileSync` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `readdir` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.readdir` when a call to the `readdir` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `readdirSync` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.readdirSync` when a call to the `readdirSync` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `stat` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.stat` when a call to the `stat` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `statSync` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.statSync` when a call to the `statSync` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `open` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.open` when a call to the `open` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `openSync` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.openSync` when a call to the `openSync` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `watch` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.watch` when a call to the `watch` export from module `node:fs/promises`.
+- Emit `node:fs/promises` when a member call to `watchFile` on the namespace imported from module `node:fs/promises`.
+- Emit `node:fs/promises.watchFile` when a call to the `watchFile` export from module `node:fs/promises`.
 
 #### `node:node.process-environment`
 
@@ -604,6 +736,17 @@ Queries:
 - Emit `concurrently` when an import of the package specifier `concurrently`.
 - Emit `npm-run-all` when an import of the package specifier `npm-run-all`.
 - Emit `sudo-prompt` when an import of the package specifier `sudo-prompt`.
+- Emit `child_process` when a member call to `spawn` on the namespace imported from module `child_process`.
+- Emit `child_process` when a member call to `exec` on the namespace imported from module `child_process`.
+- Emit `child_process` when a member call to `execFile` on the namespace imported from module `child_process`.
+- Emit `child_process` when a member call to `fork` on the namespace imported from module `child_process`.
+- Emit `node:child_process` when a member call to `spawn` on the namespace imported from module `node:child_process`.
+- Emit `node:child_process` when a member call to `exec` on the namespace imported from module `node:child_process`.
+- Emit `node:child_process` when a member call to `execFile` on the namespace imported from module `node:child_process`.
+- Emit `node:child_process` when a member call to `fork` on the namespace imported from module `node:child_process`.
+- Emit `cluster` when a member call to `fork` on the namespace imported from module `cluster`.
+- Emit `node:cluster` when a member call to `fork` on the namespace imported from module `node:cluster`.
+- Emit `Worker` when a constructor call to the global `Worker`.
 
 #### `node:archive.compression`
 
@@ -666,6 +809,20 @@ Queries:
 - Emit `crypto.subtle.exportKey` when a member call to `crypto.subtle.exportKey` on the rooted path `crypto.subtle.exportKey`.
 - Emit `crypto.subtle.wrapKey` when a member call to `crypto.subtle.wrapKey` on the rooted path `crypto.subtle.wrapKey`.
 - Emit `crypto.subtle.unwrapKey` when a member call to `crypto.subtle.unwrapKey` on the rooted path `crypto.subtle.unwrapKey`.
+- Emit `globalThis.crypto.subtle.digest` when a member call to `globalThis.crypto.subtle.digest` on the rooted path `globalThis.crypto.subtle.digest`.
+- Emit `globalThis.crypto.subtle.encrypt` when a member call to `globalThis.crypto.subtle.encrypt` on the rooted path `globalThis.crypto.subtle.encrypt`.
+- Emit `globalThis.crypto.subtle.decrypt` when a member call to `globalThis.crypto.subtle.decrypt` on the rooted path `globalThis.crypto.subtle.decrypt`.
+- Emit `webcrypto.subtle.digest` when a member call to `webcrypto.subtle.digest` on the rooted path `webcrypto.subtle.digest`.
+- Emit `webcrypto.subtle.encrypt` when a member call to `webcrypto.subtle.encrypt` on the rooted path `webcrypto.subtle.encrypt`.
+- Emit `webcrypto.subtle.decrypt` when a member call to `webcrypto.subtle.decrypt` on the rooted path `webcrypto.subtle.decrypt`.
+- Emit `crypto` when a member call to `createHash` on the namespace imported from module `crypto`.
+- Emit `node:crypto` when a member call to `createHash` on the namespace imported from module `node:crypto`.
+- Emit `crypto` when a member call to `createCipheriv` on the namespace imported from module `crypto`.
+- Emit `node:crypto` when a member call to `createCipheriv` on the namespace imported from module `node:crypto`.
+- Emit `crypto` when a member call to `generateKeyPair` on the namespace imported from module `crypto`.
+- Emit `node:crypto` when a member call to `generateKeyPair` on the namespace imported from module `node:crypto`.
+- Emit `crypto` when a member call to `sign` on the namespace imported from module `crypto`.
+- Emit `node:crypto` when a member call to `sign` on the namespace imported from module `node:crypto`.
 
 ### `electron` catalog (4 rules)
 
@@ -887,7 +1044,7 @@ Queries:
 - Emit `app.vault.getFolderByPath` when a member call to `app.vault.getFolderByPath` on the rooted path `app.vault.getFolderByPath`.
 - Emit `app.vault.getFileByPath` when a member call to `app.vault.getFileByPath` on the rooted path `app.vault.getFileByPath`.
 - Emit `app.vault.getAbstractFileByPath` when a member call to `app.vault.getAbstractFileByPath` on the rooted path `app.vault.getAbstractFileByPath`.
-- Emit `app.vault.recurseChildren` when a member call to `app.vault.recurseChildren` on the rooted path `app.vault.recurseChildren`.
+- Emit `Vault.recurseChildren` when a member call to `Vault.recurseChildren` on the rooted path `Vault.recurseChildren`.
 - Emit `app.vault.getRoot` when a member call to `app.vault.getRoot` on the rooted path `app.vault.getRoot`.
 
 #### `obsidian:vault.adapter`
@@ -896,7 +1053,18 @@ Default severity: `info`
 
 Queries:
 
-- Emit `app.vault.adapter` when a member read of `app.vault.adapter` on the rooted path `app.vault.adapter`.
+- Emit `app.vault.adapter.exists` when a member call to `app.vault.adapter.exists` on the rooted path `app.vault.adapter.exists`.
+- Emit `app.vault.adapter.stat` when a member call to `app.vault.adapter.stat` on the rooted path `app.vault.adapter.stat`.
+- Emit `app.vault.adapter.list` when a member call to `app.vault.adapter.list` on the rooted path `app.vault.adapter.list`.
+- Emit `app.vault.adapter.read` when a member call to `app.vault.adapter.read` on the rooted path `app.vault.adapter.read`.
+- Emit `app.vault.adapter.write` when a member call to `app.vault.adapter.write` on the rooted path `app.vault.adapter.write`.
+- Emit `app.vault.adapter.append` when a member call to `app.vault.adapter.append` on the rooted path `app.vault.adapter.append`.
+- Emit `app.vault.adapter.process` when a member call to `app.vault.adapter.process` on the rooted path `app.vault.adapter.process`.
+- Emit `app.vault.adapter.mkdir` when a member call to `app.vault.adapter.mkdir` on the rooted path `app.vault.adapter.mkdir`.
+- Emit `app.vault.adapter.remove` when a member call to `app.vault.adapter.remove` on the rooted path `app.vault.adapter.remove`.
+- Emit `app.vault.adapter.rename` when a member call to `app.vault.adapter.rename` on the rooted path `app.vault.adapter.rename`.
+- Emit `app.vault.adapter.copy` when a member call to `app.vault.adapter.copy` on the rooted path `app.vault.adapter.copy`.
+- Emit `app.vault.adapter.getFullPath` when a member call to `app.vault.adapter.getFullPath` on the rooted path `app.vault.adapter.getFullPath`.
 
 #### `obsidian:vault.config-directory`
 
@@ -924,7 +1092,7 @@ Default severity: `info`
 
 Queries:
 
-- Emit `app.vault.on` when a member call to `app.vault.on` on the rooted path `app.vault.on` with argument 0 matches one of the exact strings `closed`, `create`, `delete`, `modify`, `rename`.
+- Emit `app.vault.on` when a member call to `app.vault.on` on the rooted path `app.vault.on` with argument 0 matches one of the exact strings `create`, `delete`, `modify`, `rename`.
 
 #### `obsidian:metadata.cache-read`
 
@@ -947,8 +1115,11 @@ Queries:
 
 - Emit `app.metadataCache.getFileCache.frontmatter` when a member read of `app.metadataCache.getFileCache.frontmatter` on the rooted path `app.metadataCache.getFileCache.frontmatter`.
 - Emit `app.metadataCache.getFileCache` when all of: event $0 is selected; event $0 is a member read of `frontmatter`; event $0 has identity the rooted path `app.metadataCache.getFileCache`; object $1 is returned by the rooted path `app.metadataCache.getFileCache`; event $0 uses object $1 as its member receiver.
+- Emit `app.metadataCache.getCache` when all of: event $0 is selected; event $0 is a member read of `frontmatter`; event $0 has identity the rooted path `app.metadataCache.getCache`; object $1 is returned by the rooted path `app.metadataCache.getCache`; event $0 uses object $1 as its member receiver.
 - Emit `obsidian` when a member call to `parseFrontMatterAliases` on the namespace imported from module `obsidian`.
 - Emit `obsidian` when a member call to `parseFrontMatterTags` on the namespace imported from module `obsidian`.
+- Emit `obsidian` when a member call to `parseFrontMatterEntry` on the namespace imported from module `obsidian`.
+- Emit `obsidian` when a member call to `parseFrontMatterStringArray` on the namespace imported from module `obsidian`.
 
 #### `obsidian:metadata.events`
 
@@ -956,7 +1127,7 @@ Default severity: `info`
 
 Queries:
 
-- Emit `app.metadataCache.on` when a member call to `app.metadataCache.on` on the rooted path `app.metadataCache.on` with argument 0 matches one of the exact strings `changed`, `deleted`, `finished`, `resolve`, `resolved`.
+- Emit `app.metadataCache.on` when a member call to `app.metadataCache.on` on the rooted path `app.metadataCache.on` with argument 0 matches one of the exact strings `changed`, `deleted`, `resolve`, `resolved`.
 
 #### `obsidian:metadata.traversal`
 
@@ -1001,20 +1172,35 @@ Queries:
 - Emit `app.metadataCache.getFileCache.frontmatterTags` when a member read of `app.metadataCache.getFileCache.frontmatterTags` on the rooted path `app.metadataCache.getFileCache.frontmatterTags`.
 - Emit `app.metadataCache.getFileCache.frontmatterPosition` when a member read of `app.metadataCache.getFileCache.frontmatterPosition` on the rooted path `app.metadataCache.getFileCache.frontmatterPosition`.
 - Emit `app.metadataCache.getFileCache` when all of: event $0 is selected; event $0 is a member read of `tags`; event $0 has identity the rooted path `app.metadataCache.getFileCache`; object $1 is returned by the rooted path `app.metadataCache.getFileCache`; event $0 uses object $1 as its member receiver.
+- Emit `app.metadataCache.getCache` when all of: event $0 is selected; event $0 is a member read of `tags`; event $0 has identity the rooted path `app.metadataCache.getCache`; object $1 is returned by the rooted path `app.metadataCache.getCache`; event $0 uses object $1 as its member receiver.
 - Emit `app.metadataCache.getFileCache` when all of: event $0 is selected; event $0 is a member read of `links`; event $0 has identity the rooted path `app.metadataCache.getFileCache`; object $1 is returned by the rooted path `app.metadataCache.getFileCache`; event $0 uses object $1 as its member receiver.
+- Emit `app.metadataCache.getCache` when all of: event $0 is selected; event $0 is a member read of `links`; event $0 has identity the rooted path `app.metadataCache.getCache`; object $1 is returned by the rooted path `app.metadataCache.getCache`; event $0 uses object $1 as its member receiver.
 - Emit `app.metadataCache.getFileCache` when all of: event $0 is selected; event $0 is a member read of `embeds`; event $0 has identity the rooted path `app.metadataCache.getFileCache`; object $1 is returned by the rooted path `app.metadataCache.getFileCache`; event $0 uses object $1 as its member receiver.
+- Emit `app.metadataCache.getCache` when all of: event $0 is selected; event $0 is a member read of `embeds`; event $0 has identity the rooted path `app.metadataCache.getCache`; object $1 is returned by the rooted path `app.metadataCache.getCache`; event $0 uses object $1 as its member receiver.
 - Emit `app.metadataCache.getFileCache` when all of: event $0 is selected; event $0 is a member read of `blocks`; event $0 has identity the rooted path `app.metadataCache.getFileCache`; object $1 is returned by the rooted path `app.metadataCache.getFileCache`; event $0 uses object $1 as its member receiver.
+- Emit `app.metadataCache.getCache` when all of: event $0 is selected; event $0 is a member read of `blocks`; event $0 has identity the rooted path `app.metadataCache.getCache`; object $1 is returned by the rooted path `app.metadataCache.getCache`; event $0 uses object $1 as its member receiver.
 - Emit `app.metadataCache.getFileCache` when all of: event $0 is selected; event $0 is a member read of `headings`; event $0 has identity the rooted path `app.metadataCache.getFileCache`; object $1 is returned by the rooted path `app.metadataCache.getFileCache`; event $0 uses object $1 as its member receiver.
+- Emit `app.metadataCache.getCache` when all of: event $0 is selected; event $0 is a member read of `headings`; event $0 has identity the rooted path `app.metadataCache.getCache`; object $1 is returned by the rooted path `app.metadataCache.getCache`; event $0 uses object $1 as its member receiver.
 - Emit `app.metadataCache.getFileCache` when all of: event $0 is selected; event $0 is a member read of `sections`; event $0 has identity the rooted path `app.metadataCache.getFileCache`; object $1 is returned by the rooted path `app.metadataCache.getFileCache`; event $0 uses object $1 as its member receiver.
+- Emit `app.metadataCache.getCache` when all of: event $0 is selected; event $0 is a member read of `sections`; event $0 has identity the rooted path `app.metadataCache.getCache`; object $1 is returned by the rooted path `app.metadataCache.getCache`; event $0 uses object $1 as its member receiver.
 - Emit `app.metadataCache.getFileCache` when all of: event $0 is selected; event $0 is a member read of `listItems`; event $0 has identity the rooted path `app.metadataCache.getFileCache`; object $1 is returned by the rooted path `app.metadataCache.getFileCache`; event $0 uses object $1 as its member receiver.
+- Emit `app.metadataCache.getCache` when all of: event $0 is selected; event $0 is a member read of `listItems`; event $0 has identity the rooted path `app.metadataCache.getCache`; object $1 is returned by the rooted path `app.metadataCache.getCache`; event $0 uses object $1 as its member receiver.
 - Emit `app.metadataCache.getFileCache` when all of: event $0 is selected; event $0 is a member read of `footnotes`; event $0 has identity the rooted path `app.metadataCache.getFileCache`; object $1 is returned by the rooted path `app.metadataCache.getFileCache`; event $0 uses object $1 as its member receiver.
+- Emit `app.metadataCache.getCache` when all of: event $0 is selected; event $0 is a member read of `footnotes`; event $0 has identity the rooted path `app.metadataCache.getCache`; object $1 is returned by the rooted path `app.metadataCache.getCache`; event $0 uses object $1 as its member receiver.
 - Emit `app.metadataCache.getFileCache` when all of: event $0 is selected; event $0 is a member read of `footnoteRefs`; event $0 has identity the rooted path `app.metadataCache.getFileCache`; object $1 is returned by the rooted path `app.metadataCache.getFileCache`; event $0 uses object $1 as its member receiver.
+- Emit `app.metadataCache.getCache` when all of: event $0 is selected; event $0 is a member read of `footnoteRefs`; event $0 has identity the rooted path `app.metadataCache.getCache`; object $1 is returned by the rooted path `app.metadataCache.getCache`; event $0 uses object $1 as its member receiver.
 - Emit `app.metadataCache.getFileCache` when all of: event $0 is selected; event $0 is a member read of `referenceLinks`; event $0 has identity the rooted path `app.metadataCache.getFileCache`; object $1 is returned by the rooted path `app.metadataCache.getFileCache`; event $0 uses object $1 as its member receiver.
+- Emit `app.metadataCache.getCache` when all of: event $0 is selected; event $0 is a member read of `referenceLinks`; event $0 has identity the rooted path `app.metadataCache.getCache`; object $1 is returned by the rooted path `app.metadataCache.getCache`; event $0 uses object $1 as its member receiver.
 - Emit `app.metadataCache.getFileCache` when all of: event $0 is selected; event $0 is a member read of `frontmatterLinks`; event $0 has identity the rooted path `app.metadataCache.getFileCache`; object $1 is returned by the rooted path `app.metadataCache.getFileCache`; event $0 uses object $1 as its member receiver.
+- Emit `app.metadataCache.getCache` when all of: event $0 is selected; event $0 is a member read of `frontmatterLinks`; event $0 has identity the rooted path `app.metadataCache.getCache`; object $1 is returned by the rooted path `app.metadataCache.getCache`; event $0 uses object $1 as its member receiver.
 - Emit `app.metadataCache.getFileCache` when all of: event $0 is selected; event $0 is a member read of `frontmatter`; event $0 has identity the rooted path `app.metadataCache.getFileCache`; object $1 is returned by the rooted path `app.metadataCache.getFileCache`; event $0 uses object $1 as its member receiver.
+- Emit `app.metadataCache.getCache` when all of: event $0 is selected; event $0 is a member read of `frontmatter`; event $0 has identity the rooted path `app.metadataCache.getCache`; object $1 is returned by the rooted path `app.metadataCache.getCache`; event $0 uses object $1 as its member receiver.
 - Emit `app.metadataCache.getFileCache` when all of: event $0 is selected; event $0 is a member read of `frontmatterAliases`; event $0 has identity the rooted path `app.metadataCache.getFileCache`; object $1 is returned by the rooted path `app.metadataCache.getFileCache`; event $0 uses object $1 as its member receiver.
+- Emit `app.metadataCache.getCache` when all of: event $0 is selected; event $0 is a member read of `frontmatterAliases`; event $0 has identity the rooted path `app.metadataCache.getCache`; object $1 is returned by the rooted path `app.metadataCache.getCache`; event $0 uses object $1 as its member receiver.
 - Emit `app.metadataCache.getFileCache` when all of: event $0 is selected; event $0 is a member read of `frontmatterTags`; event $0 has identity the rooted path `app.metadataCache.getFileCache`; object $1 is returned by the rooted path `app.metadataCache.getFileCache`; event $0 uses object $1 as its member receiver.
+- Emit `app.metadataCache.getCache` when all of: event $0 is selected; event $0 is a member read of `frontmatterTags`; event $0 has identity the rooted path `app.metadataCache.getCache`; object $1 is returned by the rooted path `app.metadataCache.getCache`; event $0 uses object $1 as its member receiver.
 - Emit `app.metadataCache.getFileCache` when all of: event $0 is selected; event $0 is a member read of `frontmatterPosition`; event $0 has identity the rooted path `app.metadataCache.getFileCache`; object $1 is returned by the rooted path `app.metadataCache.getFileCache`; event $0 uses object $1 as its member receiver.
+- Emit `app.metadataCache.getCache` when all of: event $0 is selected; event $0 is a member read of `frontmatterPosition`; event $0 has identity the rooted path `app.metadataCache.getCache`; object $1 is returned by the rooted path `app.metadataCache.getCache`; event $0 uses object $1 as its member receiver.
 
 #### `obsidian:workspace.active-file`
 
@@ -1030,7 +1216,7 @@ Default severity: `info`
 
 Queries:
 
-- Emit `app.workspace.on` when a member call to `app.workspace.on` on the rooted path `app.workspace.on` with argument 0 matches one of the exact strings `active-leaf-change`, `editor-change`, `editor-drop`, `editor-menu`, `editor-paste`, `file-menu`, `file-open`, `layout-change`, `quit`, `window-close`, `window-open`.
+- Emit `app.workspace.on` when a member call to `app.workspace.on` on the rooted path `app.workspace.on` with argument 0 matches one of the exact strings `active-leaf-change`, `css-change`, `editor-change`, `editor-drop`, `editor-menu`, `editor-paste`, `file-menu`, `file-open`, `files-menu`, `layout-change`, `quick-preview`, `quit`, `resize`, `url-menu`, `window-close`, `window-open`.
 
 #### `obsidian:workspace.active-editor`
 
@@ -1230,10 +1416,9 @@ Queries:
 - Emit `obsidian` when a member call to `parseLinktext` on the namespace imported from module `obsidian`.
 - Emit `obsidian` when a member call to `normalizePath` on the namespace imported from module `obsidian`.
 - Emit `obsidian` when a member call to `getLinkpath` on the namespace imported from module `obsidian`.
-- Emit `obsidian` when a member call to `fileToLinktext` on the namespace imported from module `obsidian`.
-- Emit `obsidian` when a member call to `generateMarkdownLink` on the namespace imported from module `obsidian`.
+- Emit `app.metadataCache.fileToLinktext` when a member call to `app.metadataCache.fileToLinktext` on the rooted path `app.metadataCache.fileToLinktext`.
+- Emit `app.fileManager.generateMarkdownLink` when a member call to `app.fileManager.generateMarkdownLink` on the rooted path `app.fileManager.generateMarkdownLink`.
 - Emit `obsidian` when a member call to `resolveSubpath` on the namespace imported from module `obsidian`.
-- Emit `obsidian` when a member call to `parseSubpath` on the namespace imported from module `obsidian`.
 - Emit `obsidian` when a member call to `parseFrontMatterAliases` on the namespace imported from module `obsidian`.
 - Emit `obsidian` when a member call to `parseFrontMatterTags` on the namespace imported from module `obsidian`.
 

@@ -32,6 +32,7 @@ pub(super) struct MemberIndexes {
     pub(super) module_calls: ModuleOccurrences,
     pub(super) reads: OccurrenceIndex<NamePath>,
     pub(super) rooted_reads: OccurrenceIndex<NamePath>,
+    pub(super) rooted_writes: OccurrenceIndex<NamePath>,
     pub(super) module_reads: ModuleOccurrences,
     pub(super) returned_calls: OccurrenceIndex<ReturnedMemberKey>,
     pub(super) returned_reads: OccurrenceIndex<ReturnedMemberKey>,
@@ -45,6 +46,7 @@ impl MemberIndexes {
         self.module_calls.normalize();
         self.reads.normalize();
         self.rooted_reads.normalize();
+        self.rooted_writes.normalize();
         self.module_reads.normalize();
         self.returned_calls.normalize();
         self.returned_reads.normalize();
@@ -58,6 +60,7 @@ impl MemberIndexes {
             && self.module_calls.is_empty()
             && self.reads.is_empty()
             && self.rooted_reads.is_empty()
+            && self.rooted_writes.is_empty()
             && self.module_reads.is_empty()
             && self.returned_calls.is_empty()
             && self.returned_reads.is_empty()

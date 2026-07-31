@@ -144,6 +144,7 @@ pub(crate) enum EventPredicate {
     Construct,
     MemberCall { member: SymbolPath },
     MemberRead { member: SymbolPath },
+    PropertyWrite { property: SymbolPath },
     ClassReference,
     Import,
     StringReference,
@@ -204,6 +205,9 @@ pub(crate) fn lower_event(spec: &EventSpec) -> EventPredicate {
         },
         EventSpec::MemberRead { member } => EventPredicate::MemberRead {
             member: member.clone(),
+        },
+        EventSpec::PropertyWrite { property } => EventPredicate::PropertyWrite {
+            property: property.clone(),
         },
         EventSpec::ClassReference => EventPredicate::ClassReference,
         EventSpec::Import => EventPredicate::Import,

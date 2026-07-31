@@ -169,12 +169,15 @@ fn is_chain_malformed(chain: &str) -> bool {
         || chain.ends_with('.')
 }
 
+pub(crate) const PRIVATE_NETWORK_LITERAL: &str = "__glass_lint_private_network_literal__";
+
 fn evidence_kind_for_event(event: &EventSpec) -> MatchKind {
     match event {
         EventSpec::Call => MatchKind::Call,
         EventSpec::Construct => MatchKind::Constructor,
         EventSpec::MemberCall { .. } => MatchKind::MemberCall,
         EventSpec::MemberRead { .. } => MatchKind::MemberRead,
+        EventSpec::PropertyWrite { .. } => MatchKind::PropertyWrite,
         EventSpec::ClassReference => MatchKind::Class,
         EventSpec::Import => MatchKind::Import,
         EventSpec::StringReference => MatchKind::StringContains,
@@ -344,6 +347,23 @@ impl EventQuery {
         })
     }
 
+    /// Rooted member-property write, for example `document.onkeydown = fn`.
+    pub fn property_write_rooted(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
+        let chain_str: String = chain.into();
+        if is_chain_malformed(&chain_str) {
+            return Err(QueryBuildError::MalformedChain(chain_str));
+        }
+        let path = SymbolPath::from(chain_str.as_str());
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::PropertyWrite {
+                property: path.clone(),
+            },
+            identity: IdentitySpec::Rooted { path },
+            constraints: Vec::new(),
+        })
+    }
+
     /// Module-namespace member read.
     pub fn member_read_module(
         module: impl Into<String>,
@@ -425,6 +445,20 @@ impl EventQuery {
             event: EventSpec::StringReference,
             identity: IdentitySpec::LiteralString {
                 predicate: value_str,
+            },
+            constraints: Vec::new(),
+        })
+    }
+
+    /// Static literal containing a complete private or special-use network
+    /// address. Matching is boundary-aware and performed by core's literal
+    /// index rather than by substring markers.
+    pub fn string_private_network_address() -> Result<Self, QueryBuildError> {
+        Ok(Self {
+            var: VarId::new(0),
+            event: EventSpec::StringReference,
+            identity: IdentitySpec::LiteralString {
+                predicate: PRIVATE_NETWORK_LITERAL.to_owned(),
             },
             constraints: Vec::new(),
         })
@@ -1174,6 +1208,10 @@ fn explain_event(query: &EventQuery) -> String {
         ),
         EventSpec::MemberRead { member } => format!(
             "a member read of `{member}` on {}",
+            explain_identity(&query.identity)
+        ),
+        EventSpec::PropertyWrite { property } => format!(
+            "a property write to `{property}` on {}",
             explain_identity(&query.identity)
         ),
         EventSpec::ClassReference => {

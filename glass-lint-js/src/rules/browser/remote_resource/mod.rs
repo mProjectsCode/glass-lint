@@ -5,7 +5,8 @@ use glass_lint_core::rules::{
     LifecycleSink, LifecycleSource, QueryBuildError, QueryDecl, Rule, Severity, ValueMatcher,
 };
 
-/// Detects a script or image created by `document.createElement`, configured
+/// Detects selected remote DOM resource elements created by
+/// `document.createElement`, configured
 /// with a static remote `src` via assignment or `setAttribute`, then passed to
 /// a supported DOM insertion sink. Direct aliases participate in the bounded
 /// object flow; local paths, dynamic values, other tags, and unsupported sinks

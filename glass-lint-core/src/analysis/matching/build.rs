@@ -57,6 +57,15 @@ impl OccurrenceIndexes {
 
             FactPayload::MemberRead { .. } => self.record_member_read_fact(fact, names),
 
+            FactPayload::PropertyWrite {
+                rooted_chain: Some(chain),
+                ..
+            } => {
+                self.members
+                    .rooted_writes
+                    .push(chain.clone(), fact.id, fact.span);
+            }
+
             FactPayload::Construction { .. } => self.record_construction_fact(fact),
 
             FactPayload::Import { module } => {
