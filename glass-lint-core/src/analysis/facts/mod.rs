@@ -261,17 +261,17 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
         use swc_ecma_ast::Callee;
         match &call.callee {
             Callee::Import(_) => {
-                let Some(Expr::Lit(swc_ecma_ast::Lit::Str(specifier))) =
-                    call.args.first().map(|a| &*a.expr)
-                else {
+                let argument = call.args.first()?;
+                if argument.spread.is_some() {
                     return None;
-                };
-                let span = self.byte_range(specifier.span)?;
-                self.interface.record_import_request(span, specifier);
-                Some((
-                    specifier.value.to_string_lossy().to_string(),
-                    specifier.span,
-                ))
+                }
+                let module = crate::analysis::syntax::constant::static_string(
+                    &argument.expr,
+                    self.resolver,
+                )?;
+                let span = self.byte_range(argument.expr.span())?;
+                self.interface.record_import_request(span, &module);
+                Some((module, argument.expr.span()))
             }
             Callee::Expr(callee) => {
                 let Expr::Ident(ident) = &**callee else {

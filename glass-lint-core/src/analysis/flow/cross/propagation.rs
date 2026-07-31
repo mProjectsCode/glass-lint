@@ -63,8 +63,11 @@ impl UsageProjector<'_> {
             .propagate();
             match usage {
                 EffectUse::PropertyWrite {
-                    event, property, ..
-                } => self.apply_property(*event, property.as_ref()),
+                    event,
+                    property,
+                    value_is_precise,
+                    ..
+                } => self.apply_property(*event, property.as_ref(), *value_is_precise),
                 EffectUse::CallReceiver { event, .. } => {
                     self.apply_receiver(*event);
                 }
@@ -79,7 +82,12 @@ impl UsageProjector<'_> {
         }
     }
 
-    fn apply_property(&mut self, event: FactId, property: Option<&SmolStr>) {
+    fn apply_property(
+        &mut self,
+        event: FactId,
+        property: Option<&SmolStr>,
+        value_is_precise: bool,
+    ) {
         let static_value = self
             .project
             .module_fact_stream(self.context.module)
@@ -94,6 +102,7 @@ impl UsageProjector<'_> {
                 value,
             } = requirement
                 && property == Some(expected)
+                && value_is_precise
                 && value.matches_flow_value(static_value)
             {
                 next.requirements.insert(

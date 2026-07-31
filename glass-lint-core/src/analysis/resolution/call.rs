@@ -72,9 +72,11 @@ impl Resolver<'_> {
         call: &swc_ecma_ast::CallExpr,
     ) -> std::rc::Rc<ResolvedValue> {
         if matches!(call.callee, Callee::Import(_))
-            && let Some(Expr::Lit(Lit::Str(specifier))) = call.args.first().map(|arg| &*arg.expr)
+            && let Some(argument) = call.args.first()
+            && argument.spread.is_none()
+            && let Some(module) =
+                crate::analysis::syntax::constant::static_string(&argument.expr, self)
         {
-            let module = specifier.value.to_string_lossy().to_string();
             let id = self.intern_call_value(
                 &SymbolCallProvenance::ModuleExport {
                     module: module.into(),

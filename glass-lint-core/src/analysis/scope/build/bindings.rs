@@ -33,13 +33,22 @@ pub(super) fn for_each_import_binding(
                     .imported
                     .as_ref()
                     .map_or_else(|| local.clone(), module_export_name);
-                f(
-                    local,
-                    BindingProvenance::ModuleExport {
-                        module: module.clone(),
-                        export,
-                    },
-                );
+                if export == "default" {
+                    f(
+                        local,
+                        BindingProvenance::DefaultImport {
+                            module: module.clone(),
+                        },
+                    );
+                } else {
+                    f(
+                        local,
+                        BindingProvenance::ModuleExport {
+                            module: module.clone(),
+                            export,
+                        },
+                    );
+                }
             }
             ImportSpecifier::Namespace(namespace) => f(
                 namespace.local.sym.to_smolstr(),

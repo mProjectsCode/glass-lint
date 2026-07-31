@@ -49,31 +49,40 @@ impl ScopeCollector<'_> {
                 | BindingProvenance::ModuleNamespace { .. }) => Some(provenance.clone()),
                 _ => None,
             },
-            Expr::Member(member) => match self.module_alias_provenance(&member.obj)? {
-                BindingProvenance::DefaultImport { module }
-                | BindingProvenance::ModuleNamespace { module } => {
-                    Some(BindingProvenance::ModuleExport {
-                        module,
-                        export: member_property_name(&member.prop)?,
-                    })
+            Expr::Member(member) => {
+                let property = member_property_name(&member.prop)?;
+                let provenance = self.module_alias_provenance(&member.obj)?;
+                match provenance {
+                    BindingProvenance::DefaultImport { module }
+                    | BindingProvenance::ModuleNamespace { module } => {
+                        Some(BindingProvenance::ModuleExport {
+                            module,
+                            export: property,
+                        })
+                    }
+                    BindingProvenance::ModuleExport { module, export } if property == "bind" => {
+                        Some(BindingProvenance::ModuleExport { module, export })
+                    }
+                    BindingProvenance::ModuleExport { module, export } => {
+                        Some(BindingProvenance::ModuleExport {
+                            module,
+                            export: format!("{export}.{property}").into(),
+                        })
+                    }
+                    _ => None,
                 }
-                provenance @ BindingProvenance::ModuleExport { .. }
-                    if member_property_name(&member.prop).as_deref() == Some("bind") =>
-                {
-                    Some(provenance)
-                }
-                _ => None,
-            },
+            }
             Expr::Call(call) => self
                 .require_module_name(call)
                 .map(|module| BindingProvenance::ModuleNamespace { module })
                 .or_else(|| {
                     if matches!(call.callee, Callee::Import(_))
-                        && let Some(Expr::Lit(Lit::Str(specifier))) =
-                            call.args.first().map(|argument| &*argument.expr)
+                        && let Some(argument) = call.args.first()
+                        && argument.spread.is_none()
+                        && let Some(module) = constant::static_string(&argument.expr, self)
                     {
                         return Some(BindingProvenance::ModuleNamespace {
-                            module: specifier.value.to_string_lossy().to_smolstr(),
+                            module: module.to_smolstr(),
                         });
                     }
                     let Callee::Expr(callee) = &call.callee else {
@@ -202,7 +211,12 @@ impl ScopeCollector<'_> {
         if member_property_name(&member.prop).as_deref() != Some("bind") {
             return None;
         }
-        let target = self.rooted_name_path(&member.obj)?;
+        let module_provenance = self.module_alias_provenance(&member.obj);
+        let target = if module_provenance.is_none() {
+            Some(self.rooted_name_path(&member.obj)?)
+        } else {
+            None
+        };
         let bound_arguments = call
             .args
             .iter()
@@ -221,7 +235,7 @@ impl ScopeCollector<'_> {
                     })
             })
             .collect();
-        match self.module_alias_provenance(&member.obj) {
+        match module_provenance {
             Some(BindingProvenance::ModuleExport { module, export }) => {
                 Some(BindingProvenance::BoundModuleCallable {
                     module,
@@ -229,8 +243,15 @@ impl ScopeCollector<'_> {
                     bound_arguments,
                 })
             }
+            Some(BindingProvenance::DefaultImport { module }) => {
+                Some(BindingProvenance::BoundModuleCallable {
+                    module,
+                    export: "default".into(),
+                    bound_arguments,
+                })
+            }
             _ => Some(BindingProvenance::BoundCallable {
-                target,
+                target: target?,
                 bound_arguments,
             }),
         }

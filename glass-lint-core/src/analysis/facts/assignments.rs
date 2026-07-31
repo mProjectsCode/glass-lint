@@ -104,34 +104,27 @@ impl FactBuilder<'_, '_> {
             },
         );
         assignment.right.visit_with(self);
-        let target = resolved_member.id;
         let receiver = self.resolver.resolve_expr_id(&member.obj);
-        if assignment.op == AssignOp::Assign {
-            let property_name = member_property_name(&member.prop);
-            let property = self.intern_name(property_name.as_deref());
-            let value = self.resolver.resolve_expr_id(&assignment.right);
-            let rooted_chain = self.resolver.rooted_write_chain(member);
-            self.emit(
-                FactKind::PropertyWrite,
-                assignment.span(),
-                FactPayload::PropertyWrite {
-                    receiver,
-                    property,
-                    rooted_chain: self.rooted_path(rooted_chain.as_ref()),
-                    value,
-                },
-            );
+        let property_name = member_property_name(&member.prop);
+        let property = self.intern_name(property_name.as_deref());
+        let value = if assignment.op == AssignOp::Assign {
+            self.resolver.resolve_expr_id(&assignment.right)
         } else {
-            self.emit(
-                FactKind::Assignment,
-                assignment.span(),
-                FactPayload::Assignment {
-                    target,
-                    source: ValueId::UNKNOWN,
-                    receiver: Some(receiver),
-                },
-            );
-        }
+            ValueId::UNKNOWN
+        };
+        let value_is_precise = assignment.op == AssignOp::Assign;
+        let rooted_chain = self.resolver.rooted_write_chain(member);
+        self.emit(
+            FactKind::PropertyWrite,
+            assignment.span(),
+            FactPayload::PropertyWrite {
+                receiver,
+                property,
+                rooted_chain: self.rooted_path(rooted_chain.as_ref()),
+                value,
+                value_is_precise,
+            },
+        );
     }
 
     fn record_pattern_assignment(

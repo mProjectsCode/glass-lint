@@ -346,6 +346,7 @@ pub enum FactPayload {
         property: Option<NameId>,
         rooted_chain: Option<NamePath>,
         value: ValueId,
+        value_is_precise: bool,
     },
     Call {
         callee: ValueId,

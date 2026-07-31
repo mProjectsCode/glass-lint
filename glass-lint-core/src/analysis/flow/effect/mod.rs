@@ -54,6 +54,7 @@ pub(in crate::analysis) enum EffectUse {
         receiver: Option<ParameterRef>,
         receiver_value: ValueId,
         property: Option<SmolStr>,
+        value_is_precise: bool,
     },
     CallArgument {
         call_id: EffectCallId,
@@ -277,6 +278,7 @@ impl FunctionEffect {
         event: FactId,
         receiver: ValueId,
         property: Option<&str>,
+        value_is_precise: bool,
         stream: &FactStream<Frozen>,
         budget: &mut Budget,
     ) {
@@ -289,6 +291,7 @@ impl FunctionEffect {
             receiver: self.parameter_for(receiver, stream),
             receiver_value: receiver,
             property: property.map(SmolStr::new),
+            value_is_precise,
         });
     }
 }
@@ -635,10 +638,12 @@ impl FunctionEffectsBuilder {
                 property,
                 value: _,
                 rooted_chain: _,
+                value_is_precise,
             } => effect.record_property_write(
                 fact.id,
                 *receiver,
                 property.and_then(|id| stream.resolve_name(id)),
+                *value_is_precise,
                 stream,
                 &mut self.budget,
             ),

@@ -314,12 +314,14 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 property,
                 value,
                 rooted_chain: _,
+                value_is_precise,
             } => {
                 let static_string = self.stream.values().static_string(*value);
                 self.record_property_write(
                     *receiver,
                     property.and_then(|id| self.stream.resolve_name(id)),
                     static_string,
+                    *value_is_precise,
                     fact.id,
                 );
             }
@@ -624,6 +626,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         receiver: ValueId,
         property: Option<&str>,
         value: Option<&str>,
+        value_is_precise: bool,
         event: FactId,
     ) {
         let Some(object) = self.object_for(receiver) else {
@@ -647,7 +650,10 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 {
                     self.flow_state
                         .clear_requirement(key.object, key.flow, index);
-                    if property == Some(expected.as_str()) && matcher.matches_flow_value(value) {
+                    if value_is_precise
+                        && property == Some(expected.as_str())
+                        && matcher.matches_flow_value(value)
+                    {
                         self.flow_state
                             .record_requirement(key.object, key.flow, index, event);
                     }
