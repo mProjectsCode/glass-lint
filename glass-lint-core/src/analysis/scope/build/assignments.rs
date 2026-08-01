@@ -44,7 +44,7 @@ impl ScopeCollector<'_> {
     ) {
         let next = self.version_counters.entry((scope, name)).or_insert(0);
         *next = next.saturating_add(1);
-        let version = BindingVersion(*next);
+        let version = BindingVersion::new(*next);
         self.assignment_environment
             .record_known(scope, name, provenance.clone());
         self.assignment_writes.insert(ScopedName::new(scope, name));
@@ -63,7 +63,7 @@ impl ScopeCollector<'_> {
     ) {
         let next = self.version_counters.entry((scope, name)).or_insert(0);
         *next = next.saturating_add(1);
-        let version = BindingVersion(*next);
+        let version = BindingVersion::new(*next);
         if value.provenances.is_empty() {
             self.assignment_environment.record_unknown(scope, name);
         } else {
@@ -85,7 +85,7 @@ impl ScopeCollector<'_> {
 
     pub(super) fn visible_binding(&self, name: &str) -> Option<&BindingProvenance> {
         let name_id = self.name_id(name)?;
-        for scope in self.stack.iter().rev().copied().map(ScopeId::from) {
+        for scope in self.stack.iter().rev().copied().map(ScopeId::new) {
             if let Some(assignment) = self.assignment_environment.get_by_id(scope, name_id) {
                 if assignment.joined {
                     return assignment
@@ -112,7 +112,7 @@ impl ScopeCollector<'_> {
             .iter()
             .rev()
             .copied()
-            .map(ScopeId::from)
+            .map(ScopeId::new)
             .find(|scope| {
                 self.assignment_environment.contains_by_id(*scope, name_id)
                     || self.scopes[scope.index()].bindings.contains_key(&name_id)
@@ -487,7 +487,7 @@ impl ScopeCollector<'_> {
         };
         self.record_assignment(
             span,
-            ScopeId::from(*scope),
+            ScopeId::new(*scope),
             root.sym.as_ref(),
             BindingProvenance::Local,
         );

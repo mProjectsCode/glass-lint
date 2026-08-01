@@ -4,14 +4,38 @@ use smol_str::SmolStr;
 use crate::analysis::model::scope::{BindingId, BindingKey, FunctionId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ValueId(pub u32);
+pub struct ValueId(u32);
 
 impl ValueId {
-    pub const UNKNOWN: Self = Self(0);
+    pub const UNKNOWN: Self = Self::new(0);
+
+    pub(in crate::analysis) const fn new(raw: u32) -> Self {
+        Self(raw)
+    }
+
+    pub(in crate::analysis) const fn raw(self) -> u32 {
+        self.0
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) const fn from_test(raw: u32) -> Self {
+        Self::new(raw)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ObjectId(pub u32);
+pub struct ObjectId(u32);
+
+impl ObjectId {
+    pub(in crate::analysis) const fn new(raw: u32) -> Self {
+        Self(raw)
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) const fn from_test(raw: u32) -> Self {
+        Self::new(raw)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Value {
@@ -88,7 +112,7 @@ impl ValueTable {
             return ValueId::UNKNOWN;
         };
         if !inserted {
-            return ValueId(index);
+            return ValueId::new(index);
         }
         if idx >= MAX_VALUES {
             self.values.pop();
@@ -103,12 +127,12 @@ impl ValueTable {
                 return ValueId::UNKNOWN;
             }
             self.terminal_cache
-                .push(self.terminal_cache[usize::try_from(target.0).unwrap()]);
+                .push(self.terminal_cache[usize::try_from(target.raw()).unwrap()]);
         } else {
-            self.terminal_cache.push(ValueId(index));
+            self.terminal_cache.push(ValueId::new(index));
         }
 
-        ValueId(index)
+        ValueId::new(index)
     }
 
     pub fn intern_with_binding(&mut self, value: Value, binding: Option<BindingKey>) -> ValueId {
@@ -138,13 +162,13 @@ impl ValueTable {
             self.exhausted = true;
             return None;
         }
-        let object = ObjectId(self.next_object);
+        let object = ObjectId::new(self.next_object);
         self.next_object += 1;
         Some(object)
     }
 
     pub fn get(&self, id: ValueId) -> Option<&Value> {
-        self.values.get_index(usize::try_from(id.0).ok()?)
+        self.values.get_index(usize::try_from(id.raw()).ok()?)
     }
 
     pub fn resolve(&self, id: ValueId) -> Option<&Value> {
@@ -164,7 +188,7 @@ impl ValueTable {
     }
 
     fn resolve_terminal(&self, id: ValueId) -> Option<ValueId> {
-        let idx = usize::try_from(id.0).ok()?;
+        let idx = usize::try_from(id.raw()).ok()?;
         self.terminal_cache.get(idx).copied()
     }
 
@@ -182,7 +206,7 @@ impl ValueTable {
 
 impl glass_lint_datastructures::IdIndex for FunctionId {
     fn from_raw(raw: u32) -> Self {
-        Self(raw)
+        Self::new(raw)
     }
 }
 
@@ -193,7 +217,7 @@ mod tests {
     #[test]
     fn invalid_value_ids_fail_closed() {
         let arena = ValueTable::default();
-        assert!(arena.get(ValueId(u32::MAX)).is_none());
+        assert!(arena.get(ValueId::from_test(u32::MAX)).is_none());
         assert!(arena.get(ValueId::UNKNOWN).is_some());
     }
 
@@ -212,9 +236,9 @@ mod tests {
 
     #[test]
     fn callable_value_constructs_and_exposes_target() {
-        let target = ValueId(42);
-        let receiver = ValueId(7);
-        let args = vec![ValueId(1), ValueId(2)];
+        let target = ValueId::from_test(42);
+        let receiver = ValueId::from_test(7);
+        let args = vec![ValueId::from_test(1), ValueId::from_test(2)];
         let cv = CallableValue::new(target, Some(receiver), args);
         assert_eq!(cv.target(), target);
     }
@@ -224,9 +248,9 @@ mod tests {
         let mut table = ValueTable::default();
         let inner = table.intern(Value::StaticString("hello".into()));
         let key = BindingKey::new(crate::analysis::model::scope::BindingRoot::Binding {
-            function: FunctionId(0),
-            binding: crate::analysis::model::scope::BindingId(1),
-            version: crate::analysis::model::scope::BindingVersion(0),
+            function: FunctionId::from_test(0),
+            binding: crate::analysis::model::scope::BindingId::from_test(1),
+            version: crate::analysis::model::scope::BindingVersion::from_test(0),
         });
         let wrapped = table.intern_with_binding(Value::StaticString("hello".into()), Some(key));
         assert_ne!(wrapped, inner);
@@ -245,9 +269,9 @@ mod tests {
         let mut table = ValueTable::default();
         let terminal = table.intern(Value::StaticString("target".into()));
         let key = BindingKey::new(crate::analysis::model::scope::BindingRoot::Binding {
-            function: FunctionId(0),
-            binding: crate::analysis::model::scope::BindingId(0),
-            version: crate::analysis::model::scope::BindingVersion(0),
+            function: FunctionId::from_test(0),
+            binding: crate::analysis::model::scope::BindingId::from_test(0),
+            version: crate::analysis::model::scope::BindingVersion::from_test(0),
         });
         let binding = table.intern(Value::Binding {
             key,
@@ -264,9 +288,9 @@ mod tests {
         let mut prev = terminal;
         for i in 1..=20 {
             let key = BindingKey::new(crate::analysis::model::scope::BindingRoot::Binding {
-                function: FunctionId(0),
-                binding: crate::analysis::model::scope::BindingId(i),
-                version: crate::analysis::model::scope::BindingVersion(0),
+                function: FunctionId::from_test(0),
+                binding: crate::analysis::model::scope::BindingId::from_test(i),
+                version: crate::analysis::model::scope::BindingVersion::from_test(0),
             });
             prev = table.intern(Value::Binding { key, target: prev });
         }
@@ -289,7 +313,7 @@ mod tests {
     #[test]
     fn resolve_returns_none_for_unknown_id() {
         let table = ValueTable::default();
-        assert!(table.resolve(ValueId(u32::MAX)).is_none());
+        assert!(table.resolve(ValueId::from_test(u32::MAX)).is_none());
     }
 
     #[test]
@@ -311,9 +335,9 @@ mod tests {
         let mut table = ValueTable::default();
         let target = table.intern(Value::StaticString("chained".into()));
         let key = BindingKey::new(crate::analysis::model::scope::BindingRoot::Binding {
-            function: FunctionId(0),
-            binding: crate::analysis::model::scope::BindingId(0),
-            version: crate::analysis::model::scope::BindingVersion(0),
+            function: FunctionId::from_test(0),
+            binding: crate::analysis::model::scope::BindingId::from_test(0),
+            version: crate::analysis::model::scope::BindingVersion::from_test(0),
         });
         let binding = table.intern(Value::Binding { key, target });
         assert_eq!(table.static_string(binding), Some("chained"));
@@ -354,8 +378,8 @@ mod tests {
         let mut table = ValueTable::default();
         let a = table.allocate_object_id().expect("first id");
         let b = table.allocate_object_id().expect("second id");
-        assert_eq!(ObjectId(0), a);
-        assert_eq!(ObjectId(1), b);
+        assert_eq!(ObjectId::from_test(0), a);
+        assert_eq!(ObjectId::from_test(1), b);
     }
 
     #[test]
@@ -370,7 +394,7 @@ mod tests {
 
     #[test]
     fn value_id_unknown_is_zero() {
-        assert_eq!(ValueId::UNKNOWN, ValueId(0));
+        assert_eq!(ValueId::UNKNOWN, ValueId::from_test(0));
     }
 
     #[test]

@@ -548,14 +548,14 @@ impl Visit for FactBuilder<'_, '_> {
         if self.resolver.budget.exhausted() {
             return;
         }
-        self.emit_control(stmt.span(), ControlKind::Break, ControlRegionId(0));
+        self.emit_control(stmt.span(), ControlKind::Break, ControlRegionId::new(0));
     }
 
     fn visit_continue_stmt(&mut self, stmt: &swc_ecma_ast::ContinueStmt) {
         if self.resolver.budget.exhausted() {
             return;
         }
-        self.emit_control(stmt.span(), ControlKind::Continue, ControlRegionId(0));
+        self.emit_control(stmt.span(), ControlKind::Continue, ControlRegionId::new(0));
     }
 
     fn visit_return_stmt(&mut self, stmt: &swc_ecma_ast::ReturnStmt) {
@@ -574,7 +574,7 @@ impl Visit for FactBuilder<'_, '_> {
             stmt.span(),
             FactPayload::Control {
                 kind: ControlKind::Return,
-                region: ControlRegionId(0),
+                region: ControlRegionId::new(0),
                 return_value: value,
             },
         );

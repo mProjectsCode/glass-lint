@@ -14,7 +14,7 @@ impl FrozenScopeGraph {
             }
             current = self.scope_parent(index);
         }
-        FunctionId(0)
+        FunctionId::new(0)
     }
 
     /// Resolve a function identifier/alias if it was not reassigned before use.

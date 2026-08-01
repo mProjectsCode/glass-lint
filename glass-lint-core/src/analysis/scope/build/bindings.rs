@@ -81,7 +81,7 @@ pub(super) fn var_binding_scope(stack: &[usize], scopes: &[LexicalScope]) -> Sco
                 ScopeKind::Program | ScopeKind::Function
             )
         })
-        .map_or_else(|| ScopeId::from(0), ScopeId::from)
+        .map_or_else(|| ScopeId::new(0), ScopeId::new)
 }
 
 /// Invoke `f` with every binding name introduced by a destructuring pattern.

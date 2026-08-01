@@ -232,13 +232,17 @@ mod tests {
     };
 
     fn key(module: u32, function: u32, value: u32) -> SourceKey {
-        SourceKey::new(ModuleId::new(module), FunctionId(function), ValueId(value))
+        SourceKey::new(
+            ModuleId::new(module),
+            FunctionId::from_test(function),
+            ValueId::from_test(value),
+        )
     }
 
     fn candidate(rule: usize, flow: usize, fact: u32) -> SourceCandidate {
         SourceCandidate {
             flow: FlowId::new(RuleIndex::new(rule), flow),
-            fact: FactId(fact),
+            fact: FactId::from_test(fact),
         }
     }
 
@@ -432,14 +436,14 @@ mod tests {
     fn context(module: u32, function: u32) -> CallContext {
         CallContext {
             module: ModuleId::new(module),
-            function: FunctionId(function),
+            function: FunctionId::from_test(function),
             parameter: None,
             source_root: None,
             state: CrossFlowState {
                 flow: FlowId::new(RuleIndex::new(0), 0),
                 source: Some(QualifiedEvent {
                     module: ModuleId::new(1),
-                    fact: FactId(1),
+                    fact: FactId::from_test(1),
                 }),
                 requirements: RequirementSet::default(),
                 sinks: RequirementSet::default(),

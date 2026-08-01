@@ -32,24 +32,24 @@ mod tests {
     #[test]
     fn invalid_value_ids_fail_closed() {
         let arena = ValueTable::default();
-        assert!(arena.get(ValueId(u32::MAX)).is_none());
+        assert!(arena.get(ValueId::from_test(u32::MAX)).is_none());
         assert!(arena.get(ValueId::UNKNOWN).is_some());
     }
 
     #[test]
     fn binding_versions_are_part_of_identity() {
         let mut first = BindingKey::new(BindingRoot::Binding {
-            function: FunctionId(1),
-            binding: BindingId(2),
-            version: BindingVersion(0),
+            function: FunctionId::from_test(1),
+            binding: BindingId::from_test(2),
+            version: BindingVersion::from_test(0),
         });
         let mut names = glass_lint_datastructures::NameTable::default();
         let value = names.intern("value").unwrap();
         first.append_segment(value);
         let mut second = BindingKey::new(BindingRoot::Binding {
-            function: FunctionId(1),
-            binding: BindingId(2),
-            version: BindingVersion(1),
+            function: FunctionId::from_test(1),
+            binding: BindingId::from_test(2),
+            version: BindingVersion::from_test(1),
         });
         second.append_segment(value);
         assert_ne!(first, second);

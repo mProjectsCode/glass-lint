@@ -148,7 +148,7 @@ impl FrozenScopeGraph {
         span: Span,
     ) -> BindingVersion {
         let Some(name) = self.name_id(name) else {
-            return BindingVersion(0);
+            return BindingVersion::new(0);
         };
         self.binding_version(scope, name, span)
     }

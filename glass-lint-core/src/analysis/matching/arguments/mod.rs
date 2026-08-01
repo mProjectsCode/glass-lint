@@ -737,7 +737,7 @@ mod tests {
             },
         );
         let argument = CallArgInfo {
-            value: ValueId(7),
+            value: ValueId::from_test(7),
             base_value: ValueId::UNKNOWN,
             base_path: PathId::EMPTY,
             spread: false,

@@ -134,7 +134,7 @@ impl<T> FactStream<T> {
     /// empty slice when the function has no registered parameters (e.g. the
     /// program-level slot or an exit fact).
     pub(in crate::analysis) fn function_parameters(&self, id: FunctionId) -> &[ParameterBinding] {
-        let Ok(index) = usize::try_from(id.0) else {
+        let Ok(index) = usize::try_from(id.raw()) else {
             return &[];
         };
         self.function_parameters
@@ -215,7 +215,7 @@ impl FactStream<Building> {
             self.mark_budget_exhausted();
             return Err(FactIssue::BudgetExhausted);
         }
-        let id = FactId(u32::try_from(self.facts.len()).map_err(|_| {
+        let id = FactId::new(u32::try_from(self.facts.len()).map_err(|_| {
             self.valid = false;
             self.mark_budget_exhausted();
             FactIssue::BudgetExhausted
@@ -231,7 +231,7 @@ impl FactStream<Building> {
             self.valid = false;
             return;
         }
-        if fact.id().0 as usize != self.facts.len() {
+        if fact.id().raw() as usize != self.facts.len() {
             self.valid = false;
             return;
         }
@@ -264,7 +264,7 @@ impl FactStream<Building> {
         id: FunctionId,
         parameters: Vec<ParameterBinding>,
     ) {
-        let index = usize::try_from(id.0).expect("FunctionId fits in usize");
+        let index = usize::try_from(id.raw()).expect("FunctionId fits in usize");
         if self.function_parameters.len() <= index {
             self.function_parameters.resize_with(index + 1, Vec::new);
         }

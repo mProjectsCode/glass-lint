@@ -438,8 +438,8 @@ mod tests {
     #[test]
     fn requirement_set_insert_and_remove() {
         let mut set: RequirementSet = RequirementSet::default();
-        set.insert(0, FactId(1));
-        set.insert(1, FactId(2));
+        set.insert(0, FactId::from_test(1));
+        set.insert(1, FactId::from_test(2));
         assert_eq!(set.len(), 2);
         assert!(!set.is_empty());
 
@@ -450,57 +450,60 @@ mod tests {
     #[test]
     fn requirement_set_values_returns_all_inserted() {
         let mut set: RequirementSet = RequirementSet::default();
-        set.insert(0, FactId(10));
-        set.insert(2, FactId(30));
+        set.insert(0, FactId::from_test(10));
+        set.insert(2, FactId::from_test(30));
         let values: Vec<_> = set.values().copied().collect();
-        assert_eq!(values, vec![FactId(10), FactId(30)]);
+        assert_eq!(values, vec![FactId::from_test(10), FactId::from_test(30)]);
     }
 
     #[test]
     fn requirement_set_insert_duplicate_key_appends_value() {
         let mut set: RequirementSet = RequirementSet::default();
-        set.insert(0, FactId(10));
-        set.insert(0, FactId(20));
+        set.insert(0, FactId::from_test(10));
+        set.insert(0, FactId::from_test(20));
         let values: Vec<_> = set.values().copied().collect();
         assert_eq!(values.len(), 2);
-        assert!(values.contains(&FactId(10)));
-        assert!(values.contains(&FactId(20)));
+        assert!(values.contains(&FactId::from_test(10)));
+        assert!(values.contains(&FactId::from_test(20)));
         assert_eq!(set.len(), 1);
     }
 
     #[test]
     fn requirement_set_uses_all_64_completion_bits_and_rejects_overflow() {
         let mut set: RequirementSet = RequirementSet::default();
-        assert!(set.insert(63, FactId(63)));
-        assert!(!set.insert(64, FactId(64)));
+        assert!(set.insert(63, FactId::from_test(63)));
+        assert!(!set.insert(64, FactId::from_test(64)));
         assert_eq!(set.len(), 1);
-        assert_eq!(set.values().copied().collect::<Vec<_>>(), [FactId(63)]);
+        assert_eq!(
+            set.values().copied().collect::<Vec<_>>(),
+            [FactId::from_test(63)]
+        );
     }
 
     #[test]
     fn flow_state_new_creates_unready_state() {
         let flow = FlowId::new(index(0), 0);
-        let state = FlowState::new(flow, FactId(1), ObjectId(0));
+        let state = FlowState::new(flow, FactId::from_test(1), ObjectId::from_test(0));
         assert_eq!(state.flow_id(), flow);
-        assert_eq!(state.source_event(), FactId(1));
-        assert_eq!(state.object_id(), ObjectId(0));
+        assert_eq!(state.source_event(), FactId::from_test(1));
+        assert_eq!(state.object_id(), ObjectId::from_test(0));
     }
 
     #[test]
     fn flow_state_key_matches_flow_and_object() {
         let flow = FlowId::new(index(1), 2);
-        let state = FlowState::new(flow, FactId(5), ObjectId(3));
+        let state = FlowState::new(flow, FactId::from_test(5), ObjectId::from_test(3));
         let key = state.key();
-        assert_eq!(key.object, ObjectId(3));
+        assert_eq!(key.object, ObjectId::from_test(3));
         assert_eq!(key.flow, flow);
     }
 
     #[test]
     fn flow_state_records_and_clears_requirements() {
         let flow = FlowId::new(index(0), 0);
-        let mut state = FlowState::new(flow, FactId(1), ObjectId(0));
-        state.record_requirement(0, FactId(10));
-        state.record_requirement(1, FactId(20));
+        let mut state = FlowState::new(flow, FactId::from_test(1), ObjectId::from_test(0));
+        state.record_requirement(0, FactId::from_test(10));
+        state.record_requirement(1, FactId::from_test(20));
         assert_eq!(state.requirements.len(), 2);
 
         state.clear_requirement(0);

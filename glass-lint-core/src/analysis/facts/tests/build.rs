@@ -50,8 +50,16 @@ fn fact_ids_are_sequential_and_deterministic() {
     let stream1 = build_test_facts(src, "ids.js");
     let stream2 = build_test_facts(src, "ids.js");
 
-    let ids1: Vec<_> = stream1.facts().iter().map(|f| f.id.0).collect();
-    let ids2: Vec<_> = stream2.facts().iter().map(|f| f.id.0).collect();
+    let ids1: Vec<_> = stream1
+        .facts()
+        .iter()
+        .map(|f| f.id.raw_for_test())
+        .collect();
+    let ids2: Vec<_> = stream2
+        .facts()
+        .iter()
+        .map(|f| f.id.raw_for_test())
+        .collect();
     assert_eq!(
         ids1, ids2,
         "identical programs must produce identical fact IDs"

@@ -100,7 +100,7 @@ impl ScopePlanner<'_> {
     }
 
     fn current_scope(&self) -> ScopeId {
-        ScopeId::from(self.stack.last().copied().unwrap_or(0))
+        ScopeId::new(self.stack.last().copied().unwrap_or(0))
     }
 
     fn insert(&mut self, scope: ScopeId, name: impl Into<SmolStr>, provenance: BindingProvenance) {
@@ -147,7 +147,7 @@ impl ScopePlanner<'_> {
             bindings: HashMap::new(),
         });
         self.scope_shapes.record(ScopeShape {
-            scope_id: ScopeId::from(index),
+            scope_id: ScopeId::new(index),
             kind,
             span,
             parent: Some(parent),

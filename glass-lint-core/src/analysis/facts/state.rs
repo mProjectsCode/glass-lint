@@ -33,7 +33,7 @@ impl Default for TraversalState {
             function_depth: 0,
             static_method_depth: 0,
 
-            current_function: FunctionId(0),
+            current_function: FunctionId::new(0),
         }
     }
 }
@@ -43,7 +43,7 @@ impl TraversalState {
     /// inputs deterministic instead of wrapping into an earlier region.
     pub(super) fn next_control_region(&mut self) -> ControlRegionId {
         let region = self.next_control_region;
-        self.next_control_region = ControlRegionId(region.0.saturating_add(1));
+        self.next_control_region = ControlRegionId::new(region.raw().saturating_add(1));
         region
     }
 

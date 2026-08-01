@@ -154,7 +154,7 @@ fn effective_args_unwraps_apply_invocation() {
 #[test]
 fn call_fact_returns_none_for_unknown_id() {
     let (stream, _effects) = collect_effects("const x = 1;");
-    let unknown = FactId(u32::MAX);
+    let unknown = FactId::from_test(u32::MAX);
     let cref = CallEffectRef {
         stream: &stream,
         event: unknown,
@@ -194,7 +194,7 @@ fn call_argument_indexes_into_correct_call() {
         "function fn() { document.head.appendChild(document.createElement('script')); }",
     );
     let effect = effects
-        .get(FunctionId(1))
+        .get(FunctionId::from_test(1))
         .expect("effect for fn should exist");
     let by_index = effect
         .call_argument(EffectCallId(0), 0)
@@ -207,7 +207,7 @@ fn call_argument_returns_none_for_missing_index() {
     let (_stream, effects) =
         collect_effects("document.head.appendChild(document.createElement('script'));");
     let effect = effects
-        .get(FunctionId(0))
+        .get(FunctionId::from_test(0))
         .expect("script effect should exist");
     assert!(effect.call_argument(EffectCallId(0), 999).is_none());
     assert!(effect.call_argument(EffectCallId(usize::MAX), 0).is_none());
@@ -236,13 +236,13 @@ fn effects_budget_exhausted_false_with_unlimited_budget() {
 #[test]
 fn collect_creates_program_level_function() {
     let (_stream, effects) = collect_effects("const x = 1;");
-    assert!(effects.get(FunctionId(0)).is_some());
+    assert!(effects.get(FunctionId::from_test(0)).is_some());
 }
 
 #[test]
 fn collect_creates_user_defined_functions() {
     let (_stream, effects) = collect_effects("function f() { return 1; }");
-    assert!(effects.get(FunctionId(1)).is_some());
+    assert!(effects.get(FunctionId::from_test(1)).is_some());
 }
 
 #[test]

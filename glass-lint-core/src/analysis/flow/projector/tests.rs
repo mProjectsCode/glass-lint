@@ -549,7 +549,10 @@ fn requirement_only_evidence_is_anchored_at_the_configuration_event() {
         FlowLimits::from_flow_operations(262_144),
     );
     assert_eq!(evidence[0][0].occurrences[0].span, configuration.1);
-    assert_eq!(evidence[0][0].occurrences[0].fact, Some(configuration.0.0));
+    assert_eq!(
+        evidence[0][0].occurrences[0].fact,
+        Some(configuration.0.raw_for_test())
+    );
 }
 
 #[test]

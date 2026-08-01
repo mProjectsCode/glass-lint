@@ -335,9 +335,9 @@ impl ProjectSemanticModel {
 
     /// Convert a module/fact identity into a source location for related
     /// evidence.
-    pub fn fact_location(&self, module: ModuleId, fact: u32) -> Option<SourceLocation> {
+    pub fn fact_location(&self, module: ModuleId, fact: FactId) -> Option<SourceLocation> {
         let module = self.modules.get(&module)?;
-        let fact = module.local().facts().stream().fact(FactId(fact))?;
+        let fact = module.local().facts().stream().fact(fact)?;
         let range = module.source_context().range(fact.span).ok()?;
 
         Some(SourceLocation::new(module.path().clone(), range))

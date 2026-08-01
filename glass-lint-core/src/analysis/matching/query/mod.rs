@@ -229,7 +229,9 @@ impl OccurrenceIndexes {
         match kind {
             MatchKind::Call => {
                 let name = self.test_name(symbol.as_str());
-                self.call_indexes.calls.push(name, FactId(u32::MAX), span);
+                self.call_indexes
+                    .calls
+                    .push(name, FactId::from_test(u32::MAX), span);
             }
             MatchKind::MemberCall => {
                 let key = symbol
@@ -238,7 +240,7 @@ impl OccurrenceIndexes {
                     .collect::<Vec<_>>();
                 self.members.calls.push(
                     glass_lint_datastructures::NamePath::from_ids(key),
-                    FactId(u32::MAX),
+                    FactId::from_test(u32::MAX),
                     span,
                 );
             }
@@ -249,7 +251,7 @@ impl OccurrenceIndexes {
                     .collect::<Vec<_>>();
                 self.members.reads.push(
                     glass_lint_datastructures::NamePath::from_ids(key),
-                    FactId(u32::MAX),
+                    FactId::from_test(u32::MAX),
                     span,
                 );
             }
@@ -260,26 +262,30 @@ impl OccurrenceIndexes {
                     .collect::<Vec<_>>();
                 self.members.rooted_writes.push(
                     glass_lint_datastructures::NamePath::from_ids(key),
-                    FactId(u32::MAX),
+                    FactId::from_test(u32::MAX),
                     span,
                 );
             }
             MatchKind::Import => {
-                self.literals.imports.push(symbol, FactId(u32::MAX), span);
+                self.literals
+                    .imports
+                    .push(symbol, FactId::from_test(u32::MAX), span);
             }
             MatchKind::StringContains => {
-                self.literals.strings.push(symbol, FactId(u32::MAX), span);
+                self.literals
+                    .strings
+                    .push(symbol, FactId::from_test(u32::MAX), span);
             }
             MatchKind::Class => {
                 self.constructions
                     .classes
-                    .push(symbol, FactId(u32::MAX), span);
+                    .push(symbol, FactId::from_test(u32::MAX), span);
             }
             MatchKind::Constructor => {
                 let name = self.test_name(symbol.as_str());
                 self.constructions
                     .constructors
-                    .push(name, FactId(u32::MAX), span);
+                    .push(name, FactId::from_test(u32::MAX), span);
             }
             MatchKind::CallArgument => {}
         }

@@ -276,7 +276,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 certainty,
                 occurrences: vec![ClassificationEvidenceOccurrence {
                     span,
-                    fact: Some(anchor.0),
+                    fact: Some(anchor.raw()),
                     trace: Some(trace_head),
                 }],
             },

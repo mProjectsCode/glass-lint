@@ -42,7 +42,7 @@ impl LexicalScopeIndex {
 
     pub(super) fn scope_at(&self, span: Span, scope_shape_valid: bool) -> ScopeId {
         if !scope_shape_valid {
-            return ScopeId::from(0);
+            return ScopeId::new(0);
         }
         if let Some((cached_span, scope)) = self.last_scope_query.get()
             && cached_span == span
@@ -62,11 +62,11 @@ impl LexicalScopeIndex {
             .checked_sub(1)
             .map(|index| self.scopes_by_start[index])
         else {
-            return ScopeId::from(0);
+            return ScopeId::new(0);
         };
         while !contains(self.scopes[scope.index()].span, span) {
             let Some(parent) = self.scopes[scope.index()].parent else {
-                return ScopeId::from(0);
+                return ScopeId::new(0);
             };
             scope = parent;
         }

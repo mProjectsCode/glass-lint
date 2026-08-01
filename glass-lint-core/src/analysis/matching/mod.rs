@@ -213,7 +213,7 @@ pub(super) fn push_owned_evidence(
         .map(
             |occurrence| crate::api::classification::ClassificationEvidenceOccurrence {
                 span: occurrence.span(),
-                fact: Some(occurrence.event().0),
+                fact: Some(occurrence.event().raw()),
                 trace: None,
             },
         )
@@ -254,9 +254,9 @@ mod tests {
     #[test]
     fn typed_occurrence_index_is_deduplicated() {
         let mut index = OccurrenceIndex::<SmolStr>::default();
-        index.push("fetch".into(), FactId(1), span(5, 11));
-        index.push("fetch".into(), FactId(1), span(5, 11));
-        index.push("fetch".into(), FactId(2), span(20, 26));
+        index.push("fetch".into(), FactId::from_test(1), span(5, 11));
+        index.push("fetch".into(), FactId::from_test(1), span(5, 11));
+        index.push("fetch".into(), FactId::from_test(2), span(20, 26));
         index.normalize();
         assert_eq!(
             index

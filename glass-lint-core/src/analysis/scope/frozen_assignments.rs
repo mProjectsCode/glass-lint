@@ -90,10 +90,10 @@ impl FrozenAssignmentIndex {
     /// uncertain.
     pub(super) fn version_at(&self, scope: ScopeId, name: NameId, span: Span) -> BindingVersion {
         let Some(assignments) = self.get(scope, name) else {
-            return BindingVersion(0);
+            return BindingVersion::new(0);
         };
         let Some(latest) = Self::latest_index(assignments, span) else {
-            return BindingVersion(0);
+            return BindingVersion::new(0);
         };
         assignments[latest].version
     }

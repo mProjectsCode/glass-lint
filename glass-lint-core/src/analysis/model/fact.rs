@@ -9,13 +9,31 @@ use crate::analysis::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct FactId(pub u32);
+pub struct FactId(u32);
 
 impl FactId {
+    pub(in crate::analysis) const fn new(raw: u32) -> Self {
+        Self(raw)
+    }
+
+    pub(in crate::analysis) const fn raw(self) -> u32 {
+        self.0
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) const fn from_test(raw: u32) -> Self {
+        Self::new(raw)
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) const fn raw_for_test(self) -> u32 {
+        self.raw()
+    }
+
     #[cfg(test)]
     pub fn from_index(index: usize) -> Option<Self> {
         if index < MAX_FACTS {
-            Some(Self(u32::try_from(index).ok()?))
+            Some(Self::new(u32::try_from(index).ok()?))
         } else {
             None
         }
@@ -28,7 +46,22 @@ impl FactId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct ControlRegionId(pub u32);
+pub struct ControlRegionId(u32);
+
+impl ControlRegionId {
+    pub(in crate::analysis) const fn new(raw: u32) -> Self {
+        Self(raw)
+    }
+
+    pub(in crate::analysis) const fn raw(self) -> u32 {
+        self.0
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) const fn from_test(raw: u32) -> Self {
+        Self::new(raw)
+    }
+}
 
 #[cfg(test)]
 mod control_region_tests {
@@ -36,8 +69,8 @@ mod control_region_tests {
 
     #[test]
     fn control_regions_are_typed_and_orderable() {
-        assert!(ControlRegionId(1) < ControlRegionId(2));
-        assert_eq!(ControlRegionId::default(), ControlRegionId(0));
+        assert!(ControlRegionId::from_test(1) < ControlRegionId::from_test(2));
+        assert_eq!(ControlRegionId::default(), ControlRegionId::from_test(0));
     }
 }
 
@@ -53,8 +86,8 @@ mod fact_id_tests {
 
     #[test]
     fn fact_id_index_rejects_overflow() {
-        assert!(FactId(u32::MAX).index().is_none());
-        assert!(FactId(0).index().is_some());
+        assert!(FactId::from_test(u32::MAX).index().is_none());
+        assert!(FactId::from_test(0).index().is_some());
     }
 }
 
@@ -112,9 +145,9 @@ mod semantic_fact_tests {
     #[test]
     fn semantic_fact_new_creates_fact_with_all_fields() {
         let fact = SemanticFact::new(
-            FactId(1),
+            FactId::from_test(1),
             ByteRange::new(0, 5).unwrap(),
-            FunctionId(0),
+            FunctionId::from_test(0),
             FactKind::Reference,
             FactPayload::Reference {
                 value: ValueId::UNKNOWN,
@@ -122,7 +155,7 @@ mod semantic_fact_tests {
                 static_string_origin: None,
             },
         );
-        assert_eq!(fact.id(), FactId(1));
+        assert_eq!(fact.id(), FactId::from_test(1));
         assert_eq!(fact.kind(), FactKind::Reference);
     }
 
@@ -130,9 +163,9 @@ mod semantic_fact_tests {
     fn semantic_fact_round_trips_span() {
         let range = ByteRange::new(10, 20).unwrap();
         let fact = SemanticFact::new(
-            FactId(2),
+            FactId::from_test(2),
             range,
-            FunctionId(1),
+            FunctionId::from_test(1),
             FactKind::Call,
             FactPayload::Call {
                 callee: ValueId::UNKNOWN,
@@ -151,7 +184,7 @@ mod semantic_fact_tests {
                 unwrap: None,
             },
         );
-        assert_eq!(fact.id(), FactId(2));
+        assert_eq!(fact.id(), FactId::from_test(2));
     }
 }
 

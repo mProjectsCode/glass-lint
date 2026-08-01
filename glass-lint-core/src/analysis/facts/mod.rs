@@ -211,7 +211,7 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
             return;
         };
         self.resolver.budget.try_charge();
-        let function = if self.traversal.current_function() == FunctionId(0) {
+        let function = if self.traversal.current_function() == FunctionId::new(0) {
             self.resolver.function_scope_at(scope)
         } else {
             self.traversal.current_function()
@@ -497,9 +497,9 @@ mod stream_tests {
 
     fn test_fact(id: u32, kind: FactKind, span: ByteRange) -> SemanticFact {
         SemanticFact::new(
-            FactId(id),
+            FactId::from_test(id),
             span,
-            FunctionId(0),
+            FunctionId::from_test(0),
             kind,
             match kind {
                 FactKind::Call => FactPayload::Call {
@@ -530,12 +530,12 @@ mod stream_tests {
                     static_string_origin: None,
                 },
                 FactKind::Function => FactPayload::Function {
-                    id: FunctionId(0),
+                    id: FunctionId::from_test(0),
                     boundary: FunctionBoundary::Enter,
                 },
                 FactKind::Control => FactPayload::Control {
                     kind: ControlKind::BranchStart,
-                    region: ControlRegionId(0),
+                    region: ControlRegionId::from_test(0),
                     return_value: ValueId::UNKNOWN,
                 },
                 _ => FactPayload::Declaration {
@@ -560,17 +560,17 @@ mod stream_tests {
                 .iter()
                 .map(|fact| fact.id())
                 .collect::<Vec<_>>(),
-            vec![FactId(0), FactId(2)]
+            vec![FactId::from_test(0), FactId::from_test(2)]
         );
         assert_eq!(
-            stream.fact(FactId(0)).map(SemanticFact::kind),
+            stream.fact(FactId::from_test(0)).map(SemanticFact::kind),
             Some(FactKind::Call)
         );
         assert_eq!(
-            stream.fact(FactId(2)).map(SemanticFact::kind),
+            stream.fact(FactId::from_test(2)).map(SemanticFact::kind),
             Some(FactKind::Call)
         );
-        assert!(stream.fact(FactId(3)).is_none());
+        assert!(stream.fact(FactId::from_test(3)).is_none());
     }
 
     #[test]
@@ -582,25 +582,31 @@ mod stream_tests {
         }
         let calls = stream.facts_at(span.start(), span.end(), FactKind::Call);
         assert_eq!(calls.len(), 10_001);
-        assert_eq!(calls.first().map(|fact| fact.id()), Some(FactId(0)));
-        assert_eq!(calls.last().map(|fact| fact.id()), Some(FactId(10_000)));
         assert_eq!(
-            stream.fact(FactId(10_000)).map(SemanticFact::id),
-            Some(FactId(10_000))
+            calls.first().map(|fact| fact.id()),
+            Some(FactId::from_test(0))
+        );
+        assert_eq!(
+            calls.last().map(|fact| fact.id()),
+            Some(FactId::from_test(10_000))
+        );
+        assert_eq!(
+            stream.fact(FactId::from_test(10_000)).map(SemanticFact::id),
+            Some(FactId::from_test(10_000))
         );
     }
 
     #[test]
     fn fact_ids_have_checked_collection_boundaries() {
-        assert_eq!(FactId::from_index(0), Some(FactId(0)));
+        assert_eq!(FactId::from_index(0), Some(FactId::from_test(0)));
         assert_eq!(
             FactId::from_index(MAX_FACTS - 1),
-            Some(FactId(
+            Some(FactId::from_test(
                 u32::try_from(MAX_FACTS - 1).expect("fact limit fits in FactId")
             ))
         );
         assert_eq!(FactId::from_index(MAX_FACTS), None);
-        assert_eq!(FactId(u32::MAX).index(), None);
+        assert_eq!(FactId::from_test(u32::MAX).index(), None);
     }
 
     #[test]

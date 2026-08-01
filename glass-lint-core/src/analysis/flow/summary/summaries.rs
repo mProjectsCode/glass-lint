@@ -353,7 +353,7 @@ mod tests {
         let mut budget = unlimited_budget();
         let summaries = FunctionSummaries::collect(&stream, &effects, &plan, &mut budget);
         let bridge = summaries
-            .get(FunctionId(2))
+            .get(FunctionId::from_test(2))
             .expect("bridge function should have a summary");
         assert!(
             bridge.parameter_count() >= 1,
@@ -373,11 +373,11 @@ mod tests {
         let mut budget = unlimited_budget();
         let summaries = FunctionSummaries::collect(&stream, &effects, &plan, &mut budget);
         assert!(
-            summaries.get(FunctionId(1)).is_none(),
+            summaries.get(FunctionId::from_test(1)).is_none(),
             "a returns a constant and should be filtered as invalid"
         );
         assert!(
-            summaries.get(FunctionId(2)).is_some(),
+            summaries.get(FunctionId::from_test(2)).is_some(),
             "b returns a parameter and should have a summary"
         );
     }
@@ -391,9 +391,9 @@ mod tests {
         let mut budget = unlimited_budget();
         let summaries = FunctionSummaries::collect(&stream, &effects, &plan, &mut budget);
         let f = summaries
-            .get(FunctionId(1))
+            .get(FunctionId::from_test(1))
             .expect("f should have a summary");
-        let _callee_params = stream.function_parameters(FunctionId(1));
+        let _callee_params = stream.function_parameters(FunctionId::from_test(1));
         let call_fact = stream
             .facts()
             .iter()
@@ -414,7 +414,7 @@ mod tests {
         let mut budget = unlimited_budget();
         let summaries = FunctionSummaries::collect(&stream, &effects, &plan, &mut budget);
         let f = summaries
-            .get(FunctionId(1))
+            .get(FunctionId::from_test(1))
             .expect("f should have a summary");
         let call_fact = stream
             .facts()

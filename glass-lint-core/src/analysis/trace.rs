@@ -94,7 +94,7 @@ impl TraceArena {
 
 #[cfg(test)]
 fn qe(module: u32, fact: u32) -> QualifiedEvent {
-    QualifiedEvent::new(ModuleId::new(module), FactId(fact))
+    QualifiedEvent::new(ModuleId::new(module), FactId::new(fact))
 }
 
 #[cfg(test)]
@@ -190,9 +190,9 @@ mod tests {
             .unwrap();
         let trace = arena.reconstruct_trace(ev2);
         assert_eq!(trace[0].0.module.get(), 1);
-        assert_eq!(trace[0].0.fact.0, 10);
+        assert_eq!(trace[0].0.fact.raw_for_test(), 10);
         assert_eq!(trace[1].0.module.get(), 2);
-        assert_eq!(trace[1].0.fact.0, 20);
+        assert_eq!(trace[1].0.fact.raw_for_test(), 20);
     }
 
     #[test]

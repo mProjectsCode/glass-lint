@@ -509,7 +509,7 @@ mod tests {
     }
 
     fn occ(event_id: u32, start: u32, end: u32) -> Occurrence {
-        Occurrence::new(FactId(event_id), span(start, end))
+        Occurrence::new(FactId::from_test(event_id), span(start, end))
     }
 
     /// Reference merge: collect all occurrences then sort by

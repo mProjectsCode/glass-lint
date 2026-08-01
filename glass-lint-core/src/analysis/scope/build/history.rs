@@ -379,7 +379,7 @@ mod tests {
     fn assignment_checkpoints_still_restore_values() {
         let mut names = NameTable::default();
         let name = names.intern("value").unwrap();
-        let scope = ScopeId::from(1);
+        let scope = ScopeId::new(1);
         let mut environment = AssignmentEnvironment::new();
         environment.record_known(scope, name, BindingProvenance::Local);
         let base = environment.checkpoint();
@@ -399,8 +399,8 @@ mod tests {
         let mut names = NameTable::default();
         let first_name = names.intern("first").unwrap();
         let second_name = names.intern("second").unwrap();
-        let first = ScopedName::new(ScopeId::from(1), first_name);
-        let second = ScopedName::new(ScopeId::from(1), second_name);
+        let first = ScopedName::new(ScopeId::new(1), first_name);
+        let second = ScopedName::new(ScopeId::new(1), second_name);
         writes.insert(first.clone());
         let base = writes.checkpoint();
         writes.clear();

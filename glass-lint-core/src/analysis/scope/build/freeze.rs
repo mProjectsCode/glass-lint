@@ -13,7 +13,7 @@ use crate::analysis::{
 
 impl ScopeCollector<'_> {
     fn sorted_scope_starts(scopes: &[LexicalScope]) -> Vec<ScopeId> {
-        let mut scopes_by_start: Vec<_> = (0..scopes.len()).map(ScopeId::from).collect();
+        let mut scopes_by_start: Vec<_> = (0..scopes.len()).map(ScopeId::new).collect();
         scopes_by_start.sort_by_key(|index| {
             let scope = &scopes[index.index()];
             (scope.span.lo, scope.depth)
@@ -27,9 +27,9 @@ impl ScopeCollector<'_> {
         let mut binding_ids = HashMap::new();
         let mut next_binding = 0u32;
         for (scope, lexical_scope) in scopes.iter().enumerate() {
-            let scope = ScopeId::from(scope);
+            let scope = ScopeId::new(scope);
             for name in lexical_scope.bindings.keys() {
-                binding_ids.insert(ScopedName::new(scope, *name), BindingId(next_binding));
+                binding_ids.insert(ScopedName::new(scope, *name), BindingId::new(next_binding));
                 next_binding = next_binding.saturating_add(1);
             }
         }
@@ -42,7 +42,7 @@ impl ScopeCollector<'_> {
                 crate::analysis::scope::ScopeKind::Program
                     | crate::analysis::scope::ScopeKind::Function
             ) {
-                function_ids[scope] = Some(FunctionId(next_function));
+                function_ids[scope] = Some(FunctionId::new(next_function));
                 next_function = next_function.saturating_add(1);
             }
         }

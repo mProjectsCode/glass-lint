@@ -217,7 +217,7 @@ with one warm-up-free repetition and one worker took 722.5ms measured lint
 wall time (721.1ms input time; 9.30s process wall time including the one-time
 release build).
 
-#### RL-007 — Semantic IDs expose raw storage and invite duplicated arithmetic
+#### [x] RL-007 — Semantic IDs expose raw storage and invite duplicated arithmetic
 
 - Severity: Medium
 - Fix complexity: Medium
@@ -235,6 +235,19 @@ Recommendation: make fields private and provide checked constructors plus
 domain operations such as `index`, `next`, or bounded offset methods. Keep raw
 conversion at a narrow serialization/debug boundary and update callers in one
 migration so invalid IDs cannot become an ambient convention.
+
+Implementation: made semantic ID tuple fields fully private, added
+crate-internal domain constructors and checked/index accessors, and removed
+production raw-index arithmetic for facts, scopes, bindings, functions,
+values, objects, and control regions. Unit fixtures use `cfg(test)`
+constructors/accessors, while raw conversion remains behind analysis-owned
+accessors and report APIs now accept typed `FactId` values.
+
+Runtime (release): profiling
+`/home/lemon/src/obsidian-stats/data/out/plugin-release-mainjs/byoc/1.0.13-main.js`
+with one warm-up-free repetition and one worker took 701.1ms measured lint
+wall time (699.9ms input time; 0.90s process wall time after the release
+binary was built).
 
 #### RL-008 — CommonJS `require` recognition is scattered across phases
 

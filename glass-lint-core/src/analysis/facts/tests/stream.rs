@@ -31,7 +31,7 @@ fn freeze_transitions_to_frozen_phase_with_both_tables() {
 
     assert!(!stream.name_exhausted());
     assert_eq!(stream.values().static_string(string), Some("from-arena"));
-    assert!(stream.values().get(ValueId(u32::MAX)).is_none());
+    assert!(stream.values().get(ValueId::from_test(u32::MAX)).is_none());
 }
 
 #[test]
@@ -41,5 +41,5 @@ fn frozen_values_are_borrowed_by_artifact_local_id() {
     let stream = FactStream::<Building>::new().freeze(NameTable::default(), values);
 
     assert_eq!(stream.values().static_string(string), Some("from-arena"));
-    assert!(stream.values().get(ValueId(u32::MAX)).is_none());
+    assert!(stream.values().get(ValueId::from_test(u32::MAX)).is_none());
 }

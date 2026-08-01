@@ -575,9 +575,9 @@ impl FunctionEffectsBuilder {
         };
         if builder.enabled && builder.budget.try_push() {
             let _ = builder.by_id.insert(
-                FunctionId(0),
+                FunctionId::new(0),
                 FunctionEffect {
-                    id: FunctionId(0),
+                    id: FunctionId::new(0),
                     calls: Vec::new(),
                     uses: Vec::new(),
                     returns: Vec::new(),

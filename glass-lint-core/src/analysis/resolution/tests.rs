@@ -96,7 +96,7 @@ fn const_value_returns_unknown_for_uninterned_id() {
     let scopes = ScopeGraph::create_for_test(names).freeze();
     let resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
-    let result = resolver.const_value(ValueId(u32::MAX));
+    let result = resolver.const_value(ValueId::from_test(u32::MAX));
     assert_eq!(result, ConstValue::Unknown);
 }
 

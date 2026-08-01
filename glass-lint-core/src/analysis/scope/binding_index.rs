@@ -93,7 +93,7 @@ impl BindingIndex {
             .iter()
             .enumerate()
             .filter_map(move |(idx, function)| {
-                function.and_then(|f| scopes.scope_span(ScopeId::from(idx)).map(|span| (f, span)))
+                function.and_then(|f| scopes.scope_span(ScopeId::new(idx)).map(|span| (f, span)))
             })
     }
 

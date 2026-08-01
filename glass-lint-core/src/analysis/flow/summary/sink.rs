@@ -392,8 +392,8 @@ mod tests {
 
     #[test]
     fn function_summary_new_and_basic_accessors() {
-        let summary = FunctionSummary::new(FunctionId(5), 3, true, vec![]);
-        assert_eq!(summary.id(), FunctionId(5));
+        let summary = FunctionSummary::new(FunctionId::from_test(5), 3, true, vec![]);
+        assert_eq!(summary.id(), FunctionId::from_test(5));
         assert_eq!(summary.parameter_count(), 3);
         assert!(summary.calls().is_empty());
         assert_eq!(summary.sinks().len(), 0);
@@ -404,7 +404,7 @@ mod tests {
         let (_paths, p0, p1, _p2) = test_paths();
         let sp0 = SummaryPathId::from_path_id(p0);
         let sp1 = SummaryPathId::from_path_id(p1);
-        let mut summary = FunctionSummary::new(FunctionId(1), 1, false, vec![]);
+        let mut summary = FunctionSummary::new(FunctionId::from_test(1), 1, false, vec![]);
         let s1 = FunctionSinkSummary::new(FlowId::new(ri(1), 0), 0, sp1);
         let s2 = FunctionSinkSummary::new(FlowId::new(ri(0), 0), 0, sp0);
         summary.add_sink(s2);

@@ -102,7 +102,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             ControlKind::LoopStart { guaranteed } => {
                 self.control.push(ControlFrame::Loop {
                     region,
-                    body_start: FactId(fact.0.saturating_add(1)),
+                    body_start: FactId::new(fact.raw().saturating_add(1)),
                     baseline: self.paths.clone(),
                     guaranteed,
                     breaks: Vec::new(),

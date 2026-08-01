@@ -406,7 +406,7 @@ impl<'a> FlowEvidence<'a> {
                 if evidence
                     .occurrences
                     .iter()
-                    .any(|occurrence| occurrence.fact == Some(key.event.0))
+                    .any(|occurrence| occurrence.fact == Some(key.event.raw()))
                 {
                     evidence.truncated = true;
                 }
@@ -493,69 +493,93 @@ mod tests {
     #[test]
     fn checkpoints_restore_divergent_mutation_paths() {
         let mut table = FlowStateTable::new(262_144, 4096);
-        table.bind(ValueId(1), ObjectId(1));
+        table.bind(ValueId::from_test(1), ObjectId::from_test(1));
         let base = table.capture(true);
 
-        table.bind(ValueId(2), ObjectId(2));
+        table.bind(ValueId::from_test(2), ObjectId::from_test(2));
         let left = table.capture(true);
         assert!(table.restore(base));
-        assert_eq!(table.object_for(ValueId(2)), None);
+        assert_eq!(table.object_for(ValueId::from_test(2)), None);
 
-        table.bind(ValueId(3), ObjectId(3));
+        table.bind(ValueId::from_test(3), ObjectId::from_test(3));
         assert!(table.restore(left));
-        assert_eq!(table.object_for(ValueId(2)), Some(ObjectId(2)));
-        assert_eq!(table.object_for(ValueId(3)), None);
+        assert_eq!(
+            table.object_for(ValueId::from_test(2)),
+            Some(ObjectId::from_test(2))
+        );
+        assert_eq!(table.object_for(ValueId::from_test(3)), None);
         assert!(table.restore(base));
-        assert_eq!(table.object_for(ValueId(1)), Some(ObjectId(1)));
+        assert_eq!(
+            table.object_for(ValueId::from_test(1)),
+            Some(ObjectId::from_test(1))
+        );
     }
 
     #[test]
     fn bind_updates_and_unbind_removes_aliases() {
         let mut table = FlowStateTable::new(100, 100);
-        table.bind(ValueId(1), ObjectId(10));
-        assert_eq!(table.object_for(ValueId(1)), Some(ObjectId(10)));
-        assert!(table.has_alias_for(ObjectId(10)));
+        table.bind(ValueId::from_test(1), ObjectId::from_test(10));
+        assert_eq!(
+            table.object_for(ValueId::from_test(1)),
+            Some(ObjectId::from_test(10))
+        );
+        assert!(table.has_alias_for(ObjectId::from_test(10)));
 
-        table.bind(ValueId(1), ObjectId(20));
-        assert_eq!(table.object_for(ValueId(1)), Some(ObjectId(20)));
+        table.bind(ValueId::from_test(1), ObjectId::from_test(20));
+        assert_eq!(
+            table.object_for(ValueId::from_test(1)),
+            Some(ObjectId::from_test(20))
+        );
 
-        let removed = table.unbind(ValueId(1));
-        assert_eq!(removed, Some(ObjectId(20)));
-        assert_eq!(table.object_for(ValueId(1)), None);
-        assert!(!table.has_alias_for(ObjectId(20)));
+        let removed = table.unbind(ValueId::from_test(1));
+        assert_eq!(removed, Some(ObjectId::from_test(20)));
+        assert_eq!(table.object_for(ValueId::from_test(1)), None);
+        assert!(!table.has_alias_for(ObjectId::from_test(20)));
     }
 
     #[test]
     fn object_for_returns_none_for_unbound_value() {
         let table = FlowStateTable::new(100, 100);
-        assert_eq!(table.object_for(ValueId(99)), None);
+        assert_eq!(table.object_for(ValueId::from_test(99)), None);
     }
 
     #[test]
     fn has_alias_for_false_when_no_aliases_exist() {
         let table = FlowStateTable::new(100, 100);
-        assert!(!table.has_alias_for(ObjectId(1)));
+        assert!(!table.has_alias_for(ObjectId::from_test(1)));
     }
 
     #[test]
     fn objects_are_unique_for_multiple_aliases() {
         let mut table = FlowStateTable::new(100, 100);
-        table.bind(ValueId(1), ObjectId(1));
-        table.bind(ValueId(2), ObjectId(1));
-        table.bind(ValueId(3), ObjectId(2));
+        table.bind(ValueId::from_test(1), ObjectId::from_test(1));
+        table.bind(ValueId::from_test(2), ObjectId::from_test(1));
+        table.bind(ValueId::from_test(3), ObjectId::from_test(2));
 
         assert_eq!(
             table.objects().collect::<Vec<_>>(),
-            vec![ObjectId(1), ObjectId(2)]
+            vec![ObjectId::from_test(1), ObjectId::from_test(2)]
         );
     }
 
     #[test]
     fn state_limit_rejects_insertion_beyond_capacity() {
         let mut table = FlowStateTable::new(2, 100);
-        let state1 = FlowState::new(FlowId::new(RuleIndex::new(0), 0), FactId(1), ObjectId(1));
-        let state2 = FlowState::new(FlowId::new(RuleIndex::new(0), 1), FactId(2), ObjectId(2));
-        let state3 = FlowState::new(FlowId::new(RuleIndex::new(0), 2), FactId(3), ObjectId(3));
+        let state1 = FlowState::new(
+            FlowId::new(RuleIndex::new(0), 0),
+            FactId::from_test(1),
+            ObjectId::from_test(1),
+        );
+        let state2 = FlowState::new(
+            FlowId::new(RuleIndex::new(0), 1),
+            FactId::from_test(2),
+            ObjectId::from_test(2),
+        );
+        let state3 = FlowState::new(
+            FlowId::new(RuleIndex::new(0), 2),
+            FactId::from_test(3),
+            ObjectId::from_test(3),
+        );
         assert!(table.insert_state(state1));
         assert!(table.insert_state(state2));
         assert!(!table.insert_state(state3));
@@ -565,14 +589,22 @@ mod tests {
     #[test]
     fn remove_states_for_clears_all_object_states() {
         let mut table = FlowStateTable::new(100, 100);
-        table.bind(ValueId(1), ObjectId(1));
-        table.bind(ValueId(2), ObjectId(1));
-        let s1 = FlowState::new(FlowId::new(RuleIndex::new(0), 0), FactId(1), ObjectId(1));
-        let s2 = FlowState::new(FlowId::new(RuleIndex::new(0), 1), FactId(2), ObjectId(2));
+        table.bind(ValueId::from_test(1), ObjectId::from_test(1));
+        table.bind(ValueId::from_test(2), ObjectId::from_test(1));
+        let s1 = FlowState::new(
+            FlowId::new(RuleIndex::new(0), 0),
+            FactId::from_test(1),
+            ObjectId::from_test(1),
+        );
+        let s2 = FlowState::new(
+            FlowId::new(RuleIndex::new(0), 1),
+            FactId::from_test(2),
+            ObjectId::from_test(2),
+        );
         table.insert_state(s1);
         table.insert_state(s2);
-        table.remove_states_for(ObjectId(1));
-        assert_eq!(table.states_for(ObjectId(1)).count(), 0);
+        table.remove_states_for(ObjectId::from_test(1));
+        assert_eq!(table.states_for(ObjectId::from_test(1)).count(), 0);
         assert_eq!(table.state_count(), 1);
     }
 
@@ -580,34 +612,38 @@ mod tests {
     fn mutation_count_tracks_mutations() {
         let mut table = FlowStateTable::new(100, 100);
         assert_eq!(table.mutation_count(), 0);
-        table.bind(ValueId(1), ObjectId(10));
+        table.bind(ValueId::from_test(1), ObjectId::from_test(10));
         assert_eq!(table.mutation_count(), 1);
-        table.bind(ValueId(2), ObjectId(20));
+        table.bind(ValueId::from_test(2), ObjectId::from_test(20));
         assert_eq!(table.mutation_count(), 2);
-        table.unbind(ValueId(1));
+        table.unbind(ValueId::from_test(1));
         assert_eq!(table.mutation_count(), 3);
     }
 
     #[test]
     fn clear_removes_all_aliases_and_states() {
         let mut table = FlowStateTable::new(100, 100);
-        table.bind(ValueId(1), ObjectId(10));
-        table.bind(ValueId(2), ObjectId(20));
-        let s = FlowState::new(FlowId::new(RuleIndex::new(0), 0), FactId(1), ObjectId(10));
+        table.bind(ValueId::from_test(1), ObjectId::from_test(10));
+        table.bind(ValueId::from_test(2), ObjectId::from_test(20));
+        let s = FlowState::new(
+            FlowId::new(RuleIndex::new(0), 0),
+            FactId::from_test(1),
+            ObjectId::from_test(10),
+        );
         table.insert_state(s);
         table.clear();
-        assert_eq!(table.object_for(ValueId(1)), None);
-        assert_eq!(table.object_for(ValueId(2)), None);
+        assert_eq!(table.object_for(ValueId::from_test(1)), None);
+        assert_eq!(table.object_for(ValueId::from_test(2)), None);
         assert_eq!(table.state_count(), 0);
     }
 
     #[test]
     fn distinct_semantic_snapshots_remain_distinct() {
         let mut table = FlowStateTable::new(100, 100);
-        table.bind(ValueId(1), ObjectId(1));
+        table.bind(ValueId::from_test(1), ObjectId::from_test(1));
         let first = table.semantic_snapshot();
 
-        table.bind(ValueId(2), ObjectId(2));
+        table.bind(ValueId::from_test(2), ObjectId::from_test(2));
         let second = table.semantic_snapshot();
 
         assert_ne!(first, second);
@@ -617,7 +653,7 @@ mod tests {
     fn evidence_limit_rejects_repeated_emissions_for_existing_key() {
         let mut items = vec![Vec::new()];
         let mut evidence = FlowEvidence::new(&mut items);
-        let key = ReportEvidenceKey::new(0, 0, ObjectId(1), FactId(1));
+        let key = ReportEvidenceKey::new(0, 0, ObjectId::from_test(1), FactId::from_test(1));
 
         assert!(evidence.try_insert(key, 1, 256));
         assert!(!evidence.try_insert(key, 1, 256));
@@ -629,8 +665,8 @@ mod tests {
     fn evidence_limit_rejects_new_keys_after_capacity_is_full() {
         let mut items = vec![Vec::new()];
         let mut evidence = FlowEvidence::new(&mut items);
-        let first = ReportEvidenceKey::new(0, 0, ObjectId(1), FactId(1));
-        let second = ReportEvidenceKey::new(0, 0, ObjectId(2), FactId(2));
+        let first = ReportEvidenceKey::new(0, 0, ObjectId::from_test(1), FactId::from_test(1));
+        let second = ReportEvidenceKey::new(0, 0, ObjectId::from_test(2), FactId::from_test(2));
 
         assert!(evidence.try_insert(first, 2, 256));
         assert!(evidence.try_insert(second, 2, 256));
@@ -644,41 +680,41 @@ mod tests {
     fn fine_grained_state_edits_restore_across_checkpoints() {
         let mut table = FlowStateTable::new(100, 100);
         let flow = FlowId::new(RuleIndex::new(0), 0);
-        let state = FlowState::new(flow, FactId(1), ObjectId(10));
+        let state = FlowState::new(flow, FactId::from_test(1), ObjectId::from_test(10));
         table.insert_state(state);
         let base = table.capture(true);
-        assert!(table.record_requirement(ObjectId(10), flow, 0, FactId(5)));
-        assert!(table.record_requirement(ObjectId(10), flow, 0, FactId(7)));
-        assert!(table.record_sink(ObjectId(10), flow, 0, FactId(6)));
-        let retrieved = table.state(ObjectId(10), flow).unwrap();
-        assert_eq!(retrieved.source_event(), FactId(1));
+        assert!(table.record_requirement(ObjectId::from_test(10), flow, 0, FactId::from_test(5)));
+        assert!(table.record_requirement(ObjectId::from_test(10), flow, 0, FactId::from_test(7)));
+        assert!(table.record_sink(ObjectId::from_test(10), flow, 0, FactId::from_test(6)));
+        let retrieved = table.state(ObjectId::from_test(10), flow).unwrap();
+        assert_eq!(retrieved.source_event(), FactId::from_test(1));
         assert_eq!(retrieved.requirement_keys().count(), 1);
         assert_eq!(retrieved.sink_keys().count(), 1);
 
         let configured = table.capture(true);
-        assert!(table.clear_requirement(ObjectId(10), flow, 0));
+        assert!(table.clear_requirement(ObjectId::from_test(10), flow, 0));
         assert_eq!(
             table
-                .state(ObjectId(10), flow)
+                .state(ObjectId::from_test(10), flow)
                 .unwrap()
                 .requirement_keys()
                 .count(),
             0
         );
         assert!(table.restore(configured));
-        let restored = table.state(ObjectId(10), flow).unwrap();
+        let restored = table.state(ObjectId::from_test(10), flow).unwrap();
         assert_eq!(restored.requirement_keys().next().unwrap().1.len(), 2);
 
         assert!(table.restore(base));
-        let restored = table.state(ObjectId(10), flow).unwrap();
+        let restored = table.state(ObjectId::from_test(10), flow).unwrap();
         assert_eq!(restored.requirement_keys().count(), 0);
         assert_eq!(restored.sink_keys().count(), 0);
 
-        assert!(table.record_requirement(ObjectId(10), flow, 1, FactId(7)));
+        assert!(table.record_requirement(ObjectId::from_test(10), flow, 1, FactId::from_test(7)));
         assert!(table.restore(base));
         assert_eq!(
             table
-                .state(ObjectId(10), flow)
+                .state(ObjectId::from_test(10), flow)
                 .unwrap()
                 .requirement_keys()
                 .count(),

@@ -148,7 +148,7 @@ impl ScopeGraph {
 
     pub(super) fn binding_version(&self, scope: ScopeId, name: &str, span: Span) -> BindingVersion {
         let Some(name) = self.name_id(name) else {
-            return BindingVersion(0);
+            return BindingVersion::new(0);
         };
         self.bindings.binding_version(scope, name, span)
     }
@@ -282,7 +282,7 @@ impl ScopeGraph {
             }
             current = self.scope_parent(index);
         }
-        FunctionId(0)
+        FunctionId::new(0)
     }
 }
 

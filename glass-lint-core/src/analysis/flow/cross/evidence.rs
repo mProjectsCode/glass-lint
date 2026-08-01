@@ -113,7 +113,7 @@ impl ModuleEvidence {
                 && item
                     .occurrences
                     .iter()
-                    .any(|occurrence| occurrence.fact == Some(key.fact.0))
+                    .any(|occurrence| occurrence.fact == Some(key.fact.raw()))
         }) {
             item.certainty = crate::project::MatchCertainty::Possible;
         }
@@ -130,7 +130,7 @@ impl ModuleEvidence {
                 && existing
                     .occurrences
                     .iter()
-                    .any(|occurrence| occurrence.fact == Some(key.fact.0))
+                    .any(|occurrence| occurrence.fact == Some(key.fact.raw()))
         }) {
             existing.certainty = if existing.certainty == crate::project::MatchCertainty::Possible
                 || item.certainty == crate::project::MatchCertainty::Possible
@@ -285,7 +285,7 @@ pub(super) fn emit(
     };
     let occurrence = crate::api::classification::ClassificationEvidenceOccurrence {
         span,
-        fact: Some(event.0),
+        fact: Some(event.raw()),
         trace: trace_head,
     };
     values.record(

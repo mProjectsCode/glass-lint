@@ -723,7 +723,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             self.object_limit_rejected = true;
             return None;
         }
-        let object = ObjectId(self.next_object_id);
+        let object = ObjectId::new(self.next_object_id);
         self.next_object_id = self.next_object_id.checked_add(1)?;
         Some(object)
     }

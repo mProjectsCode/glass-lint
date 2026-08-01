@@ -181,7 +181,7 @@ impl ScopePass for ScopeCollector<'_> {
                     self.scopes[*scope]
                         .bindings
                         .contains_key(&name_id)
-                        .then_some((ScopeId::from(*scope), ()))
+                        .then_some((ScopeId::new(*scope), ()))
                 }) {
                     self.record_assignment(
                         assignment.span,
@@ -278,7 +278,7 @@ impl ScopePass for ScopeCollector<'_> {
                 .scopes
                 .get(scope.index())
                 .and_then(|s| s.parent)
-                .unwrap_or_else(|| ScopeId::from(0));
+                .unwrap_or_else(|| ScopeId::new(0));
             self.function_scopes
                 .insert((parent, name_id), (scope, parameters));
         }

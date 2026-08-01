@@ -126,12 +126,15 @@ fn reuses_same_span_same_kind_siblings_by_order() {
     collector.push_scope(span, ScopeKind::Block);
     let second = collector.current_scope();
 
-    assert_eq!((first, second), (ScopeId::from(1), ScopeId::from(2)));
+    assert_eq!(
+        (first, second),
+        (ScopeId::from_test(1), ScopeId::from_test(2))
+    );
     assert_eq!(collector.scope_lookups, 2);
     assert_eq!(
         collector
             .scope_shapes
-            .remaining(Some(ScopeId::from(0)), span.lo, ScopeKind::Block),
+            .remaining(Some(ScopeId::from_test(0)), span.lo, ScopeKind::Block),
         0,
     );
 }
@@ -183,7 +186,7 @@ fn divergence_on_missing_scope_fails_closed() {
     assert_eq!(
         collector
             .scope_shapes
-            .remaining(Some(ScopeId::from(0)), span.lo, ScopeKind::Block),
+            .remaining(Some(ScopeId::from_test(0)), span.lo, ScopeKind::Block),
         1,
         "the unvisited predeclared shape stays in the table",
     );
@@ -403,14 +406,16 @@ fn structural_lookup_distinguishes_equal_span_siblings_at_different_parents() {
         .scopes
         .iter()
         .enumerate()
-        .find(|(_, scope)| scope.kind == ScopeKind::Block && scope.parent == Some(ScopeId::from(0)))
+        .find(|(_, scope)| {
+            scope.kind == ScopeKind::Block && scope.parent == Some(ScopeId::from_test(0))
+        })
         .expect("outer block under program");
     let (function_index, _function_scope) = collector
         .scopes
         .iter()
         .enumerate()
         .find(|(_, scope)| {
-            scope.kind == ScopeKind::Function && scope.parent == Some(ScopeId::from(0))
+            scope.kind == ScopeKind::Function && scope.parent == Some(ScopeId::from_test(0))
         })
         .expect("function under program");
     let (inner_block_index, inner_block) = collector
@@ -418,15 +423,16 @@ fn structural_lookup_distinguishes_equal_span_siblings_at_different_parents() {
         .iter()
         .enumerate()
         .find(|(_, scope)| {
-            scope.kind == ScopeKind::Block && scope.parent == Some(ScopeId::from(function_index))
+            scope.kind == ScopeKind::Block
+                && scope.parent == Some(ScopeId::from_test(function_index))
         })
         .expect("inner block under function");
 
     // Both blocks share a Span layout but have different parents; the
     // structural lookup must keep them distinct.
     assert_ne!(program_block_index, inner_block_index);
-    assert_eq!(program_block.parent, Some(ScopeId::from(0)));
-    assert_eq!(inner_block.parent, Some(ScopeId::from(function_index)));
+    assert_eq!(program_block.parent, Some(ScopeId::from_test(0)));
+    assert_eq!(inner_block.parent, Some(ScopeId::from_test(function_index)));
 }
 
 #[test]
@@ -467,7 +473,7 @@ fn deliberate_walker_divergence_fails_closed_without_fallback_allocation() {
     // Walk the predeclared shapes in reversed order: a structural
     // identity lookup must still resolve each push correctly because
     // the lookup is keyed by (parent, span, kind), not by position.
-    let program = ScopeId::from(0);
+    let program = ScopeId::from_test(0);
     let remaining_first =
         collector
             .scope_shapes

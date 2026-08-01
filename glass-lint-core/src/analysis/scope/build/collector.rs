@@ -56,7 +56,7 @@ impl ScopeCollector<'_> {
     }
 
     pub(super) fn current_scope(&self) -> ScopeId {
-        ScopeId::from(self.stack.last().copied().unwrap_or(0))
+        ScopeId::new(self.stack.last().copied().unwrap_or(0))
     }
 
     pub(super) fn is_module_interop_wrapper(name: &str) -> bool {

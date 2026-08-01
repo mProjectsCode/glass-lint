@@ -10,17 +10,20 @@ use crate::analysis::syntax::{SymbolCallProvenance, SymbolMemberProvenance, cons
 // ── Identifiers ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ScopeId(pub usize);
+pub struct ScopeId(usize);
 
 impl ScopeId {
+    pub(in crate::analysis) const fn new(index: usize) -> Self {
+        Self(index)
+    }
+
     pub fn index(self) -> usize {
         self.0
     }
-}
 
-impl From<usize> for ScopeId {
-    fn from(value: usize) -> Self {
-        Self(value)
+    #[cfg(test)]
+    pub(in crate::analysis) const fn from_test(index: usize) -> Self {
+        Self::new(index)
     }
 }
 
@@ -45,17 +48,54 @@ impl ScopedName {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BindingId(pub u32);
+pub struct BindingId(u32);
+
+impl BindingId {
+    pub(in crate::analysis) const fn new(raw: u32) -> Self {
+        Self(raw)
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) const fn from_test(raw: u32) -> Self {
+        Self::new(raw)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BindingVersion(pub u32);
+pub struct BindingVersion(u32);
+
+impl BindingVersion {
+    pub(in crate::analysis) const fn new(raw: u32) -> Self {
+        Self(raw)
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) const fn from_test(raw: u32) -> Self {
+        Self::new(raw)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct FunctionId(pub u32);
+pub struct FunctionId(u32);
+
+impl FunctionId {
+    pub(in crate::analysis) const fn new(raw: u32) -> Self {
+        Self(raw)
+    }
+
+    pub(in crate::analysis) const fn raw(self) -> u32 {
+        self.0
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) const fn from_test(raw: u32) -> Self {
+        Self::new(raw)
+    }
+}
 
 impl From<FunctionId> for u32 {
     fn from(id: FunctionId) -> Self {
-        id.0
+        id.raw()
     }
 }
 
@@ -256,17 +296,17 @@ mod tests {
     #[test]
     fn binding_versions_are_part_of_identity() {
         let mut first = BindingKey::new(BindingRoot::Binding {
-            function: FunctionId(1),
-            binding: BindingId(2),
-            version: BindingVersion(0),
+            function: FunctionId::from_test(1),
+            binding: BindingId::from_test(2),
+            version: BindingVersion::from_test(0),
         });
         let mut names = NameTable::default();
         let value = names.intern("value").unwrap();
         first.append_segment(value);
         let mut second = BindingKey::new(BindingRoot::Binding {
-            function: FunctionId(1),
-            binding: BindingId(2),
-            version: BindingVersion(1),
+            function: FunctionId::from_test(1),
+            binding: BindingId::from_test(2),
+            version: BindingVersion::from_test(1),
         });
         second.append_segment(value);
         assert_ne!(first, second);
@@ -274,7 +314,7 @@ mod tests {
 
     #[test]
     fn scope_id_index_and_from_usize() {
-        let id: ScopeId = 5usize.into();
+        let id = ScopeId::from_test(5);
         assert_eq!(id.index(), 5);
     }
 
@@ -282,8 +322,8 @@ mod tests {
     fn scoped_name_round_trips_scope_and_name() {
         let mut names = NameTable::default();
         let nid = names.intern("foo").unwrap();
-        let sn = ScopedName::new(ScopeId(3), nid);
-        assert_eq!(sn.scope(), ScopeId(3));
+        let sn = ScopedName::new(ScopeId::from_test(3), nid);
+        assert_eq!(sn.scope(), ScopeId::from_test(3));
         assert_eq!(sn.name(), nid);
     }
 
@@ -299,14 +339,14 @@ mod tests {
     #[test]
     fn binding_root_binding_variants_differ_on_version() {
         let a = BindingRoot::Binding {
-            function: FunctionId(1),
-            binding: BindingId(2),
-            version: BindingVersion(0),
+            function: FunctionId::from_test(1),
+            binding: BindingId::from_test(2),
+            version: BindingVersion::from_test(0),
         };
         let b = BindingRoot::Binding {
-            function: FunctionId(1),
-            binding: BindingId(2),
-            version: BindingVersion(1),
+            function: FunctionId::from_test(1),
+            binding: BindingId::from_test(2),
+            version: BindingVersion::from_test(1),
         };
         assert_ne!(a, b);
     }
@@ -369,15 +409,15 @@ mod tests {
 
     #[test]
     fn function_id_converts_to_u32() {
-        let id = FunctionId(42);
+        let id = FunctionId::from_test(42);
         let raw: u32 = id.into();
         assert_eq!(raw, 42);
     }
 
     #[test]
     fn binding_id_and_version_are_newtypes() {
-        assert_ne!(BindingId(1), BindingId(2));
-        assert_ne!(BindingVersion(0), BindingVersion(1));
-        assert_eq!(BindingId(5), BindingId(5));
+        assert_ne!(BindingId::from_test(1), BindingId::from_test(2));
+        assert_ne!(BindingVersion::from_test(0), BindingVersion::from_test(1));
+        assert_eq!(BindingId::from_test(5), BindingId::from_test(5));
     }
 }
