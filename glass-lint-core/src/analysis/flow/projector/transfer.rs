@@ -29,7 +29,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 && let Some((object, states)) = self.match_source(&cref, args, fact_id)
             {
                 if self.flow_state.state_count().saturating_add(states.len())
-                    > self.limits.state_limit()
+                    > self.run.limits.state_limit()
                 {
                     self.flow_state.mark_state_limit_rejected();
                     return;

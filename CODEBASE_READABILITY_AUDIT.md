@@ -97,7 +97,7 @@ logic.
 
 ### Core flow, projection, and compiler layers
 
-#### READ-004 — Local object-flow projection has a mixed-mode state machine
+#### [x] READ-004 — Local object-flow projection has a mixed-mode state machine
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -116,6 +116,13 @@ active path traversal, and object-flow storage. Keep the top-level transfer
 loop, but move mode transitions and final exhaustion classification onto the
 state that owns them; use enums where booleans currently describe mutually
 exclusive lifecycle states.
+
+**Implementation:** Added `ProjectionRunState` to own local-flow limits,
+allocation outcomes, replay mode, reachability, completeness, operation
+budget, and projection counters, and updated transfer/evidence helpers to use
+that state while retaining the top-level fact loop. All 50 focused projector
+tests passed, and the requested bundle’s release lint took **0.83 s wall time**
+after the change (0.83 s baseline).
 
 #### [x] READ-005 — Cross-file collection still relies on an intentionally huge loop
 

@@ -218,7 +218,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
     /// been evaluated. This keeps certainty about path coverage separate from
     /// the witness trace itself.
     fn emit_state(&mut self, state: &FlowState, match_fact: FactId) {
-        if self.emission_mode == super::EmissionMode::Replay {
+        if self.run.emission_mode == super::EmissionMode::Replay {
             return;
         }
         self.queue_state(state.clone(), match_fact);
@@ -248,7 +248,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
 
         if !self
             .flow_evidence
-            .try_insert(key, self.limits.emission_limit(), 256)
+            .try_insert(key, self.run.limits.emission_limit(), 256)
         {
             return;
         }
@@ -281,7 +281,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 }],
             },
         );
-        self.trace_heads = self.trace_heads.saturating_add(1);
+        self.run.trace_heads = self.run.trace_heads.saturating_add(1);
     }
 
     /// Build an interned trace chain for a flow finding:

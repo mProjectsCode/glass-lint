@@ -127,7 +127,6 @@ pub(super) fn collect_with_limits(
 }
 
 #[derive(Debug)]
-#[allow(clippy::struct_excessive_bools)]
 struct ObjectFlowProjector<'rules, 'stream, 'arena> {
     /// The canonical facts are the projector's only input. In particular, it
     /// must never inspect the AST or reconstruct resolution decisions.
@@ -143,17 +142,12 @@ struct ObjectFlowProjector<'rules, 'stream, 'arena> {
     flow_evidence: FlowEvidence<'stream>,
     /// Each value identity and live object-flow state are owned together.
     flow_state: FlowStateTable,
-    /// Object IDs are local to one projection and bounded by `limits`.
-    next_object_id: u32,
-    object_limit_rejected: bool,
-    /// Per-run hard limits for objects, states, and evidence emissions.
-    limits: FlowLimits,
+    /// Bounded lifecycle, allocation, emission, and outcome state for one run.
+    run: ProjectionRunState,
     /// Nested branch/function frames used to restore environments at joins.
     control: Vec<ControlFrame>,
     /// Correlated checkpoint-backed alternatives reaching the next fact.
     paths: Vec<FlowEnvironment>,
-    /// Whether all alternatives reaching the current point are retained.
-    alternatives_complete: bool,
     /// Fact-local witnesses are finalized after every reaching alternative has
     /// seen the sink or requirement event.
     pending: BTreeMap<(usize, FlowId, FactId), Vec<(usize, FlowState)>>,
@@ -170,24 +164,47 @@ struct ObjectFlowProjector<'rules, 'stream, 'arena> {
         ),
         ValueId,
     >,
-    reachable: bool,
-    /// Summary construction exhausted its budget.
-    summary_exhausted: bool,
-    /// Suppress findings while replaying a loop body to compute its fixed
-    /// point.  The first canonical pass already emitted evidence for sinks
-    /// reached in the source stream; replay is semantic state propagation.
-    emission_mode: EmissionMode,
     /// Shared trace arena for interning evidence trace nodes.
     trace_arena: &'arena mut TraceArena,
     /// Module being projected, used to qualify trace events.
     module_id: ModuleId,
-    /// Budget charged by every path transfer, coalescing comparison, and
-    /// fixed-point iteration in this projector.
+}
+
+#[derive(Debug)]
+struct ProjectionRunState {
+    limits: FlowLimits,
+    next_object_id: u32,
+    object_limit_rejected: bool,
+    alternatives_complete: bool,
+    reachable: bool,
+    summary_exhausted: bool,
+    /// Suppress findings while replaying a loop body to compute its fixed
+    /// point; replay only propagates semantic state.
+    emission_mode: EmissionMode,
     operation_budget: Budget,
     max_live_alternatives: usize,
     coalescing_comparisons: usize,
     fixed_point_iterations: usize,
     trace_heads: usize,
+}
+
+impl ProjectionRunState {
+    fn new(limits: FlowLimits, summary_exhausted: bool) -> Self {
+        Self {
+            limits,
+            next_object_id: 0,
+            object_limit_rejected: false,
+            alternatives_complete: true,
+            reachable: true,
+            summary_exhausted,
+            emission_mode: EmissionMode::Emit,
+            operation_budget: Budget::new(limits.local_operation_limit()),
+            max_live_alternatives: 1,
+            coalescing_comparisons: 0,
+            fixed_point_iterations: 0,
+            trace_heads: 0,
+        }
+    }
 }
 
 struct ObjectFlowProjectorInput<'rules, 'stream, 'arena> {
@@ -231,40 +248,29 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             calls_by_result,
             flow_evidence: FlowEvidence::new(evidence),
             flow_state: FlowStateTable::new(limits.state_limit(), limits.mutation_limit()),
-            next_object_id: 0,
-            object_limit_rejected: false,
-            limits,
+            run: ProjectionRunState::new(limits, summary_exhausted),
             control: Vec::new(),
             paths: vec![FlowEnvironment::initial()],
-            alternatives_complete: true,
             pending: BTreeMap::new(),
             active_path_count: 0,
             active_path_index: 0,
             binding_slots: BTreeMap::new(),
-            reachable: true,
-            summary_exhausted,
-            emission_mode: EmissionMode::Emit,
             module_id,
             trace_arena,
-            operation_budget: Budget::new(limits.local_operation_limit()),
-            max_live_alternatives: 1,
-            coalescing_comparisons: 0,
-            fixed_point_iterations: 0,
-            trace_heads: 0,
         }
     }
 
     fn charge_operation(&mut self) -> bool {
-        if self.operation_budget.try_push() {
+        if self.run.operation_budget.try_push() {
             true
         } else {
-            self.alternatives_complete = false;
+            self.run.alternatives_complete = false;
             false
         }
     }
 
     fn observe_alternatives(&mut self, count: usize) {
-        self.max_live_alternatives = self.max_live_alternatives.max(count);
+        self.run.max_live_alternatives = self.run.max_live_alternatives.max(count);
     }
 
     fn transfer(&mut self, fact: &crate::analysis::facts::SemanticFact) {
@@ -289,13 +295,13 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 break;
             }
             if !self.flow_state.restore(environment) {
-                self.alternatives_complete = false;
+                self.run.alternatives_complete = false;
                 continue;
             }
-            self.reachable = environment.reachable();
+            self.run.reachable = environment.reachable();
             self.active_path_index = path_index;
             self.transfer_fact(fact);
-            if self.reachable {
+            if self.run.reachable {
                 outgoing.push(self.environment());
             }
         }
@@ -352,22 +358,22 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         input: Vec<FlowEnvironment>,
     ) -> Vec<FlowEnvironment> {
         let (Some(start), Some(end)) = (body_start.index(), body_end.index()) else {
-            self.alternatives_complete = false;
+            self.run.alternatives_complete = false;
             return Vec::new();
         };
         if start >= end || end > self.stream.facts().len() {
-            self.alternatives_complete = false;
+            self.run.alternatives_complete = false;
             return Vec::new();
         }
         let stream = self.stream;
-        let previous_mode = self.emission_mode;
-        self.emission_mode = EmissionMode::Replay;
+        let previous_mode = self.run.emission_mode;
+        self.run.emission_mode = EmissionMode::Replay;
         self.paths = input;
         for i in start..end {
             let fact = &stream.facts()[i];
             self.transfer(fact);
         }
-        self.emission_mode = previous_mode;
+        self.run.emission_mode = previous_mode;
         std::mem::take(&mut self.paths)
     }
 
@@ -404,22 +410,22 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             if self.flow_state.restore(*environment) {
                 seen.insert(self.flow_state.semantic_snapshot());
             } else {
-                self.alternatives_complete = false;
+                self.run.alternatives_complete = false;
             }
         }
 
-        let iteration_limit = self.limits.alternative_limit();
+        let iteration_limit = self.run.limits.alternative_limit();
         let mut iterations = 0usize;
         while !frontier.is_empty() {
             if iterations >= iteration_limit {
-                self.alternatives_complete = false;
+                self.run.alternatives_complete = false;
                 break;
             }
             if !self.charge_operation() {
                 break;
             }
             iterations += 1;
-            self.fixed_point_iterations = self.fixed_point_iterations.saturating_add(1);
+            self.run.fixed_point_iterations = self.run.fixed_point_iterations.saturating_add(1);
             let break_count = self
                 .control
                 .iter()
@@ -450,7 +456,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                     break;
                 }
                 if !self.flow_state.restore(environment) {
-                    self.alternatives_complete = false;
+                    self.run.alternatives_complete = false;
                     continue;
                 }
                 if seen.insert(self.flow_state.semantic_snapshot()) {
@@ -465,11 +471,11 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             ..
         }) = self.control.last()
         else {
-            self.alternatives_complete = false;
+            self.run.alternatives_complete = false;
             return;
         };
         if *expected != body_start {
-            self.alternatives_complete = false;
+            self.run.alternatives_complete = false;
             return;
         }
         self.control.pop();
@@ -480,7 +486,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 break;
             }
             if !self.flow_state.restore(environment) {
-                self.alternatives_complete = false;
+                self.run.alternatives_complete = false;
                 continue;
             }
             if exit_shapes.insert(self.flow_state.semantic_snapshot()) {
@@ -497,7 +503,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 self.control.push(ControlFrame::Function { caller });
                 self.transfer_paths_without_finalization(|projector| {
                     projector.flow_state.clear();
-                    projector.reachable = true;
+                    projector.run.reachable = true;
                 });
             }
             FunctionBoundary::Exit => {
@@ -516,12 +522,12 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 break;
             }
             if !self.flow_state.restore(environment) {
-                self.alternatives_complete = false;
+                self.run.alternatives_complete = false;
                 continue;
             }
-            self.reachable = environment.reachable();
+            self.run.reachable = environment.reachable();
             transfer(self);
-            if self.reachable {
+            if self.run.reachable {
                 outgoing.push(self.environment());
             }
         }
@@ -531,7 +537,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     }
 
     fn transfer_call(&mut self, fact: &crate::analysis::facts::SemanticFact) {
-        if !self.reachable {
+        if !self.run.reachable {
             return;
         }
         let FactPayload::Call {
@@ -558,7 +564,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     }
 
     fn environment(&self) -> FlowEnvironment {
-        self.flow_state.capture(self.reachable)
+        self.flow_state.capture(self.run.reachable)
     }
 
     pub(super) fn object_for(&mut self, value: ValueId) -> Option<ObjectId> {
@@ -578,7 +584,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 break;
             }
             if !self.flow_state.restore(path) {
-                self.alternatives_complete = false;
+                self.run.alternatives_complete = false;
                 continue;
             }
             let snapshot = self.flow_state.semantic_snapshot();
@@ -586,20 +592,20 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 continue;
             }
             if !first {
-                self.coalescing_comparisons = self.coalescing_comparisons.saturating_add(1);
+                self.run.coalescing_comparisons = self.run.coalescing_comparisons.saturating_add(1);
             }
             first = false;
             seen_snapshots.push(snapshot);
             unique.push(path);
         }
         paths = unique;
-        if paths.len() > self.limits.alternative_limit() {
-            paths.truncate(self.limits.alternative_limit());
-            self.alternatives_complete = false;
+        if paths.len() > self.run.limits.alternative_limit() {
+            paths.truncate(self.run.limits.alternative_limit());
+            self.run.alternatives_complete = false;
         }
         self.paths = paths;
         self.observe_alternatives(self.paths.len());
-        self.reachable = !self.paths.is_empty();
+        self.run.reachable = !self.paths.is_empty();
     }
 
     fn finalize_pending(&mut self, fact: FactId) {
@@ -612,12 +618,13 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 .iter()
                 .map(|(path, _)| *path)
                 .collect::<BTreeSet<_>>();
-            let certainty =
-                if self.alternatives_complete && matching_paths.len() == self.active_path_count {
-                    crate::project::MatchCertainty::Definite
-                } else {
-                    crate::project::MatchCertainty::Possible
-                };
+            let certainty = if self.run.alternatives_complete
+                && matching_paths.len() == self.active_path_count
+            {
+                crate::project::MatchCertainty::Definite
+            } else {
+                crate::project::MatchCertainty::Possible
+            };
             for (_, state) in states {
                 self.emit_state_final(&state, event, certainty);
             }
@@ -719,12 +726,12 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     }
 
     fn allocate_object_id(&mut self) -> Option<ObjectId> {
-        if self.next_object_id >= self.limits.object_limit() {
-            self.object_limit_rejected = true;
+        if self.run.next_object_id >= self.run.limits.object_limit() {
+            self.run.object_limit_rejected = true;
             return None;
         }
-        let object = ObjectId::new(self.next_object_id);
-        self.next_object_id = self.next_object_id.checked_add(1)?;
+        let object = ObjectId::new(self.run.next_object_id);
+        self.run.next_object_id = self.run.next_object_id.checked_add(1)?;
         Some(object)
     }
 
@@ -732,21 +739,21 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     fn into_outcome(self) -> LocalFlowProjectionOutcome {
         let mut flow_evidence = self.flow_evidence;
         flow_evidence.mark_truncated();
-        let exhausted = self.summary_exhausted
-            || self.object_limit_rejected
+        let exhausted = self.run.summary_exhausted
+            || self.run.object_limit_rejected
             || self.flow_state.state_limit_rejected()
             || flow_evidence.limit_rejected()
             || self.flow_state.mutation_exhausted()
-            || !self.alternatives_complete
+            || !self.run.alternatives_complete
             || self.trace_arena.is_exhausted();
         LocalFlowProjectionOutcome {
             exhausted,
-            objects_used: self.next_object_id,
-            operations: self.operation_budget.used(),
-            max_live_alternatives: self.max_live_alternatives,
-            coalescing_comparisons: self.coalescing_comparisons,
-            fixed_point_iterations: self.fixed_point_iterations,
-            trace_heads: self.trace_heads,
+            objects_used: self.run.next_object_id,
+            operations: self.run.operation_budget.used(),
+            max_live_alternatives: self.run.max_live_alternatives,
+            coalescing_comparisons: self.run.coalescing_comparisons,
+            fixed_point_iterations: self.run.fixed_point_iterations,
+            trace_heads: self.run.trace_heads,
         }
     }
 }
