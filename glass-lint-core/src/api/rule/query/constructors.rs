@@ -1,0 +1,369 @@
+//! Public event-query constructors and argument adapters.
+
+use smol_str::SmolStr;
+
+use super::{
+    ArgumentConstraintsBuilder, ArgumentIndex, ArgumentMatcher, EmissionDecl, EventQuery,
+    EventSpec, IdentitySpec, MatchKind, ModuleSpecifierPattern, PRIVATE_NETWORK_EVIDENCE_SYMBOL,
+    PRIVATE_NETWORK_LITERAL, QueryBuildError, QueryDecl, QueryExpr, ValueMatcher, checked_chain,
+    checked_module_export, checked_name, evidence_kind_for_event, limits,
+};
+
+#[allow(clippy::cast_possible_truncation)]
+impl EventQuery {
+    /// Global call, e.g. `fetch(...)`.
+    pub fn call_global(name: impl Into<String>) -> Result<Self, QueryBuildError> {
+        let name = checked_name(name)?;
+        Ok(Self::from_parts(
+            EventSpec::Call,
+            IdentitySpec::Global { name },
+        ))
+    }
+
+    /// Heuristic spelling call.
+    pub fn call_heuristic(name: impl Into<String>) -> Result<Self, QueryBuildError> {
+        let name = checked_name(name)?;
+        Ok(Self::from_parts(
+            EventSpec::Call,
+            IdentitySpec::Heuristic { name },
+        ))
+    }
+
+    /// Module-export call.
+    pub fn call_module(
+        module: impl Into<String>,
+        export: impl Into<String>,
+    ) -> Result<Self, QueryBuildError> {
+        let (module, export) = checked_module_export(module, export)?;
+        Ok(Self::from_parts(
+            EventSpec::Call,
+            IdentitySpec::ModuleExport { module, export },
+        ))
+    }
+
+    /// Package module export call.
+    pub fn call_package(
+        module: impl Into<String>,
+        export: impl Into<String>,
+    ) -> Result<Self, QueryBuildError> {
+        let export = checked_name(export)?;
+        let module = ModuleSpecifierPattern::package(module)
+            .map_err(|_| QueryBuildError::InvalidScopePackage)?;
+        Ok(Self::from_parts(
+            EventSpec::Call,
+            IdentitySpec::PackageModuleExport { module, export },
+        ))
+    }
+
+    /// Rooted member call, e.g. `document.createElement(...)`.
+    pub fn member_call_rooted(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
+        let (_, path) = checked_chain(chain)?;
+        Ok(Self::from_parts(
+            EventSpec::MemberCall {
+                member: path.clone(),
+            },
+            IdentitySpec::Rooted { path },
+        ))
+    }
+
+    /// Heuristic member call.
+    pub fn member_call_heuristic(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
+        let (chain, path) = checked_chain(chain)?;
+        Ok(Self::from_parts(
+            EventSpec::MemberCall { member: path },
+            IdentitySpec::Heuristic { name: chain.into() },
+        ))
+    }
+
+    /// Module-namespace member call.
+    pub fn member_call_module(
+        module: impl Into<String>,
+        member: impl Into<String>,
+    ) -> Result<Self, QueryBuildError> {
+        let module: SmolStr = module.into().into();
+        if module.trim().is_empty() {
+            return Err(QueryBuildError::EmptyModuleSpecifier);
+        }
+        let (_, path) = checked_chain(member)?;
+        Ok(Self::from_parts(
+            EventSpec::MemberCall { member: path },
+            IdentitySpec::ModuleNamespace { module },
+        ))
+    }
+
+    /// Package module namespace member call.
+    pub fn member_call_package(
+        module: impl Into<String>,
+        member: impl Into<String>,
+    ) -> Result<Self, QueryBuildError> {
+        let (_, path) = checked_chain(member)?;
+        let module = ModuleSpecifierPattern::package(module)
+            .map_err(|_| QueryBuildError::InvalidScopePackage)?;
+        Ok(Self::from_parts(
+            EventSpec::MemberCall { member: path },
+            IdentitySpec::PackageModuleNamespace { module },
+        ))
+    }
+
+    /// Rooted member read.
+    pub fn member_read_rooted(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
+        let (_, path) = checked_chain(chain)?;
+        Ok(Self::from_parts(
+            EventSpec::MemberRead {
+                member: path.clone(),
+            },
+            IdentitySpec::Rooted { path },
+        ))
+    }
+
+    /// Rooted member-property write, for example `document.onkeydown = fn`.
+    pub fn property_write_rooted(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
+        let (_, path) = checked_chain(chain)?;
+        Ok(Self::from_parts(
+            EventSpec::PropertyWrite {
+                property: path.clone(),
+            },
+            IdentitySpec::Rooted { path },
+        ))
+    }
+
+    /// Module-namespace member read.
+    pub fn member_read_module(
+        module: impl Into<String>,
+        member: impl Into<String>,
+    ) -> Result<Self, QueryBuildError> {
+        let module: SmolStr = module.into().into();
+        if module.trim().is_empty() {
+            return Err(QueryBuildError::EmptyModuleSpecifier);
+        }
+        let (_, path) = checked_chain(member)?;
+        Ok(Self::from_parts(
+            EventSpec::MemberRead { member: path },
+            IdentitySpec::ModuleNamespace { module },
+        ))
+    }
+
+    /// Package module namespace member read.
+    pub fn member_read_package(
+        module: impl Into<String>,
+        member: impl Into<String>,
+    ) -> Result<Self, QueryBuildError> {
+        let (_, path) = checked_chain(member)?;
+        let module = ModuleSpecifierPattern::package(module)
+            .map_err(|_| QueryBuildError::InvalidScopePackage)?;
+        Ok(Self::from_parts(
+            EventSpec::MemberRead { member: path },
+            IdentitySpec::PackageModuleNamespace { module },
+        ))
+    }
+
+    /// Import exact module specifier.
+    pub fn import_exact(module: impl Into<String>) -> Result<Self, QueryBuildError> {
+        let module_str: String = module.into();
+        if module_str.trim().is_empty() {
+            return Err(QueryBuildError::EmptyModuleSpecifier);
+        }
+        Ok(Self::from_parts(
+            EventSpec::Import,
+            IdentitySpec::LiteralString {
+                predicate: module_str,
+            },
+        ))
+    }
+
+    /// Import package pattern.
+    pub fn import_package(module: impl Into<String>) -> Result<Self, QueryBuildError> {
+        let pattern = ModuleSpecifierPattern::package(module)
+            .map_err(|_| QueryBuildError::InvalidScopePackage)?;
+        Ok(Self::from_parts(
+            EventSpec::Import,
+            IdentitySpec::PackageSpecifier { pattern },
+        ))
+    }
+
+    /// Static string reference.
+    pub fn string_contains(value: impl Into<String>) -> Result<Self, QueryBuildError> {
+        let value_str: String = value.into();
+        if value_str.trim().is_empty() {
+            return Err(QueryBuildError::EmptyStaticValue);
+        }
+        Ok(Self::from_parts(
+            EventSpec::StringReference,
+            IdentitySpec::LiteralString {
+                predicate: value_str,
+            },
+        ))
+    }
+
+    /// Static literal containing a complete private or special-use network
+    /// address. Matching is boundary-aware and performed by core's literal
+    /// index rather than by substring markers.
+    pub fn string_private_network_address() -> Result<Self, QueryBuildError> {
+        Ok(Self::from_parts(
+            EventSpec::StringReference,
+            IdentitySpec::LiteralString {
+                predicate: PRIVATE_NETWORK_LITERAL.to_owned(),
+            },
+        ))
+    }
+
+    /// Heuristic class reference.
+    pub fn class_heuristic(name: impl Into<String>) -> Result<Self, QueryBuildError> {
+        let name = checked_name(name)?;
+        Ok(Self::from_parts(
+            EventSpec::ClassReference,
+            IdentitySpec::Heuristic { name },
+        ))
+    }
+
+    /// Module-export class reference.
+    pub fn class_module(
+        module: impl Into<String>,
+        export: impl Into<String>,
+    ) -> Result<Self, QueryBuildError> {
+        let (module, export) = checked_module_export(module, export)?;
+        Ok(Self::from_parts(
+            EventSpec::ClassReference,
+            IdentitySpec::ModuleExport { module, export },
+        ))
+    }
+
+    /// Global constructor, e.g. `new URL(...)`.
+    pub fn constructor_global(name: impl Into<String>) -> Result<Self, QueryBuildError> {
+        let name = checked_name(name)?;
+        Ok(Self::from_parts(
+            EventSpec::Construct,
+            IdentitySpec::Global { name },
+        ))
+    }
+
+    /// Heuristic constructor.
+    pub fn constructor_heuristic(name: impl Into<String>) -> Result<Self, QueryBuildError> {
+        let name = checked_name(name)?;
+        Ok(Self::from_parts(
+            EventSpec::Construct,
+            IdentitySpec::Heuristic { name },
+        ))
+    }
+
+    /// Module-export constructor.
+    pub fn constructor_module(
+        module: impl Into<String>,
+        export: impl Into<String>,
+    ) -> Result<Self, QueryBuildError> {
+        let (module, export) = checked_module_export(module, export)?;
+        Ok(Self::from_parts(
+            EventSpec::Construct,
+            IdentitySpec::ModuleExport { module, export },
+        ))
+    }
+
+    /// Add an argument predicate.
+    pub fn with_arg(
+        mut self,
+        index: usize,
+        matcher: impl Into<ArgumentMatcher>,
+    ) -> Result<Self, QueryBuildError> {
+        if index > limits::MAX_ARGUMENT_INDEX {
+            return Err(QueryBuildError::InvalidArgumentIndex(index));
+        }
+        let arg_idx = ArgumentIndex::new_unchecked(index as u8);
+        let mut builder = ArgumentConstraintsBuilder::from_constraints(&self.constraints)?;
+        builder.push(arg_idx.get(), matcher)?;
+        self.constraints = builder.finish();
+        Ok(self)
+    }
+
+    /// Add a static-string argument constraint.
+    pub fn with_arg_static_string(self, index: usize) -> Result<Self, QueryBuildError> {
+        if index > limits::MAX_ARGUMENT_INDEX {
+            return Err(QueryBuildError::InvalidArgumentIndex(index));
+        }
+        self.with_arg(index, ValueMatcher::static_string())
+    }
+
+    /// Add a static-string constraint with allowed values.
+    pub fn with_arg_static_strings<I, S>(
+        self,
+        index: usize,
+        values: I,
+    ) -> Result<Self, QueryBuildError>
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        if index > limits::MAX_ARGUMENT_INDEX {
+            return Err(QueryBuildError::InvalidArgumentIndex(index));
+        }
+        self.with_arg(index, ValueMatcher::static_string().equals_any(values)?)
+    }
+
+    /// Add a static-string contains constraint.
+    pub fn with_arg_static_string_contains<I, S>(
+        self,
+        index: usize,
+        values: I,
+    ) -> Result<Self, QueryBuildError>
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        if index > limits::MAX_ARGUMENT_INDEX {
+            return Err(QueryBuildError::InvalidArgumentIndex(index));
+        }
+        self.with_arg(index, ValueMatcher::static_string().contains_any(values)?)
+    }
+
+    /// Add an object property value constraint.
+    pub fn with_arg_object_property_value(
+        self,
+        index: usize,
+        property: impl Into<String>,
+        value: ValueMatcher,
+    ) -> Result<Self, QueryBuildError> {
+        if index > limits::MAX_ARGUMENT_INDEX {
+            return Err(QueryBuildError::InvalidArgumentIndex(index));
+        }
+        self.with_arg(
+            index,
+            ArgumentMatcher::object_property_value(property, value)?,
+        )
+    }
+
+    /// Add an object keys constraint.
+    pub fn with_arg_object_keys<I, S>(self, index: usize, keys: I) -> Result<Self, QueryBuildError>
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        if index > limits::MAX_ARGUMENT_INDEX {
+            return Err(QueryBuildError::InvalidArgumentIndex(index));
+        }
+        self.with_arg(index, ArgumentMatcher::object_keys(keys)?)
+    }
+
+    /// Convert this event query into a [`QueryDecl`] with inferred evidence
+    /// kind and symbol derived from the event and identity.
+    pub fn into_query(self) -> QueryDecl {
+        let var = self.var;
+        let kind = evidence_kind_for_event(&self.event);
+        let symbol = if kind == MatchKind::StringContains
+            && matches!(
+                &self.identity,
+                IdentitySpec::LiteralString { predicate }
+                    if predicate == PRIVATE_NETWORK_LITERAL
+            ) {
+            PRIVATE_NETWORK_EVIDENCE_SYMBOL.to_owned()
+        } else {
+            self.identity.display_name()
+        };
+        QueryDecl {
+            expression: QueryExpr::event(self),
+            emission: EmissionDecl {
+                primary_var: var,
+                kind,
+                symbol,
+            },
+        }
+    }
+}

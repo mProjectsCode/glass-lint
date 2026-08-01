@@ -493,19 +493,22 @@ Status: Completed.
 
 Implementation: introduced private `EventQuery` construction helpers for the
 invariant shell, validated names, module/export pairs, and member paths. The
-public constructors now remain explicit about their event and identity policy
-while sharing validation and empty-constraint assembly; constructor and
-composition tests retain their existing coverage.
+large query module was then split along its natural seams: `constructors.rs`
+owns `EventQuery` constructors and argument adapters, `composition.rs` owns
+`QueryDecl` composition and explanation, and `tests.rs` owns the constructor
+and composition tests. The public constructors remain explicit and the
+central module is now 674 lines rather than carrying the whole API surface.
 
-Runtime (release): the one warm-up-free repetition and one worker took 779.2ms
-measured lint wall time (777.9ms workload time; 782.5ms process wall time).
+Runtime (release): the one warm-up-free repetition and one worker took 731.8ms
+measured lint wall time (730.6ms workload time; 734.6ms process wall time).
 It retained 544 findings, 1 diagnostic, the same evidence digest, and
 unchanged operation counts.
 
 - Severity: Medium
 - Fix complexity: Medium
 - Category: Module cohesion / Boilerplate
-- Location: `glass-lint-core/src/api/rule/query/mod.rs:125-660,773-1136,1450-2006`
+- Location: `glass-lint-core/src/api/rule/query/mod.rs` and its focused
+  `constructors.rs`, `composition.rs`, and `tests.rs` modules
 
 The module contains the typed algebra, all `EventQuery` constructors, argument
 constraint adapters, `QueryDecl` composition, explanation formatting, and a
