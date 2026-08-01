@@ -64,7 +64,7 @@ Create a named prepared-root record containing the typed rule index, identity, e
 
 Added named constrained-root and prepared-root records. Prepared paths, fallback state, and fallback occurrences now travel with the matching clause instead of parallel vectors and positional tuples; the indexed and linear phases retain their existing overlay behavior, operation accounting, and source ordering.
 
-#### READ-005 — Project projection has parallel local and final outcome models
+#### [x] READ-005 — Project projection has parallel local and final outcome models
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -74,6 +74,8 @@ Added named constrained-root and prepared-root records. Prepared paths, fallback
 `LocalProjectionOutcome` and `ProjectionOutcome` duplicate exhaustion, effect-observation, module, alternative, coalescing, fixed-point, and trace counters. `project_modules` mutates the local structure field by field, and `project_facts` manually maps and combines it with cross-file results, leaving the meaning of each aggregate spread across the coordinator.
 
 Add an internal projection accumulator with named `record_local`, `record_cross`, and `finish` operations, or make the local result a value that knows how to combine with the cross result. Use a context value for stable inputs to the nine-argument entry point while keeping mutable evidence and trace ownership explicit. Preserve saturation rules, the distinction between observed and exhausted effects, module counts, and deterministic trace-head accounting.
+
+Collapsed local aggregation into `ProjectionOutcome` with `record_effects`, `record_local`, `record_cross`, and `finish` operations. Saturating counters, effect-module tracking, exhaustion observation, and trace accounting now have one aggregation owner rather than parallel local and final models.
 
 #### READ-006 — Cross-flow evidence emission owns too many policies at once
 

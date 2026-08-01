@@ -215,19 +215,52 @@ pub struct ProjectionOutcome {
     pub coalescing_comparisons: usize,
     /// Local loop fixed-point iterations.
     pub fixed_point_iterations: usize,
+    operations: usize,
 }
 
-#[derive(Default)]
-struct LocalProjectionOutcome {
-    exhausted: bool,
-    effect_exhausted: bool,
-    effect_observed: Option<usize>,
-    effect_exhausted_modules: Vec<ModuleId>,
-    max_live_alternatives: usize,
-    coalescing_comparisons: usize,
-    fixed_point_iterations: usize,
-    trace_heads: usize,
-    operations: usize,
+impl ProjectionOutcome {
+    fn record_effects(
+        &mut self,
+        module: ModuleId,
+        effects: &crate::analysis::flow::effect::FunctionEffects,
+    ) {
+        if !effects.budget_exhausted() {
+            return;
+        }
+        self.effect_exhausted = true;
+        self.effect_exhausted_modules.push(module);
+        self.effect_observed = Some(
+            self.effect_observed
+                .unwrap_or_default()
+                .saturating_add(effects.operation_count()),
+        );
+    }
+
+    fn record_local(&mut self, local: &LocalFlowProjectionOutcome) {
+        self.local_exhausted |= local.exhausted;
+        self.flow_exhausted |= local.exhausted;
+        self.max_live_alternatives = self.max_live_alternatives.max(local.max_live_alternatives);
+        self.coalescing_comparisons = self
+            .coalescing_comparisons
+            .saturating_add(local.coalescing_comparisons);
+        self.fixed_point_iterations = self
+            .fixed_point_iterations
+            .saturating_add(local.fixed_point_iterations);
+        self.trace_heads = self.trace_heads.saturating_add(local.trace_heads);
+        self.operations = self.operations.saturating_add(local.operations);
+    }
+
+    fn record_cross(&mut self, cross: &flow::cross::CrossProjectionOutcome) {
+        self.flow_exhausted |= cross.exhausted;
+        self.effect_projections = cross.projections;
+        self.trace_heads = self.trace_heads.saturating_add(cross.trace_heads);
+        self.operations = self.operations.saturating_add(cross.operations);
+    }
+
+    fn finish(mut self) -> Self {
+        self.flow_observed = self.flow_exhausted.then_some(self.operations);
+        self
+    }
 }
 
 impl ProjectSemanticModel {
@@ -257,28 +290,16 @@ impl ProjectSemanticModel {
         let has_flow = plan.flow_requirements().local
             || plan.flow_requirements().cross_call
             || plan.flow_requirements().cross_file;
-        let (projections, local) = self.project_modules(&plan, flow_limits, arena, &mut session);
+        let (projections, mut outcome) =
+            self.project_modules(&plan, flow_limits, arena, &mut session);
 
         let (cross, cross_outcome) = if has_flow {
             flow::cross::collect(self, &matchers, &mut session, arena)
         } else {
             Default::default()
         };
-        let exhausted = local.exhausted || cross_outcome.exhausted;
-        let flow_operations = local.operations.saturating_add(cross_outcome.operations);
-        let outcome = ProjectionOutcome {
-            flow_exhausted: exhausted,
-            effect_projections: cross_outcome.projections,
-            flow_observed: exhausted.then_some(flow_operations),
-            effect_exhausted: local.effect_exhausted,
-            effect_observed: local.effect_observed,
-            effect_exhausted_modules: local.effect_exhausted_modules,
-            local_exhausted: local.exhausted,
-            trace_heads: local.trace_heads.saturating_add(cross_outcome.trace_heads),
-            max_live_alternatives: local.max_live_alternatives,
-            coalescing_comparisons: local.coalescing_comparisons,
-            fixed_point_iterations: local.fixed_point_iterations,
-        };
+        outcome.record_cross(&cross_outcome);
+        let outcome = outcome.finish();
 
         let mut projections = projections;
         for (module, evidence) in cross {
@@ -304,11 +325,11 @@ impl ProjectSemanticModel {
         session: &mut LinkingSession,
     ) -> (
         BTreeMap<ModuleId, ProjectModuleProjection<'project>>,
-        LocalProjectionOutcome,
+        ProjectionOutcome,
     ) {
         let need_module_ids = plan.needs_module_identities() || plan.needs_overlay();
         let need_result_ids = plan.needs_call_result_identities();
-        let mut outcome = LocalProjectionOutcome::default();
+        let mut outcome = ProjectionOutcome::default();
         let projections = self
             .modules
             .values()
@@ -331,14 +352,7 @@ impl ProjectSemanticModel {
                 if let Some(effects) = effects
                     && effects.budget_exhausted()
                 {
-                    outcome.effect_exhausted = true;
-                    outcome.effect_exhausted_modules.push(module.id());
-                    outcome.effect_observed = Some(
-                        outcome
-                            .effect_observed
-                            .unwrap_or_default()
-                            .saturating_add(effects.operation_count()),
-                    );
+                    outcome.record_effects(module.id(), effects);
                 }
                 let (projected, local) = project_facts(
                     module.local().facts(),
@@ -351,18 +365,7 @@ impl ProjectSemanticModel {
                     module.id(),
                     arena,
                 );
-                outcome.exhausted |= local.exhausted;
-                outcome.max_live_alternatives = outcome
-                    .max_live_alternatives
-                    .max(local.max_live_alternatives);
-                outcome.coalescing_comparisons = outcome
-                    .coalescing_comparisons
-                    .saturating_add(local.coalescing_comparisons);
-                outcome.fixed_point_iterations = outcome
-                    .fixed_point_iterations
-                    .saturating_add(local.fixed_point_iterations);
-                outcome.trace_heads = outcome.trace_heads.saturating_add(local.trace_heads);
-                outcome.operations = outcome.operations.saturating_add(local.operations);
+                outcome.record_local(&local);
                 (
                     module.id(),
                     ProjectModuleProjection {
