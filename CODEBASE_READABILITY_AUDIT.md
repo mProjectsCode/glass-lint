@@ -332,7 +332,7 @@ source excerpt formatting independent from cache ownership.
 
 ### Tests and documentation hygiene
 
-#### READ-015 — Query-composition tests contain obsolete failure claims
+#### [x] READ-015 — Query-composition tests contain obsolete failure claims
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -349,6 +349,13 @@ Rewrite the module-level and test-level comments to describe the behavior
 actually being guarded, remove the missing-document reference, and retain
 historical design context only in a real linked decision record if it is still
 needed.
+
+**Implementation:** Rewrote the composition test comments to describe the
+currently enforced branch, conjunction, lifecycle, contradiction, and bounded
+input contracts, removed the missing `q-fix.md` reference and obsolete
+package-status claims, and renamed the misleading empty-conjunction test. The
+requested bundle’s release lint took **0.84 s wall time** after the change
+(0.83 s baseline).
 
 #### READ-016 — Large test modules mix fixture construction with assertions
 

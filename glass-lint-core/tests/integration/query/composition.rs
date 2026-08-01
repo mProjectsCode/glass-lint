@@ -1,10 +1,7 @@
-//! Regression tests for architectural gaps in query composition.
+//! Regression tests for the query-composition contracts.
 //!
-//! These tests expose known false-complete claims in the current
-//! implementation.  Each test currently fails for the expected reason.
-//! When the architecture is remediated all tests in this module pass.
-//!
-//! See q-fix.md Package 0 for the specification of each test.
+//! The cases cover independent branch scopes, same-event conjunctions,
+//! lifecycle sources, contradiction validation, and bounded authoring input.
 
 use std::panic::catch_unwind;
 
@@ -35,8 +32,8 @@ fn compile_rule(
 // branch scopes) must compile through RuleCatalog::new and produce findings
 // for either alternative.
 //
-// Currently fails because pass_variable_collection treats Any branches as
-// one flat scope (Package 3 will fix this).
+// Each branch has an independent scope while its selected output remains
+// aligned with the surrounding query.
 
 #[test]
 fn any_branches_compile_through_rule_catalog() {
@@ -69,8 +66,8 @@ fn any_rejects_incompatible_evidence_at_construction() {
 // Two compatible constraints on one selected event must compile through
 // RuleCatalog::new, producing a plan that includes both predicates.
 //
-// Currently fails because pass_variable_collection treats All branches as
-// one flat scope and rejects same-var references as duplicates (Package 3).
+// Same-event requirements share the selected event variable and compile as
+// one conjunction.
 
 #[test]
 fn same_event_all_compiles_through_rule_catalog() {
@@ -93,13 +90,13 @@ fn same_event_all_compiles_through_rule_catalog() {
     );
 }
 
-// ── Test 4: Uncorrelated All fails through the catalog ──────────────────
+// ── Test 4: Empty same-event All compiles through the catalog ────────────
 //
 // Selecting unrelated events without a keyed relation must produce an
 // uncorrelated_conjunction error.
 
 #[test]
-fn uncorrelated_all_fails_through_rule_catalog() {
+fn empty_same_event_all_compiles_through_rule_catalog() {
     // The supported public grammar exposes only same-event All. Uncorrelated
     // multi-event conjunctions therefore cannot be authored externally.
     let query = QueryDecl::all(EventQuery::call_global("fetch"), []).unwrap();
@@ -111,8 +108,7 @@ fn uncorrelated_all_fails_through_rule_catalog() {
 // Mutually exclusive constraints on the same event or argument must produce
 // a structured contradiction error.
 //
-// Currently the query compiles successfully because contradiction detection
-// is not implemented in the validator (Package 4 will add this).
+// The validator rejects contradictory constraints with a structured error.
 
 #[test]
 fn contradictory_same_event_all_fails_at_compilation() {
@@ -140,9 +136,7 @@ fn contradictory_same_event_all_fails_at_compilation() {
 // A lifecycle with two valid source forms must compile through the same
 // RuleBuilder::query route used by ordinary queries.
 //
-// Currently fails because lifecycle source variables are checked in one
-// flat scope (duplicate VarId).  Sources should have Any-like independent
-// scopes with alpha-aligned output (Package 8).
+// Sources use Any-like independent scopes with alpha-aligned output.
 
 #[test]
 fn multiple_lifecycle_sources_compile() {
@@ -609,7 +603,7 @@ fn query_roots_limit_plus_one_is_rejected_at_authoring() {
     assert!(error.to_string().contains("query roots"));
 }
 
-// ── Package 2: QueryBuildError variant tests ──────────────────────────
+// ── QueryBuildError validation tests ───────────────────────────────────
 #[test]
 fn empty_lifecycle_sources_rejected() {
     let err = LifecycleQuery::builder("test")
