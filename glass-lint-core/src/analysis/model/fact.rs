@@ -64,6 +64,53 @@ impl ControlRegionId {
 }
 
 #[cfg(test)]
+mod test_support {
+    use super::*;
+
+    /// Build a reference fact with the stable defaults used by model tests.
+    pub(super) fn reference(id: FactId, span: ByteRange, owner: FunctionId) -> SemanticFact {
+        SemanticFact::new(
+            id,
+            span,
+            owner,
+            FactKind::Reference,
+            FactPayload::Reference {
+                value: ValueId::UNKNOWN,
+                provenance: SymbolCallProvenance::Local,
+                static_string_origin: None,
+            },
+        )
+    }
+
+    /// Build a call fact with an empty argument list and unknown optional
+    /// identities; individual tests only provide the fields under test.
+    pub(super) fn call(id: FactId, span: ByteRange, owner: FunctionId) -> SemanticFact {
+        SemanticFact::new(
+            id,
+            span,
+            owner,
+            FactKind::Call,
+            FactPayload::Call {
+                callee: ValueId::UNKNOWN,
+                receiver: None,
+                result: ValueId::UNKNOWN,
+                callee_span: span,
+                callee_name: None,
+                call_provenance: SymbolCallProvenance::Local,
+                syntactic_path: None,
+                rooted_chain: None,
+                module_member: None,
+                returned_member: None,
+                instance_class: None,
+                target_function: None,
+                args: Vec::new(),
+                unwrap: None,
+            },
+        )
+    }
+}
+
+#[cfg(test)]
 mod control_region_tests {
     use super::*;
 
@@ -144,16 +191,10 @@ mod semantic_fact_tests {
 
     #[test]
     fn semantic_fact_new_creates_fact_with_all_fields() {
-        let fact = SemanticFact::new(
+        let fact = super::test_support::reference(
             FactId::from_test(1),
             ByteRange::new(0, 5).unwrap(),
             FunctionId::from_test(0),
-            FactKind::Reference,
-            FactPayload::Reference {
-                value: ValueId::UNKNOWN,
-                provenance: crate::analysis::syntax::SymbolCallProvenance::Local,
-                static_string_origin: None,
-            },
         );
         assert_eq!(fact.id(), FactId::from_test(1));
         assert_eq!(fact.kind(), FactKind::Reference);
@@ -162,28 +203,7 @@ mod semantic_fact_tests {
     #[test]
     fn semantic_fact_round_trips_span() {
         let range = ByteRange::new(10, 20).unwrap();
-        let fact = SemanticFact::new(
-            FactId::from_test(2),
-            range,
-            FunctionId::from_test(1),
-            FactKind::Call,
-            FactPayload::Call {
-                callee: ValueId::UNKNOWN,
-                receiver: None,
-                result: ValueId::UNKNOWN,
-                callee_span: range,
-                callee_name: None,
-                call_provenance: crate::analysis::syntax::SymbolCallProvenance::Local,
-                syntactic_path: None,
-                rooted_chain: None,
-                module_member: None,
-                returned_member: None,
-                instance_class: None,
-                target_function: None,
-                args: Vec::new(),
-                unwrap: None,
-            },
-        );
+        let fact = super::test_support::call(FactId::from_test(2), range, FunctionId::from_test(1));
         assert_eq!(fact.id(), FactId::from_test(2));
     }
 }

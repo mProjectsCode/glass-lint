@@ -554,7 +554,20 @@ wall time (839.3ms input time; 0.96s process wall time).
 
 ### Test and fixture ergonomics
 
-#### RL-017 — Some unit tests exercise storage through verbose raw payloads
+#### [x] RL-017 — Some unit tests exercise storage through verbose raw payloads
+
+Status: Completed.
+
+Implementation: added focused test-support factories for reference and call
+facts with explicit stable defaults. The semantic-fact tests now override only
+the fact identity, owner, and span relevant to each assertion instead of
+repeating the full raw call/reference payload; the existing payload and
+adversarial integration coverage remains unchanged.
+
+Runtime (release): the one warm-up-free repetition and one worker took 741.4ms
+measured lint wall time (740.1ms workload time; 744.4ms process wall time).
+It retained 544 findings, 1 diagnostic, the same evidence digest, and
+unchanged operation counts.
 
 - Severity: Low
 - Fix complexity: Low
