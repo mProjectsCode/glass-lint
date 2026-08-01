@@ -379,25 +379,35 @@ impl ResolutionCache {
         resolver: &ProjectResolver,
     ) -> Result<(&ResolverOutcome, bool), ProjectLoadError> {
         let cache_key = request.key.clone();
-        let mut did_resolve = false;
-
-        if !self.by_key.contains_key(&cache_key) {
-            let specifier_key = (
-                request.key.importer.clone(),
-                request.key.kind,
-                request.request.to_string(),
-            );
-            if let Some(outcome) = self.by_specifier.get(&specifier_key) {
-                self.by_key.insert(cache_key.clone(), outcome.clone());
-            } else {
-                let outcome = resolver.resolve(request)?;
-                self.by_specifier.insert(specifier_key, outcome.clone());
-                self.by_key.insert(cache_key.clone(), outcome);
-                did_resolve = true;
-            }
+        if self.by_key.contains_key(&cache_key) {
+            let Some(outcome) = self.by_key.get(&cache_key) else {
+                debug_assert!(false, "cache key disappeared after contains_key");
+                return Err(ProjectLoadError::CacheInvariant);
+            };
+            return Ok((outcome, false));
         }
 
-        Ok((self.by_key.get(&cache_key).unwrap(), did_resolve))
+        let specifier_key = Self::specifier_key(request);
+        let (outcome, did_resolve) = match self.by_specifier.entry(specifier_key) {
+            std::collections::btree_map::Entry::Occupied(entry) => (entry.get().clone(), false),
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                let outcome = resolver.resolve(request)?;
+                entry.insert(outcome.clone());
+                (outcome, true)
+            }
+        };
+        let cached = self.by_key.entry(cache_key).or_insert(outcome);
+        Ok((cached, did_resolve))
+    }
+
+    fn specifier_key(
+        request: &ResolutionRequest,
+    ) -> (ProjectRelativePath, ResolutionRequestKind, String) {
+        (
+            request.key.importer.clone(),
+            request.key.kind,
+            request.request.to_string(),
+        )
     }
 
     fn into_iter(self) -> impl Iterator<Item = (ResolutionRequestKey, ResolverOutcome)> {

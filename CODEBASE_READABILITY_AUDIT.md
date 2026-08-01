@@ -250,7 +250,7 @@ removed the dead-code allowances. The requested bundle’s release lint took
 
 ### Project loading and rendering
 
-#### READ-011 — Resolution cache uses two maps and an invariant-dependent unwrap
+#### [x] READ-011 — Resolution cache uses two maps and an invariant-dependent unwrap
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -268,6 +268,13 @@ Give the cache a single `get_or_resolve` operation backed by an entry-oriented
 implementation and return an owned outcome or a cache-entry handle. Centralize
 the relationship between occurrence and semantic keys, and use an explicit
 internal error or `debug_assert` if the two-map invariant is ever violated.
+
+**Implementation:** Made `resolve_or_get` the single entry-oriented cache
+operation, centralized semantic-key construction, and populated the occurrence
+index through `BTreeMap::entry`; a dedicated `CacheInvariant` error plus
+`debug_assert` handles an impossible missing entry without `unwrap`. The
+requested bundle’s release lint took **0.83 s wall time** after the change
+(0.83 s baseline).
 
 #### [x] READ-012 — Closed project-frontier state repeats lifecycle plumbing
 
