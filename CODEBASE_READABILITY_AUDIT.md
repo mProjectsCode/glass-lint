@@ -23,7 +23,7 @@ Introduce a core-owned validated member-chain value that validates once, retains
 
 Added the core-owned `MemberChain` value with one validation path, canonical display spelling, and parsed `SymbolPath` access. Event, composition, rooted-value, and lifecycle constructors now consume it; lifecycle state stores the typed chain instead of a raw string beside a parsed path, while datastructures’ permissive parser remains unchanged.
 
-#### READ-002 — `Rc<ResolvedValue>` leaks cache ownership into fact construction
+#### [x] READ-002 — `Rc<ResolvedValue>` leaks cache ownership into fact construction
 
 - **Severity:** Medium
 - **Fix Complexity** High
