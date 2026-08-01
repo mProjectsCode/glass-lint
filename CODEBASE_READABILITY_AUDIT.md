@@ -280,7 +280,7 @@ wall time (724.7ms input time; 0.90s process wall time with the release
 binary already built). The result retained 544 findings, 1 diagnostic, and
 the same evidence digest; operation counts were unchanged.
 
-#### RL-009 — Report assembly contains a matcher-specific private-network branch
+#### [x] RL-009 — Report assembly contains a matcher-specific private-network branch
 
 Status: Completed.
 
