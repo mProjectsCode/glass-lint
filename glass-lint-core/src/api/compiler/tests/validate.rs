@@ -22,6 +22,33 @@ fn assert_valid_query(decl: &QueryDecl) {
     }
 }
 
+/// Build the common direct global-call expression used by validation cases.
+fn global_call(var: u32, name: impl Into<SmolStr>) -> QueryExpr {
+    QueryExpr::event(EventQuery {
+        var: VarId::new(var),
+        event: EventSpec::Call,
+        identity: IdentitySpec::Global { name: name.into() },
+        constraints: vec![],
+    })
+}
+
+/// Add the explicit emission defaults shared by direct query fixtures.
+fn emitted(
+    expression: QueryExpr,
+    primary_var: u32,
+    kind: MatchKind,
+    symbol: impl Into<String>,
+) -> QueryDecl {
+    QueryDecl {
+        expression,
+        emission: EmissionDecl {
+            primary_var: VarId::new(primary_var),
+            kind,
+            symbol: symbol.into(),
+        },
+    }
+}
+
 #[test]
 fn valid_global_call_passes_well_formedness() {
     let decl = EventQuery::call_global("fetch").unwrap().into_query();
@@ -159,30 +186,14 @@ fn empty_identity_fails() {
 
 #[test]
 fn duplicate_var_in_all_fails() {
-    let a = QueryExpr::event(EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global {
-            name: SmolStr::new("fetch"),
-        },
-        constraints: vec![],
-    });
-    let b = QueryExpr::event(EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global {
-            name: SmolStr::new("fetch"),
-        },
-        constraints: vec![],
-    });
-    let decl = QueryDecl {
-        expression: QueryExpr::all(AllExpr::new(vec![a, b]).unwrap()),
-        emission: EmissionDecl {
-            primary_var: VarId::new(0),
-            kind: MatchKind::Call,
-            symbol: "fetch".into(),
-        },
-    };
+    let a = global_call(0, "fetch");
+    let b = global_call(0, "fetch");
+    let decl = emitted(
+        QueryExpr::all(AllExpr::new(vec![a, b]).unwrap()),
+        0,
+        MatchKind::Call,
+        "fetch",
+    );
     assert_eq!(
         pass_scope_types(&decl),
         Err(QueryCompileError::DuplicateBinding { var: VarId::new(0) })
@@ -191,30 +202,14 @@ fn duplicate_var_in_all_fails() {
 
 #[test]
 fn unique_vars_pass_collection() {
-    let a = QueryExpr::event(EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global {
-            name: SmolStr::new("fetch"),
-        },
-        constraints: vec![],
-    });
-    let b = QueryExpr::event(EventQuery {
-        var: VarId::new(1),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global {
-            name: SmolStr::new("navigate"),
-        },
-        constraints: vec![],
-    });
-    let decl = QueryDecl {
-        expression: QueryExpr::all(AllExpr::new(vec![a, b]).unwrap()),
-        emission: EmissionDecl {
-            primary_var: VarId::new(0),
-            kind: MatchKind::Call,
-            symbol: "test".into(),
-        },
-    };
+    let a = global_call(0, "fetch");
+    let b = global_call(1, "navigate");
+    let decl = emitted(
+        QueryExpr::all(AllExpr::new(vec![a, b]).unwrap()),
+        0,
+        MatchKind::Call,
+        "test",
+    );
     assert!(pass_scope_types(&decl).is_ok());
 }
 
@@ -267,30 +262,14 @@ fn emission_var_exists_in_expression_passes() {
 
 #[test]
 fn uncorrelated_multi_event_all_fails() {
-    let a = QueryExpr::event(EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global {
-            name: SmolStr::new("fetch"),
-        },
-        constraints: vec![],
-    });
-    let b = QueryExpr::event(EventQuery {
-        var: VarId::new(1),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global {
-            name: SmolStr::new("navigate"),
-        },
-        constraints: vec![],
-    });
-    let decl = QueryDecl {
-        expression: QueryExpr::all(AllExpr::new(vec![a, b]).unwrap()),
-        emission: EmissionDecl {
-            primary_var: VarId::new(0),
-            kind: MatchKind::Call,
-            symbol: "test".into(),
-        },
-    };
+    let a = global_call(0, "fetch");
+    let b = global_call(1, "navigate");
+    let decl = emitted(
+        QueryExpr::all(AllExpr::new(vec![a, b]).unwrap()),
+        0,
+        MatchKind::Call,
+        "test",
+    );
     assert_eq!(
         pass_correlation_evidence(&decl),
         Err(QueryCompileError::UncorrelatedConjunction)
@@ -299,72 +278,31 @@ fn uncorrelated_multi_event_all_fails() {
 
 #[test]
 fn correlated_multi_event_all_passes() {
-    let a = QueryExpr::event(EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global {
-            name: SmolStr::new("fetch"),
-        },
-        constraints: vec![],
-    });
-    let b = QueryExpr::event(EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global {
-            name: SmolStr::new("navigate"),
-        },
-        constraints: vec![],
-    });
-    let decl = QueryDecl {
-        expression: QueryExpr::all(AllExpr::new(vec![a, b]).unwrap()),
-        emission: EmissionDecl {
-            primary_var: VarId::new(0),
-            kind: MatchKind::Call,
-            symbol: "test".into(),
-        },
-    };
+    let a = global_call(0, "fetch");
+    let b = global_call(0, "navigate");
+    let decl = emitted(
+        QueryExpr::all(AllExpr::new(vec![a, b]).unwrap()),
+        0,
+        MatchKind::Call,
+        "test",
+    );
     assert!(pass_correlation_evidence(&decl).is_ok());
 }
 
 #[test]
 fn single_branch_all_needs_no_correlation() {
-    let a = QueryExpr::event(EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global {
-            name: SmolStr::new("fetch"),
-        },
-        constraints: vec![],
-    });
-    let decl = QueryDecl {
-        expression: QueryExpr::all(AllExpr::new(vec![a]).unwrap()),
-        emission: EmissionDecl {
-            primary_var: VarId::new(0),
-            kind: MatchKind::Call,
-            symbol: "fetch".into(),
-        },
-    };
+    let decl = emitted(
+        QueryExpr::all(AllExpr::new(vec![global_call(0, "fetch")]).unwrap()),
+        0,
+        MatchKind::Call,
+        "fetch",
+    );
     assert!(pass_correlation_evidence(&decl).is_ok());
 }
 
 #[test]
 fn bounded_query_passes_boundedness() {
-    let eq = EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global {
-            name: SmolStr::new("fetch"),
-        },
-        constraints: vec![],
-    };
-    let decl = QueryDecl {
-        expression: QueryExpr::event(eq),
-        emission: EmissionDecl {
-            primary_var: VarId::new(0),
-            kind: MatchKind::Call,
-            symbol: "fetch".into(),
-        },
-    };
+    let decl = emitted(global_call(0, "fetch"), 0, MatchKind::Call, "fetch");
     assert!(pass_structure(&decl).is_ok());
 }
 
@@ -697,22 +635,7 @@ fn all_with_empty_branches_rejected() {
 
 #[test]
 fn relation_availability_passes_for_valid_global() {
-    let eq = EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global {
-            name: SmolStr::new("fetch"),
-        },
-        constraints: vec![],
-    };
-    let decl = QueryDecl {
-        expression: QueryExpr::event(eq),
-        emission: EmissionDecl {
-            primary_var: VarId::new(0),
-            kind: MatchKind::Call,
-            symbol: "fetch".into(),
-        },
-    };
+    let decl = emitted(global_call(0, "fetch"), 0, MatchKind::Call, "fetch");
     assert!(pass_structure(&decl).is_ok());
 }
 

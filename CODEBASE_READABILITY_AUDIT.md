@@ -436,7 +436,7 @@ package-status claims, and renamed the misleading empty-conjunction test. The
 requested bundle’s release lint took **0.84 s wall time** after the change
 (0.83 s baseline).
 
-#### READ-016 — Large test modules mix fixture construction with assertions
+#### [x] READ-016 — Large test modules mix fixture construction with assertions
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -455,6 +455,14 @@ independent scenario families into submodules, and use small data tables for
 repeated invalid inputs. Keep each assertion specific to its semantic
 boundary; do not hide the adversarial source snippets that document matching
 precision.
+
+**Implementation:** Added explicit `global_call` and `emitted` fixture
+factories to the compiler validation tests and used them across repeated
+correlation, boundedness, and relation cases. This removes duplicated
+`EventQuery`/`EmissionDecl` plumbing while keeping each test’s expression and
+assertion visible. The focused compiler suite passed all 142 tests, and the
+requested bundle’s release lint took **0.83 s wall time** after the change
+(0.83 s baseline), with no performance regression.
 
 ## Systemic Themes
 
