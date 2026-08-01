@@ -152,7 +152,16 @@ fn adapter_response_json() -> serde_json::Value {
 #[test]
 fn adapter_response_requires_certainty_and_traces() {
     let valid = adapter_response_json();
-    let _: AdapterResponse = serde_json::from_value(valid.clone()).unwrap();
+    let decoded: AdapterResponse = serde_json::from_value(valid.clone()).unwrap();
+    let encoded = serde_json::to_value(decoded).unwrap();
+    assert_eq!(encoded["findings"][0]["rule_id"], "js:network.request");
+    assert_eq!(
+        encoded["findings"][0]["evidence"]["traces"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
 
     let mut missing_certainty = valid.clone();
     missing_certainty["findings"][0]

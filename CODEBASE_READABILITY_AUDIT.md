@@ -117,7 +117,7 @@ Implemented `ReportCompletion::join` and `is_partial` as the single monotone agg
 
 ### Harness APIs and adapter protocol
 
-#### READ-010 — Adapter response serialization and deserialization use different schemas
+#### [x] READ-010 — Adapter response serialization and deserialization use different schemas
 
 - **Severity:** High
 - **Fix Complexity** Medium
@@ -127,6 +127,8 @@ Implemented `ReportCompletion::join` and `is_partial` as the single monotone agg
 `AdapterResponse` serializes `Vec<Finding>` using the core report representation, while its manual deserializer declares a second set of proxy structs that shadow finding locations, traces, steps, rule IDs, severity, certainty, and truncation. A core serde change can therefore alter emitted adapter JSON without changing or even compiling the handwritten input schema, and the large module combines protocol DTOs with domain validation and case models.
 
 Define an explicit private adapter finding/response DTO that derives serialization and deserialization symmetrically, then convert it to core `Finding` through a validating `TryFrom` boundary. Keep path, rule-ID, nonempty-trace, terminal-location, and project-resolution validation in the harness rather than exposing weak constructors from core. Because this is not a public compatibility contract, update both ends in one change without a versioning or migration layer; add JSON round-trip and shape tests and move protocol types into a cohesive submodule.
+
+Replaced the handwritten deserializer proxy set with one private symmetric DTO family that derives both serde directions. DTO findings convert through a validating `TryFrom` boundary that preserves path/rule validation, nonempty evidence, and terminal-location checks; a JSON round-trip assertion now covers the shared wire shape without changing protocol versioning.
 
 #### [x] READ-011 — Harness model validation exposes message strings as its error API
 
