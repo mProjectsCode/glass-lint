@@ -28,7 +28,8 @@ use crate::{
         metrics::{accumulate_report, combined_digest, median_duration, repetition_from_files},
         types::{
             MeasuredRepetitionAccumulator, PreparedFile, ProfileLinter, ProfileOperationCounts,
-            ProfilePhaseTimings, ProfileRepetitionSummary, ProfileSummary, ProfileTotals,
+            ProfilePhaseTimings, ProfileProjectRun, ProfileProjectRunAccumulator,
+            ProfileRepetitionSummary, ProfileSummary, ProfileSummaryAccumulator,
             ProfileWorkloadSummary, project_run_outcome, sum_operation_counts,
         },
     },
@@ -106,18 +107,9 @@ fn prepare_file_profile_corpus(config: &ProfileConfig) -> Result<PreparedCorpus>
         match prepare_file(path) {
             Ok(file) => prepared.push(file),
             Err(error) => {
-                let result = ProfileWorkloadSummary {
-                    path: path.clone(),
-                    bytes: 0,
-                    findings: 0,
-                    diagnostics: 0,
-                    measured_elapsed: Duration::ZERO,
-                    completion: ReportCompletion::Partial,
-                    run_completions: Vec::new(),
-                    operation_counts: ProfileOperationCounts::default(),
-                    evidence_order_digest: String::new(),
-                    error: Some(format!("{error:#}")),
-                };
+                let mut result = ProfileWorkloadSummary::new(path.clone());
+                result.completion = ReportCompletion::Partial;
+                result.error = Some(format!("{error:#}"));
                 if !config.continue_on_error {
                     bail!(
                         "{}: {}",
@@ -150,7 +142,7 @@ fn file_profile_summary(
     workload_results.extend(aggregate_workload_results(measured_results));
     workload_results.sort_by(|left, right| left.path.cmp(&right.path));
 
-    let mut totals = ProfileTotals::default();
+    let mut totals = ProfileSummaryAccumulator::default();
     for result in workload_results {
         totals.record(result, config.repeat.get());
     }
@@ -190,33 +182,19 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
     let (_, manifest_digest, _) = selected_profile_paths(config)?;
     let linters = build_linters(config.provider, config.mode, &config.rules)?;
     let loader = ProjectLoader::new(ValidatedProjectLoadOptions::default());
-    let mut totals = ProfileTotals::default();
+    let mut totals = ProfileSummaryAccumulator::default();
     let mut phases = ProfilePhaseTimings::default();
     let mut counts = ProfileOperationCounts::default();
-    let mut measured = MeasuredRepetitionAccumulator {
-        repetitions: vec![
-            ProfileRepetitionSummary {
-                duration: Duration::ZERO,
-                findings: 0,
-                diagnostics: 0,
-                completion: ReportCompletion::Complete,
-                run_completions: Vec::new(),
-                operation_counts: ProfileOperationCounts::default(),
-                evidence_order_digest: String::new(),
-            };
-            config.repeat.get()
-        ],
-    };
+    let mut measured = MeasuredRepetitionAccumulator::with_repetitions(config.repeat.get());
 
     for path in &config.paths {
-        let (result, repetitions, project_phases, project_counts, successful_runs) =
-            profile_loader_project(path, config, &loader, &linters)?;
-        for (target, source) in measured.repetitions.iter_mut().zip(repetitions) {
+        let project = profile_loader_project(path, config, &loader, &linters)?;
+        for (target, source) in measured.repetitions.iter_mut().zip(project.repetitions) {
             target.merge(source);
         }
-        phases += project_phases;
-        counts += project_counts;
-        totals.record(result, successful_runs);
+        phases += project.phases;
+        counts += project.counts;
+        totals.record(project.result, project.successful_runs);
     }
     phases.record_total(total_start.elapsed());
     Ok(ProfileSummary {
@@ -246,102 +224,47 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
     })
 }
 
-#[allow(clippy::too_many_lines)]
 fn profile_loader_project(
     path: &Path,
     config: &ProfileConfig,
     loader: &ProjectLoader,
     linters: &[ProfileLinter],
-) -> Result<(
-    ProfileWorkloadSummary,
-    Vec<ProfileRepetitionSummary>,
-    ProfilePhaseTimings,
-    ProfileOperationCounts,
-    usize,
-)> {
+) -> Result<ProfileProjectRun> {
     let selection = if path.is_dir() {
         ProjectSelection::directory(path.to_owned())
     } else {
         ProjectSelection::entry(path.to_owned())
     };
     let started = Instant::now();
-    let mut result = ProfileWorkloadSummary {
-        path: path.to_owned(),
-        bytes: 0,
-        findings: 0,
-        diagnostics: 0,
-        measured_elapsed: Duration::ZERO,
-        completion: ReportCompletion::Complete,
-        run_completions: Vec::new(),
-        operation_counts: ProfileOperationCounts::default(),
-        evidence_order_digest: String::new(),
-        error: None,
-    };
-    let mut repetitions = vec![ProfileRepetitionSummary::zero(); config.repeat.get()];
-    let mut phases = ProfilePhaseTimings::default();
-    let mut counts = ProfileOperationCounts::default();
-    let mut evidence_digests = Vec::new();
-    let mut successful_runs = 0_usize;
+    let mut project = ProfileProjectRunAccumulator::new(path.to_owned(), config.repeat.get());
 
     for iteration in 0..config.warm_up + config.repeat.get() {
         let repetition_start = Instant::now();
-        let mut repetition = if iteration < config.warm_up {
-            ProfileRepetitionSummary::zero()
-        } else {
-            repetitions[iteration - config.warm_up].clone()
-        };
         for ProfileLinter(linter) in linters {
             match loader.load_and_lint(linter, &selection) {
                 Ok(outcome) => {
                     let (report, metrics, error) = profile_project_parts(outcome);
-                    result.error = error.or(result.error);
-                    if iteration >= config.warm_up {
-                        successful_runs = successful_runs.saturating_add(1);
-                        let outcome = project_run_outcome(&report, &metrics);
-                        accumulate_report(
-                            &report,
-                            &mut repetition.findings,
-                            &mut repetition.diagnostics,
-                            &mut repetition.operation_counts,
-                            &mut evidence_digests,
-                        );
-                        repetition.evidence_order_digest = combined_digest(&[
-                            repetition.evidence_order_digest,
-                            outcome.evidence_order_digest,
-                        ]);
-                        repetition.run_completions.push(outcome.completion);
-                        result.run_completions.push(outcome.completion);
-                        accumulate_report(
-                            &report,
-                            &mut result.findings,
-                            &mut result.diagnostics,
-                            &mut result.operation_counts,
-                            &mut evidence_digests,
-                        );
-                        result.bytes = result.bytes.max(outcome.bytes);
-                        if outcome.completion == ReportCompletion::Partial {
-                            result.completion = ReportCompletion::Partial;
-                        }
-                        phases += outcome.phases;
-                        counts += outcome.counts;
+                    if let Some(error) = error {
+                        project.record_error(error);
                     }
+                    let outcome = project_run_outcome(&report, &metrics);
+                    project.record_success(iteration, config.warm_up, &report, &outcome);
                 }
                 Err(error) => {
-                    result.error = Some(format!("{error:#}"));
+                    let message = format!("{error:#}");
+                    project.record_error(error);
                     if !config.continue_on_error {
-                        return Err(error.into());
+                        return Err(anyhow::anyhow!(message));
                     }
                 }
             }
         }
         if iteration >= config.warm_up {
-            repetition.duration = repetition_start.elapsed();
-            repetitions[iteration - config.warm_up] = repetition;
+            project
+                .record_repetition_duration(iteration - config.warm_up, repetition_start.elapsed());
         }
     }
-    result.measured_elapsed = started.elapsed();
-    result.evidence_order_digest = combined_digest(&evidence_digests);
-    Ok((result, repetitions, phases, counts, successful_runs))
+    Ok(project.finish(started))
 }
 
 fn profile_admitted_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
@@ -635,35 +558,10 @@ fn profile_file(
 fn aggregate_workload_results(results: Vec<ProfileWorkloadSummary>) -> Vec<ProfileWorkloadSummary> {
     let mut aggregated = BTreeMap::<PathBuf, ProfileWorkloadSummary>::new();
     for result in results {
-        let entry =
-            aggregated
-                .entry(result.path.clone())
-                .or_insert_with(|| ProfileWorkloadSummary {
-                    path: result.path.clone(),
-                    bytes: result.bytes,
-                    findings: 0,
-                    diagnostics: 0,
-                    measured_elapsed: Duration::ZERO,
-                    completion: ReportCompletion::Complete,
-                    run_completions: Vec::new(),
-                    operation_counts: ProfileOperationCounts::default(),
-                    evidence_order_digest: String::new(),
-                    error: None,
-                });
-        entry.findings = entry.findings.saturating_add(result.findings);
-        entry.diagnostics = entry.diagnostics.saturating_add(result.diagnostics);
-        entry.measured_elapsed = entry
-            .measured_elapsed
-            .saturating_add(result.measured_elapsed);
-        if result.completion == ReportCompletion::Partial {
-            entry.completion = ReportCompletion::Partial;
-        }
-        entry.run_completions.extend(result.run_completions);
-        entry.operation_counts += result.operation_counts;
-        entry.evidence_order_digest = combined_digest(&[
-            entry.evidence_order_digest.clone(),
-            result.evidence_order_digest,
-        ]);
+        aggregated
+            .entry(result.path.clone())
+            .or_insert_with(|| ProfileWorkloadSummary::new(result.path.clone()))
+            .merge(result);
     }
     aggregated.into_values().collect()
 }

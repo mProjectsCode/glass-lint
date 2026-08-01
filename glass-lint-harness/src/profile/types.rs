@@ -1,4 +1,9 @@
-use std::{ops::AddAssign, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    ops::AddAssign,
+    path::PathBuf,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use anyhow::Result;
 use glass_lint_core::{
@@ -9,7 +14,7 @@ use glass_lint_project::ProjectPhaseTimings as ProjectPhaseTimingSnapshot;
 
 use crate::profile::{
     config::{ProfileCorpusIdentity, ProfileWorkloadIdentity},
-    metrics::{combined_digest, evidence_order_digest, report_operation_counts},
+    metrics::{accumulate_report, combined_digest, evidence_order_digest, report_operation_counts},
 };
 
 #[derive(Clone, Debug)]
@@ -24,6 +29,41 @@ pub struct ProfileWorkloadSummary {
     pub operation_counts: ProfileOperationCounts,
     pub evidence_order_digest: String,
     pub error: Option<String>,
+}
+
+impl ProfileWorkloadSummary {
+    pub fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            bytes: 0,
+            findings: 0,
+            diagnostics: 0,
+            measured_elapsed: Duration::ZERO,
+            completion: ReportCompletion::Complete,
+            run_completions: Vec::new(),
+            operation_counts: ProfileOperationCounts::default(),
+            evidence_order_digest: String::new(),
+            error: None,
+        }
+    }
+
+    pub(super) fn merge(&mut self, source: Self) {
+        self.bytes = self.bytes.max(source.bytes);
+        self.findings = self.findings.saturating_add(source.findings);
+        self.diagnostics = self.diagnostics.saturating_add(source.diagnostics);
+        self.measured_elapsed = self
+            .measured_elapsed
+            .saturating_add(source.measured_elapsed);
+        if source.completion == ReportCompletion::Partial {
+            self.completion = ReportCompletion::Partial;
+        }
+        self.run_completions.extend(source.run_completions);
+        self.operation_counts += source.operation_counts;
+        self.evidence_order_digest = combined_digest(&[
+            self.evidence_order_digest.clone(),
+            source.evidence_order_digest,
+        ]);
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -86,6 +126,98 @@ pub struct ProfileSummary {
 }
 
 pub type ProfileOperationCounts = AnalysisOperationCounts;
+
+pub(super) struct ProfileProjectRun {
+    pub result: ProfileWorkloadSummary,
+    pub repetitions: Vec<ProfileRepetitionSummary>,
+    pub phases: ProfilePhaseTimings,
+    pub counts: ProfileOperationCounts,
+    pub successful_runs: usize,
+}
+
+pub(super) struct ProfileProjectRunAccumulator {
+    result: ProfileWorkloadSummary,
+    repetitions: Vec<ProfileRepetitionSummary>,
+    phases: ProfilePhaseTimings,
+    counts: ProfileOperationCounts,
+    result_evidence_digests: Vec<String>,
+    successful_runs: usize,
+}
+
+impl ProfileProjectRunAccumulator {
+    pub fn new(path: PathBuf, repetition_count: usize) -> Self {
+        Self {
+            result: ProfileWorkloadSummary::new(path),
+            repetitions: vec![ProfileRepetitionSummary::zero(); repetition_count],
+            phases: ProfilePhaseTimings::default(),
+            counts: ProfileOperationCounts::default(),
+            result_evidence_digests: Vec::new(),
+            successful_runs: 0,
+        }
+    }
+
+    pub fn record_success(
+        &mut self,
+        iteration: usize,
+        warm_up: usize,
+        report: &AnalysisReport,
+        outcome: &RunOutcome,
+    ) {
+        if iteration < warm_up {
+            return;
+        }
+
+        self.successful_runs = self.successful_runs.saturating_add(1);
+        let repetition = &mut self.repetitions[iteration - warm_up];
+        let mut repetition_evidence_digests = Vec::new();
+        accumulate_report(
+            report,
+            &mut repetition.findings,
+            &mut repetition.diagnostics,
+            &mut repetition.operation_counts,
+            &mut repetition_evidence_digests,
+        );
+        repetition.evidence_order_digest = combined_digest(&[
+            repetition.evidence_order_digest.clone(),
+            outcome.evidence_order_digest.clone(),
+        ]);
+        repetition.run_completions.push(outcome.completion);
+        accumulate_report(
+            report,
+            &mut self.result.findings,
+            &mut self.result.diagnostics,
+            &mut self.result.operation_counts,
+            &mut self.result_evidence_digests,
+        );
+        self.result.run_completions.push(outcome.completion);
+        self.result.bytes = self.result.bytes.max(outcome.bytes);
+        if outcome.completion == ReportCompletion::Partial {
+            self.result.completion = ReportCompletion::Partial;
+        }
+        self.phases += outcome.phases;
+        self.counts += outcome.counts;
+    }
+
+    pub fn record_error(&mut self, error: impl std::fmt::Display) {
+        self.result.error = Some(format!("{error:#}"));
+    }
+
+    pub fn record_repetition_duration(&mut self, index: usize, duration: Duration) {
+        self.repetitions[index].duration = duration;
+    }
+
+    pub fn finish(mut self, started: Instant) -> ProfileProjectRun {
+        self.result.measured_elapsed = started.elapsed();
+        self.result.evidence_order_digest = combined_digest(&self.result_evidence_digests);
+        ProfileProjectRun {
+            result: self.result,
+            repetitions: self.repetitions,
+            phases: self.phases,
+            counts: self.counts,
+            successful_runs: self.successful_runs,
+        }
+    }
+}
 
 /// Aggregated phase timings owned by the profiling harness.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -259,6 +391,12 @@ pub(super) struct MeasuredRepetitionAccumulator {
 }
 
 impl MeasuredRepetitionAccumulator {
+    pub fn with_repetitions(repetition_count: usize) -> Self {
+        Self {
+            repetitions: vec![ProfileRepetitionSummary::zero(); repetition_count],
+        }
+    }
+
     pub fn measure<W, R>(
         warm_up: usize,
         repeat: usize,
@@ -332,7 +470,7 @@ pub(super) struct PreparedFile {
 }
 
 #[derive(Default)]
-pub(super) struct ProfileTotals {
+pub(super) struct ProfileSummaryAccumulator {
     pub workload_results: Vec<ProfileWorkloadSummary>,
     pub files: usize,
     pub bytes: u64,
@@ -342,7 +480,7 @@ pub(super) struct ProfileTotals {
     pub runs: usize,
 }
 
-impl ProfileTotals {
+impl ProfileSummaryAccumulator {
     pub fn record(&mut self, result: ProfileWorkloadSummary, successful_runs: usize) {
         self.files = self.files.saturating_add(1);
         self.bytes = self.bytes.saturating_add(result.bytes);

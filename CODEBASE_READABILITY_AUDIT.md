@@ -97,7 +97,7 @@ Extract a `TsconfigGraphWalker` that owns visited/active/stack state and returns
 
 Implemented `TsconfigGraphWalker` as an iterative, budget-aware owner of visited and active configuration state, traversal scheduling, canonical reference handling, and diagnostics. It now returns ordered typed expansions to `ProjectDiscovery`, which alone performs source admission; cycle diagnostics remain deterministically sorted and deduplicated, and the existing project tests continue to verify fail-closed budgets.
 
-#### READ-008 — Profiling uses several bespoke aggregate paths and a tuple result
+#### [x] READ-008 — Profiling uses several bespoke aggregate paths and a tuple result
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -107,6 +107,8 @@ Implemented `TsconfigGraphWalker` as an iterative, budget-aware owner of visited
 `profile_projects`, `profile_loader_project`, and `aggregate_workload_results` each initialize and merge overlapping totals, phase timings, operation counts, completion state, and report data. `profile_loader_project` returns a five-element tuple and repeats report accumulation for repetition and overall results, while `ProfileRepetitionSummary::merge` and `ProfileTotals::record` maintain separate aggregation policies.
 
 Create named `ProfileProjectRun` and accumulator types that own initialization, measured-versus-warmup handling, report digest/count updates, and merge behavior. Keep deterministic project ordering and repetition boundaries explicit, but route all aggregation through one implementation so a new timing or count field cannot be added to only one of the three paths.
+
+Implemented `ProfileProjectRun` and `ProfileProjectRunAccumulator` to own loader-project initialization, warmup exclusion, repetition timing, report counts, evidence digests, phase totals, and error capture. `ProfileWorkloadSummary::merge`, `MeasuredRepetitionAccumulator::with_repetitions`, and `ProfileSummaryAccumulator` now centralize the remaining workload and suite aggregation boundaries while preserving deterministic ordering and repetition semantics.
 
 ### Provider and public-surface consistency
 
