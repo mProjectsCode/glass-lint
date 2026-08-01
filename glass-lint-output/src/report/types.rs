@@ -1,6 +1,6 @@
 use std::{
-    cell::RefCell,
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
+    sync::{Arc, OnceLock},
 };
 
 use console::measure_text_width;
@@ -35,7 +35,7 @@ pub struct PrettyReport<'a> {
     pub(crate) source: &'a str,
     pub(crate) options: PrettyOptions,
     pub(crate) line_starts: &'a [usize],
-    pub(crate) line_cache: Option<&'a RefCell<BTreeMap<usize, Vec<Cell>>>>,
+    pub(crate) line_cache: Arc<LineCache>,
 }
 
 #[derive(Clone)]
@@ -45,7 +45,7 @@ pub struct PrettyFile<'a> {
     pub(crate) filename: &'a str,
     pub(crate) source: &'a str,
     pub(crate) line_starts: Vec<usize>,
-    pub(crate) line_cache: RefCell<BTreeMap<usize, Vec<Cell>>>,
+    pub(crate) line_cache: Arc<LineCache>,
 }
 
 impl<'a> PrettyFile<'a> {
@@ -53,12 +53,13 @@ impl<'a> PrettyFile<'a> {
     pub fn new(report: &'a FileReport, filename: &'a str, source: &'a str) -> Self {
         let mut line_starts = vec![0];
         line_starts.extend(source.match_indices('\n').map(|(offset, _)| offset + 1));
+        let line_count = line_starts.len();
         Self {
             report,
             filename,
             source,
             line_starts,
-            line_cache: RefCell::new(BTreeMap::new()),
+            line_cache: Arc::new(LineCache::new(line_count)),
         }
     }
 }
@@ -97,7 +98,7 @@ impl<'a> PrettyReport<'a> {
             source,
             options,
             line_starts,
-            line_cache: None,
+            line_cache: Arc::new(LineCache::new(line_starts.len())),
         }
     }
 
@@ -107,7 +108,7 @@ impl<'a> PrettyReport<'a> {
         source: &'a str,
         options: PrettyOptions,
         line_starts: &'a [usize],
-        line_cache: &'a RefCell<BTreeMap<usize, Vec<Cell>>>,
+        line_cache: &Arc<LineCache>,
     ) -> Self {
         Self {
             report,
@@ -115,8 +116,30 @@ impl<'a> PrettyReport<'a> {
             source,
             options,
             line_starts,
-            line_cache: Some(line_cache),
+            line_cache: Arc::clone(line_cache),
         }
+    }
+}
+
+/// Lazily computes display cells once per source line and shares them across
+/// all evidence rows rendered for the same file.
+pub(crate) struct LineCache {
+    lines: Vec<OnceLock<Vec<Cell>>>,
+}
+
+impl LineCache {
+    fn new(line_count: usize) -> Self {
+        Self {
+            lines: (0..line_count).map(|_| OnceLock::new()).collect(),
+        }
+    }
+
+    pub(crate) fn get_or_init(&self, line_index: usize, line: &str) -> Option<&[Cell]> {
+        self.lines.get(line_index).map(|cells| {
+            cells
+                .get_or_init(|| PrettyReport::cells_from_line(line))
+                .as_slice()
+        })
     }
 }
 

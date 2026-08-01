@@ -65,7 +65,7 @@ impl PrettyReport<'_> {
         (first, last, first > 0, last < cells.len())
     }
 
-    fn cells_from_line(line: &str) -> Vec<Cell> {
+    pub(crate) fn cells_from_line(line: &str) -> Vec<Cell> {
         line.chars()
             .scan(0usize, |column, ch| {
                 let width = types::display_width(ch, *column);
@@ -98,22 +98,10 @@ impl PrettyReport<'_> {
         let line = self.source[line_start..line_end].trim_end_matches(['\r', '\n']);
         let width = self.options.max_width.saturating_sub(indent).max(1);
         let gutter = " ".repeat(indent);
-        if let Some(cache) = self.line_cache
-            && !cache.borrow().contains_key(&line_idx)
-        {
-            cache
-                .borrow_mut()
-                .insert(line_idx, Self::cells_from_line(line));
-        }
-        if let Some(cache) = self.line_cache {
-            let cached = cache.borrow();
-            let Some(cells) = cached.get(&line_idx) else {
-                return Ok(());
-            };
-            return self.write_excerpt(cells, range, width, &gutter, out);
-        }
-        let cells = Self::cells_from_line(line);
-        self.write_excerpt(&cells, range, width, &gutter, out)
+        let Some(cells) = self.line_cache.get_or_init(line_idx, line) else {
+            return Ok(());
+        };
+        self.write_excerpt(cells, range, width, &gutter, out)
     }
 
     fn write_excerpt(

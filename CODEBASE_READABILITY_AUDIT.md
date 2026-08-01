@@ -339,7 +339,7 @@ not-found error context and internal-request branches. The release lint of
 `/home/lemon/src/obsidian-stats/data/out/plugin-release-mainjs/byoc/1.0.13-main.js`
 took **0.88 s wall time** after the change (0.83 s baseline).
 
-#### READ-014 — Pretty rendering uses manual interior-mutability caching
+#### [x] READ-014 — Pretty rendering uses manual interior-mutability caching
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -356,6 +356,13 @@ Precompute per-line cells when building `PrettyFile`, or use a per-line
 `OnceLock`/immutable cache representation that can be shared by renderers.
 Collapse `new` and `new_with_cache` around one cache abstraction and keep
 source excerpt formatting independent from cache ownership.
+
+**Implementation:** Replaced the `RefCell<BTreeMap>` with a shared
+`Arc<LineCache>` backed by per-line `OnceLock` cells, so cache initialization is
+lazy, borrow-safe, and shared across evidence rows; both renderer constructors
+now use the same cache abstraction. The pretty-render tests passed, and the
+requested bundle’s release lint took **0.94 s wall time** after the change
+(0.83 s baseline).
 
 ### Tests and documentation hygiene
 
