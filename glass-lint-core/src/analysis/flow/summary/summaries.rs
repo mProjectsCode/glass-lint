@@ -301,7 +301,7 @@ fn try_project_sink(
     let caller_parameter = caller_parameters.iter().find(|parameter| {
         !parameter.rest && parameter.value != ValueId::UNKNOWN && parameter.value == argument
     })?;
-    let caller_path = paths.resolve_frozen(caller_parameter.path)?;
+    let caller_path = paths.intern_frozen(caller_parameter.path)?;
     Some(FunctionSinkSummary::new(
         sink.flow(),
         caller_parameter.parameter_index,

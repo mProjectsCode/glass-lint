@@ -468,47 +468,68 @@ pub struct LifecycleQueryBuilder {
 
 impl LifecycleQueryBuilder {
     pub fn source<S: IntoLifecycleSource>(mut self, source: S) -> Self {
-        let source = match source.into_lifecycle_source() {
-            Ok(source) => source,
-            Err(error) => {
-                self.invalid_operation = Some(error);
-                return self;
-            }
-        };
-        self.sources.push(source);
+        match source.into_lifecycle_source() {
+            Ok(source) => self.sources.push(source),
+            Err(error) => self.invalid_operation = Some(error),
+        }
         self
+    }
+
+    /// Add a lifecycle source and return construction errors immediately.
+    pub fn try_source<S: IntoLifecycleSource>(
+        mut self,
+        source: S,
+    ) -> Result<Self, QueryBuildError> {
+        self.sources.push(source.into_lifecycle_source()?);
+        Ok(self)
     }
 
     pub fn condition(mut self, condition: Result<LifecycleCondition, QueryBuildError>) -> Self {
-        let condition = match condition {
-            Ok(condition) => condition,
-            Err(error) => {
-                self.invalid_operation = Some(error);
-                return self;
+        match condition {
+            Ok(condition) if self.condition.is_none() => self.condition = Some(condition),
+            Ok(_) => {
+                self.invalid_operation =
+                    Some(QueryBuildError::DuplicateLifecycleStage("condition"));
             }
-        };
-        if self.condition.is_some() {
-            self.invalid_operation = Some(QueryBuildError::DuplicateLifecycleStage("condition"));
-        } else {
-            self.condition = Some(condition);
+            Err(error) => self.invalid_operation = Some(error),
         }
         self
     }
 
+    /// Set the lifecycle condition and return construction errors immediately.
+    pub fn try_condition(
+        mut self,
+        condition: Result<LifecycleCondition, QueryBuildError>,
+    ) -> Result<Self, QueryBuildError> {
+        if self.condition.is_some() {
+            return Err(QueryBuildError::DuplicateLifecycleStage("condition"));
+        }
+        self.condition = Some(condition?);
+        Ok(self)
+    }
+
     pub fn completion<C: IntoLifecycleCompletion>(mut self, completion: C) -> Self {
-        let completion = match completion.into_lifecycle_completion() {
-            Ok(completion) => completion,
-            Err(error) => {
-                self.invalid_operation = Some(error);
-                return self;
+        match completion.into_lifecycle_completion() {
+            Ok(completion) if self.completion.is_none() => self.completion = Some(completion),
+            Ok(_) => {
+                self.invalid_operation =
+                    Some(QueryBuildError::DuplicateLifecycleStage("completion"));
             }
-        };
-        if self.completion.is_some() {
-            self.invalid_operation = Some(QueryBuildError::DuplicateLifecycleStage("completion"));
-        } else {
-            self.completion = Some(completion);
+            Err(error) => self.invalid_operation = Some(error),
         }
         self
+    }
+
+    /// Set lifecycle completion and return construction errors immediately.
+    pub fn try_completion<C: IntoLifecycleCompletion>(
+        mut self,
+        completion: C,
+    ) -> Result<Self, QueryBuildError> {
+        if self.completion.is_some() {
+            return Err(QueryBuildError::DuplicateLifecycleStage("completion"));
+        }
+        self.completion = Some(completion.into_lifecycle_completion()?);
+        Ok(self)
     }
 
     pub fn build(self) -> Result<LifecycleQuery, QueryBuildError> {
@@ -897,5 +918,13 @@ mod tests {
             err.to_string().contains("condition"),
             "empty all_of condition: {err}"
         );
+    }
+
+    #[test]
+    fn try_source_reports_constructor_errors_at_the_call_site() {
+        let error = LifecycleQuery::builder("test")
+            .try_source(EventQuery::member_call_rooted(""))
+            .unwrap_err();
+        assert!(matches!(error, QueryBuildError::MalformedChain(_)));
     }
 }

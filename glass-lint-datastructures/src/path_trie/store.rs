@@ -3,30 +3,16 @@ use hashbrown::HashMap;
 use crate::{PathId, PathSegment};
 
 #[derive(Debug, Clone)]
-pub struct PathNode {
-    parent: u32,
+struct PathNode {
+    parent: PathId,
     depth: u32,
     segment: Option<PathSegment>,
-}
-
-impl PathNode {
-    pub fn parent(&self) -> u32 {
-        self.parent
-    }
-
-    pub fn depth(&self) -> u32 {
-        self.depth
-    }
-
-    pub fn segment(&self) -> Option<&PathSegment> {
-        self.segment.as_ref()
-    }
 }
 
 #[derive(Debug)]
 pub struct ParentPathStore {
     nodes: Vec<PathNode>,
-    by_edge: HashMap<(u32, PathSegment), u32>,
+    by_edge: HashMap<(PathId, PathSegment), PathId>,
     max_nodes: usize,
 }
 
@@ -34,7 +20,7 @@ impl ParentPathStore {
     pub fn new(max_nodes: usize) -> Self {
         Self {
             nodes: vec![PathNode {
-                parent: 0,
+                parent: PathId::EMPTY,
                 depth: 0,
                 segment: None,
             }],
@@ -64,8 +50,8 @@ impl ParentPathStore {
         if !self.is_valid(parent) {
             return None;
         }
-        if let Some(path) = self.by_edge.get(&(parent.0, segment)) {
-            return Some(PathId(*path));
+        if let Some(path) = self.by_edge.get(&(parent, segment)) {
+            return Some(*path);
         }
         if self.nodes.len() >= self.max_nodes {
             return None;
@@ -73,36 +59,40 @@ impl ParentPathStore {
         let id = u32::try_from(self.nodes.len()).ok()?;
         let depth = self.nodes[parent.untag().0 as usize].depth.checked_add(1)?;
         self.nodes.push(PathNode {
-            parent: parent.0,
+            parent,
             depth,
             segment: Some(segment),
         });
-        self.by_edge.insert((parent.0, segment), id);
+        self.by_edge.insert((parent, segment), PathId(id));
         Some(PathId(id))
     }
 
-    /// Insert an edge and child node without validating that `parent` exists
-    /// in this store. Finds existing edges before checking capacity. The
-    /// caller must supply a valid `depth`. No `LINK_TAG` is set.
-    pub fn insert_edge(
+    /// Append a child whose parent may be owned by another path store.
+    ///
+    /// The caller supplies the validated depth of the parent because an
+    /// external parent is intentionally not looked up in this store. The
+    /// child depth is computed here, and the operation remains deduplicated
+    /// and capacity-bounded like [`Self::append`].
+    pub fn append_linked(
         &mut self,
         parent: PathId,
         segment: PathSegment,
-        depth: u32,
+        parent_depth: u32,
     ) -> Option<PathId> {
-        if let Some(path) = self.by_edge.get(&(parent.0, segment)) {
-            return Some(PathId(*path));
+        if let Some(path) = self.by_edge.get(&(parent, segment)) {
+            return Some(*path);
         }
         if self.nodes.len() >= self.max_nodes {
             return None;
         }
         let id = u32::try_from(self.nodes.len()).ok()?;
+        let depth = parent_depth.checked_add(1)?;
         self.nodes.push(PathNode {
-            parent: parent.0,
+            parent,
             depth,
             segment: Some(segment),
         });
-        self.by_edge.insert((parent.0, segment), id);
+        self.by_edge.insert((parent, segment), PathId(id));
         Some(PathId(id))
     }
 
@@ -113,7 +103,7 @@ impl ParentPathStore {
 
     pub fn parent(&self, id: PathId) -> Option<PathId> {
         let idx = id.untag().0 as usize;
-        self.nodes.get(idx).map(|node| PathId(node.parent))
+        self.nodes.get(idx).map(|node| node.parent)
     }
 
     pub fn starts_with(&self, path: PathId, prefix: PathId) -> bool {
@@ -151,13 +141,13 @@ impl ParentPathStore {
             let idx = current.untag().0 as usize;
             let node = self.nodes.get(idx)?;
             last = Some(self.segment(current)?);
-            current = PathId(node.parent);
+            current = node.parent;
         }
         last
     }
 
     pub fn find_edge(&self, parent: PathId, segment: &PathSegment) -> Option<PathId> {
-        self.by_edge.get(&(parent.0, *segment)).copied().map(PathId)
+        self.by_edge.get(&(parent, *segment)).copied()
     }
 
     pub fn collect_segments(&self, id: PathId, buf: &mut Vec<PathSegment>) -> Option<()> {
@@ -167,7 +157,7 @@ impl ParentPathStore {
             let idx = current.untag().0 as usize;
             let node = self.nodes.get(idx)?;
             buf.push(*self.segment(current)?);
-            current = PathId(node.parent);
+            current = node.parent;
         }
         buf.reverse();
         Some(())
@@ -203,11 +193,11 @@ impl ParentPathStore {
         loop {
             let idx = current.untag().0 as usize;
             let node = self.nodes.get(idx)?;
-            if node.parent == 0 {
+            if node.parent == PathId::EMPTY {
                 break;
             }
             segments.push(*self.segment(current)?);
-            current = PathId(node.parent);
+            current = node.parent;
         }
         let mut result = PathId::EMPTY;
         for seg in segments.into_iter().rev() {

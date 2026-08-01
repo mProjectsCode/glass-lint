@@ -17,6 +17,7 @@ pub type FastIndexSet<V> = IndexSet<V, DefaultHashBuilder>;
 pub mod budget;
 pub mod diagnostic;
 pub mod fingerprint;
+pub mod history;
 pub mod name;
 pub mod path;
 pub mod path_trie;
@@ -28,9 +29,10 @@ pub use diagnostic::{
     ReversedSourcePositionRange, SourceRange,
 };
 pub use fingerprint::Fingerprint;
+pub use history::{HistoryCursor, HistoryTransition, ParentLinkedHistory};
 pub use name::{NameExhausted, NameId, NameTable};
 pub use path::{NamePath, Path, PathView, SymbolPath};
 pub use path_trie::{
-    ParentPathStore, PathId, PathInterner, PathNode, PathSegment, PathSegmentInput, PathSegments,
+    ParentPathStore, PathId, PathInterner, PathSegment, PathSegmentInput, PathSegments,
 };
 pub use table::{IdIndex, IndexTable, InsertOutcome};

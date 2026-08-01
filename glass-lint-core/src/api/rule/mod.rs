@@ -135,6 +135,19 @@ impl RuleBuilder {
         self
     }
 
+    /// Add one query declaration and return construction errors immediately.
+    ///
+    /// This is the preferred API for code that can propagate a
+    /// [`QueryBuildError`]. [`Self::query`] remains available for existing
+    /// declarative catalogs and reports the first fallible-input error from
+    /// `build()`.
+    pub fn try_query(self, query: impl IntoQueryDecl) -> Result<Self, QueryBuildError> {
+        let query = query.into_query_decl()?;
+        let mut builder = self;
+        builder.queries.push(query);
+        Ok(builder)
+    }
+
     #[must_use]
     /// Add a deterministic sequence of query declarations.
     pub fn queries<I, Q>(mut self, queries: I) -> Self
@@ -146,6 +159,19 @@ impl RuleBuilder {
             self = self.query(query);
         }
         self
+    }
+
+    /// Add a sequence of query declarations, failing at the first invalid
+    /// declaration.
+    pub fn try_queries<I, Q>(mut self, queries: I) -> Result<Self, QueryBuildError>
+    where
+        I: IntoIterator<Item = Q>,
+        Q: IntoQueryDecl,
+    {
+        for query in queries {
+            self = self.try_query(query)?;
+        }
+        Ok(self)
     }
 
     #[must_use]
@@ -351,5 +377,13 @@ mod tests {
             .unwrap();
 
         assert_eq!(rule.queries().len(), 2);
+    }
+
+    #[test]
+    fn try_query_reports_constructor_errors_at_the_call_site() {
+        let error = Rule::builder("network.fetch")
+            .try_query(EventQuery::call_global(""))
+            .unwrap_err();
+        assert!(matches!(error, QueryBuildError::EmptyIdentityName));
     }
 }

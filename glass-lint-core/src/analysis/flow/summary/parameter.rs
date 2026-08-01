@@ -13,7 +13,7 @@ impl ParameterBinding {
         args: &[CallArgInfo],
         paths: &SummaryPathStore<'_>,
     ) -> Option<ValueId> {
-        let param_path = paths.resolve_frozen(self.path)?;
+        let param_path = paths.intern_frozen(self.path)?;
         self.project_argument_at(stream, args, paths, param_path)
     }
 

@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use glass_lint_datastructures::{HistoryCursor, HistoryTransition, ParentLinkedHistory};
+
 use crate::analysis::{
     facts::FactId,
     model::flow::{FlowState, FlowStateKey},
@@ -22,21 +24,13 @@ pub(super) enum InverseDelta {
 
 /// A position in the persistent mutation history that acts as a checkpoint.
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
-pub(super) struct Checkpoint(pub(super) usize);
-
-#[derive(Debug)]
-struct LogNode {
-    parent: usize,
-    depth: usize,
-    delta: InverseDelta,
-}
+pub(super) struct Checkpoint(HistoryCursor);
 
 /// A bounded parent-linked mutation history. Checkpoints are O(1); moving
 /// between them applies only the deltas on the paths between the checkpoints.
 #[derive(Debug)]
 pub(super) struct MutationLog {
-    nodes: Vec<LogNode>,
-    cursor: usize,
+    history: ParentLinkedHistory<InverseDelta>,
     budget_exhausted: bool,
     limit: usize,
     /// Total charge count including mutation records and comparison charges.
@@ -48,8 +42,7 @@ pub(super) struct MutationLog {
 impl MutationLog {
     pub(super) fn new(limit: usize) -> Self {
         Self {
-            nodes: Vec::new(),
-            cursor: 0,
+            history: ParentLinkedHistory::new(),
             budget_exhausted: false,
             limit,
             charges: 0,
@@ -58,7 +51,7 @@ impl MutationLog {
 
     #[allow(dead_code)]
     pub(super) fn node_count(&self) -> usize {
-        self.nodes.len()
+        self.history.len()
     }
 
     pub(super) fn is_budget_exhausted(&self) -> bool {
@@ -71,18 +64,11 @@ impl MutationLog {
             return;
         }
         self.charges += 1;
-        let parent = self.cursor;
-        let depth = self.depth(parent) + 1;
-        self.nodes.push(LogNode {
-            parent,
-            depth,
-            delta,
-        });
-        self.cursor = self.nodes.len();
+        self.history.record(delta);
     }
 
     pub(super) fn checkpoint(&self) -> Checkpoint {
-        Checkpoint(self.cursor)
+        Checkpoint(self.history.checkpoint())
     }
 
     pub(super) fn transition(
@@ -92,47 +78,14 @@ impl MutationLog {
         object_refs: &mut BTreeMap<ObjectId, usize>,
         states: &mut BTreeMap<FlowStateKey, FlowState>,
     ) -> bool {
-        if checkpoint.0 > self.nodes.len() || self.budget_exhausted {
+        if self.budget_exhausted {
             return false;
         }
-        let mut current = self.cursor;
-        let mut target = checkpoint.0;
-        while self.depth(current) > self.depth(target) {
-            current = self.nodes[current - 1].parent;
-        }
-        while self.depth(target) > self.depth(current) {
-            target = self.nodes[target - 1].parent;
-        }
-        while current != target {
-            current = self.nodes[current - 1].parent;
-            target = self.nodes[target - 1].parent;
-        }
-        let lca = current;
-        let mut node = self.cursor;
-        while node != lca {
-            apply_inverse(&self.nodes[node - 1].delta, aliases, object_refs, states);
-            node = self.nodes[node - 1].parent;
-        }
-        let mut forward = Vec::new();
-        node = checkpoint.0;
-        while node != lca {
-            forward.push(node);
-            node = self.nodes[node - 1].parent;
-        }
-        for node in forward.into_iter().rev() {
-            apply_forward(&self.nodes[node - 1].delta, aliases, object_refs, states);
-        }
-        self.cursor = checkpoint.0;
-        true
-    }
-
-    fn depth(&self, node: usize) -> usize {
-        if node == 0 {
-            return 0;
-        }
-        self.nodes
-            .get(node.saturating_sub(1))
-            .map_or(0, |entry| entry.depth)
+        self.history
+            .transition(checkpoint.0, |direction, delta| match direction {
+                HistoryTransition::Undo => apply_inverse(delta, aliases, object_refs, states),
+                HistoryTransition::Redo => apply_forward(delta, aliases, object_refs, states),
+            })
     }
 }
 

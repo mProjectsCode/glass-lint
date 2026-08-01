@@ -9,7 +9,7 @@
 //! lowest common ancestor (LCA) and applying only the diff. This is the same
 //! approach as the flow projector's `MutationLog`.
 
-use glass_lint_datastructures::NameId;
+use glass_lint_datastructures::{HistoryCursor, HistoryTransition, NameId, ParentLinkedHistory};
 use hashbrown::HashMap;
 
 use crate::analysis::scope::{BindingProvenance, ScopeId, ScopedName};
@@ -70,16 +70,12 @@ impl ProvenanceAlternatives {
     }
 }
 
-/// A position in the parent-linked mutation log.
+/// A position in the assignment history.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct Cursor(pub(super) usize);
+pub(super) struct Cursor(HistoryCursor);
 
-/// A single mutation recorded in the log, parent-linked to the previous
-/// cursor position so arbitrary transitions are always valid.
 #[derive(Debug, Clone)]
-struct LogEntry {
-    /// Cursor position at the time this entry was recorded.
-    parent: usize,
+struct AssignmentDelta {
     scope: ScopeId,
     name: NameId,
     old: Option<ProvenanceAlternatives>,
@@ -96,17 +92,14 @@ struct LogEntry {
 /// from the LCA to the target.
 pub(super) struct AssignmentEnvironment {
     assignments: HashMap<ScopeId, HashMap<NameId, ProvenanceAlternatives>>,
-    log: Vec<LogEntry>,
-    /// Current position in the mutation tree. 0 = root (no entries applied).
-    cursor: usize,
+    history: ParentLinkedHistory<AssignmentDelta>,
 }
 
 impl AssignmentEnvironment {
     pub(super) fn new() -> Self {
         Self {
             assignments: HashMap::new(),
-            log: Vec::new(),
-            cursor: 0,
+            history: ParentLinkedHistory::new(),
         }
     }
 
@@ -114,61 +107,16 @@ impl AssignmentEnvironment {
         self.assignments.entry(scope).or_default()
     }
 
-    /// Walk the parent chain from `cursor` to the root (0), returning entry
-    /// indices in forward order (root → leaf).
-    fn path_to_root(&self, cursor: usize) -> Vec<usize> {
-        let mut stack = Vec::new();
-        let mut c = cursor;
-        while c > 0 {
-            stack.push(c - 1);
-            c = self.log[c - 1].parent;
-        }
-        let mut path = Vec::with_capacity(stack.len());
-        while let Some(idx) = stack.pop() {
-            path.push(idx);
-        }
-        path
-    }
-
-    fn apply_forward(&mut self, entry_idx: usize) {
-        let scope = self.log[entry_idx].scope;
-        let name = self.log[entry_idx].name;
-        let new = self.log[entry_idx].new.clone();
-        self.ensure_scope(scope).insert(name, new);
-    }
-
-    fn apply_inverse(&mut self, entry_idx: usize) {
-        let scope = self.log[entry_idx].scope;
-        let name = self.log[entry_idx].name;
-        if let Some(ref old) = self.log[entry_idx].old {
-            self.assignments
-                .get_mut(&scope)
-                .unwrap()
-                .insert(name, old.clone());
-        } else {
-            let empty = {
-                let scope_map = self.assignments.get_mut(&scope).unwrap();
-                scope_map.remove(&name);
-                scope_map.is_empty()
-            };
-            if empty {
-                self.assignments.remove(&scope);
-            }
-        }
-    }
-
     /// Record a value change and log it for potential rollback.
     fn record(&mut self, scope: ScopeId, name: NameId, value: ProvenanceAlternatives) {
         let old = self.get_by_id(scope, name).cloned();
         self.ensure_scope(scope).insert(name, value.clone());
-        self.log.push(LogEntry {
-            parent: self.cursor,
+        self.history.record(AssignmentDelta {
             scope,
             name,
             old,
             new: value,
         });
-        self.cursor = self.log.len();
     }
 
     /// Replace the latest assignment for one scope/name pair with unknown.
@@ -208,34 +156,57 @@ impl AssignmentEnvironment {
 
     /// Record a cursor for later `restore`. O(1).
     pub(super) fn checkpoint(&self) -> Cursor {
-        Cursor(self.cursor)
+        Cursor(self.history.checkpoint())
     }
 
     /// Restore to a previously recorded cursor by applying forward or inverse
     /// deltas between the current and target positions via LCA.
     /// O(|path|) where path is the number of entries between cursor and target.
     pub(super) fn restore(&mut self, target: Cursor) {
-        let src_path = self.path_to_root(self.cursor);
-        let dst_path = self.path_to_root(target.0);
-
-        let common = src_path
-            .iter()
-            .zip(dst_path.iter())
-            .take_while(|(a, b)| a == b)
-            .count();
-
-        // Undo from current position to LCA
-        for &entry_idx in src_path[common..].iter().rev() {
-            self.apply_inverse(entry_idx);
+        let assignments = &mut self.assignments;
+        if !self
+            .history
+            .transition(target.0, |direction, delta| match direction {
+                HistoryTransition::Undo => apply_assignment_inverse(assignments, delta),
+                HistoryTransition::Redo => apply_assignment_forward(assignments, delta),
+            })
+        {
+            panic!("assignment checkpoint does not belong to its history");
         }
-
-        // Redo from LCA to target
-        for &entry_idx in &dst_path[common..] {
-            self.apply_forward(entry_idx);
-        }
-
-        self.cursor = target.0;
     }
+}
+
+fn apply_assignment_inverse(
+    assignments: &mut HashMap<ScopeId, HashMap<NameId, ProvenanceAlternatives>>,
+    delta: &AssignmentDelta,
+) {
+    if let Some(old) = &delta.old {
+        assignments
+            .get_mut(&delta.scope)
+            .expect("assignment scope must exist while undoing")
+            .insert(delta.name, old.clone());
+    } else {
+        let empty = {
+            let scope_map = assignments
+                .get_mut(&delta.scope)
+                .expect("assignment scope must exist while undoing");
+            scope_map.remove(&delta.name);
+            scope_map.is_empty()
+        };
+        if empty {
+            assignments.remove(&delta.scope);
+        }
+    }
+}
+
+fn apply_assignment_forward(
+    assignments: &mut HashMap<ScopeId, HashMap<NameId, ProvenanceAlternatives>>,
+    delta: &AssignmentDelta,
+) {
+    assignments
+        .entry(delta.scope)
+        .or_default()
+        .insert(delta.name, delta.new.clone());
 }
 
 /// A checkpointed write set for one control-flow branch.
@@ -244,7 +215,7 @@ impl AssignmentEnvironment {
 /// checkpoint. Restoring a checkpoint changes only parent-linked deltas,
 /// while iteration filters the compact current generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct WriteCheckpoint(pub(super) usize);
+pub(super) struct WriteCheckpoint(HistoryCursor);
 
 #[derive(Debug, Clone)]
 enum WriteDelta {
@@ -260,17 +231,10 @@ enum WriteDelta {
 }
 
 #[derive(Debug, Clone)]
-struct WriteLogEntry {
-    parent: usize,
-    delta: WriteDelta,
-}
-
-#[derive(Debug, Clone)]
 pub(super) struct WriteSet {
     entries: HashMap<ScopedName, u64>,
     generation: u64,
-    log: Vec<WriteLogEntry>,
-    cursor: usize,
+    history: ParentLinkedHistory<WriteDelta>,
 }
 
 impl WriteSet {
@@ -278,8 +242,7 @@ impl WriteSet {
         Self {
             entries: HashMap::new(),
             generation: 0,
-            log: Vec::new(),
-            cursor: 0,
+            history: ParentLinkedHistory::new(),
         }
     }
 
@@ -303,25 +266,21 @@ impl WriteSet {
     }
 
     pub(super) fn checkpoint(&self) -> WriteCheckpoint {
-        WriteCheckpoint(self.cursor)
+        WriteCheckpoint(self.history.checkpoint())
     }
 
     pub(super) fn restore(&mut self, target: WriteCheckpoint) {
-        let mut source_path = self.path_to_root(self.cursor);
-        let mut target_path = self.path_to_root(target.0);
-        let common = source_path
-            .iter()
-            .zip(&target_path)
-            .take_while(|(source, target)| source == target)
-            .count();
-
-        for entry in source_path.drain(common..).rev() {
-            self.apply_inverse(entry);
+        let entries = &mut self.entries;
+        let generation = &mut self.generation;
+        if !self
+            .history
+            .transition(target.0, |direction, delta| match direction {
+                HistoryTransition::Undo => apply_write_inverse(entries, generation, delta),
+                HistoryTransition::Redo => apply_write_forward(entries, generation, delta),
+            })
+        {
+            panic!("write checkpoint does not belong to its history");
         }
-        for entry in target_path.drain(common..) {
-            self.apply_forward(entry);
-        }
-        self.cursor = target.0;
     }
 
     pub(super) fn iter(&self) -> impl Iterator<Item = ScopedName> + '_ {
@@ -332,41 +291,37 @@ impl WriteSet {
     }
 
     fn record(&mut self, delta: WriteDelta) {
-        let parent = self.cursor;
-        self.log.push(WriteLogEntry { parent, delta });
-        self.cursor = self.log.len();
+        self.history.record(delta);
     }
+}
 
-    fn path_to_root(&self, mut cursor: usize) -> Vec<usize> {
-        let mut path = Vec::new();
-        while cursor > 0 {
-            path.push(cursor - 1);
-            cursor = self.log[cursor - 1].parent;
-        }
-        path.reverse();
-        path
-    }
-
-    fn apply_inverse(&mut self, entry: usize) {
-        match &self.log[entry].delta {
-            WriteDelta::Insert { key, old, .. } => {
-                if let Some(old) = old {
-                    self.entries.insert(key.clone(), *old);
-                } else {
-                    self.entries.remove(key);
-                }
+fn apply_write_inverse(
+    entries: &mut HashMap<ScopedName, u64>,
+    generation: &mut u64,
+    delta: &WriteDelta,
+) {
+    match delta {
+        WriteDelta::Insert { key, old, .. } => {
+            if let Some(old) = old {
+                entries.insert(key.clone(), *old);
+            } else {
+                entries.remove(key);
             }
-            WriteDelta::Generation { old, .. } => self.generation = *old,
         }
+        WriteDelta::Generation { old, .. } => *generation = *old,
     }
+}
 
-    fn apply_forward(&mut self, entry: usize) {
-        match &self.log[entry].delta {
-            WriteDelta::Insert { key, new, .. } => {
-                self.entries.insert(key.clone(), *new);
-            }
-            WriteDelta::Generation { new, .. } => self.generation = *new,
+fn apply_write_forward(
+    entries: &mut HashMap<ScopedName, u64>,
+    generation: &mut u64,
+    delta: &WriteDelta,
+) {
+    match delta {
+        WriteDelta::Insert { key, new, .. } => {
+            entries.insert(key.clone(), *new);
         }
+        WriteDelta::Generation { new, .. } => *generation = *new,
     }
 }
 #[cfg(test)]
