@@ -16,6 +16,15 @@ fn var_id_ordering_is_stable() {
     assert!(a < b);
 }
 
+#[test]
+fn member_chain_validation_canonicalizes_display_and_path_once() {
+    let query = EventQuery::member_call_rooted(" document . body ").unwrap();
+    assert!(matches!(
+        query.event(),
+        EventSpec::MemberCall { member } if member == &SymbolPath::from("document.body")
+    ));
+}
+
 // ── AnyExpr / AllExpr empty rejection ──────────────────────────
 
 #[test]

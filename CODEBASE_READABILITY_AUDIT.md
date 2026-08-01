@@ -10,7 +10,7 @@ The scan found 16 maintainability issues. The most important theme is that sever
 
 ### Core query and resolution APIs
 
-#### READ-001 — Member-chain validation has multiple competing owners
+#### [x] READ-001 — Member-chain validation has multiple competing owners
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -20,6 +20,8 @@ The scan found 16 maintainability issues. The most important theme is that sever
 Query builders repeat the definition of a valid dotted chain, sometimes returning the original invalid value and sometimes a generic replacement string. `SymbolPath::from_chain` deliberately normalizes empty segments, so every caller that needs strict input must remember to validate before constructing the path; lifecycle sinks additionally retain a raw `String` beside the parsed path.
 
 Introduce a core-owned validated member-chain value that validates once, retains the canonical display spelling when needed, and provides a `SymbolPath` view or conversion. Route query, value-matcher, composition, and lifecycle constructors through it so error variants and offending values remain consistent. Keep the generic datastructures path parser permissive if that behavior is useful elsewhere, and do not move rule-policy validation into the provider-neutral container merely to share code.
+
+Added the core-owned `MemberChain` value with one validation path, canonical display spelling, and parsed `SymbolPath` access. Event, composition, rooted-value, and lifecycle constructors now consume it; lifecycle state stores the typed chain instead of a raw string beside a parsed path, while datastructures’ permissive parser remains unchanged.
 
 #### READ-002 — `Rc<ResolvedValue>` leaks cache ownership into fact construction
 

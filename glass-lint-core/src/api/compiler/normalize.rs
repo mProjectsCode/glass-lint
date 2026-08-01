@@ -444,7 +444,7 @@ fn normalize_lifecycle_event(
             arguments.sort();
             arguments.dedup();
             NormalizedLifecycleEvent::MemberCall {
-                member: member.clone().into(),
+                member: member.as_str().into(),
                 arguments: CanonicalArgumentConstraints::from_canonicalized(&arguments),
             }
         }

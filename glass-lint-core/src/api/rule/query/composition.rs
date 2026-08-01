@@ -1,12 +1,11 @@
 //! Logical query composition constructors.
 
-use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
 use super::{
     AllExpr, AnyExpr, EmissionDecl, EventQuery, EventRequirement, EventRequirementKind, EventSpec,
     IdentitySpec, LifecycleQuery, MatchKind, QueryBuildError, QueryDecl, QueryExpr, QueryPredicate,
-    VarId, evidence_kind_for_event, explain_expression, is_chain_malformed,
+    VarId, checked_chain, evidence_kind_for_event, explain_expression,
 };
 
 impl QueryDecl {
@@ -38,19 +37,15 @@ impl QueryDecl {
     ) -> Result<Self, QueryBuildError> {
         let module_str: SmolStr = module.into().into();
         let export_str: SmolStr = export.into().into();
-        let member_str: String = member.into();
         if module_str.trim().is_empty() {
             return Err(QueryBuildError::EmptyModuleSpecifier);
         }
         if export_str.trim().is_empty() {
             return Err(QueryBuildError::EmptyIdentityName);
         }
-        if is_chain_malformed(&member_str) {
-            return Err(QueryBuildError::MalformedChain(member_str));
-        }
+        let member_path = checked_chain(member)?.into_path();
         let event_var = VarId::new(0);
         let object_var = VarId::new(1);
-        let member_path = SymbolPath::from(member_str.as_str());
         let symbol = format!("{module_str}.{export_str}");
         let identity = IdentitySpec::ModuleExport {
             module: module_str,
@@ -93,14 +88,12 @@ impl QueryDecl {
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
         let source_str: String = source.into();
-        let member_str: String = member.into();
-        if is_chain_malformed(&source_str) || is_chain_malformed(&member_str) {
-            return Err(QueryBuildError::MalformedChain(source_str));
-        }
         let event_var = VarId::new(0);
         let object_var = VarId::new(1);
-        let source_path = SymbolPath::from(source_str.as_str());
-        let member_path = SymbolPath::from(member_str.as_str());
+        let source_chain = checked_chain(source_str)?;
+        let member_chain = checked_chain(member)?;
+        let source_path = source_chain.path().clone();
+        let member_path = member_chain.path().clone();
         let identity = IdentitySpec::Rooted { path: source_path };
         let branches = vec![
             QueryExpr::select_event(event_var),
@@ -128,7 +121,7 @@ impl QueryDecl {
             emission: EmissionDecl {
                 primary_var: event_var,
                 kind: MatchKind::MemberCall,
-                symbol: source_str,
+                symbol: source_chain.as_str().into(),
             },
         })
     }
@@ -139,14 +132,12 @@ impl QueryDecl {
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
         let source_str: String = source.into();
-        let member_str: String = member.into();
-        if is_chain_malformed(&source_str) || is_chain_malformed(&member_str) {
-            return Err(QueryBuildError::MalformedChain(source_str));
-        }
         let event_var = VarId::new(0);
         let object_var = VarId::new(1);
-        let source_path = SymbolPath::from(source_str.as_str());
-        let member_path = SymbolPath::from(member_str.as_str());
+        let source_chain = checked_chain(source_str)?;
+        let member_chain = checked_chain(member)?;
+        let source_path = source_chain.path().clone();
+        let member_path = member_chain.path().clone();
         let identity = IdentitySpec::Rooted { path: source_path };
         let branches = vec![
             QueryExpr::select_event(event_var),
@@ -174,7 +165,7 @@ impl QueryDecl {
             emission: EmissionDecl {
                 primary_var: event_var,
                 kind: MatchKind::MemberRead,
-                symbol: source_str,
+                symbol: source_chain.as_str().into(),
             },
         })
     }

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use super::{QueryBuildError, limits};
+use super::{QueryBuildError, checked_chain, limits};
 
 /// A validated bounded argument position index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -89,19 +89,10 @@ where
     I: IntoIterator<Item = S>,
     S: Into<String>,
 {
-    let values: Vec<String> = values.into_iter().map(Into::into).collect();
-    if values.iter().any(|value| {
-        let trimmed = value.trim();
-        trimmed.is_empty()
-            || trimmed.starts_with('.')
-            || trimmed.ends_with('.')
-            || trimmed.contains("..")
-    }) {
-        return Err(QueryBuildError::MalformedChain(
-            "invalid rooted expression path".into(),
-        ));
-    }
-    let mut values = values;
+    let mut values: Vec<String> = values
+        .into_iter()
+        .map(|value| checked_chain(value).map(|chain| chain.as_str().to_owned()))
+        .collect::<Result<_, _>>()?;
     canonicalize_strings(&mut values);
     if values.is_empty() {
         return Err(QueryBuildError::EmptyCollection("rooted expression paths"));

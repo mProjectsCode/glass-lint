@@ -2,7 +2,7 @@ use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
 use crate::api::rule::query::{
-    EventQuery, QueryBuildError, limits,
+    EventQuery, MemberChain, QueryBuildError, checked_chain, limits,
     value::{ArgumentConstraint, ArgumentConstraintsBuilder, ArgumentMatcher, ValueMatcher},
 };
 
@@ -24,7 +24,7 @@ pub(crate) enum LifecycleEventKind {
         value: ValueMatcher,
     },
     MemberCall {
-        member: String,
+        member: MemberChain,
         arguments: Vec<ArgumentConstraint>,
     },
 }
@@ -59,6 +59,7 @@ impl LifecycleEvent {
         if member.trim().is_empty() {
             return Err(QueryBuildError::EmptyIdentityName);
         }
+        let member = checked_chain(member)?;
         Ok(LifecycleEventBuilder {
             event: LifecycleEventKind::MemberCall {
                 member,
@@ -311,12 +312,12 @@ define_lifecycle_adapter!(
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum LifecycleSinkKind {
     ArgumentOf {
-        chain: String,
+        chain: MemberChain,
         target: LifecycleCallTarget,
         index: usize,
     },
     AnyArgumentOf {
-        chain: String,
+        chain: MemberChain,
         target: LifecycleCallTarget,
     },
 }
@@ -337,9 +338,13 @@ impl LifecycleSink {
         index: usize,
     ) -> Result<Self, QueryBuildError> {
         let name = name.into();
+        if name.trim().is_empty() {
+            return Err(QueryBuildError::EmptyIdentityName);
+        }
+        let chain = checked_chain(name)?;
         Self::build_argument_sink(
-            name.clone(),
-            LifecycleCallTarget::Global(name.into()),
+            chain.clone(),
+            LifecycleCallTarget::Global(chain.as_str().into()),
             index,
         )
     }
@@ -351,24 +356,22 @@ impl LifecycleSink {
         index: usize,
     ) -> Result<Self, QueryBuildError> {
         let chain = chain.into();
-        if chain.starts_with('.') || chain.ends_with('.') || chain.contains("..") {
-            return Err(QueryBuildError::MalformedChain(chain));
+        if chain.trim().is_empty() {
+            return Err(QueryBuildError::EmptyIdentityName);
         }
+        let chain = checked_chain(chain)?;
         Self::build_argument_sink(
             chain.clone(),
-            LifecycleCallTarget::RootedMember(SymbolPath::from_chain(&chain)),
+            LifecycleCallTarget::RootedMember(chain.path().clone()),
             index,
         )
     }
 
     fn build_argument_sink(
-        chain: String,
+        chain: MemberChain,
         target: LifecycleCallTarget,
         index: usize,
     ) -> Result<Self, QueryBuildError> {
-        if chain.trim().is_empty() {
-            return Err(QueryBuildError::EmptyIdentityName);
-        }
         if index > limits::MAX_ARGUMENT_INDEX {
             return Err(QueryBuildError::InvalidArgumentIndex(index));
         }
@@ -387,10 +390,11 @@ impl LifecycleSink {
         if name.trim().is_empty() {
             return Err(QueryBuildError::EmptyIdentityName);
         }
+        let chain = checked_chain(name)?;
         Ok(Self {
             kind: LifecycleSinkKind::AnyArgumentOf {
-                chain: name.clone(),
-                target: LifecycleCallTarget::Global(name.into()),
+                chain: chain.clone(),
+                target: LifecycleCallTarget::Global(chain.as_str().into()),
             },
         })
     }
@@ -401,12 +405,10 @@ impl LifecycleSink {
         if chain.trim().is_empty() {
             return Err(QueryBuildError::EmptyIdentityName);
         }
-        if chain.starts_with('.') || chain.ends_with('.') || chain.contains("..") {
-            return Err(QueryBuildError::MalformedChain(chain));
-        }
+        let chain = checked_chain(chain)?;
         Ok(Self {
             kind: LifecycleSinkKind::AnyArgumentOf {
-                target: LifecycleCallTarget::RootedMember(SymbolPath::from_chain(&chain)),
+                target: LifecycleCallTarget::RootedMember(chain.path().clone()),
                 chain,
             },
         })
@@ -415,7 +417,7 @@ impl LifecycleSink {
     pub fn chain(&self) -> &str {
         match &self.kind {
             LifecycleSinkKind::ArgumentOf { chain, .. }
-            | LifecycleSinkKind::AnyArgumentOf { chain, .. } => chain,
+            | LifecycleSinkKind::AnyArgumentOf { chain, .. } => chain.as_str(),
         }
     }
 }
@@ -745,7 +747,7 @@ mod tests {
             .unwrap()
             .build();
         assert!(
-            matches!(event.kind(), LifecycleEventKind::MemberCall { member, .. } if member == "addEventListener")
+            matches!(event.kind(), LifecycleEventKind::MemberCall { member, .. } if member.as_str() == "addEventListener")
         );
     }
 

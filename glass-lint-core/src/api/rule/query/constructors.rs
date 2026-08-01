@@ -57,7 +57,8 @@ impl EventQuery {
 
     /// Rooted member call, e.g. `document.createElement(...)`.
     pub fn member_call_rooted(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let (_, path) = checked_chain(chain)?;
+        let chain = checked_chain(chain)?;
+        let path = chain.path().clone();
         Ok(Self::from_parts(
             EventSpec::MemberCall {
                 member: path.clone(),
@@ -68,10 +69,14 @@ impl EventQuery {
 
     /// Heuristic member call.
     pub fn member_call_heuristic(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let (chain, path) = checked_chain(chain)?;
+        let chain = checked_chain(chain)?;
         Ok(Self::from_parts(
-            EventSpec::MemberCall { member: path },
-            IdentitySpec::Heuristic { name: chain.into() },
+            EventSpec::MemberCall {
+                member: chain.path().clone(),
+            },
+            IdentitySpec::Heuristic {
+                name: chain.as_str().into(),
+            },
         ))
     }
 
@@ -84,7 +89,7 @@ impl EventQuery {
         if module.trim().is_empty() {
             return Err(QueryBuildError::EmptyModuleSpecifier);
         }
-        let (_, path) = checked_chain(member)?;
+        let path = checked_chain(member)?.into_path();
         Ok(Self::from_parts(
             EventSpec::MemberCall { member: path },
             IdentitySpec::ModuleNamespace { module },
@@ -96,7 +101,7 @@ impl EventQuery {
         module: impl Into<String>,
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
-        let (_, path) = checked_chain(member)?;
+        let path = checked_chain(member)?.into_path();
         let module = ModuleSpecifierPattern::package(module)
             .map_err(|_| QueryBuildError::InvalidScopePackage)?;
         Ok(Self::from_parts(
@@ -107,7 +112,7 @@ impl EventQuery {
 
     /// Rooted member read.
     pub fn member_read_rooted(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let (_, path) = checked_chain(chain)?;
+        let path = checked_chain(chain)?.into_path();
         Ok(Self::from_parts(
             EventSpec::MemberRead {
                 member: path.clone(),
@@ -118,7 +123,7 @@ impl EventQuery {
 
     /// Rooted member-property write, for example `document.onkeydown = fn`.
     pub fn property_write_rooted(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let (_, path) = checked_chain(chain)?;
+        let path = checked_chain(chain)?.into_path();
         Ok(Self::from_parts(
             EventSpec::PropertyWrite {
                 property: path.clone(),
@@ -136,7 +141,7 @@ impl EventQuery {
         if module.trim().is_empty() {
             return Err(QueryBuildError::EmptyModuleSpecifier);
         }
-        let (_, path) = checked_chain(member)?;
+        let path = checked_chain(member)?.into_path();
         Ok(Self::from_parts(
             EventSpec::MemberRead { member: path },
             IdentitySpec::ModuleNamespace { module },
@@ -148,7 +153,7 @@ impl EventQuery {
         module: impl Into<String>,
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
-        let (_, path) = checked_chain(member)?;
+        let path = checked_chain(member)?.into_path();
         let module = ModuleSpecifierPattern::package(module)
             .map_err(|_| QueryBuildError::InvalidScopePackage)?;
         Ok(Self::from_parts(
