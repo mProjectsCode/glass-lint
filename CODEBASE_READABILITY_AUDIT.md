@@ -84,7 +84,7 @@ Let a `CrossProjectionSession` own the shared graph, evidence, arena, names, and
 
 ### Project loading and operational tooling
 
-#### READ-007 — Tsconfig graph traversal mixes graph policy with project admission
+#### [x] READ-007 — Tsconfig graph traversal mixes graph policy with project admission
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -94,6 +94,8 @@ Let a `CrossProjectionSession` own the shared graph, evidence, arena, names, and
 `collect_tsconfig_graph` simultaneously manages the traversal stack, depth and project budgets, cycle detection, visited configuration state, parsing and merging, source selection, reference scheduling, canonicalization, and diagnostics. It also mutates `ProjectDiscovery` admission state while constructing `TsconfigTraversal` inline, so filesystem policy, graph traversal, and project-budget policy are difficult to exercise or evolve independently.
 
 Extract a `TsconfigGraphWalker` that owns visited/active/stack state and returns a typed per-config expansion containing source selection, references, and diagnostics. Leave `ProjectDiscovery` responsible for admission, deadlines, and project limits; retain the current DFS order, cycle diagnostics, and fail-closed budget behavior at the boundary between the two types.
+
+Implemented `TsconfigGraphWalker` as an iterative, budget-aware owner of visited and active configuration state, traversal scheduling, canonical reference handling, and diagnostics. It now returns ordered typed expansions to `ProjectDiscovery`, which alone performs source admission; cycle diagnostics remain deterministically sorted and deduplicated, and the existing project tests continue to verify fail-closed budgets.
 
 #### READ-008 — Profiling uses several bespoke aggregate paths and a tuple result
 
