@@ -49,50 +49,48 @@ pub(in crate::analysis) struct CrossProjectionOutcome {
     pub(in crate::analysis) trace_heads: usize,
 }
 
-/// Inputs for one bounded worklist context projection.
-struct ContextProjection<'a> {
+/// Shared state for one bounded cross-file projection session.
+struct CrossProjectionSession<'a> {
     project: &'a ProjectSemanticModel,
     evidence: &'a mut HashMap<ModuleId, ModuleEvidence>,
-    context: &'a CallContext,
-    effect: &'a FunctionEffect,
-    flow: &'a CompiledObjectFlow,
-    flow_plan: &'a FlowPathPlan,
     call_graph: &'a QualifiedCallGraph,
-    state: &'a CrossFlowState,
     worklist: &'a mut ContextWorklist,
     names: &'a glass_lint_datastructures::NameTable,
     arena: &'a mut TraceArena,
 }
 
-impl ContextProjection<'_> {
+/// Inputs for one bounded worklist context projection.
+struct ContextProjection<'a, 'session> {
+    session: &'a mut CrossProjectionSession<'session>,
+    context: &'a CallContext,
+    effect: &'a FunctionEffect,
+    flow: &'a CompiledObjectFlow,
+    flow_plan: &'a FlowPathPlan,
+    state: &'a CrossFlowState,
+}
+
+impl ContextProjection<'_, '_> {
     fn project(&mut self) {
         let mut current_state = self.state.clone();
         let mut propagated_calls = BTreeSet::<FactId>::new();
         propagation::UsageProjector {
-            project: self.project,
-            evidence: self.evidence,
+            session: self.session,
             context: self.context,
             effect: self.effect,
             flow: self.flow,
             flow_plan: self.flow_plan,
-            call_graph: self.call_graph,
             state: &mut current_state,
             propagated: &mut propagated_calls,
-            worklist: self.worklist,
-            names: self.names,
-            arena: self.arena,
         }
         .project();
         propagation::CallPropagation {
-            project: self.project,
+            session: self.session,
             effect: self.effect,
             module: self.context.module,
             context: self.context,
             propagated: &mut propagated_calls,
             through: None,
             state: &current_state,
-            worklist: self.worklist,
-            call_graph: self.call_graph,
         }
         .propagate();
     }
@@ -148,18 +146,21 @@ impl CrossWorklist<'_, '_> {
             .flow_plan_cache
             .entry((context.state.flow, context.module))
             .or_insert_with(|| FlowPathPlan::build(flow, names));
-        ContextProjection {
+        let mut session = CrossProjectionSession {
             project: self.project,
             evidence: &mut self.evidence,
+            call_graph: &self.call_graph,
+            worklist: &mut self.worklist,
+            names,
+            arena: self.arena,
+        };
+        ContextProjection {
+            session: &mut session,
             context,
             effect,
             flow,
             flow_plan,
-            call_graph: &self.call_graph,
             state: &context.state,
-            worklist: &mut self.worklist,
-            names,
-            arena: self.arena,
         }
         .project();
     }

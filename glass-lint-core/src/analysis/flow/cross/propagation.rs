@@ -1,26 +1,19 @@
 use std::collections::BTreeSet;
 
-use glass_lint_datastructures::NameTable;
-use hashbrown::HashMap;
 use smol_str::SmolStr;
 
+use super::CrossProjectionSession;
 use crate::{
     analysis::{
-        ProjectSemanticModel,
         facts::FactId,
         flow::{
             cross::{
-                evidence::{
-                    self, ModuleEvidence, effect_use_event, emit, mark_nonmatching,
-                    usage_matches_context,
-                },
-                graph::{FlowPathPlan, QualifiedCallGraph},
+                evidence::{self, effect_use_event, emit, mark_nonmatching, usage_matches_context},
+                graph::FlowPathPlan,
                 state::{CallContext, CrossFlowState, QualifiedEvent},
-                worklist::ContextWorklist,
             },
             effect::{CallEffectRef, EffectUse, FunctionEffect},
         },
-        trace::TraceArena,
     },
     api::compiler::{
         CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArguments,
@@ -29,37 +22,30 @@ use crate::{
     project::ModuleId,
 };
 
-pub(super) struct UsageProjector<'a> {
-    pub(super) project: &'a ProjectSemanticModel,
-    pub(super) evidence: &'a mut HashMap<ModuleId, ModuleEvidence>,
+pub(super) struct UsageProjector<'a, 'session> {
+    pub(super) session: &'a mut CrossProjectionSession<'session>,
     pub(super) context: &'a CallContext,
     pub(super) effect: &'a FunctionEffect,
     pub(super) flow: &'a CompiledObjectFlow,
     pub(super) flow_plan: &'a FlowPathPlan,
-    pub(super) call_graph: &'a QualifiedCallGraph,
     pub(super) state: &'a mut CrossFlowState,
     pub(super) propagated: &'a mut BTreeSet<FactId>,
-    pub(super) worklist: &'a mut ContextWorklist,
-    pub(super) names: &'a NameTable,
-    pub(super) arena: &'a mut TraceArena,
 }
 
-impl UsageProjector<'_> {
+impl UsageProjector<'_, '_> {
     pub(super) fn project(&mut self) {
         for usage in self.effect.uses() {
             if !usage_matches_context(self.effect, usage, self.context) {
                 continue;
             }
             CallPropagation {
-                project: self.project,
+                session: self.session,
                 effect: self.effect,
                 module: self.context.module,
                 context: self.context,
                 propagated: self.propagated,
                 through: Some(effect_use_event(usage)),
                 state: self.state,
-                worklist: self.worklist,
-                call_graph: self.call_graph,
             }
             .propagate();
             match usage {
@@ -90,6 +76,7 @@ impl UsageProjector<'_> {
         value_is_precise: bool,
     ) {
         let static_value = self
+            .session
             .project
             .module_fact_stream(self.context.module)
             .and_then(|stream| {
@@ -120,7 +107,7 @@ impl UsageProjector<'_> {
     }
 
     fn apply_receiver(&mut self, event: FactId) {
-        let Some(stream) = self.project.module_fact_stream(self.context.module) else {
+        let Some(stream) = self.session.project.module_fact_stream(self.context.module) else {
             return;
         };
         let cref = CallEffectRef { stream, event };
@@ -138,7 +125,9 @@ impl UsageProjector<'_> {
                     &self.flow.requirements[index]
                 && arguments.iter().all(|matcher| {
                     call_args.get(matcher.index()).is_some_and(|argument| {
-                        matcher.predicate().matches(argument, self.names, values)
+                        matcher
+                            .predicate()
+                            .matches(argument, self.session.names, values)
                     })
                 })
             {
@@ -156,7 +145,7 @@ impl UsageProjector<'_> {
     }
 
     fn apply_argument(&mut self, event: FactId, argument: usize) {
-        let Some(stream) = self.project.module_fact_stream(self.context.module) else {
+        let Some(stream) = self.session.project.module_fact_stream(self.context.module) else {
             return;
         };
         let cref = CallEffectRef { stream, event };
@@ -166,7 +155,7 @@ impl UsageProjector<'_> {
             .iter()
             .enumerate()
             .filter_map(|(i, sink)| {
-                let matches = cref.matches_target(&sink.target, self.names)
+                let matches = cref.matches_target(&sink.target, self.session.names)
                     && match &sink.args {
                         CompiledObjectSinkArguments::Any => true,
                         CompiledObjectSinkArguments::Indices(indices) => {
@@ -193,9 +182,9 @@ impl UsageProjector<'_> {
             {
                 emit(
                     evidence::EmissionContext {
-                        project: self.project,
-                        evidence: self.evidence,
-                        arena: self.arena,
+                        project: self.session.project,
+                        evidence: self.session.evidence,
+                        arena: self.session.arena,
                     },
                     self.context.module,
                     self.context.state.flow,
@@ -205,7 +194,7 @@ impl UsageProjector<'_> {
                 );
             } else {
                 mark_nonmatching(
-                    self.evidence,
+                    self.session.evidence,
                     self.context.module,
                     self.context.state.flow,
                     event,
@@ -222,9 +211,9 @@ impl UsageProjector<'_> {
         {
             emit(
                 evidence::EmissionContext {
-                    project: self.project,
-                    evidence: self.evidence,
-                    arena: self.arena,
+                    project: self.session.project,
+                    evidence: self.session.evidence,
+                    arena: self.session.arena,
                 },
                 self.context.module,
                 self.context.state.flow,
@@ -236,19 +225,17 @@ impl UsageProjector<'_> {
     }
 }
 
-pub(super) struct CallPropagation<'a> {
-    pub(super) project: &'a ProjectSemanticModel,
+pub(super) struct CallPropagation<'a, 'session> {
+    pub(super) session: &'a mut CrossProjectionSession<'session>,
     pub(super) effect: &'a FunctionEffect,
     pub(super) module: ModuleId,
     pub(super) context: &'a CallContext,
     pub(super) propagated: &'a mut BTreeSet<FactId>,
     pub(super) through: Option<FactId>,
     pub(super) state: &'a CrossFlowState,
-    pub(super) worklist: &'a mut ContextWorklist,
-    pub(super) call_graph: &'a QualifiedCallGraph,
 }
 
-impl CallPropagation<'_> {
+impl CallPropagation<'_, '_> {
     pub(super) fn propagate(&mut self) {
         for call in self.effect.calls() {
             if self.through.is_some_and(|event| call.event() > event)
@@ -257,7 +244,7 @@ impl CallPropagation<'_> {
                 continue;
             }
             let Some((target_module, target_function)) =
-                self.call_graph.get(self.module, call.event())
+                self.session.call_graph.get(self.module, call.event())
             else {
                 continue;
             };
@@ -277,8 +264,8 @@ impl CallPropagation<'_> {
                     })
                     && argument.is_root());
                 if connected {
-                    self.worklist.enqueue_parameters(
-                        self.project,
+                    self.session.worklist.enqueue_parameters(
+                        self.session.project,
                         target_module,
                         target_function,
                         argument.index(),

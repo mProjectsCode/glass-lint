@@ -77,7 +77,7 @@ Introduce a `SummaryPropagation` context that owns the worklist and round budget
 
 Implemented with a `SummaryPropagation` scheduler that owns reverse-call edges, the deterministic worklist, and typed completion/exhaustion outcomes. Sink projection scratch state is now call-local, and the propagation worklist has its own named bound distinct from `MAX_SUMMARY_SINKS`; the existing bounded sink, path, and budget behavior remains covered by the summary propagation tests.
 
-#### READ-006 — Cross-file flow passes overlapping argument bags between phases
+#### [x] READ-006 — Cross-file flow passes overlapping argument bags between phases
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -87,6 +87,8 @@ Implemented with a `SummaryPropagation` scheduler that owns reverse-call edges, 
 `ContextProjection`, `UsageProjector`, and `CallPropagation` each carry large groups of borrowed state, with overlapping project, evidence, graph, arena, names, worklist, and flow fields. `ContextProjection::project` assembles these bags and several methods rebuild similar emission context values, so phase ownership and mutation order are expressed by construction-site wiring rather than by the API.
 
 Let a `CrossProjectionSession` own the shared graph, evidence, arena, names, and worklist, and pass a smaller per-context state to usage and call propagation. Separate state transitions from emission through methods on those owners, and make the session’s lifecycle and worklist stop result explicit so adding a new propagation phase does not require expanding every constructor.
+
+Implemented with a `CrossProjectionSession` that owns the shared project, graph, evidence, trace arena, names, and context worklist. Usage and call propagation now receive that session plus only their context-specific flow state, while the existing explicit `WorklistStop` result continues to own the bounded session lifecycle.
 
 ### Project loading and operational tooling
 
