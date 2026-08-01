@@ -77,7 +77,7 @@ Add an internal projection accumulator with named `record_local`, `record_cross`
 
 Collapsed local aggregation into `ProjectionOutcome` with `record_effects`, `record_local`, `record_cross`, and `finish` operations. Saturating counters, effect-module tracking, exhaustion observation, and trace accounting now have one aggregation owner rather than parallel local and final models.
 
-#### READ-006 — Cross-flow evidence emission owns too many policies at once
+#### [x] READ-006 — Cross-flow evidence emission owns too many policies at once
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -87,6 +87,8 @@ Collapsed local aggregation into `ProjectionOutcome` with `record_effects`, `rec
 `EmissionContext::emit` resolves source locations, assembles source/requirement/prior-sink/current-sink trace nodes, handles arena exhaustion, derives certainty, builds occurrences and classification evidence, performs deduplication, and updates metrics. It also labels prior events that satisfied sink clauses as `EvidenceRole::Requirement`, conflating their semantic role with the fact that only the completing sink is the terminal trace node and finding anchor.
 
 Extract a trace-assembly owner that appends the ordered evidence roles and returns a typed complete/exhausted result, then let `ModuleEvidence` own witness deduplication and recording. Classify every event that satisfies a sink clause as `EvidenceRole::Sink`, while separately retaining the completing sink as the terminal node and finding anchor; cover both local and cross-file multi-sink traces. Preserve current ordering, certainty downgrade rules, deduplication keys, and bounded arena behavior.
+
+Added a typed `TraceAssembler`/`TraceBuild` boundary for ordered source, requirement, prior-sink, and terminal-sink construction. `ModuleEvidence` remains the deduplication owner, while prior sink events now retain `EvidenceRole::Sink`; a focused trace test covers the multi-sink role sequence and arena failure remains fail-closed.
 
 ### Core reporting and status boundaries
 
