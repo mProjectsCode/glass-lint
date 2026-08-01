@@ -6,187 +6,49 @@ const METADATA_MAPS: [&str; 2] = [
     "app.metadataCache.resolvedLinks",
     "app.metadataCache.unresolvedLinks",
 ];
+const METADATA_TRAVERSALS: &[&str] = &[
+    "Object.entries",
+    "Object.keys",
+    "Object.values",
+    "Object.getOwnPropertyNames",
+    "Object.getOwnPropertySymbols",
+    "Object.getOwnPropertyDescriptors",
+    "Reflect.ownKeys",
+    "global.Object.keys",
+    "global.Object.entries",
+    "global.Object.values",
+    "global.Object.getOwnPropertyNames",
+    "global.Object.getOwnPropertySymbols",
+    "global.Object.getOwnPropertyDescriptors",
+    "global.Reflect.ownKeys",
+];
+
+fn metadata_traversal(path: &str) -> glass_lint_core::rules::QueryDecl {
+    EventQuery::member_call_rooted(path)
+        .map(|query| {
+            query
+                .with_arg(
+                    0,
+                    ArgumentMatcher::rooted_expressions(METADATA_MAPS).unwrap(),
+                )
+                .unwrap()
+                .into_query()
+        })
+        .unwrap()
+}
 
 /// Detects Object and Reflect key/value enumeration methods when their first
 /// argument has proven rooted provenance from `resolvedLinks` or
 /// `unresolvedLinks`. The enumeration call itself is syntactic; local
 /// lookalikes, dynamic arguments, unlisted metadata maps, and reassigned
 /// aliases are excluded.
-#[allow(clippy::too_many_lines)]
 pub fn rule() -> Rule {
     Rule::builder("metadata.traversal")
         .description("Traverses metadata cache maps")
         .category(Category::new("metadata").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .query(
-            EventQuery::member_call_rooted("Object.entries")
-                .map(|q| {
-                    q.with_arg(
-                        0,
-                        ArgumentMatcher::rooted_expressions(METADATA_MAPS).unwrap(),
-                    )
-                    .unwrap()
-                    .into_query()
-                })
-                .unwrap(),
-        )
-        .query(
-            EventQuery::member_call_rooted("Object.keys")
-                .map(|q| {
-                    q.with_arg(
-                        0,
-                        ArgumentMatcher::rooted_expressions(METADATA_MAPS).unwrap(),
-                    )
-                    .unwrap()
-                    .into_query()
-                })
-                .unwrap(),
-        )
-        .query(
-            EventQuery::member_call_rooted("Object.values")
-                .map(|q| {
-                    q.with_arg(
-                        0,
-                        ArgumentMatcher::rooted_expressions(METADATA_MAPS).unwrap(),
-                    )
-                    .unwrap()
-                    .into_query()
-                })
-                .unwrap(),
-        )
-        .query(
-            EventQuery::member_call_rooted("Object.getOwnPropertyNames")
-                .map(|q| {
-                    q.with_arg(
-                        0,
-                        ArgumentMatcher::rooted_expressions(METADATA_MAPS).unwrap(),
-                    )
-                    .unwrap()
-                    .into_query()
-                })
-                .unwrap(),
-        )
-        .query(
-            EventQuery::member_call_rooted("Object.getOwnPropertySymbols")
-                .map(|q| {
-                    q.with_arg(
-                        0,
-                        ArgumentMatcher::rooted_expressions(METADATA_MAPS).unwrap(),
-                    )
-                    .unwrap()
-                    .into_query()
-                })
-                .unwrap(),
-        )
-        .query(
-            EventQuery::member_call_rooted("Object.getOwnPropertyDescriptors")
-                .map(|q| {
-                    q.with_arg(
-                        0,
-                        ArgumentMatcher::rooted_expressions(METADATA_MAPS).unwrap(),
-                    )
-                    .unwrap()
-                    .into_query()
-                })
-                .unwrap(),
-        )
-        .query(
-            EventQuery::member_call_rooted("Reflect.ownKeys")
-                .map(|q| {
-                    q.with_arg(
-                        0,
-                        ArgumentMatcher::rooted_expressions(METADATA_MAPS).unwrap(),
-                    )
-                    .unwrap()
-                    .into_query()
-                })
-                .unwrap(),
-        )
-        .query(
-            EventQuery::member_call_rooted("global.Object.keys")
-                .map(|q| {
-                    q.with_arg(
-                        0,
-                        ArgumentMatcher::rooted_expressions(METADATA_MAPS).unwrap(),
-                    )
-                    .unwrap()
-                    .into_query()
-                })
-                .unwrap(),
-        )
-        .query(
-            EventQuery::member_call_rooted("global.Object.entries")
-                .map(|q| {
-                    q.with_arg(
-                        0,
-                        ArgumentMatcher::rooted_expressions(METADATA_MAPS).unwrap(),
-                    )
-                    .unwrap()
-                    .into_query()
-                })
-                .unwrap(),
-        )
-        .query(
-            EventQuery::member_call_rooted("global.Object.values")
-                .map(|q| {
-                    q.with_arg(
-                        0,
-                        ArgumentMatcher::rooted_expressions(METADATA_MAPS).unwrap(),
-                    )
-                    .unwrap()
-                    .into_query()
-                })
-                .unwrap(),
-        )
-        .query(
-            EventQuery::member_call_rooted("global.Object.getOwnPropertyNames")
-                .map(|q| {
-                    q.with_arg(
-                        0,
-                        ArgumentMatcher::rooted_expressions(METADATA_MAPS).unwrap(),
-                    )
-                    .unwrap()
-                    .into_query()
-                })
-                .unwrap(),
-        )
-        .query(
-            EventQuery::member_call_rooted("global.Object.getOwnPropertySymbols")
-                .map(|q| {
-                    q.with_arg(
-                        0,
-                        ArgumentMatcher::rooted_expressions(METADATA_MAPS).unwrap(),
-                    )
-                    .unwrap()
-                    .into_query()
-                })
-                .unwrap(),
-        )
-        .query(
-            EventQuery::member_call_rooted("global.Object.getOwnPropertyDescriptors")
-                .map(|q| {
-                    q.with_arg(
-                        0,
-                        ArgumentMatcher::rooted_expressions(METADATA_MAPS).unwrap(),
-                    )
-                    .unwrap()
-                    .into_query()
-                })
-                .unwrap(),
-        )
-        .query(
-            EventQuery::member_call_rooted("global.Reflect.ownKeys")
-                .map(|q| {
-                    q.with_arg(
-                        0,
-                        ArgumentMatcher::rooted_expressions(METADATA_MAPS).unwrap(),
-                    )
-                    .unwrap()
-                    .into_query()
-                })
-                .unwrap(),
-        )
+        .queries(METADATA_TRAVERSALS.iter().copied().map(metadata_traversal))
         .build()
         .unwrap()
 }

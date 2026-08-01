@@ -211,7 +211,7 @@ propagate construction errors at the operation boundary without forcing plain
 `Rule` catalogs into awkward error plumbing; the legacy methods retain their
 documented deferred first-error behavior.
 
-#### READ-009 — Several provider catalogs still encode data as long fluent code
+#### [x] READ-009 — Several provider catalogs still encode data as long fluent code
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -229,6 +229,13 @@ Move pure catalog rows to typed constant slices and register them through the
 existing iterator API. Keep exceptional queries (such as the metadata
 argument predicate) explicit, preserve source order and generated rule output,
 and avoid a generic registry that would obscure provider policy.
+
+**Implementation:** Converted the listed browser, Node, telemetry, and
+Obsidian catalog rows to typed slices consumed by `RuleBuilder::queries`, with
+metadata traversal retaining its explicit rooted-argument predicate helper;
+ordering and generated rule output remain unchanged. `generate-rules --check`
+passed, and the requested bundle’s release lint took **0.89 s wall time** after
+the change (0.83 s baseline).
 
 #### [x] READ-010 — Module-specifier pattern uses a boolean mode with dead-code escapes
 
