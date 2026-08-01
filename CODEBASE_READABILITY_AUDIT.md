@@ -269,7 +269,7 @@ implementation and return an owned outcome or a cache-entry handle. Centralize
 the relationship between occurrence and semantic keys, and use an explicit
 internal error or `debug_assert` if the two-map invariant is ever violated.
 
-#### READ-012 — Closed project-frontier state repeats lifecycle plumbing
+#### [x] READ-012 — Closed project-frontier state repeats lifecycle plumbing
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -287,6 +287,13 @@ Represent the deadline as a small shared guard or pass a checked/partial
 termination mode into one finalization method. Keep the distinction between
 complete and partial outcomes explicit, but make the timeout policy one
 implementation rather than two copies of the same expression.
+
+**Implementation:** Added the shared `LoadDeadline` guard and replaced the
+separate complete/partial frontier finish wrappers with one `finish` method
+that takes an explicit `FinishMode`; partial reports retain their existing
+timeout semantics while complete reports share one deadline check. The
+requested bundle’s release lint took **0.87 s wall time** after the change
+(0.83 s baseline).
 
 #### [x] READ-013 — Resolver classification repeats external-package fallback
 

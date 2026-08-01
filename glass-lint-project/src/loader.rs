@@ -237,12 +237,17 @@ impl ProjectLoader {
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<ProjectLoadOutcome, ProjectLoadError> {
         let discovery_start = Instant::now();
-        let deadline = Instant::now() + Duration::from_millis(self.options.max_timeout_ms());
+        let deadline = LoadDeadline::after_millis(self.options.max_timeout_ms());
         let mut budget = ProjectResourceBudget::new(
             self.options.max_visited_entries(),
             self.options.max_project_source_bytes(),
         );
-        let paths = ProjectPaths::from_selection(&self.options, selection, deadline, &mut budget)?;
+        let paths = ProjectPaths::from_selection(
+            &self.options,
+            selection,
+            deadline.instant(),
+            &mut budget,
+        )?;
         metrics.timings.record_discovery(discovery_start.elapsed());
 
         let mut build = ProjectLoadState::new(
@@ -256,15 +261,34 @@ impl ProjectLoader {
         let (expansion_result, closed) = build.close_frontier(metrics);
         match expansion_result {
             Ok(()) => {
-                let (report, sources) = closed.finish(metrics)?;
+                let (report, sources) = closed.finish(FinishMode::Complete, metrics)?;
                 Ok(ProjectLoadOutcome::complete(report, sources))
             }
             Err(ProjectLoadError::Timeout) => Err(ProjectLoadError::Timeout),
             Err(error) => {
-                let (report, sources) = closed.finish_partial(metrics)?;
+                let (report, sources) = closed.finish(FinishMode::Partial, metrics)?;
                 Ok(ProjectLoadOutcome::partial(report, sources, error))
             }
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct LoadDeadline(Instant);
+
+impl LoadDeadline {
+    fn after_millis(timeout_ms: u64) -> Self {
+        Self(Instant::now() + Duration::from_millis(timeout_ms))
+    }
+
+    fn instant(self) -> Instant {
+        self.0
+    }
+
+    fn check(self) -> Result<(), ProjectLoadError> {
+        (Instant::now() <= self.0)
+            .then_some(())
+            .ok_or(ProjectLoadError::Timeout)
     }
 }
 
@@ -468,7 +492,7 @@ struct ProjectLoadState<'a> {
     admitted_target_cache: BTreeMap<ProjectRelativePath, AdmittedSourcePath>,
     /// Source text retained for presentation after the core report is built.
     sources: BTreeMap<ProjectRelativePath, SourceText>,
-    deadline: Instant,
+    deadline: LoadDeadline,
 }
 
 impl<'a> ProjectLoadState<'a> {
@@ -477,7 +501,7 @@ impl<'a> ProjectLoadState<'a> {
         admission: SourceAdmission<'a>,
         diagnostics: Vec<crate::tsconfig::TsconfigDiagnostic>,
         selection: &ProjectSelection,
-        deadline: Instant,
+        deadline: LoadDeadline,
     ) -> Result<Self, ProjectLoadError> {
         let session = linter.begin_project()?;
         let resolver = ProjectResolver::new(admission.clone(), selection)?;
@@ -514,7 +538,7 @@ impl<'a> ProjectLoadState<'a> {
         let workers = std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
 
         let result = loop {
-            if let Err(e) = self.check_timeout() {
+            if let Err(e) = self.deadline.check() {
                 break Err(e);
             }
 
@@ -657,7 +681,7 @@ impl<'a> ProjectLoadState<'a> {
         let mut internal_targets = Vec::new();
         let mut elapsed = Duration::ZERO;
         for request in requests {
-            self.check_timeout()?;
+            self.deadline.check()?;
             let resolve_start = Instant::now();
             let (result, resolved) = self.resolved.resolve_or_get(&request, &self.resolver)?;
             if resolved {
@@ -682,12 +706,6 @@ impl<'a> ProjectLoadState<'a> {
             self.enqueue_internal_target(Some(path), metrics)?;
         }
         Ok(())
-    }
-
-    fn check_timeout(&self) -> Result<(), ProjectLoadError> {
-        (Instant::now() <= self.deadline)
-            .then_some(())
-            .ok_or(ProjectLoadError::Timeout)
     }
 
     fn enqueue_internal_target(
@@ -723,28 +741,24 @@ struct ClosedFrontier<'a> {
     resolved: ResolutionCache,
     diagnostics: Vec<crate::tsconfig::TsconfigDiagnostic>,
     sources: BTreeMap<ProjectRelativePath, SourceText>,
-    deadline: Instant,
+    deadline: LoadDeadline,
+}
+
+#[derive(Clone, Copy)]
+enum FinishMode {
+    Complete,
+    Partial,
 }
 
 impl ClosedFrontier<'_> {
-    fn check_timeout(&self) -> Result<(), ProjectLoadError> {
-        (Instant::now() <= self.deadline)
-            .then_some(())
-            .ok_or(ProjectLoadError::Timeout)
-    }
-
     fn finish(
         self,
+        mode: FinishMode,
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<(AnalysisReport, BTreeMap<ProjectRelativePath, SourceText>), ProjectLoadError> {
-        self.check_timeout()?;
-        self.finish_inner(metrics)
-    }
-
-    fn finish_partial(
-        self,
-        metrics: &mut ProjectLoadMetrics,
-    ) -> Result<(AnalysisReport, BTreeMap<ProjectRelativePath, SourceText>), ProjectLoadError> {
+        if matches!(mode, FinishMode::Complete) {
+            self.deadline.check()?;
+        }
         self.finish_inner(metrics)
     }
 
