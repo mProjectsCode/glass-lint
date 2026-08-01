@@ -163,10 +163,9 @@ fn value_flow_supports_member_call_configuration_and_helper_sinks() {
                         .unwrap()
                         .build(),
                 ))
-                .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
-                    "document.head.appendChild",
-                    0,
-                )]))
+                .completion(LifecycleCompletion::any_sink([
+                    LifecycleSink::argument_of_member("document.head.appendChild", 0),
+                ]))
                 .build(),
         ))
         .build()
@@ -325,10 +324,9 @@ fn value_flow_static_prefix_requires_static_values() {
                         .starts_with_any(["https://", "http://"])
                         .unwrap(),
                 )))
-                .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
-                    "document.body.appendChild",
-                    0,
-                )]))
+                .completion(LifecycleCompletion::any_sink([
+                    LifecycleSink::argument_of_member("document.body.appendChild", 0),
+                ]))
                 .build(),
         ))
         .build()
@@ -364,10 +362,9 @@ fn flow_can_require_all_requirements() {
                             .unwrap(),
                     ),
                 ]))
-                .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
-                    "document.head.appendChild",
-                    0,
-                )]))
+                .completion(LifecycleCompletion::any_sink([
+                    LifecycleSink::argument_of_member("document.head.appendChild", 0),
+                ]))
                 .build(),
         ))
         .build()
@@ -389,8 +386,8 @@ fn flow_can_require_all_sinks_on_one_object() {
             ValueMatcher::any_value(),
         )))
         .completion(LifecycleCompletion::all_sinks([
-            LifecycleSink::argument_of("document.head.appendChild", 0),
-            LifecycleSink::argument_of("document.body.appendChild", 0),
+            LifecycleSink::argument_of_member("document.head.appendChild", 0),
+            LifecycleSink::argument_of_member("document.body.appendChild", 0),
         ]))
         .build()
         .unwrap();

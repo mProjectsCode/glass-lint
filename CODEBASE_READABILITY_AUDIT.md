@@ -302,7 +302,7 @@ incremental release build).
 
 ### Public query API and provider declarations
 
-#### RL-013 — Lifecycle query API retains aliases and repeated adapters
+#### [x] RL-013 — Lifecycle query API retains aliases and repeated adapters
 
 - Severity: Low
 - Fix complexity: Medium
@@ -320,6 +320,19 @@ Recommendation: since breaking changes are permitted, converge on one naming
 path and centralize the fallible-input conversion pattern. Consider a builder
 state or result-based API that makes invalid intermediate operations visible at
 the operation boundary, while keeping final semantic validation centralized.
+
+Implementation: removed the ambiguous `argument_of` and `any_argument_of`
+aliases, migrated all lifecycle declarations and tests to the explicit member
+constructors, and factored the repeated direct-or-`Result` completion/sink
+adapters through one macro. Builder validation remains deferred to `build()`
+for the existing fluent API, so error behavior and declaration composition are
+unchanged.
+
+Runtime (release): profiling
+`/home/lemon/src/obsidian-stats/data/out/plugin-release-mainjs/byoc/1.0.13-main.js`
+with one warm-up-free repetition and one worker took 718.2ms measured lint
+wall time (717.0ms input time; 11.33s process wall time including the
+incremental release build).
 
 #### [x] RL-014 — Provider rule catalogs encode data as long fluent expressions
 

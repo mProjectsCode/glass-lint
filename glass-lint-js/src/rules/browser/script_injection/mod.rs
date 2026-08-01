@@ -34,10 +34,10 @@ pub fn rule() -> Rule {
                         .build()),
                 ]))
                 .completion(LifecycleCompletion::any_sink([
-                    LifecycleSink::argument_of("document.head.appendChild", 0),
-                    LifecycleSink::argument_of("document.body.appendChild", 0),
-                    LifecycleSink::argument_of("document.documentElement.appendChild", 0),
-                    LifecycleSink::argument_of("document.documentElement.insertBefore", 0),
+                    LifecycleSink::argument_of_member("document.head.appendChild", 0),
+                    LifecycleSink::argument_of_member("document.body.appendChild", 0),
+                    LifecycleSink::argument_of_member("document.documentElement.appendChild", 0),
+                    LifecycleSink::argument_of_member("document.documentElement.insertBefore", 0),
                 ]))
                 .build(),
         ))

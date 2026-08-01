@@ -142,10 +142,9 @@ fn baseline_local_lifecycle() {
             "src",
             ValueMatcher::any_value(),
         )))
-        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
-            "document.head.appendChild",
-            0,
-        )]))
+        .completion(LifecycleCompletion::any_sink([
+            LifecycleSink::argument_of_member("document.head.appendChild", 0),
+        ]))
         .build()
         .unwrap();
 
@@ -192,10 +191,9 @@ fn baseline_within_function_lifecycle() {
             "src",
             ValueMatcher::any_value(),
         )))
-        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
-            "document.head.appendChild",
-            0,
-        )]))
+        .completion(LifecycleCompletion::any_sink([
+            LifecycleSink::argument_of_member("document.head.appendChild", 0),
+        ]))
         .build()
         .unwrap();
 
@@ -249,10 +247,9 @@ fn negative_source_to_alias_no_sink() {
             "textContent",
             ValueMatcher::any_value(),
         )))
-        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
-            "document.body.appendChild",
-            0,
-        )]))
+        .completion(LifecycleCompletion::any_sink([
+            LifecycleSink::argument_of_member("document.body.appendChild", 0),
+        ]))
         .build()
         .unwrap();
 
@@ -286,10 +283,9 @@ fn negative_source_to_requirement_no_sink() {
             "src",
             ValueMatcher::any_value(),
         )))
-        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
-            "document.head.appendChild",
-            0,
-        )]))
+        .completion(LifecycleCompletion::any_sink([
+            LifecycleSink::argument_of_member("document.head.appendChild", 0),
+        ]))
         .build()
         .unwrap();
 
@@ -323,10 +319,9 @@ fn negative_disconnected_source_and_sink() {
             "src",
             ValueMatcher::any_value(),
         )))
-        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
-            "document.head.appendChild",
-            0,
-        )]))
+        .completion(LifecycleCompletion::any_sink([
+            LifecycleSink::argument_of_member("document.head.appendChild", 0),
+        ]))
         .build()
         .unwrap();
 
@@ -360,10 +355,9 @@ fn negative_source_wrong_arg_no_match() {
             "src",
             ValueMatcher::any_value(),
         )))
-        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
-            "document.head.appendChild",
-            0,
-        )]))
+        .completion(LifecycleCompletion::any_sink([
+            LifecycleSink::argument_of_member("document.head.appendChild", 0),
+        ]))
         .build()
         .unwrap();
 
@@ -396,10 +390,9 @@ fn negative_escaped_object_no_lifecycle() {
             "src",
             ValueMatcher::any_value(),
         )))
-        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
-            "document.head.appendChild",
-            0,
-        )]))
+        .completion(LifecycleCompletion::any_sink([
+            LifecycleSink::argument_of_member("document.head.appendChild", 0),
+        ]))
         .build()
         .unwrap();
 
@@ -433,10 +426,9 @@ fn negative_alias_to_requirement_no_sink() {
             "src",
             ValueMatcher::any_value(),
         )))
-        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
-            "document.head.appendChild",
-            0,
-        )]))
+        .completion(LifecycleCompletion::any_sink([
+            LifecycleSink::argument_of_member("document.head.appendChild", 0),
+        ]))
         .build()
         .unwrap();
 
@@ -470,10 +462,9 @@ fn negative_alias_to_sink_not_configured() {
             "src",
             ValueMatcher::any_value(),
         )))
-        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
-            "document.head.appendChild",
-            0,
-        )]))
+        .completion(LifecycleCompletion::any_sink([
+            LifecycleSink::argument_of_member("document.head.appendChild", 0),
+        ]))
         .build()
         .unwrap();
 
@@ -507,10 +498,9 @@ fn negative_requirement_to_sink_disconnected_object() {
             "src",
             ValueMatcher::any_value(),
         )))
-        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
-            "document.head.appendChild",
-            0,
-        )]))
+        .completion(LifecycleCompletion::any_sink([
+            LifecycleSink::argument_of_member("document.head.appendChild", 0),
+        ]))
         .build()
         .unwrap();
 
@@ -623,8 +613,8 @@ fn all_sink_correlation_has_deterministic_bounded_operations() {
             ValueMatcher::any_value(),
         )))
         .completion(LifecycleCompletion::all_sinks([
-            LifecycleSink::argument_of("document.head.appendChild", 0).unwrap(),
-            LifecycleSink::argument_of("document.body.appendChild", 0).unwrap(),
+            LifecycleSink::argument_of_member("document.head.appendChild", 0).unwrap(),
+            LifecycleSink::argument_of_member("document.body.appendChild", 0).unwrap(),
         ]))
         .build()
         .unwrap();

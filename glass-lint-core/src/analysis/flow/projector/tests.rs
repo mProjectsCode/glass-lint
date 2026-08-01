@@ -103,10 +103,9 @@ fn script_flow() -> LifecycleQuery {
             "src",
             ValueMatcher::any_value(),
         )))
-        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
-            "document.head.appendChild",
-            0,
-        )]))
+        .completion(LifecycleCompletion::any_sink([
+            LifecycleSink::argument_of_member("document.head.appendChild", 0),
+        ]))
         .build()
         .unwrap()
 }
@@ -197,10 +196,9 @@ fn member_call_configuration_stays_with_its_receiver() {
                 .unwrap()
                 .build(),
         ))
-        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
-            "document.head.appendChild",
-            0,
-        )]))
+        .completion(LifecycleCompletion::any_sink([
+            LifecycleSink::argument_of_member("document.head.appendChild", 0),
+        ]))
         .build()
         .unwrap();
     let evidence = collect_source(

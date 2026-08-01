@@ -361,7 +361,7 @@ fn invalid_authoring_input_never_panics() {
         (
             "lifecycle sink empty chain",
             Box::new(|| {
-                LifecycleSink::argument_of("", 0)
+                LifecycleSink::argument_of_member("", 0)
                     .map(|_| ())
                     .map_err(|e| e.to_string())
             }),
@@ -369,7 +369,7 @@ fn invalid_authoring_input_never_panics() {
         (
             "lifecycle sink index too large",
             Box::new(|| {
-                LifecycleSink::argument_of("sink", 256)
+                LifecycleSink::argument_of_member("sink", 256)
                     .map(|_| ())
                     .map_err(|e| e.to_string())
             }),
@@ -459,7 +459,9 @@ fn lifecycle_event_and_sink_limits_are_enforced_at_construction() {
         })
         .collect::<Vec<_>>();
     let sinks = (0..64)
-        .map(|index| glass_lint_core::rules::LifecycleSink::any_argument_of(format!("sink{index}")))
+        .map(|index| {
+            glass_lint_core::rules::LifecycleSink::any_argument_of_member(format!("sink{index}"))
+        })
         .collect::<Vec<_>>();
     let valid = LifecycleQuery::builder("limits")
         .source(glass_lint_core::rules::EventQuery::member_call_rooted(
@@ -494,7 +496,9 @@ fn lifecycle_event_and_sink_limits_are_enforced_at_construction() {
     ));
 
     let too_many_sinks = (0..=64)
-        .map(|index| glass_lint_core::rules::LifecycleSink::any_argument_of(format!("sink{index}")))
+        .map(|index| {
+            glass_lint_core::rules::LifecycleSink::any_argument_of_member(format!("sink{index}"))
+        })
         .collect::<Vec<_>>();
     let sink_error = LifecycleQuery::builder("too-many-sinks")
         .source(glass_lint_core::rules::EventQuery::member_call_rooted(
@@ -530,7 +534,7 @@ fn lifecycle_source_and_sink_indices_are_checked_without_truncation() {
         Err(QueryBuildError::MalformedChain(_))
     ));
     assert!(matches!(
-        glass_lint_core::rules::LifecycleSink::argument_of("sink", 256),
+        glass_lint_core::rules::LifecycleSink::argument_of_member("sink", 256),
         Err(QueryBuildError::InvalidArgumentIndex(256))
     ));
 }
@@ -622,7 +626,7 @@ fn empty_lifecycle_evidence_symbol_rejected() {
             "document.create",
         ))
         .completion(glass_lint_core::rules::LifecycleCompletion::any_sink([
-            glass_lint_core::rules::LifecycleSink::argument_of("sink", 0),
+            glass_lint_core::rules::LifecycleSink::argument_of_member("sink", 0),
         ]))
         .build()
         .unwrap_err();

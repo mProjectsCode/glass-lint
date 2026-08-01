@@ -279,22 +279,32 @@ impl LifecycleCompletion {
     }
 }
 
-/// Fallible completion input accepted by lifecycle query builders.
-pub trait IntoLifecycleCompletion {
-    fn into_lifecycle_completion(self) -> Result<LifecycleCompletion, QueryBuildError>;
+macro_rules! define_lifecycle_adapter {
+    ($trait_name:ident, $method:ident, $value:ty) => {
+        pub trait $trait_name {
+            fn $method(self) -> Result<$value, QueryBuildError>;
+        }
+
+        impl $trait_name for $value {
+            fn $method(self) -> Result<$value, QueryBuildError> {
+                Ok(self)
+            }
+        }
+
+        impl $trait_name for Result<$value, QueryBuildError> {
+            fn $method(self) -> Result<$value, QueryBuildError> {
+                self
+            }
+        }
+    };
 }
 
-impl IntoLifecycleCompletion for LifecycleCompletion {
-    fn into_lifecycle_completion(self) -> Result<LifecycleCompletion, QueryBuildError> {
-        Ok(self)
-    }
-}
-
-impl IntoLifecycleCompletion for Result<LifecycleCompletion, QueryBuildError> {
-    fn into_lifecycle_completion(self) -> Result<LifecycleCompletion, QueryBuildError> {
-        self
-    }
-}
+// Fallible completion input accepted by lifecycle query builders.
+define_lifecycle_adapter!(
+    IntoLifecycleCompletion,
+    into_lifecycle_completion,
+    LifecycleCompletion
+);
 
 // ── LifecycleSink ─────────────────────────────────────────────────────
 
@@ -371,12 +381,6 @@ impl LifecycleSink {
         })
     }
 
-    /// Legacy spelling retained for source compatibility. New declarations
-    /// should choose `argument_of_global` or `argument_of_member` explicitly.
-    pub fn argument_of(chain: impl Into<String>, index: usize) -> Result<Self, QueryBuildError> {
-        Self::argument_of_member(chain, index)
-    }
-
     /// Sink of any argument of a strict configured global call.
     pub fn any_argument_of_global(name: impl Into<String>) -> Result<Self, QueryBuildError> {
         let name = name.into();
@@ -408,10 +412,6 @@ impl LifecycleSink {
         })
     }
 
-    pub fn any_argument_of(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
-        Self::any_argument_of_member(chain)
-    }
-
     pub fn chain(&self) -> &str {
         match &self.kind {
             LifecycleSinkKind::ArgumentOf { chain, .. }
@@ -420,22 +420,8 @@ impl LifecycleSink {
     }
 }
 
-/// Fallible sink input accepted by [`LifecycleCompletion::any_sink`].
-pub trait IntoLifecycleSink {
-    fn into_lifecycle_sink(self) -> Result<LifecycleSink, QueryBuildError>;
-}
-
-impl IntoLifecycleSink for LifecycleSink {
-    fn into_lifecycle_sink(self) -> Result<LifecycleSink, QueryBuildError> {
-        Ok(self)
-    }
-}
-
-impl IntoLifecycleSink for Result<LifecycleSink, QueryBuildError> {
-    fn into_lifecycle_sink(self) -> Result<LifecycleSink, QueryBuildError> {
-        self
-    }
-}
+// Fallible sink input accepted by [`LifecycleCompletion::any_sink`].
+define_lifecycle_adapter!(IntoLifecycleSink, into_lifecycle_sink, LifecycleSink);
 
 /// Fallible source input accepted by the lifecycle query builder's `source`
 /// method.
@@ -663,8 +649,8 @@ mod tests {
             LifecycleCondition::any_of([href, src]).unwrap()
         );
 
-        let first = LifecycleSink::argument_of("sink", 0).unwrap();
-        let second = LifecycleSink::any_argument_of("other").unwrap();
+        let first = LifecycleSink::argument_of_member("sink", 0).unwrap();
+        let second = LifecycleSink::any_argument_of_member("other").unwrap();
         assert_eq!(
             LifecycleCompletion::any_sink([first.clone(), second.clone()]).unwrap(),
             LifecycleCompletion::any_sink([second, first]).unwrap()
@@ -673,8 +659,8 @@ mod tests {
 
     #[test]
     fn all_sink_completion_is_bounded_and_deterministic() {
-        let first = LifecycleSink::argument_of("document.head.appendChild", 0).unwrap();
-        let second = LifecycleSink::argument_of("document.body.appendChild", 0).unwrap();
+        let first = LifecycleSink::argument_of_member("document.head.appendChild", 0).unwrap();
+        let second = LifecycleSink::argument_of_member("document.body.appendChild", 0).unwrap();
         let a =
             LifecycleCompletion::all_sinks([first.clone(), second.clone(), first.clone()]).unwrap();
         let b = LifecycleCompletion::all_sinks([second, first]).unwrap();
@@ -807,7 +793,7 @@ mod tests {
 
     #[test]
     fn lifecycle_completion_any_sink_holds_sink_matchers() {
-        let sink = LifecycleSink::argument_of("target.appendChild", 0).unwrap();
+        let sink = LifecycleSink::argument_of_member("target.appendChild", 0).unwrap();
         let completion = LifecycleCompletion::any_sink([sink]).unwrap();
         assert!(
             matches!(completion.kind(), LifecycleCompletionKind::AnySink(sinks) if sinks.len() == 1)
@@ -816,7 +802,7 @@ mod tests {
 
     #[test]
     fn lifecycle_sink_argument_of_holds_chain_and_index() {
-        let sink = LifecycleSink::argument_of("parent.appendChild", 0).unwrap();
+        let sink = LifecycleSink::argument_of_member("parent.appendChild", 0).unwrap();
         assert_eq!(sink.chain(), "parent.appendChild");
         assert!(matches!(
             sink.kind(),
@@ -826,7 +812,7 @@ mod tests {
 
     #[test]
     fn lifecycle_sink_any_argument_of_holds_chain() {
-        let sink = LifecycleSink::any_argument_of("parent.appendChild").unwrap();
+        let sink = LifecycleSink::any_argument_of_member("parent.appendChild").unwrap();
         assert_eq!(sink.chain(), "parent.appendChild");
         assert!(matches!(
             sink.kind(),
@@ -885,10 +871,9 @@ mod tests {
         let err = LifecycleQuery::builder("test")
             .source(source())
             .condition(condition)
-            .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
-                "target.appendChild",
-                0,
-            )]))
+            .completion(LifecycleCompletion::any_sink([
+                LifecycleSink::argument_of_member("target.appendChild", 0),
+            ]))
             .build()
             .unwrap_err();
         assert!(
@@ -903,10 +888,9 @@ mod tests {
         let err = LifecycleQuery::builder("test")
             .source(source())
             .condition(condition)
-            .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
-                "target.appendChild",
-                0,
-            )]))
+            .completion(LifecycleCompletion::any_sink([
+                LifecycleSink::argument_of_member("target.appendChild", 0),
+            ]))
             .build()
             .unwrap_err();
         assert!(

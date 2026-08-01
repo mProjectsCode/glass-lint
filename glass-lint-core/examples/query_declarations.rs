@@ -82,10 +82,9 @@ fn lifecycle() -> Rule {
                 .starts_with_any(["https://"])
                 .expect("valid URL alternatives"),
         )))
-        .completion(LifecycleCompletion::any_sink([LifecycleSink::argument_of(
-            "document.body.appendChild",
-            0,
-        )]))
+        .completion(LifecycleCompletion::any_sink([
+            LifecycleSink::argument_of_member("document.body.appendChild", 0),
+        ]))
         .build()
         .expect("valid lifecycle");
     rule(
@@ -105,8 +104,8 @@ fn correlated_sinks() -> Rule {
             ValueMatcher::any_value(),
         )))
         .completion(LifecycleCompletion::all_sinks([
-            LifecycleSink::argument_of("document.head.appendChild", 0).expect("valid sink"),
-            LifecycleSink::argument_of("document.body.appendChild", 0).expect("valid sink"),
+            LifecycleSink::argument_of_member("document.head.appendChild", 0).expect("valid sink"),
+            LifecycleSink::argument_of_member("document.body.appendChild", 0).expect("valid sink"),
         ]))
         .build()
         .expect("valid lifecycle");

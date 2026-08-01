@@ -98,7 +98,7 @@ fn remote_element_query(
                 "document.documentElement.insertBefore",
             ]
             .into_iter()
-            .map(|chain| LifecycleSink::argument_of(chain, 0))
+            .map(|chain| LifecycleSink::argument_of_member(chain, 0))
             .chain(
                 [
                     "document.head.append",
@@ -108,7 +108,7 @@ fn remote_element_query(
                     "document.documentElement.prepend",
                 ]
                 .into_iter()
-                .map(LifecycleSink::any_argument_of),
+                .map(LifecycleSink::any_argument_of_member),
             ),
         ))
         .build()
