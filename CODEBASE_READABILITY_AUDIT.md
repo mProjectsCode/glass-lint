@@ -19,7 +19,7 @@ simplification observations, not confirmed correctness bugs.
 
 ### Shared storage and state history
 
-#### READ-001 — Checkpoint/LCA history is implemented repeatedly
+#### [x] READ-001 — Checkpoint/LCA history is implemented repeatedly
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -45,7 +45,11 @@ single-use-token semantics in focused tests.
 mutation log; the facts origin map remains a separate transactional owner
 because its checkpoint lifecycle also discards committed logs.
 
-#### READ-002 — Path identities still expose a raw tagged integer protocol
+The requested bundle’s release lint took **0.85 s wall time** after this
+verified implementation (0.83 s baseline), within normal run-to-run variance
+and without a significant regression.
+
+#### [x] READ-002 — Path identities still expose a raw tagged integer protocol
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -74,6 +78,10 @@ Summary-path tagging and frozen/overlay dispatch are centralized in
 `SummaryPathId`; the duplicate frozen-resolution method was removed. The
 remaining follow-up is to decide whether `append_linked` should move behind a
 summary-owned wrapper entirely.
+
+The requested bundle’s release lint took **0.85 s wall time** after this
+verified implementation (0.83 s baseline), within normal run-to-run variance
+and without a significant regression.
 
 #### [x] READ-003 — `ScopeCollector` remains a cross-phase mutable coordinator
 
@@ -212,7 +220,7 @@ after the change (0.83 s baseline).
 
 ### Public authoring APIs and provider policy
 
-#### READ-008 — Fluent builders hide invalid operations until `build`
+#### [x] READ-008 — Fluent builders hide invalid operations until `build`
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -237,6 +245,10 @@ strict `try_query`/`try_queries` and lifecycle `try_*` methods. New code can
 propagate construction errors at the operation boundary without forcing plain
 `Rule` catalogs into awkward error plumbing; the legacy methods retain their
 documented deferred first-error behavior.
+
+The requested bundle’s release lint took **0.85 s wall time** after this
+verified implementation (0.83 s baseline), within normal run-to-run variance
+and without a significant regression.
 
 #### [x] READ-009 — Several provider catalogs still encode data as long fluent code
 
