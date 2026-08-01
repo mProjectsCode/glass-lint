@@ -5,6 +5,7 @@
 
 use glass_lint_core::{
     Environment, Linter, LinterConfig, RuleCatalog,
+    project::SourceFile,
     rules::{
         ArgumentMatcher, EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
         LifecycleQuery, LifecycleSink, QueryDecl, ValueMatcher,
@@ -14,6 +15,10 @@ use glass_lint_core::{
 mod flow;
 
 use crate::support::{self, Classification, classify, classify_with_environment, rule};
+
+fn source(path: &str, text: &str) -> SourceFile {
+    SourceFile::new(path, text).unwrap()
+}
 
 /// Construct the multi-step flow used by source/configuration/sink tests.
 fn script_insertion_flow() -> LifecycleQuery {
@@ -72,7 +77,10 @@ fn rooted_configured_global_member_calls_match_direct_globals() {
     .unwrap();
     let report = Linter::new(LinterConfig::new(vec![catalog], environment))
         .unwrap()
-        .lint_snippet("crypto.subtle.digest('SHA-256', bytes);", "matcher.js")
+        .lint_source(source(
+            "matcher.js",
+            "crypto.subtle.digest('SHA-256', bytes);",
+        ))
         .unwrap();
     assert_eq!(report.files()[0].findings().len(), 1);
 }
@@ -134,14 +142,14 @@ fn rooted_global_object_aliases_respect_restricted_members_and_mutations() {
     let catalog = RuleCatalog::new("test", rules.to_vec()).unwrap();
     let report = Linter::new(LinterConfig::new(vec![catalog], environment))
         .unwrap()
-        .lint_snippet(
+        .lint_source(source(
+            "matcher.js",
             "foreignWindow.navigator.sendBeacon('/no');\n\
              globalThis.navigator.sendBeacon('/yes');\n\
              navigator.sendBeacon = local; navigator.sendBeacon('/no');\n\
              globalThis.navigator.sendBeacon('/no');\n\
              foreignWindow.fetch('/yes');",
-            "matcher.js",
-        )
+        ))
         .unwrap();
     assert_eq!(report.files()[0].findings().len(), 2);
     assert_eq!(
@@ -165,13 +173,13 @@ fn rooted_global_object_alias_mutations_invalidate_the_canonical_root() {
     let catalog = RuleCatalog::new("test", rules.to_vec()).unwrap();
     let report = Linter::new(LinterConfig::new(vec![catalog], environment))
         .unwrap()
-        .lint_snippet(
+        .lint_source(source(
+            "matcher.js",
             "globalThis.navigator = replacement;\n\
              navigator.sendBeacon('/bare');\n\
              window.navigator = replacement;\n\
              globalThis.navigator.sendBeacon('/alias');",
-            "matcher.js",
-        )
+        ))
         .unwrap();
     assert!(report.files()[0].findings().is_empty());
 }
@@ -410,10 +418,10 @@ fn host_globals_require_explicit_environment_configuration() {
             Environment::default(),
         ))
         .unwrap()
-        .lint_snippet(
-            "fetch('/unconfigured'); const run = fetch; run('/alias')",
+        .lint_source(source(
             "matcher.js",
-        )
+            "fetch('/unconfigured'); const run = fetch; run('/alias')",
+        ))
         .unwrap()
         .into_parts();
         files[0].findings().is_empty()
@@ -425,10 +433,10 @@ fn host_globals_require_explicit_environment_configuration() {
     let configured = RuleCatalog::new("test", vec![rule]).unwrap();
     let report = Linter::new(LinterConfig::new(vec![configured], environment))
         .unwrap()
-        .lint_snippet(
-            "fetch('/direct'); activeWindow.fetch('/window')",
+        .lint_source(source(
             "matcher.js",
-        )
+            "fetch('/direct'); activeWindow.fetch('/window')",
+        ))
         .unwrap();
     assert_eq!(report.files()[0].findings().len(), 2);
 }
@@ -446,7 +454,7 @@ fn rooted_host_globals_also_require_environment_configuration() {
             Environment::default(),
         ))
         .unwrap()
-        .lint_snippet("host.open()", "matcher.js")
+        .lint_source(source("matcher.js", "host.open()"))
         .unwrap()
         .into_parts();
         files[0].findings().is_empty()
@@ -460,7 +468,7 @@ fn rooted_host_globals_also_require_environment_configuration() {
             let (_, _, files, _, _, _) =
                 Linter::new(LinterConfig::new(vec![configured], environment))
                     .unwrap()
-                    .lint_snippet("host.open()", "matcher.js")
+                    .lint_source(source("matcher.js", "host.open()"))
                     .unwrap()
                     .into_parts();
             files[0].findings().len()
@@ -481,7 +489,7 @@ fn custom_global_objects_do_not_make_unconfigured_members_global() {
     assert!({
         let (_, _, files, _, _, _) = Linter::new(LinterConfig::new(vec![catalog], environment))
             .unwrap()
-            .lint_snippet("activeWindow.fetch('/unknown')", "matcher.js")
+            .lint_source(source("matcher.js", "activeWindow.fetch('/unknown')"))
             .unwrap()
             .into_parts();
         files[0].findings().is_empty()

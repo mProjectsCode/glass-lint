@@ -8,7 +8,7 @@ Electron, cryptography, archive, storage, and dynamic-code capabilities.
 let linter = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
     vec![glass_lint_js::js_catalog()], glass_lint_js::js_environment(),
 ))?;
-let report = linter.lint_snippet(source, "bundle.js")?;
+let report = linter.lint_source(glass_lint_core::project::SourceFile::new("bundle.js", source)?)?;
 ```
 
 - `js_catalog()`, `browser_catalog()`, `node_catalog()`, and

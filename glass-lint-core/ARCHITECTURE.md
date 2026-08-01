@@ -55,6 +55,14 @@ poisoning is a miss; parse failures are not cached. Cached artifacts contain
 no path-specific source context and cannot change report content or operation
 counts.
 
+Batch linting accepts owned `SourceFile` values and runs each as an independent
+one-file project. One dedicated Rayon pool is created per batch; the pool
+executes complete `lint_source` operations while the caller retains and
+advances the input iterator. Submitted inputs, including running jobs and
+completed results waiting for input ordering, are bounded by
+`max_in_flight`. Results are yielded in input order, and dropping the iterator
+cancels queued work without consuming inputs beyond the submitted window.
+
 ## Project boundary
 
 `ProjectCollection` accepts owned `SourceFile` values and produces a

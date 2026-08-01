@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 
 use glass_lint_core::{
     Environment, Linter, LinterConfig, MatchCertainty, RuleCatalog,
-    project::AnalysisReport,
+    project::{AnalysisReport, SourceFile},
     rules::{Builder, Category, Confidence, Rule, Severity},
 };
 
@@ -43,7 +43,7 @@ pub fn lint_report_with_rules(
 ) -> AnalysisReport {
     let catalog = RuleCatalog::new("test", rules.to_vec()).unwrap();
     linter_from_catalog(catalog, environment)
-        .lint_snippet(source, filename)
+        .lint_source(SourceFile::new(filename, source).unwrap())
         .unwrap()
 }
 

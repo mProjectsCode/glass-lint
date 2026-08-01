@@ -6,6 +6,7 @@
 
 use glass_lint_core::{
     Environment, Linter, LinterConfig, RuleCatalog, SourceLanguage,
+    project::SourceFile,
     rules::{Category, Confidence, EventQuery, Rule, Severity},
 };
 
@@ -31,9 +32,12 @@ fn linter() -> Linter {
 #[test]
 fn typed_runtime_calls_match_at_original_locations() {
     let report = linter()
-        .lint_snippet(
-            "const call = (url: string): void => fetch(url as string);",
-            "input.ts",
+        .lint_source(
+            SourceFile::new(
+                "input.ts",
+                "const call = (url: string): void => fetch(url as string);",
+            )
+            .unwrap(),
         )
         .unwrap();
     assert!(!report.files()[0].has_parse_diagnostics());
@@ -59,9 +63,12 @@ fn typed_runtime_calls_match_at_original_locations() {
 #[test]
 fn assertions_and_type_annotations_do_not_move_runtime_locations() {
     let report = linter()
-        .lint_snippet(
-            "const value: string = (fetch! as (url: string) => string)('/data');",
-            "input.ts",
+        .lint_source(
+            SourceFile::new(
+                "input.ts",
+                "const value: string = (fetch! as (url: string) => string)('/data');",
+            )
+            .unwrap(),
         )
         .unwrap();
     assert!(!report.files()[0].has_parse_diagnostics());
@@ -86,20 +93,20 @@ fn assertions_and_type_annotations_do_not_move_runtime_locations() {
 
 #[test]
 fn type_only_api_lookalikes_do_not_create_findings() {
-    let report = linter().lint_snippet(
-        "interface Fetch { call(): void }\ntype Alias = typeof fetch;\nimport type { fetch as imported } from 'api';\ndeclare function fetch(url: string): void;",
+    let report = linter().lint_source(SourceFile::new(
         "input.ts",
-    ).unwrap();
+        "interface Fetch { call(): void }\ntype Alias = typeof fetch;\nimport type { fetch as imported } from 'api';\ndeclare function fetch(url: string): void;",
+    ).unwrap()).unwrap();
     assert!(!report.files()[0].has_parse_diagnostics());
     assert!(report.files()[0].findings().is_empty());
 }
 
 #[test]
 fn runtime_enum_calls_are_detected_without_matching_enum_lookalikes() {
-    let report = linter().lint_snippet(
-        "enum Local { fetch }\nenum Values { Remote = fetch('/remote') }\nnamespace window { export const fetch = 1 }",
+    let report = linter().lint_source(SourceFile::new(
         "runtime.ts",
-    ).unwrap();
+        "enum Local { fetch }\nenum Values { Remote = fetch('/remote') }\nnamespace window { export const fetch = 1 }",
+    ).unwrap()).unwrap();
     assert!(!report.files()[0].has_parse_diagnostics());
     assert_eq!(report.files()[0].findings().len(), 1);
     assert_eq!(
@@ -122,10 +129,10 @@ fn runtime_enum_calls_are_detected_without_matching_enum_lookalikes() {
 
 #[test]
 fn parameter_properties_and_namespace_names_do_not_create_global_provenance() {
-    let report = linter().lint_snippet(
-        "class Local { constructor(public fetch: unknown) {}\n  run() { this.fetch; }\n}\nnamespace fetch { export const value = 1 }",
+    let report = linter().lint_source(SourceFile::new(
         "lookalikes.ts",
-    ).unwrap();
+        "class Local { constructor(public fetch: unknown) {}\n  run() { this.fetch; }\n}\nnamespace fetch { export const value = 1 }",
+    ).unwrap()).unwrap();
     assert!(!report.files()[0].has_parse_diagnostics());
     assert!(report.files()[0].findings().is_empty());
 }
@@ -142,7 +149,9 @@ fn js_ts_unicode_crlf_locations_preserve_expected_ranges() {
             "const cafe\u{301}: string = 'é';\r\nfetch('/data');\r\n",
         ),
     ] {
-        let report = linter().lint_snippet(source, filename).unwrap();
+        let report = linter()
+            .lint_source(SourceFile::new(filename, source).unwrap())
+            .unwrap();
         assert!(!report.files()[0].has_parse_diagnostics(), "{filename}");
         assert_eq!(report.files()[0].findings().len(), 1, "{filename}");
         let range = &report.files()[0].findings()[0].location().range();
@@ -192,13 +201,17 @@ fn language_is_selected_by_filename() {
 fn module_specific_extensions_select_the_expected_parser() {
     for filename in ["input.cts", "input.mts"] {
         let report = linter()
-            .lint_snippet("const value: string = fetch('/data');", filename)
+            .lint_source(
+                SourceFile::new(filename, "const value: string = fetch('/data');").unwrap(),
+            )
             .unwrap();
         assert!(!report.files()[0].has_parse_diagnostics(), "{filename}");
         assert_eq!(report.files()[0].findings().len(), 1, "{filename}");
     }
     for filename in ["input.cjs", "input.mjs"] {
-        let report = linter().lint_snippet("fetch('/data');", filename).unwrap();
+        let report = linter()
+            .lint_source(SourceFile::new(filename, "fetch('/data');").unwrap())
+            .unwrap();
         assert!(!report.files()[0].has_parse_diagnostics(), "{filename}");
         assert_eq!(report.files()[0].findings().len(), 1, "{filename}");
     }
@@ -207,7 +220,7 @@ fn module_specific_extensions_select_the_expected_parser() {
 #[test]
 fn malformed_typescript_reports_original_location() {
     let report = linter()
-        .lint_snippet("const value: = 1;", "broken.ts")
+        .lint_source(SourceFile::new("broken.ts", "const value: = 1;").unwrap())
         .unwrap();
     assert_eq!(report.files()[0].parse_diagnostic_count(), 1);
     assert_eq!(

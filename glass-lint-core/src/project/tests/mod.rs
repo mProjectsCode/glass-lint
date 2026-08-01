@@ -219,7 +219,7 @@ mod input_validation;
 fn session_uses_project_analysis_and_preserves_single_file_findings() {
     let linter = test_linter();
     let source = "fetch('/remote');\n";
-    let direct = linter.lint_snippet(source, "a.js").unwrap();
+    let direct = linter.lint_source(source_file("a.js", source)).unwrap();
 
     let mut session = linter.begin_project().unwrap();
     session.analyze_source(source_file("a.js", source)).unwrap();

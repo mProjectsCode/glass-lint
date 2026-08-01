@@ -350,8 +350,10 @@ fn direct_qualification_matches_one_file_project_shape() {
     ))
     .unwrap();
     let source = "fetch(\"https://example.test\");";
-    let (_, _, mut snippet_files, _, _, _) =
-        linter.lint_snippet(source, "main.js").unwrap().into_parts();
+    let (_, _, mut snippet_files, _, _, _) = linter
+        .lint_source(source_file("main.js", source))
+        .unwrap()
+        .into_parts();
     let direct = snippet_files.remove(0);
     let mut manual_session = linter.begin_project().unwrap();
     manual_session
@@ -440,7 +442,9 @@ fn snippet_serializes_as_one_analysis_file_without_source_text() {
         environment,
     ))
     .unwrap();
-    let report = linter.lint_snippet("fetch('/');", "main.js").unwrap();
+    let report = linter
+        .lint_source(source_file("main.js", "fetch('/');"))
+        .unwrap();
     let json = serde_json::to_value(&report).unwrap();
     assert_eq!(json["files"].as_array().unwrap().len(), 1);
     assert!(json["files"][0].get("source").is_none());

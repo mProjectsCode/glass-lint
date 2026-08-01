@@ -5,7 +5,7 @@ assumptions.
 
 ```rust
 let linter = glass_lint_core::Linter::new(glass_lint_obsidian::obsidian_config())?;
-let report = linter.lint_snippet(source, "main.js")?;
+let report = linter.lint_source(glass_lint_core::project::SourceFile::new("main.js", source)?)?;
 ```
 
 - `obsidian_catalog()` returns the isolated Obsidian catalog.

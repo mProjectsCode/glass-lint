@@ -13,7 +13,7 @@ use std::{
 use anyhow::{Context, Result, bail};
 use glass_lint_core::{
     Linter, LinterConfig, RuleBaseline, RuleId, RuleOverride, RuleSelection, RuleState,
-    project::{AnalysisReport, ReportCompletion},
+    project::{AnalysisReport, ReportCompletion, SourceFile},
 };
 use glass_lint_project::{ProjectLoader, ProjectSelection, ValidatedProjectLoadOptions};
 
@@ -597,7 +597,10 @@ fn profile_file(
                 .and_then(|name| name.to_str())
                 .unwrap_or("snippet.js");
             let report = linter
-                .lint_snippet(&file.source, filename)
+                .lint_source(
+                    SourceFile::new(filename, file.source.clone())
+                        .expect("profile paths are valid snippet project identities"),
+                )
                 .expect("profile paths are valid snippet project identities");
             if iteration >= warm_up {
                 elapsed += started.elapsed();

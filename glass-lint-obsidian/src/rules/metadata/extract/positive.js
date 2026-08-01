@@ -52,3 +52,8 @@ app.metadataCache.getFileCache.frontmatterAliases;
 app.metadataCache.getFileCache.frontmatterTags;
 // @expect-error glass-lint rule=obsidian:metadata.extract
 app.metadataCache.getFileCache.frontmatterPosition;
+
+
+const cache = app["metadata" + "Cache"];
+// @expect-error glass-lint rule=obsidian:metadata.extract
+cache.getFileCache().tags;

@@ -4,6 +4,8 @@
 //! the recommended/heuristic catalog profiles while delegating matching to
 //! core.
 
+#[cfg(test)]
+use glass_lint_core::project::SourceFile;
 use glass_lint_core::{Environment, LinterConfig, RuleCatalog, RuleMetadata};
 
 mod rules;
@@ -222,7 +224,7 @@ mod tests {
         ))
         .unwrap();
         let report = linter
-            .lint_snippet("activeWindow.fetch('/x')", "main.js")
+            .lint_source(SourceFile::new("main.js", "activeWindow.fetch('/x')").unwrap())
             .unwrap();
         assert!(
             report.files()[0]
@@ -236,7 +238,9 @@ mod tests {
     fn node_web_crypto_global_is_rooted() {
         let linter = glass_lint_core::Linter::new(node_config()).unwrap();
         let report = linter
-            .lint_snippet("crypto.subtle.digest('SHA-256', bytes)", "main.js")
+            .lint_source(
+                SourceFile::new("main.js", "crypto.subtle.digest('SHA-256', bytes)").unwrap(),
+            )
             .unwrap();
         assert!(
             report.files()[0]
@@ -250,10 +254,10 @@ mod tests {
     fn node_web_crypto_global_survives_catalog_imports() {
         let linter = glass_lint_core::Linter::new(node_config()).unwrap();
         let report = linter
-            .lint_snippet(
-                "import c from 'node:crypto'; import * as cryptoPromises from 'crypto/promises'; import * as nodeCryptoPromises from 'node:crypto/promises'; import coreCrypto from 'crypto'; import cryptoJs from 'crypto-js'; crypto.subtle.digest('SHA-256', bytes);",
+            .lint_source(SourceFile::new(
                 "main.js",
-            )
+                "import c from 'node:crypto'; import * as cryptoPromises from 'crypto/promises'; import * as nodeCryptoPromises from 'node:crypto/promises'; import coreCrypto from 'crypto'; import cryptoJs from 'crypto-js'; crypto.subtle.digest('SHA-256', bytes);",
+            ).unwrap())
             .unwrap();
         assert!(
             report.files()[0]
@@ -267,7 +271,9 @@ mod tests {
     fn node_crypto_fixture_uses_rooted_web_crypto() {
         let linter = glass_lint_core::Linter::new(node_config()).unwrap();
         let source = include_str!("rules/node/crypto_operation/positive.js");
-        let report = linter.lint_snippet(source, "positive.js").unwrap();
+        let report = linter
+            .lint_source(SourceFile::new("positive.js", source).unwrap())
+            .unwrap();
         let count = report.files()[0]
             .findings()
             .iter()

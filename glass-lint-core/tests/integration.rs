@@ -4,6 +4,8 @@
 //! query authoring/planning, linter/report behavior, public API invariants,
 //! and TypeScript input handling.
 
+#[path = "integration/batch.rs"]
+mod batch;
 #[path = "integration/linter.rs"]
 mod linter;
 #[path = "integration/matching/mod.rs"]

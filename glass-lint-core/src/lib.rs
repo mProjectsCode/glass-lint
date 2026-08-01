@@ -21,8 +21,9 @@ pub use diagnostic::{RuleMetadata, Severity, SourceLineIndex};
 pub use environment::{Environment, EnvironmentError};
 pub use limits::{AnalysisLimitError, AnalysisLimits};
 pub use lint::{
-    LintConfigError, Linter, LinterConfig, ProjectAnalysis, ProviderCatalogError, RuleBaseline,
-    RuleCatalog, RuleOverride, RuleSelection, RuleState,
+    BatchOptions, BatchResult, BatchResults, BatchStartError, LintConfigError, Linter,
+    LinterConfig, ProjectAnalysis, ProviderCatalogError, RuleBaseline, RuleCatalog, RuleOverride,
+    RuleSelection, RuleState,
 };
 pub use parse::{ParseDiagnostic, SourceLanguage};
 pub use project::MatchCertainty;

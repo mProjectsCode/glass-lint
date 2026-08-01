@@ -11,6 +11,7 @@ Rules use local IDs; `RuleCatalog` adds the provider namespace:
 
 ```rust
 use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::project::SourceFile;
 use glass_lint_core::{Environment, Linter, LinterConfig, RuleCatalog};
 
 let rule = Rule::builder("network.request")
@@ -29,7 +30,9 @@ let linter = Linter::new(LinterConfig::new(
     vec![catalog],
     environment,
 ))?;
-let report = linter.lint_snippet("fetch('/data');", "main.js")?;
+let report = linter.lint_source(
+    SourceFile::new("main.js", "fetch('/data');")?,
+)?;
 
 assert_eq!(
     report.files()[0].findings()[0].rule_id().as_str(),
@@ -66,10 +69,16 @@ Providers add browser, Node.js, Electron, or application bindings. Use
 `add_global_object` for an unrestricted current-realm alias and
 `add_global_object_with_members` for a restricted host object.
 
-For one source, call `Linter::lint_snippet`. For an in-memory project, use
-`Linter::lint_project` or `ProjectCollection` with owned `SourceFile` values and
-typed `ResolutionResult` records. Filesystem discovery and module resolution
-belong in `glass-lint-project`.
+For one owned source, call `Linter::lint_source`. For a bounded stream of
+independent sources, use `Linter::lint_batch`; results are yielded in input
+order, and input consumption plus retained results are bounded by
+`max_in_flight`. Batch items are separate one-file projects and do not resolve
+imports to one another. For sources that must be linked as one project, use
+`Linter::begin_project` with owned `SourceFile` values and typed resolver
+records. Core does not read paths from the filesystem. Dropping a batch
+iterator stops further input consumption, though an analysis already running
+may finish during teardown. Filesystem discovery and module resolution belong
+in `glass-lint-project`.
 
 `AnalysisReport` contains sorted file reports, structured diagnostics,
 operation counts (including bounded alternative, trace, coalescing, and

@@ -1,10 +1,13 @@
-use std::sync::Arc;
+use std::{num::NonZeroUsize, sync::Arc};
+
+use rayon::ThreadPoolBuilder;
 
 use crate::{
     AnalysisLimits, Environment, ProviderCatalogError, RuleId,
     analysis::ArtifactCacheHandle,
     api::classification::RuleIndex,
     lint::{
+        batch::{BatchOptions, BatchResults, BatchStartError},
         catalog::RuleCatalog,
         selection::{LintConfigError, RuleBaseline, RuleSelection, RuleState},
     },
@@ -173,11 +176,7 @@ impl Linter {
         self.artifact_cache.clone()
     }
 
-    /// Analyze one in-memory source through the canonical project session.
-    ///
-    /// A snippet is a project containing one source. This convenience method
-    /// returns the same source-free [`AnalysisReport`] shape as the full
-    /// staged session pipeline.
+    /// Analyze one owned source through the canonical project session.
     ///
     /// ```
     /// use glass_lint_core::{Environment, Linter, LinterConfig, RuleCatalog};
@@ -187,21 +186,49 @@ impl Linter {
     ///     Environment::default(),
     /// ))
     /// .unwrap();
-    /// let report = linter.lint_snippet("", "snippet.js").unwrap();
+    /// let source = glass_lint_core::project::SourceFile::new("snippet.js", "").unwrap();
+    /// let report = linter.lint_source(source).unwrap();
     /// assert_eq!(report.files()[0].path().as_str(), "snippet.js");
     /// ```
-    pub fn lint_snippet(
+    pub fn lint_source(
         &self,
-        source: &str,
-        filename: &str,
+        source: crate::project::SourceFile,
     ) -> Result<AnalysisReport, ProjectInputError> {
-        let filename = crate::project::ProjectRelativePath::new(filename)?;
         let mut collection = self.begin_project()?;
-        collection.analyze_source(crate::project::SourceFile::new(
-            filename.to_string(),
-            source,
-        )?)?;
+        collection.analyze_source(source)?;
         collection.finish_local().resolve([])?.finish()
+    }
+
+    /// Lint independent owned sources in a bounded, input-ordered stream.
+    pub fn lint_batch<I>(
+        &self,
+        sources: I,
+        options: BatchOptions,
+    ) -> Result<BatchResults<I::IntoIter>, BatchStartError>
+    where
+        I: IntoIterator<Item = crate::project::SourceFile>,
+    {
+        let available = std::thread::available_parallelism().map_or(usize::MAX, NonZeroUsize::get);
+        let worker_count = options
+            .workers()
+            .get()
+            .min(available)
+            .min(options.max_in_flight().get())
+            .max(1);
+        let pool = ThreadPoolBuilder::new()
+            .num_threads(worker_count)
+            .build()
+            .map_err(|_| BatchStartError::WorkerPoolUnavailable)?;
+        let channel = std::sync::mpsc::channel();
+        let cancellation = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        Ok(BatchResults::new(
+            sources.into_iter(),
+            self.clone(),
+            pool,
+            channel,
+            cancellation,
+            options.max_in_flight(),
+        ))
     }
 }
 
@@ -254,7 +281,9 @@ mod tests {
         .unwrap();
 
         let report = linter
-            .lint_snippet("fetch('/b'); fetch('/a');", "sort.js")
+            .lint_source(
+                crate::project::SourceFile::new("sort.js", "fetch('/b'); fetch('/a');").unwrap(),
+            )
             .unwrap();
         // Findings should be sorted by line, then column, then rule ID.
         assert_eq!(report.files()[0].findings().len(), 2);
@@ -303,7 +332,10 @@ mod tests {
         .unwrap();
 
         let report = linter
-            .lint_snippet("fetch('/a'); fetch('/b');", "classify.js")
+            .lint_source(
+                crate::project::SourceFile::new("classify.js", "fetch('/a'); fetch('/b');")
+                    .unwrap(),
+            )
             .unwrap();
         assert_eq!(report.files()[0].findings().len(), 2);
         assert_eq!(

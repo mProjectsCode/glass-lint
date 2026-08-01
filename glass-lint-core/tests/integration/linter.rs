@@ -7,7 +7,7 @@
 use glass_lint_core::{
     Environment, LintConfigError, Linter, LinterConfig, RuleBaseline, RuleCatalog, RuleId,
     RuleOverride, RuleSelection, RuleState,
-    project::types::DiagnosticKind,
+    project::{SourceFile, types::DiagnosticKind},
     rules::{Category, Confidence, EventQuery, Rule, Severity},
 };
 
@@ -40,7 +40,9 @@ fn snippet(
     source: &str,
     filename: &str,
 ) -> glass_lint_core::project::AnalysisReport {
-    linter.lint_snippet(source, filename).unwrap()
+    linter
+        .lint_source(SourceFile::new(filename, source).unwrap())
+        .unwrap()
 }
 
 #[test]

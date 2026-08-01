@@ -41,8 +41,8 @@ impl AnalysisReport {
     ///     Environment::default(),
     /// ))
     /// .unwrap();
-    /// let first = linter.lint_snippet("", "first.js").unwrap();
-    /// let second = linter.lint_snippet("", "second.js").unwrap();
+    /// let first = linter.lint_source(glass_lint_core::project::SourceFile::new("first.js", "").unwrap()).unwrap();
+    /// let second = linter.lint_source(glass_lint_core::project::SourceFile::new("second.js", "").unwrap()).unwrap();
     /// let combined = AnalysisReport::combine([first, second]).unwrap();
     /// assert_eq!(combined.files().len(), 2);
     /// ```

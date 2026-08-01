@@ -5,11 +5,15 @@ use glass_lint_datastructures::{ByteRange, Position, SourceRange};
 use crate::{
     AnalysisLimits, ParseDiagnostic, REPORT_VERSION,
     analysis::{
-        ProjectSemanticModel, ResolvedLinkInput, project::projection::ProjectionOutcome,
-        trace::TraceArena,
+        ProjectSemanticModel, ResolvedLinkInput, private_network_match,
+        project::projection::ProjectionOutcome, trace::TraceArena,
     },
-    api::classification::{
-        ClassificationResult, MatchKind, MatchedCapability, RuleIndex, TraceNodeId,
+    api::{
+        classification::{
+            ClassificationEvidence, ClassificationResult, MatchKind, MatchedCapability, RuleIndex,
+            TraceNodeId,
+        },
+        rule::query::PRIVATE_NETWORK_EVIDENCE_SYMBOL,
     },
     diagnostic::SourceLineIndex,
     lint::catalog::RuleCatalog,
@@ -297,8 +301,11 @@ impl<'a> ReportAssembly<'a> {
         let Some(source) = lines.source_slice(span) else {
             return span;
         };
-        let relative = if symbol == crate::api::rule::query::PRIVATE_NETWORK_EVIDENCE_SYMBOL {
-            crate::analysis::private_network_match(source)
+        // TODO: not a fan of this special case, either offer custom string matchers in
+        // the rule API, or make this a generic core provided specialized matcher
+        // family.
+        let relative = if symbol == PRIVATE_NETWORK_EVIDENCE_SYMBOL {
+            private_network_match(source)
         } else {
             source
                 .find(symbol)
@@ -351,7 +358,7 @@ impl<'a> ReportAssembly<'a> {
 
     /// Create a single-step fallback trace for evidence without arena traces.
     fn fallback_trace(
-        ev: &crate::api::classification::ClassificationEvidence,
+        ev: &ClassificationEvidence,
         path: &ProjectRelativePath,
         range: &SourceRange,
     ) -> Vec<EvidenceStep> {

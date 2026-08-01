@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
-use glass_lint_core::Linter;
+use glass_lint_core::{Linter, project::SourceFile};
 use glass_lint_project::{ProjectLoader, ProjectSelection, SourceCorpus};
 
 use crate::{
@@ -103,7 +103,7 @@ fn lint_files(config: &Config, linter: &Linter, paths: Vec<PathBuf>) -> Result<b
         );
 
         let project_report = linter
-            .lint_snippet(&source, &name)
+            .lint_source(SourceFile::new(name.clone(), source.clone())?)
             .map_err(|error| anyhow::anyhow!(error))?;
         failed |= config.report_fails(&project_report);
         files.push(FileOutput {

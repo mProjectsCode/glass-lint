@@ -3,6 +3,8 @@
 //! The provider owns Obsidian globals and rule profiles; matching and report
 //! primitives remain in the provider-neutral core crate.
 
+#[cfg(test)]
+use glass_lint_core::project::SourceFile;
 use glass_lint_core::{Environment, LinterConfig, RuleCatalog, RuleMetadata};
 
 pub mod api_manifest;
@@ -144,7 +146,7 @@ mod tests {
             obsidian_environment(),
         ))
         .unwrap()
-        .lint_snippet("activeWindow.eval('x')", "main.js")
+        .lint_source(SourceFile::new("main.js", "activeWindow.eval('x')").unwrap())
         .unwrap();
         assert_eq!(report.files()[0].findings().len(), 1);
     }
@@ -166,9 +168,12 @@ mod tests {
             obsidian_environment(),
         ))
         .unwrap()
-        .lint_snippet(
-            "requestUrl('/a'); window.requestUrl('/b'); activeWindow.requestUrl('/c');",
-            "main.js",
+        .lint_source(
+            SourceFile::new(
+                "main.js",
+                "requestUrl('/a'); window.requestUrl('/b'); activeWindow.requestUrl('/c');",
+            )
+            .unwrap(),
         )
         .unwrap();
         assert_eq!(report.files()[0].findings().len(), 3);
@@ -187,9 +192,12 @@ mod tests {
             obsidian_environment(),
         ))
         .unwrap()
-        .lint_snippet(
-            "import { request } from 'obsidian';\nrequest('/one');\nrequest('/two');",
-            "main.js",
+        .lint_source(
+            SourceFile::new(
+                "main.js",
+                "import { request } from 'obsidian';\nrequest('/one');\nrequest('/two');",
+            )
+            .unwrap(),
         )
         .unwrap();
         let findings: Vec<_> = report.files()[0]
@@ -206,7 +214,7 @@ mod tests {
     fn default_config_reports_plugin_manager_usage() {
         let report = glass_lint_core::Linter::new(obsidian_config())
             .unwrap()
-            .lint_snippet("app.plugins.getPlugin('dataview');", "main.js")
+            .lint_source(SourceFile::new("main.js", "app.plugins.getPlugin('dataview');").unwrap())
             .unwrap();
         assert!(
             report.files()[0]

@@ -67,10 +67,8 @@ impl Adapter for GlassLintAdapter {
         if let Some(project) = &case.project {
             return Ok(run_project(project, expectation)?.findings);
         }
-        Ok(project_report_to_run(
-            &configured_linter(expectation)?.lint_snippet(&case.source, &case.filename)?,
-        )?
-        .findings)
+        let source = SourceFile::new(case.filename.clone(), case.source.clone())?;
+        Ok(project_report_to_run(&configured_linter(expectation)?.lint_source(source)?)?.findings)
     }
 }
 

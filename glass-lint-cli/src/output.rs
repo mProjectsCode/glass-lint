@@ -8,6 +8,8 @@ use std::{
 
 use anyhow::{Result, bail};
 use console::{Style, measure_text_width};
+#[cfg(test)]
+use glass_lint_core::project::SourceFile;
 use glass_lint_core::{
     RuleMetadata,
     project::{AnalysisReport, AnalysisReportSummary, ProjectRelativePath, SourceText},
@@ -442,7 +444,9 @@ mod tests {
     #[test]
     fn snippet_json_completion_matches_cli_exit_decision() {
         let source = "fetch('/remote');";
-        let report = linter(1).lint_snippet(source, "partial.js").unwrap();
+        let report = linter(1)
+            .lint_source(SourceFile::new("partial.js", source).unwrap())
+            .unwrap();
         let cli_failed = report.completion() == ReportCompletion::Partial
             || !report.diagnostics().is_empty()
             || report
@@ -464,9 +468,15 @@ mod tests {
         let complete_source = "fetch('/ok');";
         let broken_source = "fetch(";
         let semantic_source = "fetch('/partial');";
-        let complete = linter(64).lint_snippet(complete_source, "a.js").unwrap();
-        let parse_partial = linter(64).lint_snippet(broken_source, "b.js").unwrap();
-        let semantic_partial = linter(1).lint_snippet(semantic_source, "c.js").unwrap();
+        let complete = linter(64)
+            .lint_source(SourceFile::new("a.js", complete_source).unwrap())
+            .unwrap();
+        let parse_partial = linter(64)
+            .lint_source(SourceFile::new("b.js", broken_source).unwrap())
+            .unwrap();
+        let semantic_partial = linter(1)
+            .lint_source(SourceFile::new("c.js", semantic_source).unwrap())
+            .unwrap();
         let (sv, tv, files, mut diagnostics, ops, comp) = semantic_partial.into_parts();
         diagnostics.push(Diagnostic::Project(AnalysisDiagnostic::new(
             DiagnosticCode::new("incomplete_project").unwrap(),

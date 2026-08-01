@@ -4,6 +4,8 @@ use std::{fs, path::Path};
 
 use anyhow::{Context, Result, bail};
 use clap::ValueEnum;
+#[cfg(test)]
+use glass_lint_core::project::SourceFile;
 use glass_lint_core::{
     CoreConfig, Linter, MAX_SOURCE_BYTES, RuleBaseline, RuleCatalog, RuleSelection, Severity,
 };
@@ -404,9 +406,12 @@ mod tests {
     #[test]
     fn combined_obsidian_profile_uses_the_obsidian_host_environment() {
         let report = base_linter(Provider::Obsidian, RuleSelectionProfile::Heuristic)
-            .lint_snippet(
-                include_str!("../../tests/e2e/render-executable-code-blocks.js"),
-                "render-executable-code-blocks.js",
+            .lint_source(
+                SourceFile::new(
+                    "render-executable-code-blocks.js",
+                    include_str!("../../tests/e2e/render-executable-code-blocks.js"),
+                )
+                .unwrap(),
             )
             .unwrap();
         let evals = report
