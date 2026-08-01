@@ -302,6 +302,22 @@ mod tests {
             .unwrap();
         let parallel = run_profile(&parallel).unwrap();
         ensure_profile_correctness_match(&one, &parallel).unwrap();
+        assert!(
+            one.workload_results
+                .windows(2)
+                .all(|pair| pair[0].path <= pair[1].path)
+        );
+        let one_results: Vec<_> = one
+            .workload_results
+            .iter()
+            .map(|result| (&result.path, &result.evidence_order_digest))
+            .collect();
+        let parallel_results: Vec<_> = parallel
+            .workload_results
+            .iter()
+            .map(|result| (&result.path, &result.evidence_order_digest))
+            .collect();
+        assert_eq!(one_results, parallel_results);
     }
 
     #[test]

@@ -253,7 +253,7 @@ diagnostics.
 
 ### Harness profiling
 
-#### RL-012 — Scoped profile workers use shared ownership and a mutex unnecessarily
+#### [x] RL-012 — Scoped profile workers use shared ownership and a mutex unnecessarily
 
 - Severity: Medium
 - Fix complexity: Medium
@@ -273,6 +273,19 @@ Retain `Arc` only for linter state that genuinely must be shared across
 workers. Keep the final path sort as the intentional deterministic-output
 contract, and add tests for sorted results and stable evidence digests across
 different worker schedules.
+
+Implementation: changed file profiling to borrow the prepared files and linter
+collections as slices, while retaining `Arc` only inside each shareable linter
+and for worker coordination. Each scoped worker now accumulates a private
+result buffer, which the coordinator joins, flattens, and path-sorts without a
+mutex. The worker-count test now checks sorted paths and per-file evidence
+digest stability across serial and parallel schedules.
+
+Runtime (release): profiling
+`/home/lemon/src/obsidian-stats/data/out/plugin-release-mainjs/byoc/1.0.13-main.js`
+with one warm-up-free repetition and one worker took 744.6ms measured lint
+wall time (743.4ms input time; 2.96s process wall time including the
+incremental release build).
 
 ### Public query API and provider declarations
 

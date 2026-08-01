@@ -3,7 +3,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{
-        Arc, Barrier, Mutex, OnceLock,
+        Arc, Barrier, OnceLock,
         atomic::{AtomicUsize, Ordering},
     },
     thread,
@@ -88,8 +88,8 @@ pub fn run_profile(config: &ProfileConfig) -> Result<ProfileSummary> {
 }
 
 struct PreparedCorpus {
-    linters: Arc<Vec<ProfileLinter>>,
-    prepared: Arc<Vec<PreparedFile>>,
+    linters: Vec<ProfileLinter>,
+    prepared: Vec<PreparedFile>,
     initial_errors: Vec<ProfileWorkloadSummary>,
     manifest_digest: Option<String>,
     setup_duration: Duration,
@@ -98,7 +98,7 @@ struct PreparedCorpus {
 fn prepare_file_profile_corpus(config: &ProfileConfig) -> Result<PreparedCorpus> {
     let setup_start = Instant::now();
     let (paths, manifest_digest, _) = selected_profile_paths(config)?;
-    let linters = Arc::new(build_linters(config.provider, config.mode, &config.rules)?);
+    let linters = build_linters(config.provider, config.mode, &config.rules)?;
 
     let mut prepared = Vec::with_capacity(paths.len());
     let mut initial_errors = Vec::new();
@@ -131,7 +131,7 @@ fn prepare_file_profile_corpus(config: &ProfileConfig) -> Result<PreparedCorpus>
     }
     Ok(PreparedCorpus {
         linters,
-        prepared: Arc::new(prepared),
+        prepared,
         initial_errors,
         manifest_digest,
         setup_duration: setup_start.elapsed(),
@@ -669,33 +669,31 @@ fn aggregate_workload_results(results: Vec<ProfileWorkloadSummary>) -> Vec<Profi
 }
 
 fn execute_file_profile(
-    prepared: &Arc<Vec<PreparedFile>>,
-    linters: &Arc<Vec<ProfileLinter>>,
+    prepared: &[PreparedFile],
+    linters: &[ProfileLinter],
     workers: usize,
     warm_up: usize,
     repeat: usize,
 ) -> (Vec<ProfileWorkloadSummary>, Duration) {
     let warm_up_next = Arc::new(AtomicUsize::new(0));
     let measured_next = Arc::new(AtomicUsize::new(0));
-    let results = Arc::new(Mutex::new(Vec::with_capacity(prepared.len())));
     let warm_up_barrier = Arc::new(Barrier::new(workers));
     let measured_start = Arc::new(OnceLock::new());
-    thread::scope(|scope| {
+    let mut results = thread::scope(|scope| {
+        let mut handles = Vec::with_capacity(workers);
         for _ in 0..workers {
             let warm_up_next = Arc::clone(&warm_up_next);
             let measured_next = Arc::clone(&measured_next);
-            let results = Arc::clone(&results);
-            let prepared = Arc::clone(prepared);
-            let linters = Arc::clone(linters);
             let warm_up_barrier = Arc::clone(&warm_up_barrier);
             let measured_start = Arc::clone(&measured_start);
-            scope.spawn(move || {
+            handles.push(scope.spawn(move || {
+                let mut results = Vec::new();
                 loop {
                     let index = warm_up_next.fetch_add(1, Ordering::Relaxed);
                     let Some(file) = prepared.get(index) else {
                         break;
                     };
-                    let _ = profile_file(file, &linters, warm_up, 0);
+                    let _ = profile_file(file, linters, warm_up, 0);
                 }
                 warm_up_barrier.wait();
                 measured_start.get_or_init(Instant::now);
@@ -704,19 +702,21 @@ fn execute_file_profile(
                     let Some(file) = prepared.get(index) else {
                         break;
                     };
-                    let result = profile_file(file, &linters, 0, repeat);
-                    results.lock().unwrap().push(result);
+                    results.push(profile_file(file, linters, 0, repeat));
                 }
-            });
+                results
+            }));
         }
+
+        let mut results = Vec::with_capacity(prepared.len());
+        for handle in handles {
+            results.extend(handle.join().expect("profile worker panicked"));
+        }
+        results
     });
     let elapsed = measured_start
         .get()
         .map_or(Duration::ZERO, Instant::elapsed);
-    let mut results = Arc::try_unwrap(results)
-        .expect("profile workers still hold result storage")
-        .into_inner()
-        .expect("profile result storage was poisoned");
     results.sort_by(|left, right| left.path.cmp(&right.path));
     (results, elapsed)
 }
