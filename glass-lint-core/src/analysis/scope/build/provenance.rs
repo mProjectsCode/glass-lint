@@ -7,9 +7,12 @@
 use std::collections::BTreeMap;
 
 use smol_str::{SmolStr, ToSmolStr};
-use swc_ecma_ast::{CallExpr, Callee, Expr, Lit, OptChainBase};
+use swc_ecma_ast::{Callee, Expr, OptChainBase};
 
 use crate::analysis::{
+    module_request::{
+        ModuleRequestContext, ModuleRequestPolicy, is_interop_wrapper, recognize_module_expression,
+    },
     scope::{
         BoundArgument,
         build::{BindingProvenance, ScopeCollector},
@@ -22,7 +25,10 @@ use crate::analysis::{
 };
 
 impl ScopeCollector<'_> {
-    pub(super) fn constructed_instance_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {
+    pub(super) fn constructed_instance_provenance(
+        &mut self,
+        expr: &Expr,
+    ) -> Option<BindingProvenance> {
         let Expr::New(new_expr) = expr else {
             return None;
         };
@@ -38,7 +44,7 @@ impl ScopeCollector<'_> {
     /// expression while preserving lexical shadowing checks.
     // Kept as a single recursive match: each Expr arm follows a distinct
     // provenance rule, and extracting individual arms would scatter the logic.
-    pub(super) fn module_alias_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {
+    pub(super) fn module_alias_provenance(&mut self, expr: &Expr) -> Option<BindingProvenance> {
         // Recursive dispatch over Expr variants. Each arm has a distinct
         // resolution strategy; keeping them together makes the full recursion
         // visible in one place.
@@ -73,18 +79,9 @@ impl ScopeCollector<'_> {
                 }
             }
             Expr::Call(call) => self
-                .require_module_name(call)
+                .module_request_name(expr, ModuleRequestPolicy::alias_with_dynamic_import())
                 .map(|module| BindingProvenance::ModuleNamespace { module })
                 .or_else(|| {
-                    if matches!(call.callee, Callee::Import(_))
-                        && let Some(argument) = call.args.first()
-                        && argument.spread.is_none()
-                        && let Some(module) = constant::static_string(&argument.expr, self)
-                    {
-                        return Some(BindingProvenance::ModuleNamespace {
-                            module: module.to_smolstr(),
-                        });
-                    }
                     let Callee::Expr(callee) = &call.callee else {
                         return None;
                     };
@@ -106,51 +103,14 @@ impl ScopeCollector<'_> {
     }
 
     /// Resolve literal CommonJS/interop-loader module names only.
-    fn require_module_name(&self, call: &CallExpr) -> Option<SmolStr> {
-        self.direct_require_module_name(call).or_else(|| {
-            let Callee::Expr(callee) = &call.callee else {
-                return None;
-            };
-            let Expr::Ident(wrapper) = &**callee else {
-                return None;
-            };
-            (Self::is_module_interop_wrapper(wrapper.sym.as_ref())
-                && self.is_unbound(wrapper.sym.as_ref()))
-            .then(|| call.args.first())
-            .flatten()
-            .and_then(|arg| self.require_module_expr_name(&arg.expr))
-        })
+    fn module_request_name(&mut self, expr: &Expr, policy: ModuleRequestPolicy) -> Option<SmolStr> {
+        let request = recognize_module_expression(expr, self, policy)?;
+        Some(request.module().to_smolstr())
     }
 
-    /// Find a literal module name through supported wrapper expression shapes.
-    pub(super) fn require_module_expr_name(&self, expr: &Expr) -> Option<SmolStr> {
-        match expr {
-            Expr::Call(call) => self.require_module_name(call),
-            Expr::Member(member) => self.require_module_expr_name(&member.obj),
-            Expr::Paren(paren) => self.require_module_expr_name(&paren.expr),
-            Expr::Seq(sequence) => sequence
-                .exprs
-                .last()
-                .and_then(|expr| self.require_module_expr_name(expr)),
-            _ => None,
-        }
-    }
-
-    /// Recognize an unshadowed direct `require("literal")` call.
-    fn direct_require_module_name(&self, call: &CallExpr) -> Option<SmolStr> {
-        let Callee::Expr(callee) = &call.callee else {
-            return None;
-        };
-        let Expr::Ident(ident) = &**callee else {
-            return None;
-        };
-        if ident.sym != *"require" || !self.is_unbound("require") {
-            return None;
-        }
-        call.args.first().and_then(|arg| match &*arg.expr {
-            Expr::Lit(Lit::Str(value)) => Some(value.value.to_string_lossy().to_smolstr()),
-            _ => None,
-        })
+    /// Find a literal CommonJS module name through the supported alias shapes.
+    pub(super) fn require_module_expr_name(&mut self, expr: &Expr) -> Option<SmolStr> {
+        self.module_request_name(expr, ModuleRequestPolicy::alias())
     }
 
     /// Convert a bounded constant result into collector provenance.
@@ -343,5 +303,19 @@ impl ScopeCollector<'_> {
             values.insert(self.lookup_or_intern_name(key.as_str())?, target);
         }
         Some(BindingProvenance::StaticObjectValues(values))
+    }
+}
+
+impl ModuleRequestContext for ScopeCollector<'_> {
+    fn is_unshadowed_require(&mut self, ident: &swc_ecma_ast::Ident) -> bool {
+        ident.sym == *"require" && self.is_unbound("require")
+    }
+
+    fn is_unshadowed_wrapper(&mut self, ident: &swc_ecma_ast::Ident) -> bool {
+        is_interop_wrapper(ident.sym.as_ref()) && self.is_unbound(ident.sym.as_ref())
+    }
+
+    fn static_string(&mut self, expr: &Expr) -> Option<String> {
+        constant::static_string(expr, self)
     }
 }

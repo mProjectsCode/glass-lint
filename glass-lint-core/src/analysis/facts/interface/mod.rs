@@ -80,12 +80,12 @@ impl ModuleInterfaceBuilder {
     pub(in crate::analysis::facts) fn record_require_request(
         &mut self,
         span: glass_lint_datastructures::ByteRange,
-        specifier: &swc_ecma_ast::Str,
+        specifier: &str,
     ) {
         self.interface.add_request(
             span,
             ResolutionRequestKind::Require,
-            specifier.value.to_string_lossy(),
+            specifier,
             ModuleRequestRole::Require,
         );
     }

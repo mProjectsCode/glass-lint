@@ -59,17 +59,6 @@ impl ScopeCollector<'_> {
         ScopeId::new(self.stack.last().copied().unwrap_or(0))
     }
 
-    pub(super) fn is_module_interop_wrapper(name: &str) -> bool {
-        matches!(
-            name,
-            "__toESM"
-                | "__importStar"
-                | "__importDefault"
-                | "_interopRequireWildcard"
-                | "_interopRequireDefault"
-        )
-    }
-
     pub(super) fn binding_scope(&self, kind: VarDeclKind) -> ScopeId {
         if kind != VarDeclKind::Var {
             return self.current_scope();

@@ -7,8 +7,9 @@
 use smol_str::ToSmolStr;
 
 use crate::analysis::{
+    module_request::{ModuleRequestContext, ModuleRequestPolicy, recognize_module_call},
     resolution::{
-        CallExpr, Callee, Expr, Lit, ResolvedValue, Resolver, SymbolCallProvenance, Value, ValueId,
+        CallExpr, Callee, Expr, ResolvedValue, Resolver, SymbolCallProvenance, Value, ValueId,
     },
     syntax::{BudgetComponent, UnknownReason},
     value::MAX_VALUES,
@@ -38,23 +39,8 @@ impl Resolver<'_> {
 
     /// Return a literal module name for an unshadowed global `require` call.
     pub(in crate::analysis) fn require_module_name(&mut self, call: &CallExpr) -> Option<String> {
-        let Callee::Expr(callee) = &call.callee else {
-            return None;
-        };
-        let Expr::Ident(ident) = &**callee else {
-            return None;
-        };
-        if !matches!(
-            self.resolve_ident(ident).call,
-            SymbolCallProvenance::Global { ref name } if name == "require"
-        ) {
-            return None;
-        }
-        let argument = call.args.first()?;
-        let Expr::Lit(Lit::Str(module)) = &*argument.expr else {
-            return None;
-        };
-        Some(module.value.to_string_lossy().to_string())
+        recognize_module_call(call, self, ModuleRequestPolicy::direct_require())
+            .map(|request| request.module().to_owned())
     }
 
     /// Check that an identifier is the unshadowed CommonJS/global loader name.
@@ -200,5 +186,19 @@ impl Resolver<'_> {
                 _ => return SymbolCallProvenance::Unknown(UnknownReason::Unresolved),
             }
         }
+    }
+}
+
+impl ModuleRequestContext for Resolver<'_> {
+    fn is_unshadowed_require(&mut self, ident: &swc_ecma_ast::Ident) -> bool {
+        self.is_unshadowed_commonjs_name(ident, crate::analysis::module::COMMONJS_REQUIRE)
+    }
+
+    fn is_unshadowed_wrapper(&mut self, _ident: &swc_ecma_ast::Ident) -> bool {
+        false
+    }
+
+    fn static_string(&mut self, expr: &swc_ecma_ast::Expr) -> Option<String> {
+        crate::analysis::syntax::constant::static_string(expr, self)
     }
 }

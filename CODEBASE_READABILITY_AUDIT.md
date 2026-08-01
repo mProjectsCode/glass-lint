@@ -249,7 +249,7 @@ with one warm-up-free repetition and one worker took 701.1ms measured lint
 wall time (699.9ms input time; 0.90s process wall time after the release
 binary was built).
 
-#### RL-008 — CommonJS `require` recognition is scattered across phases
+#### [x] RL-008 — CommonJS `require` recognition is scattered across phases
 
 - Severity: Medium
 - Fix complexity: Medium
@@ -266,6 +266,19 @@ Recommendation: define one provider-neutral module-request recognizer or value
 type with explicit direct, alias, and wrapper policies. Let provenance, fact
 interface collection, and import emission consume that result, with shared
 tests for shadowing, reassignment, literals, wrappers, and dynamic values.
+
+Implementation: added a shared module-request recognizer with explicit direct
+`require`, dynamic-import, and interop-wrapper policies. Resolver call
+provenance, scope alias classification, and fact-interface request emission
+now consume the same syntax recognition and phase-supplied shadowing checks;
+shared tests cover literals, dynamic names, shadowing, and wrappers.
+
+Runtime (release): profiling
+`/home/lemon/src/obsidian-stats/data/out/plugin-release-mainjs/byoc/1.0.13-main.js`
+with one warm-up-free repetition and one worker took 726.0ms measured lint
+wall time (724.7ms input time; 0.90s process wall time with the release
+binary already built). The result retained 544 findings, 1 diagnostic, and
+the same evidence digest; operation counts were unchanged.
 
 #### RL-009 — Report assembly contains a matcher-specific private-network branch
 

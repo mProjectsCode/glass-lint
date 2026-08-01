@@ -14,6 +14,7 @@ use crate::analysis::flow::effect::FunctionEffects;
 use crate::analysis::{
     matching::OccurrenceIndexes,
     module::ModuleInterface,
+    module_request::{ModuleRequestKind, ModuleRequestPolicy, recognize_module_call},
     value::{ValueId, ValueTable},
 };
 
@@ -273,44 +274,20 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
         &mut self,
         call: &CallExpr,
     ) -> Option<(String, swc_common::Span)> {
-        use swc_ecma_ast::Callee;
-        match &call.callee {
-            Callee::Import(_) => {
-                let argument = call.args.first()?;
-                if argument.spread.is_some() {
-                    return None;
-                }
-                let module = crate::analysis::syntax::constant::static_string(
-                    &argument.expr,
-                    self.resolver,
-                )?;
-                let span = self.byte_range(argument.expr.span())?;
+        let request = recognize_module_call(call, self.resolver, ModuleRequestPolicy::interface())?;
+        let span = self.byte_range(request.specifier_span())?;
+        match request.kind() {
+            ModuleRequestKind::DynamicImport => {
+                let module = request.module().to_owned();
                 self.interface.record_import_request(span, &module);
-                Some((module, argument.expr.span()))
+                Some((module, request.specifier_span()))
             }
-            Callee::Expr(callee) => {
-                let Expr::Ident(ident) = &**callee else {
-                    return None;
-                };
-                if !self
-                    .resolver
-                    .is_unshadowed_commonjs_name(ident, crate::analysis::module::COMMONJS_REQUIRE)
-                {
-                    return None;
-                }
-                if call.args.len() != 1 {
-                    return None;
-                }
-                let Some(Expr::Lit(swc_ecma_ast::Lit::Str(specifier))) =
-                    call.args.first().map(|a| &*a.expr)
-                else {
-                    return None;
-                };
-                let span = self.byte_range(specifier.span)?;
-                self.interface.record_require_request(span, specifier);
+            ModuleRequestKind::Require => {
+                self.interface
+                    .record_require_request(span, request.module());
                 None
             }
-            Callee::Super(_) => None,
+            ModuleRequestKind::WrappedRequire => None,
         }
     }
 
