@@ -2,9 +2,14 @@
 
 use std::collections::BTreeMap;
 
-use crate::api::classification::{ClassificationEvidence, MatchKind};
+use glass_lint_datastructures::ByteRange;
+
 #[cfg(test)]
 use crate::api::rule::Rule;
+use crate::{
+    api::classification::{ClassificationEvidence, MatchKind},
+    diagnostic::SourceLineIndex,
+};
 
 /// Internal key that owns its data once and is used across all accumulators,
 /// avoiding string clones for separate count and occurrence maps.
@@ -17,6 +22,48 @@ struct EvidenceAccum {
     occurrences_truncated: bool,
     certainty: crate::project::MatchCertainty,
     occurrences: Vec<crate::api::classification::ClassificationEvidenceOccurrence>,
+}
+
+/// Narrow an evidence location to the text selected by its matcher.
+///
+/// The report layer only groups and serializes the resulting span. Matcher
+/// families own the source-specific strategy, including boundary-aware
+/// private-network matching.
+pub fn display_span(
+    lines: &SourceLineIndex,
+    span: ByteRange,
+    kind: MatchKind,
+    symbol: &str,
+) -> ByteRange {
+    if kind != MatchKind::StringContains {
+        return span;
+    }
+    let Some(source) = lines.source_slice(span) else {
+        return span;
+    };
+    let relative = if symbol == crate::api::rule::query::PRIVATE_NETWORK_EVIDENCE_SYMBOL {
+        super::query::private_network_match(source)
+    } else {
+        source
+            .find(symbol)
+            .map(|start| (start, start.saturating_add(symbol.len())))
+    };
+    let Some((start, end)) = relative else {
+        return span;
+    };
+    let Ok(start) = u32::try_from(start) else {
+        return span;
+    };
+    let Ok(end) = u32::try_from(end) else {
+        return span;
+    };
+    let Some(absolute_start) = span.start().checked_add(start) else {
+        return span;
+    };
+    let Some(absolute_end) = span.start().checked_add(end) else {
+        return span;
+    };
+    ByteRange::new(absolute_start, absolute_end).unwrap_or(span)
 }
 
 /// Sort, deduplicate, bound, and normalize evidence occurrences in place.

@@ -283,7 +283,7 @@ impl<'a> EventIndexView<'a> {
     }
 }
 
-pub fn private_network_match(value: &str) -> Option<(usize, usize)> {
+pub(in crate::analysis::matching) fn private_network_match(value: &str) -> Option<(usize, usize)> {
     contains_localhost(value)
         .or_else(|| contains_private_ipv4(value))
         .or_else(|| contains_private_ipv6(value))

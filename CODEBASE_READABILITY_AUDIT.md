@@ -282,6 +282,20 @@ the same evidence digest; operation counts were unchanged.
 
 #### RL-009 — Report assembly contains a matcher-specific private-network branch
 
+Status: Completed.
+
+Implementation: moved display-span narrowing into the matching evidence layer
+(`analysis/matching/evidence.rs`). Report assembly now consumes that generic
+helper while retaining only range grouping, trace conversion, and finding
+construction; the private-network matcher branch is no longer present in
+`lint/report.rs`. Existing string and private-network location tests continue
+to cover the narrowed spans.
+
+Runtime (release): the same one warm-up-free repetition and one worker took
+692.6ms measured lint wall time (691.4ms workload time; 695.5ms process wall
+time). It retained 544 findings, 1 diagnostic, the same evidence digest, and
+unchanged operation counts as the preceding benchmark.
+
 - Severity: Medium
 - Fix complexity: Medium
 - Category: Layering / Special cases

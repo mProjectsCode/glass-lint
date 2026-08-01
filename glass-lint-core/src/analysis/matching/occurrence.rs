@@ -311,7 +311,7 @@ impl Iterator for BorrowedPackageOccurrenceIter<'_> {
 pub(in crate::analysis) struct Occurrence {
     /// Canonical semantic event identity.
     event: FactId,
-    /// Source span used for evidence rendering and tie-breaking.
+    /// Canonical source span used for trace correlation and tie-breaking.
     span: ByteRange,
 }
 

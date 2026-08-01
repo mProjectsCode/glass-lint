@@ -1,19 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use glass_lint_datastructures::{ByteRange, Position, SourceRange};
+use glass_lint_datastructures::{Position, SourceRange};
 
 use crate::{
     AnalysisLimits, ParseDiagnostic, REPORT_VERSION,
     analysis::{
-        ProjectSemanticModel, ResolvedLinkInput, private_network_match,
+        ProjectSemanticModel, ResolvedLinkInput, display_span,
         project::projection::ProjectionOutcome, trace::TraceArena,
     },
-    api::{
-        classification::{
-            ClassificationEvidence, ClassificationResult, MatchKind, MatchedCapability, RuleIndex,
-            TraceNodeId,
-        },
-        rule::query::PRIVATE_NETWORK_EVIDENCE_SYMBOL,
+    api::classification::{
+        ClassificationEvidence, ClassificationResult, MatchedCapability, RuleIndex, TraceNodeId,
     },
     diagnostic::SourceLineIndex,
     lint::catalog::RuleCatalog,
@@ -198,7 +194,7 @@ impl<'a> ReportAssembly<'a> {
         let mut by_range: BTreeMap<SourceRange, Vec<(usize, usize)>> = BTreeMap::new();
         for (ev_idx, evidence) in evidence_items.iter().enumerate() {
             for (occurrence_idx, occurrence) in evidence.occurrences.iter().enumerate() {
-                let span = Self::narrow_string_span(
+                let span = display_span(
                     lines,
                     occurrence.span,
                     evidence.kind,
@@ -287,46 +283,6 @@ impl<'a> ReportAssembly<'a> {
                 )
             })
             .collect()
-    }
-
-    fn narrow_string_span(
-        lines: &SourceLineIndex,
-        span: ByteRange,
-        kind: MatchKind,
-        symbol: &str,
-    ) -> ByteRange {
-        if kind != MatchKind::StringContains {
-            return span;
-        }
-        let Some(source) = lines.source_slice(span) else {
-            return span;
-        };
-        // TODO: not a fan of this special case, either offer custom string matchers in
-        // the rule API, or make this a generic core provided specialized matcher
-        // family.
-        let relative = if symbol == PRIVATE_NETWORK_EVIDENCE_SYMBOL {
-            private_network_match(source)
-        } else {
-            source
-                .find(symbol)
-                .map(|start| (start, start + symbol.len()))
-        };
-        let Some((start, end)) = relative else {
-            return span;
-        };
-        let Ok(start) = u32::try_from(start) else {
-            return span;
-        };
-        let Ok(end) = u32::try_from(end) else {
-            return span;
-        };
-        let Some(absolute_start) = span.start().checked_add(start) else {
-            return span;
-        };
-        let Some(absolute_end) = span.start().checked_add(end) else {
-            return span;
-        };
-        ByteRange::new(absolute_start, absolute_end).unwrap_or(span)
     }
 
     /// Resolve a trace chain from the arena into evidence steps.

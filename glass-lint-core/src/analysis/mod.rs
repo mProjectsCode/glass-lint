@@ -18,7 +18,7 @@ mod local;
 mod lowering;
 mod matching;
 mod module_request;
-pub use matching::private_network_match;
+pub use matching::display_span;
 pub mod module;
 pub mod project;
 mod resolution;

@@ -19,7 +19,7 @@ use crate::{
 
 mod view;
 use view::EventIndexView;
-pub use view::private_network_match;
+pub(super) use view::private_network_match;
 
 impl OccurrenceIndexes {
     #[cfg(test)]

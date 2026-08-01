@@ -20,7 +20,7 @@ mod arguments;
 pub(in crate::analysis) use arguments::compute_constrained_evidence_from_stream_with_overlay;
 mod build;
 mod query;
-pub use query::private_network_match;
+pub use evidence::display_span;
 
 #[derive(Debug, Default)]
 pub struct OccurrenceIndexes {
