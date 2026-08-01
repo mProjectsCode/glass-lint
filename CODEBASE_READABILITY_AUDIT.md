@@ -487,7 +487,20 @@ with one warm-up-free repetition and one worker took 726.3ms measured lint
 wall time (725.0ms input time; 3.33s process wall time including the
 incremental release build).
 
-#### RL-015 — Query authoring is concentrated in one large module with repeated constructors
+#### [x] RL-015 — Query authoring is concentrated in one large module with repeated constructors
+
+Status: Completed.
+
+Implementation: introduced private `EventQuery` construction helpers for the
+invariant shell, validated names, module/export pairs, and member paths. The
+public constructors now remain explicit about their event and identity policy
+while sharing validation and empty-constraint assembly; constructor and
+composition tests retain their existing coverage.
+
+Runtime (release): the one warm-up-free repetition and one worker took 779.2ms
+measured lint wall time (777.9ms workload time; 782.5ms process wall time).
+It retained 544 findings, 1 diagnostic, the same evidence digest, and
+unchanged operation counts.
 
 - Severity: Medium
 - Fix complexity: Medium

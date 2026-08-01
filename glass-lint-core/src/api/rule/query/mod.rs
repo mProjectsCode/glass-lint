@@ -160,6 +160,18 @@ impl EventQuery {
     pub fn constraints(&self) -> &[ArgumentConstraint] {
         &self.constraints
     }
+
+    /// Construct the invariant-empty event-query shell used by every public
+    /// event constructor. Argument constraints are added only through the
+    /// validated adapter methods below.
+    fn from_parts(event: EventSpec, identity: IdentitySpec) -> Self {
+        Self {
+            var: VarId::new(0),
+            event,
+            identity,
+            constraints: Vec::new(),
+        }
+    }
 }
 
 fn is_chain_malformed(chain: &str) -> bool {
@@ -167,6 +179,35 @@ fn is_chain_malformed(chain: &str) -> bool {
         || chain.contains("..")
         || chain.starts_with('.')
         || chain.ends_with('.')
+}
+
+fn checked_name(value: impl Into<String>) -> Result<SmolStr, QueryBuildError> {
+    let value: SmolStr = value.into().into();
+    if value.trim().is_empty() {
+        return Err(QueryBuildError::EmptyIdentityName);
+    }
+    Ok(value)
+}
+
+fn checked_module_export(
+    module: impl Into<String>,
+    export: impl Into<String>,
+) -> Result<(SmolStr, SmolStr), QueryBuildError> {
+    let module: SmolStr = module.into().into();
+    if module.trim().is_empty() {
+        return Err(QueryBuildError::EmptyModuleSpecifier);
+    }
+    let export = checked_name(export)?;
+    Ok((module, export))
+}
+
+fn checked_chain(value: impl Into<String>) -> Result<(String, SymbolPath), QueryBuildError> {
+    let value = value.into();
+    if is_chain_malformed(&value) {
+        return Err(QueryBuildError::MalformedChain(value));
+    }
+    let path = SymbolPath::from(value.as_str());
+    Ok((value, path))
 }
 
 pub(crate) const PRIVATE_NETWORK_LITERAL: &str = "__glass_lint_private_network_literal__";
@@ -189,30 +230,20 @@ fn evidence_kind_for_event(event: &EventSpec) -> MatchKind {
 impl EventQuery {
     /// Global call, e.g. `fetch(...)`.
     pub fn call_global(name: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let name: SmolStr = name.into().into();
-        if name.trim().is_empty() {
-            return Err(QueryBuildError::EmptyIdentityName);
-        }
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::Call,
-            identity: IdentitySpec::Global { name },
-            constraints: Vec::new(),
-        })
+        let name = checked_name(name)?;
+        Ok(Self::from_parts(
+            EventSpec::Call,
+            IdentitySpec::Global { name },
+        ))
     }
 
     /// Heuristic spelling call.
     pub fn call_heuristic(name: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let name: SmolStr = name.into().into();
-        if name.trim().is_empty() {
-            return Err(QueryBuildError::EmptyIdentityName);
-        }
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::Call,
-            identity: IdentitySpec::Heuristic { name },
-            constraints: Vec::new(),
-        })
+        let name = checked_name(name)?;
+        Ok(Self::from_parts(
+            EventSpec::Call,
+            IdentitySpec::Heuristic { name },
+        ))
     }
 
     /// Module-export call.
@@ -220,20 +251,11 @@ impl EventQuery {
         module: impl Into<String>,
         export: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
-        let module: SmolStr = module.into().into();
-        let export: SmolStr = export.into().into();
-        if module.trim().is_empty() {
-            return Err(QueryBuildError::EmptyModuleSpecifier);
-        }
-        if export.trim().is_empty() {
-            return Err(QueryBuildError::EmptyIdentityName);
-        }
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::Call,
-            identity: IdentitySpec::ModuleExport { module, export },
-            constraints: Vec::new(),
-        })
+        let (module, export) = checked_module_export(module, export)?;
+        Ok(Self::from_parts(
+            EventSpec::Call,
+            IdentitySpec::ModuleExport { module, export },
+        ))
     }
 
     /// Package module export call.
@@ -241,52 +263,33 @@ impl EventQuery {
         module: impl Into<String>,
         export: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
-        let export: SmolStr = export.into().into();
-        if export.trim().is_empty() {
-            return Err(QueryBuildError::EmptyIdentityName);
-        }
+        let export = checked_name(export)?;
         let module = ModuleSpecifierPattern::package(module)
             .map_err(|_| QueryBuildError::InvalidScopePackage)?;
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::Call,
-            identity: IdentitySpec::PackageModuleExport { module, export },
-            constraints: Vec::new(),
-        })
+        Ok(Self::from_parts(
+            EventSpec::Call,
+            IdentitySpec::PackageModuleExport { module, export },
+        ))
     }
 
     /// Rooted member call, e.g. `document.createElement(...)`.
     pub fn member_call_rooted(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let chain_str: String = chain.into();
-        if is_chain_malformed(&chain_str) {
-            return Err(QueryBuildError::MalformedChain(chain_str));
-        }
-        let path = SymbolPath::from(chain_str.as_str());
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::MemberCall {
+        let (_, path) = checked_chain(chain)?;
+        Ok(Self::from_parts(
+            EventSpec::MemberCall {
                 member: path.clone(),
             },
-            identity: IdentitySpec::Rooted { path },
-            constraints: Vec::new(),
-        })
+            IdentitySpec::Rooted { path },
+        ))
     }
 
     /// Heuristic member call.
     pub fn member_call_heuristic(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let chain_str: String = chain.into();
-        if is_chain_malformed(&chain_str) {
-            return Err(QueryBuildError::MalformedChain(chain_str));
-        }
-        let path = SymbolPath::from(chain_str.as_str());
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::MemberCall { member: path },
-            identity: IdentitySpec::Heuristic {
-                name: chain_str.into(),
-            },
-            constraints: Vec::new(),
-        })
+        let (chain, path) = checked_chain(chain)?;
+        Ok(Self::from_parts(
+            EventSpec::MemberCall { member: path },
+            IdentitySpec::Heuristic { name: chain.into() },
+        ))
     }
 
     /// Module-namespace member call.
@@ -295,20 +298,14 @@ impl EventQuery {
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
         let module: SmolStr = module.into().into();
-        let member_str: String = member.into();
         if module.trim().is_empty() {
             return Err(QueryBuildError::EmptyModuleSpecifier);
         }
-        if is_chain_malformed(&member_str) {
-            return Err(QueryBuildError::MalformedChain(member_str));
-        }
-        let path = SymbolPath::from(member_str.as_str());
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::MemberCall { member: path },
-            identity: IdentitySpec::ModuleNamespace { module },
-            constraints: Vec::new(),
-        })
+        let (_, path) = checked_chain(member)?;
+        Ok(Self::from_parts(
+            EventSpec::MemberCall { member: path },
+            IdentitySpec::ModuleNamespace { module },
+        ))
     }
 
     /// Package module namespace member call.
@@ -316,53 +313,35 @@ impl EventQuery {
         module: impl Into<String>,
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
-        let member_str: String = member.into();
-        if is_chain_malformed(&member_str) {
-            return Err(QueryBuildError::MalformedChain(member_str));
-        }
-        let path = SymbolPath::from(member_str.as_str());
+        let (_, path) = checked_chain(member)?;
         let module = ModuleSpecifierPattern::package(module)
             .map_err(|_| QueryBuildError::InvalidScopePackage)?;
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::MemberCall { member: path },
-            identity: IdentitySpec::PackageModuleNamespace { module },
-            constraints: Vec::new(),
-        })
+        Ok(Self::from_parts(
+            EventSpec::MemberCall { member: path },
+            IdentitySpec::PackageModuleNamespace { module },
+        ))
     }
 
     /// Rooted member read.
     pub fn member_read_rooted(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let chain_str: String = chain.into();
-        if is_chain_malformed(&chain_str) {
-            return Err(QueryBuildError::MalformedChain(chain_str));
-        }
-        let path = SymbolPath::from(chain_str.as_str());
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::MemberRead {
+        let (_, path) = checked_chain(chain)?;
+        Ok(Self::from_parts(
+            EventSpec::MemberRead {
                 member: path.clone(),
             },
-            identity: IdentitySpec::Rooted { path },
-            constraints: Vec::new(),
-        })
+            IdentitySpec::Rooted { path },
+        ))
     }
 
     /// Rooted member-property write, for example `document.onkeydown = fn`.
     pub fn property_write_rooted(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let chain_str: String = chain.into();
-        if is_chain_malformed(&chain_str) {
-            return Err(QueryBuildError::MalformedChain(chain_str));
-        }
-        let path = SymbolPath::from(chain_str.as_str());
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::PropertyWrite {
+        let (_, path) = checked_chain(chain)?;
+        Ok(Self::from_parts(
+            EventSpec::PropertyWrite {
                 property: path.clone(),
             },
-            identity: IdentitySpec::Rooted { path },
-            constraints: Vec::new(),
-        })
+            IdentitySpec::Rooted { path },
+        ))
     }
 
     /// Module-namespace member read.
@@ -371,20 +350,14 @@ impl EventQuery {
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
         let module: SmolStr = module.into().into();
-        let member_str: String = member.into();
         if module.trim().is_empty() {
             return Err(QueryBuildError::EmptyModuleSpecifier);
         }
-        if is_chain_malformed(&member_str) {
-            return Err(QueryBuildError::MalformedChain(member_str));
-        }
-        let path = SymbolPath::from(member_str.as_str());
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::MemberRead { member: path },
-            identity: IdentitySpec::ModuleNamespace { module },
-            constraints: Vec::new(),
-        })
+        let (_, path) = checked_chain(member)?;
+        Ok(Self::from_parts(
+            EventSpec::MemberRead { member: path },
+            IdentitySpec::ModuleNamespace { module },
+        ))
     }
 
     /// Package module namespace member read.
@@ -392,19 +365,13 @@ impl EventQuery {
         module: impl Into<String>,
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
-        let member_str: String = member.into();
-        if is_chain_malformed(&member_str) {
-            return Err(QueryBuildError::MalformedChain(member_str));
-        }
-        let path = SymbolPath::from(member_str.as_str());
+        let (_, path) = checked_chain(member)?;
         let module = ModuleSpecifierPattern::package(module)
             .map_err(|_| QueryBuildError::InvalidScopePackage)?;
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::MemberRead { member: path },
-            identity: IdentitySpec::PackageModuleNamespace { module },
-            constraints: Vec::new(),
-        })
+        Ok(Self::from_parts(
+            EventSpec::MemberRead { member: path },
+            IdentitySpec::PackageModuleNamespace { module },
+        ))
     }
 
     /// Import exact module specifier.
@@ -413,26 +380,22 @@ impl EventQuery {
         if module_str.trim().is_empty() {
             return Err(QueryBuildError::EmptyModuleSpecifier);
         }
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::Import,
-            identity: IdentitySpec::LiteralString {
+        Ok(Self::from_parts(
+            EventSpec::Import,
+            IdentitySpec::LiteralString {
                 predicate: module_str,
             },
-            constraints: Vec::new(),
-        })
+        ))
     }
 
     /// Import package pattern.
     pub fn import_package(module: impl Into<String>) -> Result<Self, QueryBuildError> {
         let pattern = ModuleSpecifierPattern::package(module)
             .map_err(|_| QueryBuildError::InvalidScopePackage)?;
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::Import,
-            identity: IdentitySpec::PackageSpecifier { pattern },
-            constraints: Vec::new(),
-        })
+        Ok(Self::from_parts(
+            EventSpec::Import,
+            IdentitySpec::PackageSpecifier { pattern },
+        ))
     }
 
     /// Static string reference.
@@ -441,42 +404,33 @@ impl EventQuery {
         if value_str.trim().is_empty() {
             return Err(QueryBuildError::EmptyStaticValue);
         }
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::StringReference,
-            identity: IdentitySpec::LiteralString {
+        Ok(Self::from_parts(
+            EventSpec::StringReference,
+            IdentitySpec::LiteralString {
                 predicate: value_str,
             },
-            constraints: Vec::new(),
-        })
+        ))
     }
 
     /// Static literal containing a complete private or special-use network
     /// address. Matching is boundary-aware and performed by core's literal
     /// index rather than by substring markers.
     pub fn string_private_network_address() -> Result<Self, QueryBuildError> {
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::StringReference,
-            identity: IdentitySpec::LiteralString {
+        Ok(Self::from_parts(
+            EventSpec::StringReference,
+            IdentitySpec::LiteralString {
                 predicate: PRIVATE_NETWORK_LITERAL.to_owned(),
             },
-            constraints: Vec::new(),
-        })
+        ))
     }
 
     /// Heuristic class reference.
     pub fn class_heuristic(name: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let name: SmolStr = name.into().into();
-        if name.trim().is_empty() {
-            return Err(QueryBuildError::EmptyIdentityName);
-        }
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::ClassReference,
-            identity: IdentitySpec::Heuristic { name },
-            constraints: Vec::new(),
-        })
+        let name = checked_name(name)?;
+        Ok(Self::from_parts(
+            EventSpec::ClassReference,
+            IdentitySpec::Heuristic { name },
+        ))
     }
 
     /// Module-export class reference.
@@ -484,48 +438,29 @@ impl EventQuery {
         module: impl Into<String>,
         export: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
-        let module: SmolStr = module.into().into();
-        let export: SmolStr = export.into().into();
-        if module.trim().is_empty() {
-            return Err(QueryBuildError::EmptyModuleSpecifier);
-        }
-        if export.trim().is_empty() {
-            return Err(QueryBuildError::EmptyIdentityName);
-        }
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::ClassReference,
-            identity: IdentitySpec::ModuleExport { module, export },
-            constraints: Vec::new(),
-        })
+        let (module, export) = checked_module_export(module, export)?;
+        Ok(Self::from_parts(
+            EventSpec::ClassReference,
+            IdentitySpec::ModuleExport { module, export },
+        ))
     }
 
     /// Global constructor, e.g. `new URL(...)`.
     pub fn constructor_global(name: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let name: SmolStr = name.into().into();
-        if name.trim().is_empty() {
-            return Err(QueryBuildError::EmptyIdentityName);
-        }
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::Construct,
-            identity: IdentitySpec::Global { name },
-            constraints: Vec::new(),
-        })
+        let name = checked_name(name)?;
+        Ok(Self::from_parts(
+            EventSpec::Construct,
+            IdentitySpec::Global { name },
+        ))
     }
 
     /// Heuristic constructor.
     pub fn constructor_heuristic(name: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let name: SmolStr = name.into().into();
-        if name.trim().is_empty() {
-            return Err(QueryBuildError::EmptyIdentityName);
-        }
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::Construct,
-            identity: IdentitySpec::Heuristic { name },
-            constraints: Vec::new(),
-        })
+        let name = checked_name(name)?;
+        Ok(Self::from_parts(
+            EventSpec::Construct,
+            IdentitySpec::Heuristic { name },
+        ))
     }
 
     /// Module-export constructor.
@@ -533,20 +468,11 @@ impl EventQuery {
         module: impl Into<String>,
         export: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
-        let module: SmolStr = module.into().into();
-        let export: SmolStr = export.into().into();
-        if module.trim().is_empty() {
-            return Err(QueryBuildError::EmptyModuleSpecifier);
-        }
-        if export.trim().is_empty() {
-            return Err(QueryBuildError::EmptyIdentityName);
-        }
-        Ok(Self {
-            var: VarId::new(0),
-            event: EventSpec::Construct,
-            identity: IdentitySpec::ModuleExport { module, export },
-            constraints: Vec::new(),
-        })
+        let (module, export) = checked_module_export(module, export)?;
+        Ok(Self::from_parts(
+            EventSpec::Construct,
+            IdentitySpec::ModuleExport { module, export },
+        ))
     }
 
     /// Add an argument predicate.
