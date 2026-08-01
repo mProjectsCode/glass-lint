@@ -34,6 +34,8 @@ The resolution cache stores every result behind `Rc`, almost every resolver entr
 
 Give the cache an arena-backed `ResolutionId`, or expose focused snapshot/accessor methods that keep cached records owned by the resolver while callers extract only the data they persist. Keep recursion guards and unknown-on-exhaustion behavior explicit, and avoid replacing `Rc` with `RefCell` or a lifetime web that makes fact traversal harder to use. Measure allocation and clone changes because provenance paths and bound arguments can be nontrivial.
 
+Removed `Rc<ResolvedValue>` from the resolver cache and resolution APIs. The cache now owns plain snapshots, identity-only queries read cached IDs directly, and fact construction accepts a borrowed resolver value without exposing cache ownership; recursive guards and unknown/budget behavior remain unchanged.
+
 ### Core matching and flow state
 
 #### [x] READ-003 — Requirement and sink indices are interchangeable `usize` values

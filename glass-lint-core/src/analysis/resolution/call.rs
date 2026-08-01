@@ -56,7 +56,7 @@ impl Resolver<'_> {
     pub(in crate::analysis) fn resolve_call_expression(
         &mut self,
         call: &swc_ecma_ast::CallExpr,
-    ) -> std::rc::Rc<ResolvedValue> {
+    ) -> ResolvedValue {
         if matches!(call.callee, Callee::Import(_))
             && let Some(argument) = call.args.first()
             && argument.spread.is_none()
@@ -71,7 +71,7 @@ impl Resolver<'_> {
                 None,
                 None,
             );
-            return std::rc::Rc::new(ResolvedValue {
+            return ResolvedValue {
                 id,
                 rooted_chain: None,
                 call: self.call_provenance_for_value(id),
@@ -79,7 +79,7 @@ impl Resolver<'_> {
                 returned_member: None,
                 bound_arguments: None,
                 syntactic_chain: None,
-            });
+            };
         }
         let Callee::Expr(callee) = &call.callee else {
             return Self::unknown();

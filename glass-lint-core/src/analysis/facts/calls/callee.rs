@@ -30,7 +30,7 @@ pub(in crate::analysis::facts) struct ResolvedCallee {
 
 impl ResolvedCallee {
     pub(super) fn from_resolved(
-        resolved: &std::rc::Rc<crate::analysis::resolution::ResolvedValue>,
+        resolved: &crate::analysis::resolution::ResolvedValue,
         callee_span: glass_lint_datastructures::ByteRange,
         target_function: Option<FunctionId>,
     ) -> Self {
