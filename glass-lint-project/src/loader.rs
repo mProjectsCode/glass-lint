@@ -11,7 +11,7 @@ use glass_lint_core::{
     Linter,
     project::{
         AnalysisReport, ProjectRelativePath, ResolutionRequest, ResolutionRequestKey,
-        ResolutionRequestKind, ResolverOutcome, SourceText,
+        ResolutionRequestKind, ResolverOutcome, SourceFile, SourceText,
     },
 };
 
@@ -388,6 +388,26 @@ struct LoadProgress {
     source_bytes: u64,
 }
 
+/// Result of admitting and reading one work queue wave. A source-byte budget
+/// failure is deferred until the successfully read sources have been
+/// analyzed, preserving deterministic partial output.
+struct ReadWaveOutcome {
+    sources: Vec<SourceFile>,
+    deferred_error: Option<ProjectLoadError>,
+}
+
+/// Result of local analysis for one wave, kept separate from frontier state.
+struct AnalysisWaveOutcome {
+    requests: Vec<ResolutionRequest>,
+}
+
+/// Resolver output that the coordinator can apply to the frontier in request
+/// order after resolution policy and cache state have been handled.
+struct RequestResolutionOutcome {
+    internal_targets: Vec<ProjectRelativePath>,
+    elapsed: Duration,
+}
+
 impl LoadProgress {
     fn source_bytes(&self) -> u64 {
         self.source_bytes
@@ -537,29 +557,65 @@ impl<'a> ProjectLoadState<'a> {
         workers: NonZeroUsize,
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<(), ProjectLoadError> {
-        let source_limit = self.admission.options().max_project_source_bytes();
-
-        // Phase 1: admit and read every source in the wave.  If a cumulative
-        // budget is exceeded, we defer the error and analyse whatever we
-        // already read, preserving partial-report semantics.
         let read_start = Instant::now();
+        let read = self.read_wave(wave)?;
+        metrics.timings.record_reads(read_start.elapsed());
+
+        for source in &read.sources {
+            self.sources
+                .insert(source.path().clone(), source.source().clone());
+        }
+
+        // Analyze all sources collected so far in parallel, even if a later
+        // file triggered a deferred budget error.
+        if !read.sources.is_empty() {
+            let parse_start = Instant::now();
+            let analysis = self.analyze_wave(read.sources, workers)?;
+            metrics.timings.record_analyze_source(parse_start.elapsed());
+            metrics.files = self.admitted.len();
+
+            self.progress.add_requests(
+                analysis.requests.len(),
+                self.admission.options().max_requests(),
+            )?;
+            self.progress.publish(metrics);
+
+            let resolution = self.resolve_requests(analysis.requests)?;
+            metrics.timings.record_resolution(resolution.elapsed);
+            self.apply_request_resolution(resolution, metrics)?;
+        }
+
+        // Propagate the deferred byte error after analyzed sources and their
+        // request frontier transitions have been incorporated.
+        if let Some(e) = read.deferred_error {
+            return Err(e);
+        }
+
+        Ok(())
+    }
+
+    fn read_wave(
+        &mut self,
+        wave: &[AdmittedSourcePath],
+    ) -> Result<ReadWaveOutcome, ProjectLoadError> {
+        let source_limit = self.admission.options().max_project_source_bytes();
         let mut sources = Vec::with_capacity(wave.len());
-        let mut byte_error = None;
+        let mut deferred_error = None;
         for admitted in wave {
             if !self.admitted.admit(admitted)? {
                 continue;
             }
 
             // Check the cumulative byte budget against the on-disk size
-            // before reading, so a file at the boundary is rejected
-            // without wasting I/O.
+            // before reading, so a file at the boundary is rejected without
+            // wasting I/O.
             let md =
                 std::fs::metadata(admitted.as_ref()).map_err(|source| ProjectLoadError::Io {
                     path: admitted.as_ref().to_path_buf(),
                     source,
                 })?;
             if self.progress.source_bytes().saturating_add(md.len()) > source_limit {
-                byte_error = Some(ProjectLoadError::ProjectSourceTooLarge {
+                deferred_error = Some(ProjectLoadError::ProjectSourceTooLarge {
                     bytes: self.progress.source_bytes().saturating_add(md.len()),
                     limit: source_limit,
                 });
@@ -569,62 +625,61 @@ impl<'a> ProjectLoadState<'a> {
             let source = self.admission.load_admitted_source_file(admitted)?;
             let source_bytes = u64::try_from(source.source().len())
                 .unwrap_or_else(|_| source_limit.saturating_add(1));
-            if let Err(e) = self
+            if let Err(error) = self
                 .progress
                 .record_source_bytes(source_bytes, source_limit)
             {
-                byte_error = Some(e);
+                deferred_error = Some(error);
                 break;
             }
             sources.push(source);
         }
-        metrics.timings.record_reads(read_start.elapsed());
-
-        for source in &sources {
-            self.sources
-                .insert(source.path().clone(), source.source().clone());
-        }
-
-        // Phase 2: analyze all sources collected so far in parallel, even if
-        // a later file triggered a budget error.
-        if !sources.is_empty() {
-            let parse_start = Instant::now();
-            let requests = self.session.analyze_sources(sources, workers)?;
-            metrics.timings.record_analyze_source(parse_start.elapsed());
-            metrics.files = self.admitted.len();
-
-            self.progress
-                .add_requests(requests.len(), self.admission.options().max_requests())?;
-            self.progress.publish(metrics);
-            self.record_requests(requests, metrics)?;
-        }
-
-        // Phase 3: propagate the deferred byte error after the analysed files
-        // have been incorporated.
-        if let Some(e) = byte_error {
-            return Err(e);
-        }
-
-        Ok(())
+        Ok(ReadWaveOutcome {
+            sources,
+            deferred_error,
+        })
     }
 
-    fn record_requests(
+    fn analyze_wave(
+        &mut self,
+        sources: Vec<SourceFile>,
+        workers: NonZeroUsize,
+    ) -> Result<AnalysisWaveOutcome, ProjectLoadError> {
+        Ok(AnalysisWaveOutcome {
+            requests: self.session.analyze_sources(sources, workers)?,
+        })
+    }
+
+    fn resolve_requests(
         &mut self,
         requests: Vec<ResolutionRequest>,
-        metrics: &mut ProjectLoadMetrics,
-    ) -> Result<(), ProjectLoadError> {
+    ) -> Result<RequestResolutionOutcome, ProjectLoadError> {
+        let mut internal_targets = Vec::new();
+        let mut elapsed = Duration::ZERO;
         for request in requests {
             self.check_timeout()?;
             let resolve_start = Instant::now();
             let (result, resolved) = self.resolved.resolve_or_get(&request, &self.resolver)?;
             if resolved {
-                metrics.timings.record_resolution(resolve_start.elapsed());
+                elapsed += resolve_start.elapsed();
             }
-            let internal_target = match result {
-                ResolverOutcome::Internal { path } => Some(path.clone()),
-                _ => None,
-            };
-            self.enqueue_internal_target(internal_target, metrics)?;
+            if let ResolverOutcome::Internal { path } = result {
+                internal_targets.push(path.clone());
+            }
+        }
+        Ok(RequestResolutionOutcome {
+            internal_targets,
+            elapsed,
+        })
+    }
+
+    fn apply_request_resolution(
+        &mut self,
+        resolution: RequestResolutionOutcome,
+        metrics: &mut ProjectLoadMetrics,
+    ) -> Result<(), ProjectLoadError> {
+        for path in resolution.internal_targets {
+            self.enqueue_internal_target(Some(path), metrics)?;
         }
         Ok(())
     }

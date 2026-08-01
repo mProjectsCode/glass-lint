@@ -317,7 +317,23 @@ new evidence kind does not enlarge this method.
 
 ### Project loading and configuration
 
-#### RL-010 — Project load waves mix I/O, analysis, budgets, and graph mutation
+#### [x] RL-010 — Project load waves mix I/O, analysis, budgets, and graph mutation
+
+Status: Completed.
+
+Implementation: split `ProjectLoadState::process_wave` into typed read/admission,
+local-analysis, and request-resolution outcomes. The coordinator now applies
+budget publication, deferred-error propagation, source retention, and frontier
+enqueueing explicitly, while request resolution no longer mutates the frontier
+in the same loop that owns resolver/cache policy. Existing partial-project,
+budget, timeout, and deterministic loader tests continue to pass.
+
+Runtime (release): the one warm-up-free repetition and one worker took 809.1ms
+measured lint wall time (807.7ms workload time; 812.2ms process wall time).
+It retained 544 findings, 1 diagnostic, the same evidence digest, and
+unchanged operation counts. A three-repetition run measured 761.1ms on its
+cold repetition and 15.1–16.0ms on subsequent cache hits, so cold timing was
+treated as noisy rather than an attributable performance regression.
 
 - Severity: Medium
 - Fix complexity: High
