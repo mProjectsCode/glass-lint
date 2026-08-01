@@ -126,7 +126,7 @@ Represent uniform rows with typed static slices or a small declarative row helpe
 
 Keep a private `ProjectMetricsAccumulator` for recording and merging, and publish `ProjectLoadMetrics` as an immutable snapshot with named accessors. Move `AddAssign` and recording methods to the accumulator, and have the loader perform one checked conversion at the outcome boundary; preserve the snapshot’s timing and counter values for harness consumers without allowing callers to fabricate partially inconsistent load results. If downstream users require construction, provide a validated constructor or a separate wire DTO rather than restoring public mutable fields.
 
-#### READ-011 — The output crate re-exports the entire core project namespace
+#### [x] READ-011 — The output crate re-exports the entire core project namespace
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -136,6 +136,8 @@ Keep a private `ProjectMetricsAccumulator` for recording and merging, and publis
 The output crate’s `project` module glob-re-exports `glass_lint_core::project::*` and its types, making the presentation crate a second import surface for every core project API. This couples output’s public API to unrelated core project additions and obscures which crate owns the project model, contrary to the separation between core report semantics and presentation adapters.
 
 Replace the glob re-export with an explicit list of presentation-facing types, or remove the facade if consumers can import the core project API directly. Treat any retained re-exports as a deliberate compatibility contract and add an API test or documentation explaining which types are supported.
+
+Implemented by removing the output crate’s `project` and nested `types` facades entirely. Its renderer now imports the core project types from `glass_lint_core::project`, leaving the core crate as the sole owner and public import surface for project models; repository call-site review found no consumer that required compatibility re-exports.
 
 #### [x] READ-012 — Dead-code allowances mix live migration artifacts with legacy leftovers
 

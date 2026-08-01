@@ -4,11 +4,12 @@ use std::{
 };
 
 use console::Style;
+use glass_lint_core::project;
 use glass_lint_datastructures::SourceRange;
 
 use crate::report::types::{self, Cell, PrettyFile, PrettyReport, PrettyReports};
 
-type RuleGroupEntry<'a> = (&'a PrettyFile<'a>, &'a crate::project::types::Finding);
+type RuleGroupEntry<'a> = (&'a PrettyFile<'a>, &'a project::types::Finding);
 
 /// Escape control characters for safe inclusion in terminal text.
 pub fn visible_text(value: &str) -> String {
@@ -222,13 +223,15 @@ impl PrettyReports<'_> {
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         let finding = entries[0].1;
-        let certainty_label = if entries.iter().all(|(_, finding)| {
-            finding.certainty() == crate::project::types::MatchCertainty::Definite
-        }) {
+        let certainty_label = if entries
+            .iter()
+            .all(|(_, finding)| finding.certainty() == project::types::MatchCertainty::Definite)
+        {
             "definite"
-        } else if entries.iter().all(|(_, finding)| {
-            finding.certainty() == crate::project::types::MatchCertainty::Possible
-        }) {
+        } else if entries
+            .iter()
+            .all(|(_, finding)| finding.certainty() == project::types::MatchCertainty::Possible)
+        {
             "possible path"
         } else {
             "mixed path coverage"
@@ -255,15 +258,12 @@ impl PrettyReports<'_> {
         )
     }
 
-    fn primary_evidence_message<'a>(
-        finding: &'a crate::project::Finding,
-        range: &SourceRange,
-    ) -> &'a str {
+    fn primary_evidence_message<'a>(finding: &'a project::Finding, range: &SourceRange) -> &'a str {
         let traces = finding.evidence();
         traces
             .traces()
             .iter()
-            .flat_map(crate::project::EvidenceTrace::steps)
+            .flat_map(project::EvidenceTrace::steps)
             .find(|step| {
                 step.location().path() == finding.location().path()
                     && step.location().range() == *range
@@ -272,7 +272,7 @@ impl PrettyReports<'_> {
                 traces
                     .traces()
                     .iter()
-                    .flat_map(crate::project::EvidenceTrace::steps)
+                    .flat_map(project::EvidenceTrace::steps)
                     .next()
             })
             .map_or("evidence occurrence", |step| step.message())
@@ -280,7 +280,7 @@ impl PrettyReports<'_> {
 
     fn write_trace_step(
         &self,
-        step: &crate::project::EvidenceStep,
+        step: &project::EvidenceStep,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         let location = step.location();
@@ -312,7 +312,7 @@ impl PrettyReports<'_> {
     fn write_trace(
         &self,
         trace_index: usize,
-        trace: &crate::project::EvidenceTrace,
+        trace: &project::EvidenceTrace,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         writeln!(
@@ -350,7 +350,7 @@ impl PrettyReports<'_> {
                 "{}",
                 PrettyReport::style(self.options.color, Style::new().dim(), message)
             )?;
-            if finding.certainty() == crate::project::types::MatchCertainty::Possible {
+            if finding.certainty() == project::types::MatchCertainty::Possible {
                 writeln!(
                     f,
                     "    {}",
@@ -410,7 +410,8 @@ impl PrettyReports<'_> {
                     .diagnostics()
                     .iter()
                     .filter_map(move |diagnostic| {
-                        let crate::project::Diagnostic::Parse { diagnostic, .. } = diagnostic
+                        let glass_lint_core::project::Diagnostic::Parse { diagnostic, .. } =
+                            diagnostic
                         else {
                             return None;
                         };

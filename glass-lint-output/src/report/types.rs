@@ -4,8 +4,7 @@ use std::{
 };
 
 use console::measure_text_width;
-
-use crate::project::FileReport;
+use glass_lint_core::project::FileReport;
 
 #[derive(Clone, Copy, Debug)]
 /// Formatting options for terminal report rendering.

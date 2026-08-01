@@ -5,13 +5,6 @@
 
 pub use glass_lint_core::{RuleId, Severity};
 
-pub mod project {
-    pub use glass_lint_core::project::*;
-    pub mod types {
-        pub use glass_lint_core::project::types::*;
-    }
-}
-
 mod report;
 
 pub use report::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports, visible_text};
