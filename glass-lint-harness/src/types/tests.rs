@@ -1,5 +1,30 @@
 use super::*;
 
+#[test]
+fn validation_errors_keep_their_domain() {
+    assert_eq!(
+        Case::new("", "", "javascript", "main.js", "").unwrap_err(),
+        CaseError::EmptyIdentity
+    );
+    assert_eq!(
+        ToolExpectation::new(None, Vec::new()).unwrap_err(),
+        ExpectationError::InvalidSelector
+    );
+    assert!(matches!(
+        FindingExpectation::new("not-a-rule-id"),
+        Err(FindingExpectationError::InvalidRuleId(_))
+    ));
+    assert!(matches!(
+        <&AdapterResolution as TryInto<(_, _)>>::try_into(&resolution(
+            AdapterResolutionKind::Import,
+            AdapterResolutionResult::Internal {
+                path: "../outside.js".into(),
+            },
+        )),
+        Err(AdapterConversionError::InvalidInternalPath(_))
+    ));
+}
+
 fn resolution(kind: AdapterResolutionKind, result: AdapterResolutionResult) -> AdapterResolution {
     AdapterResolution {
         importer: "main.js".into(),

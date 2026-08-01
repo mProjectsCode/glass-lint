@@ -129,8 +129,7 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
             );
         }
         for resolution in project.resolutions() {
-            let (kind, result) = <&AdapterResolution as TryInto<(_, _)>>::try_into(resolution)
-                .map_err(|error: String| anyhow::anyhow!(error))?;
+            let (kind, result) = <&AdapterResolution as TryInto<(_, _)>>::try_into(resolution)?;
             let request = authored
                 .iter()
                 .find(|(candidate, importer)| {

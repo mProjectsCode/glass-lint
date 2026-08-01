@@ -128,7 +128,7 @@ Implemented `ReportCompletion::join` and `is_partial` as the single monotone agg
 
 Define an explicit private adapter finding/response DTO that derives serialization and deserialization symmetrically, then convert it to core `Finding` through a validating `TryFrom` boundary. Keep path, rule-ID, nonempty-trace, terminal-location, and project-resolution validation in the harness rather than exposing weak constructors from core. Because this is not a public compatibility contract, update both ends in one change without a versioning or migration layer; add JSON round-trip and shape tests and move protocol types into a cohesive submodule.
 
-#### READ-011 — Harness model validation exposes message strings as its error API
+#### [x] READ-011 — Harness model validation exposes message strings as its error API
 
 - **Severity:** Low
 - **Fix Complexity** Medium
@@ -138,6 +138,8 @@ Define an explicit private adapter finding/response DTO that derives serializati
 Public case, expectation, and adapter-conversion constructors return `Result<_, String>`, and some conversions erase typed core errors with `to_string()`. Callers can only distinguish validation failures by matching prose, while unrelated model and protocol errors accumulate in the same string-shaped boundary.
 
 Introduce focused error enums for case construction, expectations, and adapter conversion, with source errors retained where useful and `Display` implementations for CLI output. Avoid one catch-all harness error that merely recreates the string bucket as a large enum. Keep clap value parsers or other framework adapters free to convert the typed errors to strings at their outermost boundary.
+
+Added focused `CaseError`, `ExpectationError`, `FindingExpectationError`, and `AdapterConversionError` types with `Display`/`Error` implementations. Core rule/path/target validation errors remain typed as sources, while case loading and adapter orchestration convert them to `anyhow` only at their outer boundary; no catch-all harness error was introduced.
 
 ### Project and provider composition
 

@@ -31,9 +31,10 @@ pub use report::{
 };
 pub use runner::{AdapterTimings, run_suite};
 pub use types::{
-    ADAPTER_PROTOCOL_VERSION, AdapterFile, AdapterProject, AdapterRequest, AdapterResolution,
-    AdapterResolutionKind, AdapterResolutionResult, AdapterResponse, AdapterRun, Case, CaseResult,
-    ExpectedCount, FindingExpectation, ProjectCase, SuiteReport, ToolExpectation, ToolResult,
+    ADAPTER_PROTOCOL_VERSION, AdapterConversionError, AdapterFile, AdapterProject, AdapterRequest,
+    AdapterResolution, AdapterResolutionKind, AdapterResolutionResult, AdapterResponse, AdapterRun,
+    Case, CaseError, CaseResult, ExpectationError, ExpectedCount, FindingExpectation,
+    FindingExpectationError, ProjectCase, SuiteReport, ToolExpectation, ToolResult,
 };
 
 #[cfg(test)]

@@ -3,16 +3,114 @@
 use std::collections::BTreeMap;
 
 use glass_lint_core::{
-    RuleId, Severity,
+    ProviderCatalogError, RuleId, Severity,
     project::{
         BuiltinModuleName, EvidenceRole, EvidenceStep, EvidenceTrace, EvidenceTraces, Finding,
-        MatchCertainty, NormalizedOutsidePath, PackageSpecifier, ProjectRelativePath,
-        ResolutionRequestKind, ResolverOutcome, SourceLocation,
+        MatchCertainty, NormalizedOutsidePath, PackageSpecifier, ProjectInputError,
+        ProjectRelativePath, ResolutionRequestKind, ResolverOutcome, SourceLocation,
     },
 };
 use serde::{Deserialize, Serialize};
 
 pub const ADAPTER_PROTOCOL_VERSION: u32 = 4;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CaseError {
+    EmptyIdentity,
+    EmptyToolName,
+}
+
+impl std::fmt::Display for CaseError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyIdentity => {
+                formatter.write_str("case id, language, and filename must not be empty")
+            }
+            Self::EmptyToolName => formatter.write_str("case tool name must not be empty"),
+        }
+    }
+}
+
+impl std::error::Error for CaseError {}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ExpectationError {
+    InvalidSelector,
+    SelectorMismatch,
+}
+
+impl std::fmt::Display for ExpectationError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidSelector => {
+                formatter.write_str("tool expectation must specify exactly one of config or rules")
+            }
+            Self::SelectorMismatch => {
+                formatter.write_str("tool expectation selectors disagree across project files")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ExpectationError {}
+
+#[derive(Debug)]
+pub enum FindingExpectationError {
+    InvalidRuleId(ProviderCatalogError),
+    InvalidPath(ProjectInputError),
+}
+
+impl std::fmt::Display for FindingExpectationError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidRuleId(error) => {
+                write!(formatter, "invalid expectation rule ID: {error}")
+            }
+            Self::InvalidPath(error) => write!(formatter, "invalid expectation path: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for FindingExpectationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InvalidRuleId(error) => Some(error),
+            Self::InvalidPath(error) => Some(error),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum AdapterConversionError {
+    InvalidInternalPath(ProjectInputError),
+    InvalidPackage(ProjectInputError),
+    InvalidBuiltin(ProjectInputError),
+    InvalidOutsideProjectPath(ProjectInputError),
+}
+
+impl std::fmt::Display for AdapterConversionError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidInternalPath(error) => write!(formatter, "invalid internal path: {error}"),
+            Self::InvalidPackage(error) => write!(formatter, "invalid package: {error}"),
+            Self::InvalidBuiltin(error) => write!(formatter, "invalid builtin: {error}"),
+            Self::InvalidOutsideProjectPath(error) => {
+                write!(formatter, "invalid outside-project path: {error}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for AdapterConversionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InvalidInternalPath(error)
+            | Self::InvalidPackage(error)
+            | Self::InvalidBuiltin(error)
+            | Self::InvalidOutsideProjectPath(error) => Some(error),
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 /// One source fixture and its per-adapter expectations.
@@ -43,12 +141,12 @@ impl Case {
         language: impl Into<String>,
         filename: impl Into<String>,
         source: impl Into<String>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, CaseError> {
         let id = id.into();
         let language = language.into();
         let filename = filename.into();
         if id.trim().is_empty() || language.trim().is_empty() || filename.trim().is_empty() {
-            return Err("case id, language, and filename must not be empty".into());
+            return Err(CaseError::EmptyIdentity);
         }
         Ok(Self {
             description: description.into(),
@@ -78,10 +176,10 @@ impl Case {
         mut self,
         name: impl Into<String>,
         expectation: ToolExpectation,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, CaseError> {
         let name = name.into();
         if name.trim().is_empty() {
-            return Err("case tool name must not be empty".into());
+            return Err(CaseError::EmptyToolName);
         }
         self.adapters.insert(name, expectation);
         Ok(self)
@@ -149,13 +247,13 @@ pub enum ToolSelector {
 impl ToolExpectation {
     /// Construct an expectation after validating its mutually exclusive rule
     /// and config selectors.
-    pub fn new(config: Option<String>, rules: Vec<String>) -> Result<Self, String> {
+    pub fn new(config: Option<String>, rules: Vec<String>) -> Result<Self, ExpectationError> {
         let selector = match (config, rules) {
             (Some(config), rules) if !config.trim().is_empty() && rules.is_empty() => {
                 ToolSelector::Config(config)
             }
             (None, rules) if !rules.is_empty() => ToolSelector::Rules(rules),
-            _ => return Err("tool expectation must specify exactly one of config or rules".into()),
+            _ => return Err(ExpectationError::InvalidSelector),
         };
         Ok(Self {
             selector,
@@ -178,9 +276,9 @@ impl ToolExpectation {
         }
     }
 
-    pub(crate) fn merge_from(&mut self, other: Self) -> Result<(), String> {
+    pub(crate) fn merge_from(&mut self, other: Self) -> Result<(), ExpectationError> {
         if self.selector != other.selector {
-            return Err("tool expectation selectors disagree across project files".into());
+            return Err(ExpectationError::SelectorMismatch);
         }
         self.required.extend(other.required);
         self.forbidden.extend(other.forbidden);
@@ -193,7 +291,7 @@ impl ToolExpectation {
         rules: Vec<String>,
         required: Vec<FindingExpectation>,
         forbidden: Vec<FindingExpectation>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, ExpectationError> {
         let mut expectation = Self::new(config, rules)?;
         expectation.required = required;
         expectation.forbidden = forbidden;
@@ -204,13 +302,13 @@ impl ToolExpectation {
         selector: ToolSelector,
         required: Vec<FindingExpectation>,
         forbidden: Vec<FindingExpectation>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, ExpectationError> {
         let valid = match &selector {
             ToolSelector::Config(config) => !config.trim().is_empty(),
             ToolSelector::Rules(rules) => !rules.is_empty(),
         };
         if !valid {
-            return Err("tool expectation selector is invalid".into());
+            return Err(ExpectationError::InvalidSelector);
         }
         Ok(Self {
             selector,
@@ -276,9 +374,9 @@ pub enum ExpectedCount {
 
 impl FindingExpectation {
     /// Construct a required or forbidden diagnostic with a validated rule ID.
-    pub fn new(rule_id: impl Into<String>) -> Result<Self, String> {
-        let rule_id = RuleId::parse(rule_id.into())
-            .map_err(|_| "diagnostic expectation rule ID is invalid".to_owned())?;
+    pub fn new(rule_id: impl Into<String>) -> Result<Self, FindingExpectationError> {
+        let rule_id =
+            RuleId::parse(rule_id.into()).map_err(FindingExpectationError::InvalidRuleId)?;
         Ok(Self {
             path: None,
             rule_id,
@@ -291,8 +389,10 @@ impl FindingExpectation {
         })
     }
 
-    pub fn with_path(mut self, path: impl Into<String>) -> Result<Self, String> {
-        self.path = Some(ProjectRelativePath::new(path.into()).map_err(|error| error.to_string())?);
+    pub fn with_path(mut self, path: impl Into<String>) -> Result<Self, FindingExpectationError> {
+        self.path = Some(
+            ProjectRelativePath::new(path.into()).map_err(FindingExpectationError::InvalidPath)?,
+        );
         Ok(self)
     }
 
@@ -418,7 +518,7 @@ pub enum AdapterResolutionResult {
 /// project-session boundary. Keeping this conversion here prevents adapters
 /// and manifest parsing from maintaining parallel core-facing DTOs.
 impl TryFrom<&AdapterResolution> for (ResolutionRequestKind, ResolverOutcome) {
-    type Error = String;
+    type Error = AdapterConversionError;
 
     fn try_from(resolution: &AdapterResolution) -> Result<Self, Self::Error> {
         let kind = match resolution.kind {
@@ -428,17 +528,21 @@ impl TryFrom<&AdapterResolution> for (ResolutionRequestKind, ResolverOutcome) {
         };
         let result = match &resolution.result {
             AdapterResolutionResult::Internal { path } => ResolverOutcome::Internal {
-                path: ProjectRelativePath::new(path).map_err(|error| error.to_string())?,
+                path: ProjectRelativePath::new(path)
+                    .map_err(AdapterConversionError::InvalidInternalPath)?,
             },
             AdapterResolutionResult::External { package } => ResolverOutcome::External {
-                package: PackageSpecifier::new(package.clone()).map_err(|e| e.to_string())?,
+                package: PackageSpecifier::new(package.clone())
+                    .map_err(AdapterConversionError::InvalidPackage)?,
             },
             AdapterResolutionResult::Builtin { name } => ResolverOutcome::Builtin {
-                name: BuiltinModuleName::new(name.clone()).map_err(|e| e.to_string())?,
+                name: BuiltinModuleName::new(name.clone())
+                    .map_err(AdapterConversionError::InvalidBuiltin)?,
             },
             AdapterResolutionResult::Missing => ResolverOutcome::Missing,
             AdapterResolutionResult::OutsideProject { path } => ResolverOutcome::OutsideProject {
-                path: NormalizedOutsidePath::new(path.clone()).map_err(|e| e.to_string())?,
+                path: NormalizedOutsidePath::new(path.clone())
+                    .map_err(AdapterConversionError::InvalidOutsideProjectPath)?,
             },
             AdapterResolutionResult::Unsupported { reason } => ResolverOutcome::Unsupported {
                 reason: reason.clone(),
