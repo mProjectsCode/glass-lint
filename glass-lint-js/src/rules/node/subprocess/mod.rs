@@ -38,8 +38,8 @@ const SUBPROCESS_MODULE_CALLS: &[(&str, &str)] = &[
 ];
 
 /// Detects subprocess module indicators and calls to the principal
-/// `child_process`, `cluster`, and worker APIs. Imports alone remain an
-/// indicator; operation calls are reported only with module provenance.
+/// `child_process`, `cluster`, and `worker_threads` APIs. Imports alone remain
+/// an indicator; operation calls are reported only with module provenance.
 pub fn rule() -> Rule {
     Rule::builder("node.subprocess")
         .description("Starts Node subprocesses")
@@ -64,7 +64,6 @@ pub fn rule() -> Rule {
                 .copied()
                 .map(|pair| EventQuery::member_call_module(pair.0, pair.1)),
         )
-        .query(EventQuery::constructor_global("Worker"))
         .build()
         .unwrap()
 }

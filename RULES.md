@@ -806,7 +806,6 @@ Queries:
 - Emit `node:child_process` when a member call to `fork` on the namespace imported from module `node:child_process`.
 - Emit `cluster` when a member call to `fork` on the namespace imported from module `cluster`.
 - Emit `node:cluster` when a member call to `fork` on the namespace imported from module `node:cluster`.
-- Emit `Worker` when a constructor call to the global `Worker`.
 
 #### `node:archive.compression`
 

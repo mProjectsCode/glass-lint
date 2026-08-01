@@ -28,3 +28,8 @@ shadowed(() => ({}));
 const moduleName = getModuleName();
 // @expect-no-error glass-lint rule=node:node.subprocess
 require(moduleName);
+
+// The global browser Worker constructor belongs to browser:browser.worker,
+// not node:node.subprocess.
+// @expect-no-error glass-lint rule=node:node.subprocess
+new Worker("worker.js");
