@@ -1,40 +1,37 @@
-use glass_lint_datastructures::{ParentPathStore, PathId, PathInterner, PathSegment};
+use glass_lint_datastructures::{ParentPathStore, ParentRef, PathId, PathInterner, PathSegment};
 
 const MAX_OVERLAY_NODES: usize = 4096;
-const OVERLAY_TAG: u32 = 1 << 31;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SummaryPathId(u32);
+pub enum SummaryPathId {
+    Frozen(PathId),
+    Overlay(PathId),
+}
 
 impl SummaryPathId {
-    pub(super) const EMPTY: Self = Self(0);
+    pub(super) const EMPTY: Self = Self::Frozen(PathId::EMPTY);
 
     pub(super) fn is_empty(self) -> bool {
-        self == Self::EMPTY
+        self.path_id().is_empty()
     }
 
+    #[cfg(test)]
     pub(super) fn is_frozen(self) -> bool {
-        self.0 & OVERLAY_TAG == 0
+        matches!(self, Self::Frozen(_))
     }
 
-    pub(super) fn from_path_id(id: PathId) -> Self {
-        if id.is_linked() {
-            Self::from_overlay_path(id)
-        } else {
-            Self(id.as_u32())
-        }
+    pub(super) fn from_frozen_path(id: PathId) -> Self {
+        Self::Frozen(id)
     }
 
     fn from_overlay_path(id: PathId) -> Self {
-        Self(id.as_u32() | OVERLAY_TAG)
+        Self::Overlay(id)
     }
 
-    fn raw(self) -> u32 {
-        self.0
-    }
-
-    fn local_raw(self) -> u32 {
-        self.0 & !OVERLAY_TAG
+    fn path_id(self) -> PathId {
+        match self {
+            Self::Frozen(id) | Self::Overlay(id) => id,
+        }
     }
 }
 
@@ -53,54 +50,43 @@ impl<'a> SummaryPathStore<'a> {
     }
 
     pub(super) fn is_valid(&self, id: SummaryPathId) -> bool {
-        if id.is_frozen() {
-            self.frozen.checked_id(id.raw()).is_some()
-        } else {
-            self.overlay.checked_id(id.local_raw()).is_some()
+        match id {
+            SummaryPathId::Frozen(path) => self.frozen.is_valid(path),
+            SummaryPathId::Overlay(path) => self.overlay.is_valid(path),
         }
     }
 
     pub(super) fn intern_frozen(&self, path: PathId) -> Option<SummaryPathId> {
-        if !self.frozen.store().is_valid(path) {
-            return None;
-        }
-        Some(SummaryPathId::from_path_id(path))
-    }
-
-    fn depth_impl(&self, id: u32, is_frozen: bool) -> Option<u32> {
-        if is_frozen {
-            let pid = self.frozen.checked_id(id)?;
-            self.frozen.store().depth(pid)
-        } else {
-            let pid = self.overlay.checked_id(id & !OVERLAY_TAG)?;
-            self.overlay.depth(pid)
-        }
+        self.frozen
+            .is_valid(path)
+            .then_some(SummaryPathId::Frozen(path))
     }
 
     pub(super) fn depth(&self, id: SummaryPathId) -> Option<u32> {
-        self.depth_impl(id.raw(), id.is_frozen())
-    }
-
-    fn parent_impl(&self, id: u32, is_frozen: bool) -> Option<PathId> {
-        if is_frozen {
-            let pid = self.frozen.checked_id(id)?;
-            self.frozen.store().parent(pid)
-        } else {
-            let pid = self.overlay.checked_id(id & !OVERLAY_TAG)?;
-            self.overlay.parent(pid)
+        match id {
+            SummaryPathId::Frozen(path) => self.frozen.depth(path),
+            SummaryPathId::Overlay(path) => self.overlay.depth(path),
         }
     }
 
     fn parent(&self, id: SummaryPathId) -> Option<SummaryPathId> {
-        let parent_id = self.parent_impl(id.raw(), id.is_frozen())?;
-        Some(SummaryPathId::from_path_id(parent_id))
+        match id {
+            SummaryPathId::Frozen(path) => match self.frozen.parent_ref(path)? {
+                ParentRef::Local(parent) => Some(SummaryPathId::Frozen(parent)),
+                ParentRef::Linked(_) => None,
+            },
+            SummaryPathId::Overlay(path) => match self.overlay.parent_ref(path)? {
+                ParentRef::Local(parent) => Some(SummaryPathId::Overlay(parent)),
+                ParentRef::Linked(link) => Some(SummaryPathId::Frozen(link.id())),
+            },
+        }
     }
 
     pub(super) fn starts_with(&self, id: SummaryPathId, prefix: SummaryPathId) -> bool {
-        let Some(path_depth) = self.depth_impl(id.raw(), id.is_frozen()) else {
+        let Some(path_depth) = self.depth(id) else {
             return false;
         };
-        let Some(prefix_depth) = self.depth_impl(prefix.raw(), prefix.is_frozen()) else {
+        let Some(prefix_depth) = self.depth(prefix) else {
             return false;
         };
         if prefix_depth > path_depth {
@@ -117,49 +103,29 @@ impl<'a> SummaryPathStore<'a> {
     }
 
     pub(crate) fn matches_frozen(id: SummaryPathId, base: PathId) -> bool {
-        id == SummaryPathId::from_path_id(base)
+        id == SummaryPathId::from_frozen_path(base)
     }
 
     pub(crate) fn starts_with_frozen(&self, id: SummaryPathId, prefix: PathId) -> bool {
-        let prefix_id = SummaryPathId::from_path_id(prefix);
+        let prefix_id = SummaryPathId::from_frozen_path(prefix);
         if !self.is_valid(prefix_id) {
             return false;
         }
         self.starts_with(id, prefix_id)
     }
 
-    fn segment_impl(&self, raw_id: u32) -> Option<&PathSegment> {
-        if raw_id == 0 {
-            return None;
-        }
-        if raw_id & OVERLAY_TAG == 0 {
-            let pid = self.frozen.checked_id(raw_id)?;
-            self.frozen.store().segment(pid)
-        } else {
-            let pid = self.overlay.checked_id(raw_id & !OVERLAY_TAG)?;
-            self.overlay.segment(pid)
-        }
-    }
-
     fn segment(&self, id: SummaryPathId) -> Option<&PathSegment> {
-        self.segment_impl(id.raw())
-    }
-
-    fn first_segment_of_impl(&self, raw_id: u32) -> Option<&PathSegment> {
-        if raw_id == 0 {
-            return None;
-        }
-        if raw_id & OVERLAY_TAG == 0 {
-            let pid = self.frozen.checked_id(raw_id)?;
-            self.frozen.store().first_segment_of(pid)
-        } else {
-            let pid = self.overlay.checked_id(raw_id & !OVERLAY_TAG)?;
-            self.overlay.first_segment_of(pid)
+        match id {
+            SummaryPathId::Frozen(path) => self.frozen.segment(path),
+            SummaryPathId::Overlay(path) => self.overlay.segment(path),
         }
     }
 
     fn first_segment_of(&self, id: SummaryPathId) -> Option<&PathSegment> {
-        self.first_segment_of_impl(id.raw())
+        match id {
+            SummaryPathId::Frozen(path) => self.frozen.first_segment_of(path),
+            SummaryPathId::Overlay(path) => self.overlay.first_segment_of(path),
+        }
     }
 
     pub(super) fn first_index(&self, id: SummaryPathId) -> Option<u32> {
@@ -170,20 +136,16 @@ impl<'a> SummaryPathStore<'a> {
     }
 
     fn find_edge_impl(&self, parent: SummaryPathId, segment: PathSegment) -> Option<SummaryPathId> {
-        let raw_parent = parent.raw();
-        if !parent.is_frozen()
-            && let Some(pid) = self.overlay.checked_id(parent.local_raw())
-            && let Some(child) = self.overlay.find_edge(pid, &segment)
-        {
-            return Some(SummaryPathId::from_overlay_path(child));
+        match parent {
+            SummaryPathId::Overlay(path) => self
+                .overlay
+                .find_edge(path, &segment)
+                .map(SummaryPathId::from_overlay_path),
+            SummaryPathId::Frozen(path) => self
+                .frozen
+                .find_edge(path, &segment)
+                .map(SummaryPathId::from_frozen_path),
         }
-        if parent.is_frozen()
-            && let Some(pid) = self.frozen.checked_id(raw_parent)
-            && let Some(child) = self.frozen.store().find_edge(pid, &segment)
-        {
-            return Some(SummaryPathId::from_path_id(child));
-        }
-        None
     }
 
     fn find_edge(&self, parent: SummaryPathId, segment: PathSegment) -> Option<SummaryPathId> {
@@ -195,21 +157,17 @@ impl<'a> SummaryPathStore<'a> {
         parent: SummaryPathId,
         segment: PathSegment,
     ) -> Option<SummaryPathId> {
-        let parent_id = if parent.is_frozen() {
-            self.frozen.checked_id(parent.raw())?
-        } else {
-            self.overlay.checked_id(parent.raw())?
-        };
-        if let Some(child) = self.overlay.find_edge(parent_id, &segment) {
+        if let SummaryPathId::Overlay(path) = parent {
+            return self
+                .overlay
+                .append(path, segment)
+                .map(SummaryPathId::from_overlay_path);
+        }
+        let parent_link = self.frozen.link(parent.path_id())?;
+        if let Some(child) = self.overlay.find_linked_edge(parent_link, &segment) {
             return Some(SummaryPathId::from_overlay_path(child));
         }
-        if self.overlay.node_count() >= self.overlay.max_nodes() {
-            return None;
-        }
-        let parent_depth = self.depth(parent)?;
-        let child = self
-            .overlay
-            .append_linked(parent_id, segment, parent_depth)?;
+        let child = self.overlay.append_linked(parent_link, segment)?;
         Some(SummaryPathId::from_overlay_path(child))
     }
 
@@ -231,9 +189,8 @@ impl<'a> SummaryPathStore<'a> {
         let mut segments = Vec::new();
         let mut current = suffix;
         while !current.is_empty() {
-            segments.push(*self.segment_impl(current.raw())?);
-            current =
-                SummaryPathId::from_path_id(self.parent_impl(current.raw(), current.is_frozen())?);
+            segments.push(*self.segment(current)?);
+            current = self.parent(current)?;
         }
         let mut result = prefix;
         for seg in segments.into_iter().rev() {
@@ -251,12 +208,12 @@ impl<'a> SummaryPathStore<'a> {
         let mut segments = Vec::new();
         let mut current = id;
         loop {
-            let node_parent = self.parent_impl(current.raw(), current.is_frozen())?;
+            let node_parent = self.parent(current)?;
             if node_parent.is_empty() {
                 break;
             }
-            segments.push(*self.segment_impl(current.raw())?);
-            current = SummaryPathId::from_path_id(node_parent);
+            segments.push(*self.segment(current)?);
+            current = node_parent;
         }
         let mut result = SummaryPathId::EMPTY;
         for seg in segments.into_iter().rev() {
@@ -271,9 +228,8 @@ impl<'a> SummaryPathStore<'a> {
         let mut segments = Vec::with_capacity(depth as usize);
         let mut current = id;
         while !current.is_empty() {
-            segments.push(*self.segment_impl(current.raw())?);
-            let next_parent = self.parent_impl(current.raw(), current.is_frozen())?;
-            current = SummaryPathId::from_path_id(next_parent);
+            segments.push(*self.segment(current)?);
+            current = self.parent(current)?;
         }
         segments.reverse();
         Some(segments)
@@ -327,7 +283,7 @@ mod tests {
         let (frozen, a, _b, _c) = make_frozen_paths();
         let store = SummaryPathStore::new(&frozen);
         let s_id = store.intern_frozen(a).unwrap();
-        assert_eq!(s_id, SummaryPathId::from_path_id(a));
+        assert_eq!(s_id, SummaryPathId::from_frozen_path(a));
         assert!(s_id.is_frozen());
         assert_eq!(store.depth(s_id), Some(1));
     }
@@ -341,8 +297,8 @@ mod tests {
         assert!(store.intern_frozen(a).is_none());
         // a is valid in `frozen` but not in `empty` — validates that
         // cross-store IDs are rejected
-        assert!(frozen.checked_id(a.as_u32()).is_some());
-        assert!(empty.checked_id(a.as_u32()).is_none());
+        assert!(frozen.is_valid(a));
+        assert!(!empty.is_valid(a));
     }
 
     #[test]
@@ -390,11 +346,11 @@ mod tests {
     fn matches_frozen_checks_identity() {
         let (_, a, b, _c) = make_frozen_paths();
         assert!(SummaryPathStore::matches_frozen(
-            SummaryPathId::from_path_id(a),
+            SummaryPathId::from_frozen_path(a),
             a
         ));
         assert!(!SummaryPathStore::matches_frozen(
-            SummaryPathId::from_path_id(a),
+            SummaryPathId::from_frozen_path(a),
             b,
         ));
     }
@@ -414,7 +370,7 @@ mod tests {
     fn without_first_on_frozen() {
         let (frozen, _a, b, _c) = make_frozen_paths();
         let store = SummaryPathStore::new(&frozen);
-        let s_b = SummaryPathId::from_path_id(b);
+        let s_b = SummaryPathId::from_frozen_path(b);
         assert!(store.without_first(s_b).is_none());
     }
 
@@ -433,7 +389,7 @@ mod tests {
     fn owned_segments_on_frozen() {
         let (frozen, _a, b, _c) = make_frozen_paths();
         let store = SummaryPathStore::new(&frozen);
-        let s_b = SummaryPathId::from_path_id(b);
+        let s_b = SummaryPathId::from_frozen_path(b);
         let segs = store.owned_segments(s_b).unwrap();
         assert_eq!(segs, vec![PathSegment::Index(0), PathSegment::Index(1)]);
     }
@@ -478,7 +434,7 @@ mod tests {
     fn first_index_on_frozen_and_overlay() {
         let (frozen, a, _b, _c) = make_frozen_paths();
         let store = SummaryPathStore::new(&frozen);
-        let s_idx = SummaryPathId::from_path_id(a);
+        let s_idx = SummaryPathId::from_frozen_path(a);
         assert_eq!(store.first_index(s_idx), Some(0));
     }
 

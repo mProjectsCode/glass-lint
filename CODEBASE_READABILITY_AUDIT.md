@@ -10,7 +10,7 @@ The highest-impact issues are the leaking path-storage representation, evidence 
 
 ### Core storage and API boundaries
 
-#### READ-001 — Path storage still exposes tagged IDs and trusted cross-store construction
+#### [x] READ-001 — Path storage still exposes tagged IDs and trusted cross-store construction
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -20,6 +20,8 @@ The highest-impact issues are the leaking path-storage representation, evidence 
 `PathId` and `SummaryPathId` still encode storage identity with raw integers and tag bits, while `PathInterner::store()` exposes the underlying `ParentPathStore`. `ParentPathStore::append_linked` accepts a caller-supplied parent depth, and the summary store duplicates frozen/overlay tag dispatch and calls that trusted operation directly; this makes cross-store identity and depth invariants depend on caller discipline. The public `as_u32`, `untag`, `parent`, and store-forwarding methods also make the representation part of the effective API.
 
 Keep `ParentPathStore` reusable, but give it a safe public API: opaque path handles, validated parent ownership, derived depth, checked capacity, and operations that do not require callers to pass tags or trusted metadata. Remove `PathInterner::store()` and expose typed frozen/overlay/view operations instead; centralize tag dispatch in the owner so IDs from different stores cannot be mixed accidentally. Preserve a low-level reusable type only if its invariants are enforced at construction and every fallible operation reports exhaustion without panic; do not solve the boundary problem by making the reusable primitive private and duplicating it elsewhere.
+
+Implemented store-owned opaque `PathId` handles and validated `PathLink` parent references with derived depth and checked capacity. `ParentPathStore` now records local versus linked parents explicitly, `PathInterner::store()` is gone, and `SummaryPathId` uses typed frozen/overlay variants instead of raw tag dispatch; focused tests cover cross-store rejection, frozen references, overlay joins, and exhaustion behavior.
 
 #### READ-002 — Rule evidence still falls back to raw nested vectors
 

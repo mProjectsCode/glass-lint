@@ -33,6 +33,7 @@ pub use history::{HistoryCursor, HistoryTransition, ParentLinkedHistory};
 pub use name::{NameExhausted, NameId, NameTable};
 pub use path::{NamePath, Path, PathView, SymbolPath};
 pub use path_trie::{
-    ParentPathStore, PathId, PathInterner, PathSegment, PathSegmentInput, PathSegments,
+    ParentPathStore, ParentRef, PathId, PathInterner, PathLink, PathSegment, PathSegmentInput,
+    PathSegments,
 };
 pub use table::{IdIndex, IndexTable, InsertOutcome};

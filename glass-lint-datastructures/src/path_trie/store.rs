@@ -1,10 +1,32 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use hashbrown::HashMap;
 
 use crate::{PathId, PathSegment};
 
+static NEXT_STORE_ID: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PathLink {
+    id: PathId,
+    depth: u32,
+}
+
+impl PathLink {
+    pub fn id(self) -> PathId {
+        self.id
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ParentRef {
+    Local(PathId),
+    Linked(PathLink),
+}
+
 #[derive(Debug, Clone)]
 struct PathNode {
-    parent: PathId,
+    parent: ParentRef,
     depth: u32,
     segment: Option<PathSegment>,
 }
@@ -12,98 +34,109 @@ struct PathNode {
 #[derive(Debug)]
 pub struct ParentPathStore {
     nodes: Vec<PathNode>,
-    by_edge: HashMap<(PathId, PathSegment), PathId>,
+    by_edge: HashMap<(ParentRef, PathSegment), PathId>,
     max_nodes: usize,
+    owner: u64,
 }
 
 impl ParentPathStore {
     pub fn new(max_nodes: usize) -> Self {
         Self {
             nodes: vec![PathNode {
-                parent: PathId::EMPTY,
+                parent: ParentRef::Local(PathId::EMPTY),
                 depth: 0,
                 segment: None,
             }],
             by_edge: HashMap::new(),
             max_nodes,
+            owner: NEXT_STORE_ID.fetch_add(1, Ordering::Relaxed),
         }
     }
 
-    /// Construct a `PathId` from a raw `u32` value, validating that the
-    /// untagged index is within the node store. Returns `None` when the
-    /// index is out of range.
-    pub fn checked_id(&self, raw: u32) -> Option<PathId> {
-        let idx = PathId(raw).untag().0 as usize;
-        if idx < self.nodes.len() {
-            Some(PathId(raw))
-        } else {
-            None
+    fn local_id(&self, id: PathId) -> Option<PathId> {
+        if id.is_empty() {
+            return Some(PathId::EMPTY);
         }
+        (id.owner() == self.owner).then_some(id.without_linked())
+    }
+
+    fn node(&self, id: PathId) -> Option<&PathNode> {
+        let id = self.local_id(id)?;
+        self.nodes.get(id.index() as usize)
+    }
+
+    /// Construct a handle from a raw index, validating both capacity and this
+    /// store's ownership boundary.
+    pub fn checked_id(&self, raw: u32) -> Option<PathId> {
+        let linked = raw & PathId::LINK_TAG != 0;
+        let id = PathId::for_store(raw & !PathId::LINK_TAG, self.owner);
+        ((id.index() as usize) < self.nodes.len()).then_some(if linked {
+            id.with_linked()
+        } else {
+            id
+        })
     }
 
     pub fn is_valid(&self, id: PathId) -> bool {
-        let idx = id.untag().0 as usize;
-        idx < self.nodes.len()
+        self.node(id).is_some()
     }
 
     pub fn append(&mut self, parent: PathId, segment: PathSegment) -> Option<PathId> {
-        if !self.is_valid(parent) {
-            return None;
-        }
-        if let Some(path) = self.by_edge.get(&(parent, segment)) {
+        let parent = self.local_id(parent)?;
+        if let Some(path) = self.by_edge.get(&(ParentRef::Local(parent), segment)) {
             return Some(*path);
         }
-        if self.nodes.len() >= self.max_nodes {
-            return None;
-        }
-        let id = u32::try_from(self.nodes.len()).ok()?;
-        let depth = self.nodes[parent.untag().0 as usize].depth.checked_add(1)?;
-        self.nodes.push(PathNode {
-            parent,
-            depth,
-            segment: Some(segment),
-        });
-        self.by_edge.insert((parent, segment), PathId(id));
-        Some(PathId(id))
+        self.append_node(ParentRef::Local(parent), segment)
     }
 
-    /// Append a child whose parent may be owned by another path store.
-    ///
-    /// The caller supplies the validated depth of the parent because an
-    /// external parent is intentionally not looked up in this store. The
-    /// child depth is computed here, and the operation remains deduplicated
-    /// and capacity-bounded like [`Self::append`].
-    pub fn append_linked(
-        &mut self,
-        parent: PathId,
-        segment: PathSegment,
-        parent_depth: u32,
-    ) -> Option<PathId> {
-        if let Some(path) = self.by_edge.get(&(parent, segment)) {
+    /// Create a validated link that can be used as a parent in another store.
+    pub fn link(&self, parent: PathId) -> Option<PathLink> {
+        let parent = self.local_id(parent)?;
+        Some(PathLink {
+            id: parent,
+            depth: self.node(parent)?.depth,
+        })
+    }
+
+    /// Append a child whose parent is owned by this or another path store.
+    /// Parent depth is derived from the opaque link, so callers cannot supply
+    /// inconsistent metadata.
+    pub fn append_linked(&mut self, parent: PathLink, segment: PathSegment) -> Option<PathId> {
+        if let Some(path) = self.by_edge.get(&(ParentRef::Linked(parent), segment)) {
             return Some(*path);
         }
+        self.append_node(ParentRef::Linked(parent), segment)
+    }
+
+    fn append_node(&mut self, parent: ParentRef, segment: PathSegment) -> Option<PathId> {
         if self.nodes.len() >= self.max_nodes {
             return None;
         }
         let id = u32::try_from(self.nodes.len()).ok()?;
-        let depth = parent_depth.checked_add(1)?;
+        let depth = parent_depth(&self.nodes, parent)?;
+        let child = PathId::for_store(id, self.owner);
         self.nodes.push(PathNode {
             parent,
             depth,
             segment: Some(segment),
         });
-        self.by_edge.insert((parent, segment), PathId(id));
-        Some(PathId(id))
+        self.by_edge.insert((parent, segment), child);
+        Some(child)
     }
 
     pub fn depth(&self, id: PathId) -> Option<u32> {
-        let idx = id.untag().0 as usize;
-        self.nodes.get(idx).map(|node| node.depth)
+        self.node(id).map(|node| node.depth)
+    }
+
+    pub fn parent_ref(&self, id: PathId) -> Option<ParentRef> {
+        self.node(id).map(|node| node.parent)
     }
 
     pub fn parent(&self, id: PathId) -> Option<PathId> {
-        let idx = id.untag().0 as usize;
-        self.nodes.get(idx).map(|node| node.parent)
+        self.parent_ref(id).map(|parent| match parent {
+            ParentRef::Local(id) => id,
+            ParentRef::Linked(link) => link.id,
+        })
     }
 
     pub fn starts_with(&self, path: PathId, prefix: PathId) -> bool {
@@ -118,46 +151,59 @@ impl ParentPathStore {
         }
         let mut current = path;
         for _ in 0..(path_depth - prefix_depth) {
-            match self.parent(current) {
-                Some(next) => current = next,
-                None => return false,
+            match self.parent_ref(current) {
+                Some(ParentRef::Local(next)) => current = next,
+                Some(ParentRef::Linked(_)) | None => return false,
             }
         }
-        current == prefix
+        current == self.local_id(prefix).unwrap_or(PathId::EMPTY)
     }
 
     pub fn segment(&self, id: PathId) -> Option<&PathSegment> {
-        let idx = id.untag().0 as usize;
-        if idx == 0 {
+        let id = self.local_id(id)?;
+        if id.is_empty() {
             return None;
         }
-        self.nodes.get(idx)?.segment.as_ref()
+        self.nodes.get(id.index() as usize)?.segment.as_ref()
     }
 
     pub fn first_segment_of(&self, id: PathId) -> Option<&PathSegment> {
-        let mut current = id;
+        let mut current = self.local_id(id)?;
         let mut last = None;
         while !current.is_empty() {
-            let idx = current.untag().0 as usize;
-            let node = self.nodes.get(idx)?;
+            let node = self.node(current)?;
             last = Some(self.segment(current)?);
-            current = node.parent;
+            current = match node.parent {
+                ParentRef::Local(parent) => parent,
+                ParentRef::Linked(_) => return None,
+            };
         }
         last
     }
 
     pub fn find_edge(&self, parent: PathId, segment: &PathSegment) -> Option<PathId> {
-        self.by_edge.get(&(parent, *segment)).copied()
+        let parent = self.local_id(parent)?;
+        self.by_edge
+            .get(&(ParentRef::Local(parent), *segment))
+            .copied()
+    }
+
+    pub fn find_linked_edge(&self, parent: PathLink, segment: &PathSegment) -> Option<PathId> {
+        self.by_edge
+            .get(&(ParentRef::Linked(parent), *segment))
+            .copied()
     }
 
     pub fn collect_segments(&self, id: PathId, buf: &mut Vec<PathSegment>) -> Option<()> {
         buf.clear();
-        let mut current = id;
+        let mut current = self.local_id(id)?;
         while !current.is_empty() {
-            let idx = current.untag().0 as usize;
-            let node = self.nodes.get(idx)?;
+            let node = self.node(current)?;
             buf.push(*self.segment(current)?);
-            current = node.parent;
+            current = match node.parent {
+                ParentRef::Local(parent) => parent,
+                ParentRef::Linked(_) => return None,
+            };
         }
         buf.reverse();
         Some(())
@@ -189,15 +235,20 @@ impl ParentPathStore {
 
     fn rebuild_without_first(&self, id: PathId) -> Option<PathId> {
         let mut segments = Vec::new();
-        let mut current = id;
+        let mut current = self.local_id(id)?;
         loop {
-            let idx = current.untag().0 as usize;
-            let node = self.nodes.get(idx)?;
-            if node.parent == PathId::EMPTY {
+            let node = self.node(current)?;
+            if match node.parent {
+                ParentRef::Local(parent) => parent.is_empty(),
+                ParentRef::Linked(link) => link.id.is_empty(),
+            } {
                 break;
             }
             segments.push(*self.segment(current)?);
-            current = node.parent;
+            current = match node.parent {
+                ParentRef::Local(parent) => parent,
+                ParentRef::Linked(_) => return None,
+            };
         }
         let mut result = PathId::EMPTY;
         for seg in segments.into_iter().rev() {
@@ -213,6 +264,13 @@ impl ParentPathStore {
             segments: collected,
             index: 0,
         })
+    }
+}
+
+fn parent_depth(nodes: &[PathNode], parent: ParentRef) -> Option<u32> {
+    match parent {
+        ParentRef::Local(id) => nodes.get(id.index() as usize)?.depth.checked_add(1),
+        ParentRef::Linked(link) => link.depth.checked_add(1),
     }
 }
 

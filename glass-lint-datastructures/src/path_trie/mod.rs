@@ -6,5 +6,5 @@ mod types;
 mod tests;
 
 pub use interner::PathInterner;
-pub use store::{ParentPathStore, PathSegments};
+pub use store::{ParentPathStore, ParentRef, PathLink, PathSegments};
 pub use types::{DEFAULT_MAX_PATH_NODES, PathId, PathSegment, PathSegmentInput};

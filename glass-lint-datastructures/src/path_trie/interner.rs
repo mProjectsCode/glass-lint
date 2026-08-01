@@ -1,5 +1,6 @@
 use crate::{
-    ParentPathStore, PathId, PathSegment, PathSegments, path_trie::DEFAULT_MAX_PATH_NODES,
+    ParentPathStore, ParentRef, PathId, PathLink, PathSegment, PathSegments,
+    path_trie::DEFAULT_MAX_PATH_NODES,
 };
 
 #[derive(Debug)]
@@ -26,12 +27,40 @@ impl PathInterner {
         self.store.starts_with(path, prefix)
     }
 
-    pub fn store(&self) -> &ParentPathStore {
-        &self.store
-    }
-
     pub fn last(&self, path: PathId) -> Option<&PathSegment> {
         self.store.last(path)
+    }
+
+    pub fn segment(&self, path: PathId) -> Option<&PathSegment> {
+        self.store.segment(path)
+    }
+
+    pub fn first_segment_of(&self, path: PathId) -> Option<&PathSegment> {
+        self.store.first_segment_of(path)
+    }
+
+    pub fn is_valid(&self, path: PathId) -> bool {
+        self.store.is_valid(path)
+    }
+
+    pub fn parent_ref(&self, path: PathId) -> Option<ParentRef> {
+        self.store.parent_ref(path)
+    }
+
+    pub fn parent(&self, path: PathId) -> Option<PathId> {
+        self.store.parent(path)
+    }
+
+    pub fn collect_segments(&self, path: PathId, buf: &mut Vec<PathSegment>) -> Option<()> {
+        self.store.collect_segments(path, buf)
+    }
+
+    pub fn link(&self, path: PathId) -> Option<PathLink> {
+        self.store.link(path)
+    }
+
+    pub fn find_edge(&self, parent: PathId, segment: &PathSegment) -> Option<PathId> {
+        self.store.find_edge(parent, segment)
     }
 
     pub fn first_index(&self, path: PathId) -> Option<u32> {
