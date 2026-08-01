@@ -187,7 +187,7 @@ All implementation modules are public while their principal types are also re-ex
 
 Make implementation modules private, retain the crate root as the canonical facade, and re-export intended public constants deliberately. Update any downstream direct-path call sites in the same breaking change rather than keeping a compatibility layer. Add a small public-surface check so future modules are not exposed accidentally.
 
-#### READ-016 — Narrow dead-code exceptions conceal removable production paths
+#### [x] READ-016 — Narrow dead-code exceptions conceal removable production paths
 
 - **Severity:** Low
 - **Fix Complexity** Low
@@ -197,6 +197,8 @@ Make implementation modules private, retain the crate root as the canonical faca
 The tree still contains a dead `active_tool_runs` report helper, an internal-target enqueue method whose sole caller always supplies `Some`, test-only mutation counters compiled into production behind allowances, and a stale `too_many_lines` suppression on a short declarative rule. Each is small, but together they make it harder to tell whether an exception denotes a real architectural constraint or leftover migration scaffolding.
 
 Delete the unused report helper, remove the needless optional target branch, gate pure test introspection with `cfg(test)`, and remove stale lint suppressions after rerunning the workspace lints. Keep any instrumentation that feeds production diagnostics or profiling, and validate call sites before deleting fields rather than treating an allowance alone as proof of dead state. Prefer an explicit test-support module when several internal counters need privileged access.
+
+Removed the unused harness report iterator and the optional internal-target parameter, whose sole caller always provided a path. Mutation-log counters are now compiled only for tests, while production exhaustion accounting remains intact, and the obsolete archive-rule line-count suppression is gone.
 
 ## Systemic Themes
 

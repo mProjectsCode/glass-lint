@@ -271,7 +271,7 @@ impl FlowStateTable {
         FlowSemanticSnapshot { aliases, states }
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(super) fn mutation_count(&self) -> usize {
         self.log.node_count()
     }

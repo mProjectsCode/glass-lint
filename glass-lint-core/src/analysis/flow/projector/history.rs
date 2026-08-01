@@ -52,7 +52,7 @@ impl MutationLog {
         }
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(super) fn node_count(&self) -> usize {
         self.history.len()
     }

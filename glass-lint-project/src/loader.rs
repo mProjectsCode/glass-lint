@@ -764,31 +764,29 @@ impl<'a> ProjectLoadState<'a> {
         metrics: &mut ProjectMetricsAccumulator,
     ) -> Result<(), ProjectLoadError> {
         for path in resolution.internal_targets {
-            self.enqueue_internal_target(Some(path), metrics)?;
+            self.enqueue_internal_target(path, metrics)?;
         }
         Ok(())
     }
 
     fn enqueue_internal_target(
         &mut self,
-        path: Option<glass_lint_core::project::ProjectRelativePath>,
+        path: glass_lint_core::project::ProjectRelativePath,
         metrics: &mut ProjectMetricsAccumulator,
     ) -> Result<(), ProjectLoadError> {
-        if let Some(path) = path {
-            self.progress.record_edge();
-            self.progress.publish(metrics);
-            if let Some(admitted) = self.admitted_target_cache.get(&path) {
-                self.queue.push(admitted.clone());
-                return Ok(());
-            }
-            let target = self.admission.canonical_root().join(&path);
-            if target.exists()
-                && let crate::admission::PathAdmission::Admitted(admitted) =
-                    self.admission.classify(&target)?
-            {
-                self.admitted_target_cache.insert(path, admitted.clone());
-                self.queue.push(admitted);
-            }
+        self.progress.record_edge();
+        self.progress.publish(metrics);
+        if let Some(admitted) = self.admitted_target_cache.get(&path) {
+            self.queue.push(admitted.clone());
+            return Ok(());
+        }
+        let target = self.admission.canonical_root().join(&path);
+        if target.exists()
+            && let crate::admission::PathAdmission::Admitted(admitted) =
+                self.admission.classify(&target)?
+        {
+            self.admitted_target_cache.insert(path, admitted.clone());
+            self.queue.push(admitted);
         }
         Ok(())
     }

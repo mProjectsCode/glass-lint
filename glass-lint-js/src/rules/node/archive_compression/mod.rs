@@ -40,7 +40,6 @@ fn import_query(spec: ImportSpec) -> Result<EventQuery, QueryBuildError> {
 /// Detects direct ESM or unshadowed CommonJS imports of the listed archive and
 /// compression packages. This rule reports the module load itself; it does not
 /// infer use from local API names or from similarly named packages.
-#[allow(clippy::too_many_lines)]
 pub fn rule() -> Rule {
     Rule::builder("archive.compression")
         .description("Uses archive or compression libraries")
