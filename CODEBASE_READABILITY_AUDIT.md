@@ -2,206 +2,217 @@
 
 ## Summary
 
-This report replaces the previous audit. The previous version described several completed refactors, but the current tree still contains a number of the underlying representation and ownership patterns, so its historical findings were not carried forward as evidence of the present state.
+This report replaces the completed audit that previously occupied this file. It describes only issues present in the current tree; completed findings and implementation notes from the previous report were intentionally removed.
 
-The highest-impact issues are the leaking path-storage representation, evidence storage that falls back to raw nested vectors, and phase coordinators that still own too many independent pieces of flow state. The project loader, profiling harness, and provider catalogs have similar but more localized aggregation and duplication patterns. These are maintainability findings rather than claims of functional defects; the recommended changes should preserve bounded analysis, path-local identity, fail-closed behavior, and deterministic output.
+The scan found 16 maintainability issues. The most important theme is that several analysis boundaries have gained typed owners while still exchanging their contents through raw indices, positional tuples, parallel collections, or strings. That weakens the invariants promised by the surrounding APIs and makes changes to flow evidence, parse status, query construction, and adapter serialization harder to validate locally. The recommendations below preserve the repository's strict path-local identity, bounded and deterministic analysis, fail-closed behavior, and provider-neutral core boundary.
 
 ## Findings
 
-### Core storage and API boundaries
+### Core query and resolution APIs
 
-#### [x] READ-001 — Path storage still exposes tagged IDs and trusted cross-store construction
-
-- **Severity:** High
-- **Fix Complexity:** High
-- **Category:** API
-- **Location:** `glass-lint-datastructures/src/path_trie/types.rs:5-31`; `glass-lint-datastructures/src/path_trie/store.rs:13-17,32-47,70-216`; `glass-lint-datastructures/src/path_trie/interner.rs:5-75`; `glass-lint-core/src/analysis/flow/summary/store.rs:1-243`
-
-`PathId` and `SummaryPathId` still encode storage identity with raw integers and tag bits, while `PathInterner::store()` exposes the underlying `ParentPathStore`. `ParentPathStore::append_linked` accepts a caller-supplied parent depth, and the summary store duplicates frozen/overlay tag dispatch and calls that trusted operation directly; this makes cross-store identity and depth invariants depend on caller discipline. The public `as_u32`, `untag`, `parent`, and store-forwarding methods also make the representation part of the effective API.
-
-Keep `ParentPathStore` reusable, but give it a safe public API: opaque path handles, validated parent ownership, derived depth, checked capacity, and operations that do not require callers to pass tags or trusted metadata. Remove `PathInterner::store()` and expose typed frozen/overlay/view operations instead; centralize tag dispatch in the owner so IDs from different stores cannot be mixed accidentally. Preserve a low-level reusable type only if its invariants are enforced at construction and every fallible operation reports exhaustion without panic; do not solve the boundary problem by making the reusable primitive private and duplicating it elsewhere.
-
-Implemented store-owned opaque `PathId` handles and validated `PathLink` parent references with derived depth and checked capacity. `ParentPathStore` now records local versus linked parents explicitly, `PathInterner::store()` is gone, and `SummaryPathId` uses typed frozen/overlay variants instead of raw tag dispatch; focused tests cover cross-store rejection, frozen references, overlay joins, and exhaustion behavior.
-
-#### [x] READ-002 — Rule evidence still falls back to raw nested vectors
-
-- **Severity:** High
-- **Fix Complexity:** Medium
-- **Category:** Encapsulation
-- **Location:** `glass-lint-core/src/api/classification.rs:72-113`; `glass-lint-core/src/analysis/project/projection.rs:149-157`; `glass-lint-core/src/analysis/matching/arguments/mod.rs:36-164`; `glass-lint-core/src/analysis/flow/projector/mod.rs:222-232`; `glass-lint-core/src/analysis/flow/projector/state.rs:347-395`; `glass-lint-core/src/analysis/flow/cross/evidence.rs:94-166`
-
-`RuleEvidenceTable` provides a typed owner, but `as_mut_slices`, `Index<usize>`, and several downstream APIs immediately expose or accept `&mut [Vec<ClassificationEvidence>]`. The local projector, argument matcher, and cross-file evidence collector then index those vectors with raw `usize`, so rule capacity, ordering, and vector alignment remain hidden invariants spread across multiple phases.
-
-Carry `RuleIndex` and an evidence owner through these boundaries with methods such as `for_rule_mut`, `record`, `merge`, and `into_report`. If a raw slice is unavoidable for a narrow compiler or serialization bridge, keep that adapter private, make it one-way, and have all analysis code use typed rule operations; add a single invariant check at the owner boundary rather than repeating capacity assumptions in each phase.
-
-Implemented typed `RuleEvidenceTable` operations (`for_rule_mut`, `record`, and `replace`) and removed the production mutable-slice/index boundary. Constrained matching, local flow, and cross-file evidence now pass rule-indexed owners; flow evidence keys carry `RuleIndex`, while the legacy `usize` index adapter remains test-only for assertions and no analysis phase indexes the nested vectors directly.
-
-### Core analysis and flow coordination
-
-#### [x] READ-003 — `ObjectFlowProjector` remains a broad phase coordinator
-
-- **Severity:** High
-- **Fix Complexity:** High
-- **Category:** Complexity
-- **Location:** `glass-lint-core/src/analysis/flow/projector/mod.rs:129-220,298-509,511-694`
-
-`ObjectFlowProjector` still owns the fact stream, names, plan, call index, evidence, flow-state table, lifecycle state, control frames, paths, pending calls, active-path counters, binding slots, trace arena, and module identity. Methods such as `finish_loop`, `transfer_function`, `join_paths`, `finalize_pending`, and `record_property_write` combine scheduling, fixed-point replay, state restoration, cleanup, evidence emission, and reporting, so the type is the implicit owner of several independent state machines.
-
-Split the state into explicit owners for the path frontier, loop fixed-point/replay engine, pending evidence, and lifecycle outcome, leaving the projector as a thin coordinator over typed operations. Preserve the single fact stream and existing bounded behavior, but make restoration, join, and cleanup belong to one subtype each; return typed termination results instead of communicating phase outcomes through shared fields and counters.
-
-Implemented dedicated `PathFrontier` and `PendingFlowStates` owners for correlated alternatives, replay cursors, and fact-local pending witnesses. Control-flow and replay code now transfers frontier state through those owners, while `ProjectionRunState` remains the lifecycle/budget owner and `FlowEvidence` retains evidence emission ownership; projector, fixed-point, and bounded-exhaustion tests remain unchanged and passing.
-
-#### [x] READ-004 — Declaration classification duplicates precedence across expression shapes
+#### READ-001 — Member-chain validation has multiple competing owners
 
 - **Severity:** Medium
-- **Fix Complexity:** Medium
-- **Category:** Duplication
-- **Location:** `glass-lint-core/src/analysis/scope/build/analysis/classification.rs:45-265`
+- **Fix Complexity** Medium
+- **Category:** Newtype
+- **Location:** `glass-lint-core/src/api/rule/query/mod.rs:177-211`; `glass-lint-core/src/api/rule/query/value.rs:87-115`; `glass-lint-core/src/api/rule/query/lifecycle.rs:334-412`; `glass-lint-datastructures/src/path/name_path.rs:130-172`
 
-`klassify_call`, `klassify_member`, and `klassify_ident` each probe overlapping provenance, `require`, returned-object, constant, rooted-name, and value-alias sources. Their checks and fallback order differ slightly, so adding or reordering one semantic source requires coordinated edits in three helpers; the owned `name` handling and repeated clones make that drift less visible.
+Query builders repeat the definition of a valid dotted chain, sometimes returning the original invalid value and sometimes a generic replacement string. `SymbolPath::from_chain` deliberately normalizes empty segments, so every caller that needs strict input must remember to validate before constructing the path; lifecycle sinks additionally retain a raw `String` beside the parsed path.
 
-Normalize the declaration into a small classification context containing the expression shape and borrowed name, then run one ordered candidate classifier. Keep shape-specific extraction helpers only for facts that genuinely require call or member syntax, and preserve the current precedence with focused tests for aliases, shadowing, reassignment, dynamic values, and unsupported shapes.
+Introduce a core-owned validated member-chain value that validates once, retains the canonical display spelling when needed, and provides a `SymbolPath` view or conversion. Route query, value-matcher, composition, and lifecycle constructors through it so error variants and offending values remain consistent. Keep the generic datastructures path parser permissive if that behavior is useful elsewhere, and do not move rule-policy validation into the provider-neutral container merely to share code.
 
-Implemented by borrowing the declarator name once and routing all declaration shapes through one ordered candidate classifier for module aliases, requires, callable bindings, constants, returned objects, static object values, and rooted aliases. Call/member-specific code now only selects precedence and handles the bind-call boundary; the existing scope-analysis tests continue to cover aliases, reassignment, destructuring, returned objects, and dynamic values.
-
-#### [x] READ-005 — Summary sink propagation couples fixed-point policy and storage
+#### READ-002 — `Rc<ResolvedValue>` leaks cache ownership into fact construction
 
 - **Severity:** Medium
-- **Fix Complexity:** Medium
+- **Fix Complexity** High
 - **Category:** Architecture
-- **Location:** `glass-lint-core/src/analysis/flow/summary/summaries.rs:19-72,142-269`
+- **Location:** `glass-lint-core/src/analysis/resolution/mod.rs:42-109`; `glass-lint-core/src/analysis/resolution/expression.rs:18-390`; `glass-lint-core/src/analysis/facts/calls/callee.rs:14-50`
 
-`FunctionSummaries` owns path storage, function summaries, scratch projections, exhaustion state, and total sinks, while `propagate_sinks` also constructs the reverse-call worklist, manages rounds, applies the sink cap, and projects calls. The same propagation routine therefore controls summary representation, fixed-point scheduling, resource exhaustion, and the semantics of `MAX_SUMMARY_SINKS`, making changes to one policy likely to affect the others.
+The resolution cache stores every result behind `Rc`, almost every resolver entry point returns an `Rc`, and `ResolvedCallee::from_resolved` names that storage choice in its signature before cloning most of the record into a fact-owned structure. There is no shared mutable graph here; reference counting primarily works around resolver borrowing and makes ephemeral cache ownership part of unrelated analysis APIs.
 
-Introduce a `SummaryPropagation` context that owns the worklist and round budget and returns a typed stop or completion result to a separate summary store. Keep sink limits, path limits, and call-round limits as distinct named policies, and make scratch projection lifetime and merge behavior explicit rather than fields on the long-lived summary owner.
+Give the cache an arena-backed `ResolutionId`, or expose focused snapshot/accessor methods that keep cached records owned by the resolver while callers extract only the data they persist. Keep recursion guards and unknown-on-exhaustion behavior explicit, and avoid replacing `Rc` with `RefCell` or a lifetime web that makes fact traversal harder to use. Measure allocation and clone changes because provenance paths and bound arguments can be nontrivial.
 
-Implemented with a `SummaryPropagation` scheduler that owns reverse-call edges, the deterministic worklist, and typed completion/exhaustion outcomes. Sink projection scratch state is now call-local, and the propagation worklist has its own named bound distinct from `MAX_SUMMARY_SINKS`; the existing bounded sink, path, and budget behavior remains covered by the summary propagation tests.
+### Core matching and flow state
 
-#### [x] READ-006 — Cross-file flow passes overlapping argument bags between phases
+#### READ-003 — Requirement and sink indices are interchangeable `usize` values
+
+- **Severity:** High
+- **Fix Complexity** High
+- **Category:** Newtype
+- **Location:** `glass-lint-core/src/analysis/model/flow.rs:147-266,323-366`; `glass-lint-core/src/analysis/flow/projector/history.rs:16-25,139-202`; `glass-lint-core/src/analysis/flow/projector/evidence.rs:106-125`; `glass-lint-core/src/analysis/flow/cross/propagation.rs:120-181`
+
+`RequirementSet` hard-codes `usize` keys and is used for both lifecycle requirements and sinks. Flow-state operations, mutation-history variants, local evidence emission, and cross-file propagation all pass raw indices, so a requirement index can be supplied where a sink index is expected and still satisfy every type and bounds check.
+
+Introduce bounded `RequirementIndex` and `SinkIndex` newtypes at flow compilation and parameterize the compact evidence set by the index type, or provide separate requirement- and sink-evidence owners over one internal implementation. Keep conversion to `usize` at the narrow vector-access boundary and retain the current 64-bit readiness mask, sorted evidence values, and deterministic iteration. Add tests that exercise the maximum supported index and restoration history for both domains independently.
+
+#### READ-004 — Constrained matching relies on positional tuples and parallel vectors
 
 - **Severity:** Medium
-- **Fix Complexity:** Medium
+- **Fix Complexity** Medium
 - **Category:** Complexity
-- **Location:** `glass-lint-core/src/analysis/flow/cross/mod.rs:52-98`; `glass-lint-core/src/analysis/flow/cross/propagation.rs:32-45,47-237,239-291`
+- **Location:** `glass-lint-core/src/analysis/project/projection.rs:33-79`; `glass-lint-core/src/analysis/matching/arguments/mod.rs:28-181`
 
-`ContextProjection`, `UsageProjector`, and `CallPropagation` each carry large groups of borrowed state, with overlapping project, evidence, graph, arena, names, worklist, and flow fields. `ContextProjection::project` assembles these bags and several methods rebuild similar emission context values, so phase ownership and mutation order are expressed by construction-site wiring rather than by the API.
+Projection first converts `RuleIndex` to `usize`, then constrained matching expands roots into five- and six-element tuples, prepares paths in a parallel vector, zips the collections, and maintains another parallel occurrence vector for fallback scans. The alignment is correct only because several construction and iteration orders remain identical, and tuple positions obscure which borrowed matcher component is being used.
 
-Let a `CrossProjectionSession` own the shared graph, evidence, arena, names, and worklist, and pass a smaller per-context state to usage and call propagation. Separate state transitions from emission through methods on those owners, and make the session’s lifecycle and worklist stop result explicit so adding a new propagation phase does not require expanding every constructor.
+Create a named prepared-root record containing the typed rule index, identity, event, constraints, evidence descriptor, and prepared paths, with fallback occurrences stored on that record or in a named fallback result. Let methods on the record perform indexed and fallback evaluation, and bundle the stable evaluator inputs if that materially reduces the eight-argument coordinator. Preserve the two-phase indexed/fallback behavior, overlay semantics, operation accounting, and evidence order.
 
-Implemented with a `CrossProjectionSession` that owns the shared project, graph, evidence, trace arena, names, and context worklist. Usage and call propagation now receive that session plus only their context-specific flow state, while the existing explicit `WorklistStop` result continues to own the bounded session lifecycle.
-
-### Project loading and operational tooling
-
-#### [x] READ-007 — Tsconfig graph traversal mixes graph policy with project admission
+#### READ-005 — Project projection has parallel local and final outcome models
 
 - **Severity:** Medium
-- **Fix Complexity:** Medium
-- **Category:** Architecture
-- **Location:** `glass-lint-project/src/discovery.rs:162-313`
-
-`collect_tsconfig_graph` simultaneously manages the traversal stack, depth and project budgets, cycle detection, visited configuration state, parsing and merging, source selection, reference scheduling, canonicalization, and diagnostics. It also mutates `ProjectDiscovery` admission state while constructing `TsconfigTraversal` inline, so filesystem policy, graph traversal, and project-budget policy are difficult to exercise or evolve independently.
-
-Extract a `TsconfigGraphWalker` that owns visited/active/stack state and returns a typed per-config expansion containing source selection, references, and diagnostics. Leave `ProjectDiscovery` responsible for admission, deadlines, and project limits; retain the current DFS order, cycle diagnostics, and fail-closed budget behavior at the boundary between the two types.
-
-Implemented `TsconfigGraphWalker` as an iterative, budget-aware owner of visited and active configuration state, traversal scheduling, canonical reference handling, and diagnostics. It now returns ordered typed expansions to `ProjectDiscovery`, which alone performs source admission; cycle diagnostics remain deterministically sorted and deduplicated, and the existing project tests continue to verify fail-closed budgets.
-
-#### [x] READ-008 — Profiling uses several bespoke aggregate paths and a tuple result
-
-- **Severity:** Medium
-- **Fix Complexity:** Medium
-- **Category:** Complexity
-- **Location:** `glass-lint-harness/src/profile/runner.rs:188-345,635-668`; `glass-lint-harness/src/profile/types.rs:15-86,223-245`
-
-`profile_projects`, `profile_loader_project`, and `aggregate_workload_results` each initialize and merge overlapping totals, phase timings, operation counts, completion state, and report data. `profile_loader_project` returns a five-element tuple and repeats report accumulation for repetition and overall results, while `ProfileRepetitionSummary::merge` and `ProfileTotals::record` maintain separate aggregation policies.
-
-Create named `ProfileProjectRun` and accumulator types that own initialization, measured-versus-warmup handling, report digest/count updates, and merge behavior. Keep deterministic project ordering and repetition boundaries explicit, but route all aggregation through one implementation so a new timing or count field cannot be added to only one of the three paths.
-
-Implemented `ProfileProjectRun` and `ProfileProjectRunAccumulator` to own loader-project initialization, warmup exclusion, repetition timing, report counts, evidence digests, phase totals, and error capture. `ProfileWorkloadSummary::merge`, `MeasuredRepetitionAccumulator::with_repetitions`, and `ProfileSummaryAccumulator` now centralize the remaining workload and suite aggregation boundaries while preserving deterministic ordering and repetition semantics.
-
-### Provider and public-surface consistency
-
-#### [x] READ-009 — Pure-data rule catalogs still use long fluent construction chains
-
-- **Severity:** Low
-- **Fix Complexity:** Low
-- **Category:** Duplication
-- **Location:** `glass-lint-js/src/rules/node/archive_compression/mod.rs:8-34`; `glass-lint-js/src/rules/js/header_indicator/mod.rs:12-63`; `glass-lint-obsidian/src/rules/platform/branching/mod.rs:11-64`; `glass-lint-obsidian/src/rules/vault/adapter/mod.rs:11-29`
-
-Several provider catalogs still encode rows as long chains of repeated `Category::new`, `.query`, and `.build` calls, including a file with a `too_many_lines` suppression. These declarations are primarily static data, so the fluent form makes the catalog harder to scan and creates more repeated syntax than the existing rule metadata and query abstractions require.
-
-Represent uniform rows with typed static slices or a small declarative row helper, then convert the rows at the catalog boundary. Keep fluent builders for exceptional rules with custom predicates or non-uniform evidence, and preserve explicit rule ordering and stable IDs in the catalog tests.
-
-Implemented by moving the uniform module imports, header markers, platform members, and vault adapter methods into typed static slices consumed through `RuleBuilder::queries`. The archive catalog uses a small typed import-spec helper to retain its mixed exact/package semantics and original order; the header rule keeps its exceptional fetch-options query fluent and only data-drives the uniform literal rows.
-
-#### [x] READ-010 — Project load metrics expose a mutable representation instead of a snapshot boundary
-
-- **Severity:** Low
-- **Fix Complexity:** Medium
+- **Fix Complexity** Medium
 - **Category:** Encapsulation
-- **Location:** `glass-lint-project/src/loader.rs:77-211,228,251,477-479,596-619,783-784`; `glass-lint-harness/src/profile/runner.rs` metric consumers
+- **Location:** `glass-lint-core/src/analysis/project/projection.rs:131-174,190-297,299-376`
 
-`ProjectLoadMetrics` exposes public timing and counter fields while its nested `ProjectPhaseTimings` has its own recording API and `AddAssign` implementation. Loader and harness code mutate the representation directly, which permits callers to construct combinations of timings, file counts, request counts, edges, and bytes that do not correspond to a real load and leaves aggregation policy split between the DTO and its producers.
+`LocalProjectionOutcome` and `ProjectionOutcome` duplicate exhaustion, effect-observation, module, alternative, coalescing, fixed-point, and trace counters. `project_modules` mutates the local structure field by field, and `project_facts` manually maps and combines it with cross-file results, leaving the meaning of each aggregate spread across the coordinator.
 
-Keep a private `ProjectMetricsAccumulator` for recording and merging, and publish `ProjectLoadMetrics` as an immutable snapshot with named accessors. Move `AddAssign` and recording methods to the accumulator, and have the loader perform one checked conversion at the outcome boundary; preserve the snapshot’s timing and counter values for harness consumers without allowing callers to fabricate partially inconsistent load results. If downstream users require construction, provide a validated constructor or a separate wire DTO rather than restoring public mutable fields.
+Add an internal projection accumulator with named `record_local`, `record_cross`, and `finish` operations, or make the local result a value that knows how to combine with the cross result. Use a context value for stable inputs to the nine-argument entry point while keeping mutable evidence and trace ownership explicit. Preserve saturation rules, the distinction between observed and exhausted effects, module counts, and deterministic trace-head accounting.
 
-Implemented with a private loader-side metrics accumulator and timing accumulator that own all recording and saturating merge operations. `ProjectLoadMetrics` and `ProjectPhaseTimings` now expose immutable snapshots through named accessors; the harness converts those snapshots into its own profile aggregation type, preserving phase totals and counter observations without mutating loader DTOs.
+#### READ-006 — Cross-flow evidence emission owns too many policies at once
 
-#### [x] READ-011 — The output crate re-exports the entire core project namespace
+- **Severity:** Medium
+- **Fix Complexity** Medium
+- **Category:** Complexity
+- **Location:** `glass-lint-core/src/analysis/flow/cross/evidence.rs:78-190,213-332`
 
-- **Severity:** Low
-- **Fix Complexity:** Low
+`EmissionContext::emit` resolves source locations, assembles source/requirement/prior-sink/current-sink trace nodes, handles arena exhaustion, derives certainty, builds occurrences and classification evidence, performs deduplication, and updates metrics. It also labels prior events that satisfied sink clauses as `EvidenceRole::Requirement`, conflating their semantic role with the fact that only the completing sink is the terminal trace node and finding anchor.
+
+Extract a trace-assembly owner that appends the ordered evidence roles and returns a typed complete/exhausted result, then let `ModuleEvidence` own witness deduplication and recording. Classify every event that satisfies a sink clause as `EvidenceRole::Sink`, while separately retaining the completing sink as the terminal node and finding anchor; cover both local and cross-file multi-sink traces. Preserve current ordering, certainty downgrade rules, deduplication keys, and bounded arena behavior.
+
+### Core reporting and status boundaries
+
+#### READ-007 — Parse failures are serialized to strings and classified again
+
+- **Severity:** High
+- **Fix Complexity** Medium
+- **Category:** Architecture
+- **Location:** `glass-lint-core/src/parse.rs:26-33,121-133`; `glass-lint-core/src/lint/report.rs:44-58,328-363`; `glass-lint-core/src/analysis/project/model.rs:393-403`; `glass-lint-core/src/analysis/lowering/status.rs:1-31`; `glass-lint-core/src/project/types/report/code.rs:8-55`
+
+The parse layer already has typed diagnostic and failure concepts, but report assembly copies each diagnostic code into a `String`, passes that side map into the project model, and matches two string literals to recover `ParseFailureKind`; every other value silently becomes `Syntax`. This duplicates the naming table and makes a newly added parse diagnostic compile successfully while being assigned the wrong completion cause.
+
+Carry a typed parse-failure cause alongside the presentation diagnostic, or add an exhaustive conversion between the relevant diagnostic kind and `ParseFailureKind` that can report unsupported values. Record the typed status before moving diagnostics into file reports so no string side channel is needed. Preserve the intentional separation between user-facing diagnostics and analysis completion, but centralize the mapping and test every parse resource limit plus ordinary syntax failure.
+
+#### READ-008 — Finding assembly indexes evidence through raw coordinate pairs
+
+- **Severity:** Medium
+- **Fix Complexity** Medium
+- **Category:** Encapsulation
+- **Location:** `glass-lint-core/src/lint/report.rs:179-285`
+
+`findings_for_capability` groups display ranges into `Vec<(usize, usize)>` pairs that index evidence and occurrence collections, copies those pairs through entries and parallel groups, then repeatedly dereferences them to build traces, truncation, and certainty. Range containment, evidence identity, aggregation policy, and final rendering are all embedded in one suppressed long function.
+
+Represent an evidence-occurrence reference with named typed fields and introduce a finding-group owner that performs containment grouping and exposes aggregated traces, certainty, and truncation. Split group formation from final `Finding` construction so each phase has one level of abstraction. Retain the current sorted map, containment semantics, fallback trace behavior, trace deduplication, and stable finding order.
+
+#### READ-009 — `ReportCompletion` aggregation is duplicated at each consumer
+
+- **Severity:** Medium
+- **Fix Complexity** Low
+- **Category:** Duplication
+- **Location:** `glass-lint-core/src/project/types/report/analysis_report.rs:5-11`; `glass-lint-core/src/project/report/mod.rs:55-81`; `glass-lint-harness/src/profile/types.rs:50-66,93-105,190-196`; `glass-lint-harness/src/profile/metrics.rs:70-94`; `glass-lint-harness/src/profile/runner.rs:350-365,526-540`
+
+The enum that models complete versus partial reporting has no behavior, while core report merging and several profiling accumulators independently implement its monotone “partial wins” rule. This is a small policy, but its repetition makes omission easy whenever a new aggregate is introduced.
+
+Put `combine`/`join` and `is_partial` behavior on `ReportCompletion`, and use it in core and harness accumulators; a small `FromIterator` implementation may also fit the aggregation sites. Keep CLI failure policy outside the enum because deciding whether partial analysis fails a command is not the same concern as combining states. Add truth-table tests on the owning type and retain one integration assertion for report merging.
+
+### Harness APIs and adapter protocol
+
+#### READ-010 — Adapter response serialization and deserialization use different schemas
+
+- **Severity:** High
+- **Fix Complexity** Medium
 - **Category:** API
-- **Location:** `glass-lint-output/src/lib.rs:8-13`
+- **Location:** `glass-lint-harness/src/types/mod.rs:336-461,463-581`
 
-The output crate’s `project` module glob-re-exports `glass_lint_core::project::*` and its types, making the presentation crate a second import surface for every core project API. This couples output’s public API to unrelated core project additions and obscures which crate owns the project model, contrary to the separation between core report semantics and presentation adapters.
+`AdapterResponse` serializes `Vec<Finding>` using the core report representation, while its manual deserializer declares a second set of proxy structs that shadow finding locations, traces, steps, rule IDs, severity, certainty, and truncation. A core serde change can therefore alter emitted adapter JSON without changing or even compiling the handwritten input schema, and the large module combines protocol DTOs with domain validation and case models.
 
-Replace the glob re-export with an explicit list of presentation-facing types, or remove the facade if consumers can import the core project API directly. Treat any retained re-exports as a deliberate compatibility contract and add an API test or documentation explaining which types are supported.
+Define an explicit private adapter finding/response DTO that derives serialization and deserialization symmetrically, then convert it to core `Finding` through a validating `TryFrom` boundary. Keep path, rule-ID, nonempty-trace, terminal-location, and project-resolution validation in the harness rather than exposing weak constructors from core. Because this is not a public compatibility contract, update both ends in one change without a versioning or migration layer; add JSON round-trip and shape tests and move protocol types into a cohesive submodule.
 
-Implemented by removing the output crate’s `project` and nested `types` facades entirely. Its renderer now imports the core project types from `glass_lint_core::project`, leaving the core crate as the sole owner and public import surface for project models; repository call-site review found no consumer that required compatibility re-exports.
-
-#### [x] READ-012 — Dead-code allowances mix live migration artifacts with legacy leftovers
+#### READ-011 — Harness model validation exposes message strings as its error API
 
 - **Severity:** Low
-- **Fix Complexity:** Low
+- **Fix Complexity** Medium
+- **Category:** API
+- **Location:** `glass-lint-harness/src/types/mod.rs:38-88,149-247,277-296,420-448`
+
+Public case, expectation, and adapter-conversion constructors return `Result<_, String>`, and some conversions erase typed core errors with `to_string()`. Callers can only distinguish validation failures by matching prose, while unrelated model and protocol errors accumulate in the same string-shaped boundary.
+
+Introduce focused error enums for case construction, expectations, and adapter conversion, with source errors retained where useful and `Display` implementations for CLI output. Avoid one catch-all harness error that merely recreates the string bucket as a large enum. Keep clap value parsers or other framework adapters free to convert the typed errors to strings at their outermost boundary.
+
+### Project and provider composition
+
+#### READ-012 — Provider catalog topology is repeated across layers
+
+- **Severity:** Medium
+- **Fix Complexity** Medium
+- **Category:** Architecture
+- **Location:** `glass-lint-js/src/lib.rs:13-78`; `glass-lint-obsidian/src/lib.rs:53-66`; `glass-lint-harness/src/adapters.rs:75-83`; `glass-lint-cli/src/rules_doc.rs:8-37`
+
+The ordered relationships among JavaScript, browser, Node, Electron, and Obsidian catalogs are reconstructed in provider configuration, adapter selection, and rule-document generation. The lists already differ in incidental ordering, so adding or renaming a catalog requires coordinated edits that are not enforced by one owning API.
+
+Let the JavaScript provider expose a typed ordered catalog bundle or target composition, and let the Obsidian provider extend that bundle with its own catalog. Have harness and documentation consumers iterate named entries from those owners while preserving access to isolated catalogs for tests and selective configuration. Keep provider names, target policy, and profiles out of core, and add an ordering/uniqueness contract test where the topology is defined.
+
+#### READ-013 — Tsconfig inheritance accepts a representable invalid parent state
+
+- **Severity:** Medium
+- **Fix Complexity** Low
+- **Category:** Encapsulation
+- **Location:** `glass-lint-project/src/tsconfig/selection.rs:24-29,92-141`
+
+`merge_selection` accepts `parent: Option<MergedSelection>` and `parent_dir: Option<&Path>` independently, then panics if a parent selection arrives without its directory. The function also exposes every intermediate merged field publicly even though the type is documented as a construction-only value consumed by compilation.
+
+Bundle the selection and directory in an optional `ParentSelection` value, or make rebased inheritance a method whose receiver necessarily supplies its origin directory. Make merged fields private and expose only the named consumption/access operations needed by the compiler. Preserve the current move-only merge, path rebasing, fail-closed invalid-field handling, and default exclusion behavior.
+
+### Testing and public-surface hygiene
+
+#### READ-014 — The logical/physical reference oracle excludes lifecycle plans
+
+- **Severity:** Medium
+- **Fix Complexity** High
+- **Category:** Testing
+- **Location:** `glass-lint-core/src/api/compiler/reference.rs:1-8,119-135,245-266`; `glass-lint-core/src/api/compiler/tests/reference.rs:1-470`
+
+The compiler's equivalence oracle explicitly panics for lifecycle roots, so the most stateful query family cannot be compared through the same normalized-versus-physical semantic model used for event roots. Lifecycle behavior has other tests, but planner changes can bypass this independent equivalence check and the oracle's “supported subset” boundary is enforced by runtime panic.
+
+Extend the synthetic relation model with the minimum object, path, requirement, sink, and completeness state needed for representative lifecycle witnesses, or build a separate lifecycle oracle if combining the models would make either unreadable. If support remains intentionally partial, return a typed unsupported result and make tests select supported roots explicitly rather than panic. Include aliases, correlated paths, unknown alternatives, completion order, and exhausted evidence while keeping the oracle small enough to remain independently understandable.
+
+#### READ-015 — Datastructures exposes two public paths to nearly every type
+
+- **Severity:** Low
+- **Fix Complexity** Low
+- **Category:** API
+- **Location:** `glass-lint-datastructures/src/lib.rs:17-39`
+
+All implementation modules are public while their principal types are also re-exported from the crate root, creating parallel public import paths and making module organization part of the compatibility surface. Workspace consumers use the root facade, so the duplicated surface currently provides little demonstrated value.
+
+Make implementation modules private, retain the crate root as the canonical facade, and re-export intended public constants deliberately. Update any downstream direct-path call sites in the same breaking change rather than keeping a compatibility layer. Add a small public-surface check so future modules are not exposed accidentally.
+
+#### READ-016 — Narrow dead-code exceptions conceal removable production paths
+
+- **Severity:** Low
+- **Fix Complexity** Low
 - **Category:** Other
-- **Location:** `glass-lint-core/src/analysis/module_request.rs:90-93`; `glass-lint-core/src/analysis/trace.rs:89-92`; `glass-lint-core/src/api/rule/query/limits.rs:1-13`; `glass-lint-core/src/api/rule/query/mod.rs:79-98`; `glass-lint-core/src/api/rule/query/error.rs:96-101`; `glass-lint-project/src/tsconfig/mod.rs:273-277`
+- **Location:** `glass-lint-harness/src/report.rs:13-22`; `glass-lint-project/src/loader.rs:761-793`; `glass-lint-core/src/analysis/flow/projector/history.rs:55-58`; `glass-lint-core/src/analysis/flow/projector/state.rs:274-276`; `glass-lint-js/src/rules/node/archive_compression/mod.rs:8-44`
 
-The current tree has several narrowly scoped `dead_code` or `unused_imports` allowances, but call-site review shows they are not all dead. `QueryPredicate`, `VarType`, the query limit constants, `QueryDiagnostic::code/message`, and `TraceArena::is_exhausted` are used by compiler, runtime, CLI, harness, or test code; the allowances are stale migration leftovers, while `RecognizedModuleRequest::call_span` has no production accessor caller and the tsconfig re-export is only a test convenience inside a private module.
+The tree still contains a dead `active_tool_runs` report helper, an internal-target enqueue method whose sole caller always supplies `Some`, test-only mutation counters compiled into production behind allowances, and a stale `too_many_lines` suppression on a short declarative rule. Each is small, but together they make it harder to tell whether an exception denotes a real architectural constraint or leftover migration scaffolding.
 
-Remove the stale allowances from live symbols rather than deleting those symbols: the later implementation should first run the same workspace call-site check, then make the compiler enforce their usage normally. Treat `call_span()` as legacy unless a concrete reporting or matching consumer is identified; remove the accessor, and then reassess whether the stored span itself is needed for wrapping or equality. Replace the production tsconfig re-export with direct `selection::` imports and/or a test-only import, and delete it unless an external crate contract is found; keep any genuinely reserved API only with an owner, a documented activation condition, and a focused test.
-
-Implemented by removing the unused `RecognizedModuleRequest::call_span` accessor and its unconsumed stored span, removing stale allowances from live query limits, compiler predicates, diagnostics, and trace state, and routing diagnostic formatting through the retained accessors. The tsconfig selection types are now reached through the crate-private `selection` module, with tests importing that module directly; no production facade remains.
+Delete the unused report helper, remove the needless optional target branch, gate pure test introspection with `cfg(test)`, and remove stale lint suppressions after rerunning the workspace lints. Keep any instrumentation that feeds production diagnostics or profiling, and validate call sites before deleting fields rather than treating an allowance alone as proof of dead state. Prefer an explicit test-support module when several internal counters need privileged access.
 
 ## Systemic Themes
 
-- Several earlier refactors introduced owner types, but their storage views and raw collection adapters remain public or cross phase boundaries. The next readability gains will come from completing those boundaries rather than adding more wrapper names.
+- Several recently introduced owners still expose their semantics through primitive indices or positional storage. The next readability gains will come from carrying domain types through phase boundaries, not from adding more coordinator helpers around raw collections.
+- Boundedness and fail-closed behavior are generally documented well, but their causes and stop states are sometimes converted into strings, booleans, or field-by-field aggregates. Typed terminal and combination operations would make those guarantees easier to review.
+- Provider ownership is clean at the crate boundary, yet target composition is duplicated by consumers. Keeping catalog topology with the provider crates would reduce drift without putting policy into core.
+- The harness is doing valuable validation at external boundaries, but its wire schema and error model are less explicit than the core models they protect.
 
-- Core analysis is generally decomposed into recognizable phases, but the projector and summary/linking paths still coordinate multiple state machines through one mutable owner. Typed phase outcomes and narrower session objects would make the existing architecture easier to maintain without adding AST traversals.
+## Resolved Decisions
 
-- Bounded, deterministic analysis is a strong repository invariant. Resource limits, evidence capacity, path identity, and worklist termination should therefore be represented as domain types or named policy objects instead of parallel counters, tags, and raw indices.
-
-- Provider rule catalogs have a consistent semantic model but inconsistent declaration syntax. A small data-oriented representation should be applied selectively to uniform rows while leaving genuinely semantic rules readable as code.
+- Harness adapter JSON is an internal protocol, not a public compatibility contract. READ-010 therefore calls for one private symmetric DTO and a coordinated one-step migration, without version negotiation or compatibility scaffolding.
+- The `glass-lint-datastructures` crate root is the intended public facade. READ-015 therefore recommends making implementation modules private and updating any direct-path consumers rather than preserving both import surfaces.
+- Prior lifecycle sink events are semantically sinks, even when a later sink is the terminal trace node and finding anchor. READ-006 therefore recommends `EvidenceRole::Sink` for every satisfied sink clause and keeps terminal position as a separate trace property.
 
 ## Open Questions
 
-The following decisions are recorded for the implementing agent; they are no longer requests to choose between equally preferred designs.
-
-- **Path storage:** Make `ParentPathStore` reusable through a safe API. Keep the primitive available if core needs it, but hide raw tags, trusted depth, unchecked cross-store identity, and backing-store access. Prefer opaque handles plus checked operations and a single owner for frozen/overlay dispatch.
-
-- **Dead-code triage:** Do not delete symbols solely because they carry `#[allow(dead_code)]`. The live query/compiler/runtime items identified in READ-012 should keep their behavior and lose stale suppressions; investigate and remove the unused `call_span()` accessor and test-only tsconfig re-export unless a real consumer or active migration is found. A future-facing item may remain only with an identified owner, activation condition, and test.
-
-- **Output facade:** Treat the output crate’s `project` glob re-export as unsupported unless an external consumer is demonstrated. Remove it or replace it with an explicit, documented compatibility list; do not allow new core project APIs to flow through the output crate automatically.
-
-- **Project metrics:** Use a private mutable accumulator and an immutable public snapshot. Preserve downstream observation and profiling fields through accessors or a validated constructor, but do not preserve public mutable fields merely for convenience.
+None at this time.
 
 ## Coverage
 
-- Read the root `ARCHITECTURE.md`, `TESTING.md`, `CONTRIBUTING.md`, and the architecture guide for each workspace crate before reviewing findings.
-
-- Inventoried the Rust workspace (approximately 80,000 lines across nine crates), then inspected the largest and highest-risk modules in facts, scope building, matching, flow projection, summary propagation, project discovery/loading, profiling, and provider catalogs. Searches also covered public fields/functions, raw nested vectors, `Rc`/`Arc`/interior mutability, lint suppressions, TODO markers, and repeated collection/index operations.
-
-- Ran `cargo clippy --workspace --all-targets --all-features -- -D warnings` successfully against the current tree. Clippy cleanliness was treated as validation of the review environment, not as evidence that the maintainability findings are absent.
-
-- Ran `cargo test --workspace` successfully, including workspace unit tests and doc tests. The passing tests confirm the reviewed tree remains behaviorally green; they do not invalidate structural readability findings.
-
-- No source, test, configuration, dependency, or generated project files were changed by this audit; this report is the only intended worktree modification.
+The audit reviewed the workspace architecture and testing guidance; mapped all Rust crates and large modules; inspected core query construction, parsing, resolution, facts, matching, local and cross-file flow, projection, reporting, and compiler tests; and sampled project discovery/tsconfig, provider composition, harness protocol/profile code, CLI documentation, output, and datastructures APIs. Call-site searches were used to validate ownership and dead-code claims. The workspace passed an all-targets, all-features Clippy run with additional complexity, argument-count, large-value, and pass-by-value lints, followed by the full `make ci` gate (workspace checks, tests, e2e and provider rule verification, generated-rule validation, and examples).
