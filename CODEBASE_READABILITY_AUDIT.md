@@ -253,6 +253,9 @@ The requested bundle’s release lint took **0.85 s wall time** after this
 verified implementation (0.83 s baseline), within normal run-to-run variance
 and without a significant regression.
 
+READ-008’s follow-up verification measured **0.86 s wall time** for the same
+bundle; strict builder methods do not add a measurable performance regression.
+
 #### [x] READ-009 — Several provider catalogs still encode data as long fluent code
 
 - **Severity:** Low
