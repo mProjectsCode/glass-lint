@@ -174,17 +174,7 @@ fn check_correlation_evidence(
 ) -> Result<(), QueryCompileError> {
     match &expr.kind {
         QueryExprKind::All(all) => {
-            // pass_correlation_scope
-            let branch_vars: Vec<Vec<VarId>> = all.branches.iter().map(QueryExpr::vars).collect();
-            if branch_vars.len() > 1 {
-                let first_set: BTreeSet<VarId> = branch_vars[0].iter().copied().collect();
-                let has_shared = branch_vars[1..]
-                    .iter()
-                    .any(|vars| vars.iter().any(|v| first_set.contains(v)));
-                if !has_shared {
-                    return Err(QueryCompileError::UncorrelatedConjunction);
-                }
-            }
+            validate_correlated_branches(&all.branches)?;
             // pass_evidence_projection
             for branch in &all.branches {
                 check_correlation_evidence(branch, primary, false)?;
@@ -235,16 +225,7 @@ fn check_correlation_evidence(
 fn check_correlation_scope_inner(expr: &QueryExpr) -> Result<(), QueryCompileError> {
     match &expr.kind {
         QueryExprKind::All(all) => {
-            let branch_vars: Vec<Vec<VarId>> = all.branches.iter().map(QueryExpr::vars).collect();
-            if branch_vars.len() > 1 {
-                let first_set: BTreeSet<VarId> = branch_vars[0].iter().copied().collect();
-                let has_shared = branch_vars[1..]
-                    .iter()
-                    .any(|vars| vars.iter().any(|v| first_set.contains(v)));
-                if !has_shared {
-                    return Err(QueryCompileError::UncorrelatedConjunction);
-                }
-            }
+            validate_correlated_branches(&all.branches)?;
             for b in &all.branches {
                 check_correlation_scope_inner(b)?;
             }
@@ -260,5 +241,21 @@ fn check_correlation_scope_inner(expr: &QueryExpr) -> Result<(), QueryCompileErr
         | QueryExprKind::SelectEvent(_)
         | QueryExprKind::Require(_)
         | QueryExprKind::Lifecycle(_) => Ok(()),
+    }
+}
+
+fn validate_correlated_branches(branches: &[QueryExpr]) -> Result<(), QueryCompileError> {
+    let Some(first_branch) = branches.first() else {
+        return Ok(());
+    };
+    let first_vars: BTreeSet<VarId> = first_branch.vars().into_iter().collect();
+    let has_shared = branches
+        .iter()
+        .skip(1)
+        .any(|branch| branch.vars().iter().any(|var| first_vars.contains(var)));
+    if has_shared || branches.len() <= 1 {
+        Ok(())
+    } else {
+        Err(QueryCompileError::UncorrelatedConjunction)
     }
 }

@@ -158,7 +158,7 @@ Keep nested vectors only at the final report adapter, and make out-of-range
 rule access an explicit no-op or typed error rather than an indexing
 convention.
 
-#### READ-007 — Compiler correlation validation contains duplicate logic
+#### [x] READ-007 — Compiler correlation validation contains duplicate logic
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -176,6 +176,12 @@ Extract one `validate_correlated_branches` helper that accepts the recursion
 mode or a small callback for the follow-up traversal. Keep evidence-primary
 checks separate from correlation checks, but make the shared-variable rule a
 single implementation with one focused test set.
+
+**Implementation:** Extracted `validate_correlated_branches` as the single
+implementation of shared-variable validation and reused it from both the
+evidence traversal and nested correlation traversal, leaving primary-evidence
+checks separate. The requested bundle’s release lint took **0.85 s wall time**
+after the change (0.83 s baseline).
 
 ### Public authoring APIs and provider policy
 
