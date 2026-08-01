@@ -5,6 +5,27 @@ JavaScript or TypeScript sources, a validated rule catalog, an explicit host
 environment, and typed module resolutions. It produces bounded,
 deterministically ordered reports without filesystem access.
 
+## Analyze ECMAScript syntax
+
+For callers that only need the language-version requirement, core exposes a
+catalog-free API:
+
+```rust
+use glass_lint_core::{analyze_ecma_version, EcmaVersion};
+use glass_lint_core::project::SourceFile;
+
+let source = SourceFile::new("main.js", "async function run() { await work(); }")?;
+let report = analyze_ecma_version(&source)?;
+
+assert_eq!(report.minimum_version(), Some(EcmaVersion::Es2017));
+assert!(!report.features().is_empty());
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+This reports syntax only; runtime APIs and host capabilities are outside its
+scope. JSX, decorators, and other non-ECMAScript syntax remain visible in
+`features()` and make `minimum_version()` return `None`.
+
 ## Define a catalog
 
 Rules use local IDs; `RuleCatalog` adds the provider namespace:

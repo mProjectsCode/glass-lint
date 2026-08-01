@@ -1,5 +1,6 @@
 use glass_lint_core::{
-    AnalysisLimits, Environment, Linter, Rule, RuleCatalog, Severity,
+    AnalysisLimits, EcmaFeature, EcmaVersion, Environment, Linter, Rule, RuleCatalog, Severity,
+    analyze_ecma_version,
     project::{DiagnosticCode, SourceFile},
     rules::{Category, Confidence, EventQuery},
 };
@@ -37,6 +38,16 @@ fn supported_public_operations_do_not_require_engine_storage() {
         .unwrap();
     assert_eq!(report.files().len(), 1);
     assert_eq!(report.files()[0].findings().len(), 1);
+}
+
+#[test]
+fn public_ecma_version_analysis_reports_a_minimum_and_features() {
+    let source = SourceFile::new("main.js", "async function load() { await fetch('/'); }").unwrap();
+    let report = analyze_ecma_version(&source).unwrap();
+
+    assert_eq!(report.minimum_version(), Some(EcmaVersion::Es2017));
+    assert!(report.features().contains(&EcmaFeature::AsyncFunctions));
+    assert!(report.features().contains(&EcmaFeature::Await));
 }
 
 #[test]
