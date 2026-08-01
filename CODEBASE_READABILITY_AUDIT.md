@@ -117,7 +117,7 @@ Represent uniform rows with typed static slices or a small declarative row helpe
 
 Implemented by moving the uniform module imports, header markers, platform members, and vault adapter methods into typed static slices consumed through `RuleBuilder::queries`. The archive catalog uses a small typed import-spec helper to retain its mixed exact/package semantics and original order; the header rule keeps its exceptional fetch-options query fluent and only data-drives the uniform literal rows.
 
-#### READ-010 — Project load metrics expose a mutable representation instead of a snapshot boundary
+#### [x] READ-010 — Project load metrics expose a mutable representation instead of a snapshot boundary
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -127,6 +127,8 @@ Implemented by moving the uniform module imports, header markers, platform membe
 `ProjectLoadMetrics` exposes public timing and counter fields while its nested `ProjectPhaseTimings` has its own recording API and `AddAssign` implementation. Loader and harness code mutate the representation directly, which permits callers to construct combinations of timings, file counts, request counts, edges, and bytes that do not correspond to a real load and leaves aggregation policy split between the DTO and its producers.
 
 Keep a private `ProjectMetricsAccumulator` for recording and merging, and publish `ProjectLoadMetrics` as an immutable snapshot with named accessors. Move `AddAssign` and recording methods to the accumulator, and have the loader perform one checked conversion at the outcome boundary; preserve the snapshot’s timing and counter values for harness consumers without allowing callers to fabricate partially inconsistent load results. If downstream users require construction, provide a validated constructor or a separate wire DTO rather than restoring public mutable fields.
+
+Implemented with a private loader-side metrics accumulator and timing accumulator that own all recording and saturating merge operations. `ProjectLoadMetrics` and `ProjectPhaseTimings` now expose immutable snapshots through named accessors; the harness converts those snapshots into its own profile aggregation type, preserving phase totals and counter observations without mutating loader DTOs.
 
 #### [x] READ-011 — The output crate re-exports the entire core project namespace
 

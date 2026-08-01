@@ -185,7 +185,7 @@ fn file_budget_deduplicates_shared_imports() {
         )
         .unwrap();
     assert_eq!(outcome.report.files().len(), 4);
-    assert_eq!(outcome.metrics.files, 4);
+    assert_eq!(outcome.metrics.files(), 4);
 }
 
 #[test]
@@ -224,10 +224,13 @@ fn reports_project_phase_metrics_and_operation_counts() {
         outcome.sources.get("helper.ts").unwrap().as_str(),
         "export const value = 1;"
     );
-    assert_eq!(outcome.metrics.files, 2);
-    assert_eq!(outcome.metrics.requests, 1);
-    assert_eq!(outcome.metrics.edges, 1);
-    assert!(outcome.metrics.timings.total() >= outcome.metrics.timings.linking_and_matching());
+    assert_eq!(outcome.metrics.files(), 2);
+    assert_eq!(outcome.metrics.requests(), 1);
+    assert_eq!(outcome.metrics.edges(), 1);
+    assert!(
+        outcome.metrics.phase_timings().total()
+            >= outcome.metrics.phase_timings().linking_and_matching()
+    );
 }
 
 #[test]

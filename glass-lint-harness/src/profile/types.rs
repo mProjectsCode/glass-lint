@@ -1,11 +1,11 @@
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{ops::AddAssign, path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use glass_lint_core::{
     Linter,
     project::{AnalysisOperationCounts, AnalysisReport, ReportCompletion},
 };
-use glass_lint_project::ProjectPhaseTimings;
+use glass_lint_project::ProjectPhaseTimings as ProjectPhaseTimingSnapshot;
 
 use crate::profile::{
     config::{ProfileCorpusIdentity, ProfileWorkloadIdentity},
@@ -85,8 +85,119 @@ pub struct ProfileSummary {
     pub operation_counts: ProfileOperationCounts,
 }
 
-pub type ProfilePhaseTimings = ProjectPhaseTimings;
 pub type ProfileOperationCounts = AnalysisOperationCounts;
+
+/// Aggregated phase timings owned by the profiling harness.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ProfilePhaseTimings {
+    discovery: Duration,
+    reads: Duration,
+    analyze_source: Duration,
+    resolution: Duration,
+    linking: Duration,
+    matching: Duration,
+    total: Duration,
+}
+
+impl ProfilePhaseTimings {
+    pub fn with_discovery(duration: Duration) -> Self {
+        let mut timings = Self::default();
+        timings.record_discovery(duration);
+        timings
+    }
+
+    pub fn from_project(snapshot: ProjectPhaseTimingSnapshot) -> Self {
+        Self {
+            discovery: snapshot.discovery(),
+            reads: snapshot.reads(),
+            analyze_source: snapshot.parse_and_local_analysis(),
+            resolution: snapshot.resolution(),
+            linking: snapshot.linking(),
+            matching: snapshot.matching(),
+            total: snapshot.total(),
+        }
+    }
+
+    #[must_use]
+    pub fn discovery(&self) -> Duration {
+        self.discovery
+    }
+
+    #[must_use]
+    pub fn reads(&self) -> Duration {
+        self.reads
+    }
+
+    #[must_use]
+    pub fn resolution(&self) -> Duration {
+        self.resolution
+    }
+
+    #[must_use]
+    pub fn linking(&self) -> Duration {
+        self.linking
+    }
+
+    #[must_use]
+    pub fn matching(&self) -> Duration {
+        self.matching
+    }
+
+    #[must_use]
+    pub fn total(&self) -> Duration {
+        self.total
+    }
+
+    #[must_use]
+    pub fn parse_and_local_analysis(&self) -> Duration {
+        self.analyze_source
+    }
+
+    #[must_use]
+    pub fn linking_and_matching(&self) -> Duration {
+        self.linking.saturating_add(self.matching)
+    }
+
+    pub fn record_discovery(&mut self, duration: Duration) {
+        self.discovery = self.discovery.saturating_add(duration);
+    }
+
+    pub fn record_reads(&mut self, duration: Duration) {
+        self.reads = self.reads.saturating_add(duration);
+    }
+
+    pub fn record_analyze_source(&mut self, duration: Duration) {
+        self.analyze_source = self.analyze_source.saturating_add(duration);
+    }
+
+    pub fn record_resolution(&mut self, duration: Duration) {
+        self.resolution = self.resolution.saturating_add(duration);
+    }
+
+    pub fn record_linking(&mut self, duration: Duration) {
+        self.linking = self.linking.saturating_add(duration);
+    }
+
+    pub fn record_matching(&mut self, duration: Duration) {
+        self.matching = self.matching.saturating_add(duration);
+    }
+
+    pub fn record_total(&mut self, duration: Duration) {
+        self.total = self.total.saturating_add(duration);
+    }
+}
+
+impl AddAssign for ProfilePhaseTimings {
+    fn add_assign(&mut self, rhs: Self) {
+        self.discovery = self.discovery.saturating_add(rhs.discovery);
+        self.reads = self.reads.saturating_add(rhs.reads);
+        self.analyze_source = self.analyze_source.saturating_add(rhs.analyze_source);
+        self.resolution = self.resolution.saturating_add(rhs.resolution);
+        self.linking = self.linking.saturating_add(rhs.linking);
+        self.matching = self.matching.saturating_add(rhs.matching);
+        self.total = self.total.saturating_add(rhs.total);
+    }
+}
 
 pub fn ensure_profile_correctness_match(
     left: &ProfileSummary,
@@ -204,8 +315,8 @@ pub(super) fn project_run_outcome(
     metrics: &glass_lint_project::ProjectLoadMetrics,
 ) -> RunOutcome {
     RunOutcome {
-        bytes: metrics.bytes,
-        phases: metrics.phase_timings(),
+        bytes: metrics.bytes(),
+        phases: ProfilePhaseTimings::from_project(metrics.phase_timings()),
         counts: report_operation_counts(report),
         completion: report.completion(),
         evidence_order_digest: evidence_order_digest(report),

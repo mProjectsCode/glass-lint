@@ -74,7 +74,7 @@ impl ProjectLoadOutcome {
     }
 }
 
-/// Phase timings shared with harness profiling reports.
+/// Immutable phase-timing snapshot shared with harness profiling reports.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ProjectPhaseTimings {
     discovery: Duration,
@@ -87,12 +87,6 @@ pub struct ProjectPhaseTimings {
 }
 
 impl ProjectPhaseTimings {
-    pub fn with_discovery(duration: Duration) -> Self {
-        let mut timings = Self::default();
-        timings.record_discovery(duration);
-        timings
-    }
-
     #[must_use]
     pub fn discovery(&self) -> Duration {
         self.discovery
@@ -132,37 +126,62 @@ impl ProjectPhaseTimings {
     pub fn linking_and_matching(&self) -> Duration {
         self.linking.saturating_add(self.matching)
     }
+}
 
-    pub fn record_discovery(&mut self, duration: Duration) {
+#[derive(Clone, Copy, Debug, Default)]
+struct ProjectPhaseTimingsAccumulator {
+    discovery: Duration,
+    reads: Duration,
+    analyze_source: Duration,
+    resolution: Duration,
+    linking: Duration,
+    matching: Duration,
+    total: Duration,
+}
+
+impl ProjectPhaseTimingsAccumulator {
+    fn snapshot(self) -> ProjectPhaseTimings {
+        ProjectPhaseTimings {
+            discovery: self.discovery,
+            reads: self.reads,
+            analyze_source: self.analyze_source,
+            resolution: self.resolution,
+            linking: self.linking,
+            matching: self.matching,
+            total: self.total,
+        }
+    }
+
+    fn record_discovery(&mut self, duration: Duration) {
         self.discovery = self.discovery.saturating_add(duration);
     }
 
-    pub fn record_reads(&mut self, duration: Duration) {
+    fn record_reads(&mut self, duration: Duration) {
         self.reads = self.reads.saturating_add(duration);
     }
 
-    pub fn record_analyze_source(&mut self, duration: Duration) {
+    fn record_analyze_source(&mut self, duration: Duration) {
         self.analyze_source = self.analyze_source.saturating_add(duration);
     }
 
-    pub fn record_resolution(&mut self, duration: Duration) {
+    fn record_resolution(&mut self, duration: Duration) {
         self.resolution = self.resolution.saturating_add(duration);
     }
 
-    pub fn record_linking(&mut self, duration: Duration) {
+    fn record_linking(&mut self, duration: Duration) {
         self.linking = self.linking.saturating_add(duration);
     }
 
-    pub fn record_matching(&mut self, duration: Duration) {
+    fn record_matching(&mut self, duration: Duration) {
         self.matching = self.matching.saturating_add(duration);
     }
 
-    pub fn record_total(&mut self, duration: Duration) {
+    fn record_total(&mut self, duration: Duration) {
         self.total = self.total.saturating_add(duration);
     }
 }
 
-impl std::ops::AddAssign for ProjectPhaseTimings {
+impl std::ops::AddAssign for ProjectPhaseTimingsAccumulator {
     fn add_assign(&mut self, rhs: Self) {
         self.discovery = self.discovery.saturating_add(rhs.discovery);
         self.reads = self.reads.saturating_add(rhs.reads);
@@ -174,23 +193,14 @@ impl std::ops::AddAssign for ProjectPhaseTimings {
     }
 }
 
-/// Bounded construction counters and phase timings for profiling.
-///
-/// Embeds [`ProjectPhaseTimings`] directly so that the duration fields have
-/// one authoritative representation across timings, metrics, and phase-timing
-/// conversions.
+/// Immutable bounded construction counters and phase-timing snapshot.
 #[derive(Clone, Debug, Default)]
 pub struct ProjectLoadMetrics {
-    /// Phase durations embedded directly as the canonical timing record.
-    pub timings: ProjectPhaseTimings,
-    /// Number of admitted source files.
-    pub files: usize,
-    /// Number of resolver requests observed.
-    pub requests: usize,
-    /// Number of internal edges observed.
-    pub edges: usize,
-    /// Total source bytes read.
-    pub bytes: u64,
+    timings: ProjectPhaseTimings,
+    files: usize,
+    requests: usize,
+    edges: usize,
+    bytes: u64,
 }
 
 impl ProjectLoadMetrics {
@@ -198,9 +208,50 @@ impl ProjectLoadMetrics {
     pub fn phase_timings(&self) -> ProjectPhaseTimings {
         self.timings
     }
+
+    #[must_use]
+    pub fn files(&self) -> usize {
+        self.files
+    }
+
+    #[must_use]
+    pub fn requests(&self) -> usize {
+        self.requests
+    }
+
+    #[must_use]
+    pub fn edges(&self) -> usize {
+        self.edges
+    }
+
+    #[must_use]
+    pub fn bytes(&self) -> u64 {
+        self.bytes
+    }
 }
 
-impl std::ops::AddAssign for ProjectLoadMetrics {
+#[derive(Clone, Debug, Default)]
+struct ProjectMetricsAccumulator {
+    timings: ProjectPhaseTimingsAccumulator,
+    files: usize,
+    requests: usize,
+    edges: usize,
+    bytes: u64,
+}
+
+impl ProjectMetricsAccumulator {
+    fn snapshot(&self) -> ProjectLoadMetrics {
+        ProjectLoadMetrics {
+            timings: self.timings.snapshot(),
+            files: self.files,
+            requests: self.requests,
+            edges: self.edges,
+            bytes: self.bytes,
+        }
+    }
+}
+
+impl std::ops::AddAssign for ProjectMetricsAccumulator {
     fn add_assign(&mut self, rhs: Self) {
         self.timings += rhs.timings;
         self.files = self.files.saturating_add(rhs.files);
@@ -222,11 +273,11 @@ impl ProjectLoader {
         linter: &Linter,
         selection: &ProjectSelection,
     ) -> Result<ProjectLoadOutcome, ProjectLoadError> {
-        let mut metrics = ProjectLoadMetrics::default();
+        let mut metrics = ProjectMetricsAccumulator::default();
         let total_start = Instant::now();
         let mut outcome = self.load_project_with_outcome(linter, selection, &mut metrics)?;
         metrics.timings.record_total(total_start.elapsed());
-        outcome.metrics = metrics;
+        outcome.metrics = metrics.snapshot();
         Ok(outcome)
     }
 
@@ -234,7 +285,7 @@ impl ProjectLoader {
         &self,
         linter: &Linter,
         selection: &ProjectSelection,
-        metrics: &mut ProjectLoadMetrics,
+        metrics: &mut ProjectMetricsAccumulator,
     ) -> Result<ProjectLoadOutcome, ProjectLoadError> {
         let discovery_start = Instant::now();
         let deadline = LoadDeadline::after_millis(self.options.max_timeout_ms());
@@ -473,7 +524,7 @@ impl LoadProgress {
         Ok(())
     }
 
-    fn publish(&self, metrics: &mut ProjectLoadMetrics) {
+    fn publish(&self, metrics: &mut ProjectMetricsAccumulator) {
         metrics.requests = self.requests;
         metrics.edges = self.edges;
         metrics.bytes = self.source_bytes;
@@ -543,7 +594,7 @@ impl<'a> ProjectLoadState<'a> {
     /// always produced so callers can still assemble a partial report.
     fn close_frontier(
         mut self,
-        metrics: &mut ProjectLoadMetrics,
+        metrics: &mut ProjectMetricsAccumulator,
     ) -> (Result<(), ProjectLoadError>, ClosedFrontier<'a>) {
         let workers = std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
 
@@ -589,7 +640,7 @@ impl<'a> ProjectLoadState<'a> {
         &mut self,
         wave: &[AdmittedSourcePath],
         workers: NonZeroUsize,
-        metrics: &mut ProjectLoadMetrics,
+        metrics: &mut ProjectMetricsAccumulator,
     ) -> Result<(), ProjectLoadError> {
         let read_start = Instant::now();
         let read = self.read_wave(wave)?;
@@ -710,7 +761,7 @@ impl<'a> ProjectLoadState<'a> {
     fn apply_request_resolution(
         &mut self,
         resolution: RequestResolutionOutcome,
-        metrics: &mut ProjectLoadMetrics,
+        metrics: &mut ProjectMetricsAccumulator,
     ) -> Result<(), ProjectLoadError> {
         for path in resolution.internal_targets {
             self.enqueue_internal_target(Some(path), metrics)?;
@@ -721,7 +772,7 @@ impl<'a> ProjectLoadState<'a> {
     fn enqueue_internal_target(
         &mut self,
         path: Option<glass_lint_core::project::ProjectRelativePath>,
-        metrics: &mut ProjectLoadMetrics,
+        metrics: &mut ProjectMetricsAccumulator,
     ) -> Result<(), ProjectLoadError> {
         if let Some(path) = path {
             self.progress.record_edge();
@@ -764,7 +815,7 @@ impl ClosedFrontier<'_> {
     fn finish(
         self,
         mode: FinishMode,
-        metrics: &mut ProjectLoadMetrics,
+        metrics: &mut ProjectMetricsAccumulator,
     ) -> Result<(AnalysisReport, BTreeMap<ProjectRelativePath, SourceText>), ProjectLoadError> {
         if matches!(mode, FinishMode::Complete) {
             self.deadline.check()?;
@@ -774,7 +825,7 @@ impl ClosedFrontier<'_> {
 
     fn finish_inner(
         self,
-        metrics: &mut ProjectLoadMetrics,
+        metrics: &mut ProjectMetricsAccumulator,
     ) -> Result<(AnalysisReport, BTreeMap<ProjectRelativePath, SourceText>), ProjectLoadError> {
         let sources = self.sources;
         let local = self.session.finish_local();
