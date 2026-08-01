@@ -86,17 +86,17 @@ pub(in crate::analysis) fn collect_into(
     let plan = BoundFlowPlan::new(rules, names);
     let mut summary_budget = Budget::new(limits.emission_limit());
     let helpers = FunctionSummaries::collect(stream, effects, &plan, &mut summary_budget);
-    let mut projector = ObjectFlowProjector::new(
+    let mut projector = ObjectFlowProjector::new(ObjectFlowProjectorInput {
         stream,
         names,
         plan,
         helpers,
         evidence,
         limits,
-        summary_budget.exhausted(),
+        summary_exhausted: summary_budget.exhausted(),
         module_id,
         trace_arena,
-    );
+    });
     for fact in stream.facts() {
         projector.transfer(fact);
     }
@@ -190,19 +190,31 @@ struct ObjectFlowProjector<'rules, 'stream, 'arena> {
     trace_heads: usize,
 }
 
+struct ObjectFlowProjectorInput<'rules, 'stream, 'arena> {
+    stream: &'stream FactStream<Frozen>,
+    names: &'stream NameTable,
+    plan: BoundFlowPlan<'rules>,
+    helpers: FunctionSummaries<'stream>,
+    evidence: &'stream mut [Vec<ClassificationEvidence>],
+    limits: FlowLimits,
+    summary_exhausted: bool,
+    module_id: ModuleId,
+    trace_arena: &'arena mut TraceArena,
+}
+
 impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
-    #[allow(clippy::too_many_arguments)]
-    fn new(
-        stream: &'stream FactStream<Frozen>,
-        names: &'stream NameTable,
-        plan: BoundFlowPlan<'rules>,
-        helpers: FunctionSummaries<'stream>,
-        evidence: &'stream mut [Vec<ClassificationEvidence>],
-        limits: FlowLimits,
-        summary_exhausted: bool,
-        module_id: ModuleId,
-        trace_arena: &'arena mut TraceArena,
-    ) -> Self {
+    fn new(input: ObjectFlowProjectorInput<'rules, 'stream, 'arena>) -> Self {
+        let ObjectFlowProjectorInput {
+            stream,
+            names,
+            plan,
+            helpers,
+            evidence,
+            limits,
+            summary_exhausted,
+            module_id,
+            trace_arena,
+        } = input;
         let calls_by_result = stream
             .facts()
             .iter()

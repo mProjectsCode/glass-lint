@@ -152,7 +152,7 @@ with one warm-up-free repetition and one worker took 777.5ms measured lint
 wall time (776.2ms input time; 10.15s process wall time including the one-time
 release build).
 
-#### RL-005 — Cross-file flow collection is a context-heavy worklist method
+#### [x] RL-005 — Cross-file flow collection is a context-heavy worklist method
 
 - Severity: Medium
 - Fix complexity: High
@@ -171,6 +171,19 @@ Recommendation: introduce named context objects for cross-projection state and
 trace/evidence emission, and split the worklist into small phase operations
 around the same bounded loop. Replace positional constructors with input
 structs so adding a budget or requirement cannot silently shift call sites.
+
+Implementation: added `ContextProjection` for one worklist context, an
+`EmissionContext` for project evidence/trace emission, and
+`ObjectFlowProjectorInput` for local projector construction. The worklist
+still performs the same bounded usage and call-propagation phases in order;
+the named contexts make budgets, evidence, call graphs, and trace ownership
+explicit at their phase boundaries.
+
+Runtime (release): profiling
+`/home/lemon/src/obsidian-stats/data/out/plugin-release-mainjs/byoc/1.0.13-main.js`
+with one warm-up-free repetition and one worker took 743.5ms measured lint
+wall time (742.1ms input time; 9.44s process wall time including the one-time
+release build).
 
 #### RL-006 — Evidence is represented by parallel vectors and raw tuples
 

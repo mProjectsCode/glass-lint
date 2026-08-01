@@ -125,17 +125,26 @@ pub(super) fn mark_nonmatching(
     }
 }
 
-#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+pub(super) struct EmissionContext<'a> {
+    pub(super) project: &'a ProjectSemanticModel,
+    pub(super) evidence: &'a mut HashMap<ModuleId, ModuleEvidence>,
+    pub(super) arena: &'a mut TraceArena,
+}
+
+#[allow(clippy::too_many_lines)]
 pub(super) fn emit(
-    project: &ProjectSemanticModel,
-    evidence: &mut HashMap<ModuleId, ModuleEvidence>,
+    context: EmissionContext<'_>,
     module: ModuleId,
     flow_id: crate::analysis::model::flow::FlowId,
     state: &CrossFlowState,
     event: FactId,
     flow: &CompiledObjectFlow,
-    arena: &mut TraceArena,
 ) {
+    let EmissionContext {
+        project,
+        evidence,
+        arena,
+    } = context;
     let Some(values) = evidence.get_mut(&module) else {
         return;
     };

@@ -11,7 +11,8 @@ use crate::{
         flow::{
             cross::{
                 evidence::{
-                    ModuleEvidence, effect_use_event, emit, mark_nonmatching, usage_matches_context,
+                    self, ModuleEvidence, effect_use_event, emit, mark_nonmatching,
+                    usage_matches_context,
                 },
                 graph::{FlowPathPlan, QualifiedCallGraph},
                 state::{CallContext, CrossFlowState, QualifiedEvent},
@@ -191,14 +192,16 @@ impl UsageProjector<'_> {
                     || self.state.sinks.len() == self.flow.sinks.len())
             {
                 emit(
-                    self.project,
-                    self.evidence,
+                    evidence::EmissionContext {
+                        project: self.project,
+                        evidence: self.evidence,
+                        arena: self.arena,
+                    },
                     self.context.module,
                     self.context.state.flow,
                     self.state,
                     event,
                     self.flow,
-                    self.arena,
                 );
             } else {
                 mark_nonmatching(
@@ -218,14 +221,16 @@ impl UsageProjector<'_> {
             && self.context.crossed
         {
             emit(
-                self.project,
-                self.evidence,
+                evidence::EmissionContext {
+                    project: self.project,
+                    evidence: self.evidence,
+                    arena: self.arena,
+                },
                 self.context.module,
                 self.context.state.flow,
                 state,
                 event,
                 self.flow,
-                self.arena,
             );
         }
     }

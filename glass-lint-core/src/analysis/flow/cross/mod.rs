@@ -19,11 +19,16 @@ use hashbrown::HashMap;
 use crate::{
     analysis::{
         ProjectSemanticModel,
-        flow::cross::{
-            evidence::ModuleEvidence,
-            graph::{FlowPathPlan, QualifiedCallGraph},
-            sources::FlowSources,
-            worklist::ContextWorklist,
+        facts::FactId,
+        flow::{
+            cross::{
+                evidence::ModuleEvidence,
+                graph::{FlowPathPlan, QualifiedCallGraph},
+                sources::FlowSources,
+                state::{CallContext, CrossFlowState},
+                worklist::ContextWorklist,
+            },
+            effect::FunctionEffect,
         },
         model::flow::{FlowId, FlowLimits},
         project::state::LinkingSession,
@@ -45,6 +50,55 @@ pub(in crate::analysis) struct CrossProjectionOutcome {
     pub(in crate::analysis) projections: usize,
     pub(in crate::analysis) operations: usize,
     pub(in crate::analysis) trace_heads: usize,
+}
+
+/// Inputs for one bounded worklist context projection.
+struct ContextProjection<'a> {
+    project: &'a ProjectSemanticModel,
+    evidence: &'a mut HashMap<ModuleId, ModuleEvidence>,
+    context: &'a CallContext,
+    effect: &'a FunctionEffect,
+    flow: &'a CompiledObjectFlow,
+    flow_plan: &'a FlowPathPlan,
+    call_graph: &'a QualifiedCallGraph,
+    state: &'a CrossFlowState,
+    worklist: &'a mut ContextWorklist,
+    names: &'a glass_lint_datastructures::NameTable,
+    arena: &'a mut TraceArena,
+}
+
+impl ContextProjection<'_> {
+    fn project(&mut self) {
+        let mut current_state = self.state.clone();
+        let mut propagated_calls = BTreeSet::<FactId>::new();
+        propagation::UsageProjector {
+            project: self.project,
+            evidence: self.evidence,
+            context: self.context,
+            effect: self.effect,
+            flow: self.flow,
+            flow_plan: self.flow_plan,
+            call_graph: self.call_graph,
+            state: &mut current_state,
+            propagated: &mut propagated_calls,
+            worklist: self.worklist,
+            names: self.names,
+            arena: self.arena,
+        }
+        .project();
+        propagation::CallPropagation {
+            project: self.project,
+            effect: self.effect,
+            module: self.context.module,
+            context: self.context,
+            propagated: &mut propagated_calls,
+            through: None,
+            state: &current_state,
+            worklist: self.worklist,
+            call_graph: self.call_graph,
+        }
+        .propagate();
+    }
 }
 
 #[allow(clippy::too_many_lines)]
@@ -119,9 +173,7 @@ pub(in crate::analysis) fn collect(
         let flow_plan = flow_plan_cache
             .entry((context.state.flow, context.module))
             .or_insert_with(|| FlowPathPlan::build(flow, names));
-        let mut current_state = context.state.clone();
-        let mut propagated_calls = BTreeSet::new();
-        propagation::UsageProjector {
+        ContextProjection {
             project,
             evidence: &mut evidence,
             context: &context,
@@ -129,25 +181,12 @@ pub(in crate::analysis) fn collect(
             flow,
             flow_plan,
             call_graph: &call_graph,
-            state: &mut current_state,
-            propagated: &mut propagated_calls,
+            state: &context.state,
             worklist: &mut worklist,
             names,
             arena,
         }
         .project();
-        propagation::CallPropagation {
-            project,
-            effect,
-            module: context.module,
-            context: &context,
-            propagated: &mut propagated_calls,
-            through: None,
-            state: &current_state,
-            worklist: &mut worklist,
-            call_graph: &call_graph,
-        }
-        .propagate();
         if worklist.len() >= MAX_CONTEXTS {
             break;
         }
