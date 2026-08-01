@@ -2,7 +2,10 @@
 
 use std::collections::BTreeSet;
 
-use crate::project::{AnalysisDiagnostic, ProjectRelativePath, types::DiagnosticKind};
+use crate::{
+    parse::ParseFailureKind,
+    project::{AnalysisDiagnostic, ProjectRelativePath, types::DiagnosticKind},
+};
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(in crate::analysis) enum AnalysisComponent {
@@ -21,13 +24,6 @@ pub(in crate::analysis) enum ModuleInterfaceKind {
 pub(in crate::analysis) enum ResolutionKind {
     Unsupported,
     OutsideProject,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(in crate::analysis) enum ParseFailureKind {
-    Syntax,
-    SourceTooLarge,
-    SyntaxDepth,
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]

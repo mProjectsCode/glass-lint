@@ -12,7 +12,7 @@ use crate::{
         facts::{FactId, FactStream, Frozen, SemanticFact},
         flow::effect::FunctionEffect,
         local::{LocalArtifact, ProjectModule},
-        lowering::status::{AnalysisStatus, IncompleteReason, ParseFailureKind, StatusScope},
+        lowering::status::{AnalysisStatus, IncompleteReason, StatusScope},
         module::ModuleRequestId,
         project::{
             linker::ProjectLinker,
@@ -390,12 +390,11 @@ impl ProjectSemanticModel {
         self.status.diagnostics()
     }
 
-    pub(crate) fn record_parse_failure(&mut self, path: ProjectRelativePath, code: &str) {
-        let kind = match code {
-            "source_too_large" => ParseFailureKind::SourceTooLarge,
-            "syntax_depth_exceeded" => ParseFailureKind::SyntaxDepth,
-            _ => ParseFailureKind::Syntax,
-        };
+    pub(crate) fn record_parse_failure(
+        &mut self,
+        path: ProjectRelativePath,
+        kind: crate::parse::ParseFailureKind,
+    ) {
         self.status.record(
             StatusScope::File(path),
             IncompleteReason::ParseFailure { kind },

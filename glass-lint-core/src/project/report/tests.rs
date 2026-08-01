@@ -141,6 +141,7 @@ fn combine_reports_preserves_report_and_file_diagnostics() {
                 message: "invalid syntax".into(),
                 filename: "broken.js".into(),
                 range: None,
+                failure: crate::parse::ParseFailureKind::Syntax,
             },
         )],
     );

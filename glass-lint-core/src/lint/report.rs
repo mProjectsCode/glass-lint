@@ -48,13 +48,13 @@ impl<'a> ReportAssembly<'a> {
         parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
         limits: &AnalysisLimits,
     ) -> ProjectAnalysis {
-        let (mut files, parse_failure_codes) =
+        let (mut files, parse_failures) =
             Self::initialize_project_files(source_map, parse_diagnostics);
 
         let linking_start = std::time::Instant::now();
         let mut project = ProjectSemanticModel::link_with_limits(link_input, limits);
-        for (path, code) in parse_failure_codes {
-            project.record_parse_failure(path, &code);
+        for (path, failure) in parse_failures {
+            project.record_parse_failure(path, failure);
         }
         let linking = linking_start.elapsed();
         let link_counts = project.operation_counts(0);
@@ -330,15 +330,15 @@ impl<'a> ReportAssembly<'a> {
         mut parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
     ) -> (
         BTreeMap<ProjectRelativePath, FileReport>,
-        BTreeMap<ProjectRelativePath, String>,
+        BTreeMap<ProjectRelativePath, crate::parse::ParseFailureKind>,
     ) {
         let mut files: BTreeMap<ProjectRelativePath, FileReport> = BTreeMap::new();
-        let mut parse_failure_codes: BTreeMap<ProjectRelativePath, String> = BTreeMap::new();
+        let mut parse_failures = BTreeMap::new();
         for source in source_map.values() {
             let path = source.path().clone();
             match parse_diagnostics.remove(&path) {
                 Some(diagnostic) => {
-                    parse_failure_codes.insert(path.clone(), diagnostic.code.as_str().to_owned());
+                    parse_failures.insert(path.clone(), diagnostic.failure);
                     files.insert(
                         path,
                         FileReport::new(
@@ -357,9 +357,9 @@ impl<'a> ReportAssembly<'a> {
             }
         }
         for (path, diagnostic) in parse_diagnostics {
-            parse_failure_codes.insert(path.clone(), diagnostic.code.as_str().to_owned());
+            parse_failures.insert(path.clone(), diagnostic.failure);
         }
-        (files, parse_failure_codes)
+        (files, parse_failures)
     }
 
     fn attach_project_diagnostics(

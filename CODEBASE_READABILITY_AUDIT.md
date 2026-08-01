@@ -82,7 +82,7 @@ Extract a trace-assembly owner that appends the ordered evidence roles and retur
 
 ### Core reporting and status boundaries
 
-#### READ-007 — Parse failures are serialized to strings and classified again
+#### [x] READ-007 — Parse failures are serialized to strings and classified again
 
 - **Severity:** High
 - **Fix Complexity** Medium
@@ -92,6 +92,8 @@ Extract a trace-assembly owner that appends the ordered evidence roles and retur
 The parse layer already has typed diagnostic and failure concepts, but report assembly copies each diagnostic code into a `String`, passes that side map into the project model, and matches two string literals to recover `ParseFailureKind`; every other value silently becomes `Syntax`. This duplicates the naming table and makes a newly added parse diagnostic compile successfully while being assigned the wrong completion cause.
 
 Carry a typed parse-failure cause alongside the presentation diagnostic, or add an exhaustive conversion between the relevant diagnostic kind and `ParseFailureKind` that can report unsupported values. Record the typed status before moving diagnostics into file reports so no string side channel is needed. Preserve the intentional separation between user-facing diagnostics and analysis completion, but centralize the mapping and test every parse resource limit plus ordinary syntax failure.
+
+Added a typed `ParseFailureKind` to parser diagnostics and carried it directly through report assembly into analysis status. The report still preserves the original user-facing diagnostic code/message/range, but no longer copies codes into strings or reclassifies unknown values as syntax; syntax, source-size, and syntax-depth paths now share the typed cause.
 
 #### READ-008 — Finding assembly indexes evidence through raw coordinate pairs
 

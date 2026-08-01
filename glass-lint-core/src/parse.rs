@@ -30,6 +30,15 @@ pub struct ParseDiagnostic {
     /// Authored filename.
     pub filename: String,
     pub range: Option<SourceRange>,
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub(crate) failure: ParseFailureKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum ParseFailureKind {
+    Syntax,
+    SourceTooLarge,
+    SyntaxDepth,
 }
 
 /// Source languages accepted by the core parser.
@@ -124,6 +133,7 @@ pub fn parse_with_language_and_depth(
             message: format!("source exceeds the {MAX_SOURCE_BYTES} byte analysis limit"),
             filename: filename.into(),
             range: None,
+            failure: ParseFailureKind::SourceTooLarge,
         });
     }
     let source_map = Lrc::new(SourceMap::default());
@@ -139,6 +149,7 @@ pub fn parse_with_language_and_depth(
             message: format!("source exceeds the {max_syntax_depth} nesting-depth analysis limit"),
             filename: filename.into(),
             range: None,
+            failure: ParseFailureKind::SyntaxDepth,
         });
     }
     let lexer = Lexer::new(syntax, EsVersion::EsNext, StringInput::from(&*file), None);
@@ -153,6 +164,7 @@ pub fn parse_with_language_and_depth(
             message: format!("source exceeds the {max_syntax_depth} nesting-depth analysis limit"),
             filename: filename.into(),
             range: None,
+            failure: ParseFailureKind::SyntaxDepth,
         });
     }
     parsed
@@ -208,6 +220,7 @@ pub fn parse_with_language_and_depth(
                 ),
                 filename: filename.into(),
                 range,
+                failure: ParseFailureKind::Syntax,
             }
         })
 }
