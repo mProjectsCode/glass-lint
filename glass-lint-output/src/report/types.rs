@@ -123,7 +123,7 @@ impl<'a> PrettyReport<'a> {
 
 /// Lazily computes display cells once per source line and shares them across
 /// all evidence rows rendered for the same file.
-pub(crate) struct LineCache {
+pub struct LineCache {
     lines: Vec<OnceLock<Vec<Cell>>>,
 }
 

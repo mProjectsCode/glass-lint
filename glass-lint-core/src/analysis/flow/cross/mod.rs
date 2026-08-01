@@ -123,7 +123,7 @@ impl CrossWorklist<'_, '_> {
             if !self.step_budget.try_push() {
                 return WorklistStop::StepBudgetExhausted;
             }
-            self.project_context(context);
+            self.project_context(&context);
             if self.worklist.len() >= MAX_CONTEXTS {
                 return WorklistStop::ContextLimit;
             }
@@ -131,7 +131,7 @@ impl CrossWorklist<'_, '_> {
         WorklistStop::Drained
     }
 
-    fn project_context(&mut self, context: CallContext) {
+    fn project_context(&mut self, context: &CallContext) {
         let Some(effect) = self.project.effect(context.module, context.function) else {
             return;
         };
@@ -151,7 +151,7 @@ impl CrossWorklist<'_, '_> {
         ContextProjection {
             project: self.project,
             evidence: &mut self.evidence,
-            context: &context,
+            context,
             effect,
             flow,
             flow_plan,
@@ -166,7 +166,7 @@ impl CrossWorklist<'_, '_> {
 
     fn finish(
         mut self,
-        stop: WorklistStop,
+        stop: &WorklistStop,
         return_budget_exhausted: bool,
     ) -> (
         BTreeMap<ModuleId, crate::api::classification::RuleEvidenceTable>,
@@ -243,7 +243,7 @@ pub(in crate::analysis) fn collect(
         projections: 0,
     };
     let stop = collector.run();
-    collector.finish(stop, return_budget_exhausted)
+    collector.finish(&stop, return_budget_exhausted)
 }
 
 fn collect_flows<'a>(

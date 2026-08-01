@@ -71,7 +71,7 @@ pub struct ClassificationEvidenceOccurrence {
 
 /// Bounded evidence grouped by opaque catalog rule index.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub(crate) struct RuleEvidenceTable {
+pub struct RuleEvidenceTable {
     values: Vec<Vec<ClassificationEvidence>>,
 }
 

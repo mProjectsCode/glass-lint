@@ -175,7 +175,7 @@ struct ProjectionRunState {
     limits: FlowLimits,
     next_object_id: u32,
     object_limit_rejected: bool,
-    alternatives_complete: bool,
+    alternatives_complete: AlternativeCompleteness,
     reachable: bool,
     summary_exhausted: bool,
     /// Suppress findings while replaying a loop body to compute its fixed
@@ -188,13 +188,25 @@ struct ProjectionRunState {
     trace_heads: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AlternativeCompleteness {
+    Complete,
+    Incomplete,
+}
+
+impl AlternativeCompleteness {
+    fn is_complete(self) -> bool {
+        matches!(self, Self::Complete)
+    }
+}
+
 impl ProjectionRunState {
     fn new(limits: FlowLimits, summary_exhausted: bool) -> Self {
         Self {
             limits,
             next_object_id: 0,
             object_limit_rejected: false,
-            alternatives_complete: true,
+            alternatives_complete: AlternativeCompleteness::Complete,
             reachable: true,
             summary_exhausted,
             emission_mode: EmissionMode::Emit,
@@ -264,7 +276,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         if self.run.operation_budget.try_push() {
             true
         } else {
-            self.run.alternatives_complete = false;
+            self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
             false
         }
     }
@@ -295,7 +307,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 break;
             }
             if !self.flow_state.restore(environment) {
-                self.run.alternatives_complete = false;
+                self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
                 continue;
             }
             self.run.reachable = environment.reachable();
@@ -358,11 +370,11 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         input: Vec<FlowEnvironment>,
     ) -> Vec<FlowEnvironment> {
         let (Some(start), Some(end)) = (body_start.index(), body_end.index()) else {
-            self.run.alternatives_complete = false;
+            self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
             return Vec::new();
         };
         if start >= end || end > self.stream.facts().len() {
-            self.run.alternatives_complete = false;
+            self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
             return Vec::new();
         }
         let stream = self.stream;
@@ -410,7 +422,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             if self.flow_state.restore(*environment) {
                 seen.insert(self.flow_state.semantic_snapshot());
             } else {
-                self.run.alternatives_complete = false;
+                self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
             }
         }
 
@@ -418,7 +430,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         let mut iterations = 0usize;
         while !frontier.is_empty() {
             if iterations >= iteration_limit {
-                self.run.alternatives_complete = false;
+                self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
                 break;
             }
             if !self.charge_operation() {
@@ -456,7 +468,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                     break;
                 }
                 if !self.flow_state.restore(environment) {
-                    self.run.alternatives_complete = false;
+                    self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
                     continue;
                 }
                 if seen.insert(self.flow_state.semantic_snapshot()) {
@@ -471,11 +483,11 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             ..
         }) = self.control.last()
         else {
-            self.run.alternatives_complete = false;
+            self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
             return;
         };
         if *expected != body_start {
-            self.run.alternatives_complete = false;
+            self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
             return;
         }
         self.control.pop();
@@ -486,7 +498,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 break;
             }
             if !self.flow_state.restore(environment) {
-                self.run.alternatives_complete = false;
+                self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
                 continue;
             }
             if exit_shapes.insert(self.flow_state.semantic_snapshot()) {
@@ -522,7 +534,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 break;
             }
             if !self.flow_state.restore(environment) {
-                self.run.alternatives_complete = false;
+                self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
                 continue;
             }
             self.run.reachable = environment.reachable();
@@ -584,7 +596,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 break;
             }
             if !self.flow_state.restore(path) {
-                self.run.alternatives_complete = false;
+                self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
                 continue;
             }
             let snapshot = self.flow_state.semantic_snapshot();
@@ -601,7 +613,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         paths = unique;
         if paths.len() > self.run.limits.alternative_limit() {
             paths.truncate(self.run.limits.alternative_limit());
-            self.run.alternatives_complete = false;
+            self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
         }
         self.paths = paths;
         self.observe_alternatives(self.paths.len());
@@ -618,7 +630,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 .iter()
                 .map(|(path, _)| *path)
                 .collect::<BTreeSet<_>>();
-            let certainty = if self.run.alternatives_complete
+            let certainty = if self.run.alternatives_complete.is_complete()
                 && matching_paths.len() == self.active_path_count
             {
                 crate::project::MatchCertainty::Definite
@@ -744,7 +756,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             || self.flow_state.state_limit_rejected()
             || flow_evidence.limit_rejected()
             || self.flow_state.mutation_exhausted()
-            || !self.run.alternatives_complete
+            || !self.run.alternatives_complete.is_complete()
             || self.trace_arena.is_exhausted();
         LocalFlowProjectionOutcome {
             exhausted,
