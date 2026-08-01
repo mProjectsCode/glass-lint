@@ -10,40 +10,57 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 /// dynamic values.
 /// This is intentionally a low-confidence dependency/literal indicator, not
 /// an operation witness.
-#[allow(clippy::too_many_lines)]
+const SERVICE_PACKAGES: &[&str] = &[
+    "openai",
+    "firebase",
+    "dropbox",
+    "@supabase/supabase-js",
+    "@aws-sdk/client-s3",
+    "@aws-sdk/client-dynamodb",
+    "@aws-sdk/client-lambda",
+    "@google-cloud/storage",
+    "@google-cloud/firestore",
+    "@google-cloud/pubsub",
+    "@azure/storage-blob",
+    "@azure/identity",
+    "stripe",
+    "@stripe/stripe-js",
+    "twilio",
+    "@twilio/voice-sdk",
+    "@sendgrid/mail",
+    "mailgun.js",
+    "@octokit/rest",
+];
+
+const SERVICE_ENDPOINTS: &[&str] = &[
+    "api.openai.com",
+    "amazonaws.com",
+    "supabase.co",
+    "api.stripe.com",
+    "api.twilio.com",
+    "api.sendgrid.com",
+    "api.mailgun.net",
+    "slack.com/api",
+];
+
 pub fn rule() -> Rule {
     Rule::builder("network.service-indicator")
         .description("References service or SDK endpoints")
         .category(Category::new("browser/network").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Low)
-        .query(EventQuery::import_package("openai"))
-        .query(EventQuery::import_package("firebase"))
-        .query(EventQuery::import_package("dropbox"))
-        .query(EventQuery::import_package("@supabase/supabase-js"))
-        .query(EventQuery::import_package("@aws-sdk/client-s3"))
-        .query(EventQuery::import_package("@aws-sdk/client-dynamodb"))
-        .query(EventQuery::import_package("@aws-sdk/client-lambda"))
-        .query(EventQuery::import_package("@google-cloud/storage"))
-        .query(EventQuery::import_package("@google-cloud/firestore"))
-        .query(EventQuery::import_package("@google-cloud/pubsub"))
-        .query(EventQuery::import_package("@azure/storage-blob"))
-        .query(EventQuery::import_package("@azure/identity"))
-        .query(EventQuery::import_package("stripe"))
-        .query(EventQuery::import_package("@stripe/stripe-js"))
-        .query(EventQuery::import_package("twilio"))
-        .query(EventQuery::import_package("@twilio/voice-sdk"))
-        .query(EventQuery::import_package("@sendgrid/mail"))
-        .query(EventQuery::import_package("mailgun.js"))
-        .query(EventQuery::import_package("@octokit/rest"))
-        .query(EventQuery::string_contains("api.openai.com"))
-        .query(EventQuery::string_contains("amazonaws.com"))
-        .query(EventQuery::string_contains("supabase.co"))
-        .query(EventQuery::string_contains("api.stripe.com"))
-        .query(EventQuery::string_contains("api.twilio.com"))
-        .query(EventQuery::string_contains("api.sendgrid.com"))
-        .query(EventQuery::string_contains("api.mailgun.net"))
-        .query(EventQuery::string_contains("slack.com/api"))
+        .queries(
+            SERVICE_PACKAGES
+                .iter()
+                .copied()
+                .map(EventQuery::import_package),
+        )
+        .queries(
+            SERVICE_ENDPOINTS
+                .iter()
+                .copied()
+                .map(EventQuery::string_contains),
+        )
         .build()
         .unwrap()
 }

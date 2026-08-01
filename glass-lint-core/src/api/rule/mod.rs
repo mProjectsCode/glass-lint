@@ -136,6 +136,19 @@ impl RuleBuilder {
     }
 
     #[must_use]
+    /// Add a deterministic sequence of query declarations.
+    pub fn queries<I, Q>(mut self, queries: I) -> Self
+    where
+        I: IntoIterator<Item = Q>,
+        Q: IntoQueryDecl,
+    {
+        for query in queries {
+            self = self.query(query);
+        }
+        self
+    }
+
+    #[must_use]
     /// Set the human-readable description.
     pub fn description(mut self, description: impl Into<String>) -> Self {
         if self.description.is_some() {
@@ -321,5 +334,22 @@ mod tests {
                 .build()
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn registers_query_iterators_in_declaration_order() {
+        let rule = Rule::builder("network.fetch")
+            .description("rule")
+            .category(Category::new("network").unwrap())
+            .severity(Severity::Info)
+            .confidence(Confidence::High)
+            .queries([
+                EventQuery::call_global("fetch"),
+                EventQuery::call_global("request"),
+            ])
+            .build()
+            .unwrap();
+
+        assert_eq!(rule.queries().len(), 2);
     }
 }

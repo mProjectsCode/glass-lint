@@ -308,7 +308,7 @@ path and centralize the fallible-input conversion pattern. Consider a builder
 state or result-based API that makes invalid intermediate operations visible at
 the operation boundary, while keeping final semantic validation centralized.
 
-#### RL-014 — Provider rule catalogs encode data as long fluent expressions
+#### [x] RL-014 — Provider rule catalogs encode data as long fluent expressions
 
 - Severity: Low
 - Fix complexity: Low
@@ -326,6 +326,19 @@ small helper for registering them, or add an iterator-based query registration
 method. Preserve declaration order and generated catalog output, and keep
 provider-specific policy in the row definitions rather than introducing a
 generic registry layer.
+
+Implementation: added an iterator-based `RuleBuilder::queries` method and
+converted the Node network/filesystem, service-indicator, and CodeMirror
+catalog rows to typed constant slices. Registration still occurs in source
+order with the same deferred query validation, while provider policy remains
+in the row data and the obsolete line-count allowances were removed where the
+catalogs became compact.
+
+Runtime (release): profiling
+`/home/lemon/src/obsidian-stats/data/out/plugin-release-mainjs/byoc/1.0.13-main.js`
+with one warm-up-free repetition and one worker took 726.3ms measured lint
+wall time (725.0ms input time; 3.33s process wall time including the
+incremental release build).
 
 #### RL-015 — Query authoring is concentrated in one large module with repeated constructors
 
