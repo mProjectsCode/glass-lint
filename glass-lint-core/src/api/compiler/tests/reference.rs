@@ -4,6 +4,7 @@ use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
 use crate::api::{
+    classification::MatchKind,
     compiler::{
         normalize::normalize_query_decl,
         normalized::NormalizedQuery,
@@ -16,7 +17,11 @@ use crate::api::{
     },
     rule::{
         ArgumentIndex, ValueMatcher,
-        query::{EventQuery, EventSpec, IdentitySpec, QueryDecl},
+        query::{
+            EmissionDecl, EventQuery, EventSpec, IdentitySpec, LifecycleQuery, QueryDecl,
+            QueryExpr,
+            lifecycle::{LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleSink},
+        },
     },
 };
 
@@ -504,4 +509,72 @@ fn different_path_keys_produce_separate_witnesses() {
     assert_eq!(l.len(), 2);
     assert!(l.iter().any(|w| w.path_key == 10));
     assert!(l.iter().any(|w| w.path_key == 20));
+}
+
+#[test]
+fn lifecycle_reference_matches_logical_and_physical_plans() {
+    let lifecycle = LifecycleQuery::builder("resource")
+        .source(EventQuery::call_global("open").unwrap())
+        .condition(LifecycleCondition::event(LifecycleEvent::property_write(
+            "ready",
+            ValueMatcher::any_value(),
+        )))
+        .completion(LifecycleCompletion::any_sink([
+            LifecycleSink::argument_of_global("consume", 0).unwrap(),
+        ]))
+        .build()
+        .unwrap();
+    let decl = QueryDecl {
+        expression: QueryExpr::lifecycle(lifecycle),
+        emission: EmissionDecl {
+            primary_var: crate::api::rule::VarId::new(0),
+            kind: MatchKind::Call,
+            symbol: "resource".into(),
+        },
+    };
+    let normalized = normalize_query_decl(&decl).unwrap();
+    let plan = plan_normalized(&normalized);
+    let mut condition_args = BTreeMap::new();
+    condition_args.insert(
+        ArgumentIndex::new_unchecked(0),
+        ReferenceValue::StaticString("ready".into()),
+    );
+    let mut sink_args = BTreeMap::new();
+    sink_args.insert(
+        ArgumentIndex::new_unchecked(0),
+        ReferenceValue::StaticString("resource".into()),
+    );
+    let rows = vec![
+        row(
+            1,
+            EventSpec::Call,
+            IdentitySpec::Global {
+                name: SmolStr::new("open"),
+            },
+            0,
+        ),
+        row_with_args(
+            2,
+            EventSpec::PropertyWrite {
+                property: SymbolPath::from("ready"),
+            },
+            IdentitySpec::Global {
+                name: SmolStr::new("open"),
+            },
+            0,
+            condition_args,
+        ),
+        row_with_args(
+            3,
+            EventSpec::Call,
+            IdentitySpec::Global {
+                name: SmolStr::new("consume"),
+            },
+            0,
+            sink_args,
+        ),
+    ];
+    assert!(witnesses_equal(&normalized, &plan, &rows));
+    assert_eq!(logical_witnesses(&normalized, &rows).len(), 1);
+    assert_eq!(logical_witnesses(&normalized, &rows)[0].primary_event, 3);
 }

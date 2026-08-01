@@ -265,7 +265,7 @@ impl Visit for FactBuilder<'_, '_> {
         // like `new globalThis.URL(...)` or `new mod.Foo(...)`.
         let (callee_name, provenance) = match effective_callee {
             Expr::Ident(ident) => {
-                let p = resolved.call.clone();
+                let p = resolved.call;
                 (Some(ident.sym.to_smolstr()), p)
             }
             Expr::Member(member) => {
@@ -283,10 +283,10 @@ impl Visit for FactBuilder<'_, '_> {
                         },
                     )
                 } else {
-                    (member_property_name(&member.prop), resolved.call.clone())
+                    (member_property_name(&member.prop), resolved.call)
                 }
             }
-            _ => (None, resolved.call.clone()),
+            _ => (None, resolved.call),
         };
         new_expr.visit_children_with(self);
         let Some(callee_span) = self.byte_range(callee_span) else {

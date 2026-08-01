@@ -76,6 +76,7 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
 
 /// Inner implementation that also tracks evaluation operations.
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_lines)]
 fn compute_constrained_inner(
     stream: &FactStream<Frozen>,
     indexes: &OccurrenceIndexes,

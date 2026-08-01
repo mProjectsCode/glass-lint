@@ -189,7 +189,7 @@ Introduced an opaque `ParentSelection` that owns each inherited selection togeth
 
 ### Testing and public-surface hygiene
 
-#### READ-014 — The logical/physical reference oracle excludes lifecycle plans
+#### [x] READ-014 — The logical/physical reference oracle excludes lifecycle plans
 
 - **Severity:** Medium
 - **Fix Complexity** High
@@ -197,6 +197,8 @@ Introduced an opaque `ParentSelection` that owns each inherited selection togeth
 - **Location:** `glass-lint-core/src/api/compiler/reference.rs:1-8,119-135,245-266`; `glass-lint-core/src/api/compiler/tests/reference.rs:1-470`
 
 The compiler's equivalence oracle explicitly panics for lifecycle roots, so the most stateful query family cannot be compared through the same normalized-versus-physical semantic model used for event roots. Lifecycle behavior has other tests, but planner changes can bypass this independent equivalence check and the oracle's “supported subset” boundary is enforced by runtime panic.
+
+Added an independent lifecycle reference plan adapter for normalized and physical lifecycle forms. The oracle now evaluates ordered source, requirement, and completion witnesses with definite/possible certainty and deterministic path grouping; a lifecycle planner-equivalence test covers source, configuration, and sink stages without runtime panics.
 
 Extend the synthetic relation model with the minimum object, path, requirement, sink, and completeness state needed for representative lifecycle witnesses, or build a separate lifecycle oracle if combining the models would make either unreadable. If support remains intentionally partial, return a typed unsupported result and make tests select supported roots explicitly rather than panic. Include aliases, correlated paths, unknown alternatives, completion order, and exhausted evidence while keeping the oracle small enough to remain independently understandable.
 

@@ -40,13 +40,10 @@ struct EvidenceOccurrenceRef {
 }
 
 impl EvidenceOccurrenceRef {
-    fn resolve<'a>(
+    fn resolve(
         self,
-        evidence_items: &'a [ClassificationEvidence],
-    ) -> Option<(
-        &'a ClassificationEvidence,
-        &'a ClassificationEvidenceOccurrence,
-    )> {
+        evidence_items: &[ClassificationEvidence],
+    ) -> Option<(&ClassificationEvidence, &ClassificationEvidenceOccurrence)> {
         let evidence = evidence_items.get(self.evidence)?;
         Some((evidence, evidence.occurrences.get(self.occurrence)?))
     }

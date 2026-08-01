@@ -289,20 +289,20 @@ impl Resolver<'_> {
 
     pub(in crate::analysis) fn rooted_expr_chain(&mut self, expr: &Expr) -> Option<SymbolPath> {
         match expr {
-            Expr::Ident(ident) => self.resolve_ident(ident).rooted_chain.clone().or_else(|| {
+            Expr::Ident(ident) => self.resolve_ident(ident).rooted_chain.or_else(|| {
                 ident
                     .span
                     .is_dummy()
                     .then(|| SymbolPath::from(ident.sym.as_ref()))
             }),
-            Expr::Member(member) => self.resolve_member(member).rooted_chain.clone(),
+            Expr::Member(member) => self.resolve_member(member).rooted_chain,
             Expr::Call(call) => match &call.callee {
                 Callee::Expr(callee) => self.rooted_expr_chain(callee),
                 Callee::Super(_) | Callee::Import(_) => None,
             },
             Expr::OptChain(chain) => match &*chain.base {
                 swc_ecma_ast::OptChainBase::Member(member) => {
-                    self.resolve_member(member).rooted_chain.clone()
+                    self.resolve_member(member).rooted_chain
                 }
                 swc_ecma_ast::OptChainBase::Call(call) => self.rooted_expr_chain(&call.callee),
             },

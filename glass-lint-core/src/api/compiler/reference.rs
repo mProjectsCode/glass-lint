@@ -13,16 +13,21 @@ use std::collections::BTreeMap;
 use crate::api::{
     compiler::{
         normalized::{
-            CanonicalArgumentConstraints, NormalizedEvent, NormalizedQuery, NormalizedRoot,
-            NormalizedSubject,
+            CanonicalArgumentConstraints, NormalizedEvent, NormalizedLifecycle,
+            NormalizedLifecycleCompletion, NormalizedLifecycleCondition, NormalizedLifecycleEvent,
+            NormalizedLifecycleSink, NormalizedQuery, NormalizedRoot, NormalizedSubject,
+        },
+        object_flow::{
+            CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArguments,
+            CompletionMode, RequirementMode,
         },
         physical::{PhysicalPlan, PhysicalRoot},
         rule::{EventPredicate, IdentityConstraint, lower_event, lower_identity},
     },
     rule::{
-        ArgumentIndex, ArgumentMatcher, ArgumentMatcherKind, StaticStringPredicateKind,
-        ValueMatcherKind,
-        query::{EventSpec, IdentitySpec},
+        ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ArgumentMatcherKind,
+        StaticStringPredicateKind, ValueMatcher, ValueMatcherKind,
+        query::{EventSpec, IdentitySpec, lifecycle::LifecycleCallTarget},
     },
 };
 
@@ -102,6 +107,176 @@ pub(crate) enum ReferenceCertainty {
     Possible,
 }
 
+#[derive(Clone)]
+enum LifecycleSourceMatcher {
+    Target {
+        target: LifecycleCallTarget,
+        arguments: Vec<ArgumentConstraint>,
+    },
+}
+
+#[derive(Clone)]
+enum LifecycleRequirementMatcher {
+    Property {
+        property: String,
+        value: ValueMatcher,
+    },
+    Member {
+        member: glass_lint_datastructures::SymbolPath,
+        arguments: Vec<ArgumentConstraint>,
+    },
+}
+
+#[derive(Clone)]
+struct LifecycleSinkMatcher {
+    target: LifecycleCallTarget,
+    argument: Option<usize>,
+}
+
+struct LifecycleReferencePlan {
+    sources: Vec<LifecycleSourceMatcher>,
+    requirements: Vec<LifecycleRequirementMatcher>,
+    requirement_mode: RequirementMode,
+    sinks: Vec<LifecycleSinkMatcher>,
+    completion_mode: CompletionMode,
+}
+
+fn lifecycle_plan_from_normalized(lifecycle: &NormalizedLifecycle) -> LifecycleReferencePlan {
+    let sources = lifecycle
+        .sources()
+        .iter()
+        .filter_map(|source| {
+            let target = lifecycle_target(source.event(), source.identity())?;
+            Some(LifecycleSourceMatcher::Target {
+                target,
+                arguments: source.arguments().to_flat_vec(),
+            })
+        })
+        .collect();
+    let (requirements, requirement_mode) = lifecycle.condition().map_or_else(
+        || (Vec::new(), RequirementMode::AnyRequired),
+        |condition| match condition {
+            NormalizedLifecycleCondition::AnyOf(events) => (
+                events.iter().map(lifecycle_requirement).collect(),
+                RequirementMode::AnyRequired,
+            ),
+            NormalizedLifecycleCondition::AllOf(events) => (
+                events.iter().map(lifecycle_requirement).collect(),
+                RequirementMode::AllRequired,
+            ),
+        },
+    );
+    let (sinks, completion_mode) = lifecycle.completion().map_or_else(
+        || (Vec::new(), CompletionMode::AnySink),
+        |completion| match completion {
+            NormalizedLifecycleCompletion::Configuration => {
+                (Vec::new(), CompletionMode::Configuration)
+            }
+            NormalizedLifecycleCompletion::AnySink(sinks) => (
+                sinks.iter().map(lifecycle_sink).collect(),
+                CompletionMode::AnySink,
+            ),
+            NormalizedLifecycleCompletion::AllSinks(sinks) => (
+                sinks.iter().map(lifecycle_sink).collect(),
+                CompletionMode::AllSinks,
+            ),
+        },
+    );
+    LifecycleReferencePlan {
+        sources,
+        requirements,
+        requirement_mode,
+        sinks,
+        completion_mode,
+    }
+}
+
+fn lifecycle_plan_from_physical(flow: &CompiledObjectFlow) -> LifecycleReferencePlan {
+    LifecycleReferencePlan {
+        sources: flow
+            .sources
+            .iter()
+            .map(|source| LifecycleSourceMatcher::Target {
+                target: source.target.clone(),
+                arguments: source.arguments.clone(),
+            })
+            .collect(),
+        requirements: flow
+            .requirements
+            .iter()
+            .map(|requirement| match requirement {
+                CompiledObjectRequirement::PropertyWrite { property, value } => {
+                    LifecycleRequirementMatcher::Property {
+                        property: property.as_str().to_owned(),
+                        value: value.clone(),
+                    }
+                }
+                CompiledObjectRequirement::MemberCall { member, arguments } => {
+                    LifecycleRequirementMatcher::Member {
+                        member: member.clone(),
+                        arguments: arguments.clone(),
+                    }
+                }
+            })
+            .collect(),
+        requirement_mode: flow.requirement_mode,
+        sinks: flow
+            .sinks
+            .iter()
+            .map(|sink| LifecycleSinkMatcher {
+                target: sink.target.clone(),
+                argument: match &sink.args {
+                    CompiledObjectSinkArguments::Any => None,
+                    CompiledObjectSinkArguments::Indices(indices) => indices.first().copied(),
+                },
+            })
+            .collect(),
+        completion_mode: flow.completion_mode,
+    }
+}
+
+fn lifecycle_target(event: &EventSpec, identity: &IdentitySpec) -> Option<LifecycleCallTarget> {
+    match (event, identity) {
+        (EventSpec::Call, IdentitySpec::Global { name }) => {
+            Some(LifecycleCallTarget::Global(name.clone()))
+        }
+        (EventSpec::MemberCall { member }, IdentitySpec::Rooted { .. }) => {
+            Some(LifecycleCallTarget::RootedMember(member.clone()))
+        }
+        _ => None,
+    }
+}
+
+fn lifecycle_requirement(event: &NormalizedLifecycleEvent) -> LifecycleRequirementMatcher {
+    match event {
+        NormalizedLifecycleEvent::PropertyWrite { property, value } => {
+            LifecycleRequirementMatcher::Property {
+                property: property.as_str().to_owned(),
+                value: value.clone(),
+            }
+        }
+        NormalizedLifecycleEvent::MemberCall { member, arguments } => {
+            LifecycleRequirementMatcher::Member {
+                member: member.clone().into(),
+                arguments: arguments.to_flat_vec(),
+            }
+        }
+    }
+}
+
+fn lifecycle_sink(sink: &NormalizedLifecycleSink) -> LifecycleSinkMatcher {
+    match sink {
+        NormalizedLifecycleSink::ArgumentOf { target, index } => LifecycleSinkMatcher {
+            target: target.clone(),
+            argument: Some(*index),
+        },
+        NormalizedLifecycleSink::AnyArgumentOf { target } => LifecycleSinkMatcher {
+            target: target.clone(),
+            argument: None,
+        },
+    }
+}
+
 // ── Logical evaluator ───────────────────────────────────────────────────────
 
 /// Evaluate a logical [`NormalizedQuery`] against a set of reference rows.
@@ -127,8 +302,8 @@ fn evaluate_root_logical(root: &NormalizedRoot, rows: &[ReferenceRow]) -> Vec<Re
             }
             witnesses
         }
-        NormalizedRoot::Lifecycle(_) => {
-            panic!("reference evaluator does not support lifecycle roots")
+        NormalizedRoot::Lifecycle(lifecycle) => {
+            evaluate_lifecycle(&lifecycle_plan_from_normalized(lifecycle), rows)
         }
     }
 }
@@ -185,6 +360,214 @@ fn evaluate_event_logical(ev: &NormalizedEvent, rows: &[ReferenceRow]) -> Vec<Re
         });
     }
     witnesses
+}
+
+fn evaluate_lifecycle(
+    plan: &LifecycleReferencePlan,
+    rows: &[ReferenceRow],
+) -> Vec<ReferenceWitness> {
+    let mut by_path: BTreeMap<u32, Vec<&ReferenceRow>> = BTreeMap::new();
+    for row in rows {
+        by_path.entry(row.path).or_default().push(row);
+    }
+    for path_rows in by_path.values_mut() {
+        path_rows.sort_by_key(|row| row.event);
+    }
+
+    let mut witnesses = Vec::new();
+    for (path, path_rows) in by_path {
+        for source in path_rows.iter().copied().filter(|row| {
+            plan.sources
+                .iter()
+                .any(|matcher| matches_source(matcher, row))
+        }) {
+            let requirement_matches: Vec<Vec<&ReferenceRow>> = plan
+                .requirements
+                .iter()
+                .map(|matcher| {
+                    path_rows
+                        .iter()
+                        .copied()
+                        .filter(|row| row.event > source.event && matches_requirement(matcher, row))
+                        .collect()
+                })
+                .collect();
+            if requirement_matches.iter().any(Vec::is_empty)
+                && plan.requirement_mode == RequirementMode::AllRequired
+            {
+                continue;
+            }
+            let condition_sets: Vec<Vec<&ReferenceRow>> = if plan.requirements.is_empty() {
+                vec![Vec::new()]
+            } else if plan.requirement_mode == RequirementMode::AllRequired {
+                vec![
+                    requirement_matches
+                        .iter()
+                        .filter_map(|matches| matches.first().copied())
+                        .collect(),
+                ]
+            } else {
+                requirement_matches
+                    .into_iter()
+                    .flatten()
+                    .map(|row| vec![row])
+                    .collect()
+            };
+            for condition_set in condition_sets {
+                if plan.requirement_mode == RequirementMode::AnyRequired
+                    && !plan.requirements.is_empty()
+                    && condition_set.is_empty()
+                {
+                    continue;
+                }
+                let condition_end = condition_set
+                    .iter()
+                    .map(|row| row.event)
+                    .max()
+                    .unwrap_or(source.event);
+                let completion_sets = lifecycle_completions(plan, &path_rows, condition_end);
+                for completion_set in completion_sets {
+                    let primary_event = completion_set
+                        .iter()
+                        .map(|row| row.event)
+                        .max()
+                        .or_else(|| condition_set.iter().map(|row| row.event).max())
+                        .unwrap_or(source.event);
+                    let possible = source.completeness == ReferenceCompleteness::Unknown
+                        || condition_set
+                            .iter()
+                            .chain(completion_set.iter())
+                            .any(|row| row.completeness == ReferenceCompleteness::Unknown);
+                    witnesses.push(ReferenceWitness {
+                        primary_event,
+                        support_events: vec![source.event],
+                        path_key: path,
+                        certainty: if possible {
+                            ReferenceCertainty::Possible
+                        } else {
+                            ReferenceCertainty::Definite
+                        },
+                    });
+                }
+            }
+        }
+    }
+    witnesses.sort();
+    witnesses.dedup();
+    witnesses
+}
+
+fn lifecycle_completions<'a>(
+    plan: &LifecycleReferencePlan,
+    path_rows: &[&'a ReferenceRow],
+    condition_end: u32,
+) -> Vec<Vec<&'a ReferenceRow>> {
+    match plan.completion_mode {
+        CompletionMode::Configuration => vec![Vec::new()],
+        CompletionMode::AnySink => plan
+            .sinks
+            .iter()
+            .flat_map(|sink| {
+                path_rows
+                    .iter()
+                    .copied()
+                    .filter(move |row| row.event > condition_end && matches_sink(sink, row))
+                    .map(|row| vec![row])
+                    .collect::<Vec<_>>()
+            })
+            .collect(),
+        CompletionMode::AllSinks => {
+            let selected: Option<Vec<&ReferenceRow>> = plan
+                .sinks
+                .iter()
+                .map(|sink| {
+                    path_rows
+                        .iter()
+                        .copied()
+                        .find(|row| row.event > condition_end && matches_sink(sink, row))
+                })
+                .collect();
+            selected.into_iter().collect()
+        }
+    }
+}
+
+fn matches_source(matcher: &LifecycleSourceMatcher, row: &ReferenceRow) -> bool {
+    match matcher {
+        LifecycleSourceMatcher::Target { target, arguments } => {
+            matches_target(target, row) && matches_flat_arguments(arguments, &row.arguments)
+        }
+    }
+}
+
+fn matches_requirement(matcher: &LifecycleRequirementMatcher, row: &ReferenceRow) -> bool {
+    match matcher {
+        LifecycleRequirementMatcher::Property { property, value } => {
+            matches!(&row.event_kind, EventSpec::PropertyWrite { property: actual } if actual == &glass_lint_datastructures::SymbolPath::from(property.as_str()))
+                && row
+                    .arguments
+                    .get(&ArgumentIndex::new_unchecked(0))
+                    .is_some_and(|actual| matches_value_matcher(value, actual))
+        }
+        LifecycleRequirementMatcher::Member { member, arguments } => {
+            matches!(&row.event_kind, EventSpec::MemberCall { member: actual } if actual == member)
+                && matches_flat_arguments(arguments, &row.arguments)
+        }
+    }
+}
+
+fn matches_sink(matcher: &LifecycleSinkMatcher, row: &ReferenceRow) -> bool {
+    matches_target(&matcher.target, row)
+        && matcher.argument.is_none_or(|index| {
+            u8::try_from(index).is_ok_and(|index| {
+                row.arguments
+                    .contains_key(&ArgumentIndex::new_unchecked(index))
+            })
+        })
+}
+
+fn matches_target(target: &LifecycleCallTarget, row: &ReferenceRow) -> bool {
+    match target {
+        LifecycleCallTarget::Global(name) => {
+            matches!(&row.event_kind, EventSpec::Call)
+                && matches!(&row.identity, IdentitySpec::Global { name: actual } if actual == name)
+        }
+        LifecycleCallTarget::RootedMember(member) => {
+            matches!(&row.event_kind, EventSpec::MemberCall { member: actual } if actual == member)
+        }
+    }
+}
+
+fn matches_flat_arguments(
+    constraints: &[ArgumentConstraint],
+    args: &BTreeMap<ArgumentIndex, ReferenceValue>,
+) -> bool {
+    constraints.iter().all(|constraint| {
+        args.get(&constraint.arg_index())
+            .is_some_and(|value| matches_reference_value(constraint.predicate(), value))
+    })
+}
+
+fn matches_value_matcher(matcher: &ValueMatcher, value: &ReferenceValue) -> bool {
+    match matcher.kind() {
+        ValueMatcherKind::Any => true,
+        ValueMatcherKind::StaticString(predicate) => match value {
+            ReferenceValue::StaticString(actual) => match &predicate.kind {
+                StaticStringPredicateKind::Any => true,
+                StaticStringPredicateKind::Exact(values) => values.iter().any(|v| v == actual),
+                StaticStringPredicateKind::Prefix(values) => {
+                    values.iter().any(|v| actual.starts_with(v))
+                }
+                StaticStringPredicateKind::ContainsAny(values) => {
+                    values.iter().any(|v| actual.contains(v))
+                }
+                StaticStringPredicateKind::ContainsAll(values) => {
+                    values.iter().all(|v| actual.contains(v))
+                }
+            },
+            ReferenceValue::Unknown => matches!(predicate.kind, StaticStringPredicateKind::Any),
+        },
+    }
 }
 
 fn matches_event_kind_logical(expected: &EventSpec, actual: &EventSpec) -> bool {
@@ -260,8 +643,8 @@ fn evaluate_physical_root(root: &PhysicalRoot, rows: &[ReferenceRow]) -> Vec<Ref
             evidence: _,
             object_slot: _,
         } => evaluate_instance_subject(constructor, member, rows),
-        PhysicalRoot::Lifecycle { .. } => {
-            panic!("reference evaluator does not support lifecycle roots")
+        PhysicalRoot::Lifecycle { flow } => {
+            evaluate_lifecycle(&lifecycle_plan_from_physical(flow), rows)
         }
     }
 }
