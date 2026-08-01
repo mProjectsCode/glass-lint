@@ -10,18 +10,79 @@ use glass_lint_core::{Environment, LinterConfig, RuleCatalog, RuleMetadata};
 
 mod rules;
 
+/// JavaScript host target whose catalogs should be composed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JavaScriptTarget {
+    Js,
+    Browser,
+    Node,
+    Electron,
+}
+
+/// Ordered JavaScript-provider catalogs and their target compositions.
+pub struct JavaScriptCatalogBundle {
+    catalogs: [RuleCatalog; 4],
+}
+
+impl JavaScriptCatalogBundle {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            catalogs: [
+                js_catalog(),
+                browser_catalog(),
+                node_catalog(),
+                electron_catalog(),
+            ],
+        }
+    }
+
+    /// Return isolated catalogs in their canonical documentation order.
+    pub fn catalog_entries(&self) -> impl Iterator<Item = (&'static str, &RuleCatalog)> {
+        ["js", "browser", "node", "electron"]
+            .into_iter()
+            .zip(self.catalogs.iter())
+    }
+
+    /// Return metadata grouped by isolated catalog in canonical order.
+    pub fn metadata_by_catalog(&self) -> Vec<(&'static str, Vec<RuleMetadata>)> {
+        self.catalog_entries()
+            .map(|(name, catalog)| (name, catalog.metadata()))
+            .collect()
+    }
+
+    /// Consume the bundle into the catalogs required by one host target.
+    #[must_use]
+    pub fn into_target(self, target: JavaScriptTarget) -> Vec<RuleCatalog> {
+        let [js, browser, node, electron] = self.catalogs;
+        match target {
+            JavaScriptTarget::Js => vec![js],
+            JavaScriptTarget::Browser => vec![js, browser],
+            JavaScriptTarget::Node => vec![js, node],
+            JavaScriptTarget::Electron => vec![js, browser, node, electron],
+        }
+    }
+
+    /// Return flattened metadata in canonical catalog order.
+    #[must_use]
+    pub fn metadata(&self) -> Vec<RuleMetadata> {
+        self.metadata_by_catalog()
+            .into_iter()
+            .flat_map(|(_, metadata)| metadata)
+            .collect()
+    }
+}
+
+impl Default for JavaScriptCatalogBundle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[must_use]
 /// Return metadata for every rule in the `js:` provider catalog.
 pub fn rule_metadata() -> Vec<RuleMetadata> {
-    [
-        js_catalog(),
-        browser_catalog(),
-        electron_catalog(),
-        node_catalog(),
-    ]
-    .into_iter()
-    .flat_map(|catalog| catalog.metadata())
-    .collect()
+    JavaScriptCatalogBundle::new().metadata()
 }
 
 #[must_use]
@@ -48,31 +109,35 @@ pub fn node_catalog() -> RuleCatalog {
 /// Return the complete core configuration for the plain JavaScript target.
 #[must_use]
 pub fn js_config() -> LinterConfig {
-    LinterConfig::new(vec![js_catalog()], js_environment())
+    LinterConfig::new(
+        JavaScriptCatalogBundle::new().into_target(JavaScriptTarget::Js),
+        js_environment(),
+    )
 }
 
 /// Return the complete core configuration for the browser target.
 #[must_use]
 pub fn browser_config() -> LinterConfig {
-    LinterConfig::new(vec![js_catalog(), browser_catalog()], browser_environment())
+    LinterConfig::new(
+        JavaScriptCatalogBundle::new().into_target(JavaScriptTarget::Browser),
+        browser_environment(),
+    )
 }
 
 /// Return the complete core configuration for the Node target.
 #[must_use]
 pub fn node_config() -> LinterConfig {
-    LinterConfig::new(vec![js_catalog(), node_catalog()], node_environment())
+    LinterConfig::new(
+        JavaScriptCatalogBundle::new().into_target(JavaScriptTarget::Node),
+        node_environment(),
+    )
 }
 
 /// Return the complete core configuration for the Electron target.
 #[must_use]
 pub fn electron_config() -> LinterConfig {
     LinterConfig::new(
-        vec![
-            js_catalog(),
-            browser_catalog(),
-            node_catalog(),
-            electron_catalog(),
-        ],
+        JavaScriptCatalogBundle::new().into_target(JavaScriptTarget::Electron),
         electron_environment(),
     )
 }

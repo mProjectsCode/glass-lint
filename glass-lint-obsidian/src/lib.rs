@@ -11,6 +11,53 @@ pub mod api_manifest;
 mod catalog;
 mod rules;
 
+/// Ordered catalogs for the complete Obsidian renderer target.
+pub struct ObsidianCatalogBundle {
+    javascript: glass_lint_js::JavaScriptCatalogBundle,
+    obsidian: RuleCatalog,
+}
+
+impl ObsidianCatalogBundle {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            javascript: glass_lint_js::JavaScriptCatalogBundle::new(),
+            obsidian: obsidian_catalog(),
+        }
+    }
+
+    /// Return all provider catalogs in the canonical target and documentation
+    /// order.
+    pub fn metadata_by_catalog(&self) -> Vec<(&'static str, Vec<RuleMetadata>)> {
+        let mut metadata = self.javascript.metadata_by_catalog();
+        metadata.push(("obsidian", self.obsidian.metadata()));
+        metadata
+    }
+
+    #[must_use]
+    pub fn metadata(&self) -> Vec<RuleMetadata> {
+        self.metadata_by_catalog()
+            .into_iter()
+            .flat_map(|(_, metadata)| metadata)
+            .collect()
+    }
+
+    #[must_use]
+    pub fn into_catalogs(self) -> Vec<RuleCatalog> {
+        let mut catalogs = self
+            .javascript
+            .into_target(glass_lint_js::JavaScriptTarget::Electron);
+        catalogs.push(self.obsidian);
+        catalogs
+    }
+}
+
+impl Default for ObsidianCatalogBundle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Version-pinned runtime source for the plugin-manager API rules.
 pub const PLUGIN_API_SOURCE: &str = "obsidian-runtime-plugin-manager@2026-07-31";
 
@@ -54,13 +101,7 @@ pub fn obsidian_environment() -> Environment {
 #[must_use]
 pub fn obsidian_config() -> LinterConfig {
     LinterConfig::new(
-        vec![
-            glass_lint_js::js_catalog(),
-            glass_lint_js::browser_catalog(),
-            glass_lint_js::node_catalog(),
-            glass_lint_js::electron_catalog(),
-            obsidian_catalog(),
-        ],
+        ObsidianCatalogBundle::new().into_catalogs(),
         obsidian_environment(),
     )
 }
@@ -127,6 +168,16 @@ mod tests {
                 .top_level_helpers
                 .contains(&"parseSubpath")
         );
+    }
+
+    #[test]
+    fn catalog_bundle_preserves_provider_order() {
+        let names: Vec<_> = ObsidianCatalogBundle::new()
+            .metadata_by_catalog()
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        assert_eq!(names, ["js", "browser", "node", "electron", "obsidian"]);
     }
 
     #[test]

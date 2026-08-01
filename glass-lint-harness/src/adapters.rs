@@ -74,13 +74,7 @@ impl Adapter for GlassLintAdapter {
 
 fn configured_linter(expectation: &ToolExpectation) -> Result<Linter> {
     let environment = glass_lint_obsidian::obsidian_environment();
-    let catalogs = vec![
-        glass_lint_js::js_catalog(),
-        glass_lint_js::browser_catalog(),
-        glass_lint_js::node_catalog(),
-        glass_lint_js::electron_catalog(),
-        glass_lint_obsidian::obsidian_catalog(),
-    ];
+    let catalogs = glass_lint_obsidian::ObsidianCatalogBundle::new().into_catalogs();
     if let Some(config) = expectation.config() {
         if config != "heuristic" {
             bail!("unknown built-in glass-lint config `{config}`");

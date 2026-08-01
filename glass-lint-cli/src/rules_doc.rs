@@ -5,6 +5,7 @@ use std::{fmt::Write as _, fs, path::Path};
 use anyhow::{Context, Result, bail};
 use glass_lint_core::RuleMetadata;
 
+#[derive(Debug)]
 struct CatalogDocumentation {
     name: &'static str,
     rules: Vec<RuleMetadata>,
@@ -13,28 +14,13 @@ struct CatalogDocumentation {
 /// Build the complete metadata set from every provider catalog in catalog
 /// order. Catalog order is part of the generated document's stable layout.
 fn catalogs() -> [CatalogDocumentation; 5] {
-    [
-        CatalogDocumentation {
-            name: "js",
-            rules: glass_lint_js::js_catalog().metadata(),
-        },
-        CatalogDocumentation {
-            name: "browser",
-            rules: glass_lint_js::browser_catalog().metadata(),
-        },
-        CatalogDocumentation {
-            name: "node",
-            rules: glass_lint_js::node_catalog().metadata(),
-        },
-        CatalogDocumentation {
-            name: "electron",
-            rules: glass_lint_js::electron_catalog().metadata(),
-        },
-        CatalogDocumentation {
-            name: "obsidian",
-            rules: glass_lint_obsidian::obsidian_catalog().metadata(),
-        },
-    ]
+    glass_lint_obsidian::ObsidianCatalogBundle::new()
+        .metadata_by_catalog()
+        .into_iter()
+        .map(|(name, rules)| CatalogDocumentation { name, rules })
+        .collect::<Vec<_>>()
+        .try_into()
+        .expect("Obsidian catalog bundle has five provider catalogs")
 }
 
 /// Render the complete rule reference as deterministic Markdown.

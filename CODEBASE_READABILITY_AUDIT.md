@@ -141,7 +141,7 @@ Introduce focused error enums for case construction, expectations, and adapter c
 
 ### Project and provider composition
 
-#### READ-012 — Provider catalog topology is repeated across layers
+#### [x] READ-012 — Provider catalog topology is repeated across layers
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -151,6 +151,8 @@ Introduce focused error enums for case construction, expectations, and adapter c
 The ordered relationships among JavaScript, browser, Node, Electron, and Obsidian catalogs are reconstructed in provider configuration, adapter selection, and rule-document generation. The lists already differ in incidental ordering, so adding or renaming a catalog requires coordinated edits that are not enforced by one owning API.
 
 Let the JavaScript provider expose a typed ordered catalog bundle or target composition, and let the Obsidian provider extend that bundle with its own catalog. Have harness and documentation consumers iterate named entries from those owners while preserving access to isolated catalogs for tests and selective configuration. Keep provider names, target policy, and profiles out of core, and add an ordering/uniqueness contract test where the topology is defined.
+
+Added provider-owned `JavaScriptCatalogBundle` target composition and an `ObsidianCatalogBundle` that extends it in the canonical renderer order. JavaScript/Obsidian configs, the built-in adapter, and rule-document generation now consume those bundles; isolated catalog functions remain available, and the Obsidian provider has an ordering contract test.
 
 #### [x] READ-013 — Tsconfig inheritance accepts a representable invalid parent state
 
