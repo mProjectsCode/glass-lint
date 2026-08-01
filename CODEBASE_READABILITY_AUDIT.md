@@ -83,6 +83,9 @@ The requested bundle’s release lint took **0.85 s wall time** after this
 verified implementation (0.83 s baseline), within normal run-to-run variance
 and without a significant regression.
 
+READ-002’s follow-up verification measured **0.86 s wall time** for the same
+bundle; the typed path boundary adds no measurable performance regression.
+
 #### [x] READ-003 — `ScopeCollector` remains a cross-phase mutable coordinator
 
 - **Severity:** Medium
