@@ -3,36 +3,18 @@
 //! This module owns the matcher-independent boundary: scope predeclaration is
 //! followed by one fact-building AST traversal that produces facts and a
 //! module interface. Matcher indexes and function effects are derived together
-//! from the resulting frozen stream. Matcher
-//! selection is applied only by [`SemanticFacts::project`] after that shared
-//! state has been built.
-
-use std::collections::BTreeMap;
+//! from the resulting frozen stream. Matcher selection is applied only by the
+//! project projection layer after that shared state has been built.
 
 use glass_lint_datastructures::NameTable;
 use hashbrown::HashMap;
 
-use crate::{
-    analysis::{
-        flow::{
-            effect::FunctionEffects,
-            projector::{self as object_flow, LocalFlowProjectionOutcome},
-        },
-        matching::{self, LinkedOccurrenceView, ModuleIdentityMap, OccurrenceIndexes},
-        model::flow::FlowLimits,
-        module::ModuleInterface,
-        project::model::ExportResolution,
-        trace::TraceArena,
-        value::{ValueId, ValueTable},
-    },
-    api::{
-        classification::RuleIndex,
-        compiler::{
-            CompiledRuleSelection, object_flow::CompiledObjectFlow, physical::PhysicalRoot,
-            requirements::FlowRequirements,
-        },
-    },
-    project::ModuleId,
+#[cfg(test)]
+use crate::analysis::flow::effect::FunctionEffects;
+use crate::analysis::{
+    matching::OccurrenceIndexes,
+    module::ModuleInterface,
+    value::{ValueId, ValueTable},
 };
 
 mod arguments;
@@ -383,109 +365,6 @@ pub(in crate::analysis) struct BuiltFacts {
     pub(in crate::analysis) interface: ModuleInterface,
 }
 
-/// Pre-built flattening of [`CompiledRuleSelection`] that is constant for
-/// the entire match run. Built once before the module loop to avoid
-/// reconstructing it for every module.
-pub(in crate::analysis) struct ProjectionPlan<'a> {
-    constrained_roots: Vec<(usize, &'a PhysicalRoot)>,
-    flow_matchers: Vec<(RuleIndex, usize, &'a CompiledObjectFlow)>,
-    rule_count: usize,
-    needs_module_identities: bool,
-    needs_call_result_identities: bool,
-    needs_overlay: bool,
-    flow_requirements: FlowRequirements,
-}
-
-impl<'a> ProjectionPlan<'a> {
-    /// Whether any selected plan requires project identity overlays.
-    pub(in crate::analysis) fn needs_overlay(&self) -> bool {
-        self.needs_overlay
-    }
-
-    pub(in crate::analysis) fn needs_module_identities(&self) -> bool {
-        self.needs_module_identities
-    }
-
-    pub(in crate::analysis) fn needs_call_result_identities(&self) -> bool {
-        self.needs_call_result_identities
-    }
-
-    pub(in crate::analysis) fn flow_requirements(&self) -> &FlowRequirements {
-        &self.flow_requirements
-    }
-
-    pub(in crate::analysis) fn needs_flow(&self) -> bool {
-        !self.flow_matchers.is_empty()
-    }
-
-    pub(in crate::analysis) fn from_selection(selection: &'a CompiledRuleSelection<'a>) -> Self {
-        let constrained_roots = selection
-            .selected_matchers()
-            .flat_map(|(rule_index, matcher)| {
-                let roots: Vec<(usize, &PhysicalRoot)> = matcher
-                    .physical_roots()
-                    .iter()
-                    .filter(|root| matches!(root, PhysicalRoot::ConstrainedScan { constraints, .. } if !constraints.groups().is_empty()))
-                    .map(move |root| (rule_index.get(), root))
-                    .collect();
-                roots
-            })
-            .collect::<Vec<_>>();
-
-        // Accumulate requirements across all selected matchers.
-        // This is done separately from the flow_matchers iteration to avoid
-        // move-closure ownership issues with non-Copy requirement types.
-        let mut needs_overall_overlay = false;
-        let mut needs_overall_module_ids = false;
-        let mut needs_overall_result_ids = false;
-        let mut flow_local = false;
-        let mut flow_cross_call = false;
-        let mut flow_cross_file = false;
-        for (_, matcher) in selection.selected_matchers() {
-            needs_overall_overlay = needs_overall_overlay || matcher.needs_project_overlay();
-            needs_overall_module_ids =
-                needs_overall_module_ids || matcher.needs_module_identities();
-            needs_overall_result_ids =
-                needs_overall_result_ids || matcher.needs_call_result_identities();
-            let fr = matcher.flow_requirements();
-            flow_local = flow_local || fr.local;
-            flow_cross_call = flow_cross_call || fr.cross_call;
-            flow_cross_file = flow_cross_file || fr.cross_file;
-        }
-
-        let flow_matchers =
-            selection
-                .selected_matchers()
-                .flat_map(|(rule_index, matcher)| {
-                    let ri = rule_index;
-                    matcher.physical_roots().iter().enumerate().filter_map(
-                        move |(flow_index, root)| {
-                            if let PhysicalRoot::Lifecycle { flow } = root {
-                                Some((ri, flow_index, flow))
-                            } else {
-                                None
-                            }
-                        },
-                    )
-                })
-                .collect::<Vec<_>>();
-        let rule_count = selection.rule_capacity();
-        Self {
-            constrained_roots,
-            flow_matchers,
-            rule_count,
-            needs_module_identities: needs_overall_module_ids,
-            needs_call_result_identities: needs_overall_result_ids,
-            needs_overlay: needs_overall_overlay,
-            flow_requirements: FlowRequirements {
-                local: flow_local,
-                cross_call: flow_cross_call,
-                cross_file: flow_cross_file,
-            },
-        }
-    }
-}
-
 // ── SemanticFacts ───────────────────────────────────────────────────────
 
 #[derive(Debug)]
@@ -578,55 +457,6 @@ impl SemanticFacts {
     /// Borrow the module requests and export facts collected during the walk.
     pub(in crate::analysis) fn interface(&self) -> &ModuleInterface {
         &self.interface
-    }
-
-    /// Projects constrained-clause and flow evidence after linking.
-    /// Returns projected evidence alongside a [`LocalFlowProjectionOutcome`]
-    /// so callers can observe exhaustion without guessing from evidence shape.
-    #[allow(clippy::too_many_arguments)]
-    pub(in crate::analysis) fn project(
-        &self,
-        effects: Option<&FunctionEffects>,
-        plan: &ProjectionPlan<'_>,
-        identities: Option<&ModuleIdentityMap>,
-        result_identities: Option<&BTreeMap<ValueId, ExportResolution>>,
-        overlay: Option<&LinkedOccurrenceView<'_>>,
-        flow_limits: FlowLimits,
-        module_id: ModuleId,
-        trace_arena: &mut TraceArena,
-    ) -> (
-        Vec<Vec<crate::api::classification::ClassificationEvidence>>,
-        LocalFlowProjectionOutcome,
-    ) {
-        let mut projected_evidence = vec![Vec::new(); plan.rule_count];
-        if !self.stream.is_valid() || self.values().get(ValueId::UNKNOWN).is_none() {
-            return (projected_evidence, LocalFlowProjectionOutcome::default());
-        }
-        matching::compute_constrained_evidence_from_stream_with_overlay(
-            &self.stream,
-            &self.index,
-            &plan.constrained_roots,
-            &mut projected_evidence,
-            overlay,
-            identities,
-            result_identities,
-        );
-        if plan.flow_matchers.is_empty() {
-            return (projected_evidence, LocalFlowProjectionOutcome::default());
-        }
-        let Some(effects) = effects else {
-            return (projected_evidence, LocalFlowProjectionOutcome::default());
-        };
-        let outcome = object_flow::collect_into(
-            &self.stream,
-            effects,
-            &plan.flow_matchers,
-            &mut projected_evidence,
-            flow_limits,
-            module_id,
-            trace_arena,
-        );
-        (projected_evidence, outcome)
     }
 }
 

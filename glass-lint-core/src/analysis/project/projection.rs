@@ -9,19 +9,169 @@ use std::collections::BTreeMap;
 use crate::{
     analysis::{
         ModuleId, ProjectModule, ProjectSemanticModel,
-        facts::ProjectionPlan,
-        flow::{self},
+        facts::SemanticFacts,
+        flow::{
+            self,
+            projector::{self as object_flow, LocalFlowProjectionOutcome},
+        },
         lowering::status::{AnalysisComponent, IncompleteReason, StatusScope},
         matching::{LinkedOccurrenceView, OccurrenceIndexes},
         model::flow::FlowLimits,
-        project::state::LinkingSession,
+        project::{model::ExportResolution, state::LinkingSession},
         trace::TraceArena,
+        value::ValueId,
     },
     api::{
         classification::{ClassificationEvidence, RuleIndex},
-        compiler::CompiledRuleSelection,
+        compiler::{
+            CompiledRuleSelection, object_flow::CompiledObjectFlow, physical::PhysicalRoot,
+            requirements::FlowRequirements,
+        },
     },
 };
+
+/// Flattened matcher requirements shared by all module projections in one
+/// linked project. The plan belongs to projection orchestration rather than
+/// to the immutable facts artifact.
+pub(in crate::analysis) struct ProjectionPlan<'a> {
+    constrained_roots: Vec<(usize, &'a PhysicalRoot)>,
+    flow_matchers: Vec<(RuleIndex, usize, &'a CompiledObjectFlow)>,
+    rule_count: usize,
+    needs_module_identities: bool,
+    needs_call_result_identities: bool,
+    needs_overlay: bool,
+    flow_requirements: FlowRequirements,
+}
+
+impl<'a> ProjectionPlan<'a> {
+    pub(in crate::analysis) fn needs_overlay(&self) -> bool {
+        self.needs_overlay
+    }
+
+    pub(in crate::analysis) fn needs_module_identities(&self) -> bool {
+        self.needs_module_identities
+    }
+
+    pub(in crate::analysis) fn needs_call_result_identities(&self) -> bool {
+        self.needs_call_result_identities
+    }
+
+    pub(in crate::analysis) fn flow_requirements(&self) -> &FlowRequirements {
+        &self.flow_requirements
+    }
+
+    pub(in crate::analysis) fn needs_flow(&self) -> bool {
+        !self.flow_matchers.is_empty()
+    }
+
+    pub(in crate::analysis) fn from_selection(selection: &'a CompiledRuleSelection<'a>) -> Self {
+        let constrained_roots = selection
+            .selected_matchers()
+            .flat_map(|(rule_index, matcher)| {
+                let roots: Vec<(usize, &PhysicalRoot)> = matcher
+                    .physical_roots()
+                    .iter()
+                    .filter(|root| matches!(root, PhysicalRoot::ConstrainedScan { constraints, .. } if !constraints.groups().is_empty()))
+                    .map(move |root| (rule_index.get(), root))
+                    .collect();
+                roots
+            })
+            .collect::<Vec<_>>();
+
+        let mut needs_overall_overlay = false;
+        let mut needs_overall_module_ids = false;
+        let mut needs_overall_result_ids = false;
+        let mut flow_local = false;
+        let mut flow_cross_call = false;
+        let mut flow_cross_file = false;
+        for (_, matcher) in selection.selected_matchers() {
+            needs_overall_overlay = needs_overall_overlay || matcher.needs_project_overlay();
+            needs_overall_module_ids =
+                needs_overall_module_ids || matcher.needs_module_identities();
+            needs_overall_result_ids =
+                needs_overall_result_ids || matcher.needs_call_result_identities();
+            let fr = matcher.flow_requirements();
+            flow_local = flow_local || fr.local;
+            flow_cross_call = flow_cross_call || fr.cross_call;
+            flow_cross_file = flow_cross_file || fr.cross_file;
+        }
+
+        let flow_matchers =
+            selection
+                .selected_matchers()
+                .flat_map(|(rule_index, matcher)| {
+                    let ri = rule_index;
+                    matcher.physical_roots().iter().enumerate().filter_map(
+                        move |(flow_index, root)| {
+                            if let PhysicalRoot::Lifecycle { flow } = root {
+                                Some((ri, flow_index, flow))
+                            } else {
+                                None
+                            }
+                        },
+                    )
+                })
+                .collect::<Vec<_>>();
+        Self {
+            constrained_roots,
+            flow_matchers,
+            rule_count: selection.rule_capacity(),
+            needs_module_identities: needs_overall_module_ids,
+            needs_call_result_identities: needs_overall_result_ids,
+            needs_overlay: needs_overall_overlay,
+            flow_requirements: FlowRequirements {
+                local: flow_local,
+                cross_call: flow_cross_call,
+                cross_file: flow_cross_file,
+            },
+        }
+    }
+}
+
+/// Execute the query-selected local matching and flow projection for one
+/// immutable facts artifact.
+#[allow(clippy::too_many_arguments)]
+pub(in crate::analysis) fn project_facts(
+    facts: &SemanticFacts,
+    effects: Option<&crate::analysis::flow::effect::FunctionEffects>,
+    plan: &ProjectionPlan<'_>,
+    identities: Option<&crate::analysis::matching::ModuleIdentityMap>,
+    result_identities: Option<&BTreeMap<ValueId, ExportResolution>>,
+    overlay: Option<&LinkedOccurrenceView<'_>>,
+    flow_limits: FlowLimits,
+    module_id: ModuleId,
+    trace_arena: &mut TraceArena,
+) -> (Vec<Vec<ClassificationEvidence>>, LocalFlowProjectionOutcome) {
+    let mut projected_evidence = vec![Vec::new(); plan.rule_count];
+    if !facts.stream().is_valid() || facts.values().get(ValueId::UNKNOWN).is_none() {
+        return (projected_evidence, LocalFlowProjectionOutcome::default());
+    }
+    crate::analysis::matching::compute_constrained_evidence_from_stream_with_overlay(
+        facts.stream(),
+        facts.matcher_index(),
+        &plan.constrained_roots,
+        &mut projected_evidence,
+        overlay,
+        identities,
+        result_identities,
+    );
+    if plan.flow_matchers.is_empty() {
+        return (projected_evidence, LocalFlowProjectionOutcome::default());
+    }
+    let Some(effects) = effects else {
+        return (projected_evidence, LocalFlowProjectionOutcome::default());
+    };
+    let outcome = object_flow::collect_into(
+        facts.stream(),
+        effects,
+        &plan.flow_matchers,
+        &mut projected_evidence,
+        flow_limits,
+        module_id,
+        trace_arena,
+    );
+    (projected_evidence, outcome)
+}
 
 #[derive(Debug)]
 /// Matcher-independent facts and cross-file evidence for one linked project.
@@ -192,7 +342,8 @@ impl ProjectSemanticModel {
                             .saturating_add(effects.operation_count()),
                     );
                 }
-                let (projected, local) = module.local().facts().project(
+                let (projected, local) = project_facts(
+                    module.local().facts(),
                     effects,
                     plan,
                     identities.as_ref(),

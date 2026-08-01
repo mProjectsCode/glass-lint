@@ -87,7 +87,7 @@ release build).
 
 ### Core fact, matching, scope, and flow phases
 
-#### RL-003 — Fact storage owns matcher and flow projection orchestration
+#### [x] RL-003 — Fact storage owns matcher and flow projection orchestration
 
 - Severity: Medium
 - Fix complexity: Medium
@@ -106,6 +106,18 @@ Recommendation: move the plan and projection coordination to a focused
 analysis projection module, leaving `SemanticFacts` as the immutable stream,
 interface, and index owner. Keep the single fact-building/indexing pass, but
 make the matching and flow calls explicit at their owning boundary.
+
+Implementation: moved `ProjectionPlan` and query-selected local evidence
+execution into `analysis/project/projection.rs` as projection-owned state and
+`project_facts`. `SemanticFacts` now retains only the immutable stream,
+occurrence index, value arena, and module interface accessors; the single
+lowering/build pass and all matching/flow behavior are unchanged.
+
+Runtime (release): profiling
+`/home/lemon/src/obsidian-stats/data/out/plugin-release-mainjs/byoc/1.0.13-main.js`
+with one warm-up-free repetition and one worker took 737.4ms measured lint
+wall time (736.1ms input time; 10.03s process wall time including the one-time
+release build).
 
 #### RL-004 — Source-order collectors are broad mutable “god objects”
 
