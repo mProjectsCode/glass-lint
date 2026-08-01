@@ -34,10 +34,7 @@ use crate::{
         project::state::LinkingSession,
         trace::TraceArena,
     },
-    api::{
-        classification::ClassificationEvidence,
-        compiler::{CompiledObjectFlow, CompiledRuleSelection},
-    },
+    api::compiler::{CompiledObjectFlow, CompiledRuleSelection},
     project::ModuleId,
 };
 
@@ -108,7 +105,7 @@ pub(in crate::analysis) fn collect(
     session: &mut LinkingSession,
     arena: &mut TraceArena,
 ) -> (
-    BTreeMap<ModuleId, Vec<Vec<ClassificationEvidence>>>,
+    BTreeMap<ModuleId, crate::api::classification::RuleEvidenceTable>,
     CrossProjectionOutcome,
 ) {
     // Single worklist loop: setup, iteration with UsageProjector and

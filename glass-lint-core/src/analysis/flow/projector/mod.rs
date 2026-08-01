@@ -35,7 +35,7 @@ use crate::{
         value::{ObjectId, ValueId},
     },
     api::{
-        classification::{ClassificationEvidence, MatchKind, RuleIndex},
+        classification::{ClassificationEvidence, MatchKind, RuleEvidenceTable, RuleIndex},
         compiler::{CompiledObjectFlow, CompiledObjectRequirement},
     },
     project::ModuleId,
@@ -74,7 +74,7 @@ pub(in crate::analysis) fn collect_into(
     stream: &FactStream<Frozen>,
     effects: &FunctionEffects,
     rules: &[(RuleIndex, usize, &CompiledObjectFlow)],
-    evidence: &mut [Vec<ClassificationEvidence>],
+    evidence: &mut RuleEvidenceTable,
     limits: FlowLimits,
     module_id: ModuleId,
     trace_arena: &mut TraceArena,
@@ -91,7 +91,7 @@ pub(in crate::analysis) fn collect_into(
         names,
         plan,
         helpers,
-        evidence,
+        evidence: evidence.as_mut_slices(),
         limits,
         summary_exhausted: summary_budget.exhausted(),
         module_id,
@@ -112,8 +112,8 @@ pub(super) fn collect_with_limits(
     limits: FlowLimits,
     module_id: ModuleId,
     trace_arena: &mut TraceArena,
-) -> (Vec<Vec<ClassificationEvidence>>, LocalFlowProjectionOutcome) {
-    let mut evidence = vec![Vec::new(); rule_count];
+) -> (RuleEvidenceTable, LocalFlowProjectionOutcome) {
+    let mut evidence = RuleEvidenceTable::new(rule_count);
     let outcome = collect_into(
         stream,
         effects,

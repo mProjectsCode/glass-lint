@@ -13,7 +13,7 @@ use crate::{
         trace::{QualifiedEvent as TraceQualifiedEvent, TraceArena},
     },
     api::{
-        classification::{ClassificationEvidence, MatchKind},
+        classification::{ClassificationEvidence, MatchKind, RuleEvidenceTable},
         compiler::CompiledObjectFlow,
     },
     project::{EvidenceRole, ModuleId},
@@ -158,8 +158,12 @@ impl ModuleEvidence {
         }
     }
 
-    pub(super) fn into_evidence(self) -> Vec<Vec<ClassificationEvidence>> {
-        self.rules.into_iter().map(|rule| rule.items).collect()
+    pub(super) fn into_evidence(self) -> RuleEvidenceTable {
+        let mut evidence = RuleEvidenceTable::new(self.rules.len());
+        for (rule_index, rule) in self.rules.into_iter().enumerate() {
+            evidence[rule_index] = rule.items;
+        }
+        evidence
     }
 }
 

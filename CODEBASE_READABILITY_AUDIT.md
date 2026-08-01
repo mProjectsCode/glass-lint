@@ -138,7 +138,7 @@ Use an input/output context struct for the per-context projector and give the
 worklist a typed termination reason so exhaustion cleanup cannot be separated
 from the condition that caused it.
 
-#### READ-006 — Evidence is re-exposed as rule-indexed nested vectors
+#### [x] READ-006 — Evidence is re-exposed as rule-indexed nested vectors
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -157,6 +157,13 @@ methods such as `for_rule`, `merge`, `clear`, and `into_report_evidence`.
 Keep nested vectors only at the final report adapter, and make out-of-range
 rule access an explicit no-op or typed error rather than an indexing
 convention.
+
+**Implementation:** Added the bounded `RuleEvidenceTable` owner with typed
+rule access and merging plus a single mutable-slice adapter for matcher
+internals; local projection, cross-file module evidence, and project matching
+now carry that type instead of exposing nested vectors at their boundaries.
+All 996 core unit/integration tests passed, and the requested bundle’s release
+lint took **0.85 s wall time** after the change (0.83 s baseline).
 
 #### [x] READ-007 — Compiler correlation validation contains duplicate logic
 

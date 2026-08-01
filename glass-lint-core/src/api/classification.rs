@@ -4,6 +4,8 @@
 //! separate. `rule_index` and event IDs are internal correlation keys and are
 //! intentionally omitted from serialized reports.
 
+use std::ops::{Index, IndexMut};
+
 use glass_lint_datastructures::ByteRange;
 
 use crate::{api::rule::Severity, project::MatchCertainty};
@@ -65,6 +67,49 @@ pub struct ClassificationEvidenceOccurrence {
     pub fact: Option<u32>,
     /// Head of the evidence trace chain in the arena, if available.
     pub trace: Option<TraceNodeId>,
+}
+
+/// Bounded evidence grouped by opaque catalog rule index.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct RuleEvidenceTable {
+    values: Vec<Vec<ClassificationEvidence>>,
+}
+
+impl RuleEvidenceTable {
+    pub(crate) fn new(rule_count: usize) -> Self {
+        Self {
+            values: (0..rule_count).map(|_| Vec::new()).collect(),
+        }
+    }
+
+    pub(crate) fn for_rule(&self, rule: RuleIndex) -> Option<&[ClassificationEvidence]> {
+        self.values.get(rule.get()).map(Vec::as_slice)
+    }
+
+    pub(crate) fn as_mut_slices(&mut self) -> &mut [Vec<ClassificationEvidence>] {
+        &mut self.values
+    }
+
+    pub(crate) fn merge(&mut self, other: Self) {
+        debug_assert_eq!(self.values.len(), other.values.len());
+        for (target, mut source) in self.values.iter_mut().zip(other.values) {
+            target.append(&mut source);
+        }
+    }
+}
+
+impl Index<usize> for RuleEvidenceTable {
+    type Output = Vec<ClassificationEvidence>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.values[index]
+    }
+}
+
+impl IndexMut<usize> for RuleEvidenceTable {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.values[index]
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]

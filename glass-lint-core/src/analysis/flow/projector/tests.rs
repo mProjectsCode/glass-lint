@@ -2,6 +2,7 @@ use super::*;
 use crate::{
     analysis::trace::TraceArena,
     api::{
+        classification::RuleEvidenceTable,
         compiler::{normalize::normalize_query_decl, normalized::NormalizedRoot},
         rule::{
             EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleQuery,
@@ -17,7 +18,7 @@ fn collect_with_limits_test(
     rules: &[(RuleIndex, usize, &CompiledObjectFlow)],
     rule_count: usize,
     limits: FlowLimits,
-) -> (Vec<Vec<ClassificationEvidence>>, LocalFlowProjectionOutcome) {
+) -> (RuleEvidenceTable, LocalFlowProjectionOutcome) {
     let mut arena = TraceArena::new(4096);
     collect_with_limits(
         stream,
@@ -39,7 +40,7 @@ fn compile_flow(query: &LifecycleQuery) -> CompiledObjectFlow {
     CompiledObjectFlow::from_normalized_lifecycle(lifecycle, normalized.emission().symbol())
 }
 
-fn collect_source(source: &str, query: &LifecycleQuery) -> Vec<Vec<ClassificationEvidence>> {
+fn collect_source(source: &str, query: &LifecycleQuery) -> RuleEvidenceTable {
     let stream = crate::analysis::facts::build_test_facts(source, "fact-flow.js");
     let effects = FunctionEffects::collect(&stream, usize::MAX);
     let flow = compile_flow(query);
@@ -76,7 +77,7 @@ fn empty_flow_catalog_skips_projection_work() {
     let stream = crate::analysis::facts::build_test_facts("fetch('/api');", "no-flow.js");
     let effects = FunctionEffects::collect(&stream, usize::MAX);
     let mut arena = TraceArena::new(4096);
-    let mut evidence = vec![Vec::new()];
+    let mut evidence = RuleEvidenceTable::new(1);
 
     let outcome = collect_into(
         &stream,

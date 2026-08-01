@@ -22,7 +22,7 @@ use crate::{
         value::ValueId,
     },
     api::{
-        classification::{ClassificationEvidence, RuleIndex},
+        classification::{ClassificationEvidence, RuleEvidenceTable, RuleIndex},
         compiler::{
             CompiledRuleSelection, object_flow::CompiledObjectFlow, physical::PhysicalRoot,
             requirements::FlowRequirements,
@@ -141,8 +141,8 @@ pub(in crate::analysis) fn project_facts(
     flow_limits: FlowLimits,
     module_id: ModuleId,
     trace_arena: &mut TraceArena,
-) -> (Vec<Vec<ClassificationEvidence>>, LocalFlowProjectionOutcome) {
-    let mut projected_evidence = vec![Vec::new(); plan.rule_count];
+) -> (RuleEvidenceTable, LocalFlowProjectionOutcome) {
+    let mut projected_evidence = RuleEvidenceTable::new(plan.rule_count);
     if !facts.stream().is_valid() || facts.values().get(ValueId::UNKNOWN).is_none() {
         return (projected_evidence, LocalFlowProjectionOutcome::default());
     }
@@ -150,7 +150,7 @@ pub(in crate::analysis) fn project_facts(
         facts.stream(),
         facts.matcher_index(),
         &plan.constrained_roots,
-        &mut projected_evidence,
+        projected_evidence.as_mut_slices(),
         overlay,
         identities,
         result_identities,
@@ -184,7 +184,7 @@ pub struct ProjectMatcherModel<'project, 'matchers> {
 struct ProjectModuleProjection<'project> {
     index: &'project OccurrenceIndexes,
     overlay: Option<LinkedOccurrenceView<'project>>,
-    projected: Vec<Vec<ClassificationEvidence>>,
+    projected: RuleEvidenceTable,
 }
 
 /// Side effects produced by a projection that were previously written back
@@ -283,9 +283,7 @@ impl ProjectSemanticModel {
         let mut projections = projections;
         for (module, evidence) in cross {
             if let Some(projection) = projections.get_mut(&module) {
-                for (rule, values) in evidence.into_iter().enumerate() {
-                    projection.projected[rule].extend(values);
-                }
+                projection.projected.merge(evidence);
             }
         }
 
@@ -436,7 +434,7 @@ impl ProjectMatcherModel<'_, '_> {
         if let Some(projected) = self
             .projections
             .get(&module.id())
-            .and_then(|projection| projection.projected.get(rule_index.get()))
+            .and_then(|projection| projection.projected.for_rule(rule_index))
         {
             evidence.extend_from_slice(projected);
         }
