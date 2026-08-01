@@ -119,7 +119,7 @@ with one warm-up-free repetition and one worker took 737.4ms measured lint
 wall time (736.1ms input time; 10.03s process wall time including the one-time
 release build).
 
-#### RL-004 — Source-order collectors are broad mutable “god objects”
+#### [x] RL-004 — Source-order collectors are broad mutable “god objects”
 
 - Severity: Medium
 - Fix complexity: Medium
@@ -138,6 +138,19 @@ Recommendation: group state into cohesive sub-states such as collection
 artifacts, provenance, control flow, and interface building, while retaining a
 small visitor façade. Give each sub-state its own construction and mutation
 methods so invariants remain local without introducing extra traversals.
+
+Implementation: introduced `ScopeCollectionArtifacts` for finalized property,
+mutation, dynamic-evaluation, mutable-object, and shape-diagnostic outputs, and
+`FactProvenanceState` for instance callables, constructed/class origins, and
+static-string evidence origins. The visitor façades and single traversals stay
+unchanged, while construction, branching, and freeze paths now address the
+sub-state that owns each invariant.
+
+Runtime (release): profiling
+`/home/lemon/src/obsidian-stats/data/out/plugin-release-mainjs/byoc/1.0.13-main.js`
+with one warm-up-free repetition and one worker took 777.5ms measured lint
+wall time (776.2ms input time; 10.15s process wall time including the one-time
+release build).
 
 #### RL-005 — Cross-file flow collection is a context-heavy worklist method
 

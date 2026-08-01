@@ -168,17 +168,21 @@ impl FactBuilder<'_, '_> {
         match expr {
             Expr::New(new_expr) => {
                 let value = self.resolver.resolve_expr_id(expr);
-                if let Some(origin) = self.instance_origins.get(value).cloned() {
+                if let Some(origin) = self.provenance.instance_origins.get(value).cloned() {
                     return Some(origin);
                 }
                 let origin = self.instance_origin_for_constructor(&new_expr.callee)?;
-                self.instance_origins
-                    .insert(value, origin.clone(), self.resolver.budget);
+                self.provenance.instance_origins.insert(
+                    value,
+                    origin.clone(),
+                    self.resolver.budget,
+                );
                 Some(origin)
             }
             Expr::Ident(ident) => {
                 let value = self.resolver.resolve_ident_id(ident);
-                self.instance_origins
+                self.provenance
+                    .instance_origins
                     .get(value)
                     .cloned()
                     .or_else(|| self.resolver.constructed_instance_provenance(ident))
@@ -209,7 +213,8 @@ impl FactBuilder<'_, '_> {
     ) -> Option<(SmolStr, SmolStr)> {
         self.resolver.class_provenance(constructor).or_else(|| {
             let value = self.resolver.resolve_expr_id(constructor);
-            self.class_origins
+            self.provenance
+                .class_origins
                 .get(value)
                 .cloned()
                 .or_else(|| match constructor {
@@ -270,7 +275,7 @@ impl FactBuilder<'_, '_> {
         &self,
         value: ValueId,
     ) -> Option<InstanceCallable> {
-        self.instance_callables.get(&value).cloned()
+        self.provenance.instance_callables.get(&value).cloned()
     }
 
     pub(in crate::analysis::facts) fn visit_callee_children(&mut self, callee: &Expr) {

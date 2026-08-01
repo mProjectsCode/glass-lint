@@ -56,18 +56,24 @@ impl FactBuilder<'_, '_> {
         assignment.right.visit_with(self);
         let target = self.resolver.resolve_ident_id(&ident.id);
         self.remember_static_string_alias(target, source);
-        self.instance_callables.remove(&target);
-        self.instance_origins.remove(target, self.resolver.budget);
-        self.class_origins.remove(target, self.resolver.budget);
+        self.provenance.instance_callables.remove(&target);
+        self.provenance
+            .instance_origins
+            .remove(target, self.resolver.budget);
+        self.provenance
+            .class_origins
+            .remove(target, self.resolver.budget);
         if let Some(callable) = self.instance_callable_for_expr(&assignment.right) {
-            self.instance_callables.insert(target, callable);
+            self.provenance.instance_callables.insert(target, callable);
         }
         if let Some(origin) = self.instance_origin_for_expr(&assignment.right) {
-            self.instance_origins
+            self.provenance
+                .instance_origins
                 .insert(target, origin, self.resolver.budget);
         }
         if let Some(origin) = self.constructor_origin_for_expr(&assignment.right) {
-            self.class_origins
+            self.provenance
+                .class_origins
                 .insert(target, origin, self.resolver.budget);
         }
         self.emit(

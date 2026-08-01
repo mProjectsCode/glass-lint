@@ -63,6 +63,24 @@ use crate::analysis::{
 /// matcher-independent module interface. The builder owns traversal state,
 /// call-result tracking, and instance-level callable resolution — all of
 /// which are discarded when `into_parts()` finalizes the stream.
+struct FactProvenanceState {
+    instance_callables: HashMap<ValueId, InstanceCallable>,
+    instance_origins: OriginMap<(SmolStr, SmolStr)>,
+    class_origins: OriginMap<(SmolStr, SmolStr)>,
+    static_string_origins: HashMap<ValueId, ByteRange>,
+}
+
+impl FactProvenanceState {
+    fn new() -> Self {
+        Self {
+            instance_callables: HashMap::new(),
+            instance_origins: OriginMap::new(),
+            class_origins: OriginMap::new(),
+            static_string_origins: HashMap::new(),
+        }
+    }
+}
+
 pub struct FactBuilder<'builder, 'resolver> {
     /// Scope and provenance answers are prepared before this AST walk.
     resolver: &'builder mut Resolver<'resolver>,
@@ -72,19 +90,8 @@ pub struct FactBuilder<'builder, 'resolver> {
     traversal: state::TraversalState,
     /// Call results are retained for effective-call and value-flow projections.
     call_results: call_results::CallResultTable,
-    /// Proven callable members extracted from the current module instance.
-    instance_callables: HashMap<ValueId, InstanceCallable>,
-    /// Proven module/export identity of constructed object values, with
-    /// checkpoint/rollback so that control-flow branching does not clone the
-    /// entire map.
-    instance_origins: OriginMap<(SmolStr, SmolStr)>,
-    /// Local class values whose superclass is a proven module export, with
-    /// checkpoint/rollback.
-    class_origins: OriginMap<(SmolStr, SmolStr)>,
-    /// Defining spans for static string literals encountered during this
-    /// traversal, keyed by their terminal value identity. Direct identifier
-    /// aliases can then retain the literal location for evidence rendering.
-    static_string_origins: HashMap<ValueId, ByteRange>,
+    /// Provenance and instance state with checkpoint/rollback semantics.
+    provenance: FactProvenanceState,
     /// Module requests and export slots collected during the same canonical
     /// walk as the semantic facts, owned by a focused interface builder.
     interface: interface::ModuleInterfaceBuilder,
@@ -92,17 +99,26 @@ pub struct FactBuilder<'builder, 'resolver> {
 
 impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
     pub(super) fn static_string_origin(&self, value: ValueId) -> Option<ByteRange> {
-        self.static_string_origins.get(&value).copied().or_else(|| {
-            self.resolver
-                .static_string_terminal_id(value)
-                .and_then(|terminal| self.static_string_origins.get(&terminal).copied())
-        })
+        self.provenance
+            .static_string_origins
+            .get(&value)
+            .copied()
+            .or_else(|| {
+                self.resolver
+                    .static_string_terminal_id(value)
+                    .and_then(|terminal| {
+                        self.provenance
+                            .static_string_origins
+                            .get(&terminal)
+                            .copied()
+                    })
+            })
     }
 
     pub(super) fn remember_static_string_alias(&mut self, target: ValueId, source: ValueId) {
-        self.static_string_origins.remove(&target);
+        self.provenance.static_string_origins.remove(&target);
         if let Some(origin) = self.static_string_origin(source) {
-            self.static_string_origins.insert(target, origin);
+            self.provenance.static_string_origins.insert(target, origin);
         }
     }
 
@@ -132,10 +148,7 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
             stream: FactStream::with_limit(max_facts),
             traversal: state::TraversalState::default(),
             call_results: call_results::CallResultTable::default(),
-            instance_callables: HashMap::new(),
-            instance_origins: OriginMap::new(),
-            class_origins: OriginMap::new(),
-            static_string_origins: HashMap::new(),
+            provenance: FactProvenanceState::new(),
             interface: interface::ModuleInterfaceBuilder::new(),
         }
     }

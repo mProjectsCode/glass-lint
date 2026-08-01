@@ -1,5 +1,5 @@
 use glass_lint_datastructures::{NameId, NamePath, SymbolPath};
-use hashbrown::{HashMap, HashSet};
+use hashbrown::HashMap;
 use smol_str::SmolStr;
 use swc_ecma_ast::{ArrowExpr, Expr, Function, ImportDecl, Pat, VarDeclKind};
 
@@ -8,7 +8,7 @@ use crate::analysis::{
     scope::{
         BindingProvenance, ScopeId, ScopeKind, ScopedName,
         build::{
-            ScopeCollector,
+            ScopeCollectionArtifacts, ScopeCollector,
             bindings::{for_each_import_binding, for_each_pat_binding, var_binding_scope},
             compact_pat::{CompactPat, compact_pat},
             history::{AssignmentEnvironment, DEFAULT_ALTERNATIVE_LIMIT, WriteSet},
@@ -31,14 +31,11 @@ impl ScopeCollector<'_> {
             scopes: plan.scopes,
             stack: vec![0],
             assignments: Vec::new(),
-            property_assignments: Vec::new(),
-            rooted_property_mutations: Vec::new(),
-            dynamic_evals: Vec::new(),
+            artifacts: ScopeCollectionArtifacts::default(),
             function_scopes: HashMap::new(),
             function_aliases: HashMap::new(),
             calls: Vec::new(),
             inline_parameters: HashMap::new(),
-            mutable_static_objects: HashSet::new(),
             pending_function_names: HashMap::new(),
             names: plan.names,
             name_exhausted: plan.name_exhausted,
@@ -52,7 +49,6 @@ impl ScopeCollector<'_> {
             reachable: true,
             alternative_limit: DEFAULT_ALTERNATIVE_LIMIT,
             scope_shapes: plan.scope_shapes,
-            scope_issues: Vec::new(),
             budget,
             #[cfg(test)]
             scope_lookups: 0,
@@ -183,7 +179,9 @@ impl ScopeCollector<'_> {
                 self.scope_lookups += 1;
             }
         } else {
-            self.scope_issues.push(ScopeCollectionIssue::ShapeMismatch);
+            self.artifacts
+                .scope_issues
+                .push(ScopeCollectionIssue::ShapeMismatch);
         }
     }
 

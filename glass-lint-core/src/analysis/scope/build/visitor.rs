@@ -193,26 +193,30 @@ impl ScopePass for ScopeCollector<'_> {
             }
             AssignTarget::Simple(SimpleAssignTarget::Member(member)) => {
                 if let Some(receiver) = self.rooted_name_path(&member.obj) {
-                    self.rooted_property_mutations.push(RootedPropertyMutation {
-                        span: assignment.span,
-                        scope: self.current_scope(),
-                        receiver,
-                        property: member_property_name(&member.prop)
-                            .and_then(|property| self.interned_name(&property)),
-                    });
+                    self.artifacts
+                        .rooted_property_mutations
+                        .push(RootedPropertyMutation {
+                            span: assignment.span,
+                            scope: self.current_scope(),
+                            receiver,
+                            property: member_property_name(&member.prop)
+                                .and_then(|property| self.interned_name(&property)),
+                        });
                 }
                 self.invalidate_member_root(member, assignment.span);
                 if let (Some(property), Some(root)) = (
                     member_expression_chain(member),
                     member_root_identifier(member),
                 ) {
-                    self.property_assignments.push(PropertyAliasAssignment {
-                        span: assignment.span,
-                        scope: self.current_scope(),
-                        property,
-                        receiver: root.clone(),
-                        target: self.rooted_expr_name(&assignment.right),
-                    });
+                    self.artifacts
+                        .property_assignments
+                        .push(PropertyAliasAssignment {
+                            span: assignment.span,
+                            scope: self.current_scope(),
+                            property,
+                            receiver: root.clone(),
+                            target: self.rooted_expr_name(&assignment.right),
+                        });
                 }
             }
             AssignTarget::Pat(pattern) => {
@@ -236,7 +240,7 @@ impl ScopePass for ScopeCollector<'_> {
             && let Expr::Ident(callee) = &**callee
         {
             if callee.sym == *"eval" {
-                self.dynamic_evals.push((
+                self.artifacts.dynamic_evals.push((
                     self.binding_scope(VarDeclKind::Var),
                     DynamicEvaluation { span: call.span },
                 ));
@@ -349,6 +353,6 @@ fn record_mutable_static_object(
         && let Pat::Ident(ident) = &declarator.name
         && let Some(name) = collector.scoped_name(scope, ident.id.sym.as_ref())
     {
-        collector.mutable_static_objects.insert(name);
+        collector.artifacts.mutable_static_objects.insert(name);
     }
 }

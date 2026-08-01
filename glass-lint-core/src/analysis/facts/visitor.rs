@@ -95,7 +95,9 @@ impl Visit for FactBuilder<'_, '_> {
             && let Some(callable) = self.instance_callable_for_expr(init)
         {
             for target in &targets {
-                self.instance_callables.insert(*target, callable.clone());
+                self.provenance
+                    .instance_callables
+                    .insert(*target, callable.clone());
             }
         }
         if Self::is_simple_pattern(&declarator.name)
@@ -103,8 +105,11 @@ impl Visit for FactBuilder<'_, '_> {
             && let Some(origin) = self.instance_origin_for_expr(init)
         {
             for target in &targets {
-                self.instance_origins
-                    .insert(*target, origin.clone(), self.resolver.budget);
+                self.provenance.instance_origins.insert(
+                    *target,
+                    origin.clone(),
+                    self.resolver.budget,
+                );
             }
         }
         if Self::is_simple_pattern(&declarator.name)
@@ -112,7 +117,8 @@ impl Visit for FactBuilder<'_, '_> {
             && let Some(origin) = self.constructor_origin_for_expr(init)
         {
             for target in &targets {
-                self.class_origins
+                self.provenance
+                    .class_origins
                     .insert(*target, origin.clone(), self.resolver.budget);
             }
         }
@@ -247,7 +253,8 @@ impl Visit for FactBuilder<'_, '_> {
         }
         let result = self.resolver.fresh_object_value_at(new_expr.span).id;
         if let Some(instance_class) = self.instance_origin_for_constructor(&new_expr.callee) {
-            self.instance_origins
+            self.provenance
+                .instance_origins
                 .insert(result, instance_class, self.resolver.budget);
         }
         let effective_callee = effective_callee_expr(&new_expr.callee);
@@ -367,7 +374,9 @@ impl Visit for FactBuilder<'_, '_> {
         if let Some(terminal_id) = self.resolver.static_string_terminal_id(id)
             && let Ok(span) = self.resolver.normalize_span(value.span())
         {
-            self.static_string_origins.insert(terminal_id, span);
+            self.provenance
+                .static_string_origins
+                .insert(terminal_id, span);
         }
     }
 

@@ -42,6 +42,16 @@ pub(super) use program::{PropertyAliasAssignment, RootedPropertyMutation};
 pub(in crate::analysis) use program::{ScopeCollectionIssue, ScopedProgram};
 pub(super) use shape::{ScopeShape, ScopeShapeTable};
 
+/// Collected outputs that are finalized into the immutable scope artifact.
+#[derive(Default)]
+pub(super) struct ScopeCollectionArtifacts {
+    pub(super) property_assignments: Vec<PropertyAliasAssignment>,
+    pub(super) rooted_property_mutations: Vec<RootedPropertyMutation>,
+    pub(super) dynamic_evals: Vec<(ScopeId, ScopeEffect)>,
+    pub(super) mutable_static_objects: HashSet<ScopedName>,
+    pub(super) scope_issues: Vec<ScopeCollectionIssue>,
+}
+
 /// Mutable state shared by declaration prepass and source-order collection.
 ///
 /// The prepass establishes lexical binding identity; the normal visitor then
@@ -54,12 +64,8 @@ pub(super) struct ScopeCollector<'a> {
     stack: Vec<usize>,
     /// Assignment events retain source order for use-position provenance.
     pub(super) assignments: Vec<AliasAssignment>,
-    /// Property writes retained for flow-aware rooted-member queries.
-    pub(super) property_assignments: Vec<PropertyAliasAssignment>,
-    /// Writes that invalidate a rooted receiver/property identity.
-    pub(super) rooted_property_mutations: Vec<RootedPropertyMutation>,
-    /// Dynamic `eval` sites that make local provenance conservative.
-    pub(super) dynamic_evals: Vec<(ScopeId, ScopeEffect)>,
+    /// Collected outputs and conservative collection diagnostics.
+    pub(super) artifacts: ScopeCollectionArtifacts,
     /// Function scopes and their parameter patterns by visible NameId.
     pub(super) function_scopes: HashMap<(ScopeId, NameId), (ScopeId, Vec<CompactPat>)>,
     /// Aliases that point to a locally declared helper function.
@@ -68,8 +74,6 @@ pub(super) struct ScopeCollector<'a> {
     calls: Vec<(ScopeId, NameId, Vec<Option<BindingProvenance>>)>,
     /// Proven callback arguments installed when an inline function is entered.
     inline_parameters: HashMap<BytePos, HashMap<SmolStr, BindingProvenance>>,
-    /// `var`-bound objects whose mutation prevents constant projection.
-    pub(super) mutable_static_objects: HashSet<ScopedName>,
     /// Function expression names stashed by `visit_var_decl` and consumed
     /// by `after_function` / `after_arrow` hooks so `function_scopes` is
     /// recorded only for var/let/const declared function expressions.
@@ -81,8 +85,6 @@ pub(super) struct ScopeCollector<'a> {
     /// Structural scope shape table produced by the planner and consumed by
     /// the source-order visitor.
     scope_shapes: ScopeShapeTable,
-    /// A phase mismatch is a conservative incomplete analysis, not a panic.
-    scope_issues: Vec<ScopeCollectionIssue>,
     /// Shared semantic budget charged for each name interning operation.
     budget: &'a SemanticBudget,
     /// Nesting depth of conditional branches (if/else, loops, switch cases).
