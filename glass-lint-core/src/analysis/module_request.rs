@@ -71,7 +71,6 @@ pub(super) struct RecognizedModuleRequest {
     module: String,
     kind: ModuleRequestKind,
     specifier_span: Span,
-    call_span: Span,
 }
 
 impl RecognizedModuleRequest {
@@ -87,14 +86,8 @@ impl RecognizedModuleRequest {
         self.specifier_span
     }
 
-    #[allow(dead_code)]
-    pub(super) const fn call_span(&self) -> Span {
-        self.call_span
-    }
-
-    fn wrapped(mut self, call_span: Span) -> Self {
+    fn wrapped(mut self) -> Self {
         self.kind = ModuleRequestKind::WrappedRequire;
-        self.call_span = call_span;
         self
     }
 }
@@ -133,7 +126,7 @@ pub(super) fn recognize_module_call<C: ModuleRequestContext + ?Sized>(
             request.kind(),
             ModuleRequestKind::Require | ModuleRequestKind::WrappedRequire
         )
-        .then(|| request.wrapped(call.span()));
+        .then(|| request.wrapped());
     }
     if ident.sym != COMMONJS_REQUIRE || !context.is_unshadowed_require(ident) {
         return None;
@@ -152,7 +145,6 @@ pub(super) fn recognize_module_call<C: ModuleRequestContext + ?Sized>(
         module: specifier.value.to_string_lossy().to_string(),
         kind: ModuleRequestKind::Require,
         specifier_span: argument.expr.span(),
-        call_span: call.span(),
     })
 }
 
@@ -185,7 +177,6 @@ fn dynamic_import<C: ModuleRequestContext + ?Sized>(
         module: context.static_string(&argument.expr)?,
         kind: ModuleRequestKind::DynamicImport,
         specifier_span: argument.expr.span(),
-        call_span: call.span(),
     })
 }
 

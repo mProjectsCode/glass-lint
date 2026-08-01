@@ -86,7 +86,6 @@ impl TraceArena {
         self.nodes.len()
     }
 
-    #[allow(dead_code)]
     pub fn is_exhausted(&self) -> bool {
         self.exhausted
     }

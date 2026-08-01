@@ -1,6 +1,9 @@
 use std::{path::Path, time::Instant};
 
-use super::*;
+use super::{
+    selection::{CompiledTsconfigSelection, MergedSelection, TsconfigPatternSet, merge_selection},
+    *,
+};
 use crate::tests::TempProject;
 
 /// Helper: call merge_selection with same-directory semantics.

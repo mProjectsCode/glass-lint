@@ -93,12 +93,10 @@ pub struct QueryDiagnostic {
 }
 
 impl QueryDiagnostic {
-    #[allow(dead_code)]
     pub fn code(&self) -> &'static str {
         self.code
     }
 
-    #[allow(dead_code)]
     pub fn message(&self) -> &str {
         &self.message
     }
@@ -106,6 +104,6 @@ impl QueryDiagnostic {
 
 impl fmt::Display for QueryDiagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}] {}", self.code, self.message)
+        write!(f, "[{}] {}", self.code(), self.message())
     }
 }

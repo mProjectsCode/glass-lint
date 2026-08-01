@@ -76,7 +76,6 @@ impl fmt::Display for VarId {
 
 /// Compiler-inferred variable type for type-checking passes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
-#[allow(dead_code)]
 pub(crate) enum VarType {
     Event,
     CallEvent,
@@ -95,7 +94,6 @@ pub(crate) struct EventSelection {
 /// `ReturnedObject` and `ConstructedObject` each bind their declared object
 /// variable. All other variants reference existing bindings.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[allow(dead_code)]
 pub(crate) enum QueryPredicate {
     EventKind {
         event: VarId,

@@ -10,7 +10,7 @@
 //!      [`TsconfigPatternSet`], discarding raw selection strings. This is the
 //!      production type used for source membership.
 
-mod selection;
+pub mod selection;
 
 use std::{
     fmt,
@@ -270,12 +270,6 @@ impl<T> FieldState for ParsedField<T> {
     }
 }
 
-// re-export selection types
-#[allow(unused_imports)]
-pub use selection::{
-    CompiledTsconfigSelection, MergedSelection, TsconfigPatternSet, merge_selection,
-};
-
 // ---------------------------------------------------------------------------
 // Cycle detection diagnostics
 // ---------------------------------------------------------------------------
@@ -492,7 +486,7 @@ impl<'a> TsconfigTraversal<'a> {
         // Restructured from a closure-chain to plain if-let so that the parent's
         // canonical path is available for directory rebasing outside the closure.
         let references = dto.references.clone();
-        let (parent_merged, parent_dir): (Option<MergedSelection>, Option<PathBuf>) =
+        let (parent_merged, parent_dir): (Option<selection::MergedSelection>, Option<PathBuf>) =
             if let Some(extends_str) = dto.extends.clone().ok() {
                 if let Some(parent_path) =
                     resolve_extends(config_path, &extends_str, &canonical, self.diagnostics)

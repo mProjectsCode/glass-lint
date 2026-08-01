@@ -270,7 +270,7 @@ impl<'adm, 'opt, 'budget> ProjectDiscovery<'adm, 'opt, 'budget> {
 
     fn select_sources(
         &mut self,
-        config: &tsconfig::CompiledTsconfigSelection,
+        config: &tsconfig::selection::CompiledTsconfigSelection,
         base: &Path,
     ) -> Result<(), ProjectLoadError> {
         if let Some(files) = &config.files {

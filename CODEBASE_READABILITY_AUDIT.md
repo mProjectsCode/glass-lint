@@ -137,7 +137,7 @@ The output crate’s `project` module glob-re-exports `glass_lint_core::project:
 
 Replace the glob re-export with an explicit list of presentation-facing types, or remove the facade if consumers can import the core project API directly. Treat any retained re-exports as a deliberate compatibility contract and add an API test or documentation explaining which types are supported.
 
-#### READ-012 — Dead-code allowances mix live migration artifacts with legacy leftovers
+#### [x] READ-012 — Dead-code allowances mix live migration artifacts with legacy leftovers
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -147,6 +147,8 @@ Replace the glob re-export with an explicit list of presentation-facing types, o
 The current tree has several narrowly scoped `dead_code` or `unused_imports` allowances, but call-site review shows they are not all dead. `QueryPredicate`, `VarType`, the query limit constants, `QueryDiagnostic::code/message`, and `TraceArena::is_exhausted` are used by compiler, runtime, CLI, harness, or test code; the allowances are stale migration leftovers, while `RecognizedModuleRequest::call_span` has no production accessor caller and the tsconfig re-export is only a test convenience inside a private module.
 
 Remove the stale allowances from live symbols rather than deleting those symbols: the later implementation should first run the same workspace call-site check, then make the compiler enforce their usage normally. Treat `call_span()` as legacy unless a concrete reporting or matching consumer is identified; remove the accessor, and then reassess whether the stored span itself is needed for wrapping or equality. Replace the production tsconfig re-export with direct `selection::` imports and/or a test-only import, and delete it unless an external crate contract is found; keep any genuinely reserved API only with an owner, a documented activation condition, and a focused test.
+
+Implemented by removing the unused `RecognizedModuleRequest::call_span` accessor and its unconsumed stored span, removing stale allowances from live query limits, compiler predicates, diagnostics, and trace state, and routing diagnostic formatting through the retained accessors. The tsconfig selection types are now reached through the crate-private `selection` module, with tests importing that module directly; no production facade remains.
 
 ## Systemic Themes
 
