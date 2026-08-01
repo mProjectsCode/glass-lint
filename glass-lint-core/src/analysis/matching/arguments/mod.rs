@@ -25,16 +25,20 @@ mod identity;
 
 use evaluator::{EvaluationOperations, MatcherEvaluator, PreparedClausePaths};
 
-/// Bundled data extracted from a `ConstrainedScan` root for the fallback
-/// linear scan path.
-type FallbackEntry<'a> = (
-    usize,
-    &'a IdentityConstraint,
-    &'a EventPredicate,
-    &'a CanonicalArgumentConstraints,
-    &'a EvidenceDescriptor,
-    &'a PreparedClausePaths,
-);
+struct ConstrainedRoot<'a> {
+    rule: RuleIndex,
+    identity: &'a IdentityConstraint,
+    event: &'a EventPredicate,
+    constraints: &'a CanonicalArgumentConstraints,
+    evidence: &'a EvidenceDescriptor,
+}
+
+struct PreparedConstrainedRoot<'a> {
+    root: ConstrainedRoot<'a>,
+    paths: PreparedClausePaths,
+    fallback: bool,
+    occurrences: Vec<Occurrence>,
+}
 
 fn push_owned_rule_evidence(
     evidence: &mut RuleEvidenceTable,
@@ -88,13 +92,7 @@ fn compute_constrained_inner(
 
     // Extract only ConstrainedScan roots (the constrained path only handles
     // these; other root types are handled by the physical plan executor).
-    let constrained: Vec<(
-        usize,
-        &IdentityConstraint,
-        &EventPredicate,
-        &CanonicalArgumentConstraints,
-        &EvidenceDescriptor,
-    )> = roots
+    let constrained: Vec<ConstrainedRoot<'_>> = roots
         .iter()
         .filter_map(|(rule_index, root)| match root {
             PhysicalRoot::ConstrainedScan {
@@ -102,40 +100,56 @@ fn compute_constrained_inner(
                 event,
                 constraints,
                 evidence,
-            } => Some((*rule_index, identity, event, constraints, evidence)),
+            } => Some(ConstrainedRoot {
+                rule: RuleIndex::new(*rule_index),
+                identity,
+                event,
+                constraints,
+                evidence,
+            }),
             _ => None,
         })
         .collect();
 
-    let prepared: Vec<PreparedClausePaths> = constrained
+    let mut prepared: Vec<PreparedConstrainedRoot<'_>> = constrained
         .iter()
-        .map(|(_, identity, event, _, _)| PreparedClausePaths::new(identity, event, names))
+        .map(|root| PreparedConstrainedRoot {
+            paths: PreparedClausePaths::new(root.identity, root.event, names),
+            root: ConstrainedRoot {
+                rule: root.rule,
+                identity: root.identity,
+                event: root.event,
+                constraints: root.constraints,
+                evidence: root.evidence,
+            },
+            fallback: false,
+            occurrences: Vec::new(),
+        })
         .collect();
 
     // Phase 1: Index-based candidate lookup.
     // When the index lookup succeeds, candidates are filtered through the
     // evaluator.  Roots whose index lookup fails are collected for the
     // fallback linear scan (Phase 2).
-    let mut fallback: Vec<FallbackEntry<'_>> = Vec::new();
-    for ((rule_index, identity, event, constraints, evidence_desc), paths) in
-        constrained.iter().zip(prepared.iter())
-    {
-        let Some(candidates) = indexes.occurrences_for_indexed(identity, event, overlay, names)
+    for prepared_root in &mut prepared {
+        let root = &prepared_root.root;
+        let Some(candidates) =
+            indexes.occurrences_for_indexed(root.identity, root.event, overlay, names)
         else {
-            fallback.push((
-                *rule_index,
-                identity,
-                event,
-                constraints,
-                evidence_desc,
-                paths,
-            ));
+            prepared_root.fallback = true;
             continue;
         };
         let mut matched: Vec<Occurrence> = Vec::new();
         for occurrence in candidates {
             if let Some(fact) = stream.fact(occurrence.event())
-                && evaluator.fact_matches_clause(fact, identity, event, constraints, paths, ops)
+                && evaluator.fact_matches_clause(
+                    fact,
+                    root.identity,
+                    root.event,
+                    root.constraints,
+                    &prepared_root.paths,
+                    ops,
+                )
             {
                 matched.push(occurrence);
             }
@@ -143,9 +157,9 @@ fn compute_constrained_inner(
         if !matched.is_empty() {
             push_owned_rule_evidence(
                 evidence,
-                RuleIndex::new(*rule_index),
-                evidence_desc.kind,
-                evidence_desc.symbol.clone(),
+                root.rule,
+                root.evidence.kind,
+                root.evidence.symbol.clone(),
                 matched,
             );
         }
@@ -155,24 +169,33 @@ fn compute_constrained_inner(
     // resolve.  This handles cases where the call provenance is resolved
     // through overlays (e.g., returned callables) rather than direct
     // module/global index entries.
-    if !fallback.is_empty() {
-        let mut fallback_occurrences: Vec<Vec<Occurrence>> =
-            fallback.iter().map(|_| Vec::new()).collect();
+    if prepared.iter().any(|root| root.fallback) {
         for fact in stream.facts() {
-            for (i, (_, identity, event, constraints, _, paths)) in fallback.iter().enumerate() {
-                if evaluator.fact_matches_clause(fact, identity, event, constraints, paths, ops) {
-                    fallback_occurrences[i].push(Occurrence::new(fact.id, fact.span));
+            for prepared_root in prepared.iter_mut().filter(|root| root.fallback) {
+                let root = &prepared_root.root;
+                if evaluator.fact_matches_clause(
+                    fact,
+                    root.identity,
+                    root.event,
+                    root.constraints,
+                    &prepared_root.paths,
+                    ops,
+                ) {
+                    prepared_root
+                        .occurrences
+                        .push(Occurrence::new(fact.id, fact.span));
                 }
             }
         }
-        for (i, (rule_index, _, _, _, evidence_desc, _)) in fallback.iter().enumerate() {
-            let occurrences = std::mem::take(&mut fallback_occurrences[i]);
+        for prepared_root in prepared.iter_mut().filter(|root| root.fallback) {
+            let root = &prepared_root.root;
+            let occurrences = std::mem::take(&mut prepared_root.occurrences);
             if !occurrences.is_empty() {
                 push_owned_rule_evidence(
                     evidence,
-                    RuleIndex::new(*rule_index),
-                    evidence_desc.kind,
-                    evidence_desc.symbol.clone(),
+                    root.rule,
+                    root.evidence.kind,
+                    root.evidence.symbol.clone(),
                     occurrences,
                 );
             }

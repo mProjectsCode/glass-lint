@@ -51,7 +51,7 @@ Introduce bounded `RequirementIndex` and `SinkIndex` newtypes at flow compilatio
 
 Added typed requirement and sink index newtypes, parameterized `RequirementSet` and flow mutation history by their domain, and converted projector and cross-file propagation boundaries at vector access. Restoration and maximum-bit tests now cover both index domains while preserving deterministic evidence ordering.
 
-#### READ-004 — Constrained matching relies on positional tuples and parallel vectors
+#### [x] READ-004 — Constrained matching relies on positional tuples and parallel vectors
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -61,6 +61,8 @@ Added typed requirement and sink index newtypes, parameterized `RequirementSet` 
 Projection first converts `RuleIndex` to `usize`, then constrained matching expands roots into five- and six-element tuples, prepares paths in a parallel vector, zips the collections, and maintains another parallel occurrence vector for fallback scans. The alignment is correct only because several construction and iteration orders remain identical, and tuple positions obscure which borrowed matcher component is being used.
 
 Create a named prepared-root record containing the typed rule index, identity, event, constraints, evidence descriptor, and prepared paths, with fallback occurrences stored on that record or in a named fallback result. Let methods on the record perform indexed and fallback evaluation, and bundle the stable evaluator inputs if that materially reduces the eight-argument coordinator. Preserve the two-phase indexed/fallback behavior, overlay semantics, operation accounting, and evidence order.
+
+Added named constrained-root and prepared-root records. Prepared paths, fallback state, and fallback occurrences now travel with the matching clause instead of parallel vectors and positional tuples; the indexed and linear phases retain their existing overlay behavior, operation accounting, and source ordering.
 
 #### READ-005 — Project projection has parallel local and final outcome models
 
