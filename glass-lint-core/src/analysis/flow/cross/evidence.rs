@@ -75,24 +75,91 @@ pub(super) fn usage_matches_context(
     }
 }
 
-pub(super) struct ModuleEvidence {
-    pub(super) evidence: Vec<Vec<ClassificationEvidence>>,
-    pub(super) seen: Vec<BTreeSet<(MatchKind, String, u32)>>,
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct EvidenceKey {
+    kind: MatchKind,
+    symbol: String,
+    fact: FactId,
+}
+
+#[derive(Default)]
+struct RuleEvidence {
+    items: Vec<ClassificationEvidence>,
     /// Sink occurrences reached by an alternative that did not produce a
     /// complete witness. These keys are kept separate from witness traces so
     /// no evidence can be assembled from incompatible call sites.
-    pub(super) nonmatching: Vec<BTreeSet<(MatchKind, String, u32)>>,
+    nonmatching: BTreeSet<EvidenceKey>,
+}
+
+pub(super) struct ModuleEvidence {
+    rules: Vec<RuleEvidence>,
     pub(super) trace_heads: usize,
 }
 
 impl ModuleEvidence {
     pub(super) fn new(rule_count: usize) -> Self {
         Self {
-            evidence: vec![Vec::new(); rule_count],
-            seen: vec![BTreeSet::new(); rule_count],
-            nonmatching: vec![BTreeSet::new(); rule_count],
+            rules: (0..rule_count).map(|_| RuleEvidence::default()).collect(),
             trace_heads: 0,
         }
+    }
+
+    fn mark_nonmatching(&mut self, rule_index: usize, key: &EvidenceKey) {
+        let rule = &mut self.rules[rule_index];
+        rule.nonmatching.insert(key.clone());
+        if let Some(item) = rule.items.iter_mut().find(|item| {
+            item.kind == key.kind
+                && item.symbol == key.symbol
+                && item
+                    .occurrences
+                    .iter()
+                    .any(|occurrence| occurrence.fact == Some(key.fact.0))
+        }) {
+            item.certainty = crate::project::MatchCertainty::Possible;
+        }
+    }
+
+    fn record(&mut self, rule_index: usize, key: &EvidenceKey, mut item: ClassificationEvidence) {
+        let rule = &mut self.rules[rule_index];
+        if rule.nonmatching.contains(key) {
+            item.certainty = crate::project::MatchCertainty::Possible;
+        }
+        if let Some(existing) = rule.items.iter_mut().find(|existing| {
+            existing.kind == key.kind
+                && existing.symbol == key.symbol
+                && existing
+                    .occurrences
+                    .iter()
+                    .any(|occurrence| occurrence.fact == Some(key.fact.0))
+        }) {
+            existing.certainty = if existing.certainty == crate::project::MatchCertainty::Possible
+                || item.certainty == crate::project::MatchCertainty::Possible
+            {
+                crate::project::MatchCertainty::Possible
+            } else {
+                crate::project::MatchCertainty::Definite
+            };
+            if !existing
+                .occurrences
+                .iter()
+                .any(|occurrence| occurrence.trace == item.occurrences[0].trace)
+            {
+                existing.occurrences.append(&mut item.occurrences);
+                existing.count = existing.count.saturating_add(item.count);
+            }
+        } else {
+            rule.items.push(item);
+        }
+    }
+
+    pub(super) fn clear(&mut self) {
+        for rule in &mut self.rules {
+            rule.items.clear();
+        }
+    }
+
+    pub(super) fn into_evidence(self) -> Vec<Vec<ClassificationEvidence>> {
+        self.rules.into_iter().map(|rule| rule.items).collect()
     }
 }
 
@@ -107,22 +174,14 @@ pub(super) fn mark_nonmatching(
         return;
     };
     let rule_idx = flow_id.rule_index().get();
-    let key = (
-        MatchKind::CallArgument,
-        flow.symbol.as_str().to_owned(),
-        event.0,
+    values.mark_nonmatching(
+        rule_idx,
+        &EvidenceKey {
+            kind: MatchKind::CallArgument,
+            symbol: flow.symbol.as_str().to_owned(),
+            fact: event,
+        },
     );
-    values.nonmatching[rule_idx].insert(key.clone());
-    if let Some(item) = values.evidence[rule_idx].iter_mut().find(|item| {
-        item.kind == key.0
-            && item.symbol == key.1
-            && item
-                .occurrences
-                .iter()
-                .any(|occurrence| occurrence.fact == Some(key.2))
-    }) {
-        item.certainty = crate::project::MatchCertainty::Possible;
-    }
 }
 
 pub(super) struct EmissionContext<'a> {
@@ -149,11 +208,11 @@ pub(super) fn emit(
         return;
     };
     let rule_idx = flow_id.rule_index().get();
-    let key = (
-        MatchKind::CallArgument,
-        flow.symbol.as_str().to_owned(),
-        event.0,
-    );
+    let key = EvidenceKey {
+        kind: MatchKind::CallArgument,
+        symbol: flow.symbol.as_str().to_owned(),
+        fact: event,
+    };
     let span = project
         .fact(module, event)
         .map_or_else(glass_lint_datastructures::ByteRange::empty, |fact| {
@@ -219,7 +278,7 @@ pub(super) fn emit(
         )
     });
 
-    let certainty = if values.nonmatching[rule_idx].contains(&key) {
+    let certainty = if values.rules[rule_idx].nonmatching.contains(&key) {
         crate::project::MatchCertainty::Possible
     } else {
         crate::project::MatchCertainty::Definite
@@ -229,40 +288,18 @@ pub(super) fn emit(
         fact: Some(event.0),
         trace: trace_head,
     };
-    if let Some(item) = values.evidence[rule_idx].iter_mut().find(|item| {
-        item.kind == key.0
-            && item.symbol == key.1
-            && item
-                .occurrences
-                .iter()
-                .any(|existing| existing.fact == Some(event.0) && existing.span == span)
-    }) {
-        item.certainty = if item.certainty == crate::project::MatchCertainty::Possible
-            || certainty == crate::project::MatchCertainty::Possible
-        {
-            crate::project::MatchCertainty::Possible
-        } else {
-            crate::project::MatchCertainty::Definite
-        };
-        if !item
-            .occurrences
-            .iter()
-            .any(|existing| existing.trace == occurrence.trace)
-        {
-            item.occurrences.push(occurrence);
-            item.count = item.count.saturating_add(1);
-        }
-    } else {
-        values.seen[rule_idx].insert(key);
-        values.evidence[rule_idx].push(ClassificationEvidence {
+    values.record(
+        rule_idx,
+        &key,
+        ClassificationEvidence {
             kind: MatchKind::CallArgument,
             symbol: flow.evidence_symbol().as_str().to_owned(),
             count: 1,
             truncated: false,
             certainty,
             occurrences: vec![occurrence],
-        });
-    }
+        },
+    );
     if trace_head.is_some() {
         values.trace_heads = values.trace_heads.saturating_add(1);
     }

@@ -185,7 +185,7 @@ with one warm-up-free repetition and one worker took 743.5ms measured lint
 wall time (742.1ms input time; 9.44s process wall time including the one-time
 release build).
 
-#### RL-006 — Evidence is represented by parallel vectors and raw tuples
+#### [x] RL-006 — Evidence is represented by parallel vectors and raw tuples
 
 - Severity: Medium
 - Fix complexity: Medium
@@ -203,6 +203,19 @@ Recommendation: add a bounded `EvidenceStore`/`RuleEvidence` domain type with
 rule-key access, shared occurrence keys, and explicit insert, merge, and
 nonmatching operations. Reuse it for local and cross-flow projection, keeping
 the final report conversion as the one place that exposes nested vectors.
+
+Implementation: replaced cross-flow’s parallel evidence, seen, and
+nonmatching vectors with `ModuleEvidence` and per-rule `RuleEvidence`, and
+centralized repeated `(kind, symbol, fact)` tuples in a typed `EvidenceKey`.
+Nonmatching certainty updates, deduplication, clearing, and final nested-vector
+conversion now live on the evidence owner; local and cross projection output
+shapes remain unchanged.
+
+Runtime (release): profiling
+`/home/lemon/src/obsidian-stats/data/out/plugin-release-mainjs/byoc/1.0.13-main.js`
+with one warm-up-free repetition and one worker took 722.5ms measured lint
+wall time (721.1ms input time; 9.30s process wall time including the one-time
+release build).
 
 #### RL-007 — Semantic IDs expose raw storage and invite duplicated arithmetic
 

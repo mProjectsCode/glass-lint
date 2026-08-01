@@ -136,7 +136,7 @@ pub(in crate::analysis) fn collect(
     if flows.is_empty() {
         let empty = evidence
             .into_iter()
-            .map(|(id, m)| (id, m.evidence))
+            .map(|(id, m)| (id, m.into_evidence()))
             .collect();
         return (empty, CrossProjectionOutcome::default());
     }
@@ -195,15 +195,13 @@ pub(in crate::analysis) fn collect(
         return_budget_exhausted || step_budget.exhausted() || worklist.len() >= MAX_CONTEXTS;
     if exhausted {
         for module_evidence in evidence.values_mut() {
-            for rule in &mut module_evidence.evidence {
-                rule.clear();
-            }
+            module_evidence.clear();
         }
     }
     let trace_heads = evidence.values().map(|module| module.trace_heads).sum();
     let output = evidence
         .into_iter()
-        .map(|(id, m)| (id, m.evidence))
+        .map(|(id, m)| (id, m.into_evidence()))
         .collect();
     (
         output,
