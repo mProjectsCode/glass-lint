@@ -213,17 +213,18 @@ impl<'adm, 'opt, 'budget> ProjectDiscovery<'adm, 'opt, 'budget> {
 
                     active.push(config_path.clone());
 
-                    // Config count is tracked inside build_effective_config.
+                    // Config count is tracked inside the traversal context.
                     // Phase 1-3: Build effective config
-                    let (effective, references) = tsconfig::build_effective_config(
-                        config_path,
-                        &work.base,
-                        self.deadline,
-                        cycle_diagnostics,
-                        self.config_budget,
-                        &mut config_count,
-                        self.project_budget,
-                    )?;
+                    let (effective, references) = {
+                        let mut traversal = tsconfig::TsconfigTraversal::new(
+                            self.deadline,
+                            cycle_diagnostics,
+                            self.config_budget,
+                            &mut config_count,
+                            self.project_budget,
+                        );
+                        traversal.build_effective_config(config_path, &work.base)?
+                    };
 
                     // Phase 4: Select sources
                     self.select_sources(&effective, &work.base)?;

@@ -390,144 +390,148 @@ fn resolve_extends(
 /// plus any already-resolved acyclic ancestors are retained. The child config
 /// continues building normally without the cyclic parent. Independent
 /// non-cyclic branches continue unaffected.
-#[allow(clippy::too_many_arguments)]
-pub fn build_effective_config(
-    config_path: &Path,
-    fallback_base: &Path,
+/// Stateful traversal context for one effective-tsconfig build.
+///
+/// The context keeps traversal policy and mutable accounting together so the
+/// recursive operation only needs a config path and its fallback directory.
+pub struct TsconfigTraversal<'a> {
     deadline: Option<Instant>,
-    diagnostics: &mut Vec<TsconfigDiagnostic>,
+    diagnostics: &'a mut Vec<TsconfigDiagnostic>,
     budget: ConfigTraversalBudget,
-    config_count: &mut usize,
-    resource_budget: &mut ProjectResourceBudget,
-) -> Result<(selection::CompiledTsconfigSelection, Vec<ReferenceEntry>), ProjectLoadError> {
-    let mut extends_chain: Vec<PathBuf> = Vec::new();
-    let (merged, references) = build_effective_config_inner(
-        config_path,
-        fallback_base,
-        &mut extends_chain,
-        deadline,
-        diagnostics,
-        budget,
-        config_count,
-        resource_budget,
-    )?;
-    let canonical = realpath(config_path)?;
-    let compiled = selection::CompiledTsconfigSelection::compile(canonical, merged);
-    diagnostics.extend(
-        compiled
-            .pattern_diagnostics
-            .iter()
-            .map(|message| TsconfigDiagnostic {
-                config_path: compiled.config_path.clone(),
-                cycle_target: None,
-                message: message.clone(),
-            }),
-    );
-    Ok((compiled, references))
+    config_count: &'a mut usize,
+    resource_budget: &'a mut ProjectResourceBudget,
+    extends_chain: Vec<PathBuf>,
 }
 
-#[allow(clippy::too_many_arguments)]
-fn build_effective_config_inner(
-    config_path: &Path,
-    fallback_base: &Path,
-    extends_chain: &mut Vec<PathBuf>,
-    deadline: Option<Instant>,
-    diagnostics: &mut Vec<TsconfigDiagnostic>,
-    budget: ConfigTraversalBudget,
-    config_count: &mut usize,
-    resource_budget: &mut ProjectResourceBudget,
-) -> Result<(selection::MergedSelection, Vec<ReferenceEntry>), ProjectLoadError> {
-    // Sequential phases: deadine check, depth check, parse, extends
-    // resolution, merge. The extends resolution must live here because it
-    // mutates extends_chain and diagnostics that are owned by the caller.
-    if let Some(deadline) = deadline
-        && Instant::now() >= deadline
-    {
-        return Err(ProjectLoadError::Timeout);
-    }
-    let canonical = realpath(config_path)?;
-
-    // Depth check (extends chain)
-    if extends_chain.len() >= budget.max_depth {
-        return Err(ProjectLoadError::ConfigBudgetExhausted {
-            kind: "extends depth",
-            limit: budget.max_depth,
-        });
-    }
-    extends_chain.push(canonical.clone());
-
-    // Config count check
-    *config_count += 1;
-    if *config_count > budget.max_config_count {
-        return Err(ProjectLoadError::ConfigBudgetExhausted {
-            kind: "config count",
-            limit: budget.max_config_count,
-        });
+impl<'a> TsconfigTraversal<'a> {
+    pub fn new(
+        deadline: Option<Instant>,
+        diagnostics: &'a mut Vec<TsconfigDiagnostic>,
+        budget: ConfigTraversalBudget,
+        config_count: &'a mut usize,
+        resource_budget: &'a mut ProjectResourceBudget,
+    ) -> Self {
+        Self {
+            deadline,
+            diagnostics,
+            budget,
+            config_count,
+            resource_budget,
+            extends_chain: Vec::new(),
+        }
     }
 
-    let dto = read_and_parse(config_path, resource_budget)?;
-    for message in &dto.diagnostics {
-        diagnostics.push(TsconfigDiagnostic {
-            config_path: canonical.clone(),
-            cycle_target: None,
-            message: message.clone(),
-        });
+    pub fn build_effective_config(
+        &mut self,
+        config_path: &Path,
+        fallback_base: &Path,
+    ) -> Result<(selection::CompiledTsconfigSelection, Vec<ReferenceEntry>), ProjectLoadError> {
+        let (merged, references) = self.build_inner(config_path, fallback_base)?;
+        let canonical = realpath(config_path)?;
+        let compiled = selection::CompiledTsconfigSelection::compile(canonical, merged);
+        self.diagnostics
+            .extend(
+                compiled
+                    .pattern_diagnostics
+                    .iter()
+                    .map(|message| TsconfigDiagnostic {
+                        config_path: compiled.config_path.clone(),
+                        cycle_target: None,
+                        message: message.clone(),
+                    }),
+            );
+        Ok((compiled, references))
     }
-    let base = config_path.parent().unwrap_or(fallback_base).to_path_buf();
 
-    // Resolve extends — detect cycles at the extends-resolution site rather
-    // than returning a sentinel config that callers must recognise.
-    //
-    // Restructured from a closure-chain to plain if-let so that the parent's
-    // canonical path is available for directory rebasing outside the closure.
-    let references = dto.references.clone();
-    let (parent_merged, parent_dir): (Option<MergedSelection>, Option<PathBuf>) =
-        if let Some(extends_str) = dto.extends.clone().ok() {
-            if let Some(parent_path) =
-                resolve_extends(config_path, &extends_str, &canonical, diagnostics)
-            {
-                let parent_canonical = realpath(&parent_path)?;
-                if extends_chain.contains(&parent_canonical) {
-                    diagnostics.push(TsconfigDiagnostic {
-                        config_path: canonical.clone(),
-                        cycle_target: Some(parent_canonical),
-                        message: format!(
-                            "cycle detected: {} is already in the inheritance chain",
-                            canonical.display()
-                        ),
-                    });
-                    (None, None)
+    fn build_inner(
+        &mut self,
+        config_path: &Path,
+        fallback_base: &Path,
+    ) -> Result<(selection::MergedSelection, Vec<ReferenceEntry>), ProjectLoadError> {
+        // Sequential phases: deadine check, depth check, parse, extends
+        // resolution, merge. The extends resolution must live here because it
+        // mutates extends_chain and diagnostics that are owned by the caller.
+        if let Some(deadline) = self.deadline
+            && Instant::now() >= deadline
+        {
+            return Err(ProjectLoadError::Timeout);
+        }
+        let canonical = realpath(config_path)?;
+
+        // Depth check (extends chain)
+        if self.extends_chain.len() >= self.budget.max_depth {
+            return Err(ProjectLoadError::ConfigBudgetExhausted {
+                kind: "extends depth",
+                limit: self.budget.max_depth,
+            });
+        }
+        self.extends_chain.push(canonical.clone());
+
+        // Config count check
+        *self.config_count += 1;
+        if *self.config_count > self.budget.max_config_count {
+            return Err(ProjectLoadError::ConfigBudgetExhausted {
+                kind: "config count",
+                limit: self.budget.max_config_count,
+            });
+        }
+
+        let dto = read_and_parse(config_path, self.resource_budget)?;
+        for message in &dto.diagnostics {
+            self.diagnostics.push(TsconfigDiagnostic {
+                config_path: canonical.clone(),
+                cycle_target: None,
+                message: message.clone(),
+            });
+        }
+        let base = config_path.parent().unwrap_or(fallback_base).to_path_buf();
+
+        // Resolve extends — detect cycles at the extends-resolution site rather
+        // than returning a sentinel config that callers must recognise.
+        //
+        // Restructured from a closure-chain to plain if-let so that the parent's
+        // canonical path is available for directory rebasing outside the closure.
+        let references = dto.references.clone();
+        let (parent_merged, parent_dir): (Option<MergedSelection>, Option<PathBuf>) =
+            if let Some(extends_str) = dto.extends.clone().ok() {
+                if let Some(parent_path) =
+                    resolve_extends(config_path, &extends_str, &canonical, self.diagnostics)
+                {
+                    let parent_canonical = realpath(&parent_path)?;
+                    if self.extends_chain.contains(&parent_canonical) {
+                        self.diagnostics.push(TsconfigDiagnostic {
+                            config_path: canonical.clone(),
+                            cycle_target: Some(parent_canonical),
+                            message: format!(
+                                "cycle detected: {} is already in the inheritance chain",
+                                canonical.display()
+                            ),
+                        });
+                        (None, None)
+                    } else {
+                        let result = self.build_inner(&parent_canonical, &base)?;
+                        (
+                            Some(result.0),
+                            parent_canonical.parent().map(Path::to_path_buf),
+                        )
+                    }
                 } else {
-                    let result = build_effective_config_inner(
-                        &parent_canonical,
-                        &base,
-                        extends_chain,
-                        deadline,
-                        diagnostics,
-                        budget,
-                        config_count,
-                        resource_budget,
-                    )?;
-                    (
-                        Some(result.0),
-                        parent_canonical.parent().map(Path::to_path_buf),
-                    )
+                    (None, None)
                 }
             } else {
                 (None, None)
-            }
-        } else {
-            (None, None)
-        };
+            };
 
-    extends_chain.pop();
+        self.extends_chain.pop();
 
-    // Merge: consume child dto and optional parent MergedSelection.
-    // Paths inherited from the parent are rebased from parent_dir to
-    // child_dir so that each path is interpreted relative to the config
-    // file where it was declared.
-    let effective = selection::merge_selection(dto, parent_merged, &base, parent_dir.as_deref());
-    Ok((effective, references))
+        // Merge: consume child dto and optional parent MergedSelection.
+        // Paths inherited from the parent are rebased from parent_dir to
+        // child_dir so that each path is interpreted relative to the config
+        // file where it was declared.
+        let effective =
+            selection::merge_selection(dto, parent_merged, &base, parent_dir.as_deref());
+        Ok((effective, references))
+    }
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{path::Path, time::Instant};
 
 use super::*;
 use crate::tests::TempProject;
@@ -16,6 +16,20 @@ fn default_budget() -> ConfigTraversalBudget {
 
 fn default_resource_budget() -> ProjectResourceBudget {
     ProjectResourceBudget::new(250_000, 512 * 1024 * 1024)
+}
+
+fn build_effective_config(
+    config_path: &Path,
+    fallback_base: &Path,
+    deadline: Option<Instant>,
+    diagnostics: &mut Vec<TsconfigDiagnostic>,
+    budget: ConfigTraversalBudget,
+    config_count: &mut usize,
+    resource_budget: &mut ProjectResourceBudget,
+) -> Result<(CompiledTsconfigSelection, Vec<ReferenceEntry>), crate::error::ProjectLoadError> {
+    let mut traversal =
+        TsconfigTraversal::new(deadline, diagnostics, budget, config_count, resource_budget);
+    traversal.build_effective_config(config_path, fallback_base)
 }
 
 #[test]

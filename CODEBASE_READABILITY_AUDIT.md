@@ -232,7 +232,7 @@ analysis, and request resolution, with a small coordinator applying the budget
 and frontier transitions. Preserve deferred-error semantics explicitly in the
 outcome types so partial project results remain deterministic and observable.
 
-#### RL-011 — Recursive tsconfig building threads a large positional context
+#### [x] RL-011 — Recursive tsconfig building threads a large positional context
 
 - Severity: Low
 - Fix complexity: Medium
@@ -250,6 +250,19 @@ budgets, deadline, count, and extends-chain state, with a method that accepts
 only the config path and fallback base. Keep parsing, merging, and compilation
 as separate value-level operations and retain the current deterministic
 diagnostics.
+
+Implementation: added `TsconfigTraversal` to own the deadline, diagnostics,
+traversal budget, config counter, resource budget, and active extends chain.
+Its `build_effective_config` method accepts only the config path and fallback
+base; recursive calls now use the same context, and discovery constructs it at
+the project boundary. Existing cycle, budget, rebasing, and diagnostic
+behavior remains covered by the tsconfig test suite.
+
+Runtime (release): profiling
+`/home/lemon/src/obsidian-stats/data/out/plugin-release-mainjs/byoc/1.0.13-main.js`
+with one warm-up-free repetition and one worker took 723.4ms measured lint
+wall time (722.1ms input time; 5.12s process wall time including the
+incremental release build).
 
 ### Harness profiling
 
