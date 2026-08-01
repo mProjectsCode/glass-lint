@@ -8,12 +8,31 @@ use crate::api::rule::error::MatcherBuildError;
 /// An exact module specifier or a package root with boundary-aware subpaths.
 pub struct ModuleSpecifierPattern {
     name: String,
-    package: bool,
+    kind: PatternKind,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
+enum PatternKind {
+    Exact,
+    Package,
+}
+
+impl PatternKind {
+    fn matches(self, name: &str, authored: &str) -> bool {
+        authored == name
+            || (matches!(self, Self::Package)
+                && authored
+                    .strip_prefix(name)
+                    .is_some_and(|suffix| suffix.starts_with('/')))
+    }
+
+    fn is_package(self) -> bool {
+        matches!(self, Self::Package)
+    }
 }
 
 impl ModuleSpecifierPattern {
     /// Construct an exact authored module specifier.
-    #[allow(dead_code)]
     pub fn exact(name: impl Into<String>) -> Result<Self, MatcherBuildError> {
         let name = name.into().trim().to_string();
         if name.is_empty() {
@@ -23,7 +42,7 @@ impl ModuleSpecifierPattern {
         }
         Ok(Self {
             name,
-            package: false,
+            kind: PatternKind::Exact,
         })
     }
 
@@ -57,25 +76,21 @@ impl ModuleSpecifierPattern {
         }
         Ok(Self {
             name,
-            package: true,
+            kind: PatternKind::Package,
         })
     }
 
     pub fn matches(&self, authored: &str) -> bool {
-        authored == self.name
-            || (self.package
-                && authored
-                    .strip_prefix(&self.name)
-                    .is_some_and(|suffix| suffix.starts_with('/')))
+        self.kind.matches(&self.name, authored)
     }
 
     pub fn as_str(&self) -> &str {
         &self.name
     }
 
-    #[allow(dead_code)]
+    /// Return whether this pattern matches a package root and its subpaths.
     pub fn is_package(&self) -> bool {
-        self.package
+        self.kind.is_package()
     }
 }
 

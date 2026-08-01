@@ -224,7 +224,7 @@ existing iterator API. Keep exceptional queries (such as the metadata
 argument predicate) explicit, preserve source order and generated rule output,
 and avoid a generic registry that would obscure provider policy.
 
-#### READ-010 — Module-specifier pattern uses a boolean mode with dead-code escapes
+#### [x] READ-010 — Module-specifier pattern uses a boolean mode with dead-code escapes
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -241,6 +241,12 @@ Use an enum or a private pattern kind with constructors and matching behavior
 owned by that kind. Either expose the exact/package distinction intentionally
 or keep both constructors internal; remove the allowances once the API has a
 single documented ownership path.
+
+**Implementation:** Replaced the `package: bool` representation with a private
+`PatternKind` enum that owns matching and package classification, retained the
+public exact/package constructors and documented `is_package` distinction, and
+removed the dead-code allowances. The requested bundle’s release lint took
+**0.86 s wall time** after the change (0.83 s baseline).
 
 ### Project loading and rendering
 
