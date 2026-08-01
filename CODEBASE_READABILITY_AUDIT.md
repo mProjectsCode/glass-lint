@@ -45,7 +45,7 @@ Carry `RuleIndex` and an evidence owner through these boundaries with methods su
 
 Split the state into explicit owners for the path frontier, loop fixed-point/replay engine, pending evidence, and lifecycle outcome, leaving the projector as a thin coordinator over typed operations. Preserve the single fact stream and existing bounded behavior, but make restoration, join, and cleanup belong to one subtype each; return typed termination results instead of communicating phase outcomes through shared fields and counters.
 
-#### READ-004 — Declaration classification duplicates precedence across expression shapes
+#### [x] READ-004 — Declaration classification duplicates precedence across expression shapes
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -55,6 +55,8 @@ Split the state into explicit owners for the path frontier, loop fixed-point/rep
 `klassify_call`, `klassify_member`, and `klassify_ident` each probe overlapping provenance, `require`, returned-object, constant, rooted-name, and value-alias sources. Their checks and fallback order differ slightly, so adding or reordering one semantic source requires coordinated edits in three helpers; the owned `name` handling and repeated clones make that drift less visible.
 
 Normalize the declaration into a small classification context containing the expression shape and borrowed name, then run one ordered candidate classifier. Keep shape-specific extraction helpers only for facts that genuinely require call or member syntax, and preserve the current precedence with focused tests for aliases, shadowing, reassignment, dynamic values, and unsupported shapes.
+
+Implemented by borrowing the declarator name once and routing all declaration shapes through one ordered candidate classifier for module aliases, requires, callable bindings, constants, returned objects, static object values, and rooted aliases. Call/member-specific code now only selects precedence and handles the bind-call boundary; the existing scope-analysis tests continue to cover aliases, reassignment, destructuring, returned objects, and dynamic values.
 
 #### READ-005 — Summary sink propagation couples fixed-point policy and storage
 

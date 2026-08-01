@@ -48,46 +48,57 @@ pub fn classify_declaration(
     pat: &Pat,
     derived_function_pattern: bool,
 ) -> DeclarationClassification {
-    // Match over Expr variants dispatching to per-shape helpers. The outer
-    // match stays in one function so the const-provenance fallback at the
-    // bottom catches every variant uniformly.
-    let name = match pat {
-        Pat::Ident(ident) => Some(ident.id.sym.to_string()),
-        _ => None,
-    };
+    let name = declaration_name(pat);
 
     match expr {
-        Expr::Lit(_) => {
-            if let (Some(name), Some(provenance)) = (name, collector.const_provenance(expr)) {
-                return DeclarationClassification::Binding { name, provenance };
-            }
-            DeclarationClassification::None
-        }
-        Expr::Call(call) => klassify_call(collector, call, expr, name, derived_function_pattern),
+        Expr::Lit(_) => classify_candidates(
+            collector,
+            expr,
+            name,
+            derived_function_pattern,
+            &[Candidate::Constant],
+        ),
+        Expr::Call(call) => classify_call(collector, call, expr, name, derived_function_pattern),
         Expr::OptChain(chain) if matches!(&*chain.base, swc_ecma_ast::OptChainBase::Call(_)) => {
-            if let Some(name) = name
-                && let Some(provenance) = collector.returned_object_provenance(expr)
-            {
-                return DeclarationClassification::Binding { name, provenance };
-            }
-            if !derived_function_pattern && let Some(target) = collector.rooted_name_path(expr) {
-                return DeclarationClassification::ValueAlias { target };
-            }
-            DeclarationClassification::None
-        }
-        Expr::Member(_) => klassify_member(collector, expr, name, derived_function_pattern),
-        Expr::Object(_) | Expr::Array(_) => {
-            if let (Some(name), Some(provenance)) = (
+            classify_candidates(
+                collector,
+                expr,
                 name,
-                collector
-                    .static_object_values(expr)
-                    .or_else(|| collector.const_provenance(expr)),
-            ) {
-                return DeclarationClassification::Binding { name, provenance };
-            }
-            DeclarationClassification::None
+                derived_function_pattern,
+                &[Candidate::ReturnedObject, Candidate::RootedAlias],
+            )
         }
-        Expr::Ident(_) => klassify_ident(collector, expr, name, derived_function_pattern),
+        Expr::Member(_) => classify_candidates(
+            collector,
+            expr,
+            name,
+            derived_function_pattern,
+            &[
+                Candidate::ModuleAlias,
+                Candidate::Require,
+                Candidate::ReturnedObject,
+                Candidate::RootedAlias,
+            ],
+        ),
+        Expr::Object(_) | Expr::Array(_) => classify_candidates(
+            collector,
+            expr,
+            name,
+            derived_function_pattern,
+            &[Candidate::StaticObject, Candidate::Constant],
+        ),
+        Expr::Ident(_) => classify_candidates(
+            collector,
+            expr,
+            name,
+            derived_function_pattern,
+            &[
+                Candidate::ModuleAlias,
+                Candidate::ReturnedObject,
+                Candidate::Constant,
+                Candidate::RootedAlias,
+            ],
+        ),
 
         Expr::Await(await_expr) => {
             classify_declaration(collector, &await_expr.arg, pat, derived_function_pattern)
@@ -102,24 +113,39 @@ pub fn classify_declaration(
                 classify_declaration(collector, last, pat, derived_function_pattern)
             }),
 
-        _ => {
-            if let (Some(name), Some(provenance)) = (name, collector.const_provenance(expr)) {
-                return DeclarationClassification::Binding { name, provenance };
-            }
-            if !derived_function_pattern && let Some(target) = collector.rooted_name_path(expr) {
-                return DeclarationClassification::ValueAlias { target };
-            }
-            DeclarationClassification::None
-        }
+        _ => classify_candidates(
+            collector,
+            expr,
+            name,
+            derived_function_pattern,
+            &[Candidate::Constant, Candidate::RootedAlias],
+        ),
     }
 }
 
-#[allow(clippy::needless_pass_by_value)]
-fn klassify_call(
+#[derive(Clone, Copy)]
+enum Candidate {
+    BoundCallable,
+    ModuleAlias,
+    Require,
+    Constant,
+    StaticObject,
+    ReturnedObject,
+    RootedAlias,
+}
+
+fn declaration_name(pattern: &Pat) -> Option<&str> {
+    match pattern {
+        Pat::Ident(ident) => Some(ident.id.sym.as_ref()),
+        _ => None,
+    }
+}
+
+fn classify_call(
     collector: &mut ScopeCollector,
     call: &swc_ecma_ast::CallExpr,
     expr: &Expr,
-    name: Option<String>,
+    name: Option<&str>,
     derived_function_pattern: bool,
 ) -> DeclarationClassification {
     if let Some(module) = collector.require_module_expr_name(expr) {
@@ -127,141 +153,101 @@ fn klassify_call(
     }
 
     if callee_is_bind_call(call) {
-        if let Some(ref name) = name
-            && let Some(provenance) = collector.bound_callable_provenance(expr)
-        {
-            return DeclarationClassification::Binding {
-                name: name.clone(),
-                provenance,
-            };
+        return classify_candidates(
+            collector,
+            expr,
+            name,
+            derived_function_pattern,
+            &[Candidate::BoundCallable],
+        );
+    }
+
+    classify_candidates(
+        collector,
+        expr,
+        name,
+        derived_function_pattern,
+        &[
+            Candidate::BoundCallable,
+            Candidate::ModuleAlias,
+            Candidate::Constant,
+            Candidate::ReturnedObject,
+            Candidate::RootedAlias,
+        ],
+    )
+}
+
+fn classify_candidates(
+    collector: &mut ScopeCollector,
+    expr: &Expr,
+    name: Option<&str>,
+    derived_function_pattern: bool,
+    candidates: &[Candidate],
+) -> DeclarationClassification {
+    for candidate in candidates {
+        let classification = match candidate {
+            Candidate::BoundCallable => collector
+                .bound_callable_provenance(expr)
+                .and_then(|provenance| binding(name, provenance)),
+            Candidate::ModuleAlias => collector
+                .module_alias_provenance(expr)
+                .and_then(|provenance| module_alias(name, provenance)),
+            Candidate::Require => collector
+                .require_module_expr_name(expr)
+                .map(|module| DeclarationClassification::Require { module }),
+            Candidate::Constant => collector
+                .const_provenance(expr)
+                .and_then(|provenance| binding(name, provenance)),
+            Candidate::StaticObject => collector
+                .static_object_values(expr)
+                .or_else(|| collector.const_provenance(expr))
+                .and_then(|provenance| binding(name, provenance)),
+            Candidate::ReturnedObject => {
+                let rooted_path = collector.rooted_name_path(expr);
+                (rooted_path.as_ref().is_none_or(|target| !target.is_root()))
+                    .then(|| collector.returned_object_provenance(expr))
+                    .flatten()
+                    .and_then(|provenance| binding(name, provenance))
+            }
+            Candidate::RootedAlias if !derived_function_pattern => collector
+                .rooted_name_path(expr)
+                .map(|target| DeclarationClassification::ValueAlias { target }),
+            Candidate::RootedAlias => None,
+        };
+        if let Some(classification) = classification {
+            return classification;
         }
-        return DeclarationClassification::None;
-    }
-
-    if let Some(provenance) = collector.bound_callable_provenance(expr)
-        && let Some(name) = name
-    {
-        return DeclarationClassification::Binding { name, provenance };
-    }
-
-    if let Some(provenance) = collector.module_alias_provenance(expr) {
-        if let Some(name) = name.clone() {
-            return DeclarationClassification::Binding { name, provenance };
-        }
-        if let BindingProvenance::ModuleNamespace { module }
-        | BindingProvenance::DefaultImport { module } = provenance
-        {
-            return DeclarationClassification::Require { module };
-        }
-    }
-
-    if let (Some(name), Some(provenance)) = (name.clone(), collector.const_provenance(expr)) {
-        return DeclarationClassification::Binding { name, provenance };
-    }
-
-    if let Some(ref n) = name
-        && let Some(provenance) = collector.returned_object_provenance(expr)
-    {
-        let rooted_path = collector.rooted_name_path(expr);
-        if rooted_path.as_ref().is_none_or(|target| !target.is_root()) {
-            return DeclarationClassification::Binding {
-                name: n.clone(),
-                provenance,
-            };
-        }
-    }
-
-    if !derived_function_pattern && let Some(target) = collector.rooted_name_path(expr) {
-        return DeclarationClassification::ValueAlias { target };
     }
 
     DeclarationClassification::None
 }
 
-#[allow(clippy::needless_pass_by_value)]
-fn klassify_member(
-    collector: &mut ScopeCollector,
-    expr: &Expr,
-    name: Option<String>,
-    derived_function_pattern: bool,
-) -> DeclarationClassification {
-    if let Some(provenance) = collector.module_alias_provenance(expr) {
-        if let Some(name) = name.clone() {
-            return DeclarationClassification::Binding { name, provenance };
-        }
-        if let BindingProvenance::ModuleNamespace { module }
-        | BindingProvenance::DefaultImport { module } = provenance
-        {
-            return DeclarationClassification::Require { module };
-        }
-    }
-
-    if let Some(module) = collector.require_module_expr_name(expr) {
-        return DeclarationClassification::Require { module };
-    }
-
-    let rooted_path = collector.rooted_name_path(expr);
-    if rooted_path.as_ref().is_none_or(|target| !target.is_root())
-        && let Some(ref n) = name
-        && let Some(provenance) = collector.returned_object_provenance(expr)
-    {
-        return DeclarationClassification::Binding {
-            name: n.clone(),
-            provenance,
-        };
-    }
-
-    if !derived_function_pattern && let Some(target) = rooted_path {
-        return DeclarationClassification::ValueAlias { target };
-    }
-
-    DeclarationClassification::None
+fn binding(name: Option<&str>, provenance: BindingProvenance) -> Option<DeclarationClassification> {
+    name.map_or_else(
+        || None,
+        |name| {
+            Some(DeclarationClassification::Binding {
+                name: name.to_owned(),
+                provenance,
+            })
+        },
+    )
 }
 
-#[allow(clippy::needless_pass_by_value)]
-fn klassify_ident(
-    collector: &mut ScopeCollector,
-    expr: &Expr,
-    mut name: Option<String>,
-    derived_function_pattern: bool,
-) -> DeclarationClassification {
-    if let Some(provenance) = collector.module_alias_provenance(expr) {
-        if let Some(name) = name.clone() {
-            return DeclarationClassification::Binding { name, provenance };
+fn module_alias(
+    name: Option<&str>,
+    provenance: BindingProvenance,
+) -> Option<DeclarationClassification> {
+    if let Some(classification) = binding(name, provenance.clone()) {
+        return Some(classification);
+    }
+    match provenance {
+        BindingProvenance::ModuleNamespace { module }
+        | BindingProvenance::DefaultImport { module } => {
+            Some(DeclarationClassification::Require { module })
         }
-        if let BindingProvenance::ModuleNamespace { module }
-        | BindingProvenance::DefaultImport { module } = provenance
-        {
-            return DeclarationClassification::Require { module };
-        }
+        _ => None,
     }
-
-    if let Some(ref n) = name
-        && let Some(provenance) = collector.returned_object_provenance(expr)
-    {
-        let rooted_path = collector.rooted_name_path(expr);
-        if rooted_path.as_ref().is_none_or(|target| !target.is_root()) {
-            return DeclarationClassification::Binding {
-                name: n.clone(),
-                provenance,
-            };
-        }
-    }
-
-    if let Some(n) = name.take()
-        && let Some(provenance) = collector.const_provenance(expr)
-    {
-        return DeclarationClassification::Binding {
-            name: n,
-            provenance,
-        };
-    }
-
-    if !derived_function_pattern && let Some(target) = collector.rooted_name_path(expr) {
-        return DeclarationClassification::ValueAlias { target };
-    }
-
-    DeclarationClassification::None
 }
 
 fn callee_is_bind_call(call: &swc_ecma_ast::CallExpr) -> bool {
