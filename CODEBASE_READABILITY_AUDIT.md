@@ -152,7 +152,7 @@ The ordered relationships among JavaScript, browser, Node, Electron, and Obsidia
 
 Let the JavaScript provider expose a typed ordered catalog bundle or target composition, and let the Obsidian provider extend that bundle with its own catalog. Have harness and documentation consumers iterate named entries from those owners while preserving access to isolated catalogs for tests and selective configuration. Keep provider names, target policy, and profiles out of core, and add an ordering/uniqueness contract test where the topology is defined.
 
-#### READ-013 — Tsconfig inheritance accepts a representable invalid parent state
+#### [x] READ-013 — Tsconfig inheritance accepts a representable invalid parent state
 
 - **Severity:** Medium
 - **Fix Complexity** Low
@@ -162,6 +162,8 @@ Let the JavaScript provider expose a typed ordered catalog bundle or target comp
 `merge_selection` accepts `parent: Option<MergedSelection>` and `parent_dir: Option<&Path>` independently, then panics if a parent selection arrives without its directory. The function also exposes every intermediate merged field publicly even though the type is documented as a construction-only value consumed by compilation.
 
 Bundle the selection and directory in an optional `ParentSelection` value, or make rebased inheritance a method whose receiver necessarily supplies its origin directory. Make merged fields private and expose only the named consumption/access operations needed by the compiler. Preserve the current move-only merge, path rebasing, fail-closed invalid-field handling, and default exclusion behavior.
+
+Introduced an opaque `ParentSelection` that owns each inherited selection together with its origin directory, eliminating the independently optional directory and its panic. `MergedSelection` fields are private and consumed through a named `into_parts` operation; merge callers now pass the bundled parent while preserving move-only rebasing, fail-closed invalid fields, and default exclusions.
 
 ### Testing and public-surface hygiene
 

@@ -22,10 +22,40 @@ use crate::tsconfig::{ParsedField, ParsedTsconfig};
 /// invalid so that compilation can fail closed rather than broadening
 /// membership by falling back to `**/*`.
 pub struct MergedSelection {
-    pub files: Option<Vec<String>>,
-    pub include: Vec<String>,
-    pub exclude: Vec<String>,
-    pub invalid_controlling_field: bool,
+    files: Option<Vec<String>>,
+    include: Vec<String>,
+    exclude: Vec<String>,
+    invalid_controlling_field: bool,
+}
+
+/// A merged parent and the directory where its patterns were declared.
+pub struct ParentSelection {
+    selection: MergedSelection,
+    directory: PathBuf,
+}
+
+impl ParentSelection {
+    pub fn new(selection: MergedSelection, directory: PathBuf) -> Self {
+        Self {
+            selection,
+            directory,
+        }
+    }
+
+    pub fn into_parts(self) -> (MergedSelection, PathBuf) {
+        (self.selection, self.directory)
+    }
+}
+
+impl MergedSelection {
+    pub fn into_parts(self) -> (Option<Vec<String>>, Vec<String>, Vec<String>, bool) {
+        (
+            self.files,
+            self.include,
+            self.exclude,
+            self.invalid_controlling_field,
+        )
+    }
 }
 
 /// Compute a relative path from `base` to `absolute`.
@@ -89,19 +119,18 @@ fn rebase_strings(items: Vec<String>, from_dir: &Path, to_dir: &Path) -> Vec<Str
         .collect()
 }
 
-/// Merge a child [`ParsedTsconfig`] with an optional parent
-/// [`MergedSelection`] by consuming both (moving owned fields).
+/// Merge a child [`ParsedTsconfig`] with an optional parent selection by
+/// consuming both (moving owned fields).
 /// No cloning of selection data occurs.
 ///
-/// When a parent is provided, `parent_dir` is the canonical directory of the
-/// final parent config. Paths and patterns from the parent are rebased from
-/// `parent_dir` to `child_dir` before merging, so that each path is interpreted
-/// relative to the config file where it was declared.
+/// When a parent is provided, its bundled directory is the canonical
+/// directory of the final parent config. Paths and patterns from the parent
+/// are rebased before merging, so each path is interpreted relative to the
+/// config file where it was declared.
 pub fn merge_selection(
     child: ParsedTsconfig,
-    parent: Option<MergedSelection>,
+    parent: Option<ParentSelection>,
     child_dir: &Path,
-    parent_dir: Option<&Path>,
 ) -> MergedSelection {
     // Destructure-and-merge in one pass: the destructuring binding of
     // ParsedTsconfig paired with the field-by-field inheritance rule
@@ -119,21 +148,20 @@ pub fn merge_selection(
     } = child;
 
     let has_parent = parent.is_some();
-    // Rebase parent paths from parent_dir to child_dir so every path is
-    // interpreted relative to the config that declared it.
-    let (parent_files, parent_include, parent_exclude, parent_invalid) = match parent {
-        Some(m) => {
-            let pdir = parent_dir.expect("parent_dir must be set when parent is Some");
+    // Rebase parent paths from the parent directory to child_dir so every
+    // path is interpreted relative to the config that declared it.
+    let (parent_files, parent_include, parent_exclude, parent_invalid) = parent.map_or_else(
+        || (None, Vec::new(), Vec::new(), false),
+        |m| {
+            let (selection, pdir) = m.into_parts();
             (
-                m.files.map(|v| rebase_strings(v, pdir, child_dir)),
-                rebase_strings(m.include, pdir, child_dir),
-                rebase_strings(m.exclude, pdir, child_dir),
-                m.invalid_controlling_field,
+                selection.files.map(|v| rebase_strings(v, &pdir, child_dir)),
+                rebase_strings(selection.include, &pdir, child_dir),
+                rebase_strings(selection.exclude, &pdir, child_dir),
+                selection.invalid_controlling_field,
             )
-        }
-        None => (None, Vec::new(), Vec::new(), false),
-    };
-
+        },
+    );
     // Track whether a controlling field was invalid so that compilation can
     // fail closed instead of broadening membership via `**/*` fallback.
     let files_invalid = !matches!(child_files, ParsedField::Present(_) | ParsedField::Absent);
@@ -218,12 +246,7 @@ impl CompiledTsconfigSelection {
     /// Compile a merged selection into a production selection.
     /// Raw include/exclude strings are consumed and discarded.
     pub(in crate::tsconfig) fn compile(config_path: PathBuf, merged: MergedSelection) -> Self {
-        let MergedSelection {
-            files,
-            include,
-            exclude,
-            invalid_controlling_field,
-        } = merged;
+        let (files, include, exclude, invalid_controlling_field) = merged.into_parts();
 
         let pattern_set = TsconfigPatternSet::new(&include, &exclude, invalid_controlling_field);
         let pattern_diagnostics = pattern_set

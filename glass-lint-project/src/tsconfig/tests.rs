@@ -1,7 +1,10 @@
 use std::{path::Path, time::Instant};
 
 use super::{
-    selection::{CompiledTsconfigSelection, MergedSelection, TsconfigPatternSet, merge_selection},
+    selection::{
+        CompiledTsconfigSelection, MergedSelection, ParentSelection, TsconfigPatternSet,
+        merge_selection,
+    },
     *,
 };
 use crate::tests::TempProject;
@@ -9,8 +12,8 @@ use crate::tests::TempProject;
 /// Helper: call merge_selection with same-directory semantics.
 fn merge_same(child: ParsedTsconfig, parent: Option<MergedSelection>) -> MergedSelection {
     let dir = Path::new(".");
-    let parent_dir = parent.as_ref().map(|_| dir);
-    merge_selection(child, parent, dir, parent_dir)
+    let parent = parent.map(|selection| ParentSelection::new(selection, dir.to_path_buf()));
+    merge_selection(child, parent, dir)
 }
 
 fn default_budget() -> ConfigTraversalBudget {
@@ -143,31 +146,34 @@ fn merge_selection_inherits_fields() {
     let parent = merge_same(parent_dto, None);
 
     let child = merge_same(child_dto, Some(parent));
+    let (_, include, exclude, _) = child.into_parts();
 
     // Child include overrides parent
-    assert_eq!(child.include, vec!["lib/**/*"]);
+    assert_eq!(include, vec!["lib/**/*"]);
     // Exclude is inherited (child didn't set it)
-    assert!(child.exclude.iter().any(|e| e == "**/*.test.ts"));
+    assert!(exclude.iter().any(|e| e == "**/*.test.ts"));
     // Default node_modules exclusion
-    assert!(child.exclude.iter().any(|e| e == "**/node_modules"));
+    assert!(exclude.iter().any(|e| e == "**/node_modules"));
 }
 
 #[test]
 fn merge_selection_default_include() {
     let dto = ParsedTsconfig::parse("{}").unwrap();
     let config = merge_same(dto, None);
-    assert_eq!(config.include, vec!["**/*"]);
+    let (_, include, _, _) = config.into_parts();
+    assert_eq!(include, vec!["**/*"]);
 }
 
 #[test]
 fn merge_selection_explicit_files() {
     let dto = ParsedTsconfig::parse(r#"{"files":["src/main.ts","src/util.ts"]}"#).unwrap();
     let config = merge_same(dto, None);
+    let (files, include, _, _) = config.into_parts();
     assert_eq!(
-        config.files,
+        files,
         Some(vec!["src/main.ts".to_string(), "src/util.ts".to_string()])
     );
-    assert!(config.include.is_empty());
+    assert!(include.is_empty());
 }
 
 #[test]
@@ -182,41 +188,43 @@ fn pattern_set_invalid_controlling_field_rejects_everything() {
 fn merge_selection_invalid_files_fails_closed() {
     let child = ParsedTsconfig::parse(r#"{"files":null}"#).unwrap();
     let merged = merge_same(child, None);
-    assert!(merged.invalid_controlling_field);
-    assert_eq!(merged.files, Some(Vec::<String>::new()));
+    let (files, _, _, invalid) = merged.into_parts();
+    assert!(invalid);
+    assert_eq!(files, Some(Vec::<String>::new()));
 }
 
 #[test]
 fn merge_selection_invalid_include_fails_closed() {
     let child = ParsedTsconfig::parse(r#"{"include":false}"#).unwrap();
     let merged = merge_same(child, None);
-    assert!(merged.invalid_controlling_field);
-    assert!(merged.include.is_empty());
+    let (_, include, _, invalid) = merged.into_parts();
+    assert!(invalid);
+    assert!(include.is_empty());
 }
 
 #[test]
 fn merge_selection_invalid_include_does_not_fall_back_to_star_star() {
     let child = ParsedTsconfig::parse(r#"{"include":{"src":"bad"}}"#).unwrap();
     let merged = merge_same(child, None);
-    assert!(merged.invalid_controlling_field);
+    let (_, include, _, invalid) = merged.into_parts();
+    assert!(invalid);
     assert!(
-        merged.include.is_empty(),
-        "include should be empty, got {:#?}",
-        merged.include
+        include.is_empty(),
+        "include should be empty, got {include:#?}"
     );
 }
 
 #[test]
 fn merge_selection_invalid_parent_propagates_to_child() {
     let parent = merge_same(ParsedTsconfig::parse(r#"{"include":false}"#).unwrap(), None);
-    assert!(parent.invalid_controlling_field);
 
     let child = merge_same(
         ParsedTsconfig::parse(r#"{"include":["src/**/*"]}"#).unwrap(),
         Some(parent),
     );
+    let (_, _, _, child_invalid) = child.into_parts();
     assert!(
-        child.invalid_controlling_field,
+        child_invalid,
         "parent invalidity should propagate even when child is valid"
     );
     // Child's valid include should still be used for compilation, but the

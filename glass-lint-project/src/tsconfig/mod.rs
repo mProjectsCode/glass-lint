@@ -486,44 +486,45 @@ impl<'a> TsconfigTraversal<'a> {
         // Restructured from a closure-chain to plain if-let so that the parent's
         // canonical path is available for directory rebasing outside the closure.
         let references = dto.references.clone();
-        let (parent_merged, parent_dir): (Option<selection::MergedSelection>, Option<PathBuf>) =
-            if let Some(extends_str) = dto.extends.clone().ok() {
-                if let Some(parent_path) =
-                    resolve_extends(config_path, &extends_str, &canonical, self.diagnostics)
-                {
-                    let parent_canonical = realpath(&parent_path)?;
-                    if self.extends_chain.contains(&parent_canonical) {
-                        self.diagnostics.push(TsconfigDiagnostic {
-                            config_path: canonical.clone(),
-                            cycle_target: Some(parent_canonical),
-                            message: format!(
-                                "cycle detected: {} is already in the inheritance chain",
-                                canonical.display()
-                            ),
-                        });
-                        (None, None)
-                    } else {
-                        let result = self.build_inner(&parent_canonical, &base)?;
-                        (
-                            Some(result.0),
-                            parent_canonical.parent().map(Path::to_path_buf),
-                        )
-                    }
+        let parent = if let Some(extends_str) = dto.extends.clone().ok() {
+            if let Some(parent_path) =
+                resolve_extends(config_path, &extends_str, &canonical, self.diagnostics)
+            {
+                let parent_canonical = realpath(&parent_path)?;
+                if self.extends_chain.contains(&parent_canonical) {
+                    self.diagnostics.push(TsconfigDiagnostic {
+                        config_path: canonical.clone(),
+                        cycle_target: Some(parent_canonical),
+                        message: format!(
+                            "cycle detected: {} is already in the inheritance chain",
+                            canonical.display()
+                        ),
+                    });
+                    None
                 } else {
-                    (None, None)
+                    let result = self.build_inner(&parent_canonical, &base)?;
+                    Some(selection::ParentSelection::new(
+                        result.0,
+                        parent_canonical
+                            .parent()
+                            .map(Path::to_path_buf)
+                            .unwrap_or_default(),
+                    ))
                 }
             } else {
-                (None, None)
-            };
+                None
+            }
+        } else {
+            None
+        };
 
         self.extends_chain.pop();
 
-        // Merge: consume child dto and optional parent MergedSelection.
-        // Paths inherited from the parent are rebased from parent_dir to
+        // Merge: consume child dto and optional parent selection.
+        // Paths inherited from the parent are rebased from the bundled parent
         // child_dir so that each path is interpreted relative to the config
         // file where it was declared.
-        let effective =
-            selection::merge_selection(dto, parent_merged, &base, parent_dir.as_deref());
+        let effective = selection::merge_selection(dto, parent, &base);
         Ok((effective, references))
     }
 }
