@@ -176,7 +176,7 @@ The compiler's equivalence oracle explicitly panics for lifecycle roots, so the 
 
 Extend the synthetic relation model with the minimum object, path, requirement, sink, and completeness state needed for representative lifecycle witnesses, or build a separate lifecycle oracle if combining the models would make either unreadable. If support remains intentionally partial, return a typed unsupported result and make tests select supported roots explicitly rather than panic. Include aliases, correlated paths, unknown alternatives, completion order, and exhausted evidence while keeping the oracle small enough to remain independently understandable.
 
-#### READ-015 — Datastructures exposes two public paths to nearly every type
+#### [x] READ-015 — Datastructures exposes two public paths to nearly every type
 
 - **Severity:** Low
 - **Fix Complexity** Low
@@ -186,6 +186,8 @@ Extend the synthetic relation model with the minimum object, path, requirement, 
 All implementation modules are public while their principal types are also re-exported from the crate root, creating parallel public import paths and making module organization part of the compatibility surface. Workspace consumers use the root facade, so the duplicated surface currently provides little demonstrated value.
 
 Make implementation modules private, retain the crate root as the canonical facade, and re-export intended public constants deliberately. Update any downstream direct-path call sites in the same breaking change rather than keeping a compatibility layer. Add a small public-surface check so future modules are not exposed accidentally.
+
+Made every datastructures implementation module private and kept the crate-root re-exports as the sole public facade. A workspace-wide call-site search found no downstream module-path imports to migrate, and the existing crate consumers continue to compile through the canonical exports.
 
 #### [x] READ-016 — Narrow dead-code exceptions conceal removable production paths
 

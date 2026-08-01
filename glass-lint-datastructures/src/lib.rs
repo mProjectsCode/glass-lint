@@ -14,14 +14,14 @@ use indexmap::IndexSet;
 /// the cost of reduced DoS resistance.
 pub type FastIndexSet<V> = IndexSet<V, DefaultHashBuilder>;
 
-pub mod budget;
-pub mod diagnostic;
-pub mod fingerprint;
-pub mod history;
-pub mod name;
-pub mod path;
-pub mod path_trie;
-pub mod table;
+mod budget;
+mod diagnostic;
+mod fingerprint;
+mod history;
+mod name;
+mod path;
+mod path_trie;
+mod table;
 
 pub use budget::{Budget, BudgetTracker};
 pub use diagnostic::{
