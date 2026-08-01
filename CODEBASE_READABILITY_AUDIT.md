@@ -23,7 +23,7 @@ Keep `ParentPathStore` reusable, but give it a safe public API: opaque path hand
 
 Implemented store-owned opaque `PathId` handles and validated `PathLink` parent references with derived depth and checked capacity. `ParentPathStore` now records local versus linked parents explicitly, `PathInterner::store()` is gone, and `SummaryPathId` uses typed frozen/overlay variants instead of raw tag dispatch; focused tests cover cross-store rejection, frozen references, overlay joins, and exhaustion behavior.
 
-#### READ-002 — Rule evidence still falls back to raw nested vectors
+#### [x] READ-002 — Rule evidence still falls back to raw nested vectors
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -33,6 +33,8 @@ Implemented store-owned opaque `PathId` handles and validated `PathLink` parent 
 `RuleEvidenceTable` provides a typed owner, but `as_mut_slices`, `Index<usize>`, and several downstream APIs immediately expose or accept `&mut [Vec<ClassificationEvidence>]`. The local projector, argument matcher, and cross-file evidence collector then index those vectors with raw `usize`, so rule capacity, ordering, and vector alignment remain hidden invariants spread across multiple phases.
 
 Carry `RuleIndex` and an evidence owner through these boundaries with methods such as `for_rule_mut`, `record`, `merge`, and `into_report`. If a raw slice is unavoidable for a narrow compiler or serialization bridge, keep that adapter private, make it one-way, and have all analysis code use typed rule operations; add a single invariant check at the owner boundary rather than repeating capacity assumptions in each phase.
+
+Implemented typed `RuleEvidenceTable` operations (`for_rule_mut`, `record`, and `replace`) and removed the production mutable-slice/index boundary. Constrained matching, local flow, and cross-file evidence now pass rule-indexed owners; flow evidence keys carry `RuleIndex`, while the legacy `usize` index adapter remains test-only for assertions and no analysis phase indexes the nested vectors directly.
 
 ### Core analysis and flow coordination
 

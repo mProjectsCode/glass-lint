@@ -232,7 +232,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
     ) {
         debug_assert!(state.source_event() <= match_fact);
         let key = ReportEvidenceKey::new(
-            state.flow_id().rule_index().get(),
+            state.flow_id().rule_index(),
             state.flow_id().flow_index(),
             state.object_id(),
             match_fact,
@@ -267,7 +267,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
         };
 
         self.flow_evidence.record(
-            state.flow_id().rule_index().get(),
+            state.flow_id().rule_index(),
             ClassificationEvidence {
                 kind: MatchKind::CallArgument,
                 symbol: flow_symbol,

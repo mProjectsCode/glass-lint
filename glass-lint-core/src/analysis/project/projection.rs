@@ -150,7 +150,7 @@ pub(in crate::analysis) fn project_facts(
         facts.stream(),
         facts.matcher_index(),
         &plan.constrained_roots,
-        projected_evidence.as_mut_slices(),
+        &mut projected_evidence,
         overlay,
         identities,
         result_identities,

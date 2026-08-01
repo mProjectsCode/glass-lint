@@ -15,7 +15,7 @@ use crate::{
         model::flow::{FlowId, FlowState, FlowStateKey},
         value::{ObjectId, ValueId},
     },
-    api::classification::ClassificationEvidence,
+    api::classification::{ClassificationEvidence, RuleEvidenceTable, RuleIndex},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -344,7 +344,7 @@ impl FlowStateTable {
 /// callers never allocate a second parallel evidence matrix.
 pub(super) struct FlowEvidence<'a> {
     /// Evidence grouped by selected rule index, owned by the caller.
-    items: &'a mut [Vec<ClassificationEvidence>],
+    items: &'a mut RuleEvidenceTable,
     /// `(rule, flow, object, event)` identities with emission count per key.
     /// Multiple traces may be emitted for the same key (e.g., different
     /// requirement events from distinct branches).
@@ -357,7 +357,7 @@ pub(super) struct FlowEvidence<'a> {
 }
 
 impl<'a> FlowEvidence<'a> {
-    pub(super) fn new(evidence: &'a mut [Vec<ClassificationEvidence>]) -> Self {
+    pub(super) fn new(evidence: &'a mut RuleEvidenceTable) -> Self {
         Self {
             items: evidence,
             emitted: BTreeMap::new(),
@@ -391,8 +391,8 @@ impl<'a> FlowEvidence<'a> {
         true
     }
 
-    pub(super) fn record(&mut self, rule_index: usize, evidence: ClassificationEvidence) {
-        self.items[rule_index].push(evidence);
+    pub(super) fn record(&mut self, rule_index: RuleIndex, evidence: ClassificationEvidence) {
+        self.items.record(rule_index, evidence);
     }
 
     #[cfg(test)]
@@ -402,13 +402,15 @@ impl<'a> FlowEvidence<'a> {
 
     pub(super) fn mark_truncated(&mut self) {
         for key in &self.truncated {
-            for evidence in &mut self.items[key.rule] {
-                if evidence
-                    .occurrences
-                    .iter()
-                    .any(|occurrence| occurrence.fact == Some(key.event.raw()))
-                {
-                    evidence.truncated = true;
+            if let Some(items) = self.items.for_rule_mut(key.rule) {
+                for evidence in items {
+                    if evidence
+                        .occurrences
+                        .iter()
+                        .any(|occurrence| occurrence.fact == Some(key.event.raw()))
+                    {
+                        evidence.truncated = true;
+                    }
                 }
             }
         }
@@ -651,9 +653,14 @@ mod tests {
 
     #[test]
     fn evidence_limit_rejects_repeated_emissions_for_existing_key() {
-        let mut items = vec![Vec::new()];
+        let mut items = RuleEvidenceTable::new(1);
         let mut evidence = FlowEvidence::new(&mut items);
-        let key = ReportEvidenceKey::new(0, 0, ObjectId::from_test(1), FactId::from_test(1));
+        let key = ReportEvidenceKey::new(
+            RuleIndex::new(0),
+            0,
+            ObjectId::from_test(1),
+            FactId::from_test(1),
+        );
 
         assert!(evidence.try_insert(key, 1, 256));
         assert!(!evidence.try_insert(key, 1, 256));
@@ -663,10 +670,20 @@ mod tests {
 
     #[test]
     fn evidence_limit_rejects_new_keys_after_capacity_is_full() {
-        let mut items = vec![Vec::new()];
+        let mut items = RuleEvidenceTable::new(1);
         let mut evidence = FlowEvidence::new(&mut items);
-        let first = ReportEvidenceKey::new(0, 0, ObjectId::from_test(1), FactId::from_test(1));
-        let second = ReportEvidenceKey::new(0, 0, ObjectId::from_test(2), FactId::from_test(2));
+        let first = ReportEvidenceKey::new(
+            RuleIndex::new(0),
+            0,
+            ObjectId::from_test(1),
+            FactId::from_test(1),
+        );
+        let second = ReportEvidenceKey::new(
+            RuleIndex::new(0),
+            0,
+            ObjectId::from_test(2),
+            FactId::from_test(2),
+        );
 
         assert!(evidence.try_insert(first, 2, 256));
         assert!(evidence.try_insert(second, 2, 256));

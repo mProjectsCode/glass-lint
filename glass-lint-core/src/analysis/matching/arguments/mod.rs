@@ -4,16 +4,19 @@ use crate::{
     analysis::{
         facts::{FactStream, Frozen},
         matching::{
-            ClassificationEvidence, LinkedOccurrenceView, ModuleIdentityMap, Occurrence,
-            OccurrenceIndexes, push_owned_evidence,
+            LinkedOccurrenceView, ModuleIdentityMap, Occurrence, OccurrenceIndexes,
+            push_owned_evidence,
         },
         project::model::ExportResolution,
         value::ValueId,
     },
-    api::compiler::{
-        normalized::CanonicalArgumentConstraints,
-        physical::PhysicalRoot,
-        rule::{EventPredicate, EvidenceDescriptor, IdentityConstraint},
+    api::{
+        classification::{RuleEvidenceTable, RuleIndex},
+        compiler::{
+            normalized::CanonicalArgumentConstraints,
+            physical::PhysicalRoot,
+            rule::{EventPredicate, EvidenceDescriptor, IdentityConstraint},
+        },
     },
 };
 
@@ -33,11 +36,23 @@ type FallbackEntry<'a> = (
     &'a PreparedClausePaths,
 );
 
+fn push_owned_rule_evidence(
+    evidence: &mut RuleEvidenceTable,
+    rule: RuleIndex,
+    kind: crate::api::classification::MatchKind,
+    symbol: String,
+    occurrences: impl IntoIterator<Item = Occurrence>,
+) {
+    if let Some(items) = evidence.for_rule_mut(rule) {
+        push_owned_evidence(items, kind, symbol, occurrences);
+    }
+}
+
 pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay(
     stream: &FactStream<Frozen>,
     indexes: &OccurrenceIndexes,
     roots: &[(usize, &PhysicalRoot)],
-    evidence: &mut [Vec<ClassificationEvidence>],
+    evidence: &mut RuleEvidenceTable,
     overlay: Option<&LinkedOccurrenceView<'_>>,
     identities: Option<&ModuleIdentityMap>,
     result_identities: Option<&BTreeMap<ValueId, ExportResolution>>,
@@ -61,7 +76,7 @@ fn compute_constrained_inner(
     stream: &FactStream<Frozen>,
     indexes: &OccurrenceIndexes,
     roots: &[(usize, &PhysicalRoot)],
-    evidence: &mut [Vec<ClassificationEvidence>],
+    evidence: &mut RuleEvidenceTable,
     overlay: Option<&LinkedOccurrenceView<'_>>,
     identities: Option<&ModuleIdentityMap>,
     result_identities: Option<&BTreeMap<ValueId, ExportResolution>>,
@@ -126,8 +141,9 @@ fn compute_constrained_inner(
             }
         }
         if !matched.is_empty() {
-            push_owned_evidence(
-                &mut evidence[*rule_index],
+            push_owned_rule_evidence(
+                evidence,
+                RuleIndex::new(*rule_index),
                 evidence_desc.kind,
                 evidence_desc.symbol.clone(),
                 matched,
@@ -152,8 +168,9 @@ fn compute_constrained_inner(
         for (i, (rule_index, _, _, _, evidence_desc, _)) in fallback.iter().enumerate() {
             let occurrences = std::mem::take(&mut fallback_occurrences[i]);
             if !occurrences.is_empty() {
-                push_owned_evidence(
-                    &mut evidence[*rule_index],
+                push_owned_rule_evidence(
+                    evidence,
+                    RuleIndex::new(*rule_index),
                     evidence_desc.kind,
                     evidence_desc.symbol.clone(),
                     occurrences,
@@ -253,7 +270,7 @@ mod tests {
             "client.open",
         );
         let index = build_index(&stream);
-        let mut evidence = vec![Vec::new()];
+        let mut evidence = RuleEvidenceTable::new(1);
         compute_constrained_evidence_from_stream_with_overlay(
             &stream,
             &index,
@@ -289,7 +306,7 @@ mod tests {
 
         let stream = stream("fetch('/api');\nfetch('/api');", &Environment::default());
         let index = build_index(&stream);
-        let mut evidence = vec![Vec::new()];
+        let mut evidence = RuleEvidenceTable::new(1);
         compute_constrained_evidence_from_stream_with_overlay(
             &stream,
             &index,
@@ -348,7 +365,7 @@ mod tests {
             },
         };
         let index = build_index(&stream);
-        let mut evidence = vec![Vec::new()];
+        let mut evidence = RuleEvidenceTable::new(1);
         compute_constrained_evidence_from_stream_with_overlay(
             &stream,
             &index,
@@ -376,7 +393,7 @@ mod tests {
             "fetch",
         );
         let index = build_index(&stream);
-        let mut evidence = vec![Vec::new()];
+        let mut evidence = RuleEvidenceTable::new(1);
         compute_constrained_evidence_from_stream_with_overlay(
             &stream,
             &index,
@@ -418,7 +435,7 @@ mod tests {
             },
         };
         let index = build_index(&stream);
-        let mut evidence = vec![Vec::new()];
+        let mut evidence = RuleEvidenceTable::new(1);
         compute_constrained_evidence_from_stream_with_overlay(
             &stream,
             &index,
@@ -478,8 +495,8 @@ mod tests {
             },
         };
         let index = build_index(&stream);
-        let mut ev_a = vec![Vec::new()];
-        let mut ev_b = vec![Vec::new()];
+        let mut ev_a = RuleEvidenceTable::new(1);
+        let mut ev_b = RuleEvidenceTable::new(1);
         compute_constrained_evidence_from_stream_with_overlay(
             &stream,
             &index,
@@ -523,7 +540,7 @@ mod tests {
             },
         };
         let index = build_index(&stream);
-        let mut evidence = vec![Vec::new()];
+        let mut evidence = RuleEvidenceTable::new(1);
         compute_constrained_evidence_from_stream_with_overlay(
             &stream,
             &index,
@@ -557,7 +574,7 @@ mod tests {
             },
         };
         let index = build_index(&stream);
-        let mut evidence = vec![Vec::new()];
+        let mut evidence = RuleEvidenceTable::new(1);
         compute_constrained_evidence_from_stream_with_overlay(
             &stream,
             &index,
@@ -594,7 +611,7 @@ mod tests {
             },
         };
         let index = build_index(&stream);
-        let mut evidence = vec![Vec::new()];
+        let mut evidence = RuleEvidenceTable::new(1);
         compute_constrained_evidence_from_stream_with_overlay(
             &stream,
             &index,
@@ -634,7 +651,7 @@ mod tests {
             },
         };
         let index = build_index(&stream);
-        let mut evidence = vec![Vec::new()];
+        let mut evidence = RuleEvidenceTable::new(1);
         compute_constrained_evidence_from_stream_with_overlay(
             &stream,
             &index,
@@ -672,7 +689,7 @@ mod tests {
             },
         };
         let index = build_index(&stream);
-        let mut evidence = vec![Vec::new()];
+        let mut evidence = RuleEvidenceTable::new(1);
         compute_constrained_evidence_from_stream_with_overlay(
             &stream,
             &index,
@@ -711,7 +728,7 @@ mod tests {
             },
         };
         let index = build_index(&stream);
-        let mut evidence = vec![Vec::new()];
+        let mut evidence = RuleEvidenceTable::new(1);
         compute_constrained_evidence_from_stream_with_overlay(
             &stream,
             &index,
@@ -768,7 +785,7 @@ mod tests {
         roots: &[(usize, &PhysicalRoot)],
         overlay: Option<&LinkedOccurrenceView<'_>>,
     ) -> EvaluationOperations {
-        let mut evidence = vec![Vec::new(); roots.len()];
+        let mut evidence = RuleEvidenceTable::new(roots.len());
         let mut ops = EvaluationOperations::default();
         compute_constrained_inner(
             stream,

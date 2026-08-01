@@ -2,10 +2,13 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use glass_lint_datastructures::{HistoryCursor, HistoryTransition, ParentLinkedHistory};
 
-use crate::analysis::{
-    facts::FactId,
-    model::flow::{FlowState, FlowStateKey},
-    value::{ObjectId, ValueId},
+use crate::{
+    analysis::{
+        facts::FactId,
+        model::flow::{FlowState, FlowStateKey},
+        value::{ObjectId, ValueId},
+    },
+    api::classification::RuleIndex,
 };
 
 /// An inverse delta that can undo one mutation on an alias or state table.
@@ -203,14 +206,14 @@ fn apply_forward(
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub(super) struct ReportEvidenceKey {
-    pub(super) rule: usize,
+    pub(super) rule: RuleIndex,
     pub(super) flow: usize,
     pub(super) object: ObjectId,
     pub(super) event: FactId,
 }
 
 impl ReportEvidenceKey {
-    pub(super) fn new(rule: usize, flow: usize, object: ObjectId, event: FactId) -> Self {
+    pub(super) fn new(rule: RuleIndex, flow: usize, object: ObjectId, event: FactId) -> Self {
         Self {
             rule,
             flow,

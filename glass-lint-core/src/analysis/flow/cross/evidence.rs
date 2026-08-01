@@ -13,7 +13,7 @@ use crate::{
         trace::{QualifiedEvent as TraceQualifiedEvent, TraceArena},
     },
     api::{
-        classification::{ClassificationEvidence, MatchKind, RuleEvidenceTable},
+        classification::{ClassificationEvidence, MatchKind, RuleEvidenceTable, RuleIndex},
         compiler::CompiledObjectFlow,
     },
     project::{EvidenceRole, ModuleId},
@@ -104,8 +104,18 @@ impl ModuleEvidence {
         }
     }
 
-    fn mark_nonmatching(&mut self, rule_index: usize, key: &EvidenceKey) {
-        let rule = &mut self.rules[rule_index];
+    fn rule_mut(&mut self, rule: RuleIndex) -> Option<&mut RuleEvidence> {
+        self.rules.get_mut(rule.get())
+    }
+
+    fn rule(&self, rule: RuleIndex) -> Option<&RuleEvidence> {
+        self.rules.get(rule.get())
+    }
+
+    fn mark_nonmatching(&mut self, rule_index: RuleIndex, key: &EvidenceKey) {
+        let Some(rule) = self.rule_mut(rule_index) else {
+            return;
+        };
         rule.nonmatching.insert(key.clone());
         if let Some(item) = rule.items.iter_mut().find(|item| {
             item.kind == key.kind
@@ -119,8 +129,15 @@ impl ModuleEvidence {
         }
     }
 
-    fn record(&mut self, rule_index: usize, key: &EvidenceKey, mut item: ClassificationEvidence) {
-        let rule = &mut self.rules[rule_index];
+    fn record(
+        &mut self,
+        rule_index: RuleIndex,
+        key: &EvidenceKey,
+        mut item: ClassificationEvidence,
+    ) {
+        let Some(rule) = self.rule_mut(rule_index) else {
+            return;
+        };
         if rule.nonmatching.contains(key) {
             item.certainty = crate::project::MatchCertainty::Possible;
         }
@@ -152,6 +169,11 @@ impl ModuleEvidence {
         }
     }
 
+    fn is_nonmatching(&self, rule: RuleIndex, key: &EvidenceKey) -> bool {
+        self.rule(rule)
+            .is_some_and(|rule| rule.nonmatching.contains(key))
+    }
+
     pub(super) fn clear(&mut self) {
         for rule in &mut self.rules {
             rule.items.clear();
@@ -161,7 +183,7 @@ impl ModuleEvidence {
     pub(super) fn into_evidence(self) -> RuleEvidenceTable {
         let mut evidence = RuleEvidenceTable::new(self.rules.len());
         for (rule_index, rule) in self.rules.into_iter().enumerate() {
-            evidence[rule_index] = rule.items;
+            evidence.replace(RuleIndex::new(rule_index), rule.items);
         }
         evidence
     }
@@ -177,7 +199,7 @@ pub(super) fn mark_nonmatching(
     let Some(values) = evidence.get_mut(&module) else {
         return;
     };
-    let rule_idx = flow_id.rule_index().get();
+    let rule_idx = flow_id.rule_index();
     values.mark_nonmatching(
         rule_idx,
         &EvidenceKey {
@@ -211,7 +233,7 @@ pub(super) fn emit(
     let Some(values) = evidence.get_mut(&module) else {
         return;
     };
-    let rule_idx = flow_id.rule_index().get();
+    let rule_idx = flow_id.rule_index();
     let key = EvidenceKey {
         kind: MatchKind::CallArgument,
         symbol: flow.symbol.as_str().to_owned(),
@@ -282,7 +304,7 @@ pub(super) fn emit(
         )
     });
 
-    let certainty = if values.rules[rule_idx].nonmatching.contains(&key) {
+    let certainty = if values.is_nonmatching(rule_idx, &key) {
         crate::project::MatchCertainty::Possible
     } else {
         crate::project::MatchCertainty::Definite

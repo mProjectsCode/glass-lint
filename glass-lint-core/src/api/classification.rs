@@ -4,8 +4,6 @@
 //! separate. `rule_index` and event IDs are internal correlation keys and are
 //! intentionally omitted from serialized reports.
 
-use std::ops::{Index, IndexMut};
-
 use glass_lint_datastructures::ByteRange;
 
 use crate::{api::rule::Severity, project::MatchCertainty};
@@ -86,8 +84,25 @@ impl RuleEvidenceTable {
         self.values.get(rule.get()).map(Vec::as_slice)
     }
 
-    pub(crate) fn as_mut_slices(&mut self) -> &mut [Vec<ClassificationEvidence>] {
-        &mut self.values
+    pub(crate) fn for_rule_mut(
+        &mut self,
+        rule: RuleIndex,
+    ) -> Option<&mut Vec<ClassificationEvidence>> {
+        self.values.get_mut(rule.get())
+    }
+
+    pub(crate) fn record(&mut self, rule: RuleIndex, evidence: ClassificationEvidence) -> bool {
+        let Some(items) = self.for_rule_mut(rule) else {
+            return false;
+        };
+        items.push(evidence);
+        true
+    }
+
+    pub(crate) fn replace(&mut self, rule: RuleIndex, evidence: Vec<ClassificationEvidence>) {
+        if let Some(items) = self.for_rule_mut(rule) {
+            *items = evidence;
+        }
     }
 
     pub(crate) fn merge(&mut self, other: Self) {
@@ -98,17 +113,24 @@ impl RuleEvidenceTable {
     }
 }
 
-impl Index<usize> for RuleEvidenceTable {
-    type Output = Vec<ClassificationEvidence>;
+#[cfg(test)]
+mod test_indexing {
+    use std::ops::{Index, IndexMut};
 
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.values[index]
+    use super::{ClassificationEvidence, RuleEvidenceTable};
+
+    impl Index<usize> for RuleEvidenceTable {
+        type Output = Vec<ClassificationEvidence>;
+
+        fn index(&self, index: usize) -> &Self::Output {
+            &self.values[index]
+        }
     }
-}
 
-impl IndexMut<usize> for RuleEvidenceTable {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.values[index]
+    impl IndexMut<usize> for RuleEvidenceTable {
+        fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+            &mut self.values[index]
+        }
     }
 }
 
