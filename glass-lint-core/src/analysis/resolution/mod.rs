@@ -13,7 +13,7 @@ mod call;
 mod constant;
 mod expression;
 
-use std::rc::Rc as Arc;
+use std::rc::Rc;
 
 use glass_lint_datastructures::{
     ByteRange, NameExhausted, NameId, NamePath, NameTable, SymbolPath,
@@ -103,7 +103,7 @@ struct ResolverCache {
     fresh_values: HashMap<ParserSpanKey, ValueId>,
     /// Cached expression resolutions keyed by source position. Resolution
     /// is position-sensitive and idempotent.
-    resolved_values: HashMap<ResolutionKey, Arc<ResolvedValue>>,
+    resolved_values: HashMap<ResolutionKey, Rc<ResolvedValue>>,
     /// Active lookups used to break recursive resolution cycles.
     resolving: HashSet<ResolutionKey>,
 }

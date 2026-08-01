@@ -41,7 +41,7 @@ an explicit `LinkingSession`; then delete the duplicated recursive helpers.
 Preserve cycle, fixed-point, budget, and deterministic-order tests during the
 migration rather than deleting one whole phase by assumption.
 
-#### RL-002 — Single-threaded `Rc` is aliased as `Arc`
+#### [x] RL-002 — Single-threaded `Rc` is aliased as `Arc`
 
 - Severity: Medium
 - Fix complexity: Low
@@ -59,6 +59,17 @@ to describe reference-counted arena handles accurately. Treat the resolver as
 thread-confined local-analysis state; reserve `Arc` for artifacts that are
 actually shared across the file-level parallel boundary. Do not redesign the
 resolver for hypothetical future sharing without a concrete ownership need.
+
+Implementation: renamed the resolver's `std::rc::Rc` alias to `Rc` and updated
+all resolver signatures, cache operations, constructors, and documentation to
+use the explicit single-threaded ownership name. No ownership or caching
+behavior changed; the resolver remains thread-confined analysis state.
+
+Runtime (release): profiling
+`/home/lemon/src/obsidian-stats/data/out/plugin-release-mainjs/byoc/1.0.13-main.js`
+with one warm-up-free repetition and one worker took 721.4ms measured lint
+wall time (720.8ms input time; 11.92s process wall time including the one-time
+release build).
 
 ### Core fact, matching, scope, and flow phases
 

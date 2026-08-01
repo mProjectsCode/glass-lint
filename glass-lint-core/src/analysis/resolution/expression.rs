@@ -1,6 +1,6 @@
 //! Position-sensitive identifier, member, and expression resolution.
 
-use std::rc::Rc as Arc;
+use std::rc::Rc;
 
 use glass_lint_datastructures::SymbolPath;
 use smol_str::{SmolStr, ToSmolStr};
@@ -30,7 +30,7 @@ impl Resolver<'_> {
     }
 
     /// Narrow query for a member expression when callers need only its arena
-    /// identity. Cache hits remain borrowed through the cache's `Arc` rather
+    /// identity. Cache hits remain borrowed through the cache's `Rc` rather
     /// than cloning the complete provenance record.
     pub(in crate::analysis) fn resolve_member_id(&mut self, member: &MemberExpr) -> ValueId {
         let key = ResolutionKey::Member {
@@ -54,17 +54,17 @@ impl Resolver<'_> {
     /// Returns a CommonJS module only when the callee is proven to be the
     /// unshadowed global loader. Import collection and alias provenance both
     /// depend on this conservative distinction.
-    pub(in crate::analysis) fn resolve_ident(&mut self, ident: &Ident) -> Arc<ResolvedValue> {
+    pub(in crate::analysis) fn resolve_ident(&mut self, ident: &Ident) -> Rc<ResolvedValue> {
         self.resolve_ident_uncached(ident)
     }
 
-    fn resolve_ident_uncached(&mut self, ident: &Ident) -> Arc<ResolvedValue> {
+    fn resolve_ident_uncached(&mut self, ident: &Ident) -> Rc<ResolvedValue> {
         let key = ResolutionKey::Ident {
             range: ident.span.into(),
             symbol: ident.sym.to_smolstr(),
         };
         if let Some(value) = self.cache.resolved_values.get(&key) {
-            return Arc::clone(value);
+            return Rc::clone(value);
         }
         if !self.cache.resolving.insert(key.clone()) {
             return Self::archive_unknown_with_reason(UnknownReason::Cycle);
@@ -104,7 +104,7 @@ impl Resolver<'_> {
             }
             _ => None,
         };
-        let resolved = Arc::new(ResolvedValue {
+        let resolved = Rc::new(ResolvedValue {
             id,
             rooted_chain,
             call,
@@ -150,10 +150,7 @@ impl Resolver<'_> {
         self.scopes.function_id_for_span(span)
     }
 
-    pub(in crate::analysis) fn resolve_member(
-        &mut self,
-        member: &MemberExpr,
-    ) -> Arc<ResolvedValue> {
+    pub(in crate::analysis) fn resolve_member(&mut self, member: &MemberExpr) -> Rc<ResolvedValue> {
         self.resolve_member_uncached(member)
     }
 
@@ -164,12 +161,12 @@ impl Resolver<'_> {
         self.scopes.rooted_write_member_chain(member)
     }
 
-    fn resolve_member_uncached(&mut self, member: &MemberExpr) -> Arc<ResolvedValue> {
+    fn resolve_member_uncached(&mut self, member: &MemberExpr) -> Rc<ResolvedValue> {
         let key = ResolutionKey::Member {
             range: member.span.into(),
         };
         if let Some(value) = self.cache.resolved_values.get(&key) {
-            return Arc::clone(value);
+            return Rc::clone(value);
         }
         if !self.cache.resolving.insert(key.clone()) {
             return Self::archive_unknown_with_reason(UnknownReason::Cycle);
@@ -210,7 +207,7 @@ impl Resolver<'_> {
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, .. }) = &module_member {
             self.values.intern(Value::ModuleNamespace(module.clone()));
         }
-        let resolved = Arc::new(ResolvedValue {
+        let resolved = Rc::new(ResolvedValue {
             id,
             rooted_chain,
             call,
@@ -228,7 +225,7 @@ impl Resolver<'_> {
         resolved
     }
 
-    pub(in crate::analysis) fn resolve_expr(&mut self, expr: &Expr) -> Arc<ResolvedValue> {
+    pub(in crate::analysis) fn resolve_expr(&mut self, expr: &Expr) -> Rc<ResolvedValue> {
         match expr {
             Expr::Ident(ident) => self.resolve_ident(ident),
             Expr::Member(member) => self.resolve_member(member),
@@ -277,7 +274,7 @@ impl Resolver<'_> {
         }
     }
 
-    fn cache_resolution(&mut self, key: &ResolutionKey, value: Arc<ResolvedValue>) {
+    fn cache_resolution(&mut self, key: &ResolutionKey, value: Rc<ResolvedValue>) {
         self.cache.resolved_values.insert(key.clone(), value);
         self.cache.resolving.remove(key);
     }
@@ -350,21 +347,21 @@ impl Resolver<'_> {
         }
     }
 
-    pub(in crate::analysis) fn unknown() -> Arc<ResolvedValue> {
+    pub(in crate::analysis) fn unknown() -> Rc<ResolvedValue> {
         Self::archive_unknown_with_reason(UnknownReason::Unresolved)
     }
 
-    fn archive_unknown_with_reason(reason: UnknownReason) -> Arc<ResolvedValue> {
+    fn archive_unknown_with_reason(reason: UnknownReason) -> Rc<ResolvedValue> {
         let mut value = ResolvedValue::local(ValueId::UNKNOWN);
         value.call = SymbolCallProvenance::Unknown(reason);
-        Arc::new(value)
+        Rc::new(value)
     }
 
-    fn archive_local(id: ValueId) -> Arc<ResolvedValue> {
-        Arc::new(ResolvedValue::local(id))
+    fn archive_local(id: ValueId) -> Rc<ResolvedValue> {
+        Rc::new(ResolvedValue::local(id))
     }
 
-    pub(in crate::analysis) fn static_value(&mut self, value: Value) -> Arc<ResolvedValue> {
+    pub(in crate::analysis) fn static_value(&mut self, value: Value) -> Rc<ResolvedValue> {
         let is_unknown = matches!(value, Value::Unknown);
         let id = self.values.intern(value);
         if id == ValueId::UNKNOWN && !is_unknown && self.value_arena_exhausted() {
@@ -374,10 +371,10 @@ impl Resolver<'_> {
                 observed: None,
             });
         }
-        Arc::new(ResolvedValue::local(id))
+        Rc::new(ResolvedValue::local(id))
     }
 
-    pub(in crate::analysis) fn fresh_object_value(&mut self) -> Arc<ResolvedValue> {
+    pub(in crate::analysis) fn fresh_object_value(&mut self) -> Rc<ResolvedValue> {
         let Some(object) = self.values.allocate_object_id() else {
             return Self::unknown();
         };
@@ -387,10 +384,10 @@ impl Resolver<'_> {
     pub(in crate::analysis) fn fresh_object_value_at(
         &mut self,
         span: swc_common::Span,
-    ) -> Arc<ResolvedValue> {
+    ) -> Rc<ResolvedValue> {
         let key = span.into();
         if let Some(value) = self.cache.fresh_values.get(&key).copied() {
-            return Arc::new(ResolvedValue::local(value));
+            return Rc::new(ResolvedValue::local(value));
         }
         let value = self.fresh_object_value();
         self.cache.fresh_values.insert(key, value.id);
