@@ -98,7 +98,108 @@ impl ContextProjection<'_> {
     }
 }
 
-#[allow(clippy::too_many_lines)]
+enum WorklistStop {
+    Drained,
+    StepBudgetExhausted,
+    ContextLimit,
+}
+
+struct CrossWorklist<'a, 'arena> {
+    project: &'a ProjectSemanticModel,
+    flows: HashMap<FlowId, &'a CompiledObjectFlow>,
+    evidence: HashMap<ModuleId, ModuleEvidence>,
+    call_graph: QualifiedCallGraph,
+    worklist: ContextWorklist,
+    flow_plan_cache: HashMap<(FlowId, ModuleId), FlowPathPlan>,
+    step_budget: Budget,
+    arena: &'arena mut TraceArena,
+    projections: usize,
+}
+
+impl CrossWorklist<'_, '_> {
+    fn run(&mut self) -> WorklistStop {
+        while let Some(context) = self.worklist.pop_front() {
+            self.projections = self.projections.saturating_add(1);
+            if !self.step_budget.try_push() {
+                return WorklistStop::StepBudgetExhausted;
+            }
+            self.project_context(context);
+            if self.worklist.len() >= MAX_CONTEXTS {
+                return WorklistStop::ContextLimit;
+            }
+        }
+        WorklistStop::Drained
+    }
+
+    fn project_context(&mut self, context: CallContext) {
+        let Some(effect) = self.project.effect(context.module, context.function) else {
+            return;
+        };
+        if effect.is_invalid() {
+            return;
+        }
+        let Some(flow) = self.flows.get(&context.state.flow).copied() else {
+            return;
+        };
+        let Some(names) = self.project.module_names(context.module) else {
+            return;
+        };
+        let flow_plan = self
+            .flow_plan_cache
+            .entry((context.state.flow, context.module))
+            .or_insert_with(|| FlowPathPlan::build(flow, names));
+        ContextProjection {
+            project: self.project,
+            evidence: &mut self.evidence,
+            context: &context,
+            effect,
+            flow,
+            flow_plan,
+            call_graph: &self.call_graph,
+            state: &context.state,
+            worklist: &mut self.worklist,
+            names,
+            arena: self.arena,
+        }
+        .project();
+    }
+
+    fn finish(
+        mut self,
+        stop: WorklistStop,
+        return_budget_exhausted: bool,
+    ) -> (
+        BTreeMap<ModuleId, crate::api::classification::RuleEvidenceTable>,
+        CrossProjectionOutcome,
+    ) {
+        let exhausted = return_budget_exhausted || !matches!(stop, WorklistStop::Drained);
+        if exhausted {
+            for module_evidence in self.evidence.values_mut() {
+                module_evidence.clear();
+            }
+        }
+        let trace_heads = self
+            .evidence
+            .values()
+            .map(|module| module.trace_heads)
+            .sum();
+        let output = self
+            .evidence
+            .into_iter()
+            .map(|(id, module)| (id, module.into_evidence()))
+            .collect();
+        (
+            output,
+            CrossProjectionOutcome {
+                exhausted,
+                projections: self.projections,
+                operations: self.step_budget.used(),
+                trace_heads,
+            },
+        )
+    }
+}
+
 pub(in crate::analysis) fn collect(
     project: &ProjectSemanticModel,
     matchers: &CompiledRuleSelection<'_>,
@@ -108,25 +209,9 @@ pub(in crate::analysis) fn collect(
     BTreeMap<ModuleId, crate::api::classification::RuleEvidenceTable>,
     CrossProjectionOutcome,
 ) {
-    // Single worklist loop: setup, iteration with UsageProjector and
-    // CallPropagation per context, then final exhaustion handling.
-    // Extracting the loop body would require passing 12+ context fields
-    // through every call site.
-    // Collect flows from lifecycle roots explicitly, keeping the
-    // compiled plan root as the source of truth.  Each lifecycle root
-    // embeds its CompiledObjectFlow directly.
-    let mut flows = HashMap::<FlowId, &CompiledObjectFlow>::new();
-    for (rule_index, matcher) in matchers.selected_matchers() {
-        let mut flow_index = 0usize;
-        for root in matcher.physical_roots() {
-            if let crate::api::compiler::physical::PhysicalRoot::Lifecycle { flow } = root {
-                flows.insert(FlowId::new(rule_index, flow_index), flow);
-                flow_index += 1;
-            }
-        }
-    }
+    let flows = collect_flows(matchers);
     let rule_count = matchers.rule_capacity();
-    let mut evidence = project
+    let evidence = project
         .modules()
         .map(|module| (module.id(), ModuleEvidence::new(rule_count)))
         .collect::<HashMap<_, _>>();
@@ -143,72 +228,38 @@ pub(in crate::analysis) fn collect(
         Budget::new(FlowLimits::from_flow_operations(project.flow_limit()).operation_limit());
     let (sources, return_budget_exhausted) =
         FlowSources::collect(project, &flows, &call_graph, &mut source_budget);
-    let mut worklist = ContextWorklist::seed(project, &sources, &call_graph);
-
-    let mut flow_plan_cache: HashMap<(FlowId, ModuleId), FlowPathPlan> = HashMap::new();
-
-    let mut step_budget =
+    let worklist = ContextWorklist::seed(project, &sources, &call_graph);
+    let step_budget =
         Budget::new(FlowLimits::from_flow_operations(project.flow_limit()).operation_limit());
-    let mut projections = 0usize;
-    while let Some(context) = worklist.pop_front() {
-        projections = projections.saturating_add(1);
-        if !step_budget.try_push() {
-            break;
-        }
-        let Some(effect) = project.effect(context.module, context.function) else {
-            continue;
-        };
-        if effect.is_invalid() {
-            continue;
-        }
-        let Some(flow) = flows.get(&context.state.flow).copied() else {
-            continue;
-        };
-        let names = project
-            .module_names(context.module)
-            .expect("module has names");
-        let flow_plan = flow_plan_cache
-            .entry((context.state.flow, context.module))
-            .or_insert_with(|| FlowPathPlan::build(flow, names));
-        ContextProjection {
-            project,
-            evidence: &mut evidence,
-            context: &context,
-            effect,
-            flow,
-            flow_plan,
-            call_graph: &call_graph,
-            state: &context.state,
-            worklist: &mut worklist,
-            names,
-            arena,
-        }
-        .project();
-        if worklist.len() >= MAX_CONTEXTS {
-            break;
+    let mut collector = CrossWorklist {
+        project,
+        flows,
+        evidence,
+        call_graph,
+        worklist,
+        flow_plan_cache: HashMap::new(),
+        step_budget,
+        arena,
+        projections: 0,
+    };
+    let stop = collector.run();
+    collector.finish(stop, return_budget_exhausted)
+}
+
+fn collect_flows<'a>(
+    matchers: &'a CompiledRuleSelection<'a>,
+) -> HashMap<FlowId, &'a CompiledObjectFlow> {
+    let mut flows = HashMap::new();
+    for (rule_index, matcher) in matchers.selected_matchers() {
+        let mut flow_index = 0usize;
+        for root in matcher.physical_roots() {
+            if let crate::api::compiler::physical::PhysicalRoot::Lifecycle { flow } = root {
+                flows.insert(FlowId::new(rule_index, flow_index), flow);
+                flow_index += 1;
+            }
         }
     }
-    let exhausted =
-        return_budget_exhausted || step_budget.exhausted() || worklist.len() >= MAX_CONTEXTS;
-    if exhausted {
-        for module_evidence in evidence.values_mut() {
-            module_evidence.clear();
-        }
-    }
-    let trace_heads = evidence.values().map(|module| module.trace_heads).sum();
-    let output = evidence
-        .into_iter()
-        .map(|(id, m)| (id, m.into_evidence()))
-        .collect();
-    (
-        output,
-        CrossProjectionOutcome {
-            exhausted,
-            projections,
-            operations: step_budget.used(),
-            trace_heads,
-        },
-    )
+    flows
 }
 
 #[cfg(test)]

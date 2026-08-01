@@ -117,7 +117,7 @@ loop, but move mode transitions and final exhaustion classification onto the
 state that owns them; use enums where booleans currently describe mutually
 exclusive lifecycle states.
 
-#### READ-005 — Cross-file collection still relies on an intentionally huge loop
+#### [x] READ-005 — Cross-file collection still relies on an intentionally huge loop
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -137,6 +137,13 @@ termination, and finalization behind named operations on a collector context.
 Use an input/output context struct for the per-context projector and give the
 worklist a typed termination reason so exhaustion cleanup cannot be separated
 from the condition that caused it.
+
+**Implementation:** Introduced `CrossWorklist` with named context projection,
+bounded execution, and finalization operations; `WorklistStop` now records
+whether the loop drained, exhausted its step budget, or hit the context limit,
+and cleanup is performed from that typed result. The cross-flow tests passed,
+and the requested bundle’s release lint took **0.86 s wall time** after the
+change (0.83 s baseline).
 
 #### [x] READ-006 — Evidence is re-exposed as rule-indexed nested vectors
 
