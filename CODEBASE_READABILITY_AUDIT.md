@@ -104,7 +104,7 @@ Create named `ProfileProjectRun` and accumulator types that own initialization, 
 
 ### Provider and public-surface consistency
 
-#### READ-009 — Pure-data rule catalogs still use long fluent construction chains
+#### [x] READ-009 — Pure-data rule catalogs still use long fluent construction chains
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -114,6 +114,8 @@ Create named `ProfileProjectRun` and accumulator types that own initialization, 
 Several provider catalogs still encode rows as long chains of repeated `Category::new`, `.query`, and `.build` calls, including a file with a `too_many_lines` suppression. These declarations are primarily static data, so the fluent form makes the catalog harder to scan and creates more repeated syntax than the existing rule metadata and query abstractions require.
 
 Represent uniform rows with typed static slices or a small declarative row helper, then convert the rows at the catalog boundary. Keep fluent builders for exceptional rules with custom predicates or non-uniform evidence, and preserve explicit rule ordering and stable IDs in the catalog tests.
+
+Implemented by moving the uniform module imports, header markers, platform members, and vault adapter methods into typed static slices consumed through `RuleBuilder::queries`. The archive catalog uses a small typed import-spec helper to retain its mixed exact/package semantics and original order; the header rule keeps its exceptional fetch-options query fluent and only data-drives the uniform literal rows.
 
 #### READ-010 — Project load metrics expose a mutable representation instead of a snapshot boundary
 

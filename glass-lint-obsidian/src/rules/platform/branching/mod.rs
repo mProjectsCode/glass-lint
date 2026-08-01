@@ -2,6 +2,22 @@
 
 use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
+const PLATFORM_MEMBERS: &[&str] = &[
+    "Platform.isMobile",
+    "Platform.isDesktop",
+    "Platform.isIosApp",
+    "Platform.isAndroidApp",
+    "Platform.isMacOS",
+    "Platform.isWin",
+    "Platform.isLinux",
+    "Platform.isDesktopApp",
+    "Platform.isMobileApp",
+    "Platform.isPhone",
+    "Platform.isTablet",
+    "Platform.isSafari",
+    "Platform.resourcePathPrefix",
+];
+
 /// Detects reads of the configured `obsidian.Platform` flags and resource path
 /// prefix. Module namespace aliases, optional chains, and static computed
 /// properties retain module provenance; local lookalikes, shadowed namespaces,
@@ -12,55 +28,12 @@ pub fn rule() -> Rule {
         .category(Category::new("platform").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(EventQuery::member_read_module(
-            "obsidian",
-            "Platform.isMobile",
-        ))
-        .query(EventQuery::member_read_module(
-            "obsidian",
-            "Platform.isDesktop",
-        ))
-        .query(EventQuery::member_read_module(
-            "obsidian",
-            "Platform.isIosApp",
-        ))
-        .query(EventQuery::member_read_module(
-            "obsidian",
-            "Platform.isAndroidApp",
-        ))
-        .query(EventQuery::member_read_module(
-            "obsidian",
-            "Platform.isMacOS",
-        ))
-        .query(EventQuery::member_read_module("obsidian", "Platform.isWin"))
-        .query(EventQuery::member_read_module(
-            "obsidian",
-            "Platform.isLinux",
-        ))
-        .query(EventQuery::member_read_module(
-            "obsidian",
-            "Platform.isDesktopApp",
-        ))
-        .query(EventQuery::member_read_module(
-            "obsidian",
-            "Platform.isMobileApp",
-        ))
-        .query(EventQuery::member_read_module(
-            "obsidian",
-            "Platform.isPhone",
-        ))
-        .query(EventQuery::member_read_module(
-            "obsidian",
-            "Platform.isTablet",
-        ))
-        .query(EventQuery::member_read_module(
-            "obsidian",
-            "Platform.isSafari",
-        ))
-        .query(EventQuery::member_read_module(
-            "obsidian",
-            "Platform.resourcePathPrefix",
-        ))
+        .queries(
+            PLATFORM_MEMBERS
+                .iter()
+                .copied()
+                .map(|member| EventQuery::member_read_module("obsidian", member)),
+        )
         .build()
         .unwrap()
 }

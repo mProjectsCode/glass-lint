@@ -2,6 +2,21 @@
 
 use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
+const ADAPTER_METHODS: &[&str] = &[
+    "app.vault.adapter.exists",
+    "app.vault.adapter.stat",
+    "app.vault.adapter.list",
+    "app.vault.adapter.read",
+    "app.vault.adapter.write",
+    "app.vault.adapter.append",
+    "app.vault.adapter.process",
+    "app.vault.adapter.mkdir",
+    "app.vault.adapter.remove",
+    "app.vault.adapter.rename",
+    "app.vault.adapter.copy",
+    "app.vault.adapter.getFullPath",
+];
+
 /// Detects operations on the rooted `DataAdapter` exposed by
 /// `app.vault.adapter`. Reading the adapter object alone is not a filesystem
 /// operation. Direct rooted aliases and static computed properties are
@@ -12,20 +27,12 @@ pub fn rule() -> Rule {
         .category(Category::new("vault").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .query(EventQuery::member_call_rooted("app.vault.adapter.exists"))
-        .query(EventQuery::member_call_rooted("app.vault.adapter.stat"))
-        .query(EventQuery::member_call_rooted("app.vault.adapter.list"))
-        .query(EventQuery::member_call_rooted("app.vault.adapter.read"))
-        .query(EventQuery::member_call_rooted("app.vault.adapter.write"))
-        .query(EventQuery::member_call_rooted("app.vault.adapter.append"))
-        .query(EventQuery::member_call_rooted("app.vault.adapter.process"))
-        .query(EventQuery::member_call_rooted("app.vault.adapter.mkdir"))
-        .query(EventQuery::member_call_rooted("app.vault.adapter.remove"))
-        .query(EventQuery::member_call_rooted("app.vault.adapter.rename"))
-        .query(EventQuery::member_call_rooted("app.vault.adapter.copy"))
-        .query(EventQuery::member_call_rooted(
-            "app.vault.adapter.getFullPath",
-        ))
+        .queries(
+            ADAPTER_METHODS
+                .iter()
+                .copied()
+                .map(EventQuery::member_call_rooted),
+        )
         .build()
         .unwrap()
 }

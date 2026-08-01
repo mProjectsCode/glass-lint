@@ -2,6 +2,32 @@
 
 use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 
+const HEADER_MARKERS: &[&str] = &[
+    "User-Agent",
+    "user-agent",
+    "USER-AGENT",
+    "Authorization",
+    "authorization",
+    "AUTHORIZATION",
+    "Cookie",
+    "COOKIE",
+    "Proxy-Authorization",
+    "PROXY-AUTHORIZATION",
+    "X-API-Key",
+    "x-api-key",
+    "Api-Key",
+    "api-key",
+    "API-KEY",
+    "X-Auth-Token",
+    "x-auth-token",
+    "X-Access-Token",
+    "x-access-token",
+    "X-Client-Token",
+    "x-client-token",
+    "X-API-Token",
+    "x-api-token",
+];
+
 /// Detects string literals containing the configured `Authorization` and
 /// `User-Agent` marker substrings. This is an opt-in heuristic indicator: it
 /// does not prove that a literal is used as a request header, rejects dynamic
@@ -37,29 +63,7 @@ pub fn rule() -> Rule {
                 })
                 .unwrap()
         )
-        .query(EventQuery::string_contains("User-Agent"))
-        .query(EventQuery::string_contains("user-agent"))
-        .query(EventQuery::string_contains("USER-AGENT"))
-        .query(EventQuery::string_contains("Authorization"))
-        .query(EventQuery::string_contains("authorization"))
-        .query(EventQuery::string_contains("AUTHORIZATION"))
-        .query(EventQuery::string_contains("Cookie"))
-        .query(EventQuery::string_contains("COOKIE"))
-        .query(EventQuery::string_contains("Proxy-Authorization"))
-        .query(EventQuery::string_contains("PROXY-AUTHORIZATION"))
-        .query(EventQuery::string_contains("X-API-Key"))
-        .query(EventQuery::string_contains("x-api-key"))
-        .query(EventQuery::string_contains("Api-Key"))
-        .query(EventQuery::string_contains("api-key"))
-        .query(EventQuery::string_contains("API-KEY"))
-        .query(EventQuery::string_contains("X-Auth-Token"))
-        .query(EventQuery::string_contains("x-auth-token"))
-        .query(EventQuery::string_contains("X-Access-Token"))
-        .query(EventQuery::string_contains("x-access-token"))
-        .query(EventQuery::string_contains("X-Client-Token"))
-        .query(EventQuery::string_contains("x-client-token"))
-        .query(EventQuery::string_contains("X-API-Token"))
-        .query(EventQuery::string_contains("x-api-token"))
+        .queries(HEADER_MARKERS.iter().copied().map(EventQuery::string_contains))
         .build()
         .unwrap()
 }
