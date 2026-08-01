@@ -30,9 +30,17 @@ fn check_dimension_contradictions(
         return Ok(());
     }
     let valid = match event {
-        EventSpec::Call | EventSpec::Construct => matches!(
+        EventSpec::Call => matches!(
             identity,
             IdentitySpec::Global { .. }
+                | IdentitySpec::Heuristic { .. }
+                | IdentitySpec::ModuleExport { .. }
+                | IdentitySpec::PackageModuleExport { .. }
+        ),
+        EventSpec::Construct => matches!(
+            identity,
+            IdentitySpec::Global { .. }
+                | IdentitySpec::Rooted { .. }
                 | IdentitySpec::Heuristic { .. }
                 | IdentitySpec::ModuleExport { .. }
                 | IdentitySpec::PackageModuleExport { .. }

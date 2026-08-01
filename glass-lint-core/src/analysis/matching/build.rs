@@ -275,6 +275,7 @@ impl OccurrenceIndexes {
             callee_name,
             callee_span,
             provenance,
+            rooted_chain,
             ..
         } = &fact.payload
         else {
@@ -284,6 +285,11 @@ impl OccurrenceIndexes {
             self.constructions
                 .constructors
                 .push(*name, fact.id, *callee_span);
+        }
+        if let Some(chain) = rooted_chain {
+            self.constructions
+                .rooted_constructors
+                .push(chain.clone(), fact.id, *callee_span);
         }
         match provenance {
             SymbolCallProvenance::Global { name } => {

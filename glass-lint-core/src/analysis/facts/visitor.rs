@@ -259,6 +259,10 @@ impl Visit for FactBuilder<'_, '_> {
         }
         let effective_callee = effective_callee_expr(&new_expr.callee);
         let resolved = self.resolver.resolve_expr(effective_callee);
+        let rooted_chain = resolved
+            .rooted_chain
+            .as_ref()
+            .and_then(|path| self.name_path(path));
         let callee_span = effective_callee.span();
 
         // Resolve callee name and provenance for member expression callees
@@ -300,6 +304,7 @@ impl Visit for FactBuilder<'_, '_> {
                 callee_span,
                 callee_name,
                 provenance,
+                rooted_chain,
             },
         );
     }

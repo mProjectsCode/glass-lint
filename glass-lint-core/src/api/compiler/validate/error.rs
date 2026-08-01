@@ -191,6 +191,7 @@ pub(crate) fn is_direct_dimension_valid(identity: &IdentitySpec, event: &EventSp
             EventSpec::MemberCall { .. }
                 | EventSpec::MemberRead { .. }
                 | EventSpec::PropertyWrite { .. }
+                | EventSpec::Construct
         ) | (
             IdentitySpec::ModuleExport { .. }
                 | IdentitySpec::PackageModuleExport { .. }

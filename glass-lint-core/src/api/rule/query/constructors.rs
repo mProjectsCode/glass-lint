@@ -242,6 +242,15 @@ impl EventQuery {
         ))
     }
 
+    /// Rooted constructor, e.g. `new WebAssembly.Module(...)`.
+    pub fn constructor_rooted(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
+        let path = checked_chain(chain)?.into_path();
+        Ok(Self::from_parts(
+            EventSpec::Construct,
+            IdentitySpec::Rooted { path },
+        ))
+    }
+
     /// Heuristic constructor.
     pub fn constructor_heuristic(name: impl Into<String>) -> Result<Self, QueryBuildError> {
         let name = checked_name(name)?;

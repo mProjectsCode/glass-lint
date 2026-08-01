@@ -4,7 +4,7 @@
 
 This document is generated from the provider rule catalogs. Each rule lists the exact matcher queries that produce findings.
 
-### `js` catalog (7 rules)
+### `js` catalog (9 rules)
 
 #### `js:dynamic-code.eval`
 
@@ -15,6 +15,50 @@ Queries:
 - Emit `eval` when a call to the global `eval`.
 - Emit `Function` when a call to the global `Function`.
 - Emit `Function` when a constructor call to the global `Function`.
+
+#### `js:dynamic-code.webassembly`
+
+Default severity: `warning`
+
+Queries:
+
+- Emit `WebAssembly.compile` when a member call to `WebAssembly.compile` on the rooted path `WebAssembly.compile`.
+- Emit `WebAssembly.compileStreaming` when a member call to `WebAssembly.compileStreaming` on the rooted path `WebAssembly.compileStreaming`.
+- Emit `WebAssembly.instantiate` when a member call to `WebAssembly.instantiate` on the rooted path `WebAssembly.instantiate`.
+- Emit `WebAssembly.instantiateStreaming` when a member call to `WebAssembly.instantiateStreaming` on the rooted path `WebAssembly.instantiateStreaming`.
+- Emit `WebAssembly.validate` when a member call to `WebAssembly.validate` on the rooted path `WebAssembly.validate`.
+- Emit `WebAssembly.CompileError` when a constructor call to the rooted path `WebAssembly.CompileError`.
+- Emit `WebAssembly.Exception` when a constructor call to the rooted path `WebAssembly.Exception`.
+- Emit `WebAssembly.Global` when a constructor call to the rooted path `WebAssembly.Global`.
+- Emit `WebAssembly.Instance` when a constructor call to the rooted path `WebAssembly.Instance`.
+- Emit `WebAssembly.LinkError` when a constructor call to the rooted path `WebAssembly.LinkError`.
+- Emit `WebAssembly.Memory` when a constructor call to the rooted path `WebAssembly.Memory`.
+- Emit `WebAssembly.Module` when a constructor call to the rooted path `WebAssembly.Module`.
+- Emit `WebAssembly.RuntimeError` when a constructor call to the rooted path `WebAssembly.RuntimeError`.
+- Emit `WebAssembly.Table` when a constructor call to the rooted path `WebAssembly.Table`.
+- Emit `WebAssembly.Tag` when a constructor call to the rooted path `WebAssembly.Tag`.
+
+#### `js:concurrency.shared-memory`
+
+Default severity: `info`
+
+Queries:
+
+- Emit `SharedArrayBuffer` when a constructor call to the global `SharedArrayBuffer`.
+- Emit `Atomics.add` when a member call to `Atomics.add` on the rooted path `Atomics.add`.
+- Emit `Atomics.and` when a member call to `Atomics.and` on the rooted path `Atomics.and`.
+- Emit `Atomics.compareExchange` when a member call to `Atomics.compareExchange` on the rooted path `Atomics.compareExchange`.
+- Emit `Atomics.exchange` when a member call to `Atomics.exchange` on the rooted path `Atomics.exchange`.
+- Emit `Atomics.isLockFree` when a member call to `Atomics.isLockFree` on the rooted path `Atomics.isLockFree`.
+- Emit `Atomics.load` when a member call to `Atomics.load` on the rooted path `Atomics.load`.
+- Emit `Atomics.notify` when a member call to `Atomics.notify` on the rooted path `Atomics.notify`.
+- Emit `Atomics.or` when a member call to `Atomics.or` on the rooted path `Atomics.or`.
+- Emit `Atomics.store` when a member call to `Atomics.store` on the rooted path `Atomics.store`.
+- Emit `Atomics.sub` when a member call to `Atomics.sub` on the rooted path `Atomics.sub`.
+- Emit `Atomics.wait` when a member call to `Atomics.wait` on the rooted path `Atomics.wait`.
+- Emit `Atomics.waitAsync` when a member call to `Atomics.waitAsync` on the rooted path `Atomics.waitAsync`.
+- Emit `Atomics.wake` when a member call to `Atomics.wake` on the rooted path `Atomics.wake`.
+- Emit `Atomics.xor` when a member call to `Atomics.xor` on the rooted path `Atomics.xor`.
 
 #### `js:network.url-construction`
 
@@ -145,7 +189,7 @@ Queries:
 - Emit `setTimeout` when a call to the global `setTimeout` with argument 0 matches any static string.
 - Emit `setInterval` when a call to the global `setInterval` with argument 0 matches any static string.
 
-### `browser` catalog (16 rules)
+### `browser` catalog (17 rules)
 
 #### `browser:browser.clipboard-read`
 
@@ -403,6 +447,22 @@ Queries:
 - Emit `document.writeln` when a member call to `document.writeln` on the rooted path `document.writeln` with argument 0 matches a string containing any of `<script`, `javascript:`.
 - Emit `document.body.insertAdjacentHTML` when a member call to `document.body.insertAdjacentHTML` on the rooted path `document.body.insertAdjacentHTML` with argument 1 matches a string containing any of `<script`, `javascript:`.
 - Emit `document.documentElement.insertAdjacentHTML` when a member call to `document.documentElement.insertAdjacentHTML` on the rooted path `document.documentElement.insertAdjacentHTML` with argument 1 matches a string containing any of `<script`, `javascript:`.
+
+#### `browser:browser.worker`
+
+Default severity: `warning`
+
+Queries:
+
+- Emit `Worker` when a constructor call to the global `Worker`.
+- Emit `SharedWorker` when a constructor call to the global `SharedWorker`.
+- Emit `importScripts` when a call to the global `importScripts`.
+- Emit `CSS.animationWorklet.addModule` when a member call to `CSS.animationWorklet.addModule` on the rooted path `CSS.animationWorklet.addModule`.
+- Emit `CSS.layoutWorklet.addModule` when a member call to `CSS.layoutWorklet.addModule` on the rooted path `CSS.layoutWorklet.addModule`.
+- Emit `CSS.paintWorklet.addModule` when a member call to `CSS.paintWorklet.addModule` on the rooted path `CSS.paintWorklet.addModule`.
+- Emit `navigator.serviceWorker.getRegistration` when a member call to `navigator.serviceWorker.getRegistration` on the rooted path `navigator.serviceWorker.getRegistration`.
+- Emit `navigator.serviceWorker.getRegistrations` when a member call to `navigator.serviceWorker.getRegistrations` on the rooted path `navigator.serviceWorker.getRegistrations`.
+- Emit `navigator.serviceWorker.register` when a member call to `navigator.serviceWorker.register` on the rooted path `navigator.serviceWorker.register`.
 
 ### `node` catalog (6 rules)
 

@@ -206,6 +206,7 @@ impl OccurrenceIndexes {
             EventPredicate::Construct => EventIndexView {
                 name_any: Some(&self.constructions.constructors),
                 string_any: Some(&self.constructions.global_constructors),
+                rooted_constructors: Some(&self.constructions.rooted_constructors),
                 module: Some(&self.constructions.module_constructors),
                 global: Some(&self.constructions.global_constructors),
                 module_overlay: overlay.map(|o| &o.module_constructors),

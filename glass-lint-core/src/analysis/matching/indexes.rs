@@ -74,6 +74,7 @@ pub(super) struct ConstructionIndexes {
     pub(super) module_classes: ModuleOccurrences,
     pub(super) constructors: NameOccurrences,
     pub(super) global_constructors: Occurrences,
+    pub(super) rooted_constructors: OccurrenceIndex<NamePath>,
     pub(super) module_constructors: ModuleOccurrences,
 }
 
@@ -83,6 +84,7 @@ impl ConstructionIndexes {
         self.module_classes.normalize();
         self.constructors.normalize();
         self.global_constructors.normalize();
+        self.rooted_constructors.normalize();
         self.module_constructors.normalize();
     }
 
@@ -92,6 +94,7 @@ impl ConstructionIndexes {
             && self.module_classes.is_empty()
             && self.constructors.is_empty()
             && self.global_constructors.is_empty()
+            && self.rooted_constructors.is_empty()
             && self.module_constructors.is_empty()
     }
 }

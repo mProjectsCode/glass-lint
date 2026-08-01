@@ -309,6 +309,16 @@ fn lowers_constructor_global_to_query_decl() {
 }
 
 #[test]
+fn lowers_constructor_rooted_to_query_decl() {
+    assert_event_query(
+        EventQuery::constructor_rooted("WebAssembly.Module")
+            .unwrap()
+            .into_query(),
+        "WebAssembly.Module",
+    );
+}
+
+#[test]
 fn lowers_constructor_heuristic_to_query_decl() {
     assert_event_query(
         EventQuery::constructor_heuristic("Foo")

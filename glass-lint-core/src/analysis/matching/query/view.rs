@@ -75,6 +75,7 @@ pub(super) struct EventIndexView<'a> {
     pub(super) module: Option<&'a ModuleOccurrences>,
     pub(super) global: Option<&'a Occurrences>,
     pub(super) rooted: Option<&'a OccurrenceIndex<NamePath>>,
+    pub(super) rooted_constructors: Option<&'a OccurrenceIndex<NamePath>>,
     pub(super) literal: Option<&'a Occurrences>,
     pub(super) module_overlay: Option<&'a BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>>>,
     pub(super) global_overlay: Option<&'a BTreeMap<SmolStr, Vec<&'a [Occurrence]>>>,
@@ -91,6 +92,7 @@ impl<'a> EventIndexView<'a> {
             module: None,
             global: None,
             rooted: None,
+            rooted_constructors: None,
             literal: None,
             module_overlay: None,
             global_overlay: None,
@@ -239,14 +241,22 @@ impl<'a> EventIndexView<'a> {
         event: &'a EventPredicate,
         names: &NameTable,
     ) -> Option<CandidateOccurrences<'a>> {
-        let (EventPredicate::MemberCall { member: _ }
+        let (EventPredicate::Construct
+        | EventPredicate::MemberCall { member: _ }
         | EventPredicate::MemberRead { member: _ }
         | EventPredicate::PropertyWrite { property: _ }) = event
         else {
             return None;
         };
         let expected = names.lookup_path(path)?;
-        self.rooted?.matching(|key| {
+        let index = match event {
+            EventPredicate::Construct => self.rooted_constructors?,
+            EventPredicate::MemberCall { .. }
+            | EventPredicate::MemberRead { .. }
+            | EventPredicate::PropertyWrite { .. } => self.rooted?,
+            _ => return None,
+        };
+        index.matching(|key| {
             matches_global_object_alias_with(key, &expected, names, self.environment)
         })
     }

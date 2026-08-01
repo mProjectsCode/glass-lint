@@ -434,6 +434,7 @@ pub enum FactPayload {
         callee_span: ByteRange,
         callee_name: Option<NameId>,
         provenance: SymbolCallProvenance,
+        rooted_chain: Option<NamePath>,
     },
     Import {
         module: String,

@@ -158,6 +158,51 @@ pub fn js_environment() -> Environment {
         ])
         .expect("valid JS globals");
     environment
+        .add_global_object_with_members(
+            "Atomics",
+            [
+                "add",
+                "and",
+                "compareExchange",
+                "exchange",
+                "isLockFree",
+                "load",
+                "notify",
+                "or",
+                "store",
+                "sub",
+                "wait",
+                "waitAsync",
+                "wake",
+                "xor",
+            ],
+        )
+        .expect("valid Atomics global object");
+    environment
+        .add_global_object_with_members(
+            "WebAssembly",
+            [
+                "compile",
+                "compileStreaming",
+                "customSections",
+                "instantiate",
+                "instantiateStreaming",
+                "imports",
+                "Instance",
+                "LinkError",
+                "Memory",
+                "Module",
+                "CompileError",
+                "Exception",
+                "Global",
+                "RuntimeError",
+                "Table",
+                "Tag",
+                "validate",
+            ],
+        )
+        .expect("valid WebAssembly global object");
+    environment
 }
 
 #[must_use]
@@ -168,6 +213,11 @@ pub fn browser_environment() -> Environment {
         .add_globals([
             "EventSource",
             "Notification",
+            "Worker",
+            "SharedWorker",
+            "BroadcastChannel",
+            "MessageChannel",
+            "MessagePort",
             "URL",
             "URLSearchParams",
             "WebSocket",
@@ -177,6 +227,7 @@ pub fn browser_environment() -> Environment {
             "cookieStore",
             "document",
             "fetch",
+            "importScripts",
             "indexedDB",
             "localStorage",
             "navigator",
@@ -193,6 +244,12 @@ pub fn browser_environment() -> Environment {
             "showSaveFilePicker",
         ])
         .expect("valid browser globals");
+    environment
+        .add_global_object_with_members(
+            "CSS",
+            ["animationWorklet", "layoutWorklet", "paintWorklet"],
+        )
+        .expect("valid CSS global object");
     for name in ["window", "self"] {
         environment
             .add_global_object(name)

@@ -8,9 +8,11 @@ mod eval;
 mod header_indicator;
 mod private_address;
 mod service_indicator;
+mod shared_memory;
 mod string_timer;
 mod telemetry_indicator;
 mod url_construction;
+mod webassembly;
 
 use glass_lint_core::rules::Rule;
 
@@ -19,6 +21,8 @@ pub fn rules() -> Vec<Rule> {
     // order so catalog metadata and findings do not depend on module discovery.
     vec![
         eval::rule(),
+        webassembly::rule(),
+        shared_memory::rule(),
         url_construction::rule(),
         private_address::rule(),
         service_indicator::rule(),

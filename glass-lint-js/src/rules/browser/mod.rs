@@ -19,6 +19,7 @@ mod persistent_storage;
 mod remote_resource;
 mod request;
 mod script_injection;
+mod worker;
 
 use glass_lint_core::rules::Rule;
 
@@ -42,5 +43,6 @@ pub fn rules() -> Vec<Rule> {
         request::rule(),
         remote_resource::rule(),
         script_injection::rule(),
+        worker::rule(),
     ]
 }

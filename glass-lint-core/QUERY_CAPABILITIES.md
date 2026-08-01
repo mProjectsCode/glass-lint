@@ -365,6 +365,24 @@ and focused test coverage.
 | Provider users | `js:url_construction` (`new URL(...)`) |
 | Focused tests | Unit: `physical::tests::constructor_global_produces_indexed_scan`. Integration: `declarative_matching::global_constructor` |
 
+### `constructor_rooted` — strict rooted constructor
+
+| Field | Value |
+|---|---|
+| Authoring constructor | `EventQuery::constructor_rooted(chain)` / `QueryDecl::constructor_rooted(chain)` |
+| Logical identity | `IdentitySpec::Rooted { path }` |
+| Normalized relation | `NormalizedEvent::Direct` in `normalize.rs` |
+| Event | `EventSpec::Construct` |
+| Subject relation | `Direct` |
+| Constraints | All argument forms |
+| Evidence | `MatchKind::Constructor`, symbol = chain |
+| Local operator | `PhysicalRoot::IndexedScan` — `ConstructionIndexes::rooted_constructors` |
+| Runtime owner | `analysis/matching/arguments` for constrained predicates; otherwise `analysis/matching/query` |
+| Project behavior | None |
+| Certainty behavior | `Definite` when the rooted constructor identity is proven |
+| Provider users | `js:dynamic-code.webassembly` (`new WebAssembly.Module(...)`) |
+| Focused tests | Provider contract: `glass-lint-js/src/rules/js/webassembly` |
+
 ### `constructor_heuristic` — heuristic constructor
 
 | Field | Value |
