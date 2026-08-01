@@ -6,54 +6,17 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use smol_str::{SmolStr, ToSmolStr};
+use smol_str::SmolStr;
 
-use crate::{
-    analysis::{
-        ExportResolution, LinkedModuleTarget, ModuleId, ProjectSemanticModel,
-        matching::{ModuleExportKey, ModuleIdentityMap},
-        module::{ImportedBinding, ModuleRequest, ModuleRequestRole},
-        project::{model::MAX_EXPORT_DEPTH, state::LinkingSession},
-        syntax::SymbolCallProvenance,
+use crate::analysis::{
+    ExportResolution, LinkedModuleTarget, ModuleId, ProjectSemanticModel, QualifiedRequestId,
+    matching::{ModuleExportKey, ModuleIdentityMap},
+    module::{ImportedBinding, ModuleRequest, ModuleRequestRole},
+    project::{
+        model::MAX_EXPORT_DEPTH, resolver::target_to_export_resolution, state::LinkingSession,
     },
-    project::is_internal_module_request as is_internal_request,
+    syntax::SymbolCallProvenance,
 };
-
-/// Convert an optional linked target and specifier to an export resolution.
-///
-/// Unresolved internal requests (relative, absolute, or `#`) are classified as
-/// unknown. Only a confirmed external or builtin target produces an external
-/// identity.
-pub(super) fn target_to_export_resolution(
-    target: Option<&LinkedModuleTarget>,
-    specifier: &SmolStr,
-    export: &str,
-) -> ExportResolution {
-    match target {
-        None if is_internal_request(specifier) => ExportResolution::Unknown,
-        None => ExportResolution::External {
-            module: specifier.clone(),
-            export: export.into(),
-        },
-        Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
-            module: package.to_smolstr(),
-            export: export.into(),
-        },
-        Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
-            module: name.to_smolstr(),
-            export: export.into(),
-        },
-        Some(LinkedModuleTarget::Internal { id, .. }) => ExportResolution::Qualified {
-            module: *id,
-            export: export.into(),
-        },
-        Some(
-            LinkedModuleTarget::Missing
-            | LinkedModuleTarget::OutsideProject { .. }
-            | LinkedModuleTarget::Unsupported { .. },
-        ) => ExportResolution::Unknown,
-    }
-}
 
 impl ProjectSemanticModel {
     /// Connect known function-call results to identities returned by the
@@ -213,8 +176,9 @@ impl ProjectSemanticModel {
                 else {
                     continue;
                 };
-                let Some(key) = self.request_id(module, request) else {
-                    continue;
+                let key = QualifiedRequestId {
+                    module,
+                    request: request.id(),
                 };
                 if let Some(LinkedModuleTarget::Internal { id, .. }) = self.resolutions.get(&key) {
                     let mut child_entries = ModuleIdentityMap::new();
@@ -252,8 +216,9 @@ impl ProjectSemanticModel {
 
     /// Resolve a namespace request without guessing at unsupported targets.
     fn resolve_namespace(&self, module: ModuleId, request: &ModuleRequest) -> ExportResolution {
-        let Some(key) = self.request_id(module, request) else {
-            return ExportResolution::Unknown;
+        let key = QualifiedRequestId {
+            module,
+            request: request.id(),
         };
         target_to_export_resolution(self.resolutions.get(&key), request.specifier(), "*")
     }

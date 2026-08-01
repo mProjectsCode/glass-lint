@@ -8,9 +8,6 @@
 //! qualified identities and bounded flow overlays, never lexical facts from
 //! one module into another.
 
-// Re-exports for child modules that access these via `crate::analysis::*`.
-use std::collections::BTreeSet;
-
 use crate::project::{LinkedModuleTarget, ModuleId};
 
 pub mod model;

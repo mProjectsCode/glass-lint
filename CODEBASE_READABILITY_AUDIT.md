@@ -18,7 +18,7 @@ bugs.
 
 ### Core project linking and resolution
 
-#### RL-001 — Export resolution has two independent implementations
+#### [x] RL-001 — Export resolution has two independent implementations
 
 - Severity: Medium
 - Fix complexity: High
@@ -40,6 +40,20 @@ Extract their shared direct/star lookup and cache policy into one resolver with
 an explicit `LinkingSession`; then delete the duplicated recursive helpers.
 Preserve cycle, fixed-point, budget, and deterministic-order tests during the
 migration rather than deleting one whole phase by assumption.
+
+Implementation: added one bounded `ExportResolver` for qualified request
+identity, direct export-table lookup, star-export traversal, ambiguity
+handling, cycle depth, and cache insertion. `ProjectLinker` retains SCC
+fixed-point construction and import validation, while the semantic model uses
+the same resolver for post-link identity lookup; the linker cache is now an
+explicit mutable cache instead of a `RefCell`. Existing cycle, budget, and
+determinism coverage remains in place.
+
+Runtime (release): profiling
+`/home/lemon/src/obsidian-stats/data/out/plugin-release-mainjs/byoc/1.0.13-main.js`
+with one warm-up-free repetition and one worker took 730.2ms measured lint
+wall time (728.9ms input time; 9.75s process wall time including the one-time
+release build).
 
 #### [x] RL-002 — Single-threaded `Rc` is aliased as `Arc`
 

@@ -10,7 +10,7 @@ mod export;
 mod graph;
 mod scc;
 
-use std::{cell::RefCell, collections::BTreeMap};
+use std::collections::BTreeMap;
 
 use glass_lint_datastructures::BudgetTracker;
 
@@ -19,7 +19,7 @@ use crate::{
         LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId,
         lowering::status::AnalysisStatus,
         module,
-        project::state::{ExportLookupCache, ExportTable, ModuleGraph, SccPartition},
+        project::state::{ExportTable, LinkingSession, ModuleGraph, SccPartition},
     },
     project::AnalysisDiagnostic,
 };
@@ -52,7 +52,7 @@ pub(super) struct ProjectLinker {
     pub(super) graph: ModuleGraph,
     pub(super) scc_partition: SccPartition,
     pub(super) exports: ExportTable,
-    pub(super) lookup_cache: RefCell<ExportLookupCache>,
+    pub(super) lookup_session: LinkingSession,
     pub(super) link_budget: BudgetTracker,
     pub(super) link_limit: usize,
     pub(super) link_cycle_rounds: usize,
@@ -76,7 +76,7 @@ impl ProjectLinker {
                 order: Vec::new(),
             },
             exports: ExportTable::default(),
-            lookup_cache: RefCell::new(ExportLookupCache::new(link_limit)),
+            lookup_session: LinkingSession::new(link_limit),
             link_cycle_rounds: 0,
             diagnostics: Vec::new(),
             status: AnalysisStatus::default(),

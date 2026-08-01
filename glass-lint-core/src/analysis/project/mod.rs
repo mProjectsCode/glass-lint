@@ -16,4 +16,5 @@ mod exports;
 pub(super) mod identities;
 pub(super) mod linker;
 pub mod projection;
+mod resolver;
 pub(super) mod state;

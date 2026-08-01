@@ -1,0 +1,246 @@
+//! Shared bounded export lookup for the linker and post-link semantic model.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use smol_str::{SmolStr, ToSmolStr};
+
+use crate::{
+    analysis::{
+        ExportResolution, LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId,
+        module::{self, DEFAULT_EXPORT, ModuleRequestRole},
+        project::{
+            model::MAX_EXPORT_DEPTH,
+            state::{ExportLookupCache, ExportTable},
+        },
+    },
+    project::is_internal_module_request as is_internal_request,
+};
+
+/// Shared direct/star export resolver used by both linking phases.
+pub(super) struct ExportResolver<'a> {
+    modules: &'a BTreeMap<ModuleId, ProjectModule>,
+    resolutions: &'a BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
+    exports: &'a ExportTable,
+    cache: &'a mut ExportLookupCache,
+}
+
+impl<'a> ExportResolver<'a> {
+    pub(super) fn new(
+        modules: &'a BTreeMap<ModuleId, ProjectModule>,
+        resolutions: &'a BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
+        exports: &'a ExportTable,
+        cache: &'a mut ExportLookupCache,
+    ) -> Self {
+        Self {
+            modules,
+            resolutions,
+            exports,
+            cache,
+        }
+    }
+
+    /// Resolve an authored module/export pair across all matching requests.
+    /// Conflicting request answers remain unknown rather than source-order
+    /// dependent.
+    pub(super) fn resolve_imported_identity(
+        &mut self,
+        importer: ModuleId,
+        authored_module: &SmolStr,
+        authored_export: &SmolStr,
+    ) -> ExportResolution {
+        let Some(interface) = self
+            .modules
+            .get(&importer)
+            .map(|module| module.local().interface())
+        else {
+            return ExportResolution::Unknown;
+        };
+        let requests = interface
+            .request_ids_for_specifier(authored_module)
+            .filter_map(|request| interface.request(request))
+            .filter(|request| {
+                matches!(
+                    request.role(),
+                    ModuleRequestRole::Import { .. } | ModuleRequestRole::Require
+                )
+            })
+            .collect::<Vec<_>>();
+        if requests.is_empty() {
+            return ExportResolution::External {
+                module: authored_module.clone(),
+                export: authored_export.clone(),
+            };
+        }
+
+        let mut resolved = None;
+        for request in requests {
+            let Some(key) = self.request_id(importer, request) else {
+                return ExportResolution::Unknown;
+            };
+            let candidate = match self.resolutions.get(&key) {
+                Some(LinkedModuleTarget::Internal { id, .. }) => self
+                    .lookup_export(*id, authored_export, &mut BTreeSet::new())
+                    .unwrap_or(ExportResolution::Unknown),
+                target => target_to_export_resolution(target, authored_module, authored_export),
+            };
+            if let Some(previous) = &resolved {
+                if previous != &candidate {
+                    return ExportResolution::Unknown;
+                }
+            } else {
+                resolved = Some(candidate);
+            }
+        }
+        resolved.unwrap_or(ExportResolution::Unknown)
+    }
+
+    /// Resolve an export through direct and star re-exports with cycle bounds.
+    pub(super) fn lookup_export(
+        &mut self,
+        module: ModuleId,
+        name: &SmolStr,
+        visiting: &mut BTreeSet<(ModuleId, SmolStr)>,
+    ) -> Option<ExportResolution> {
+        let visit_key = (module, name.clone());
+
+        if let Some(resolved) = self.exports.resolve(module, name) {
+            return Some(resolved.clone());
+        }
+        if let Some(cached) = self.cache.get(module, name) {
+            return cached.clone();
+        }
+        if visiting.len() >= MAX_EXPORT_DEPTH || !visiting.insert(visit_key.clone()) {
+            return None;
+        }
+        if name == DEFAULT_EXPORT {
+            visiting.remove(&visit_key);
+            return None;
+        }
+        let is_unknown = self
+            .modules
+            .get(&module)
+            .map(|module| module.local().interface().is_unknown())?;
+        if is_unknown {
+            return Some(ExportResolution::Unknown);
+        }
+        let (candidate, saw_unknown) = self.walk_star_exports(module, name, visiting);
+        visiting.remove(&visit_key);
+
+        if let Some(resolved) = self.exports.resolve(module, name) {
+            return Some(resolved.clone());
+        }
+        let result = if saw_unknown { None } else { candidate };
+        self.cache.insert(module, name.clone(), result.clone());
+        result
+    }
+
+    fn walk_star_exports(
+        &mut self,
+        module: ModuleId,
+        name: &SmolStr,
+        visiting: &mut BTreeSet<(ModuleId, SmolStr)>,
+    ) -> (Option<ExportResolution>, bool) {
+        let star_exports = self
+            .modules
+            .get(&module)
+            .map(|module| {
+                module
+                    .local()
+                    .interface()
+                    .star_exports()
+                    .copied()
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let mut candidate = None;
+        let mut saw_unknown = false;
+        for request_index in star_exports {
+            let Some(request) = self
+                .modules
+                .get(&module)
+                .and_then(|module| module.local().interface().request(request_index))
+            else {
+                saw_unknown = true;
+                continue;
+            };
+            let Some(key) = self.request_id(module, request) else {
+                saw_unknown = true;
+                continue;
+            };
+            let candidate_export = match self.resolutions.get(&key) {
+                Some(LinkedModuleTarget::Internal { id, .. }) => {
+                    self.lookup_export(*id, name, visiting)
+                }
+                Some(LinkedModuleTarget::External { package }) => {
+                    Some(ExportResolution::External {
+                        module: package.as_str().to_smolstr(),
+                        export: name.clone(),
+                    })
+                }
+                Some(LinkedModuleTarget::Builtin { name: builtin }) => {
+                    Some(ExportResolution::External {
+                        module: builtin.as_str().to_smolstr(),
+                        export: name.clone(),
+                    })
+                }
+                _ => None,
+            };
+            match candidate_export {
+                Some(resolved)
+                    if candidate
+                        .as_ref()
+                        .is_none_or(|existing| existing == &resolved) =>
+                {
+                    candidate = Some(resolved);
+                }
+                Some(_) => return (Some(ExportResolution::Ambiguous), false),
+                None => saw_unknown = true,
+            }
+        }
+        (candidate, saw_unknown)
+    }
+
+    fn request_id(
+        &self,
+        module: ModuleId,
+        request: &module::ModuleRequest,
+    ) -> Option<QualifiedRequestId> {
+        self.modules.get(&module)?;
+        Some(QualifiedRequestId {
+            module,
+            request: request.id(),
+        })
+    }
+}
+
+/// Convert a linked request target into an export identity.
+pub(super) fn target_to_export_resolution(
+    target: Option<&LinkedModuleTarget>,
+    specifier: &SmolStr,
+    export: &str,
+) -> ExportResolution {
+    match target {
+        None if is_internal_request(specifier) => ExportResolution::Unknown,
+        None => ExportResolution::External {
+            module: specifier.clone(),
+            export: export.into(),
+        },
+        Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
+            module: package.to_smolstr(),
+            export: export.into(),
+        },
+        Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
+            module: name.to_smolstr(),
+            export: export.into(),
+        },
+        Some(LinkedModuleTarget::Internal { id, .. }) => ExportResolution::Qualified {
+            module: *id,
+            export: export.into(),
+        },
+        Some(
+            LinkedModuleTarget::Missing
+            | LinkedModuleTarget::OutsideProject { .. }
+            | LinkedModuleTarget::Unsupported { .. },
+        ) => ExportResolution::Unknown,
+    }
+}

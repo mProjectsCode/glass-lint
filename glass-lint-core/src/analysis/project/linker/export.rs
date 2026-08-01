@@ -9,16 +9,11 @@ use crate::{
     analysis::{
         LinkedModuleTarget, ModuleId,
         lowering::status::{AnalysisComponent, IncompleteReason, StatusScope},
-        module::{self, DEFAULT_EXPORT, ModuleRequestRole, NAMESPACE_EXPORT},
-        project::{
-            linker::ProjectLinker,
-            model::{ExportResolution, MAX_EXPORT_DEPTH},
-        },
+        module::{self, ModuleRequestRole, NAMESPACE_EXPORT},
+        project::{linker::ProjectLinker, model::ExportResolution, resolver::ExportResolver},
         syntax::SymbolCallProvenance,
     },
-    project::{
-        AnalysisDiagnostic, ProjectRelativePath, is_internal_module_request as is_internal_request,
-    },
+    project::{AnalysisDiagnostic, ProjectRelativePath},
 };
 
 impl ProjectLinker {
@@ -146,6 +141,7 @@ impl ProjectLinker {
     /// Diagnose imports whose statically requested named export is absent or
     /// ambiguous after linking.
     pub(super) fn validate_imported_exports(&mut self) {
+        let mut checks = Vec::new();
         for module in self.modules.values() {
             for request in module.local().interface().requests() {
                 let Some(key) = self.request_id(module.id(), request) else {
@@ -162,28 +158,37 @@ impl ProjectLinker {
                     let Some(imported) = binding.imported() else {
                         continue;
                     };
-                    match self.lookup_export(*id, imported, &mut BTreeSet::new()) {
-                        Some(ExportResolution::Ambiguous) => {
-                            self.status.record(
-                                StatusScope::File(module.path().clone()),
-                                IncompleteReason::AmbiguousStarExport {
-                                    request: imported.to_string(),
-                                },
-                            );
-                        }
-                        None => self.diagnostics.push(AnalysisDiagnostic::new(
-                            crate::project::types::DiagnosticKind::MissingImportedExport.into(),
-                            format!("module does not export `{imported}`"),
-                            self.modules.get(&module.id()).and_then(|module| {
-                                Some(crate::project::SourceLocation::new(
-                                    ProjectRelativePath::from_normalized(module.path().to_string()),
-                                    module.source_context().range(request.span()).ok()?,
-                                ))
-                            }),
-                        )),
-                        Some(_) => {}
+                    checks.push((module.id(), *id, request.id(), imported.clone()));
+                }
+            }
+        }
+        for (importer, target, request_id, imported) in checks {
+            match self.lookup_export(target, &imported, &mut BTreeSet::new()) {
+                Some(ExportResolution::Ambiguous) => {
+                    if let Some(module) = self.modules.get(&importer) {
+                        self.status.record(
+                            StatusScope::File(module.path().clone()),
+                            IncompleteReason::AmbiguousStarExport {
+                                request: imported.to_string(),
+                            },
+                        );
                     }
                 }
+                None => {
+                    self.diagnostics.push(AnalysisDiagnostic::new(
+                        crate::project::types::DiagnosticKind::MissingImportedExport.into(),
+                        format!("module does not export `{imported}`"),
+                        self.modules.get(&importer).and_then(|module| {
+                            Some(crate::project::SourceLocation::new(
+                                ProjectRelativePath::from_normalized(module.path().to_string()),
+                                module.local().interface().request(request_id).and_then(
+                                    |request| module.source_context().range(request.span()).ok(),
+                                )?,
+                            ))
+                        }),
+                    ));
+                }
+                Some(_) => {}
             }
         }
     }
@@ -197,7 +202,7 @@ impl ProjectLinker {
     // Kept as a single match: each export variant follows a distinct resolution
     // path that is clearest when read side by side.
     fn resolve_export(
-        &self,
+        &mut self,
         module: ModuleId,
         export_name: &SmolStr,
         export: &module::ModuleExport,
@@ -207,33 +212,34 @@ impl ProjectLinker {
                 let Some(project_module) = self.modules.get(&module) else {
                     return ExportResolution::Unknown;
                 };
-                if !project_module.local().interface().is_local(name)
-                    && project_module.local().export_origin(name).is_none()
-                {
+                let is_local = project_module.local().interface().is_local(name);
+                let origin = project_module.local().export_origin(name).cloned();
+                let static_string = project_module
+                    .local()
+                    .interface()
+                    .static_string(name)
+                    .cloned();
+                if !is_local && origin.is_none() {
                     return ExportResolution::Unknown;
                 }
-                match project_module.local().export_origin(name) {
+                match origin {
                     Some(SymbolCallProvenance::ModuleExport {
                         module: authored_module,
                         export: authored_export,
-                    }) => self.resolve_imported_identity(module, authored_module, authored_export),
+                    }) => {
+                        self.resolve_imported_identity(module, &authored_module, &authored_export)
+                    }
                     Some(SymbolCallProvenance::Global { name }) => {
-                        ExportResolution::Global { name: name.clone() }
+                        ExportResolution::Global { name }
                     }
                     Some(SymbolCallProvenance::Local | SymbolCallProvenance::Unknown(_)) | None => {
-                        project_module
-                            .local()
-                            .interface()
-                            .static_string(name)
-                            .map_or_else(
-                                || ExportResolution::Qualified {
-                                    module,
-                                    export: name.to_smolstr(),
-                                },
-                                |value| ExportResolution::StaticString {
-                                    value: value.clone(),
-                                },
-                            )
+                        static_string.map_or_else(
+                            || ExportResolution::Qualified {
+                                module,
+                                export: name.to_smolstr(),
+                            },
+                            |value| ExportResolution::StaticString { value },
+                        )
                     }
                 }
             }
@@ -283,181 +289,39 @@ impl ProjectLinker {
         }
     }
 
-    /// Resolve an authored module/export pair across all matching requests.
-    /// Conflicting request answers are rejected as ambiguous.
     fn resolve_imported_identity(
-        &self,
+        &mut self,
         importer: ModuleId,
         authored_module: &SmolStr,
         authored_export: &SmolStr,
     ) -> ExportResolution {
-        let Some(interface) = self
-            .modules
-            .get(&importer)
-            .map(|module| module.local().interface())
-        else {
-            return ExportResolution::Unknown;
-        };
-        let requests = interface
-            .request_ids_for_specifier(authored_module)
-            .filter_map(|request| interface.request(request))
-            .filter(|request| {
-                matches!(
-                    request.role(),
-                    ModuleRequestRole::Import { .. } | ModuleRequestRole::Require
-                )
-            })
-            .collect::<Vec<_>>();
-        if requests.is_empty() {
-            return ExportResolution::External {
-                module: authored_module.clone(),
-                export: authored_export.clone(),
-            };
-        }
-
-        let mut resolved = None;
-        for request in requests {
-            let Some(key) = self.request_id(importer, request) else {
-                return ExportResolution::Unknown;
-            };
-            let candidate = match self.resolutions.get(&key) {
-                None if is_internal_request(authored_module) => ExportResolution::Unknown,
-                None => ExportResolution::External {
-                    module: authored_module.clone(),
-                    export: authored_export.clone(),
-                },
-                Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
-                    module: package.as_str().to_smolstr(),
-                    export: authored_export.clone(),
-                },
-                Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
-                    module: name.as_str().to_smolstr(),
-                    export: authored_export.clone(),
-                },
-                Some(LinkedModuleTarget::Internal { id, .. }) => self
-                    .lookup_export(*id, authored_export, &mut BTreeSet::new())
-                    .unwrap_or(ExportResolution::Unknown),
-                Some(
-                    LinkedModuleTarget::Missing
-                    | LinkedModuleTarget::OutsideProject { .. }
-                    | LinkedModuleTarget::Unsupported { .. },
-                ) => ExportResolution::Unknown,
-            };
-            if let Some(previous) = &resolved {
-                if previous != &candidate {
-                    return ExportResolution::Unknown;
-                }
-            } else {
-                resolved = Some(candidate);
-            }
-        }
-        resolved.unwrap_or(ExportResolution::Unknown)
+        ExportResolver::new(
+            &self.modules,
+            &self.resolutions,
+            &self.exports,
+            &mut self.lookup_session.lookup_cache,
+        )
+        .resolve_imported_identity(importer, authored_module, authored_export)
     }
 
-    /// Resolve an export through direct and star re-exports with cycle bounds.
-    /// Results are memoized in `lookup_cache` for O(1) on repeated queries.
-    /// The authoritative export table is always checked first so that cache
-    /// entries never stale during cycle fixed-point resolution.
     fn lookup_export(
-        &self,
+        &mut self,
         module: ModuleId,
         name: &SmolStr,
         visiting: &mut BTreeSet<(ModuleId, SmolStr)>,
     ) -> Option<ExportResolution> {
-        let visit_key = (module, name.clone());
-
-        if let Some(resolved) = self.exports.resolve(module, name) {
-            return Some(resolved.clone());
-        }
-
-        if let Some(cached) = self.lookup_cache.borrow().get(module, name) {
-            return cached.clone();
-        }
-
-        if visiting.len() >= MAX_EXPORT_DEPTH || !visiting.insert(visit_key.clone()) {
-            return None;
-        }
-        if name == DEFAULT_EXPORT {
-            visiting.remove(&visit_key);
-            return None;
-        }
-        let interface = self.modules.get(&module).map(|m| m.local().interface())?;
-        if interface.is_unknown() {
-            return Some(ExportResolution::Unknown);
-        }
-        let (candidate, saw_unknown) = self.walk_star_exports(interface, module, name, visiting);
-        visiting.remove(&visit_key);
-
-        if let Some(resolved) = self.exports.resolve(module, name) {
-            return Some(resolved.clone());
-        }
-
-        let result = if saw_unknown { None } else { candidate };
-
-        self.lookup_cache
-            .borrow_mut()
-            .insert(module, name.clone(), result.clone());
-
-        result
-    }
-
-    /// Walk star exports from the given interface to find a candidate
-    /// resolution and whether any request was unresolvable.
-    fn walk_star_exports(
-        &self,
-        interface: &module::ModuleInterface,
-        module: ModuleId,
-        name: &SmolStr,
-        visiting: &mut BTreeSet<(ModuleId, SmolStr)>,
-    ) -> (Option<ExportResolution>, bool) {
-        let mut candidate = None;
-        let mut saw_unknown = false;
-        for request_index in interface.star_exports() {
-            let Some(request) = interface.request(*request_index) else {
-                saw_unknown = true;
-                continue;
-            };
-            let Some(key) = self.request_id(module, request) else {
-                saw_unknown = true;
-                continue;
-            };
-            let resolution = self.resolutions.get(&key);
-            let candidate_export = match resolution {
-                Some(LinkedModuleTarget::Internal { id, .. }) => {
-                    self.lookup_export(*id, name, visiting)
-                }
-                Some(LinkedModuleTarget::External { package }) => {
-                    Some(ExportResolution::External {
-                        module: package.as_str().to_smolstr(),
-                        export: name.clone(),
-                    })
-                }
-                Some(LinkedModuleTarget::Builtin { name: builtin_name }) => {
-                    Some(ExportResolution::External {
-                        module: builtin_name.as_str().to_smolstr(),
-                        export: name.clone(),
-                    })
-                }
-                _ => None,
-            };
-            match candidate_export {
-                Some(resolved)
-                    if candidate
-                        .as_ref()
-                        .is_none_or(|existing| existing == &resolved) =>
-                {
-                    candidate = Some(resolved);
-                }
-                Some(_) => return (Some(ExportResolution::Ambiguous), false),
-                None => saw_unknown = true,
-            }
-        }
-        (candidate, saw_unknown)
+        ExportResolver::new(
+            &self.modules,
+            &self.resolutions,
+            &self.exports,
+            &mut self.lookup_session.lookup_cache,
+        )
+        .lookup_export(module, name, visiting)
     }
 
     /// Resolve a named re-export through its authored request.
     fn resolve_request_export(
-        &self,
+        &mut self,
         module: ModuleId,
         request_index: module::ModuleRequestId,
         imported: &SmolStr,
