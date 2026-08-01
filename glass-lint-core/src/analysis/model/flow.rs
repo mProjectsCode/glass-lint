@@ -146,6 +146,52 @@ impl FlowId {
 
 pub type RequirementValues<K> = SmallVec<[K; 1]>;
 
+/// Typed index of a lifecycle requirement in one compiled flow.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct RequirementIndex(usize);
+
+impl RequirementIndex {
+    pub fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    pub fn get(self) -> usize {
+        self.0
+    }
+}
+
+impl From<RequirementIndex> for usize {
+    fn from(index: RequirementIndex) -> Self {
+        index.0
+    }
+}
+
+/// Typed index of a lifecycle sink in one compiled flow.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct SinkIndex(usize);
+
+impl SinkIndex {
+    pub fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    pub fn get(self) -> usize {
+        self.0
+    }
+}
+
+impl From<SinkIndex> for usize {
+    fn from(index: SinkIndex) -> Self {
+        index.0
+    }
+}
+
+pub trait EvidenceIndex: Copy + Ord + Hash + Into<usize> {}
+
+impl EvidenceIndex for usize {}
+impl EvidenceIndex for RequirementIndex {}
+impl EvidenceIndex for SinkIndex {}
+
 /// Bounded completion evidence keyed by lifecycle requirement index.
 ///
 /// The mask owns readiness checks; the sorted compact entries retain the
@@ -153,12 +199,12 @@ pub type RequirementValues<K> = SmallVec<[K; 1]>;
 /// key domain at 64, so a tree-backed map adds copy-on-write and node-walk
 /// overhead without providing a useful invariant.
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
-pub struct RequirementSet<K = FactId> {
+pub struct RequirementSet<K = FactId, I = usize> {
     mask: u64,
-    entries: SmallVec<[(usize, RequirementValues<K>); 4]>,
+    entries: SmallVec<[(I, RequirementValues<K>); 4]>,
 }
 
-impl<K: Hash> Hash for RequirementSet<K> {
+impl<K: Hash, I: EvidenceIndex> Hash for RequirementSet<K, I> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.mask.hash(state);
         for (k, vals) in &self.entries {
@@ -170,7 +216,7 @@ impl<K: Hash> Hash for RequirementSet<K> {
     }
 }
 
-impl<K> Default for RequirementSet<K> {
+impl<K, I: EvidenceIndex> Default for RequirementSet<K, I> {
     fn default() -> Self {
         Self {
             mask: 0,
@@ -179,8 +225,8 @@ impl<K> Default for RequirementSet<K> {
     }
 }
 
-impl<K: Clone + Ord> RequirementSet<K> {
-    pub fn insert(&mut self, parameter: usize, value: K) -> bool {
+impl<K: Clone + Ord, I: EvidenceIndex> RequirementSet<K, I> {
+    pub fn insert(&mut self, parameter: I, value: K) -> bool {
         let Some(bit) = Self::bit(parameter) else {
             return false;
         };
@@ -208,7 +254,7 @@ impl<K: Clone + Ord> RequirementSet<K> {
         }
     }
 
-    pub fn remove(&mut self, parameter: usize) -> Option<RequirementValues<K>> {
+    pub fn remove(&mut self, parameter: I) -> Option<RequirementValues<K>> {
         let position = self
             .entries
             .binary_search_by_key(&parameter, |(index, _)| *index)
@@ -217,7 +263,7 @@ impl<K: Clone + Ord> RequirementSet<K> {
         Some(self.entries.remove(position).1)
     }
 
-    pub fn remove_value(&mut self, parameter: usize, value: &K) -> bool {
+    pub fn remove_value(&mut self, parameter: I, value: &K) -> bool {
         let Ok(position) = self
             .entries
             .binary_search_by_key(&parameter, |(index, _)| *index)
@@ -235,9 +281,9 @@ impl<K: Clone + Ord> RequirementSet<K> {
         true
     }
 
-    pub fn restore<I>(&mut self, parameter: usize, values: I)
+    pub fn restore<Values>(&mut self, parameter: I, values: Values)
     where
-        I: IntoIterator<Item = K>,
+        Values: IntoIterator<Item = K>,
     {
         for value in values {
             self.insert(parameter, value);
@@ -256,11 +302,12 @@ impl<K: Clone + Ord> RequirementSet<K> {
         self.entries.iter().flat_map(|(_, values)| values.iter())
     }
 
-    pub fn iter_by_key(&self) -> impl Iterator<Item = (usize, &RequirementValues<K>)> {
+    pub fn iter_by_key(&self) -> impl Iterator<Item = (I, &RequirementValues<K>)> {
         self.entries.iter().map(|(index, values)| (*index, values))
     }
 
-    fn bit(parameter: usize) -> Option<u64> {
+    fn bit(parameter: I) -> Option<u64> {
+        let parameter = parameter.into();
         (parameter < u64::BITS as usize).then(|| 1u64 << parameter)
     }
 }
@@ -270,8 +317,8 @@ pub struct FlowState {
     flow: FlowId,
     source_event: FactId,
     object_id: ObjectId,
-    requirements: RequirementSet,
-    sinks: RequirementSet,
+    requirements: RequirementSet<FactId, RequirementIndex>,
+    sinks: RequirementSet<FactId, SinkIndex>,
 }
 
 impl Hash for FlowState {
@@ -320,21 +367,21 @@ impl FlowState {
         self.source_event
     }
 
-    pub fn record_requirement(&mut self, index: usize, event: FactId) -> bool {
+    pub fn record_requirement(&mut self, index: RequirementIndex, event: FactId) -> bool {
         self.requirements.insert(index, event)
     }
 
-    pub fn clear_requirement(&mut self, index: usize) -> Option<BTreeSet<FactId>> {
+    pub fn clear_requirement(&mut self, index: RequirementIndex) -> Option<BTreeSet<FactId>> {
         self.requirements
             .remove(index)
             .map(|events| events.into_iter().collect())
     }
 
-    pub fn remove_requirement_event(&mut self, index: usize, event: FactId) -> bool {
+    pub fn remove_requirement_event(&mut self, index: RequirementIndex, event: FactId) -> bool {
         self.requirements.remove_value(index, &event)
     }
 
-    pub fn restore_requirement(&mut self, index: usize, events: &BTreeSet<FactId>) {
+    pub fn restore_requirement(&mut self, index: RequirementIndex, events: &BTreeSet<FactId>) {
         self.requirements.restore(index, events.iter().copied());
     }
 
@@ -345,11 +392,11 @@ impl FlowState {
         }
     }
 
-    pub fn record_sink(&mut self, index: usize, event: FactId) -> bool {
+    pub fn record_sink(&mut self, index: SinkIndex, event: FactId) -> bool {
         self.sinks.insert(index, event)
     }
 
-    pub fn remove_sink_event(&mut self, index: usize, event: FactId) -> bool {
+    pub fn remove_sink_event(&mut self, index: SinkIndex, event: FactId) -> bool {
         self.sinks.remove_value(index, &event)
     }
 
@@ -358,11 +405,13 @@ impl FlowState {
             || self.sinks.len() == flow.sinks.len()
     }
 
-    pub fn requirement_keys(&self) -> impl Iterator<Item = (usize, &RequirementValues<FactId>)> {
+    pub fn requirement_keys(
+        &self,
+    ) -> impl Iterator<Item = (RequirementIndex, &RequirementValues<FactId>)> {
         self.requirements.iter_by_key()
     }
 
-    pub fn sink_keys(&self) -> impl Iterator<Item = (usize, &RequirementValues<FactId>)> {
+    pub fn sink_keys(&self) -> impl Iterator<Item = (SinkIndex, &RequirementValues<FactId>)> {
         self.sinks.iter_by_key()
     }
 }
@@ -481,6 +530,30 @@ mod tests {
     }
 
     #[test]
+    fn requirement_and_sink_indices_preserve_their_domains() {
+        let mut requirements: RequirementSet<FactId, RequirementIndex> = RequirementSet::default();
+        let mut sinks: RequirementSet<FactId, SinkIndex> = RequirementSet::default();
+        assert!(requirements.insert(RequirementIndex::new(63), FactId::from_test(63)));
+        assert!(sinks.insert(SinkIndex::new(63), FactId::from_test(63)));
+        assert_eq!(
+            requirements
+                .iter_by_key()
+                .find(|(index, _)| *index == RequirementIndex::new(63))
+                .map(|(_, values)| values.len()),
+            Some(1)
+        );
+        assert_eq!(
+            sinks
+                .iter_by_key()
+                .find(|(index, _)| *index == SinkIndex::new(63))
+                .map(|(_, values)| values.len()),
+            Some(1)
+        );
+        assert!(!requirements.insert(RequirementIndex::new(64), FactId::from_test(64)));
+        assert!(!sinks.insert(SinkIndex::new(64), FactId::from_test(64)));
+    }
+
+    #[test]
     fn flow_state_new_creates_unready_state() {
         let flow = FlowId::new(index(0), 0);
         let state = FlowState::new(flow, FactId::from_test(1), ObjectId::from_test(0));
@@ -502,11 +575,11 @@ mod tests {
     fn flow_state_records_and_clears_requirements() {
         let flow = FlowId::new(index(0), 0);
         let mut state = FlowState::new(flow, FactId::from_test(1), ObjectId::from_test(0));
-        state.record_requirement(0, FactId::from_test(10));
-        state.record_requirement(1, FactId::from_test(20));
+        state.record_requirement(RequirementIndex::new(0), FactId::from_test(10));
+        state.record_requirement(RequirementIndex::new(1), FactId::from_test(20));
         assert_eq!(state.requirements.len(), 2);
 
-        state.clear_requirement(0);
+        state.clear_requirement(RequirementIndex::new(0));
         assert_eq!(state.requirements.len(), 1);
     }
 }

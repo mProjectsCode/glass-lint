@@ -5,7 +5,7 @@ use glass_lint_datastructures::{HistoryCursor, HistoryTransition, ParentLinkedHi
 use crate::{
     analysis::{
         facts::FactId,
-        model::flow::{FlowState, FlowStateKey},
+        model::flow::{FlowState, FlowStateKey, RequirementIndex, SinkIndex},
         value::{ObjectId, ValueId},
     },
     api::classification::RuleIndex,
@@ -20,9 +20,9 @@ pub(super) enum InverseDelta {
     StateInsert(FlowStateKey, Box<FlowState>),
     StateUpdate(FlowStateKey, Box<FlowState>, Box<FlowState>),
     StateRemove(FlowStateKey, Box<FlowState>),
-    RequirementInsert(FlowStateKey, usize, FactId),
-    RequirementRemove(FlowStateKey, usize, BTreeSet<FactId>),
-    SinkInsert(FlowStateKey, usize, FactId),
+    RequirementInsert(FlowStateKey, RequirementIndex, FactId),
+    RequirementRemove(FlowStateKey, RequirementIndex, BTreeSet<FactId>),
+    SinkInsert(FlowStateKey, SinkIndex, FactId),
 }
 
 /// A position in the persistent mutation history that acts as a checkpoint.

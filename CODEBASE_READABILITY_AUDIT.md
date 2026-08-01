@@ -36,7 +36,7 @@ Give the cache an arena-backed `ResolutionId`, or expose focused snapshot/access
 
 ### Core matching and flow state
 
-#### READ-003 — Requirement and sink indices are interchangeable `usize` values
+#### [x] READ-003 — Requirement and sink indices are interchangeable `usize` values
 
 - **Severity:** High
 - **Fix Complexity** High
@@ -46,6 +46,8 @@ Give the cache an arena-backed `ResolutionId`, or expose focused snapshot/access
 `RequirementSet` hard-codes `usize` keys and is used for both lifecycle requirements and sinks. Flow-state operations, mutation-history variants, local evidence emission, and cross-file propagation all pass raw indices, so a requirement index can be supplied where a sink index is expected and still satisfy every type and bounds check.
 
 Introduce bounded `RequirementIndex` and `SinkIndex` newtypes at flow compilation and parameterize the compact evidence set by the index type, or provide separate requirement- and sink-evidence owners over one internal implementation. Keep conversion to `usize` at the narrow vector-access boundary and retain the current 64-bit readiness mask, sorted evidence values, and deterministic iteration. Add tests that exercise the maximum supported index and restoration history for both domains independently.
+
+Added typed requirement and sink index newtypes, parameterized `RequirementSet` and flow mutation history by their domain, and converted projector and cross-file propagation boundaries at vector access. Restoration and maximum-bit tests now cover both index domains while preserving deterministic evidence ordering.
 
 #### READ-004 — Constrained matching relies on positional tuples and parallel vectors
 

@@ -12,7 +12,7 @@ use crate::{
         flow::projector::history::{
             Checkpoint, InverseDelta, MutationLog, ReportEvidenceKey, decrement_ref, increment_ref,
         },
-        model::flow::{FlowId, FlowState, FlowStateKey},
+        model::flow::{FlowId, FlowState, FlowStateKey, RequirementIndex, SinkIndex},
         value::{ObjectId, ValueId},
     },
     api::classification::{ClassificationEvidence, RuleEvidenceTable, RuleIndex},
@@ -149,7 +149,7 @@ impl FlowStateTable {
         &mut self,
         object: ObjectId,
         flow: FlowId,
-        index: usize,
+        index: RequirementIndex,
         event: crate::analysis::facts::FactId,
     ) -> bool {
         let key = FlowStateKey { object, flow };
@@ -169,7 +169,7 @@ impl FlowStateTable {
         &mut self,
         object: ObjectId,
         flow: FlowId,
-        index: usize,
+        index: RequirementIndex,
     ) -> bool {
         let key = FlowStateKey { object, flow };
         let Some(state) = self.states.get_mut(&key) else {
@@ -187,7 +187,7 @@ impl FlowStateTable {
         &mut self,
         object: ObjectId,
         flow: FlowId,
-        index: usize,
+        index: SinkIndex,
         event: crate::analysis::facts::FactId,
     ) -> bool {
         let key = FlowStateKey { object, flow };
@@ -259,11 +259,11 @@ impl FlowStateTable {
                 let object = objects.get(&key.object).copied()?;
                 let requirements = state
                     .requirement_keys()
-                    .map(|(index, values)| (index, values.iter().copied().collect()))
+                    .map(|(index, values)| (index.get(), values.iter().copied().collect()))
                     .collect();
                 let sinks = state
                     .sink_keys()
-                    .map(|(index, values)| (index, values.iter().copied().collect()))
+                    .map(|(index, values)| (index.get(), values.iter().copied().collect()))
                     .collect();
                 Some((object, key.flow, state.source_event(), requirements, sinks))
             })
@@ -700,16 +700,31 @@ mod tests {
         let state = FlowState::new(flow, FactId::from_test(1), ObjectId::from_test(10));
         table.insert_state(state);
         let base = table.capture(true);
-        assert!(table.record_requirement(ObjectId::from_test(10), flow, 0, FactId::from_test(5)));
-        assert!(table.record_requirement(ObjectId::from_test(10), flow, 0, FactId::from_test(7)));
-        assert!(table.record_sink(ObjectId::from_test(10), flow, 0, FactId::from_test(6)));
+        assert!(table.record_requirement(
+            ObjectId::from_test(10),
+            flow,
+            RequirementIndex::new(0),
+            FactId::from_test(5),
+        ));
+        assert!(table.record_requirement(
+            ObjectId::from_test(10),
+            flow,
+            RequirementIndex::new(0),
+            FactId::from_test(7),
+        ));
+        assert!(table.record_sink(
+            ObjectId::from_test(10),
+            flow,
+            SinkIndex::new(0),
+            FactId::from_test(6),
+        ));
         let retrieved = table.state(ObjectId::from_test(10), flow).unwrap();
         assert_eq!(retrieved.source_event(), FactId::from_test(1));
         assert_eq!(retrieved.requirement_keys().count(), 1);
         assert_eq!(retrieved.sink_keys().count(), 1);
 
         let configured = table.capture(true);
-        assert!(table.clear_requirement(ObjectId::from_test(10), flow, 0));
+        assert!(table.clear_requirement(ObjectId::from_test(10), flow, RequirementIndex::new(0),));
         assert_eq!(
             table
                 .state(ObjectId::from_test(10), flow)
@@ -727,7 +742,12 @@ mod tests {
         assert_eq!(restored.requirement_keys().count(), 0);
         assert_eq!(restored.sink_keys().count(), 0);
 
-        assert!(table.record_requirement(ObjectId::from_test(10), flow, 1, FactId::from_test(7)));
+        assert!(table.record_requirement(
+            ObjectId::from_test(10),
+            flow,
+            RequirementIndex::new(1),
+            FactId::from_test(7),
+        ));
         assert!(table.restore(base));
         assert_eq!(
             table

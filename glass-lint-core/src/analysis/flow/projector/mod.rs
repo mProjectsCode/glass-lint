@@ -30,7 +30,7 @@ use crate::{
             planning::BoundFlowPlan,
             summary::FunctionSummaries,
         },
-        model::flow::{FlowId, FlowLimits, FlowState},
+        model::flow::{FlowId, FlowLimits, FlowState, RequirementIndex},
         trace::TraceArena,
         value::{ObjectId, ValueId},
     },
@@ -720,14 +720,21 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 } = requirement
                     && (property.is_none() || property == Some(expected.as_str()))
                 {
-                    self.flow_state
-                        .clear_requirement(key.object, key.flow, index);
+                    self.flow_state.clear_requirement(
+                        key.object,
+                        key.flow,
+                        RequirementIndex::new(index),
+                    );
                     if value_is_precise
                         && property == Some(expected.as_str())
                         && matcher.matches_flow_value(value)
                     {
-                        self.flow_state
-                            .record_requirement(key.object, key.flow, index, event);
+                        self.flow_state.record_requirement(
+                            key.object,
+                            key.flow,
+                            RequirementIndex::new(index),
+                            event,
+                        );
                     }
                 }
             }

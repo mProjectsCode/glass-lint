@@ -16,7 +16,7 @@ use crate::{
             },
             summary::SummaryPathStore,
         },
-        model::flow::{FlowId, FlowStateKey},
+        model::flow::{FlowId, FlowStateKey, RequirementIndex, SinkIndex},
         trace::QualifiedEvent,
     },
     api::{
@@ -65,8 +65,12 @@ impl ObjectFlowProjector<'_, '_, '_> {
                             })
                         })
                     {
-                        self.flow_state
-                            .record_requirement(key.object, key.flow, index, event);
+                        self.flow_state.record_requirement(
+                            key.object,
+                            key.flow,
+                            RequirementIndex::new(index),
+                            event,
+                        );
                     }
                 }
                 self.emit_if_ready(key.flow, key.object, event);
@@ -120,8 +124,12 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     .collect();
                 if !matching_sinks.is_empty() {
                     for index in matching_sinks {
-                        self.flow_state
-                            .record_sink(key.object, key.flow, index, sink_fact);
+                        self.flow_state.record_sink(
+                            key.object,
+                            key.flow,
+                            SinkIndex::new(index),
+                            sink_fact,
+                        );
                     }
                     let state = self.flow_state.state(key.object, key.flow).cloned();
                     let Some(state) = state else {

@@ -14,6 +14,7 @@ use crate::{
             },
             effect::{CallEffectRef, EffectUse, FunctionEffect},
         },
+        model::flow::{RequirementIndex, SinkIndex},
     },
     api::compiler::{
         CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArguments,
@@ -94,7 +95,7 @@ impl UsageProjector<'_, '_> {
                 && value.matches_flow_value(static_value)
             {
                 next.requirements.insert(
-                    index,
+                    RequirementIndex::new(index),
                     QualifiedEvent {
                         module: self.context.module,
                         fact: event,
@@ -132,7 +133,7 @@ impl UsageProjector<'_, '_> {
                 })
             {
                 next.requirements.insert(
-                    index,
+                    RequirementIndex::new(index),
                     QualifiedEvent {
                         module: self.context.module,
                         fact: event,
@@ -168,7 +169,7 @@ impl UsageProjector<'_, '_> {
         if !matching_sinks.is_empty() && self.context.crossed {
             for index in matching_sinks {
                 self.state.sinks.insert(
-                    index,
+                    SinkIndex::new(index),
                     QualifiedEvent {
                         module: self.context.module,
                         fact: event,
