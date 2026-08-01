@@ -105,7 +105,7 @@ Carry a typed parse-failure cause alongside the presentation diagnostic, or add 
 
 Added a typed `ParseFailureKind` to parser diagnostics and carried it directly through report assembly into analysis status. The report still preserves the original user-facing diagnostic code/message/range, but no longer copies codes into strings or reclassifies unknown values as syntax; syntax, source-size, and syntax-depth paths now share the typed cause.
 
-#### READ-008 — Finding assembly indexes evidence through raw coordinate pairs
+#### [x] READ-008 — Finding assembly indexes evidence through raw coordinate pairs
 
 - **Severity:** Medium
 - **Fix Complexity** Medium
@@ -115,6 +115,8 @@ Added a typed `ParseFailureKind` to parser diagnostics and carried it directly t
 `findings_for_capability` groups display ranges into `Vec<(usize, usize)>` pairs that index evidence and occurrence collections, copies those pairs through entries and parallel groups, then repeatedly dereferences them to build traces, truncation, and certainty. Range containment, evidence identity, aggregation policy, and final rendering are all embedded in one suppressed long function.
 
 Represent an evidence-occurrence reference with named typed fields and introduce a finding-group owner that performs containment grouping and exposes aggregated traces, certainty, and truncation. Split group formation from final `Finding` construction so each phase has one level of abstraction. Retain the current sorted map, containment semantics, fallback trace behavior, trace deduplication, and stable finding order.
+
+Introduced named evidence-occurrence references, range entries, and finding groups. Report assembly now separates range indexing, containment grouping, and final finding rendering; trace fallback, deduplication, certainty, truncation, and stable ordering remain unchanged.
 
 #### [x] READ-009 — `ReportCompletion` aggregation is duplicated at each consumer
 

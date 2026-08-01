@@ -9,7 +9,8 @@ use crate::{
         project::projection::ProjectionOutcome, trace::TraceArena,
     },
     api::classification::{
-        ClassificationEvidence, ClassificationResult, MatchedCapability, RuleIndex, TraceNodeId,
+        ClassificationEvidence, ClassificationEvidenceOccurrence, ClassificationResult,
+        MatchedCapability, RuleIndex, TraceNodeId,
     },
     diagnostic::SourceLineIndex,
     lint::catalog::RuleCatalog,
@@ -30,6 +31,72 @@ pub struct ReportAssembly<'a> {
     catalog: &'a RuleCatalog,
     enabled: &'a [RuleIndex],
     evidence_limit: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct EvidenceOccurrenceRef {
+    evidence: usize,
+    occurrence: usize,
+}
+
+impl EvidenceOccurrenceRef {
+    fn resolve<'a>(
+        self,
+        evidence_items: &'a [ClassificationEvidence],
+    ) -> Option<(
+        &'a ClassificationEvidence,
+        &'a ClassificationEvidenceOccurrence,
+    )> {
+        let evidence = evidence_items.get(self.evidence)?;
+        Some((evidence, evidence.occurrences.get(self.occurrence)?))
+    }
+}
+
+#[derive(Debug)]
+struct EvidenceRangeEntry {
+    range: SourceRange,
+    occurrences: Vec<EvidenceOccurrenceRef>,
+}
+
+#[derive(Debug)]
+struct FindingGroup {
+    range: SourceRange,
+    occurrences: Vec<EvidenceOccurrenceRef>,
+}
+
+impl FindingGroup {
+    fn new(range: SourceRange) -> Self {
+        Self {
+            range,
+            occurrences: Vec::new(),
+        }
+    }
+
+    fn add_entry(&mut self, entry: &EvidenceRangeEntry) {
+        if self.range.contains(&entry.range) {
+            self.occurrences.extend(entry.occurrences.iter().copied());
+        }
+    }
+
+    fn is_truncated(&self, evidence_items: &[ClassificationEvidence]) -> bool {
+        self.occurrences
+            .iter()
+            .filter_map(|reference| reference.resolve(evidence_items))
+            .any(|(evidence, _)| evidence.truncated)
+    }
+
+    fn certainty(&self, evidence_items: &[ClassificationEvidence]) -> MatchCertainty {
+        if self
+            .occurrences
+            .iter()
+            .filter_map(|reference| reference.resolve(evidence_items))
+            .any(|(evidence, _)| evidence.certainty == MatchCertainty::Definite)
+        {
+            MatchCertainty::Definite
+        } else {
+            MatchCertainty::Possible
+        }
+    }
 }
 
 impl<'a> ReportAssembly<'a> {
@@ -176,23 +243,12 @@ impl<'a> ReportAssembly<'a> {
         rule_findings.into_values().flatten().collect()
     }
 
-    #[allow(clippy::too_many_lines)]
-    fn findings_for_capability(
-        &self,
-        project: &ProjectSemanticModel,
-        capability: &MatchedCapability,
+    fn range_entries(
+        evidence_items: &[ClassificationEvidence],
         lines: &SourceLineIndex,
-        path: &ProjectRelativePath,
-    ) -> Vec<Finding> {
-        let Some(rule_id) = self.catalog.rule_id(capability.rule_index).cloned() else {
-            return Vec::new();
-        };
-        let evidence_items = capability.evidence();
-        if evidence_items.is_empty() {
-            return Vec::new();
-        }
-        let mut by_range: BTreeMap<SourceRange, Vec<(usize, usize)>> = BTreeMap::new();
-        for (ev_idx, evidence) in evidence_items.iter().enumerate() {
+    ) -> Vec<EvidenceRangeEntry> {
+        let mut by_range: BTreeMap<SourceRange, Vec<EvidenceOccurrenceRef>> = BTreeMap::new();
+        for (evidence_idx, evidence) in evidence_items.iter().enumerate() {
             for (occurrence_idx, occurrence) in evidence.occurrences.iter().enumerate() {
                 let span = display_span(
                     lines,
@@ -209,43 +265,70 @@ impl<'a> ReportAssembly<'a> {
                 by_range
                     .entry(range)
                     .or_default()
-                    .push((ev_idx, occurrence_idx));
+                    .push(EvidenceOccurrenceRef {
+                        evidence: evidence_idx,
+                        occurrence: occurrence_idx,
+                    });
             }
         }
-        let entries: Vec<(SourceRange, Vec<(usize, usize)>)> = by_range.into_iter().collect();
-        let mut ranges: Vec<SourceRange> = entries.iter().map(|(r, _)| r.clone()).collect();
+        by_range
+            .into_iter()
+            .map(|(range, occurrences)| EvidenceRangeEntry { range, occurrences })
+            .collect()
+    }
+
+    fn finding_groups(entries: &[EvidenceRangeEntry]) -> Vec<FindingGroup> {
+        let mut ranges: Vec<SourceRange> =
+            entries.iter().map(|entry| entry.range.clone()).collect();
         crate::lint::ranges::remove_contained_ranges(&mut ranges);
-        let label = capability.label();
-        let severity = capability.severity();
-        let mut groups: Vec<Vec<(usize, usize)>> = vec![Vec::new(); ranges.len()];
+        let mut groups = Vec::with_capacity(ranges.len());
         let mut entry_cursor = 0usize;
-        for (retained_idx, retained) in ranges.iter().enumerate() {
-            while entry_cursor < entries.len() && entries[entry_cursor].0.end() < retained.start() {
+        for retained in ranges {
+            while entry_cursor < entries.len()
+                && entries[entry_cursor].range.end() < retained.start()
+            {
                 entry_cursor += 1;
             }
+            let mut group = FindingGroup::new(retained);
             let mut scan = entry_cursor;
-            while scan < entries.len() && entries[scan].0.start() <= retained.end() {
-                if retained.contains(&entries[scan].0) {
-                    for &(ev_idx, occurrence_idx) in &entries[scan].1 {
-                        groups[retained_idx].push((ev_idx, occurrence_idx));
-                    }
-                }
+            while scan < entries.len() && entries[scan].range.start() <= group.range.end() {
+                group.add_entry(&entries[scan]);
                 scan += 1;
             }
+            groups.push(group);
         }
+        groups
+    }
+
+    fn findings_for_capability(
+        &self,
+        project: &ProjectSemanticModel,
+        capability: &MatchedCapability,
+        lines: &SourceLineIndex,
+        path: &ProjectRelativePath,
+    ) -> Vec<Finding> {
+        let Some(rule_id) = self.catalog.rule_id(capability.rule_index).cloned() else {
+            return Vec::new();
+        };
+        let evidence_items = capability.evidence();
+        if evidence_items.is_empty() {
+            return Vec::new();
+        }
+        let label = capability.label();
+        let severity = capability.severity();
+        let entries = Self::range_entries(evidence_items, lines);
+        let groups = Self::finding_groups(&entries);
         let arena = project.trace_arena();
-        ranges
+        groups
             .into_iter()
-            .enumerate()
-            .map(|(retained_idx, range)| {
+            .map(|group| {
                 let mut traces = BTreeSet::new();
-                for (ev_idx, occurrence_idx) in &groups[retained_idx] {
-                    let ev = &evidence_items[*ev_idx];
-                    let Some(occurrence) = ev.occurrences.get(*occurrence_idx) else {
+                for reference in &group.occurrences {
+                    let Some((ev, occurrence)) = reference.resolve(evidence_items) else {
                         continue;
                     };
                     let steps = occurrence.trace.map_or_else(
-                        || Some(Self::fallback_trace(ev, path, &range)),
+                        || Some(Self::fallback_trace(ev, path, &group.range)),
                         |trace_id| Self::resolve_trace(arena, trace_id, project, path),
                     );
                     if let Some(s) = steps
@@ -258,28 +341,19 @@ impl<'a> ReportAssembly<'a> {
                     traces.insert(EvidenceTrace::new(vec![EvidenceStep::new(
                         EvidenceRole::Occurrence,
                         "evidence occurrence".into(),
-                        SourceLocation::new(path.clone(), range.clone()),
+                        SourceLocation::new(path.clone(), group.range.clone()),
                     )]));
                 }
-                let truncated = groups[retained_idx]
-                    .iter()
-                    .any(|(ev_idx, _)| evidence_items[*ev_idx].truncated);
-                let certainty = if groups[retained_idx]
-                    .iter()
-                    .map(|(ev_idx, _)| evidence_items[*ev_idx].certainty)
-                    .any(|certainty| certainty == MatchCertainty::Definite)
-                {
-                    MatchCertainty::Definite
-                } else {
-                    MatchCertainty::Possible
-                };
                 Finding::new(
                     rule_id.clone(),
                     label.to_string(),
                     severity,
-                    SourceLocation::new(path.clone(), range),
-                    EvidenceTraces::with_truncation(traces.into_iter().collect(), truncated),
-                    certainty,
+                    SourceLocation::new(path.clone(), group.range.clone()),
+                    EvidenceTraces::with_truncation(
+                        traces.into_iter().collect(),
+                        group.is_truncated(evidence_items),
+                    ),
+                    group.certainty(evidence_items),
                 )
             })
             .collect()
