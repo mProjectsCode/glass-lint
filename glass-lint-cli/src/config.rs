@@ -7,7 +7,8 @@ use clap::ValueEnum;
 #[cfg(test)]
 use glass_lint_core::project::SourceFile;
 use glass_lint_core::{
-    CoreConfig, Linter, MAX_SOURCE_BYTES, RuleBaseline, RuleCatalog, RuleSelection, Severity,
+    CoreConfig, Linter, LinterConfig, MAX_SOURCE_BYTES, RuleBaseline, RuleCatalog, RuleOverride,
+    RuleSelection, Severity, rules::Confidence,
 };
 use glass_lint_project::ValidatedProjectLoadOptions;
 use serde::{Deserialize, Serialize};
@@ -306,6 +307,32 @@ pub fn catalog(provider: Provider, profile: RuleSelectionProfile) -> RuleCatalog
     base_linter(provider, profile).catalog().clone()
 }
 
+fn profile_baseline(profile: RuleSelectionProfile) -> RuleBaseline {
+    match profile {
+        RuleSelectionProfile::Recommended => RuleBaseline::MinimumConfidence(Confidence::High),
+        RuleSelectionProfile::Heuristic => RuleBaseline::All,
+    }
+}
+
+fn provider_config(provider: Provider) -> LinterConfig {
+    match provider {
+        Provider::Obsidian => glass_lint_obsidian::obsidian_config(),
+        Provider::Js => glass_lint_js::js_config(),
+        Provider::Node => glass_lint_js::node_config(),
+        Provider::Electron => glass_lint_js::electron_config(),
+    }
+}
+
+fn profile_selection(
+    profile: RuleSelectionProfile,
+    overrides: impl IntoIterator<Item = RuleOverride>,
+) -> RuleSelection {
+    overrides.into_iter().fold(
+        RuleSelection::new(profile_baseline(profile)),
+        RuleSelection::with_override,
+    )
+}
+
 /// Construct the baseline linter for a provider and confidence profile;
 /// selection is applied by `selected_linter`.
 ///
@@ -313,19 +340,7 @@ pub fn catalog(provider: Provider, profile: RuleSelectionProfile) -> RuleCatalog
 /// generic JavaScript rules; the standalone JavaScript catalog uses its own
 /// provider defaults.
 pub fn base_linter(provider: Provider, profile: RuleSelectionProfile) -> Linter {
-    let baseline = match profile {
-        RuleSelectionProfile::Recommended => {
-            RuleBaseline::MinimumConfidence(glass_lint_core::rules::Confidence::High)
-        }
-        RuleSelectionProfile::Heuristic => RuleBaseline::All,
-    };
-    let config = match provider {
-        Provider::Obsidian => glass_lint_obsidian::obsidian_config(),
-        Provider::Js => glass_lint_js::js_config(),
-        Provider::Node => glass_lint_js::node_config(),
-        Provider::Electron => glass_lint_js::electron_config(),
-    };
-    Linter::new(config.with_rules(RuleSelection::new(baseline)))
+    Linter::new(provider_config(provider).with_rules(profile_selection(profile, [])))
         .expect("built-in provider configuration is valid")
 }
 
@@ -334,31 +349,22 @@ pub fn base_linter(provider: Provider, profile: RuleSelectionProfile) -> Linter 
 /// Validation happens after catalog construction so rule selections and core
 /// limits are checked against the exact provider environment that will run.
 pub fn selected_linter(config: &Config) -> Result<Linter> {
-    let profile_baseline = match config.cli.profile {
-        RuleSelectionProfile::Recommended => {
-            RuleBaseline::MinimumConfidence(glass_lint_core::rules::Confidence::High)
-        }
-        RuleSelectionProfile::Heuristic => RuleBaseline::All,
-    };
-    let selection = config.core.selection.overrides().iter().cloned().fold(
-        RuleSelection::new(profile_baseline),
-        RuleSelection::with_override,
+    let selection = profile_selection(
+        config.cli.profile,
+        config.core.selection.overrides().iter().cloned(),
     );
-    let linter = base_linter(config.cli.provider, config.cli.profile);
+    let linter = Linter::new(
+        provider_config(config.cli.provider)
+            .with_rules(selection)
+            .with_limits(config.core.limits.clone()),
+    )
+    .map_err(|error| anyhow::anyhow!(error))?;
     tracing::debug!(
         target: "glass_lint::cli",
         rules = linter.catalog().rule_ids().len(),
         "linter built"
     );
-    Linter::new(
-        glass_lint_core::LinterConfig::new(
-            vec![linter.catalog().clone()],
-            linter.analysis_environment().clone(),
-        )
-        .with_rules(selection)
-        .with_limits(config.core.limits.clone()),
-    )
-    .map_err(|error| anyhow::anyhow!(error))
+    Ok(linter)
 }
 
 impl FailOn {

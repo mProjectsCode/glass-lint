@@ -348,7 +348,7 @@ tests into focused modules. Keep the public constructors stable and explicit;
 the simplification should remove repeated invariant code, not hide the
 provider-neutral query vocabulary behind a generic builder.
 
-#### RL-016 — CLI provider/profile construction builds and then disassembles a linter
+#### [x] RL-016 — CLI provider/profile construction builds and then disassembles a linter
 
 - Severity: Low
 - Fix complexity: Low
@@ -367,6 +367,17 @@ shared helpers, then construct the linter once from those values. Keep
 `base_linter` as the validated default entry point, but have both public paths
 use the same provider-config and baseline-selection functions instead of
 building an intermediate linter solely to read its fields.
+
+Implementation: centralized provider configuration, profile baseline mapping,
+and profile-plus-override selection in private helpers shared by `base_linter`
+and `selected_linter`. The complete CLI path now constructs one `Linter` from
+the selected provider config, profile selection, and core limits, while
+preserving the existing provider environments and override semantics.
+
+Runtime (release): profiling
+`/home/lemon/src/obsidian-stats/data/out/plugin-release-mainjs/byoc/1.0.13-main.js`
+with one warm-up-free repetition and one worker took 840.6ms measured lint
+wall time (839.3ms input time; 0.96s process wall time).
 
 ### Test and fixture ergonomics
 
