@@ -38,7 +38,7 @@ Implemented typed `RuleEvidenceTable` operations (`for_rule_mut`, `record`, and 
 
 ### Core analysis and flow coordination
 
-#### READ-003 — `ObjectFlowProjector` remains a broad phase coordinator
+#### [x] READ-003 — `ObjectFlowProjector` remains a broad phase coordinator
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -48,6 +48,8 @@ Implemented typed `RuleEvidenceTable` operations (`for_rule_mut`, `record`, and 
 `ObjectFlowProjector` still owns the fact stream, names, plan, call index, evidence, flow-state table, lifecycle state, control frames, paths, pending calls, active-path counters, binding slots, trace arena, and module identity. Methods such as `finish_loop`, `transfer_function`, `join_paths`, `finalize_pending`, and `record_property_write` combine scheduling, fixed-point replay, state restoration, cleanup, evidence emission, and reporting, so the type is the implicit owner of several independent state machines.
 
 Split the state into explicit owners for the path frontier, loop fixed-point/replay engine, pending evidence, and lifecycle outcome, leaving the projector as a thin coordinator over typed operations. Preserve the single fact stream and existing bounded behavior, but make restoration, join, and cleanup belong to one subtype each; return typed termination results instead of communicating phase outcomes through shared fields and counters.
+
+Implemented dedicated `PathFrontier` and `PendingFlowStates` owners for correlated alternatives, replay cursors, and fact-local pending witnesses. Control-flow and replay code now transfers frontier state through those owners, while `ProjectionRunState` remains the lifecycle/budget owner and `FlowEvidence` retains evidence emission ownership; projector, fixed-point, and bounded-exhaustion tests remain unchanged and passing.
 
 #### [x] READ-004 — Declaration classification duplicates precedence across expression shapes
 

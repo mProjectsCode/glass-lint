@@ -146,14 +146,11 @@ struct ObjectFlowProjector<'rules, 'stream, 'arena> {
     run: ProjectionRunState,
     /// Nested branch/function frames used to restore environments at joins.
     control: Vec<ControlFrame>,
-    /// Correlated checkpoint-backed alternatives reaching the next fact.
-    paths: Vec<FlowEnvironment>,
+    /// Correlated checkpoint-backed alternatives and fact-local replay cursor.
+    frontier: PathFrontier,
     /// Fact-local witnesses are finalized after every reaching alternative has
     /// seen the sink or requirement event.
-    pending: BTreeMap<(usize, FlowId, FactId), Vec<(usize, FlowState)>>,
-    /// Number of alternatives in the current fact-local replay batch.
-    active_path_count: usize,
-    active_path_index: usize,
+    pending: PendingFlowStates,
     /// Stable representative value for each lexical binding slot. Binding
     /// versions differ at joins, but the slot remains the same variable.
     binding_slots: BTreeMap<
@@ -186,6 +183,54 @@ struct ProjectionRunState {
     coalescing_comparisons: usize,
     fixed_point_iterations: usize,
     trace_heads: usize,
+}
+
+#[derive(Debug)]
+struct PathFrontier {
+    paths: Vec<FlowEnvironment>,
+    active_count: usize,
+    active_index: usize,
+}
+
+#[derive(Debug, Default)]
+struct PendingFlowStates {
+    values: BTreeMap<(usize, FlowId, FactId), Vec<(usize, FlowState)>>,
+}
+
+impl PendingFlowStates {
+    fn take(&mut self) -> BTreeMap<(usize, FlowId, FactId), Vec<(usize, FlowState)>> {
+        std::mem::take(&mut self.values)
+    }
+
+    fn entry(&mut self, key: (usize, FlowId, FactId)) -> &mut Vec<(usize, FlowState)> {
+        self.values.entry(key).or_default()
+    }
+}
+
+impl PathFrontier {
+    fn initial() -> Self {
+        Self {
+            paths: vec![FlowEnvironment::initial()],
+            active_count: 0,
+            active_index: 0,
+        }
+    }
+
+    fn take(&mut self) -> Vec<FlowEnvironment> {
+        std::mem::take(&mut self.paths)
+    }
+
+    fn set(&mut self, paths: Vec<FlowEnvironment>) {
+        self.paths = paths;
+    }
+
+    fn len(&self) -> usize {
+        self.paths.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.paths.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -262,10 +307,8 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             flow_state: FlowStateTable::new(limits.state_limit(), limits.mutation_limit()),
             run: ProjectionRunState::new(limits, summary_exhausted),
             control: Vec::new(),
-            paths: vec![FlowEnvironment::initial()],
-            pending: BTreeMap::new(),
-            active_path_count: 0,
-            active_path_index: 0,
+            frontier: PathFrontier::initial(),
+            pending: PendingFlowStates::default(),
             binding_slots: BTreeMap::new(),
             module_id,
             trace_arena,
@@ -296,11 +339,11 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     }
 
     fn transfer_paths(&mut self, fact: &crate::analysis::facts::SemanticFact) {
-        let incoming = std::mem::take(&mut self.paths);
+        let incoming = self.frontier.take();
         if incoming.is_empty() {
             return;
         }
-        self.active_path_count = incoming.len();
+        self.frontier.active_count = incoming.len();
         let mut outgoing = Vec::with_capacity(incoming.len());
         for (path_index, environment) in incoming.into_iter().enumerate() {
             if !self.charge_operation() {
@@ -311,18 +354,18 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 continue;
             }
             self.run.reachable = environment.reachable();
-            self.active_path_index = path_index;
+            self.frontier.active_index = path_index;
             self.transfer_fact(fact);
             if self.run.reachable {
                 outgoing.push(self.environment());
             }
         }
-        self.paths = outgoing;
-        self.observe_alternatives(self.paths.len());
+        self.frontier.set(outgoing);
+        self.observe_alternatives(self.frontier.len());
         self.finalize_pending(fact.id);
-        let paths = std::mem::take(&mut self.paths);
+        let paths = self.frontier.take();
         self.join_paths(paths);
-        self.active_path_count = 0;
+        self.frontier.active_count = 0;
     }
 
     fn transfer_fact(&mut self, fact: &crate::analysis::facts::SemanticFact) {
@@ -380,13 +423,13 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         let stream = self.stream;
         let previous_mode = self.run.emission_mode;
         self.run.emission_mode = EmissionMode::Replay;
-        self.paths = input;
+        self.frontier.set(input);
         for i in start..end {
             let fact = &stream.facts()[i];
             self.transfer(fact);
         }
         self.run.emission_mode = previous_mode;
-        std::mem::take(&mut self.paths)
+        self.frontier.take()
     }
 
     /// Compute the bounded loop back-edge closure.  A semantic state is
@@ -402,10 +445,10 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         mut breaks: Vec<FlowEnvironment>,
         mut continues: Vec<FlowEnvironment>,
     ) {
-        let mut frontier = std::mem::take(&mut self.paths);
+        let mut frontier = self.frontier.take();
         frontier.append(&mut continues);
         self.join_paths(frontier.clone());
-        frontier = std::mem::take(&mut self.paths);
+        frontier = self.frontier.take();
 
         let mut exits = Vec::new();
         if !guaranteed {
@@ -453,7 +496,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 next.append(continues);
             }
             self.join_paths(next);
-            let candidate = std::mem::take(&mut self.paths);
+            let candidate = self.frontier.take();
             exits.extend(candidate.iter().copied());
 
             if let Some(ControlFrame::Loop { breaks, .. }) = self.control.last()
@@ -511,7 +554,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     fn transfer_function(&mut self, boundary: FunctionBoundary) {
         match boundary {
             FunctionBoundary::Enter => {
-                let caller = self.paths.clone();
+                let caller = self.frontier.paths.clone();
                 self.control.push(ControlFrame::Function { caller });
                 self.transfer_paths_without_finalization(|projector| {
                     projector.flow_state.clear();
@@ -520,14 +563,14 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             }
             FunctionBoundary::Exit => {
                 if let Some(ControlFrame::Function { caller }) = self.control.pop() {
-                    self.paths = caller;
+                    self.frontier.set(caller);
                 }
             }
         }
     }
 
     fn transfer_paths_without_finalization(&mut self, transfer: impl Fn(&mut Self)) {
-        let incoming = std::mem::take(&mut self.paths);
+        let incoming = self.frontier.take();
         let mut outgoing = Vec::with_capacity(incoming.len());
         for environment in incoming {
             if !self.charge_operation() {
@@ -543,8 +586,8 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 outgoing.push(self.environment());
             }
         }
-        self.paths = outgoing;
-        let paths = std::mem::take(&mut self.paths);
+        self.frontier.set(outgoing);
+        let paths = self.frontier.take();
         self.join_paths(paths);
     }
 
@@ -615,13 +658,13 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             paths.truncate(self.run.limits.alternative_limit());
             self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
         }
-        self.paths = paths;
-        self.observe_alternatives(self.paths.len());
-        self.run.reachable = !self.paths.is_empty();
+        self.frontier.set(paths);
+        self.observe_alternatives(self.frontier.len());
+        self.run.reachable = !self.frontier.is_empty();
     }
 
     fn finalize_pending(&mut self, fact: FactId) {
-        let pending = std::mem::take(&mut self.pending);
+        let pending = self.pending.take();
         for ((rule, flow, event), states) in pending {
             if states.is_empty() {
                 continue;
@@ -631,7 +674,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 .map(|(path, _)| *path)
                 .collect::<BTreeSet<_>>();
             let certainty = if self.run.alternatives_complete.is_complete()
-                && matching_paths.len() == self.active_path_count
+                && matching_paths.len() == self.frontier.active_count
             {
                 crate::project::MatchCertainty::Definite
             } else {
@@ -647,8 +690,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     pub(super) fn queue_state(&mut self, state: FlowState, event: FactId) {
         self.pending
             .entry((state.flow_id().rule_index().get(), state.flow_id(), event))
-            .or_default()
-            .push((self.active_path_index, state));
+            .push((self.frontier.active_index, state));
     }
 
     fn record_property_write(

@@ -45,7 +45,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             ControlKind::BranchStart => {
                 self.control.push(ControlFrame::Branch {
                     region,
-                    base: self.paths.clone(),
+                    base: self.frontier.paths.clone(),
                     then_exit: None,
                 });
             }
@@ -57,7 +57,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 }) = self.control.last_mut()
                     && *expected == region
                 {
-                    base.clone_from(&self.paths);
+                    base.clone_from(&self.frontier.paths);
                 }
             }
             ControlKind::BranchElse => {
@@ -68,13 +68,13 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 }) = self.control.last_mut()
                     && *expected == region
                 {
-                    *then_exit = Some(self.paths.clone());
+                    *then_exit = Some(self.frontier.paths.clone());
                     Some(base.clone())
                 } else {
                     None
                 };
                 if let Some(base) = base {
-                    self.paths = base;
+                    self.frontier.set(base);
                 }
             }
             ControlKind::BranchEnd => {
@@ -90,7 +90,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     return;
                 }
                 let mut paths = then_exit.unwrap_or(base);
-                paths.append(&mut self.paths);
+                paths.append(&mut self.frontier.paths);
                 self.join_paths(paths);
             }
             _ => unreachable!(),
@@ -103,7 +103,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 self.control.push(ControlFrame::Loop {
                     region,
                     body_start: FactId::new(fact.raw().saturating_add(1)),
-                    baseline: self.paths.clone(),
+                    baseline: self.frontier.paths.clone(),
                     guaranteed,
                     breaks: Vec::new(),
                     continues: Vec::new(),
@@ -114,8 +114,8 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     Some(ControlFrame::Loop { continues, .. }) => std::mem::take(continues),
                     _ => Vec::new(),
                 };
-                self.paths.extend(continues);
-                let paths = std::mem::take(&mut self.paths);
+                self.frontier.paths.extend(continues);
+                let paths = self.frontier.take();
                 self.join_paths(paths);
             }
             ControlKind::LoopEnd => {
@@ -144,7 +144,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             ControlKind::SwitchStart => {
                 self.control.push(ControlFrame::Switch {
                     region,
-                    baseline: self.paths.clone(),
+                    baseline: self.frontier.paths.clone(),
                     breaks: Vec::new(),
                     has_default: false,
                 });
@@ -158,7 +158,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                         ..
                     }) if *expected == region => {
                         *has_default |= is_default;
-                        (baseline.clone(), std::mem::take(&mut self.paths))
+                        (baseline.clone(), self.frontier.take())
                     }
                     _ => return,
                 };
@@ -179,7 +179,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 if expected != region {
                     return;
                 }
-                let mut paths = std::mem::take(&mut self.paths);
+                let mut paths = self.frontier.take();
                 paths.extend(breaks);
                 if !has_default {
                     paths.extend(baseline);
@@ -195,7 +195,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             ControlKind::TryStart => {
                 self.control.push(ControlFrame::Try {
                     region,
-                    baseline: self.paths.clone(),
+                    baseline: self.frontier.paths.clone(),
                     try_exit: None,
                     catch_exit: None,
                     normal_exit: None,
@@ -212,12 +212,12 @@ impl ObjectFlowProjector<'_, '_, '_> {
                         try_exit,
                         ..
                     }) if *expected == region => {
-                        *try_exit = Some(std::mem::take(&mut self.paths));
+                        *try_exit = Some(self.frontier.take());
                         baseline.clone()
                     }
                     _ => return,
                 };
-                self.paths = baseline;
+                self.frontier.set(baseline);
             }
             ControlKind::FinallyStart => self.start_finally(region),
             ControlKind::TryEnd => self.end_try(region),
@@ -226,7 +226,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
     }
 
     fn start_finally(&mut self, region: ControlRegionId) {
-        let current = std::mem::take(&mut self.paths);
+        let current = self.frontier.take();
         let incoming = if let Some(ControlFrame::Try {
             region: expected,
             try_exit,
@@ -272,7 +272,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             return;
         }
         if has_finally {
-            let after = std::mem::take(&mut self.paths);
+            let after = self.frontier.take();
             let normal_len = normal_count.min(after.len());
             let normal = after[..normal_len].to_vec();
             for (abrupt_index, (kind, _)) in (normal_len..).zip(abrupt_exits) {
@@ -281,11 +281,11 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 };
                 self.route_finally_abrupt(kind, environment);
             }
-            self.paths = normal;
+            self.frontier.set(normal);
         } else {
             let mut paths = try_exit.unwrap_or_default();
             paths.extend(catch_exit.unwrap_or_else(|| normal_exit.unwrap_or_default()));
-            paths.append(&mut self.paths);
+            paths.append(&mut self.frontier.paths);
             self.join_paths(paths);
         }
     }
@@ -297,7 +297,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             ControlKind::Return => AbruptExit::Return,
             _ => unreachable!(),
         };
-        let current = std::mem::take(&mut self.paths);
+        let current = self.frontier.take();
         for environment in &current {
             self.record_abrupt_exit(abrupt, environment);
         }
