@@ -58,7 +58,7 @@ Normalize the declaration into a small classification context containing the exp
 
 Implemented by borrowing the declarator name once and routing all declaration shapes through one ordered candidate classifier for module aliases, requires, callable bindings, constants, returned objects, static object values, and rooted aliases. Call/member-specific code now only selects precedence and handles the bind-call boundary; the existing scope-analysis tests continue to cover aliases, reassignment, destructuring, returned objects, and dynamic values.
 
-#### READ-005 — Summary sink propagation couples fixed-point policy and storage
+#### [x] READ-005 — Summary sink propagation couples fixed-point policy and storage
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -68,6 +68,8 @@ Implemented by borrowing the declarator name once and routing all declaration sh
 `FunctionSummaries` owns path storage, function summaries, scratch projections, exhaustion state, and total sinks, while `propagate_sinks` also constructs the reverse-call worklist, manages rounds, applies the sink cap, and projects calls. The same propagation routine therefore controls summary representation, fixed-point scheduling, resource exhaustion, and the semantics of `MAX_SUMMARY_SINKS`, making changes to one policy likely to affect the others.
 
 Introduce a `SummaryPropagation` context that owns the worklist and round budget and returns a typed stop or completion result to a separate summary store. Keep sink limits, path limits, and call-round limits as distinct named policies, and make scratch projection lifetime and merge behavior explicit rather than fields on the long-lived summary owner.
+
+Implemented with a `SummaryPropagation` scheduler that owns reverse-call edges, the deterministic worklist, and typed completion/exhaustion outcomes. Sink projection scratch state is now call-local, and the propagation worklist has its own named bound distinct from `MAX_SUMMARY_SINKS`; the existing bounded sink, path, and budget behavior remains covered by the summary propagation tests.
 
 #### READ-006 — Cross-file flow passes overlapping argument bags between phases
 

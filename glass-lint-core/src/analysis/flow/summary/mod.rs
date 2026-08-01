@@ -24,3 +24,4 @@ pub(super) use store::SummaryPathStore;
 pub(super) use summaries::FunctionSummaries;
 
 pub(super) const MAX_SUMMARY_SINKS: usize = 65_536;
+pub(super) const MAX_SUMMARY_WORKLIST: usize = 65_536;

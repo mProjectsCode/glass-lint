@@ -8,7 +8,7 @@ use crate::analysis::{
         effect::{EffectCall, FunctionEffects},
         planning::BoundFlowPlan,
         summary::{
-            MAX_SUMMARY_SINKS, SummaryPathStore,
+            MAX_SUMMARY_SINKS, MAX_SUMMARY_WORKLIST, SummaryPathStore,
             sink::{FunctionSinkSummary, FunctionSummary},
         },
     },
@@ -21,7 +21,6 @@ pub struct FunctionSummaries<'a> {
     stream: &'a FactStream<Frozen>,
     by_id: FunctionTable<FunctionSummary>,
     paths: SummaryPathStore<'a>,
-    scratch_projections: Vec<FunctionSinkSummary>,
     exhausted: bool,
     total_sinks: usize,
 }
@@ -49,7 +48,6 @@ impl<'a> FunctionSummaries<'a> {
             stream,
             by_id: FunctionTable::new(stream.function_count()),
             paths: SummaryPathStore::new(stream.paths()),
-            scratch_projections: Vec::new(),
             exhausted: false,
             total_sinks: 0,
         };
@@ -57,8 +55,13 @@ impl<'a> FunctionSummaries<'a> {
         if !summaries.exhausted {
             summaries.collect_direct_sinks(stream, plan, budget);
         }
-        if !summaries.exhausted {
-            summaries.propagate_sinks(stream, budget);
+        if !summaries.exhausted
+            && matches!(
+                SummaryPropagation::new(stream, &summaries.by_id).run(&mut summaries, budget),
+                PropagationOutcome::Exhausted
+            )
+        {
+            summaries.exhausted = true;
         }
         if summaries.exhausted {
             for (_, summary) in summaries.by_id.iter_mut() {
@@ -139,100 +142,30 @@ impl<'a> FunctionSummaries<'a> {
         }
     }
 
-    fn propagate_sinks(&mut self, stream: &FactStream<Frozen>, budget: &mut Budget) {
-        let mut reverse_calls: BTreeMap<FunctionId, Vec<FunctionId>> = BTreeMap::new();
-        for (caller_id, summary) in self.by_id.iter() {
-            for call_id in summary.calls() {
-                if let Some((target, _)) = resolve_call_target(*call_id, stream)
-                    && target != caller_id
-                {
-                    reverse_calls.entry(target).or_default().push(caller_id);
-                }
-            }
-        }
-        for callers in reverse_calls.values_mut() {
-            callers.sort_unstable();
-            callers.dedup();
-        }
-
-        let mut worklist: BTreeSet<FunctionId> = self.by_id.iter().map(|(id, _)| id).collect();
-
-        while !worklist.is_empty() {
-            if !budget.try_push() {
-                self.exhausted = true;
-                return;
-            }
-
-            let current_round: Vec<FunctionId> = worklist.iter().copied().collect();
-            worklist.clear();
-
-            let mut changed: BTreeSet<FunctionId> = BTreeSet::new();
-
-            for &caller in &current_round {
-                let call_count = self
-                    .by_id
-                    .get(caller)
-                    .map_or(0, |summary| summary.calls().len());
-                for index in 0..call_count {
-                    let Some(call_id) = self
-                        .by_id
-                        .get(caller)
-                        .and_then(|summary| summary.calls().get(index))
-                        .copied()
-                    else {
-                        continue;
-                    };
-                    if self.propagate_call_sinks(call_id, caller, stream, budget) {
-                        changed.insert(caller);
-                    }
-                    if self.exhausted {
-                        return;
-                    }
-                }
-            }
-
-            if self.exhausted {
-                return;
-            }
-
-            for &changed_id in &changed {
-                if let Some(callers) = reverse_calls.get(&changed_id) {
-                    for &c in callers {
-                        if worklist.len() >= MAX_SUMMARY_SINKS {
-                            self.exhausted = true;
-                            return;
-                        }
-                        worklist.insert(c);
-                    }
-                }
-            }
-        }
-    }
-
     fn propagate_call_sinks(
         &mut self,
         call_id: FactId,
         caller: FunctionId,
         stream: &FactStream<Frozen>,
         budget: &mut Budget,
-    ) -> bool {
+    ) -> Result<bool, PropagationOutcome> {
         let Some((target, args)) = resolve_call_target(call_id, stream) else {
-            return false;
+            return Ok(false);
         };
         if target == caller {
-            return false;
+            return Ok(false);
         }
         let Some((target_summary, caller_summary)) = self.by_id.get_disjoint(target, caller) else {
-            return false;
+            return Ok(false);
         };
         let target_summary = match target_summary {
             Some(s) if s.is_invocation_compatible(stream, args, &self.paths) => s,
-            _ => return false,
+            _ => return Ok(false),
         };
         let Some(caller_summary) = caller_summary else {
-            return false;
+            return Ok(false);
         };
-        self.scratch_projections.clear();
+        let mut projections = Vec::new();
         {
             let target_params = stream.function_parameters(target);
             let caller_params = stream.function_parameters(caller);
@@ -247,25 +180,113 @@ impl<'a> FunctionSummaries<'a> {
                     &self.paths,
                 ) {
                     if self.total_sinks >= MAX_SUMMARY_SINKS {
-                        self.exhausted = true;
-                        return false;
+                        return Err(PropagationOutcome::Exhausted);
                     }
-                    self.scratch_projections.push(proj);
+                    projections.push(proj);
                 }
             }
         }
         let mut changed = false;
-        for proj in self.scratch_projections.drain(..) {
+        for proj in projections {
             if !budget.try_push() {
-                self.exhausted = true;
-                return changed;
+                return Err(PropagationOutcome::Exhausted);
             }
             if caller_summary.add_sink(proj) {
                 self.total_sinks += 1;
                 changed = true;
             }
         }
-        changed
+        Ok(changed)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PropagationOutcome {
+    Complete,
+    Exhausted,
+}
+
+struct SummaryPropagation<'a> {
+    stream: &'a FactStream<Frozen>,
+    reverse_calls: BTreeMap<FunctionId, Vec<FunctionId>>,
+    worklist: BTreeSet<FunctionId>,
+}
+
+impl<'a> SummaryPropagation<'a> {
+    fn new(stream: &'a FactStream<Frozen>, summaries: &FunctionTable<FunctionSummary>) -> Self {
+        let mut reverse_calls: BTreeMap<FunctionId, Vec<FunctionId>> = BTreeMap::new();
+        for (caller_id, summary) in summaries.iter() {
+            for call_id in summary.calls() {
+                if let Some((target, _)) = resolve_call_target(*call_id, stream)
+                    && target != caller_id
+                {
+                    reverse_calls.entry(target).or_default().push(caller_id);
+                }
+            }
+        }
+        for callers in reverse_calls.values_mut() {
+            callers.sort_unstable();
+            callers.dedup();
+        }
+        Self {
+            stream,
+            reverse_calls,
+            worklist: summaries.iter().map(|(id, _)| id).collect(),
+        }
+    }
+
+    fn run(
+        &mut self,
+        summaries: &mut FunctionSummaries<'a>,
+        budget: &mut Budget,
+    ) -> PropagationOutcome {
+        while !self.worklist.is_empty() {
+            if !budget.try_push() {
+                return PropagationOutcome::Exhausted;
+            }
+            let current_round: Vec<FunctionId> = self.worklist.iter().copied().collect();
+            self.worklist.clear();
+            let mut changed = BTreeSet::new();
+            for caller in current_round {
+                let call_count = summaries
+                    .by_id
+                    .get(caller)
+                    .map_or(0, |summary| summary.calls().len());
+                for index in 0..call_count {
+                    let Some(call_id) = summaries
+                        .by_id
+                        .get(caller)
+                        .and_then(|summary| summary.calls().get(index))
+                        .copied()
+                    else {
+                        continue;
+                    };
+                    let changed_now = match summaries.propagate_call_sinks(
+                        call_id,
+                        caller,
+                        self.stream,
+                        budget,
+                    ) {
+                        Ok(changed) => changed,
+                        Err(outcome) => return outcome,
+                    };
+                    if changed_now {
+                        changed.insert(caller);
+                    }
+                }
+            }
+            for changed_id in changed {
+                if let Some(callers) = self.reverse_calls.get(&changed_id) {
+                    for &caller in callers {
+                        if self.worklist.len() >= MAX_SUMMARY_WORKLIST {
+                            return PropagationOutcome::Exhausted;
+                        }
+                        self.worklist.insert(caller);
+                    }
+                }
+            }
+        }
+        PropagationOutcome::Complete
     }
 }
 
