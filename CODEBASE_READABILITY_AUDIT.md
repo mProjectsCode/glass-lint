@@ -75,7 +75,7 @@ Summary-path tagging and frozen/overlay dispatch are centralized in
 remaining follow-up is to decide whether `append_linked` should move behind a
 summary-owned wrapper entirely.
 
-#### READ-003 — `ScopeCollector` remains a cross-phase mutable coordinator
+#### [x] READ-003 — `ScopeCollector` remains a cross-phase mutable coordinator
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -94,6 +94,12 @@ path-sensitive assignment state, and control-flow traversal state. Give each
 group a small API and keep the SWC visitor as a façade that coordinates those
 APIs; this should not add a second AST traversal or duplicate provenance
 logic.
+
+**Implementation:** `ScopeCollector` now delegates path-sensitive assignment,
+checkpoint, reachability, and control-flow-frame storage to a dedicated
+`PathCollectionState`, keeping the existing visitor and provenance algorithms
+on one traversal. The bundle lint took 0.87s after the change (baseline 0.83s),
+within normal run-to-run variance and without a significant regression.
 
 ### Core flow, projection, and compiler layers
 

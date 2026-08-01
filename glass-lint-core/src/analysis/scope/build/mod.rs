@@ -10,7 +10,9 @@
 
 use glass_lint_datastructures::{NameId, NameTable};
 use hashbrown::{HashMap, HashSet};
-use history::{AssignmentEnvironment, Cursor, WriteCheckpoint, WriteSet};
+use history::{
+    AssignmentEnvironment, Cursor, DEFAULT_ALTERNATIVE_LIMIT, WriteCheckpoint, WriteSet,
+};
 use smol_str::SmolStr;
 use swc_common::BytePos;
 
@@ -87,24 +89,38 @@ pub(super) struct ScopeCollector<'a> {
     scope_shapes: ScopeShapeTable,
     /// Shared semantic budget charged for each name interning operation.
     budget: &'a SemanticBudget,
-    /// Nesting depth of conditional branches (if/else, loops, switch cases).
-    /// An assignment is conditional when depth > 0.
+    /// Path-sensitive assignment and control-flow state owned by collection.
+    path_state: PathCollectionState,
+    #[cfg(test)]
+    scope_lookups: usize,
+}
+
+/// State for source-order assignment provenance and control-flow joins.
+#[derive(Debug)]
+struct PathCollectionState {
     conditional_depth: u32,
-    /// Path-sensitive assignment state for source-order provenance.
     assignment_environment: AssignmentEnvironment,
-    /// Writes made since the current control-flow checkpoint.
     assignment_writes: WriteSet,
-    /// An explicit local value used when a path join disagrees.
     unknown_provenance: BindingProvenance,
-    /// Active control-flow joins owned by the collector.
     control_flow: Vec<ControlFlowFrame>,
-    /// Function-body checkpoints prevent local control flow from escaping the
-    /// function declaration into source-order collection of its parent.
     function_checkpoints: Vec<(CollectorCheckpoint, u32, usize)>,
     reachable: bool,
     alternative_limit: usize,
-    #[cfg(test)]
-    scope_lookups: usize,
+}
+
+impl Default for PathCollectionState {
+    fn default() -> Self {
+        Self {
+            conditional_depth: 0,
+            assignment_environment: AssignmentEnvironment::new(),
+            assignment_writes: WriteSet::new(),
+            unknown_provenance: BindingProvenance::Local,
+            control_flow: Vec::new(),
+            function_checkpoints: Vec::new(),
+            reachable: true,
+            alternative_limit: DEFAULT_ALTERNATIVE_LIMIT,
+        }
+    }
 }
 
 /// A cursor into the assignment environment's mutation log, with write-set
