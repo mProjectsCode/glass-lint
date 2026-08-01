@@ -358,9 +358,7 @@ fn measure_admitted_repetition(
             &mut repetition_counts,
             &mut evidence_digests,
         );
-        if report.completion() == ReportCompletion::Partial {
-            repetition_completion = ReportCompletion::Partial;
-        }
+        repetition_completion = repetition_completion.join(report.completion());
         run_completions.push(report.completion());
     }
     Ok(ProfileRepetitionSummary {
@@ -534,9 +532,7 @@ fn profile_file(
                     &mut operation_counts,
                     &mut evidence_digests,
                 );
-                if report.completion() == ReportCompletion::Partial {
-                    completion = ReportCompletion::Partial;
-                }
+                completion = completion.join(report.completion());
                 run_completions.push(report.completion());
             }
         }

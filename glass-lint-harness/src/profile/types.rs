@@ -54,9 +54,7 @@ impl ProfileWorkloadSummary {
         self.measured_elapsed = self
             .measured_elapsed
             .saturating_add(source.measured_elapsed);
-        if source.completion == ReportCompletion::Partial {
-            self.completion = ReportCompletion::Partial;
-        }
+        self.completion = self.completion.join(source.completion);
         self.run_completions.extend(source.run_completions);
         self.operation_counts += source.operation_counts;
         self.evidence_order_digest = combined_digest(&[
@@ -94,9 +92,7 @@ impl ProfileRepetitionSummary {
         self.duration += source.duration;
         self.findings += source.findings;
         self.diagnostics += source.diagnostics;
-        if source.completion == ReportCompletion::Partial {
-            self.completion = ReportCompletion::Partial;
-        }
+        self.completion = self.completion.join(source.completion);
         self.run_completions.extend(source.run_completions);
         self.operation_counts += source.operation_counts;
         self.evidence_order_digest = combined_digest(&[
@@ -191,9 +187,7 @@ impl ProfileProjectRunAccumulator {
         );
         self.result.run_completions.push(outcome.completion);
         self.result.bytes = self.result.bytes.max(outcome.bytes);
-        if outcome.completion == ReportCompletion::Partial {
-            self.result.completion = ReportCompletion::Partial;
-        }
+        self.result.completion = self.result.completion.join(outcome.completion);
         self.phases += outcome.phases;
         self.counts += outcome.counts;
     }

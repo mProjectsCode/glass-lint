@@ -1,6 +1,6 @@
 //! Project finding assembly and deterministic evidence ownership.
 
-use crate::project::{AnalysisReport, ProjectRelativePath, ReportCompletion};
+use crate::project::{AnalysisReport, ProjectRelativePath};
 
 /// Why independently produced reports could not be combined losslessly.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -76,9 +76,7 @@ impl AnalysisReport {
             files.extend(r_files);
             diagnostics.extend(r_diags);
             operations += r_ops;
-            if r_comp == ReportCompletion::Partial {
-                completion = ReportCompletion::Partial;
-            }
+            completion = completion.join(r_comp);
         }
         files.sort_by(|left, right| left.path().cmp(right.path()));
         diagnostics.sort_by(|left, right| {

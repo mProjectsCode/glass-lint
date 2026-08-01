@@ -10,6 +10,26 @@ pub enum ReportCompletion {
     Partial,
 }
 
+impl ReportCompletion {
+    /// Combine completion states for reports that are being aggregated.
+    ///
+    /// A partial input makes the aggregate partial because the aggregate
+    /// cannot claim more coverage than all of its inputs provide.
+    #[must_use]
+    pub const fn join(self, other: Self) -> Self {
+        if self.is_partial() || other.is_partial() {
+            Self::Partial
+        } else {
+            Self::Complete
+        }
+    }
+
+    #[must_use]
+    pub const fn is_partial(self) -> bool {
+        matches!(self, Self::Partial)
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct AnalysisReport {
@@ -106,8 +126,25 @@ impl AnalysisReport {
                 reason.to_string(),
                 None,
             )));
-        self.completion = ReportCompletion::Partial;
+        self.completion = self.completion.join(ReportCompletion::Partial);
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ReportCompletion;
+
+    #[test]
+    fn joining_completion_states_is_monotone() {
+        use ReportCompletion::{Complete, Partial};
+
+        assert_eq!(Complete.join(Complete), Complete);
+        assert_eq!(Complete.join(Partial), Partial);
+        assert_eq!(Partial.join(Complete), Partial);
+        assert_eq!(Partial.join(Partial), Partial);
+        assert!(!Complete.is_partial());
+        assert!(Partial.is_partial());
     }
 }
 

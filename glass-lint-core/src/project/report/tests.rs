@@ -7,7 +7,7 @@ use crate::{
     project::{
         AnalysisDiagnostic, AnalysisOperationCounts, Diagnostic, EvidenceRole, EvidenceStep,
         EvidenceTrace, EvidenceTraces, FileReport, Finding, MatchCertainty, ProjectRelativePath,
-        SourceFile, SourceLocation,
+        ReportCompletion, SourceFile, SourceLocation,
     },
 };
 

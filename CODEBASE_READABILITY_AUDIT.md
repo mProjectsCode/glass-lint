@@ -102,7 +102,7 @@ Carry a typed parse-failure cause alongside the presentation diagnostic, or add 
 
 Represent an evidence-occurrence reference with named typed fields and introduce a finding-group owner that performs containment grouping and exposes aggregated traces, certainty, and truncation. Split group formation from final `Finding` construction so each phase has one level of abstraction. Retain the current sorted map, containment semantics, fallback trace behavior, trace deduplication, and stable finding order.
 
-#### READ-009 — `ReportCompletion` aggregation is duplicated at each consumer
+#### [x] READ-009 — `ReportCompletion` aggregation is duplicated at each consumer
 
 - **Severity:** Medium
 - **Fix Complexity** Low
@@ -112,6 +112,8 @@ Represent an evidence-occurrence reference with named typed fields and introduce
 The enum that models complete versus partial reporting has no behavior, while core report merging and several profiling accumulators independently implement its monotone “partial wins” rule. This is a small policy, but its repetition makes omission easy whenever a new aggregate is introduced.
 
 Put `combine`/`join` and `is_partial` behavior on `ReportCompletion`, and use it in core and harness accumulators; a small `FromIterator` implementation may also fit the aggregation sites. Keep CLI failure policy outside the enum because deciding whether partial analysis fails a command is not the same concern as combining states. Add truth-table tests on the owning type and retain one integration assertion for report merging.
+
+Implemented `ReportCompletion::join` and `is_partial` as the single monotone aggregation policy, with an owning truth-table test. Core report merging and all profile workload, repetition, file, and run accumulators now use `join`, removing their duplicated partial-state branches while leaving CLI failure decisions at the CLI boundary.
 
 ### Harness APIs and adapter protocol
 
