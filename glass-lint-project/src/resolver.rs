@@ -91,12 +91,7 @@ impl<'a> ProjectResolver<'a> {
                 Ok(ResolverOutcome::Missing)
             }
             Err(ResolveError::NotFound(_) | ResolveError::MatchedAliasNotFound(..)) => {
-                match PackageSpecifier::new(package_name(&request.request)) {
-                    Ok(package) => Ok(ResolverOutcome::External { package }),
-                    Err(e) => Ok(ResolverOutcome::Unsupported {
-                        reason: format!("invalid package specifier in not-found request: {e}"),
-                    }),
-                }
+                Ok(external_outcome(&request.request, " in not-found request"))
             }
             // All other resolver errors (I/O, specifier, config, etc.) are
             // operational or invalid — fail closed as unsupported.
@@ -118,12 +113,7 @@ impl<'a> ProjectResolver<'a> {
                         )?,
                     }
                 } else {
-                    match PackageSpecifier::new(package_name(request)) {
-                        Ok(package) => ResolverOutcome::External { package },
-                        Err(e) => ResolverOutcome::Unsupported {
-                            reason: format!("invalid package specifier: {e}"),
-                        },
-                    }
+                    external_outcome(request, "")
                 }
             }
             PathAdmission::Excluded(path) => {
@@ -132,12 +122,7 @@ impl<'a> ProjectResolver<'a> {
                         reason: format!("excluded target `{}`", path.as_ref().display()),
                     }
                 } else {
-                    match PackageSpecifier::new(package_name(request)) {
-                        Ok(package) => ResolverOutcome::External { package },
-                        Err(e) => ResolverOutcome::Unsupported {
-                            reason: format!("invalid package specifier: {e}"),
-                        },
-                    }
+                    external_outcome(request, "")
                 }
             }
             PathAdmission::Unsupported(path) => ResolverOutcome::Unsupported {
@@ -147,6 +132,15 @@ impl<'a> ProjectResolver<'a> {
                 path: admitted.relative().clone(),
             },
         })
+    }
+}
+
+fn external_outcome(request: &str, context: &str) -> ResolverOutcome {
+    match PackageSpecifier::new(package_name(request)) {
+        Ok(package) => ResolverOutcome::External { package },
+        Err(error) => ResolverOutcome::Unsupported {
+            reason: format!("invalid package specifier{context}: {error}"),
+        },
     }
 }
 

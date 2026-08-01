@@ -282,7 +282,7 @@ termination mode into one finalization method. Keep the distinction between
 complete and partial outcomes explicit, but make the timeout policy one
 implementation rather than two copies of the same expression.
 
-#### READ-013 — Resolver classification repeats external-package fallback
+#### [x] READ-013 — Resolver classification repeats external-package fallback
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -299,6 +299,12 @@ Extract `external_outcome(request)` (or a similarly named resolver-owned
 helper) and use it from the not-found, outside, and excluded branches. Keep
 internal/external policy at the branch sites so the helper only owns the
 shared package conversion.
+
+**Implementation:** Centralized external package classification in the
+resolver-owned `external_outcome` helper while retaining the distinct
+not-found error context and internal-request branches. The release lint of
+`/home/lemon/src/obsidian-stats/data/out/plugin-release-mainjs/byoc/1.0.13-main.js`
+took **0.88 s wall time** after the change (0.83 s baseline).
 
 #### READ-014 — Pretty rendering uses manual interior-mutability caching
 
