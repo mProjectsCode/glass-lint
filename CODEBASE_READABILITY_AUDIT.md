@@ -159,7 +159,7 @@ Local lowering cracks `ScopedProgram` and later `Resolver` into positional parts
 
 **Fix Applied:** `RequirementSet` renamed `IndexedEvidence`; the public `RequirementValues` alias became opaque `EvidenceValues<K>` (only `is_empty`/`first`/`iter` public). `IndexedEvidence` owns readiness and `remove`/`restore` transitions; history deltas now store `EvidenceValues` directly instead of converting through `BTreeSet`. `RequirementIndex`/`SinkIndex` remain distinct.
 
-#### [ ] READ-012 — Pending flow states delegate finalization to their caller
+#### [x] READ-012 — Pending flow states delegate finalization to their caller
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -170,7 +170,7 @@ Local lowering cracks `ScopedProgram` and later `Resolver` into positional parts
 
 **Recommendation:** Give `PendingFlowStates` a draining finalization operation that accepts a typed active-path set and returns named finalized records. Keep path grouping, completeness, and certainty derivation inside the owner and remove the raw-map `take` API.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `PendingFlowStates::take` was replaced by draining `finalize(active_paths, alternatives_complete) -> Vec<PendingFlowStateFinal>`. `ActivePaths` (built by `PathFrontier::active_paths`) and the named finalized records make grouping, completeness, and certainty derivation owner-owned.
 
 #### [ ] READ-013 — Loop fixed-point completion mixes seven responsibilities
 
