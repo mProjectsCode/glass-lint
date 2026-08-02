@@ -105,7 +105,7 @@ Static objects are represented as `Vec<(NameId, ValueId)>`, and `ArgumentView` e
 
 **Fix Applied:** Added opaque `StaticObject` in the value model owning the private entry list, with `get`, `contains_key`, `value_at_segment`, and stable `iter`. `ArgumentView` now carries `Option<&StaticObject>` instead of a raw tuple slice; matcher, summary projection, and constant resolution use the collection's behavior.
 
-#### [ ] READ-008 — Binding slots are anonymous three-element keys
+#### [x] READ-008 — Binding slots are anonymous three-element keys
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -116,7 +116,7 @@ A binding slot is propagated as `(FunctionId, BindingId, NamePath)`, including a
 
 **Recommendation:** Introduce a named `BindingSlot` key in the scope/value model and return it unchanged across layers. The newtype should expose only meaningful access needed by diagnostics or projection.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added named-field `BindingSlot { function, binding, path }` in the scope/value model with the same `Ord`/`Hash` trait set as the tuple. `BindingKey::binding_slot` and `ValueTable::binding_slot` return it, and the projector stores `BTreeMap<BindingSlot, ValueId>`. All positional uses were removed.
 
 #### [ ] READ-009 — Scope freezing is expressed through generic parts records
 
