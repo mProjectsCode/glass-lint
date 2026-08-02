@@ -12,7 +12,7 @@ No source changes were made. Findings are ordered approximately by impact within
 
 ### Project analysis and linking
 
-#### [ ] READ-001 — Project resolution dismantles its phase owners
+#### [x] READ-001 — Project resolution dismantles its phase owners
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -23,9 +23,9 @@ The local-to-resolved project transition dismantles `SourceTable` and `Resolutio
 
 **Recommendation:** Give `ResolvedLinkInputData` one named, consuming construction path from the typed source, resolution, artifact, and authored-request owners. Perform validation and module/request identity construction inside that transition. Remove the raw-map conversions and the source-map clone.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ResolvedLinkInputData::from_resolved(sources, artifacts, outcomes)` is now the single consuming construction path, holding the typed `SourceTable`, `ResolutionTable`, and `AnalysisArtifacts` owners; outcome validation and module/request identity construction moved inside it. `SourceTable::into_map` and `ResolutionTable::into_map` were deleted; `ResolvedProject` stores `sources: SourceTable` instead of a cloned map.
 
-#### [ ] READ-002 — Graph decomposition exposes and clones its representation
+#### [x] READ-002 — Graph decomposition exposes and clones its representation
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -36,9 +36,9 @@ The local-to-resolved project transition dismantles `SourceTable` and `Resolutio
 
 **Recommendation:** Let `ModuleGraph` own SCC decomposition and neighbor traversal, and give opaque `SccPartition` an ordered-component iterator. Keep adjacency, membership, and topological-order storage private and remove the full-structure clones.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ModuleGraph` now owns SCC decomposition (`scc_partition`) and opaque neighbor traversal (`neighbors`); `linker/scc.rs` was deleted. `SccPartition` keeps `components`/`order` private and exposes an ordered-component iterator; export linking iterates the partition via `mem::take` with no full-structure clones.
 
-#### [ ] READ-003 — Module identity keys are split to fit nested storage
+#### [x] READ-003 — Module identity keys are split to fit nested storage
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -49,7 +49,7 @@ The local-to-resolved project transition dismantles `SourceTable` and `Resolutio
 
 **Recommendation:** Store a flat map keyed by `ModuleExportKey`. Put authoritative-export merging and conflict handling on `ModuleIdentityMap`, eliminating key disassembly and reconstruction.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ModuleIdentityMap` now stores a flat `BTreeMap<ModuleExportKey, ExportResolution>`. `ModuleExportKey::into_parts` and `get_parts` were removed; merges (`merge_star_from`, `merge_missing_from`) operate on the flat map and stay on the owner.
 
 #### [ ] READ-004 — Plan requirements expose their capability sets
 
