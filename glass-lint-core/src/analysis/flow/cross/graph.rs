@@ -8,10 +8,22 @@ use crate::{
     project::ModuleId,
 };
 
-/// Pre-computed qualified call targets keyed by (caller_module,
-/// call_event_fact). Populated once and reused across all cross-flow phases.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct QualifiedCallSite {
+    module: ModuleId,
+    event: FactId,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct QualifiedCallTarget {
+    module: ModuleId,
+    function: FunctionId,
+}
+
+/// Pre-computed qualified call targets keyed by a caller module and event.
+/// Populated once and reused across all cross-flow phases.
 pub(super) struct QualifiedCallGraph {
-    targets: BTreeMap<(ModuleId, FactId), (ModuleId, FunctionId)>,
+    targets: BTreeMap<QualifiedCallSite, QualifiedCallTarget>,
 }
 
 impl QualifiedCallGraph {
@@ -35,7 +47,16 @@ impl QualifiedCallGraph {
                         provenance,
                         session,
                     ) {
-                        targets.insert((module_id, call.event()), target);
+                        targets.insert(
+                            QualifiedCallSite {
+                                module: module_id,
+                                event: call.event(),
+                            },
+                            QualifiedCallTarget {
+                                module: target.0,
+                                function: target.1,
+                            },
+                        );
                     }
                 }
             }
@@ -44,7 +65,9 @@ impl QualifiedCallGraph {
     }
 
     pub(super) fn get(&self, module: ModuleId, event: FactId) -> Option<(ModuleId, FunctionId)> {
-        self.targets.get(&(module, event)).copied()
+        self.targets
+            .get(&QualifiedCallSite { module, event })
+            .map(|target| (target.module, target.function))
     }
 }
 

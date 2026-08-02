@@ -41,6 +41,12 @@ use crate::{
 const MAX_CONTEXTS: usize = 65_536;
 const MAX_PENDING: usize = 65_536;
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+struct FlowPlanKey {
+    flow: FlowId,
+    module: ModuleId,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub(in crate::analysis) struct CrossProjectionOutcome {
     pub(in crate::analysis) exhausted: bool,
@@ -108,7 +114,7 @@ struct CrossWorklist<'a, 'arena> {
     evidence: HashMap<ModuleId, ModuleEvidence>,
     call_graph: QualifiedCallGraph,
     worklist: ContextWorklist,
-    flow_plan_cache: HashMap<(FlowId, ModuleId), FlowPathPlan>,
+    flow_plan_cache: HashMap<FlowPlanKey, FlowPathPlan>,
     step_budget: Budget,
     arena: &'arena mut TraceArena,
     projections: usize,
@@ -144,7 +150,10 @@ impl CrossWorklist<'_, '_> {
         };
         let flow_plan = self
             .flow_plan_cache
-            .entry((context.state.flow, context.module))
+            .entry(FlowPlanKey {
+                flow: context.state.flow,
+                module: context.module,
+            })
             .or_insert_with(|| FlowPathPlan::build(flow, names));
         let mut session = CrossProjectionSession {
             project: self.project,

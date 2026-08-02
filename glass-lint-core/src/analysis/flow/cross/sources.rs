@@ -41,6 +41,12 @@ pub(super) struct SourceCandidate {
     pub(super) fact: FactId,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct PropagationItem {
+    key: SourceKey,
+    candidate: SourceCandidate,
+}
+
 /// Proven source identities indexed by the local effect that produced them.
 ///
 /// Uses `BTreeSet` per bucket so insertion is deduplicated and sorted by
@@ -230,15 +236,18 @@ impl FlowSources {
     /// that a long, narrow propagation graph cannot retain unbounded state
     /// without tripping the frontier limit.
     pub(super) fn propagate(&mut self, budget: &mut Budget) -> bool {
-        let mut pending: VecDeque<(SourceKey, SourceCandidate)> = VecDeque::new();
-        let mut pending_seen: BTreeSet<(SourceKey, SourceCandidate)> = BTreeSet::new();
+        let mut pending = VecDeque::<PropagationItem>::new();
+        let mut pending_seen = BTreeSet::<PropagationItem>::new();
 
         for (key, candidates) in &self.sources {
             for &candidate in candidates {
                 if pending_seen.len() >= MAX_PENDING {
                     return true;
                 }
-                let entry = (*key, candidate);
+                let entry = PropagationItem {
+                    key: *key,
+                    candidate,
+                };
                 if pending_seen.insert(entry) {
                     pending.push_back(entry);
                 }
@@ -248,22 +257,30 @@ impl FlowSources {
         while !pending.is_empty() {
             let round = std::mem::take(&mut pending);
 
-            for (from_key, candidate) in &round {
-                let Some(destinations) = self.adjacency.get(from_key) else {
+            for item in &round {
+                let Some(destinations) = self.adjacency.get(&item.key) else {
                     continue;
                 };
                 for &to_key in destinations {
-                    if to_key == *from_key {
+                    if to_key == item.key {
                         continue;
                     }
-                    if self.sources.entry(to_key).or_default().insert(*candidate) {
+                    if self
+                        .sources
+                        .entry(to_key)
+                        .or_default()
+                        .insert(item.candidate)
+                    {
                         if !budget.try_push() {
                             return true;
                         }
                         if pending_seen.len() >= MAX_PENDING {
                             return true;
                         }
-                        let entry = (to_key, *candidate);
+                        let entry = PropagationItem {
+                            key: to_key,
+                            candidate: item.candidate,
+                        };
                         if pending_seen.insert(entry) {
                             pending.push_back(entry);
                         }

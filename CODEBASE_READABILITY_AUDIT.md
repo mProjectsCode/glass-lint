@@ -8,7 +8,7 @@ Scope: 416 Rust source files, approximately 82,433 lines, across the workspace. 
 
 The workspace is generally well-factored at the crate level and has strong typed domain vocabulary in many of the recently refactored areas. The remaining readability cost is concentrated in internal analysis boundaries: positional tuples and raw maps still carry semantic state, a few aggregate constructors expose too much assembly detail, and orchestration code spans several independent lifecycle phases.
 
-There are 13 open findings: 2 high, 8 medium, and 3 low. READ-001 through READ-004 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
+There are 12 open findings: 2 high, 7 medium, and 3 low. READ-001 through READ-005 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
 
 ## Findings
 
@@ -66,7 +66,7 @@ Recommendation: model the snapshot with named `CanonicalFlowState` and requireme
 
 Fix Applied: Replaced the canonical snapshot tuple aliases with named canonical object, alias, requirement, sink, and flow-state records. The fixed-point identity still normalizes projection-local object IDs and retains deterministic ordering, but convergence comparisons now expose their domain fields directly.
 
-#### [ ] READ-005 — Cross-file flow worklists and caches use anonymous composite keys
+#### [x] READ-005 — Cross-file flow worklists and caches use anonymous composite keys
 
 - Severity: Medium
 - Fix Complexity: Medium
@@ -77,7 +77,7 @@ The qualified call graph maps `(ModuleId, FactId)` to `(ModuleId, FunctionId)`, 
 
 Recommendation: add named records such as `QualifiedCallSite`, `QualifiedCallTarget`, `FlowPlanKey`, and `PropagationItem`, then centralize insertion and lookup on the owning types. This also gives the worklist a place to document ordering, deduplication, and budget semantics without repeating them at every call site.
 
-Fix Applied: None so far.
+Fix Applied: Added named qualified call-site/target records, a `FlowPlanKey` for the per-flow/module cache, and a `PropagationItem` for source worklist entries. These owners preserve the former sorted/hash key behavior while making call identity, cache scope, and propagation payload explicit.
 
 #### [ ] READ-006 — OccurrenceIndex leaks its backing map to implement package scanning
 
@@ -257,6 +257,6 @@ Fix Applied: None so far.
 
 ## Coverage
 
-Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. The working tree was clean before this implementation pass; READ-001 through READ-004 changed core boundaries and this report.
+Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. The working tree was clean before this implementation pass; READ-001 through READ-005 changed core boundaries and this report.
 
-Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.
+Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed; for READ-005, all cross-flow tests passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.
