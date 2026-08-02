@@ -183,7 +183,7 @@ Local lowering cracks `ScopedProgram` and later `Resolver` into positional parts
 
 **Recommendation:** Introduce a loop fixed-point/frontier owner with operations for replay admission, convergence, and exit collection. Leave the projector method as high-level orchestration and keep budget outcomes explicit in the domain result.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Introduced `LoopFixedPoint` owner (`flow/projector/loops.rs`) with `start`, `converge`, and `collect_exits` operations plus a private replay/exit admission primitive; budget charging moved to `ProjectionRunState::charge_operation`. `finish_loop` is now high-level orchestration, and `LoopFixedPointOutcome { exits, complete }` makes budget/completion outcomes explicit.
 
 #### [ ] READ-014 — Sink callers infer outcomes from collection mechanics
 
