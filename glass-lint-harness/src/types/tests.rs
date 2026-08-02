@@ -15,6 +15,12 @@ fn validation_errors_keep_their_domain() {
         Err(FindingExpectationError::InvalidRuleId(_))
     ));
     assert!(matches!(
+        FindingExpectation::new("js:a.b")
+            .unwrap()
+            .qualify_for_file("../outside.js"),
+        Err(glass_lint_core::project::ProjectInputError::InvalidPath(_))
+    ));
+    assert!(matches!(
         <&AdapterResolution as TryInto<(_, _)>>::try_into(&resolution(
             AdapterResolutionKind::Import,
             AdapterResolutionResult::Internal {
@@ -23,6 +29,34 @@ fn validation_errors_keep_their_domain() {
         )),
         Err(AdapterConversionError::InvalidInternalPath(_))
     ));
+}
+
+#[test]
+fn qualify_for_file_defaults_missing_required_and_forbidden_paths() {
+    let mut expectation = ToolExpectation::new(None, vec!["js:a.b".into()]).unwrap();
+    expectation.add_required(FindingExpectation::new("js:a.b").unwrap());
+    expectation.add_forbidden(
+        FindingExpectation::new("js:a.b")
+            .unwrap()
+            .with_path("lib.js")
+            .unwrap(),
+    );
+
+    let qualified = expectation.qualify_for_file("src/main.js").unwrap();
+    assert_eq!(
+        qualified.required()[0]
+            .path
+            .as_ref()
+            .map(glass_lint_core::project::ProjectRelativePath::as_str),
+        Some("src/main.js")
+    );
+    assert_eq!(
+        qualified.forbidden()[0]
+            .path
+            .as_ref()
+            .map(glass_lint_core::project::ProjectRelativePath::as_str),
+        Some("lib.js")
+    );
 }
 
 fn resolution(kind: AdapterResolutionKind, result: AdapterResolutionResult) -> AdapterResolution {

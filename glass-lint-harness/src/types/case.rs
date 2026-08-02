@@ -223,37 +223,6 @@ impl ToolExpectation {
         Ok(())
     }
 
-    pub fn from_parts(
-        config: Option<String>,
-        rules: Vec<String>,
-        required: Vec<FindingExpectation>,
-        forbidden: Vec<FindingExpectation>,
-    ) -> Result<Self, ExpectationError> {
-        let mut expectation = Self::new(config, rules)?;
-        expectation.required = required;
-        expectation.forbidden = forbidden;
-        Ok(expectation)
-    }
-
-    pub(crate) fn from_selector(
-        selector: ToolSelector,
-        required: Vec<FindingExpectation>,
-        forbidden: Vec<FindingExpectation>,
-    ) -> Result<Self, ExpectationError> {
-        let valid = match &selector {
-            ToolSelector::Config(config) => !config.trim().is_empty(),
-            ToolSelector::Rules(rules) => !rules.is_empty(),
-        };
-        if !valid {
-            return Err(ExpectationError::InvalidSelector);
-        }
-        Ok(Self {
-            selector,
-            required,
-            forbidden,
-        })
-    }
-
     pub(crate) fn required(&self) -> &[FindingExpectation] {
         &self.required
     }
@@ -262,14 +231,18 @@ impl ToolExpectation {
         &self.forbidden
     }
 
-    pub(crate) fn into_parts(
-        self,
-    ) -> (
-        ToolSelector,
-        Vec<FindingExpectation>,
-        Vec<FindingExpectation>,
-    ) {
-        (self.selector, self.required, self.forbidden)
+    pub(crate) fn qualify_for_file(mut self, path: &str) -> Result<Self, ProjectInputError> {
+        self.required = self
+            .required
+            .into_iter()
+            .map(|finding| finding.qualify_for_file(path))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.forbidden = self
+            .forbidden
+            .into_iter()
+            .map(|finding| finding.qualify_for_file(path))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(self)
     }
 
     pub(crate) fn add_required(&mut self, finding: FindingExpectation) {
@@ -319,6 +292,13 @@ impl FindingExpectation {
         self.path = Some(
             ProjectRelativePath::new(path.into()).map_err(FindingExpectationError::InvalidPath)?,
         );
+        Ok(self)
+    }
+
+    pub(crate) fn qualify_for_file(mut self, path: &str) -> Result<Self, ProjectInputError> {
+        if self.path.is_none() {
+            self.path = Some(ProjectRelativePath::new(path)?);
+        }
         Ok(self)
     }
 

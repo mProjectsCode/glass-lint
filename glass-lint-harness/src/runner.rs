@@ -185,7 +185,6 @@ mod tests {
     use glass_lint_core::Severity;
 
     use super::*;
-    use crate::types::ToolSelector;
 
     fn finding() -> Finding {
         let location = glass_lint_core::project::SourceLocation::new(
@@ -208,52 +207,39 @@ mod tests {
 
     #[test]
     fn finds_missing_diagnostic() {
-        let expected = ToolExpectation::from_selector(
-            ToolSelector::Rules(vec!["test:a.b".into()]),
-            vec![FindingExpectation {
-                path: None,
-                rule_id: glass_lint_core::RuleId::parse("test:a.b").unwrap(),
-                severity: None,
-                count: ExpectedCount::Exactly(2),
-                line: None,
-                column: None,
-                message: None,
-                certainty: None,
-            }],
-            vec![],
-        )
-        .unwrap();
+        let mut expected = ToolExpectation::new(None, vec!["test:a.b".into()]).unwrap();
+        expected.add_required(FindingExpectation {
+            path: None,
+            rule_id: glass_lint_core::RuleId::parse("test:a.b").unwrap(),
+            severity: None,
+            count: ExpectedCount::Exactly(2),
+            line: None,
+            column: None,
+            message: None,
+            certainty: None,
+        });
         assert_eq!(compare(&[finding()], &expected).len(), 1);
     }
 
     #[test]
     fn flags_unexpected_diagnostic() {
-        let expected = ToolExpectation::from_selector(
-            ToolSelector::Config("heuristic".into()),
-            vec![],
-            vec![],
-        )
-        .unwrap();
+        let expected = ToolExpectation::new(Some("heuristic".into()), Vec::new()).unwrap();
         assert_eq!(compare(&[finding()], &expected).len(), 1);
     }
 
     #[test]
     fn reports_forbidden_diagnostic_once() {
-        let expected = ToolExpectation::from_selector(
-            ToolSelector::Rules(vec!["test:a.b".into()]),
-            vec![],
-            vec![FindingExpectation {
-                path: None,
-                rule_id: glass_lint_core::RuleId::parse("test:a.b").unwrap(),
-                severity: None,
-                count: ExpectedCount::Exactly(1),
-                line: None,
-                column: None,
-                message: None,
-                certainty: None,
-            }],
-        )
-        .unwrap();
+        let mut expected = ToolExpectation::new(None, vec!["test:a.b".into()]).unwrap();
+        expected.add_forbidden(FindingExpectation {
+            path: None,
+            rule_id: glass_lint_core::RuleId::parse("test:a.b").unwrap(),
+            severity: None,
+            count: ExpectedCount::Exactly(1),
+            line: None,
+            column: None,
+            message: None,
+            certainty: None,
+        });
         assert_eq!(compare(&[finding()], &expected).len(), 1);
     }
 }

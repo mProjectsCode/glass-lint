@@ -5,7 +5,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use glass_lint_core::{SourceLanguage, project::ProjectRelativePath};
+use glass_lint_core::SourceLanguage;
 use glass_lint_datastructures::{Position, SourceRange};
 
 use super::{language_for_path, snippet::parse_case};
@@ -222,33 +222,7 @@ fn load_project_tools(
     for file in files {
         let parsed = parse_case(directory, &directory.join(&file.path), file.source.clone())?;
         for (name, expectation) in parsed.adapters {
-            let (selector, required, forbidden) = expectation.into_parts();
-            let requirements = required
-                .into_iter()
-                .map(|mut expected| {
-                    if expected.path.is_none() {
-                        expected.path = Some(
-                            ProjectRelativePath::new(file.path.clone())
-                                .map_err(|error| anyhow::anyhow!(error))?,
-                        );
-                    }
-                    Ok::<_, anyhow::Error>(expected)
-                })
-                .collect::<Result<Vec<_>>>()?;
-            let forbidden = forbidden
-                .into_iter()
-                .map(|mut expected| {
-                    if expected.path.is_none() {
-                        expected.path = Some(
-                            ProjectRelativePath::new(file.path.clone())
-                                .map_err(|error| anyhow::anyhow!(error))?,
-                        );
-                    }
-                    Ok::<_, anyhow::Error>(expected)
-                })
-                .collect::<Result<Vec<_>>>()?;
-            let expectation = ToolExpectation::from_selector(selector, requirements, forbidden)
-                .map_err(anyhow::Error::msg)?;
+            let expectation = expectation.qualify_for_file(&file.path)?;
             if let Some(entry) = tools.get_mut(&name) {
                 entry
                     .merge_from(expectation)
