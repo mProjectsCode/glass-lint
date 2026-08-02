@@ -8,7 +8,7 @@ Scope: 416 Rust source files, approximately 82,433 lines, across the workspace. 
 
 The workspace is generally well-factored at the crate level and has strong typed domain vocabulary in many of the recently refactored areas. The remaining readability cost is concentrated in internal analysis boundaries: positional tuples and raw maps still carry semantic state, a few aggregate constructors expose too much assembly detail, and orchestration code spans several independent lifecycle phases.
 
-There is 1 open finding: 0 high, 0 medium, and 1 low. READ-001 through READ-016 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
+There are no open findings. READ-001 through READ-017 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below record the completed maintainability work and its verification.
 
 ## Findings
 
@@ -228,7 +228,7 @@ Fix Applied: Split the oversized matcher, tsconfig, normalization, and validatio
 
 ### Maintenance hygiene
 
-#### [ ] READ-017 — Lint suppressions remain after signature and decomposition refactors
+#### [x] READ-017 — Lint suppressions remain after signature and decomposition refactors
 
 - Severity: Low
 - Fix Complexity: Low
@@ -239,7 +239,7 @@ Fix Applied: Split the oversized matcher, tsconfig, normalization, and validatio
 
 Recommendation: remove each suppression and rerun the workspace lint gate, retaining only allows that still correspond to a measured warning. Where an allowance remains necessary, add a short reason tied to the invariant or unavoidable API shape so later refactors can distinguish intentional exceptions from residue.
 
-Fix Applied: None so far.
+Fix Applied: Removed the obsolete projection-wrapper and matcher signature suppressions; the binding-index suppression had already been removed with its constructor refactor. The constrained matcher was split into indexed and fallback evaluation helpers, reducing the main function below the clippy line limit while preserving candidate filtering and evidence order. Remaining suppressions correspond to measured conversion, test-fixture, or intentional compatibility cases and still pass warnings-denied clippy.
 
 ## Systemic Themes
 
@@ -257,6 +257,6 @@ Fix Applied: None so far.
 
 ## Coverage
 
-Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. READ-001 through READ-016 changed core/report/harness boundaries and this report.
+Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. READ-001 through READ-017 changed core/report/harness boundaries and this report.
 
-Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed; for READ-005, all cross-flow tests passed; for READ-006, occurrence and package-matching tests passed; for READ-007, identity-map conflict and precedence tests passed; for READ-008, all flow-projector tests passed; for READ-009, scope construction and integration scope tests passed; for READ-010, scope collection and integration scope tests passed; for READ-011, trace and cross-flow evidence tests passed; for READ-012, report and operation-count tests passed; for READ-013, report tests and core clippy passed; for READ-014, harness case tests and harness clippy passed; for READ-015, all profile tests and harness clippy passed; for READ-016, the four split test suites and their owning-crate clippy checks passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.
+Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed; for READ-005, all cross-flow tests passed; for READ-006, occurrence and package-matching tests passed; for READ-007, identity-map conflict and precedence tests passed; for READ-008, all flow-projector tests passed; for READ-009, scope construction and integration scope tests passed; for READ-010, scope collection and integration scope tests passed; for READ-011, trace and cross-flow evidence tests passed; for READ-012, report and operation-count tests passed; for READ-013, report tests and core clippy passed; for READ-014, harness case tests and harness clippy passed; for READ-015, all profile tests and harness clippy passed; for READ-016, the four split test suites and their owning-crate clippy checks passed; for READ-017, constrained-matcher tests and core clippy passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.

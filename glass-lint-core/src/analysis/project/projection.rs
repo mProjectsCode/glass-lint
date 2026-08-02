@@ -379,7 +379,6 @@ impl ProjectSemanticModel {
     /// any source AST.  Side effects such as budget exhaustion and projection
     /// counts are returned in a `ProjectionOutcome` instead of being written
     /// back into `self`.
-    #[allow(clippy::too_many_lines)]
     #[cfg(test)]
     pub fn project<'project, 'matchers>(
         &'project self,

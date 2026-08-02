@@ -86,8 +86,6 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
 }
 
 /// Inner implementation that also tracks evaluation operations.
-#[allow(clippy::too_many_arguments)]
-#[allow(clippy::too_many_lines)]
 fn compute_constrained_inner(
     context: MatcherEvaluationContext<'_>,
     roots: &[(usize, &PhysicalRoot)],
@@ -142,33 +140,55 @@ fn compute_constrained_inner(
         })
         .collect();
 
-    // Phase 1: Index-based candidate lookup.
-    // When the index lookup succeeds, candidates are filtered through the
-    // evaluator.  Roots whose index lookup fails are collected for the
-    // fallback linear scan (Phase 2).
-    for prepared_root in &mut prepared {
+    evaluate_indexed_roots(
+        &mut prepared,
+        stream,
+        indexes,
+        overlay,
+        &evaluator,
+        operations,
+        evidence,
+    );
+    evaluate_fallback_roots(&mut prepared, stream, &evaluator, operations, evidence);
+}
+
+/// Evaluate roots whose identity can use the occurrence index, marking the
+/// remaining roots for the bounded linear fallback pass.
+fn evaluate_indexed_roots(
+    prepared: &mut [PreparedConstrainedRoot<'_>],
+    stream: &FactStream<Frozen>,
+    indexes: &OccurrenceIndexes,
+    overlay: Option<&LinkedOccurrenceView<'_>>,
+    evaluator: &MatcherEvaluator<'_>,
+    operations: &mut EvaluationOperations,
+    evidence: &mut RuleEvidenceTable,
+) {
+    for prepared_root in prepared {
         let root = &prepared_root.root;
         let Some(candidates) =
-            indexes.occurrences_for_indexed(root.identity, root.event, overlay, names)
+            indexes.occurrences_for_indexed(root.identity, root.event, overlay, stream.names())
         else {
             prepared_root.fallback = true;
             continue;
         };
-        let mut matched: Vec<Occurrence> = Vec::new();
-        for occurrence in candidates {
-            if let Some(fact) = stream.fact(occurrence.event())
-                && evaluator.fact_matches_clause(
-                    fact,
-                    root.identity,
-                    root.event,
-                    root.constraints,
-                    &prepared_root.paths,
-                    operations,
-                )
-            {
-                matched.push(occurrence);
-            }
-        }
+        let matched: Vec<_> = candidates
+            .into_iter()
+            .filter_map(|occurrence| {
+                stream
+                    .fact(occurrence.event())
+                    .filter(|fact| {
+                        evaluator.fact_matches_clause(
+                            fact,
+                            root.identity,
+                            root.event,
+                            root.constraints,
+                            &prepared_root.paths,
+                            operations,
+                        )
+                    })
+                    .map(|_| occurrence)
+            })
+            .collect();
         if !matched.is_empty() {
             push_owned_rule_evidence(
                 evidence,
@@ -179,41 +199,47 @@ fn compute_constrained_inner(
             );
         }
     }
+}
 
-    // Phase 2: Fallback linear scan for roots that the index could not
-    // resolve.  This handles cases where the call provenance is resolved
-    // through overlays (e.g., returned callables) rather than direct
-    // module/global index entries.
-    if prepared.iter().any(|root| root.fallback) {
-        for fact in stream.facts() {
-            for prepared_root in prepared.iter_mut().filter(|root| root.fallback) {
-                let root = &prepared_root.root;
-                if evaluator.fact_matches_clause(
-                    fact,
-                    root.identity,
-                    root.event,
-                    root.constraints,
-                    &prepared_root.paths,
-                    operations,
-                ) {
-                    prepared_root
-                        .occurrences
-                        .push(Occurrence::new(fact.id, fact.span));
-                }
-            }
-        }
+/// Scan roots that could not use an index, then publish their evidence.
+fn evaluate_fallback_roots(
+    prepared: &mut [PreparedConstrainedRoot<'_>],
+    stream: &FactStream<Frozen>,
+    evaluator: &MatcherEvaluator<'_>,
+    operations: &mut EvaluationOperations,
+    evidence: &mut RuleEvidenceTable,
+) {
+    if !prepared.iter().any(|root| root.fallback) {
+        return;
+    }
+    for fact in stream.facts() {
         for prepared_root in prepared.iter_mut().filter(|root| root.fallback) {
             let root = &prepared_root.root;
-            let occurrences = std::mem::take(&mut prepared_root.occurrences);
-            if !occurrences.is_empty() {
-                push_owned_rule_evidence(
-                    evidence,
-                    root.rule,
-                    root.evidence.kind,
-                    root.evidence.symbol.clone(),
-                    occurrences,
-                );
+            if evaluator.fact_matches_clause(
+                fact,
+                root.identity,
+                root.event,
+                root.constraints,
+                &prepared_root.paths,
+                operations,
+            ) {
+                prepared_root
+                    .occurrences
+                    .push(Occurrence::new(fact.id, fact.span));
             }
+        }
+    }
+    for prepared_root in prepared.iter_mut().filter(|root| root.fallback) {
+        let root = &prepared_root.root;
+        let occurrences = std::mem::take(&mut prepared_root.occurrences);
+        if !occurrences.is_empty() {
+            push_owned_rule_evidence(
+                evidence,
+                root.rule,
+                root.evidence.kind,
+                root.evidence.symbol.clone(),
+                occurrences,
+            );
         }
     }
 }
