@@ -573,10 +573,6 @@ fn object_limit_exhaustion_returns_exhausted_outcome() {
         limits,
     );
     assert!(outcome.exhausted, "object limit should be exhausted");
-    assert_eq!(
-        outcome.objects_used, 1,
-        "only one object should be allocated"
-    );
     assert!(
         evidence[0].is_empty(),
         "no flow can complete without a second object"

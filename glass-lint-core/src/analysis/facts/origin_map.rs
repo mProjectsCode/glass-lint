@@ -130,15 +130,6 @@ impl<V: Clone> OriginMap<V> {
         self.map.iter()
     }
 
-    #[allow(dead_code)]
-    pub fn len(&self) -> usize {
-        self.map.len()
-    }
-
-    #[allow(dead_code)]
-    pub fn is_empty(&self) -> bool {
-        self.map.is_empty()
-    }
 }
 
 impl<V: Clone> Default for OriginMap<V> {

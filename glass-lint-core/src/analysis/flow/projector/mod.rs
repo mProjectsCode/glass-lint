@@ -52,9 +52,6 @@ enum EmissionMode {
 pub(in crate::analysis) struct LocalFlowProjectionOutcome {
     /// Whether any budget was exhausted during projection.
     pub exhausted: bool,
-    /// Object identities allocated.
-    #[allow(dead_code)]
-    pub objects_used: u32,
     /// Charged local flow operations.
     pub operations: usize,
     /// Maximum number of correlated alternatives retained at one point.
@@ -809,7 +806,6 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             || self.trace_arena.is_exhausted();
         LocalFlowProjectionOutcome {
             exhausted,
-            objects_used: self.run.next_object_id,
             operations: self.run.operation_budget.used(),
             max_live_alternatives: self.run.max_live_alternatives,
             coalescing_comparisons: self.run.coalescing_comparisons,

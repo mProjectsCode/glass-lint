@@ -189,7 +189,7 @@ flow projection call sites to use the predicate-named `is_reachable` method.
 The private flow environment now has one reachability API, so its semantics
 cannot drift between aliases.
 
-#### [ ] READ-009 — Production flow outcomes retain suppressed dead APIs
+#### [x] READ-009 — Production flow outcomes retain suppressed dead APIs
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -207,7 +207,11 @@ path abstractions.
 through the owning outcome to a real consumer; keep any retained allowance
 local and document its purpose.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the unused `objects_used` field from the production
+flow outcome and deleted its test-only assertion, along with the unused
+`OriginMap::len` and `OriginMap::is_empty` methods. The bounded flow and
+origin-map abstractions now expose only data consumed by production code or
+their actual invariants.
 
 ### Group 3: Project loading and harness boundaries
 
