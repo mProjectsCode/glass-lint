@@ -306,7 +306,7 @@ Sink collection callers compare `len` before and after to infer insertion count,
 
 **Recommendation:** Make the existing public `PackageSpecifier` the sole canonical package-root value and remove `PackageName`. Store `PackageSpecifier` directly in the package form of `ModuleSpecifierPattern`, translating its construction error at the rule boundary; keep exact module patterns as strings because they accept a different grammar.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `PackageName` removed; `PackageSpecifier` is the sole canonical package-root type and is stored directly in `ModuleSpecifierPattern`'s private `PatternValue::Package` variant. The construction error is translated at the rule boundary (`ModuleSpecifierPattern::package`); exact patterns remain `String`.
 
 #### [ ] READ-023 — NameId exposes an unused numeric representation
 
