@@ -40,7 +40,7 @@ use crate::{
         classification::{ClassificationEvidence, MatchKind, RuleEvidenceTable, RuleIndex},
         compiler::{CompiledObjectFlow, CompiledObjectRequirement},
     },
-    project::ModuleId,
+    project::{MatchCertainty, ModuleId},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -184,6 +184,28 @@ struct PathFrontier {
     active_index: usize,
 }
 
+/// The active frontier paths at a fact boundary, keyed by their per-transfer
+/// indices. Pending states are definite only when every active path queued a
+/// matching state.
+#[derive(Debug, Clone, Copy)]
+struct ActivePaths {
+    count: usize,
+}
+
+impl ActivePaths {
+    fn new(count: usize) -> Self {
+        Self { count }
+    }
+
+    fn len(self) -> usize {
+        self.count
+    }
+
+    fn contains(self, path_index: usize) -> bool {
+        path_index < self.count
+    }
+}
+
 #[derive(Debug, Default)]
 struct PendingFlowStates {
     values: BTreeMap<PendingFlowKey, Vec<PendingState>>,
@@ -201,9 +223,48 @@ struct PendingState {
     state: FlowState,
 }
 
+/// One drained pending group with the completing event and the certainty
+/// derived from active-path coverage.
+#[derive(Debug)]
+struct PendingFlowStateFinal {
+    event: FactId,
+    certainty: MatchCertainty,
+    states: Vec<PendingState>,
+}
+
 impl PendingFlowStates {
-    fn take(&mut self) -> BTreeMap<PendingFlowKey, Vec<PendingState>> {
-        std::mem::take(&mut self.values)
+    fn finalize(
+        &mut self,
+        active_paths: ActivePaths,
+        alternatives_complete: AlternativeCompleteness,
+    ) -> Vec<PendingFlowStateFinal> {
+        let values = std::mem::take(&mut self.values);
+        let mut finalized = Vec::with_capacity(values.len());
+        for (key, states) in values {
+            if states.is_empty() {
+                continue;
+            }
+            let matching_paths = states
+                .iter()
+                .map(|pending| pending.path_index)
+                .collect::<BTreeSet<_>>();
+            let definite = alternatives_complete.is_complete()
+                && matching_paths.len() == active_paths.len()
+                && matching_paths
+                    .iter()
+                    .all(|path| active_paths.contains(*path));
+            let certainty = if definite {
+                MatchCertainty::Definite
+            } else {
+                MatchCertainty::Possible
+            };
+            finalized.push(PendingFlowStateFinal {
+                event: key.event,
+                certainty,
+                states,
+            });
+        }
+        finalized
     }
 
     fn entry(&mut self, key: PendingFlowKey) -> &mut Vec<PendingState> {
@@ -218,6 +279,10 @@ impl PathFrontier {
             active_count: 0,
             active_index: 0,
         }
+    }
+
+    fn active_paths(&self) -> ActivePaths {
+        ActivePaths::new(self.active_count)
     }
 
     fn take(&mut self) -> Vec<FlowEnvironment> {
@@ -668,24 +733,12 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     }
 
     fn finalize_pending(&mut self) {
-        let pending = self.pending.take();
-        for (key, states) in pending {
-            if states.is_empty() {
-                continue;
-            }
-            let matching_paths = states
-                .iter()
-                .map(|pending| pending.path_index)
-                .collect::<BTreeSet<_>>();
-            let certainty = if self.run.alternatives_complete.is_complete()
-                && matching_paths.len() == self.frontier.active_count
-            {
-                crate::project::MatchCertainty::Definite
-            } else {
-                crate::project::MatchCertainty::Possible
-            };
-            for pending in states {
-                self.emit_state_final(&pending.state, key.event, certainty);
+        let finalized = self
+            .pending
+            .finalize(self.frontier.active_paths(), self.run.alternatives_complete);
+        for record in finalized {
+            for pending in record.states {
+                self.emit_state_final(&pending.state, record.event, record.certainty);
             }
         }
     }
