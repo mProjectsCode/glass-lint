@@ -178,229 +178,107 @@ fn multiple_lifecycle_sources_compile() {
 // rather than panicking.  Constructors tested here accept user-provided
 // strings or indices that could be empty, malformed, or out of range.
 
+type InvalidConstructor = Box<dyn Fn() -> Result<(), QueryBuildError>>;
+
+macro_rules! invalid_case {
+    ($name:literal, $constructor:expr) => {
+        (
+            $name,
+            Box::new(|| $constructor.map(|_| ())) as InvalidConstructor,
+        )
+    };
+}
+
+fn assert_invalid_constructor(name: &str, constructor: InvalidConstructor) {
+    let result = catch_unwind(std::panic::AssertUnwindSafe(constructor));
+    match result {
+        Ok(Err(_error)) => {}
+        Ok(Ok(())) => panic!("{name}: expected Err but got Ok"),
+        Err(panic) => {
+            let message = panic
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| panic.downcast_ref::<&str>().map(ToString::to_string))
+                .unwrap_or_else(|| "unknown panic payload".into());
+            panic!("{name}: panicked instead of returning Err: {message}");
+        }
+    }
+}
+
 #[test]
-#[allow(clippy::too_many_lines)]
 fn invalid_authoring_input_never_panics() {
-    // All constructor calls that should return Err, never panic.
-    #[allow(clippy::type_complexity)]
-    let cases: Vec<(&str, Box<dyn Fn() -> Result<(), String>>)> = vec![
-        (
-            "call_global empty",
-            Box::new(|| {
-                EventQuery::call_global("")
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
-        ),
-        (
-            "call_heuristic empty",
-            Box::new(|| {
-                EventQuery::call_heuristic("")
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
-        ),
-        (
-            "call_module empty module",
-            Box::new(|| {
-                EventQuery::call_module("", "x")
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
-        ),
-        (
-            "call_module empty export",
-            Box::new(|| {
-                EventQuery::call_module("m", "")
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
-        ),
-        (
-            "call_package empty",
-            Box::new(|| {
-                EventQuery::call_package("", "x")
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
-        ),
-        (
+    let cases = vec![
+        invalid_case!("call_global empty", EventQuery::call_global("")),
+        invalid_case!("call_heuristic empty", EventQuery::call_heuristic("")),
+        invalid_case!("call_module empty module", EventQuery::call_module("", "x")),
+        invalid_case!("call_module empty export", EventQuery::call_module("m", "")),
+        invalid_case!("call_package empty", EventQuery::call_package("", "x")),
+        invalid_case!(
             "member_call_rooted double dot",
-            Box::new(|| {
-                EventQuery::member_call_rooted("a..b")
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
+            EventQuery::member_call_rooted("a..b")
         ),
-        (
+        invalid_case!(
             "member_call_rooted trailing dot",
-            Box::new(|| {
-                EventQuery::member_call_rooted("a.b.")
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
+            EventQuery::member_call_rooted("a.b.")
         ),
-        (
+        invalid_case!(
             "member_call_rooted leading dot",
-            Box::new(|| {
-                EventQuery::member_call_rooted(".a")
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
+            EventQuery::member_call_rooted(".a")
         ),
-        (
-            "member_call_rooted empty",
-            Box::new(|| {
-                EventQuery::member_call_rooted("")
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
-        ),
-        (
+        invalid_case!("member_call_rooted empty", EventQuery::member_call_rooted("")),
+        invalid_case!(
             "member_call_heuristic empty",
-            Box::new(|| {
-                EventQuery::member_call_heuristic("")
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
+            EventQuery::member_call_heuristic("")
         ),
-        (
+        invalid_case!(
             "member_call_module empty module",
-            Box::new(|| {
-                EventQuery::member_call_module("", "m")
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
+            EventQuery::member_call_module("", "m")
         ),
-        (
-            "import_exact empty",
-            Box::new(|| {
-                EventQuery::import_exact("")
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
-        ),
-        (
-            "import_package empty",
-            Box::new(|| {
-                EventQuery::import_package("")
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
-        ),
-        (
-            "string_contains empty",
-            Box::new(|| {
-                EventQuery::string_contains("")
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
-        ),
-        (
-            "class_heuristic empty",
-            Box::new(|| {
-                EventQuery::class_heuristic("")
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
-        ),
-        (
-            "class_module empty module",
-            Box::new(|| {
-                EventQuery::class_module("", "C")
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
-        ),
-        (
+        invalid_case!("import_exact empty", EventQuery::import_exact("")),
+        invalid_case!("import_package empty", EventQuery::import_package("")),
+        invalid_case!("string_contains empty", EventQuery::string_contains("")),
+        invalid_case!("class_heuristic empty", EventQuery::class_heuristic("")),
+        invalid_case!("class_module empty module", EventQuery::class_module("", "C")),
+        invalid_case!(
             "constructor_global empty",
-            Box::new(|| {
-                EventQuery::constructor_global("")
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
+            EventQuery::constructor_global("")
         ),
-        (
+        invalid_case!(
             "constructor_heuristic empty",
-            Box::new(|| {
-                EventQuery::constructor_heuristic("")
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
+            EventQuery::constructor_heuristic("")
         ),
-        (
+        invalid_case!(
             "constructor_module empty module",
-            Box::new(|| {
-                EventQuery::constructor_module("", "C")
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
+            EventQuery::constructor_module("", "C")
         ),
-        (
+        invalid_case!(
             "lifecycle member event empty",
-            Box::new(|| {
-                glass_lint_core::rules::LifecycleEvent::member_call("")
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
+            LifecycleEvent::member_call("")
         ),
-        (
+        invalid_case!(
             "lifecycle condition empty",
-            Box::new(|| {
-                LifecycleCondition::any_of(Vec::<LifecycleEvent>::new())
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
+            LifecycleCondition::any_of(Vec::<LifecycleEvent>::new())
         ),
-        (
+        invalid_case!(
             "lifecycle sink empty chain",
-            Box::new(|| {
-                LifecycleSink::argument_of_member("", 0)
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
+            LifecycleSink::argument_of_member("", 0)
         ),
-        (
+        invalid_case!(
             "lifecycle sink index too large",
-            Box::new(|| {
-                LifecycleSink::argument_of_member("sink", 256)
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
+            LifecycleSink::argument_of_member("sink", 256)
         ),
-        (
+        invalid_case!(
             "static alternatives empty",
-            Box::new(|| {
-                ValueMatcher::static_string()
-                    .equals_any(Vec::<String>::new())
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
+            ValueMatcher::static_string().equals_any(Vec::<String>::new())
         ),
-        (
+        invalid_case!(
             "object keys empty",
-            Box::new(|| {
-                glass_lint_core::rules::ArgumentMatcher::object_keys(Vec::<String>::new())
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }),
+            glass_lint_core::rules::ArgumentMatcher::object_keys(Vec::<String>::new())
         ),
     ];
 
     for (name, constructor) in cases {
-        let result = catch_unwind(std::panic::AssertUnwindSafe(constructor));
-        match result {
-            Ok(Err(_)) => {} // expected: structured error
-            Ok(Ok(())) => panic!("{name}: expected Err but got Ok"),
-            Err(panic) => {
-                let msg = panic
-                    .downcast_ref::<String>()
-                    .cloned()
-                    .or_else(|| panic.downcast_ref::<&str>().map(ToString::to_string))
-                    .unwrap_or_else(|| "unknown panic payload".into());
-                panic!("{name}: panicked instead of returning Err: {msg}")
-            }
-        }
+        assert_invalid_constructor(name, constructor);
     }
 }
 

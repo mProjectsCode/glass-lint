@@ -307,7 +307,7 @@ architecture file, and clarified the CLI architecture boundary for format
 dispatch and JSON output. The documentation now distinguishes reusable report
 rendering from analysis, loading, provider policy, and report construction.
 
-#### [ ] READ-014 — Panic-safety test table obscures constructor coverage
+#### [x] READ-014 — Panic-safety test table obscures constructor coverage
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -325,7 +325,11 @@ helper or macro with a named case and retain typed errors until the assertion
 boundary. Split the table by constructor family if necessary so new invalid
 input cases remain easy to add without reducing adversarial coverage.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the repeated closure/error-string adapters with a
+typed `InvalidConstructor` alias, an `invalid_case!` table macro, and a named
+panic-safety assertion helper. Constructor errors remain `QueryBuildError`
+values until the assertion boundary, while every existing invalid-input case
+keeps its descriptive name and catch-unwind coverage.
 
 ## Systemic Themes
 
