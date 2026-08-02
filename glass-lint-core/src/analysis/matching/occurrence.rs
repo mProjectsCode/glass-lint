@@ -248,7 +248,7 @@ pub(in crate::analysis) struct BorrowedPackageOccurrenceIter<'a> {
 }
 
 impl<'a> BorrowedPackageOccurrenceIter<'a> {
-    pub(super) fn new(
+    fn new(
         predicate: PackageKeyPredicate<'a>,
         masked: Option<&'a BTreeSet<ModuleExportKey>>,
         base: &'a BTreeMap<ModuleExportKey, Vec<Occurrence>>,
@@ -343,11 +343,6 @@ impl<K: Ord> Default for OccurrenceIndex<K> {
 }
 
 impl<K: Ord> OccurrenceIndex<K> {
-    /// Access the underlying map for lazy package-scan iteration.
-    pub(super) fn as_map(&self) -> &BTreeMap<K, Vec<Occurrence>> {
-        &self.0
-    }
-
     /// Look up one normalized occurrence bucket as a slice.
     pub(super) fn get<Q>(&self, key: &Q) -> Option<&[Occurrence]>
     where
@@ -411,6 +406,19 @@ impl<K: Ord> OccurrenceIndex<K> {
                 )
             });
         }
+    }
+}
+
+impl OccurrenceIndex<ModuleExportKey> {
+    /// Lazily scan package exports while keeping merge and masking mechanics
+    /// inside the occurrence index.
+    pub(super) fn package_candidates<'a>(
+        &'a self,
+        predicate: PackageKeyPredicate<'a>,
+        masked: Option<&'a BTreeSet<ModuleExportKey>>,
+        overlay: Option<&'a BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>>>,
+    ) -> BorrowedPackageOccurrenceIter<'a> {
+        BorrowedPackageOccurrenceIter::new(predicate, masked, &self.0, overlay)
     }
 }
 

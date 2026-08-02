@@ -11,9 +11,9 @@ use crate::{
     Environment,
     analysis::{
         matching::occurrence::{
-            BorrowedOccurrenceIter, BorrowedPackageOccurrenceIter, CandidateOccurrences,
-            ModuleExportKey, ModuleOccurrences, NameOccurrences, Occurrence, OccurrenceIndex,
-            Occurrences, PackageKeyPredicate, PackageMatchKind,
+            BorrowedOccurrenceIter, CandidateOccurrences, ModuleExportKey, ModuleOccurrences,
+            NameOccurrences, Occurrence, OccurrenceIndex, Occurrences, PackageKeyPredicate,
+            PackageMatchKind,
         },
         value::matches_global_object_alias_with,
     },
@@ -47,7 +47,7 @@ fn package_occurrences<'a>(
     masked: Option<&'a BTreeSet<ModuleExportKey>>,
     predicate: PackageKeyPredicate<'a>,
 ) -> CandidateOccurrences<'a> {
-    let iter = BorrowedPackageOccurrenceIter::new(predicate, masked, base.as_map(), overlay);
+    let iter = base.package_candidates(predicate, masked, overlay);
     CandidateOccurrences::BorrowedPackage(iter)
 }
 

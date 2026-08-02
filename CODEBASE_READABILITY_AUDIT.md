@@ -8,7 +8,7 @@ Scope: 416 Rust source files, approximately 82,433 lines, across the workspace. 
 
 The workspace is generally well-factored at the crate level and has strong typed domain vocabulary in many of the recently refactored areas. The remaining readability cost is concentrated in internal analysis boundaries: positional tuples and raw maps still carry semantic state, a few aggregate constructors expose too much assembly detail, and orchestration code spans several independent lifecycle phases.
 
-There are 12 open findings: 2 high, 7 medium, and 3 low. READ-001 through READ-005 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
+There are 11 open findings: 2 high, 6 medium, and 3 low. READ-001 through READ-006 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
 
 ## Findings
 
@@ -79,7 +79,7 @@ Recommendation: add named records such as `QualifiedCallSite`, `QualifiedCallTar
 
 Fix Applied: Added named qualified call-site/target records, a `FlowPlanKey` for the per-flow/module cache, and a `PropagationItem` for source worklist entries. These owners preserve the former sorted/hash key behavior while making call identity, cache scope, and propagation payload explicit.
 
-#### [ ] READ-006 — OccurrenceIndex leaks its backing map to implement package scanning
+#### [x] READ-006 — OccurrenceIndex leaks its backing map to implement package scanning
 
 - Severity: Medium
 - Fix Complexity: Medium
@@ -90,7 +90,7 @@ Fix Applied: Added named qualified call-site/target records, a `FlowPlanKey` for
 
 Recommendation: replace `as_map()` with an owner-facing package-candidate iterator or a method that accepts the package predicate and overlay view. Keep the lazy merge and deterministic ordering internal to the occurrence abstraction, and expose only occurrence-oriented results.
 
-Fix Applied: None so far.
+Fix Applied: Replaced `OccurrenceIndex::as_map()` with an owner-facing `package_candidates` operation specialized for module-export occurrences. The query view now receives only the lazy occurrence iterator, leaving base/overlay merge and masking storage private to the occurrence abstraction.
 
 #### [ ] READ-007 — Module identity merging reconstructs and merges raw entry tuples outside its owner
 
@@ -257,6 +257,6 @@ Fix Applied: None so far.
 
 ## Coverage
 
-Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. The working tree was clean before this implementation pass; READ-001 through READ-005 changed core boundaries and this report.
+Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. The working tree was clean before this implementation pass; READ-001 through READ-006 changed core boundaries and this report.
 
-Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed; for READ-005, all cross-flow tests passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.
+Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed; for READ-005, all cross-flow tests passed; for READ-006, occurrence and package-matching tests passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.
