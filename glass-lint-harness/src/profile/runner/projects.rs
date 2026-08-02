@@ -5,12 +5,11 @@ use glass_lint_project::{ProjectLoader, ProjectSelection, ValidatedProjectLoadOp
 
 use crate::profile::{
     config::{ProfileConfig, ProfileCorpusIdentity, ProfileWorkload, ProfileWorkloadIdentity},
-    metrics::median_duration,
     runner::support,
     types::{
         MeasuredRepetitionAccumulator, ProfileLinter, ProfileOperationCounts, ProfilePhaseTimings,
         ProfileProjectRun, ProfileProjectRunAccumulator, ProfileSummary, ProfileSummaryAccumulator,
-        project_run_outcome,
+        ProfileSummaryMetadata, project_run_outcome,
     },
 };
 
@@ -34,7 +33,7 @@ pub(super) fn run(config: &ProfileConfig) -> Result<ProfileSummary> {
         totals.record(project.result, project.successful_runs);
     }
     phases.record_total(total_start.elapsed());
-    Ok(ProfileSummary {
+    Ok(totals.finish(ProfileSummaryMetadata {
         workload: ProfileWorkloadIdentity {
             mode: ProfileWorkload::LoaderProject,
             corpus: manifest_digest.map_or(
@@ -42,23 +41,15 @@ pub(super) fn run(config: &ProfileConfig) -> Result<ProfileSummary> {
                 ProfileCorpusIdentity::Verified,
             ),
         },
-        inputs: totals.files,
-        bytes: totals.bytes,
-        findings: totals.findings,
-        diagnostics: totals.diagnostics,
-        errors: totals.errors,
-        runs: totals.runs,
         setup_duration: phases.discovery() + phases.reads(),
         measured_elapsed: phases.parse_and_local_analysis()
             + phases.resolution()
             + phases.linking_and_matching(),
         wall_duration: phases.total(),
-        median_repetition_duration: median_duration(&measured.repetitions),
         repetitions: measured.repetitions,
-        workload_results: totals.workload_results,
         phase_timings: phases,
         operation_counts: counts,
-    })
+    }))
 }
 
 fn profile_loader_project(

@@ -6,11 +6,11 @@ use std::{
 
 use crate::profile::{
     config::{ProfileConfig, ProfileCorpusIdentity, ProfileWorkload, ProfileWorkloadIdentity},
-    metrics::median_duration,
     runner::files::PreparedCorpus,
     types::{
         MeasuredRepetitionAccumulator, ProfilePhaseTimings, ProfileSummary,
-        ProfileSummaryAccumulator, ProfileWorkloadSummary, sum_operation_counts,
+        ProfileSummaryAccumulator, ProfileSummaryMetadata, ProfileWorkloadSummary,
+        sum_operation_counts,
     },
 };
 
@@ -35,7 +35,7 @@ pub(super) fn file_profile(
     phase_timings.record_discovery(corpus.setup_duration);
     phase_timings.record_matching(lint_elapsed);
     phase_timings.record_total(total_start.elapsed());
-    ProfileSummary {
+    totals.finish(ProfileSummaryMetadata {
         workload: ProfileWorkloadIdentity {
             mode: ProfileWorkload::Files,
             corpus: corpus.manifest_digest.map_or(
@@ -43,21 +43,13 @@ pub(super) fn file_profile(
                 ProfileCorpusIdentity::Verified,
             ),
         },
-        inputs: totals.files,
-        bytes: totals.bytes,
-        findings: totals.findings,
-        diagnostics: totals.diagnostics,
-        errors: totals.errors,
-        runs: totals.runs,
         setup_duration: corpus.setup_duration,
         measured_elapsed: lint_elapsed,
         wall_duration: total_start.elapsed(),
-        median_repetition_duration: median_duration(&measured.repetitions),
         repetitions: measured.repetitions,
-        workload_results: totals.workload_results,
         phase_timings,
         operation_counts,
-    }
+    })
 }
 
 fn aggregate_workload_results(results: Vec<ProfileWorkloadSummary>) -> Vec<ProfileWorkloadSummary> {

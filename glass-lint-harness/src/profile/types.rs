@@ -14,7 +14,10 @@ use glass_lint_project::ProjectPhaseTimings as ProjectPhaseTimingSnapshot;
 
 use crate::profile::{
     config::{ProfileCorpusIdentity, ProfileWorkloadIdentity},
-    metrics::{accumulate_report, combined_digest, evidence_order_digest, report_operation_counts},
+    metrics::{
+        accumulate_report, combined_digest, evidence_order_digest, median_duration,
+        report_operation_counts,
+    },
 };
 
 #[derive(Clone, Debug)]
@@ -463,15 +466,27 @@ pub(super) struct PreparedFile {
     pub source: String,
 }
 
+/// Workload-specific identity, timings, and result data that finalize a
+/// `ProfileSummary` from accumulated totals.
+pub(super) struct ProfileSummaryMetadata {
+    pub workload: ProfileWorkloadIdentity,
+    pub setup_duration: Duration,
+    pub measured_elapsed: Duration,
+    pub wall_duration: Duration,
+    pub repetitions: Vec<ProfileRepetitionSummary>,
+    pub phase_timings: ProfilePhaseTimings,
+    pub operation_counts: ProfileOperationCounts,
+}
+
 #[derive(Default)]
 pub(super) struct ProfileSummaryAccumulator {
-    pub workload_results: Vec<ProfileWorkloadSummary>,
-    pub files: usize,
-    pub bytes: u64,
-    pub findings: usize,
-    pub diagnostics: usize,
-    pub errors: usize,
-    pub runs: usize,
+    workload_results: Vec<ProfileWorkloadSummary>,
+    files: usize,
+    bytes: u64,
+    findings: usize,
+    diagnostics: usize,
+    errors: usize,
+    runs: usize,
 }
 
 impl ProfileSummaryAccumulator {
@@ -485,5 +500,26 @@ impl ProfileSummaryAccumulator {
             .saturating_add(usize::from(result.error.is_some()));
         self.runs = self.runs.saturating_add(successful_runs);
         self.workload_results.push(result);
+    }
+
+    pub fn finish(self, metadata: ProfileSummaryMetadata) -> ProfileSummary {
+        let median_repetition_duration = median_duration(&metadata.repetitions);
+        ProfileSummary {
+            workload: metadata.workload,
+            inputs: self.files,
+            bytes: self.bytes,
+            findings: self.findings,
+            diagnostics: self.diagnostics,
+            errors: self.errors,
+            runs: self.runs,
+            setup_duration: metadata.setup_duration,
+            measured_elapsed: metadata.measured_elapsed,
+            wall_duration: metadata.wall_duration,
+            repetitions: metadata.repetitions,
+            median_repetition_duration,
+            workload_results: self.workload_results,
+            phase_timings: metadata.phase_timings,
+            operation_counts: metadata.operation_counts,
+        }
     }
 }
