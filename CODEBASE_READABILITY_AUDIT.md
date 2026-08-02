@@ -2,13 +2,13 @@
 
 Date: 2026-08-02
 
-Scope: 416 Rust source files, approximately 82,433 lines, across the workspace. This is a read-only maintainability review; no Rust, test, configuration, dependency, or documentation source was changed. The previous audit's 14 findings were not carried forward because the corresponding refactors are present in history and the old entries were marked fixed.
+Scope: 416 Rust source files, approximately 82,433 lines, across the workspace. The previous audit's 14 findings were not carried forward because the corresponding refactors are present in history and the old entries were marked fixed.
 
 ## Summary
 
 The workspace is generally well-factored at the crate level and has strong typed domain vocabulary in many of the recently refactored areas. The remaining readability cost is concentrated in internal analysis boundaries: positional tuples and raw maps still carry semantic state, a few aggregate constructors expose too much assembly detail, and orchestration code spans several independent lifecycle phases.
 
-There are 5 open findings: 0 high, 3 medium, and 2 low. READ-001 through READ-012 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
+There are 4 open findings: 0 high, 2 medium, and 2 low. READ-001 through READ-013 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
 
 ## Findings
 
@@ -172,7 +172,7 @@ Recommendation: split status into a `ProjectionStatus` value and counters into a
 
 Fix Applied: Split `ProjectionOutcome` into private status and metrics components, with internal aggregation methods and focused metric accessors for report assembly. Exhaustion state, observed budgets, module lists, counters, and deterministic metric recording remain separated from one another and cannot be mutated through public fields.
 
-#### [ ] READ-013 — Report assembly combines linking, matching, traces, diagnostics, and metrics
+#### [x] READ-013 — Report assembly combines linking, matching, traces, diagnostics, and metrics
 
 - Severity: Medium
 - Fix Complexity: Medium
@@ -183,7 +183,7 @@ Fix Applied: Split `ProjectionOutcome` into private status and metrics component
 
 Recommendation: split private modules for evidence-to-finding conversion, trace rendering, diagnostic attachment, and final project-report assembly. Keep `ReportAssembly::finish` as a small orchestration facade whose sequence and completion semantics remain easy to inspect.
 
-Fix Applied: None so far.
+Fix Applied: Split report evidence conversion, diagnostics attachment, and final summary construction into private `evidence`, `diagnostics`, and `summary` modules. `ReportAssembly::finish` remains the sequencing facade for linking, matching, exhaustion recording, and report completion, while evidence and diagnostic responsibilities retain their existing deterministic behavior.
 
 ### Harness and test boundaries
 
@@ -257,6 +257,6 @@ Fix Applied: None so far.
 
 ## Coverage
 
-Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. The working tree was clean before this implementation pass; READ-001 through READ-012 changed core boundaries and this report.
+Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. READ-001 through READ-013 changed core/report boundaries and this report.
 
-Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed; for READ-005, all cross-flow tests passed; for READ-006, occurrence and package-matching tests passed; for READ-007, identity-map conflict and precedence tests passed; for READ-008, all flow-projector tests passed; for READ-009, scope construction and integration scope tests passed; for READ-010, scope collection and integration scope tests passed; for READ-011, trace and cross-flow evidence tests passed; for READ-012, report and operation-count tests passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.
+Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed; for READ-005, all cross-flow tests passed; for READ-006, occurrence and package-matching tests passed; for READ-007, identity-map conflict and precedence tests passed; for READ-008, all flow-projector tests passed; for READ-009, scope construction and integration scope tests passed; for READ-010, scope collection and integration scope tests passed; for READ-011, trace and cross-flow evidence tests passed; for READ-012, report and operation-count tests passed; for READ-013, report tests and core clippy passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.
