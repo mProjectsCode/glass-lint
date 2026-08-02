@@ -3,10 +3,13 @@ use hashbrown::HashMap;
 use crate::analysis::{
     scope::{
         FrozenAssignmentIndex, LexicalScope, ScopeGraph, ScopeGraphParts, ScopeId, ScopedName,
+        binding_index::{BindingIndexParts, ParameterAliasKey},
         build::{
             ScopeCollector,
             program::{ScopeCollectionIssue, ScopedProgram},
         },
+        graph::LexicalScopeParts,
+        mutation_index::MutationIndexParts,
     },
     value::{BindingId, FunctionId},
 };
@@ -90,7 +93,7 @@ impl ScopeCollector<'_> {
                 function_ids
                     .get(key.scope().index())
                     .and_then(|&opt| opt)
-                    .map(|function| ((function, key.name()), provenance))
+                    .map(|function| (ParameterAliasKey::new(function, key.name()), provenance))
             })
             .collect();
 
@@ -99,16 +102,22 @@ impl ScopeCollector<'_> {
         let dynamic_evals = self.artifacts.dynamic_evals;
         let mut graph = ScopeGraph::from_parts(ScopeGraphParts {
             environment: environment.clone(),
-            names: self.names,
-            scopes: self.scopes,
-            scopes_by_start,
-            assignments,
-            binding_ids,
-            function_ids,
-            function_bindings,
-            function_aliases,
-            parameter_aliases,
-            mutable_static_objects: self.artifacts.mutable_static_objects,
+            lexical: LexicalScopeParts {
+                names: self.names,
+                scopes: self.scopes,
+                scopes_by_start,
+            },
+            bindings: BindingIndexParts {
+                assignments,
+                binding_ids,
+                function_ids,
+                function_bindings,
+                function_aliases,
+                parameter_aliases,
+            },
+            mutations: MutationIndexParts {
+                mutable_static_objects: self.artifacts.mutable_static_objects,
+            },
             scope_shape_valid,
         });
         graph.finish_collected_properties(property_assignments, rooted_mutations, dynamic_evals);

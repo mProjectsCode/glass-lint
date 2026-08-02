@@ -11,6 +11,11 @@ use crate::analysis::{
 };
 
 #[derive(Debug)]
+pub(in crate::analysis) struct MutationIndexParts {
+    pub(in crate::analysis) mutable_static_objects: HashSet<ScopedName>,
+}
+
+#[derive(Debug)]
 pub(super) struct MutationIndex {
     pub(super) property_assignments:
         BTreeMap<BindingKey, BTreeMap<NamePath, Vec<PropertyAliasFact>>>,
@@ -20,12 +25,12 @@ pub(super) struct MutationIndex {
 }
 
 impl MutationIndex {
-    pub(super) fn new(mutable_static_objects: HashSet<ScopedName>) -> Self {
+    pub(super) fn from_parts(parts: MutationIndexParts) -> Self {
         Self {
             property_assignments: BTreeMap::new(),
             rooted_property_mutations: BTreeMap::new(),
             dynamic_evals_by_scope: BTreeMap::new(),
-            mutable_static_objects,
+            mutable_static_objects: parts.mutable_static_objects,
         }
     }
 

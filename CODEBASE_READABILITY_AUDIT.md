@@ -8,7 +8,7 @@ Scope: 416 Rust source files, approximately 82,433 lines, across the workspace. 
 
 The workspace is generally well-factored at the crate level and has strong typed domain vocabulary in many of the recently refactored areas. The remaining readability cost is concentrated in internal analysis boundaries: positional tuples and raw maps still carry semantic state, a few aggregate constructors expose too much assembly detail, and orchestration code spans several independent lifecycle phases.
 
-There are 9 open findings: 1 high, 5 medium, and 3 low. READ-001 through READ-008 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
+There are 8 open findings: 0 high, 5 medium, and 3 low. READ-001 through READ-009 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
 
 ## Findings
 
@@ -118,7 +118,7 @@ Recommendation: introduce a typed property-write transition and let the state ow
 
 Fix Applied: Added a typed `PropertyWriteUpdate` transition and `FlowStateTable::apply_property_write`. The projector now supplies only plan-specific requirement matches; the state table owns live-flow traversal, reversible clearing/recording, and returns affected flow IDs for readiness emission.
 
-#### [ ] READ-009 — ScopeGraphParts is a broad raw assembly aggregate
+#### [x] READ-009 — ScopeGraphParts is a broad raw assembly aggregate
 
 - Severity: High
 - Fix Complexity: High
@@ -129,7 +129,7 @@ Fix Applied: Added a typed `PropertyWriteUpdate` transition and `FlowStateTable:
 
 Recommendation: replace the broad parts bag with private semantic sub-aggregates such as scope indexes, binding data, and mutation data, or provide an owning builder that performs the transitions. Encode parameter aliases in a named key type and keep raw map construction inside the type that owns the invariant.
 
-Fix Applied: None so far.
+Fix Applied: Replaced the thirteen-field parts bag with lexical, binding, and mutation sub-aggregates, and made `BindingIndex::from_parts` consume its own named input. Parameter aliases now use `ParameterAliasKey` instead of a positional `(FunctionId, NameId)` key, keeping freeze assembly and binding invariants at their owning boundaries.
 
 ### Scope, trace, and result modeling
 
@@ -257,6 +257,6 @@ Fix Applied: None so far.
 
 ## Coverage
 
-Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. The working tree was clean before this implementation pass; READ-001 through READ-008 changed core boundaries and this report.
+Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. The working tree was clean before this implementation pass; READ-001 through READ-009 changed core boundaries and this report.
 
-Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed; for READ-005, all cross-flow tests passed; for READ-006, occurrence and package-matching tests passed; for READ-007, identity-map conflict and precedence tests passed; for READ-008, all flow-projector tests passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.
+Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed; for READ-005, all cross-flow tests passed; for READ-006, occurrence and package-matching tests passed; for READ-007, identity-map conflict and precedence tests passed; for READ-008, all flow-projector tests passed; for READ-009, scope construction and integration scope tests passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.

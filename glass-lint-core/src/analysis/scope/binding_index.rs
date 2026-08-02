@@ -11,6 +11,28 @@ use crate::analysis::{
     value::{BindingId, BindingVersion, FunctionId},
 };
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(in crate::analysis) struct ParameterAliasKey {
+    function: FunctionId,
+    name: NameId,
+}
+
+impl ParameterAliasKey {
+    pub(in crate::analysis) fn new(function: FunctionId, name: NameId) -> Self {
+        Self { function, name }
+    }
+}
+
+#[derive(Debug)]
+pub(in crate::analysis) struct BindingIndexParts {
+    pub(in crate::analysis) assignments: FrozenAssignmentIndex,
+    pub(in crate::analysis) binding_ids: HashMap<ScopedName, BindingId>,
+    pub(in crate::analysis) function_ids: Vec<Option<FunctionId>>,
+    pub(in crate::analysis) function_bindings: HashMap<ScopedName, FunctionId>,
+    pub(in crate::analysis) function_aliases: HashMap<ScopedName, FunctionId>,
+    pub(in crate::analysis) parameter_aliases: HashMap<ParameterAliasKey, BindingProvenance>,
+}
+
 #[derive(Debug)]
 pub(super) struct BindingIndex {
     pub(super) assignments: FrozenAssignmentIndex,
@@ -18,26 +40,18 @@ pub(super) struct BindingIndex {
     pub(super) function_ids: Vec<Option<FunctionId>>,
     pub(super) function_bindings: HashMap<ScopedName, FunctionId>,
     pub(super) function_aliases: HashMap<ScopedName, FunctionId>,
-    pub(super) parameter_aliases: HashMap<(FunctionId, NameId), BindingProvenance>,
+    pub(super) parameter_aliases: HashMap<ParameterAliasKey, BindingProvenance>,
 }
 
 impl BindingIndex {
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn new(
-        assignments: FrozenAssignmentIndex,
-        binding_ids: HashMap<ScopedName, BindingId>,
-        function_ids: Vec<Option<FunctionId>>,
-        function_bindings: HashMap<ScopedName, FunctionId>,
-        function_aliases: HashMap<ScopedName, FunctionId>,
-        parameter_aliases: HashMap<(FunctionId, NameId), BindingProvenance>,
-    ) -> Self {
+    pub(super) fn from_parts(parts: BindingIndexParts) -> Self {
         Self {
-            assignments,
-            binding_ids,
-            function_ids,
-            function_bindings,
-            function_aliases,
-            parameter_aliases,
+            assignments: parts.assignments,
+            binding_ids: parts.binding_ids,
+            function_ids: parts.function_ids,
+            function_bindings: parts.function_bindings,
+            function_aliases: parts.function_aliases,
+            parameter_aliases: parts.parameter_aliases,
         }
     }
 
@@ -59,7 +73,8 @@ impl BindingIndex {
         function: FunctionId,
         name: NameId,
     ) -> Option<&BindingProvenance> {
-        self.parameter_aliases.get(&(function, name))
+        self.parameter_aliases
+            .get(&ParameterAliasKey::new(function, name))
     }
 
     pub(super) fn reassigned_between(
