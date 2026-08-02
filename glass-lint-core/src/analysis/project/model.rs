@@ -137,9 +137,7 @@ impl ResolvedLinkInputData {
 }
 
 impl ResolvedLinkInput {
-    pub(crate) fn build(
-        mut input: ResolvedLinkInputData,
-    ) -> Result<Self, ProjectInputError> {
+    pub(crate) fn build(mut input: ResolvedLinkInputData) -> Result<Self, ProjectInputError> {
         let mut modules = BTreeMap::new();
         for path in input.source_map.keys() {
             let Some(local) = input.analyzed.remove(path) else {
@@ -179,10 +177,7 @@ impl ResolvedLinkInput {
                     .get(&key)
                     .copied()
                     .ok_or_else(|| ProjectInputError::UnknownRequest(key.clone()))?;
-                Ok((
-                    request,
-                    resolve_record(result, &input.module_ids)?,
-                ))
+                Ok((request, resolve_record(result, &input.module_ids)?))
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
 

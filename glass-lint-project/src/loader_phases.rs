@@ -6,9 +6,7 @@ use glass_lint_core::project::{
 };
 
 use crate::{
-    admission::AdmittedSourcePath,
-    error::ProjectLoadError,
-    loader::ProjectMetricsAccumulator,
+    admission::AdmittedSourcePath, error::ProjectLoadError, loader::ProjectMetricsAccumulator,
     resolver::ProjectResolver,
 };
 

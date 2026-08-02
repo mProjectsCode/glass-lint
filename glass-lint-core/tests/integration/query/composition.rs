@@ -225,7 +225,10 @@ fn invalid_authoring_input_never_panics() {
             "member_call_rooted leading dot",
             EventQuery::member_call_rooted(".a")
         ),
-        invalid_case!("member_call_rooted empty", EventQuery::member_call_rooted("")),
+        invalid_case!(
+            "member_call_rooted empty",
+            EventQuery::member_call_rooted("")
+        ),
         invalid_case!(
             "member_call_heuristic empty",
             EventQuery::member_call_heuristic("")
@@ -238,7 +241,10 @@ fn invalid_authoring_input_never_panics() {
         invalid_case!("import_package empty", EventQuery::import_package("")),
         invalid_case!("string_contains empty", EventQuery::string_contains("")),
         invalid_case!("class_heuristic empty", EventQuery::class_heuristic("")),
-        invalid_case!("class_module empty module", EventQuery::class_module("", "C")),
+        invalid_case!(
+            "class_module empty module",
+            EventQuery::class_module("", "C")
+        ),
         invalid_case!(
             "constructor_global empty",
             EventQuery::constructor_global("")

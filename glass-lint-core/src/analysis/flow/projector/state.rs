@@ -4,14 +4,15 @@
 //! retains a bounded collection of these checkpoints so aliases and lifecycle
 //! requirements stay correlated across control-flow merges.
 
-use std::{collections::{BTreeMap, BTreeSet}, ops::RangeInclusive};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    ops::RangeInclusive,
+};
 
 use crate::{
     analysis::{
         facts::ControlRegionId,
-        flow::projector::history::{
-            Checkpoint, InverseDelta, MutationLog, ReportEvidenceKey,
-        },
+        flow::projector::history::{Checkpoint, InverseDelta, MutationLog, ReportEvidenceKey},
         model::flow::{FlowId, FlowState, FlowStateKey, RequirementIndex, SinkIndex},
         value::{ObjectId, ValueId},
     },
@@ -499,7 +500,6 @@ impl FlowEnvironment {
     pub(super) fn is_reachable(&self) -> bool {
         self.reachable
     }
-
 }
 
 #[cfg(test)]

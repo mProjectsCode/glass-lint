@@ -37,11 +37,7 @@ impl AnalysisDiagnostic {
 
     pub(crate) fn ordering_key(
         &self,
-    ) -> (
-        &str,
-        Option<&ProjectRelativePath>,
-        Option<&SourceRange>,
-    ) {
+    ) -> (&str, Option<&ProjectRelativePath>, Option<&SourceRange>) {
         (
             self.code.as_str(),
             self.location.as_ref().map(SourceLocation::path),

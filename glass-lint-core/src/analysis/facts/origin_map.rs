@@ -129,7 +129,6 @@ impl<V: Clone> OriginMap<V> {
     pub fn iter(&self) -> impl Iterator<Item = (&ValueId, &V)> {
         self.map.iter()
     }
-
 }
 
 impl<V: Clone> Default for OriginMap<V> {

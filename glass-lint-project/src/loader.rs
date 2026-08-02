@@ -15,20 +15,18 @@ use glass_lint_core::{
     },
 };
 
+pub(super) use crate::loader_metrics::ProjectMetricsAccumulator;
+pub use crate::loader_metrics::{ProjectLoadMetrics, ProjectPhaseTimings};
 use crate::{
     admission::{AdmissionSet, AdmittedSourcePath, SourceAdmission, absolute_path},
     budget::ProjectResourceBudget,
     discovery::{DiscoveryResult, ProjectDiscovery},
     error::ProjectLoadError,
+    loader_phases::{LoadProgress, PathWorkQueue, ResolutionCache},
     options::{ProjectSelection, ValidatedProjectLoadOptions},
     resolver::ProjectResolver,
     tsconfig,
 };
-
-pub(super) use crate::loader_metrics::ProjectMetricsAccumulator;
-pub use crate::loader_metrics::{ProjectLoadMetrics, ProjectPhaseTimings};
-use crate::loader_phases::{LoadProgress, PathWorkQueue, ResolutionCache};
-
 
 /// Filesystem loader and Oxc resolver configuration.
 #[derive(Clone, Debug)]

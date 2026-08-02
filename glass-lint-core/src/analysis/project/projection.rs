@@ -142,9 +142,7 @@ struct ProjectionInputs<'a> {
     trace_arena: &'a mut TraceArena,
 }
 
-fn project_facts(
-    inputs: ProjectionInputs<'_>,
-) -> (RuleEvidenceTable, LocalFlowProjectionOutcome) {
+fn project_facts(inputs: ProjectionInputs<'_>) -> (RuleEvidenceTable, LocalFlowProjectionOutcome) {
     let ProjectionInputs {
         facts,
         effects,
