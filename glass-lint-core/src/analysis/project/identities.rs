@@ -183,12 +183,7 @@ impl ProjectSemanticModel {
                 if let Some(LinkedModuleTarget::Internal { id, .. }) = self.resolutions.get(&key) {
                     let mut child_entries = ModuleIdentityMap::new();
                     self.collect_exported_identities(*id, prefix, visiting, &mut child_entries);
-                    for (child_key, child_value) in child_entries.into_entries() {
-                        let prev = star_entries.insert(child_key.clone(), child_value.clone());
-                        if prev.is_some_and(|p| p != child_value) {
-                            star_entries.insert(child_key, ExportResolution::Ambiguous);
-                        }
-                    }
+                    star_entries.merge_star_from(child_entries);
                 }
             }
         }
@@ -205,11 +200,7 @@ impl ProjectSemanticModel {
         }
 
         // Merge star-exported entries, preserving direct exports.
-        for (key, value) in star_entries.into_entries() {
-            if identities.get(&key).is_none() {
-                identities.insert(key, value);
-            }
-        }
+        identities.merge_missing_from(star_entries);
 
         visiting.remove(&module);
     }

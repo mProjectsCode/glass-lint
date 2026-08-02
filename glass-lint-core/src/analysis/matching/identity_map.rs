@@ -38,13 +38,72 @@ impl ModuleIdentityMap {
             .insert(export, value)
     }
 
-    pub(in crate::analysis) fn into_entries(self) -> Vec<(ModuleExportKey, ExportResolution)> {
-        let mut entries = Vec::new();
-        for (module, exports) in self.modules {
+    /// Merge star-derived identities, marking disagreements as ambiguous.
+    pub(in crate::analysis) fn merge_star_from(&mut self, other: Self) {
+        for (module, exports) in other.modules {
             for (export, value) in exports {
-                entries.push((ModuleExportKey::new(module.clone(), export), value));
+                let key = ModuleExportKey::new(module.clone(), export);
+                match self.get(&key) {
+                    None => {
+                        self.insert(key, value);
+                    }
+                    Some(existing)
+                        if existing == &value || *existing == ExportResolution::Ambiguous => {}
+                    Some(_) => {
+                        self.insert(key, ExportResolution::Ambiguous);
+                    }
+                }
             }
         }
-        entries
+    }
+
+    /// Merge star-derived identities without replacing direct exports.
+    pub(in crate::analysis) fn merge_missing_from(&mut self, other: Self) {
+        for (module, exports) in other.modules {
+            for (export, value) in exports {
+                let key = ModuleExportKey::new(module.clone(), export);
+                if self.get(&key).is_none() {
+                    self.insert(key, value);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn external(module: &str, export: &str) -> ExportResolution {
+        ExportResolution::External {
+            module: module.into(),
+            export: export.into(),
+        }
+    }
+
+    #[test]
+    fn star_merge_marks_disagreeing_identities_ambiguous() {
+        let key = ModuleExportKey::new("pkg", "request");
+        let mut merged = ModuleIdentityMap::new();
+        merged.insert(key.clone(), external("a", "request"));
+
+        let mut other = ModuleIdentityMap::new();
+        other.insert(key.clone(), external("b", "request"));
+        merged.merge_star_from(other);
+
+        assert_eq!(merged.get(&key), Some(&ExportResolution::Ambiguous));
+    }
+
+    #[test]
+    fn missing_merge_preserves_authoritative_identity() {
+        let key = ModuleExportKey::new("pkg", "request");
+        let mut merged = ModuleIdentityMap::new();
+        merged.insert(key.clone(), external("direct", "request"));
+
+        let mut other = ModuleIdentityMap::new();
+        other.insert(key.clone(), external("star", "request"));
+        merged.merge_missing_from(other);
+
+        assert_eq!(merged.get(&key), Some(&external("direct", "request")));
     }
 }

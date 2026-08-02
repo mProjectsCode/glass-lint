@@ -8,7 +8,7 @@ Scope: 416 Rust source files, approximately 82,433 lines, across the workspace. 
 
 The workspace is generally well-factored at the crate level and has strong typed domain vocabulary in many of the recently refactored areas. The remaining readability cost is concentrated in internal analysis boundaries: positional tuples and raw maps still carry semantic state, a few aggregate constructors expose too much assembly detail, and orchestration code spans several independent lifecycle phases.
 
-There are 11 open findings: 2 high, 6 medium, and 3 low. READ-001 through READ-006 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
+There are 10 open findings: 2 high, 5 medium, and 3 low. READ-001 through READ-007 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
 
 ## Findings
 
@@ -92,7 +92,7 @@ Recommendation: replace `as_map()` with an owner-facing package-candidate iterat
 
 Fix Applied: Replaced `OccurrenceIndex::as_map()` with an owner-facing `package_candidates` operation specialized for module-export occurrences. The query view now receives only the lazy occurrence iterator, leaving base/overlay merge and masking storage private to the occurrence abstraction.
 
-#### [ ] READ-007 — Module identity merging reconstructs and merges raw entry tuples outside its owner
+#### [x] READ-007 — Module identity merging reconstructs and merges raw entry tuples outside its owner
 
 - Severity: Medium
 - Fix Complexity: Medium
@@ -103,7 +103,7 @@ Fix Applied: Replaced `OccurrenceIndex::as_map()` with an owner-facing `package_
 
 Recommendation: add a conflict-aware `merge_from` or visitor operation to `ModuleIdentityMap` that encodes direct-export precedence and ambiguity handling. Remove the storage-oriented `into_entries()` path once callers can express the merge in domain terms.
 
-Fix Applied: None so far.
+Fix Applied: `ModuleIdentityMap` now owns conflict-aware star merging and missing-entry merging that preserves direct-export precedence. The project identity walk no longer consumes storage into raw tuples or reimplements ambiguity and precedence rules; focused tests cover both invariants.
 
 #### [ ] READ-008 — Flow property-write transitions are split between projector and state table
 
@@ -257,6 +257,6 @@ Fix Applied: None so far.
 
 ## Coverage
 
-Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. The working tree was clean before this implementation pass; READ-001 through READ-006 changed core boundaries and this report.
+Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. The working tree was clean before this implementation pass; READ-001 through READ-007 changed core boundaries and this report.
 
-Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed; for READ-005, all cross-flow tests passed; for READ-006, occurrence and package-matching tests passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.
+Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed; for READ-005, all cross-flow tests passed; for READ-006, occurrence and package-matching tests passed; for READ-007, identity-map conflict and precedence tests passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.
