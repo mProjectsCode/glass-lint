@@ -185,7 +185,7 @@ Local lowering cracks `ScopedProgram` and later `Resolver` into positional parts
 
 **Fix Applied:** Introduced `LoopFixedPoint` owner (`flow/projector/loops.rs`) with `start`, `converge`, and `collect_exits` operations plus a private replay/exit admission primitive; budget charging moved to `ProjectionRunState::charge_operation`. `finish_loop` is now high-level orchestration, and `LoopFixedPointOutcome { exits, complete }` makes budget/completion outcomes explicit.
 
-#### [ ] READ-014 — Sink callers infer outcomes from collection mechanics
+#### [x] READ-014 — Sink callers infer outcomes from collection mechanics
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -196,7 +196,7 @@ Sink collection callers compare `len` before and after to infer insertion count,
 
 **Recommendation:** Return a named collection outcome including the number inserted, and provide semantic projection iteration. Keep deduplication and insertion accounting on `SinkSet`, and remove its index-based `len`/`get` protocol.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `SinkSet` now returns `InsertOutcome { inserted }` from `push_unique`/`extend_unique` (dedup and accounting on the owner), and `SinkSet::len`/`get` were removed. `summaries.rs` charges the budget from the outcome and iterates sinks semantically instead of using index ranges plus `expect`.
 
 ### Matching and evidence
 
