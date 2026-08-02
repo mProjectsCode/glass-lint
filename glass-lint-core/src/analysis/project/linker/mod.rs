@@ -8,7 +8,6 @@
 
 mod export;
 mod graph;
-mod scc;
 
 use std::collections::BTreeMap;
 
@@ -71,10 +70,7 @@ impl ProjectLinker {
             modules,
             resolutions,
             graph: ModuleGraph::default(),
-            scc_partition: SccPartition {
-                components: Vec::new(),
-                order: Vec::new(),
-            },
+            scc_partition: SccPartition::default(),
             exports: ExportTable::default(),
             lookup_session: LinkingSession::new(link_limit),
             link_cycle_rounds: 0,

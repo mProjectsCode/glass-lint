@@ -1,7 +1,8 @@
 //! Owned state for project linking.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
+use petgraph::{algo::kosaraju_scc, graph::DiGraph};
 use smol_str::SmolStr;
 
 use crate::analysis::{ExportResolution, ModuleId};
@@ -33,9 +34,105 @@ impl ModuleGraph {
         }
     }
 
-    /// Borrow outgoing adjacency for graph traversal.
-    pub(in crate::analysis) fn forward(&self) -> &BTreeMap<ModuleId, Vec<ModuleId>> {
-        &self.forward
+    /// Iterate over the outgoing internal neighbors of one module.
+    pub(in crate::analysis) fn neighbors(
+        &self,
+        from: ModuleId,
+    ) -> impl Iterator<Item = ModuleId> + '_ {
+        self.forward.get(&from).into_iter().flatten().copied()
+    }
+
+    /// Decompose into strongly connected components and a deterministic
+    /// topological order. Returns `None` when a component exceeds the bound.
+    pub(in crate::analysis) fn scc_partition(&self, max_scc_size: usize) -> Option<SccPartition> {
+        let components = self.components();
+        if components
+            .iter()
+            .any(|component| component.len() > max_scc_size)
+        {
+            return None;
+        }
+        let order = self.topological_order(&components);
+        Some(SccPartition { components, order })
+    }
+
+    /// Strongly connected components via petgraph's kosaraju_scc. Components
+    /// are sorted internally for deterministic output.
+    fn components(&self) -> Vec<Vec<ModuleId>> {
+        let mut graph = DiGraph::<ModuleId, ()>::new();
+        let mut node_indices = BTreeMap::new();
+        for &node in self.forward.keys() {
+            let idx = graph.add_node(node);
+            node_indices.insert(node, idx);
+        }
+        for (&from, &from_idx) in &node_indices {
+            for to in self.neighbors(from) {
+                let Some(&to_idx) = node_indices.get(&to) else {
+                    continue;
+                };
+                graph.add_edge(from_idx, to_idx, ());
+            }
+        }
+        let scc_result = kosaraju_scc(&graph);
+        scc_result
+            .into_iter()
+            .map(|scc| {
+                let mut members: Vec<ModuleId> = scc.into_iter().map(|idx| graph[idx]).collect();
+                members.sort_unstable();
+                members
+            })
+            .collect()
+    }
+
+    /// Build the SCC topological order from the graph edges and the component
+    /// decomposition.
+    fn topological_order(&self, components: &[Vec<ModuleId>]) -> Vec<usize> {
+        let module_to_scc: BTreeMap<ModuleId, usize> = components
+            .iter()
+            .enumerate()
+            .flat_map(|(idx, component)| component.iter().map(move |&m| (m, idx)))
+            .collect();
+
+        // BTreeSet avoids quadratic deduplication from Vec::contains.
+        let mut dag: BTreeMap<usize, BTreeSet<usize>> = BTreeMap::new();
+        for (from, targets) in &self.forward {
+            let Some(&from_scc) = module_to_scc.get(from) else {
+                continue;
+            };
+            for &to in targets {
+                let Some(&to_scc) = module_to_scc.get(&to) else {
+                    continue;
+                };
+                if from_scc != to_scc {
+                    dag.entry(from_scc).or_default().insert(to_scc);
+                }
+            }
+        }
+
+        let scc_count = components.len();
+        let mut in_degree = vec![0usize; scc_count];
+        for targets in dag.values() {
+            for &target in targets {
+                in_degree[target] = in_degree[target].saturating_add(1);
+            }
+        }
+
+        let mut queue: Vec<usize> = (0..scc_count).filter(|&i| in_degree[i] == 0).collect();
+        let mut order = Vec::with_capacity(scc_count);
+        while let Some(scc_idx) = queue.pop() {
+            order.push(scc_idx);
+            if let Some(targets) = dag.get(&scc_idx) {
+                for &target in targets {
+                    in_degree[target] = in_degree[target].saturating_sub(1);
+                    if in_degree[target] == 0 {
+                        queue.push(target);
+                    }
+                }
+            }
+        }
+
+        order.reverse();
+        order
     }
 
     /// Count unique outgoing internal edges.
@@ -45,10 +142,23 @@ impl ModuleGraph {
 }
 
 /// Strongly connected component partition, DAG, and topological order.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(in crate::analysis) struct SccPartition {
-    pub components: Vec<Vec<ModuleId>>,
-    pub order: Vec<usize>,
+    components: Vec<Vec<ModuleId>>,
+    order: Vec<usize>,
+}
+impl SccPartition {
+    /// Iterate over components in topological order.
+    pub(in crate::analysis) fn ordered_components(&self) -> impl Iterator<Item = &[ModuleId]> + '_ {
+        self.order
+            .iter()
+            .map(move |&index| self.components[index].as_slice())
+    }
+
+    /// Return whether the partition has no ordered components.
+    pub(in crate::analysis) fn is_empty(&self) -> bool {
+        self.order.is_empty()
+    }
 }
 
 #[derive(Debug, Default)]
@@ -157,5 +267,76 @@ impl ExportLookupCache {
             self.count = self.count.saturating_add(1);
         }
         inner.insert(name, value);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn module(value: u32) -> ModuleId {
+        ModuleId::new(value)
+    }
+
+    #[test]
+    fn neighbors_iterate_sorted_outgoing_edges() {
+        let mut graph = ModuleGraph::default();
+        graph.insert_edge(module(0), module(1));
+        graph.insert_edge(module(0), module(2));
+        graph.insert_edge(module(2), module(1));
+        graph.normalize();
+        assert_eq!(
+            graph.neighbors(module(0)).collect::<Vec<_>>(),
+            vec![module(1), module(2)]
+        );
+        assert_eq!(graph.neighbors(module(1)).count(), 0);
+        assert_eq!(
+            graph.neighbors(module(2)).collect::<Vec<_>>(),
+            vec![module(1)]
+        );
+    }
+
+    #[test]
+    fn scc_partition_groups_cycles_and_orders_dependencies_first() {
+        let mut graph = ModuleGraph::default();
+        graph.ensure_node(module(0));
+        graph.ensure_node(module(1));
+        graph.ensure_node(module(2));
+        graph.insert_edge(module(0), module(1));
+        graph.insert_edge(module(0), module(2));
+        graph.insert_edge(module(2), module(1));
+        graph.normalize();
+
+        let partition = graph.scc_partition(4).expect("no oversized component");
+        let order: Vec<Vec<ModuleId>> = partition
+            .ordered_components()
+            .map(<[ModuleId]>::to_vec)
+            .collect();
+        assert_eq!(
+            order,
+            vec![vec![module(1)], vec![module(2)], vec![module(0)]]
+        );
+        assert!(!partition.is_empty());
+    }
+
+    #[test]
+    fn scc_partition_rejects_oversized_component() {
+        let mut graph = ModuleGraph::default();
+        graph.ensure_node(module(0));
+        graph.ensure_node(module(1));
+        graph.ensure_node(module(2));
+        graph.insert_edge(module(0), module(1));
+        graph.insert_edge(module(1), module(2));
+        graph.insert_edge(module(2), module(0));
+        graph.normalize();
+
+        assert!(graph.scc_partition(2).is_none());
+    }
+
+    #[test]
+    fn default_partition_iterates_nothing() {
+        let partition = SccPartition::default();
+        assert!(partition.is_empty());
+        assert_eq!(partition.ordered_components().count(), 0);
     }
 }

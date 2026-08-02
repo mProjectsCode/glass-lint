@@ -1,4 +1,4 @@
-//! Module graph edge construction and SCC decomposition.
+//! Module graph edge construction and SCC-DAG preparation.
 
 use glass_lint_datastructures::Budget;
 
@@ -6,14 +6,7 @@ use crate::{
     analysis::{
         LinkedModuleTarget,
         lowering::status::{IncompleteReason, ResolutionKind, StatusScope},
-        project::{
-            linker::{
-                ProjectLinker,
-                scc::{build_scc_dag_and_order, strongly_connected_components},
-            },
-            model::MAX_SCC_SIZE,
-            state::SccPartition,
-        },
+        project::{linker::ProjectLinker, model::MAX_SCC_SIZE, state::SccPartition},
     },
     project::is_internal_module_request,
 };
@@ -79,20 +72,11 @@ impl ProjectLinker {
         }
         self.graph.normalize();
 
-        let components =
-            strongly_connected_components(self.graph.forward(), self.modules.keys().copied());
-
-        let oversized = components.iter().any(|c| c.len() > MAX_SCC_SIZE);
-        if oversized {
+        if let Some(partition) = self.graph.scc_partition(MAX_SCC_SIZE) {
+            self.scc_partition = partition;
+        } else {
             self.link_budget.mark_exhausted();
-            self.scc_partition = SccPartition {
-                components,
-                order: Vec::new(),
-            };
-            return;
+            self.scc_partition = SccPartition::default();
         }
-
-        let (_, order) = build_scc_dag_and_order(self.graph.forward(), &components);
-        self.scc_partition = SccPartition { components, order };
     }
 }

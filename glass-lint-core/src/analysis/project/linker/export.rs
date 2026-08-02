@@ -23,18 +23,10 @@ impl ProjectLinker {
     /// to earlier SCCs and are already settled. Multi-node SCCs use a
     /// local fixed-point bounded per cycle.
     pub(super) fn resolve_export_table(&mut self) {
-        let order = self.scc_partition.order.clone();
-        if order.is_empty() {
-            self.link_cycle_rounds = 0;
-            return;
-        }
-
-        let components: Vec<Vec<ModuleId>> = self.scc_partition.components.clone();
+        let partition = std::mem::take(&mut self.scc_partition);
         let mut total_cycle_rounds = 0usize;
 
-        for &scc_idx in &order {
-            let scc = &components[scc_idx];
-
+        for scc in partition.ordered_components() {
             if scc.len() == 1 {
                 self.resolve_single(scc[0]);
             } else {
@@ -43,8 +35,10 @@ impl ProjectLinker {
         }
 
         self.link_cycle_rounds = total_cycle_rounds;
+        let has_components = !partition.is_empty();
+        self.scc_partition = partition;
 
-        if self.link_budget.is_exhausted() {
+        if has_components && self.link_budget.is_exhausted() {
             self.status.record(
                 StatusScope::Project,
                 IncompleteReason::BudgetExhausted {
