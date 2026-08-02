@@ -369,8 +369,10 @@ impl<'a> ReportAssembly<'a> {
             return None;
         }
         let mut steps = Vec::with_capacity(raw.len());
-        for (qe, role) in &raw {
-            let location = project.fact_location(qe.module, qe.fact)?;
+        for step in &raw {
+            let event = step.event();
+            let role = step.role();
+            let location = project.fact_location(event.module, event.fact)?;
             let message = match role {
                 EvidenceRole::Source => "flow source".into(),
                 EvidenceRole::Requirement => "flow requirement".into(),
@@ -378,7 +380,7 @@ impl<'a> ReportAssembly<'a> {
                 EvidenceRole::Occurrence => "occurrence".into(),
                 _ => "evidence".into(),
             };
-            steps.push(EvidenceStep::new(*role, message, location));
+            steps.push(EvidenceStep::new(role, message, location));
         }
         Some(steps)
     }

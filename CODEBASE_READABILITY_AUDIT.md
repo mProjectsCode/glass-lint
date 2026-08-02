@@ -8,7 +8,7 @@ Scope: 416 Rust source files, approximately 82,433 lines, across the workspace. 
 
 The workspace is generally well-factored at the crate level and has strong typed domain vocabulary in many of the recently refactored areas. The remaining readability cost is concentrated in internal analysis boundaries: positional tuples and raw maps still carry semantic state, a few aggregate constructors expose too much assembly detail, and orchestration code spans several independent lifecycle phases.
 
-There are 7 open findings: 0 high, 4 medium, and 3 low. READ-001 through READ-010 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
+There are 6 open findings: 0 high, 4 medium, and 2 low. READ-001 through READ-011 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
 
 ## Findings
 
@@ -146,7 +146,7 @@ Recommendation: add `FunctionCheckpoint` and `ScopedDynamicEval` records with na
 
 Fix Applied: Added named `FunctionCheckpoint` and `ScopedDynamicEval` records. Function entry/exit now restores named checkpoint fields, while dynamic evaluation collection, filtering, sorting, and freezing use explicit scope/effect fields instead of tuple positions.
 
-#### [ ] READ-011 — Trace reconstruction exposes a public tuple protocol
+#### [x] READ-011 — Trace reconstruction exposes a public tuple protocol
 
 - Severity: Low
 - Fix Complexity: Low
@@ -157,7 +157,7 @@ Fix Applied: Added named `FunctionCheckpoint` and `ScopedDynamicEval` records. F
 
 Recommendation: return a private or crate-visible `TraceStep` with named `event` and `role` fields, or expose an iterator consumed by a trace-to-evidence method. Keep report rendering out of the raw arena representation.
 
-Fix Applied: None so far.
+Fix Applied: Added a named `TraceStep` with event and role accessors, and changed `TraceArena::reconstruct_trace` and report/cross-flow consumers to use it. Trace traversal order, interning, and evidence rendering remain unchanged while tuple-position coupling is removed.
 
 #### [ ] READ-012 — ProjectionOutcome mixes status, counters, and report metrics in one mutable DTO
 
@@ -257,6 +257,6 @@ Fix Applied: None so far.
 
 ## Coverage
 
-Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. The working tree was clean before this implementation pass; READ-001 through READ-010 changed core boundaries and this report.
+Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. The working tree was clean before this implementation pass; READ-001 through READ-011 changed core boundaries and this report.
 
-Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed; for READ-005, all cross-flow tests passed; for READ-006, occurrence and package-matching tests passed; for READ-007, identity-map conflict and precedence tests passed; for READ-008, all flow-projector tests passed; for READ-009, scope construction and integration scope tests passed; for READ-010, scope collection and integration scope tests passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.
+Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed; for READ-005, all cross-flow tests passed; for READ-006, occurrence and package-matching tests passed; for READ-007, identity-map conflict and precedence tests passed; for READ-008, all flow-projector tests passed; for READ-009, scope construction and integration scope tests passed; for READ-010, scope collection and integration scope tests passed; for READ-011, trace and cross-flow evidence tests passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.

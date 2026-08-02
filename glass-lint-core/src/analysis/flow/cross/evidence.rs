@@ -411,7 +411,7 @@ mod tests {
         let roles: Vec<_> = arena
             .reconstruct_trace(head)
             .into_iter()
-            .map(|(_, role)| role)
+            .map(|step| step.role())
             .collect();
         assert_eq!(
             roles,

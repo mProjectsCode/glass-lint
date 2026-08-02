@@ -12,6 +12,27 @@ pub struct QualifiedEvent {
     pub fact: FactId,
 }
 
+/// One ordered event and evidence role in a reconstructed trace.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct TraceStep {
+    event: QualifiedEvent,
+    role: EvidenceRole,
+}
+
+impl TraceStep {
+    fn new(event: QualifiedEvent, role: EvidenceRole) -> Self {
+        Self { event, role }
+    }
+
+    pub fn event(&self) -> QualifiedEvent {
+        self.event
+    }
+
+    pub fn role(&self) -> EvidenceRole {
+        self.role
+    }
+}
+
 impl QualifiedEvent {
     pub fn new(module: ModuleId, fact: FactId) -> Self {
         Self { module, fact }
@@ -67,12 +88,12 @@ impl TraceArena {
         Some(id)
     }
 
-    pub fn reconstruct_trace(&self, head: TraceNodeId) -> Vec<(QualifiedEvent, EvidenceRole)> {
+    pub fn reconstruct_trace(&self, head: TraceNodeId) -> Vec<TraceStep> {
         let mut steps = Vec::new();
         let mut current = Some(head);
         while let Some(id) = current {
             if let Some(node) = self.nodes.get(id.0 as usize) {
-                steps.push((node.event, node.role));
+                steps.push(TraceStep::new(node.event, node.role));
                 current = node.parent;
             } else {
                 break;
@@ -142,9 +163,12 @@ mod tests {
             .unwrap();
         let trace = arena.reconstruct_trace(step3);
         assert_eq!(trace.len(), 3);
-        assert_eq!(trace[0], (qe(0, 1), EvidenceRole::Source));
-        assert_eq!(trace[1], (qe(0, 2), EvidenceRole::Requirement));
-        assert_eq!(trace[2], (qe(0, 3), EvidenceRole::Sink));
+        assert_eq!(trace[0], TraceStep::new(qe(0, 1), EvidenceRole::Source));
+        assert_eq!(
+            trace[1],
+            TraceStep::new(qe(0, 2), EvidenceRole::Requirement)
+        );
+        assert_eq!(trace[2], TraceStep::new(qe(0, 3), EvidenceRole::Sink));
     }
 
     #[test]
@@ -155,7 +179,7 @@ mod tests {
             .unwrap();
         let trace = arena.reconstruct_trace(head);
         assert_eq!(trace.len(), 1);
-        assert_eq!(trace[0], (qe(1, 5), EvidenceRole::Occurrence));
+        assert_eq!(trace[0], TraceStep::new(qe(1, 5), EvidenceRole::Occurrence));
     }
 
     #[test]
@@ -188,10 +212,10 @@ mod tests {
             .intern(Some(ev1), qe(2, 20), EvidenceRole::Sink)
             .unwrap();
         let trace = arena.reconstruct_trace(ev2);
-        assert_eq!(trace[0].0.module.get(), 1);
-        assert_eq!(trace[0].0.fact.raw_for_test(), 10);
-        assert_eq!(trace[1].0.module.get(), 2);
-        assert_eq!(trace[1].0.fact.raw_for_test(), 20);
+        assert_eq!(trace[0].event().module.get(), 1);
+        assert_eq!(trace[0].event().fact.raw_for_test(), 10);
+        assert_eq!(trace[1].event().module.get(), 2);
+        assert_eq!(trace[1].event().fact.raw_for_test(), 20);
     }
 
     #[test]
@@ -201,6 +225,6 @@ mod tests {
         assert!(arena.intern(None, qe(0, 2), EvidenceRole::Sink).is_none());
         let trace = arena.reconstruct_trace(id);
         assert_eq!(trace.len(), 1);
-        assert_eq!(trace[0], (qe(0, 1), EvidenceRole::Source));
+        assert_eq!(trace[0], TraceStep::new(qe(0, 1), EvidenceRole::Source));
     }
 }
