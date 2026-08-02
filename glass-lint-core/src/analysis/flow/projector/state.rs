@@ -482,9 +482,6 @@ impl FlowEnvironment {
         self.reachable
     }
 
-    pub(super) fn reachable(&self) -> bool {
-        self.reachable
-    }
 }
 
 #[cfg(test)]

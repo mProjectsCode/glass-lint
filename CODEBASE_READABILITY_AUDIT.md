@@ -168,7 +168,7 @@ fail-closed unknown handling, deterministic evidence, or budget accounting.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-008 — Flow environment exposes duplicate reachability APIs
+#### [x] READ-008 — Flow environment exposes duplicate reachability APIs
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -184,7 +184,10 @@ unnecessary internal compatibility surface.
 all callers. Remove the forwarding alias unless a real external stability
 requirement is identified, since this type is private to analysis.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the duplicate `reachable` accessor and updated both
+flow projection call sites to use the predicate-named `is_reachable` method.
+The private flow environment now has one reachability API, so its semantics
+cannot drift between aliases.
 
 #### [ ] READ-009 — Production flow outcomes retain suppressed dead APIs
 

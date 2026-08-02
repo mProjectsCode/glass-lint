@@ -353,7 +353,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
                 continue;
             }
-            self.run.reachable = environment.reachable();
+            self.run.reachable = environment.is_reachable();
             self.frontier.active_index = path_index;
             self.transfer_fact(fact);
             if self.run.reachable {
@@ -580,7 +580,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
                 continue;
             }
-            self.run.reachable = environment.reachable();
+            self.run.reachable = environment.is_reachable();
             transfer(self);
             if self.run.reachable {
                 outgoing.push(self.environment());
