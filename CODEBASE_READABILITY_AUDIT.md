@@ -134,7 +134,7 @@ budgets.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-006 — Pending flow finalization carries discarded positional identity
+#### [x] READ-006 — Pending flow finalization carries discarded positional identity
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -153,7 +153,11 @@ meaningful use in finalization. Preserve active-path certainty, fact event
 locations, and deterministic queue order while making key/state divergence
 visible to the type checker and reviewers.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the pending-flow tuple key and value with named
+`PendingFlowKey` and `PendingState` types. The key now retains only the flow
+and event it groups, while the state names its path index; finalization uses
+those fields directly and no longer carries or discards redundant rule, flow,
+or fact parameters.
 
 #### [ ] READ-007 — Projection coordinators pass mixed context positionally
 

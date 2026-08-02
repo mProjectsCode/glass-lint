@@ -191,15 +191,27 @@ struct PathFrontier {
 
 #[derive(Debug, Default)]
 struct PendingFlowStates {
-    values: BTreeMap<(usize, FlowId, FactId), Vec<(usize, FlowState)>>,
+    values: BTreeMap<PendingFlowKey, Vec<PendingState>>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+struct PendingFlowKey {
+    flow: FlowId,
+    event: FactId,
+}
+
+#[derive(Debug)]
+struct PendingState {
+    path_index: usize,
+    state: FlowState,
 }
 
 impl PendingFlowStates {
-    fn take(&mut self) -> BTreeMap<(usize, FlowId, FactId), Vec<(usize, FlowState)>> {
+    fn take(&mut self) -> BTreeMap<PendingFlowKey, Vec<PendingState>> {
         std::mem::take(&mut self.values)
     }
 
-    fn entry(&mut self, key: (usize, FlowId, FactId)) -> &mut Vec<(usize, FlowState)> {
+    fn entry(&mut self, key: PendingFlowKey) -> &mut Vec<PendingState> {
         self.values.entry(key).or_default()
     }
 }
@@ -359,7 +371,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         }
         self.frontier.set(outgoing);
         self.observe_alternatives(self.frontier.len());
-        self.finalize_pending(fact.id);
+        self.finalize_pending();
         let paths = self.frontier.take();
         self.join_paths(paths);
         self.frontier.active_count = 0;
@@ -660,15 +672,15 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         self.run.reachable = !self.frontier.is_empty();
     }
 
-    fn finalize_pending(&mut self, fact: FactId) {
+    fn finalize_pending(&mut self) {
         let pending = self.pending.take();
-        for ((rule, flow, event), states) in pending {
+        for (key, states) in pending {
             if states.is_empty() {
                 continue;
             }
             let matching_paths = states
                 .iter()
-                .map(|(path, _)| *path)
+                .map(|pending| pending.path_index)
                 .collect::<BTreeSet<_>>();
             let certainty = if self.run.alternatives_complete.is_complete()
                 && matching_paths.len() == self.frontier.active_count
@@ -677,17 +689,22 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             } else {
                 crate::project::MatchCertainty::Possible
             };
-            for (_, state) in states {
-                self.emit_state_final(&state, event, certainty);
+            for pending in states {
+                self.emit_state_final(&pending.state, key.event, certainty);
             }
-            let _ = (rule, flow, fact);
         }
     }
 
     pub(super) fn queue_state(&mut self, state: FlowState, event: FactId) {
         self.pending
-            .entry((state.flow_id().rule_index().get(), state.flow_id(), event))
-            .push((self.frontier.active_index, state));
+            .entry(PendingFlowKey {
+                flow: state.flow_id(),
+                event,
+            })
+            .push(PendingState {
+                path_index: self.frontier.active_index,
+                state,
+            });
     }
 
     fn record_property_write(
