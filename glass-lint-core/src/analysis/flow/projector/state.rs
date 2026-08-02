@@ -11,7 +11,7 @@ use std::{
 
 use crate::{
     analysis::{
-        facts::ControlRegionId,
+        facts::{ControlRegionId, FactId},
         flow::projector::history::{Checkpoint, InverseDelta, MutationLog, ReportEvidenceKey},
         model::flow::{FlowId, FlowState, FlowStateKey, RequirementIndex, SinkIndex},
         value::{ObjectId, ValueId},
@@ -32,18 +32,39 @@ pub(super) struct FlowEnvironment {
 /// Object ids are projection-local allocation details.  Loop fixed points
 /// must compare the aliases and lifecycle states they identify, not the
 /// allocation number assigned during a later replay of the same fact slice.
-type CanonicalRequirements = Vec<(usize, Vec<crate::analysis::facts::FactId>)>;
-type CanonicalFlowState = (
-    u32,
-    FlowId,
-    crate::analysis::facts::FactId,
-    CanonicalRequirements,
-    CanonicalRequirements,
-);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct CanonicalObjectId(u32);
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct CanonicalAlias {
+    value: ValueId,
+    object: CanonicalObjectId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct CanonicalRequirementState {
+    index: RequirementIndex,
+    events: Vec<FactId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct CanonicalSinkState {
+    index: SinkIndex,
+    events: Vec<FactId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct CanonicalFlowState {
+    object: CanonicalObjectId,
+    flow: FlowId,
+    source_event: FactId,
+    requirements: Vec<CanonicalRequirementState>,
+    sinks: Vec<CanonicalSinkState>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct FlowSemanticSnapshot {
-    aliases: Vec<(ValueId, u32)>,
+    aliases: Vec<CanonicalAlias>,
     states: Vec<CanonicalFlowState>,
 }
 
@@ -267,7 +288,7 @@ impl FlowStateTable {
         let mut next = 0u32;
         for object in self.aliases.values() {
             objects.entry(*object).or_insert_with(|| {
-                let id = next;
+                let id = CanonicalObjectId(next);
                 next = next.saturating_add(1);
                 id
             });
@@ -276,7 +297,10 @@ impl FlowStateTable {
             .aliases
             .iter()
             .filter_map(|(value, object)| {
-                objects.get(object).copied().map(|object| (*value, object))
+                objects.get(object).copied().map(|object| CanonicalAlias {
+                    value: *value,
+                    object,
+                })
             })
             .collect();
         let states = self
@@ -289,13 +313,25 @@ impl FlowStateTable {
                 let object = objects.get(&key.object).copied()?;
                 let requirements = state
                     .requirement_keys()
-                    .map(|(index, values)| (index.get(), values.iter().copied().collect()))
+                    .map(|(index, values)| CanonicalRequirementState {
+                        index,
+                        events: values.iter().copied().collect(),
+                    })
                     .collect();
                 let sinks = state
                     .sink_keys()
-                    .map(|(index, values)| (index.get(), values.iter().copied().collect()))
+                    .map(|(index, values)| CanonicalSinkState {
+                        index,
+                        events: values.iter().copied().collect(),
+                    })
                     .collect();
-                Some((object, key.flow, state.source_event(), requirements, sinks))
+                Some(CanonicalFlowState {
+                    object,
+                    flow: key.flow,
+                    source_event: state.source_event(),
+                    requirements,
+                    sinks,
+                })
             })
             .collect();
         FlowSemanticSnapshot { aliases, states }
