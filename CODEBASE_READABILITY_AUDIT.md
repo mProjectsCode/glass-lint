@@ -231,7 +231,7 @@ their actual invariants.
 
 ### Group 3: Project loading and harness boundaries
 
-#### [ ] READ-010 — Project loader module combines several phase state machines
+#### [x] READ-010 — Project loader module combines several phase state machines
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -250,7 +250,11 @@ types while retaining `ProjectLoader` as the facade. Preserve typed phase
 outcomes, deterministic partial results, and all current admission, resolver,
 deadline, and source-byte bounds.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Extracted timing/counter ownership into `loader_metrics` and
+path-queue, resolution-cache, and progress ownership into `loader_phases`.
+`ProjectLoader` remains the public facade and still performs the same bounded
+admission, wave, resolver, deadline, partial-result, and finish transitions;
+the phase state machines now have cohesive private module boundaries.
 
 #### [x] READ-011 — Resolution cache key hides normalization and cache identity
 

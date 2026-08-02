@@ -14,6 +14,8 @@ mod corpus;
 mod discovery;
 mod error;
 mod loader;
+mod loader_metrics;
+mod loader_phases;
 mod options;
 mod resolver;
 mod tsconfig;

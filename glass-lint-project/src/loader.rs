@@ -1,7 +1,7 @@
 //! Public project loading API and the bounded construction loop.
 
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, VecDeque},
     num::NonZeroUsize,
     path::{Path, PathBuf},
     time::{Duration, Instant},
@@ -10,8 +10,8 @@ use std::{
 use glass_lint_core::{
     Linter,
     project::{
-        AnalysisReport, ProjectRelativePath, ResolutionRequest, ResolutionRequestKey,
-        ResolutionRequestKind, ResolverOutcome, SourceFile, SourceText,
+        AnalysisReport, ProjectRelativePath, ResolutionRequest, ResolverOutcome, SourceFile,
+        SourceText,
     },
 };
 
@@ -24,6 +24,11 @@ use crate::{
     resolver::ProjectResolver,
     tsconfig,
 };
+
+pub(super) use crate::loader_metrics::ProjectMetricsAccumulator;
+pub use crate::loader_metrics::{ProjectLoadMetrics, ProjectPhaseTimings};
+use crate::loader_phases::{LoadProgress, PathWorkQueue, ResolutionCache};
+
 
 /// Filesystem loader and Oxc resolver configuration.
 #[derive(Clone, Debug)]
@@ -71,193 +76,6 @@ impl ProjectLoadOutcome {
             partial_reason: Some(reason),
             metrics: ProjectLoadMetrics::default(),
         }
-    }
-}
-
-/// Immutable phase-timing snapshot shared with harness profiling reports.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct ProjectPhaseTimings {
-    discovery: Duration,
-    reads: Duration,
-    analyze_source: Duration,
-    resolution: Duration,
-    linking: Duration,
-    matching: Duration,
-    total: Duration,
-}
-
-impl ProjectPhaseTimings {
-    #[must_use]
-    pub fn discovery(&self) -> Duration {
-        self.discovery
-    }
-
-    #[must_use]
-    pub fn reads(&self) -> Duration {
-        self.reads
-    }
-
-    #[must_use]
-    pub fn resolution(&self) -> Duration {
-        self.resolution
-    }
-
-    #[must_use]
-    pub fn linking(&self) -> Duration {
-        self.linking
-    }
-
-    #[must_use]
-    pub fn matching(&self) -> Duration {
-        self.matching
-    }
-
-    #[must_use]
-    pub fn total(&self) -> Duration {
-        self.total
-    }
-
-    #[must_use]
-    pub fn parse_and_local_analysis(&self) -> Duration {
-        self.analyze_source
-    }
-
-    #[must_use]
-    pub fn linking_and_matching(&self) -> Duration {
-        self.linking.saturating_add(self.matching)
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-struct ProjectPhaseTimingsAccumulator {
-    discovery: Duration,
-    reads: Duration,
-    analyze_source: Duration,
-    resolution: Duration,
-    linking: Duration,
-    matching: Duration,
-    total: Duration,
-}
-
-impl ProjectPhaseTimingsAccumulator {
-    fn snapshot(self) -> ProjectPhaseTimings {
-        ProjectPhaseTimings {
-            discovery: self.discovery,
-            reads: self.reads,
-            analyze_source: self.analyze_source,
-            resolution: self.resolution,
-            linking: self.linking,
-            matching: self.matching,
-            total: self.total,
-        }
-    }
-
-    fn record_discovery(&mut self, duration: Duration) {
-        self.discovery = self.discovery.saturating_add(duration);
-    }
-
-    fn record_reads(&mut self, duration: Duration) {
-        self.reads = self.reads.saturating_add(duration);
-    }
-
-    fn record_analyze_source(&mut self, duration: Duration) {
-        self.analyze_source = self.analyze_source.saturating_add(duration);
-    }
-
-    fn record_resolution(&mut self, duration: Duration) {
-        self.resolution = self.resolution.saturating_add(duration);
-    }
-
-    fn record_linking(&mut self, duration: Duration) {
-        self.linking = self.linking.saturating_add(duration);
-    }
-
-    fn record_matching(&mut self, duration: Duration) {
-        self.matching = self.matching.saturating_add(duration);
-    }
-
-    fn record_total(&mut self, duration: Duration) {
-        self.total = self.total.saturating_add(duration);
-    }
-}
-
-impl std::ops::AddAssign for ProjectPhaseTimingsAccumulator {
-    fn add_assign(&mut self, rhs: Self) {
-        self.discovery = self.discovery.saturating_add(rhs.discovery);
-        self.reads = self.reads.saturating_add(rhs.reads);
-        self.analyze_source = self.analyze_source.saturating_add(rhs.analyze_source);
-        self.resolution = self.resolution.saturating_add(rhs.resolution);
-        self.linking = self.linking.saturating_add(rhs.linking);
-        self.matching = self.matching.saturating_add(rhs.matching);
-        self.total = self.total.saturating_add(rhs.total);
-    }
-}
-
-/// Immutable bounded construction counters and phase-timing snapshot.
-#[derive(Clone, Debug, Default)]
-pub struct ProjectLoadMetrics {
-    timings: ProjectPhaseTimings,
-    files: usize,
-    requests: usize,
-    edges: usize,
-    bytes: u64,
-}
-
-impl ProjectLoadMetrics {
-    #[must_use]
-    pub fn phase_timings(&self) -> ProjectPhaseTimings {
-        self.timings
-    }
-
-    #[must_use]
-    pub fn files(&self) -> usize {
-        self.files
-    }
-
-    #[must_use]
-    pub fn requests(&self) -> usize {
-        self.requests
-    }
-
-    #[must_use]
-    pub fn edges(&self) -> usize {
-        self.edges
-    }
-
-    #[must_use]
-    pub fn bytes(&self) -> u64 {
-        self.bytes
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-struct ProjectMetricsAccumulator {
-    timings: ProjectPhaseTimingsAccumulator,
-    files: usize,
-    requests: usize,
-    edges: usize,
-    bytes: u64,
-}
-
-impl ProjectMetricsAccumulator {
-    fn snapshot(&self) -> ProjectLoadMetrics {
-        ProjectLoadMetrics {
-            timings: self.timings.snapshot(),
-            files: self.files,
-            requests: self.requests,
-            edges: self.edges,
-            bytes: self.bytes,
-        }
-    }
-}
-
-impl std::ops::AddAssign for ProjectMetricsAccumulator {
-    fn add_assign(&mut self, rhs: Self) {
-        self.timings += rhs.timings;
-        self.files = self.files.saturating_add(rhs.files);
-        self.requests = self.requests.saturating_add(rhs.requests);
-        self.edges = self.edges.saturating_add(rhs.edges);
-        self.bytes = self.bytes.saturating_add(rhs.bytes);
     }
 }
 
@@ -390,96 +208,6 @@ impl<'a> ProjectPaths<'a> {
     }
 }
 
-#[derive(Default)]
-struct PathWorkQueue {
-    queue: VecDeque<AdmittedSourcePath>,
-    seen: BTreeSet<AdmittedSourcePath>,
-}
-impl PathWorkQueue {
-    fn extend(&mut self, paths: impl IntoIterator<Item = AdmittedSourcePath>) {
-        for path in paths {
-            self.push(path);
-        }
-    }
-
-    fn pop_front(&mut self) -> Option<AdmittedSourcePath> {
-        self.queue.pop_front()
-    }
-
-    fn push(&mut self, path: AdmittedSourcePath) {
-        if self.seen.insert(path.clone()) {
-            self.queue.push_back(path);
-        }
-    }
-}
-
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct ResolutionSpecifierKey {
-    importer: ProjectRelativePath,
-    kind: ResolutionRequestKind,
-    specifier: String,
-}
-
-impl ResolutionSpecifierKey {
-    fn from_request(request: &ResolutionRequest) -> Self {
-        Self {
-            importer: request.key.importer.clone(),
-            kind: request.key.kind,
-            specifier: request.request.to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-struct ResolutionCache {
-    /// Occurrence-keyed cache required by core (includes range).
-    by_key: BTreeMap<ResolutionRequestKey, ResolverOutcome>,
-    /// Semantic cache keyed by importer, request kind, and normalized
-    /// specifier — catches repeated imports at different ranges.
-    by_specifier: BTreeMap<ResolutionSpecifierKey, ResolverOutcome>,
-}
-impl ResolutionCache {
-    /// Resolve a request if not already cached and return the stored outcome.
-    /// The returned `bool` is `true` when a real resolution was performed.
-    fn resolve_or_get(
-        &mut self,
-        request: &ResolutionRequest,
-        resolver: &ProjectResolver,
-    ) -> Result<(&ResolverOutcome, bool), ProjectLoadError> {
-        let cache_key = request.key.clone();
-        if self.by_key.contains_key(&cache_key) {
-            let Some(outcome) = self.by_key.get(&cache_key) else {
-                debug_assert!(false, "cache key disappeared after contains_key");
-                return Err(ProjectLoadError::CacheInvariant);
-            };
-            return Ok((outcome, false));
-        }
-
-        let specifier_key = ResolutionSpecifierKey::from_request(request);
-        let (outcome, did_resolve) = match self.by_specifier.entry(specifier_key) {
-            std::collections::btree_map::Entry::Occupied(entry) => (entry.get().clone(), false),
-            std::collections::btree_map::Entry::Vacant(entry) => {
-                let outcome = resolver.resolve(request)?;
-                entry.insert(outcome.clone());
-                (outcome, true)
-            }
-        };
-        let cached = self.by_key.entry(cache_key).or_insert(outcome);
-        Ok((cached, did_resolve))
-    }
-
-    fn into_iter(self) -> impl Iterator<Item = (ResolutionRequestKey, ResolverOutcome)> {
-        self.by_key.into_iter()
-    }
-}
-
-#[derive(Debug, Default)]
-struct LoadProgress {
-    requests: usize,
-    edges: usize,
-    source_bytes: u64,
-}
-
 /// Result of admitting and reading one work queue wave. A source-byte budget
 /// failure is deferred until the successfully read sources have been
 /// analyzed, preserving deterministic partial output.
@@ -498,44 +226,6 @@ struct AnalysisWaveOutcome {
 struct RequestResolutionOutcome {
     internal_targets: Vec<ProjectRelativePath>,
     elapsed: Duration,
-}
-
-impl LoadProgress {
-    fn source_bytes(&self) -> u64 {
-        self.source_bytes
-    }
-
-    fn add_requests(&mut self, count: usize, limit: usize) -> Result<(), ProjectLoadError> {
-        self.requests = self
-            .requests
-            .checked_add(count)
-            .ok_or(ProjectLoadError::TooManyRequests(limit))?;
-        if self.requests > limit {
-            return Err(ProjectLoadError::TooManyRequests(limit));
-        }
-        Ok(())
-    }
-
-    fn record_edge(&mut self) {
-        self.edges = self.edges.saturating_add(1);
-    }
-
-    fn record_source_bytes(&mut self, bytes: u64, limit: u64) -> Result<(), ProjectLoadError> {
-        self.source_bytes = self.source_bytes.saturating_add(bytes);
-        if self.source_bytes > limit {
-            return Err(ProjectLoadError::ProjectSourceTooLarge {
-                bytes: self.source_bytes,
-                limit,
-            });
-        }
-        Ok(())
-    }
-
-    fn publish(&self, metrics: &mut ProjectMetricsAccumulator) {
-        metrics.requests = self.requests;
-        metrics.edges = self.edges;
-        metrics.bytes = self.source_bytes;
-    }
 }
 
 /// Maximum number of files processed in one parallel wave. Independent of

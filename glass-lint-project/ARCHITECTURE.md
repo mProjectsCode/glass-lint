@@ -23,7 +23,11 @@ ProjectSelection + validated ProjectLoadOptions
   membership, and symlink policy.
 - `resolver` owns Oxc configuration and classification of internal, external,
   missing, and unsupported requests.
-- `loader` coordinates admission, resolution, partial outcomes, and metrics.
+- `loader` is the public loading facade and coordinates phase transitions and
+  partial outcomes.
+- `loader_metrics` owns phase timings and bounded load counters.
+- `loader_phases` owns the path queue, resolution cache, and frontier progress
+  state used by the loading loop.
 - `corpus` owns reusable, deterministic source-corpus loading.
 - `error` owns expected loading and boundary failures.
 
