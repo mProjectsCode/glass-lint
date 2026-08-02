@@ -2,10 +2,7 @@ use std::{borrow::Borrow, ops::Deref, sync::Arc};
 
 use smol_str::SmolStr;
 
-use crate::{
-    SourceLanguage,
-    project::types::{ProjectRelativePath, package::PackageName},
-};
+use crate::{SourceLanguage, project::types::ProjectRelativePath};
 
 /// Shared source text admitted once at the project boundary.
 ///
@@ -50,16 +47,38 @@ impl From<&str> for SourceText {
     }
 }
 
-/// A validated package specifier (e.g., "lodash", "@angular/core").
+/// The canonical validated package-root value (e.g., "lodash",
+/// "@angular/core") shared by project inputs and rule declarations.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct PackageSpecifier(SmolStr);
 
 impl PackageSpecifier {
     pub fn new(s: impl Into<SmolStr>) -> Result<Self, ProjectInputError> {
         let inner = s.into();
-        let package = PackageName::parse(&inner)
-            .map_err(|_| ProjectInputError::InvalidTarget(inner.to_string()))?;
-        Ok(Self(package.into_inner()))
+        let value = inner.trim();
+        if value.is_empty()
+            || value.contains('\0')
+            || value.contains(char::is_whitespace)
+            || value.starts_with('.')
+            || value.starts_with('/')
+            || value.starts_with('\\')
+        {
+            return Err(ProjectInputError::InvalidTarget(inner.to_string()));
+        }
+
+        if let Some(scoped) = value.strip_prefix('@') {
+            let mut segments = scoped.split('/');
+            if segments.next().is_none_or(str::is_empty)
+                || segments.next().is_none_or(str::is_empty)
+                || segments.next().is_some()
+            {
+                return Err(ProjectInputError::InvalidTarget(inner.to_string()));
+            }
+        } else if value.contains('/') {
+            return Err(ProjectInputError::InvalidTarget(inner.to_string()));
+        }
+
+        Ok(Self(value.into()))
     }
 
     pub fn as_str(&self) -> &str {

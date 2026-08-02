@@ -2,33 +2,18 @@
 
 use std::fmt;
 
-use crate::{api::rule::error::MatcherBuildError, project::types::package::PackageName};
+use crate::{api::rule::error::MatcherBuildError, project::PackageSpecifier};
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 /// An exact module specifier or a package root with boundary-aware subpaths.
 pub struct ModuleSpecifierPattern {
-    name: String,
-    kind: PatternKind,
+    value: PatternValue,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
-enum PatternKind {
-    Exact,
-    Package,
-}
-
-impl PatternKind {
-    fn matches(self, name: &str, authored: &str) -> bool {
-        authored == name
-            || (matches!(self, Self::Package)
-                && authored
-                    .strip_prefix(name)
-                    .is_some_and(|suffix| suffix.starts_with('/')))
-    }
-
-    fn is_package(self) -> bool {
-        matches!(self, Self::Package)
-    }
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+enum PatternValue {
+    Exact(String),
+    Package(PackageSpecifier),
 }
 
 impl ModuleSpecifierPattern {
@@ -41,40 +26,50 @@ impl ModuleSpecifierPattern {
             ));
         }
         Ok(Self {
-            name,
-            kind: PatternKind::Exact,
+            value: PatternValue::Exact(name),
         })
     }
 
     /// Construct a package-root pattern matching the root and `/...` subpaths.
     pub fn package(name: impl Into<String>) -> Result<Self, MatcherBuildError> {
         let name = name.into().trim().to_string();
-        let package = PackageName::parse(&name).map_err(|_| {
+        let package = PackageSpecifier::new(name.clone()).map_err(|_| {
             MatcherBuildError::InvalidModuleSpecifier(format!("invalid package specifier `{name}`"))
         })?;
         Ok(Self {
-            name: package.as_str().to_owned(),
-            kind: PatternKind::Package,
+            value: PatternValue::Package(package),
         })
     }
 
     pub fn matches(&self, authored: &str) -> bool {
-        self.kind.matches(&self.name, authored)
+        match &self.value {
+            PatternValue::Exact(name) => authored == name,
+            PatternValue::Package(package) => {
+                let root = package.as_str();
+                authored == root
+                    || authored
+                        .strip_prefix(root)
+                        .is_some_and(|suffix| suffix.starts_with('/'))
+            }
+        }
     }
 
     pub fn as_str(&self) -> &str {
-        &self.name
+        match &self.value {
+            PatternValue::Exact(name) => name,
+            PatternValue::Package(package) => package.as_str(),
+        }
     }
 
     /// Return whether this pattern matches a package root and its subpaths.
     pub fn is_package(&self) -> bool {
-        self.kind.is_package()
+        matches!(self.value, PatternValue::Package(_))
     }
 }
 
 impl fmt::Display for ModuleSpecifierPattern {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.name)
+        formatter.write_str(self.as_str())
     }
 }
 

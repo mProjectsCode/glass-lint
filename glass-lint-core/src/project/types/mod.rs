@@ -7,7 +7,6 @@
 use std::{borrow::Borrow, ops::Deref, path::Path, sync::Arc};
 
 mod input;
-pub(crate) mod package;
 mod report;
 
 pub use input::{
