@@ -11,7 +11,7 @@ use crate::{
 };
 
 #[derive(Default)]
-pub(super) struct PathWorkQueue {
+pub struct PathWorkQueue {
     queue: VecDeque<AdmittedSourcePath>,
     seen: BTreeSet<AdmittedSourcePath>,
 }
@@ -52,7 +52,7 @@ impl ResolutionSpecifierKey {
 }
 
 #[derive(Debug, Default)]
-pub(super) struct ResolutionCache {
+pub struct ResolutionCache {
     /// Occurrence-keyed cache required by core (includes range).
     by_key: BTreeMap<ResolutionRequestKey, ResolverOutcome>,
     /// Semantic cache keyed by importer, request kind, and normalized
@@ -94,7 +94,7 @@ impl ResolutionCache {
 }
 
 #[derive(Debug, Default)]
-pub(super) struct LoadProgress {
+pub struct LoadProgress {
     requests: usize,
     edges: usize,
     source_bytes: u64,

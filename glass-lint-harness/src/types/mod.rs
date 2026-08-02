@@ -4,7 +4,8 @@ mod case;
 mod protocol;
 mod report;
 
-pub(crate) use case::ToolSelector;
+#[cfg(test)]
+pub use case::ToolSelector;
 pub use case::{
     Case, CaseError, ExpectationError, ExpectedCount, FindingExpectation, FindingExpectationError,
     ProjectCase, ToolExpectation,

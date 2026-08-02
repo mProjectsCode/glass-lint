@@ -34,8 +34,9 @@ pub use local::{
 pub(in crate::analysis) use lowering::budget::SemanticBudget;
 pub use lowering::{LoweredSource, Lowerer};
 pub(in crate::analysis) use project::model::ExportResolution;
-pub(crate) use project::model::ResolvedLinkInputData;
-pub use project::model::{ProjectSemanticModel, QualifiedRequestId, ResolvedLinkInput};
+pub use project::model::{
+    ProjectSemanticModel, QualifiedRequestId, ResolvedLinkInput, ResolvedLinkInputData,
+};
 pub use value::matches_global_object_alias;
 
 #[cfg(test)]

@@ -15,8 +15,9 @@ use glass_lint_core::{
     },
 };
 
-pub(super) use crate::loader_metrics::ProjectMetricsAccumulator;
-pub use crate::loader_metrics::{ProjectLoadMetrics, ProjectPhaseTimings};
+pub use crate::loader_metrics::{
+    ProjectLoadMetrics, ProjectMetricsAccumulator, ProjectPhaseTimings,
+};
 use crate::{
     admission::{AdmissionSet, AdmittedSourcePath, SourceAdmission, absolute_path},
     budget::ProjectResourceBudget,

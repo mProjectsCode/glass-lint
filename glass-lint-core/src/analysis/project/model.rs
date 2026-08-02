@@ -110,7 +110,7 @@ pub struct ResolvedLinkInput {
 /// Correlated project maps handed to the linker as one validated boundary.
 /// Callers cannot assemble the linker's individual representations after this
 /// value is constructed.
-pub(crate) struct ResolvedLinkInputData {
+pub struct ResolvedLinkInputData {
     source_map: BTreeMap<ProjectRelativePath, SourceFile>,
     analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
     module_ids: BTreeMap<ProjectRelativePath, ModuleId>,

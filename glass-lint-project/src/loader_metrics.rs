@@ -55,7 +55,7 @@ impl ProjectPhaseTimings {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-pub(super) struct ProjectPhaseTimingsAccumulator {
+pub struct ProjectPhaseTimingsAccumulator {
     discovery: Duration,
     reads: Duration,
     analyze_source: Duration,
@@ -156,7 +156,7 @@ impl ProjectLoadMetrics {
 }
 
 #[derive(Clone, Debug, Default)]
-pub(super) struct ProjectMetricsAccumulator {
+pub struct ProjectMetricsAccumulator {
     pub(crate) timings: ProjectPhaseTimingsAccumulator,
     pub(crate) files: usize,
     pub(crate) requests: usize,
