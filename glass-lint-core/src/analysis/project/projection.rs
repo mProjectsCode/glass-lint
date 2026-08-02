@@ -129,9 +129,9 @@ impl<'a> ProjectionPlan<'a> {
             needs_overall_result_ids =
                 needs_overall_result_ids || matcher.needs_call_result_identities();
             let fr = matcher.flow_requirements();
-            flow_local = flow_local || fr.local;
-            flow_cross_call = flow_cross_call || fr.cross_call;
-            flow_cross_file = flow_cross_file || fr.cross_file;
+            flow_local = flow_local || fr.local();
+            flow_cross_call = flow_cross_call || fr.cross_call();
+            flow_cross_file = flow_cross_file || fr.cross_file();
         }
 
         let flow_matchers =
@@ -161,11 +161,7 @@ impl<'a> ProjectionPlan<'a> {
             needs_module_identities: needs_overall_module_ids,
             needs_call_result_identities: needs_overall_result_ids,
             needs_overlay: needs_overall_overlay,
-            flow_requirements: FlowRequirements {
-                local: flow_local,
-                cross_call: flow_cross_call,
-                cross_file: flow_cross_file,
-            },
+            flow_requirements: FlowRequirements::new(flow_local, flow_cross_call, flow_cross_file),
         }
     }
 }
@@ -397,9 +393,9 @@ impl ProjectSemanticModel {
         let flow_limits = FlowLimits::from_flow_operations(self.flow_limit());
         let mut session = LinkingSession::new(self.flow_limit());
 
-        let has_flow = plan.flow_requirements().local
-            || plan.flow_requirements().cross_call
-            || plan.flow_requirements().cross_file;
+        let has_flow = plan.flow_requirements().local()
+            || plan.flow_requirements().cross_call()
+            || plan.flow_requirements().cross_file();
         let (projections, mut outcome) =
             self.project_modules(&plan, flow_limits, arena, &mut session);
 

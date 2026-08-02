@@ -343,7 +343,7 @@ fn requirements_must_match_executable_roots() {
         },
     }]);
     let mut requirements = PlanRequirements::default();
-    requirements.flow.local = true;
+    requirements.require_local_flow();
     let plan = PhysicalPlan::new(roots, requirements);
     assert_eq!(
         validate_physical_plan(&plan),

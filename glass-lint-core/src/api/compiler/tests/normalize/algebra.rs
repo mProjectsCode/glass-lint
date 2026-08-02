@@ -298,7 +298,7 @@ fn simple_query_has_no_matcher_specific_preparation_requirements() {
     let nq = normalize_ok(&d);
     let req = nq.requirements();
     assert!(req.value_resolution().is_empty());
-    assert!(!req.flow().local);
+    assert!(!req.flow().local());
     assert!(!req.needs_project_overlay());
 }
 
@@ -393,9 +393,9 @@ fn lifecycle_has_flow_requirements() {
     };
     let nq = normalize_ok(&d);
     let req = nq.requirements();
-    assert!(req.flow().local, "lifecycle should need local flow");
+    assert!(req.flow().local(), "lifecycle should need local flow");
     assert!(
-        req.flow().cross_call,
+        req.flow().cross_call(),
         "lifecycle should need cross-call flow"
     );
 }
@@ -406,8 +406,8 @@ fn global_query_has_only_calls_requirement() {
     let nq = normalize_ok(&d);
     let req = nq.requirements();
     assert!(req.value_resolution().is_empty());
-    assert!(!req.flow().local);
-    assert!(!req.flow().cross_call);
+    assert!(!req.flow().local());
+    assert!(!req.flow().cross_call());
     assert!(!req.needs_project_overlay());
 }
 

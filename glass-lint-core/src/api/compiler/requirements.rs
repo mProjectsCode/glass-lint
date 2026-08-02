@@ -1,8 +1,9 @@
 use std::collections::BTreeSet;
 
 use crate::api::{
-    compiler::normalized::{
-        NormalizedEvent, NormalizedLifecycle, NormalizedRoot, NormalizedSubject,
+    compiler::{
+        IdentityConstraint, lower_identity,
+        normalized::{NormalizedEvent, NormalizedLifecycle, NormalizedRoot, NormalizedSubject},
     },
     rule::query::IdentitySpec,
 };
@@ -20,9 +21,31 @@ pub(crate) enum ValueResolutionRequirement {
 /// Whether local, cross-call, or cross-file flow projection is required.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct FlowRequirements {
-    pub(crate) local: bool,
-    pub(crate) cross_call: bool,
-    pub(crate) cross_file: bool,
+    local: bool,
+    cross_call: bool,
+    cross_file: bool,
+}
+
+impl FlowRequirements {
+    pub(crate) fn new(local: bool, cross_call: bool, cross_file: bool) -> Self {
+        Self {
+            local,
+            cross_call,
+            cross_file,
+        }
+    }
+
+    pub(crate) fn local(&self) -> bool {
+        self.local
+    }
+
+    pub(crate) fn cross_call(&self) -> bool {
+        self.cross_call
+    }
+
+    pub(crate) fn cross_file(&self) -> bool {
+        self.cross_file
+    }
 }
 
 /// Which project-level preparation the physical plan needs.
@@ -37,14 +60,16 @@ pub(crate) enum ProjectRequirement {
 
 /// Requirements computed during normalization for physical planning.
 ///
-/// Each field contains the exact set of capabilities needed by the
-/// normalized query.  Runtime preparation must consult these sets rather
-/// than performing work unconditionally.
+/// Each capability carries the exact set of work needed by the normalized
+/// query. Runtime preparation must consult these sets rather than performing
+/// work unconditionally. Capabilities are added only through the `require_*`
+/// mutation methods, which centralize the legal capability transitions; the
+/// collections and flow flags stay private.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct PlanRequirements {
-    pub(crate) value_resolution: BTreeSet<ValueResolutionRequirement>,
-    pub(crate) flow: FlowRequirements,
-    pub(crate) project: BTreeSet<ProjectRequirement>,
+    value_resolution: BTreeSet<ValueResolutionRequirement>,
+    flow: FlowRequirements,
+    project: BTreeSet<ProjectRequirement>,
 }
 
 impl PlanRequirements {
@@ -60,6 +85,62 @@ impl PlanRequirements {
     #[cfg(test)]
     pub(crate) fn project_requirements(&self) -> &BTreeSet<ProjectRequirement> {
         &self.project
+    }
+
+    /// Record that matching must resolve the static values of call arguments.
+    pub(crate) fn require_local_static_values(&mut self) {
+        self.value_resolution
+            .insert(ValueResolutionRequirement::LocalStaticValues);
+    }
+
+    /// Record the value-resolution and project capabilities required to match
+    /// the given identity constraint.
+    pub(crate) fn require_identity(&mut self, identity: &IdentityConstraint) {
+        match identity {
+            IdentityConstraint::ModuleExport { .. } => {
+                self.value_resolution.extend([
+                    ValueResolutionRequirement::ModuleIdentityValues,
+                    ValueResolutionRequirement::CallResultIdentities,
+                ]);
+                self.project.extend([
+                    ProjectRequirement::ExactModuleExports,
+                    ProjectRequirement::CallResultIdentities,
+                ]);
+            }
+            IdentityConstraint::PackageModuleExport { .. } => {
+                self.value_resolution.extend([
+                    ValueResolutionRequirement::ModuleIdentityValues,
+                    ValueResolutionRequirement::CallResultIdentities,
+                ]);
+                self.project.extend([
+                    ProjectRequirement::PackageModuleExports,
+                    ProjectRequirement::CallResultIdentities,
+                ]);
+            }
+            IdentityConstraint::ModuleNamespace { .. } => {
+                self.value_resolution
+                    .insert(ValueResolutionRequirement::ModuleIdentityValues);
+                self.project
+                    .insert(ProjectRequirement::ExactModuleNamespaces);
+            }
+            IdentityConstraint::PackageModuleNamespace { .. } => {
+                self.value_resolution
+                    .insert(ValueResolutionRequirement::ModuleIdentityValues);
+                self.project
+                    .insert(ProjectRequirement::PackageModuleNamespaces);
+            }
+            _ => {}
+        }
+    }
+
+    /// Record that matching needs local flow projection.
+    pub(crate) fn require_local_flow(&mut self) {
+        self.flow.local = true;
+    }
+
+    /// Record that matching needs cross-call flow projection.
+    pub(crate) fn require_cross_call_flow(&mut self) {
+        self.flow.cross_call = true;
     }
 
     /// Whether any project-level identity work (module identities, overlays)
@@ -109,23 +190,19 @@ impl PlanRequirements {
     }
 
     fn for_event(event: &NormalizedEvent) -> Self {
-        Self {
-            value_resolution: Self::value_resolution_for_event(event),
-            flow: FlowRequirements::default(),
-            project: Self::project_for_event(event),
+        let mut requirements = Self::default();
+        if !event.arguments.is_empty() {
+            requirements.require_local_static_values();
         }
+        requirements.require_identity(&lower_identity(event_identity(event)));
+        requirements
     }
 
     fn for_lifecycle(_lc: &NormalizedLifecycle) -> Self {
-        Self {
-            value_resolution: BTreeSet::new(),
-            flow: FlowRequirements {
-                local: true,
-                cross_call: true,
-                cross_file: false,
-            },
-            project: BTreeSet::new(),
-        }
+        let mut requirements = Self::default();
+        requirements.require_local_flow();
+        requirements.require_cross_call_flow();
+        requirements
     }
 
     pub(crate) fn for_root(root: &NormalizedRoot) -> Self {
@@ -141,53 +218,6 @@ impl PlanRequirements {
             NormalizedRoot::Lifecycle(lc) => Self::for_lifecycle(lc),
         }
     }
-
-    fn value_resolution_for_event(event: &NormalizedEvent) -> BTreeSet<ValueResolutionRequirement> {
-        let mut set = BTreeSet::new();
-        if !event.arguments.is_empty() {
-            set.insert(ValueResolutionRequirement::LocalStaticValues);
-        }
-        {
-            let identity = event_identity(event);
-            match identity {
-                IdentitySpec::ModuleExport { .. } | IdentitySpec::PackageModuleExport { .. } => {
-                    set.insert(ValueResolutionRequirement::ModuleIdentityValues);
-                    set.insert(ValueResolutionRequirement::CallResultIdentities);
-                }
-                IdentitySpec::ModuleNamespace { .. }
-                | IdentitySpec::PackageModuleNamespace { .. } => {
-                    set.insert(ValueResolutionRequirement::ModuleIdentityValues);
-                }
-                _ => {}
-            }
-        }
-        set
-    }
-
-    fn project_for_event(event: &NormalizedEvent) -> BTreeSet<ProjectRequirement> {
-        let mut set = BTreeSet::new();
-        let identity = event_identity(event);
-        if requires_project_overlay_spec(identity) {
-            match identity {
-                IdentitySpec::ModuleExport { .. } => {
-                    set.insert(ProjectRequirement::ExactModuleExports);
-                    set.insert(ProjectRequirement::CallResultIdentities);
-                }
-                IdentitySpec::PackageModuleExport { .. } => {
-                    set.insert(ProjectRequirement::PackageModuleExports);
-                    set.insert(ProjectRequirement::CallResultIdentities);
-                }
-                IdentitySpec::ModuleNamespace { .. } => {
-                    set.insert(ProjectRequirement::ExactModuleNamespaces);
-                }
-                IdentitySpec::PackageModuleNamespace { .. } => {
-                    set.insert(ProjectRequirement::PackageModuleNamespaces);
-                }
-                _ => {}
-            }
-        }
-        set
-    }
 }
 
 fn event_identity(event: &NormalizedEvent) -> &IdentitySpec {
@@ -196,14 +226,4 @@ fn event_identity(event: &NormalizedEvent) -> &IdentitySpec {
         NormalizedSubject::Returned { producer, .. } => producer,
         NormalizedSubject::Instance { constructor, .. } => constructor,
     }
-}
-
-fn requires_project_overlay_spec(identity: &IdentitySpec) -> bool {
-    matches!(
-        identity,
-        IdentitySpec::ModuleExport { .. }
-            | IdentitySpec::PackageModuleExport { .. }
-            | IdentitySpec::ModuleNamespace { .. }
-            | IdentitySpec::PackageModuleNamespace { .. }
-    )
 }

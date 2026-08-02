@@ -11,7 +11,7 @@ use crate::api::{
             NormalizedRoot, NormalizedSubject,
         },
         object_flow::CompiledObjectFlow,
-        requirements::{PlanRequirements, ProjectRequirement, ValueResolutionRequirement},
+        requirements::PlanRequirements,
         rule::{
             EventPredicate, EvidenceDescriptor, IdentityConstraint, lower_event, lower_identity,
         },
@@ -125,12 +125,12 @@ impl PhysicalPlan {
             returned,
             instance,
             lifecycle,
-            if self.requirements.flow().local {
+            if self.requirements.flow().local() {
                 "yes"
             } else {
                 "no"
             },
-            if self.requirements.flow().cross_call {
+            if self.requirements.flow().cross_call() {
                 "yes"
             } else {
                 "no"
@@ -158,9 +158,9 @@ impl PhysicalPlan {
         lines.push(format!(
             "requirements value_resolution={:?} flow={{local={}, cross_call={}, cross_file={}}} project={:?}",
             self.requirements.value_resolution(),
-            self.requirements.flow().local,
-            self.requirements.flow().cross_call,
-            self.requirements.flow().cross_file,
+            self.requirements.flow().local(),
+            self.requirements.flow().cross_call(),
+            self.requirements.flow().cross_file(),
             self.requirements.project_requirements(),
         ));
         lines.join("\n")
@@ -423,65 +423,21 @@ fn executable_requirements(roots: &[PhysicalRoot]) -> PlanRequirements {
             PhysicalRoot::ConstrainedScan { identity, .. }
             | PhysicalRoot::IndexedScan { identity, .. } => {
                 if matches!(root, PhysicalRoot::ConstrainedScan { .. }) {
-                    requirements
-                        .value_resolution
-                        .insert(ValueResolutionRequirement::LocalStaticValues);
+                    requirements.require_local_static_values();
                 }
-                add_identity_requirements(&mut requirements, identity);
+                requirements.require_identity(identity);
             }
             PhysicalRoot::ReturnedSubject { .. } => {}
             PhysicalRoot::InstanceSubject { constructor, .. } => {
-                add_identity_requirements(&mut requirements, constructor);
+                requirements.require_identity(constructor);
             }
             PhysicalRoot::Lifecycle { .. } => {
-                requirements.flow.local = true;
-                requirements.flow.cross_call = true;
+                requirements.require_local_flow();
+                requirements.require_cross_call_flow();
             }
         }
     }
     requirements
-}
-
-fn add_identity_requirements(requirements: &mut PlanRequirements, identity: &IdentityConstraint) {
-    match identity {
-        IdentityConstraint::ModuleExport { .. } => {
-            requirements.value_resolution.extend([
-                ValueResolutionRequirement::ModuleIdentityValues,
-                ValueResolutionRequirement::CallResultIdentities,
-            ]);
-            requirements.project.extend([
-                ProjectRequirement::ExactModuleExports,
-                ProjectRequirement::CallResultIdentities,
-            ]);
-        }
-        IdentityConstraint::PackageModuleExport { .. } => {
-            requirements.value_resolution.extend([
-                ValueResolutionRequirement::ModuleIdentityValues,
-                ValueResolutionRequirement::CallResultIdentities,
-            ]);
-            requirements.project.extend([
-                ProjectRequirement::PackageModuleExports,
-                ProjectRequirement::CallResultIdentities,
-            ]);
-        }
-        IdentityConstraint::ModuleNamespace { .. } => {
-            requirements
-                .value_resolution
-                .insert(ValueResolutionRequirement::ModuleIdentityValues);
-            requirements
-                .project
-                .insert(ProjectRequirement::ExactModuleNamespaces);
-        }
-        IdentityConstraint::PackageModuleNamespace { .. } => {
-            requirements
-                .value_resolution
-                .insert(ValueResolutionRequirement::ModuleIdentityValues);
-            requirements
-                .project
-                .insert(ProjectRequirement::PackageModuleNamespaces);
-        }
-        _ => {}
-    }
 }
 
 /// Validate that compiled constraints are well-formed.
