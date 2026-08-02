@@ -463,18 +463,23 @@ impl ScopeCollector<'_> {
     pub(super) fn enter_function(&mut self) {
         let checkpoint = self.checkpoint();
         let control_depth = self.path_state.control_flow.len();
-        self.path_state.function_checkpoints.push((
-            checkpoint,
-            self.path_state.conditional_depth,
-            control_depth,
-        ));
+        self.path_state
+            .function_checkpoints
+            .push(super::FunctionCheckpoint {
+                checkpoint,
+                conditional_depth: self.path_state.conditional_depth,
+                control_depth,
+            });
         self.path_state.reachable = true;
         self.path_state.assignment_writes.clear();
     }
 
     pub(super) fn exit_function(&mut self) {
-        let Some((checkpoint, conditional_depth, control_depth)) =
-            self.path_state.function_checkpoints.pop()
+        let Some(super::FunctionCheckpoint {
+            checkpoint,
+            conditional_depth,
+            control_depth,
+        }) = self.path_state.function_checkpoints.pop()
         else {
             return;
         };

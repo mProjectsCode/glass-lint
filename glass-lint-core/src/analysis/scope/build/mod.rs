@@ -49,9 +49,16 @@ pub(super) use shape::{ScopeShape, ScopeShapeTable};
 pub(super) struct ScopeCollectionArtifacts {
     pub(super) property_assignments: Vec<PropertyAliasAssignment>,
     pub(super) rooted_property_mutations: Vec<RootedPropertyMutation>,
-    pub(super) dynamic_evals: Vec<(ScopeId, ScopeEffect)>,
+    pub(super) dynamic_evals: Vec<ScopedDynamicEval>,
     pub(super) mutable_static_objects: HashSet<ScopedName>,
     pub(super) scope_issues: Vec<ScopeCollectionIssue>,
+}
+
+/// A dynamic evaluation retained with the scope in which it was observed.
+#[derive(Debug)]
+pub(in crate::analysis) struct ScopedDynamicEval {
+    pub(in crate::analysis) scope: ScopeId,
+    pub(in crate::analysis) effect: ScopeEffect,
 }
 
 pub(super) struct FunctionBinding {
@@ -119,7 +126,7 @@ struct PathCollectionState {
     assignment_writes: WriteSet,
     unknown_provenance: BindingProvenance,
     control_flow: Vec<ControlFlowFrame>,
-    function_checkpoints: Vec<(CollectorCheckpoint, u32, usize)>,
+    function_checkpoints: Vec<FunctionCheckpoint>,
     reachable: bool,
     alternative_limit: usize,
 }
@@ -146,6 +153,14 @@ struct CollectorCheckpoint {
     cursor: Cursor,
     writes: WriteCheckpoint,
     reachable: bool,
+}
+
+/// Assignment and control-flow state to restore when leaving a function.
+#[derive(Debug)]
+struct FunctionCheckpoint {
+    checkpoint: CollectorCheckpoint,
+    conditional_depth: u32,
+    control_depth: usize,
 }
 
 #[derive(Debug)]

@@ -15,7 +15,7 @@ use crate::analysis::{
         ScopeEffect::DynamicEvaluation,
         ScopeId, ScopeKind, ScopedName,
         build::{
-            PropertyAliasAssignment, RootedPropertyMutation,
+            PropertyAliasAssignment, RootedPropertyMutation, ScopedDynamicEval,
             analysis::{
                 DeclarationClassification, assignment_provenance, classify_declaration,
                 expression_is_mutable_static_object,
@@ -250,10 +250,10 @@ impl ScopePass for ScopeCollector<'_> {
             && let Expr::Ident(callee) = &**callee
         {
             if callee.sym == *"eval" {
-                self.artifacts.dynamic_evals.push((
-                    self.binding_scope(VarDeclKind::Var),
-                    DynamicEvaluation { span: call.span },
-                ));
+                self.artifacts.dynamic_evals.push(ScopedDynamicEval {
+                    scope: self.binding_scope(VarDeclKind::Var),
+                    effect: DynamicEvaluation { span: call.span },
+                });
             }
             self.budget.try_charge();
             if let Some(callee_name) = self.lookup_or_intern_name(callee.sym.as_ref()) {

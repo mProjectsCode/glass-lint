@@ -11,11 +11,11 @@ use crate::{
     analysis::{
         model::scope::{
             BindingProvenance, LexicalScope, PropertyAliasFact, RootedPropertyMutationFact,
-            ScopeEffect, ScopeId, ScopeKind,
+            ScopeId, ScopeKind,
         },
         scope::{
             binding_index::{BindingIndex, BindingIndexParts},
-            build::{PropertyAliasAssignment, RootedPropertyMutation},
+            build::{PropertyAliasAssignment, RootedPropertyMutation, ScopedDynamicEval},
             frozen_assignments::AssignmentAt,
             mutation_index::{MutationIndex, MutationIndexParts},
             name_env::NameEnvironment,
@@ -160,7 +160,7 @@ impl ScopeGraph {
         &mut self,
         property_assignments: Vec<PropertyAliasAssignment>,
         rooted_mutations: Vec<RootedPropertyMutation>,
-        dynamic_evals: Vec<(ScopeId, ScopeEffect)>,
+        dynamic_evals: Vec<ScopedDynamicEval>,
     ) {
         for assignment in property_assignments {
             let Some(receiver_key) = self
@@ -204,18 +204,18 @@ impl ScopeGraph {
         for mutations in self.mutations.rooted_property_mutations.values_mut() {
             mutations.sort_by_key(|mutation| mutation.span.lo);
         }
-        let mut evals: Vec<(ScopeId, ScopeEffect)> = dynamic_evals
+        let mut evals: Vec<ScopedDynamicEval> = dynamic_evals
             .into_iter()
-            .filter(|(_, effect)| self.binding_at("eval", effect.span()).is_none())
+            .filter(|eval| self.binding_at("eval", eval.effect.span()).is_none())
             .collect();
-        evals.sort_by_key(|(_, effect)| effect.span().hi);
+        evals.sort_by_key(|eval| eval.effect.span().hi);
         self.mutations.dynamic_evals_by_scope.clear();
-        for (scope, effect) in evals {
+        for eval in evals {
             self.mutations
                 .dynamic_evals_by_scope
-                .entry(scope)
+                .entry(eval.scope)
                 .or_default()
-                .push(effect);
+                .push(eval.effect);
         }
         for spans in self.mutations.dynamic_evals_by_scope.values_mut() {
             spans.sort_by_key(|effect| effect.span().hi);
