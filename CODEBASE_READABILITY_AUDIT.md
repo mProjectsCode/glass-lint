@@ -142,7 +142,7 @@ Local lowering cracks `ScopedProgram` and later `Resolver` into positional parts
 
 **Recommendation:** Introduce a `ResolvedProgram` phase aggregate that retains the resolver, scope-collection issues, and built fact state, then give it one consuming `freeze` transition. Keep `NameTable` and `ValueTable` inside that transition and remove both positional `into_parts` APIs.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `ResolvedProgram` phase aggregate retaining the resolver, scope-collection issues, and built fact state, with one consuming `freeze` transition. `NameTable`/`ValueTable` stay inside the transition; `ScopedProgram::into_parts` and `Resolver::into_parts` were removed and tests go through the aggregate.
 
 ### Flow analysis
 
