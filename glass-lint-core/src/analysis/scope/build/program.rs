@@ -8,12 +8,6 @@ pub(in crate::analysis) struct ScopedProgram {
     pub(crate) issues: Vec<ScopeCollectionIssue>,
 }
 
-impl ScopedProgram {
-    pub(in crate::analysis) fn into_parts(self) -> (FrozenScopeGraph, Vec<ScopeCollectionIssue>) {
-        (self.graph, self.issues)
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::analysis) enum ScopeCollectionIssue {
     ShapeMismatch,

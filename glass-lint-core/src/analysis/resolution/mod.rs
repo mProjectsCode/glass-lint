@@ -13,9 +13,9 @@ mod call;
 mod constant;
 mod expression;
 
-use glass_lint_datastructures::{
-    ByteRange, NameExhausted, NameId, NamePath, NameTable, SymbolPath,
-};
+#[cfg(test)]
+use glass_lint_datastructures::NameTable;
+use glass_lint_datastructures::{ByteRange, NameExhausted, NameId, NamePath, SymbolPath};
 use hashbrown::{HashMap, HashSet};
 use smol_str::SmolStr;
 #[cfg(test)]
@@ -25,9 +25,10 @@ use swc_ecma_ast::{CallExpr, Callee, Expr, Ident, Lit, MemberExpr};
 #[cfg(test)]
 use crate::Environment;
 #[cfg(test)]
-use crate::analysis::scope::ScopeGraph;
+use crate::analysis::scope::{ScopeGraph, ScopedProgram};
 use crate::analysis::{
     SemanticBudget,
+    facts::{Building, FactStream, Frozen},
     lowering::{InvalidParserSpan, ParserSpanKey, SpanNormalizer},
     scope::{BoundArgument, FrozenScopeGraph},
     syntax::{
@@ -148,11 +149,28 @@ impl Lookup for Resolver<'_> {
     }
 }
 
+#[cfg(test)]
+pub(in crate::analysis) fn test_environment() -> Environment {
+    let mut environment = Environment::default();
+    environment
+        .add_globals([
+            "app", "client", "document", "fetch", "host", "require", "vault", "window",
+        ])
+        .expect("test globals are valid");
+    environment
+        .add_global_object("window")
+        .expect("test global object is valid");
+    environment
+}
+
 impl Resolver<'_> {
-    /// Consume the resolver and return the name and value tables together,
-    /// avoiding a clone of the name table.
-    pub(in crate::analysis) fn into_parts(self) -> (NameTable, ValueTable) {
-        (self.scopes.into_name_table(), self.values)
+    /// Seal the resolver's name and value tables into the building stream,
+    /// freezing the facts in one consuming transition.
+    pub(in crate::analysis) fn freeze_into(
+        self,
+        stream: FactStream<Building>,
+    ) -> FactStream<Frozen> {
+        stream.freeze(self.scopes.into_name_table(), self.values)
     }
 
     /// Convert a canonical member chain into the arena's structured value.
@@ -170,18 +188,9 @@ impl Resolver<'_> {
 
     #[cfg(test)]
     pub(in crate::analysis) fn collect(program: &Program, source: &str) -> Resolver<'static> {
-        let mut environment = Environment::default();
-        environment
-            .add_globals([
-                "app", "client", "document", "fetch", "host", "require", "vault", "window",
-            ])
-            .expect("test globals are valid");
-        environment
-            .add_global_object("window")
-            .expect("test global object is valid");
         Self::collect_with_environment(
             program,
-            &environment,
+            &test_environment(),
             SpanNormalizer::for_program(program, source),
         )
     }
@@ -206,11 +215,10 @@ impl Resolver<'_> {
     ) -> Resolver<'static> {
         let budget = SemanticBudget::default();
         let names = NameTable::with_max_entries(name_limit);
-        let scopes = ScopeGraph::collect_scoped_program(program, environment, names, &budget)
-            .into_parts()
-            .0;
+        let scoped = ScopeGraph::collect_scoped_program(program, environment, names, &budget);
+        let ScopedProgram { graph, .. } = scoped;
         Self::new(
-            scopes,
+            graph,
             coordinates,
             Box::leak(Box::new(SemanticBudget::default())),
         )

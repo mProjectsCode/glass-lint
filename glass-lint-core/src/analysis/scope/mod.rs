@@ -36,6 +36,7 @@ mod name_env;
 mod query;
 mod scope_index;
 
+pub(in crate::analysis) use build::program::{ScopeCollectionIssue, ScopedProgram};
 pub(in crate::analysis) use graph::{FrozenScopeGraph, ScopeGraph};
 
 pub(in crate::analysis) use crate::analysis::model::scope::{
@@ -81,7 +82,8 @@ impl ScopeGraph {
             NameTable::default(),
             &budget,
         );
-        scoped.into_parts().0
+        let ScopedProgram { graph, .. } = scoped;
+        graph
     }
 
     pub(super) fn collect_scoped_program(
@@ -89,7 +91,7 @@ impl ScopeGraph {
         environment: &crate::Environment,
         names: NameTable,
         budget: &SemanticBudget,
-    ) -> build::ScopedProgram {
+    ) -> ScopedProgram {
         let planner = ScopePlanner::new(program.span(), names, budget);
         let mut plan_traversal = ScopeTraversal::new(planner);
         program.visit_children_with(&mut plan_traversal);

@@ -63,7 +63,7 @@ use crate::analysis::{
 /// and emits an immutable `FactStream` containing all semantic facts and a
 /// matcher-independent module interface. The builder owns traversal state,
 /// call-result tracking, and instance-level callable resolution — all of
-/// which are discarded when `into_parts()` finalizes the stream.
+/// which are discarded when `into_built_facts()` finalizes the stream.
 struct FactProvenanceState {
     instance_callables: HashMap<ValueId, InstanceCallable>,
     instance_origins: OriginMap<(SmolStr, SmolStr)>,
@@ -247,12 +247,6 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
         }
     }
 
-    #[cfg(test)]
-    pub fn into_parts(self) -> (FactStream<Building>, ModuleInterface) {
-        let built = self.into_built_facts();
-        (built.stream, built.interface)
-    }
-
     pub(super) fn record_local(&mut self, name: impl Into<SmolStr>) {
         self.interface.record_local(name);
     }
@@ -383,37 +377,6 @@ impl SemanticFacts {
         }
     }
 
-    /// Assemble occurrence indexes from the frozen fact tape. Function effects
-    /// are a separate lazy product because only flow-enabled projections need
-    /// them.
-    #[cfg(test)]
-    pub(in crate::analysis) fn from_lowering_with_effects(
-        stream: FactStream<Frozen>,
-        interface: ModuleInterface,
-        environment: &crate::Environment,
-        effect_limit: usize,
-    ) -> (Self, FunctionEffects) {
-        let mut index = OccurrenceIndexes::with_environment(environment);
-        let effects = FunctionEffects::collect(&stream, effect_limit);
-        if stream.is_valid() {
-            #[cfg(test)]
-            index.set_stream_names(&stream);
-            let values = stream.values();
-            for fact in stream.facts() {
-                index.record_fact(fact, stream.names(), values);
-            }
-            index.normalize_occurrences();
-        }
-        (
-            Self {
-                stream,
-                index,
-                interface,
-            },
-            effects,
-        )
-    }
-
     fn build_index(
         stream: &FactStream<Frozen>,
         environment: &crate::Environment,
@@ -468,7 +431,10 @@ mod stream_tests {
 
     use super::*;
     use crate::{
-        analysis::{resolution::Resolver, syntax::SymbolCallProvenance, value::FunctionId},
+        analysis::{
+            lowering::ResolvedProgram, resolution::Resolver, syntax::SymbolCallProvenance,
+            value::FunctionId,
+        },
         api::{compiler::rule::CompiledMatcherPlan, rule::EventQuery},
     };
 
@@ -601,18 +567,14 @@ mod stream_tests {
         .unwrap();
         let build = |matchers: Vec<&crate::api::compiler::rule::CompiledMatcherPlan>,
                      selected: &[usize]| {
-            let mut resolver = Resolver::collect(&parsed.program, source);
             let _ = (matchers, selected);
-            let mut builder = FactBuilder::new(&mut resolver);
-            swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
-            let (stream, interface) = builder.into_parts();
-            let (names, values) = resolver.into_parts();
-            let stream = stream.freeze(names, values);
-            format!(
-                "{:?}",
-                SemanticFacts::from_lowering(stream, interface, &crate::Environment::default())
-                    .index
-            )
+            let resolved = ResolvedProgram::collect_for_test(&parsed.program, source);
+            let artifact = resolved.freeze(
+                &crate::Environment::default(),
+                &crate::AnalysisLimits::default(),
+                parsed.program.span(),
+            );
+            format!("{:?}", artifact.facts().matcher_index())
         };
 
         let forward = build(vec![&first, &second], &[0, 1]);
@@ -626,20 +588,17 @@ mod stream_tests {
     fn lowering_shared_derived_pass_matches_standalone_effect_collection() {
         let source = "function helper(value) { return value; } helper('/api');";
         let parsed = crate::parse(source, "shared-derived-pass.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program, source);
-        let mut builder = FactBuilder::new(&mut resolver);
-        swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
-        let (stream, interface) = builder.into_parts();
-        let (names, values) = resolver.into_parts();
-        let stream = stream.freeze(names, values);
-
-        let (facts, combined_effects) = SemanticFacts::from_lowering_with_effects(
-            stream,
-            interface,
+        let limits = crate::AnalysisLimits::default()
+            .with_effect_operations(usize::MAX)
+            .expect("valid effect limit");
+        let resolved = ResolvedProgram::collect_for_test(&parsed.program, source);
+        let artifact = resolved.freeze(
             &crate::Environment::default(),
-            usize::MAX,
+            &limits,
+            parsed.program.span(),
         );
-        let standalone_effects = FunctionEffects::collect(facts.stream(), usize::MAX);
+        let combined_effects = artifact.effects();
+        let standalone_effects = FunctionEffects::collect(artifact.facts().stream(), usize::MAX);
 
         let summarize = |effects: &FunctionEffects| {
             effects
@@ -656,7 +615,7 @@ mod stream_tests {
                 .collect::<Vec<_>>()
         };
         assert_eq!(
-            summarize(&combined_effects),
+            summarize(combined_effects),
             summarize(&standalone_effects),
             "sharing the fact-tape pass must preserve function effects"
         );
@@ -669,7 +628,7 @@ mod stream_tests {
             standalone_effects.budget_exhausted()
         );
         assert!(
-            !facts.matcher_index().is_empty(),
+            !artifact.facts().matcher_index().is_empty(),
             "the same pass must still populate occurrence indexes"
         );
     }

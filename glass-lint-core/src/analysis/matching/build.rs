@@ -39,11 +39,6 @@ impl OccurrenceIndexes {
         }
     }
 
-    #[cfg(test)]
-    pub(in crate::analysis) fn set_stream_names(&mut self, stream: &FactStream<Frozen>) {
-        self.test_names = stream.names().clone();
-    }
-
     pub(in crate::analysis) fn record_fact(
         &mut self,
         fact: &SemanticFact,

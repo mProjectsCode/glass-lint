@@ -40,8 +40,7 @@ pub(super) mod traversal;
 pub(super) mod visitor;
 
 pub(super) use compact_pat::{CompactPat, compact_pat};
-pub(super) use program::{PropertyAliasAssignment, RootedPropertyMutation};
-pub(in crate::analysis) use program::{ScopeCollectionIssue, ScopedProgram};
+pub(super) use program::{PropertyAliasAssignment, RootedPropertyMutation, ScopeCollectionIssue};
 pub(super) use shape::{ScopeShape, ScopeShapeTable};
 
 /// Collected outputs that are finalized into the immutable scope artifact.

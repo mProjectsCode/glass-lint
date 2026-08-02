@@ -9,18 +9,21 @@ pub(super) mod status;
 use std::{collections::BTreeMap, sync::Arc};
 
 use glass_lint_datastructures::NameTable;
-use swc_common::Spanned;
+use swc_common::{Span, Spanned};
 use swc_ecma_ast::Program;
 use swc_ecma_visit::VisitWith;
 
+#[cfg(test)]
+use crate::analysis::{facts::MAX_FACTS, resolution::test_environment};
 use crate::{
     AnalysisLimits, Environment, ParseDiagnostic,
     analysis::{
         LocatedSourceContext, SemanticArtifact, SemanticBudget,
-        facts::{self, SemanticFacts},
+        facts::{self, BuiltFacts, SemanticFacts},
         lowering::status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
-        module, resolution,
-        scope::ScopeGraph,
+        module,
+        resolution::Resolver,
+        scope::{ScopeCollectionIssue, ScopeGraph, ScopedProgram},
         syntax::name::MAX_NAMES,
     },
     project::{SourceFile, SourceText},
@@ -150,7 +153,7 @@ pub fn lower_program(
 
 fn check_facts_budget(
     stream: &facts::FactStream<facts::Building>,
-    resolver: &resolution::Resolver,
+    resolver: &Resolver,
     limits: &AnalysisLimits,
     budget: &SemanticBudget,
 ) -> Option<IncompleteReason> {
@@ -189,7 +192,7 @@ fn check_invalid_parser_span(
         .then_some(IncompleteReason::InvalidParserSpan)
 }
 
-fn check_name_exhaustion(resolver: &resolution::Resolver) -> Option<IncompleteReason> {
+fn check_name_exhaustion(resolver: &Resolver) -> Option<IncompleteReason> {
     resolver
         .name_exhaustion()
         .map(|exhaustion| IncompleteReason::NameExhausted {
@@ -236,16 +239,66 @@ impl LocalLowering<'_> {
         let names = NameTable::with_max_entries(name_limit);
         let scoped_program =
             ScopeGraph::collect_scoped_program(program, environment, names, &budget);
-        let (scope_graph, issues) = scoped_program.into_parts();
-        let mut resolver = resolution::Resolver::new(scope_graph, coordinates.clone(), &budget);
+        ResolvedProgram::collect(
+            scoped_program,
+            program,
+            coordinates.clone(),
+            &budget,
+            limits.semantic_operations(),
+        )
+        .freeze(environment, limits, program.span())
+    }
+}
 
-        let mut builder =
-            facts::FactBuilder::with_limit(&mut resolver, limits.semantic_operations());
+/// The resolved local-analysis phase. The scope-frozen resolver, the
+/// scope-collection issues, and the built (unfrozen) fact stream travel
+/// together until the single consuming `freeze` transition seals the name and
+/// value tables into the immutable artifact.
+pub(in crate::analysis) struct ResolvedProgram<'a> {
+    resolver: Resolver<'a>,
+    issues: Vec<ScopeCollectionIssue>,
+    built: BuiltFacts,
+}
+
+impl<'a> ResolvedProgram<'a> {
+    /// Collect the scoped program and run the fact-building walk against the
+    /// resolver, retaining all resolved-phase state for the freeze transition.
+    pub(in crate::analysis) fn collect(
+        scoped: ScopedProgram,
+        program: &Program,
+        coordinates: SpanNormalizer,
+        budget: &'a SemanticBudget,
+        max_facts: usize,
+    ) -> Self {
+        let ScopedProgram { graph, issues } = scoped;
+        let mut resolver = Resolver::new(graph, coordinates, budget);
+        let mut builder = facts::FactBuilder::with_limit(&mut resolver, max_facts);
         VisitWith::visit_with(program, &mut builder);
-
         let built = builder.into_built_facts();
+        Self {
+            resolver,
+            issues,
+            built,
+        }
+    }
+
+    /// One consuming transition from the resolved phase to the immutable
+    /// artifact. The name and value tables are extracted from the resolver
+    /// inside this transition and sealed into the frozen stream.
+    pub(in crate::analysis) fn freeze(
+        self,
+        environment: &Environment,
+        limits: &AnalysisLimits,
+        program_span: Span,
+    ) -> SemanticArtifact {
+        let Self {
+            resolver,
+            issues,
+            built,
+        } = self;
         let mut stream = built.stream;
         let interface = built.interface;
+        let budget = resolver.budget;
         let mut status = AnalysisStatus::default();
 
         if !issues.is_empty() {
@@ -262,7 +315,7 @@ impl LocalLowering<'_> {
             || stream.path_exhausted()
             || resolver.value_arena_exhausted()
             || !stream.is_structurally_valid();
-        if let Some(reason) = check_facts_budget(&stream, &resolver, limits, &budget) {
+        if let Some(reason) = check_facts_budget(&stream, &resolver, limits, budget) {
             status.record(StatusScope::Project, reason);
         }
         if let Some(reason) = check_invalid_parser_span(&stream) {
@@ -280,7 +333,7 @@ impl LocalLowering<'_> {
                 .filter_map(|(_, export)| match export {
                     module::ModuleExport::Local { name } => Some((
                         name.clone(),
-                        resolver.exported_provenance(name, program.span()),
+                        resolver.exported_provenance(name, program_span),
                     )),
                     module::ModuleExport::Value
                     | module::ModuleExport::ReExport { .. }
@@ -294,9 +347,7 @@ impl LocalLowering<'_> {
             stream.mark_name_exhausted();
         }
 
-        let (names, values) = resolver.into_parts();
-        let stream = stream.freeze(names, values);
-
+        let stream = resolver.freeze_into(stream);
         let facts = SemanticFacts::from_lowering(stream, interface, environment);
         SemanticArtifact::from_lowering(
             facts,
@@ -304,6 +355,23 @@ impl LocalLowering<'_> {
             limits.effect_operations(),
             !budget_exhausted,
             status,
+        )
+    }
+}
+
+#[cfg(test)]
+impl ResolvedProgram<'static> {
+    pub(in crate::analysis) fn collect_for_test(program: &Program, source: &str) -> Self {
+        let environment = test_environment();
+        let budget = Box::leak(Box::new(SemanticBudget::default()));
+        let names = NameTable::with_max_entries(MAX_NAMES);
+        let scoped = ScopeGraph::collect_scoped_program(program, &environment, names, budget);
+        Self::collect(
+            scoped,
+            program,
+            SpanNormalizer::for_program(program, source),
+            budget,
+            MAX_FACTS,
         )
     }
 }
