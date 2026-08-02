@@ -14,8 +14,10 @@ use crate::tests::TempProject;
 
 fn merge_same(child: ParsedTsconfig, parent: Option<MergedSelection>) -> MergedSelection {
     let dir = Path::new(".");
-    let parent = parent.map(|selection| ParentSelection::new(selection, dir.to_path_buf()));
-    merge_selection(child, parent, dir)
+    match parent {
+        Some(merged) => ParentSelection::new(merged, dir.to_path_buf()).merge(child, dir),
+        None => merge_selection(child, None, dir),
+    }
 }
 
 fn default_budget() -> ConfigTraversalBudget {

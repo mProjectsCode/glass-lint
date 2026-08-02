@@ -15,7 +15,7 @@ use crate::tsconfig::{ParsedField, ParsedTsconfig};
 ///
 /// This is an intermediate type produced during config inheritance.
 /// It exists only during construction and is consumed by
-/// [`CompiledTsconfigSelection::compile`].
+/// [`MergedSelection::compile`].
 ///
 /// When a membership-controlling field (`files` or `include`) carried a
 /// `WrongType` or `Null` value in the parsed config, the merge marks it as
@@ -28,33 +28,93 @@ pub struct MergedSelection {
     invalid_controlling_field: bool,
 }
 
-/// A merged parent and the directory where its patterns were declared.
-pub struct ParentSelection {
-    selection: MergedSelection,
-    directory: PathBuf,
-}
+impl MergedSelection {
+    /// Consume this merged selection and compile it into a production
+    /// selection. Raw include/exclude strings are consumed and discarded.
+    pub(in crate::tsconfig) fn compile(self, config_path: PathBuf) -> CompiledTsconfigSelection {
+        let (files, include, exclude, invalid_controlling_field): (
+            Option<Vec<String>>,
+            Vec<String>,
+            Vec<String>,
+            bool,
+        ) = self.into();
 
-impl ParentSelection {
-    pub fn new(selection: MergedSelection, directory: PathBuf) -> Self {
-        Self {
-            selection,
-            directory,
+        let pattern_set = TsconfigPatternSet::new(&include, &exclude, invalid_controlling_field);
+        let pattern_diagnostics = pattern_set
+            .invalid_patterns()
+            .map(|pattern| format!("invalid glob pattern `{pattern}`"))
+            .collect();
+
+        CompiledTsconfigSelection {
+            config_path,
+            files,
+            pattern_set,
+            pattern_diagnostics,
         }
     }
 
-    pub fn into_parts(self) -> (MergedSelection, PathBuf) {
-        (self.selection, self.directory)
+    /// Explicit files list, or `None` when include/exclude select sources.
+    pub fn files(&self) -> Option<&[String]> {
+        self.files.as_deref()
+    }
+
+    /// Include patterns relative to the config that declared them.
+    pub fn include(&self) -> &[String] {
+        &self.include
+    }
+
+    /// Exclude patterns relative to the config that declared them.
+    pub fn exclude(&self) -> &[String] {
+        &self.exclude
+    }
+
+    /// True when a membership-controlling field was invalid, so compilation
+    /// must fail closed rather than broadening membership via `**/*`.
+    pub fn invalid_controlling_field(&self) -> bool {
+        self.invalid_controlling_field
     }
 }
 
-impl MergedSelection {
-    pub fn into_parts(self) -> (Option<Vec<String>>, Vec<String>, Vec<String>, bool) {
-        (
-            self.files,
-            self.include,
-            self.exclude,
-            self.invalid_controlling_field,
-        )
+impl From<MergedSelection> for (Option<Vec<String>>, Vec<String>, Vec<String>, bool) {
+    fn from(merged: MergedSelection) -> Self {
+        let MergedSelection {
+            files,
+            include,
+            exclude,
+            invalid_controlling_field,
+        } = merged;
+        (files, include, exclude, invalid_controlling_field)
+    }
+}
+
+/// A merged parent and the directory where its patterns were declared.
+pub struct ParentSelection {
+    merged: MergedSelection,
+    parent_directory: PathBuf,
+}
+
+impl ParentSelection {
+    pub fn new(merged: MergedSelection, parent_directory: PathBuf) -> Self {
+        Self {
+            merged,
+            parent_directory,
+        }
+    }
+
+    /// Consume this parent and merge the child config's selection fields into
+    /// it, rebasing inherited paths to `child_dir`.
+    pub fn merge(self, child: ParsedTsconfig, child_dir: &Path) -> MergedSelection {
+        merge_selection(child, Some(self), child_dir)
+    }
+}
+
+impl From<ParentSelection> for (MergedSelection, PathBuf) {
+    fn from(parent: ParentSelection) -> Self {
+        let ParentSelection {
+            merged,
+            parent_directory,
+        } = parent;
+        (merged, parent_directory)
     }
 }
 
@@ -152,13 +212,19 @@ pub fn merge_selection(
     // path is interpreted relative to the config that declared it.
     let (parent_files, parent_include, parent_exclude, parent_invalid) = parent.map_or_else(
         || (None, Vec::new(), Vec::new(), false),
-        |m| {
-            let (selection, pdir) = m.into_parts();
+        |parent| {
+            let (merged, parent_directory): (MergedSelection, PathBuf) = parent.into();
+            let (files, include, exclude, invalid_controlling_field): (
+                Option<Vec<String>>,
+                Vec<String>,
+                Vec<String>,
+                bool,
+            ) = merged.into();
             (
-                selection.files.map(|v| rebase_strings(v, &pdir, child_dir)),
-                rebase_strings(selection.include, &pdir, child_dir),
-                rebase_strings(selection.exclude, &pdir, child_dir),
-                selection.invalid_controlling_field,
+                files.map(|v| rebase_strings(v, &parent_directory, child_dir)),
+                rebase_strings(include, &parent_directory, child_dir),
+                rebase_strings(exclude, &parent_directory, child_dir),
+                invalid_controlling_field,
             )
         },
     );
@@ -240,27 +306,6 @@ pub struct CompiledTsconfigSelection {
     pub pattern_set: TsconfigPatternSet,
     /// Invalid patterns that caused fail-closed source selection.
     pub pattern_diagnostics: Vec<String>,
-}
-
-impl CompiledTsconfigSelection {
-    /// Compile a merged selection into a production selection.
-    /// Raw include/exclude strings are consumed and discarded.
-    pub(in crate::tsconfig) fn compile(config_path: PathBuf, merged: MergedSelection) -> Self {
-        let (files, include, exclude, invalid_controlling_field) = merged.into_parts();
-
-        let pattern_set = TsconfigPatternSet::new(&include, &exclude, invalid_controlling_field);
-        let pattern_diagnostics = pattern_set
-            .invalid_patterns()
-            .map(|pattern| format!("invalid glob pattern `{pattern}`"))
-            .collect();
-
-        Self {
-            config_path,
-            files,
-            pattern_set,
-            pattern_diagnostics,
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------

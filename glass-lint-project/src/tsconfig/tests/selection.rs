@@ -8,34 +8,31 @@ fn merge_selection_inherits_fields() {
     let parent = merge_same(parent_dto, None);
 
     let child = merge_same(child_dto, Some(parent));
-    let (_, include, exclude, _) = child.into_parts();
 
     // Child include overrides parent
-    assert_eq!(include, vec!["lib/**/*"]);
+    assert_eq!(child.include(), ["lib/**/*"]);
     // Exclude is inherited (child didn't set it)
-    assert!(exclude.iter().any(|e| e == "**/*.test.ts"));
+    assert!(child.exclude().iter().any(|e| e == "**/*.test.ts"));
     // Default node_modules exclusion
-    assert!(exclude.iter().any(|e| e == "**/node_modules"));
+    assert!(child.exclude().iter().any(|e| e == "**/node_modules"));
 }
 
 #[test]
 fn merge_selection_default_include() {
     let dto = ParsedTsconfig::parse("{}").unwrap();
     let config = merge_same(dto, None);
-    let (_, include, _, _) = config.into_parts();
-    assert_eq!(include, vec!["**/*"]);
+    assert_eq!(config.include(), ["**/*"]);
 }
 
 #[test]
 fn merge_selection_explicit_files() {
     let dto = ParsedTsconfig::parse(r#"{"files":["src/main.ts","src/util.ts"]}"#).unwrap();
     let config = merge_same(dto, None);
-    let (files, include, _, _) = config.into_parts();
     assert_eq!(
-        files,
-        Some(vec!["src/main.ts".to_string(), "src/util.ts".to_string()])
+        config.files(),
+        Some(["src/main.ts".to_string(), "src/util.ts".to_string()].as_slice())
     );
-    assert!(include.is_empty());
+    assert!(config.include().is_empty());
 }
 
 #[test]
@@ -50,29 +47,27 @@ fn pattern_set_invalid_controlling_field_rejects_everything() {
 fn merge_selection_invalid_files_fails_closed() {
     let child = ParsedTsconfig::parse(r#"{"files":null}"#).unwrap();
     let merged = merge_same(child, None);
-    let (files, _, _, invalid) = merged.into_parts();
-    assert!(invalid);
-    assert_eq!(files, Some(Vec::<String>::new()));
+    assert!(merged.invalid_controlling_field());
+    assert_eq!(merged.files(), Some(Vec::<String>::new().as_slice()));
 }
 
 #[test]
 fn merge_selection_invalid_include_fails_closed() {
     let child = ParsedTsconfig::parse(r#"{"include":false}"#).unwrap();
     let merged = merge_same(child, None);
-    let (_, include, _, invalid) = merged.into_parts();
-    assert!(invalid);
-    assert!(include.is_empty());
+    assert!(merged.invalid_controlling_field());
+    assert!(merged.include().is_empty());
 }
 
 #[test]
 fn merge_selection_invalid_include_does_not_fall_back_to_star_star() {
     let child = ParsedTsconfig::parse(r#"{"include":{"src":"bad"}}"#).unwrap();
     let merged = merge_same(child, None);
-    let (_, include, _, invalid) = merged.into_parts();
-    assert!(invalid);
+    assert!(merged.invalid_controlling_field());
     assert!(
-        include.is_empty(),
-        "include should be empty, got {include:#?}"
+        merged.include().is_empty(),
+        "include should be empty, got {:#?}",
+        merged.include()
     );
 }
 
@@ -84,9 +79,8 @@ fn merge_selection_invalid_parent_propagates_to_child() {
         ParsedTsconfig::parse(r#"{"include":["src/**/*"]}"#).unwrap(),
         Some(parent),
     );
-    let (_, _, _, child_invalid) = child.into_parts();
     assert!(
-        child_invalid,
+        child.invalid_controlling_field(),
         "parent invalidity should propagate even when child is valid"
     );
     // Child's valid include should still be used for compilation, but the

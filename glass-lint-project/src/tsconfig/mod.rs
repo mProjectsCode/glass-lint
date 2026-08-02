@@ -422,7 +422,7 @@ impl<'a> TsconfigTraversal<'a> {
     ) -> Result<(selection::CompiledTsconfigSelection, Vec<ReferenceEntry>), ProjectLoadError> {
         let (merged, references) = self.build_inner(config_path, fallback_base)?;
         let canonical = realpath(config_path)?;
-        let compiled = selection::CompiledTsconfigSelection::compile(canonical, merged);
+        let compiled = merged.compile(canonical);
         self.diagnostics
             .extend(
                 compiled
@@ -524,7 +524,10 @@ impl<'a> TsconfigTraversal<'a> {
         // Paths inherited from the parent are rebased from the bundled parent
         // child_dir so that each path is interpreted relative to the config
         // file where it was declared.
-        let effective = selection::merge_selection(dto, parent, &base);
+        let effective = match parent {
+            Some(parent) => parent.merge(dto, &base),
+            None => selection::merge_selection(dto, None, &base),
+        };
         Ok((effective, references))
     }
 }
