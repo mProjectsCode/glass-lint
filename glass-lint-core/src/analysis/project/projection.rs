@@ -34,13 +34,51 @@ use crate::{
 /// linked project. The plan belongs to projection orchestration rather than
 /// to the immutable facts artifact.
 pub(in crate::analysis) struct ProjectionPlan<'a> {
-    constrained_roots: Vec<(usize, &'a PhysicalRoot)>,
-    flow_matchers: Vec<(RuleIndex, usize, &'a CompiledObjectFlow)>,
+    constrained_roots: Vec<PlannedConstrainedRoot<'a>>,
+    flow_matchers: Vec<PlannedFlow<'a>>,
     rule_count: usize,
     needs_module_identities: bool,
     needs_call_result_identities: bool,
     needs_overlay: bool,
     flow_requirements: FlowRequirements,
+}
+
+#[derive(Clone, Copy)]
+struct PlannedConstrainedRoot<'a> {
+    rule_index: RuleIndex,
+    root: &'a PhysicalRoot,
+}
+
+#[derive(Clone, Copy)]
+struct PlannedFlow<'a> {
+    rule_index: RuleIndex,
+    root_index: PhysicalRootIndex,
+    flow: &'a CompiledObjectFlow,
+}
+
+#[derive(Clone, Copy)]
+struct PhysicalRootIndex(usize);
+
+impl PhysicalRootIndex {
+    fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    fn get(self) -> usize {
+        self.0
+    }
+}
+
+impl<'a> PlannedConstrainedRoot<'a> {
+    fn matcher_input(self) -> (usize, &'a PhysicalRoot) {
+        (self.rule_index.get(), self.root)
+    }
+}
+
+impl<'a> PlannedFlow<'a> {
+    fn flow_input(self) -> (RuleIndex, usize, &'a CompiledObjectFlow) {
+        (self.rule_index, self.root_index.get(), self.flow)
+    }
 }
 
 impl<'a> ProjectionPlan<'a> {
@@ -68,11 +106,11 @@ impl<'a> ProjectionPlan<'a> {
         let constrained_roots = selection
             .selected_matchers()
             .flat_map(|(rule_index, matcher)| {
-                let roots: Vec<(usize, &PhysicalRoot)> = matcher
+                let roots: Vec<PlannedConstrainedRoot<'a>> = matcher
                     .physical_roots()
                     .iter()
                     .filter(|root| matches!(root, PhysicalRoot::ConstrainedScan { constraints, .. } if !constraints.groups().is_empty()))
-                    .map(move |root| (rule_index.get(), root))
+                    .map(move |root| PlannedConstrainedRoot { rule_index, root })
                     .collect();
                 roots
             })
@@ -104,7 +142,11 @@ impl<'a> ProjectionPlan<'a> {
                     matcher.physical_roots().iter().enumerate().filter_map(
                         move |(flow_index, root)| {
                             if let PhysicalRoot::Lifecycle { flow } = root {
-                                Some((ri, flow_index, flow))
+                                Some(PlannedFlow {
+                                    rule_index: ri,
+                                    root_index: PhysicalRootIndex::new(flow_index),
+                                    flow,
+                                })
                             } else {
                                 None
                             }
@@ -158,10 +200,16 @@ fn project_facts(inputs: ProjectionInputs<'_>) -> (RuleEvidenceTable, LocalFlowP
     if !facts.stream().is_valid() || facts.values().get(ValueId::UNKNOWN).is_none() {
         return (projected_evidence, LocalFlowProjectionOutcome::default());
     }
+    let constrained_roots = plan
+        .constrained_roots
+        .iter()
+        .copied()
+        .map(PlannedConstrainedRoot::matcher_input)
+        .collect::<Vec<_>>();
     crate::analysis::matching::compute_constrained_evidence_from_stream_with_overlay(
         facts.stream(),
         facts.matcher_index(),
-        &plan.constrained_roots,
+        &constrained_roots,
         &mut projected_evidence,
         overlay,
         identities,
@@ -173,10 +221,16 @@ fn project_facts(inputs: ProjectionInputs<'_>) -> (RuleEvidenceTable, LocalFlowP
     let Some(effects) = effects else {
         return (projected_evidence, LocalFlowProjectionOutcome::default());
     };
+    let flow_matchers = plan
+        .flow_matchers
+        .iter()
+        .copied()
+        .map(PlannedFlow::flow_input)
+        .collect::<Vec<_>>();
     let outcome = object_flow::collect_into(
         facts.stream(),
         effects,
-        &plan.flow_matchers,
+        &flow_matchers,
         &mut projected_evidence,
         flow_limits,
         module_id,

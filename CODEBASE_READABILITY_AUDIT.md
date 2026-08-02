@@ -8,7 +8,7 @@ Scope: 416 Rust source files, approximately 82,433 lines, across the workspace. 
 
 The workspace is generally well-factored at the crate level and has strong typed domain vocabulary in many of the recently refactored areas. The remaining readability cost is concentrated in internal analysis boundaries: positional tuples and raw maps still carry semantic state, a few aggregate constructors expose too much assembly detail, and orchestration code spans several independent lifecycle phases.
 
-There are 15 open findings: 2 high, 10 medium, and 3 low. READ-001 and READ-002 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
+There are 14 open findings: 2 high, 9 medium, and 3 low. READ-001 through READ-003 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
 
 ## Findings
 
@@ -40,7 +40,7 @@ Recommendation: centralize the shared package grammar in one private semantic pa
 
 Fix Applied: Added one crate-private `PackageName` parser for trimming, whitespace/NUL rejection, path-shape checks, and scoped-package grammar. `PackageSpecifier` and `ModuleSpecifierPattern::package` now delegate to it and translate failure into their owning error types, while exact module patterns remain independent.
 
-#### [ ] READ-003 — Projection planning uses positional tuples for distinct identities
+#### [x] READ-003 — Projection planning uses positional tuples for distinct identities
 
 - Severity: Medium
 - Fix Complexity: Medium
@@ -51,7 +51,7 @@ Fix Applied: Added one crate-private `PackageName` parser for trimming, whitespa
 
 Recommendation: introduce private plan records such as `PlannedConstrainedRoot` and `PlannedFlow` with named fields and typed indices. Let the plan own construction and accessors so matcher selection code cannot accidentally swap or reinterpret one index as another.
 
-Fix Applied: None so far.
+Fix Applied: `ProjectionPlan` now stores named constrained-root and lifecycle-flow records, with `RuleIndex`, `PhysicalRootIndex`, and flow references in explicit fields. Conversion to the existing matcher/projector input tuples is isolated in owner methods at the execution boundary, so plan construction no longer depends on positional identity semantics.
 
 #### [ ] READ-004 — Flow fixed-point snapshots encode domain state as nested tuples
 
@@ -257,6 +257,6 @@ Fix Applied: None so far.
 
 ## Coverage
 
-Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. The working tree was clean before this implementation pass; READ-001 and READ-002 changed core boundaries and this report.
+Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. The working tree was clean before this implementation pass; READ-001 through READ-003 changed core boundaries and this report.
 
-Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed. `cargo fmt --all`, core clippy with warnings denied, and `git diff --check` passed.
+Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled and core clippy passed with warnings denied. `cargo fmt --all` and `git diff --check` passed.
