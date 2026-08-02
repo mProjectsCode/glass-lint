@@ -211,7 +211,7 @@ Sink collection callers compare `len` before and after to infer insertion count,
 
 **Recommendation:** Replace the optional-field bag with an enum whose variants represent the supported event views. Give `LinkedOccurrenceView` semantic lookup and merge operations, and keep occurrence buckets, masks, and overlays private.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `EventIndexView` is now an enum with one variant per supported event (Call, MemberCall, MemberRead, PropertyWrite, ClassReference, Construct, Import, StringReference), each holding only the concrete buckets meaningful for it. `LinkedOccurrenceView` gained `ModuleOverlayKind` plus semantic `resolve_module`/`resolve_global`/`resolve_package` operations; buckets, masks, and overlays are private, and the free lookup helpers were removed.
 
 #### [ ] READ-016 — Rule evidence exposes mutable vectors
 
