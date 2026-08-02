@@ -252,7 +252,7 @@ Sink collection callers compare `len` before and after to infer insertion count,
 
 **Recommendation:** Give `ParentSelection` a consuming merge operation and `MergedSelection` a consuming `compile(directory)` operation. Use `From` for their one-to-one internal field conversions, remove both `into_parts` methods, prefer `parent`, `merged`, and `parent_directory` to compressed names, and test semantic accessors instead of tuple slots.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ParentSelection::merge` and `MergedSelection::compile` are consuming operations; `From` covers the one-to-one field conversions, and both `into_parts` methods were removed. Names `m`/`pdir` became `parent`/`parent_directory`/`merged`, and tests use semantic accessors (`include`, `exclude`, `files`, `invalid_controlling_field`).
 
 #### [ ] READ-019 — Tool expectations are dismantled to qualify paths
 
