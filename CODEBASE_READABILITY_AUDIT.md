@@ -319,6 +319,8 @@ Sink collection callers compare `len` before and after to infer insertion count,
 
 **Recommendation:** Remove `as_u32` from the public API. Put formatting and serialization at the owning boundary so the numeric representation remains an implementation detail.
 
+**Fix Applied:** `NameId::as_u32` removed; the numeric field is `pub(crate)`. Formatting stays at the owning boundary via the `Debug` derive on `NameId`.
+
 **Fix Applied:** None so far.
 
 ## Systemic Themes
