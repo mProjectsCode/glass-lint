@@ -168,7 +168,7 @@ and event it groups, while the state names its path index; finalization uses
 those fields directly and no longer carries or discards redundant rule, flow,
 or fact parameters.
 
-#### [ ] READ-007 — Projection coordinators pass mixed context positionally
+#### [x] READ-007 — Projection coordinators pass mixed context positionally
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -187,7 +187,12 @@ evidence, trace arenas, and budgets explicit. Split preparation, indexed scan,
 fallback scan, and emission into owner-oriented phases without changing
 fail-closed unknown handling, deterministic evidence, or budget accounting.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added named `ProjectionInputs` and
+`MatcherEvaluationContext` aggregates for projection and constrained matching
+coordination. Stable identity, overlay, plan, budget, and trace inputs now
+cross those boundaries by field name, while mutable evidence and operation
+accounting remain explicit; matching certainty and fallback behavior are
+unchanged.
 
 #### [x] READ-008 — Flow environment exposes duplicate reachability APIs
 

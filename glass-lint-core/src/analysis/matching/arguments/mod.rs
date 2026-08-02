@@ -40,6 +40,15 @@ struct PreparedConstrainedRoot<'a> {
     occurrences: Vec<Occurrence>,
 }
 
+struct MatcherEvaluationContext<'a> {
+    stream: &'a FactStream<Frozen>,
+    indexes: &'a OccurrenceIndexes,
+    overlay: Option<&'a LinkedOccurrenceView<'a>>,
+    identities: Option<&'a ModuleIdentityMap>,
+    result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
+    operations: &'a mut EvaluationOperations,
+}
+
 fn push_owned_rule_evidence(
     evidence: &mut RuleEvidenceTable,
     rule: RuleIndex,
@@ -63,14 +72,16 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
 ) {
     let mut ops = EvaluationOperations::default();
     compute_constrained_inner(
-        stream,
-        indexes,
+        MatcherEvaluationContext {
+            stream,
+            indexes,
+            overlay,
+            identities,
+            result_identities,
+            operations: &mut ops,
+        },
         roots,
         evidence,
-        overlay,
-        identities,
-        result_identities,
-        &mut ops,
     );
 }
 
@@ -78,15 +89,18 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::too_many_lines)]
 fn compute_constrained_inner(
-    stream: &FactStream<Frozen>,
-    indexes: &OccurrenceIndexes,
+    context: MatcherEvaluationContext<'_>,
     roots: &[(usize, &PhysicalRoot)],
     evidence: &mut RuleEvidenceTable,
-    overlay: Option<&LinkedOccurrenceView<'_>>,
-    identities: Option<&ModuleIdentityMap>,
-    result_identities: Option<&BTreeMap<ValueId, ExportResolution>>,
-    ops: &mut EvaluationOperations,
 ) {
+    let MatcherEvaluationContext {
+        stream,
+        indexes,
+        overlay,
+        identities,
+        result_identities,
+        operations,
+    } = context;
     let names = stream.names();
     let values = stream.values();
     let evaluator = MatcherEvaluator::new(names, values, identities, result_identities);
@@ -149,7 +163,7 @@ fn compute_constrained_inner(
                     root.event,
                     root.constraints,
                     &prepared_root.paths,
-                    ops,
+                    operations,
                 )
             {
                 matched.push(occurrence);
@@ -180,7 +194,7 @@ fn compute_constrained_inner(
                     root.event,
                     root.constraints,
                     &prepared_root.paths,
-                    ops,
+                    operations,
                 ) {
                     prepared_root
                         .occurrences
@@ -812,14 +826,16 @@ mod tests {
         let mut evidence = RuleEvidenceTable::new(roots.len());
         let mut ops = EvaluationOperations::default();
         compute_constrained_inner(
-            stream,
-            index,
+            MatcherEvaluationContext {
+                stream,
+                indexes: index,
+                overlay,
+                identities: None,
+                result_identities: None,
+                operations: &mut ops,
+            },
             roots,
             &mut evidence,
-            overlay,
-            None,
-            None,
-            &mut ops,
         );
         ops
     }

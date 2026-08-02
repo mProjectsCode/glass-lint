@@ -130,18 +130,32 @@ impl<'a> ProjectionPlan<'a> {
 
 /// Execute the query-selected local matching and flow projection for one
 /// immutable facts artifact.
-#[allow(clippy::too_many_arguments)]
-pub(in crate::analysis) fn project_facts(
-    facts: &SemanticFacts,
-    effects: Option<&crate::analysis::flow::effect::FunctionEffects>,
-    plan: &ProjectionPlan<'_>,
-    identities: Option<&crate::analysis::matching::ModuleIdentityMap>,
-    result_identities: Option<&BTreeMap<ValueId, ExportResolution>>,
-    overlay: Option<&LinkedOccurrenceView<'_>>,
+struct ProjectionInputs<'a> {
+    facts: &'a SemanticFacts,
+    effects: Option<&'a crate::analysis::flow::effect::FunctionEffects>,
+    plan: &'a ProjectionPlan<'a>,
+    identities: Option<&'a crate::analysis::matching::ModuleIdentityMap>,
+    result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
+    overlay: Option<&'a LinkedOccurrenceView<'a>>,
     flow_limits: FlowLimits,
     module_id: ModuleId,
-    trace_arena: &mut TraceArena,
+    trace_arena: &'a mut TraceArena,
+}
+
+fn project_facts(
+    inputs: ProjectionInputs<'_>,
 ) -> (RuleEvidenceTable, LocalFlowProjectionOutcome) {
+    let ProjectionInputs {
+        facts,
+        effects,
+        plan,
+        identities,
+        result_identities,
+        overlay,
+        flow_limits,
+        module_id,
+        trace_arena,
+    } = inputs;
     let mut projected_evidence = RuleEvidenceTable::new(plan.rule_count);
     if !facts.stream().is_valid() || facts.values().get(ValueId::UNKNOWN).is_none() {
         return (projected_evidence, LocalFlowProjectionOutcome::default());
@@ -354,17 +368,17 @@ impl ProjectSemanticModel {
                 {
                     outcome.record_effects(module.id(), effects);
                 }
-                let (projected, local) = project_facts(
-                    module.local().facts(),
+                let (projected, local) = project_facts(ProjectionInputs {
+                    facts: module.local().facts(),
                     effects,
                     plan,
-                    identities.as_ref(),
-                    result_identities.as_ref(),
-                    overlay.as_ref(),
+                    identities: identities.as_ref(),
+                    result_identities: result_identities.as_ref(),
+                    overlay: overlay.as_ref(),
                     flow_limits,
-                    module.id(),
-                    arena,
-                );
+                    module_id: module.id(),
+                    trace_arena: arena,
+                });
                 outcome.record_local(&local);
                 (
                     module.id(),
