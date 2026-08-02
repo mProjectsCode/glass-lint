@@ -48,6 +48,10 @@ impl FileReport {
             .any(|d| matches!(d, Diagnostic::Parse { .. }))
     }
 
+    pub(crate) fn ordering_key(&self) -> &ProjectRelativePath {
+        &self.path
+    }
+
     #[must_use]
     pub fn parse_diagnostic_count(&self) -> usize {
         self.diagnostics

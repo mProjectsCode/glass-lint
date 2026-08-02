@@ -41,7 +41,7 @@ identity, partial parse handling, duplicate rejection, and resolver validation.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-002 — Report ordering is an ad hoc tuple contract outside report types
+#### [x] READ-002 — Report ordering is an ad hoc tuple contract outside report types
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -59,7 +59,10 @@ value types, or introduce a private report-ordering policy owned by the report
 module. Reuse it for linking, aggregation, and rendering preparation, and
 retain the current deterministic tie-breakers without exposing storage details.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added owner-facing ordering keys to `FileReport`, `Diagnostic`,
+and `AnalysisDiagnostic`, then reused them from report combination and linker
+canonicalization. The deterministic tie-breakers are unchanged, but tuple
+construction is now centralized with the values whose fields define ordering.
 
 #### [ ] READ-003 — Scope collection uses anonymous composite identity records
 

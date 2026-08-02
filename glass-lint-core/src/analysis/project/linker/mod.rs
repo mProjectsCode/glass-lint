@@ -124,18 +124,8 @@ impl ProjectLinker {
         self.collect_graph_edges();
         self.resolve_export_table();
         self.validate_imported_exports();
-        self.diagnostics.sort_by(|left, right| {
-            (
-                left.code(),
-                left.location().map(crate::project::SourceLocation::path),
-                left.location().map(crate::project::SourceLocation::range),
-            )
-                .cmp(&(
-                    right.code(),
-                    right.location().map(crate::project::SourceLocation::path),
-                    right.location().map(crate::project::SourceLocation::range),
-                ))
-        });
+        self.diagnostics
+            .sort_by(|left, right| left.ordering_key().cmp(&right.ordering_key()));
         self.diagnostics.dedup();
     }
 
