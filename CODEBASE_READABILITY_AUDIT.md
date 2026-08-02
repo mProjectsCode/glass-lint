@@ -282,7 +282,7 @@ wire schema and adapter error behavior.
 
 ### Group 4: Documentation and tests
 
-#### [ ] READ-013 — Output crate ownership is missing from architecture documentation
+#### [x] READ-013 — Output crate ownership is missing from architecture documentation
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -301,7 +301,11 @@ provider policy, loading, or semantic report construction. Alternatively,
 explicitly state in the CLI architecture document why the output crate is
 intentionally covered there.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `glass-lint-output` to the workspace architecture graph
+and boundary table, documented its presentation-only ownership in a new crate
+architecture file, and clarified the CLI architecture boundary for format
+dispatch and JSON output. The documentation now distinguishes reusable report
+rendering from analysis, loading, provider policy, and report construction.
 
 #### [ ] READ-014 — Panic-safety test table obscures constructor coverage
 

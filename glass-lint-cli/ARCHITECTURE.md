@@ -15,7 +15,8 @@ arguments + optional versioned configuration
 - `config` owns loading precedence, schema validation, provider/profile
   selection, output settings, and project budgets.
 - `lint` dispatches to `glass-lint-core` or `glass-lint-project`.
-- `output` owns rule listing and report presentation.
+- `output` owns CLI-specific format dispatch and rule listing; reusable pretty
+  presentation over core reports belongs to `glass-lint-output`.
 - `bin` maps the library result to a process exit status.
 
 The CLI may combine the JavaScript and Obsidian catalogs for the Obsidian
