@@ -79,7 +79,7 @@ The local-to-resolved project transition dismantles `SourceTable` and `Resolutio
 
 **Fix Applied:** `MutationIndex` now owns record (`record_property_assignment`, `record_rooted_mutation`, `record_dynamic_evals`), `finalize`, grouped queries, and `has_prior_eval`; all four maps are private. `ScopeGraph` coordinates scope/binding resolution and delegates to the index.
 
-#### [ ] READ-006 — Origin snapshots escape as raw hash maps
+#### [x] READ-006 — Origin snapshots escape as raw hash maps
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -90,7 +90,7 @@ The local-to-resolved project transition dismantles `SourceTable` and `Resolutio
 
 **Recommendation:** Introduce an opaque `OriginSnapshot<V>` and owner operations for snapshot, restore, and retaining origins common to branches. This keeps equality/intersection rules and storage choices together and removes `OriginMap::from(raw_map)` as a phase seam.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added opaque `OriginSnapshot<V>`; `OriginMap` now owns `snapshot`, `restore_from`, and `retain_common` (branch intersection). Control-flow merging uses these owner operations, and the `From<HashMap>` phase seams and the free intersection function were removed.
 
 #### [ ] READ-007 — Static objects are raw name-value tuples
 
