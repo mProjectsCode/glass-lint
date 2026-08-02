@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use glass_lint_datastructures::{HistoryCursor, HistoryTransition, ParentLinkedHistory};
 
@@ -6,7 +6,7 @@ use crate::{
     analysis::{
         facts::FactId,
         flow::projector::state::ObjectRefCounts,
-        model::flow::{FlowState, FlowStateKey, RequirementIndex, SinkIndex},
+        model::flow::{EvidenceValues, FlowState, FlowStateKey, RequirementIndex, SinkIndex},
         value::{ObjectId, ValueId},
     },
     api::classification::RuleIndex,
@@ -22,7 +22,7 @@ pub(super) enum InverseDelta {
     StateUpdate(FlowStateKey, Box<FlowState>, Box<FlowState>),
     StateRemove(FlowStateKey, Box<FlowState>),
     RequirementInsert(FlowStateKey, RequirementIndex, FactId),
-    RequirementRemove(FlowStateKey, RequirementIndex, BTreeSet<FactId>),
+    RequirementRemove(FlowStateKey, RequirementIndex, EvidenceValues<FactId>),
     SinkInsert(FlowStateKey, SinkIndex, FactId),
 }
 
@@ -179,9 +179,7 @@ fn apply_forward(
         InverseDelta::RequirementRemove(key, index, events) => {
             if let Some(state) = states.get_mut(key) {
                 state.clear_requirement(*index);
-                for event in events {
-                    state.record_requirement(*index, *event);
-                }
+                state.restore_requirement(*index, events);
             }
         }
         InverseDelta::SinkInsert(key, index, event) => {

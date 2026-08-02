@@ -4,7 +4,7 @@ use glass_lint_datastructures::Budget;
 use crate::{
     analysis::{
         facts::FactId,
-        model::flow::{FlowId, RequirementIndex, RequirementSet, SinkIndex},
+        model::flow::{FlowId, IndexedEvidence, RequirementIndex, SinkIndex},
         value::{FunctionId, ValueId},
     },
     project::ModuleId,
@@ -56,8 +56,8 @@ pub(super) struct CrossFlowState {
     /// certainty distinguish `Possible` from `Definite` without inventing a
     /// source from another call site.
     pub(super) source: Option<QualifiedEvent>,
-    pub(super) requirements: RequirementSet<QualifiedEvent, RequirementIndex>,
-    pub(super) sinks: RequirementSet<QualifiedEvent, SinkIndex>,
+    pub(super) requirements: IndexedEvidence<QualifiedEvent, RequirementIndex>,
+    pub(super) sinks: IndexedEvidence<QualifiedEvent, SinkIndex>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]

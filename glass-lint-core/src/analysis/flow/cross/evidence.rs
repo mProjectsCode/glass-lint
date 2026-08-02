@@ -385,8 +385,8 @@ mod tests {
                 module: ModuleId::new(1),
                 fact: FactId::new(1),
             }),
-            requirements: crate::analysis::model::flow::RequirementSet::default(),
-            sinks: crate::analysis::model::flow::RequirementSet::default(),
+            requirements: crate::analysis::model::flow::IndexedEvidence::default(),
+            sinks: crate::analysis::model::flow::IndexedEvidence::default(),
         };
         state.requirements.insert(
             RequirementIndex::new(0),

@@ -834,7 +834,10 @@ mod tests {
         );
         assert!(table.restore(configured));
         let restored = table.state(ObjectId::from_test(10), flow).unwrap();
-        assert_eq!(restored.requirement_keys().next().unwrap().1.len(), 2);
+        assert_eq!(
+            restored.requirement_keys().next().unwrap().1.iter().count(),
+            2
+        );
 
         assert!(table.restore(base));
         let restored = table.state(ObjectId::from_test(10), flow).unwrap();

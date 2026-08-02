@@ -1,7 +1,4 @@
-use std::{
-    collections::BTreeSet,
-    hash::{Hash, Hasher},
-};
+use std::hash::{Hash, Hasher};
 
 use smallvec::SmallVec;
 
@@ -144,7 +141,58 @@ impl FlowId {
     }
 }
 
-pub type RequirementValues<K> = SmallVec<[K; 1]>;
+/// Sorted evidence values recorded for one lifecycle index.
+///
+/// The compact vector storage stays private so callers cannot depend on the
+/// representation; removal deltas and restore transitions both use this type.
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
+pub struct EvidenceValues<K>(SmallVec<[K; 1]>);
+
+impl<K> EvidenceValues<K> {
+    fn new() -> Self {
+        Self(SmallVec::new())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn first(&self) -> Option<&K> {
+        self.0.first()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &K> {
+        self.0.iter()
+    }
+}
+
+impl<K: Ord> EvidenceValues<K> {
+    fn from_value(value: K) -> Self {
+        let mut values = Self::new();
+        values.insert(value);
+        values
+    }
+
+    fn insert(&mut self, value: K) -> bool {
+        match self.0.binary_search(&value) {
+            Ok(_) => false,
+            Err(position) => {
+                self.0.insert(position, value);
+                true
+            }
+        }
+    }
+
+    fn remove(&mut self, value: &K) -> bool {
+        match self.0.binary_search(value) {
+            Ok(position) => {
+                self.0.remove(position);
+                true
+            }
+            Err(_) => false,
+        }
+    }
+}
 
 /// Typed index of a lifecycle requirement in one compiled flow.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -192,31 +240,33 @@ impl EvidenceIndex for usize {}
 impl EvidenceIndex for RequirementIndex {}
 impl EvidenceIndex for SinkIndex {}
 
-/// Bounded completion evidence keyed by lifecycle requirement index.
+/// Bounded indexed evidence for lifecycle requirements and sinks.
 ///
 /// The mask owns readiness checks; the sorted compact entries retain the
 /// deterministic evidence needed for traces. Lifecycle declarations cap the
 /// key domain at 64, so a tree-backed map adds copy-on-write and node-walk
-/// overhead without providing a useful invariant.
+/// overhead without providing a useful invariant. `remove` and `restore`
+/// transfer the owner's semantic [`EvidenceValues`] delta so history never
+/// re-encodes the values in a second collection.
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
-pub struct RequirementSet<K = FactId, I = usize> {
+pub struct IndexedEvidence<K = FactId, I = usize> {
     mask: u64,
-    entries: SmallVec<[(I, RequirementValues<K>); 4]>,
+    entries: SmallVec<[(I, EvidenceValues<K>); 4]>,
 }
 
-impl<K: Hash, I: EvidenceIndex> Hash for RequirementSet<K, I> {
+impl<K: Hash, I: EvidenceIndex> Hash for IndexedEvidence<K, I> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.mask.hash(state);
         for (k, vals) in &self.entries {
             k.hash(state);
-            for v in vals {
+            for v in vals.iter() {
                 v.hash(state);
             }
         }
     }
 }
 
-impl<K, I: EvidenceIndex> Default for RequirementSet<K, I> {
+impl<K, I: EvidenceIndex> Default for IndexedEvidence<K, I> {
     fn default() -> Self {
         Self {
             mask: 0,
@@ -225,7 +275,7 @@ impl<K, I: EvidenceIndex> Default for RequirementSet<K, I> {
     }
 }
 
-impl<K: Clone + Ord, I: EvidenceIndex> RequirementSet<K, I> {
+impl<K: Clone + Ord, I: EvidenceIndex> IndexedEvidence<K, I> {
     pub fn insert(&mut self, parameter: I, value: K) -> bool {
         let Some(bit) = Self::bit(parameter) else {
             return false;
@@ -234,27 +284,17 @@ impl<K: Clone + Ord, I: EvidenceIndex> RequirementSet<K, I> {
             .entries
             .binary_search_by_key(&parameter, |(index, _)| *index)
         {
-            Ok(position) => {
-                let values = &mut self.entries[position].1;
-                match values.binary_search(&value) {
-                    Ok(_) => false,
-                    Err(position) => {
-                        values.insert(position, value);
-                        true
-                    }
-                }
-            }
+            Ok(position) => self.entries[position].1.insert(value),
             Err(position) => {
-                let mut values = RequirementValues::new();
-                values.push(value);
-                self.entries.insert(position, (parameter, values));
+                self.entries
+                    .insert(position, (parameter, EvidenceValues::from_value(value)));
                 self.mask |= bit;
                 true
             }
         }
     }
 
-    pub fn remove(&mut self, parameter: I) -> Option<RequirementValues<K>> {
+    pub fn remove(&mut self, parameter: I) -> Option<EvidenceValues<K>> {
         let position = self
             .entries
             .binary_search_by_key(&parameter, |(index, _)| *index)
@@ -270,10 +310,9 @@ impl<K: Clone + Ord, I: EvidenceIndex> RequirementSet<K, I> {
         else {
             return false;
         };
-        let Ok(value_position) = self.entries[position].1.binary_search(value) else {
+        if !self.entries[position].1.remove(value) {
             return false;
-        };
-        self.entries[position].1.remove(value_position);
+        }
         if self.entries[position].1.is_empty() {
             self.entries.remove(position);
             self.mask &= !Self::bit(parameter).expect("stored requirement index is bounded");
@@ -281,11 +320,8 @@ impl<K: Clone + Ord, I: EvidenceIndex> RequirementSet<K, I> {
         true
     }
 
-    pub fn restore<Values>(&mut self, parameter: I, values: Values)
-    where
-        Values: IntoIterator<Item = K>,
-    {
-        for value in values {
+    pub fn restore(&mut self, parameter: I, values: &EvidenceValues<K>) {
+        for value in values.iter().cloned() {
             self.insert(parameter, value);
         }
     }
@@ -302,7 +338,7 @@ impl<K: Clone + Ord, I: EvidenceIndex> RequirementSet<K, I> {
         self.entries.iter().flat_map(|(_, values)| values.iter())
     }
 
-    pub fn iter_by_key(&self) -> impl Iterator<Item = (I, &RequirementValues<K>)> {
+    pub fn iter_by_key(&self) -> impl Iterator<Item = (I, &EvidenceValues<K>)> {
         self.entries.iter().map(|(index, values)| (*index, values))
     }
 
@@ -317,8 +353,8 @@ pub struct FlowState {
     flow: FlowId,
     source_event: FactId,
     object_id: ObjectId,
-    requirements: RequirementSet<FactId, RequirementIndex>,
-    sinks: RequirementSet<FactId, SinkIndex>,
+    requirements: IndexedEvidence<FactId, RequirementIndex>,
+    sinks: IndexedEvidence<FactId, SinkIndex>,
 }
 
 impl Hash for FlowState {
@@ -343,8 +379,8 @@ impl FlowState {
             flow,
             source_event,
             object_id,
-            requirements: RequirementSet::default(),
-            sinks: RequirementSet::default(),
+            requirements: IndexedEvidence::default(),
+            sinks: IndexedEvidence::default(),
         }
     }
 
@@ -371,18 +407,20 @@ impl FlowState {
         self.requirements.insert(index, event)
     }
 
-    pub fn clear_requirement(&mut self, index: RequirementIndex) -> Option<BTreeSet<FactId>> {
-        self.requirements
-            .remove(index)
-            .map(|events| events.into_iter().collect())
+    pub fn clear_requirement(&mut self, index: RequirementIndex) -> Option<EvidenceValues<FactId>> {
+        self.requirements.remove(index)
     }
 
     pub fn remove_requirement_event(&mut self, index: RequirementIndex, event: FactId) -> bool {
         self.requirements.remove_value(index, &event)
     }
 
-    pub fn restore_requirement(&mut self, index: RequirementIndex, events: &BTreeSet<FactId>) {
-        self.requirements.restore(index, events.iter().copied());
+    pub fn restore_requirement(
+        &mut self,
+        index: RequirementIndex,
+        events: &EvidenceValues<FactId>,
+    ) {
+        self.requirements.restore(index, events);
     }
 
     pub fn is_ready(&self, flow: &CompiledObjectFlow) -> bool {
@@ -407,11 +445,11 @@ impl FlowState {
 
     pub fn requirement_keys(
         &self,
-    ) -> impl Iterator<Item = (RequirementIndex, &RequirementValues<FactId>)> {
+    ) -> impl Iterator<Item = (RequirementIndex, &EvidenceValues<FactId>)> {
         self.requirements.iter_by_key()
     }
 
-    pub fn sink_keys(&self) -> impl Iterator<Item = (SinkIndex, &RequirementValues<FactId>)> {
+    pub fn sink_keys(&self) -> impl Iterator<Item = (SinkIndex, &EvidenceValues<FactId>)> {
         self.sinks.iter_by_key()
     }
 }
@@ -478,15 +516,15 @@ mod tests {
     }
 
     #[test]
-    fn requirement_set_default_is_empty() {
-        let set: RequirementSet = RequirementSet::default();
+    fn indexed_evidence_default_is_empty() {
+        let set: IndexedEvidence = IndexedEvidence::default();
         assert!(set.is_empty());
         assert_eq!(set.len(), 0);
     }
 
     #[test]
-    fn requirement_set_insert_and_remove() {
-        let mut set: RequirementSet = RequirementSet::default();
+    fn indexed_evidence_insert_and_remove() {
+        let mut set: IndexedEvidence = IndexedEvidence::default();
         set.insert(0, FactId::from_test(1));
         set.insert(1, FactId::from_test(2));
         assert_eq!(set.len(), 2);
@@ -497,8 +535,8 @@ mod tests {
     }
 
     #[test]
-    fn requirement_set_values_returns_all_inserted() {
-        let mut set: RequirementSet = RequirementSet::default();
+    fn indexed_evidence_values_returns_all_inserted() {
+        let mut set: IndexedEvidence = IndexedEvidence::default();
         set.insert(0, FactId::from_test(10));
         set.insert(2, FactId::from_test(30));
         let values: Vec<_> = set.values().copied().collect();
@@ -506,8 +544,8 @@ mod tests {
     }
 
     #[test]
-    fn requirement_set_insert_duplicate_key_appends_value() {
-        let mut set: RequirementSet = RequirementSet::default();
+    fn indexed_evidence_insert_duplicate_key_appends_value() {
+        let mut set: IndexedEvidence = IndexedEvidence::default();
         set.insert(0, FactId::from_test(10));
         set.insert(0, FactId::from_test(20));
         let values: Vec<_> = set.values().copied().collect();
@@ -518,8 +556,8 @@ mod tests {
     }
 
     #[test]
-    fn requirement_set_uses_all_64_completion_bits_and_rejects_overflow() {
-        let mut set: RequirementSet = RequirementSet::default();
+    fn indexed_evidence_uses_all_64_completion_bits_and_rejects_overflow() {
+        let mut set: IndexedEvidence = IndexedEvidence::default();
         assert!(set.insert(63, FactId::from_test(63)));
         assert!(!set.insert(64, FactId::from_test(64)));
         assert_eq!(set.len(), 1);
@@ -531,22 +569,23 @@ mod tests {
 
     #[test]
     fn requirement_and_sink_indices_preserve_their_domains() {
-        let mut requirements: RequirementSet<FactId, RequirementIndex> = RequirementSet::default();
-        let mut sinks: RequirementSet<FactId, SinkIndex> = RequirementSet::default();
+        let mut requirements: IndexedEvidence<FactId, RequirementIndex> =
+            IndexedEvidence::default();
+        let mut sinks: IndexedEvidence<FactId, SinkIndex> = IndexedEvidence::default();
         assert!(requirements.insert(RequirementIndex::new(63), FactId::from_test(63)));
         assert!(sinks.insert(SinkIndex::new(63), FactId::from_test(63)));
         assert_eq!(
             requirements
                 .iter_by_key()
                 .find(|(index, _)| *index == RequirementIndex::new(63))
-                .map(|(_, values)| values.len()),
+                .map(|(_, values)| values.iter().count()),
             Some(1)
         );
         assert_eq!(
             sinks
                 .iter_by_key()
                 .find(|(index, _)| *index == SinkIndex::new(63))
-                .map(|(_, values)| values.len()),
+                .map(|(_, values)| values.iter().count()),
             Some(1)
         );
         assert!(!requirements.insert(RequirementIndex::new(64), FactId::from_test(64)));

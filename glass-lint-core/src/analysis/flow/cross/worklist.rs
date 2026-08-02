@@ -9,7 +9,7 @@ use crate::{
             sources::{FlowSources, SourceKey},
             state::{CallContext, CrossFlowState, QualifiedEvent},
         },
-        model::flow::RequirementSet,
+        model::flow::IndexedEvidence,
         value::FunctionId,
     },
     project::ModuleId,
@@ -138,8 +138,8 @@ impl ContextWorklist {
                             module: key.module,
                             fact: candidate.fact,
                         }),
-                        requirements: RequirementSet::default(),
-                        sinks: RequirementSet::default(),
+                        requirements: IndexedEvidence::default(),
+                        sinks: IndexedEvidence::default(),
                     },
                     crossed: key.value != project.source_call_result(key.module, candidate.fact),
                 });
@@ -182,8 +182,8 @@ impl ContextWorklist {
                                         module: module.id(),
                                         fact: candidate.fact,
                                     }),
-                                    requirements: RequirementSet::default(),
-                                    sinks: RequirementSet::default(),
+                                    requirements: IndexedEvidence::default(),
+                                    sinks: IndexedEvidence::default(),
                                 };
                                 self.enqueue_parameters(
                                     project,
@@ -215,8 +215,8 @@ impl ContextWorklist {
                                 &CrossFlowState {
                                     flow,
                                     source: None,
-                                    requirements: RequirementSet::default(),
-                                    sinks: RequirementSet::default(),
+                                    requirements: IndexedEvidence::default(),
+                                    sinks: IndexedEvidence::default(),
                                 },
                                 target_module != module.id(),
                             );
