@@ -8,7 +8,7 @@ Scope: 416 Rust source files, approximately 82,433 lines, across the workspace. 
 
 The workspace is generally well-factored at the crate level and has strong typed domain vocabulary in many of the recently refactored areas. The remaining readability cost is concentrated in internal analysis boundaries: positional tuples and raw maps still carry semantic state, a few aggregate constructors expose too much assembly detail, and orchestration code spans several independent lifecycle phases.
 
-There are 16 open findings: 2 high, 11 medium, and 3 low. READ-001 is fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
+There are 15 open findings: 2 high, 10 medium, and 3 low. READ-001 and READ-002 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
 
 ## Findings
 
@@ -27,7 +27,7 @@ Recommendation: expose a stable public diagnostic type at the rule boundary, or 
 
 Fix Applied: `MatcherBuildError::QueryCompileError` now carries the public `QueryDiagnostic` type, and the compiler translates its private validation errors at the rule boundary. The targeted private-interface suppression and compiler-type leak were removed while preserving stable diagnostic codes and messages.
 
-#### [ ] READ-002 — Package-specifier grammar is implemented twice
+#### [x] READ-002 — Package-specifier grammar is implemented twice
 
 - Severity: Medium
 - Fix Complexity: Medium
@@ -38,7 +38,7 @@ Fix Applied: `MatcherBuildError::QueryCompileError` now carries the public `Quer
 
 Recommendation: centralize the shared package grammar in one private semantic parser/newtype and map its validation failure into each owning API's error type. Keep exact module-pattern behavior separate where it intentionally accepts a broader authored module string.
 
-Fix Applied: None so far.
+Fix Applied: Added one crate-private `PackageName` parser for trimming, whitespace/NUL rejection, path-shape checks, and scoped-package grammar. `PackageSpecifier` and `ModuleSpecifierPattern::package` now delegate to it and translate failure into their owning error types, while exact module patterns remain independent.
 
 #### [ ] READ-003 — Projection planning uses positional tuples for distinct identities
 
@@ -257,6 +257,6 @@ Fix Applied: None so far.
 
 ## Coverage
 
-Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. The working tree was clean before this implementation pass; READ-001 changed the rule/compiler boundary and this report.
+Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. The working tree was clean before this implementation pass; READ-001 and READ-002 changed core boundaries and this report.
 
-Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, `cargo test -p glass-lint-core api::compiler` and `cargo test -p glass-lint-core --test integration public_surface` passed, `cargo fmt --all` and `git diff --check` passed, and the crate remains free of the removed private-interface suppression.
+Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed. `cargo fmt --all`, core clippy with warnings denied, and `git diff --check` passed.

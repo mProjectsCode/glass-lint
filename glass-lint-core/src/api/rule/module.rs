@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use crate::api::rule::error::MatcherBuildError;
+use crate::{api::rule::error::MatcherBuildError, project::types::package::PackageName};
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 /// An exact module specifier or a package root with boundary-aware subpaths.
@@ -49,33 +49,11 @@ impl ModuleSpecifierPattern {
     /// Construct a package-root pattern matching the root and `/...` subpaths.
     pub fn package(name: impl Into<String>) -> Result<Self, MatcherBuildError> {
         let name = name.into().trim().to_string();
-        if name.is_empty()
-            || name.ends_with('/')
-            || name.starts_with('.')
-            || name.starts_with('/')
-            || name.contains("://")
-        {
-            return Err(MatcherBuildError::InvalidModuleSpecifier(format!(
-                "invalid package specifier `{name}`"
-            )));
-        }
-        if let Some(scope) = name.strip_prefix('@') {
-            let mut parts = scope.split('/');
-            if parts.next().is_none_or(str::is_empty)
-                || parts.next().is_none_or(str::is_empty)
-                || parts.next().is_some()
-            {
-                return Err(MatcherBuildError::InvalidModuleSpecifier(format!(
-                    "invalid scoped package specifier `{name}`"
-                )));
-            }
-        } else if name.contains('/') {
-            return Err(MatcherBuildError::InvalidModuleSpecifier(format!(
-                "package root must not contain `/`: `{name}`"
-            )));
-        }
+        let package = PackageName::parse(&name).map_err(|_| {
+            MatcherBuildError::InvalidModuleSpecifier(format!("invalid package specifier `{name}`"))
+        })?;
         Ok(Self {
-            name,
+            name: package.as_str().to_owned(),
             kind: PatternKind::Package,
         })
     }
@@ -115,7 +93,17 @@ mod tests {
 
     #[test]
     fn package_patterns_reject_non_packages() {
-        for value in ["", "pkg/", "pkg/subpath", "./pkg", "/pkg", "https://pkg"] {
+        for value in [
+            "",
+            "pkg/",
+            "pkg/subpath",
+            "./pkg",
+            "/pkg",
+            "https://pkg",
+            "pkg foo",
+            "\\foo",
+            "pkg\0foo",
+        ] {
             assert!(ModuleSpecifierPattern::package(value).is_err(), "{value}");
         }
     }

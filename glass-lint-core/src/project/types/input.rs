@@ -2,7 +2,10 @@ use std::{borrow::Borrow, ops::Deref, sync::Arc};
 
 use smol_str::SmolStr;
 
-use crate::{SourceLanguage, project::types::ProjectRelativePath};
+use crate::{
+    SourceLanguage,
+    project::types::{ProjectRelativePath, package::PackageName},
+};
 
 /// Shared source text admitted once at the project boundary.
 ///
@@ -54,40 +57,9 @@ pub struct PackageSpecifier(SmolStr);
 impl PackageSpecifier {
     pub fn new(s: impl Into<SmolStr>) -> Result<Self, ProjectInputError> {
         let inner = s.into();
-        let trimmed = inner.trim();
-        if trimmed.is_empty() || trimmed.contains('\0') || trimmed.contains(char::is_whitespace) {
-            return Err(ProjectInputError::InvalidTarget(inner.to_string()));
-        }
-        // Package specifiers must not look like relative paths.
-        if trimmed.starts_with('.') || trimmed.starts_with('/') || trimmed.starts_with('\\') {
-            return Err(ProjectInputError::InvalidTarget(inner.to_string()));
-        }
-        // Scoped packages must have the full @scope/name form, each a single
-        // segment (no further slashes).
-        if let Some(after_at) = trimmed.strip_prefix('@') {
-            let slash_pos = after_at.find('/');
-            match slash_pos {
-                // No slash: bare @scope is incomplete.
-                None => {
-                    return Err(ProjectInputError::InvalidTarget(inner.to_string()));
-                }
-                Some(pos) => {
-                    // Scope part must be non-empty (not starting with /).
-                    if pos == 0 {
-                        return Err(ProjectInputError::InvalidTarget(inner.to_string()));
-                    }
-                    // Name part must be a single non-empty segment.
-                    let name_part = &after_at[pos + 1..];
-                    if name_part.is_empty() || name_part.contains('/') {
-                        return Err(ProjectInputError::InvalidTarget(inner.to_string()));
-                    }
-                }
-            }
-        } else if trimmed.contains('/') {
-            // Non-scoped packages must not contain a slash.
-            return Err(ProjectInputError::InvalidTarget(inner.to_string()));
-        }
-        Ok(Self(trimmed.into()))
+        let package = PackageName::parse(&inner)
+            .map_err(|_| ProjectInputError::InvalidTarget(inner.to_string()))?;
+        Ok(Self(package.into_inner()))
     }
 
     pub fn as_str(&self) -> &str {
