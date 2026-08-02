@@ -1,5 +1,3 @@
-#![allow(private_interfaces)]
-
 use glass_lint_datastructures::{ByteRange, NameId, NamePath, PathId};
 use smol_str::SmolStr;
 
@@ -306,12 +304,12 @@ pub enum FunctionBoundary {
 }
 
 #[derive(Debug, Clone)]
-pub struct CallArgInfo {
-    pub value: ValueId,
-    pub base_value: ValueId,
-    pub base_path: PathId,
-    pub spread: bool,
-    pub provenance: SymbolCallProvenance,
+pub(in crate::analysis) struct CallArgInfo {
+    pub(in crate::analysis) value: ValueId,
+    pub(in crate::analysis) base_value: ValueId,
+    pub(in crate::analysis) base_path: PathId,
+    pub(in crate::analysis) spread: bool,
+    pub(in crate::analysis) provenance: SymbolCallProvenance,
 }
 
 impl CallArgInfo {
@@ -326,11 +324,11 @@ impl CallArgInfo {
     }
 }
 
-pub struct ArgumentView<'a> {
-    pub argument: &'a CallArgInfo,
-    pub static_string: Option<&'a str>,
-    pub object_entries: Option<&'a [(NameId, ValueId)]>,
-    pub rooted_chain: Option<&'a NamePath>,
+pub(in crate::analysis) struct ArgumentView<'a> {
+    pub(in crate::analysis) argument: &'a CallArgInfo,
+    pub(in crate::analysis) static_string: Option<&'a str>,
+    pub(in crate::analysis) object_entries: Option<&'a [(NameId, ValueId)]>,
+    pub(in crate::analysis) rooted_chain: Option<&'a NamePath>,
 }
 
 impl<'a> ArgumentView<'a> {
@@ -360,22 +358,22 @@ impl<'a> ArgumentView<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParameterBinding {
-    pub parameter_index: usize,
-    pub path: PathId,
-    pub value: ValueId,
-    pub default: Option<ValueId>,
-    pub rest: bool,
+pub(in crate::analysis) struct ParameterBinding {
+    pub(in crate::analysis) parameter_index: usize,
+    pub(in crate::analysis) path: PathId,
+    pub(in crate::analysis) value: ValueId,
+    pub(in crate::analysis) default: Option<ValueId>,
+    pub(in crate::analysis) rest: bool,
 }
 
 #[derive(Debug, Clone)]
-pub struct CallUnwrap {
-    pub chain_path: Option<NamePath>,
-    pub effective_args: Vec<CallArgInfo>,
+pub(in crate::analysis) struct CallUnwrap {
+    pub(in crate::analysis) chain_path: Option<NamePath>,
+    pub(in crate::analysis) effective_args: Vec<CallArgInfo>,
 }
 
 #[derive(Debug, Clone)]
-pub enum FactPayload {
+pub(in crate::analysis) enum FactPayload {
     Reference {
         value: ValueId,
         provenance: SymbolCallProvenance,
@@ -447,13 +445,13 @@ pub enum FactPayload {
 }
 
 #[derive(Debug, Clone)]
-pub struct SemanticFact {
-    pub id: FactId,
-    pub span: ByteRange,
-    pub function: FunctionId,
+pub(in crate::analysis) struct SemanticFact {
+    pub(in crate::analysis) id: FactId,
+    pub(in crate::analysis) span: ByteRange,
+    pub(in crate::analysis) function: FunctionId,
     #[cfg(test)]
-    pub kind: FactKind,
-    pub payload: FactPayload,
+    pub(in crate::analysis) kind: FactKind,
+    pub(in crate::analysis) payload: FactPayload,
 }
 
 impl SemanticFact {

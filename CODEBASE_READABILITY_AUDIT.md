@@ -94,7 +94,7 @@ state. The visitor, callback projection, and freeze stages now use named
 fields while preserving source order, path-local versions, and conservative
 callback handling.
 
-#### [ ] READ-004 — Fact model has a broad private-interface escape hatch
+#### [x] READ-004 — Fact model has a broad private-interface escape hatch
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -113,7 +113,11 @@ accessors, or semantic pattern methods. Remove the module-wide allowance in
 stages, keeping AST/building details private and validating the intended
 provider-neutral interfaces through existing public-surface tests.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the module-wide `private_interfaces` allowance and
+narrowed the retained fact records, payloads, and fields to the analysis
+boundary. Fact construction and internal consumers still share the same
+semantic model, but provider-facing or crate-wide code can no longer depend on
+raw argument, parameter, unwrap, or payload representation.
 
 ### Group 2: Flow state and matcher coordination
 
