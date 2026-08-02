@@ -1,7 +1,7 @@
 use super::*;
 use crate::api::rule::{EventQuery, QueryDecl};
 
-pub fn source_file(path: impl Into<String>, source: impl Into<String>) -> SourceFile {
+pub fn source_file(path: impl Into<String>, source: impl Into<SourceText>) -> SourceFile {
     SourceFile::new(path, source).unwrap()
 }
 

@@ -7,11 +7,11 @@ use crate::{
     project::{
         AnalysisDiagnostic, AnalysisOperationCounts, Diagnostic, EvidenceRole, EvidenceStep,
         EvidenceTrace, EvidenceTraces, FileReport, Finding, MatchCertainty, ProjectRelativePath,
-        ReportCompletion, SourceFile, SourceLocation,
+        ReportCompletion, SourceFile, SourceLocation, SourceText,
     },
 };
 
-fn source_file(path: impl Into<String>, source: impl Into<String>) -> SourceFile {
+fn source_file(path: impl Into<String>, source: impl Into<SourceText>) -> SourceFile {
     SourceFile::new(path, source).unwrap()
 }
 

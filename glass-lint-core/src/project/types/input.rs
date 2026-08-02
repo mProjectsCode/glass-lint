@@ -35,6 +35,12 @@ impl From<String> for SourceText {
     }
 }
 
+impl From<Arc<str>> for SourceText {
+    fn from(source: Arc<str>) -> Self {
+        Self(source)
+    }
+}
+
 impl From<&str> for SourceText {
     fn from(source: &str) -> Self {
         Self::new(Arc::<str>::from(source))
@@ -248,21 +254,21 @@ pub struct SourceFile {
 impl SourceFile {
     pub fn new(
         path: impl Into<String>,
-        source: impl Into<String>,
+        source: impl Into<SourceText>,
     ) -> Result<Self, ProjectInputError> {
         let path = path.into();
         let path = ProjectRelativePath::new(&path)?;
         Ok(Self {
             language: SourceLanguage::from_filename(&path),
             path,
-            source: source.into().into(),
+            source: source.into(),
         })
     }
 
     /// Construct with an explicit language, ignoring the filename extension.
     pub fn with_language(
         path: impl Into<String>,
-        source: impl Into<String>,
+        source: impl Into<SourceText>,
         language: SourceLanguage,
     ) -> Result<Self, ProjectInputError> {
         let path = path.into();
@@ -270,7 +276,7 @@ impl SourceFile {
         Ok(Self {
             language,
             path,
-            source: source.into().into(),
+            source: source.into(),
         })
     }
 
@@ -450,6 +456,14 @@ impl std::error::Error for ProjectInputError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn source_file_reuses_arc_source_allocation() {
+        let source: Arc<str> = Arc::from("fetch('/remote');");
+        let file = SourceFile::new("main.js", source.clone()).unwrap();
+
+        assert!(std::ptr::eq(source.as_ref(), file.source().as_str()));
+    }
 
     // ── PackageSpecifier ──────────────────────────────────────────
 
