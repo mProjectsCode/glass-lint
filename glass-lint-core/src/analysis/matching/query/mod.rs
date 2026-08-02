@@ -99,8 +99,8 @@ impl OccurrenceIndexes {
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
         names: &NameTable,
     ) -> Option<CandidateOccurrences<'a>> {
-        let view = self.build_event_view(event, overlay);
-        view.resolve(identity, event, names)
+        let view = self.build_event_view(event);
+        view.resolve(identity, event, names, overlay)
     }
 
     /// Resolve a returned-subject scan.
@@ -159,67 +159,48 @@ impl OccurrenceIndexes {
     // directly, and returned/instance subject lookups use
     // occurrences_for_returned / occurrences_for_instance.
 
-    fn build_event_view<'a>(
-        &'a self,
-        event: &EventPredicate,
-        overlay: Option<&'a LinkedOccurrenceView<'a>>,
-    ) -> EventIndexView<'a> {
+    fn build_event_view<'a>(&'a self, event: &EventPredicate) -> EventIndexView<'a> {
         let env = &self.environment;
         match event {
-            EventPredicate::Call => EventIndexView {
-                name_any: Some(&self.call_indexes.calls),
-                module: Some(&self.call_indexes.module_calls),
-                global: Some(&self.call_indexes.global_calls),
-                module_overlay: overlay.map(|o| &o.module_calls),
-                global_overlay: overlay.map(|o| &o.global_calls),
-                masked: overlay.map(|o| &o.masked),
-                ..EventIndexView::base(env)
+            EventPredicate::Call => EventIndexView::Call {
+                names: &self.call_indexes.calls,
+                module: &self.call_indexes.module_calls,
+                global: &self.call_indexes.global_calls,
             },
-            EventPredicate::MemberCall { .. } => EventIndexView {
-                path_any: Some(&self.members.calls),
-                module: Some(&self.members.module_calls),
-                rooted: Some(&self.members.rooted_calls),
-                module_overlay: overlay.map(|o| &o.member_calls),
-                masked: overlay.map(|o| &o.masked),
-                ..EventIndexView::base(env)
+            EventPredicate::MemberCall { .. } => EventIndexView::MemberCall {
+                paths: &self.members.calls,
+                module: &self.members.module_calls,
+                rooted: &self.members.rooted_calls,
+                environment: env,
             },
-            EventPredicate::MemberRead { .. } => EventIndexView {
-                path_any: Some(&self.members.reads),
-                module: Some(&self.members.module_reads),
-                rooted: Some(&self.members.rooted_reads),
-                module_overlay: overlay.map(|o| &o.member_reads),
-                masked: overlay.map(|o| &o.masked),
-                ..EventIndexView::base(env)
+            EventPredicate::MemberRead { .. } => EventIndexView::MemberRead {
+                paths: &self.members.reads,
+                module: &self.members.module_reads,
+                rooted: &self.members.rooted_reads,
+                environment: env,
             },
-            EventPredicate::PropertyWrite { .. } => EventIndexView {
-                path_any: Some(&self.members.rooted_writes),
-                rooted: Some(&self.members.rooted_writes),
-                ..EventIndexView::base(env)
+            EventPredicate::PropertyWrite { .. } => EventIndexView::PropertyWrite {
+                paths: &self.members.rooted_writes,
+                rooted: &self.members.rooted_writes,
+                environment: env,
             },
-            EventPredicate::ClassReference => EventIndexView {
-                string_any: Some(&self.constructions.classes),
-                module: Some(&self.constructions.module_classes),
-                module_overlay: overlay.map(|o| &o.module_classes),
-                masked: overlay.map(|o| &o.masked),
-                ..EventIndexView::base(env)
+            EventPredicate::ClassReference => EventIndexView::ClassReference {
+                strings: &self.constructions.classes,
+                module: &self.constructions.module_classes,
             },
-            EventPredicate::Construct => EventIndexView {
-                name_any: Some(&self.constructions.constructors),
-                string_any: Some(&self.constructions.global_constructors),
-                rooted_constructors: Some(&self.constructions.rooted_constructors),
-                module: Some(&self.constructions.module_constructors),
-                global: Some(&self.constructions.global_constructors),
-                module_overlay: overlay.map(|o| &o.module_constructors),
-                masked: overlay.map(|o| &o.masked),
-                ..EventIndexView::base(env)
+            EventPredicate::Construct => EventIndexView::Construct {
+                names: &self.constructions.constructors,
+                strings: &self.constructions.global_constructors,
+                module: &self.constructions.module_constructors,
+                global: &self.constructions.global_constructors,
+                rooted: &self.constructions.rooted_constructors,
+                environment: env,
             },
-            EventPredicate::Import => EventIndexView {
-                literal: Some(&self.literals.imports),
-                ..EventIndexView::base(env)
+            EventPredicate::Import => EventIndexView::Import {
+                literals: &self.literals.imports,
             },
-            EventPredicate::StringReference => EventIndexView {
-                literal: Some(&self.literals.strings),
-                ..EventIndexView::base(env)
+            EventPredicate::StringReference => EventIndexView::StringReference {
+                literals: &self.literals.strings,
             },
         }
     }

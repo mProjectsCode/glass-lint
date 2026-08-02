@@ -1,5 +1,4 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     str::FromStr,
 };
@@ -10,10 +9,12 @@ use smol_str::SmolStr;
 use crate::{
     Environment,
     analysis::{
-        matching::occurrence::{
-            BorrowedOccurrenceIter, CandidateOccurrences, ModuleExportKey, ModuleOccurrences,
-            NameOccurrences, Occurrence, OccurrenceIndex, Occurrences, PackageKeyPredicate,
-            PackageMatchKind,
+        matching::{
+            LinkedOccurrenceView, ModuleOverlayKind,
+            occurrence::{
+                CandidateOccurrences, ModuleExportKey, ModuleOccurrences, NameOccurrences,
+                OccurrenceIndex, Occurrences, PackageKeyPredicate, PackageMatchKind,
+            },
         },
         value::matches_global_object_alias_with,
     },
@@ -23,104 +24,73 @@ use crate::{
     },
 };
 
-fn module_occurrences<'a, K: Ord>(
-    base: &'a OccurrenceIndex<K>,
-    overlay: Option<&'a BTreeMap<K, Vec<&'a [Occurrence]>>>,
-    masked: bool,
-    key: &K,
-) -> Option<CandidateOccurrences<'a>> {
-    if let Some(overlay_slices) = overlay.and_then(|overlay| overlay.get(key)) {
-        return Some(CandidateOccurrences::Borrowed(BorrowedOccurrenceIter::new(
-            None,
-            overlay_slices.as_slice(),
-        )));
-    }
-    if !masked && let Some(base_slice) = base.get(key) {
-        return Some(CandidateOccurrences::Indexed(base_slice));
-    }
-    None
-}
-
-fn package_occurrences<'a>(
-    base: &'a ModuleOccurrences,
-    overlay: Option<&'a BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>>>,
-    masked: Option<&'a BTreeSet<ModuleExportKey>>,
-    predicate: PackageKeyPredicate<'a>,
-) -> CandidateOccurrences<'a> {
-    let iter = base.package_candidates(predicate, masked, overlay);
-    CandidateOccurrences::BorrowedPackage(iter)
-}
-
-fn merged_or_indexed<'a>(
-    base: Option<&'a [Occurrence]>,
-    overlay: Option<&'a Vec<&'a [Occurrence]>>,
-) -> Option<CandidateOccurrences<'a>> {
-    match (base, overlay) {
-        (Some(base_slice), Some(overlay_slices)) => Some(CandidateOccurrences::Borrowed(
-            BorrowedOccurrenceIter::new(Some(base_slice), overlay_slices.as_slice()),
-        )),
-        (Some(slice), None) => Some(CandidateOccurrences::Indexed(slice)),
-        (None, Some(slices)) => Some(CandidateOccurrences::Borrowed(BorrowedOccurrenceIter::new(
-            None,
-            slices.as_slice(),
-        ))),
-        (None, None) => None,
-    }
-}
-
-pub(super) struct EventIndexView<'a> {
-    pub(super) name_any: Option<&'a NameOccurrences>,
-    pub(super) string_any: Option<&'a Occurrences>,
-    pub(super) path_any: Option<&'a OccurrenceIndex<NamePath>>,
-    pub(super) module: Option<&'a ModuleOccurrences>,
-    pub(super) global: Option<&'a Occurrences>,
-    pub(super) rooted: Option<&'a OccurrenceIndex<NamePath>>,
-    pub(super) rooted_constructors: Option<&'a OccurrenceIndex<NamePath>>,
-    pub(super) literal: Option<&'a Occurrences>,
-    pub(super) module_overlay: Option<&'a BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>>>,
-    pub(super) global_overlay: Option<&'a BTreeMap<SmolStr, Vec<&'a [Occurrence]>>>,
-    pub(super) masked: Option<&'a BTreeSet<ModuleExportKey>>,
-    pub(super) environment: &'a Environment,
+/// One supported event view, holding only the occurrence buckets that are
+/// meaningful for that event instead of an unrestricted set of options.
+pub(super) enum EventIndexView<'a> {
+    Call {
+        names: &'a NameOccurrences,
+        module: &'a ModuleOccurrences,
+        global: &'a Occurrences,
+    },
+    MemberCall {
+        paths: &'a OccurrenceIndex<NamePath>,
+        module: &'a ModuleOccurrences,
+        rooted: &'a OccurrenceIndex<NamePath>,
+        environment: &'a Environment,
+    },
+    MemberRead {
+        paths: &'a OccurrenceIndex<NamePath>,
+        module: &'a ModuleOccurrences,
+        rooted: &'a OccurrenceIndex<NamePath>,
+        environment: &'a Environment,
+    },
+    PropertyWrite {
+        paths: &'a OccurrenceIndex<NamePath>,
+        rooted: &'a OccurrenceIndex<NamePath>,
+        environment: &'a Environment,
+    },
+    ClassReference {
+        strings: &'a Occurrences,
+        module: &'a ModuleOccurrences,
+    },
+    Construct {
+        names: &'a NameOccurrences,
+        strings: &'a Occurrences,
+        module: &'a ModuleOccurrences,
+        global: &'a Occurrences,
+        rooted: &'a OccurrenceIndex<NamePath>,
+        environment: &'a Environment,
+    },
+    Import {
+        literals: &'a Occurrences,
+    },
+    StringReference {
+        literals: &'a Occurrences,
+    },
 }
 
 impl<'a> EventIndexView<'a> {
-    pub(super) fn base(environment: &'a Environment) -> Self {
-        Self {
-            name_any: None,
-            string_any: None,
-            path_any: None,
-            module: None,
-            global: None,
-            rooted: None,
-            rooted_constructors: None,
-            literal: None,
-            module_overlay: None,
-            global_overlay: None,
-            masked: None,
-            environment,
-        }
-    }
-
     pub(super) fn resolve(
         &self,
         identity: &'a IdentityConstraint,
         event: &'a EventPredicate,
         names: &NameTable,
+        overlay: Option<&'a LinkedOccurrenceView<'a>>,
     ) -> Option<CandidateOccurrences<'a>> {
         match identity {
             IdentityConstraint::Any { name, .. } => self.resolve_any(name, event, names),
-            IdentityConstraint::Global { name, .. } => self.resolve_global(name),
+            IdentityConstraint::Global { name, .. } => self.resolve_global(name, overlay),
             IdentityConstraint::ModuleExport { module, export } => {
-                self.resolve_module_export(module, export)
+                self.resolve_module_export(module, export, overlay)
             }
             IdentityConstraint::PackageModuleExport { module, export } => {
-                self.resolve_package_export(module, export)
+                self.resolve_package_export(module, export, overlay)
             }
             IdentityConstraint::ModuleNamespace { module } => {
-                self.resolve_module_namespace(module, event)
+                self.resolve_module_namespace(module, event, overlay)
             }
             IdentityConstraint::PackageModuleNamespace { module } => {
-                self.resolve_package_namespace(module, event)
+                self.resolve_package_namespace(module, event, overlay)
             }
             IdentityConstraint::Rooted { path } => self.resolve_rooted(path, event, names),
             IdentityConstraint::LiteralString { predicate } => {
@@ -138,35 +108,49 @@ impl<'a> EventIndexView<'a> {
         event: &'a EventPredicate,
         names: &NameTable,
     ) -> Option<CandidateOccurrences<'a>> {
-        if let Some(name_index) = self.name_any
-            && let Some(id) = names.lookup(name)
-            && let Some(result) = name_index.get(&id)
-        {
-            return Some(CandidateOccurrences::Indexed(result));
+        match self {
+            EventIndexView::Call { names: calls, .. } => names
+                .lookup(name)
+                .and_then(|id| calls.get(&id))
+                .map(CandidateOccurrences::Indexed),
+            EventIndexView::MemberCall { paths, .. }
+            | EventIndexView::MemberRead { paths, .. }
+            | EventIndexView::PropertyWrite { paths, .. } => {
+                let member = member_path(event)?;
+                names
+                    .lookup_path(member)
+                    .and_then(|path| paths.get(&path))
+                    .map(CandidateOccurrences::Indexed)
+            }
+            EventIndexView::ClassReference { strings, .. } => strings
+                .get(name.as_str())
+                .map(CandidateOccurrences::Indexed),
+            EventIndexView::Construct {
+                names: constructors,
+                strings,
+                ..
+            } => names
+                .lookup(name)
+                .and_then(|id| constructors.get(&id))
+                .map(CandidateOccurrences::Indexed)
+                .or_else(|| {
+                    strings
+                        .get(name.as_str())
+                        .map(CandidateOccurrences::Indexed)
+                }),
+            EventIndexView::Import { .. } | EventIndexView::StringReference { .. } => None,
         }
-        if let (
-            Some(path_index),
-            EventPredicate::MemberCall { member }
-            | EventPredicate::MemberRead { member }
-            | EventPredicate::PropertyWrite { property: member },
-        ) = (self.path_any, event)
-            && let Some(path) = names.lookup_path(member)
-            && let Some(result) = path_index.get(&path)
-        {
-            return Some(CandidateOccurrences::Indexed(result));
-        }
-        if let Some(string_index) = self.string_any
-            && let Some(result) = string_index.get(name.as_str())
-        {
-            return Some(CandidateOccurrences::Indexed(result));
-        }
-        None
     }
 
-    fn resolve_global(&self, name: &SmolStr) -> Option<CandidateOccurrences<'a>> {
-        merged_or_indexed(
-            self.global?.get(name),
-            self.global_overlay.and_then(|o| o.get(name)),
+    fn resolve_global(
+        &self,
+        name: &SmolStr,
+        overlay: Option<&'a LinkedOccurrenceView<'a>>,
+    ) -> Option<CandidateOccurrences<'a>> {
+        let index = self.global_index()?;
+        overlay.map_or_else(
+            || index.get(name).map(CandidateOccurrences::Indexed),
+            |overlay| overlay.resolve_global(index, name),
         )
     }
 
@@ -174,65 +158,45 @@ impl<'a> EventIndexView<'a> {
         &self,
         module: &SmolStr,
         export: &SmolStr,
+        overlay: Option<&'a LinkedOccurrenceView<'a>>,
     ) -> Option<CandidateOccurrences<'a>> {
         let key = ModuleExportKey::new(module.clone(), export.clone());
-        module_occurrences(
-            self.module?,
-            self.module_overlay,
-            self.masked.is_some_and(|masked| masked.contains(&key)),
-            &key,
-        )
+        self.resolve_module_key(&key, overlay)
     }
 
     fn resolve_package_export(
         &self,
         module: &'a ModuleSpecifierPattern,
         export: &'a SmolStr,
+        overlay: Option<&'a LinkedOccurrenceView<'a>>,
     ) -> Option<CandidateOccurrences<'a>> {
-        Some(package_occurrences(
-            self.module?,
-            self.module_overlay,
-            self.masked,
-            PackageKeyPredicate::new(module, PackageMatchKind::Export(export)),
-        ))
+        let predicate = PackageKeyPredicate::new(module, PackageMatchKind::Export(export));
+        self.resolve_package(predicate, overlay)
     }
 
     fn resolve_module_namespace(
         &self,
         module: &SmolStr,
         event: &'a EventPredicate,
+        overlay: Option<&'a LinkedOccurrenceView<'a>>,
     ) -> Option<CandidateOccurrences<'a>> {
-        let key = match event {
-            EventPredicate::MemberCall { member }
-            | EventPredicate::MemberRead { member }
-            | EventPredicate::PropertyWrite { property: member } => {
-                ModuleExportKey::new(module.clone(), member.to_string())
-            }
-            _ => return None,
-        };
-        module_occurrences(
-            self.module?,
-            self.module_overlay,
-            self.masked.is_some_and(|masked| masked.contains(&key)),
-            &key,
-        )
+        let member = member_path(event)?.to_string();
+        let key = ModuleExportKey::new(module.clone(), member);
+        self.resolve_module_key(&key, overlay)
     }
 
     fn resolve_package_namespace(
         &self,
         module: &'a ModuleSpecifierPattern,
         event: &'a EventPredicate,
+        overlay: Option<&'a LinkedOccurrenceView<'a>>,
     ) -> Option<CandidateOccurrences<'a>> {
         let (EventPredicate::MemberCall { member } | EventPredicate::MemberRead { member }) = event
         else {
             return None;
         };
-        Some(package_occurrences(
-            self.module?,
-            self.module_overlay,
-            self.masked,
-            PackageKeyPredicate::new(module, PackageMatchKind::Namespace(member)),
-        ))
+        let predicate = PackageKeyPredicate::new(module, PackageMatchKind::Namespace(member));
+        self.resolve_package(predicate, overlay)
     }
 
     fn resolve_rooted(
@@ -241,24 +205,31 @@ impl<'a> EventIndexView<'a> {
         event: &'a EventPredicate,
         names: &NameTable,
     ) -> Option<CandidateOccurrences<'a>> {
-        let (EventPredicate::Construct
-        | EventPredicate::MemberCall { member: _ }
-        | EventPredicate::MemberRead { member: _ }
-        | EventPredicate::PropertyWrite { property: _ }) = event
-        else {
-            return None;
-        };
         let expected = names.lookup_path(path)?;
-        let index = match event {
-            EventPredicate::Construct => self.rooted_constructors?,
-            EventPredicate::MemberCall { .. }
-            | EventPredicate::MemberRead { .. }
-            | EventPredicate::PropertyWrite { .. } => self.rooted?,
+        let (rooted, environment) = match self {
+            EventIndexView::Construct {
+                rooted,
+                environment,
+                ..
+            } if matches!(event, EventPredicate::Construct) => (rooted, environment),
+            EventIndexView::MemberCall {
+                rooted,
+                environment,
+                ..
+            } if matches!(event, EventPredicate::MemberCall { .. }) => (rooted, environment),
+            EventIndexView::MemberRead {
+                rooted,
+                environment,
+                ..
+            } if matches!(event, EventPredicate::MemberRead { .. }) => (rooted, environment),
+            EventIndexView::PropertyWrite {
+                rooted,
+                environment,
+                ..
+            } if matches!(event, EventPredicate::PropertyWrite { .. }) => (rooted, environment),
             _ => return None,
         };
-        index.matching(|key| {
-            matches_global_object_alias_with(key, &expected, names, self.environment)
-        })
+        rooted.matching(|key| matches_global_object_alias_with(key, &expected, names, environment))
     }
 
     fn resolve_literal(
@@ -266,18 +237,15 @@ impl<'a> EventIndexView<'a> {
         predicate: &str,
         event: &EventPredicate,
     ) -> Option<CandidateOccurrences<'a>> {
-        match event {
-            EventPredicate::Import => self
-                .literal?
+        match (self, event) {
+            (EventIndexView::Import { literals }, EventPredicate::Import) => literals
                 .get(&SmolStr::new(predicate))
                 .map(CandidateOccurrences::Indexed),
-            EventPredicate::StringReference => {
+            (EventIndexView::StringReference { literals }, EventPredicate::StringReference) => {
                 if predicate == crate::api::rule::query::PRIVATE_NETWORK_LITERAL {
-                    self.literal?
-                        .matching(|literal| private_network_match(literal).is_some())
+                    literals.matching(|literal| private_network_match(literal).is_some())
                 } else {
-                    self.literal?
-                        .matching(|literal| literal.contains(predicate))
+                    literals.matching(|literal| literal.contains(predicate))
                 }
             }
             _ => None,
@@ -288,8 +256,75 @@ impl<'a> EventIndexView<'a> {
         &self,
         pattern: &ModuleSpecifierPattern,
     ) -> Option<CandidateOccurrences<'a>> {
-        self.literal?
-            .matching(|specifier| pattern.matches(specifier))
+        match self {
+            EventIndexView::Import { literals } | EventIndexView::StringReference { literals } => {
+                literals.matching(|specifier| pattern.matches(specifier))
+            }
+            _ => None,
+        }
+    }
+
+    fn resolve_module_key(
+        &self,
+        key: &ModuleExportKey,
+        overlay: Option<&'a LinkedOccurrenceView<'a>>,
+    ) -> Option<CandidateOccurrences<'a>> {
+        let (kind, index) = self.module_view()?;
+        overlay.map_or_else(
+            || index.get(key).map(CandidateOccurrences::Indexed),
+            |overlay| overlay.resolve_module(kind, index, key),
+        )
+    }
+
+    fn resolve_package(
+        &self,
+        predicate: PackageKeyPredicate<'a>,
+        overlay: Option<&'a LinkedOccurrenceView<'a>>,
+    ) -> Option<CandidateOccurrences<'a>> {
+        let (kind, index) = self.module_view()?;
+        Some(match overlay {
+            Some(overlay) => overlay.resolve_package(kind, index, predicate),
+            None => CandidateOccurrences::BorrowedPackage(
+                index.package_candidates(predicate, None, None),
+            ),
+        })
+    }
+
+    fn module_view(&self) -> Option<(ModuleOverlayKind, &'a ModuleOccurrences)> {
+        match self {
+            EventIndexView::Call { module, .. } => Some((ModuleOverlayKind::Call, module)),
+            EventIndexView::MemberCall { module, .. } => {
+                Some((ModuleOverlayKind::MemberCall, module))
+            }
+            EventIndexView::MemberRead { module, .. } => {
+                Some((ModuleOverlayKind::MemberRead, module))
+            }
+            EventIndexView::ClassReference { module, .. } => {
+                Some((ModuleOverlayKind::Class, module))
+            }
+            EventIndexView::Construct { module, .. } => {
+                Some((ModuleOverlayKind::Constructor, module))
+            }
+            _ => None,
+        }
+    }
+
+    fn global_index(&self) -> Option<&'a Occurrences> {
+        match self {
+            EventIndexView::Call { global, .. } | EventIndexView::Construct { global, .. } => {
+                Some(global)
+            }
+            _ => None,
+        }
+    }
+}
+
+fn member_path(event: &EventPredicate) -> Option<&SymbolPath> {
+    match event {
+        EventPredicate::MemberCall { member }
+        | EventPredicate::MemberRead { member }
+        | EventPredicate::PropertyWrite { property: member } => Some(member),
+        _ => None,
     }
 }
 

@@ -12,7 +12,10 @@ use crate::{
 pub(super) mod evidence;
 mod occurrence;
 pub(in crate::analysis) use occurrence::ModuleExportKey;
-use occurrence::{CandidateOccurrences, ModuleOccurrences, Occurrence};
+use occurrence::{
+    BorrowedOccurrenceIter, CandidateOccurrences, ModuleOccurrences, Occurrence, Occurrences,
+    PackageKeyPredicate,
+};
 mod identity_map;
 mod indexes;
 pub(in crate::analysis) use identity_map::ModuleIdentityMap;
@@ -39,12 +42,88 @@ type BorrowedGlobalBuckets<'a> = BTreeMap<SmolStr, Vec<&'a [Occurrence]>>;
 #[derive(Debug, Default)]
 pub(in crate::analysis) struct LinkedOccurrenceView<'a> {
     masked: std::collections::BTreeSet<ModuleExportKey>,
-    pub(super) global_calls: BorrowedGlobalBuckets<'a>,
-    pub(super) module_calls: BorrowedModuleBuckets<'a>,
-    pub(super) member_calls: BorrowedModuleBuckets<'a>,
-    pub(super) member_reads: BorrowedModuleBuckets<'a>,
-    pub(super) module_classes: BorrowedModuleBuckets<'a>,
-    pub(super) module_constructors: BorrowedModuleBuckets<'a>,
+    global_calls: BorrowedGlobalBuckets<'a>,
+    module_calls: BorrowedModuleBuckets<'a>,
+    member_calls: BorrowedModuleBuckets<'a>,
+    member_reads: BorrowedModuleBuckets<'a>,
+    module_classes: BorrowedModuleBuckets<'a>,
+    module_constructors: BorrowedModuleBuckets<'a>,
+}
+
+/// Which module overlay bucket an event view consults for linked
+/// occurrences.
+#[derive(Clone, Copy)]
+pub(in crate::analysis) enum ModuleOverlayKind {
+    Call,
+    MemberCall,
+    MemberRead,
+    Class,
+    Constructor,
+}
+
+impl<'a> LinkedOccurrenceView<'a> {
+    pub(in crate::analysis) fn resolve_module(
+        &'a self,
+        kind: ModuleOverlayKind,
+        base: &'a ModuleOccurrences,
+        key: &ModuleExportKey,
+    ) -> Option<CandidateOccurrences<'a>> {
+        if let Some(slices) = self.module_buckets(kind).get(key) {
+            return Some(CandidateOccurrences::Borrowed(BorrowedOccurrenceIter::new(
+                None,
+                slices.as_slice(),
+            )));
+        }
+        if !self.masked.contains(key) {
+            return base.get(key).map(CandidateOccurrences::Indexed);
+        }
+        None
+    }
+
+    pub(in crate::analysis) fn resolve_global(
+        &'a self,
+        base: &'a Occurrences,
+        name: &SmolStr,
+    ) -> Option<CandidateOccurrences<'a>> {
+        let base_slice = base.get(name);
+        let overlay_slices = self.global_calls.get(name);
+        match (base_slice, overlay_slices) {
+            (Some(base_slice), Some(overlay_slices)) => Some(CandidateOccurrences::Borrowed(
+                BorrowedOccurrenceIter::new(Some(base_slice), overlay_slices.as_slice()),
+            )),
+            (Some(slice), None) => Some(CandidateOccurrences::Indexed(slice)),
+            (None, Some(slices)) => Some(CandidateOccurrences::Borrowed(
+                BorrowedOccurrenceIter::new(None, slices.as_slice()),
+            )),
+            (None, None) => None,
+        }
+    }
+
+    pub(in crate::analysis) fn resolve_package(
+        &'a self,
+        kind: ModuleOverlayKind,
+        base: &'a ModuleOccurrences,
+        predicate: PackageKeyPredicate<'a>,
+    ) -> CandidateOccurrences<'a> {
+        CandidateOccurrences::BorrowedPackage(base.package_candidates(
+            predicate,
+            Some(&self.masked),
+            Some(self.module_buckets(kind)),
+        ))
+    }
+
+    fn module_buckets(
+        &self,
+        kind: ModuleOverlayKind,
+    ) -> &BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>> {
+        match kind {
+            ModuleOverlayKind::Call => &self.module_calls,
+            ModuleOverlayKind::MemberCall => &self.member_calls,
+            ModuleOverlayKind::MemberRead => &self.member_reads,
+            ModuleOverlayKind::Class => &self.module_classes,
+            ModuleOverlayKind::Constructor => &self.module_constructors,
+        }
+    }
 }
 
 impl OccurrenceIndexes {
