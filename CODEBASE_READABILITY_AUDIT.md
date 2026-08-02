@@ -265,7 +265,7 @@ Sink collection callers compare `len` before and after to infer insertion count,
 
 **Recommendation:** Add a consuming `qualify_for_file` operation to `ToolExpectation`, backed by one path-qualification method on `FindingExpectation`. Preserve the required/forbidden distinction inside the owner and remove `into_parts`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added consuming `ToolExpectation::qualify_for_file` backed by `FindingExpectation::qualify_for_file`; the required/forbidden distinction stays in the owner. `ToolExpectation::into_parts`/`from_selector` were removed and the project loader now qualifies in place.
 
 #### [ ] READ-020 — Profile summary finalization duplicates accumulator layout
 
