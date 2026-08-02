@@ -107,20 +107,45 @@ pub struct ResolvedLinkInput {
     pub(crate) resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
 }
 
+/// Correlated project maps handed to the linker as one validated boundary.
+/// Callers cannot assemble the linker's individual representations after this
+/// value is constructed.
+pub(crate) struct ResolvedLinkInputData {
+    source_map: BTreeMap<ProjectRelativePath, SourceFile>,
+    analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
+    module_ids: BTreeMap<ProjectRelativePath, ModuleId>,
+    resolution_map: BTreeMap<ResolutionRequestKey, ResolverOutcome>,
+    request_ids: BTreeMap<ResolutionRequestKey, QualifiedRequestId>,
+}
+
+impl ResolvedLinkInputData {
+    pub(crate) fn new(
+        source_map: BTreeMap<ProjectRelativePath, SourceFile>,
+        analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
+        module_ids: BTreeMap<ProjectRelativePath, ModuleId>,
+        resolution_map: BTreeMap<ResolutionRequestKey, ResolverOutcome>,
+        request_ids: BTreeMap<ResolutionRequestKey, QualifiedRequestId>,
+    ) -> Self {
+        Self {
+            source_map,
+            analyzed,
+            module_ids,
+            resolution_map,
+            request_ids,
+        }
+    }
+}
+
 impl ResolvedLinkInput {
     pub(crate) fn build(
-        source_map: &BTreeMap<ProjectRelativePath, SourceFile>,
-        mut analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
-        module_ids: &BTreeMap<ProjectRelativePath, ModuleId>,
-        resolution_map: BTreeMap<ResolutionRequestKey, ResolverOutcome>,
-        request_ids: &BTreeMap<ResolutionRequestKey, QualifiedRequestId>,
+        mut input: ResolvedLinkInputData,
     ) -> Result<Self, ProjectInputError> {
         let mut modules = BTreeMap::new();
-        for path in source_map.keys() {
-            let Some(local) = analyzed.remove(path) else {
+        for path in input.source_map.keys() {
+            let Some(local) = input.analyzed.remove(path) else {
                 continue;
             };
-            let Some(id) = module_ids.get(path).copied() else {
+            let Some(id) = input.module_ids.get(path).copied() else {
                 return Err(ProjectInputError::InvalidTarget(path.to_string()));
             };
             modules.insert(id, ProjectModule::new(id, local));
@@ -145,14 +170,19 @@ impl ResolvedLinkInput {
             ));
         }
 
-        let resolutions = resolution_map
+        let resolutions = input
+            .resolution_map
             .into_iter()
             .map(|(key, result)| {
-                let request = request_ids
+                let request = input
+                    .request_ids
                     .get(&key)
                     .copied()
                     .ok_or_else(|| ProjectInputError::UnknownRequest(key.clone()))?;
-                Ok((request, resolve_record(result, module_ids)?))
+                Ok((
+                    request,
+                    resolve_record(result, &input.module_ids)?,
+                ))
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
 

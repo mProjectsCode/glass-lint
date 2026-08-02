@@ -25,7 +25,7 @@ use crate::{
     AnalysisLimits, Environment, RuleCatalog,
     analysis::{
         ArtifactCacheHandle, ArtifactCacheKey, LoweredSource, Lowerer, QualifiedRequestId,
-        ResolvedLinkInput,
+        ResolvedLinkInput, ResolvedLinkInputData,
     },
     api::classification::RuleIndex,
     lint::ReportAssembly,
@@ -423,7 +423,6 @@ impl<'a> LocallyAnalyzedProject<'a> {
 
         let source_map = self.sources.into_map();
 
-        // TODO: this could be an operation on the SourceTable itself
         let module_ids: BTreeMap<ProjectRelativePath, ModuleId> = source_map
             .keys()
             .enumerate()
@@ -437,7 +436,6 @@ impl<'a> LocallyAnalyzedProject<'a> {
             })
             .collect();
 
-        // TODO: this could be an operation on the AuthoredRequestTable itself, passing in a reference to the module_ids map
         let request_ids: BTreeMap<ResolutionRequestKey, QualifiedRequestId> = self
             .artifacts
             .authored_requests
@@ -454,14 +452,13 @@ impl<'a> LocallyAnalyzedProject<'a> {
             })
             .collect();
 
-        // TODO: think about whether we should pass the semantic types here instead of the raw maps.
-        let link_input = ResolvedLinkInput::build(
-            &source_map,
+        let link_input = ResolvedLinkInput::build(ResolvedLinkInputData::new(
+            source_map.clone(),
             self.artifacts.analyzed,
-            &module_ids,
+            module_ids,
             resolution_map,
-            &request_ids,
-        )?;
+            request_ids,
+        ))?;
 
         Ok(ResolvedProject {
             state: self.state,

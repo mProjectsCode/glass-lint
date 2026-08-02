@@ -20,7 +20,7 @@ documentation files were modified.
 
 ### Group 1: Project staging, identity, and reports
 
-#### [ ] READ-001 — Project linking reconstructs identity through correlated raw maps
+#### [x] READ-001 — Project linking reconstructs identity through correlated raw maps
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -39,7 +39,12 @@ introduce a named project-link input aggregate that validates these maps at one
 boundary. Keep raw maps private to that aggregate and preserve sorted path
 identity, partial parse handling, duplicate rejection, and resolver validation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Introduced the private `ResolvedLinkInputData` aggregate and
+made `ResolvedLinkInput::build` consume that single correlated boundary. The
+aggregate keeps source, analyzed-artifact, module-ID, resolution, and qualified
+request maps together so the linker no longer receives five positional raw
+collections; existing sorted identity, partial-analysis, and resolver
+validation behavior is preserved.
 
 #### [x] READ-002 — Report ordering is an ad hoc tuple contract outside report types
 
