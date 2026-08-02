@@ -52,9 +52,8 @@ pub enum MatcherBuildError {
     MissingFlowCompletion,
     /// A flow operation was specified more than once.
     DuplicateFlowOperation(&'static str),
-    /// A query compilation error with structured diagnostic.
-    #[allow(private_interfaces)]
-    QueryCompileError(crate::api::compiler::validate::QueryCompileError),
+    /// A query compilation error with a stable structured diagnostic.
+    QueryCompileError(QueryDiagnostic),
     /// A query build error.
     QueryBuildError(super::query::QueryBuildError),
 }
@@ -124,9 +123,7 @@ impl fmt::Display for MatcherBuildError {
                 formatter.write_str("object flow must have a completion mode")
             }
             Self::DuplicateFlowOperation(op) => write!(formatter, "duplicate flow operation: {op}"),
-            Self::QueryCompileError(e) => {
-                write!(formatter, "{}: {}", e.diagnostic_name(), e)
-            }
+            Self::QueryCompileError(e) => write!(formatter, "{e}"),
             Self::QueryBuildError(e) => write!(formatter, "{e}"),
         }
     }

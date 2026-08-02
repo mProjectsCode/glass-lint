@@ -59,7 +59,7 @@ use crate::{
             normalized::NormalizedQuery, physical::PhysicalPlan, validate::validate_query_decl,
         },
         rule::{
-            MatcherBuildError, ModuleSpecifierPattern,
+            MatcherBuildError, ModuleSpecifierPattern, QueryDiagnostic,
             query::{EventSpec, IdentitySpec, QueryDecl},
         },
     },
@@ -221,10 +221,20 @@ fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildEr
     let mut merged_requirements = requirements::PlanRequirements::default();
 
     for query in queries {
-        validate_query_decl(query).map_err(MatcherBuildError::QueryCompileError)?;
+        validate_query_decl(query).map_err(|error| {
+            MatcherBuildError::QueryCompileError(QueryDiagnostic::new(
+                error.diagnostic_name(),
+                error.to_string(),
+            ))
+        })?;
 
         let normalized: NormalizedQuery =
-            normalize::normalize_query_decl(query).map_err(MatcherBuildError::QueryCompileError)?;
+            normalize::normalize_query_decl(query).map_err(|error| {
+                MatcherBuildError::QueryCompileError(QueryDiagnostic::new(
+                    error.diagnostic_name(),
+                    error.to_string(),
+                ))
+            })?;
 
         let query_plan = physical::plan_normalized(&normalized);
         all_roots.extend(query_plan.roots().iter().cloned());

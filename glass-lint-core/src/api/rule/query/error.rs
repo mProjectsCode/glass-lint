@@ -93,6 +93,11 @@ pub struct QueryDiagnostic {
 }
 
 impl QueryDiagnostic {
+    /// Construct a diagnostic at an internal compiler boundary.
+    pub(crate) fn new(code: &'static str, message: String) -> Self {
+        Self { code, message }
+    }
+
     pub fn code(&self) -> &'static str {
         self.code
     }

@@ -8,13 +8,13 @@ Scope: 416 Rust source files, approximately 82,433 lines, across the workspace. 
 
 The workspace is generally well-factored at the crate level and has strong typed domain vocabulary in many of the recently refactored areas. The remaining readability cost is concentrated in internal analysis boundaries: positional tuples and raw maps still carry semantic state, a few aggregate constructors expose too much assembly detail, and orchestration code spans several independent lifecycle phases.
 
-There are 17 open findings: 2 high, 12 medium, and 3 low. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
+There are 16 open findings: 2 high, 11 medium, and 3 low. READ-001 is fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
 
 ## Findings
 
 ### API and encapsulation
 
-#### [ ] READ-001 — Public matcher error exposes an inaccessible compiler error
+#### [x] READ-001 — Public matcher error exposes an inaccessible compiler error
 
 - Severity: Medium
 - Fix Complexity: Medium
@@ -25,7 +25,7 @@ There are 17 open findings: 2 high, 12 medium, and 3 low. `cargo clippy --worksp
 
 Recommendation: expose a stable public diagnostic type at the rule boundary, or translate the compiler error into a public rule-level error payload before constructing `MatcherBuildError`. Remove the targeted allow once the boundary has a type that downstream callers can actually use.
 
-Fix Applied: None so far.
+Fix Applied: `MatcherBuildError::QueryCompileError` now carries the public `QueryDiagnostic` type, and the compiler translates its private validation errors at the rule boundary. The targeted private-interface suppression and compiler-type leak were removed while preserving stable diagnostic codes and messages.
 
 #### [ ] READ-002 — Package-specifier grammar is implemented twice
 
@@ -257,6 +257,6 @@ Fix Applied: None so far.
 
 ## Coverage
 
-Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. The working tree was clean before this audit; the only intended change is this report.
+Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. The working tree was clean before this implementation pass; READ-001 changed the rule/compiler boundary and this report.
 
-Verification: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. `git diff --check` passed, and the only changed file is this report.
+Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, `cargo test -p glass-lint-core api::compiler` and `cargo test -p glass-lint-core --test integration public_surface` passed, `cargo fmt --all` and `git diff --check` passed, and the crate remains free of the removed private-interface suppression.

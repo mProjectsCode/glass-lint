@@ -16,13 +16,12 @@ pub(crate) fn compile_records(
         .iter()
         .map(|rule| {
             CompiledRuleRecord::new(rule).map_err(|e| match e {
-                MatcherBuildError::QueryCompileError(qce) => CompiledCatalogError::InvalidQuery {
-                    rule_id: rule.id().to_owned(),
-                    diagnostic: QueryDiagnostic {
-                        code: qce.diagnostic_name(),
-                        message: qce.to_string(),
-                    },
-                },
+                MatcherBuildError::QueryCompileError(diagnostic) => {
+                    CompiledCatalogError::InvalidQuery {
+                        rule_id: rule.id().to_owned(),
+                        diagnostic,
+                    }
+                }
                 MatcherBuildError::QueryBuildError(qbe) => CompiledCatalogError::InvalidQuery {
                     rule_id: rule.id().to_owned(),
                     diagnostic: QueryDiagnostic {
