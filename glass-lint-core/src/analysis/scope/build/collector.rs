@@ -139,10 +139,6 @@ impl ScopeCollector<'_> {
             .map(|name| ScopedName::new(scope, name))
     }
 
-    pub(super) fn scoped_name_by_id(scope: ScopeId, name: NameId) -> ScopedName {
-        ScopedName::new(scope, name)
-    }
-
     pub(super) fn insert_local(&mut self, scope: ScopeId, name: impl Into<SmolStr>) {
         self.insert(scope, name, BindingProvenance::Local);
     }

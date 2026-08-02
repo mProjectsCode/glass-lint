@@ -23,21 +23,20 @@ impl ScopeCollector<'_> {
     /// another.
     pub fn parameter_aliases(&self) -> HashMap<ScopedName, BindingProvenance> {
         let mut aliases = BTreeMap::<ScopedName, Option<BindingProvenance>>::new();
-        for (caller_scope, callee_name, arguments) in &self.calls {
-            let Some((scope, parameters)) = self.function_for_call(*caller_scope, *callee_name)
-            else {
+        for call in &self.calls {
+            let Some(function) = self.function_for_call(call.caller_scope, call.callee_name) else {
                 continue;
             };
-            for (index, parameter) in parameters.iter().enumerate() {
+            for (index, parameter) in function.parameters.iter().enumerate() {
                 let mut projected = HashMap::new();
-                if *caller_scope != *scope
-                    && let Some(Some(target)) = arguments.get(index)
+                if call.caller_scope != function.scope
+                    && let Some(Some(target)) = call.arguments.get(index)
                 {
                     Self::project_parameter_pattern(&self.names, parameter, target, &mut projected);
                 }
                 for name in Self::parameter_binding_names(parameter) {
                     let target = projected.get(&name).cloned();
-                    let Some(key) = self.scoped_name(*scope, name.as_str()) else {
+                    let Some(key) = self.scoped_name(function.scope, name.as_str()) else {
                         continue;
                     };
                     let entry = aliases.entry(key).or_insert_with(|| target.clone());
@@ -46,10 +45,10 @@ impl ScopeCollector<'_> {
                     }
                 }
             }
-            if arguments.len() != parameters.len() {
-                for parameter in parameters {
+            if call.arguments.len() != function.parameters.len() {
+                for parameter in &function.parameters {
                     for name in Self::parameter_binding_names(parameter) {
-                        if let Some(key) = self.scoped_name(*scope, name.as_str()) {
+                        if let Some(key) = self.scoped_name(function.scope, name.as_str()) {
                             aliases.insert(key, None);
                         }
                     }
@@ -118,9 +117,9 @@ impl ScopeCollector<'_> {
         &self,
         mut scope: ScopeId,
         name: NameId,
-    ) -> Option<&(ScopeId, Vec<CompactPat>)> {
+    ) -> Option<&super::FunctionBinding> {
         loop {
-            if let Some(function) = self.function_scopes.get(&(scope, name)) {
+            if let Some(function) = self.function_scopes.get(&ScopedName::new(scope, name)) {
                 return Some(function);
             }
             scope = self.scopes.get(scope.index())?.parent?;
@@ -130,7 +129,7 @@ impl ScopeCollector<'_> {
     pub(super) fn function_scope_for_name(&self, name: &str) -> Option<ScopeId> {
         let name = self.names.lookup(name)?;
         self.function_for_call(self.current_scope(), name)
-            .map(|(scope, _)| *scope)
+            .map(|function| function.scope)
     }
 
     fn bind_inline_parameters<'a>(

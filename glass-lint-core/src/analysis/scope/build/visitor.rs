@@ -13,7 +13,7 @@ use crate::analysis::{
     scope::{
         ScopeCollector,
         ScopeEffect::DynamicEvaluation,
-        ScopeId, ScopeKind,
+        ScopeId, ScopeKind, ScopedName,
         build::{
             PropertyAliasAssignment, RootedPropertyMutation,
             analysis::{
@@ -132,11 +132,21 @@ impl ScopePass for ScopeCollector<'_> {
                 self.budget.try_charge();
                 if let Some(name_id) = self.lookup_or_intern_name(ident.id.sym.as_ref()) {
                     if let Expr::Arrow(arrow) = init {
-                        self.pending_function_names
-                            .insert(arrow.span.lo, (scope, name_id));
+                        self.pending_function_names.insert(
+                            arrow.span.lo,
+                            super::PendingFunctionName {
+                                declaration_scope: scope,
+                                name: name_id,
+                            },
+                        );
                     } else if let Expr::Fn(func_expr) = init {
-                        self.pending_function_names
-                            .insert(func_expr.function.span.lo, (scope, name_id));
+                        self.pending_function_names.insert(
+                            func_expr.function.span.lo,
+                            super::PendingFunctionName {
+                                declaration_scope: scope,
+                                name: name_id,
+                            },
+                        );
                     }
                 } else {
                     self.name_exhausted = true;
@@ -252,8 +262,11 @@ impl ScopePass for ScopeCollector<'_> {
                     .iter()
                     .map(|argument| self.argument_provenance(&argument.expr))
                     .collect();
-                self.calls
-                    .push((self.current_scope(), callee_name, arguments));
+                self.calls.push(super::FunctionCall {
+                    caller_scope: self.current_scope(),
+                    callee_name,
+                    arguments,
+                });
             }
         }
     }
@@ -279,8 +292,10 @@ impl ScopePass for ScopeCollector<'_> {
                 .get(scope.index())
                 .and_then(|s| s.parent)
                 .unwrap_or_else(|| ScopeId::new(0));
-            self.function_scopes
-                .insert((parent, name_id), (scope, parameters));
+            self.function_scopes.insert(
+                ScopedName::new(parent, name_id),
+                super::FunctionBinding { scope, parameters },
+            );
         }
         for param in &fn_decl.function.params {
             self.insert_pat_locals(scope, &param.pat);
@@ -291,10 +306,12 @@ impl ScopePass for ScopeCollector<'_> {
         for param in &function.params {
             self.insert_pat_locals(scope, &param.pat);
         }
-        if let Some((decl_scope, name_id)) = self.pending_function_names.remove(&function.span.lo) {
+        if let Some(pending) = self.pending_function_names.remove(&function.span.lo) {
             let parameters = Self::function_parameters(function);
-            self.function_scopes
-                .insert((decl_scope, name_id), (scope, parameters));
+            self.function_scopes.insert(
+                ScopedName::new(pending.declaration_scope, pending.name),
+                super::FunctionBinding { scope, parameters },
+            );
         }
         if let Some(bindings) = self.inline_parameters.get(&function.span.lo).cloned() {
             for (name, provenance) in bindings {
@@ -307,10 +324,12 @@ impl ScopePass for ScopeCollector<'_> {
         for param in &arrow.params {
             self.insert_pat_locals(scope, param);
         }
-        if let Some((decl_scope, name_id)) = self.pending_function_names.remove(&arrow.span.lo) {
+        if let Some(pending) = self.pending_function_names.remove(&arrow.span.lo) {
             let parameters = Self::arrow_parameters(arrow);
-            self.function_scopes
-                .insert((decl_scope, name_id), (scope, parameters));
+            self.function_scopes.insert(
+                ScopedName::new(pending.declaration_scope, pending.name),
+                super::FunctionBinding { scope, parameters },
+            );
         }
         if let Some(bindings) = self.inline_parameters.get(&arrow.span.lo).cloned() {
             for (name, provenance) in bindings {

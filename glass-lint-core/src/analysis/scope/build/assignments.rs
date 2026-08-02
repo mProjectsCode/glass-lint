@@ -42,7 +42,10 @@ impl ScopeCollector<'_> {
         name: glass_lint_datastructures::NameId,
         provenance: BindingProvenance,
     ) {
-        let next = self.version_counters.entry((scope, name)).or_insert(0);
+        let next = self
+            .version_counters
+            .entry(ScopedName::new(scope, name))
+            .or_insert(0);
         *next = next.saturating_add(1);
         let version = BindingVersion::new(*next);
         self.path_state
@@ -64,7 +67,10 @@ impl ScopeCollector<'_> {
         name: glass_lint_datastructures::NameId,
         value: &ProvenanceAlternatives,
     ) {
-        let next = self.version_counters.entry((scope, name)).or_insert(0);
+        let next = self
+            .version_counters
+            .entry(ScopedName::new(scope, name))
+            .or_insert(0);
         *next = next.saturating_add(1);
         let version = BindingVersion::new(*next);
         if value.provenances.is_empty() {

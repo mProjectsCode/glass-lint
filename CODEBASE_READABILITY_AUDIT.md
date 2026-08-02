@@ -64,7 +64,7 @@ and `AnalysisDiagnostic`, then reused them from report combination and linker
 canonicalization. The deterministic tie-breakers are unchanged, but tuple
 construction is now centralized with the values whose fields define ordering.
 
-#### [ ] READ-003 — Scope collection uses anonymous composite identity records
+#### [x] READ-003 — Scope collection uses anonymous composite identity records
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -82,7 +82,12 @@ named private records for calls and pending function bindings. Keep conversion
 at the AST/collection boundary, preserving source order, path-local versions,
 and the existing conservative callback behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced scope/name tuple keys with `ScopedName` in function
+bindings and version counters, and introduced named `FunctionBinding`,
+`FunctionCall`, and `PendingFunctionName` records for the remaining collector
+state. The visitor, callback projection, and freeze stages now use named
+fields while preserving source order, path-local versions, and conservative
+callback handling.
 
 #### [ ] READ-004 — Fact model has a broad private-interface escape hatch
 

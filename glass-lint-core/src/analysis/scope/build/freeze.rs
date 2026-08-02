@@ -67,11 +67,11 @@ impl ScopeCollector<'_> {
         let function_bindings = self
             .function_scopes
             .iter()
-            .filter_map(|((scope, name), (function_scope, _))| {
+            .filter_map(|(binding, function)| {
                 function_ids
-                    .get(function_scope.index())
+                    .get(function.scope.index())
                     .and_then(|&opt| opt)
-                    .map(|function| (Self::scoped_name_by_id(*scope, *name), function))
+                    .map(|function_id| (binding.clone(), function_id))
             })
             .collect();
         let function_aliases = self

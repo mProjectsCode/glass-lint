@@ -54,6 +54,22 @@ pub(super) struct ScopeCollectionArtifacts {
     pub(super) scope_issues: Vec<ScopeCollectionIssue>,
 }
 
+pub(super) struct FunctionBinding {
+    scope: ScopeId,
+    parameters: Vec<CompactPat>,
+}
+
+struct FunctionCall {
+    caller_scope: ScopeId,
+    callee_name: NameId,
+    arguments: Vec<Option<BindingProvenance>>,
+}
+
+struct PendingFunctionName {
+    declaration_scope: ScopeId,
+    name: NameId,
+}
+
 /// Mutable state shared by declaration prepass and source-order collection.
 ///
 /// The prepass establishes lexical binding identity; the normal visitor then
@@ -69,21 +85,21 @@ pub(super) struct ScopeCollector<'a> {
     /// Collected outputs and conservative collection diagnostics.
     pub(super) artifacts: ScopeCollectionArtifacts,
     /// Function scopes and their parameter patterns by visible NameId.
-    pub(super) function_scopes: HashMap<(ScopeId, NameId), (ScopeId, Vec<CompactPat>)>,
+    pub(super) function_scopes: HashMap<ScopedName, FunctionBinding>,
     /// Aliases that point to a locally declared helper function.
     pub(super) function_aliases: HashMap<ScopedName, ScopeId>,
     /// Calls retained for the later, scope-aware helper parameter pass.
-    calls: Vec<(ScopeId, NameId, Vec<Option<BindingProvenance>>)>,
+    calls: Vec<FunctionCall>,
     /// Proven callback arguments installed when an inline function is entered.
     inline_parameters: HashMap<BytePos, HashMap<SmolStr, BindingProvenance>>,
     /// Function expression names stashed by `visit_var_decl` and consumed
     /// by `after_function` / `after_arrow` hooks so `function_scopes` is
     /// recorded only for var/let/const declared function expressions.
-    pending_function_names: HashMap<BytePos, (ScopeId, NameId)>,
+    pending_function_names: HashMap<BytePos, PendingFunctionName>,
     names: NameTable,
     pub(super) name_exhausted: bool,
     /// Per (scope, name) counter to avoid rescanniing all assignments.
-    version_counters: HashMap<(ScopeId, NameId), u32>,
+    version_counters: HashMap<ScopedName, u32>,
     /// Structural scope shape table produced by the planner and consumed by
     /// the source-order visitor.
     scope_shapes: ScopeShapeTable,
