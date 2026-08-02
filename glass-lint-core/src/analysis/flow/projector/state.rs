@@ -505,17 +505,7 @@ impl<'a> FlowEvidence<'a> {
 
     pub(super) fn mark_truncated(&mut self) {
         for key in &self.truncated {
-            if let Some(items) = self.items.for_rule_mut(key.rule) {
-                for evidence in items {
-                    if evidence
-                        .occurrences
-                        .iter()
-                        .any(|occurrence| occurrence.fact == Some(key.event.raw()))
-                    {
-                        evidence.truncated = true;
-                    }
-                }
-            }
+            self.items.mark_event_truncated(key.rule, key.event.raw());
         }
     }
 

@@ -84,31 +84,73 @@ impl RuleEvidenceTable {
         self.values.get(rule.get()).map(Vec::as_slice)
     }
 
-    pub(crate) fn for_rule_mut(
-        &mut self,
-        rule: RuleIndex,
-    ) -> Option<&mut Vec<ClassificationEvidence>> {
-        self.values.get_mut(rule.get())
-    }
-
     pub(crate) fn record(&mut self, rule: RuleIndex, evidence: ClassificationEvidence) -> bool {
-        let Some(items) = self.for_rule_mut(rule) else {
+        let Some(items) = self.values.get_mut(rule.get()) else {
             return false;
         };
         items.push(evidence);
         true
     }
 
+    pub(crate) fn extend(
+        &mut self,
+        rule: RuleIndex,
+        evidence: impl IntoIterator<Item = ClassificationEvidence>,
+    ) {
+        if let Some(items) = self.values.get_mut(rule.get()) {
+            items.extend(evidence);
+        }
+    }
+
+    pub(crate) fn record_grouped(
+        &mut self,
+        rule: RuleIndex,
+        kind: MatchKind,
+        symbol: String,
+        occurrences: impl IntoIterator<Item = ClassificationEvidenceOccurrence>,
+    ) -> bool {
+        let occurrences: Vec<_> = occurrences.into_iter().collect();
+        if occurrences.is_empty() {
+            return true;
+        }
+        self.record(
+            rule,
+            ClassificationEvidence {
+                kind,
+                symbol,
+                count: u32::try_from(occurrences.len()).unwrap_or(u32::MAX),
+                truncated: false,
+                certainty: MatchCertainty::Definite,
+                occurrences,
+            },
+        )
+    }
+
+    pub(crate) fn mark_event_truncated(&mut self, rule: RuleIndex, event: u32) {
+        let Some(items) = self.values.get_mut(rule.get()) else {
+            return;
+        };
+        for evidence in items {
+            if evidence
+                .occurrences
+                .iter()
+                .any(|occurrence| occurrence.fact == Some(event))
+            {
+                evidence.truncated = true;
+            }
+        }
+    }
+
     pub(crate) fn replace(&mut self, rule: RuleIndex, evidence: Vec<ClassificationEvidence>) {
-        if let Some(items) = self.for_rule_mut(rule) {
+        if let Some(items) = self.values.get_mut(rule.get()) {
             *items = evidence;
         }
     }
 
     pub(crate) fn merge(&mut self, other: Self) {
         debug_assert_eq!(self.values.len(), other.values.len());
-        for (target, mut source) in self.values.iter_mut().zip(other.values) {
-            target.append(&mut source);
+        for (rule, items) in other.values.into_iter().enumerate() {
+            self.extend(RuleIndex::new(rule), items);
         }
     }
 }

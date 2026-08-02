@@ -5,13 +5,13 @@ use crate::{
         facts::{FactStream, Frozen},
         matching::{
             LinkedOccurrenceView, ModuleIdentityMap, Occurrence, OccurrenceIndexes,
-            push_owned_evidence,
+            owned_occurrences,
         },
         project::model::ExportResolution,
         value::ValueId,
     },
     api::{
-        classification::{RuleEvidenceTable, RuleIndex},
+        classification::{MatchKind, RuleEvidenceTable, RuleIndex},
         compiler::{
             normalized::CanonicalArgumentConstraints,
             physical::PhysicalRoot,
@@ -52,13 +52,11 @@ struct MatcherEvaluationContext<'a> {
 fn push_owned_rule_evidence(
     evidence: &mut RuleEvidenceTable,
     rule: RuleIndex,
-    kind: crate::api::classification::MatchKind,
+    kind: MatchKind,
     symbol: String,
     occurrences: impl IntoIterator<Item = Occurrence>,
 ) {
-    if let Some(items) = evidence.for_rule_mut(rule) {
-        push_owned_evidence(items, kind, symbol, occurrences);
-    }
+    evidence.record_grouped(rule, kind, symbol, owned_occurrences(occurrences));
 }
 
 pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay(

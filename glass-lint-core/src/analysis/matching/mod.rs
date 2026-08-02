@@ -281,13 +281,10 @@ impl OccurrenceIndexes {
     }
 }
 
-pub(super) fn push_owned_evidence(
-    evidence: &mut Vec<ClassificationEvidence>,
-    kind: MatchKind,
-    symbol: String,
+pub(super) fn owned_occurrences(
     occurrences: impl IntoIterator<Item = Occurrence>,
-) {
-    let occurrences: Vec<_> = occurrences
+) -> Vec<crate::api::classification::ClassificationEvidenceOccurrence> {
+    occurrences
         .into_iter()
         .map(
             |occurrence| crate::api::classification::ClassificationEvidenceOccurrence {
@@ -296,7 +293,16 @@ pub(super) fn push_owned_evidence(
                 trace: None,
             },
         )
-        .collect();
+        .collect()
+}
+
+pub(super) fn push_owned_evidence(
+    evidence: &mut Vec<ClassificationEvidence>,
+    kind: MatchKind,
+    symbol: String,
+    occurrences: impl IntoIterator<Item = Occurrence>,
+) {
+    let occurrences = owned_occurrences(occurrences);
     if occurrences.is_empty() {
         return;
     }
