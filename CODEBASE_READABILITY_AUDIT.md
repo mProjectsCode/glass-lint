@@ -8,7 +8,7 @@ Scope: 416 Rust source files, approximately 82,433 lines, across the workspace. 
 
 The workspace is generally well-factored at the crate level and has strong typed domain vocabulary in many of the recently refactored areas. The remaining readability cost is concentrated in internal analysis boundaries: positional tuples and raw maps still carry semantic state, a few aggregate constructors expose too much assembly detail, and orchestration code spans several independent lifecycle phases.
 
-There are 2 open findings: 0 high, 0 medium, and 2 low. READ-001 through READ-015 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
+There is 1 open finding: 0 high, 0 medium, and 1 low. READ-001 through READ-016 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
 
 ## Findings
 
@@ -213,7 +213,7 @@ Recommendation: split preparation, workload-specific runners, worker execution, 
 
 Fix Applied: Reduced `runner.rs` to validated workload dispatch and split profile execution into private files, loader-project, admitted-project, worker, support, and summary modules. Preparation, timing, worker scheduling, deterministic sorting, and aggregation remain in their respective workload boundaries; the public profile API is unchanged.
 
-#### [ ] READ-016 — Large integration test modules mix multiple semantic contracts
+#### [x] READ-016 — Large integration test modules mix multiple semantic contracts
 
 - Severity: Low
 - Fix Complexity: Medium
@@ -224,7 +224,7 @@ These test modules cover several distinct contracts in one source file: public m
 
 Recommendation: split tests by contract into submodules or files such as matcher arguments, lifecycle, module identities, tsconfig inheritance, normalization, and validation. Preserve the existing public/API-level coverage and put only genuinely shared builders in support modules.
 
-Fix Applied: None so far.
+Fix Applied: Split the oversized matcher, tsconfig, normalization, and validation test files into private contract-focused modules while retaining their shared builders in the parent test module. Existing test names, coverage, and public/API-level execution remain unchanged; failures now identify the relevant semantic boundary in their module path.
 
 ### Maintenance hygiene
 
@@ -257,6 +257,6 @@ Fix Applied: None so far.
 
 ## Coverage
 
-Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. READ-001 through READ-015 changed core/report/harness boundaries and this report.
+Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. READ-001 through READ-016 changed core/report/harness boundaries and this report.
 
-Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed; for READ-005, all cross-flow tests passed; for READ-006, occurrence and package-matching tests passed; for READ-007, identity-map conflict and precedence tests passed; for READ-008, all flow-projector tests passed; for READ-009, scope construction and integration scope tests passed; for READ-010, scope collection and integration scope tests passed; for READ-011, trace and cross-flow evidence tests passed; for READ-012, report and operation-count tests passed; for READ-013, report tests and core clippy passed; for READ-014, harness case tests and harness clippy passed; for READ-015, all profile tests and harness clippy passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.
+Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed; for READ-005, all cross-flow tests passed; for READ-006, occurrence and package-matching tests passed; for READ-007, identity-map conflict and precedence tests passed; for READ-008, all flow-projector tests passed; for READ-009, scope construction and integration scope tests passed; for READ-010, scope collection and integration scope tests passed; for READ-011, trace and cross-flow evidence tests passed; for READ-012, report and operation-count tests passed; for READ-013, report tests and core clippy passed; for READ-014, harness case tests and harness clippy passed; for READ-015, all profile tests and harness clippy passed; for READ-016, the four split test suites and their owning-crate clippy checks passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.
