@@ -92,7 +92,7 @@ The local-to-resolved project transition dismantles `SourceTable` and `Resolutio
 
 **Fix Applied:** Added opaque `OriginSnapshot<V>`; `OriginMap` now owns `snapshot`, `restore_from`, and `retain_common` (branch intersection). Control-flow merging uses these owner operations, and the `From<HashMap>` phase seams and the free intersection function were removed.
 
-#### [ ] READ-007 — Static objects are raw name-value tuples
+#### [x] READ-007 — Static objects are raw name-value tuples
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -103,7 +103,7 @@ Static objects are represented as `Vec<(NameId, ValueId)>`, and `ArgumentView` e
 
 **Recommendation:** Add an opaque `StaticObject` domain collection owned by the value model. Give it property lookup, path traversal, stable iteration, and conversion behavior; pass its view through `ArgumentView` instead of a raw tuple slice.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added opaque `StaticObject` in the value model owning the private entry list, with `get`, `contains_key`, `value_at_segment`, and stable `iter`. `ArgumentView` now carries `Option<&StaticObject>` instead of a raw tuple slice; matcher, summary projection, and constant resolution use the collection's behavior.
 
 #### [ ] READ-008 — Binding slots are anonymous three-element keys
 
