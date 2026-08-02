@@ -278,7 +278,7 @@ Sink collection callers compare `len` before and after to infer insertion count,
 
 **Recommendation:** Give the accumulator a consuming `finish(ProfileSummaryMetadata)` operation that constructs `ProfileSummary`, with workload-specific timings and identity carried by the named metadata value. Keep totals private and remove the duplicated field-by-field assembly.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `ProfileSummaryAccumulator::finish(ProfileSummaryMetadata)` that maps the now-private totals and computes median duration centrally. Both consumers (`runner/summary.rs`, `runner/projects.rs`) call `finish` with named metadata instead of assembling `ProfileSummary` field by field.
 
 #### [ ] READ-021 — ProfileLinter is a behavior-free transparent wrapper
 
