@@ -8,7 +8,7 @@ use crate::analysis::{
         ValueId, member_property_name,
     },
     syntax::constant as syntax_constant,
-    value::Value,
+    value::{StaticObject, Value},
 };
 
 impl FactBuilder<'_, '_> {
@@ -156,7 +156,10 @@ impl FactBuilder<'_, '_> {
                     };
                     entries.push((name, child_value));
                 }
-                let value = self.resolver.static_value(Value::StaticObject(entries)).id;
+                let value = self
+                    .resolver
+                    .static_value(Value::StaticObject(StaticObject::new(entries)))
+                    .id;
                 (value, value, path)
             }
             Expr::Array(array) => {

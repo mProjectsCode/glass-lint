@@ -1,11 +1,11 @@
 //! Shared value predicates for fact-driven flow analysis.
 
-use glass_lint_datastructures::{NameId, NamePath, NameTable};
+use glass_lint_datastructures::{NamePath, NameTable};
 
 use crate::{
     analysis::{
         facts::{ArgumentView, CallArgInfo},
-        value::{Value, ValueId, ValueTable},
+        value::{StaticObject, Value, ValueId, ValueTable},
     },
     api::rule::{
         ArgumentMatcher, ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcher,
@@ -68,13 +68,13 @@ impl ArgumentMatcher {
                     .or_else(|| values.static_string(argument.value())),
             ),
             ArgumentMatcherKind::ObjectKeys(expected) => argument
-                .prepared_object_entries()
-                .or_else(|| argument.object_entries(values))
-                .is_some_and(|entries| {
+                .prepared_static_object()
+                .or_else(|| argument.static_object(values))
+                .is_some_and(|object| {
                     expected.iter().all(|expected| {
-                        entries
-                            .iter()
-                            .any(|(key, _)| names.resolve(*key) == Some(expected.as_str()))
+                        names
+                            .lookup(expected.as_str())
+                            .is_some_and(|key| object.contains_key(key))
                     })
                 }),
             ArgumentMatcherKind::RootedExpressions(expected) => argument
@@ -90,10 +90,12 @@ impl ArgumentMatcher {
                 let val = argument.value();
                 let entry = values.resolve(val);
                 entry.is_some_and(|e| match e {
-                    Value::StaticObject(entries) => entries.iter().any(|(name_id, value_id)| {
-                        names.resolve(*name_id) == Some(property.as_str())
-                            && value.matches_flow_value(values.static_string(*value_id))
-                    }),
+                    Value::StaticObject(object) => names
+                        .lookup(property.as_str())
+                        .and_then(|key| object.get(key))
+                        .is_some_and(|value_id| {
+                            value.matches_flow_value(values.static_string(value_id))
+                        }),
                     _ => value.matches_flow_value(
                         argument
                             .overlay_static_string()
@@ -112,11 +114,11 @@ pub(in crate::analysis) trait ArgumentData {
         None
     }
 
-    fn object_entries<'v>(&self, values: &'v ValueTable) -> Option<&'v [(NameId, ValueId)]>;
+    fn static_object<'v>(&self, values: &'v ValueTable) -> Option<&'v StaticObject>;
 
     fn rooted_chain<'v>(&self, values: &'v ValueTable) -> Option<&'v NamePath>;
 
-    fn prepared_object_entries(&self) -> Option<&[(NameId, ValueId)]> {
+    fn prepared_static_object(&self) -> Option<&StaticObject> {
         None
     }
 
@@ -130,9 +132,9 @@ impl ArgumentData for CallArgInfo {
         self.value
     }
 
-    fn object_entries<'v>(&self, values: &'v ValueTable) -> Option<&'v [(NameId, ValueId)]> {
+    fn static_object<'v>(&self, values: &'v ValueTable) -> Option<&'v StaticObject> {
         match values.resolve(self.value)? {
-            Value::StaticObject(entries) => Some(entries.as_slice()),
+            Value::StaticObject(object) => Some(object),
             _ => None,
         }
     }
@@ -154,16 +156,16 @@ impl ArgumentData for ArgumentView<'_> {
         self.static_string
     }
 
-    fn object_entries<'v>(&self, values: &'v ValueTable) -> Option<&'v [(NameId, ValueId)]> {
-        self.argument.object_entries(values)
+    fn static_object<'v>(&self, values: &'v ValueTable) -> Option<&'v StaticObject> {
+        self.argument.static_object(values)
     }
 
     fn rooted_chain<'v>(&self, values: &'v ValueTable) -> Option<&'v NamePath> {
         self.argument.rooted_chain(values)
     }
 
-    fn prepared_object_entries(&self) -> Option<&[(NameId, ValueId)]> {
-        self.object_entries
+    fn prepared_static_object(&self) -> Option<&StaticObject> {
+        self.object
     }
 
     fn prepared_rooted_chain(&self) -> Option<&NamePath> {

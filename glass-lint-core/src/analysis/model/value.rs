@@ -1,4 +1,4 @@
-use glass_lint_datastructures::{FastIndexSet, NameId, NamePath, NameTable};
+use glass_lint_datastructures::{FastIndexSet, NameId, NamePath, NameTable, PathSegment};
 use smol_str::SmolStr;
 
 use crate::analysis::model::scope::{BindingId, BindingKey, FunctionId};
@@ -37,6 +37,58 @@ impl ObjectId {
     }
 }
 
+/// Opaque collection of a static object's property/value pairs.
+///
+/// Property lookup, path traversal, and stable iteration live on this type so
+/// matchers, summary projection, and constant conversion do not reimplement
+/// raw tuple-slice logic.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct StaticObject {
+    entries: Vec<(NameId, ValueId)>,
+}
+
+impl StaticObject {
+    pub fn new(entries: Vec<(NameId, ValueId)>) -> Self {
+        Self { entries }
+    }
+
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    #[cfg(test)]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Look up the value bound to an interned property name.
+    pub fn get(&self, name: NameId) -> Option<ValueId> {
+        self.entries
+            .iter()
+            .find(|(key, _)| *key == name)
+            .map(|(_, value)| *value)
+    }
+
+    pub fn contains_key(&self, name: NameId) -> bool {
+        self.get(name).is_some()
+    }
+
+    /// Iterate `(NameId, ValueId)` pairs in deterministic insertion order.
+    pub fn iter(&self) -> impl Iterator<Item = (NameId, ValueId)> + '_ {
+        self.entries.iter().copied()
+    }
+
+    /// Advance a path traversal by one segment. Property segments resolve to
+    /// the bound value; index segments cannot address an object property.
+    pub fn value_at_segment(&self, segment: PathSegment) -> Option<ValueId> {
+        match segment {
+            PathSegment::Property(name) => self.get(name),
+            PathSegment::Index(_) => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Value {
     Unknown,
@@ -48,7 +100,7 @@ pub enum Value {
     StaticString(String),
     StaticNumber(usize),
     StaticArray(Vec<ValueId>),
-    StaticObject(Vec<(NameId, ValueId)>),
+    StaticObject(StaticObject),
     Callable(CallableValue),
     Object(ObjectId),
     Binding { key: BindingKey, target: ValueId },
@@ -153,7 +205,7 @@ impl ValueTable {
             };
             canonical.push((id, value));
         }
-        self.intern(Value::StaticObject(canonical))
+        self.intern(Value::StaticObject(StaticObject::new(canonical)))
     }
 
     pub fn allocate_object_id(&mut self) -> Option<ObjectId> {
@@ -354,12 +406,12 @@ mod tests {
         let pairs = vec![("b".into(), val_b), ("a".into(), val_a)];
         let obj = table.intern_static_object(pairs, &names);
         let value = table.get(obj).expect("object should exist");
-        let Value::StaticObject(entries) = value else {
+        let Value::StaticObject(object) = value else {
             panic!("expected StaticObject, got {value:?}");
         };
-        assert_eq!(entries.len(), 2);
-        assert!(entries.iter().any(|(k, _)| *k == key_a));
-        assert!(entries.iter().any(|(k, _)| *k == key_b));
+        assert_eq!(object.len(), 2);
+        assert!(object.iter().any(|(k, _)| k == key_a));
+        assert!(object.iter().any(|(k, _)| k == key_b));
     }
 
     #[test]
@@ -395,6 +447,53 @@ mod tests {
     #[test]
     fn value_id_unknown_is_zero() {
         assert_eq!(ValueId::UNKNOWN, ValueId::from_test(0));
+    }
+
+    #[test]
+    fn static_object_looks_up_properties_and_iterates_stably() {
+        let mut names = NameTable::default();
+        let key_a = names.intern("a").unwrap();
+        let key_b = names.intern("b").unwrap();
+        let mut table = ValueTable::default();
+        let val_a = table.intern(Value::StaticString("a".into()));
+        let val_b = table.intern(Value::StaticString("b".into()));
+        let object = StaticObject::new(vec![(key_a, val_a), (key_b, val_b)]);
+
+        assert_eq!(object.len(), 2);
+        assert!(!object.is_empty());
+        assert_eq!(object.get(key_a), Some(val_a));
+        assert_eq!(object.get(key_b), Some(val_b));
+        assert_eq!(object.get(names.intern("missing").unwrap()), None);
+        assert!(object.contains_key(key_a));
+        assert!(!object.contains_key(names.intern("missing").unwrap()));
+
+        let pairs: Vec<_> = object.iter().collect();
+        assert_eq!(pairs, vec![(key_a, val_a), (key_b, val_b)]);
+    }
+
+    #[test]
+    fn static_object_path_traversal_follows_properties_only() {
+        let mut names = NameTable::default();
+        let key_a = names.intern("a").unwrap();
+        let key_b = names.intern("b").unwrap();
+        let mut table = ValueTable::default();
+        let val_a = table.intern(Value::StaticString("a".into()));
+        let val_b = table.intern(Value::StaticString("b".into()));
+        let object = StaticObject::new(vec![(key_a, val_a), (key_b, val_b)]);
+
+        assert_eq!(
+            object.value_at_segment(PathSegment::Property(key_a)),
+            Some(val_a)
+        );
+        assert_eq!(
+            object.value_at_segment(PathSegment::Property(key_b)),
+            Some(val_b)
+        );
+        assert_eq!(
+            object.value_at_segment(PathSegment::Property(names.intern("missing").unwrap())),
+            None
+        );
+        assert_eq!(object.value_at_segment(PathSegment::Index(0)), None);
     }
 
     #[test]

@@ -2,7 +2,10 @@ use glass_lint_datastructures::{ByteRange, NameId, NamePath, PathId};
 use smol_str::SmolStr;
 
 use crate::analysis::{
-    model::{scope::FunctionId, value::ValueId},
+    model::{
+        scope::FunctionId,
+        value::{StaticObject, ValueId},
+    },
     syntax::{SymbolCallProvenance, SymbolMemberProvenance},
 };
 
@@ -327,7 +330,7 @@ impl CallArgInfo {
 pub(in crate::analysis) struct ArgumentView<'a> {
     pub(in crate::analysis) argument: &'a CallArgInfo,
     pub(in crate::analysis) static_string: Option<&'a str>,
-    pub(in crate::analysis) object_entries: Option<&'a [(NameId, ValueId)]>,
+    pub(in crate::analysis) object: Option<&'a StaticObject>,
     pub(in crate::analysis) rooted_chain: Option<&'a NamePath>,
 }
 
@@ -336,7 +339,7 @@ impl<'a> ArgumentView<'a> {
         Self {
             argument,
             static_string: None,
-            object_entries: None,
+            object: None,
             rooted_chain: None,
         }
     }
@@ -346,8 +349,8 @@ impl<'a> ArgumentView<'a> {
         self
     }
 
-    pub fn with_object_entries(mut self, entries: Option<&'a [(NameId, ValueId)]>) -> Self {
-        self.object_entries = entries;
+    pub fn with_static_object(mut self, object: Option<&'a StaticObject>) -> Self {
+        self.object = object;
         self
     }
 

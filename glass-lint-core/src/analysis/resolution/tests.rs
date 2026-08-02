@@ -8,7 +8,7 @@ use crate::analysis::{
     lowering::SpanNormalizer,
     scope::ScopeGraph,
     syntax::{BudgetComponent, UnknownReason},
-    value::{MAX_VALUES, Value},
+    value::{MAX_VALUES, StaticObject, Value},
 };
 
 #[test]
@@ -113,11 +113,13 @@ fn const_value_materializes_static_object_with_mixed_values() {
     let str_id = resolver.values.intern(Value::StaticString("val".into()));
     let inner_arr = resolver.values.intern(Value::StaticArray(vec![num_id]));
 
-    let obj_id = resolver.values.intern(Value::StaticObject(vec![
-        (key_num, num_id),
-        (key_str, str_id),
-        (key_arr, inner_arr),
-    ]));
+    let obj_id = resolver
+        .values
+        .intern(Value::StaticObject(StaticObject::new(vec![
+            (key_num, num_id),
+            (key_str, str_id),
+            (key_arr, inner_arr),
+        ])));
 
     let result = resolver.const_value(obj_id);
     assert_eq!(
@@ -144,7 +146,7 @@ fn const_value_returns_unknown_for_unknown_name_in_object() {
     let val_id = resolver.values.intern(Value::StaticString("v".into()));
     let obj_id = resolver
         .values
-        .intern(Value::StaticObject(vec![(key, val_id)]));
+        .intern(Value::StaticObject(StaticObject::new(vec![(key, val_id)])));
 
     let result = resolver.const_value(obj_id);
     assert_eq!(result, ConstValue::Unknown);

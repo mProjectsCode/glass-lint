@@ -17,7 +17,9 @@
 mod arena;
 mod identity;
 
-pub(in crate::analysis) use arena::{CallableValue, MAX_VALUES, ObjectId, Value, ValueTable};
+pub(in crate::analysis) use arena::{
+    CallableValue, MAX_VALUES, ObjectId, StaticObject, Value, ValueTable,
+};
 pub(in crate::analysis) use identity::{
     BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId, ValueId,
 };

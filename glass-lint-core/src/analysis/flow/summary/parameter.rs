@@ -78,12 +78,7 @@ fn value_at_path(
             return;
         };
         let next = match value {
-            Value::StaticObject(entries) => match segment {
-                PathSegment::Property(name_id) => {
-                    entries.iter().find(|(k, _)| k == name_id).map(|(_, v)| *v)
-                }
-                PathSegment::Index(_) => None,
-            },
+            Value::StaticObject(object) => object.value_at_segment(*segment),
             Value::StaticArray(elements) => match segment {
                 PathSegment::Index(index) => elements.get(*index as usize).copied(),
                 PathSegment::Property(_) => None,

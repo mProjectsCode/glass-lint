@@ -39,15 +39,15 @@ impl Resolver<'_> {
                     .collect();
                 ConstValue::Array(children)
             }
-            Value::StaticObject(entries) => {
-                let mut object = BTreeMap::new();
-                for &(name_id, value_id) in entries {
+            Value::StaticObject(object) => {
+                let mut result = BTreeMap::new();
+                for (name_id, value_id) in object.iter() {
                     let Some(key) = self.scopes.resolve_name_id(name_id) else {
                         return ConstValue::Unknown;
                     };
-                    object.insert(key, self.const_value_depth(value_id, depth + 1));
+                    result.insert(key, self.const_value_depth(value_id, depth + 1));
                 }
-                ConstValue::Object(object)
+                ConstValue::Object(result)
             }
             _ => ConstValue::Unknown,
         }

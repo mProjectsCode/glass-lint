@@ -190,13 +190,13 @@ impl<'a> MatcherEvaluator<'a> {
         argument: &'b CallArgInfo,
     ) -> ArgumentView<'b> {
         let mut view = ArgumentView::new(argument);
-        let (object_entries, rooted_chain) = match self.values.resolve(argument.value) {
-            Some(Value::StaticObject(entries)) => (Some(entries.as_slice()), None),
+        let (object, rooted_chain) = match self.values.resolve(argument.value) {
+            Some(Value::StaticObject(object)) => (Some(object), None),
             Some(Value::RootedMember { path }) => (None, Some(path)),
             _ => (None, None),
         };
         view = view
-            .with_object_entries(object_entries)
+            .with_static_object(object)
             .with_rooted_chain(rooted_chain);
         if let Some(result_identities) = self.result_identities
             && let Some(value) = result_identities

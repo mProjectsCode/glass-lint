@@ -2,4 +2,6 @@
 //!
 //! Types have been moved to [`crate::analysis::model::value`].
 
-pub use crate::analysis::model::value::{CallableValue, MAX_VALUES, ObjectId, Value, ValueTable};
+pub use crate::analysis::model::value::{
+    CallableValue, MAX_VALUES, ObjectId, StaticObject, Value, ValueTable,
+};
