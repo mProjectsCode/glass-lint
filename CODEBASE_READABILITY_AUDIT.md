@@ -275,7 +275,7 @@ named importer, request-kind, and normalized-specifier fields. Its constructor
 now owns conversion from a resolution request, while the occurrence and
 semantic caches remain separate and retain their existing lookup behavior.
 
-#### [ ] READ-012 — Harness types mix fixture authoring, protocol DTOs, and reports
+#### [x] READ-012 — Harness types mix fixture authoring, protocol DTOs, and reports
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -294,7 +294,11 @@ existing public surface from `types/mod.rs`. Keep protocol validation beside
 DTO conversion and result aggregation beside report types, preserving the
 wire schema and adapter error behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Split the harness type implementation into private `case`,
+`protocol`, and `report` modules, with `types/mod.rs` retaining the existing
+re-exported surface. Fixture validation and expectation state now live apart
+from serde protocol conversion and suite-result aggregation; adapter wire
+schemas and conversion behavior are unchanged.
 
 ### Group 4: Documentation and tests
 
