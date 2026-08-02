@@ -413,13 +413,30 @@ impl PathWorkQueue {
     }
 }
 
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct ResolutionSpecifierKey {
+    importer: ProjectRelativePath,
+    kind: ResolutionRequestKind,
+    specifier: String,
+}
+
+impl ResolutionSpecifierKey {
+    fn from_request(request: &ResolutionRequest) -> Self {
+        Self {
+            importer: request.key.importer.clone(),
+            kind: request.key.kind,
+            specifier: request.request.to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 struct ResolutionCache {
     /// Occurrence-keyed cache required by core (includes range).
     by_key: BTreeMap<ResolutionRequestKey, ResolverOutcome>,
-    /// Semantic cache keyed by (importer, kind, specifier) — catches
-    /// repeated imports of the same specifier at different ranges.
-    by_specifier: BTreeMap<(ProjectRelativePath, ResolutionRequestKind, String), ResolverOutcome>,
+    /// Semantic cache keyed by importer, request kind, and normalized
+    /// specifier — catches repeated imports at different ranges.
+    by_specifier: BTreeMap<ResolutionSpecifierKey, ResolverOutcome>,
 }
 impl ResolutionCache {
     /// Resolve a request if not already cached and return the stored outcome.
@@ -438,7 +455,7 @@ impl ResolutionCache {
             return Ok((outcome, false));
         }
 
-        let specifier_key = Self::specifier_key(request);
+        let specifier_key = ResolutionSpecifierKey::from_request(request);
         let (outcome, did_resolve) = match self.by_specifier.entry(specifier_key) {
             std::collections::btree_map::Entry::Occupied(entry) => (entry.get().clone(), false),
             std::collections::btree_map::Entry::Vacant(entry) => {
@@ -449,16 +466,6 @@ impl ResolutionCache {
         };
         let cached = self.by_key.entry(cache_key).or_insert(outcome);
         Ok((cached, did_resolve))
-    }
-
-    fn specifier_key(
-        request: &ResolutionRequest,
-    ) -> (ProjectRelativePath, ResolutionRequestKind, String) {
-        (
-            request.key.importer.clone(),
-            request.key.kind,
-            request.request.to_string(),
-        )
     }
 
     fn into_iter(self) -> impl Iterator<Item = (ResolutionRequestKey, ResolverOutcome)> {

@@ -236,7 +236,7 @@ deadline, and source-byte bounds.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-011 — Resolution cache key hides normalization and cache identity
+#### [x] READ-011 — Resolution cache key hides normalization and cache identity
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -254,7 +254,10 @@ and a constructor that owns normalization/conversion. Keep the two caches
 separate and make additions such as resolver conditions or mode changes happen
 through the key's invariant rather than through repeated tuple edits.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the private `ResolutionSpecifierKey` value object with
+named importer, request-kind, and normalized-specifier fields. Its constructor
+now owns conversion from a resolution request, while the occurrence and
+semantic caches remain separate and retain their existing lookup behavior.
 
 #### [ ] READ-012 — Harness types mix fixture authoring, protocol DTOs, and reports
 
