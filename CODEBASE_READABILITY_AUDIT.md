@@ -51,7 +51,7 @@ The local-to-resolved project transition dismantles `SourceTable` and `Resolutio
 
 **Fix Applied:** `ModuleIdentityMap` now stores a flat `BTreeMap<ModuleExportKey, ExportResolution>`. `ModuleExportKey::into_parts` and `get_parts` were removed; merges (`merge_star_from`, `merge_missing_from`) operate on the flat map and stay on the owner.
 
-#### [ ] READ-004 — Plan requirements expose their capability sets
+#### [x] READ-004 — Plan requirements expose their capability sets
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -62,7 +62,7 @@ The local-to-resolved project transition dismantles `SourceTable` and `Resolutio
 
 **Recommendation:** Keep the collections private and provide semantic operations such as requiring an identity, local flow, cross-call flow, or project capability. Retain physical-plan recomputation as an independent validation oracle; share only invariant-preserving mutation vocabulary, not the normalization derivation algorithm.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `PlanRequirements` collections and flow flags are private; it now exposes semantic mutations `require_identity`, `require_local_flow`, `require_cross_call_flow`, `require_local_static_values`, and `merge_from`. Normalization and the independent `executable_requirements` validation oracle both build through the shared mutation vocabulary; the derivation algorithms stay separate.
 
 ### Scope, facts, and values
 
