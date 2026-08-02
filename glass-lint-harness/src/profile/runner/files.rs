@@ -1,16 +1,16 @@
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use anyhow::{Result, bail};
-use glass_lint_core::project::ReportCompletion;
+use glass_lint_core::{Linter, project::ReportCompletion};
 
 use crate::profile::{
     config::ProfileConfig,
     metrics::repetition_from_files,
     runner::{summary, support, workers},
-    types::{
-        MeasuredRepetitionAccumulator, PreparedFile, ProfileLinter, ProfileSummary,
-        ProfileWorkloadSummary,
-    },
+    types::{MeasuredRepetitionAccumulator, PreparedFile, ProfileSummary, ProfileWorkloadSummary},
 };
 
 pub(super) fn run(config: &ProfileConfig) -> Result<ProfileSummary> {
@@ -55,7 +55,7 @@ pub(super) fn run(config: &ProfileConfig) -> Result<ProfileSummary> {
 }
 
 pub(super) struct PreparedCorpus {
-    pub(super) linters: Vec<ProfileLinter>,
+    pub(super) linters: Vec<Arc<Linter>>,
     pub(super) prepared: Vec<PreparedFile>,
     pub(super) initial_errors: Vec<ProfileWorkloadSummary>,
     pub(super) manifest_digest: Option<String>,

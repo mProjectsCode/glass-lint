@@ -15,7 +15,7 @@ use crate::{
     profile::{
         config::{ProfileCatalogProvider, ProfileConfig, RuleSelectionProfile},
         corpus::{discover_profile_files, sample_paths},
-        types::{PreparedFile, ProfileLinter, ProfileRepetitionSummary},
+        types::{PreparedFile, ProfileRepetitionSummary},
     },
     profile_manifest::verify_profile_manifest,
 };
@@ -56,7 +56,7 @@ pub(super) fn build_linters(
     provider: ProfileCatalogProvider,
     mode: RuleSelectionProfile,
     rules: &[String],
-) -> Result<Vec<ProfileLinter>> {
+) -> Result<Vec<Arc<Linter>>> {
     let parsed = rules
         .iter()
         .map(|rule| RuleId::parse(rule.clone()).map_err(anyhow::Error::msg))
@@ -102,7 +102,7 @@ pub(super) fn build_linters(
                 .with_rules(selection),
             )?
         };
-        linters.push(ProfileLinter(Arc::new(linter)));
+        linters.push(Arc::new(linter));
     }
     if linters.is_empty() {
         bail!("no selected rules belong to the chosen provider");

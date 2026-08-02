@@ -7,16 +7,19 @@ use std::{
     time::{Duration, Instant},
 };
 
-use glass_lint_core::project::{ReportCompletion, SourceFile};
+use glass_lint_core::{
+    Linter,
+    project::{ReportCompletion, SourceFile},
+};
 
 use crate::profile::{
     metrics::{accumulate_report, combined_digest},
-    types::{PreparedFile, ProfileLinter, ProfileOperationCounts, ProfileWorkloadSummary},
+    types::{PreparedFile, ProfileOperationCounts, ProfileWorkloadSummary},
 };
 
 fn profile_file(
     file: &PreparedFile,
-    linters: &[ProfileLinter],
+    linters: &[Arc<Linter>],
     warm_up: usize,
     repeat: usize,
 ) -> ProfileWorkloadSummary {
@@ -28,7 +31,7 @@ fn profile_file(
     let mut operation_counts = ProfileOperationCounts::default();
     let mut evidence_digests = Vec::new();
     for iteration in 0..warm_up + repeat {
-        for ProfileLinter(linter) in linters {
+        for linter in linters {
             let started = Instant::now();
             let filename = file
                 .path
@@ -71,7 +74,7 @@ fn profile_file(
 
 pub(super) fn execute_file_profile(
     prepared: &[PreparedFile],
-    linters: &[ProfileLinter],
+    linters: &[Arc<Linter>],
     workers: usize,
     warm_up: usize,
     repeat: usize,

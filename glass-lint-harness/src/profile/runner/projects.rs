@@ -1,13 +1,14 @@
-use std::{path::Path, time::Instant};
+use std::{path::Path, sync::Arc, time::Instant};
 
 use anyhow::Result;
+use glass_lint_core::Linter;
 use glass_lint_project::{ProjectLoader, ProjectSelection, ValidatedProjectLoadOptions};
 
 use crate::profile::{
     config::{ProfileConfig, ProfileCorpusIdentity, ProfileWorkload, ProfileWorkloadIdentity},
     runner::support,
     types::{
-        MeasuredRepetitionAccumulator, ProfileLinter, ProfileOperationCounts, ProfilePhaseTimings,
+        MeasuredRepetitionAccumulator, ProfileOperationCounts, ProfilePhaseTimings,
         ProfileProjectRun, ProfileProjectRunAccumulator, ProfileSummary, ProfileSummaryAccumulator,
         ProfileSummaryMetadata, project_run_outcome,
     },
@@ -56,7 +57,7 @@ fn profile_loader_project(
     path: &Path,
     config: &ProfileConfig,
     loader: &ProjectLoader,
-    linters: &[ProfileLinter],
+    linters: &[Arc<Linter>],
 ) -> Result<ProfileProjectRun> {
     let selection = if path.is_dir() {
         ProjectSelection::directory(path.to_owned())
@@ -68,7 +69,7 @@ fn profile_loader_project(
 
     for iteration in 0..config.warm_up + config.repeat.get() {
         let repetition_start = Instant::now();
-        for ProfileLinter(linter) in linters {
+        for linter in linters {
             match loader.load_and_lint(linter, &selection) {
                 Ok(outcome) => {
                     let (report, metrics, error) = support::profile_project_parts(outcome);

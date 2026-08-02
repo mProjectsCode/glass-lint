@@ -1,6 +1,7 @@
 use std::{
     fs,
     path::Path,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -15,8 +16,8 @@ use crate::profile::{
     metrics::{accumulate_report, combined_digest, median_duration},
     runner::support,
     types::{
-        MeasuredRepetitionAccumulator, PreparedFile, ProfileLinter, ProfileOperationCounts,
-        ProfilePhaseTimings, ProfileRepetitionSummary, ProfileSummary,
+        MeasuredRepetitionAccumulator, PreparedFile, ProfileOperationCounts, ProfilePhaseTimings,
+        ProfileRepetitionSummary, ProfileSummary,
     },
 };
 
@@ -42,7 +43,7 @@ pub(super) fn run(config: &ProfileConfig) -> Result<ProfileSummary> {
         bail!("verified manifest bytes changed during profile preparation");
     }
     let warm_run = || {
-        for ProfileLinter(linter) in &linters {
+        for linter in &linters {
             let _ = admitted_project_run(&root, &prepared, linter, config.workers.get())?;
         }
         Ok(())
@@ -93,7 +94,7 @@ pub(super) fn run(config: &ProfileConfig) -> Result<ProfileSummary> {
 fn measure_repetition(
     root: &Path,
     prepared: &[PreparedFile],
-    linters: &[ProfileLinter],
+    linters: &[Arc<Linter>],
     workers: usize,
 ) -> Result<ProfileRepetitionSummary> {
     let mut findings = 0;
@@ -102,7 +103,7 @@ fn measure_repetition(
     let mut completion = ReportCompletion::Complete;
     let mut run_completions = Vec::with_capacity(linters.len());
     let mut evidence_digests = Vec::new();
-    for ProfileLinter(linter) in linters {
+    for linter in linters {
         let report = admitted_project_run(root, prepared, linter, workers)?;
         accumulate_report(
             &report,

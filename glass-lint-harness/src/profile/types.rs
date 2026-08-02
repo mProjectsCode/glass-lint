@@ -1,15 +1,11 @@
 use std::{
     ops::AddAssign,
     path::PathBuf,
-    sync::Arc,
     time::{Duration, Instant},
 };
 
 use anyhow::Result;
-use glass_lint_core::{
-    Linter,
-    project::{AnalysisOperationCounts, AnalysisReport, ReportCompletion},
-};
+use glass_lint_core::project::{AnalysisOperationCounts, AnalysisReport, ReportCompletion};
 use glass_lint_project::ProjectPhaseTimings as ProjectPhaseTimingSnapshot;
 
 use crate::profile::{
@@ -457,8 +453,6 @@ pub(super) fn project_run_outcome(
         evidence_order_digest: evidence_order_digest(report),
     }
 }
-
-pub(super) struct ProfileLinter(pub Arc<Linter>);
 
 pub(super) struct PreparedFile {
     pub path: PathBuf,
