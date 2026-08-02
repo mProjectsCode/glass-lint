@@ -112,7 +112,7 @@ provider-neutral interfaces through existing public-surface tests.
 
 ### Group 2: Flow state and matcher coordination
 
-#### [ ] READ-005 — Flow-state mutation is split between the table and raw-map history
+#### [x] READ-005 — Flow-state mutation is split between the table and raw-map history
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -132,7 +132,11 @@ and put alias/reference transitions behind `FlowStateTable` or an
 retaining deterministic ordering, rollback behavior, and mutation/state
 budgets.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the `ObjectRefCounts` semantic type for alias reference
+accounting and routed both live mutations and history replay through it. A
+single object-range helper now owns the `FlowStateKey` bounds used by state
+queries and removal, reducing duplicated indexing logic while retaining
+deterministic rollback and mutation-budget behavior.
 
 #### [x] READ-006 — Pending flow finalization carries discarded positional identity
 

@@ -4,13 +4,13 @@
 //! retains a bounded collection of these checkpoints so aliases and lifecycle
 //! requirements stay correlated across control-flow merges.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{collections::{BTreeMap, BTreeSet}, ops::RangeInclusive};
 
 use crate::{
     analysis::{
         facts::ControlRegionId,
         flow::projector::history::{
-            Checkpoint, InverseDelta, MutationLog, ReportEvidenceKey, decrement_ref, increment_ref,
+            Checkpoint, InverseDelta, MutationLog, ReportEvidenceKey,
         },
         model::flow::{FlowId, FlowState, FlowStateKey, RequirementIndex, SinkIndex},
         value::{ObjectId, ValueId},
@@ -52,7 +52,7 @@ pub(super) struct FlowStateTable {
     /// Current value aliases, keyed by semantic value identity.
     aliases: BTreeMap<ValueId, ObjectId>,
     /// Reverse index: how many ValueIds alias each ObjectId.
-    object_refs: BTreeMap<ObjectId, usize>,
+    object_refs: ObjectRefCounts,
     /// Current lifecycle state for each object and flow matcher.
     states: BTreeMap<FlowStateKey, FlowState>,
     /// Mutation log for checkpoint/rollback.
@@ -62,11 +62,41 @@ pub(super) struct FlowStateTable {
     state_limit_rejected: bool,
 }
 
+#[derive(Debug, Default)]
+pub(super) struct ObjectRefCounts(BTreeMap<ObjectId, usize>);
+
+impl ObjectRefCounts {
+    pub(super) fn clear(&mut self) {
+        self.0.clear();
+    }
+
+    pub(super) fn increment(&mut self, object: ObjectId) {
+        *self.0.entry(object).or_insert(0) += 1;
+    }
+
+    pub(super) fn decrement(&mut self, object: ObjectId) {
+        if let Some(count) = self.0.get_mut(&object) {
+            *count -= 1;
+            if *count == 0 {
+                self.0.remove(&object);
+            }
+        }
+    }
+
+    pub(super) fn contains(&self, object: ObjectId) -> bool {
+        self.0.contains_key(&object)
+    }
+
+    pub(super) fn keys(&self) -> impl Iterator<Item = ObjectId> + '_ {
+        self.0.keys().copied()
+    }
+}
+
 impl FlowStateTable {
     pub(super) fn new(state_limit: usize, mutation_limit: usize) -> Self {
         Self {
             aliases: BTreeMap::new(),
-            object_refs: BTreeMap::new(),
+            object_refs: ObjectRefCounts::default(),
             states: BTreeMap::new(),
             log: MutationLog::new(mutation_limit),
             state_limit,
@@ -92,7 +122,7 @@ impl FlowStateTable {
     }
 
     pub(super) fn objects(&self) -> impl Iterator<Item = ObjectId> + '_ {
-        self.object_refs.keys().copied()
+        self.object_refs.keys()
     }
 
     pub(super) fn bind(&mut self, value: ValueId, object: ObjectId) {
@@ -100,24 +130,34 @@ impl FlowStateTable {
             self.log
                 .record(InverseDelta::AliasUpdate(value, old, object));
             self.aliases.insert(value, object);
-            decrement_ref(&mut self.object_refs, old);
+            self.object_refs.decrement(old);
         } else {
             self.log.record(InverseDelta::AliasInsert(value, object));
             self.aliases.insert(value, object);
         }
-        increment_ref(&mut self.object_refs, object);
+        self.object_refs.increment(object);
     }
 
     pub(super) fn unbind(&mut self, value: ValueId) -> Option<ObjectId> {
         let old_object = self.aliases.remove(&value)?;
         self.log
             .record(InverseDelta::AliasRemove(value, old_object));
-        decrement_ref(&mut self.object_refs, old_object);
+        self.object_refs.decrement(old_object);
         Some(old_object)
     }
 
     pub(super) fn has_alias_for(&self, object: ObjectId) -> bool {
-        self.object_refs.contains_key(&object)
+        self.object_refs.contains(object)
+    }
+
+    fn object_range(object: ObjectId) -> RangeInclusive<FlowStateKey> {
+        FlowStateKey {
+            object,
+            flow: FlowId::new(RuleIndex::new(0), 0),
+        }..=FlowStateKey {
+            object,
+            flow: FlowId::new(RuleIndex::new(usize::MAX), usize::MAX),
+        }
     }
 
     pub(super) fn states_for(
@@ -125,18 +165,7 @@ impl FlowStateTable {
         object: ObjectId,
     ) -> impl Iterator<Item = (FlowStateKey, &FlowState)> + '_ {
         self.states
-            .range(
-                FlowStateKey {
-                    object,
-                    flow: FlowId::new(crate::api::classification::RuleIndex::new(0), 0),
-                }..=FlowStateKey {
-                    object,
-                    flow: FlowId::new(
-                        crate::api::classification::RuleIndex::new(usize::MAX),
-                        usize::MAX,
-                    ),
-                },
-            )
+            .range(Self::object_range(object))
             .map(|(key, state)| (*key, state))
     }
 
@@ -291,18 +320,7 @@ impl FlowStateTable {
     pub(super) fn remove_states_for(&mut self, object: ObjectId) {
         let keys: Vec<FlowStateKey> = self
             .states
-            .range(
-                FlowStateKey {
-                    object,
-                    flow: FlowId::new(crate::api::classification::RuleIndex::new(0), 0),
-                }..=FlowStateKey {
-                    object,
-                    flow: FlowId::new(
-                        crate::api::classification::RuleIndex::new(usize::MAX),
-                        usize::MAX,
-                    ),
-                },
-            )
+            .range(Self::object_range(object))
             .map(|(key, _)| *key)
             .collect();
         for key in keys {
