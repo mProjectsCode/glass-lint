@@ -239,7 +239,7 @@ Sink collection callers compare `len` before and after to infer insertion count,
 
 **Recommendation:** Treat reports as read-only public output contracts. Remove `into_parts` and mutable-vector access, make report assembly and aggregation crate-owned, and keep only inspection and supported serialization public. Cross-crate output tests should obtain reports through public analysis entry points rather than requiring public construction seams.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed `AnalysisReport::into_parts`, `FileReport::into_parts`, and `FileReport::diagnostics_mut`; `AnalysisReport::new`/`FileReport::new` are crate-private. Aggregation moved onto the owners (`merge`, `sort_deterministically`, `push_diagnostic`); `combine` uses inspection only. Cross-crate tests now drive reports through `lint_source`/`begin_project` and inspection.
 
 #### [ ] READ-018 — Tsconfig transitions use positional parts and compressed names
 
