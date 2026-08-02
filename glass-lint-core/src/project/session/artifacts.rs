@@ -21,13 +21,13 @@ use crate::{
 /// qualified-ID construction. Built once during lowering and reused during
 /// resolution, avoiding per-module re-traversal of the module interface.
 #[derive(Default)]
-pub(super) struct AuthoredRequestTable {
+pub struct AuthoredRequestTable {
     /// Key → ModuleRequestId for membership and qualified-ID production.
     by_key: BTreeMap<ResolutionRequestKey, ModuleRequestId>,
 }
 
 impl AuthoredRequestTable {
-    pub(super) fn contains_key(&self, key: &ResolutionRequestKey) -> bool {
+    pub fn contains_key(&self, key: &ResolutionRequestKey) -> bool {
         self.by_key.contains_key(key)
     }
 
@@ -35,16 +35,16 @@ impl AuthoredRequestTable {
         self.by_key.insert(key, id);
     }
 
-    pub(super) fn iter(&self) -> impl Iterator<Item = (&ResolutionRequestKey, ModuleRequestId)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&ResolutionRequestKey, ModuleRequestId)> {
         self.by_key.iter().map(|(key, id)| (key, *id))
     }
 }
 
 #[derive(Default)]
-pub(super) struct AnalysisArtifacts {
-    pub(super) authored_requests: AuthoredRequestTable,
-    pub(super) analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
-    pub(super) parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
+pub struct AnalysisArtifacts {
+    pub authored_requests: AuthoredRequestTable,
+    pub analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
+    pub parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
 }
 
 /// Authored module requests produced by one completed local source analysis.

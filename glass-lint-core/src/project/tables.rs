@@ -31,10 +31,6 @@ impl SourceTable {
     pub fn iter(&self) -> impl Iterator<Item = (&ProjectRelativePath, &SourceFile)> {
         self.0.iter()
     }
-
-    pub(crate) fn into_map(self) -> BTreeMap<ProjectRelativePath, SourceFile> {
-        self.0
-    }
 }
 
 #[derive(Debug, Default)]
@@ -54,8 +50,13 @@ impl ResolutionTable {
         self.0.insert(key, result);
         Ok(())
     }
+}
 
-    pub(crate) fn into_map(self) -> BTreeMap<ResolutionRequestKey, ResolverOutcome> {
-        self.0
+impl IntoIterator for ResolutionTable {
+    type IntoIter = std::collections::btree_map::IntoIter<ResolutionRequestKey, ResolverOutcome>;
+    type Item = (ResolutionRequestKey, ResolverOutcome);
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }

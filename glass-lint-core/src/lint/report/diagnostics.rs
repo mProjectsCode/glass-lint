@@ -6,11 +6,11 @@ use crate::{
     ParseDiagnostic,
     analysis::ProjectSemanticModel,
     parse::ParseFailureKind,
-    project::{Diagnostic, FileReport, ProjectRelativePath, SourceFile, SourceLocation},
+    project::{Diagnostic, FileReport, ProjectRelativePath, SourceLocation, SourceTable},
 };
 
 pub(super) fn initialize_project_files(
-    source_map: &BTreeMap<ProjectRelativePath, SourceFile>,
+    sources: &SourceTable,
     mut parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
 ) -> (
     BTreeMap<ProjectRelativePath, FileReport>,
@@ -18,8 +18,8 @@ pub(super) fn initialize_project_files(
 ) {
     let mut files = BTreeMap::new();
     let mut parse_failures = BTreeMap::new();
-    for source in source_map.values() {
-        let path = source.path().clone();
+    for (path, source) in sources.iter() {
+        let path = path.clone();
         match parse_diagnostics.remove(&path) {
             Some(diagnostic) => {
                 parse_failures.insert(path.clone(), diagnostic.failure);

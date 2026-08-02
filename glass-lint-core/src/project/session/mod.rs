@@ -9,8 +9,8 @@ pub(super) mod execution;
 
 use std::{collections::BTreeMap, num::NonZeroUsize};
 
-pub use artifacts::SourceAnalysis;
-use artifacts::{AnalysisArtifacts, CacheLookup};
+use artifacts::CacheLookup;
+pub use artifacts::{AnalysisArtifacts, SourceAnalysis};
 #[cfg(test)]
 pub(super) use execution::{
     ControlledLocalJobExecutor, ControlledReleaseOrder, CountingExecutionObserver,
@@ -24,16 +24,15 @@ use execution::{
 use crate::{
     AnalysisLimits, Environment, RuleCatalog,
     analysis::{
-        ArtifactCacheHandle, ArtifactCacheKey, LoweredSource, Lowerer, QualifiedRequestId,
-        ResolvedLinkInput, ResolvedLinkInputData,
+        ArtifactCacheHandle, ArtifactCacheKey, LoweredSource, Lowerer, ResolvedLinkInput,
+        ResolvedLinkInputData,
     },
     api::classification::RuleIndex,
     lint::ReportAssembly,
     project::{
-        AnalysisReport, ModuleId, ProjectInputError, ProjectRelativePath, ResolutionRequest,
-        ResolutionRequestKey, ResolverOutcome, SourceFile,
-        input::{normalize_relative, normalize_resolution_key, normalize_result},
-        tables::{ResolutionTable, SourceTable},
+        AnalysisReport, ProjectInputError, ProjectRelativePath, ResolutionRequest,
+        ResolutionRequestKey, ResolverOutcome, SourceFile, input::normalize_relative,
+        tables::SourceTable,
     },
 };
 
@@ -88,7 +87,7 @@ pub struct LocallyAnalyzedProject<'a> {
 /// Linking and matching are available only from this phase.
 pub struct ResolvedProject<'a> {
     state: SessionState<'a>,
-    source_map: BTreeMap<ProjectRelativePath, SourceFile>,
+    sources: SourceTable,
     link_input: ResolvedLinkInput,
     parse_diagnostics: BTreeMap<ProjectRelativePath, crate::ParseDiagnostic>,
 }
@@ -410,61 +409,14 @@ impl<'a> LocallyAnalyzedProject<'a> {
         self,
         outcomes: impl IntoIterator<Item = (ResolutionRequestKey, ResolverOutcome)>,
     ) -> Result<ResolvedProject<'a>, ProjectInputError> {
-        let mut resolution_table = ResolutionTable::default();
-        for (mut key, mut result) in outcomes {
-            normalize_resolution_key(&mut key)?;
-            if !self.artifacts.authored_requests.contains_key(&key) {
-                return Err(ProjectInputError::UnknownRequest(key));
-            }
-            normalize_result(&mut result)?;
-            resolution_table.insert(key, result)?;
-        }
-        let resolution_map = resolution_table.into_map();
-
-        let source_map = self.sources.into_map();
-
-        let module_ids: BTreeMap<ProjectRelativePath, ModuleId> = source_map
-            .keys()
-            .enumerate()
-            .map(|(index, path)| {
-                (
-                    path.clone(),
-                    ModuleId::new(
-                        u32::try_from(index).expect("module count exceeds ModuleId range"),
-                    ),
-                )
-            })
-            .collect();
-
-        let request_ids: BTreeMap<ResolutionRequestKey, QualifiedRequestId> = self
-            .artifacts
-            .authored_requests
-            .iter()
-            .filter_map(|(key, req_id)| {
-                let module_id = module_ids.get(&key.importer).copied()?;
-                Some((
-                    key.clone(),
-                    QualifiedRequestId {
-                        module: module_id,
-                        request: req_id,
-                    },
-                ))
-            })
-            .collect();
-
-        let link_input = ResolvedLinkInput::build(ResolvedLinkInputData::new(
-            source_map.clone(),
-            self.artifacts.analyzed,
-            module_ids,
-            resolution_map,
-            request_ids,
-        ))?;
-
+        let (link_input, sources, parse_diagnostics) = ResolvedLinkInput::build(
+            ResolvedLinkInputData::from_resolved(self.sources, self.artifacts, outcomes)?,
+        )?;
         Ok(ResolvedProject {
             state: self.state,
-            source_map,
+            sources,
             link_input,
-            parse_diagnostics: self.artifacts.parse_diagnostics,
+            parse_diagnostics,
         })
     }
 }
@@ -483,7 +435,7 @@ impl ResolvedProject<'_> {
             self.state.evidence_limit,
         );
         Ok(assembly.finish(
-            &self.source_map,
+            &self.sources,
             self.link_input,
             self.parse_diagnostics,
             self.state.lowerer.limits(),

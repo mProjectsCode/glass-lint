@@ -4,7 +4,7 @@ use crate::{
     AnalysisLimits, ParseDiagnostic,
     analysis::ResolvedLinkInput,
     lint::catalog::RuleCatalog,
-    project::{AnalysisReport, ProjectRelativePath, SourceFile},
+    project::{AnalysisReport, ProjectRelativePath, SourceTable},
 };
 
 mod diagnostics;
@@ -38,13 +38,13 @@ impl<'a> ReportAssembly<'a> {
 
     pub fn finish(
         &self,
-        source_map: &BTreeMap<ProjectRelativePath, SourceFile>,
+        sources: &SourceTable,
         link_input: ResolvedLinkInput,
         parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
         limits: &AnalysisLimits,
     ) -> ProjectAnalysis {
         let (mut files, parse_failures) =
-            diagnostics::initialize_project_files(source_map, parse_diagnostics);
+            diagnostics::initialize_project_files(sources, parse_diagnostics);
 
         let linking_start = std::time::Instant::now();
         let mut project =
