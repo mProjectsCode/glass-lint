@@ -118,7 +118,7 @@ A binding slot is propagated as `(FunctionId, BindingId, NamePath)`, including a
 
 **Fix Applied:** Added named-field `BindingSlot { function, binding, path }` in the scope/value model with the same `Ord`/`Hash` trait set as the tuple. `BindingKey::binding_slot` and `ValueTable::binding_slot` return it, and the projector stores `BTreeMap<BindingSlot, ValueId>`. All positional uses were removed.
 
-#### [ ] READ-009 — Scope freezing is expressed through generic parts records
+#### [x] READ-009 — Scope freezing is expressed through generic parts records
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -129,7 +129,7 @@ Scope freezing has useful semantic subaggregates, but each is still assembled th
 
 **Recommendation:** Give the scope collector one consuming `freeze` transition that constructs `ScopeGraph` and its subindices through private owner APIs. Use `From` internally for each one-to-one subindex conversion. Remove the visible parts records and generic `from_parts` APIs.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ScopeCollector::freeze` remains the single consuming transition; it now builds subindices through internal `From` conversions and `ScopeGraph::from_collected`. The visible `*Parts` records and generic `from_parts` APIs were removed, and binding/mutation fields are private.
 
 #### [ ] READ-010 — Fact lowering dismantles both adjacent phase owners
 
