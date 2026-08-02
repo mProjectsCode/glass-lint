@@ -501,16 +501,17 @@ impl<'a> ReportAssembly<'a> {
 
         let is_partial = !project.is_complete();
         let mut operations = project.operation_counts(evidence);
-        operations.set_effect_projections(outcome.effect_projections);
+        let metrics = outcome.metrics();
+        operations.set_effect_projections(metrics.effect_projections());
 
         let trace_nodes = project.trace_arena().node_count();
 
         operations.set_path_metrics(
-            outcome.max_live_alternatives,
+            metrics.max_live_alternatives(),
             trace_nodes,
-            outcome.trace_heads,
-            outcome.coalescing_comparisons,
-            outcome.fixed_point_iterations,
+            metrics.trace_heads(),
+            metrics.coalescing_comparisons(),
+            metrics.fixed_point_iterations(),
             rendered_traces,
         );
 

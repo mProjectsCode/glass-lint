@@ -259,32 +259,46 @@ struct ProjectModuleProjection<'project> {
 /// itself through a shared reference.
 #[derive(Debug, Default)]
 pub struct ProjectionOutcome {
+    status: ProjectionStatus,
+    metrics: ProjectionMetrics,
+}
+
+#[derive(Debug, Default)]
+pub struct ProjectionStatus {
     /// Whether local flow projection exhausted its budget in any module.
-    pub local_exhausted: bool,
+    local_exhausted: bool,
     /// Whether cross-module flow projection exhausted its budget.
-    pub flow_exhausted: bool,
-    /// Number of effect projections performed during this projection.
-    pub effect_projections: usize,
+    flow_exhausted: bool,
     /// Operation count when exhaustion was reached, if applicable.
-    pub flow_observed: Option<usize>,
+    flow_observed: Option<usize>,
     /// Whether lazy function-effect extraction reached its budget.
-    pub effect_exhausted: bool,
+    effect_exhausted: bool,
     /// Effect operations consumed when the effect budget was exhausted.
-    pub effect_observed: Option<usize>,
+    effect_observed: Option<usize>,
     /// Modules whose effect extraction was incomplete.
     effect_exhausted_modules: Vec<ModuleId>,
+}
+
+#[derive(Debug, Default)]
+pub struct ProjectionMetrics {
+    /// Number of effect projections performed during this projection.
+    effect_projections: usize,
     /// Complete trace heads emitted by local and cross-module flow.
-    pub trace_heads: usize,
+    trace_heads: usize,
     /// Maximum live local semantic alternatives.
-    pub max_live_alternatives: usize,
+    max_live_alternatives: usize,
     /// Local coalescing comparisons.
-    pub coalescing_comparisons: usize,
+    coalescing_comparisons: usize,
     /// Local loop fixed-point iterations.
-    pub fixed_point_iterations: usize,
+    fixed_point_iterations: usize,
     operations: usize,
 }
 
 impl ProjectionOutcome {
+    pub(crate) fn metrics(&self) -> &ProjectionMetrics {
+        &self.metrics
+    }
+
     fn record_effects(
         &mut self,
         module: ModuleId,
@@ -293,39 +307,70 @@ impl ProjectionOutcome {
         if !effects.budget_exhausted() {
             return;
         }
-        self.effect_exhausted = true;
-        self.effect_exhausted_modules.push(module);
-        self.effect_observed = Some(
-            self.effect_observed
+        self.status.effect_exhausted = true;
+        self.status.effect_exhausted_modules.push(module);
+        self.status.effect_observed = Some(
+            self.status
+                .effect_observed
                 .unwrap_or_default()
                 .saturating_add(effects.operation_count()),
         );
     }
 
     fn record_local(&mut self, local: &LocalFlowProjectionOutcome) {
-        self.local_exhausted |= local.exhausted;
-        self.flow_exhausted |= local.exhausted;
-        self.max_live_alternatives = self.max_live_alternatives.max(local.max_live_alternatives);
-        self.coalescing_comparisons = self
+        self.status.local_exhausted |= local.exhausted;
+        self.status.flow_exhausted |= local.exhausted;
+        self.metrics.max_live_alternatives = self
+            .metrics
+            .max_live_alternatives
+            .max(local.max_live_alternatives);
+        self.metrics.coalescing_comparisons = self
+            .metrics
             .coalescing_comparisons
             .saturating_add(local.coalescing_comparisons);
-        self.fixed_point_iterations = self
+        self.metrics.fixed_point_iterations = self
+            .metrics
             .fixed_point_iterations
             .saturating_add(local.fixed_point_iterations);
-        self.trace_heads = self.trace_heads.saturating_add(local.trace_heads);
-        self.operations = self.operations.saturating_add(local.operations);
+        self.metrics.trace_heads = self.metrics.trace_heads.saturating_add(local.trace_heads);
+        self.metrics.operations = self.metrics.operations.saturating_add(local.operations);
     }
 
     fn record_cross(&mut self, cross: &flow::cross::CrossProjectionOutcome) {
-        self.flow_exhausted |= cross.exhausted;
-        self.effect_projections = cross.projections;
-        self.trace_heads = self.trace_heads.saturating_add(cross.trace_heads);
-        self.operations = self.operations.saturating_add(cross.operations);
+        self.status.flow_exhausted |= cross.exhausted;
+        self.metrics.effect_projections = cross.projections;
+        self.metrics.trace_heads = self.metrics.trace_heads.saturating_add(cross.trace_heads);
+        self.metrics.operations = self.metrics.operations.saturating_add(cross.operations);
     }
 
     fn finish(mut self) -> Self {
-        self.flow_observed = self.flow_exhausted.then_some(self.operations);
+        self.status.flow_observed = self
+            .status
+            .flow_exhausted
+            .then_some(self.metrics.operations);
         self
+    }
+}
+
+impl ProjectionMetrics {
+    pub(crate) fn effect_projections(&self) -> usize {
+        self.effect_projections
+    }
+
+    pub(crate) fn trace_heads(&self) -> usize {
+        self.trace_heads
+    }
+
+    pub(crate) fn max_live_alternatives(&self) -> usize {
+        self.max_live_alternatives
+    }
+
+    pub(crate) fn coalescing_comparisons(&self) -> usize {
+        self.coalescing_comparisons
+    }
+
+    pub(crate) fn fixed_point_iterations(&self) -> usize {
+        self.fixed_point_iterations
     }
 }
 
@@ -413,7 +458,7 @@ impl ProjectSemanticModel {
                 } else {
                     (None, 0)
                 };
-                outcome.operations = outcome.operations.saturating_add(overlay_ops);
+                outcome.metrics.operations = outcome.metrics.operations.saturating_add(overlay_ops);
                 let effects = plan.needs_flow().then(|| module.local().effects());
                 if let Some(effects) = effects
                     && effects.budget_exhausted()
@@ -447,27 +492,27 @@ impl ProjectSemanticModel {
 
     /// Record flow exhaustion status from a projection outcome.
     pub(crate) fn record_flow_exhaustion(&mut self, outcome: &ProjectionOutcome) {
-        if outcome.effect_exhausted {
-            for module in &outcome.effect_exhausted_modules {
+        if outcome.status.effect_exhausted {
+            for module in &outcome.status.effect_exhausted_modules {
                 if let Some(module) = self.modules.get(module) {
                     self.status.record(
                         StatusScope::File(module.path().clone()),
                         IncompleteReason::BudgetExhausted {
                             component: AnalysisComponent::Effects,
                             limit: self.effect_limit(),
-                            observed: outcome.effect_observed,
+                            observed: outcome.status.effect_observed,
                         },
                     );
                 }
             }
         }
-        if outcome.local_exhausted || outcome.flow_exhausted {
+        if outcome.status.local_exhausted || outcome.status.flow_exhausted {
             self.status.record(
                 StatusScope::Project,
                 IncompleteReason::BudgetExhausted {
                     component: AnalysisComponent::Flow,
                     limit: self.flow_limit(),
-                    observed: outcome.flow_observed,
+                    observed: outcome.status.flow_observed,
                 },
             );
         }
