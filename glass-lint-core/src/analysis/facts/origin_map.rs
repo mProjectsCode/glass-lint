@@ -19,6 +19,16 @@ pub(in crate::analysis) struct OriginMap<V> {
     open_checkpoints: usize,
 }
 
+/// Opaque full-state capture of an [`OriginMap`] for control-flow joins.
+///
+/// Produced by [`snapshot`](OriginMap::snapshot), merged through
+/// [`retain_common`](OriginMap::retain_common), and restored with
+/// [`restore_from`](OriginMap::restore_from). The raw map stays private so
+/// equality and branch-intersection rules remain on [`OriginMap`].
+pub(in crate::analysis) struct OriginSnapshot<V> {
+    map: HashMap<ValueId, V>,
+}
+
 /// Single-use transaction token for one origin-map branch.
 #[derive(Debug)]
 pub(in crate::analysis) struct OriginCheckpoint {
@@ -94,12 +104,21 @@ impl<V: Clone> OriginMap<V> {
         checkpoint.active = false;
     }
 
-    /// Clone the underlying map for callers that need a full immutable
-    /// snapshot (e.g. retain_common).  The caller is responsible for bounding
-    /// the number of snapshot calls.
-    pub fn snapshot(&self, budget: &SemanticBudget) -> HashMap<ValueId, V> {
+    /// Capture the full map contents as an opaque snapshot for a join point.
+    /// The caller is responsible for bounding the number of snapshot calls.
+    pub fn snapshot(&self, budget: &SemanticBudget) -> OriginSnapshot<V> {
         budget.try_charge();
-        self.map.clone()
+        OriginSnapshot {
+            map: self.map.clone(),
+        }
+    }
+
+    /// Replace the full contents with `snapshot`, discarding the change log
+    /// and any open checkpoints.
+    pub fn restore_from(&mut self, snapshot: OriginSnapshot<V>) {
+        self.map = snapshot.map;
+        self.log.clear();
+        self.open_checkpoints = 0;
     }
 
     pub fn get(&self, key: ValueId) -> Option<&V> {
@@ -125,25 +144,28 @@ impl<V: Clone> OriginMap<V> {
             });
         }
     }
+}
 
-    pub fn iter(&self) -> impl Iterator<Item = (&ValueId, &V)> {
-        self.map.iter()
+impl<V: Clone + PartialEq> OriginMap<V> {
+    /// Retain only entries whose value is identical to the one recorded in
+    /// `other` for the same key, removing every other entry. This is the
+    /// branch-intersection step at control-flow joins.
+    pub fn retain_common(&mut self, other: &OriginSnapshot<V>, budget: &SemanticBudget) {
+        let to_remove: Vec<ValueId> = self
+            .map
+            .iter()
+            .filter(|(value, origin)| other.map.get(*value) != Some(*origin))
+            .map(|(value, _)| *value)
+            .collect();
+        for key in to_remove {
+            self.remove(key, budget);
+        }
     }
 }
 
 impl<V: Clone> Default for OriginMap<V> {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl<V: Clone> From<HashMap<ValueId, V>> for OriginMap<V> {
-    fn from(map: HashMap<ValueId, V>) -> Self {
-        Self {
-            map,
-            log: Vec::new(),
-            open_checkpoints: 0,
-        }
     }
 }
 

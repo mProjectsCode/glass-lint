@@ -34,7 +34,7 @@ mod visitor;
 
 use glass_lint_datastructures::{ByteRange, NamePath, PathId, PathSegmentInput, SymbolPath};
 pub(in crate::analysis) use model::*;
-pub(in crate::analysis) use origin_map::OriginMap;
+pub(in crate::analysis) use origin_map::{OriginMap, OriginSnapshot};
 use smol_str::SmolStr;
 pub(in crate::analysis) use stream::FactStream;
 use swc_common::{Span, Spanned};

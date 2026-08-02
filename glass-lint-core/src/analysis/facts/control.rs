@@ -8,10 +8,10 @@
 //!
 //! Identity maps use [`OriginMap`] with checkpoint/rollback so that branching
 //! only pays for entries actually modified inside a branch, not for every live
-//! entry. `snapshot()` (a full clone) is used only at join points where the
-//! state of one branch must be compared against another.
+//! entry. [`snapshot`](OriginMap::snapshot) (a full clone into an opaque
+//! [`OriginSnapshot`]) is used only at join points where the state of one
+//! branch must be intersected with another.
 
-use hashbrown::HashMap;
 use smol_str::SmolStr;
 use swc_common::Spanned;
 use swc_ecma_ast::{
@@ -20,7 +20,9 @@ use swc_ecma_ast::{
 use swc_ecma_visit::VisitWith;
 
 use crate::analysis::{
-    facts::{ControlKind, ControlRegionId, FactBuilder, FactKind, FactPayload, OriginMap, Span},
+    facts::{
+        ControlKind, ControlRegionId, FactBuilder, FactKind, FactPayload, OriginSnapshot, Span,
+    },
     value::ValueId,
 };
 
@@ -180,19 +182,27 @@ impl FactBuilder<'_, '_> {
             self.emit_control(handler.span(), ControlKind::CatchStart, region);
             handler.visit_with(self);
             if stmt.finalizer.is_some() {
-                let handler_origins = std::mem::take(&mut self.provenance.instance_origins)
+                let handler_origins = self
+                    .provenance
+                    .instance_origins
                     .snapshot(self.resolver.budget);
-                self.provenance.instance_origins = OriginMap::from(try_origins);
-                self.retain_common_instance_origins(&handler_origins);
+                self.provenance.instance_origins.restore_from(try_origins);
+                self.provenance
+                    .instance_origins
+                    .retain_common(&handler_origins, self.resolver.budget);
             }
         } else if stmt.finalizer.is_some() {
-            self.provenance.instance_origins = OriginMap::from(try_origins);
-            self.retain_common_instance_origins(&incoming_snapshot);
+            self.provenance.instance_origins.restore_from(try_origins);
+            self.provenance
+                .instance_origins
+                .retain_common(&incoming_snapshot, self.resolver.budget);
         }
         if let Some(finalizer) = &stmt.finalizer {
             self.emit_control(finalizer.span(), ControlKind::FinallyStart, region);
             finalizer.visit_with(self);
-            self.provenance.instance_origins = OriginMap::from(incoming_snapshot);
+            self.provenance
+                .instance_origins
+                .restore_from(incoming_snapshot);
         }
         self.provenance.instance_origins.commit(&mut cp);
         self.provenance.class_origins.rollback(&mut cp_classes);
@@ -223,34 +233,15 @@ impl FactBuilder<'_, '_> {
         self.emit_control(expr.span(), ControlKind::BranchEnd, region);
     }
 
-    fn retain_common_instance_origins(&mut self, other: &HashMap<ValueId, (SmolStr, SmolStr)>) {
-        Self::retain_common_origins(
-            &mut self.provenance.instance_origins,
-            other,
-            self.resolver.budget,
-        );
+    fn retain_common_instance_origins(&mut self, other: &OriginSnapshot<(SmolStr, SmolStr)>) {
+        self.provenance
+            .instance_origins
+            .retain_common(other, self.resolver.budget);
     }
 
-    fn retain_common_class_origins(&mut self, other: &HashMap<ValueId, (SmolStr, SmolStr)>) {
-        Self::retain_common_origins(
-            &mut self.provenance.class_origins,
-            other,
-            self.resolver.budget,
-        );
-    }
-
-    fn retain_common_origins(
-        origins: &mut OriginMap<(SmolStr, SmolStr)>,
-        other: &HashMap<ValueId, (SmolStr, SmolStr)>,
-        budget: &crate::analysis::SemanticBudget,
-    ) {
-        let to_remove: Vec<ValueId> = origins
-            .iter()
-            .filter(|(value, origin)| other.get(*value) != Some(*origin))
-            .map(|(value, _)| *value)
-            .collect();
-        for key in to_remove {
-            origins.remove(key, budget);
-        }
+    fn retain_common_class_origins(&mut self, other: &OriginSnapshot<(SmolStr, SmolStr)>) {
+        self.provenance
+            .class_origins
+            .retain_common(other, self.resolver.budget);
     }
 }
