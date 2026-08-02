@@ -11,7 +11,7 @@ use crate::{
     analysis::{
         model::scope::{
             BindingProvenance, LexicalScope, PropertyAliasFact, RootedPropertyMutationFact,
-            ScopeId, ScopeKind,
+            ScopeEffect, ScopeId, ScopeKind,
         },
         scope::{
             binding_index::{BindingIndex, BindingIndexParts},
@@ -173,53 +173,33 @@ impl ScopeGraph {
                 .without_first_segment()
                 .and_then(|path| self.name_path(&path))
                 .unwrap_or_default();
-            self.mutations
-                .property_assignments
-                .entry(receiver_key)
-                .or_default()
-                .entry(path)
-                .or_default()
-                .push(PropertyAliasFact {
+            self.mutations.record_property_assignment(
+                receiver_key,
+                path,
+                PropertyAliasFact {
                     span: assignment.span,
                     scope: assignment.scope,
                     target: assignment.target,
-                });
-        }
-        for receiver_assignments in self.mutations.property_assignments.values_mut() {
-            for assignments in receiver_assignments.values_mut() {
-                assignments.sort_by_key(|assignment| assignment.span.lo);
-            }
+                },
+            );
         }
         for mutation in rooted_mutations {
-            self.mutations
-                .rooted_property_mutations
-                .entry(mutation.receiver)
-                .or_default()
-                .push(RootedPropertyMutationFact {
+            self.mutations.record_rooted_mutation(
+                mutation.receiver,
+                RootedPropertyMutationFact {
                     span: mutation.span,
                     scope: mutation.scope,
                     property: mutation.property,
-                });
+                },
+            );
         }
-        for mutations in self.mutations.rooted_property_mutations.values_mut() {
-            mutations.sort_by_key(|mutation| mutation.span.lo);
-        }
-        let mut evals: Vec<ScopedDynamicEval> = dynamic_evals
+        let evals: Vec<(ScopeId, ScopeEffect)> = dynamic_evals
             .into_iter()
             .filter(|eval| self.binding_at("eval", eval.effect.span()).is_none())
+            .map(|eval| (eval.scope, eval.effect))
             .collect();
-        evals.sort_by_key(|eval| eval.effect.span().hi);
-        self.mutations.dynamic_evals_by_scope.clear();
-        for eval in evals {
-            self.mutations
-                .dynamic_evals_by_scope
-                .entry(eval.scope)
-                .or_default()
-                .push(eval.effect);
-        }
-        for spans in self.mutations.dynamic_evals_by_scope.values_mut() {
-            spans.sort_by_key(|effect| effect.span().hi);
-        }
+        self.mutations.record_dynamic_evals(evals);
+        self.mutations.finalize();
     }
 
     // -- Query methods needed during collection (also on FrozenScopeGraph) --
@@ -483,9 +463,7 @@ impl FrozenScopeGraph {
     pub(in crate::analysis) fn has_prior_eval(&self, scope: ScopeId, span: Span) -> bool {
         let mut current = Some(scope);
         while let Some(scope) = current {
-            if let Some(evals) = self.mutations.dynamic_evals_by_scope.get(&scope)
-                && evals.partition_point(|effect| effect.span().hi < span.lo) > 0
-            {
+            if self.mutations.has_prior_eval(scope, span) {
                 return true;
             }
             current = self.scope_parent(scope);
