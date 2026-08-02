@@ -66,7 +66,7 @@ The local-to-resolved project transition dismantles `SourceTable` and `Resolutio
 
 ### Scope, facts, and values
 
-#### [ ] READ-005 — Scope graph implements mutation-index behavior
+#### [x] READ-005 — Scope graph implements mutation-index behavior
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -77,7 +77,7 @@ The local-to-resolved project transition dismantles `SourceTable` and `Resolutio
 
 **Recommendation:** Move record, finalize, clear, grouped-query, and prior-eval operations onto `MutationIndex`. Keep `ScopeGraph` responsible for coordinating scope and binding resolution, and make the index's maps private.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `MutationIndex` now owns record (`record_property_assignment`, `record_rooted_mutation`, `record_dynamic_evals`), `finalize`, grouped queries, and `has_prior_eval`; all four maps are private. `ScopeGraph` coordinates scope/binding resolution and delegates to the index.
 
 #### [ ] READ-006 — Origin snapshots escape as raw hash maps
 
