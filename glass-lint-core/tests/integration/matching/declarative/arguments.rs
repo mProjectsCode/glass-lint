@@ -134,8 +134,8 @@ fn host_globals_require_explicit_environment_configuration() {
         .build()
         .unwrap();
     let default_catalog = RuleCatalog::new("test", vec![rule.clone()]).unwrap();
-    assert!({
-        let (_, _, files, _, _, _) = Linter::new(LinterConfig::new(
+    assert!(
+        Linter::new(LinterConfig::new(
             vec![default_catalog],
             Environment::default(),
         ))
@@ -145,9 +145,10 @@ fn host_globals_require_explicit_environment_configuration() {
             "fetch('/unconfigured'); const run = fetch; run('/alias')",
         ))
         .unwrap()
-        .into_parts();
-        files[0].findings().is_empty()
-    });
+        .files()[0]
+            .findings()
+            .is_empty()
+    );
 
     let mut environment = Environment::default();
     environment.add_global("fetch").unwrap();
@@ -170,31 +171,30 @@ fn rooted_host_globals_also_require_environment_configuration() {
         .build()
         .unwrap();
     let default_catalog = RuleCatalog::new("test", vec![rule.clone()]).unwrap();
-    assert!({
-        let (_, _, files, _, _, _) = Linter::new(LinterConfig::new(
+    assert!(
+        Linter::new(LinterConfig::new(
             vec![default_catalog],
             Environment::default(),
         ))
         .unwrap()
         .lint_source(source("matcher.js", "host.open()"))
         .unwrap()
-        .into_parts();
-        files[0].findings().is_empty()
-    });
+        .files()[0]
+            .findings()
+            .is_empty()
+    );
 
     let mut environment = Environment::default();
     environment.add_global("host").unwrap();
     let configured = RuleCatalog::new("test", vec![rule]).unwrap();
     assert_eq!(
-        {
-            let (_, _, files, _, _, _) =
-                Linter::new(LinterConfig::new(vec![configured], environment))
-                    .unwrap()
-                    .lint_source(source("matcher.js", "host.open()"))
-                    .unwrap()
-                    .into_parts();
-            files[0].findings().len()
-        },
+        Linter::new(LinterConfig::new(vec![configured], environment))
+            .unwrap()
+            .lint_source(source("matcher.js", "host.open()"))
+            .unwrap()
+            .files()[0]
+            .findings()
+            .len(),
         1
     );
 }
@@ -208,14 +208,15 @@ fn custom_global_objects_do_not_make_unconfigured_members_global() {
     let mut environment = Environment::default();
     environment.add_global_object("activeWindow").unwrap();
     let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
-    assert!({
-        let (_, _, files, _, _, _) = Linter::new(LinterConfig::new(vec![catalog], environment))
+    assert!(
+        Linter::new(LinterConfig::new(vec![catalog], environment))
             .unwrap()
             .lint_source(source("matcher.js", "activeWindow.fetch('/unknown')"))
             .unwrap()
-            .into_parts();
-        files[0].findings().is_empty()
-    });
+            .files()[0]
+            .findings()
+            .is_empty()
+    );
 }
 
 #[test]

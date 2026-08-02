@@ -48,48 +48,26 @@ impl AnalysisReport {
     /// ```
     pub fn combine(reports: impl IntoIterator<Item = Self>) -> Result<Self, ReportCombineError> {
         let mut reports = reports.into_iter();
-        let Some(first) = reports.next() else {
+        let Some(mut combined) = reports.next() else {
             return Err(ReportCombineError::Empty);
         };
-        let (
-            schema_version,
-            tool_version,
-            mut files,
-            mut diagnostics,
-            mut operations,
-            mut completion,
-        ) = first.into_parts();
         for report in reports {
-            let (r_schema, r_tool, r_files, r_diags, r_ops, r_comp) = report.into_parts();
-            if r_schema != schema_version {
+            if report.schema_version() != combined.schema_version() {
                 return Err(ReportCombineError::SchemaMismatch {
-                    expected: schema_version,
-                    actual: r_schema,
+                    expected: combined.schema_version(),
+                    actual: report.schema_version(),
                 });
             }
-            if r_tool != tool_version {
+            if report.tool_version() != combined.tool_version() {
                 return Err(ReportCombineError::ToolVersionMismatch {
-                    expected: tool_version,
-                    actual: r_tool,
+                    expected: combined.tool_version().into(),
+                    actual: report.tool_version().into(),
                 });
             }
-            files.extend(r_files);
-            diagnostics.extend(r_diags);
-            operations += r_ops;
-            completion = completion.join(r_comp);
+            combined = combined.merge(report);
         }
-
-        files.sort_by(|left, right| left.ordering_key().cmp(right.ordering_key()));
-        diagnostics.sort_by(|left, right| left.ordering_key().cmp(&right.ordering_key()));
-
-        Ok(Self::new(
-            schema_version,
-            tool_version,
-            files,
-            diagnostics,
-            operations,
-            completion,
-        ))
+        combined.sort_deterministically();
+        Ok(combined)
     }
 }
 

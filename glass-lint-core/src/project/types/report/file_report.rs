@@ -9,7 +9,7 @@ pub struct FileReport {
 }
 
 impl FileReport {
-    pub fn new(
+    pub(crate) fn new(
         path: ProjectRelativePath,
         findings: Vec<Finding>,
         diagnostics: Vec<Diagnostic>,
@@ -33,12 +33,8 @@ impl FileReport {
         &self.diagnostics
     }
 
-    pub(crate) fn diagnostics_mut(&mut self) -> &mut Vec<Diagnostic> {
-        &mut self.diagnostics
-    }
-
-    pub fn into_parts(self) -> (ProjectRelativePath, Vec<Finding>, Vec<Diagnostic>) {
-        (self.path, self.findings, self.diagnostics)
+    pub(crate) fn push_diagnostic(&mut self, diagnostic: Diagnostic) {
+        self.diagnostics.push(diagnostic);
     }
 
     #[must_use]

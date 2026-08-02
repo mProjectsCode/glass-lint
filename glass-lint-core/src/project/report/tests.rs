@@ -351,11 +351,11 @@ fn direct_qualification_matches_one_file_project_shape() {
     ))
     .unwrap();
     let source = "fetch(\"https://example.test\");";
-    let (_, _, mut snippet_files, _, _, _) = linter
+    let direct = linter
         .lint_source(source_file("main.js", source))
         .unwrap()
-        .into_parts();
-    let direct = snippet_files.remove(0);
+        .files()[0]
+        .clone();
     let mut manual_session = linter.begin_project().unwrap();
     manual_session
         .analyze_source(source_file("main.js", source))

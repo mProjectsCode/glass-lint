@@ -58,7 +58,7 @@ pub(super) fn attach_project_diagnostics(
             .expect("ordered source range"),
         )));
         if let Some(file) = files.get_mut(&path) {
-            file.diagnostics_mut().push(Diagnostic::project(diagnostic));
+            file.push_diagnostic(Diagnostic::project(diagnostic));
         }
     }
 
@@ -69,7 +69,7 @@ pub(super) fn attach_project_diagnostics(
             .map(|location| location.path().clone())
         {
             if let Some(file) = files.get_mut(&path) {
-                file.diagnostics_mut().push(Diagnostic::project(diagnostic));
+                file.push_diagnostic(Diagnostic::project(diagnostic));
             }
         } else {
             diagnostics.push(Diagnostic::project(diagnostic));

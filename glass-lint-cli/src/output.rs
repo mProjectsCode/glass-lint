@@ -382,9 +382,7 @@ fn color_enabled(config: &Config) -> bool {
 mod tests {
     use glass_lint_core::{
         AnalysisLimits, Environment, Linter, Rule, RuleCatalog, Severity,
-        project::{
-            AnalysisDiagnostic, AnalysisReport, Diagnostic, DiagnosticCode, ReportCompletion,
-        },
+        project::{AnalysisReport, ReportCompletion},
         rules::{Category, Confidence, EventQuery},
     };
 
@@ -476,14 +474,8 @@ mod tests {
             .unwrap();
         let semantic_partial = linter(1)
             .lint_source(SourceFile::new("c.js", semantic_source).unwrap())
-            .unwrap();
-        let (sv, tv, files, mut diagnostics, ops, comp) = semantic_partial.into_parts();
-        diagnostics.push(Diagnostic::Project(AnalysisDiagnostic::new(
-            DiagnosticCode::new("incomplete_project").unwrap(),
-            "project scope retained".into(),
-            None,
-        )));
-        let semantic_partial = AnalysisReport::new(sv, tv, files, diagnostics, ops, comp);
+            .unwrap()
+            .into_partial("project scope retained");
         let files = [
             output("c.js", semantic_source, semantic_partial),
             output("a.js", complete_source, complete),

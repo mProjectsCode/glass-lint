@@ -1,15 +1,17 @@
 //! Rendering contracts for human-readable single-file and grouped reports.
+//!
+//! Reports come from the public analysis pipeline so rendering is exercised
+//! against real report data rather than construction seams.
 
-use glass_lint_core::project::{
-    EvidenceRole, EvidenceStep, EvidenceTrace, EvidenceTraces, FileReport, Finding, MatchCertainty,
-    ProjectRelativePath, SourceLocation,
+use glass_lint_core::{
+    Environment, Linter, LinterConfig, Rule, RuleCatalog,
+    project::{FileReport, SourceFile},
+    rules::{
+        Category, Confidence, EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
+        LifecycleQuery, LifecycleSink, QueryBuildError, QueryDecl, Severity, ValueMatcher,
+    },
 };
-use glass_lint_datastructures::{Position, SourceRange};
-use glass_lint_output::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports, RuleId, Severity};
-
-fn path(path: &str) -> ProjectRelativePath {
-    ProjectRelativePath::new(path).unwrap()
-}
+use glass_lint_output::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports};
 
 fn line_starts(source: &str) -> Vec<usize> {
     let mut starts = vec![0];
@@ -17,44 +19,79 @@ fn line_starts(source: &str) -> Vec<usize> {
     starts
 }
 
-fn location(range: SourceRange) -> SourceLocation {
-    SourceLocation::new(path("main.js"), range)
+fn fetch_rule(description: &str, severity: Severity) -> Rule {
+    Rule::builder("fetch")
+        .description(description)
+        .category(Category::new("network").unwrap())
+        .severity(severity)
+        .confidence(Confidence::High)
+        .query(EventQuery::call_global("fetch"))
+        .build()
+        .unwrap()
 }
 
-fn range(line: u32, start: u32, end: u32) -> SourceRange {
-    SourceRange::new(
-        Position::new(line, start).unwrap(),
-        Position::new(line, end).unwrap(),
-    )
+fn linter(rules: Vec<Rule>, globals: &[&str]) -> Linter {
+    let mut environment = Environment::default();
+    environment
+        .add_globals(globals.iter().map(ToString::to_string))
+        .unwrap();
+    Linter::new(LinterConfig::new(
+        vec![RuleCatalog::new("test", rules).unwrap()],
+        environment,
+    ))
     .unwrap()
 }
 
-fn file(findings: Vec<Finding>) -> FileReport {
-    FileReport::new(path("main.js"), findings, Vec::new())
+fn lint_file(source: &str, filename: &str, rule: Rule, globals: &[&str]) -> FileReport {
+    linter(vec![rule], globals)
+        .lint_source(SourceFile::new(filename, source).unwrap())
+        .unwrap()
+        .files()[0]
+        .clone()
 }
 
-fn step(message: &str, range: SourceRange) -> EvidenceStep {
-    EvidenceStep::new(EvidenceRole::Occurrence, message.into(), location(range))
+fn script_insertion_flow() -> Result<LifecycleQuery, QueryBuildError> {
+    LifecycleQuery::builder("script-insert")
+        .source(
+            EventQuery::member_call_rooted("document.createElement")
+                .unwrap()
+                .with_arg(0, ValueMatcher::static_string().equals("script")),
+        )
+        .condition(LifecycleCondition::event(LifecycleEvent::property_write(
+            "src",
+            ValueMatcher::any_value(),
+        )))
+        .completion(LifecycleCompletion::any_sink([
+            LifecycleSink::argument_of_member("document.head.appendChild", 0),
+        ]))
+        .build()
+}
+
+fn flow_rule(id: &str, description: &str) -> Rule {
+    Rule::builder(id)
+        .description(description)
+        .category(Category::new("test").unwrap())
+        .severity(Severity::Warning)
+        .confidence(Confidence::High)
+        .query(QueryDecl::lifecycle(script_insertion_flow()))
+        .build()
+        .unwrap()
 }
 
 #[test]
 fn groups_by_rule_then_sorts_evidence_by_file_and_location() {
-    let range_at = |line| range(line, 1, 6);
-    let finding = |line| {
-        Finding::new(
-            RuleId::parse("test:fetch").unwrap(),
-            "Uses fetch".into(),
-            Severity::Warning,
-            location(range_at(line)),
-            EvidenceTraces::new(vec![EvidenceTrace::new(vec![step(
-                "call of \"fetch\"",
-                range_at(line),
-            )])]),
-            MatchCertainty::Definite,
-        )
-    };
-    let report_a = file(vec![finding(2), finding(1)]);
-    let report_b = file(vec![finding(1)]);
+    let report_a = lint_file(
+        "fetch('/a1');\nfetch('/a2');",
+        "a.js",
+        fetch_rule("Uses fetch", Severity::Warning),
+        &["fetch"],
+    );
+    let report_b = lint_file(
+        "fetch('/b');",
+        "b.js",
+        fetch_rule("Uses fetch", Severity::Warning),
+        &["fetch"],
+    );
     let files = [
         PrettyFile::new(&report_b, "b.js", "fetch('/b');"),
         PrettyFile::new(&report_a, "a.js", "fetch('/a1');\nfetch('/a2');"),
@@ -87,18 +124,11 @@ fn groups_by_rule_then_sorts_evidence_by_file_and_location() {
 
 #[test]
 fn can_hide_source_excerpts_for_evidence_rows() {
-    let r = range(1, 1, 6);
-    let report = FileReport::new(
-        path("main.js"),
-        vec![Finding::new(
-            RuleId::parse("test:fetch").unwrap(),
-            "Uses fetch".into(),
-            Severity::Warning,
-            location(r.clone()),
-            EvidenceTraces::new(vec![EvidenceTrace::new(vec![step("call of fetch", r)])]),
-            MatchCertainty::Definite,
-        )],
-        vec![],
+    let report = lint_file(
+        "fetch('x');",
+        "main.js",
+        fetch_rule("Uses fetch", Severity::Warning),
+        &["fetch"],
     );
 
     let starts = line_starts("fetch('x');");
@@ -116,83 +146,50 @@ fn can_hide_source_excerpts_for_evidence_rows() {
 
     assert_eq!(
         rendered,
-        "warning[test:fetch] (definite) Uses fetch\n  main.js:1:1 - call of fetch\n"
+        "warning[test:fetch] (definite) Uses fetch\n  main.js:1:1 - call of \"fetch\"\n"
     );
 }
 
 #[test]
 fn renders_flow_trace_steps_and_their_source() {
-    let sink = range(1, 1, 8);
-    let source = range(1, 1, 7);
-    let requirement = range(2, 1, 9);
-    let report = FileReport::new(
-        path("helper.js"),
-        vec![Finding::new(
-            RuleId::parse("test:flow").unwrap(),
-            "Proves a flow".into(),
-            Severity::Warning,
-            SourceLocation::new(path("helper.js"), sink.clone()),
-            EvidenceTraces::new(vec![EvidenceTrace::new(vec![
-                EvidenceStep::new(EvidenceRole::Source, "flow source".into(), location(source)),
-                EvidenceStep::new(
-                    EvidenceRole::Requirement,
-                    "flow requirement".into(),
-                    SourceLocation::new(path("helper.js"), requirement),
-                ),
-                EvidenceStep::new(
-                    EvidenceRole::Sink,
-                    "flow sink".into(),
-                    SourceLocation::new(path("helper.js"), sink),
-                ),
-            ])]),
-            MatchCertainty::Definite,
-        )],
-        vec![],
+    let source =
+        "const s = document.createElement('script');\ns.src = url;\ndocument.head.appendChild(s);";
+    let report = lint_file(
+        source,
+        "helper.js",
+        flow_rule("flow", "Script insertion flow"),
+        &["document", "url"],
     );
-    let source_report = FileReport::new(path("main.js"), vec![], vec![]);
-    let files = [
-        PrettyFile::new(
-            &report,
-            "helper.js",
-            "function append() {\n  element.src = url;\n}",
-        ),
-        PrettyFile::new(&source_report, "main.js", "const element = create();"),
-    ];
+    let files = [PrettyFile::new(&report, "helper.js", source)];
 
     let rendered = PrettyReports::new(&files, PrettyOptions::default()).to_string();
 
-    assert!(rendered.contains("helper.js:1:1 - flow sink"));
+    assert!(rendered.contains("helper.js:3:1 - flow sink"));
     assert!(rendered.contains("trace 1:"));
-    assert!(rendered.contains("main.js:1:1 - flow source"));
-    assert!(rendered.contains("const element = create();"));
+    assert!(rendered.contains("helper.js:1:11 - flow source"));
+    assert!(rendered.contains("const s = document.createElement('script');"));
     assert!(rendered.contains("helper.js:2:1 - flow requirement"));
-    assert!(rendered.contains("element.src = url;"));
+    assert!(rendered.contains("s.src = url;"));
 }
 
 #[test]
 fn explains_possible_path_certainty() {
-    let r = range(1, 1, 6);
-    let report = FileReport::new(
-        path("main.js"),
-        vec![Finding::new(
-            RuleId::parse("test:fetch").unwrap(),
-            "Uses fetch".into(),
-            Severity::Warning,
-            location(r.clone()),
-            EvidenceTraces::new(vec![EvidenceTrace::new(vec![step("call of fetch", r)])]),
-            MatchCertainty::Possible,
-        )],
-        vec![],
+    let source = "const script = document.createElement('script'); if (flag) script.src = url; document.head.appendChild(script);";
+    let report = lint_file(
+        source,
+        "main.js",
+        flow_rule("flow", "Script insertion flow"),
+        &["document", "flag", "url"],
     );
     let rendered = PrettyReport::new(
         &report,
         "main.js",
-        "fetch('x');",
+        source,
         PrettyOptions {
             show_evidence_source: false,
             ..PrettyOptions::default()
         },
-        &line_starts("fetch('x');"),
+        &line_starts(source),
     )
     .to_string();
 
@@ -204,7 +201,12 @@ fn explains_possible_path_certainty() {
 
 #[test]
 fn renders_empty_reports_without_extra_output() {
-    let report = FileReport::new(path("main.js"), vec![], vec![]);
+    let report = lint_file(
+        "const x = 1;",
+        "main.js",
+        fetch_rule("Uses fetch", Severity::Warning),
+        &["fetch"],
+    );
     assert_eq!(
         PrettyReport::new(
             &report,
@@ -224,20 +226,11 @@ fn renders_empty_reports_without_extra_output() {
 
 #[test]
 fn renders_terminal_controls_visibly() {
-    let report = FileReport::new(
-        path("main.js"),
-        vec![Finding::new(
-            RuleId::parse("test:fetch").unwrap(),
-            "message\u{1b}[31m".into(),
-            Severity::Warning,
-            location(range(1, 1, 2)),
-            EvidenceTraces::new(vec![EvidenceTrace::new(vec![step(
-                "call of fetch",
-                range(1, 1, 2),
-            )])]),
-            MatchCertainty::Definite,
-        )],
-        vec![],
+    let report = lint_file(
+        "fetch('x');",
+        "main.js",
+        fetch_rule("message\u{1b}[31m", Severity::Warning),
+        &["fetch"],
     );
     let output = PrettyReport::new(
         &report,
@@ -253,22 +246,16 @@ fn renders_terminal_controls_visibly() {
 
 #[test]
 fn bounds_long_excerpt() {
-    let report = FileReport::new(
-        path("main.js"),
-        vec![Finding::new(
-            RuleId::parse("test:long-line").unwrap(),
-            "long line".into(),
-            Severity::Warning,
-            location(range(1, 201, 206)),
-            EvidenceTraces::new(vec![EvidenceTrace::new(vec![step(
-                "call of fetch",
-                range(1, 201, 206),
-            )])]),
-            MatchCertainty::Definite,
-        )],
-        vec![],
-    );
-    let source = format!("{}fetch('x')", "x".repeat(200));
+    let rule = Rule::builder("long-line")
+        .description("long line")
+        .category(Category::new("test").unwrap())
+        .severity(Severity::Warning)
+        .confidence(Confidence::High)
+        .query(EventQuery::string_contains("fetch"))
+        .build()
+        .unwrap();
+    let source = format!("const s = '{}fetch';", "x".repeat(200));
+    let report = lint_file(&source, "main.js", rule, &["s"]);
     let rendered = PrettyReport::new(
         &report,
         "main.js",
@@ -290,22 +277,16 @@ fn bounds_long_excerpt() {
 
 #[test]
 fn renders_tabs_and_wide_unicode_within_the_display_budget() {
-    let report = FileReport::new(
-        path("main.js"),
-        vec![Finding::new(
-            RuleId::parse("test:unicode").unwrap(),
-            "unicode".into(),
-            Severity::Info,
-            location(range(1, 9, 12)),
-            EvidenceTraces::new(vec![EvidenceTrace::new(vec![step(
-                "unicode match",
-                range(1, 9, 12),
-            )])]),
-            MatchCertainty::Definite,
-        )],
-        vec![],
-    );
-    let source = "\t\tconst 😀 = true;\n";
+    let rule = Rule::builder("unicode")
+        .description("unicode")
+        .category(Category::new("test").unwrap())
+        .severity(Severity::Info)
+        .confidence(Confidence::High)
+        .query(EventQuery::string_contains("\u{1f600}"))
+        .build()
+        .unwrap();
+    let source = "\t\tconst s = '\u{1f600}';\n";
+    let report = lint_file(source, "main.js", rule, &["s"]);
     let rendered = PrettyReport::new(
         &report,
         "main.js",
@@ -328,22 +309,13 @@ fn renders_tabs_and_wide_unicode_within_the_display_budget() {
 
 #[test]
 fn aligns_caret_after_single_tab_and_wide_character() {
-    let report = FileReport::new(
-        path("main.js"),
-        vec![Finding::new(
-            RuleId::parse("test:alignment").unwrap(),
-            "alignment".into(),
-            Severity::Info,
-            location(range(1, 2, 7)),
-            EvidenceTraces::new(vec![EvidenceTrace::new(vec![step(
-                "call of fetch",
-                range(1, 2, 7),
-            )])]),
-            MatchCertainty::Definite,
-        )],
-        vec![],
-    );
     let source = "\tfetch('x');";
+    let report = lint_file(
+        source,
+        "main.js",
+        fetch_rule("Uses fetch", Severity::Warning),
+        &["fetch"],
+    );
     let rendered = PrettyReport::new(
         &report,
         "main.js",
@@ -360,21 +332,15 @@ fn aligns_caret_after_single_tab_and_wide_character() {
 
 #[test]
 fn renders_missing_source_lines_without_panicking() {
-    let report = FileReport::new(
-        path("main.js"),
-        vec![Finding::new(
-            RuleId::parse("test:missing").unwrap(),
-            "missing".into(),
-            Severity::Error,
-            location(range(99, 1, 2)),
-            EvidenceTraces::new(vec![EvidenceTrace::new(vec![step(
-                "missing call",
-                range(99, 1, 2),
-            )])]),
-            MatchCertainty::Definite,
-        )],
-        vec![],
-    );
+    let rule = Rule::builder("missing")
+        .description("missing")
+        .category(Category::new("test").unwrap())
+        .severity(Severity::Error)
+        .confidence(Confidence::High)
+        .query(EventQuery::call_global("fetch"))
+        .build()
+        .unwrap();
+    let report = lint_file("const x = 1;\nfetch('x');", "main.js", rule, &["fetch"]);
     let rendered = PrettyReport::new(
         &report,
         "main.js",
@@ -384,27 +350,21 @@ fn renders_missing_source_lines_without_panicking() {
     )
     .to_string();
     assert!(rendered.contains("error[test:missing] (definite) missing"));
-    assert!(rendered.contains("main.js:99:1 - missing call"));
+    assert!(rendered.contains("main.js:2:1 - call of \"fetch\""));
 }
 
 #[test]
 fn renders_colored_findings_when_enabled() {
-    let report = FileReport::new(
-        path("main.js"),
-        vec![Finding::new(
-            RuleId::parse("test:color").unwrap(),
-            "colored".into(),
-            Severity::Error,
-            location(range(1, 1, 2)),
-            EvidenceTraces::new(vec![EvidenceTrace::new(vec![step(
-                "color match",
-                range(1, 1, 2),
-            )])]),
-            MatchCertainty::Definite,
-        )],
-        vec![],
-    );
-    let source = "x();";
+    let rule = Rule::builder("color")
+        .description("colored")
+        .category(Category::new("test").unwrap())
+        .severity(Severity::Error)
+        .confidence(Confidence::High)
+        .query(EventQuery::call_global("fetch"))
+        .build()
+        .unwrap();
+    let source = "fetch('x');";
+    let report = lint_file(source, "main.js", rule, &["fetch"]);
     let rendered = PrettyReport::new(
         &report,
         "main.js",

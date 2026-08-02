@@ -42,7 +42,7 @@ pub struct AnalysisReport {
 }
 
 impl AnalysisReport {
-    pub fn new(
+    pub(crate) fn new(
         schema_version: u32,
         tool_version: String,
         files: Vec<FileReport>,
@@ -84,24 +84,21 @@ impl AnalysisReport {
         self.completion
     }
 
-    pub fn into_parts(
-        self,
-    ) -> (
-        u32,
-        String,
-        Vec<FileReport>,
-        Vec<Diagnostic>,
-        AnalysisOperationCounts,
-        ReportCompletion,
-    ) {
-        (
-            self.schema_version,
-            self.tool_version,
-            self.files,
-            self.diagnostics,
-            self.operations,
-            self.completion,
-        )
+    /// Append one validated report's contents losslessly. Callers validate
+    /// schema and tool identity before merging.
+    pub(crate) fn merge(mut self, other: Self) -> Self {
+        self.files.extend(other.files);
+        self.diagnostics.extend(other.diagnostics);
+        self.operations += other.operations;
+        self.completion = self.completion.join(other.completion);
+        self
+    }
+
+    pub(crate) fn sort_deterministically(&mut self) {
+        self.files
+            .sort_by(|left, right| left.ordering_key().cmp(right.ordering_key()));
+        self.diagnostics
+            .sort_by(|left, right| left.ordering_key().cmp(&right.ordering_key()));
     }
 
     #[must_use]
