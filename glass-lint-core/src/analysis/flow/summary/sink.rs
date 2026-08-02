@@ -39,22 +39,40 @@ impl FunctionSinkSummary {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(in crate::analysis::flow) struct InsertOutcome {
+    inserted: usize,
+}
+
+impl InsertOutcome {
+    pub(super) fn new(inserted: usize) -> Self {
+        Self { inserted }
+    }
+
+    pub(super) fn inserted(self) -> usize {
+        self.inserted
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub(in crate::analysis::flow) struct SinkSet {
     set: FastIndexSet<FunctionSinkSummary>,
 }
 
 impl SinkSet {
-    pub(super) fn push_unique(&mut self, sink: FunctionSinkSummary) -> bool {
-        self.set.insert(sink)
+    pub(super) fn push_unique(&mut self, sink: FunctionSinkSummary) -> InsertOutcome {
+        InsertOutcome::new(usize::from(self.set.insert(sink)))
     }
 
-    pub(super) fn len(&self) -> usize {
-        self.set.len()
-    }
-
-    pub(super) fn get(&self, index: usize) -> Option<&FunctionSinkSummary> {
-        self.set.get_index(index)
+    pub(super) fn extend_unique(
+        &mut self,
+        sinks: impl IntoIterator<Item = FunctionSinkSummary>,
+    ) -> InsertOutcome {
+        let mut inserted = 0;
+        for sink in sinks {
+            inserted += usize::from(self.set.insert(sink));
+        }
+        InsertOutcome::new(inserted)
     }
 
     pub(super) fn sort_and_dedup(&mut self) {
@@ -139,8 +157,15 @@ impl FunctionSummary {
         self.parameter_count
     }
 
-    pub(super) fn add_sink(&mut self, sink: FunctionSinkSummary) -> bool {
+    pub(super) fn add_sink(&mut self, sink: FunctionSinkSummary) -> InsertOutcome {
         self.sinks.push_unique(sink)
+    }
+
+    pub(super) fn add_sinks(
+        &mut self,
+        sinks: impl IntoIterator<Item = FunctionSinkSummary>,
+    ) -> InsertOutcome {
+        self.sinks.extend_unique(sinks)
     }
 
     pub(super) fn sort_sinks(&mut self) {
@@ -200,10 +225,10 @@ impl FunctionSummary {
         plan: &BoundFlowPlan<'_>,
         paths: &mut SummaryPathStore<'_>,
         call_id: FactId,
-    ) {
+    ) -> InsertOutcome {
         let Some(FactPayload::Call { args, .. }) = stream.fact(call_id).map(|fact| &fact.payload)
         else {
-            return;
+            return InsertOutcome::default();
         };
         let cref = crate::analysis::flow::effect::CallEffectRef {
             stream,
@@ -213,6 +238,7 @@ impl FunctionSummary {
             .global_name()
             .and_then(|name| plan.global_sink_ids(name))
             .or_else(|| cref.chain().and_then(|chain| plan.sink_ids(chain)));
+        let mut candidates = Vec::new();
         for flow_id in flow_ids.into_iter().flatten() {
             let Some(flow) = plan.get(*flow_id) else {
                 continue;
@@ -242,7 +268,7 @@ impl FunctionSummary {
                     let Some(path) = paths.join(prefix_id, suffix_id) else {
                         continue;
                     };
-                    self.add_sink(FunctionSinkSummary::new(
+                    candidates.push(FunctionSinkSummary::new(
                         *flow_id,
                         parameter.parameter_index,
                         path,
@@ -250,6 +276,7 @@ impl FunctionSummary {
                 }
             }
         }
+        self.add_sinks(candidates)
     }
 }
 
@@ -311,7 +338,7 @@ mod tests {
     #[test]
     fn sink_set_default_is_empty() {
         let set = SinkSet::default();
-        assert_eq!(set.len(), 0);
+        assert_eq!(set.into_iter().count(), 0);
     }
 
     #[test]
@@ -321,10 +348,10 @@ mod tests {
 
         let s1 = FunctionSinkSummary::new(FlowId::new(ri(0), 0), 0, sp0);
         let s2 = FunctionSinkSummary::new(FlowId::new(ri(0), 0), 1, sp0);
-        assert!(set.push_unique(s1));
-        assert_eq!(set.len(), 1);
-        assert!(set.push_unique(s2));
-        assert_eq!(set.len(), 2);
+        assert_eq!(set.push_unique(s1).inserted(), 1);
+        assert_eq!((&set).into_iter().count(), 1);
+        assert_eq!(set.push_unique(s2).inserted(), 1);
+        assert_eq!((&set).into_iter().count(), 2);
     }
 
     #[test]
@@ -332,24 +359,22 @@ mod tests {
         let mut set = SinkSet::default();
         let sp0 = SummaryPathId::from_frozen_path(PathId::EMPTY);
         let s1 = FunctionSinkSummary::new(FlowId::new(ri(0), 0), 0, sp0);
-        assert!(set.push_unique(s1.clone()));
-        assert!(!set.push_unique(s1));
-        assert_eq!(set.len(), 1);
+        assert_eq!(set.push_unique(s1.clone()).inserted(), 1);
+        assert_eq!(set.push_unique(s1).inserted(), 0);
+        assert_eq!((&set).into_iter().count(), 1);
     }
 
     #[test]
-    fn sink_set_get_returns_sink_by_index() {
+    fn sink_set_extend_unique_reports_total_inserted_after_dedup() {
         let (_paths, p0, p1, _p2) = test_paths();
         let mut set = SinkSet::default();
         let sp1 = SummaryPathId::from_frozen_path(p0);
         let sp2 = SummaryPathId::from_frozen_path(p1);
         let s1 = FunctionSinkSummary::new(FlowId::new(ri(0), 0), 0, sp1);
         let s2 = FunctionSinkSummary::new(FlowId::new(ri(0), 0), 1, sp2);
-        set.push_unique(s1.clone());
-        set.push_unique(s2.clone());
-        assert_eq!(set.get(0), Some(&s1));
-        assert_eq!(set.get(1), Some(&s2));
-        assert!(set.get(2).is_none());
+        let outcome = set.extend_unique(vec![s1.clone(), s1, s2]);
+        assert_eq!(outcome.inserted(), 2);
+        assert_eq!((&set).into_iter().count(), 2);
     }
 
     #[test]
@@ -361,9 +386,8 @@ mod tests {
         set.push_unique(s2.clone());
         set.push_unique(s1.clone());
         set.sort_and_dedup();
-        assert_eq!(set.len(), 2);
-        assert_eq!(set.get(0), Some(&s1));
-        assert_eq!(set.get(1), Some(&s2));
+        let sinks: Vec<&FunctionSinkSummary> = (&set).into_iter().collect();
+        assert_eq!(sinks, vec![&s1, &s2]);
     }
 
     #[test]
@@ -396,7 +420,7 @@ mod tests {
         assert_eq!(summary.id(), FunctionId::from_test(5));
         assert_eq!(summary.parameter_count(), 3);
         assert!(summary.calls().is_empty());
-        assert_eq!(summary.sinks().len(), 0);
+        assert_eq!(summary.sinks().into_iter().count(), 0);
     }
 
     #[test]
@@ -410,7 +434,7 @@ mod tests {
         summary.add_sink(s2);
         summary.add_sink(s1);
         summary.sort_sinks();
-        assert_eq!(summary.sinks().len(), 2);
+        assert_eq!(summary.sinks().into_iter().count(), 2);
     }
 
     // ── is_invocation_compatible ──────────────────────────────────────────

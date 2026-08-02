@@ -123,9 +123,9 @@ impl<'a> FunctionSummaries<'a> {
                     return;
                 }
                 if let Some(call_id) = summary.calls().get(idx).copied() {
-                    let before = summary.sinks().len();
-                    summary.collect_sinks_for_call(stream, plan, &mut self.paths, call_id);
-                    let added = summary.sinks().len() - before;
+                    let added = summary
+                        .collect_sinks_for_call(stream, plan, &mut self.paths, call_id)
+                        .inserted();
                     for _ in 0..added {
                         if !budget.try_push() {
                             self.exhausted = true;
@@ -169,8 +169,7 @@ impl<'a> FunctionSummaries<'a> {
         {
             let target_params = stream.function_parameters(target);
             let caller_params = stream.function_parameters(caller);
-            for sink_idx in 0..target_summary.sinks().len() {
-                let sink = target_summary.sinks().get(sink_idx).expect("valid index");
+            for sink in target_summary.sinks() {
                 if let Some(proj) = try_project_sink(
                     target_params,
                     caller_params,
@@ -186,17 +185,15 @@ impl<'a> FunctionSummaries<'a> {
                 }
             }
         }
-        let mut changed = false;
+        let mut inserted = 0;
         for proj in projections {
             if !budget.try_push() {
                 return Err(PropagationOutcome::Exhausted);
             }
-            if caller_summary.add_sink(proj) {
-                self.total_sinks += 1;
-                changed = true;
-            }
+            inserted += caller_summary.add_sink(proj).inserted();
         }
-        Ok(changed)
+        self.total_sinks += inserted;
+        Ok(inserted > 0)
     }
 }
 
