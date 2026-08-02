@@ -1,262 +1,354 @@
 # Codebase Readability Audit
 
-Date: 2026-08-02
-
-Scope: 416 Rust source files, approximately 82,433 lines, across the workspace. The previous audit's 14 findings were not carried forward because the corresponding refactors are present in history and the old entries were marked fixed.
-
 ## Summary
 
-The workspace is generally well-factored at the crate level and has strong typed domain vocabulary in many of the recently refactored areas. The remaining readability cost is concentrated in internal analysis boundaries: positional tuples and raw maps still carry semantic state, a few aggregate constructors expose too much assembly detail, and orchestration code spans several independent lifecycle phases.
+This audit covers the workspace's 442 Rust source files (82,972 lines), with focused full-context review of semantic model types, phase transitions, collection owners, large coordination functions, and every `into_parts`, `from_parts`, `into_map`, and similar representation-conversion seam found in production code.
 
-There are no open findings. READ-001 through READ-017 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below record the completed maintainability work and its verification.
+The codebase already uses semantic IDs and phase types extensively. The main remaining readability problem is that several abstractions stop at the storage boundary: owners expose maps, tuple slices, mutable vectors, or positional parts, and callers then implement the domain operation. That makes invariants, ordering, completeness, and phase transitions harder to locate. The recommendations below favor behavior on the owning type, opaque domain collections, and `From`/`TryFrom` for genuine one-to-one conversions. A public `into_parts` should be exceptional; multi-object transitions are usually clearer as named consuming operations on the owner.
+
+No source changes were made. Findings are ordered approximately by impact within each area.
 
 ## Findings
 
-### API and encapsulation
+### Project analysis and linking
 
-#### [x] READ-001 — Public matcher error exposes an inaccessible compiler error
+#### [ ] READ-001 — Project resolution dismantles its phase owners
 
-- Severity: Medium
-- Fix Complexity: Medium
-- Category: API design, encapsulation
-- Location: `glass-lint-core/src/api/rule/error.rs:30-60`; `glass-lint-core/src/api/compiler/validate/error.rs:5-11`
+- **Severity:** High
+- **Fix Complexity:** High
+- **Category:** Architecture
+- **Location:** `glass-lint-core/src/project/tables.rs:13-58`; `glass-lint-core/src/project/session/mod.rs:406-468`; `glass-lint-core/src/project/session/artifacts.rs:24-88`; `glass-lint-core/src/analysis/project/model.rs:105-188`
 
-`MatcherBuildError` is part of the public rule API, but its `QueryCompileError` variant contains `crate::api::compiler::validate::QueryCompileError`, which is `pub(crate)` in a private compiler module. The variant is accepted only because it carries a local `#[allow(private_interfaces)]`, so callers can observe the variant name without being able to name or construct its payload type.
+The local-to-resolved project transition dismantles `SourceTable` and `ResolutionTable` with `into_map`, reaches into `AnalysisArtifacts`, reconstructs module and request identities in the session, and clones the source map to populate a five-map `ResolvedLinkInputData`. The phase types therefore name storage but do not own the correlated transition or its invariants.
 
-Recommendation: expose a stable public diagnostic type at the rule boundary, or translate the compiler error into a public rule-level error payload before constructing `MatcherBuildError`. Remove the targeted allow once the boundary has a type that downstream callers can actually use.
+**Recommendation:** Give `ResolvedLinkInputData` one named, consuming construction path from the typed source, resolution, artifact, and authored-request owners. Perform validation and module/request identity construction inside that transition. Remove the raw-map conversions and the source-map clone.
 
-Fix Applied: `MatcherBuildError::QueryCompileError` now carries the public `QueryDiagnostic` type, and the compiler translates its private validation errors at the rule boundary. The targeted private-interface suppression and compiler-type leak were removed while preserving stable diagnostic codes and messages.
+**Fix Applied:** None so far.
 
-#### [x] READ-002 — Package-specifier grammar is implemented twice
+#### [ ] READ-002 — Graph decomposition exposes and clones its representation
 
-- Severity: Medium
-- Fix Complexity: Medium
-- Category: Duplication, domain modeling
-- Location: `glass-lint-core/src/api/rule/module.rs:34-81`; `glass-lint-core/src/project/types/input.rs:50-90`
+- **Severity:** High
+- **Fix Complexity:** High
+- **Category:** Encapsulation
+- **Location:** `glass-lint-core/src/analysis/project/state.rs:9-53`; `glass-lint-core/src/analysis/project/linker/graph.rs:80-97`; `glass-lint-core/src/analysis/project/linker/scc.rs:9-103`; `glass-lint-core/src/analysis/project/linker/export.rs:19-45`
 
-`ModuleSpecifierPattern::package` and `PackageSpecifier::new` independently trim and validate overlapping package-name rules, including scoped names, slashes, relative-looking paths, and malformed inputs. They already differ in details such as whitespace and NUL handling, which makes future validation changes likely to drift even though both are expressing package identity grammar.
+`ModuleGraph::forward` exposes the complete adjacency map, after which free functions rebuild traversal state, component membership, and the condensation graph. `SccPartition` then exposes `components` and `order`, and export linking clones both before consuming them.
 
-Recommendation: centralize the shared package grammar in one private semantic parser/newtype and map its validation failure into each owning API's error type. Keep exact module-pattern behavior separate where it intentionally accepts a broader authored module string.
+**Recommendation:** Let `ModuleGraph` own SCC decomposition and neighbor traversal, and give opaque `SccPartition` an ordered-component iterator. Keep adjacency, membership, and topological-order storage private and remove the full-structure clones.
 
-Fix Applied: Added one crate-private `PackageName` parser for trimming, whitespace/NUL rejection, path-shape checks, and scoped-package grammar. `PackageSpecifier` and `ModuleSpecifierPattern::package` now delegate to it and translate failure into their owning error types, while exact module patterns remain independent.
+**Fix Applied:** None so far.
 
-#### [x] READ-003 — Projection planning uses positional tuples for distinct identities
+#### [ ] READ-003 — Module identity keys are split to fit nested storage
 
-- Severity: Medium
-- Fix Complexity: Medium
-- Category: Semantic newtypes, API clarity
-- Location: `glass-lint-core/src/analysis/project/projection.rs:33-43,67-118`
+- **Severity:** Medium
+- **Fix Complexity:** Medium
+- **Category:** Newtype
+- **Location:** `glass-lint-core/src/analysis/matching/identity_map.rs:1-69`; `glass-lint-core/src/analysis/matching/occurrence.rs:430-503`
 
-`ProjectionPlan` stores constrained roots as `(usize, &PhysicalRoot)` and lifecycle roots as `(RuleIndex, usize, &CompiledObjectFlow)`. The integers represent different concepts—rule identity, physical-root position, and root selection—but the tuple shape does not preserve those distinctions, and construction repeatedly relies on positional destructuring.
+`ModuleIdentityMap` stores module and export names as nested maps even though its public vocabulary is `ModuleExportKey`. Insertions split the key with `into_parts`; merges iterate both map levels and reconstruct keys, so storage layout drives the algorithm.
 
-Recommendation: introduce private plan records such as `PlannedConstrainedRoot` and `PlannedFlow` with named fields and typed indices. Let the plan own construction and accessors so matcher selection code cannot accidentally swap or reinterpret one index as another.
+**Recommendation:** Store a flat map keyed by `ModuleExportKey`. Put authoritative-export merging and conflict handling on `ModuleIdentityMap`, eliminating key disassembly and reconstruction.
 
-Fix Applied: `ProjectionPlan` now stores named constrained-root and lifecycle-flow records, with `RuleIndex`, `PhysicalRootIndex`, and flow references in explicit fields. Conversion to the existing matcher/projector input tuples is isolated in owner methods at the execution boundary, so plan construction no longer depends on positional identity semantics.
+**Fix Applied:** None so far.
 
-#### [x] READ-004 — Flow fixed-point snapshots encode domain state as nested tuples
+#### [ ] READ-004 — Plan requirements expose their capability sets
 
-- Severity: Medium
-- Fix Complexity: Medium
-- Category: Semantic newtypes, maintainability
-- Location: `glass-lint-core/src/analysis/flow/projector/state.rs:35-47,261-302`
+- **Severity:** Medium
+- **Fix Complexity:** Medium
+- **Category:** Encapsulation
+- **Location:** `glass-lint-core/src/api/compiler/requirements.rs:14-140`; `glass-lint-core/src/api/compiler/physical.rs:419-500`
 
-`CanonicalRequirements` is a vector of `(usize, Vec<FactId>)`, while `CanonicalFlowState` is a five-element tuple containing an object id, flow id, source event, requirements, and sinks. The snapshot is central to fixed-point convergence, so readers must remember tuple positions and the distinction between requirement and sink collections while reviewing correctness-sensitive code.
+`PlanRequirements` exposes its nested sets and flow flags to physical-plan validation, which manually inserts identities, enables local/cross-call flow, and updates project requirements. Similar capability relationships are encoded in normalization methods, so legal transitions are not centralized even if independent recomputation is intentional.
 
-Recommendation: model the snapshot with named `CanonicalFlowState` and requirement-state types, preferably with constructors or normalization methods on `FlowStateTable`. Preserve the existing deterministic ordering and normalization behavior while making the convergence identity explicit in fields and methods.
+**Recommendation:** Keep the collections private and provide semantic operations such as requiring an identity, local flow, cross-call flow, or project capability. Retain physical-plan recomputation as an independent validation oracle; share only invariant-preserving mutation vocabulary, not the normalization derivation algorithm.
 
-Fix Applied: Replaced the canonical snapshot tuple aliases with named canonical object, alias, requirement, sink, and flow-state records. The fixed-point identity still normalizes projection-local object IDs and retains deterministic ordering, but convergence comparisons now expose their domain fields directly.
+**Fix Applied:** None so far.
 
-#### [x] READ-005 — Cross-file flow worklists and caches use anonymous composite keys
+### Scope, facts, and values
 
-- Severity: Medium
-- Fix Complexity: Medium
-- Category: Semantic newtypes, ownership
-- Location: `glass-lint-core/src/analysis/flow/cross/graph.rs:11-47`; `glass-lint-core/src/analysis/flow/cross/mod.rs:105-149`; `glass-lint-core/src/analysis/flow/cross/sources.rs:232-269`
+#### [ ] READ-005 — Scope graph implements mutation-index behavior
 
-The qualified call graph maps `(ModuleId, FactId)` to `(ModuleId, FunctionId)`, the cross-worklist cache is keyed by `(FlowId, ModuleId)`, and source propagation queues `(SourceKey, SourceCandidate)` pairs. These structures are core relationships in the cross-file fixed point, but their map and queue APIs expose meaning only through comments and tuple position.
+- **Severity:** High
+- **Fix Complexity:** High
+- **Category:** Encapsulation
+- **Location:** `glass-lint-core/src/analysis/scope/mutation_index.rs:14-55`; `glass-lint-core/src/analysis/scope/graph.rs:158-223`; `glass-lint-core/src/analysis/scope/graph.rs:458-493`
 
-Recommendation: add named records such as `QualifiedCallSite`, `QualifiedCallTarget`, `FlowPlanKey`, and `PropagationItem`, then centralize insertion and lookup on the owning types. This also gives the worklist a place to document ordering, deduplication, and budget semantics without repeating them at every call site.
+`MutationIndex` exposes its property-assignment, rooted-mutation, and dynamic-eval maps to `ScopeGraph`. The graph performs nested insertion, clearing, sorting, grouping, and prior-eval lookup directly, so mutation-index behavior is implemented by the broader graph rather than the type that owns the state.
 
-Fix Applied: Added named qualified call-site/target records, a `FlowPlanKey` for the per-flow/module cache, and a `PropagationItem` for source worklist entries. These owners preserve the former sorted/hash key behavior while making call identity, cache scope, and propagation payload explicit.
+**Recommendation:** Move record, finalize, clear, grouped-query, and prior-eval operations onto `MutationIndex`. Keep `ScopeGraph` responsible for coordinating scope and binding resolution, and make the index's maps private.
 
-#### [x] READ-006 — OccurrenceIndex leaks its backing map to implement package scanning
+**Fix Applied:** None so far.
 
-- Severity: Medium
-- Fix Complexity: Medium
-- Category: Encapsulation, collection API
-- Location: `glass-lint-core/src/analysis/matching/occurrence.rs:335-358`; `glass-lint-core/src/analysis/matching/query/view.rs:44-51`
+#### [ ] READ-006 — Origin snapshots escape as raw hash maps
 
-`OccurrenceIndex<K>` wraps a `BTreeMap<K, Vec<Occurrence>>`, but exposes `as_map()` so the query view can pass storage directly into `BorrowedPackageOccurrenceIter`. That makes the package predicate, masking behavior, and base/overlay merge mechanics a consumer concern instead of an operation owned by the occurrence index.
+- **Severity:** High
+- **Fix Complexity:** Medium
+- **Category:** Encapsulation
+- **Location:** `glass-lint-core/src/analysis/facts/origin_map.rs:14-131`; `glass-lint-core/src/analysis/facts/control.rs:164-255`
 
-Recommendation: replace `as_map()` with an owner-facing package-candidate iterator or a method that accepts the package predicate and overlay view. Keep the lazy merge and deterministic ordering internal to the occurrence abstraction, and expose only occurrence-oriented results.
+`OriginMap::snapshot` returns a cloned raw `HashMap`, and control-flow merging compares that map with the live owner, collects removal keys, and mutates the owner one item at a time. Branch-intersection semantics and restoration are split between the collection and a free function.
 
-Fix Applied: Replaced `OccurrenceIndex::as_map()` with an owner-facing `package_candidates` operation specialized for module-export occurrences. The query view now receives only the lazy occurrence iterator, leaving base/overlay merge and masking storage private to the occurrence abstraction.
+**Recommendation:** Introduce an opaque `OriginSnapshot<V>` and owner operations for snapshot, restore, and retaining origins common to branches. This keeps equality/intersection rules and storage choices together and removes `OriginMap::from(raw_map)` as a phase seam.
 
-#### [x] READ-007 — Module identity merging reconstructs and merges raw entry tuples outside its owner
+**Fix Applied:** None so far.
 
-- Severity: Medium
-- Fix Complexity: Medium
-- Category: Encapsulation, duplicated domain logic
-- Location: `glass-lint-core/src/analysis/matching/identity_map.rs:7-49`; `glass-lint-core/src/analysis/project/identities.rs:169-212`
+#### [ ] READ-007 — Static objects are raw name-value tuples
 
-`ModuleIdentityMap::into_entries()` turns nested map storage into `(ModuleExportKey, ExportResolution)` tuples, and `collect_exported_identities` consumes child maps, clones entries, detects star-vs-star conflicts, and then performs a second manual merge while preserving direct exports. The precedence and ambiguity rules therefore live in the caller even though the map owns the identity entries.
+- **Severity:** High
+- **Fix Complexity:** High
+- **Category:** Newtype
+- **Location:** `glass-lint-core/src/analysis/model/value.rs:40-56`; `glass-lint-core/src/analysis/model/value.rs:143-188`; `glass-lint-core/src/analysis/model/fact.rs:327-357`; `glass-lint-core/src/analysis/flow/matcher.rs:89-166`; `glass-lint-core/src/analysis/flow/summary/parameter.rs:65-102`; `glass-lint-core/src/analysis/resolution/constant.rs:20-53`
 
-Recommendation: add a conflict-aware `merge_from` or visitor operation to `ModuleIdentityMap` that encodes direct-export precedence and ambiguity handling. Remove the storage-oriented `into_entries()` path once callers can express the merge in domain terms.
+Static objects are represented as `Vec<(NameId, ValueId)>`, and `ArgumentView` exposes them as a tuple slice. Property lookup, path traversal, deterministic iteration, and conversion are consequently reimplemented in matchers, summary projection, and constant resolution.
 
-Fix Applied: `ModuleIdentityMap` now owns conflict-aware star merging and missing-entry merging that preserves direct-export precedence. The project identity walk no longer consumes storage into raw tuples or reimplements ambiguity and precedence rules; focused tests cover both invariants.
+**Recommendation:** Add an opaque `StaticObject` domain collection owned by the value model. Give it property lookup, path traversal, stable iteration, and conversion behavior; pass its view through `ArgumentView` instead of a raw tuple slice.
 
-#### [x] READ-008 — Flow property-write transitions are split between projector and state table
+**Fix Applied:** None so far.
 
-- Severity: High
-- Fix Complexity: High
-- Category: Ownership, state transitions
-- Location: `glass-lint-core/src/analysis/flow/projector/mod.rs:710-756`; `glass-lint-core/src/analysis/flow/projector/state.rs:164-214`
+#### [ ] READ-008 — Binding slots are anonymous three-element keys
 
-`record_property_write` asks `FlowStateTable` for raw `FlowStateKey` values, looks up each flow plan itself, loops through compiled requirements, and separately calls `clear_requirement`, `record_requirement`, and `emit_if_ready`. The table owns the state and inverse log, while the projector owns a lifecycle transition that knows the table's key and mutation protocol in detail.
+- **Severity:** Medium
+- **Fix Complexity:** Medium
+- **Category:** Newtype
+- **Location:** `glass-lint-core/src/analysis/model/scope.rs:113-137`; `glass-lint-core/src/analysis/model/value.rs:179-187`; `glass-lint-core/src/analysis/flow/projector/mod.rs:150-162`; `glass-lint-core/src/analysis/flow/projector/mod.rs:777-790`
 
-Recommendation: introduce a typed property-write transition and let the state owner apply matching requirements, returning the state changes or ready emissions needed by the projector. Keep plan-specific matching injected through a narrow operation rather than exposing raw state keys and three independent mutation methods to the orchestration layer.
+A binding slot is propagated as `(FunctionId, BindingId, NamePath)`, including as a `BTreeMap` key. `BindingKey` constructs the tuple, `ValueTable` repeats the return type, and the projector depends on positional meaning.
 
-Fix Applied: Added a typed `PropertyWriteUpdate` transition and `FlowStateTable::apply_property_write`. The projector now supplies only plan-specific requirement matches; the state table owns live-flow traversal, reversible clearing/recording, and returns affected flow IDs for readiness emission.
+**Recommendation:** Introduce a named `BindingSlot` key in the scope/value model and return it unchanged across layers. The newtype should expose only meaningful access needed by diagnostics or projection.
 
-#### [x] READ-009 — ScopeGraphParts is a broad raw assembly aggregate
+**Fix Applied:** None so far.
 
-- Severity: High
-- Fix Complexity: High
-- Category: Architecture, encapsulation
-- Location: `glass-lint-core/src/analysis/scope/graph.rs:77-93,289-303`; `glass-lint-core/src/analysis/scope/build/freeze.rs:53-114`
+#### [ ] READ-009 — Scope freezing is expressed through generic parts records
 
-`ScopeGraphParts` exposes thirteen independent fields, including all major maps and indexes, and `ScopeGraph::from_parts` passes six of them positionally into `BindingIndex::new`. The freeze phase must know the complete storage layout and the meaning of a raw `(FunctionId, NameId)` parameter-alias key, so adding or reordering one field has a wide, low-signal change surface.
+- **Severity:** Medium
+- **Fix Complexity:** Medium
+- **Category:** Architecture
+- **Location:** `glass-lint-core/src/analysis/scope/binding_index.rs:15-58`; `glass-lint-core/src/analysis/scope/mutation_index.rs:14-34`; `glass-lint-core/src/analysis/scope/graph.rs:60-100`; `glass-lint-core/src/analysis/scope/build/freeze.rs:20-120`
 
-Recommendation: replace the broad parts bag with private semantic sub-aggregates such as scope indexes, binding data, and mutation data, or provide an owning builder that performs the transitions. Encode parameter aliases in a named key type and keep raw map construction inside the type that owns the invariant.
+Scope freezing has useful semantic subaggregates, but each is still assembled through generic crate-visible `Parts` records and `from_parts`. This exposes layouts to the freezer and makes the transition read like mechanical field wiring rather than construction of a validated frozen graph.
 
-Fix Applied: Replaced the thirteen-field parts bag with lexical, binding, and mutation sub-aggregates, and made `BindingIndex::from_parts` consume its own named input. Parameter aliases now use `ParameterAliasKey` instead of a positional `(FunctionId, NameId)` key, keeping freeze assembly and binding invariants at their owning boundaries.
+**Recommendation:** Give the scope collector one consuming `freeze` transition that constructs `ScopeGraph` and its subindices through private owner APIs. Use `From` internally for each one-to-one subindex conversion. Remove the visible parts records and generic `from_parts` APIs.
 
-### Scope, trace, and result modeling
+**Fix Applied:** None so far.
 
-#### [x] READ-010 — Scope collection hands off anonymous lifecycle records
+#### [ ] READ-010 — Fact lowering dismantles both adjacent phase owners
 
-- Severity: Medium
-- Fix Complexity: Medium
-- Category: Semantic newtypes, boundary design
-- Location: `glass-lint-core/src/analysis/scope/build/mod.rs:47-54,114-125`; `glass-lint-core/src/analysis/scope/build/assignments.rs:463-484`; `glass-lint-core/src/analysis/scope/graph.rs:160-225`
+- **Severity:** Medium
+- **Fix Complexity:** Medium
+- **Category:** Architecture
+- **Location:** `glass-lint-core/src/analysis/lowering/mod.rs:228-305`; `glass-lint-core/src/analysis/resolution/mod.rs:150-160`; `glass-lint-core/src/analysis/scope/build/program.rs:1-16`
 
-The collector stores function checkpoints as `(CollectorCheckpoint, u32, usize)` and dynamic evaluations as `(ScopeId, ScopeEffect)`, then later destructures, sorts, filters, and groups those records in separate modules. The tuple positions encode conditional depth, control-flow depth, scope ownership, and effect identity without a type expressing those invariants.
+Local lowering cracks `ScopedProgram` and later `Resolver` into positional parts to freeze facts. Tests repeat the same builder/resolver disassembly, making the coordinator know which pieces must move together.
 
-Recommendation: add `FunctionCheckpoint` and `ScopedDynamicEval` records with named fields and methods for restore/grouping. Let collection and freezing consume those records through semantic operations rather than repeating tuple sorting and destructuring logic.
+**Recommendation:** Introduce a `ResolvedProgram` phase aggregate that retains the resolver, scope-collection issues, and built fact state, then give it one consuming `freeze` transition. Keep `NameTable` and `ValueTable` inside that transition and remove both positional `into_parts` APIs.
 
-Fix Applied: Added named `FunctionCheckpoint` and `ScopedDynamicEval` records. Function entry/exit now restores named checkpoint fields, while dynamic evaluation collection, filtering, sorting, and freezing use explicit scope/effect fields instead of tuple positions.
+**Fix Applied:** None so far.
 
-#### [x] READ-011 — Trace reconstruction exposes a public tuple protocol
+### Flow analysis
 
-- Severity: Low
-- Fix Complexity: Low
-- Category: API clarity
-- Location: `glass-lint-core/src/analysis/trace.rs:70-83`; consumer at `glass-lint-core/src/lint/report.rs:359-383`
+#### [ ] READ-011 — RequirementSet is neither requirement-specific nor opaque
 
-`TraceArena::reconstruct_trace` returns `Vec<(QualifiedEvent, EvidenceRole)>`, and report assembly immediately destructures the pair to recover location and message semantics. A trace step is a stable domain concept, so a public tuple makes the relationship between event and role dependent on position and leaves no owner for future trace metadata.
+- **Severity:** Medium
+- **Fix Complexity:** Medium
+- **Category:** Newtype
+- **Location:** `glass-lint-core/src/analysis/model/flow.rs:147-309`; `glass-lint-core/src/analysis/model/flow.rs:316-416`; `glass-lint-core/src/analysis/flow/projector/history.rs:14-31`; `glass-lint-core/src/analysis/flow/projector/history.rs:120-185`
 
-Recommendation: return a private or crate-visible `TraceStep` with named `event` and `role` fields, or expose an iterator consumed by a trace-to-evidence method. Keep report rendering out of the raw arena representation.
+`RequirementSet` is also used for sink evidence, so its name obscures the shared abstraction. Its public `RequirementValues<K>` alias exposes `SmallVec`, and history recording converts values to `BTreeSet` for removal deltas, then reconstructs the collection on restore.
 
-Fix Applied: Added a named `TraceStep` with event and role accessors, and changed `TraceArena::reconstruct_trace` and report/cross-flow consumers to use it. Trace traversal order, interning, and evidence rendering remain unchanged while tuple-position coupling is removed.
+**Recommendation:** Rename the shared concept around indexed evidence, make its value collection opaque, and let it own readiness and remove/restore transitions. History should store the owner's semantic delta type rather than choosing a second collection representation.
 
-#### [x] READ-012 — ProjectionOutcome mixes status, counters, and report metrics in one mutable DTO
+**Fix Applied:** None so far.
 
-- Severity: Medium
-- Fix Complexity: Medium
-- Category: API design, invariants
-- Location: `glass-lint-core/src/analysis/project/projection.rs:202-231,233-275,394-418`; `glass-lint-core/src/lint/report.rs:500-513`
+#### [ ] READ-012 — Pending flow states delegate finalization to their caller
 
-`ProjectionOutcome` combines exhaustion flags and observed budgets with effect/projection counts, trace counts, fixed-point counters, and private module lists. Report assembly reads several fields directly while project status recording reads a different subset, so the struct is both a status result and a metrics transport with no strong separation of invariants.
+- **Severity:** Medium
+- **Fix Complexity:** Medium
+- **Category:** Encapsulation
+- **Location:** `glass-lint-core/src/analysis/flow/projector/mod.rs:194-219`; `glass-lint-core/src/analysis/flow/projector/mod.rs:677-710`
 
-Recommendation: split status into a `ProjectionStatus` value and counters into a `ProjectionMetrics` value, with merge and recording methods on each. Make fields private and expose focused getters or report/status conversion methods so callers cannot construct a contradictory outcome by editing independent flags and counts.
+`PendingFlowStates::take` returns its raw `BTreeMap`. The caller then groups paths in a `BTreeSet`, evaluates active-path completeness, assigns certainty, and emits finalized states, leaving the wrapper responsible only for storage.
 
-Fix Applied: Split `ProjectionOutcome` into private status and metrics components, with internal aggregation methods and focused metric accessors for report assembly. Exhaustion state, observed budgets, module lists, counters, and deterministic metric recording remain separated from one another and cannot be mutated through public fields.
+**Recommendation:** Give `PendingFlowStates` a draining finalization operation that accepts a typed active-path set and returns named finalized records. Keep path grouping, completeness, and certainty derivation inside the owner and remove the raw-map `take` API.
 
-#### [x] READ-013 — Report assembly combines linking, matching, traces, diagnostics, and metrics
+**Fix Applied:** None so far.
 
-- Severity: Medium
-- Fix Complexity: Medium
-- Category: Module cohesion, architecture
-- Location: `glass-lint-core/src/lint/report.rs:99-161,163-397,399-468,471-528`
+#### [ ] READ-013 — Loop fixed-point completion mixes seven responsibilities
 
-`ReportAssembly::finish` orchestrates project linking and matching, while the same module also groups evidence, resolves and falls back traces, initializes files, attaches diagnostics, and computes operation metrics. These phases have different inputs, failure behavior, and likely change drivers, making the 528-line module a high-traffic seam for unrelated modifications.
+- **Severity:** Medium
+- **Fix Complexity:** High
+- **Category:** Complexity
+- **Location:** `glass-lint-core/src/analysis/flow/projector/mod.rs:417-563`
 
-Recommendation: split private modules for evidence-to-finding conversion, trace rendering, diagnostic attachment, and final project-report assembly. Keep `ReportAssembly::finish` as a small orchestration facade whose sequence and completion semantics remain easy to inspect.
+`finish_loop` combines frontier coalescing, snapshot deduplication, replay, budget charging, break/continue extraction, convergence, and exit deduplication in one long coordinator. The data structures are named, but the fixed-point state and its legal transitions have no cohesive owner.
 
-Fix Applied: Split report evidence conversion, diagnostics attachment, and final summary construction into private `evidence`, `diagnostics`, and `summary` modules. `ReportAssembly::finish` remains the sequencing facade for linking, matching, exhaustion recording, and report completion, while evidence and diagnostic responsibilities retain their existing deterministic behavior.
+**Recommendation:** Introduce a loop fixed-point/frontier owner with operations for replay admission, convergence, and exit collection. Leave the projector method as high-level orchestration and keep budget outcomes explicit in the domain result.
 
-### Harness and test boundaries
+**Fix Applied:** None so far.
 
-#### [x] READ-014 — Harness case loading mixes snippet directives with project protocol loading
+#### [ ] READ-014 — Sink callers infer outcomes from collection mechanics
 
-- Severity: Medium
-- Fix Complexity: Medium
-- Category: Module cohesion, test infrastructure
-- Location: `glass-lint-harness/src/cases.rs:35-569`
+- **Severity:** Medium
+- **Fix Complexity:** Low
+- **Category:** Encapsulation
+- **Location:** `glass-lint-core/src/analysis/flow/summary/sink.rs:42-152`; `glass-lint-core/src/analysis/flow/summary/summaries.rs:103-199`
 
-The file parses single-file source directives and expectations, then defines and deserializes project manifests, builds resolution protocol records, loads project files, and merges tool expectations. Snippet parsing and project-fixture loading have different schemas and error paths, but share one large module and several generic helpers.
+Sink collection callers compare `len` before and after to infer insertion count, charge the budget externally for each addition, and use index ranges plus `get().expect(...)` despite an available iteration concept. Storage operations therefore stand in for domain outcomes.
 
-Recommendation: move snippet parsing and project-manifest loading into private `snippet` and `project` modules, retaining `cases.rs` as the stable loading facade. Keep shared language/path helpers in a small common module so the split does not duplicate fixture conventions.
+**Recommendation:** Return a named collection outcome including the number inserted, and provide semantic projection iteration. Keep deduplication and insertion accounting on `SinkSet`, and remove its index-based `len`/`get` protocol.
 
-Fix Applied: Split single-file directive parsing and project-manifest loading into private `snippet` and `project` modules, leaving `cases.rs` as the discovery, ordering, and duplicate-ID facade. Shared language and filename conventions remain in the facade, and the existing case-parser tests pass unchanged.
+**Fix Applied:** None so far.
 
-#### [x] READ-015 — Profile runner combines workload dispatch, preparation, execution, and aggregation
+### Matching and evidence
 
-- Severity: Medium
-- Fix Complexity: Medium
-- Category: Module cohesion, concurrency readability
-- Location: `glass-lint-harness/src/profile/runner.rs:39-630`
+#### [ ] READ-015 — EventIndexView permits meaningless field combinations
 
-The runner handles file discovery and manifest verification, loader-project and admitted-project modes, linter construction, warm-up/repetition timing, worker scheduling, report accumulation, and deterministic result sorting. The concurrency code is bounded and understandable locally, but it is embedded in a module that also owns workload policy and output aggregation.
+- **Severity:** High
+- **Fix Complexity:** High
+- **Category:** Architecture
+- **Location:** `glass-lint-core/src/analysis/matching/mod.rs:24-44`; `glass-lint-core/src/analysis/matching/mod.rs:134-201`; `glass-lint-core/src/analysis/matching/query/mod.rs:162-225`; `glass-lint-core/src/analysis/matching/query/view.rs:23-231`
 
-Recommendation: split preparation, workload-specific runners, worker execution, and summary aggregation into private modules with narrow result types. Keep timing and ordering rules in the type that owns each phase, and leave the public entry point responsible only for dispatch and error propagation.
+`LinkedOccurrenceView` exposes six raw map buckets, while `EventIndexView` is assembled as a large bag of optional occurrence indices plus raw overlay and mask maps. Call sites must know which combinations are meaningful for each event, and lookup/overlay policy is distributed across free helpers and struct literals.
 
-Fix Applied: Reduced `runner.rs` to validated workload dispatch and split profile execution into private files, loader-project, admitted-project, worker, support, and summary modules. Preparation, timing, worker scheduling, deterministic sorting, and aggregation remain in their respective workload boundaries; the public profile API is unchanged.
+**Recommendation:** Replace the optional-field bag with an enum whose variants represent the supported event views. Give `LinkedOccurrenceView` semantic lookup and merge operations, and keep occurrence buckets, masks, and overlays private.
 
-#### [x] READ-016 — Large integration test modules mix multiple semantic contracts
+**Fix Applied:** None so far.
 
-- Severity: Low
-- Fix Complexity: Medium
-- Category: Test organization
-- Location: `glass-lint-core/tests/integration/matching/declarative.rs:1-1162`; `glass-lint-project/src/tsconfig/tests.rs:1-1039`; `glass-lint-core/src/api/compiler/tests/normalize.rs:1-958`; `glass-lint-core/src/api/compiler/tests/validate.rs:1-935`
+#### [ ] READ-016 — Rule evidence exposes mutable vectors
 
-These test modules cover several distinct contracts in one source file: public matcher construction, scope/provenance, argument values, lifecycle flow, module identity, tsconfig parsing/extends/merging, and multiple compiler phases. The shared setup is useful, but failures and future additions require scanning very large files to find the relevant semantic boundary.
+- **Severity:** Medium
+- **Fix Complexity:** Low
+- **Category:** Encapsulation
+- **Location:** `glass-lint-core/src/api/classification.rs:72-111`; `glass-lint-core/src/analysis/matching/arguments/mod.rs:52-61`; `glass-lint-core/src/analysis/flow/projector/state.rs:497-519`
 
-Recommendation: split tests by contract into submodules or files such as matcher arguments, lifecycle, module identities, tsconfig inheritance, normalization, and validation. Preserve the existing public/API-level coverage and put only genuinely shared builders in support modules.
+`RuleEvidenceTable` provides `record` and `replace`, but also returns `&mut Vec` through `for_rule_mut`. Callers use it to append grouped evidence and scan or mutate truncation flags by event, bypassing the owner's vocabulary and any future ordering or deduplication invariant.
 
-Fix Applied: Split the oversized matcher, tsconfig, normalization, and validation test files into private contract-focused modules while retaining their shared builders in the parent test module. Existing test names, coverage, and public/API-level execution remain unchanged; failures now identify the relevant semantic boundary in their module path.
+**Recommendation:** Add focused `extend`, grouped-record, and `mark_event_truncated` operations, then remove the mutable vector accessor. Preserve read-only iteration only where consumers truly need it.
 
-### Maintenance hygiene
+**Fix Applied:** None so far.
 
-#### [x] READ-017 — Lint suppressions remain after signature and decomposition refactors
+### Reports, project configuration, and harness
 
-- Severity: Low
-- Fix Complexity: Low
-- Category: Dead/obsolete code
-- Location: `glass-lint-core/src/analysis/matching/arguments/mod.rs:88-95`; `glass-lint-core/src/analysis/project/projection.rs:279-290`; `glass-lint-core/src/analysis/scope/binding_index.rs:24-32`
+#### [ ] READ-017 — Report APIs expose positional parts and mutable storage
 
-`compute_constrained_inner` currently accepts three arguments but still carries `#[allow(clippy::too_many_arguments)]`; the test-only `ProjectSemanticModel::project` wrapper is only a few lines but retains `#[allow(clippy::too_many_lines)]`. `BindingIndex::new` also retains a broad argument-count suppression after the surrounding aggregate refactor, so these allowances no longer clearly document an unavoidable exception.
+- **Severity:** Medium
+- **Fix Complexity:** Medium
+- **Category:** API
+- **Location:** `glass-lint-core/src/project/types/report/analysis_report.rs:35-133`; `glass-lint-core/src/project/types/report/file_report.rs:5-48`; `glass-lint-core/src/project/report/mod.rs:19-87`; `glass-lint-core/src/lint/report/diagnostics.rs:45-75`; `glass-lint-cli/src/output.rs:470-487`
 
-Recommendation: remove each suppression and rerun the workspace lint gate, retaining only allows that still correspond to a measured warning. Where an allowance remains necessary, add a short reason tied to the invariant or unavoidable API shape so later refactors can distinguish intentional exceptions from residue.
+`AnalysisReport::into_parts` exposes a six-element positional tuple, and `FileReport` exposes both `diagnostics_mut` and its own `into_parts`. Combination and tests deconstruct reports, alter raw vectors, and reconstruct them, tying report evolution to tuple position and mutable storage access.
 
-Fix Applied: Removed the obsolete projection-wrapper and matcher signature suppressions; the binding-index suppression had already been removed with its constructor refactor. The constrained matcher was split into indexed and fallback evaluation helpers, reducing the main function below the clippy line limit while preserving candidate filtering and evidence order. Remaining suppressions correspond to measured conversion, test-fixture, or intentional compatibility cases and still pass warnings-denied clippy.
+**Recommendation:** Treat reports as read-only public output contracts. Remove `into_parts` and mutable-vector access, make report assembly and aggregation crate-owned, and keep only inspection and supported serialization public. Cross-crate output tests should obtain reports through public analysis entry points rather than requiring public construction seams.
+
+**Fix Applied:** None so far.
+
+#### [ ] READ-018 — Tsconfig transitions use positional parts and compressed names
+
+- **Severity:** Medium
+- **Fix Complexity:** Medium
+- **Category:** Naming
+- **Location:** `glass-lint-project/src/tsconfig/selection.rs:24-55`; `glass-lint-project/src/tsconfig/selection.rs:130-218`; `glass-lint-project/src/tsconfig/selection.rs:233-264`
+
+`ParentSelection::into_parts` and `MergedSelection::into_parts` expose two- and four-element tuples across merge and compile phases. `merge_selection` also uses abbreviated names such as `m` and `pdir`, making an already positional transformation harder to follow; tests rely on ignored tuple positions.
+
+**Recommendation:** Give `ParentSelection` a consuming merge operation and `MergedSelection` a consuming `compile(directory)` operation. Use `From` for their one-to-one internal field conversions, remove both `into_parts` methods, prefer `parent`, `merged`, and `parent_directory` to compressed names, and test semantic accessors instead of tuple slots.
+
+**Fix Applied:** None so far.
+
+#### [ ] READ-019 — Tool expectations are dismantled to qualify paths
+
+- **Severity:** Medium
+- **Fix Complexity:** Low
+- **Category:** Encapsulation
+- **Location:** `glass-lint-harness/src/types/case.rs:190-279`; `glass-lint-harness/src/cases/project.rs:210-250`
+
+`ToolExpectation::into_parts` returns a selector and two finding vectors. The project-case loader applies the same default-path transformation to required and forbidden findings, then reconstructs the expectation.
+
+**Recommendation:** Add a consuming `qualify_for_file` operation to `ToolExpectation`, backed by one path-qualification method on `FindingExpectation`. Preserve the required/forbidden distinction inside the owner and remove `into_parts`.
+
+**Fix Applied:** None so far.
+
+#### [ ] READ-020 — Profile summary finalization duplicates accumulator layout
+
+- **Severity:** Medium
+- **Fix Complexity:** Medium
+- **Category:** Encapsulation
+- **Location:** `glass-lint-harness/src/profile/types.rs:458-488`; `glass-lint-harness/src/profile/runner/summary.rs:17-63`; `glass-lint-harness/src/profile/runner/projects.rs:17-61`
+
+`ProfileSummaryAccumulator` owns recording logic but exposes every total and the workload-result vector. Two consumers manually assemble closely related `ProfileSummary` values by reading or moving those fields, so finalization and field mapping are duplicated.
+
+**Recommendation:** Give the accumulator a consuming `finish(ProfileSummaryMetadata)` operation that constructs `ProfileSummary`, with workload-specific timings and identity carried by the named metadata value. Keep totals private and remove the duplicated field-by-field assembly.
+
+**Fix Applied:** None so far.
+
+#### [ ] READ-021 — ProfileLinter is a behavior-free transparent wrapper
+
+- **Severity:** Low
+- **Fix Complexity:** Low
+- **Category:** Newtype
+- **Location:** `glass-lint-harness/src/profile/types.rs:458`; `glass-lint-harness/src/profile/runner/workers.rs:14-40`; `glass-lint-harness/src/profile/runner/projects.rs:68-86`; `glass-lint-harness/src/profile/runner/admitted.rs:35-110`
+
+`ProfileLinter(pub Arc<Linter>)` adds no invariant or behavior, and every consumer immediately pattern-matches the tuple field. It creates a semantic-looking type without encapsulation and adds noise to worker loops.
+
+**Recommendation:** Remove `ProfileLinter` and use `Arc<Linter>` directly throughout the profiling runner. Do not retain a wrapper that has no current invariant or behavior.
+
+**Fix Applied:** None so far.
+
+### Shared domain types
+
+#### [ ] READ-022 — Canonical package identity is duplicated and discarded
+
+- **Severity:** Medium
+- **Fix Complexity:** Medium
+- **Category:** Duplication
+- **Location:** `glass-lint-core/src/project/types/package.rs:1-45`; `glass-lint-core/src/project/types/input.rs:52-99`; `glass-lint-core/src/api/rule/module.rs:7-69`
+
+`PackageName` and `PackageSpecifier` both validate and store the same canonical package-root concept. `PackageSpecifier` parses through `PackageName` and immediately discards it with `into_inner`; module patterns repeat the conversion into `String`.
+
+**Recommendation:** Make the existing public `PackageSpecifier` the sole canonical package-root value and remove `PackageName`. Store `PackageSpecifier` directly in the package form of `ModuleSpecifierPattern`, translating its construction error at the rule boundary; keep exact module patterns as strings because they accept a different grammar.
+
+**Fix Applied:** None so far.
+
+#### [ ] READ-023 — NameId exposes an unused numeric representation
+
+- **Severity:** Low
+- **Fix Complexity:** Low
+- **Category:** API
+- **Location:** `glass-lint-datastructures/src/name.rs:11-21`
+
+`NameId` is documented and otherwise treated as opaque, but public `as_u32` exposes its backing representation and has no workspace caller. This expands the API without expressing a domain operation and invites persistence or ordering assumptions.
+
+**Recommendation:** Remove `as_u32` from the public API. Put formatting and serialization at the owning boundary so the numeric representation remains an implementation detail.
+
+**Fix Applied:** None so far.
 
 ## Systemic Themes
 
-- Semantic state is often typed at the leaf level but loses its vocabulary at orchestration boundaries. The next useful refactors are named records and owner-facing operations, not more wrapper methods around raw `HashMap`/`BTreeMap` storage.
-- Several recent decompositions improved individual functions but left broad construction aggregates or direct field reads at the next boundary. Encapsulation should follow the state owner through freeze, projection, and reporting, not stop at the first extracted helper.
-- Analysis behavior is deliberately bounded and deterministic, and the code generally makes those constraints visible. New abstractions should preserve sorted iteration, explicit budgets, and the existing distinction between definite and possible evidence.
-- No `Rc` or `RefCell` usage was found in the Rust workspace. The observed `Arc`, `Mutex`, `OnceLock`, and atomic/barrier usage is concentrated in shared caches and profiling workers and does not currently present as a readability hotspot.
+- **Semantic types are strongest at the leaves but often disappear during transitions.** IDs such as `NameId`, `ModuleId`, and rule-specific indices prevent accidental mixing, yet surrounding code frequently turns aggregates into maps, tuples, and vectors before doing meaningful work. Preserve the vocabulary through the whole phase transition.
+- **A collection wrapper should own its algorithms, not only its allocation.** The recurring leaks are finalization, merging, intersection, certainty, ordering, insertion counts, and mutation history. Moving those operations onto the collection makes invariants discoverable and permits storage changes without touching callers.
+- **Prefer conversions according to their semantics.** Use `From` for infallible one-to-one owned conversions, `TryFrom` for validated conversions, and a named consuming method for a transition coordinating multiple owners or runtime context. `into_parts` is appropriate only when decomposition itself is a stable domain operation; none of the reported uses meet that bar.
+- **Consolidate only truly duplicated concepts.** The package-root types and the behavior-free `ProfileLinter` merit consolidation or removal. By contrast, checkpoint wrappers and separate requirement/sink indices encode non-interchangeability and should remain distinct even when their storage matches. `NamePath` and `SymbolPath` likewise describe different domains and should not be merged merely because both are path-shaped.
+- **Broad mutable access is the most expensive convenience API.** Returning `&mut Vec`, raw maps, or public fields forces every caller to learn storage and invariant details. Focused owner methods generally reduce both calling code and the future compatibility surface.
+- **Interior mutability is not a general readability problem here.** The reviewed `Arc`, `Cell`, and synchronization uses are concentrated in shared immutable configuration, budgets, caches, and profiling. No general-purpose `Rc<RefCell<_>>` ownership web was found.
 
-## Resolved Decisions
+## Decisions
 
-- **Public diagnostics:** keep `QueryCompileError` private and convert it at the compiler/rule boundary into the existing public `QueryDiagnostic` type. `MatcherBuildError` should expose the stable diagnostic rather than an inaccessible compiler implementation type.
-- **Package grammar:** keep `PackageSpecifier` and `ModuleSpecifierPattern` as separate semantic types, but centralize their shared package-root validation in one internal parser/newtype. Preserve `ModuleSpecifierPattern::exact` as the broader exact-module-path API.
-- **Internal aggregates:** do not retain broad raw construction seams. Move `ScopeGraphParts` behind an owner-controlled builder or semantic sub-aggregates, and split `ProjectionOutcome` into private status and metrics components with focused accessors.
-- **Implementation order:** address the public diagnostic boundary first, package validation second, and scope/projection aggregate encapsulation third; add focused tests before running the full gate.
+- **Reports are read-only public outputs.** Report creation, mutation, combination, and phase conversion belong inside core/project code. Public consumers receive inspection methods and supported serialization, not constructors, mutable collections, builders, or positional decomposition. Cross-crate tests should exercise output with reports produced by public analysis entry points.
+- **`PackageSpecifier` is the canonical package-root type.** Remove the crate-private `PackageName`; use `PackageSpecifier` in project inputs and in the package variant of `ModuleSpecifierPattern`. Preserve the distinct exact-pattern representation because exact authored specifiers have a broader grammar.
+- **Requirements validation remains independently derived.** `executable_requirements` continues to recompute capabilities from the physical plan so it can detect normalization or lowering mistakes. `PlanRequirements` owns private, well-named mutation methods, but normalization and physical validation do not share the derivation algorithm.
+- **`ProfileLinter` is removed.** Use `Arc<Linter>` directly. A type with no present invariant or behavior does not earn a semantic wrapper.
+- **Positional decomposition is not part of the design vocabulary.** Replace the reported `into_parts` and generic `from_parts` seams with `From`, `TryFrom`, or a named consuming domain transition according to whether the conversion is infallible, validated, or coordinates multiple owners.
+- **Distinct safety types stay distinct.** Requirement and sink indices, checkpoint wrappers, `NamePath`, and `SymbolPath` prevent meaningful category mistakes and are not consolidation candidates merely because their representations match.
+- **Unused representation access is removed.** `NameId::as_u32` should not remain public without a current domain use; serialization or display must be implemented at the owning boundary.
+
+## Open Questions
+
+None. The architectural choices raised by this audit are resolved above.
 
 ## Coverage
 
-Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. READ-001 through READ-017 changed core/report/harness boundaries and this report.
-
-Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed; for READ-005, all cross-flow tests passed; for READ-006, occurrence and package-matching tests passed; for READ-007, identity-map conflict and precedence tests passed; for READ-008, all flow-projector tests passed; for READ-009, scope construction and integration scope tests passed; for READ-010, scope collection and integration scope tests passed; for READ-011, trace and cross-flow evidence tests passed; for READ-012, report and operation-count tests passed; for READ-013, report tests and core clippy passed; for READ-014, harness case tests and harness clippy passed; for READ-015, all profile tests and harness clippy passed; for READ-016, the four split test suites and their owning-crate clippy checks passed; for READ-017, constrained-matcher tests and core clippy passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.
+- Read the repository guide, root architecture, every crate `ARCHITECTURE.md`, `TESTING.md`, and `CONTRIBUTING.md`.
+- Inventoried all 442 Rust source paths across core, project, provider, CLI, harness, test-support, and datastructure crates (82,972 lines excluding `target`).
+- Reviewed semantic newtypes, tuple structs, public and crate-visible fields, raw collection accessors, mutable collection access, phase/parts types, and conversion seams including `into_parts`, `from_parts`, `into_map`, and `into_inner`.
+- Reviewed the largest production modules and functions for mixed abstraction levels, as well as matcher, flow, scope, project-linking, reporting, tsconfig, and profiling call chains in full context where findings were raised.
+- Searched for duplicated parsing and validation models, TODO/FIXME markers, broad lint suppressions, `Rc`/`RefCell` ownership, panicking collection access, and abbreviated naming. Only evidence-backed, actionable items are listed above.
+- Tests were not run because this audit changes documentation only. Final verification is limited to Markdown and diff integrity and confirming that only this report changed.
