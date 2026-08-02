@@ -13,14 +13,6 @@ pub const DEFAULT_MAX_NAMES: usize = 1 << 20;
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct NameId(pub(crate) u32);
 
-impl NameId {
-    /// Return the raw `u32` value.
-    #[inline]
-    pub fn as_u32(self) -> u32 {
-        self.0
-    }
-}
-
 /// Error returned when the name table hits its maximum capacity.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NameExhausted {
