@@ -8,7 +8,7 @@ Scope: 416 Rust source files, approximately 82,433 lines, across the workspace. 
 
 The workspace is generally well-factored at the crate level and has strong typed domain vocabulary in many of the recently refactored areas. The remaining readability cost is concentrated in internal analysis boundaries: positional tuples and raw maps still carry semantic state, a few aggregate constructors expose too much assembly detail, and orchestration code spans several independent lifecycle phases.
 
-There are 4 open findings: 0 high, 2 medium, and 2 low. READ-001 through READ-013 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
+There are 3 open findings: 0 high, 1 medium, and 2 low. READ-001 through READ-014 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
 
 ## Findings
 
@@ -187,7 +187,7 @@ Fix Applied: Split report evidence conversion, diagnostics attachment, and final
 
 ### Harness and test boundaries
 
-#### [ ] READ-014 — Harness case loading mixes snippet directives with project protocol loading
+#### [x] READ-014 — Harness case loading mixes snippet directives with project protocol loading
 
 - Severity: Medium
 - Fix Complexity: Medium
@@ -198,7 +198,7 @@ The file parses single-file source directives and expectations, then defines and
 
 Recommendation: move snippet parsing and project-manifest loading into private `snippet` and `project` modules, retaining `cases.rs` as the stable loading facade. Keep shared language/path helpers in a small common module so the split does not duplicate fixture conventions.
 
-Fix Applied: None so far.
+Fix Applied: Split single-file directive parsing and project-manifest loading into private `snippet` and `project` modules, leaving `cases.rs` as the discovery, ordering, and duplicate-ID facade. Shared language and filename conventions remain in the facade, and the existing case-parser tests pass unchanged.
 
 #### [ ] READ-015 — Profile runner combines workload dispatch, preparation, execution, and aggregation
 
@@ -259,4 +259,4 @@ Fix Applied: None so far.
 
 Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. READ-001 through READ-013 changed core/report boundaries and this report.
 
-Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed; for READ-005, all cross-flow tests passed; for READ-006, occurrence and package-matching tests passed; for READ-007, identity-map conflict and precedence tests passed; for READ-008, all flow-projector tests passed; for READ-009, scope construction and integration scope tests passed; for READ-010, scope collection and integration scope tests passed; for READ-011, trace and cross-flow evidence tests passed; for READ-012, report and operation-count tests passed; for READ-013, report tests and core clippy passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.
+Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed; for READ-005, all cross-flow tests passed; for READ-006, occurrence and package-matching tests passed; for READ-007, identity-map conflict and precedence tests passed; for READ-008, all flow-projector tests passed; for READ-009, scope construction and integration scope tests passed; for READ-010, scope collection and integration scope tests passed; for READ-011, trace and cross-flow evidence tests passed; for READ-012, report and operation-count tests passed; for READ-013, report tests and core clippy passed; for READ-014, harness case tests and harness clippy passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.
