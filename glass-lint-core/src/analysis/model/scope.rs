@@ -127,12 +127,35 @@ impl BindingKey {
         self.path.append(segment);
     }
 
-    pub fn binding_slot(&self) -> Option<(FunctionId, BindingId, NamePath)> {
+    pub fn binding_slot(&self) -> Option<BindingSlot> {
         match self.root {
             BindingRoot::Binding {
                 function, binding, ..
-            } => Some((function, binding, self.path.clone())),
+            } => Some(BindingSlot::new(function, binding, self.path.clone())),
             BindingRoot::Global(_) => None,
+        }
+    }
+}
+
+/// Stable identity of one lexical binding slot across binding versions.
+/// Binding versions differ at joins, but the slot remains the same variable.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct BindingSlot {
+    function: FunctionId,
+    binding: BindingId,
+    path: NamePath,
+}
+
+impl BindingSlot {
+    pub(in crate::analysis) fn new(
+        function: FunctionId,
+        binding: BindingId,
+        path: NamePath,
+    ) -> Self {
+        Self {
+            function,
+            binding,
+            path,
         }
     }
 }
@@ -349,6 +372,45 @@ mod tests {
             version: BindingVersion::from_test(1),
         };
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn binding_slot_stays_constant_across_versions() {
+        let mut first = BindingKey::new(BindingRoot::Binding {
+            function: FunctionId::from_test(1),
+            binding: BindingId::from_test(2),
+            version: BindingVersion::from_test(0),
+        });
+        let mut second = BindingKey::new(BindingRoot::Binding {
+            function: FunctionId::from_test(1),
+            binding: BindingId::from_test(2),
+            version: BindingVersion::from_test(1),
+        });
+        let mut names = NameTable::default();
+        let value = names.intern("value").unwrap();
+        first.append_segment(value);
+        second.append_segment(value);
+        assert_eq!(first.binding_slot(), second.binding_slot());
+    }
+
+    #[test]
+    fn binding_slot_round_trips_construction_from_components() {
+        let mut names = NameTable::default();
+        let path = NamePath::from_ids([names.intern("a").unwrap()]);
+        let slot = BindingSlot::new(FunctionId::from_test(1), BindingId::from_test(2), path);
+        let mut key = BindingKey::new(BindingRoot::Binding {
+            function: FunctionId::from_test(1),
+            binding: BindingId::from_test(2),
+            version: BindingVersion::from_test(0),
+        });
+        key.append_segment(names.intern("a").unwrap());
+        assert_eq!(key.binding_slot(), Some(slot));
+    }
+
+    #[test]
+    fn global_binding_keys_have_no_slot() {
+        let key = BindingKey::new(BindingRoot::Global("window".into()));
+        assert!(key.binding_slot().is_none());
     }
 
     #[test]

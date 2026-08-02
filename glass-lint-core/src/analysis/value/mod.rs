@@ -7,7 +7,8 @@
 //!
 //! The layer is split into two concerns:
 //! - `identity` — opaque handle types (`ValueId`, `FunctionId`, `BindingId`,
-//!   etc.) and `SymbolPath` for human-readable chain representation.
+//!   `BindingSlot`, etc.) and `SymbolPath` for human-readable chain
+//!   representation.
 //! - `arena` — bounded interning tables that map identities to their meanings.
 //!
 //! Path trie types (`PathId`, `PathSegment`, `ParentPathStore`,
@@ -21,7 +22,7 @@ pub(in crate::analysis) use arena::{
     CallableValue, MAX_VALUES, ObjectId, StaticObject, Value, ValueTable,
 };
 pub(in crate::analysis) use identity::{
-    BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId, ValueId,
+    BindingId, BindingKey, BindingRoot, BindingSlot, BindingVersion, FunctionId, ValueId,
 };
 pub use identity::{matches_global_object_alias, matches_global_object_alias_with};
 

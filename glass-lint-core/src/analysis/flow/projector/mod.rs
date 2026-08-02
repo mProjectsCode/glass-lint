@@ -34,7 +34,7 @@ use crate::{
         },
         model::flow::{FlowId, FlowLimits, FlowState, RequirementIndex},
         trace::TraceArena,
-        value::{ObjectId, ValueId},
+        value::{BindingSlot, ObjectId, ValueId},
     },
     api::{
         classification::{ClassificationEvidence, MatchKind, RuleEvidenceTable, RuleIndex},
@@ -152,14 +152,7 @@ struct ObjectFlowProjector<'rules, 'stream, 'arena> {
     pending: PendingFlowStates,
     /// Stable representative value for each lexical binding slot. Binding
     /// versions differ at joins, but the slot remains the same variable.
-    binding_slots: BTreeMap<
-        (
-            crate::analysis::value::FunctionId,
-            crate::analysis::value::BindingId,
-            glass_lint_datastructures::NamePath,
-        ),
-        ValueId,
-    >,
+    binding_slots: BTreeMap<BindingSlot, ValueId>,
     /// Shared trace arena for interning evidence trace nodes.
     trace_arena: &'arena mut TraceArena,
     /// Module being projected, used to qualify trace events.

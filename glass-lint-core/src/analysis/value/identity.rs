@@ -7,7 +7,7 @@
 use glass_lint_datastructures::{NamePath, NameTable, SymbolPath};
 
 pub use crate::analysis::model::{
-    scope::{BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId},
+    scope::{BindingId, BindingKey, BindingRoot, BindingSlot, BindingVersion, FunctionId},
     value::ValueId,
 };
 

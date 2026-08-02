@@ -1,7 +1,7 @@
 use glass_lint_datastructures::{FastIndexSet, NameId, NamePath, NameTable, PathSegment};
 use smol_str::SmolStr;
 
-use crate::analysis::model::scope::{BindingId, BindingKey, FunctionId};
+use crate::analysis::model::scope::{BindingKey, BindingSlot, FunctionId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ValueId(u32);
@@ -232,7 +232,7 @@ impl ValueTable {
         self.resolve_terminal(id)
     }
 
-    pub fn binding_slot(&self, id: ValueId) -> Option<(FunctionId, BindingId, NamePath)> {
+    pub fn binding_slot(&self, id: ValueId) -> Option<BindingSlot> {
         match self.get(id)? {
             Value::Binding { key, .. } => key.binding_slot(),
             _ => None,
@@ -366,6 +366,27 @@ mod tests {
     fn resolve_returns_none_for_unknown_id() {
         let table = ValueTable::default();
         assert!(table.resolve(ValueId::from_test(u32::MAX)).is_none());
+    }
+
+    #[test]
+    fn binding_slot_returns_named_slot_for_binding_values() {
+        let mut table = ValueTable::default();
+        let target = table.intern(Value::StaticString("target".into()));
+        let key = BindingKey::new(crate::analysis::model::scope::BindingRoot::Binding {
+            function: FunctionId::from_test(0),
+            binding: crate::analysis::model::scope::BindingId::from_test(0),
+            version: crate::analysis::model::scope::BindingVersion::from_test(0),
+        });
+        let binding = table.intern(Value::Binding { key, target });
+        assert_eq!(
+            table.binding_slot(binding),
+            Some(BindingSlot::new(
+                FunctionId::from_test(0),
+                crate::analysis::model::scope::BindingId::from_test(0),
+                NamePath::new(),
+            ))
+        );
+        assert!(table.binding_slot(target).is_none());
     }
 
     #[test]
