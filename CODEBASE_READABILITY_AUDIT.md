@@ -291,7 +291,7 @@ Sink collection callers compare `len` before and after to infer insertion count,
 
 **Recommendation:** Remove `ProfileLinter` and use `Arc<Linter>` directly throughout the profiling runner. Do not retain a wrapper that has no current invariant or behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ProfileLinter` removed; the profiling runner (workers, projects, admitted, files, support) now uses `Arc<Linter>` directly with `&[Arc<Linter>]` slices and deref coercion.
 
 ### Shared domain types
 
