@@ -131,7 +131,7 @@ Scope freezing has useful semantic subaggregates, but each is still assembled th
 
 **Fix Applied:** `ScopeCollector::freeze` remains the single consuming transition; it now builds subindices through internal `From` conversions and `ScopeGraph::from_collected`. The visible `*Parts` records and generic `from_parts` APIs were removed, and binding/mutation fields are private.
 
-#### [ ] READ-010 — Fact lowering dismantles both adjacent phase owners
+#### [x] READ-010 — Fact lowering dismantles both adjacent phase owners
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -172,7 +172,7 @@ Local lowering cracks `ScopedProgram` and later `Resolver` into positional parts
 
 **Fix Applied:** `PendingFlowStates::take` was replaced by draining `finalize(active_paths, alternatives_complete) -> Vec<PendingFlowStateFinal>`. `ActivePaths` (built by `PathFrontier::active_paths`) and the named finalized records make grouping, completeness, and certainty derivation owner-owned.
 
-#### [ ] READ-013 — Loop fixed-point completion mixes seven responsibilities
+#### [x] READ-013 — Loop fixed-point completion mixes seven responsibilities
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -200,7 +200,7 @@ Sink collection callers compare `len` before and after to infer insertion count,
 
 ### Matching and evidence
 
-#### [ ] READ-015 — EventIndexView permits meaningless field combinations
+#### [x] READ-015 — EventIndexView permits meaningless field combinations
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -213,7 +213,7 @@ Sink collection callers compare `len` before and after to infer insertion count,
 
 **Fix Applied:** `EventIndexView` is now an enum with one variant per supported event (Call, MemberCall, MemberRead, PropertyWrite, ClassReference, Construct, Import, StringReference), each holding only the concrete buckets meaningful for it. `LinkedOccurrenceView` gained `ModuleOverlayKind` plus semantic `resolve_module`/`resolve_global`/`resolve_package` operations; buckets, masks, and overlays are private, and the free lookup helpers were removed.
 
-#### [ ] READ-016 — Rule evidence exposes mutable vectors
+#### [x] READ-016 — Rule evidence exposes mutable vectors
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -228,7 +228,7 @@ Sink collection callers compare `len` before and after to infer insertion count,
 
 ### Reports, project configuration, and harness
 
-#### [ ] READ-017 — Report APIs expose positional parts and mutable storage
+#### [x] READ-017 — Report APIs expose positional parts and mutable storage
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -241,7 +241,7 @@ Sink collection callers compare `len` before and after to infer insertion count,
 
 **Fix Applied:** Removed `AnalysisReport::into_parts`, `FileReport::into_parts`, and `FileReport::diagnostics_mut`; `AnalysisReport::new`/`FileReport::new` are crate-private. Aggregation moved onto the owners (`merge`, `sort_deterministically`, `push_diagnostic`); `combine` uses inspection only. Cross-crate tests now drive reports through `lint_source`/`begin_project` and inspection.
 
-#### [ ] READ-018 — Tsconfig transitions use positional parts and compressed names
+#### [x] READ-018 — Tsconfig transitions use positional parts and compressed names
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -254,7 +254,7 @@ Sink collection callers compare `len` before and after to infer insertion count,
 
 **Fix Applied:** `ParentSelection::merge` and `MergedSelection::compile` are consuming operations; `From` covers the one-to-one field conversions, and both `into_parts` methods were removed. Names `m`/`pdir` became `parent`/`parent_directory`/`merged`, and tests use semantic accessors (`include`, `exclude`, `files`, `invalid_controlling_field`).
 
-#### [ ] READ-019 — Tool expectations are dismantled to qualify paths
+#### [x] READ-019 — Tool expectations are dismantled to qualify paths
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -267,7 +267,7 @@ Sink collection callers compare `len` before and after to infer insertion count,
 
 **Fix Applied:** Added consuming `ToolExpectation::qualify_for_file` backed by `FindingExpectation::qualify_for_file`; the required/forbidden distinction stays in the owner. `ToolExpectation::into_parts`/`from_selector` were removed and the project loader now qualifies in place.
 
-#### [ ] READ-020 — Profile summary finalization duplicates accumulator layout
+#### [x] READ-020 — Profile summary finalization duplicates accumulator layout
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -280,7 +280,7 @@ Sink collection callers compare `len` before and after to infer insertion count,
 
 **Fix Applied:** Added `ProfileSummaryAccumulator::finish(ProfileSummaryMetadata)` that maps the now-private totals and computes median duration centrally. Both consumers (`runner/summary.rs`, `runner/projects.rs`) call `finish` with named metadata instead of assembling `ProfileSummary` field by field.
 
-#### [ ] READ-021 — ProfileLinter is a behavior-free transparent wrapper
+#### [x] READ-021 — ProfileLinter is a behavior-free transparent wrapper
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -295,7 +295,7 @@ Sink collection callers compare `len` before and after to infer insertion count,
 
 ### Shared domain types
 
-#### [ ] READ-022 — Canonical package identity is duplicated and discarded
+#### [x] READ-022 — Canonical package identity is duplicated and discarded
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -308,7 +308,7 @@ Sink collection callers compare `len` before and after to infer insertion count,
 
 **Fix Applied:** `PackageName` removed; `PackageSpecifier` is the sole canonical package-root type and is stored directly in `ModuleSpecifierPattern`'s private `PatternValue::Package` variant. The construction error is translated at the rule boundary (`ModuleSpecifierPattern::package`); exact patterns remain `String`.
 
-#### [ ] READ-023 — NameId exposes an unused numeric representation
+#### [x] READ-023 — NameId exposes an unused numeric representation
 
 - **Severity:** Low
 - **Fix Complexity:** Low
