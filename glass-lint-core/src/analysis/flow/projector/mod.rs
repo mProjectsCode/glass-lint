@@ -18,7 +18,9 @@ mod transfer;
 use std::collections::{BTreeMap, BTreeSet};
 
 use glass_lint_datastructures::{Budget, NameTable};
-use state::{AbruptExit, ControlFrame, FlowEnvironment, FlowEvidence, FlowStateTable};
+use state::{
+    AbruptExit, ControlFrame, FlowEnvironment, FlowEvidence, FlowStateTable, PropertyWriteUpdate,
+};
 
 use crate::{
     analysis::{
@@ -718,41 +720,36 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         let Some(object) = self.object_for(receiver) else {
             return;
         };
-        let keys = self
+        let updated = self
             .flow_state
-            .states_for(object)
-            .map(|(key, _)| key)
-            .collect::<Vec<_>>();
-        for key in keys {
-            let Some(flow) = self.plan.get(key.flow) else {
-                continue;
-            };
-            for (index, requirement) in flow.requirements.iter().enumerate() {
-                if let CompiledObjectRequirement::PropertyWrite {
-                    property: expected,
-                    value: matcher,
-                } = requirement
-                    && (property.is_none() || property == Some(expected.as_str()))
-                {
-                    self.flow_state.clear_requirement(
-                        key.object,
-                        key.flow,
-                        RequirementIndex::new(index),
-                    );
-                    if value_is_precise
-                        && property == Some(expected.as_str())
-                        && matcher.matches_flow_value(value)
-                    {
-                        self.flow_state.record_requirement(
-                            key.object,
-                            key.flow,
-                            RequirementIndex::new(index),
-                            event,
-                        );
-                    }
-                }
-            }
-            self.emit_if_ready(key.flow, key.object, event);
+            .apply_property_write(object, event, |flow_id| {
+                let Some(flow) = self.plan.get(flow_id) else {
+                    return Vec::new();
+                };
+                flow.requirements
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, requirement)| {
+                        let CompiledObjectRequirement::PropertyWrite {
+                            property: expected,
+                            value: matcher,
+                        } = requirement
+                        else {
+                            return None;
+                        };
+                        (property.is_none() || property == Some(expected.as_str())).then(|| {
+                            PropertyWriteUpdate::new(
+                                RequirementIndex::new(index),
+                                value_is_precise
+                                    && property == Some(expected.as_str())
+                                    && matcher.matches_flow_value(value),
+                            )
+                        })
+                    })
+                    .collect()
+            });
+        for flow in updated {
+            self.emit_if_ready(flow, object, event);
         }
     }
 

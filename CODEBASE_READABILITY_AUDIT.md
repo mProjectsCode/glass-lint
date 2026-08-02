@@ -8,7 +8,7 @@ Scope: 416 Rust source files, approximately 82,433 lines, across the workspace. 
 
 The workspace is generally well-factored at the crate level and has strong typed domain vocabulary in many of the recently refactored areas. The remaining readability cost is concentrated in internal analysis boundaries: positional tuples and raw maps still carry semantic state, a few aggregate constructors expose too much assembly detail, and orchestration code spans several independent lifecycle phases.
 
-There are 10 open findings: 2 high, 5 medium, and 3 low. READ-001 through READ-007 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
+There are 9 open findings: 1 high, 5 medium, and 3 low. READ-001 through READ-008 are fixed. `cargo clippy --workspace --all-targets -- -D warnings` passes. The recommendations below are ordered by how much they affect future changes and how much semantic knowledge callers currently need to hold.
 
 ## Findings
 
@@ -105,7 +105,7 @@ Recommendation: add a conflict-aware `merge_from` or visitor operation to `Modul
 
 Fix Applied: `ModuleIdentityMap` now owns conflict-aware star merging and missing-entry merging that preserves direct-export precedence. The project identity walk no longer consumes storage into raw tuples or reimplements ambiguity and precedence rules; focused tests cover both invariants.
 
-#### [ ] READ-008 — Flow property-write transitions are split between projector and state table
+#### [x] READ-008 — Flow property-write transitions are split between projector and state table
 
 - Severity: High
 - Fix Complexity: High
@@ -116,7 +116,7 @@ Fix Applied: `ModuleIdentityMap` now owns conflict-aware star merging and missin
 
 Recommendation: introduce a typed property-write transition and let the state owner apply matching requirements, returning the state changes or ready emissions needed by the projector. Keep plan-specific matching injected through a narrow operation rather than exposing raw state keys and three independent mutation methods to the orchestration layer.
 
-Fix Applied: None so far.
+Fix Applied: Added a typed `PropertyWriteUpdate` transition and `FlowStateTable::apply_property_write`. The projector now supplies only plan-specific requirement matches; the state table owns live-flow traversal, reversible clearing/recording, and returns affected flow IDs for readiness emission.
 
 #### [ ] READ-009 — ScopeGraphParts is a broad raw assembly aggregate
 
@@ -257,6 +257,6 @@ Fix Applied: None so far.
 
 ## Coverage
 
-Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. The working tree was clean before this implementation pass; READ-001 through READ-007 changed core boundaries and this report.
+Reviewed repository guidance (`ARCHITECTURE.md`, owning crate architecture documents, `TESTING.md`, and `CONTRIBUTING.md`), the existing audit, recent refactor history, all Rust file paths, largest source modules, public and crate-visible analysis boundaries, tuple/raw-map APIs, lint suppressions, harness/profile code, integration tests, and workspace clippy output. The working tree was clean before this implementation pass; READ-001 through READ-008 changed core boundaries and this report.
 
-Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed; for READ-005, all cross-flow tests passed; for READ-006, occurrence and package-matching tests passed; for READ-007, identity-map conflict and precedence tests passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.
+Verification for the audit baseline: `make ci` passed, including workspace tests, doctests, e2e/provider harness verification, rule generation checking, and example compilation. For READ-001, compiler/public-surface tests passed; for READ-002, package unit and integration tests passed; for READ-003, the core test target compiled; for READ-004, all projector state and flow tests passed; for READ-005, all cross-flow tests passed; for READ-006, occurrence and package-matching tests passed; for READ-007, identity-map conflict and precedence tests passed; for READ-008, all flow-projector tests passed. Core clippy passed with warnings denied; `cargo fmt --all` and `git diff --check` passed.

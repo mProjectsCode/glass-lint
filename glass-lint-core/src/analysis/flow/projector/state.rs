@@ -84,6 +84,22 @@ pub(super) struct FlowStateTable {
     state_limit_rejected: bool,
 }
 
+/// One plan-selected requirement update for a property-write transition.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct PropertyWriteUpdate {
+    index: RequirementIndex,
+    value_matches: bool,
+}
+
+impl PropertyWriteUpdate {
+    pub(super) fn new(index: RequirementIndex, value_matches: bool) -> Self {
+        Self {
+            index,
+            value_matches,
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub(super) struct ObjectRefCounts(BTreeMap<ObjectId, usize>);
 
@@ -232,6 +248,38 @@ impl FlowStateTable {
         self.log
             .record(InverseDelta::RequirementRemove(key, index, events));
         true
+    }
+
+    /// Apply all plan-selected property-write updates for one live object.
+    ///
+    /// The caller supplies only plan-specific matching results; state-key
+    /// traversal and the reversible clear/record mutation protocol remain
+    /// owned by this table.
+    pub(super) fn apply_property_write(
+        &mut self,
+        object: ObjectId,
+        event: FactId,
+        mut updates_for: impl FnMut(FlowId) -> Vec<PropertyWriteUpdate>,
+    ) -> Vec<FlowId> {
+        let flows = self
+            .states_for(object)
+            .map(|(key, _)| key.flow)
+            .collect::<Vec<_>>();
+        let mut affected_flows = Vec::new();
+        for flow in flows {
+            let requirement_updates = updates_for(flow);
+            if requirement_updates.is_empty() {
+                continue;
+            }
+            for update in requirement_updates {
+                self.clear_requirement(object, flow, update.index);
+                if update.value_matches {
+                    self.record_requirement(object, flow, update.index, event);
+                }
+            }
+            affected_flows.push(flow);
+        }
+        affected_flows
     }
 
     pub(super) fn record_sink(
