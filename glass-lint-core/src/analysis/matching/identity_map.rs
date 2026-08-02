@@ -1,12 +1,10 @@
 use std::collections::BTreeMap;
 
-use smol_str::SmolStr;
-
-use crate::analysis::{matching::occurrence::ModuleExportKey, project::model::ExportResolution};
+use crate::analysis::{matching::ModuleExportKey, project::model::ExportResolution};
 
 #[derive(Clone, Debug, Default)]
 pub(in crate::analysis) struct ModuleIdentityMap {
-    modules: BTreeMap<SmolStr, BTreeMap<SmolStr, ExportResolution>>,
+    entries: BTreeMap<ModuleExportKey, ExportResolution>,
 }
 
 impl ModuleIdentityMap {
@@ -15,15 +13,7 @@ impl ModuleIdentityMap {
     }
 
     pub(in crate::analysis) fn get(&self, key: &ModuleExportKey) -> Option<&ExportResolution> {
-        self.get_parts(key.module(), key.export())
-    }
-
-    pub(in crate::analysis) fn get_parts(
-        &self,
-        module: &str,
-        export: &str,
-    ) -> Option<&ExportResolution> {
-        self.modules.get(module)?.get(export)
+        self.entries.get(key)
     }
 
     pub(in crate::analysis) fn insert(
@@ -31,27 +21,20 @@ impl ModuleIdentityMap {
         key: ModuleExportKey,
         value: ExportResolution,
     ) -> Option<ExportResolution> {
-        let (module, export) = key.into_parts();
-        self.modules
-            .entry(module)
-            .or_default()
-            .insert(export, value)
+        self.entries.insert(key, value)
     }
 
     /// Merge star-derived identities, marking disagreements as ambiguous.
     pub(in crate::analysis) fn merge_star_from(&mut self, other: Self) {
-        for (module, exports) in other.modules {
-            for (export, value) in exports {
-                let key = ModuleExportKey::new(module.clone(), export);
-                match self.get(&key) {
-                    None => {
-                        self.insert(key, value);
-                    }
-                    Some(existing)
-                        if existing == &value || *existing == ExportResolution::Ambiguous => {}
-                    Some(_) => {
-                        self.insert(key, ExportResolution::Ambiguous);
-                    }
+        for (key, value) in other.entries {
+            match self.entries.get(&key) {
+                None => {
+                    self.entries.insert(key, value);
+                }
+                Some(existing)
+                    if existing == &value || *existing == ExportResolution::Ambiguous => {}
+                Some(_) => {
+                    self.entries.insert(key, ExportResolution::Ambiguous);
                 }
             }
         }
@@ -59,13 +42,8 @@ impl ModuleIdentityMap {
 
     /// Merge star-derived identities without replacing direct exports.
     pub(in crate::analysis) fn merge_missing_from(&mut self, other: Self) {
-        for (module, exports) in other.modules {
-            for (export, value) in exports {
-                let key = ModuleExportKey::new(module.clone(), export);
-                if self.get(&key).is_none() {
-                    self.insert(key, value);
-                }
-            }
+        for (key, value) in other.entries {
+            self.entries.entry(key).or_insert(value);
         }
     }
 }

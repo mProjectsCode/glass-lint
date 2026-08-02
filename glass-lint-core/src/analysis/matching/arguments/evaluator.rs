@@ -7,7 +7,7 @@ use crate::{
     analysis::{
         facts::{ArgumentView, CallArgInfo, CallUnwrap, FactPayload, SemanticFact},
         matching::{
-            ModuleIdentityMap,
+            ModuleExportKey, ModuleIdentityMap,
             arguments::identity::{call_identity_matches, member_identity_matches},
         },
         project::model::ExportResolution,
@@ -182,7 +182,7 @@ impl<'a> MatcherEvaluator<'a> {
 
     fn lookup_identity(&self, provenance: &SymbolCallProvenance) -> Option<&ExportResolution> {
         let (module, export) = provenance.module_export_parts()?;
-        self.identities?.get_parts(module, export)
+        self.identities?.get(&ModuleExportKey::new(module, export))
     }
 
     pub(super) fn argument_with_overlay<'b>(
