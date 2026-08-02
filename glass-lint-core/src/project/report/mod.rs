@@ -78,6 +78,8 @@ impl AnalysisReport {
             operations += r_ops;
             completion = completion.join(r_comp);
         }
+
+        // TODO: consider defining the ordering semantics on the File and Diagnostic types themselves
         files.sort_by(|left, right| left.path().cmp(right.path()));
         diagnostics.sort_by(|left, right| {
             (
@@ -91,6 +93,7 @@ impl AnalysisReport {
                     right.message(),
                 ))
         });
+        
         Ok(Self::new(
             schema_version,
             tool_version,
