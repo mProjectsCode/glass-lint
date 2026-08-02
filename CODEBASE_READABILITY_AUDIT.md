@@ -224,7 +224,7 @@ Sink collection callers compare `len` before and after to infer insertion count,
 
 **Recommendation:** Add focused `extend`, grouped-record, and `mark_event_truncated` operations, then remove the mutable vector accessor. Preserve read-only iteration only where consumers truly need it.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed `for_rule_mut`. `RuleEvidenceTable` now owns `extend`, `record_grouped`, and `mark_event_truncated`; occurrence mapping is centralized in `owned_occurrences`. Read-only `for_rule` iteration remains where consumers genuinely need it.
 
 ### Reports, project configuration, and harness
 
