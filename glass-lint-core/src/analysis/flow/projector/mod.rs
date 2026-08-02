@@ -12,12 +12,14 @@
 mod control;
 mod evidence;
 mod history;
+mod loops;
 mod state;
 mod transfer;
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use glass_lint_datastructures::{Budget, NameTable};
+use loops::LoopFixedPoint;
 use state::{
     AbruptExit, ControlFrame, FlowEnvironment, FlowEvidence, FlowStateTable, PropertyWriteUpdate,
 };
@@ -331,6 +333,15 @@ impl ProjectionRunState {
             trace_heads: 0,
         }
     }
+
+    fn charge_operation(&mut self) -> bool {
+        if self.operation_budget.try_push() {
+            true
+        } else {
+            self.alternatives_complete = AlternativeCompleteness::Incomplete;
+            false
+        }
+    }
 }
 
 struct ObjectFlowProjectorInput<'rules, 'stream, 'arena> {
@@ -384,15 +395,6 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         }
     }
 
-    fn charge_operation(&mut self) -> bool {
-        if self.run.operation_budget.try_push() {
-            true
-        } else {
-            self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
-            false
-        }
-    }
-
     fn observe_alternatives(&mut self, count: usize) {
         self.run.max_live_alternatives = self.run.max_live_alternatives.max(count);
     }
@@ -415,7 +417,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         self.frontier.active_count = incoming.len();
         let mut outgoing = Vec::with_capacity(incoming.len());
         for (path_index, environment) in incoming.into_iter().enumerate() {
-            if !self.charge_operation() {
+            if !self.run.charge_operation() {
                 break;
             }
             if !self.flow_state.restore(environment) {
@@ -475,7 +477,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     /// Replay one loop body from a set of back-edge environments.  The body
     /// is already represented by the canonical fact stream, so replaying that
     /// bounded slice does not add an AST traversal or a second semantic model.
-    fn replay_loop_body(
+    pub(super) fn replay_loop_body(
         &mut self,
         body_start: FactId,
         body_end: FactId,
@@ -511,84 +513,22 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         body_end: FactId,
         guaranteed: bool,
         baseline: Vec<FlowEnvironment>,
-        mut breaks: Vec<FlowEnvironment>,
+        breaks: Vec<FlowEnvironment>,
         mut continues: Vec<FlowEnvironment>,
     ) {
-        let mut frontier = self.frontier.take();
-        frontier.append(&mut continues);
-        self.join_paths(frontier.clone());
-        frontier = self.frontier.take();
+        let mut entrance = self.frontier.take();
+        entrance.append(&mut continues);
+        self.join_paths(entrance.clone());
+        let entrance = self.frontier.take();
 
-        let mut exits = Vec::new();
-        if !guaranteed {
-            exits.extend(baseline);
-        }
-        exits.extend(frontier.iter().copied());
-        exits.append(&mut breaks);
-
-        let mut seen = BTreeSet::new();
-        for environment in &frontier {
-            if !self.charge_operation() {
-                break;
-            }
-            if self.flow_state.restore(*environment) {
-                seen.insert(self.flow_state.semantic_snapshot());
-            } else {
-                self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
-            }
-        }
-
-        let iteration_limit = self.run.limits.alternative_limit();
-        let mut iterations = 0usize;
-        while !frontier.is_empty() {
-            if iterations >= iteration_limit {
-                self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
-                break;
-            }
-            if !self.charge_operation() {
-                break;
-            }
-            iterations += 1;
-            self.run.fixed_point_iterations = self.run.fixed_point_iterations.saturating_add(1);
-            let break_count = self
-                .control
-                .iter()
-                .rev()
-                .find_map(|frame| match frame {
-                    ControlFrame::Loop { breaks, .. } => Some(breaks.len()),
-                    _ => None,
-                })
-                .unwrap_or(0);
-            let outputs = self.replay_loop_body(body_start, body_end, frontier);
-            let mut next = outputs;
-            if let Some(ControlFrame::Loop { continues, .. }) = self.control.last_mut() {
-                next.append(continues);
-            }
-            self.join_paths(next);
-            let candidate = self.frontier.take();
-            exits.extend(candidate.iter().copied());
-
-            if let Some(ControlFrame::Loop { breaks, .. }) = self.control.last()
-                && breaks.len() > break_count
-            {
-                exits.extend(breaks[break_count..].iter().copied());
-            }
-
-            let mut next_frontier = Vec::new();
-            for environment in candidate {
-                if !self.charge_operation() {
-                    break;
-                }
-                if !self.flow_state.restore(environment) {
-                    self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
-                    continue;
-                }
-                if seen.insert(self.flow_state.semantic_snapshot()) {
-                    next_frontier.push(environment);
-                }
-            }
-            frontier = next_frontier;
-        }
+        let mut fixed_point = LoopFixedPoint::start(
+            entrance,
+            baseline,
+            guaranteed,
+            breaks,
+            self.run.limits.alternative_limit(),
+        );
+        fixed_point.converge(&mut *self, body_start, body_end);
 
         let Some(ControlFrame::Loop {
             body_start: expected,
@@ -603,21 +543,12 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             return;
         }
         self.control.pop();
-        let mut unique_exits = Vec::with_capacity(exits.len());
-        let mut exit_shapes = BTreeSet::new();
-        for environment in exits {
-            if !self.charge_operation() {
-                break;
-            }
-            if !self.flow_state.restore(environment) {
-                self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
-                continue;
-            }
-            if exit_shapes.insert(self.flow_state.semantic_snapshot()) {
-                unique_exits.push(environment);
-            }
+
+        let outcome = fixed_point.collect_exits(&mut self.flow_state, &mut self.run);
+        if !outcome.complete {
+            self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
         }
-        self.join_paths(unique_exits);
+        self.join_paths(outcome.exits);
     }
 
     fn transfer_function(&mut self, boundary: FunctionBoundary) {
@@ -642,7 +573,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         let incoming = self.frontier.take();
         let mut outgoing = Vec::with_capacity(incoming.len());
         for environment in incoming {
-            if !self.charge_operation() {
+            if !self.run.charge_operation() {
                 break;
             }
             if !self.flow_state.restore(environment) {
@@ -704,7 +635,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         let mut seen_snapshots = Vec::with_capacity(paths.len());
         let mut first = true;
         for path in paths {
-            if !self.charge_operation() {
+            if !self.run.charge_operation() {
                 break;
             }
             if !self.flow_state.restore(path) {
