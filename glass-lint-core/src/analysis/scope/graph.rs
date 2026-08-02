@@ -1,11 +1,9 @@
 use glass_lint_datastructures::{NameId, NamePath, NameTable, SymbolPath};
 #[cfg(test)]
-use hashbrown::{HashMap, HashSet};
+use hashbrown::HashSet;
 use smol_str::SmolStr;
 use swc_common::{BytePos, Span};
 
-#[cfg(test)]
-use crate::analysis::scope::FrozenAssignmentIndex;
 use crate::{
     Environment,
     analysis::{
@@ -14,10 +12,10 @@ use crate::{
             ScopeEffect, ScopeId, ScopeKind,
         },
         scope::{
-            binding_index::{BindingIndex, BindingIndexParts},
+            binding_index::BindingIndex,
             build::{PropertyAliasAssignment, RootedPropertyMutation, ScopedDynamicEval},
             frozen_assignments::AssignmentAt,
-            mutation_index::{MutationIndex, MutationIndexParts},
+            mutation_index::MutationIndex,
             name_env::NameEnvironment,
             scope_index::LexicalScopeIndex,
         },
@@ -63,30 +61,28 @@ impl ScopeGraph {
     pub(in crate::analysis) fn create_for_test(names: NameTable) -> Self {
         Self {
             names: NameEnvironment::new(names, Environment::default()),
-            scopes: LexicalScopeIndex::new(Vec::new(), Vec::new()),
-            bindings: BindingIndex::from_parts(BindingIndexParts {
-                assignments: FrozenAssignmentIndex::from_assignments(Vec::new()),
-                binding_ids: HashMap::new(),
-                function_ids: Vec::new(),
-                function_bindings: HashMap::new(),
-                function_aliases: HashMap::new(),
-                parameter_aliases: HashMap::new(),
-            }),
-            mutations: MutationIndex::from_parts(MutationIndexParts {
-                mutable_static_objects: HashSet::new(),
-            }),
+            scopes: LexicalScopeIndex::from(Vec::new()),
+            bindings: BindingIndex::empty(),
+            mutations: MutationIndex::from(HashSet::new()),
             scope_shape_valid: true,
         }
     }
 
-    /// Assemble the immutable graph before property indexes are attached.
-    pub(in crate::analysis) fn from_parts(parts: ScopeGraphParts) -> Self {
+    /// Assemble a validated scope graph from the collector's freeze output.
+    pub(super) fn from_collected(
+        environment: Environment,
+        names: NameTable,
+        scopes: Vec<LexicalScope>,
+        bindings: BindingIndex,
+        mutations: MutationIndex,
+        scope_shape_valid: bool,
+    ) -> Self {
         Self {
-            names: NameEnvironment::new(parts.lexical.names, parts.environment),
-            scopes: LexicalScopeIndex::new(parts.lexical.scopes, parts.lexical.scopes_by_start),
-            bindings: BindingIndex::from_parts(parts.bindings),
-            mutations: MutationIndex::from_parts(parts.mutations),
-            scope_shape_valid: parts.scope_shape_valid,
+            names: NameEnvironment::new(names, environment),
+            scopes: LexicalScopeIndex::from(scopes),
+            bindings,
+            mutations,
+            scope_shape_valid,
         }
     }
 
@@ -262,21 +258,6 @@ impl ScopeGraph {
         }
         FunctionId::new(0)
     }
-}
-
-/// Owned inputs used to assemble a collected [`ScopeGraph`].
-pub(in crate::analysis) struct LexicalScopeParts {
-    pub(in crate::analysis) names: NameTable,
-    pub(in crate::analysis) scopes: Vec<LexicalScope>,
-    pub(in crate::analysis) scopes_by_start: Vec<ScopeId>,
-}
-
-pub(in crate::analysis) struct ScopeGraphParts {
-    pub(in crate::analysis) environment: Environment,
-    pub(in crate::analysis) lexical: LexicalScopeParts,
-    pub(in crate::analysis) bindings: BindingIndexParts,
-    pub(in crate::analysis) mutations: MutationIndexParts,
-    pub(in crate::analysis) scope_shape_valid: bool,
 }
 
 // ---------------------------------------------------------------------------

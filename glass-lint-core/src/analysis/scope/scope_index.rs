@@ -15,15 +15,22 @@ pub(super) struct LexicalScopeIndex {
     pub(super) last_scope_query: Cell<Option<(Span, ScopeId)>>,
 }
 
-impl LexicalScopeIndex {
-    pub(super) fn new(scopes: Vec<LexicalScope>, scopes_by_start: Vec<ScopeId>) -> Self {
+impl From<Vec<LexicalScope>> for LexicalScopeIndex {
+    fn from(scopes: Vec<LexicalScope>) -> Self {
+        let mut scopes_by_start: Vec<_> = (0..scopes.len()).map(ScopeId::new).collect();
+        scopes_by_start.sort_by_key(|index| {
+            let scope = &scopes[index.index()];
+            (scope.span.lo, scope.depth)
+        });
         Self {
             scopes,
             scopes_by_start,
             last_scope_query: Cell::new(None),
         }
     }
+}
 
+impl LexicalScopeIndex {
     pub(super) fn scope_parent(&self, scope: ScopeId) -> Option<ScopeId> {
         self.scopes.get(scope.index())?.parent
     }

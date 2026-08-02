@@ -36,8 +36,7 @@ mod name_env;
 mod query;
 mod scope_index;
 
-pub(in crate::analysis) use frozen_assignments::FrozenAssignmentIndex;
-pub(in crate::analysis) use graph::{FrozenScopeGraph, ScopeGraph, ScopeGraphParts};
+pub(in crate::analysis) use graph::{FrozenScopeGraph, ScopeGraph};
 
 pub(in crate::analysis) use crate::analysis::model::scope::{
     AliasAssignment, BindingProvenance, BoundArgument, IdentValueSeed, LexicalScope,

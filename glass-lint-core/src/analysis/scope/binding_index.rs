@@ -3,7 +3,9 @@ use hashbrown::HashMap;
 use swc_common::{BytePos, Span};
 
 use crate::analysis::{
-    model::scope::{BindingProvenance, ScopeId, ScopedName},
+    model::scope::{
+        AliasAssignment, BindingProvenance, LexicalScope, ScopeId, ScopeKind, ScopedName,
+    },
     scope::{
         frozen_assignments::{AssignmentAt, FrozenAssignmentIndex},
         scope_index::LexicalScopeIndex,
@@ -12,46 +14,122 @@ use crate::analysis::{
 };
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(in crate::analysis) struct ParameterAliasKey {
+struct ParameterAliasKey {
     function: FunctionId,
     name: NameId,
 }
 
 impl ParameterAliasKey {
-    pub(in crate::analysis) fn new(function: FunctionId, name: NameId) -> Self {
+    fn new(function: FunctionId, name: NameId) -> Self {
         Self { function, name }
     }
 }
 
+/// Collector-side binding inputs consumed by the freeze transition.
 #[derive(Debug)]
-pub(in crate::analysis) struct BindingIndexParts {
-    pub(in crate::analysis) assignments: FrozenAssignmentIndex,
-    pub(in crate::analysis) binding_ids: HashMap<ScopedName, BindingId>,
-    pub(in crate::analysis) function_ids: Vec<Option<FunctionId>>,
-    pub(in crate::analysis) function_bindings: HashMap<ScopedName, FunctionId>,
-    pub(in crate::analysis) function_aliases: HashMap<ScopedName, FunctionId>,
-    pub(in crate::analysis) parameter_aliases: HashMap<ParameterAliasKey, BindingProvenance>,
+pub(super) struct BindingIndexInput {
+    pub(super) assignments: Vec<AliasAssignment>,
+    pub(super) binding_ids: HashMap<ScopedName, BindingId>,
+    pub(super) function_ids: Vec<Option<FunctionId>>,
+    pub(super) function_bindings: HashMap<ScopedName, ScopeId>,
+    pub(super) function_aliases: HashMap<ScopedName, ScopeId>,
+    pub(super) parameter_aliases: HashMap<ScopedName, BindingProvenance>,
 }
 
 #[derive(Debug)]
 pub(super) struct BindingIndex {
-    pub(super) assignments: FrozenAssignmentIndex,
-    pub(super) binding_ids: HashMap<ScopedName, BindingId>,
-    pub(super) function_ids: Vec<Option<FunctionId>>,
-    pub(super) function_bindings: HashMap<ScopedName, FunctionId>,
-    pub(super) function_aliases: HashMap<ScopedName, FunctionId>,
-    pub(super) parameter_aliases: HashMap<ParameterAliasKey, BindingProvenance>,
+    assignments: FrozenAssignmentIndex,
+    binding_ids: HashMap<ScopedName, BindingId>,
+    function_ids: Vec<Option<FunctionId>>,
+    function_bindings: HashMap<ScopedName, FunctionId>,
+    function_aliases: HashMap<ScopedName, FunctionId>,
+    parameter_aliases: HashMap<ParameterAliasKey, BindingProvenance>,
+}
+
+impl From<BindingIndexInput> for BindingIndex {
+    fn from(input: BindingIndexInput) -> Self {
+        let BindingIndexInput {
+            assignments,
+            binding_ids,
+            function_ids,
+            function_bindings,
+            function_aliases,
+            parameter_aliases,
+        } = input;
+        let function_bindings = function_bindings
+            .into_iter()
+            .filter_map(|(binding, scope)| {
+                function_ids
+                    .get(scope.index())
+                    .and_then(|&function| function)
+                    .map(|function| (binding, function))
+            })
+            .collect();
+        let function_aliases = function_aliases
+            .into_iter()
+            .filter_map(|(name, scope)| {
+                function_ids
+                    .get(scope.index())
+                    .and_then(|&function| function)
+                    .map(|function| (name, function))
+            })
+            .collect();
+        let parameter_aliases = parameter_aliases
+            .into_iter()
+            .filter_map(|(name, provenance)| {
+                function_ids
+                    .get(name.scope().index())
+                    .and_then(|&function| function)
+                    .map(|function| (ParameterAliasKey::new(function, name.name()), provenance))
+            })
+            .collect();
+        Self {
+            assignments: FrozenAssignmentIndex::from_assignments(assignments),
+            binding_ids,
+            function_ids,
+            function_bindings,
+            function_aliases,
+            parameter_aliases,
+        }
+    }
 }
 
 impl BindingIndex {
-    pub(super) fn from_parts(parts: BindingIndexParts) -> Self {
+    /// Allocate stable binding and function IDs over the lexical scopes.
+    pub(super) fn allocate_ids(
+        scopes: &[LexicalScope],
+    ) -> (HashMap<ScopedName, BindingId>, Vec<Option<FunctionId>>) {
+        let mut binding_ids = HashMap::new();
+        let mut next_binding = 0u32;
+        for (scope, lexical_scope) in scopes.iter().enumerate() {
+            let scope = ScopeId::new(scope);
+            for name in lexical_scope.bindings.keys() {
+                binding_ids.insert(ScopedName::new(scope, *name), BindingId::new(next_binding));
+                next_binding = next_binding.saturating_add(1);
+            }
+        }
+
+        let mut function_ids = vec![None; scopes.len()];
+        let mut next_function = 0u32;
+        for (scope, lexical_scope) in scopes.iter().enumerate() {
+            if matches!(lexical_scope.kind, ScopeKind::Program | ScopeKind::Function) {
+                function_ids[scope] = Some(FunctionId::new(next_function));
+                next_function = next_function.saturating_add(1);
+            }
+        }
+
+        (binding_ids, function_ids)
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) fn empty() -> Self {
         Self {
-            assignments: parts.assignments,
-            binding_ids: parts.binding_ids,
-            function_ids: parts.function_ids,
-            function_bindings: parts.function_bindings,
-            function_aliases: parts.function_aliases,
-            parameter_aliases: parts.parameter_aliases,
+            assignments: FrozenAssignmentIndex::from_assignments(Vec::new()),
+            binding_ids: HashMap::new(),
+            function_ids: Vec::new(),
+            function_bindings: HashMap::new(),
+            function_aliases: HashMap::new(),
+            parameter_aliases: HashMap::new(),
         }
     }
 
