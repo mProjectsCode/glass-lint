@@ -146,7 +146,7 @@ Local lowering cracks `ScopedProgram` and later `Resolver` into positional parts
 
 ### Flow analysis
 
-#### [ ] READ-011 — RequirementSet is neither requirement-specific nor opaque
+#### [x] READ-011 — RequirementSet is neither requirement-specific nor opaque
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -157,7 +157,7 @@ Local lowering cracks `ScopedProgram` and later `Resolver` into positional parts
 
 **Recommendation:** Rename the shared concept around indexed evidence, make its value collection opaque, and let it own readiness and remove/restore transitions. History should store the owner's semantic delta type rather than choosing a second collection representation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `RequirementSet` renamed `IndexedEvidence`; the public `RequirementValues` alias became opaque `EvidenceValues<K>` (only `is_empty`/`first`/`iter` public). `IndexedEvidence` owns readiness and `remove`/`restore` transitions; history deltas now store `EvidenceValues` directly instead of converting through `BTreeSet`. `RequirementIndex`/`SinkIndex` remain distinct.
 
 #### [ ] READ-012 — Pending flow states delegate finalization to their caller
 
