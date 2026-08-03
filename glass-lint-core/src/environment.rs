@@ -123,6 +123,14 @@ impl Environment {
             .ok_or_else(|| EnvironmentError { name: name.into() })
     }
 
+    fn register_global(&mut self, name: SmolStr, object: Option<GlobalObjectMembers>) {
+        let inner = self.inner_mut();
+        inner.global_bindings.insert(name.clone());
+        if let Some(object) = object {
+            inner.global_objects.insert(name, object);
+        }
+    }
+
     /// A conservative, host-independent ECMAScript environment.
     #[must_use]
     pub fn ecmascript() -> Self {
@@ -145,7 +153,7 @@ impl Environment {
     /// Add a global binding supplied by the host environment.
     pub fn add_global(&mut self, name: impl Into<String>) -> Result<(), EnvironmentError> {
         let name = Self::validated_identifier(&name.into())?;
-        self.inner_mut().global_bindings.insert(name);
+        self.register_global(name, None);
         Ok(())
     }
 
@@ -167,11 +175,7 @@ impl Environment {
     /// this object can share callable identity with configured global bindings.
     pub fn add_global_object(&mut self, name: impl Into<String>) -> Result<(), EnvironmentError> {
         let name = Self::validated_identifier(&name.into())?;
-        let inner = self.inner_mut();
-        inner.global_bindings.insert(name.clone());
-        inner
-            .global_objects
-            .insert(name, GlobalObjectMembers::ConfiguredGlobals);
+        self.register_global(name, Some(GlobalObjectMembers::ConfiguredGlobals));
         Ok(())
     }
 
@@ -195,11 +199,7 @@ impl Environment {
             .into_iter()
             .map(|member| Self::validated_identifier(&member.into()))
             .collect::<Result<BTreeSet<_>, _>>()?;
-        let inner = self.inner_mut();
-        inner.global_bindings.insert(name.clone());
-        inner
-            .global_objects
-            .insert(name, GlobalObjectMembers::Restricted(members));
+        self.register_global(name, Some(GlobalObjectMembers::Restricted(members)));
         Ok(())
     }
 

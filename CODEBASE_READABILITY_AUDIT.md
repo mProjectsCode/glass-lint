@@ -457,7 +457,7 @@ identity paths clone `SmolStr` directly, while comparisons and sorting use its
 string view. Retained `&SmolStr` because no benchmark justifies an allocating
 `&str` ownership path. Verified with `make fmt && make ci`.
 
-#### [ ] READ-029 — Environment global registration repeats validated insertion
+#### [x] READ-029 — Environment global registration repeats validated insertion
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -477,7 +477,10 @@ methods as explicit policy adapters. Preserve copy-on-write `Arc` behavior,
 configured-versus-restricted precedence, and fail-closed identifier
 validation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added one `register_global` owner operation for copy-on-write
+binding insertion and optional object-policy registration; public adapters
+retain their validation and configured/restricted semantics. Verified with
+`make fmt && make ci`.
 
 ### Datastructures
 
