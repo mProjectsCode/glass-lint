@@ -178,6 +178,30 @@ impl ModuleExports {
     }
 }
 
+/// Identity of one export in one linked project module.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(in crate::analysis) struct QualifiedExportId {
+    module: ModuleId,
+    name: SmolStr,
+}
+
+impl QualifiedExportId {
+    pub(in crate::analysis) fn new(module: ModuleId, name: impl Into<SmolStr>) -> Self {
+        Self {
+            module,
+            name: name.into(),
+        }
+    }
+
+    pub(in crate::analysis) fn module(&self) -> ModuleId {
+        self.module
+    }
+
+    pub(in crate::analysis) fn name(&self) -> &SmolStr {
+        &self.name
+    }
+}
+
 #[derive(Debug, Default)]
 /// Qualified export identities indexed by module and export name.
 pub(in crate::analysis) struct ExportTable {
@@ -186,28 +210,23 @@ pub(in crate::analysis) struct ExportTable {
 }
 impl ExportTable {
     /// Look up the current fixed-point value for one export.
-    pub(in crate::analysis) fn resolve(
-        &self,
-        module: ModuleId,
-        export: &SmolStr,
-    ) -> Option<&ExportResolution> {
-        self.exports.get(&module)?.get(export)
+    pub(in crate::analysis) fn resolve(&self, id: &QualifiedExportId) -> Option<&ExportResolution> {
+        self.exports.get(&id.module)?.get(&id.name)
     }
 
     /// Store a changed export identity and report whether it changed.
     pub(in crate::analysis) fn set_monotone(
         &mut self,
-        module: ModuleId,
-        export: &SmolStr,
+        id: &QualifiedExportId,
         value: ExportResolution,
     ) -> bool {
-        let entry = self.exports.entry(module).or_default();
+        let entry = self.exports.entry(id.module).or_default();
 
-        if entry.get(export) == Some(&value) {
+        if entry.get(&id.name) == Some(&value) {
             return false;
         }
-        let is_new = entry.get(export).is_none();
-        entry.insert(export.clone(), value);
+        let is_new = entry.get(&id.name).is_none();
+        entry.insert(id.name.clone(), value);
         if is_new {
             self.total_entries = self.total_entries.saturating_add(1);
         }
@@ -240,7 +259,7 @@ impl LinkingSession {
 
 #[derive(Debug)]
 pub(in crate::analysis) struct ExportLookupCache {
-    entries: BTreeMap<ModuleId, BTreeMap<SmolStr, Option<ExportResolution>>>,
+    entries: BTreeMap<QualifiedExportId, Option<ExportResolution>>,
     capacity: usize,
     count: usize,
 }
@@ -254,19 +273,18 @@ impl ExportLookupCache {
         }
     }
 
-    pub fn get(&self, module: ModuleId, name: &SmolStr) -> Option<&Option<ExportResolution>> {
-        self.entries.get(&module)?.get(name)
+    pub fn get(&self, id: &QualifiedExportId) -> Option<&Option<ExportResolution>> {
+        self.entries.get(id)
     }
 
-    pub fn insert(&mut self, module: ModuleId, name: SmolStr, value: Option<ExportResolution>) {
+    pub fn insert(&mut self, id: QualifiedExportId, value: Option<ExportResolution>) {
         if self.count >= self.capacity {
             return;
         }
-        let inner = self.entries.entry(module).or_default();
-        if !inner.contains_key(&name) {
+        if !self.entries.contains_key(&id) {
             self.count = self.count.saturating_add(1);
         }
-        inner.insert(name, value);
+        self.entries.insert(id, value);
     }
 }
 
@@ -338,5 +356,17 @@ mod tests {
         let partition = SccPartition::default();
         assert!(partition.is_empty());
         assert_eq!(partition.ordered_components().count(), 0);
+    }
+
+    #[test]
+    fn export_lookup_cache_keys_include_module_identity() {
+        let mut cache = ExportLookupCache::new(2);
+        let first = QualifiedExportId::new(module(0), "value");
+        let second = QualifiedExportId::new(module(1), "value");
+        cache.insert(first.clone(), Some(ExportResolution::Unknown));
+        cache.insert(second.clone(), None);
+
+        assert_eq!(cache.get(&first), Some(&Some(ExportResolution::Unknown)));
+        assert_eq!(cache.get(&second), Some(&None));
     }
 }

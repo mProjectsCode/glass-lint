@@ -98,7 +98,7 @@ Static objects appear as `Vec<(NameId, ValueId)>`, `Vec<NameId>`, `BTreeMap<Name
 
 ### Duplicate Types and Phase State
 
-#### [ ] READ-008 — Qualified export identity is repeated as a tuple and nested-map convention
+#### [x] READ-008 — Qualified export identity is repeated as a tuple and nested-map convention
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Newtype
@@ -108,7 +108,7 @@ The export table, lookup cache, and recursion guard all mean “module plus expo
 
 **Recommendation:** Introduce a `QualifiedExportId` with `module` and `name`, and use it in resolver, cache, and recursion-guard APIs. Retain module-grouped storage privately inside `ExportTable` because identity projection consumes complete module export sets, while single-entry callers address entries through the qualified key. Do not reuse matching's `ModuleExportKey`, whose module component is an authored specifier rather than a linked `ModuleId`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `QualifiedExportId` now represents linked module-plus-export identity across `ExportTable`, `ExportLookupCache`, resolver lookup APIs, and recursion guards. The cache uses the qualified key directly, while `ExportTable` retains module-grouped storage privately and callers construct named identities at phase boundaries; a unit test verifies that equal export names in different modules remain distinct.
 
 #### [ ] READ-009 — `LinkerOutcome` is a behavior-free copy of the final model's state
 - **Severity:** Medium

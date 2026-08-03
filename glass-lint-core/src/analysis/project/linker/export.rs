@@ -10,7 +10,10 @@ use crate::{
         LinkedModuleTarget, ModuleId,
         lowering::status::{AnalysisComponent, IncompleteReason, StatusScope},
         module::{self, ModuleRequestRole, NAMESPACE_EXPORT},
-        project::{linker::ProjectLinker, model::ExportResolution, resolver::ExportResolver},
+        project::{
+            linker::ProjectLinker, model::ExportResolution, resolver::ExportResolver,
+            state::QualifiedExportId,
+        },
         syntax::SymbolCallProvenance,
     },
     project::{AnalysisDiagnostic, ProjectRelativePath},
@@ -105,9 +108,9 @@ impl ProjectLinker {
         if changed {
             for (module, exports) in &module_exports {
                 for (name, _) in exports {
-                    if self.exports.resolve(*module, name).is_some() {
-                        self.exports
-                            .set_monotone(*module, name, ExportResolution::Unknown);
+                    let id = QualifiedExportId::new(*module, name.clone());
+                    if self.exports.resolve(&id).is_some() {
+                        self.exports.set_monotone(&id, ExportResolution::Unknown);
                     }
                 }
             }
@@ -125,11 +128,12 @@ impl ProjectLinker {
         export: &module::ModuleExport,
     ) -> bool {
         let resolved = self.resolve_export(module, name, export);
-        if self.exports.resolve(module, name).is_none() && self.exports.len() >= self.link_limit {
+        let id = QualifiedExportId::new(module, name.clone());
+        if self.exports.resolve(&id).is_none() && self.exports.len() >= self.link_limit {
             self.link_budget.mark_exhausted();
             return false;
         }
-        self.exports.set_monotone(module, name, resolved)
+        self.exports.set_monotone(&id, resolved)
     }
 
     /// Diagnose imports whose statically requested named export is absent or
@@ -157,7 +161,10 @@ impl ProjectLinker {
             }
         }
         for (importer, target, request_id, imported) in checks {
-            match self.lookup_export(target, &imported, &mut BTreeSet::new()) {
+            match self.lookup_export(
+                &QualifiedExportId::new(target, imported.clone()),
+                &mut BTreeSet::new(),
+            ) {
                 Some(ExportResolution::Ambiguous) => {
                     if let Some(module) = self.modules.get(&importer) {
                         self.status.record(
@@ -300,9 +307,8 @@ impl ProjectLinker {
 
     fn lookup_export(
         &mut self,
-        module: ModuleId,
-        name: &SmolStr,
-        visiting: &mut BTreeSet<(ModuleId, SmolStr)>,
+        id: &QualifiedExportId,
+        visiting: &mut BTreeSet<QualifiedExportId>,
     ) -> Option<ExportResolution> {
         ExportResolver::new(
             &self.modules,
@@ -310,7 +316,7 @@ impl ProjectLinker {
             &self.exports,
             &mut self.lookup_session.lookup_cache,
         )
-        .lookup_export(module, name, visiting)
+        .lookup_export(id, visiting)
     }
 
     /// Resolve a named re-export through its authored request.
@@ -332,7 +338,10 @@ impl ProjectLinker {
         };
         match self.resolutions.get(&key) {
             Some(LinkedModuleTarget::Internal { id, .. }) => self
-                .lookup_export(*id, imported, &mut BTreeSet::new())
+                .lookup_export(
+                    &QualifiedExportId::new(*id, imported.clone()),
+                    &mut BTreeSet::new(),
+                )
                 .unwrap_or(ExportResolution::Unknown),
             Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
                 module: package.as_str().to_smolstr(),

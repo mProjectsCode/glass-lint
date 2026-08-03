@@ -10,7 +10,7 @@ use crate::{
         module::{self, DEFAULT_EXPORT, ModuleRequestRole},
         project::{
             model::MAX_EXPORT_DEPTH,
-            state::{ExportLookupCache, ExportTable},
+            state::{ExportLookupCache, ExportTable, QualifiedExportId},
         },
     },
     project::is_internal_module_request as is_internal_request,
@@ -79,7 +79,10 @@ impl<'a> ExportResolver<'a> {
             };
             let candidate = match self.resolutions.get(&key) {
                 Some(LinkedModuleTarget::Internal { id, .. }) => self
-                    .lookup_export(*id, authored_export, &mut BTreeSet::new())
+                    .lookup_export(
+                        &QualifiedExportId::new(*id, authored_export.clone()),
+                        &mut BTreeSet::new(),
+                    )
                     .unwrap_or(ExportResolution::Unknown),
                 target => target_to_export_resolution(target, authored_module, authored_export),
             };
@@ -97,49 +100,47 @@ impl<'a> ExportResolver<'a> {
     /// Resolve an export through direct and star re-exports with cycle bounds.
     pub(super) fn lookup_export(
         &mut self,
-        module: ModuleId,
-        name: &SmolStr,
-        visiting: &mut BTreeSet<(ModuleId, SmolStr)>,
+        id: &QualifiedExportId,
+        visiting: &mut BTreeSet<QualifiedExportId>,
     ) -> Option<ExportResolution> {
-        let visit_key = (module, name.clone());
-
-        if let Some(resolved) = self.exports.resolve(module, name) {
+        if let Some(resolved) = self.exports.resolve(id) {
             return Some(resolved.clone());
         }
-        if let Some(cached) = self.cache.get(module, name) {
+        if let Some(cached) = self.cache.get(id) {
             return cached.clone();
         }
-        if visiting.len() >= MAX_EXPORT_DEPTH || !visiting.insert(visit_key.clone()) {
+        if visiting.len() >= MAX_EXPORT_DEPTH || !visiting.insert(id.clone()) {
             return None;
         }
-        if name == DEFAULT_EXPORT {
-            visiting.remove(&visit_key);
+        if id.name() == DEFAULT_EXPORT {
+            visiting.remove(id);
             return None;
         }
         let is_unknown = self
             .modules
-            .get(&module)
+            .get(&id.module())
             .map(|module| module.local().interface().is_unknown())?;
         if is_unknown {
             return Some(ExportResolution::Unknown);
         }
-        let (candidate, saw_unknown) = self.walk_star_exports(module, name, visiting);
-        visiting.remove(&visit_key);
+        let (candidate, saw_unknown) = self.walk_star_exports(id, visiting);
+        visiting.remove(id);
 
-        if let Some(resolved) = self.exports.resolve(module, name) {
+        if let Some(resolved) = self.exports.resolve(id) {
             return Some(resolved.clone());
         }
         let result = if saw_unknown { None } else { candidate };
-        self.cache.insert(module, name.clone(), result.clone());
+        self.cache.insert(id.clone(), result.clone());
         result
     }
 
     fn walk_star_exports(
         &mut self,
-        module: ModuleId,
-        name: &SmolStr,
-        visiting: &mut BTreeSet<(ModuleId, SmolStr)>,
+        id: &QualifiedExportId,
+        visiting: &mut BTreeSet<QualifiedExportId>,
     ) -> (Option<ExportResolution>, bool) {
+        let module = id.module();
+        let export_name = id.name().clone();
         let star_exports = self
             .modules
             .get(&module)
@@ -168,19 +169,20 @@ impl<'a> ExportResolver<'a> {
                 continue;
             };
             let candidate_export = match self.resolutions.get(&key) {
-                Some(LinkedModuleTarget::Internal { id, .. }) => {
-                    self.lookup_export(*id, name, visiting)
-                }
+                Some(LinkedModuleTarget::Internal { id: target, .. }) => self.lookup_export(
+                    &QualifiedExportId::new(*target, export_name.clone()),
+                    visiting,
+                ),
                 Some(LinkedModuleTarget::External { package }) => {
                     Some(ExportResolution::External {
                         module: package.as_str().to_smolstr(),
-                        export: name.clone(),
+                        export: export_name.clone(),
                     })
                 }
                 Some(LinkedModuleTarget::Builtin { name: builtin }) => {
                     Some(ExportResolution::External {
                         module: builtin.as_str().to_smolstr(),
-                        export: name.clone(),
+                        export: export_name.clone(),
                     })
                 }
                 _ => None,
