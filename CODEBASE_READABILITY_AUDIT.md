@@ -224,7 +224,7 @@ callers should not need to know that candidates are stored in a map of sets.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-009 — Bound flow planning exposes raw candidate arguments and a generic target index
+#### [x] READ-009 — Bound flow planning exposes raw candidate arguments and a generic target index
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -244,7 +244,12 @@ its role, such as `flow_id` and `matches_arguments`; centralize sorting and
 deduplication in the specialized index owner. Retain one generic internal
 helper only if it remains completely behind the flow-plan boundary.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `BoundSource` now owns construction, flow identity access,
+and argument-constraint matching; its fields are private. The bound target
+index remains the storage owner for sorted/deduplicated candidate buckets, so
+source transfer no longer re-sorts or deduplicates candidates after matching
+or iterates their argument representation directly. Sink and source lookup
+continue through the bound-flow planning API.
 
 ### Typed keys and representation leaks
 

@@ -89,8 +89,25 @@ pub(super) struct BoundFlowPlan<'rules> {
 
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) struct BoundSource {
-    pub(super) flow: FlowId,
-    pub(super) arguments: Vec<crate::api::rule::ArgumentConstraint>,
+    flow: FlowId,
+    arguments: Vec<crate::api::rule::ArgumentConstraint>,
+}
+
+impl BoundSource {
+    pub(super) fn new(flow: FlowId, arguments: Vec<crate::api::rule::ArgumentConstraint>) -> Self {
+        Self { flow, arguments }
+    }
+
+    pub(super) fn flow_id(&self) -> FlowId {
+        self.flow
+    }
+
+    pub(super) fn matches_arguments(
+        &self,
+        mut matches: impl FnMut(&crate::api::rule::ArgumentConstraint) -> bool,
+    ) -> bool {
+        self.arguments.iter().all(|argument| matches(argument))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -179,10 +196,7 @@ impl<'rules> BoundFlowPlan<'rules> {
             flows.insert(id, *flow);
 
             for source in &flow.sources {
-                let bound = BoundSource {
-                    flow: id,
-                    arguments: source.arguments.clone(),
-                };
+                let bound = BoundSource::new(id, source.arguments.clone());
                 if let Some(target) =
                     BoundLifecycleCallTarget::from_lifecycle(&source.target, names)
                 {

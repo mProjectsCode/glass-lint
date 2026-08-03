@@ -68,10 +68,10 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     .flatten()
                     .and_then(|chain| self.plan.source_candidates(chain))
             })?;
-        let mut matching: SmallVec<[FlowId; 8]> = candidates
+        let matching: SmallVec<[FlowId; 8]> = candidates
             .iter()
             .filter(|candidate| {
-                candidate.arguments.iter().all(|matcher| {
+                candidate.matches_arguments(|matcher| {
                     args.get(matcher.index()).is_some_and(|arg| {
                         matcher
                             .predicate()
@@ -79,10 +79,8 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     })
                 })
             })
-            .map(|candidate| candidate.flow)
+            .map(|candidate| candidate.flow_id())
             .collect();
-        matching.sort_unstable();
-        matching.dedup();
         if matching.is_empty() {
             return None;
         }
