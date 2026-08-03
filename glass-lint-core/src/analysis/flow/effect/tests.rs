@@ -197,7 +197,7 @@ fn call_argument_indexes_into_correct_call() {
         .get(FunctionId::from_test(1))
         .expect("effect for fn should exist");
     let by_index = effect
-        .call_argument(EffectCallId(0), 0)
+        .call_argument(EffectCallId::new(0), 0)
         .expect("argument at index 0 should exist");
     assert_eq!(by_index.index(), 0);
 }
@@ -209,8 +209,12 @@ fn call_argument_returns_none_for_missing_index() {
     let effect = effects
         .get(FunctionId::from_test(0))
         .expect("script effect should exist");
-    assert!(effect.call_argument(EffectCallId(0), 999).is_none());
-    assert!(effect.call_argument(EffectCallId(usize::MAX), 0).is_none());
+    assert!(effect.call_argument(EffectCallId::new(0), 999).is_none());
+    assert!(
+        effect
+            .call_argument(EffectCallId::new(usize::MAX), 0)
+            .is_none()
+    );
 }
 
 #[test]
@@ -267,8 +271,8 @@ fn parameter_ref_index_and_is_root() {
 
 #[test]
 fn effect_call_id_is_newtype() {
-    assert_ne!(EffectCallId(0), EffectCallId(1));
-    assert_eq!(EffectCallId(5), EffectCallId(5));
+    assert_ne!(EffectCallId::new(0), EffectCallId::new(1));
+    assert_eq!(EffectCallId::new(5), EffectCallId::new(5));
 }
 
 fn collect_effects_with_limit(source: &str, limit: usize) -> (FactStream<Frozen>, FunctionEffects) {

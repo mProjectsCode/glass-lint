@@ -256,7 +256,7 @@ object-flow state are not the same domain and should remain distinct.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-011 — `EffectCallId` and `TraceNodeId` still expose raw numeric identity inside core
+#### [x] READ-011 — `EffectCallId` and `TraceNodeId` still expose raw numeric identity inside core
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -276,7 +276,12 @@ construction private to the allocating owner and use checked conversion at
 the boundary; tests can use explicit test constructors rather than making the
 production representation available.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `EffectCallId` now owns its construction and vector-index
+conversion inside the effect collector, so callers use the semantic ID rather
+than its numeric field. `TraceNodeId` now belongs to the trace arena module
+with a private field; `TraceArena` owns allocation and node lookup, while the
+classification API re-exports the opaque type for report data. Tests inspect
+trace nodes through the arena and no longer depend on tuple-field access.
 
 #### [ ] READ-012 — `ScopeShape` and `LexicalScope` duplicate structural records without a shared vocabulary
 

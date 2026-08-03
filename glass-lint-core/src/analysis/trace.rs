@@ -2,9 +2,12 @@ use std::collections::HashMap;
 
 use crate::{
     analysis::facts::FactId,
-    api::classification::TraceNodeId,
     project::{EvidenceRole, ModuleId},
 };
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+/// Internal index into the bounded trace arena.
+pub struct TraceNodeId(u32);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct QualifiedEvent {
@@ -86,7 +89,10 @@ impl TraceArena {
             self.exhausted = true;
             return None;
         }
-        let id = TraceNodeId(u32::try_from(self.nodes.len()).unwrap_or(u32::MAX));
+        let Some(id) = TraceNodeId::from_node_count(self.nodes.len()) else {
+            self.exhausted = true;
+            return None;
+        };
         self.nodes.push(TraceNode {
             parent,
             event,
@@ -100,7 +106,7 @@ impl TraceArena {
         let mut steps = Vec::new();
         let mut current = Some(head);
         while let Some(id) = current {
-            if let Some(node) = self.nodes.get(id.0 as usize) {
+            if let Some(node) = self.node(id) {
                 steps.push(TraceStep::new(node.event, node.role));
                 current = node.parent;
             } else {
@@ -117,6 +123,20 @@ impl TraceArena {
 
     pub fn is_exhausted(&self) -> bool {
         self.exhausted
+    }
+
+    fn node(&self, id: TraceNodeId) -> Option<&TraceNode> {
+        self.nodes.get(id.index())
+    }
+}
+
+impl TraceNodeId {
+    fn from_node_count(count: usize) -> Option<Self> {
+        u32::try_from(count).ok().map(Self)
+    }
+
+    fn index(self) -> usize {
+        self.0 as usize
     }
 }
 
@@ -208,8 +228,8 @@ mod tests {
         let mut arena = TraceArena::new(100);
         let id1 = arena.intern(None, qe(0, 2), EvidenceRole::Source).unwrap();
         let id2 = arena.intern(None, qe(0, 1), EvidenceRole::Source).unwrap();
-        assert_eq!(id1.0, 0);
-        assert_eq!(id2.0, 1);
+        assert_eq!(arena.node(id1).unwrap().event, qe(0, 2));
+        assert_eq!(arena.node(id2).unwrap().event, qe(0, 1));
     }
 
     #[test]

@@ -6,11 +6,8 @@
 
 use glass_lint_datastructures::ByteRange;
 
+pub use crate::analysis::trace::TraceNodeId;
 use crate::{api::rule::Severity, project::MatchCertainty};
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-/// Internal index into the bounded trace arena.
-pub struct TraceNodeId(pub(crate) u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Stable position of a rule within a validated catalog.

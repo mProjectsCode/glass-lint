@@ -39,7 +39,17 @@ pub(in crate::analysis) struct EffectArgument {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub(in crate::analysis) struct EffectCallId(pub(in crate::analysis) usize);
+pub(in crate::analysis) struct EffectCallId(usize);
+
+impl EffectCallId {
+    fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    fn index(self) -> usize {
+        self.0
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(in crate::analysis) struct EffectCall {
@@ -351,7 +361,7 @@ impl FunctionEffect {
         index: usize,
     ) -> Option<&EffectArgument> {
         self.calls
-            .get(call_id.0)
+            .get(call_id.index())
             .and_then(|call| call.arguments().get(index))
     }
 
@@ -391,7 +401,7 @@ impl FunctionEffect {
             .as_deref()
             .map_or(args.as_slice(), |u| u.effective_args.as_slice());
         let arguments = self.build_effect_arguments(effective_args, stream);
-        let call_id = EffectCallId(self.calls.len());
+        let call_id = EffectCallId::new(self.calls.len());
         for argument in &arguments {
             if !budget.try_push() {
                 self.invalid = true;
