@@ -5,9 +5,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use glass_lint_core::{
-    Linter, LinterConfig, RuleBaseline, RuleId, RuleOverride, RuleSelection, RuleState,
-};
+use glass_lint_core::{Linter, RuleId};
 use glass_lint_project::{ProjectLoadMetrics, ProjectLoadOutcome};
 
 use crate::{
@@ -81,26 +79,10 @@ pub(super) fn build_linters(
             RuleSelectionProfile::Recommended => BuiltinProfile::Recommended,
             RuleSelectionProfile::Heuristic => BuiltinProfile::Heuristic,
         };
-        let linter = builtins::linter(provider, profile);
         let linter = if rules.is_empty() {
-            linter
+            builtins::linter(provider, profile)
         } else {
-            let selection = selected.into_iter().try_fold(
-                RuleSelection::new(RuleBaseline::None),
-                |selection, id| {
-                    Ok::<_, glass_lint_core::LintConfigError>(
-                        selection
-                            .with_override(RuleOverride::new(id.to_string(), RuleState::Enabled)?),
-                    )
-                },
-            )?;
-            Linter::new(
-                LinterConfig::new(
-                    vec![linter.catalog().clone()],
-                    linter.analysis_environment().clone(),
-                )
-                .with_rules(selection),
-            )?
+            builtins::linter_for_rules(provider, selected)?
         };
         linters.push(Arc::new(linter));
     }

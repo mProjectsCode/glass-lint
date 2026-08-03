@@ -514,7 +514,7 @@ certainty predicate order.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-033 — Adapter-specific linter construction bypasses the harness factory
+#### [x] READ-033 — Adapter-specific linter construction bypasses the harness factory
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -537,7 +537,10 @@ use it. Keep the provider profile baseline, `RuleBaseline::None` override
 semantics, provider-prefix validation, and the existing provider-specific
 catalog composition owned by the harness boundary.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a harness-owned explicit-rule factory that validates
+target catalog namespaces and reused it from built-in adapters and profiling;
+provider catalog/environment composition is now centralized. Verified with
+`make fmt && make ci`.
 
 ### Project loading and output
 

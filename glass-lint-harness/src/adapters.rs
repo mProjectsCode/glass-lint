@@ -11,13 +11,16 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use glass_lint_core::{
-    Linter, LinterConfig, RuleBaseline, RuleOverride, RuleSelection, RuleState,
+    Linter, RuleId,
     project::{Finding, SourceFile},
 };
 
-use crate::types::{
-    ADAPTER_PROTOCOL_VERSION, AdapterProject, AdapterRequest, AdapterResolution, AdapterResponse,
-    AdapterRun, Case, ProjectCase, ToolExpectation,
+use crate::{
+    builtins::{self, BuiltinProfile, BuiltinProvider},
+    types::{
+        ADAPTER_PROTOCOL_VERSION, AdapterProject, AdapterRequest, AdapterResolution,
+        AdapterResponse, AdapterRun, Case, ProjectCase, ToolExpectation,
+    },
 };
 
 pub trait Adapter {
@@ -73,33 +76,24 @@ impl Adapter for GlassLintAdapter {
 }
 
 fn configured_linter(expectation: &ToolExpectation) -> Result<Linter> {
-    let environment = glass_lint_obsidian::obsidian_environment();
-    let catalogs = glass_lint_obsidian::ObsidianCatalogBundle::new().into_catalogs();
     if let Some(config) = expectation.config() {
         if config != "heuristic" {
             bail!("unknown built-in glass-lint config `{config}`");
         }
-        return Ok(Linter::new(LinterConfig::new(catalogs, environment))?);
+        return Ok(builtins::linter(
+            BuiltinProvider::Obsidian,
+            BuiltinProfile::Heuristic,
+        ));
     }
     let enabled = expectation
         .rules()
         .iter()
-        .map(|id| glass_lint_core::RuleId::parse(id.clone()))
+        .map(|id| RuleId::parse(id.clone()))
         .collect::<Result<Vec<_>, _>>()?;
     if enabled.is_empty() {
         bail!("project tool has no selected built-in rules");
     }
-    let selection =
-        enabled
-            .into_iter()
-            .try_fold(RuleSelection::new(RuleBaseline::None), |selection, id| {
-                Ok::<_, glass_lint_core::LintConfigError>(
-                    selection.with_override(RuleOverride::new(id.to_string(), RuleState::Enabled)?),
-                )
-            })?;
-    Ok(Linter::new(
-        LinterConfig::new(catalogs, environment).with_rules(selection),
-    )?)
+    builtins::linter_for_rules(BuiltinProvider::Obsidian, enabled)
 }
 
 fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<AdapterRun> {
