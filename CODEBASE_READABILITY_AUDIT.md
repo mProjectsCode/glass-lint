@@ -72,7 +72,7 @@ or mutate invalid entry combinations directly.
 
 ### Cross-flow and matching containers
 
-#### [ ] READ-003 — Cross-flow state has field-level evidence transitions
+#### [x] READ-003 — Cross-flow state has field-level evidence transitions
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -94,7 +94,12 @@ alternatives should also live on the state type, reducing repeated literal
 initialization in the worklist. This would make the certainty-preserving
 rules visible at the owner boundary instead of encoded in callers.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `CrossFlowState` evidence and source fields private and
+added named constructors for known and unknown source alternatives. The state
+now owns requirement/sink recording, readiness and all-sink completion checks,
+source access, and deterministic prior-sink trace preparation. Propagation and
+trace assembly use those transitions instead of inserting into
+`IndexedEvidence`, inspecting raw lengths, or reimplementing sink ordering.
 
 #### [ ] READ-004 — `FlowSources` exposes adjacency normalization
 

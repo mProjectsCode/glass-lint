@@ -272,28 +272,20 @@ fn assemble_trace(
     module: ModuleId,
     event: FactId,
 ) -> TraceBuild {
-    let Some(source) = state.source.as_ref() else {
+    let Some(source) = state.source() else {
         return TraceBuild::Exhausted;
     };
     let Some(mut trace) = TraceAssembler::from_source(arena, source) else {
         return TraceBuild::Exhausted;
     };
-    for requirement in state.requirements.values() {
+    for requirement in state.requirement_events() {
         if !trace.append(requirement, EvidenceRole::Requirement) {
             return TraceBuild::Exhausted;
         }
     }
 
-    let mut prior_sinks: Vec<_> = state
-        .sinks
-        .values()
-        .filter(|sink| !(sink.module == module && sink.fact == event))
-        .cloned()
-        .collect();
-    prior_sinks.sort();
-    prior_sinks.dedup();
-    for sink in &prior_sinks {
-        if !trace.append(sink, EvidenceRole::Sink) {
+    for sink in state.prior_sinks(module, event) {
+        if !trace.append(&sink, EvidenceRole::Sink) {
             return TraceBuild::Exhausted;
         }
     }
@@ -379,23 +371,21 @@ mod tests {
 
     #[test]
     fn trace_assembly_keeps_prior_sinks_as_sinks() {
-        let mut state = CrossFlowState {
-            flow: FlowId::new(RuleIndex::new(0), 0),
-            source: Some(QualifiedEvent {
+        let mut state = CrossFlowState::known(
+            FlowId::new(RuleIndex::new(0), 0),
+            QualifiedEvent {
                 module: ModuleId::new(1),
                 fact: FactId::new(1),
-            }),
-            requirements: crate::analysis::model::flow::IndexedEvidence::default(),
-            sinks: crate::analysis::model::flow::IndexedEvidence::default(),
-        };
-        state.requirements.insert(
+            },
+        );
+        state.record_requirement(
             RequirementIndex::new(0),
             QualifiedEvent {
                 module: ModuleId::new(1),
                 fact: FactId::new(2),
             },
         );
-        state.sinks.insert(
+        state.record_sink(
             SinkIndex::new(0),
             QualifiedEvent {
                 module: ModuleId::new(1),

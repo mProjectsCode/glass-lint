@@ -9,7 +9,6 @@ use crate::{
             sources::{FlowSources, SourceKey},
             state::{CallContext, CrossFlowState, QualifiedEvent},
         },
-        model::flow::IndexedEvidence,
         value::FunctionId,
     },
     project::ModuleId,
@@ -132,15 +131,13 @@ impl ContextWorklist {
                     function: key.function,
                     parameter: None,
                     source_root: Some(key.value),
-                    state: CrossFlowState {
-                        flow: candidate.flow,
-                        source: Some(QualifiedEvent {
+                    state: CrossFlowState::known(
+                        candidate.flow,
+                        QualifiedEvent {
                             module: key.module,
                             fact: candidate.fact,
-                        }),
-                        requirements: IndexedEvidence::default(),
-                        sinks: IndexedEvidence::default(),
-                    },
+                        },
+                    ),
                     crossed: key.value != project.source_call_result(key.module, candidate.fact),
                 });
             }
@@ -176,15 +173,13 @@ impl ContextWorklist {
                         let candidates = sources.get(&source_key);
                         if let Some(candidates) = candidates {
                             for candidate in candidates {
-                                let state = CrossFlowState {
-                                    flow: candidate.flow,
-                                    source: Some(QualifiedEvent {
+                                let state = CrossFlowState::known(
+                                    candidate.flow,
+                                    QualifiedEvent {
                                         module: module.id(),
                                         fact: candidate.fact,
-                                    }),
-                                    requirements: IndexedEvidence::default(),
-                                    sinks: IndexedEvidence::default(),
-                                };
+                                    },
+                                );
                                 self.enqueue_parameters(
                                     project,
                                     target_module,
@@ -212,12 +207,7 @@ impl ContextWorklist {
                                 target_module,
                                 target_function,
                                 argument.index(),
-                                &CrossFlowState {
-                                    flow,
-                                    source: None,
-                                    requirements: IndexedEvidence::default(),
-                                    sinks: IndexedEvidence::default(),
-                                },
+                                &CrossFlowState::unknown(flow),
                                 target_module != module.id(),
                             );
                         }

@@ -94,7 +94,7 @@ impl UsageProjector<'_, '_> {
                 && value_is_precise
                 && value.matches_flow_value(static_value)
             {
-                next.requirements.insert(
+                next.record_requirement(
                     RequirementIndex::new(index),
                     QualifiedEvent {
                         module: self.context.module,
@@ -132,7 +132,7 @@ impl UsageProjector<'_, '_> {
                     })
                 })
             {
-                next.requirements.insert(
+                next.record_requirement(
                     RequirementIndex::new(index),
                     QualifiedEvent {
                         module: self.context.module,
@@ -168,7 +168,7 @@ impl UsageProjector<'_, '_> {
             .collect();
         if !matching_sinks.is_empty() && self.context.crossed {
             for index in matching_sinks {
-                self.state.sinks.insert(
+                self.state.record_sink(
                     SinkIndex::new(index),
                     QualifiedEvent {
                         module: self.context.module,
@@ -176,10 +176,9 @@ impl UsageProjector<'_, '_> {
                     },
                 );
             }
-            if self.flow.requirements_ready(self.state.requirements.len())
-                && self.state.source.is_some()
-                && (self.flow.completion_mode != CompletionMode::AllSinks
-                    || self.state.sinks.len() == self.flow.sinks.len())
+            if self.state.requirements_ready(self.flow)
+                && self.state.source().is_some()
+                && self.state.sinks_complete(self.flow)
             {
                 emit(
                     evidence::EmissionContext {
@@ -188,7 +187,7 @@ impl UsageProjector<'_, '_> {
                         arena: self.session.arena,
                     },
                     self.context.module,
-                    self.context.state.flow,
+                    self.context.state.flow_id(),
                     self.state,
                     event,
                     self.flow,
@@ -197,7 +196,7 @@ impl UsageProjector<'_, '_> {
                 mark_nonmatching(
                     self.session.evidence,
                     self.context.module,
-                    self.context.state.flow,
+                    self.context.state.flow_id(),
                     event,
                     self.flow,
                 );
@@ -207,7 +206,7 @@ impl UsageProjector<'_, '_> {
 
     fn emit_requirements(&mut self, state: &CrossFlowState, event: FactId) {
         if self.flow.completion_mode == CompletionMode::Configuration
-            && self.flow.requirements_ready(state.requirements.len())
+            && state.requirements_ready(self.flow)
             && self.context.crossed
         {
             emit(
@@ -217,7 +216,7 @@ impl UsageProjector<'_, '_> {
                     arena: self.session.arena,
                 },
                 self.context.module,
-                self.context.state.flow,
+                self.context.state.flow_id(),
                 state,
                 event,
                 self.flow,

@@ -143,7 +143,7 @@ impl CrossWorklist<'_, '_> {
         if effect.is_invalid() {
             return;
         }
-        let Some(flow) = self.flows.get(&context.state.flow).copied() else {
+        let Some(flow) = self.flows.get(&context.state.flow_id()).copied() else {
             return;
         };
         let Some(names) = self.project.module_names(context.module) else {
@@ -152,7 +152,7 @@ impl CrossWorklist<'_, '_> {
         let flow_plan = self
             .flow_plan_cache
             .entry(FlowPlanKey {
-                flow: context.state.flow,
+                flow: context.state.flow_id(),
                 module: context.module,
             })
             .or_insert_with(|| BoundFlowPaths::build(flow, names));
@@ -283,7 +283,7 @@ mod tests {
                 sources::{SourceCandidate, SourceKey},
                 state::{CallContext, CrossFlowState, QualifiedEvent, SourceBudget},
             },
-            model::flow::{FlowId, IndexedEvidence},
+            model::flow::FlowId,
             value::{FunctionId, ValueId},
         },
         api::classification::RuleIndex,
@@ -498,15 +498,13 @@ mod tests {
             function: FunctionId::from_test(function),
             parameter: None,
             source_root: None,
-            state: CrossFlowState {
-                flow: FlowId::new(RuleIndex::new(0), 0),
-                source: Some(QualifiedEvent {
+            state: CrossFlowState::known(
+                FlowId::new(RuleIndex::new(0), 0),
+                QualifiedEvent {
                     module: ModuleId::new(1),
                     fact: FactId::from_test(1),
-                }),
-                requirements: IndexedEvidence::default(),
-                sinks: IndexedEvidence::default(),
-            },
+                },
+            ),
             crossed: false,
         }
     }
