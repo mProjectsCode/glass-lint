@@ -299,10 +299,10 @@ mod tests {
     }
 
     fn candidate(rule: usize, flow: usize, fact: u32) -> SourceCandidate {
-        SourceCandidate {
-            flow: FlowId::new(RuleIndex::new(rule), flow),
-            fact: FactId::from_test(fact),
-        }
+        SourceCandidate::new(
+            FlowId::new(RuleIndex::new(rule), flow),
+            FactId::from_test(fact),
+        )
     }
 
     #[test]

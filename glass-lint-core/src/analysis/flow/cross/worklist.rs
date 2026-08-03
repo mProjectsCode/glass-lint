@@ -112,27 +112,27 @@ impl ContextWorklist {
         let mut worklist = Self::new(MAX_CONTEXTS);
         worklist.seed_from_sources(project, sources);
         let source_flows = sources
-            .candidate_entries()
-            .map(|(_, candidate)| candidate.flow)
+            .propagation_entries()
+            .map(|(_, candidate)| candidate.flow_id())
             .collect::<BTreeSet<_>>();
         worklist.seed_from_calls(project, sources, call_graph, &source_flows);
         worklist
     }
 
     fn seed_from_sources(&mut self, project: &ProjectSemanticModel, sources: &FlowSources) {
-        for (key, candidate) in sources.candidate_entries() {
+        for (key, candidate) in sources.propagation_entries() {
             if self.is_exhausted() {
                 return;
             }
             self.push(CallContext::for_source(
-                key.module,
-                key.function,
-                key.value,
+                key.module(),
+                key.function(),
+                key.value(),
                 CrossFlowState::known(
-                    candidate.flow,
-                    QualifiedEvent::new(key.module, candidate.fact),
+                    candidate.flow_id(),
+                    QualifiedEvent::new(key.module(), candidate.event()),
                 ),
-                key.value != project.source_call_result(key.module, candidate.fact),
+                key.value() != project.source_call_result(key.module(), candidate.event()),
             ));
         }
     }
@@ -166,8 +166,8 @@ impl ContextWorklist {
                         let candidates: Vec<_> = sources.candidates(&source_key).copied().collect();
                         for candidate in candidates {
                             let state = CrossFlowState::known(
-                                candidate.flow,
-                                QualifiedEvent::new(module.id(), candidate.fact),
+                                candidate.flow_id(),
+                                QualifiedEvent::new(module.id(), candidate.event()),
                             );
                             self.enqueue_parameters(
                                 project,
@@ -187,7 +187,7 @@ impl ContextWorklist {
                         for &flow in source_flows {
                             let has_source = sources
                                 .candidates(&source_key)
-                                .any(|item| item.flow == flow);
+                                .any(|item| item.flow_id() == flow);
                             if has_source {
                                 continue;
                             }

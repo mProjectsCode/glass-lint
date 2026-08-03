@@ -21,9 +21,9 @@ use crate::{
 /// Local effect/value key used while composing source identities.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub(super) struct SourceKey {
-    pub(super) module: ModuleId,
-    pub(super) function: FunctionId,
-    pub(super) value: ValueId,
+    module: ModuleId,
+    function: FunctionId,
+    value: ValueId,
 }
 
 impl SourceKey {
@@ -34,13 +34,39 @@ impl SourceKey {
             value,
         }
     }
+
+    pub(super) fn module(self) -> ModuleId {
+        self.module
+    }
+
+    pub(super) fn function(self) -> FunctionId {
+        self.function
+    }
+
+    pub(super) fn value(self) -> ValueId {
+        self.value
+    }
 }
 
 /// Flow matcher and source-event pair associated with a source identity.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub(super) struct SourceCandidate {
-    pub(super) flow: FlowId,
-    pub(super) fact: FactId,
+    flow: FlowId,
+    fact: FactId,
+}
+
+impl SourceCandidate {
+    pub(super) fn new(flow: FlowId, fact: FactId) -> Self {
+        Self { flow, fact }
+    }
+
+    pub(super) fn flow_id(self) -> FlowId {
+        self.flow
+    }
+
+    pub(super) fn event(self) -> FactId {
+        self.fact
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -87,7 +113,7 @@ impl FlowSources {
         self.candidates(key).any(|stored| *stored == candidate)
     }
 
-    pub(super) fn candidate_entries(&self) -> impl Iterator<Item = (SourceKey, SourceCandidate)> {
+    pub(super) fn propagation_entries(&self) -> impl Iterator<Item = (SourceKey, SourceCandidate)> {
         self.sources.iter().flat_map(|(key, candidates)| {
             candidates.iter().map(move |candidate| (*key, *candidate))
         })
@@ -232,10 +258,7 @@ impl FlowSources {
                         if cref.matches_source(flow, names) {
                             self.add_candidate(
                                 SourceKey::new(module.id(), effect.id(), cref.result()),
-                                SourceCandidate {
-                                    flow: *flow_id,
-                                    fact: call.event(),
-                                },
+                                SourceCandidate::new(*flow_id, call.event()),
                             );
                         }
                     }
@@ -258,7 +281,7 @@ impl FlowSources {
         let mut pending = VecDeque::<PropagationItem>::new();
         let mut pending_seen = BTreeSet::<PropagationItem>::new();
 
-        for (key, candidate) in self.candidate_entries() {
+        for (key, candidate) in self.propagation_entries() {
             if pending_seen.len() >= MAX_PENDING {
                 return true;
             }

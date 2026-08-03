@@ -207,7 +207,7 @@ parameter-root and source-root connection predicates used by evidence and
 propagation. Worklist seeding now uses the named constructors rather than
 repeated record literals.
 
-#### [ ] READ-008 — Cross-flow source keys and candidates leak their field representation
+#### [x] READ-008 — Cross-flow source keys and candidates leak their field representation
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -227,7 +227,12 @@ accessors, then add operations such as `source_identity`, `candidate_flow`,
 `FlowSources` responsible for candidate deduplication and adjacency traversal;
 callers should not need to know that candidates are stored in a map of sets.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `SourceKey` and `SourceCandidate` now hide their fields behind
+named constructors and identity/event accessors. `FlowSources` exposes a
+`propagation_entries` iterator for worklist seeding and fixed-point traversal,
+so callers no longer flatten or interpret the nested map/set representation;
+candidate deduplication and deterministic ordering remain owned by the source
+table.
 
 #### [x] READ-009 — Bound flow planning exposes raw candidate arguments and a generic target index
 
