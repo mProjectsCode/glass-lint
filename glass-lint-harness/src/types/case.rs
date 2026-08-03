@@ -232,16 +232,8 @@ impl ToolExpectation {
     }
 
     pub(crate) fn qualify_for_file(mut self, path: &str) -> Result<Self, ProjectInputError> {
-        self.required = self
-            .required
-            .into_iter()
-            .map(|finding| finding.qualify_for_file(path))
-            .collect::<Result<Vec<_>, _>>()?;
-        self.forbidden = self
-            .forbidden
-            .into_iter()
-            .map(|finding| finding.qualify_for_file(path))
-            .collect::<Result<Vec<_>, _>>()?;
+        self.required = qualify_findings(self.required, path)?;
+        self.forbidden = qualify_findings(self.forbidden, path)?;
         Ok(self)
     }
 
@@ -252,6 +244,16 @@ impl ToolExpectation {
     pub(crate) fn add_forbidden(&mut self, finding: FindingExpectation) {
         self.forbidden.push(finding);
     }
+}
+
+fn qualify_findings(
+    findings: Vec<FindingExpectation>,
+    path: &str,
+) -> Result<Vec<FindingExpectation>, ProjectInputError> {
+    findings
+        .into_iter()
+        .map(|finding| finding.qualify_for_file(path))
+        .collect()
 }
 
 #[derive(Clone, Debug)]

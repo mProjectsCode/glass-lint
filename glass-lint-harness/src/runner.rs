@@ -131,11 +131,7 @@ impl FindingExpectation {
 fn compare(findings: &[Finding], expectation: &ToolExpectation) -> Vec<String> {
     let mut errors = Vec::new();
     for expected in expectation.required() {
-        let actual = findings
-            .iter()
-            .enumerate()
-            .filter(|(_, finding)| expected.matches(finding))
-            .count();
+        let actual = matching_count(findings, expected);
         let count_matches = match expected.count {
             ExpectedCount::Exactly(count) => actual == count,
             ExpectedCount::AtLeastOne => actual > 0,
@@ -148,11 +144,7 @@ fn compare(findings: &[Finding], expectation: &ToolExpectation) -> Vec<String> {
         }
     }
     for forbidden in expectation.forbidden() {
-        let actual = findings
-            .iter()
-            .enumerate()
-            .filter(|(_, finding)| forbidden.matches(finding))
-            .count();
+        let actual = matching_count(findings, forbidden);
         if actual > 0 {
             errors.push(format!(
                 "forbidden diagnostic {} appeared {} time(s)",
@@ -178,6 +170,13 @@ fn compare(findings: &[Finding], expectation: &ToolExpectation) -> Vec<String> {
         }
     }
     errors
+}
+
+fn matching_count(findings: &[Finding], expected: &FindingExpectation) -> usize {
+    findings
+        .iter()
+        .filter(|finding| expected.matches(finding))
+        .count()
 }
 
 #[cfg(test)]

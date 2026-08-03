@@ -533,7 +533,7 @@ and out-of-storage results. Verified with `make fmt && make ci`.
 
 ### Harness and provider tooling
 
-#### [ ] READ-032 — Harness expectation handling repeats required/forbidden traversal
+#### [x] READ-032 — Harness expectation handling repeats required/forbidden traversal
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -555,7 +555,9 @@ policy and error wording at the caller. Preserve exact-count versus
 at-least-one semantics, forbidden diagnostics, and the rule/path/location/
 certainty predicate order.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Centralized expectation qualification and single-expectation
+finding counts, retaining separate required/forbidden policy and unexpected
+finding diagnostics. Verified with `make fmt && make ci`.
 
 #### [x] READ-033 — Adapter-specific linter construction bypasses the harness factory
 
