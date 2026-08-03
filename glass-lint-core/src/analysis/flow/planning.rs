@@ -110,75 +110,6 @@ impl BoundSource {
     }
 }
 
-#[derive(Debug, Clone)]
-pub(super) struct BoundFlowPaths {
-    req_members: Vec<Option<NamePath>>,
-}
-
-impl BoundFlowPaths {
-    pub(super) fn build(flow: &CompiledObjectFlow, names: &NameTable) -> Self {
-        let req_members = flow
-            .requirements
-            .iter()
-            .map(|req| match req {
-                CompiledObjectRequirement::MemberCall { member, .. } => names.lookup_path(member),
-                CompiledObjectRequirement::PropertyWrite { .. } => None,
-            })
-            .collect();
-        Self { req_members }
-    }
-
-    pub(super) fn requirements_with_indices(
-        flow: &CompiledObjectFlow,
-    ) -> impl Iterator<Item = (RequirementIndex, &CompiledObjectRequirement)> {
-        flow.requirements
-            .iter()
-            .enumerate()
-            .map(|(index, requirement)| (RequirementIndex::new(index), requirement))
-    }
-
-    pub(super) fn member_requirements<'a>(
-        &'a self,
-        flow: &'a CompiledObjectFlow,
-    ) -> impl Iterator<
-        Item = (
-            RequirementIndex,
-            &'a NamePath,
-            &'a CompiledObjectRequirement,
-        ),
-    > {
-        self.req_members
-            .iter()
-            .zip(flow.requirements.iter())
-            .enumerate()
-            .filter_map(|(index, (member, requirement))| {
-                member
-                    .as_ref()
-                    .map(|member| (RequirementIndex::new(index), member, requirement))
-            })
-    }
-
-    pub(super) fn matching_sink_indices(
-        flow: &CompiledObjectFlow,
-        argument_index: usize,
-        mut target_matches: impl FnMut(&LifecycleCallTarget) -> bool,
-    ) -> Vec<SinkIndex> {
-        flow.sinks
-            .iter()
-            .enumerate()
-            .filter_map(|(index, sink)| {
-                let matches_arguments = match &sink.args {
-                    crate::api::compiler::CompiledObjectSinkArguments::Any => true,
-                    crate::api::compiler::CompiledObjectSinkArguments::Indices(indices) => {
-                        indices.contains(&argument_index)
-                    }
-                };
-                (target_matches(&sink.target) && matches_arguments).then_some(SinkIndex::new(index))
-            })
-            .collect()
-    }
-}
-
 impl<'rules> BoundFlowPlan<'rules> {
     /// Build a plan from compiled flow matchers.
     pub(super) fn new(
@@ -210,8 +141,7 @@ impl<'rules> BoundFlowPlan<'rules> {
                 }
             }
 
-            let paths = BoundFlowPaths::build(flow, names);
-            req_members.insert(id, paths.req_members);
+            req_members.insert(id, Self::build_requirement_members(flow, names));
         }
 
         sources.normalize();
@@ -223,6 +153,27 @@ impl<'rules> BoundFlowPlan<'rules> {
             sinks,
             req_members,
         }
+    }
+
+    pub(super) fn single(
+        flow_id: FlowId,
+        flow: &'rules CompiledObjectFlow,
+        names: &NameTable,
+    ) -> Self {
+        Self::new(&[(flow_id.rule_index(), flow_id.flow_index(), flow)], names)
+    }
+
+    fn build_requirement_members(
+        flow: &CompiledObjectFlow,
+        names: &NameTable,
+    ) -> Vec<Option<NamePath>> {
+        flow.requirements
+            .iter()
+            .map(|requirement| match requirement {
+                CompiledObjectRequirement::MemberCall { member, .. } => names.lookup_path(member),
+                CompiledObjectRequirement::PropertyWrite { .. } => None,
+            })
+            .collect()
     }
 
     /// Look up a compiled flow by its stable identifier.
@@ -284,10 +235,23 @@ impl<'rules> BoundFlowPlan<'rules> {
         &self,
         flow_id: FlowId,
         argument_index: usize,
-        target_matches: impl FnMut(&LifecycleCallTarget) -> bool,
+        mut target_matches: impl FnMut(&LifecycleCallTarget) -> bool,
     ) -> Vec<SinkIndex> {
         self.get(flow_id).map_or_else(Vec::new, |flow| {
-            BoundFlowPaths::matching_sink_indices(flow, argument_index, target_matches)
+            flow.sinks
+                .iter()
+                .enumerate()
+                .filter_map(|(index, sink)| {
+                    let matches_arguments = match &sink.args {
+                        crate::api::compiler::CompiledObjectSinkArguments::Any => true,
+                        crate::api::compiler::CompiledObjectSinkArguments::Indices(indices) => {
+                            indices.contains(&argument_index)
+                        }
+                    };
+                    (target_matches(&sink.target) && matches_arguments)
+                        .then_some(SinkIndex::new(index))
+                })
+                .collect()
         })
     }
 }

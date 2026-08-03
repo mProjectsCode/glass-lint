@@ -69,7 +69,7 @@ free functions; the obsolete normalization helpers were removed.
 
 ### Medium priority
 
-#### [ ] READ-004 — Flow planning has two owners for the same index and matching operations
+#### [x] READ-004 — Flow planning has two owners for the same index and matching operations
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -80,7 +80,12 @@ free functions; the obsolete normalization helpers were removed.
 
 **Recommendation:** Make one bound-plan type own requirement paths, typed requirement enumeration, and sink matching. Either embed `BoundFlowPaths` in the plan or move its useful operations onto a single plan/view type; remove the static helpers after migrating the cross-flow and projector callers. Keep `RequirementIndex` and `SinkIndex`, including the existing `Any` sink behavior, as the domain-level boundary.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed `BoundFlowPaths` and moved requirement-path
+construction, requirement enumeration, and sink-argument matching into
+`BoundFlowPlan`. Cross-file projection now caches a single-flow bound plan,
+while local projection, summaries, and cross propagation use the same typed
+plan operations. Existing projector and cross-file flow tests pass, including
+the `Any` sink behavior.
 
 #### [ ] READ-005 — Compiled flow fields leak matcher and index semantics across analysis modules
 

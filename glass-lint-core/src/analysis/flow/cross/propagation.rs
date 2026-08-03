@@ -12,7 +12,7 @@ use crate::{
                 state::{CallContext, CrossFlowState, QualifiedEvent},
             },
             effect::{CallEffectRef, EffectUse, FunctionEffect},
-            planning::BoundFlowPaths,
+            planning::BoundFlowPlan,
         },
     },
     api::compiler::{CompiledObjectFlow, CompiledObjectRequirement, object_flow::CompletionMode},
@@ -24,7 +24,7 @@ pub(super) struct UsageProjector<'a, 'session> {
     pub(super) context: &'a CallContext,
     pub(super) effect: &'a FunctionEffect,
     pub(super) flow: &'a CompiledObjectFlow,
-    pub(super) flow_plan: &'a BoundFlowPaths,
+    pub(super) flow_plan: &'a BoundFlowPlan<'session>,
     pub(super) state: &'a mut CrossFlowState,
     pub(super) propagated: &'a mut BTreeSet<FactId>,
 }
@@ -81,7 +81,10 @@ impl UsageProjector<'_, '_> {
                 stream.values().static_string(value)
             });
         let mut next = self.state.clone();
-        for (index, requirement) in BoundFlowPaths::requirements_with_indices(self.flow) {
+        for (index, requirement) in self
+            .flow_plan
+            .requirements_with_indices(self.context.state().flow_id())
+        {
             if let crate::api::compiler::CompiledObjectRequirement::PropertyWrite {
                 property: expected,
                 value,
@@ -113,7 +116,10 @@ impl UsageProjector<'_, '_> {
         let chain = cref.chain();
         let values = stream.values();
         let mut next = self.state.clone();
-        for (index, member, requirement) in self.flow_plan.member_requirements(self.flow) {
+        for (index, member, requirement) in self
+            .flow_plan
+            .member_requirements(self.context.state().flow_id())
+        {
             if chain.is_some_and(|c| c == member || c.last_segment() == member.last_segment())
                 && let CompiledObjectRequirement::MemberCall { arguments, .. } = requirement
                 && arguments.iter().all(|matcher| {
@@ -140,9 +146,11 @@ impl UsageProjector<'_, '_> {
             return;
         };
         let cref = CallEffectRef { stream, event };
-        let matching_sinks = BoundFlowPaths::matching_sink_indices(self.flow, argument, |target| {
-            cref.matches_target(target, self.session.names)
-        });
+        let matching_sinks = self.flow_plan.matching_sink_indices(
+            self.context.state().flow_id(),
+            argument,
+            |target| cref.matches_target(target, self.session.names),
+        );
         if !matching_sinks.is_empty() && self.context.is_crossed() {
             for index in matching_sinks {
                 self.state
