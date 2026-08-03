@@ -117,13 +117,15 @@ impl ProjectLinker {
     ) -> super::model::ProjectSemanticModel {
         let edge_count = self.graph.edge_count();
         super::model::ProjectSemanticModel::from_linker(
-            self.modules,
-            self.resolutions,
-            self.exports,
-            edge_count,
-            self.link_cycle_rounds,
-            self.diagnostics,
-            self.status,
+            super::model::LinkedProjectState {
+                modules: self.modules,
+                resolutions: self.resolutions,
+                exports: self.exports,
+                edge_count,
+                link_cycle_rounds: self.link_cycle_rounds,
+                diagnostics: self.diagnostics,
+                status: self.status,
+            },
             limits,
         )
     }

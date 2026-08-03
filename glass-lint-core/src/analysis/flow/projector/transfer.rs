@@ -79,7 +79,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     })
                 })
             })
-            .map(|candidate| candidate.flow_id())
+            .map(super::super::planning::BoundSource::flow_id)
             .collect();
         if matching.is_empty() {
             return None;

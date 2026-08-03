@@ -81,7 +81,7 @@ impl UsageProjector<'_, '_> {
                 stream.values().static_string(value)
             });
         let mut next = self.state.clone();
-        for (index, requirement) in self.flow_plan.requirements_with_indices(self.flow) {
+        for (index, requirement) in BoundFlowPaths::requirements_with_indices(self.flow) {
             if let crate::api::compiler::CompiledObjectRequirement::PropertyWrite {
                 property: expected,
                 value,

@@ -343,7 +343,7 @@ fn nested_function_and_arrow_scopes_have_correct_depths() {
         .scopes
         .iter()
         .filter(|scope| scope.kind() == ScopeKind::Function)
-        .map(|scope| scope.depth())
+        .map(crate::analysis::model::scope::LexicalScope::depth)
         .collect();
     // Function bodies have intervening block scopes:
     // depth 1 = a, depth 3 = b (after a-block), depth 5 = arrow c (after a-block +

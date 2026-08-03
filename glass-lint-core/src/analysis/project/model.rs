@@ -226,25 +226,26 @@ pub struct ProjectSemanticModel {
     pub(super) trace_arena: TraceArena,
 }
 
+pub(super) struct LinkedProjectState {
+    pub(super) modules: BTreeMap<ModuleId, ProjectModule>,
+    pub(super) resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
+    pub(super) exports: ExportTable,
+    pub(super) edge_count: usize,
+    pub(super) link_cycle_rounds: usize,
+    pub(super) diagnostics: Vec<AnalysisDiagnostic>,
+    pub(super) status: AnalysisStatus,
+}
+
 impl ProjectSemanticModel {
-    pub(super) fn from_linker(
-        modules: BTreeMap<ModuleId, ProjectModule>,
-        resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
-        exports: ExportTable,
-        edge_count: usize,
-        link_cycle_rounds: usize,
-        diagnostics: Vec<AnalysisDiagnostic>,
-        status: AnalysisStatus,
-        limits: &crate::AnalysisLimits,
-    ) -> Self {
+    pub(super) fn from_linker(state: LinkedProjectState, limits: &crate::AnalysisLimits) -> Self {
         Self {
-            modules,
-            resolutions,
-            exports,
-            edge_count,
-            link_cycle_rounds,
-            diagnostics,
-            status,
+            modules: state.modules,
+            resolutions: state.resolutions,
+            exports: state.exports,
+            edge_count: state.edge_count,
+            link_cycle_rounds: state.link_cycle_rounds,
+            diagnostics: state.diagnostics,
+            status: state.status,
             flow_limit: limits.flow_operations(),
             effect_limit: limits.effect_operations(),
             trace_limit: limits.trace_nodes(),

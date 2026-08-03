@@ -290,7 +290,7 @@ impl ScopePass for ScopeCollector<'_> {
             let parent = self
                 .scopes
                 .get(scope)
-                .and_then(|scope| scope.parent())
+                .and_then(crate::analysis::model::scope::LexicalScope::parent)
                 .unwrap_or_else(|| ScopeId::new(0));
             self.function_scopes.insert(
                 ScopedName::new(parent, name_id),

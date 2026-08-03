@@ -104,9 +104,9 @@ impl BoundSource {
 
     pub(super) fn matches_arguments(
         &self,
-        mut matches: impl FnMut(&crate::api::rule::ArgumentConstraint) -> bool,
+        matches: impl FnMut(&crate::api::rule::ArgumentConstraint) -> bool,
     ) -> bool {
-        self.arguments.iter().all(|argument| matches(argument))
+        self.arguments.iter().all(matches)
     }
 }
 
@@ -128,10 +128,9 @@ impl BoundFlowPaths {
         Self { req_members }
     }
 
-    pub(super) fn requirements_with_indices<'a>(
-        &'a self,
-        flow: &'a CompiledObjectFlow,
-    ) -> impl Iterator<Item = (RequirementIndex, &'a CompiledObjectRequirement)> {
+    pub(super) fn requirements_with_indices(
+        flow: &CompiledObjectFlow,
+    ) -> impl Iterator<Item = (RequirementIndex, &CompiledObjectRequirement)> {
         flow.requirements
             .iter()
             .enumerate()
