@@ -243,11 +243,11 @@ impl FunctionSummary {
             let Some(flow) = plan.get(*flow_id) else {
                 continue;
             };
-            for sink in &flow.sinks {
-                if !cref.matches_target(&sink.target, stream.names()) {
+            for sink in flow.sinks() {
+                if !cref.matches_target(sink.target(), stream.names()) {
                     continue;
                 }
-                for argument_index in sink.args.present_indices(args.len()) {
+                for argument_index in sink.present_indices(args.len()) {
                     let Some(argument) = args.get(argument_index) else {
                         continue;
                     };

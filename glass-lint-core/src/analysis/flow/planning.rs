@@ -125,17 +125,17 @@ impl<'rules> BoundFlowPlan<'rules> {
             let id = FlowId::new(*rule_index, *flow_index);
             flows.insert(id, *flow);
 
-            for source in &flow.sources {
-                let bound = BoundSource::new(id, source.arguments.clone());
+            for source in flow.sources() {
+                let bound = BoundSource::new(id, source.argument_constraints().cloned().collect());
                 if let Some(target) =
-                    BoundLifecycleCallTarget::from_lifecycle(&source.target, names)
+                    BoundLifecycleCallTarget::from_lifecycle(source.target(), names)
                 {
                     sources.insert(target, bound);
                 }
             }
 
-            for sink in &flow.sinks {
-                if let Some(target) = BoundLifecycleCallTarget::from_lifecycle(&sink.target, names)
+            for sink in flow.sinks() {
+                if let Some(target) = BoundLifecycleCallTarget::from_lifecycle(sink.target(), names)
                 {
                     sinks.insert(target, id);
                 }
@@ -167,11 +167,11 @@ impl<'rules> BoundFlowPlan<'rules> {
         flow: &CompiledObjectFlow,
         names: &NameTable,
     ) -> Vec<Option<NamePath>> {
-        flow.requirements
-            .iter()
-            .map(|requirement| match requirement {
-                CompiledObjectRequirement::MemberCall { member, .. } => names.lookup_path(member),
-                CompiledObjectRequirement::PropertyWrite { .. } => None,
+        flow.requirements()
+            .map(|requirement| {
+                requirement
+                    .member_call()
+                    .and_then(|(member, _)| names.lookup_path(member))
             })
             .collect()
     }
@@ -207,7 +207,7 @@ impl<'rules> BoundFlowPlan<'rules> {
     ) -> impl Iterator<Item = (RequirementIndex, &CompiledObjectRequirement)> {
         self.get(flow_id)
             .into_iter()
-            .flat_map(|flow| flow.requirements.iter().enumerate())
+            .flat_map(|flow| flow.requirements().enumerate())
             .map(|(index, requirement)| (RequirementIndex::new(index), requirement))
     }
 
@@ -221,7 +221,7 @@ impl<'rules> BoundFlowPlan<'rules> {
             .flat_map(|(flow, members)| {
                 members
                     .iter()
-                    .zip(flow.requirements.iter())
+                    .zip(flow.requirements())
                     .enumerate()
                     .filter_map(|(index, (member, requirement))| {
                         member
@@ -238,17 +238,10 @@ impl<'rules> BoundFlowPlan<'rules> {
         mut target_matches: impl FnMut(&LifecycleCallTarget) -> bool,
     ) -> Vec<SinkIndex> {
         self.get(flow_id).map_or_else(Vec::new, |flow| {
-            flow.sinks
-                .iter()
+            flow.sinks()
                 .enumerate()
                 .filter_map(|(index, sink)| {
-                    let matches_arguments = match &sink.args {
-                        crate::api::compiler::CompiledObjectSinkArguments::Any => true,
-                        crate::api::compiler::CompiledObjectSinkArguments::Indices(indices) => {
-                            indices.contains(&argument_index)
-                        }
-                    };
-                    (target_matches(&sink.target) && matches_arguments)
+                    (target_matches(sink.target()) && sink.matches_argument(argument_index))
                         .then_some(SinkIndex::new(index))
                 })
                 .collect()

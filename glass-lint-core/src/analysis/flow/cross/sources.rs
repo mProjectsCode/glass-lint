@@ -196,8 +196,8 @@ fn build_source_index(
 ) -> SourceIndex {
     let mut index = SourceIndex::default();
     for (id, flow) in flows {
-        for source in &flow.sources {
-            if let Some(target) = BoundLifecycleCallTarget::from_lifecycle(&source.target, names) {
+        for source in flow.sources() {
+            if let Some(target) = BoundLifecycleCallTarget::from_lifecycle(source.target(), names) {
                 index.insert(target, *id);
             }
         }

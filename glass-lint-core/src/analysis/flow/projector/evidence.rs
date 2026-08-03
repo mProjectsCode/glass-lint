@@ -19,7 +19,7 @@ use crate::{
         model::flow::{FlowId, FlowStateKey},
         trace::QualifiedEvent,
     },
-    api::{classification::ClassificationEvidenceOccurrence, compiler::CompiledObjectRequirement},
+    api::classification::ClassificationEvidenceOccurrence,
     project::EvidenceRole,
 };
 
@@ -45,10 +45,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             for key in keys {
                 for (index, member, requirement) in self.plan.member_requirements(key.flow()) {
                     if (member == chain || chain.last_segment() == member.last_segment())
-                        && let CompiledObjectRequirement::MemberCall {
-                            arguments: matchers,
-                            ..
-                        } = requirement
+                        && let Some((_member, matchers)) = requirement.member_call()
                         && matchers.iter().all(|matcher| {
                             args.get(matcher.index()).is_some_and(|arg| {
                                 matcher
@@ -184,7 +181,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             return;
         };
         let ready = self.plan.get(flow).is_some_and(|f| {
-            f.completion_mode == crate::api::compiler::object_flow::CompletionMode::Configuration
+            f.completion_mode() == crate::api::compiler::object_flow::CompletionMode::Configuration
                 && state.is_ready(f)
         });
         if !ready {

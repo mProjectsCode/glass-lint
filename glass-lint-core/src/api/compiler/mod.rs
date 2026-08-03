@@ -45,9 +45,7 @@ mod tests;
 
 pub(crate) use catalog::compile_records;
 use glass_lint_datastructures::SymbolPath;
-pub(crate) use object_flow::{
-    CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArguments,
-};
+pub(crate) use object_flow::{CompiledObjectFlow, CompiledObjectRequirement};
 pub(crate) use rule::{CompiledRuleRecord, CompiledRuleSelection};
 use smol_str::SmolStr;
 

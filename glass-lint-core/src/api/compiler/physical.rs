@@ -404,7 +404,7 @@ pub(crate) fn validate_physical_plan(
                 }
             }
             PhysicalRoot::Lifecycle { flow } => {
-                if flow.sources.is_empty() {
+                if !flow.has_sources() {
                     return Err(PhysicalPlanValidationError::InvalidLifecycleRoot);
                 }
             }

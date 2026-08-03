@@ -17,10 +17,7 @@ use crate::api::{
             NormalizedLifecycleCompletion, NormalizedLifecycleCondition, NormalizedLifecycleEvent,
             NormalizedLifecycleSink, NormalizedQuery, NormalizedRoot, NormalizedSubject,
         },
-        object_flow::{
-            CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArguments,
-            CompletionMode, RequirementMode,
-        },
+        object_flow::{CompiledObjectFlow, CompletionMode, RequirementMode},
         physical::{PhysicalPlan, PhysicalRoot},
         rule::{EventPredicate, IdentityConstraint, lower_event, lower_identity},
     },
@@ -194,44 +191,39 @@ fn lifecycle_plan_from_normalized(lifecycle: &NormalizedLifecycle) -> LifecycleR
 fn lifecycle_plan_from_physical(flow: &CompiledObjectFlow) -> LifecycleReferencePlan {
     LifecycleReferencePlan {
         sources: flow
-            .sources
-            .iter()
+            .sources()
             .map(|source| LifecycleSourceMatcher::Target {
-                target: source.target.clone(),
-                arguments: source.arguments.clone(),
+                target: source.target().clone(),
+                arguments: source.arguments().to_vec(),
             })
             .collect(),
         requirements: flow
-            .requirements
-            .iter()
+            .requirements()
             .map(|requirement| match requirement {
-                CompiledObjectRequirement::PropertyWrite { property, value } => {
+                requirement if let Some((property, value)) = requirement.property_write() => {
                     LifecycleRequirementMatcher::Property {
                         property: property.as_str().to_owned(),
                         value: value.clone(),
                     }
                 }
-                CompiledObjectRequirement::MemberCall { member, arguments } => {
+                requirement => {
+                    let (member, arguments) = requirement.member_call().unwrap();
                     LifecycleRequirementMatcher::Member {
                         member: member.clone(),
-                        arguments: arguments.clone(),
+                        arguments: arguments.to_vec(),
                     }
                 }
             })
             .collect(),
-        requirement_mode: flow.requirement_mode,
+        requirement_mode: flow.requirement_mode(),
         sinks: flow
-            .sinks
-            .iter()
+            .sinks()
             .map(|sink| LifecycleSinkMatcher {
-                target: sink.target.clone(),
-                argument: match &sink.args {
-                    CompiledObjectSinkArguments::Any => None,
-                    CompiledObjectSinkArguments::Indices(indices) => indices.first().copied(),
-                },
+                target: sink.target().clone(),
+                argument: sink.fixed_argument(),
             })
             .collect(),
-        completion_mode: flow.completion_mode,
+        completion_mode: flow.completion_mode(),
     }
 }
 

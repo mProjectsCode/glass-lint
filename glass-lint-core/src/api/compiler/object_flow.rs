@@ -29,12 +29,12 @@ pub(crate) enum CompletionMode {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct CompiledObjectFlow {
-    pub(crate) symbol: SmolStr,
-    pub(crate) sources: Vec<CompiledObjectSource>,
-    pub(crate) requirements: Vec<CompiledObjectRequirement>,
-    pub(crate) sinks: Vec<CompiledObjectSink>,
-    pub(crate) requirement_mode: RequirementMode,
-    pub(crate) completion_mode: CompletionMode,
+    symbol: SmolStr,
+    sources: Vec<CompiledObjectSource>,
+    requirements: Vec<CompiledObjectRequirement>,
+    sinks: Vec<CompiledObjectSink>,
+    requirement_mode: RequirementMode,
+    completion_mode: CompletionMode,
 }
 
 impl CompiledObjectFlow {
@@ -44,9 +44,42 @@ impl CompiledObjectFlow {
 
     pub fn requirements_ready(&self, completed: usize) -> bool {
         match self.requirement_mode {
-            RequirementMode::AllRequired => completed == self.requirements.len(),
+            RequirementMode::AllRequired => completed == self.requirement_count(),
             RequirementMode::AnyRequired => completed != 0,
         }
+    }
+
+    pub(crate) fn sources(&self) -> impl Iterator<Item = &CompiledObjectSource> {
+        self.sources.iter()
+    }
+
+    pub(crate) fn requirements(&self) -> impl Iterator<Item = &CompiledObjectRequirement> {
+        self.requirements.iter()
+    }
+
+    pub(crate) fn sinks(&self) -> impl Iterator<Item = &CompiledObjectSink> {
+        self.sinks.iter()
+    }
+
+    pub(crate) fn requirement_count(&self) -> usize {
+        self.requirements.len()
+    }
+
+    pub(crate) fn has_sources(&self) -> bool {
+        !self.sources.is_empty()
+    }
+
+    pub(crate) fn sink_count(&self) -> usize {
+        self.sinks.len()
+    }
+
+    pub(crate) fn completion_mode(&self) -> CompletionMode {
+        self.completion_mode
+    }
+
+    #[cfg(test)]
+    pub(crate) fn requirement_mode(&self) -> RequirementMode {
+        self.requirement_mode
     }
 
     /// Build a compiled flow directly from the normalized lifecycle IR.
@@ -103,8 +136,8 @@ impl CompiledObjectFlow {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct CompiledObjectSource {
-    pub(crate) target: LifecycleCallTarget,
-    pub(crate) arguments: Vec<ArgumentConstraint>,
+    target: LifecycleCallTarget,
+    arguments: Vec<ArgumentConstraint>,
 }
 
 impl CompiledObjectSource {
@@ -122,6 +155,26 @@ impl CompiledObjectSource {
             target,
             arguments: event.arguments().to_flat_vec(),
         }
+    }
+
+    pub(crate) fn target(&self) -> &LifecycleCallTarget {
+        &self.target
+    }
+
+    #[cfg(test)]
+    pub(crate) fn arguments(&self) -> &[ArgumentConstraint] {
+        &self.arguments
+    }
+
+    pub(crate) fn matches_arguments(
+        &self,
+        mut matches: impl FnMut(&ArgumentConstraint) -> bool,
+    ) -> bool {
+        self.arguments.iter().all(&mut matches)
+    }
+
+    pub(crate) fn argument_constraints(&self) -> impl Iterator<Item = &ArgumentConstraint> {
+        self.arguments.iter()
     }
 }
 
@@ -150,6 +203,20 @@ impl CompiledObjectRequirement {
             },
         }
     }
+
+    pub(crate) fn member_call(&self) -> Option<(&SymbolPath, &[ArgumentConstraint])> {
+        match self {
+            Self::MemberCall { member, arguments } => Some((member, arguments)),
+            Self::PropertyWrite { .. } => None,
+        }
+    }
+
+    pub(crate) fn property_write(&self) -> Option<(&SmolStr, &ValueMatcher)> {
+        match self {
+            Self::PropertyWrite { property, value } => Some((property, value)),
+            Self::MemberCall { .. } => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -159,7 +226,7 @@ pub(crate) enum CompiledObjectSinkArguments {
 }
 
 impl CompiledObjectSinkArguments {
-    pub fn present_indices(&self, argument_count: usize) -> PresentIndices<'_> {
+    fn present_indices(&self, argument_count: usize) -> PresentIndices<'_> {
         match self {
             Self::Any => PresentIndices::Any(0..argument_count),
             Self::Indices(indices) => PresentIndices::Indices {
@@ -194,8 +261,8 @@ impl Iterator for PresentIndices<'_> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct CompiledObjectSink {
-    pub(crate) target: LifecycleCallTarget,
-    pub(crate) args: CompiledObjectSinkArguments,
+    target: LifecycleCallTarget,
+    args: CompiledObjectSinkArguments,
 }
 
 impl CompiledObjectSink {
@@ -209,6 +276,29 @@ impl CompiledObjectSink {
                 target: target.clone(),
                 args: CompiledObjectSinkArguments::Any,
             },
+        }
+    }
+
+    pub(crate) fn target(&self) -> &LifecycleCallTarget {
+        &self.target
+    }
+
+    pub(crate) fn matches_argument(&self, argument_index: usize) -> bool {
+        match &self.args {
+            CompiledObjectSinkArguments::Any => true,
+            CompiledObjectSinkArguments::Indices(indices) => indices.contains(&argument_index),
+        }
+    }
+
+    pub(crate) fn present_indices(&self, argument_count: usize) -> PresentIndices<'_> {
+        self.args.present_indices(argument_count)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fixed_argument(&self) -> Option<usize> {
+        match &self.args {
+            CompiledObjectSinkArguments::Any => None,
+            CompiledObjectSinkArguments::Indices(indices) => indices.first().copied(),
         }
     }
 }

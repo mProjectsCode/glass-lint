@@ -418,8 +418,8 @@ impl<E: Clone + Ord> LifecycleEvidence<E> {
     }
 
     pub(in crate::analysis) fn sinks_ready(&self, flow: &CompiledObjectFlow) -> bool {
-        flow.completion_mode != crate::api::compiler::object_flow::CompletionMode::AllSinks
-            || self.sinks.len() == flow.sinks.len()
+        flow.completion_mode() != crate::api::compiler::object_flow::CompletionMode::AllSinks
+            || self.sinks.len() == flow.sink_count()
     }
 
     pub(in crate::analysis) fn requirement_keys(

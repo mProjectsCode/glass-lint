@@ -15,7 +15,7 @@ use crate::{
             planning::BoundFlowPlan,
         },
     },
-    api::compiler::{CompiledObjectFlow, CompiledObjectRequirement, object_flow::CompletionMode},
+    api::compiler::{CompiledObjectFlow, object_flow::CompletionMode},
     project::ModuleId,
 };
 
@@ -85,10 +85,7 @@ impl UsageProjector<'_, '_> {
             .flow_plan
             .requirements_with_indices(self.context.state().flow_id())
         {
-            if let crate::api::compiler::CompiledObjectRequirement::PropertyWrite {
-                property: expected,
-                value,
-            } = requirement
+            if let Some((expected, value)) = requirement.property_write()
                 && property == Some(expected)
                 && value_is_precise
                 && value.matches_flow_value(static_value)
@@ -121,7 +118,7 @@ impl UsageProjector<'_, '_> {
             .member_requirements(self.context.state().flow_id())
         {
             if chain.is_some_and(|c| c == member || c.last_segment() == member.last_segment())
-                && let CompiledObjectRequirement::MemberCall { arguments, .. } = requirement
+                && let Some((_member, arguments)) = requirement.member_call()
                 && arguments.iter().all(|matcher| {
                     call_args.get(matcher.index()).is_some_and(|argument| {
                         matcher
@@ -185,7 +182,7 @@ impl UsageProjector<'_, '_> {
     }
 
     fn emit_requirements(&mut self, state: &CrossFlowState, event: FactId) {
-        if self.flow.completion_mode == CompletionMode::Configuration
+        if self.flow.completion_mode() == CompletionMode::Configuration
             && state.requirements_ready(self.flow)
             && self.context.is_crossed()
         {

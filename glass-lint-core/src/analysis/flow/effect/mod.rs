@@ -263,9 +263,9 @@ impl CallEffectRef<'_> {
             return false;
         };
         let values = self.stream.values();
-        flow.sources.iter().any(|source| {
-            self.matches_target(&source.target, names)
-                && source.arguments.iter().all(|matcher| {
+        flow.sources().any(|source| {
+            self.matches_target(source.target(), names)
+                && source.matches_arguments(|matcher| {
                     args.get(matcher.index()).is_some_and(|argument| {
                         matcher.predicate().matches(argument, names, values)
                     })

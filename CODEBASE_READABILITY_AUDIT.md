@@ -87,7 +87,7 @@ while local projection, summaries, and cross propagation use the same typed
 plan operations. Existing projector and cross-file flow tests pass, including
 the `Any` sink behavior.
 
-#### [ ] READ-005 — Compiled flow fields leak matcher and index semantics across analysis modules
+#### [x] READ-005 — Compiled flow fields leak matcher and index semantics across analysis modules
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -98,7 +98,12 @@ the `Any` sink behavior.
 
 **Recommendation:** Make the physical representation private and add only the small semantic operations required by current consumers: source matching/candidate iteration, sink argument membership, present-argument iteration, and completion predicates. Keep typed indexes at the flow boundary. Treat this as an internal evaluator contract, not a new public IR; do not add a general-purpose view layer or force the separate logical reference evaluator to share physical storage.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made compiled flow, source, and sink storage private and
+added narrow semantic operations for source matching, requirement views, sink
+argument membership/presence, and completion state. Planning, effect,
+projector, summary, cross-flow, and the test-only reference evaluator now use
+those operations instead of physical vectors and fields. Compiler/reference,
+projector, and flow behavior tests pass.
 
 #### [ ] READ-006 — Generic evidence collections remain visible after lifecycle ownership was introduced
 

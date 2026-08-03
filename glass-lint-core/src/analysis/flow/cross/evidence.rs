@@ -206,7 +206,7 @@ pub(super) fn mark_nonmatching(
         rule_idx,
         &EvidenceKey {
             kind: MatchKind::CallArgument,
-            symbol: flow.symbol.as_str().to_owned(),
+            symbol: flow.evidence_symbol().as_str().to_owned(),
             fact: event,
         },
     );
@@ -306,7 +306,7 @@ pub(super) fn emit(
     let rule_idx = flow_id.rule_index();
     let key = EvidenceKey {
         kind: MatchKind::CallArgument,
-        symbol: flow.symbol.as_str().to_owned(),
+        symbol: flow.evidence_symbol().as_str().to_owned(),
         fact: event,
     };
     let span = project

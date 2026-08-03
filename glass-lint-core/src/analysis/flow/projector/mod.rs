@@ -40,7 +40,7 @@ use crate::{
     },
     api::{
         classification::{ClassificationEvidence, MatchKind, RuleEvidenceTable, RuleIndex},
-        compiler::{CompiledObjectFlow, CompiledObjectRequirement},
+        compiler::CompiledObjectFlow,
     },
     project::{MatchCertainty, ModuleId},
 };
@@ -703,11 +703,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 self.plan
                     .requirements_with_indices(flow_id)
                     .filter_map(|(index, requirement)| {
-                        let CompiledObjectRequirement::PropertyWrite {
-                            property: expected,
-                            value: matcher,
-                        } = requirement
-                        else {
+                        let Some((expected, matcher)) = requirement.property_write() else {
                             return None;
                         };
                         (property.is_none() || property == Some(expected.as_str())).then(|| {
