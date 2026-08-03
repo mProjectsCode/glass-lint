@@ -1,11 +1,12 @@
-use std::collections::BTreeMap;
-
 use glass_lint_datastructures::{NameId, NamePath, SymbolPath};
 use hashbrown::HashMap;
 use smol_str::SmolStr;
 use swc_common::Span;
 
-use crate::analysis::syntax::{SymbolCallProvenance, SymbolMemberProvenance, constant::ConstValue};
+use crate::analysis::{
+    model::StaticProperties,
+    syntax::{SymbolCallProvenance, SymbolMemberProvenance, constant::ConstValue},
+};
 
 // ── Identifiers ──────────────────────────────────────────────────────────
 
@@ -229,8 +230,8 @@ pub enum BindingProvenance {
     StaticString(String),
     StaticNumber(usize),
     StaticStringArray(Vec<String>),
-    StaticObjectKeys(Vec<NameId>),
-    StaticObjectValues(BTreeMap<NameId, NamePath>),
+    StaticObjectKeys(StaticProperties<()>),
+    StaticObjectValues(StaticProperties<NamePath>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

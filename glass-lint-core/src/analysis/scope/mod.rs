@@ -16,8 +16,6 @@
 //! Binding IDs and assignment versions make position-sensitive queries
 //! possible without rebuilding the AST for each lookup.
 
-use std::collections::BTreeMap;
-
 use build::{ScopeCollector, plan::ScopePlanner, traversal::ScopeTraversal};
 use glass_lint_datastructures::{NameId, NameTable};
 use smol_str::SmolStr;
@@ -54,20 +52,8 @@ pub(in crate::analysis) fn provenance_to_const_value(
         BindingProvenance::StaticStringArray(values) => {
             ConstValue::Array(values.iter().cloned().map(ConstValue::String).collect())
         }
-        BindingProvenance::StaticObjectKeys(values) => ConstValue::Object(
-            values
-                .iter()
-                .filter_map(|key| resolve_name(*key))
-                .map(|key| (key, ConstValue::Unknown))
-                .collect::<BTreeMap<_, _>>(),
-        ),
-        BindingProvenance::StaticObjectValues(values) => ConstValue::Object(
-            values
-                .keys()
-                .filter_map(|key| resolve_name(*key))
-                .map(|key| (key, ConstValue::Unknown))
-                .collect::<BTreeMap<_, _>>(),
-        ),
+        BindingProvenance::StaticObjectKeys(values) => values.to_const_object(resolve_name),
+        BindingProvenance::StaticObjectValues(values) => values.to_const_object(resolve_name),
         _ => ConstValue::Unknown,
     }
 }

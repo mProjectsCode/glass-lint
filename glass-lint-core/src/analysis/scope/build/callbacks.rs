@@ -96,7 +96,7 @@ impl ScopeCollector<'_> {
                     let Some(key) = names.lookup(key.as_str()) else {
                         continue;
                     };
-                    let Some(target) = values.get(&key) else {
+                    let Some(target) = values.get(key) else {
                         continue;
                     };
                     Self::project_parameter_pattern(

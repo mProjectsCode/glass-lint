@@ -1,7 +1,10 @@
 use glass_lint_datastructures::{FastIndexSet, NameId, NamePath, NameTable, PathSegment};
 use smol_str::SmolStr;
 
-use crate::analysis::model::scope::{BindingKey, BindingSlot, FunctionId};
+use crate::analysis::model::{
+    StaticProperties,
+    scope::{BindingKey, BindingSlot, FunctionId},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ValueId(u32);
@@ -44,12 +47,23 @@ impl ObjectId {
 /// raw tuple-slice logic.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct StaticObject {
-    entries: Vec<(NameId, ValueId)>,
+    entries: StaticProperties<ValueId>,
 }
 
 impl StaticObject {
-    pub fn new(entries: Vec<(NameId, ValueId)>) -> Self {
-        Self { entries }
+    /// Build a static object from source-ordered properties. Duplicate keys
+    /// keep the last written value; a shape with more distinct properties than
+    /// the collection bound is `None` (over budget, mapped to `Unknown`).
+    pub fn new(entries: impl IntoIterator<Item = (NameId, ValueId)>) -> Option<Self> {
+        let mut properties = StaticProperties::new();
+        for (name, value) in entries {
+            if !properties.insert(name, value) {
+                return None;
+            }
+        }
+        Some(Self {
+            entries: properties,
+        })
     }
 
     #[cfg(test)]
@@ -64,19 +78,16 @@ impl StaticObject {
 
     /// Look up the value bound to an interned property name.
     pub fn get(&self, name: NameId) -> Option<ValueId> {
-        self.entries
-            .iter()
-            .find(|(key, _)| *key == name)
-            .map(|(_, value)| *value)
+        self.entries.get(name).copied()
     }
 
     pub fn contains_key(&self, name: NameId) -> bool {
-        self.get(name).is_some()
+        self.entries.contains_key(name)
     }
 
-    /// Iterate `(NameId, ValueId)` pairs in deterministic insertion order.
+    /// Iterate `(NameId, ValueId)` pairs in deterministic source order.
     pub fn iter(&self) -> impl Iterator<Item = (NameId, ValueId)> + '_ {
-        self.entries.iter().copied()
+        self.entries.iter().map(|(name, value)| (name, *value))
     }
 
     /// Advance a path traversal by one segment. Property segments resolve to
@@ -205,7 +216,10 @@ impl ValueTable {
             };
             canonical.push((id, value));
         }
-        self.intern(Value::StaticObject(StaticObject::new(canonical)))
+        let Some(object) = StaticObject::new(canonical) else {
+            return ValueId::UNKNOWN;
+        };
+        self.intern(Value::StaticObject(object))
     }
 
     pub fn allocate_object_id(&mut self) -> Option<ObjectId> {
@@ -478,7 +492,8 @@ mod tests {
         let mut table = ValueTable::default();
         let val_a = table.intern(Value::StaticString("a".into()));
         let val_b = table.intern(Value::StaticString("b".into()));
-        let object = StaticObject::new(vec![(key_a, val_a), (key_b, val_b)]);
+        let object =
+            StaticObject::new(vec![(key_a, val_a), (key_b, val_b)]).expect("object fits budget");
 
         assert_eq!(object.len(), 2);
         assert!(!object.is_empty());
@@ -500,7 +515,8 @@ mod tests {
         let mut table = ValueTable::default();
         let val_a = table.intern(Value::StaticString("a".into()));
         let val_b = table.intern(Value::StaticString("b".into()));
-        let object = StaticObject::new(vec![(key_a, val_a), (key_b, val_b)]);
+        let object =
+            StaticObject::new(vec![(key_a, val_a), (key_b, val_b)]).expect("object fits budget");
 
         assert_eq!(
             object.value_at_segment(PathSegment::Property(key_a)),
@@ -515,6 +531,34 @@ mod tests {
             None
         );
         assert_eq!(object.value_at_segment(PathSegment::Index(0)), None);
+    }
+
+    #[test]
+    fn static_object_new_rejects_over_budget_shapes() {
+        let mut names = NameTable::default();
+        let mut table = ValueTable::default();
+        let value = table.intern(Value::StaticString("v".into()));
+        let mut entries = Vec::with_capacity(257);
+        for index in 0..257 {
+            entries.push((names.intern(&format!("key_{index}")).unwrap(), value));
+        }
+        assert!(
+            StaticObject::new(entries).is_none(),
+            "an object with more properties than the bound must be unknown"
+        );
+    }
+
+    #[test]
+    fn static_object_new_applies_last_write_wins_to_duplicates() {
+        let mut names = NameTable::default();
+        let key = names.intern("key").unwrap();
+        let mut table = ValueTable::default();
+        let first = table.intern(Value::StaticString("first".into()));
+        let last = table.intern(Value::StaticString("last".into()));
+        let object =
+            StaticObject::new(vec![(key, first), (key, last)]).expect("object fits budget");
+        assert_eq!(object.len(), 1);
+        assert_eq!(object.get(key), Some(last));
     }
 
     #[test]

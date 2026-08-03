@@ -113,13 +113,14 @@ fn const_value_materializes_static_object_with_mixed_values() {
     let str_id = resolver.values.intern(Value::StaticString("val".into()));
     let inner_arr = resolver.values.intern(Value::StaticArray(vec![num_id]));
 
-    let obj_id = resolver
-        .values
-        .intern(Value::StaticObject(StaticObject::new(vec![
+    let obj_id = resolver.values.intern(Value::StaticObject(
+        StaticObject::new(vec![
             (key_num, num_id),
             (key_str, str_id),
             (key_arr, inner_arr),
-        ])));
+        ])
+        .expect("object fits the static property budget"),
+    ));
 
     let result = resolver.const_value(obj_id);
     assert_eq!(
@@ -144,9 +145,9 @@ fn const_value_returns_unknown_for_unknown_name_in_object() {
     let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
     let val_id = resolver.values.intern(Value::StaticString("v".into()));
-    let obj_id = resolver
-        .values
-        .intern(Value::StaticObject(StaticObject::new(vec![(key, val_id)])));
+    let obj_id = resolver.values.intern(Value::StaticObject(
+        StaticObject::new(vec![(key, val_id)]).expect("object fits the static property budget"),
+    ));
 
     let result = resolver.const_value(obj_id);
     assert_eq!(result, ConstValue::Unknown);

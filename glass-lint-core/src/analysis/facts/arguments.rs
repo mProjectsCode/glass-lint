@@ -156,10 +156,11 @@ impl FactBuilder<'_, '_> {
                     };
                     entries.push((name, child_value));
                 }
-                let value = self
-                    .resolver
-                    .static_value(Value::StaticObject(StaticObject::new(entries)))
-                    .id;
+                let Some(object) = StaticObject::new(entries) else {
+                    let value = self.resolver.resolve_expr_id(expr);
+                    return (value, value, path);
+                };
+                let value = self.resolver.static_value(Value::StaticObject(object)).id;
                 (value, value, path)
             }
             Expr::Array(array) => {

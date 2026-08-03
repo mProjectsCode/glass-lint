@@ -4,12 +4,11 @@
 //! not provable. The visitor can then record a local/unknown binding instead
 //! of widening a strict match from a name-only resemblance.
 
-use std::collections::BTreeMap;
-
 use smol_str::{SmolStr, ToSmolStr};
 use swc_ecma_ast::{Callee, Expr, OptChainBase};
 
 use crate::analysis::{
+    model::StaticProperties,
     module_request::{
         ModuleRequestContext, ModuleRequestPolicy, is_interop_wrapper, recognize_module_expression,
     },
@@ -124,13 +123,16 @@ impl ScopeCollector<'_> {
                     .map(|value| value.string().map(str::to_owned))
                     .collect::<Option<Vec<_>>>()?,
             )),
-            ConstValue::Object(values) => Some(BindingProvenance::StaticObjectKeys(
-                values
-                    .keys()
-                    .map(|key| self.lookup_or_intern_name(key).ok_or(()))
-                    .collect::<Result<Vec<_>, _>>()
-                    .ok()?,
-            )),
+            ConstValue::Object(values) => {
+                let mut keys = StaticProperties::new();
+                for key in values.keys() {
+                    let name = self.lookup_or_intern_name(key)?;
+                    if !keys.insert(name, ()) {
+                        return None;
+                    }
+                }
+                Some(BindingProvenance::StaticObjectKeys(keys))
+            }
             ConstValue::Unknown => None,
         }
     }
@@ -290,7 +292,7 @@ impl ScopeCollector<'_> {
         let Expr::Object(object) = expr else {
             return None;
         };
-        let mut values = BTreeMap::new();
+        let mut values = StaticProperties::new();
         for property in &object.props {
             let swc_ecma_ast::PropOrSpread::Prop(property) = property else {
                 return None;
@@ -300,7 +302,10 @@ impl ScopeCollector<'_> {
             };
             let target = self.rooted_name_path(&property.value)?;
             let key = property_name(&property.key)?;
-            values.insert(self.lookup_or_intern_name(key.as_str())?, target);
+            let name = self.lookup_or_intern_name(key.as_str())?;
+            if !values.insert(name, target) {
+                return None;
+            }
         }
         Some(BindingProvenance::StaticObjectValues(values))
     }

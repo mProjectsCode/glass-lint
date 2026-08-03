@@ -36,7 +36,7 @@ The highest-value sequence is to close the project phase boundary, unify provena
 
 **Fix Applied:** `ProvenanceAlternatives` is now a single opaque owner in `analysis/model/scope.rs` held privately inside `AliasAssignment`; it owns bounded deduplicating insertion (`add_bounded`), join state, unknown/exhausted state, `preferred_witness`, and `complete_witnesses`, and the build-time join accumulates into `ProvenanceAlternatives::joined()` instead of copying four fields. `AliasAssignment` gained named constructors `single` and `joined`, removing all field assembly. `exhausted` is retained inside the owner rather than dropped during the old field copy, and `add_bounded` still marks an overflowing set both exhausted and unknown so exhaustion never establishes a witness.
 
-#### [ ] READ-003 — Static-object semantics are split across incompatible raw collections
+#### [x] READ-003 — Static-object semantics are split across incompatible raw collections
 - **Severity:** High
 - **Fix Complexity:** High
 - **Category:** Duplication
@@ -46,7 +46,7 @@ Static objects appear as `Vec<(NameId, ValueId)>`, `Vec<NameId>`, `BTreeMap<Name
 
 **Recommendation:** Introduce a crate-private opaque static-property collection that owns deterministic construction, bounds, lookup, key projection, and conversion. Use source-order last-write-wins for supported literal properties, spreads, and `Object.assign`, matching the existing constant evaluator; unsupported or unbounded shapes remain `Unknown`. Preserve readable phase-specific wrappers for text keys, interned values, and rooted values, and expose only the projections each phase actually consumes.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `StaticObject`, `StaticObjectKeys`, and `StaticObjectValues` now wrap one opaque crate-private `StaticProperties` collection that owns bounded source-ordered construction, lookup, key projection, and text-key conversion, applying source-order last-write-wins for duplicate keys exactly as the constant evaluator does. Shapes that exceed the property bound fail construction and map to `Unknown` instead of retaining a partial or unbounded object. The text-keyed `ConstValue::Object` wrapper is unchanged, and each phase keeps only the projection it consumes: `StaticObject` retains lookup, iteration, and path-traversal for matching, summary, and constant conversion, while the provenance forms delegate key projection to the collection.
 
 #### [ ] READ-004 — Callers still implement path algebra with escaped slices
 - **Severity:** Medium
