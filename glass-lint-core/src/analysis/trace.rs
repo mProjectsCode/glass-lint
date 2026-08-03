@@ -38,11 +38,11 @@ impl QualifiedEvent {
         Self { module, fact }
     }
 
-    pub fn module(&self) -> ModuleId {
+    pub fn module(self) -> ModuleId {
         self.module
     }
 
-    pub fn fact(&self) -> FactId {
+    pub fn fact(self) -> FactId {
         self.fact
     }
 }

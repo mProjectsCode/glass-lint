@@ -229,20 +229,20 @@ struct TraceAssembler<'a> {
 }
 
 impl TraceAssembler<'_> {
-    fn from_source<'a>(
-        arena: &'a mut TraceArena,
-        source: &crate::analysis::trace::QualifiedEvent,
-    ) -> Option<TraceAssembler<'a>> {
-        let tail = arena.intern(None, *source, EvidenceRole::Source)?;
+    fn from_source(
+        arena: &mut TraceArena,
+        source: crate::analysis::trace::QualifiedEvent,
+    ) -> Option<TraceAssembler<'_>> {
+        let tail = arena.intern(None, source, EvidenceRole::Source)?;
         Some(TraceAssembler { arena, tail })
     }
 
     fn append(
         &mut self,
-        event: &crate::analysis::trace::QualifiedEvent,
+        event: crate::analysis::trace::QualifiedEvent,
         role: EvidenceRole,
     ) -> bool {
-        let Some(next) = self.arena.intern(Some(self.tail), *event, role) else {
+        let Some(next) = self.arena.intern(Some(self.tail), event, role) else {
             return false;
         };
         self.tail = next;
@@ -267,17 +267,17 @@ fn assemble_trace(
     let Some(source) = state.source() else {
         return TraceBuild::Exhausted;
     };
-    let Some(mut trace) = TraceAssembler::from_source(arena, source) else {
+    let Some(mut trace) = TraceAssembler::from_source(arena, *source) else {
         return TraceBuild::Exhausted;
     };
     for requirement in state.requirement_events() {
-        if !trace.append(requirement, EvidenceRole::Requirement) {
+        if !trace.append(*requirement, EvidenceRole::Requirement) {
             return TraceBuild::Exhausted;
         }
     }
 
     for sink in state.prior_sinks(module, event) {
-        if !trace.append(&sink, EvidenceRole::Sink) {
+        if !trace.append(sink, EvidenceRole::Sink) {
             return TraceBuild::Exhausted;
         }
     }

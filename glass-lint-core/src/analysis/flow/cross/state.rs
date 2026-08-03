@@ -111,7 +111,7 @@ impl CrossFlowState {
             .sinks
             .values()
             .filter(|sink| !(sink.module() == module && sink.fact() == event))
-            .cloned()
+            .copied()
             .collect();
         sinks.sort();
         sinks.dedup();
