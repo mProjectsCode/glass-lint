@@ -44,7 +44,7 @@ planner, collector, indexes, assignment analysis, visitor, and scope tests to
 those operations. The physical `HashMap` is no longer part of the neighboring
 modules' API.
 
-#### [ ] READ-002 — `ExportEntry` leaks an invalid-state-prone record
+#### [x] READ-002 — `ExportEntry` leaks an invalid-state-prone record
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -63,7 +63,12 @@ visible. Move state transitions such as “unknown export”, “function export
 and “static string export” onto `ExportEntry` or `ModuleInterface`, so the
 three optional representations cannot be changed independently by callers.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `ExportEntry` and all three optional representation
+fields private to `module.rs`. Added named entry constructors and state
+transitions for resolutions, function exports, static strings, and unknown
+exports, then migrated `ModuleInterface` updates to those operations. Callers
+continue to use the interface's semantic methods without being able to create
+or mutate invalid entry combinations directly.
 
 ### Cross-flow and matching containers
 

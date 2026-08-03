@@ -65,19 +65,53 @@ pub enum ModuleExport {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ExportEntry {
-    pub resolution: Option<ModuleExport>,
-    pub function_id: Option<FunctionId>,
-    pub static_value: Option<String>,
+struct ExportEntry {
+    resolution: Option<ModuleExport>,
+    function_id: Option<FunctionId>,
+    static_value: Option<String>,
 }
 
 impl ExportEntry {
-    fn new(resolution: ModuleExport) -> Self {
+    fn with_resolution(resolution: ModuleExport) -> Self {
         Self {
             resolution: Some(resolution),
             function_id: None,
             static_value: None,
         }
+    }
+
+    fn with_function(function: FunctionId) -> Self {
+        Self {
+            resolution: None,
+            function_id: Some(function),
+            static_value: None,
+        }
+    }
+
+    fn with_static_string(value: String) -> Self {
+        Self {
+            resolution: None,
+            function_id: None,
+            static_value: Some(value),
+        }
+    }
+
+    fn set_resolution(&mut self, resolution: ModuleExport) {
+        self.resolution = Some(resolution);
+    }
+
+    fn clear_function(&mut self) {
+        self.function_id = None;
+    }
+
+    fn set_static_string(&mut self, value: String) {
+        self.static_value = Some(value);
+    }
+
+    fn mark_unknown(&mut self) {
+        self.resolution = Some(ModuleExport::Unknown);
+        self.function_id = None;
+        self.static_value = None;
     }
 }
 
@@ -184,20 +218,19 @@ impl ModuleInterface {
         let name = name.into();
         match self.exports.get(&name) {
             None => {
-                self.exports.insert(name, ExportEntry::new(export));
+                self.exports
+                    .insert(name, ExportEntry::with_resolution(export));
             }
             Some(existing)
                 if existing.resolution.is_none() || existing.resolution == Some(export.clone()) =>
             {
                 if let Some(entry) = self.exports.get_mut(&name) {
-                    entry.resolution = Some(export);
+                    entry.set_resolution(export);
                 }
             }
             Some(_) => {
                 if let Some(entry) = self.exports.get_mut(&name) {
-                    entry.resolution = Some(ModuleExport::Unknown);
-                    entry.function_id = None;
-                    entry.static_value = None;
+                    entry.mark_unknown();
                 }
             }
         }
@@ -207,19 +240,13 @@ impl ModuleInterface {
         let name = name.into();
         match self.exports.get(&name) {
             None => {
-                self.exports.insert(
-                    name,
-                    ExportEntry {
-                        resolution: None,
-                        function_id: Some(function),
-                        static_value: None,
-                    },
-                );
+                self.exports
+                    .insert(name, ExportEntry::with_function(function));
             }
             Some(existing) if existing.function_id == Some(function) => {}
             Some(_) => {
                 if let Some(entry) = self.exports.get_mut(&name) {
-                    entry.function_id = None;
+                    entry.clear_function();
                 }
             }
         }
@@ -230,17 +257,11 @@ impl ModuleInterface {
         let value = value.into();
         match self.exports.get_mut(&name) {
             Some(entry) => {
-                entry.static_value = Some(value);
+                entry.set_static_string(value);
             }
             None => {
-                self.exports.insert(
-                    name,
-                    ExportEntry {
-                        resolution: None,
-                        function_id: None,
-                        static_value: Some(value),
-                    },
-                );
+                self.exports
+                    .insert(name, ExportEntry::with_static_string(value));
             }
         }
     }
