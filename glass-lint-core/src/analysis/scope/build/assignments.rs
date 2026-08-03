@@ -93,7 +93,7 @@ impl ScopeCollector<'_> {
             ));
     }
 
-    pub(super) fn visible_binding(&self, name: &str) -> Option<&BindingProvenance> {
+    fn visible_binding_with_scope(&self, name: &str) -> Option<(ScopeId, &BindingProvenance)> {
         let name_id = self.name_id(name)?;
         for scope in self.stack.iter().rev().copied().map(ScopeId::new) {
             if let Some(assignment) = self
@@ -101,37 +101,30 @@ impl ScopeCollector<'_> {
                 .assignment_environment
                 .get_by_id(scope, name_id)
             {
-                return assignment
+                let provenance = assignment
                     .preferred_witness()
-                    .or(Some(&self.path_state.unknown_provenance));
+                    .unwrap_or(&self.path_state.unknown_provenance);
+                return Some((scope, provenance));
             }
             if let Some(binding) = self
                 .scopes
                 .get(scope)
                 .and_then(|scope| scope.binding(name_id))
             {
-                return Some(binding);
+                return Some((scope, binding));
             }
         }
         None
     }
 
+    pub(super) fn visible_binding(&self, name: &str) -> Option<&BindingProvenance> {
+        self.visible_binding_with_scope(name)
+            .map(|(_, provenance)| provenance)
+    }
+
     pub(super) fn visible_binding_scope(&self, name: &str) -> Option<ScopeId> {
-        let name_id = self.name_id(name)?;
-        self.stack
-            .iter()
-            .rev()
-            .copied()
-            .map(ScopeId::new)
-            .find(|scope| {
-                self.path_state
-                    .assignment_environment
-                    .contains_by_id(*scope, name_id)
-                    || self
-                        .scopes
-                        .get(*scope)
-                        .is_some_and(|scope| scope.has_binding(name_id))
-            })
+        self.visible_binding_with_scope(name)
+            .map(|(scope, _)| scope)
     }
 
     pub(super) fn is_unbound(&self, name: &str) -> bool {

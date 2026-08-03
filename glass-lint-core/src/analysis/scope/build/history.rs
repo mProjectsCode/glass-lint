@@ -99,10 +99,6 @@ impl AssignmentEnvironment {
         self.assignments.get(&scope)?.get(&name)
     }
 
-    pub(super) fn contains_by_id(&self, scope: ScopeId, name: NameId) -> bool {
-        self.get_by_id(scope, name).is_some()
-    }
-
     /// Record a cursor for later `restore`. O(1).
     pub(super) fn checkpoint(&self) -> Cursor {
         Cursor(self.history.checkpoint())

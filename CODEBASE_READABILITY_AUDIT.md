@@ -231,7 +231,7 @@ an additional compatibility accessor without a measured performance need.
 `map(str::to_owned)`, retaining the clone-bearing `SmolStr` accessors. Verified
 with `make fmt && make ci`.
 
-#### [ ] READ-020 — Collector visibility lookup is implemented twice with different result shapes
+#### [x] READ-020 — Collector visibility lookup is implemented twice with different result shapes
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -252,7 +252,10 @@ scope and the assignment/declaration source, then derive the provenance and
 scope-only views from it. Preserve assignment precedence, preferred-witness
 selection, the unknown fallback, and the current no-binding result.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added one scope-aware visibility lookup returning the matching
+scope and provenance, then derived both the provenance and scope-only queries
+from it; removed the obsolete assignment-presence helper. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-021 — Collector returned-object provenance duplicates call and optional-call resolution
 
