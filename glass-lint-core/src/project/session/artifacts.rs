@@ -80,10 +80,11 @@ impl AnalysisArtifacts {
         path: &ProjectRelativePath,
         lowered: LoweredSource,
     ) -> Vec<ResolutionRequest> {
-        let local = LocalArtifact::new(lowered.source.clone(), lowered.semantic);
+        let (source, semantic) = lowered.into_parts();
+        let local = LocalArtifact::new(source, semantic);
         let with_ids = local
             .interface()
-            .requests_with_ids(path, &local.source_context().lines);
+            .requests_with_ids(path, local.source_context().lines());
         for (req_id, request) in &with_ids {
             self.authored_requests
                 .insert(request.key().clone(), *req_id);
@@ -166,13 +167,10 @@ pub(super) fn cached_lowered_source(
     source: &SourceFile,
     cached: &SharedSemanticArtifact,
 ) -> LoweredSource {
-    LoweredSource {
-        source: LocatedSourceContext::with_index(
-            source.path().clone(),
-            Arc::clone(&cached.source_index),
-        ),
-        semantic: Arc::clone(&cached.semantic),
-    }
+    LoweredSource::new(
+        LocatedSourceContext::with_index(source.path().clone(), Arc::clone(cached.source_index())),
+        Arc::clone(cached.semantic()),
+    )
 }
 
 pub(super) fn insert_and_notify(
@@ -181,14 +179,7 @@ pub(super) fn insert_and_notify(
     lowered: &LoweredSource,
     observer: &dyn ExecutionObserver,
 ) {
-    let source_index = Arc::clone(&lowered.source.lines);
-    let evicted = cache.insert(
-        key,
-        SharedSemanticArtifact {
-            semantic: Arc::clone(&lowered.semantic),
-            source_index,
-        },
-    );
+    let evicted = cache.insert(key, SharedSemanticArtifact::from_lowered(lowered));
     observer.observe(ExecutionEvent::CacheInserted);
     if evicted {
         observer.observe(ExecutionEvent::CacheEvicted);

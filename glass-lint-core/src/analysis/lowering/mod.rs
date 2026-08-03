@@ -91,8 +91,26 @@ impl SpanNormalizer {
 }
 
 pub struct LoweredSource {
-    pub(crate) source: LocatedSourceContext,
-    pub(crate) semantic: Arc<SemanticArtifact>,
+    source: LocatedSourceContext,
+    semantic: Arc<SemanticArtifact>,
+}
+
+impl LoweredSource {
+    pub(crate) fn new(source: LocatedSourceContext, semantic: Arc<SemanticArtifact>) -> Self {
+        Self { source, semantic }
+    }
+
+    pub(crate) fn source_context(&self) -> &LocatedSourceContext {
+        &self.source
+    }
+
+    pub(crate) fn semantic(&self) -> &Arc<SemanticArtifact> {
+        &self.semantic
+    }
+
+    pub(crate) fn into_parts(self) -> (LocatedSourceContext, Arc<SemanticArtifact>) {
+        (self.source, self.semantic)
+    }
 }
 
 /// Per-file lowering stage. Owns the environment and limits that the
@@ -132,10 +150,10 @@ impl<'a> Lowerer<'a> {
         )?;
         let coordinates = SpanNormalizer::new(parsed.source_start, source.source());
         let semantic = lower_program(&parsed.program, self.environment, self.limits, &coordinates);
-        Ok(LoweredSource {
-            source: LocatedSourceContext::new(source),
-            semantic: Arc::new(semantic),
-        })
+        Ok(LoweredSource::new(
+            LocatedSourceContext::new(source),
+            Arc::new(semantic),
+        ))
     }
 }
 

@@ -146,7 +146,7 @@ fn findings_for_module(
     module: &crate::analysis::ProjectModule,
     classification: &ClassificationResult,
 ) -> Vec<Finding> {
-    let lines = &module.source_context().lines;
+    let lines = module.source_context().lines();
     let path = module.path();
     let mut rule_findings: BTreeMap<RuleIndex, Vec<Finding>> = BTreeMap::new();
     for capability in classification.capabilities() {

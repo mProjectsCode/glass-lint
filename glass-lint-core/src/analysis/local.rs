@@ -85,8 +85,8 @@ impl ArtifactFingerprint {
 
 #[derive(Clone, Debug)]
 pub struct LocatedSourceContext {
-    pub(crate) path: ProjectRelativePath,
-    pub(crate) lines: Arc<SourceLineIndex>,
+    path: ProjectRelativePath,
+    lines: Arc<SourceLineIndex>,
 }
 
 impl LocatedSourceContext {
@@ -99,6 +99,14 @@ impl LocatedSourceContext {
 
     pub(crate) fn with_index(path: ProjectRelativePath, lines: Arc<SourceLineIndex>) -> Self {
         Self { path, lines }
+    }
+
+    pub(crate) fn path(&self) -> &ProjectRelativePath {
+        &self.path
+    }
+
+    pub(crate) fn lines(&self) -> &Arc<SourceLineIndex> {
+        &self.lines
     }
 
     pub(crate) fn range(&self, span: ByteRange) -> Result<SourceRange, InvalidSourceBoundary> {
@@ -207,8 +215,25 @@ impl ArtifactCacheKey {
 
 #[derive(Clone)]
 pub struct SharedSemanticArtifact {
-    pub semantic: Arc<SemanticArtifact>,
-    pub source_index: Arc<SourceLineIndex>,
+    semantic: Arc<SemanticArtifact>,
+    source_index: Arc<SourceLineIndex>,
+}
+
+impl SharedSemanticArtifact {
+    pub(crate) fn from_lowered(lowered: &crate::analysis::lowering::LoweredSource) -> Self {
+        Self {
+            semantic: Arc::clone(lowered.semantic()),
+            source_index: Arc::clone(lowered.source_context().lines()),
+        }
+    }
+
+    pub(crate) fn semantic(&self) -> &Arc<SemanticArtifact> {
+        &self.semantic
+    }
+
+    pub(crate) fn source_index(&self) -> &Arc<SourceLineIndex> {
+        &self.source_index
+    }
 }
 
 /// One entry in the artifact cache, retaining the full key for collision
@@ -433,7 +458,7 @@ impl ProjectModule {
 
     /// Return the canonical report/resolution path.
     pub(crate) fn path(&self) -> &ProjectRelativePath {
-        &self.local.source_context().path
+        self.local.source_context().path()
     }
 
     /// Borrow the source map used for location conversion.

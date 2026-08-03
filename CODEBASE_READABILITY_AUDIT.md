@@ -169,7 +169,7 @@ out-of-range suffixes.
 
 ### Low priority
 
-#### [ ] READ-011 — Lowering and cache stage records expose phase storage instead of transitions
+#### [x] READ-011 — Lowering and cache stage records expose phase storage instead of transitions
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -180,7 +180,12 @@ out-of-range suffixes.
 
 **Recommendation:** Add constructors and semantic accessors or consuming transitions such as `SharedSemanticArtifact::from_lowered`, `LoweredSource::with_source`, and `LocatedSourceContext::path`/`line_index`. Keep `LocalArtifact` as the owner of the paired source/semantic state and let cache insertion/reconstruction use named operations. Defer this cleanup until the higher-priority request and flow boundaries establish the preferred style for internal stage records.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Encapsulated source context, lowered-source, and shared-cache
+storage behind owner accessors and named constructors. Cache insertion now
+uses `SharedSemanticArtifact::from_lowered`, cache hits use a named lowered
+source transition, and project/report code no longer reaches into line-index
+or semantic fields directly. Cache behavior remains covered by its focused
+tests.
 
 ## Systemic Themes
 
