@@ -110,7 +110,7 @@ The export table, lookup cache, and recursion guard all mean “module plus expo
 
 **Fix Applied:** `QualifiedExportId` now represents linked module-plus-export identity across `ExportTable`, `ExportLookupCache`, resolver lookup APIs, and recursion guards. The cache uses the qualified key directly, while `ExportTable` retains module-grouped storage privately and callers construct named identities at phase boundaries; a unit test verifies that equal export names in different modules remain distinct.
 
-#### [ ] READ-009 — `LinkerOutcome` is a behavior-free copy of the final model's state
+#### [x] READ-009 — `LinkerOutcome` is a behavior-free copy of the final model's state
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Architecture
@@ -120,7 +120,7 @@ The export table, lookup cache, and recursion guard all mean “module plus expo
 
 **Recommendation:** Change `ProjectLinker::finish` to consume the linker and construct `ProjectSemanticModel` directly, with the analysis limits supplied to it. Keep `ProjectLinker` as crate-private transient working state, and delete `LinkerOutcome` and its duplicate field wiring. Do not add a second public constructor for linker internals.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ProjectLinker::finish` now consumes the transient linker and constructs `ProjectSemanticModel` directly with the analysis limits needed for runtime projection. `LinkerOutcome` and its duplicate field wiring were deleted, leaving one consuming phase transition and keeping linker state crate-private.
 
 #### [ ] READ-010 — Mutable and frozen scope graphs duplicate storage and query logic
 - **Severity:** Medium

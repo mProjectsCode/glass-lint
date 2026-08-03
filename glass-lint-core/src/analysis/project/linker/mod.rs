@@ -24,27 +24,12 @@ use crate::{
 };
 
 // ---------------------------------------------------------------------------
-// LinkerOutcome
-// ---------------------------------------------------------------------------
-
-/// Compact result extracted from a consumed [`ProjectLinker`].
-pub(super) struct LinkerOutcome {
-    pub modules: BTreeMap<ModuleId, ProjectModule>,
-    pub resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
-    pub edge_count: usize,
-    pub exports: ExportTable,
-    pub link_cycle_rounds: usize,
-    pub diagnostics: Vec<AnalysisDiagnostic>,
-    pub status: AnalysisStatus,
-}
-
-// ---------------------------------------------------------------------------
 // ProjectLinker
 // ---------------------------------------------------------------------------
 
 /// Transient linker that owns the module graph, SCC partition, mutable export
 /// table, budgets, diagnostics, modules, and resolutions. Consumed into a
-/// [`LinkerOutcome`](super::model::ProjectSemanticModel).
+/// [`ProjectSemanticModel`](super::model::ProjectSemanticModel).
 pub(super) struct ProjectLinker {
     pub(super) modules: BTreeMap<ModuleId, ProjectModule>,
     pub(super) resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
@@ -125,16 +110,24 @@ impl ProjectLinker {
         self.diagnostics.dedup();
     }
 
-    /// Consume the linker and produce the compact outcome.
-    pub(super) fn finish(self) -> LinkerOutcome {
-        LinkerOutcome {
+    /// Consume the linker and construct the final semantic model.
+    pub(super) fn finish(
+        self,
+        limits: &crate::AnalysisLimits,
+    ) -> super::model::ProjectSemanticModel {
+        let edge_count = self.graph.edge_count();
+        super::model::ProjectSemanticModel {
             modules: self.modules,
             resolutions: self.resolutions,
-            edge_count: self.graph.edge_count(),
             exports: self.exports,
+            edge_count,
             link_cycle_rounds: self.link_cycle_rounds,
             diagnostics: self.diagnostics,
             status: self.status,
+            flow_limit: limits.flow_operations(),
+            effect_limit: limits.effect_operations(),
+            trace_limit: limits.trace_nodes(),
+            trace_arena: crate::analysis::trace::TraceArena::new(limits.trace_nodes()),
         }
     }
 

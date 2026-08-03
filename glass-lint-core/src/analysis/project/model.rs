@@ -197,7 +197,7 @@ pub struct ProjectSemanticModel {
     /// Fixed-point export identities for linked modules.
     pub(super) exports: ExportTable,
     /// Number of unique internal edges between modules.
-    edge_count: usize,
+    pub(super) edge_count: usize,
     /// Sum of cycle-local fixed-point rounds (0 for acyclic graphs).
     pub(super) link_cycle_rounds: usize,
     /// Project diagnostics accumulated during linking and budgets.
@@ -264,20 +264,7 @@ impl ProjectSemanticModel {
         );
         linker.propagate_local_status();
         linker.build_graph_and_exports();
-        let outcome = linker.finish();
-        Self {
-            modules: outcome.modules,
-            resolutions: outcome.resolutions,
-            exports: outcome.exports,
-            edge_count: outcome.edge_count,
-            link_cycle_rounds: outcome.link_cycle_rounds,
-            diagnostics: outcome.diagnostics,
-            status: outcome.status,
-            flow_limit: limits.flow_operations(),
-            effect_limit: limits.effect_operations(),
-            trace_limit: limits.trace_nodes(),
-            trace_arena: TraceArena::new(limits.trace_nodes()),
-        }
+        linker.finish(limits)
     }
 
     pub fn modules(&self) -> impl Iterator<Item = &ProjectModule> {
