@@ -15,15 +15,14 @@ use glass_lint_core::{
     },
 };
 
-pub use crate::loader_metrics::{
-    ProjectLoadMetrics, ProjectMetricsAccumulator, ProjectPhaseTimings,
-};
+pub use crate::loader_metrics::{ProjectLoadMetrics, ProjectPhaseTimings};
 use crate::{
     admission::{AdmissionSet, AdmittedSourcePath, SourceAdmission, absolute_path},
     budget::ProjectResourceBudget,
     discovery::{DiscoveryResult, ProjectDiscovery},
     error::ProjectLoadError,
-    loader_phases::{LoadProgress, PathWorkQueue, ResolutionCache},
+    loader_metrics::LoadAccounting,
+    loader_phases::{PathWorkQueue, ResolutionCache},
     options::{ProjectSelection, ValidatedProjectLoadOptions},
     resolver::ProjectResolver,
     tsconfig,
@@ -90,10 +89,10 @@ impl ProjectLoader {
         linter: &Linter,
         selection: &ProjectSelection,
     ) -> Result<ProjectLoadOutcome, ProjectLoadError> {
-        let mut metrics = ProjectMetricsAccumulator::default();
+        let mut metrics = LoadAccounting::default();
         let total_start = Instant::now();
         let mut outcome = self.load_project_with_outcome(linter, selection, &mut metrics)?;
-        metrics.timings.record_total(total_start.elapsed());
+        metrics.record_total(total_start.elapsed());
         outcome.metrics = metrics.snapshot();
         Ok(outcome)
     }
@@ -102,7 +101,7 @@ impl ProjectLoader {
         &self,
         linter: &Linter,
         selection: &ProjectSelection,
-        metrics: &mut ProjectMetricsAccumulator,
+        metrics: &mut LoadAccounting,
     ) -> Result<ProjectLoadOutcome, ProjectLoadError> {
         let discovery_start = Instant::now();
         let deadline = LoadDeadline::after_millis(self.options.max_timeout_ms());
@@ -116,7 +115,7 @@ impl ProjectLoader {
             deadline.instant(),
             &mut budget,
         )?;
-        metrics.timings.record_discovery(discovery_start.elapsed());
+        metrics.record_discovery(discovery_start.elapsed());
 
         let mut build = ProjectLoadState::new(
             linter,
@@ -242,7 +241,6 @@ struct ProjectLoadState<'a> {
     queue: PathWorkQueue,
     admitted: AdmissionSet,
     resolved: ResolutionCache,
-    progress: LoadProgress,
     /// Cache mapping already-admitted internal target paths to their
     /// AdmittedSourcePath, avoiding redundant exists/classify calls when
     /// multiple importers reference the same target.
@@ -271,7 +269,6 @@ impl<'a> ProjectLoadState<'a> {
             queue: PathWorkQueue::default(),
             admitted: AdmissionSet::new(max_files),
             resolved: ResolutionCache::default(),
-            progress: LoadProgress::default(),
             admitted_target_cache: BTreeMap::new(),
             sources: BTreeMap::new(),
             deadline,
@@ -290,7 +287,7 @@ impl<'a> ProjectLoadState<'a> {
     /// always produced so callers can still assemble a partial report.
     fn close_frontier(
         mut self,
-        metrics: &mut ProjectMetricsAccumulator,
+        metrics: &mut LoadAccounting,
     ) -> (Result<(), ProjectLoadError>, ClosedFrontier<'a>) {
         let workers = std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
 
@@ -336,11 +333,11 @@ impl<'a> ProjectLoadState<'a> {
         &mut self,
         wave: &[AdmittedSourcePath],
         workers: NonZeroUsize,
-        metrics: &mut ProjectMetricsAccumulator,
+        metrics: &mut LoadAccounting,
     ) -> Result<(), ProjectLoadError> {
         let read_start = Instant::now();
-        let read = self.read_wave(wave)?;
-        metrics.timings.record_reads(read_start.elapsed());
+        let read = self.read_wave(wave, metrics)?;
+        metrics.record_reads(read_start.elapsed());
 
         for source in &read.sources {
             self.sources
@@ -352,17 +349,16 @@ impl<'a> ProjectLoadState<'a> {
         if !read.sources.is_empty() {
             let parse_start = Instant::now();
             let analysis = self.analyze_wave(read.sources, workers)?;
-            metrics.timings.record_analyze_source(parse_start.elapsed());
-            metrics.files = self.admitted.len();
+            metrics.record_analyze_source(parse_start.elapsed());
+            metrics.record_files(self.admitted.len());
 
-            self.progress.add_requests(
+            metrics.admit_requests(
                 analysis.requests.len(),
                 self.admission.options().max_requests(),
             )?;
-            self.progress.publish(metrics);
 
             let resolution = self.resolve_requests(analysis.requests)?;
-            metrics.timings.record_resolution(resolution.elapsed);
+            metrics.record_resolution(resolution.elapsed);
             self.apply_request_resolution(resolution, metrics)?;
         }
 
@@ -378,6 +374,7 @@ impl<'a> ProjectLoadState<'a> {
     fn read_wave(
         &mut self,
         wave: &[AdmittedSourcePath],
+        metrics: &mut LoadAccounting,
     ) -> Result<ReadWaveOutcome, ProjectLoadError> {
         let source_limit = self.admission.options().max_project_source_bytes();
         let mut sources = Vec::with_capacity(wave.len());
@@ -395,9 +392,9 @@ impl<'a> ProjectLoadState<'a> {
                     path: admitted.as_ref().to_path_buf(),
                     source,
                 })?;
-            if self.progress.source_bytes().saturating_add(md.len()) > source_limit {
+            if metrics.source_bytes().saturating_add(md.len()) > source_limit {
                 deferred_error = Some(ProjectLoadError::ProjectSourceTooLarge {
-                    bytes: self.progress.source_bytes().saturating_add(md.len()),
+                    bytes: metrics.source_bytes().saturating_add(md.len()),
                     limit: source_limit,
                 });
                 break;
@@ -406,10 +403,7 @@ impl<'a> ProjectLoadState<'a> {
             let source = self.admission.load_admitted_source_file(admitted)?;
             let source_bytes = u64::try_from(source.source().len())
                 .unwrap_or_else(|_| source_limit.saturating_add(1));
-            if let Err(error) = self
-                .progress
-                .record_source_bytes(source_bytes, source_limit)
-            {
+            if let Err(error) = metrics.admit_source_bytes(source_bytes, source_limit) {
                 deferred_error = Some(error);
                 break;
             }
@@ -457,7 +451,7 @@ impl<'a> ProjectLoadState<'a> {
     fn apply_request_resolution(
         &mut self,
         resolution: RequestResolutionOutcome,
-        metrics: &mut ProjectMetricsAccumulator,
+        metrics: &mut LoadAccounting,
     ) -> Result<(), ProjectLoadError> {
         for path in resolution.internal_targets {
             self.enqueue_internal_target(path, metrics)?;
@@ -468,10 +462,9 @@ impl<'a> ProjectLoadState<'a> {
     fn enqueue_internal_target(
         &mut self,
         path: glass_lint_core::project::ProjectRelativePath,
-        metrics: &mut ProjectMetricsAccumulator,
+        metrics: &mut LoadAccounting,
     ) -> Result<(), ProjectLoadError> {
-        self.progress.record_edge();
-        self.progress.publish(metrics);
+        metrics.record_edge();
         if let Some(admitted) = self.admitted_target_cache.get(&path) {
             self.queue.push(admitted.clone());
             return Ok(());
@@ -509,7 +502,7 @@ impl ClosedFrontier<'_> {
     fn finish(
         self,
         mode: FinishMode,
-        metrics: &mut ProjectMetricsAccumulator,
+        metrics: &mut LoadAccounting,
     ) -> Result<(AnalysisReport, BTreeMap<ProjectRelativePath, SourceText>), ProjectLoadError> {
         if matches!(mode, FinishMode::Complete) {
             self.deadline.check()?;
@@ -519,14 +512,14 @@ impl ClosedFrontier<'_> {
 
     fn finish_inner(
         self,
-        metrics: &mut ProjectMetricsAccumulator,
+        metrics: &mut LoadAccounting,
     ) -> Result<(AnalysisReport, BTreeMap<ProjectRelativePath, SourceText>), ProjectLoadError> {
         let sources = self.sources;
         let local = self.session.finish_local();
         let resolved = local.resolve(self.resolved.into_iter())?;
         let result = resolved.finish_with_timings()?;
-        metrics.timings.record_linking(result.linking);
-        metrics.timings.record_matching(result.matching);
+        metrics.record_linking(result.linking);
+        metrics.record_matching(result.matching);
         let code = glass_lint_core::project::DiagnosticCode::new("tsconfig")
             .expect("tsconfig is a valid diagnostic code");
         let messages: Vec<String> = self

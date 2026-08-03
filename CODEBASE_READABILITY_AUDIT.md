@@ -84,7 +84,7 @@ Static objects appear as `Vec<(NameId, ValueId)>`, `Vec<NameId>`, `BTreeMap<Name
 
 **Fix Applied:** `MeasuredRepetitionAccumulator` now keeps repetitions private, validates project-merge alignment, and owns findings, diagnostics, operation-count, duration, and median aggregation through named methods. The profile runners use those operations and consume the final vector only at the summary boundary; the only raw repetition view is test-only, and a regression test covers mismatched project merges.
 
-#### [ ] READ-007 — Load progress and metrics duplicate counters and synchronize by field assignment
+#### [x] READ-007 — Load progress and metrics duplicate counters and synchronize by field assignment
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Duplication
@@ -94,7 +94,7 @@ Static objects appear as `Vec<(NameId, ValueId)>`, `Vec<NameId>`, `BTreeMap<Name
 
 **Recommendation:** Replace `LoadProgress` and `ProjectMetricsAccumulator` with one crate-private load-accounting owner for bounded counter updates and timing records, then derive the public immutable `ProjectLoadMetrics` snapshot from it. Expose only domain operations such as `admit_requests`, `record_edge`, `admit_source_bytes`, `record_files`, and phase timing; keep all counters private. Remove `publish` and all direct counter assignments.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `LoadAccounting` now owns bounded request, edge, byte, and file counters together with phase recording and immutable snapshot construction; the separate `LoadProgress` and `ProjectMetricsAccumulator` carriers were removed. Loader phases use named admission and recording operations, so `publish` and direct metric-field assignments no longer synchronize duplicate state, with focused tests covering snapshot values and rejected budget updates.
 
 ### Duplicate Types and Phase State
 

@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use crate::error::ProjectLoadError;
+
 /// Immutable phase-timing snapshot shared with harness profiling reports.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ProjectPhaseTimings {
@@ -155,17 +157,17 @@ impl ProjectLoadMetrics {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct ProjectMetricsAccumulator {
-    pub(crate) timings: ProjectPhaseTimingsAccumulator,
-    pub(crate) files: usize,
-    pub(crate) requests: usize,
-    pub(crate) edges: usize,
-    pub(crate) bytes: u64,
+#[derive(Debug, Default)]
+pub(crate) struct LoadAccounting {
+    timings: ProjectPhaseTimingsAccumulator,
+    files: usize,
+    requests: usize,
+    edges: usize,
+    bytes: u64,
 }
 
-impl ProjectMetricsAccumulator {
-    pub(super) fn snapshot(&self) -> ProjectLoadMetrics {
+impl LoadAccounting {
+    pub(crate) fn snapshot(&self) -> ProjectLoadMetrics {
         ProjectLoadMetrics {
             timings: self.timings.snapshot(),
             files: self.files,
@@ -174,14 +176,101 @@ impl ProjectMetricsAccumulator {
             bytes: self.bytes,
         }
     }
+
+    pub(crate) fn record_discovery(&mut self, duration: Duration) {
+        self.timings.record_discovery(duration);
+    }
+
+    pub(crate) fn record_reads(&mut self, duration: Duration) {
+        self.timings.record_reads(duration);
+    }
+
+    pub(crate) fn record_analyze_source(&mut self, duration: Duration) {
+        self.timings.record_analyze_source(duration);
+    }
+
+    pub(crate) fn record_resolution(&mut self, duration: Duration) {
+        self.timings.record_resolution(duration);
+    }
+
+    pub(crate) fn record_linking(&mut self, duration: Duration) {
+        self.timings.record_linking(duration);
+    }
+
+    pub(crate) fn record_matching(&mut self, duration: Duration) {
+        self.timings.record_matching(duration);
+    }
+
+    pub(crate) fn record_total(&mut self, duration: Duration) {
+        self.timings.record_total(duration);
+    }
+
+    pub(crate) fn record_files(&mut self, files: usize) {
+        self.files = files;
+    }
+
+    pub(crate) fn source_bytes(&self) -> u64 {
+        self.bytes
+    }
+
+    pub(crate) fn admit_requests(
+        &mut self,
+        count: usize,
+        limit: usize,
+    ) -> Result<(), ProjectLoadError> {
+        self.requests = self
+            .requests
+            .checked_add(count)
+            .ok_or(ProjectLoadError::TooManyRequests(limit))?;
+        if self.requests > limit {
+            return Err(ProjectLoadError::TooManyRequests(limit));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn record_edge(&mut self) {
+        self.edges = self.edges.saturating_add(1);
+    }
+
+    pub(crate) fn admit_source_bytes(
+        &mut self,
+        bytes: u64,
+        limit: u64,
+    ) -> Result<(), ProjectLoadError> {
+        self.bytes = self.bytes.saturating_add(bytes);
+        if self.bytes > limit {
+            return Err(ProjectLoadError::ProjectSourceTooLarge {
+                bytes: self.bytes,
+                limit,
+            });
+        }
+        Ok(())
+    }
 }
 
-impl std::ops::AddAssign for ProjectMetricsAccumulator {
-    fn add_assign(&mut self, rhs: Self) {
-        self.timings += rhs.timings;
-        self.files = self.files.saturating_add(rhs.files);
-        self.requests = self.requests.saturating_add(rhs.requests);
-        self.edges = self.edges.saturating_add(rhs.edges);
-        self.bytes = self.bytes.saturating_add(rhs.bytes);
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accounting_owns_bounded_counters_and_snapshot_values() {
+        let mut accounting = LoadAccounting::default();
+        accounting.record_files(3);
+        accounting.record_edge();
+        accounting.admit_requests(2, 2).unwrap();
+        accounting.admit_source_bytes(11, 11).unwrap();
+
+        let snapshot = accounting.snapshot();
+        assert_eq!(snapshot.files(), 3);
+        assert_eq!(snapshot.edges(), 1);
+        assert_eq!(snapshot.requests(), 2);
+        assert_eq!(snapshot.bytes(), 11);
+    }
+
+    #[test]
+    fn accounting_rejects_over_budget_updates() {
+        let mut accounting = LoadAccounting::default();
+        assert!(accounting.admit_requests(2, 1).is_err());
+        assert!(accounting.admit_source_bytes(2, 1).is_err());
     }
 }

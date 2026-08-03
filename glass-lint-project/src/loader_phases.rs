@@ -5,10 +5,7 @@ use glass_lint_core::project::{
     ResolverOutcome,
 };
 
-use crate::{
-    admission::AdmittedSourcePath, error::ProjectLoadError, loader::ProjectMetricsAccumulator,
-    resolver::ProjectResolver,
-};
+use crate::{admission::AdmittedSourcePath, error::ProjectLoadError, resolver::ProjectResolver};
 
 #[derive(Default)]
 pub struct PathWorkQueue {
@@ -90,58 +87,5 @@ impl ResolutionCache {
 
     pub(super) fn into_iter(self) -> impl Iterator<Item = (ResolutionRequestKey, ResolverOutcome)> {
         self.by_key.into_iter()
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct LoadProgress {
-    requests: usize,
-    edges: usize,
-    source_bytes: u64,
-}
-
-impl LoadProgress {
-    pub(super) fn source_bytes(&self) -> u64 {
-        self.source_bytes
-    }
-
-    pub(super) fn add_requests(
-        &mut self,
-        count: usize,
-        limit: usize,
-    ) -> Result<(), ProjectLoadError> {
-        self.requests = self
-            .requests
-            .checked_add(count)
-            .ok_or(ProjectLoadError::TooManyRequests(limit))?;
-        if self.requests > limit {
-            return Err(ProjectLoadError::TooManyRequests(limit));
-        }
-        Ok(())
-    }
-
-    pub(super) fn record_edge(&mut self) {
-        self.edges = self.edges.saturating_add(1);
-    }
-
-    pub(super) fn record_source_bytes(
-        &mut self,
-        bytes: u64,
-        limit: u64,
-    ) -> Result<(), ProjectLoadError> {
-        self.source_bytes = self.source_bytes.saturating_add(bytes);
-        if self.source_bytes > limit {
-            return Err(ProjectLoadError::ProjectSourceTooLarge {
-                bytes: self.source_bytes,
-                limit,
-            });
-        }
-        Ok(())
-    }
-
-    pub(super) fn publish(&self, metrics: &mut ProjectMetricsAccumulator) {
-        metrics.requests = self.requests;
-        metrics.edges = self.edges;
-        metrics.bytes = self.source_bytes;
     }
 }
