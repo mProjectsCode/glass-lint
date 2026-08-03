@@ -88,10 +88,10 @@ fn check_empty_accepted_sets(
     use crate::api::rule::{ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcherKind};
     for m in matchers {
         if let ArgumentMatcherKind::Value(vm) = m.kind()
-            && let ValueMatcherKind::StaticString(sp) = &vm.kind
+            && let ValueMatcherKind::StaticString(sp) = vm.kind()
         {
             let is_empty = matches!(
-                &sp.kind,
+                sp.kind(),
                 StaticStringPredicateKind::Exact(values)
                 | StaticStringPredicateKind::ContainsAny(values)
                 | StaticStringPredicateKind::Prefix(values)
@@ -117,8 +117,8 @@ fn check_static_intersection(
     let predicates: Vec<&StaticStringPredicateKind> = matchers
         .iter()
         .filter_map(|matcher| match matcher.kind() {
-            ArgumentMatcherKind::Value(vm) => match &vm.kind {
-                ValueMatcherKind::StaticString(predicate) => Some(&predicate.kind),
+            ArgumentMatcherKind::Value(vm) => match vm.kind() {
+                ValueMatcherKind::StaticString(predicate) => Some(predicate.kind()),
                 ValueMatcherKind::Any => None,
             },
             _ => None,

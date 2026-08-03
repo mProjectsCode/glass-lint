@@ -115,7 +115,7 @@ fn expression_child_limit_plus_one_is_rejected_at_authoring() {
 fn assert_event_query(decl: QueryDecl, expected_symbol: &str) {
     assert_eq!(decl.emission.primary_var, VarId::new(0));
     assert_eq!(decl.emission.symbol, expected_symbol);
-    assert!(matches!(&decl.expression.kind, QueryExprKind::Event(_)));
+    assert!(matches!(decl.expression().kind(), QueryExprKind::Event(_)));
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -351,7 +351,7 @@ fn lowers_arg_constraints_to_query_decl() {
         .with_arg_static_string_contains(3, ["token"])
         .unwrap()
         .into_query();
-    match &q.expression.kind {
+    match q.expression().kind() {
         QueryExprKind::Event(eq) => {
             assert_eq!(eq.constraints.len(), 4);
         }

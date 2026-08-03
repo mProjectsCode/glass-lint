@@ -182,31 +182,31 @@ fn multiple_constraints_on_same_call_fuse_into_one_constrained_scan() {
 fn alternatives_from_any_produce_multiple_roots() {
     use crate::api::rule::query::{AnyExpr, EventQuery, EventSpec, QueryExpr};
     let branches = vec![
-        QueryExpr::event(EventQuery {
-            var: VarId::new(0),
-            event: EventSpec::Call,
-            identity: crate::api::rule::query::IdentitySpec::Global {
+        QueryExpr::event(EventQuery::from_parts_for_test(
+            VarId::new(0),
+            EventSpec::Call,
+            crate::api::rule::query::IdentitySpec::Global {
                 name: "fetch".into(),
             },
-            constraints: vec![],
-        }),
-        QueryExpr::event(EventQuery {
-            var: VarId::new(1),
-            event: EventSpec::Call,
-            identity: crate::api::rule::query::IdentitySpec::Global {
+            vec![],
+        )),
+        QueryExpr::event(EventQuery::from_parts_for_test(
+            VarId::new(1),
+            EventSpec::Call,
+            crate::api::rule::query::IdentitySpec::Global {
                 name: "navigate".into(),
             },
-            constraints: vec![],
-        }),
+            vec![],
+        )),
     ];
-    let query = QueryDecl {
-        expression: QueryExpr::any(AnyExpr::new(branches).unwrap()),
-        emission: crate::api::rule::query::EmissionDecl {
+    let query = QueryDecl::from_parts_for_test(
+        QueryExpr::any(AnyExpr::new(branches).unwrap()),
+        crate::api::rule::query::EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::Call,
             symbol: "request".into(),
         },
-    };
+    );
     let nq = normalize_query_decl(&query).unwrap();
     let plan = plan_normalized(&nq);
     assert_eq!(plan.roots().len(), 2);

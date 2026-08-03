@@ -492,8 +492,8 @@ fn validate_canonical_constraints(
 /// applicable.
 fn count_matcher_alternatives(matcher: &ArgumentMatcher) -> Option<usize> {
     match matcher.kind() {
-        ArgumentMatcherKind::Value(vm) => match &vm.kind {
-            ValueMatcherKind::StaticString(sp) => match &sp.kind {
+        ArgumentMatcherKind::Value(vm) => match vm.kind() {
+            ValueMatcherKind::StaticString(sp) => match sp.kind() {
                 StaticStringPredicateKind::Exact(v)
                 | StaticStringPredicateKind::Prefix(v)
                 | StaticStringPredicateKind::ContainsAny(v)

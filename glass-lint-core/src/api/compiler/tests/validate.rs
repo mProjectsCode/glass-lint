@@ -27,12 +27,12 @@ fn assert_valid_query(decl: &QueryDecl) {
 
 /// Build the common direct global-call expression used by validation cases.
 fn global_call(var: u32, name: impl Into<SmolStr>) -> QueryExpr {
-    QueryExpr::event(EventQuery {
-        var: VarId::new(var),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global { name: name.into() },
-        constraints: vec![],
-    })
+    QueryExpr::event(EventQuery::from_parts_for_test(
+        VarId::new(var),
+        EventSpec::Call,
+        IdentitySpec::Global { name: name.into() },
+        vec![],
+    ))
 }
 
 /// Add the explicit emission defaults shared by direct query fixtures.
@@ -42,14 +42,14 @@ fn emitted(
     kind: MatchKind,
     symbol: impl Into<String>,
 ) -> QueryDecl {
-    QueryDecl {
+    QueryDecl::from_parts_for_test(
         expression,
-        emission: EmissionDecl {
+        EmissionDecl {
             primary_var: VarId::new(primary_var),
             kind,
             symbol: symbol.into(),
         },
-    }
+    )
 }
 
 mod correlation;

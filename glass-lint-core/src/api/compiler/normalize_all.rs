@@ -84,7 +84,7 @@ fn find_common_event_var(branches: &[&QueryExpr]) -> Option<VarId> {
         if branches.iter().skip(1).all(|b| {
             b.contains_var(*var)
                 || matches!(
-                    &b.kind,
+                    b.kind(),
                     QueryExprKind::Require(
                         QueryPredicate::ReturnedObject { .. }
                             | QueryPredicate::ConstructedObject { .. }
@@ -112,10 +112,10 @@ fn merge_same_event(
     let mut constraints: Vec<ArgumentConstraint> = Vec::new();
 
     for branch in all.iter() {
-        match &branch.kind {
+        match branch.kind() {
             QueryExprKind::Event(eq) => {
                 merge_event_fields(&mut event_spec, &mut identity_spec, eq)?;
-                constraints.extend(eq.constraints.iter().cloned());
+                constraints.extend(eq.constraints().iter().cloned());
             }
             QueryExprKind::SelectEvent(_) => {
                 // Just a binding reference, no fields to merge.
@@ -214,8 +214,8 @@ fn merge_event_fields(
     identity_spec: &mut Option<IdentitySpec>,
     eq: &EventQuery,
 ) -> Result<(), QueryCompileError> {
-    merge_event_kind(event_spec, eq.event.clone())?;
-    merge_identity(identity_spec, eq.identity.clone())?;
+    merge_event_kind(event_spec, eq.event().clone())?;
+    merge_identity(identity_spec, eq.identity().clone())?;
     Ok(())
 }
 

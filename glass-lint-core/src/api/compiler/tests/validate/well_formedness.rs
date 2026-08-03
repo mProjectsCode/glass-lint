@@ -21,47 +21,47 @@ fn valid_rooted_member_call_passes_well_formedness() {
 
 #[test]
 fn direct_event_must_match_subject_identity() {
-    let eq = EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::MemberCall {
+    let eq = EventQuery::from_parts_for_test(
+        VarId::new(0),
+        EventSpec::MemberCall {
             member: SymbolPath::from("foo.bar"),
         },
-        identity: IdentitySpec::Heuristic {
+        IdentitySpec::Heuristic {
             name: SmolStr::new("foo.bar"),
         },
-        constraints: vec![],
-    };
-    let decl = QueryDecl {
-        expression: QueryExpr::event(eq),
-        emission: EmissionDecl {
+        vec![],
+    );
+    let decl = QueryDecl::from_parts_for_test(
+        QueryExpr::event(eq),
+        EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::MemberCall,
             symbol: "test".into(),
         },
-    };
+    );
     assert!(pass_structure(&decl).is_ok());
 }
 
 #[test]
 fn member_call_needs_matching_identity_name() {
-    let eq = EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::MemberCall {
+    let eq = EventQuery::from_parts_for_test(
+        VarId::new(0),
+        EventSpec::MemberCall {
             member: SymbolPath::from("bar"),
         },
-        identity: IdentitySpec::Heuristic {
+        IdentitySpec::Heuristic {
             name: SmolStr::new("foo"),
         },
-        constraints: vec![],
-    };
-    let decl = QueryDecl {
-        expression: QueryExpr::event(eq),
-        emission: EmissionDecl {
+        vec![],
+    );
+    let decl = QueryDecl::from_parts_for_test(
+        QueryExpr::event(eq),
+        EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::Call,
             symbol: "test".into(),
         },
-    };
+    );
     assert_eq!(
         pass_structure(&decl),
         Err(QueryCompileError::InvalidEventPredicate {
@@ -75,25 +75,25 @@ fn member_call_needs_matching_identity_name() {
 
 #[test]
 fn constraints_on_non_call_event_fails() {
-    let eq = EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::Import,
-        identity: IdentitySpec::LiteralString {
+    let eq = EventQuery::from_parts_for_test(
+        VarId::new(0),
+        EventSpec::Import,
+        IdentitySpec::LiteralString {
             predicate: "node:fs".into(),
         },
-        constraints: vec![ArgumentConstraint::new(
+        vec![ArgumentConstraint::new(
             crate::api::rule::ArgumentIndex::new_unchecked(0),
             ValueMatcher::static_string(),
         )],
-    };
-    let decl = QueryDecl {
-        expression: QueryExpr::event(eq),
-        emission: EmissionDecl {
+    );
+    let decl = QueryDecl::from_parts_for_test(
+        QueryExpr::event(eq),
+        EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::Import,
             symbol: "test".into(),
         },
-    };
+    );
     assert_eq!(
         pass_structure(&decl),
         Err(QueryCompileError::InvalidEventPredicate {
@@ -107,22 +107,22 @@ fn constraints_on_non_call_event_fails() {
 
 #[test]
 fn empty_identity_fails() {
-    let eq = EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global {
+    let eq = EventQuery::from_parts_for_test(
+        VarId::new(0),
+        EventSpec::Call,
+        IdentitySpec::Global {
             name: SmolStr::new(""),
         },
-        constraints: vec![],
-    };
-    let decl = QueryDecl {
-        expression: QueryExpr::event(eq),
-        emission: EmissionDecl {
+        vec![],
+    );
+    let decl = QueryDecl::from_parts_for_test(
+        QueryExpr::event(eq),
+        EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::Call,
             symbol: "test".into(),
         },
-    };
+    );
     assert_eq!(
         pass_structure(&decl),
         Err(QueryCompileError::InvalidEventPredicate {
@@ -165,22 +165,22 @@ fn unique_vars_pass_collection() {
 
 #[test]
 fn emission_var_must_exist_in_expression() {
-    let eq = EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global {
+    let eq = EventQuery::from_parts_for_test(
+        VarId::new(0),
+        EventSpec::Call,
+        IdentitySpec::Global {
             name: SmolStr::new("fetch"),
         },
-        constraints: vec![],
-    };
-    let decl = QueryDecl {
-        expression: QueryExpr::event(eq),
-        emission: EmissionDecl {
+        vec![],
+    );
+    let decl = QueryDecl::from_parts_for_test(
+        QueryExpr::event(eq),
+        EmissionDecl {
             primary_var: VarId::new(1),
             kind: MatchKind::Call,
             symbol: "fetch".into(),
         },
-    };
+    );
     assert_eq!(
         pass_correlation_evidence(&decl),
         Err(QueryCompileError::MissingBinding {
@@ -191,22 +191,22 @@ fn emission_var_must_exist_in_expression() {
 
 #[test]
 fn emission_var_exists_in_expression_passes() {
-    let eq = EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global {
+    let eq = EventQuery::from_parts_for_test(
+        VarId::new(0),
+        EventSpec::Call,
+        IdentitySpec::Global {
             name: SmolStr::new("fetch"),
         },
-        constraints: vec![],
-    };
-    let decl = QueryDecl {
-        expression: QueryExpr::event(eq),
-        emission: EmissionDecl {
+        vec![],
+    );
+    let decl = QueryDecl::from_parts_for_test(
+        QueryExpr::event(eq),
+        EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::Call,
             symbol: "fetch".into(),
         },
-    };
+    );
     assert!(pass_correlation_evidence(&decl).is_ok());
 }
 
@@ -260,14 +260,14 @@ fn bounded_query_passes_boundedness() {
 fn excessive_any_branches_fails_boundedness() {
     let branches: Vec<QueryExpr> = (0..1001)
         .map(|i| {
-            QueryExpr::event(EventQuery {
-                var: VarId::new(i),
-                event: EventSpec::Call,
-                identity: IdentitySpec::Global {
+            QueryExpr::event(EventQuery::from_parts_for_test(
+                VarId::new(i),
+                EventSpec::Call,
+                IdentitySpec::Global {
                     name: SmolStr::new(format!("f{i}")),
                 },
-                constraints: vec![],
-            })
+                vec![],
+            ))
         })
         .collect();
     let error = AnyExpr::new(branches).unwrap_err();
@@ -279,67 +279,67 @@ fn excessive_any_branches_fails_boundedness() {
 
 #[test]
 fn lifecycle_source_must_be_member_call() {
-    let source = EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global {
+    let source = EventQuery::from_parts_for_test(
+        VarId::new(0),
+        EventSpec::Call,
+        IdentitySpec::Global {
             name: SmolStr::new("fetch"),
         },
-        constraints: vec![],
-    };
-    let lc = LifecycleQuery {
-        symbol: "test".into(),
-        sources: vec![source],
-        condition: Some(
+        vec![],
+    );
+    let lc = LifecycleQuery::from_parts_for_test(
+        "test",
+        vec![source],
+        Some(
             crate::api::rule::LifecycleCondition::event(
                 crate::api::rule::LifecycleEvent::property_write("type", ValueMatcher::any_value()),
             )
             .unwrap(),
         ),
-        completion: Some(crate::api::rule::LifecycleCompletion::configuration()),
-    };
-    let decl = QueryDecl {
-        expression: QueryExpr::lifecycle(lc),
-        emission: EmissionDecl {
+        Some(crate::api::rule::LifecycleCompletion::configuration()),
+    );
+    let decl = QueryDecl::from_parts_for_test(
+        QueryExpr::lifecycle(lc),
+        EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::Call,
             symbol: "test".into(),
         },
-    };
+    );
     assert!(pass_structure(&decl).is_ok());
 }
 
 #[test]
 fn lifecycle_source_must_be_rooted() {
-    let source = EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::MemberCall {
+    let source = EventQuery::from_parts_for_test(
+        VarId::new(0),
+        EventSpec::MemberCall {
             member: SymbolPath::from("ns.method"),
         },
-        identity: IdentitySpec::ModuleNamespace {
+        IdentitySpec::ModuleNamespace {
             module: SmolStr::new("mod"),
         },
-        constraints: vec![],
-    };
-    let lc = LifecycleQuery {
-        symbol: "test".into(),
-        sources: vec![source],
-        condition: Some(
+        vec![],
+    );
+    let lc = LifecycleQuery::from_parts_for_test(
+        "test",
+        vec![source],
+        Some(
             crate::api::rule::LifecycleCondition::event(
                 crate::api::rule::LifecycleEvent::property_write("type", ValueMatcher::any_value()),
             )
             .unwrap(),
         ),
-        completion: Some(crate::api::rule::LifecycleCompletion::configuration()),
-    };
-    let decl = QueryDecl {
-        expression: QueryExpr::lifecycle(lc),
-        emission: EmissionDecl {
+        Some(crate::api::rule::LifecycleCompletion::configuration()),
+    );
+    let decl = QueryDecl::from_parts_for_test(
+        QueryExpr::lifecycle(lc),
+        EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::Call,
             symbol: "test".into(),
         },
-    };
+    );
     assert_eq!(
         pass_structure(&decl),
         Err(QueryCompileError::InvalidLifecycle {
@@ -350,35 +350,35 @@ fn lifecycle_source_must_be_rooted() {
 
 #[test]
 fn valid_lifecycle_passes_lifecycle_validation() {
-    let source = EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::MemberCall {
+    let source = EventQuery::from_parts_for_test(
+        VarId::new(0),
+        EventSpec::MemberCall {
             member: SymbolPath::from("document.createElement"),
         },
-        identity: IdentitySpec::Rooted {
+        IdentitySpec::Rooted {
             path: SymbolPath::from("document.createElement"),
         },
-        constraints: vec![],
-    };
-    let lc = LifecycleQuery {
-        symbol: "test".into(),
-        sources: vec![source],
-        condition: Some(
+        vec![],
+    );
+    let lc = LifecycleQuery::from_parts_for_test(
+        "test",
+        vec![source],
+        Some(
             crate::api::rule::LifecycleCondition::event(
                 crate::api::rule::LifecycleEvent::property_write("type", ValueMatcher::any_value()),
             )
             .unwrap(),
         ),
-        completion: Some(crate::api::rule::LifecycleCompletion::configuration()),
-    };
-    let decl = QueryDecl {
-        expression: QueryExpr::lifecycle(lc),
-        emission: EmissionDecl {
+        Some(crate::api::rule::LifecycleCompletion::configuration()),
+    );
+    let decl = QueryDecl::from_parts_for_test(
+        QueryExpr::lifecycle(lc),
+        EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::Call,
             symbol: "test".into(),
         },
-    };
+    );
     assert!(pass_structure(&decl).is_ok());
 }
 

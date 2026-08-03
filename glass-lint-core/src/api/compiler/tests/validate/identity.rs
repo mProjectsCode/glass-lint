@@ -12,14 +12,14 @@ fn returned_object_with_non_rooted_identity_fails_at_structure() {
         }),
     ];
     let all_expr = AllExpr::new(branches).unwrap();
-    let decl = QueryDecl {
-        expression: QueryExpr::all(all_expr),
-        emission: EmissionDecl {
+    let decl = QueryDecl::from_parts_for_test(
+        QueryExpr::all(all_expr),
+        EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::MemberCall,
             symbol: "test".into(),
         },
-    };
+    );
     let result = validate_query_decl(&decl);
     assert!(
         matches!(
@@ -46,14 +46,14 @@ fn constructed_object_with_non_module_export_identity_fails_at_structure() {
         }),
     ];
     let all_expr = AllExpr::new(branches).unwrap();
-    let decl = QueryDecl {
-        expression: QueryExpr::all(all_expr),
-        emission: EmissionDecl {
+    let decl = QueryDecl::from_parts_for_test(
+        QueryExpr::all(all_expr),
+        EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::Call,
             symbol: "test".into(),
         },
-    };
+    );
     let result = validate_query_decl(&decl);
     assert!(
         matches!(
@@ -84,14 +84,14 @@ fn valid_returned_object_with_rooted_identity_passes() {
         }),
     ];
     let all_expr = AllExpr::new(branches).unwrap();
-    let decl = QueryDecl {
-        expression: QueryExpr::all(all_expr),
-        emission: EmissionDecl {
+    let decl = QueryDecl::from_parts_for_test(
+        QueryExpr::all(all_expr),
+        EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::MemberCall,
             symbol: "test".into(),
         },
-    };
+    );
     assert_valid_query(&decl);
 }
 
@@ -113,13 +113,13 @@ fn valid_constructed_object_with_module_export_identity_passes() {
         }),
     ];
     let all_expr = AllExpr::new(branches).unwrap();
-    let decl = QueryDecl {
-        expression: QueryExpr::all(all_expr),
-        emission: EmissionDecl {
+    let decl = QueryDecl::from_parts_for_test(
+        QueryExpr::all(all_expr),
+        EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::MemberCall,
             symbol: "test".into(),
         },
-    };
+    );
     assert_valid_query(&decl);
 }

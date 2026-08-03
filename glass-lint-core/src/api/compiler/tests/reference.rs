@@ -524,14 +524,14 @@ fn lifecycle_reference_matches_logical_and_physical_plans() {
         ]))
         .build()
         .unwrap();
-    let decl = QueryDecl {
-        expression: QueryExpr::lifecycle(lifecycle),
-        emission: EmissionDecl {
+    let decl = QueryDecl::from_parts_for_test(
+        QueryExpr::lifecycle(lifecycle),
+        EmissionDecl {
             primary_var: crate::api::rule::VarId::new(0),
             kind: MatchKind::Call,
             symbol: "resource".into(),
         },
-    };
+    );
     let normalized = normalize_query_decl(&decl).unwrap();
     let plan = plan_normalized(&normalized);
     let mut condition_args = BTreeMap::new();

@@ -7,22 +7,22 @@ fn relation_availability_passes_for_valid_global() {
 
 #[test]
 fn well_formedness_error_precedes_projection_error() {
-    let eq = EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::Import,
-        identity: IdentitySpec::Global {
+    let eq = EventQuery::from_parts_for_test(
+        VarId::new(0),
+        EventSpec::Import,
+        IdentitySpec::Global {
             name: SmolStr::new("fs"),
         },
-        constraints: vec![],
-    };
-    let decl = QueryDecl {
-        expression: QueryExpr::event(eq),
-        emission: EmissionDecl {
+        vec![],
+    );
+    let decl = QueryDecl::from_parts_for_test(
+        QueryExpr::event(eq),
+        EmissionDecl {
             primary_var: VarId::new(1),
             kind: MatchKind::Import,
             symbol: "fs".into(),
         },
-    };
+    );
     let result = validate_query_decl(&decl);
     assert_eq!(
         result,
@@ -76,14 +76,14 @@ fn reference_before_binding_fails() {
         QueryExpr::select_event(VarId::new(0)),
     ];
     let all_expr = AllExpr::new(branches).unwrap();
-    let decl = QueryDecl {
-        expression: QueryExpr::all(all_expr),
-        emission: EmissionDecl {
+    let decl = QueryDecl::from_parts_for_test(
+        QueryExpr::all(all_expr),
+        EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::Call,
             symbol: "test".into(),
         },
-    };
+    );
     let result = pass_scope_types(&decl);
     assert!(
         matches!(
@@ -104,14 +104,14 @@ fn reference_after_binding_passes() {
         }),
     ];
     let all_expr = AllExpr::new(branches).unwrap();
-    let decl = QueryDecl {
-        expression: QueryExpr::all(all_expr),
-        emission: EmissionDecl {
+    let decl = QueryDecl::from_parts_for_test(
+        QueryExpr::all(all_expr),
+        EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::Call,
             symbol: "test".into(),
         },
-    };
+    );
     assert!(pass_scope_types(&decl).is_ok());
 }
 
@@ -130,14 +130,14 @@ fn type_mismatch_between_event_and_object_fails() {
         }),
     ];
     let all_expr = AllExpr::new(branches).unwrap();
-    let decl = QueryDecl {
-        expression: QueryExpr::all(all_expr),
-        emission: EmissionDecl {
+    let decl = QueryDecl::from_parts_for_test(
+        QueryExpr::all(all_expr),
+        EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::Call,
             symbol: "test".into(),
         },
-    };
+    );
     let result = pass_scope_types(&decl);
     assert!(
         matches!(
@@ -157,14 +157,14 @@ fn emission_from_object_var_fails() {
         },
     })];
     let all_expr = AllExpr::new(branches).unwrap();
-    let decl = QueryDecl {
-        expression: QueryExpr::all(all_expr),
-        emission: EmissionDecl {
+    let decl = QueryDecl::from_parts_for_test(
+        QueryExpr::all(all_expr),
+        EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::Call,
             symbol: "test".into(),
         },
-    };
+    );
     let result = pass_scope_types(&decl);
     assert!(
         matches!(

@@ -552,7 +552,7 @@ fn matches_value_matcher(matcher: &ValueMatcher, value: &ReferenceValue) -> bool
     match matcher.kind() {
         ValueMatcherKind::Any => true,
         ValueMatcherKind::StaticString(predicate) => match value {
-            ReferenceValue::StaticString(actual) => match &predicate.kind {
+            ReferenceValue::StaticString(actual) => match predicate.kind() {
                 StaticStringPredicateKind::Any => true,
                 StaticStringPredicateKind::Exact(values) => values.iter().any(|v| v == actual),
                 StaticStringPredicateKind::Prefix(values) => {
@@ -565,7 +565,7 @@ fn matches_value_matcher(matcher: &ValueMatcher, value: &ReferenceValue) -> bool
                     values.iter().all(|v| actual.contains(v))
                 }
             },
-            ReferenceValue::Unknown => matches!(predicate.kind, StaticStringPredicateKind::Any),
+            ReferenceValue::Unknown => matches!(predicate.kind(), StaticStringPredicateKind::Any),
         },
     }
 }
@@ -824,10 +824,10 @@ fn matches_arguments_physical(
 /// Check whether a matcher accepts a reference value.
 fn matches_reference_value(matcher: &ArgumentMatcher, value: &ReferenceValue) -> bool {
     match matcher.kind() {
-        ArgumentMatcherKind::Value(vm) => match &vm.kind {
+        ArgumentMatcherKind::Value(vm) => match vm.kind() {
             ValueMatcherKind::Any => true,
             ValueMatcherKind::StaticString(sp) => match value {
-                ReferenceValue::StaticString(s) => match &sp.kind {
+                ReferenceValue::StaticString(s) => match sp.kind() {
                     StaticStringPredicateKind::Any => true,
                     StaticStringPredicateKind::Exact(values) => values.iter().any(|v| v == s),
                     StaticStringPredicateKind::Prefix(prefixes) => {
@@ -842,7 +842,7 @@ fn matches_reference_value(matcher: &ArgumentMatcher, value: &ReferenceValue) ->
                 },
                 ReferenceValue::Unknown => {
                     // An unknown value cannot satisfy a specific predicate.
-                    matches!(sp.kind, StaticStringPredicateKind::Any)
+                    matches!(sp.kind(), StaticStringPredicateKind::Any)
                 }
             },
         },

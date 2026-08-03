@@ -9,7 +9,7 @@ use super::{
 /// A typed logical query expression.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct QueryExpr {
-    pub(crate) kind: QueryExprKind,
+    kind: QueryExprKind,
 }
 
 /// Internal expression kind used by the compiler.
@@ -98,7 +98,7 @@ impl QueryExpr {
     /// role.
     pub(crate) fn walk_vars(&self, f: &mut impl FnMut(VarId, VarRole)) {
         match &self.kind {
-            QueryExprKind::Event(q) => f(q.var, VarRole::Binding),
+            QueryExprKind::Event(q) => f(q.var(), VarRole::Binding),
             QueryExprKind::SelectEvent(s) => f(s.bind, VarRole::Binding),
             QueryExprKind::Require(p) => match p {
                 QueryPredicate::EventKind { event, .. }
@@ -114,9 +114,9 @@ impl QueryExpr {
             QueryExprKind::Any(any) => any.iter().for_each(|b| b.walk_vars(f)),
             QueryExprKind::All(all) => all.iter().for_each(|b| b.walk_vars(f)),
             QueryExprKind::Lifecycle(lc) => {
-                lc.sources
+                lc.sources()
                     .iter()
-                    .for_each(|src| f(src.var, VarRole::Binding));
+                    .for_each(|src| f(src.var(), VarRole::Binding));
             }
         }
     }
@@ -154,9 +154,9 @@ impl fmt::Display for QueryExpr {
             QueryExprKind::Event(q) => write!(
                 f,
                 "select {} {} {}",
-                q.var,
-                q.event.diagnostic_name(),
-                q.identity.diagnostic_name()
+                q.var(),
+                q.event().diagnostic_name(),
+                q.identity().diagnostic_name()
             ),
             QueryExprKind::SelectEvent(selection) => write!(f, "bind {}", selection.bind),
             QueryExprKind::Require(predicate) => match predicate {
@@ -180,9 +180,9 @@ impl fmt::Display for QueryExpr {
             QueryExprKind::Lifecycle(lifecycle) => write!(
                 f,
                 "lifecycle sources={} condition={} completion={}",
-                lifecycle.sources.len(),
-                lifecycle.condition.is_some(),
-                lifecycle.completion.is_some()
+                lifecycle.sources().len(),
+                lifecycle.condition().is_some(),
+                lifecycle.completion().is_some()
             ),
         }
     }

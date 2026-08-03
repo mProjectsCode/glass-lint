@@ -120,7 +120,7 @@ fn collect_scope_and_types(
     seen: &mut Vec<VarId>,
     types: &mut HashMap<VarId, VarType>,
 ) -> Result<(), QueryCompileError> {
-    match &expr.kind {
+    match expr.kind() {
         QueryExprKind::Event(eq) => {
             if seen.contains(&eq.var()) {
                 return Err(QueryCompileError::DuplicateBinding { var: eq.var() });

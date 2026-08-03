@@ -50,26 +50,26 @@ fn duplicate_filters_in_all_are_deduplicated() {
 
 #[test]
 fn distinct_lifecycle_conditions_never_compare_as_same_ordering_key() {
-    let source_a = EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::MemberCall {
+    let source_a = EventQuery::from_parts_for_test(
+        VarId::new(0),
+        EventSpec::MemberCall {
             member: SymbolPath::from("document.createElement"),
         },
-        identity: IdentitySpec::Rooted {
+        IdentitySpec::Rooted {
             path: SymbolPath::from("document.createElement"),
         },
-        constraints: vec![],
-    };
-    let source_b = EventQuery {
-        var: VarId::new(1),
-        event: EventSpec::MemberCall {
+        vec![],
+    );
+    let source_b = EventQuery::from_parts_for_test(
+        VarId::new(1),
+        EventSpec::MemberCall {
             member: SymbolPath::from("doc.createElement"),
         },
-        identity: IdentitySpec::Rooted {
+        IdentitySpec::Rooted {
             path: SymbolPath::from("doc.createElement"),
         },
-        constraints: vec![],
-    };
+        vec![],
+    );
 
     let lc_a = lifecycle(
         "test-a",
@@ -95,22 +95,22 @@ fn distinct_lifecycle_conditions_never_compare_as_same_ordering_key() {
         Some(crate::api::rule::LifecycleCompletion::configuration()),
     );
 
-    let d_a = QueryDecl {
-        expression: QueryExpr::lifecycle(lc_a),
-        emission: EmissionDecl {
+    let d_a = QueryDecl::from_parts_for_test(
+        QueryExpr::lifecycle(lc_a),
+        EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::CallArgument,
             symbol: "test-a".into(),
         },
-    };
-    let d_b = QueryDecl {
-        expression: QueryExpr::lifecycle(lc_b),
-        emission: EmissionDecl {
+    );
+    let d_b = QueryDecl::from_parts_for_test(
+        QueryExpr::lifecycle(lc_b),
+        EmissionDecl {
             primary_var: VarId::new(1),
             kind: MatchKind::CallArgument,
             symbol: "test-b".into(),
         },
-    };
+    );
 
     let nq_a = normalize_ok(&d_a);
     let nq_b = normalize_ok(&d_b);

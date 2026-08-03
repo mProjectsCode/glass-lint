@@ -135,13 +135,13 @@ pub(crate) enum QueryPredicate {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct EventQuery {
     /// Variable bound by this event selection.
-    pub(crate) var: VarId,
+    var: VarId,
     /// Kind of event (call, construct, member call, etc.).
-    pub(crate) event: EventSpec,
+    event: EventSpec,
     /// Identity specification (global, rooted, module, etc.).
-    pub(crate) identity: IdentitySpec,
+    identity: IdentitySpec,
     /// Argument value constraints (empty for non-call events).
-    pub(crate) constraints: Vec<ArgumentConstraint>,
+    constraints: Vec<ArgumentConstraint>,
 }
 
 impl EventQuery {
@@ -170,6 +170,21 @@ impl EventQuery {
             event,
             identity,
             constraints: Vec::new(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_parts_for_test(
+        var: VarId,
+        event: EventSpec,
+        identity: IdentitySpec,
+        constraints: Vec<ArgumentConstraint>,
+    ) -> Self {
+        Self {
+            var,
+            event,
+            identity,
+            constraints,
         }
     }
 }
@@ -267,13 +282,13 @@ fn evidence_kind_for_event(event: &EventSpec) -> MatchKind {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LifecycleQuery {
     /// Evidence symbol.
-    pub(crate) symbol: String,
+    symbol: String,
     /// Events that produce the tracked object.
-    pub(crate) sources: Vec<EventQuery>,
+    sources: Vec<EventQuery>,
     /// Optional configuration condition (requirements).
-    pub(crate) condition: Option<LifecycleCondition>,
+    condition: Option<LifecycleCondition>,
     /// Optional completion mode (sink or configuration).
-    pub(crate) completion: Option<LifecycleCompletion>,
+    completion: Option<LifecycleCompletion>,
 }
 
 impl LifecycleQuery {
@@ -292,6 +307,21 @@ impl LifecycleQuery {
 
     pub fn completion(&self) -> Option<&LifecycleCompletion> {
         self.completion.as_ref()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_parts_for_test(
+        symbol: impl Into<String>,
+        sources: Vec<EventQuery>,
+        condition: Option<LifecycleCondition>,
+        completion: Option<LifecycleCompletion>,
+    ) -> Self {
+        Self {
+            symbol: symbol.into(),
+            sources,
+            condition,
+            completion,
+        }
     }
 }
 
@@ -382,9 +412,19 @@ impl EventRequirement {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct QueryDecl {
     /// The query expression (event, any, all, lifecycle).
-    pub(crate) expression: QueryExpr,
+    expression: QueryExpr,
     /// How to emit evidence from the result.
-    pub(crate) emission: EmissionDecl,
+    emission: EmissionDecl,
+}
+
+#[cfg(test)]
+impl QueryDecl {
+    pub(crate) fn from_parts_for_test(expression: QueryExpr, emission: EmissionDecl) -> Self {
+        Self {
+            expression,
+            emission,
+        }
+    }
 }
 
 /// Sealed trait allowing the rule builder's `query` method to accept a
@@ -433,7 +473,7 @@ impl fmt::Display for QueryDecl {
 }
 
 fn explain_expression(expression: &QueryExpr) -> String {
-    match &expression.kind {
+    match expression.kind() {
         QueryExprKind::Event(query) => explain_event(query),
         QueryExprKind::SelectEvent(selection) => format!("event {} is selected", selection.bind),
         QueryExprKind::Require(predicate) => explain_predicate(predicate),
@@ -592,7 +632,7 @@ fn explain_argument_matcher(matcher: &ArgumentMatcher) -> String {
 fn explain_value_matcher(matcher: &ValueMatcher) -> String {
     match matcher.kind() {
         value::ValueMatcherKind::Any => "any value".into(),
-        value::ValueMatcherKind::StaticString(predicate) => match &predicate.kind {
+        value::ValueMatcherKind::StaticString(predicate) => match predicate.kind() {
             value::StaticStringPredicateKind::Any => "any static string".into(),
             value::StaticStringPredicateKind::Exact(values) => {
                 format!("one of the exact strings {}", quoted_list(values))

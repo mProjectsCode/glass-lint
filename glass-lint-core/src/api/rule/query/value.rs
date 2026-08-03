@@ -19,7 +19,7 @@ impl ArgumentIndex {
 /// A context-independent predicate over an argument value.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ValueMatcher {
-    pub(crate) kind: ValueMatcherKind,
+    kind: ValueMatcherKind,
 }
 
 impl ValueMatcher {
@@ -45,12 +45,16 @@ pub(crate) enum StaticStringPredicateKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct StaticStringPredicate {
-    pub(crate) kind: StaticStringPredicateKind,
+    kind: StaticStringPredicateKind,
 }
 
 impl StaticStringPredicate {
     pub(crate) fn new(kind: StaticStringPredicateKind) -> Self {
         Self { kind }
+    }
+
+    pub(crate) fn kind(&self) -> &StaticStringPredicateKind {
+        &self.kind
     }
 }
 
@@ -197,7 +201,7 @@ pub(crate) enum ArgumentMatcherKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ArgumentMatcher {
-    pub(crate) kind: ArgumentMatcherKind,
+    kind: ArgumentMatcherKind,
 }
 
 impl ArgumentMatcher {

@@ -37,7 +37,7 @@ use crate::api::{
 /// 8. Alpha-normalize variables into deterministic dense slots.
 /// 9. Compute exact plan requirements.
 pub(crate) fn normalize_query_decl(decl: &QueryDecl) -> Result<NormalizedQuery, QueryCompileError> {
-    let mut root = normalize_root(&decl.expression, decl.emission())?;
+    let mut root = normalize_root(decl.expression(), decl.emission())?;
 
     // Step 8: Alpha-normalize — renumber object slots to dense 0..n order
     // independent of author-assigned VarId values.
@@ -49,8 +49,8 @@ pub(crate) fn normalize_query_decl(decl: &QueryDecl) -> Result<NormalizedQuery, 
     let nq = NormalizedQuery {
         root,
         emission: NormalizedEmission {
-            kind: decl.emission.kind,
-            symbol: decl.emission.symbol.clone(),
+            kind: decl.emission().kind(),
+            symbol: decl.emission().symbol().to_owned(),
         },
         requirements: req,
     };
@@ -242,7 +242,7 @@ pub(crate) fn normalize_root(
     expr: &QueryExpr,
     emission: &EmissionDecl,
 ) -> Result<NormalizedRoot, QueryCompileError> {
-    match &expr.kind {
+    match expr.kind() {
         QueryExprKind::Event(eq) => {
             let ev = normalize_event_from_query(eq, emission)?;
             Ok(NormalizedRoot::Event(ev))
@@ -268,7 +268,7 @@ fn normalize_any_root(
 ) -> Result<NormalizedRoot, QueryCompileError> {
     let mut branches: Vec<NormalizedRoot> = Vec::new();
     for b in any.iter() {
-        match &b.kind {
+        match b.kind() {
             // Flatten nested Any
             QueryExprKind::Any(inner) => {
                 let inner_root = normalize_any_root(inner, emission)?;
@@ -344,7 +344,7 @@ fn normalize_lifecycle_root(
     emission: &EmissionDecl,
 ) -> Result<NormalizedRoot, QueryCompileError> {
     let mut sources: Vec<NormalizedEvent> = lc
-        .sources
+        .sources()
         .iter()
         .map(|src| normalize_event_from_query(src, emission))
         .collect::<Result<Vec<_>, _>>()?;
@@ -369,7 +369,7 @@ fn normalize_lifecycle_root(
     }
 
     let condition = lc
-        .condition
+        .condition()
         .as_ref()
         .map(|condition| match condition.kind() {
             crate::api::rule::query::lifecycle::LifecycleConditionKind::AnyOf(events) => {
@@ -392,7 +392,7 @@ fn normalize_lifecycle_root(
             }
         });
     let completion = lc
-        .completion
+        .completion()
         .as_ref()
         .map(|completion| match completion.kind() {
             crate::api::rule::query::lifecycle::LifecycleCompletionKind::Configuration => {
@@ -476,7 +476,7 @@ fn normalize_event_from_query(
     eq: &EventQuery,
     _emission: &EmissionDecl,
 ) -> Result<NormalizedEvent, QueryCompileError> {
-    let mut args: Vec<ArgumentConstraint> = eq.constraints.clone();
+    let mut args: Vec<ArgumentConstraint> = eq.constraints().to_vec();
     args.sort_by(|a, b| {
         a.index()
             .cmp(&b.index())
@@ -485,13 +485,13 @@ fn normalize_event_from_query(
     args.dedup();
 
     let subject = NormalizedSubject::Direct {
-        identity: eq.identity.clone(),
+        identity: eq.identity().clone(),
     };
-    detect_event_contradictions(eq.var, &eq.event, &eq.identity, &subject, &args)?;
+    detect_event_contradictions(eq.var(), eq.event(), eq.identity(), &subject, &args)?;
 
     Ok(NormalizedEvent {
-        slot: eq.var.get(),
-        event: eq.event.clone(),
+        slot: eq.var().get(),
+        event: eq.event().clone(),
         subject,
         arguments: CanonicalArgumentConstraints::from_canonicalized(&args),
     })

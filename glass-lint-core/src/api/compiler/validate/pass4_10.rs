@@ -71,7 +71,7 @@ pub(crate) fn pass_structure(decl: &QueryDecl) -> Result<(), QueryCompileError> 
 }
 
 fn check_structure(expr: &QueryExpr) -> Result<(), QueryCompileError> {
-    match &expr.kind {
+    match expr.kind() {
         QueryExprKind::Event(eq) => {
             validate_event_query(eq)?;
             // pass_relation_availability
@@ -172,7 +172,7 @@ fn check_correlation_evidence(
     primary: VarId,
     _is_root: bool,
 ) -> Result<(), QueryCompileError> {
-    match &expr.kind {
+    match expr.kind() {
         QueryExprKind::All(all) => {
             validate_correlated_branches(all.iter())?;
             // pass_evidence_projection
@@ -223,7 +223,7 @@ fn check_correlation_evidence(
 
 // pass_correlation_scope recursion helper (for Any branches)
 fn check_correlation_scope_inner(expr: &QueryExpr) -> Result<(), QueryCompileError> {
-    match &expr.kind {
+    match expr.kind() {
         QueryExprKind::All(all) => {
             validate_correlated_branches(all.iter())?;
             for b in all.iter() {

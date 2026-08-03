@@ -21,25 +21,25 @@ use crate::api::{
 };
 
 fn event(var: u32, name: &str) -> QueryExpr {
-    QueryExpr::event(EventQuery {
-        var: VarId::new(var),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global {
+    QueryExpr::event(EventQuery::from_parts_for_test(
+        VarId::new(var),
+        EventSpec::Call,
+        IdentitySpec::Global {
             name: SmolStr::new(name),
         },
-        constraints: vec![],
-    })
+        vec![],
+    ))
 }
 
 fn decl(expr: QueryExpr, primary_var: u32, symbol: &str) -> QueryDecl {
-    QueryDecl {
-        expression: expr,
-        emission: EmissionDecl {
+    QueryDecl::from_parts_for_test(
+        expr,
+        EmissionDecl {
             primary_var: VarId::new(primary_var),
             kind: MatchKind::Call,
             symbol: symbol.into(),
         },
-    }
+    )
 }
 
 fn lifecycle(
@@ -48,12 +48,7 @@ fn lifecycle(
     condition: Option<crate::api::rule::LifecycleCondition>,
     completion: Option<crate::api::rule::LifecycleCompletion>,
 ) -> LifecycleQuery {
-    LifecycleQuery {
-        symbol: symbol.into(),
-        sources,
-        condition,
-        completion,
-    }
+    LifecycleQuery::from_parts_for_test(symbol, sources, condition, completion)
 }
 
 fn normalize_ok(decl: &QueryDecl) -> NormalizedQuery {

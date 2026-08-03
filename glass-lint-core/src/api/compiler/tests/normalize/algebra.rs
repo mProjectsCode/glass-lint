@@ -8,16 +8,16 @@ fn simple_event_normalizes_to_event_root() {
 
 #[test]
 fn lifecycle_normalizes_to_lifecycle_root() {
-    let source = EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::MemberCall {
+    let source = EventQuery::from_parts_for_test(
+        VarId::new(0),
+        EventSpec::MemberCall {
             member: SymbolPath::from("document.createElement"),
         },
-        identity: IdentitySpec::Rooted {
+        IdentitySpec::Rooted {
             path: SymbolPath::from("document.createElement"),
         },
-        constraints: vec![],
-    };
+        vec![],
+    );
     let lc = lifecycle(
         "remote-script",
         vec![source],
@@ -29,14 +29,14 @@ fn lifecycle_normalizes_to_lifecycle_root() {
         ),
         Some(crate::api::rule::LifecycleCompletion::configuration()),
     );
-    let d = QueryDecl {
-        expression: QueryExpr::lifecycle(lc),
-        emission: EmissionDecl {
+    let d = QueryDecl::from_parts_for_test(
+        QueryExpr::lifecycle(lc),
+        EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::CallArgument,
             symbol: "remote-script".into(),
         },
-    };
+    );
     let nq = normalize_ok(&d);
     assert!(matches!(nq.root(), NormalizedRoot::Lifecycle(_)));
 }
@@ -185,22 +185,22 @@ fn same_event_all_with_multiple_constraints_merges_all_constraints() {
 
 #[test]
 fn incompatible_event_kinds_in_all_produce_contradiction() {
-    let a = QueryExpr::event(EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global {
+    let a = QueryExpr::event(EventQuery::from_parts_for_test(
+        VarId::new(0),
+        EventSpec::Call,
+        IdentitySpec::Global {
             name: SmolStr::new("fetch"),
         },
-        constraints: vec![],
-    });
-    let b = QueryExpr::event(EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::Construct,
-        identity: IdentitySpec::Global {
+        vec![],
+    ));
+    let b = QueryExpr::event(EventQuery::from_parts_for_test(
+        VarId::new(0),
+        EventSpec::Construct,
+        IdentitySpec::Global {
             name: SmolStr::new("URL"),
         },
-        constraints: vec![],
-    });
+        vec![],
+    ));
     let all = AllExpr::new(vec![a, b]).unwrap();
     let d = decl(QueryExpr::all(all), 0, "test");
     let result = normalize::normalize_query_decl(&d);
@@ -220,22 +220,22 @@ fn incompatible_event_kinds_in_all_produce_contradiction() {
 
 #[test]
 fn incompatible_identities_in_all_produce_contradiction() {
-    let a = QueryExpr::event(EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global {
+    let a = QueryExpr::event(EventQuery::from_parts_for_test(
+        VarId::new(0),
+        EventSpec::Call,
+        IdentitySpec::Global {
             name: SmolStr::new("fetch"),
         },
-        constraints: vec![],
-    });
-    let b = QueryExpr::event(EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global {
+        vec![],
+    ));
+    let b = QueryExpr::event(EventQuery::from_parts_for_test(
+        VarId::new(0),
+        EventSpec::Call,
+        IdentitySpec::Global {
             name: SmolStr::new("navigate"),
         },
-        constraints: vec![],
-    });
+        vec![],
+    ));
     let all = AllExpr::new(vec![a, b]).unwrap();
     let d = decl(QueryExpr::all(all), 0, "test");
     let result = normalize::normalize_query_decl(&d);
@@ -262,24 +262,24 @@ fn compatible_identities_in_all_pass() {
 
 #[test]
 fn uncorrelated_all_fails_with_uncorrelated_conjunction() {
-    let a = QueryExpr::event(EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::Call,
-        identity: IdentitySpec::Global {
+    let a = QueryExpr::event(EventQuery::from_parts_for_test(
+        VarId::new(0),
+        EventSpec::Call,
+        IdentitySpec::Global {
             name: SmolStr::new("fetch"),
         },
-        constraints: vec![],
-    });
-    let b = QueryExpr::event(EventQuery {
-        var: VarId::new(1),
-        event: EventSpec::MemberCall {
+        vec![],
+    ));
+    let b = QueryExpr::event(EventQuery::from_parts_for_test(
+        VarId::new(1),
+        EventSpec::MemberCall {
             member: SymbolPath::from("doc.createElement"),
         },
-        identity: IdentitySpec::Rooted {
+        IdentitySpec::Rooted {
             path: SymbolPath::from("doc.createElement"),
         },
-        constraints: vec![],
-    });
+        vec![],
+    ));
     let all = AllExpr::new(vec![a, b]).unwrap();
     let d = decl(QueryExpr::all(all), 0, "test");
     let result = normalize::normalize_query_decl(&d);
@@ -362,16 +362,16 @@ fn any_merges_requirements_from_branches() {
 
 #[test]
 fn lifecycle_has_flow_requirements() {
-    let source = EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::MemberCall {
+    let source = EventQuery::from_parts_for_test(
+        VarId::new(0),
+        EventSpec::MemberCall {
             member: SymbolPath::from("document.createElement"),
         },
-        identity: IdentitySpec::Rooted {
+        IdentitySpec::Rooted {
             path: SymbolPath::from("document.createElement"),
         },
-        constraints: vec![],
-    };
+        vec![],
+    );
     let lc = lifecycle(
         "test",
         vec![source],
@@ -383,14 +383,14 @@ fn lifecycle_has_flow_requirements() {
         ),
         Some(crate::api::rule::LifecycleCompletion::configuration()),
     );
-    let d = QueryDecl {
-        expression: QueryExpr::lifecycle(lc),
-        emission: EmissionDecl {
+    let d = QueryDecl::from_parts_for_test(
+        QueryExpr::lifecycle(lc),
+        EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::CallArgument,
             symbol: "test".into(),
         },
-    };
+    );
     let nq = normalize_ok(&d);
     let req = nq.requirements();
     assert!(req.flow().local(), "lifecycle should need local flow");
@@ -413,16 +413,16 @@ fn global_query_has_only_calls_requirement() {
 
 #[test]
 fn lifecycle_is_not_flattened_or_sorted() {
-    let source = EventQuery {
-        var: VarId::new(0),
-        event: EventSpec::MemberCall {
+    let source = EventQuery::from_parts_for_test(
+        VarId::new(0),
+        EventSpec::MemberCall {
             member: SymbolPath::from("document.createElement"),
         },
-        identity: IdentitySpec::Rooted {
+        IdentitySpec::Rooted {
             path: SymbolPath::from("document.createElement"),
         },
-        constraints: vec![],
-    };
+        vec![],
+    );
     let lc = lifecycle(
         "test",
         vec![source],
@@ -434,14 +434,14 @@ fn lifecycle_is_not_flattened_or_sorted() {
         ),
         Some(crate::api::rule::LifecycleCompletion::configuration()),
     );
-    let d = QueryDecl {
-        expression: QueryExpr::lifecycle(lc),
-        emission: EmissionDecl {
+    let d = QueryDecl::from_parts_for_test(
+        QueryExpr::lifecycle(lc),
+        EmissionDecl {
             primary_var: VarId::new(0),
             kind: MatchKind::CallArgument,
             symbol: "test".into(),
         },
-    };
+    );
     let nq = normalize_ok(&d);
     assert!(matches!(nq.root(), NormalizedRoot::Lifecycle(_)));
 }

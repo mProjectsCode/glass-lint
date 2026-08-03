@@ -16,9 +16,9 @@ use crate::{
 impl ValueMatcher {
     /// Match a value against a known static string without widening unknowns.
     pub(in crate::analysis) fn matches_static(&self, value: &str) -> bool {
-        match &self.kind {
+        match self.kind() {
             ValueMatcherKind::Any => true,
-            ValueMatcherKind::StaticString(predicate) => match &predicate.kind {
+            ValueMatcherKind::StaticString(predicate) => match predicate.kind() {
                 StaticStringPredicateKind::Any => true,
                 StaticStringPredicateKind::Exact(values) => {
                     values.iter().any(|expected| expected == value)
@@ -40,7 +40,7 @@ impl ValueMatcher {
     pub(in crate::analysis) fn matches_flow_value(&self, static_value: Option<&str>) -> bool {
         // A value predicate cannot prove a dynamic string, so absence of a
         // static value is a non-match even when the predicate is selective.
-        match &self.kind {
+        match self.kind() {
             ValueMatcherKind::Any => true,
             ValueMatcherKind::StaticString(_) => {
                 static_value.is_some_and(|value| self.matches_static(value))

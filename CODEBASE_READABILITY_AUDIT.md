@@ -210,7 +210,7 @@ without per-event conversion.
 
 ### Rule query boundary and construction
 
-#### [ ] READ-008 — Query/compiler code bypasses validated query accessors
+#### [x] READ-008 — Query/compiler code bypasses validated query accessors
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -232,7 +232,12 @@ canonicalization into query-owned methods where practical. Keep normalized IR
 field-oriented only after the authoring-to-IR boundary, so compiler code can
 still be simple without exposing the declaration model's storage.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made the authoring storage private for event, lifecycle, and
+declaration queries, query expressions, and matcher predicates. Added
+semantic accessors and test-only construction helpers, then migrated query
+formatting, normalization, physical planning, reference matching, validation,
+and compiler fixtures to use those boundaries. Compiler code no longer depends
+on the authoring structs' field layout.
 
 #### [x] READ-009 — Bounded canonical collections duplicate policy code
 
