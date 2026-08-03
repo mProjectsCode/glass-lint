@@ -40,7 +40,14 @@ impl NameTable {
     /// limit.
     pub fn intern(&mut self, name: &str) -> Result<NameId, NameExhausted> {
         if let Some(idx) = self.names.get_index_of(name) {
-            return Ok(NameId(u32::try_from(idx).expect("index fits in u32")));
+            let Ok(id) = u32::try_from(idx).map(NameId) else {
+                self.exhausted = true;
+                return Err(NameExhausted {
+                    limit: self.max_entries,
+                    attempted: idx.saturating_add(1),
+                });
+            };
+            return Ok(id);
         }
         if self.names.len() >= self.max_entries {
             self.exhausted = true;

@@ -441,7 +441,7 @@ validation.
 
 ### Datastructures
 
-#### [ ] READ-030 — Name interning has an unchecked exhausted-index path
+#### [x] READ-030 — Name interning has an unchecked exhausted-index path
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -462,7 +462,9 @@ at construction and retain a checked conversion at lookup. Preserve stable
 IDs, insertion-order semantics, and the sticky exhaustion flag; do not silently
 alias an unrepresentable index.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Reused the typed `u32` conversion failure path for existing
+names, preserving sticky exhaustion and returning `NameExhausted` instead of
+panicking. Verified with `cargo test -p glass-lint-datastructures`.
 
 #### [ ] READ-031 — Dense-table disjoint lookup repeatedly converts the same IDs
 
