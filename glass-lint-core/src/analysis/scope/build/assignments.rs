@@ -105,7 +105,11 @@ impl ScopeCollector<'_> {
                     .preferred_witness()
                     .or(Some(&self.path_state.unknown_provenance));
             }
-            if let Some(binding) = self.scopes[scope.index()].binding(name_id) {
+            if let Some(binding) = self
+                .scopes
+                .get(scope)
+                .and_then(|scope| scope.binding(name_id))
+            {
                 return Some(binding);
             }
         }
@@ -123,7 +127,10 @@ impl ScopeCollector<'_> {
                 self.path_state
                     .assignment_environment
                     .contains_by_id(*scope, name_id)
-                    || self.scopes[scope.index()].has_binding(name_id)
+                    || self
+                        .scopes
+                        .get(*scope)
+                        .is_some_and(|scope| scope.has_binding(name_id))
             })
     }
 
@@ -190,8 +197,9 @@ impl ScopeCollector<'_> {
                 .get_by_id(key.scope(), key.name())
                 .cloned()
                 .unwrap_or_else(|| {
-                    self.scopes[key.scope().index()]
-                        .binding(key.name())
+                    self.scopes
+                        .get(key.scope())
+                        .and_then(|scope| scope.binding(key.name()))
                         .cloned()
                         .map_or_else(
                             ProvenanceAlternatives::unknown,
@@ -497,12 +505,11 @@ impl ScopeCollector<'_> {
         let Some(root_id) = self.name_id(root.sym.as_ref()) else {
             return;
         };
-        let Some(scope) = self
-            .stack
-            .iter()
-            .rev()
-            .find(|scope| self.scopes[**scope].has_binding(root_id))
-        else {
+        let Some(scope) = self.stack.iter().rev().find(|scope| {
+            self.scopes
+                .get(ScopeId::new(**scope))
+                .is_some_and(|scope| scope.has_binding(root_id))
+        }) else {
             return;
         };
         self.record_assignment(

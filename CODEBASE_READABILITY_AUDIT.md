@@ -82,7 +82,7 @@ monotone export storage and count accounting remain inside `ExportTable`.
 
 ### Scope and semantic model boundaries
 
-#### [ ] READ-003 — `LexicalScope` still exposes structural storage metadata
+#### [x] READ-003 — `LexicalScope` still exposes structural storage metadata
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -103,7 +103,12 @@ with `get(ScopeId)`/iteration methods, so callers do not combine raw vector
 indexing with scope invariants. Preserve the existing binding operations and
 keep parser-specific `Span` details at the scope-analysis boundary.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Scope metadata is private and exposed through semantic
+accessors, including containment. The analysis pipeline now owns its ordered
+scopes in `LexicalScopes`, with typed `ScopeId` lookup, iteration, and mutation
+operations; planner, collector, binding allocation, and scope indexing no
+longer combine raw lexical-scope vector indexing with parent/ordering logic.
+The finalized scope index also keeps its ordering cache private.
 
 #### [x] READ-004 — Scope-shape storage remains public to the crate despite an existing domain API
 

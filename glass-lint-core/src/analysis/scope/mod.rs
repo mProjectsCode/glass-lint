@@ -38,7 +38,7 @@ pub(in crate::analysis) use build::program::{ScopeCollectionIssue, ScopedProgram
 pub(in crate::analysis) use graph::{FrozenScopeGraph, ScopeGraph};
 
 pub(in crate::analysis) use crate::analysis::model::scope::{
-    AliasAssignment, BindingProvenance, BoundArgument, IdentValueSeed, LexicalScope,
+    AliasAssignment, BindingProvenance, BoundArgument, IdentValueSeed, LexicalScope, LexicalScopes,
     MemberValueSeed, ProvenanceAlternatives, ScopeEffect, ScopeId, ScopeKind, ScopedName,
 };
 

@@ -11,7 +11,7 @@ use smol_str::{SmolStr, ToSmolStr};
 use swc_ecma_ast::{ImportDecl, ImportSpecifier, Pat};
 
 use crate::analysis::{
-    scope::{BindingProvenance, LexicalScope, ScopeId, ScopeKind},
+    scope::{BindingProvenance, LexicalScopes, ScopeId, ScopeKind},
     syntax::{collect_pat_bindings, module_export_name},
 };
 
@@ -70,16 +70,15 @@ pub(super) fn for_each_import_binding(
 ///
 /// `var` bindings are hoisted to the nearest enclosing function or program
 /// scope, skipping intermediate block scopes.
-pub(super) fn var_binding_scope(stack: &[usize], scopes: &[LexicalScope]) -> ScopeId {
+pub(super) fn var_binding_scope(stack: &[usize], scopes: &LexicalScopes) -> ScopeId {
     stack
         .iter()
         .rev()
         .copied()
         .find(|index| {
-            matches!(
-                scopes[*index].kind(),
-                ScopeKind::Program | ScopeKind::Function
-            )
+            scopes.get(ScopeId::new(*index)).is_some_and(|scope| {
+                matches!(scope.kind(), ScopeKind::Program | ScopeKind::Function)
+            })
         })
         .map_or_else(|| ScopeId::new(0), ScopeId::new)
 }

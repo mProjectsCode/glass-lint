@@ -172,6 +172,45 @@ pub struct LexicalScope {
     bindings: ScopeBindings,
 }
 
+/// Ordered lexical-scope storage owned by the scope-analysis pipeline.
+///
+/// Scope IDs are stable positions in this collection, but callers use the
+/// collection's named accessors rather than depending on its vector layout.
+#[derive(Debug, Clone, Default)]
+pub(in crate::analysis) struct LexicalScopes(Vec<LexicalScope>);
+
+impl From<Vec<LexicalScope>> for LexicalScopes {
+    fn from(scopes: Vec<LexicalScope>) -> Self {
+        Self(scopes)
+    }
+}
+
+impl LexicalScopes {
+    pub(in crate::analysis) fn new() -> Self {
+        Self::default()
+    }
+
+    pub(in crate::analysis) fn push(&mut self, scope: LexicalScope) {
+        self.0.push(scope);
+    }
+
+    pub(in crate::analysis) fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub(in crate::analysis) fn get(&self, scope: ScopeId) -> Option<&LexicalScope> {
+        self.0.get(scope.index())
+    }
+
+    pub(in crate::analysis) fn get_mut(&mut self, scope: ScopeId) -> Option<&mut LexicalScope> {
+        self.0.get_mut(scope.index())
+    }
+
+    pub(in crate::analysis) fn iter(&self) -> impl Iterator<Item = &LexicalScope> {
+        self.0.iter()
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 struct ScopeBindings(HashMap<NameId, BindingProvenance>);
 
@@ -205,6 +244,10 @@ impl LexicalScope {
 
     pub(in crate::analysis) fn parent(&self) -> Option<ScopeId> {
         self.parent
+    }
+
+    pub(in crate::analysis) fn contains(&self, span: Span) -> bool {
+        self.span.lo <= span.lo && self.span.hi >= span.hi
     }
 
     pub(in crate::analysis) fn insert_binding(

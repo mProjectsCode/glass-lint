@@ -122,7 +122,7 @@ impl ScopeCollector<'_> {
             if let Some(function) = self.function_scopes.get(&ScopedName::new(scope, name)) {
                 return Some(function);
             }
-            scope = self.scopes.get(scope.index())?.parent()?;
+            scope = self.scopes.get(scope)?.parent()?;
         }
     }
 

@@ -71,7 +71,9 @@ impl ScopeCollector<'_> {
             return;
         };
         self.intern_provenance_strings(&provenance);
-        self.scopes[scope.index()].insert_binding(name, provenance);
+        if let Some(scope_data) = self.scopes.get_mut(scope) {
+            scope_data.insert_binding(name, provenance);
+        }
     }
 
     pub(super) fn intern_provenance_strings(&mut self, provenance: &BindingProvenance) {

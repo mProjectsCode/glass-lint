@@ -8,7 +8,7 @@ use crate::{
     Environment,
     analysis::{
         model::scope::{
-            BindingProvenance, LexicalScope, PropertyAliasFact, RootedPropertyMutationFact,
+            BindingProvenance, LexicalScopes, PropertyAliasFact, RootedPropertyMutationFact,
             ScopeEffect, ScopeId, ScopeKind,
         },
         scope::{
@@ -68,7 +68,7 @@ impl ScopeGraph {
         Self {
             data: ScopeData {
                 names: NameEnvironment::new(names, Environment::default()),
-                scopes: LexicalScopeIndex::from(Vec::new()),
+                scopes: LexicalScopeIndex::from(LexicalScopes::new()),
                 bindings: BindingIndex::empty(),
                 mutations: MutationIndex::from(HashSet::new()),
             },
@@ -80,7 +80,7 @@ impl ScopeGraph {
     pub(super) fn from_collected(
         environment: Environment,
         names: NameTable,
-        scopes: Vec<LexicalScope>,
+        scopes: LexicalScopes,
         bindings: BindingIndex,
         mutations: MutationIndex,
         scope_shape_valid: bool,

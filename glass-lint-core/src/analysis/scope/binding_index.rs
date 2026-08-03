@@ -4,7 +4,7 @@ use swc_common::{BytePos, Span};
 
 use crate::analysis::{
     model::scope::{
-        AliasAssignment, BindingProvenance, LexicalScope, ScopeId, ScopeKind, ScopedName,
+        AliasAssignment, BindingProvenance, LexicalScopes, ScopeId, ScopeKind, ScopedName,
     },
     scope::{
         frozen_assignments::{AssignmentAt, FrozenAssignmentIndex},
@@ -97,7 +97,7 @@ impl From<BindingIndexInput> for BindingIndex {
 impl BindingIndex {
     /// Allocate stable binding and function IDs over the lexical scopes.
     pub(super) fn allocate_ids(
-        scopes: &[LexicalScope],
+        scopes: &LexicalScopes,
     ) -> (HashMap<ScopedName, BindingId>, Vec<Option<FunctionId>>) {
         let mut binding_ids = HashMap::new();
         let mut next_binding = 0u32;

@@ -188,8 +188,9 @@ impl ScopePass for ScopeCollector<'_> {
                     return;
                 };
                 if let Some((scope, ())) = self.stack.iter().rev().find_map(|scope| {
-                    self.scopes[*scope]
-                        .has_binding(name_id)
+                    self.scopes
+                        .get(ScopeId::new(*scope))
+                        .is_some_and(|scope| scope.has_binding(name_id))
                         .then_some((ScopeId::new(*scope), ()))
                 }) {
                     self.record_assignment(
@@ -288,7 +289,7 @@ impl ScopePass for ScopeCollector<'_> {
         if let Some(name_id) = self.lookup_or_intern_name(fn_decl.ident.sym.as_ref()) {
             let parent = self
                 .scopes
-                .get(scope.index())
+                .get(scope)
                 .and_then(|scope| scope.parent())
                 .unwrap_or_else(|| ScopeId::new(0));
             self.function_scopes.insert(

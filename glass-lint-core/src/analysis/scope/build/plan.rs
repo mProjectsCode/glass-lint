@@ -13,7 +13,7 @@ use swc_ecma_ast::{
 use crate::analysis::{
     SemanticBudget,
     scope::{
-        BindingProvenance, LexicalScope, ScopeId, ScopeKind,
+        BindingProvenance, LexicalScope, LexicalScopes, ScopeId, ScopeKind,
         build::{
             ScopeShape, ScopeShapeTable,
             bindings::{for_each_import_binding, for_each_pat_binding, var_binding_scope},
@@ -25,14 +25,14 @@ use crate::analysis::{
 /// Immutable declaration result consumed by [`super::ScopeCollector`].
 pub(in crate::analysis::scope) struct ScopePlan {
     pub(super) names: NameTable,
-    pub(super) scopes: Vec<LexicalScope>,
+    pub(super) scopes: LexicalScopes,
     pub(super) scope_shapes: ScopeShapeTable,
     pub(super) name_exhausted: bool,
 }
 
 pub(in crate::analysis::scope) struct ScopePlanner<'a> {
     names: NameTable,
-    scopes: Vec<LexicalScope>,
+    scopes: LexicalScopes,
     stack: Vec<usize>,
     scope_shapes: ScopeShapeTable,
     name_exhausted: bool,
@@ -73,9 +73,11 @@ impl ScopePlanner<'_> {
                 name_exhausted = true;
             }
         }
+        let mut scopes = LexicalScopes::new();
+        scopes.push(LexicalScope::new(program_span, 0, ScopeKind::Program, None));
         ScopePlanner {
             names,
-            scopes: vec![LexicalScope::new(program_span, 0, ScopeKind::Program, None)],
+            scopes,
             stack: vec![0],
             scope_shapes: ScopeShapeTable::new(),
             name_exhausted,
@@ -103,7 +105,9 @@ impl ScopePlanner<'_> {
             self.name_exhausted = true;
             return;
         };
-        self.scopes[scope.index()].insert_binding(name_id, provenance);
+        if let Some(scope_data) = self.scopes.get_mut(scope) {
+            scope_data.insert_binding(name_id, provenance);
+        }
     }
 
     fn insert_local(&mut self, scope: ScopeId, name: impl Into<SmolStr>) {

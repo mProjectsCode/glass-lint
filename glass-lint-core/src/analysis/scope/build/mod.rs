@@ -18,7 +18,7 @@ use swc_common::BytePos;
 
 use crate::analysis::{
     SemanticBudget,
-    scope::{AliasAssignment, BindingProvenance, LexicalScope, ScopeEffect, ScopeId, ScopedName},
+    scope::{AliasAssignment, BindingProvenance, LexicalScopes, ScopeEffect, ScopeId, ScopedName},
 };
 
 pub(super) mod aliases;
@@ -83,7 +83,7 @@ struct PendingFunctionName {
 /// provenance at each use position.
 pub(super) struct ScopeCollector<'a> {
     /// Lexical scopes in predeclaration/traversal order.
-    pub(super) scopes: Vec<LexicalScope>,
+    pub(super) scopes: LexicalScopes,
     /// Current lexical path during AST traversal.
     stack: Vec<usize>,
     /// Assignment events retain source order for use-position provenance.
