@@ -46,10 +46,10 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 .map(|(key, _)| key)
                 .collect();
             for key in keys {
-                let Some(flow) = self.plan.get(key.flow) else {
+                let Some(flow) = self.plan.get(key.flow()) else {
                     continue;
                 };
-                let req_members = self.plan.requirement_members(key.flow);
+                let req_members = self.plan.requirement_members(key.flow());
                 for (index, member) in req_members.iter().enumerate() {
                     if let Some(member) = member
                         && (member == chain || chain.last_segment() == member.last_segment())
@@ -66,14 +66,14 @@ impl ObjectFlowProjector<'_, '_, '_> {
                         })
                     {
                         self.flow_state.record_requirement(
-                            key.object,
-                            key.flow,
+                            key.object(),
+                            key.flow(),
                             RequirementIndex::new(index),
                             event,
                         );
                     }
                 }
-                self.emit_if_ready(key.flow, key.object, event);
+                self.emit_if_ready(key.flow(), key.object(), event);
             }
         }
     }
@@ -100,8 +100,8 @@ impl ObjectFlowProjector<'_, '_, '_> {
             let pairs: SmallVec<[(FlowStateKey, FlowId); 8]> = self
                 .flow_state
                 .states_for(object)
-                .filter(|(key, _)| flow_ids.contains(&key.flow))
-                .map(|(key, _)| (key, key.flow))
+                .filter(|(key, _)| flow_ids.contains(&key.flow()))
+                .map(|(key, _)| (key, key.flow()))
                 .collect();
             for (key, flow_id) in pairs {
                 let Some(flow) = self.plan.get(flow_id) else {
@@ -125,13 +125,13 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 if !matching_sinks.is_empty() {
                     for index in matching_sinks {
                         self.flow_state.record_sink(
-                            key.object,
-                            key.flow,
+                            key.object(),
+                            key.flow(),
                             SinkIndex::new(index),
                             sink_fact,
                         );
                     }
-                    let state = self.flow_state.state(key.object, key.flow).cloned();
+                    let state = self.flow_state.state(key.object(), key.flow()).cloned();
                     let Some(state) = state else {
                         continue;
                     };

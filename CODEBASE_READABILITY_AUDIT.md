@@ -239,7 +239,7 @@ helper only if it remains completely behind the flow-plan boundary.
 
 ### Typed keys and representation leaks
 
-#### [ ] READ-010 — `QualifiedRequestId` and `FlowStateKey` publish key fields and invite raw reconstruction
+#### [x] READ-010 — `QualifiedRequestId` and `FlowStateKey` publish key fields and invite raw reconstruction
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -258,7 +258,12 @@ and `state_for(object, flow)` where callers currently create keys only to
 perform a lookup. Keep the two key types separate: request identity and live
 object-flow state are not the same domain and should remain distinct.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Both key records now hide their physical fields. Qualified
+request identities are created through `QualifiedRequestId::new`, while live
+flow state uses `FlowStateKey::new`, `object()`, and `flow()` at the state and
+projector boundaries. Existing callers no longer reconstruct either key with
+struct literals or read storage fields directly; the request and object-flow
+domains remain distinct.
 
 #### [x] READ-011 — `EffectCallId` and `TraceNodeId` still expose raw numeric identity inside core
 

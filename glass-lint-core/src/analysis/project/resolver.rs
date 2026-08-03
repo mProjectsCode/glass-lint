@@ -208,10 +208,7 @@ impl<'a> ExportResolver<'a> {
         request: &module::ModuleRequest,
     ) -> Option<QualifiedRequestId> {
         self.modules.get(&module)?;
-        Some(QualifiedRequestId {
-            module,
-            request: request.id(),
-        })
+        Some(QualifiedRequestId::new(module, request.id()))
     }
 }
 

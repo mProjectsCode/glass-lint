@@ -176,10 +176,7 @@ impl ProjectSemanticModel {
                 else {
                     continue;
                 };
-                let key = QualifiedRequestId {
-                    module,
-                    request: request.id(),
-                };
+                let key = QualifiedRequestId::new(module, request.id());
                 if let Some(LinkedModuleTarget::Internal { id, .. }) = self.resolutions.get(&key) {
                     let mut child_entries = ModuleIdentityMap::new();
                     self.collect_exported_identities(*id, prefix, visiting, &mut child_entries);
@@ -207,10 +204,7 @@ impl ProjectSemanticModel {
 
     /// Resolve a namespace request without guessing at unsupported targets.
     fn resolve_namespace(&self, module: ModuleId, request: &ModuleRequest) -> ExportResolution {
-        let key = QualifiedRequestId {
-            module,
-            request: request.id(),
-        };
+        let key = QualifiedRequestId::new(module, request.id());
         target_to_export_resolution(self.resolutions.get(&key), request.specifier(), "*")
     }
 }

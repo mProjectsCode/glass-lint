@@ -147,13 +147,7 @@ impl AnalysisArtifacts {
             .iter()
             .filter_map(|(key, req_id)| {
                 let module = module_ids.get(&key.importer).copied()?;
-                Some((
-                    key.clone(),
-                    QualifiedRequestId {
-                        module,
-                        request: req_id,
-                    },
-                ))
+                Some((key.clone(), QualifiedRequestId::new(module, req_id)))
             })
             .collect();
         let link_input =

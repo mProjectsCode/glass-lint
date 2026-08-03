@@ -189,13 +189,8 @@ impl FlowStateTable {
     }
 
     fn object_range(object: ObjectId) -> RangeInclusive<FlowStateKey> {
-        FlowStateKey {
-            object,
-            flow: FlowId::new(RuleIndex::new(0), 0),
-        }..=FlowStateKey {
-            object,
-            flow: FlowId::new(RuleIndex::new(usize::MAX), usize::MAX),
-        }
+        FlowStateKey::new(object, FlowId::new(RuleIndex::new(0), 0))
+            ..=FlowStateKey::new(object, FlowId::new(RuleIndex::new(usize::MAX), usize::MAX))
     }
 
     pub(super) fn states_for(
@@ -208,7 +203,7 @@ impl FlowStateTable {
     }
 
     pub(super) fn state(&self, object: ObjectId, flow: FlowId) -> Option<&FlowState> {
-        let key = FlowStateKey { object, flow };
+        let key = FlowStateKey::new(object, flow);
         self.states.get(&key)
     }
 
@@ -219,7 +214,7 @@ impl FlowStateTable {
         index: RequirementIndex,
         event: crate::analysis::facts::FactId,
     ) -> bool {
-        let key = FlowStateKey { object, flow };
+        let key = FlowStateKey::new(object, flow);
         let Some(state) = self.states.get_mut(&key) else {
             return false;
         };
@@ -238,7 +233,7 @@ impl FlowStateTable {
         flow: FlowId,
         index: RequirementIndex,
     ) -> bool {
-        let key = FlowStateKey { object, flow };
+        let key = FlowStateKey::new(object, flow);
         let Some(state) = self.states.get_mut(&key) else {
             return false;
         };
@@ -263,7 +258,7 @@ impl FlowStateTable {
     ) -> Vec<FlowId> {
         let flows = self
             .states_for(object)
-            .map(|(key, _)| key.flow)
+            .map(|(key, _)| key.flow())
             .collect::<Vec<_>>();
         let mut affected_flows = Vec::new();
         for flow in flows {
@@ -289,7 +284,7 @@ impl FlowStateTable {
         index: SinkIndex,
         event: crate::analysis::facts::FactId,
     ) -> bool {
-        let key = FlowStateKey { object, flow };
+        let key = FlowStateKey::new(object, flow);
         let Some(state) = self.states.get_mut(&key) else {
             return false;
         };
@@ -358,7 +353,7 @@ impl FlowStateTable {
                 // A state without a live alias cannot reach a later transfer.
                 // Do not let stale, unreachable state from an overwritten
                 // loop binding keep changing the fixed-point shape.
-                let object = objects.get(&key.object).copied()?;
+                let object = objects.get(&key.object()).copied()?;
                 let requirements = state
                     .requirement_keys()
                     .map(|(index, values)| CanonicalRequirementState {
@@ -375,7 +370,7 @@ impl FlowStateTable {
                     .collect();
                 Some(CanonicalFlowState {
                     object,
-                    flow: key.flow,
+                    flow: key.flow(),
                     source_event: state.source_event(),
                     requirements,
                     sinks,

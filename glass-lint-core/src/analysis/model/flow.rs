@@ -369,8 +369,22 @@ impl Hash for FlowState {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct FlowStateKey {
-    pub object: ObjectId,
-    pub flow: FlowId,
+    object: ObjectId,
+    flow: FlowId,
+}
+
+impl FlowStateKey {
+    pub fn new(object: ObjectId, flow: FlowId) -> Self {
+        Self { object, flow }
+    }
+
+    pub fn object(self) -> ObjectId {
+        self.object
+    }
+
+    pub fn flow(self) -> FlowId {
+        self.flow
+    }
 }
 
 impl FlowState {
@@ -385,10 +399,7 @@ impl FlowState {
     }
 
     pub fn key(&self) -> FlowStateKey {
-        FlowStateKey {
-            object: self.object_id,
-            flow: self.flow,
-        }
+        FlowStateKey::new(self.object_id, self.flow)
     }
 
     pub fn flow_id(&self) -> FlowId {
@@ -606,8 +617,8 @@ mod tests {
         let flow = FlowId::new(index(1), 2);
         let state = FlowState::new(flow, FactId::from_test(5), ObjectId::from_test(3));
         let key = state.key();
-        assert_eq!(key.object, ObjectId::from_test(3));
-        assert_eq!(key.flow, flow);
+        assert_eq!(key.object(), ObjectId::from_test(3));
+        assert_eq!(key.flow(), flow);
     }
 
     #[test]

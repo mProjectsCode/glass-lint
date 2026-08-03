@@ -44,8 +44,14 @@ pub(super) const MAX_PROJECT_REQUESTS: usize = 500_000;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct QualifiedRequestId {
-    pub module: ModuleId,
-    pub request: ModuleRequestId,
+    module: ModuleId,
+    request: ModuleRequestId,
+}
+
+impl QualifiedRequestId {
+    pub fn new(module: ModuleId, request: ModuleRequestId) -> Self {
+        Self { module, request }
+    }
 }
 
 // ---------------------------------------------------------------------------
