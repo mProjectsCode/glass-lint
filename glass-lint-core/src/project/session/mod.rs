@@ -165,6 +165,15 @@ impl<'a> ProjectCollection<'a> {
         self.sources.insert(source)
     }
 
+    fn admit_sources(
+        &mut self,
+        sources: impl IntoIterator<Item = SourceFile>,
+    ) -> Result<(), ProjectInputError> {
+        sources
+            .into_iter()
+            .try_for_each(|source| self.admit_normalized_source(source))
+    }
+
     /// Analyze one owned source and return its authored requests.
     pub fn analyze_source(
         &mut self,
@@ -264,9 +273,7 @@ impl<'a> ProjectCollection<'a> {
         sources: impl IntoIterator<Item = SourceFile>,
         workers: NonZeroUsize,
     ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
-        for source in sources {
-            self.admit_normalized_source(source)?;
-        }
+        self.admit_sources(sources)?;
         self.analyze_pending_sources(workers.get())
     }
 
@@ -351,9 +358,7 @@ impl<'a> ProjectCollection<'a> {
         worker_count: usize,
         order: ControlledReleaseOrder,
     ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
-        for source in sources {
-            self.admit_normalized_source(source)?;
-        }
+        self.admit_sources(sources)?;
         let observer = NoopExecutionObserver;
         self.analyze_pending_sources_with(
             worker_count,
@@ -369,9 +374,7 @@ impl<'a> ProjectCollection<'a> {
         worker_count: usize,
         observer: &CountingExecutionObserver,
     ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
-        for source in sources {
-            self.admit_normalized_source(source)?;
-        }
+        self.admit_sources(sources)?;
         self.analyze_pending_sources_with(worker_count, &ThreadLocalJobExecutor, observer)
     }
 

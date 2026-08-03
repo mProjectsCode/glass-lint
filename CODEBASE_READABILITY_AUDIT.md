@@ -406,7 +406,7 @@ typed `AnalysisLimits` helpers; public accessors, builder names, and distinct
 error variants remain explicit, as do test-only setters. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-027 — Session entry points repeat source admission loops
+#### [x] READ-027 — Session entry points repeat source admission loops
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -425,7 +425,9 @@ normalized collection state, then let each execution mode call its own
 analysis dispatcher. Keep the consuming phase boundary, duplicate-path errors,
 and worker/order semantics unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added one `ProjectCollection::admit_sources` operation for
+normalization and duplicate-path admission, then routed production, controlled,
+and counted execution modes through it. Verified with `make fmt && make ci`.
 
 #### [ ] READ-028 — Project resolution requests expose `SmolStr` storage
 
