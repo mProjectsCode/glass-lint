@@ -46,18 +46,115 @@ pub(super) use shape::{ScopeShape, ScopeShapeTable};
 /// Collected outputs that are finalized into the immutable scope artifact.
 #[derive(Default)]
 pub(super) struct ScopeCollectionArtifacts {
-    pub(super) property_assignments: Vec<PropertyAliasAssignment>,
-    pub(super) rooted_property_mutations: Vec<RootedPropertyMutation>,
-    pub(super) dynamic_evals: Vec<ScopedDynamicEval>,
-    pub(super) mutable_static_objects: HashSet<ScopedName>,
-    pub(super) scope_issues: Vec<ScopeCollectionIssue>,
+    property_assignments: Vec<PropertyAliasAssignment>,
+    rooted_property_mutations: Vec<RootedPropertyMutation>,
+    dynamic_evals: Vec<ScopedDynamicEval>,
+    mutable_static_objects: HashSet<ScopedName>,
+    scope_issues: Vec<ScopeCollectionIssue>,
+}
+
+impl ScopeCollectionArtifacts {
+    pub(super) fn record_property_assignment(&mut self, assignment: PropertyAliasAssignment) {
+        self.property_assignments.push(assignment);
+    }
+
+    pub(super) fn record_rooted_property_mutation(&mut self, mutation: RootedPropertyMutation) {
+        self.rooted_property_mutations.push(mutation);
+    }
+
+    pub(super) fn record_dynamic_eval(&mut self, eval: ScopedDynamicEval) {
+        self.dynamic_evals.push(eval);
+    }
+
+    pub(super) fn record_mutable_static_object(&mut self, name: ScopedName) {
+        self.mutable_static_objects.insert(name);
+    }
+
+    pub(super) fn has_mutable_static_object(&self, name: &ScopedName) -> bool {
+        self.mutable_static_objects.contains(name)
+    }
+
+    pub(super) fn record_issue(&mut self, issue: ScopeCollectionIssue) {
+        self.scope_issues.push(issue);
+    }
+
+    pub(super) fn has_issues(&self) -> bool {
+        !self.scope_issues.is_empty()
+    }
+
+    /// Consume collection records into the one bundle accepted by freezing.
+    pub(super) fn finish_into(self) -> FrozenScopeCollectionArtifacts {
+        FrozenScopeCollectionArtifacts {
+            property_assignments: FrozenPropertyArtifacts {
+                property_assignments: self.property_assignments,
+                rooted_property_mutations: self.rooted_property_mutations,
+                dynamic_evals: self.dynamic_evals,
+            },
+            mutable_static_objects: self.mutable_static_objects,
+            scope_issues: self.scope_issues,
+        }
+    }
+}
+
+pub(super) struct FrozenScopeCollectionArtifacts {
+    property_assignments: FrozenPropertyArtifacts,
+    mutable_static_objects: HashSet<ScopedName>,
+    scope_issues: Vec<ScopeCollectionIssue>,
+}
+
+impl FrozenScopeCollectionArtifacts {
+    pub(super) fn into_parts(
+        self,
+    ) -> (
+        Vec<ScopeCollectionIssue>,
+        HashSet<ScopedName>,
+        FrozenPropertyArtifacts,
+    ) {
+        (
+            self.scope_issues,
+            self.mutable_static_objects,
+            self.property_assignments,
+        )
+    }
+}
+
+pub(in crate::analysis) struct FrozenPropertyArtifacts {
+    property_assignments: Vec<PropertyAliasAssignment>,
+    rooted_property_mutations: Vec<RootedPropertyMutation>,
+    dynamic_evals: Vec<ScopedDynamicEval>,
+}
+
+impl FrozenPropertyArtifacts {
+    pub(super) fn into_parts(
+        self,
+    ) -> (
+        Vec<PropertyAliasAssignment>,
+        Vec<RootedPropertyMutation>,
+        Vec<ScopedDynamicEval>,
+    ) {
+        (
+            self.property_assignments,
+            self.rooted_property_mutations,
+            self.dynamic_evals,
+        )
+    }
 }
 
 /// A dynamic evaluation retained with the scope in which it was observed.
 #[derive(Debug)]
 pub(in crate::analysis) struct ScopedDynamicEval {
-    pub(in crate::analysis) scope: ScopeId,
-    pub(in crate::analysis) effect: ScopeEffect,
+    scope: ScopeId,
+    effect: ScopeEffect,
+}
+
+impl ScopedDynamicEval {
+    pub(super) fn new(scope: ScopeId, effect: ScopeEffect) -> Self {
+        Self { scope, effect }
+    }
+
+    pub(in crate::analysis) fn into_parts(self) -> (ScopeId, ScopeEffect) {
+        (self.scope, self.effect)
+    }
 }
 
 pub(super) struct FunctionBinding {

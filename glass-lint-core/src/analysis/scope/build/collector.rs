@@ -159,8 +159,7 @@ impl ScopeCollector<'_> {
             }
         } else {
             self.artifacts
-                .scope_issues
-                .push(ScopeCollectionIssue::ShapeMismatch);
+                .record_issue(ScopeCollectionIssue::ShapeMismatch);
         }
     }
 

@@ -135,7 +135,7 @@ impl ScopeCollector<'_> {
     }
 
     pub(super) fn is_unbound(&self, name: &str) -> bool {
-        self.artifacts.scope_issues.is_empty() && self.visible_binding(name).is_none()
+        !self.artifacts.has_issues() && self.visible_binding(name).is_none()
     }
 
     /// Record a checkpoint for later restore or join. This is cheap

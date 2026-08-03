@@ -12,11 +12,13 @@ impl ScopeCollector<'_> {
     pub(crate) fn freeze(mut self, environment: &crate::Environment) -> ScopedProgram {
         if !self.scope_shapes.is_consumed() {
             self.artifacts
-                .scope_issues
-                .push(ScopeCollectionIssue::UnconsumedShape);
+                .record_issue(ScopeCollectionIssue::UnconsumedShape);
         }
-        let scope_shape_valid = self.artifacts.scope_issues.is_empty();
-        let issues = std::mem::take(&mut self.artifacts.scope_issues);
+        let scope_shape_valid = !self.artifacts.has_issues();
+        let (issues, mutable_static_objects, property_artifacts) =
+            std::mem::take(&mut self.artifacts)
+                .finish_into()
+                .into_parts();
         let parameter_aliases = self.parameter_aliases();
         let function_bindings = self
             .function_scopes
@@ -32,11 +34,7 @@ impl ScopeCollector<'_> {
             function_aliases: self.function_aliases,
             parameter_aliases,
         });
-        let mutations =
-            MutationIndex::from(std::mem::take(&mut self.artifacts.mutable_static_objects));
-        let property_assignments = std::mem::take(&mut self.artifacts.property_assignments);
-        let rooted_mutations = std::mem::take(&mut self.artifacts.rooted_property_mutations);
-        let dynamic_evals = std::mem::take(&mut self.artifacts.dynamic_evals);
+        let mutations = MutationIndex::from(mutable_static_objects);
         let mut graph = ScopeGraph::from_collected(
             environment.clone(),
             self.names,
@@ -45,7 +43,7 @@ impl ScopeCollector<'_> {
             mutations,
             scope_shape_valid,
         );
-        graph.finish_collected_properties(property_assignments, rooted_mutations, dynamic_evals);
+        graph.finish_collected_properties(property_artifacts);
         let frozen = graph.freeze();
         ScopedProgram {
             graph: frozen,

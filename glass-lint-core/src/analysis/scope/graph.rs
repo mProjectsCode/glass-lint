@@ -12,12 +12,9 @@ use crate::{
             ScopeEffect, ScopeId, ScopeKind,
         },
         scope::{
-            binding_index::BindingIndex,
-            build::{PropertyAliasAssignment, RootedPropertyMutation, ScopedDynamicEval},
-            frozen_assignments::AssignmentAt,
-            mutation_index::MutationIndex,
-            name_env::NameEnvironment,
-            scope_index::LexicalScopeIndex,
+            binding_index::BindingIndex, build::FrozenPropertyArtifacts,
+            frozen_assignments::AssignmentAt, mutation_index::MutationIndex,
+            name_env::NameEnvironment, scope_index::LexicalScopeIndex,
         },
         value::{BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId},
     },
@@ -159,18 +156,18 @@ impl ScopeGraph {
     /// Convert collector-side property events into sorted query indexes.
     pub(in crate::analysis) fn finish_collected_properties(
         &mut self,
-        property_assignments: Vec<PropertyAliasAssignment>,
-        rooted_mutations: Vec<RootedPropertyMutation>,
-        dynamic_evals: Vec<ScopedDynamicEval>,
+        property_artifacts: FrozenPropertyArtifacts,
     ) {
+        let (property_assignments, rooted_mutations, dynamic_evals) =
+            property_artifacts.into_parts();
         for assignment in property_assignments {
-            let Some(receiver_key) = self
-                .binding_key_for_name(assignment.receiver.sym.as_ref(), assignment.receiver.span)
+            let (span, scope, property, receiver, target) = assignment.into_parts();
+            let Some(receiver_key) =
+                self.binding_key_for_name(receiver.sym.as_ref(), receiver.span)
             else {
                 continue;
             };
-            let path = assignment
-                .property
+            let path = property
                 .without_first_segment()
                 .and_then(|path| self.name_path(&path))
                 .unwrap_or_default();
@@ -178,26 +175,31 @@ impl ScopeGraph {
                 receiver_key,
                 path,
                 PropertyAliasFact {
-                    span: assignment.span,
-                    scope: assignment.scope,
-                    target: assignment.target,
+                    span,
+                    scope,
+                    target,
                 },
             );
         }
         for mutation in rooted_mutations {
+            let (span, scope, receiver, property) = mutation.into_parts();
             self.data.mutations.record_rooted_mutation(
-                mutation.receiver,
+                receiver,
                 RootedPropertyMutationFact {
-                    span: mutation.span,
-                    scope: mutation.scope,
-                    property: mutation.property,
+                    span,
+                    scope,
+                    property,
                 },
             );
         }
         let evals: Vec<(ScopeId, ScopeEffect)> = dynamic_evals
             .into_iter()
-            .filter(|eval| self.binding_at("eval", eval.effect.span()).is_none())
-            .map(|eval| (eval.scope, eval.effect))
+            .filter_map(|eval| {
+                let (scope, effect) = eval.into_parts();
+                self.binding_at("eval", effect.span())
+                    .is_none()
+                    .then_some((scope, effect))
+            })
             .collect();
         self.data.mutations.record_dynamic_evals(evals);
         self.data.mutations.finalize();

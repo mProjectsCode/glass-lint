@@ -204,14 +204,13 @@ impl ScopePass for ScopeCollector<'_> {
             AssignTarget::Simple(SimpleAssignTarget::Member(member)) => {
                 if let Some(receiver) = self.rooted_name_path(&member.obj) {
                     self.artifacts
-                        .rooted_property_mutations
-                        .push(RootedPropertyMutation {
-                            span: assignment.span,
-                            scope: self.current_scope(),
+                        .record_rooted_property_mutation(RootedPropertyMutation::new(
+                            assignment.span,
+                            self.current_scope(),
                             receiver,
-                            property: member_property_name(&member.prop)
+                            member_property_name(&member.prop)
                                 .and_then(|property| self.interned_name(&property)),
-                        });
+                        ));
                 }
                 self.invalidate_member_root(member, assignment.span);
                 if let (Some(property), Some(root)) = (
@@ -219,14 +218,13 @@ impl ScopePass for ScopeCollector<'_> {
                     member_root_identifier(member),
                 ) {
                     self.artifacts
-                        .property_assignments
-                        .push(PropertyAliasAssignment {
-                            span: assignment.span,
-                            scope: self.current_scope(),
+                        .record_property_assignment(PropertyAliasAssignment::new(
+                            assignment.span,
+                            self.current_scope(),
                             property,
-                            receiver: root.clone(),
-                            target: self.rooted_expr_name(&assignment.right),
-                        });
+                            root.clone(),
+                            self.rooted_expr_name(&assignment.right),
+                        ));
                 }
             }
             AssignTarget::Pat(pattern) => {
@@ -250,10 +248,10 @@ impl ScopePass for ScopeCollector<'_> {
             && let Expr::Ident(callee) = &**callee
         {
             if callee.sym == *"eval" {
-                self.artifacts.dynamic_evals.push(ScopedDynamicEval {
-                    scope: self.binding_scope(VarDeclKind::Var),
-                    effect: DynamicEvaluation { span: call.span },
-                });
+                self.artifacts.record_dynamic_eval(ScopedDynamicEval::new(
+                    self.binding_scope(VarDeclKind::Var),
+                    DynamicEvaluation { span: call.span },
+                ));
             }
             self.budget.try_charge();
             if let Some(callee_name) = self.lookup_or_intern_name(callee.sym.as_ref()) {
@@ -372,6 +370,6 @@ fn record_mutable_static_object(
         && let Pat::Ident(ident) = &declarator.name
         && let Some(name) = collector.scoped_name(scope, ident.id.sym.as_ref())
     {
-        collector.artifacts.mutable_static_objects.insert(name);
+        collector.artifacts.record_mutable_static_object(name);
     }
 }

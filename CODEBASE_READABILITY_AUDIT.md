@@ -8,10 +8,10 @@ phase ownership, duplicate transformations, and unnecessary public surface.
 The prior report's eleven checked-off migrations were verified as historical
 work; they are not counted as current findings.
 
-Three residual findings remain; READ-001 and READ-002 have been completed:
+Two residual findings remain; READ-001 through READ-003 have been completed:
 
 - No high-priority phase/API boundaries;
-- 2 medium-priority representation leaks;
+- 1 medium-priority representation leak;
 - 1 low-priority visibility cleanup.
 
 The first migration preserves the current export behavior while narrowing the
@@ -95,7 +95,7 @@ the semantic API and preserve fail-closed and rebasing coverage.
 
 ### Medium priority
 
-#### [ ] READ-003 — Scope collection hands parallel storage vectors across the freeze boundary
+#### [x] READ-003 — Scope collection hands parallel storage vectors across the freeze boundary
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -122,6 +122,13 @@ needed by the owning transition. The graph should receive one typed artifact
 bundle or consume the bundle itself; preserve source-order and final sorting
 invariants. This is preferable to merging collector events and frozen facts
 merely because their fields look similar.
+
+**Fix Applied:** Encapsulated scope collection recording behind named methods
+and added a consuming `finish_into` transition that produces one typed frozen
+artifact bundle. Collector event fields are private, while the graph consumes
+the property bundle in one operation and retains the existing source-order
+and final-sort behavior. Scope collection tests pass through the new query
+boundary without exposing parallel vectors to the freeze phase.
 
 #### [ ] READ-004 — Validated extension aliases leak a resolver-facing map
 

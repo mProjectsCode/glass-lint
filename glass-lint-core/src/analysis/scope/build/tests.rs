@@ -17,7 +17,7 @@ fn collect(source: &str) -> ScopeCollector<'static> {
     parsed.program.visit_children_with(&mut collect_traversal);
     let collector = collect_traversal.into_pass();
     assert!(
-        collector.artifacts.scope_issues.is_empty(),
+        !collector.artifacts.has_issues(),
         "main visitor did not diverge from predeclared scopes"
     );
     assert_eq!(
@@ -166,10 +166,10 @@ fn divergence_on_extra_scope_fails_closed() {
     let before = collector.current_scope();
     collector.push_scope(span, ScopeKind::Block);
     collector.pop_scope();
-    assert!(collector.artifacts.scope_issues.is_empty());
+    assert!(!collector.artifacts.has_issues());
     assert_eq!(collector.current_scope(), before);
     collector.push_scope(span, ScopeKind::Block);
-    assert!(!collector.artifacts.scope_issues.is_empty());
+    assert!(collector.artifacts.has_issues());
     // No fallback scope was allocated during the diverged push.
     assert_eq!(collector.current_scope(), before);
 }
@@ -182,7 +182,7 @@ fn divergence_on_missing_scope_fails_closed() {
     assert_eq!(collector.scope_shapes.shapes_len(), 2);
     collector.push_scope(span, ScopeKind::Block);
     collector.pop_scope();
-    assert!(collector.artifacts.scope_issues.is_empty());
+    assert!(!collector.artifacts.has_issues());
     assert_eq!(
         collector
             .scope_shapes
@@ -192,11 +192,11 @@ fn divergence_on_missing_scope_fails_closed() {
     );
     // A second visit consumes the remaining predeclared shape.
     collector.push_scope(span, ScopeKind::Block);
-    assert!(collector.artifacts.scope_issues.is_empty());
+    assert!(!collector.artifacts.has_issues());
     // A third visit finds no matching shape and fails closed.
     let before = collector.current_scope();
     collector.push_scope(span, ScopeKind::Block);
-    assert!(!collector.artifacts.scope_issues.is_empty());
+    assert!(collector.artifacts.has_issues());
     // No fallback scope was allocated.
     assert_eq!(collector.current_scope(), before);
 }
@@ -208,7 +208,7 @@ fn divergence_on_kind_mismatch_fails_closed() {
     let mut collector = planned_scopes(span, &[ScopeKind::Block]);
     let before = collector.current_scope();
     collector.push_scope(span, ScopeKind::Function);
-    assert!(!collector.artifacts.scope_issues.is_empty());
+    assert!(collector.artifacts.has_issues());
     // The visitor stays in the parent scope; no fallback is allocated.
     assert_eq!(collector.current_scope(), before);
 }
@@ -452,7 +452,7 @@ fn structural_lookup_resolves_visitor_pushes_without_positional_synchronization(
     ";
     let collector = collect(source);
     assert!(
-        collector.artifacts.scope_issues.is_empty(),
+        !collector.artifacts.has_issues(),
         "no divergence when the visitor walks scope-forming syntax in predeclaration order",
     );
     assert_eq!(
@@ -486,15 +486,15 @@ fn deliberate_walker_divergence_fails_closed_without_fallback_allocation() {
     collector.push_scope(span, ScopeKind::Block);
     let first = collector.current_scope();
     collector.pop_scope();
-    assert!(collector.artifacts.scope_issues.is_empty());
+    assert!(!collector.artifacts.has_issues());
     collector.push_scope(span, ScopeKind::Block);
     let second = collector.current_scope();
     collector.pop_scope();
-    assert!(collector.artifacts.scope_issues.is_empty());
+    assert!(!collector.artifacts.has_issues());
     collector.push_scope(span, ScopeKind::Block);
     let third = collector.current_scope();
     collector.pop_scope();
-    assert!(collector.artifacts.scope_issues.is_empty());
+    assert!(!collector.artifacts.has_issues());
     assert_ne!(first, second);
     assert_ne!(second, third);
     assert_ne!(first, third);
@@ -507,7 +507,7 @@ fn deliberate_walker_divergence_fails_closed_without_fallback_allocation() {
     // must fail closed without allocating a fallback scope.
     let before = collector.current_scope();
     collector.push_scope(span, ScopeKind::Block);
-    assert!(!collector.artifacts.scope_issues.is_empty());
+    assert!(collector.artifacts.has_issues());
     assert_eq!(
         collector.current_scope(),
         before,

@@ -29,7 +29,7 @@ impl Lookup for ScopeCollector<'_> {
                 .visible_binding_scope(ident.sym.as_ref())
                 .is_some_and(|scope| {
                     self.scoped_name(scope, ident.sym.as_ref())
-                        .is_some_and(|name| self.artifacts.mutable_static_objects.contains(&name))
+                        .is_some_and(|name| self.artifacts.has_mutable_static_object(&name))
                 })
         {
             return ConstValue::Unknown;
