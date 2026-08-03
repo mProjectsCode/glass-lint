@@ -214,11 +214,6 @@ struct ReadWaveOutcome {
     deferred_error: Option<ProjectLoadError>,
 }
 
-/// Result of local analysis for one wave, kept separate from frontier state.
-struct AnalysisWaveOutcome {
-    requests: Vec<ResolutionRequest>,
-}
-
 /// Resolver output that the coordinator can apply to the frontier in request
 /// order after resolution policy and cache state have been handled.
 struct RequestResolutionOutcome {
@@ -348,16 +343,13 @@ impl<'a> ProjectLoadState<'a> {
         // file triggered a deferred budget error.
         if !read.sources.is_empty() {
             let parse_start = Instant::now();
-            let analysis = self.analyze_wave(read.sources, workers)?;
+            let requests = self.analyze_wave(read.sources, workers)?;
             metrics.record_analyze_source(parse_start.elapsed());
             metrics.record_files(self.admitted.len());
 
-            metrics.admit_requests(
-                analysis.requests.len(),
-                self.admission.options().max_requests(),
-            )?;
+            metrics.admit_requests(requests.len(), self.admission.options().max_requests())?;
 
-            let resolution = self.resolve_requests(analysis.requests)?;
+            let resolution = self.resolve_requests(requests)?;
             metrics.record_resolution(resolution.elapsed);
             self.apply_request_resolution(resolution, metrics)?;
         }
@@ -419,10 +411,10 @@ impl<'a> ProjectLoadState<'a> {
         &mut self,
         sources: Vec<SourceFile>,
         workers: NonZeroUsize,
-    ) -> Result<AnalysisWaveOutcome, ProjectLoadError> {
-        Ok(AnalysisWaveOutcome {
-            requests: self.session.analyze_sources(sources, workers)?,
-        })
+    ) -> Result<Vec<ResolutionRequest>, ProjectLoadError> {
+        self.session
+            .analyze_sources(sources, workers)
+            .map_err(ProjectLoadError::from)
     }
 
     fn resolve_requests(

@@ -158,7 +158,7 @@ The export table, lookup cache, and recursion guard all mean “module plus expo
 
 **Fix Applied:** `ProjectPhaseTimings` now owns its crate-private recording operations, so `LoadAccounting` stores and snapshots that same type directly; `ProjectPhaseTimingsAccumulator`, its field-copying snapshot method, and its duplicate addition implementation were deleted. The harness continues to use its separate `ProfilePhaseTimings` type and converts through the existing public getter boundary; project and harness checks pass.
 
-#### [ ] READ-013 — `AnalysisWaveOutcome` is a one-field pass-through wrapper
+#### [x] READ-013 — `AnalysisWaveOutcome` is a one-field pass-through wrapper
 - **Severity:** Low
 - **Fix Complexity:** Low
 - **Category:** Newtype
@@ -168,7 +168,7 @@ The export table, lookup cache, and recursion guard all mean “module plus expo
 
 **Recommendation:** Delete `AnalysisWaveOutcome`, return `Vec<ResolutionRequest>` directly, and use the precise local name `requests`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `analyze_wave` now returns `Vec<ResolutionRequest>` directly and `process_wave` uses the precise local name `requests` for admission and resolution. The one-field `AnalysisWaveOutcome` carrier was deleted, leaving the wave transition explicit without an intermediate unwrap.
 
 ### Query Construction and Collection Invariants
 
