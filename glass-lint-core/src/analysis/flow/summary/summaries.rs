@@ -90,10 +90,10 @@ impl<'a> FunctionSummaries<'a> {
                     effect.id(),
                     params
                         .iter()
-                        .map(|parameter| parameter.parameter_index)
+                        .map(|parameter| parameter.parameter_index())
                         .max()
                         .map_or(0, |index| index.saturating_add(1)),
-                    params.iter().any(|parameter| parameter.rest),
+                    params.iter().any(ParameterBinding::is_rest),
                     effect.calls().iter().map(EffectCall::event).collect(),
                 ));
             }
@@ -311,18 +311,19 @@ fn try_project_sink(
     paths: &SummaryPathStore<'_>,
 ) -> Option<FunctionSinkSummary> {
     let target_parameter = target_parameters.iter().find(|parameter| {
-        parameter.parameter_index == sink.parameter_index()
-            && (SummaryPathStore::matches_frozen(sink.path(), parameter.path)
-                || (parameter.rest && paths.starts_with_frozen(sink.path(), parameter.path)))
+        parameter.parameter_index() == sink.parameter_index()
+            && parameter.matches_sink_path(sink.path(), paths)
     })?;
     let argument = target_parameter.project_argument_at(stream, args, paths, sink.path())?;
     let caller_parameter = caller_parameters.iter().find(|parameter| {
-        !parameter.rest && parameter.value != ValueId::UNKNOWN && parameter.value == argument
+        !parameter.is_rest()
+            && parameter.value() != ValueId::UNKNOWN
+            && parameter.value() == argument
     })?;
-    let caller_path = paths.intern_frozen(caller_parameter.path)?;
+    let caller_path = paths.intern_frozen(caller_parameter.path())?;
     Some(FunctionSinkSummary::new(
         sink.flow(),
-        caller_parameter.parameter_index,
+        caller_parameter.parameter_index(),
         caller_path,
     ))
 }

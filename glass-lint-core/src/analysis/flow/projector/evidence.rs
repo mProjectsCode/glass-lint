@@ -9,12 +9,9 @@ use smallvec::SmallVec;
 
 use crate::{
     analysis::{
-        flow::{
-            projector::{
-                CallArgInfo, ClassificationEvidence, FactId, FlowState, MatchKind,
-                ObjectFlowProjector, ObjectId, ValueId, history::ReportEvidenceKey,
-            },
-            summary::SummaryPathStore,
+        flow::projector::{
+            CallArgInfo, ClassificationEvidence, FactId, FlowState, MatchKind, ObjectFlowProjector,
+            ObjectId, ValueId, history::ReportEvidenceKey,
         },
         model::flow::{FlowId, FlowStateKey},
         trace::QualifiedEvent,
@@ -139,10 +136,8 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 let value = {
                     let paths = self.helpers.path_interner();
                     let parameter = parameters.iter().find(|parameter| {
-                        parameter.parameter_index == sink.parameter_index()
-                            && (SummaryPathStore::matches_frozen(sink.path(), parameter.path)
-                                || (parameter.rest
-                                    && paths.starts_with_frozen(sink.path(), parameter.path)))
+                        parameter.parameter_index() == sink.parameter_index()
+                            && parameter.matches_sink_path(sink.path(), paths)
                     })?;
                     parameter.project_argument_at(self.stream, args, paths, sink.path())?
                 };

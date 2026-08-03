@@ -118,7 +118,7 @@ projector, and flow behavior tests pass.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-007 — `ParameterBinding` fields and projection rules are repeated at call sites
+#### [x] READ-007 — `ParameterBinding` fields and projection rules are repeated at call sites
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -129,7 +129,11 @@ Although `ParameterBinding` is crate-internal, its fields are visible throughout
 
 **Recommendation:** Hide the fields and add semantic methods on the binding and its owning summary/parameter collection, such as `root_for(argument_index)`, `matches_sink`, `is_invocation_compatible`, and `project_sink`. Centralize rest/default/path behavior there. Keep `ParameterBinding` distinct from effect `ParameterRef`: they encode different domains and should not be consolidated merely because both refer to parameters.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Encapsulated `ParameterBinding` construction and storage
+behind a constructor and semantic accessors, including root-binding and
+sink-path compatibility queries. Worklist seeding, invocation compatibility,
+sink projection, and projector evidence now use those operations instead of
+repeating parameter-index/path/rest/default decisions. Summary flow tests pass.
 
 #### [ ] READ-008 — Artifact tables expose generic iteration for a transition they should own
 

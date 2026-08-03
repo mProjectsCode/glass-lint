@@ -196,20 +196,20 @@ impl FunctionSummary {
             }
         }
         for parameter in self.parameter_bindings(stream) {
-            if parameter.rest || parameter.parameter_index >= args.len() {
-                if parameter.parameter_index >= args.len()
-                    && parameter.default.is_none()
-                    && !parameter.rest
+            if parameter.is_rest() || parameter.parameter_index() >= args.len() {
+                if parameter.parameter_index() >= args.len()
+                    && parameter.default_value().is_none()
+                    && !parameter.is_rest()
                 {
                     return false;
                 }
                 continue;
             }
-            if parameter.path.is_empty() {
+            if parameter.path().is_empty() {
                 continue;
             }
             if parameter.project_argument(stream, args, paths).is_none()
-                && parameter.default.is_none()
+                && parameter.default_value().is_none()
             {
                 return false;
             }
@@ -253,13 +253,13 @@ impl FunctionSummary {
                     };
                     let Some(parameter) =
                         self.parameter_bindings(stream).iter().find(|parameter| {
-                            parameter.value != ValueId::UNKNOWN
-                                && parameter.value == argument.base_value
+                            parameter.value() != ValueId::UNKNOWN
+                                && parameter.value() == argument.base_value
                         })
                     else {
                         continue;
                     };
-                    let Some(prefix_id) = paths.intern_frozen(parameter.path) else {
+                    let Some(prefix_id) = paths.intern_frozen(parameter.path()) else {
                         continue;
                     };
                     let Some(suffix_id) = paths.intern_frozen(argument.base_path) else {
@@ -270,7 +270,7 @@ impl FunctionSummary {
                     };
                     candidates.push(FunctionSinkSummary::new(
                         *flow_id,
-                        parameter.parameter_index,
+                        parameter.parameter_index(),
                         path,
                     ));
                 }

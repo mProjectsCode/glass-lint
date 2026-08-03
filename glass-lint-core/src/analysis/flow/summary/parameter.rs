@@ -7,13 +7,22 @@ use crate::analysis::{
 };
 
 impl ParameterBinding {
+    pub(in crate::analysis::flow) fn matches_sink_path(
+        &self,
+        sink_path: SummaryPathId,
+        paths: &SummaryPathStore<'_>,
+    ) -> bool {
+        SummaryPathStore::matches_frozen(sink_path, self.path())
+            || (self.is_rest() && paths.starts_with_frozen(sink_path, self.path()))
+    }
+
     pub(super) fn project_argument(
         &self,
         stream: &FactStream<Frozen>,
         args: &[CallArgInfo],
         paths: &SummaryPathStore<'_>,
     ) -> Option<ValueId> {
-        let param_path = paths.intern_frozen(self.path)?;
+        let param_path = paths.intern_frozen(self.path())?;
         self.project_argument_at(stream, args, paths, param_path)
     }
 
@@ -24,11 +33,11 @@ impl ParameterBinding {
         paths: &SummaryPathStore<'_>,
         path: SummaryPathId,
     ) -> Option<ValueId> {
-        let Some(argument) = args.get(self.parameter_index) else {
+        let Some(argument) = args.get(self.parameter_index()) else {
             return self
-                .path
+                .path()
                 .is_empty()
-                .then_some(self.default)
+                .then_some(self.default_value())
                 .flatten()
                 .filter(|value| *value != ValueId::UNKNOWN);
         };
@@ -36,9 +45,9 @@ impl ParameterBinding {
             return None;
         }
 
-        if self.rest {
+        if self.is_rest() {
             let index = paths.first_index(path)?;
-            let argument = args.get(self.parameter_index.saturating_add(index as usize))?;
+            let argument = args.get(self.parameter_index().saturating_add(index as usize))?;
             if argument.spread {
                 return None;
             }
@@ -56,7 +65,10 @@ impl ParameterBinding {
         {
             let id = value_at_path(stream.values(), argument.value, paths, path)
                 .filter(|v| *v != ValueId::UNKNOWN);
-            id.or_else(|| self.default.filter(|value| *value != ValueId::UNKNOWN))
+            id.or_else(|| {
+                self.default_value()
+                    .filter(|value| *value != ValueId::UNKNOWN)
+            })
         }
     }
 }

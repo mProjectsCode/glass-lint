@@ -89,13 +89,13 @@ impl FactBuilder<'_, '_> {
         output: &mut Vec<ParameterBinding>,
     ) {
         match pattern {
-            Pat::Ident(ident) => output.push(ParameterBinding {
+            Pat::Ident(ident) => output.push(ParameterBinding::new(
                 parameter_index,
                 path,
-                value: self.resolver.resolve_ident_id(&ident.id),
+                self.resolver.resolve_ident_id(&ident.id),
                 default,
                 rest,
-            }),
+            )),
             Pat::Assign(assign) => {
                 let assigned_value = self.resolver.resolve_expr_id(&assign.right);
                 self.parameter_bindings(
@@ -168,16 +168,16 @@ impl FactBuilder<'_, '_> {
             swc_ecma_ast::ObjectPatProp::Assign(property) => {
                 let path =
                     self.append_path(path, PathSegmentInput::Property(property.key.sym.as_ref()));
-                output.push(ParameterBinding {
+                output.push(ParameterBinding::new(
                     parameter_index,
                     path,
-                    value: self.resolver.resolve_ident_id(&property.key.id),
-                    default: property
+                    self.resolver.resolve_ident_id(&property.key.id),
+                    property
                         .value
                         .as_deref()
                         .map(|value| self.resolver.resolve_expr_id(value)),
                     rest,
-                });
+                ));
             }
             swc_ecma_ast::ObjectPatProp::Rest(property) => {
                 self.parameter_bindings(

@@ -88,16 +88,18 @@ impl ContextWorklist {
         let Some(fact_stream) = project.module_fact_stream(module) else {
             return;
         };
-        for parameter in effect.parameters(fact_stream).iter().filter(|parameter| {
-            parameter.parameter_index == argument_index && parameter.path.is_empty()
-        }) {
+        for parameter in effect
+            .parameters(fact_stream)
+            .iter()
+            .filter(|parameter| parameter.is_root_for(argument_index))
+        {
             if self.is_exhausted() {
                 return;
             }
             self.push(CallContext::for_target_call(
                 module,
                 function,
-                parameter.parameter_index,
+                parameter.parameter_index(),
                 state.clone(),
                 crossed,
             ));

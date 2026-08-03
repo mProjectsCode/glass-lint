@@ -626,15 +626,15 @@ impl FunctionEffectsBuilder {
                     uses: Vec::new(),
                     returns: Vec::new(),
                     invalid: false,
-                    value_roots: params.iter().map(|p| (p.value, p.value)).collect(),
+                    value_roots: params.iter().map(|p| (p.value(), p.value())).collect(),
                     parameter_index: params
                         .iter()
                         .map(|p| {
                             (
-                                p.value,
+                                p.value(),
                                 ParameterRef {
-                                    index: p.parameter_index,
-                                    path: p.path,
+                                    index: p.parameter_index(),
+                                    path: p.path(),
                                 },
                             )
                         })

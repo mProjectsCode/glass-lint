@@ -362,11 +362,53 @@ impl<'a> ArgumentView<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::analysis) struct ParameterBinding {
-    pub(in crate::analysis) parameter_index: usize,
-    pub(in crate::analysis) path: PathId,
-    pub(in crate::analysis) value: ValueId,
-    pub(in crate::analysis) default: Option<ValueId>,
-    pub(in crate::analysis) rest: bool,
+    parameter_index: usize,
+    path: PathId,
+    value: ValueId,
+    default: Option<ValueId>,
+    rest: bool,
+}
+
+impl ParameterBinding {
+    pub(in crate::analysis) fn new(
+        parameter_index: usize,
+        path: PathId,
+        value: ValueId,
+        default: Option<ValueId>,
+        rest: bool,
+    ) -> Self {
+        Self {
+            parameter_index,
+            path,
+            value,
+            default,
+            rest,
+        }
+    }
+
+    pub(in crate::analysis) fn parameter_index(&self) -> usize {
+        self.parameter_index
+    }
+
+    pub(in crate::analysis) fn path(&self) -> PathId {
+        self.path
+    }
+
+    pub(in crate::analysis) fn value(&self) -> ValueId {
+        self.value
+    }
+
+    pub(in crate::analysis) fn default_value(&self) -> Option<ValueId> {
+        self.default
+    }
+
+    pub(in crate::analysis) fn is_rest(&self) -> bool {
+        self.rest
+    }
+
+    pub(in crate::analysis) fn is_root_for(&self, argument_index: usize) -> bool {
+        self.parameter_index == argument_index && self.path.is_empty()
+    }
 }
 
 #[derive(Debug, Clone)]
