@@ -257,7 +257,7 @@ scope and provenance, then derived both the provenance and scope-only queries
 from it; removed the obsolete assignment-presence helper. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-021 — Collector returned-object provenance duplicates call and optional-call resolution
+#### [x] READ-021 — Collector returned-object provenance duplicates call and optional-call resolution
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -276,7 +276,9 @@ expression and keeps the `.bind` rejection, then have both arms delegate to it.
 Keep the recursive identifier/member/paren/sequence behavior, path-root check,
 and fail-closed handling of non-expression callees unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Extracted one normalized-callee helper for returned-object
+provenance and delegated both ordinary and optional calls to it, retaining the
+`.bind` rejection and rooted-path checks. Verified with `make fmt && make ci`.
 
 #### [ ] READ-022 — Frozen returned-object source repeats ordinary and optional-call branches
 
