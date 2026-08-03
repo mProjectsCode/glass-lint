@@ -330,7 +330,7 @@ joined environment updates. Verified with `make fmt && make ci`.
 
 ### Core API, limits, and session
 
-#### [ ] READ-024 — Query variable inspection repeatedly traverses the expression tree
+#### [x] READ-024 — Query variable inspection repeatedly traverses the expression tree
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -350,7 +350,10 @@ combined summary once when multiple views are needed. Preserve occurrence
 order for `vars`, role distinctions between binding/reference variables, and
 lifecycle source handling.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added one stop-aware variable traversal used by `walk_vars`,
+`vars`, and `binding_vars`; `contains_var` now short-circuits at the first
+match while preserving ordered role traversal. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-025 — Argument convenience builders repeat index validation
 

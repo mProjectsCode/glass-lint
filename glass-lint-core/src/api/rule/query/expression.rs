@@ -97,6 +97,13 @@ impl QueryExpr {
     /// Walk all variables in the expression, calling `f` for each with its
     /// role.
     pub(crate) fn walk_vars(&self, f: &mut impl FnMut(VarId, VarRole)) {
+        self.walk_vars_until(&mut |id, role| {
+            f(id, role);
+            false
+        });
+    }
+
+    fn walk_vars_until(&self, f: &mut impl FnMut(VarId, VarRole) -> bool) -> bool {
         match &self.kind {
             QueryExprKind::Event(q) => f(q.var(), VarRole::Binding),
             QueryExprKind::SelectEvent(s) => f(s.bind, VarRole::Binding),
@@ -107,17 +114,15 @@ impl QueryExpr {
                 QueryPredicate::ReturnedObject { bind, .. }
                 | QueryPredicate::ConstructedObject { bind, .. } => f(*bind, VarRole::Binding),
                 QueryPredicate::MemberSubject { event, object } => {
-                    f(*event, VarRole::Reference);
-                    f(*object, VarRole::Reference);
+                    f(*event, VarRole::Reference) || f(*object, VarRole::Reference)
                 }
             },
-            QueryExprKind::Any(any) => any.iter().for_each(|b| b.walk_vars(f)),
-            QueryExprKind::All(all) => all.iter().for_each(|b| b.walk_vars(f)),
-            QueryExprKind::Lifecycle(lc) => {
-                lc.sources()
-                    .iter()
-                    .for_each(|src| f(src.var(), VarRole::Binding));
-            }
+            QueryExprKind::Any(any) => any.iter().any(|b| b.walk_vars_until(f)),
+            QueryExprKind::All(all) => all.iter().any(|b| b.walk_vars_until(f)),
+            QueryExprKind::Lifecycle(lc) => lc
+                .sources()
+                .iter()
+                .any(|src| f(src.var(), VarRole::Binding)),
         }
     }
 
@@ -128,13 +133,7 @@ impl QueryExpr {
     }
 
     pub(crate) fn contains_var(&self, target: VarId) -> bool {
-        let mut found = false;
-        self.walk_vars(&mut |id, _role| {
-            if id == target {
-                found = true;
-            }
-        });
-        found
+        self.walk_vars_until(&mut |id, _role| id == target)
     }
 
     pub(crate) fn binding_vars(&self) -> Vec<VarId> {
