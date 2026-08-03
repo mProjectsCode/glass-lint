@@ -14,7 +14,7 @@ mod occurrence;
 pub(in crate::analysis) use occurrence::ModuleExportKey;
 use occurrence::{
     BorrowedOccurrenceIter, CandidateOccurrences, ModuleOccurrences, Occurrence, Occurrences,
-    PackageKeyPredicate,
+    PackageKeyPredicate, PackageOverlay,
 };
 mod identity_map;
 mod indexes;
@@ -213,11 +213,10 @@ impl<'a> LinkedOccurrenceView<'a> {
         base: &'a ModuleOccurrences,
         predicate: PackageKeyPredicate<'a>,
     ) -> CandidateOccurrences<'a> {
-        CandidateOccurrences::BorrowedPackage(base.package_candidates_with_overlay(
-            predicate,
-            &self.masked,
-            self.module_buckets(kind),
-        ))
+        let overlay = PackageOverlay::new(&self.masked, self.module_buckets(kind));
+        CandidateOccurrences::BorrowedPackage(
+            base.package_candidates_with_overlay(predicate, overlay),
+        )
     }
 
     fn module_buckets(

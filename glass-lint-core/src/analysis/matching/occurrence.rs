@@ -247,34 +247,53 @@ pub(in crate::analysis) struct BorrowedPackageOccurrenceIter<'a> {
     checking_base: bool,
 }
 
+/// Linked package buckets with their masking policy.
+///
+/// The package iterator consumes this semantic overlay instead of receiving
+/// its masking set and nested bucket map as separate storage-shaped inputs.
+#[derive(Clone, Copy, Debug)]
+pub(in crate::analysis) struct PackageOverlay<'a> {
+    masked: &'a BTreeSet<ModuleExportKey>,
+    buckets: &'a BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>>,
+}
+
+impl<'a> PackageOverlay<'a> {
+    pub(super) fn new(
+        masked: &'a BTreeSet<ModuleExportKey>,
+        buckets: &'a BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>>,
+    ) -> Self {
+        Self { masked, buckets }
+    }
+}
+
 impl<'a> BorrowedPackageOccurrenceIter<'a> {
     pub(super) fn base(
         predicate: PackageKeyPredicate<'a>,
         base: &'a BTreeMap<ModuleExportKey, Vec<Occurrence>>,
     ) -> Self {
-        Self::new(predicate, None, base, None)
+        Self::new(predicate, base, None)
     }
 
     pub(super) fn with_overlay(
         predicate: PackageKeyPredicate<'a>,
-        masked: &'a BTreeSet<ModuleExportKey>,
         base: &'a BTreeMap<ModuleExportKey, Vec<Occurrence>>,
-        overlay: &'a BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>>,
+        overlay: PackageOverlay<'a>,
     ) -> Self {
-        Self::new(predicate, Some(masked), base, Some(overlay))
+        Self::new(predicate, base, Some(overlay))
     }
 
     fn new(
         predicate: PackageKeyPredicate<'a>,
-        masked: Option<&'a BTreeSet<ModuleExportKey>>,
         base: &'a BTreeMap<ModuleExportKey, Vec<Occurrence>>,
-        overlay: Option<&'a BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>>>,
+        overlay: Option<PackageOverlay<'a>>,
     ) -> Self {
+        let masked = overlay.as_ref().map(|overlay| overlay.masked);
+        let overlay_iter = overlay.map(|overlay| overlay.buckets.iter());
         Self {
             predicate,
             masked,
             base_iter: base.iter(),
-            overlay_iter: overlay.map(BTreeMap::iter),
+            overlay_iter,
             current: None,
             checking_base: true,
         }
@@ -449,10 +468,9 @@ impl OccurrenceIndex<ModuleExportKey> {
     pub(super) fn package_candidates_with_overlay<'a>(
         &'a self,
         predicate: PackageKeyPredicate<'a>,
-        masked: &'a BTreeSet<ModuleExportKey>,
-        overlay: &'a BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>>,
+        overlay: PackageOverlay<'a>,
     ) -> BorrowedPackageOccurrenceIter<'a> {
-        BorrowedPackageOccurrenceIter::with_overlay(predicate, masked, &self.0, overlay)
+        BorrowedPackageOccurrenceIter::with_overlay(predicate, &self.0, overlay)
     }
 }
 

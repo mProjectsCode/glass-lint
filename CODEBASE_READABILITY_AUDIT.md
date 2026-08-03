@@ -126,7 +126,7 @@ performs sorted insertion and deduplication at the ownership boundary, so
 propagation and all tests use the same normalization policy instead of
 writing adjacency vectors directly.
 
-#### [ ] READ-005 — Package overlay lookup still accepts raw nested buckets
+#### [x] READ-005 — Package overlay lookup still accepts raw nested buckets
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -147,7 +147,11 @@ source that owns masking, bucket lookup, and precedence. Have
 or let the view itself provide package iteration. Keep the nested bucket
 layout private to the matching implementation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added an opaque `PackageOverlay` that groups the mask and
+linked package buckets and is consumed by the lazy package iterator. The
+linked occurrence view now constructs that semantic overlay, while
+`OccurrenceIndex` accepts it as one package-candidate source instead of
+receiving separate raw nested storage containers.
 
 #### [ ] READ-006 — Matcher index families repeat storage plumbing
 
