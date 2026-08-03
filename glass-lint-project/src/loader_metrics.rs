@@ -54,70 +54,33 @@ impl ProjectPhaseTimings {
     pub fn linking_and_matching(&self) -> Duration {
         self.linking.saturating_add(self.matching)
     }
-}
 
-#[derive(Clone, Copy, Debug, Default)]
-pub struct ProjectPhaseTimingsAccumulator {
-    discovery: Duration,
-    reads: Duration,
-    analyze_source: Duration,
-    resolution: Duration,
-    linking: Duration,
-    matching: Duration,
-    total: Duration,
-}
-
-impl ProjectPhaseTimingsAccumulator {
-    pub(super) fn snapshot(self) -> ProjectPhaseTimings {
-        ProjectPhaseTimings {
-            discovery: self.discovery,
-            reads: self.reads,
-            analyze_source: self.analyze_source,
-            resolution: self.resolution,
-            linking: self.linking,
-            matching: self.matching,
-            total: self.total,
-        }
-    }
-
-    pub(super) fn record_discovery(&mut self, duration: Duration) {
+    pub(crate) fn record_discovery(&mut self, duration: Duration) {
         self.discovery = self.discovery.saturating_add(duration);
     }
 
-    pub(super) fn record_reads(&mut self, duration: Duration) {
+    pub(crate) fn record_reads(&mut self, duration: Duration) {
         self.reads = self.reads.saturating_add(duration);
     }
 
-    pub(super) fn record_analyze_source(&mut self, duration: Duration) {
+    pub(crate) fn record_analyze_source(&mut self, duration: Duration) {
         self.analyze_source = self.analyze_source.saturating_add(duration);
     }
 
-    pub(super) fn record_resolution(&mut self, duration: Duration) {
+    pub(crate) fn record_resolution(&mut self, duration: Duration) {
         self.resolution = self.resolution.saturating_add(duration);
     }
 
-    pub(super) fn record_linking(&mut self, duration: Duration) {
+    pub(crate) fn record_linking(&mut self, duration: Duration) {
         self.linking = self.linking.saturating_add(duration);
     }
 
-    pub(super) fn record_matching(&mut self, duration: Duration) {
+    pub(crate) fn record_matching(&mut self, duration: Duration) {
         self.matching = self.matching.saturating_add(duration);
     }
 
-    pub(super) fn record_total(&mut self, duration: Duration) {
+    pub(crate) fn record_total(&mut self, duration: Duration) {
         self.total = self.total.saturating_add(duration);
-    }
-}
-
-impl std::ops::AddAssign for ProjectPhaseTimingsAccumulator {
-    fn add_assign(&mut self, rhs: Self) {
-        self.discovery = self.discovery.saturating_add(rhs.discovery);
-        self.reads = self.reads.saturating_add(rhs.reads);
-        self.analyze_source = self.analyze_source.saturating_add(rhs.analyze_source);
-        self.resolution = self.resolution.saturating_add(rhs.resolution);
-        self.linking = self.linking.saturating_add(rhs.linking);
-        self.matching = self.matching.saturating_add(rhs.matching);
-        self.total = self.total.saturating_add(rhs.total);
     }
 }
 
@@ -159,7 +122,7 @@ impl ProjectLoadMetrics {
 
 #[derive(Debug, Default)]
 pub(crate) struct LoadAccounting {
-    timings: ProjectPhaseTimingsAccumulator,
+    timings: ProjectPhaseTimings,
     files: usize,
     requests: usize,
     edges: usize,
@@ -169,7 +132,7 @@ pub(crate) struct LoadAccounting {
 impl LoadAccounting {
     pub(crate) fn snapshot(&self) -> ProjectLoadMetrics {
         ProjectLoadMetrics {
-            timings: self.timings.snapshot(),
+            timings: self.timings,
             files: self.files,
             requests: self.requests,
             edges: self.edges,

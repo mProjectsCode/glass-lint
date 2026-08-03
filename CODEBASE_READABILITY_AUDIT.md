@@ -146,7 +146,7 @@ The export table, lookup cache, and recursion guard all mean “module plus expo
 
 **Fix Applied:** `BoundLifecycleCallTarget` now binds rooted member and global targets into one typed domain key, and the shared `BoundTargetIndex` owns insertion, deterministic normalization, and lookup for both local flow plans and cross-project source discovery. `BoundFlowPaths` is retained under its descriptive name with private requirement storage and an indexed accessor, and the obsolete `FlowPathPlan` alias was removed; flow unit and integration tests pass unchanged.
 
-#### [ ] READ-012 — Project timing snapshot and accumulator duplicate the same state
+#### [x] READ-012 — Project timing snapshot and accumulator duplicate the same state
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Duplication
@@ -156,7 +156,7 @@ The export table, lookup cache, and recursion guard all mean “module plus expo
 
 **Recommendation:** Delete `ProjectPhaseTimingsAccumulator` and let `ProjectPhaseTimings` use crate-private record and addition methods while retaining its existing narrow public getter API. Keep `ProfilePhaseTimings` as the harness-owned public type rather than widening the project crate's mutation API or introducing a cross-crate abstraction for one consumer. Convert project snapshots at the existing harness boundary.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ProjectPhaseTimings` now owns its crate-private recording operations, so `LoadAccounting` stores and snapshots that same type directly; `ProjectPhaseTimingsAccumulator`, its field-copying snapshot method, and its duplicate addition implementation were deleted. The harness continues to use its separate `ProfilePhaseTimings` type and converts through the existing public getter boundary; project and harness checks pass.
 
 #### [ ] READ-013 — `AnalysisWaveOutcome` is a one-field pass-through wrapper
 - **Severity:** Low
