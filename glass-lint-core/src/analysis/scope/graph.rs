@@ -174,22 +174,14 @@ impl ScopeGraph {
             self.data.mutations.record_property_assignment(
                 receiver_key,
                 path,
-                PropertyAliasFact {
-                    span,
-                    scope,
-                    target,
-                },
+                PropertyAliasFact::new(span, scope, target),
             );
         }
         for mutation in rooted_mutations {
             let (span, scope, receiver, property) = mutation.into_parts();
             self.data.mutations.record_rooted_mutation(
                 receiver,
-                RootedPropertyMutationFact {
-                    span,
-                    scope,
-                    property,
-                },
+                RootedPropertyMutationFact::new(span, scope, property),
             );
         }
         let evals: Vec<(ScopeId, ScopeEffect)> = dynamic_evals

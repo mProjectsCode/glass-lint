@@ -8,15 +8,16 @@ phase ownership, duplicate transformations, and unnecessary public surface.
 The prior report's eleven checked-off migrations were verified as historical
 work; they are not counted as current findings.
 
-One residual finding remains; READ-001 through READ-004 have been completed:
+All five residual findings are now completed:
 
-- No high-priority phase/API boundaries;
-- No medium-priority representation leaks;
+- 2 high-priority phase/API boundaries;
+- 2 medium-priority representation leaks;
 - 1 low-priority visibility cleanup.
 
-The first migration preserves the current export behavior while narrowing the
-resolver's project lookup boundary. Focused core checks pass; the full gate is
-reserved for the completed sequence of migrations.
+The migrations preserve existing behavior while narrowing phase boundaries,
+centralizing representation ownership, and reducing unnecessary public
+surface. Focused tests and clippy checks pass; the full gate remains the final
+verification step.
 
 ## Findings
 
@@ -158,7 +159,7 @@ unchanged.
 
 ### Low priority
 
-#### [ ] READ-005 — Scope mutation fact records are public field bags without a public query boundary
+#### [x] READ-005 — Scope mutation fact records are public field bags without a public query boundary
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -181,6 +182,12 @@ fact accessors and document that contract first; otherwise prefer visibility
 reduction over another wrapper. Do not merge them with the collector event
 types in READ-003: the normalized frozen facts and AST-facing collection
 records represent different phases.
+
+**Fix Applied:** Restricted both normalized mutation fact types to the
+analysis boundary, made their storage private, and added only the span, scope,
+target, and property accessors required by mutation indexing and provenance
+queries. Construction now uses named constructors in the graph, so callers
+cannot build or inspect these records through public field bags.
 
 ## Systemic Themes
 
@@ -206,9 +213,8 @@ scan verified the associated migrations, including path-store consolidation,
 request encapsulation, flow-plan ownership, compiled-flow privacy, lifecycle
 rollback ownership, parameter projection, artifact-table transitions, load
 metrics consolidation, path transformations, and lowering/cache transitions.
-Those completed items are not repeated as open findings here. READ-001 above
-is a residual project-linking boundary adjacent to the earlier artifact-table
-work, not a claim that the completed table migration should be reverted.
+Those completed items are not repeated as open findings here. The five
+residual findings in this report have now also been migrated and checked off.
 
 ## Coverage
 
@@ -220,6 +226,6 @@ types. The scan included public and crate-internal fields, semantic newtypes,
 map/set wrappers, phase records, flow/scope ownership, project linking, and
 tsconfig/resolver boundaries.
 
-The audit intentionally did not edit Rust sources or run behavior-changing
-migrations. The verification commands listed in the summary were diagnostic
-only; no full gate was needed because the report itself is the sole change.
+Each residual finding was implemented as a focused migration, documented above,
+and verified with owning-crate tests and targeted clippy checks. The complete
+workspace gate is run after the final migration.

@@ -72,11 +72,11 @@ impl MutationIndex {
     pub(super) fn finalize(&mut self) {
         for receiver_assignments in self.property_assignments.values_mut() {
             for assignments in receiver_assignments.values_mut() {
-                assignments.sort_by_key(|assignment| assignment.span.lo);
+                assignments.sort_by_key(|assignment| assignment.span().lo);
             }
         }
         for mutations in self.rooted_property_mutations.values_mut() {
-            mutations.sort_by_key(|mutation| mutation.span.lo);
+            mutations.sort_by_key(|mutation| mutation.span().lo);
         }
         for spans in self.dynamic_evals_by_scope.values_mut() {
             spans.sort_by_key(|effect| effect.span().hi);

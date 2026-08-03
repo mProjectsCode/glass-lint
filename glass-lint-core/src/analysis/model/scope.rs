@@ -553,17 +553,61 @@ impl AliasAssignment {
 }
 
 #[derive(Debug, Clone)]
-pub struct PropertyAliasFact {
-    pub span: Span,
-    pub scope: ScopeId,
-    pub target: Option<SymbolPath>,
+pub(in crate::analysis) struct PropertyAliasFact {
+    span: Span,
+    scope: ScopeId,
+    target: Option<SymbolPath>,
+}
+
+impl PropertyAliasFact {
+    pub(in crate::analysis) fn new(span: Span, scope: ScopeId, target: Option<SymbolPath>) -> Self {
+        Self {
+            span,
+            scope,
+            target,
+        }
+    }
+
+    pub(in crate::analysis) fn span(&self) -> Span {
+        self.span
+    }
+
+    pub(in crate::analysis) fn scope(&self) -> ScopeId {
+        self.scope
+    }
+
+    pub(in crate::analysis) fn target(&self) -> Option<&SymbolPath> {
+        self.target.as_ref()
+    }
 }
 
 #[derive(Debug, Clone)]
-pub struct RootedPropertyMutationFact {
-    pub span: Span,
-    pub scope: ScopeId,
-    pub property: Option<NameId>,
+pub(in crate::analysis) struct RootedPropertyMutationFact {
+    span: Span,
+    scope: ScopeId,
+    property: Option<NameId>,
+}
+
+impl RootedPropertyMutationFact {
+    pub(in crate::analysis) fn new(span: Span, scope: ScopeId, property: Option<NameId>) -> Self {
+        Self {
+            span,
+            scope,
+            property,
+        }
+    }
+
+    pub(in crate::analysis) fn span(&self) -> Span {
+        self.span
+    }
+
+    pub(in crate::analysis) fn scope(&self) -> ScopeId {
+        self.scope
+    }
+
+    pub(in crate::analysis) fn property(&self) -> Option<NameId> {
+        self.property
+    }
 }
 
 #[cfg(test)]

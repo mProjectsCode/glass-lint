@@ -94,16 +94,16 @@ impl FrozenScopeGraph {
                     continue;
                 };
 
-                let prior_count =
-                    assignments.partition_point(|assignment| assignment.span.lo <= member.span.lo);
+                let prior_count = assignments
+                    .partition_point(|assignment| assignment.span().lo <= member.span.lo);
 
                 if let Some(assignment) =
                     assignments[..prior_count].iter().rev().find(|assignment| {
-                        self.scope_span(assignment.scope)
+                        self.scope_span(assignment.scope())
                             .is_some_and(|scope| contains(scope, member.span))
                     })
                 {
-                    let target = assignment.target.as_ref()?;
+                    let target = assignment.target()?;
                     let suffix = syntactic_chain.suffix(prefix.len() + 1).unwrap_or_default();
                     return Some(target.append_path(&suffix));
                 }
@@ -239,9 +239,9 @@ impl FrozenScopeGraph {
         self.property_aliases(receiver, path.as_view())
             .is_some_and(|assignments| {
                 assignments.iter().any(|assignment| {
-                    assignment.span.lo <= span.lo
+                    assignment.span().lo <= span.lo
                         && self
-                            .scope_span(assignment.scope)
+                            .scope_span(assignment.scope())
                             .is_some_and(|scope| contains(scope, span))
                 })
             })
@@ -268,12 +268,12 @@ impl FrozenScopeGraph {
     ) -> bool {
         self.rooted_mutations(root).is_some_and(|mutations| {
             mutations.iter().any(|mutation| {
-                mutation.span.lo <= span.lo
+                mutation.span().lo <= span.lo
                     && mutation
-                        .property
+                        .property()
                         .is_none_or(|written| property.is_none_or(|expected| written == expected))
                     && self
-                        .scope_span(mutation.scope)
+                        .scope_span(mutation.scope())
                         .is_some_and(|scope| contains(scope, span))
             })
         })
