@@ -94,14 +94,13 @@ impl ContextWorklist {
             if self.is_exhausted() {
                 return;
             }
-            self.push(CallContext {
+            self.push(CallContext::for_target_call(
                 module,
                 function,
-                parameter: Some(parameter.parameter_index),
-                source_root: None,
-                state: state.clone(),
+                parameter.parameter_index,
+                state.clone(),
                 crossed,
-            });
+            ));
         }
     }
 
@@ -125,17 +124,16 @@ impl ContextWorklist {
             if self.is_exhausted() {
                 return;
             }
-            self.push(CallContext {
-                module: key.module,
-                function: key.function,
-                parameter: None,
-                source_root: Some(key.value),
-                state: CrossFlowState::known(
+            self.push(CallContext::for_source(
+                key.module,
+                key.function,
+                key.value,
+                CrossFlowState::known(
                     candidate.flow,
                     QualifiedEvent::new(key.module, candidate.fact),
                 ),
-                crossed: key.value != project.source_call_result(key.module, candidate.fact),
-            });
+                key.value != project.source_call_result(key.module, candidate.fact),
+            ));
         }
     }
 

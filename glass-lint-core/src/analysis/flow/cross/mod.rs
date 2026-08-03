@@ -93,7 +93,7 @@ impl ContextProjection<'_, '_> {
         propagation::CallPropagation {
             session: self.session,
             effect: self.effect,
-            module: self.context.module,
+            module: self.context.module(),
             context: self.context,
             propagated: &mut propagated_calls,
             through: None,
@@ -137,23 +137,23 @@ impl CrossWorklist<'_, '_> {
     }
 
     fn project_context(&mut self, context: &CallContext) {
-        let Some(effect) = self.project.effect(context.module, context.function) else {
+        let Some(effect) = self.project.effect(context.module(), context.function()) else {
             return;
         };
         if effect.is_invalid() {
             return;
         }
-        let Some(flow) = self.flows.get(&context.state.flow_id()).copied() else {
+        let Some(flow) = self.flows.get(&context.state().flow_id()).copied() else {
             return;
         };
-        let Some(names) = self.project.module_names(context.module) else {
+        let Some(names) = self.project.module_names(context.module()) else {
             return;
         };
         let flow_plan = self
             .flow_plan_cache
             .entry(FlowPlanKey {
-                flow: context.state.flow_id(),
-                module: context.module,
+                flow: context.state().flow_id(),
+                module: context.module(),
             })
             .or_insert_with(|| BoundFlowPaths::build(flow, names));
         let mut session = CrossProjectionSession {
@@ -170,7 +170,7 @@ impl CrossWorklist<'_, '_> {
             effect,
             flow,
             flow_plan,
-            state: &context.state,
+            state: context.state(),
         }
         .project();
     }
@@ -492,17 +492,14 @@ mod tests {
     }
 
     fn context(module: u32, function: u32) -> CallContext {
-        CallContext {
-            module: ModuleId::new(module),
-            function: FunctionId::from_test(function),
-            parameter: None,
-            source_root: None,
-            state: CrossFlowState::known(
+        CallContext::for_test(
+            ModuleId::new(module),
+            FunctionId::from_test(function),
+            CrossFlowState::known(
                 FlowId::new(RuleIndex::new(0), 0),
                 QualifiedEvent::new(ModuleId::new(1), FactId::from_test(1)),
             ),
-            crossed: false,
-        }
+        )
     }
 
     #[test]

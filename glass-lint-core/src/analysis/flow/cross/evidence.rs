@@ -41,20 +41,18 @@ pub(super) fn usage_matches_context(
             ..
         } => {
             receiver.as_ref().is_some_and(|parameter| {
-                context
-                    .parameter
-                    .is_some_and(|index| parameter.index() == index && parameter.is_root())
-            }) || (context.parameter.is_none()
-                && context.source_root.is_some_and(|root| {
-                    effect
-                        .value_root(*receiver_value)
-                        .unwrap_or(*receiver_value)
-                        == root
-                }))
+                context.matches_parameter(parameter.index(), parameter.is_root(), true)
+            }) || context.matches_source_root(
+                effect
+                    .value_root(*receiver_value)
+                    .unwrap_or(*receiver_value),
+                false,
+                false,
+            )
         }
-        EffectUse::CallReceiver { receiver, .. } => context
-            .parameter
-            .is_some_and(|index| receiver.index() == index && receiver.is_root()),
+        EffectUse::CallReceiver { receiver, .. } => {
+            context.matches_parameter(receiver.index(), receiver.is_root(), true)
+        }
         EffectUse::CallArgument {
             call_id,
             argument_index,
@@ -63,16 +61,18 @@ pub(super) fn usage_matches_context(
             .call_argument(*call_id, *argument_index)
             .is_some_and(|argument| {
                 argument.parameter().is_some_and(|parameter| {
-                    context
-                        .parameter
-                        .is_some_and(|index| parameter.index() == index && parameter.is_root())
-                }) || (context.parameter.is_none()
-                    && context.source_root.is_some_and(|root| {
-                        effect
-                            .value_root(argument.value())
-                            .unwrap_or_else(|| argument.value())
-                            == root
-                    }))
+                    context.matches_parameter(
+                        parameter.index(),
+                        parameter.is_root(),
+                        argument.is_root(),
+                    )
+                }) || context.matches_source_root(
+                    effect
+                        .value_root(argument.value())
+                        .unwrap_or_else(|| argument.value()),
+                    argument.is_root(),
+                    true,
+                )
             }),
     }
 }

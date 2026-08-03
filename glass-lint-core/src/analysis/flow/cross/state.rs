@@ -112,10 +112,94 @@ impl CrossFlowState {
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 /// Worklist context identifying the function/value path currently projected.
 pub(super) struct CallContext {
-    pub(super) module: ModuleId,
-    pub(super) function: FunctionId,
-    pub(super) parameter: Option<usize>,
-    pub(super) source_root: Option<ValueId>,
-    pub(super) state: CrossFlowState,
-    pub(super) crossed: bool,
+    module: ModuleId,
+    function: FunctionId,
+    parameter: Option<usize>,
+    source_root: Option<ValueId>,
+    state: CrossFlowState,
+    crossed: bool,
+}
+
+impl CallContext {
+    pub(super) fn for_source(
+        module: ModuleId,
+        function: FunctionId,
+        source_root: ValueId,
+        state: CrossFlowState,
+        crossed: bool,
+    ) -> Self {
+        Self {
+            module,
+            function,
+            parameter: None,
+            source_root: Some(source_root),
+            state,
+            crossed,
+        }
+    }
+
+    pub(super) fn for_target_call(
+        module: ModuleId,
+        function: FunctionId,
+        parameter: usize,
+        state: CrossFlowState,
+        crossed: bool,
+    ) -> Self {
+        Self {
+            module,
+            function,
+            parameter: Some(parameter),
+            source_root: None,
+            state,
+            crossed,
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn for_test(module: ModuleId, function: FunctionId, state: CrossFlowState) -> Self {
+        Self {
+            module,
+            function,
+            parameter: None,
+            source_root: None,
+            state,
+            crossed: false,
+        }
+    }
+
+    pub(super) fn module(&self) -> ModuleId {
+        self.module
+    }
+
+    pub(super) fn function(&self) -> FunctionId {
+        self.function
+    }
+
+    pub(super) fn state(&self) -> &CrossFlowState {
+        &self.state
+    }
+
+    pub(super) fn is_crossed(&self) -> bool {
+        self.crossed
+    }
+
+    pub(super) fn matches_parameter(
+        &self,
+        parameter: usize,
+        parameter_is_root: bool,
+        argument_is_root: bool,
+    ) -> bool {
+        self.parameter == Some(parameter) && parameter_is_root && argument_is_root
+    }
+
+    pub(super) fn matches_source_root(
+        &self,
+        value: ValueId,
+        value_is_root: bool,
+        require_value_root: bool,
+    ) -> bool {
+        self.parameter.is_none()
+            && (!require_value_root || value_is_root)
+            && self.source_root.is_some_and(|root| root == value)
+    }
 }

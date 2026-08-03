@@ -180,7 +180,7 @@ explicit sink argument semantics. Local and cross-file projectors consume
 `RequirementIndex`/`SinkIndex` values from those operations instead of
 enumerating compiled vectors and reconstructing indexes at each call site.
 
-#### [ ] READ-007 — `CallContext` is a crate-visible field bag for cross-file propagation state
+#### [x] READ-007 — `CallContext` is a crate-visible field bag for cross-file propagation state
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -200,7 +200,12 @@ for source-root and parameter contexts plus semantic operations such as
 move the repeated connection predicate there; do not put effect-specific
 matching logic on the context.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `CallContext` fields are now private and contexts are created
+through source-root and target-call constructors. Accessors own module,
+function, state, and crossed-state reads, while context methods centralize
+parameter-root and source-root connection predicates used by evidence and
+propagation. Worklist seeding now uses the named constructors rather than
+repeated record literals.
 
 #### [ ] READ-008 — Cross-flow source keys and candidates leak their field representation
 

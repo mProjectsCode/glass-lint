@@ -38,7 +38,7 @@ impl UsageProjector<'_, '_> {
             CallPropagation {
                 session: self.session,
                 effect: self.effect,
-                module: self.context.module,
+                module: self.context.module(),
                 context: self.context,
                 propagated: self.propagated,
                 through: Some(effect_use_event(usage)),
@@ -75,7 +75,7 @@ impl UsageProjector<'_, '_> {
         let static_value = self
             .session
             .project
-            .module_fact_stream(self.context.module)
+            .module_fact_stream(self.context.module())
             .and_then(|stream| {
                 let value = stream.property_write_value(event)?;
                 stream.values().static_string(value)
@@ -90,7 +90,7 @@ impl UsageProjector<'_, '_> {
                 && value_is_precise
                 && value.matches_flow_value(static_value)
             {
-                next.record_requirement(index, QualifiedEvent::new(self.context.module, event));
+                next.record_requirement(index, QualifiedEvent::new(self.context.module(), event));
             }
         }
         self.emit_requirements(&next, event);
@@ -98,7 +98,11 @@ impl UsageProjector<'_, '_> {
     }
 
     fn apply_receiver(&mut self, event: FactId) {
-        let Some(stream) = self.session.project.module_fact_stream(self.context.module) else {
+        let Some(stream) = self
+            .session
+            .project
+            .module_fact_stream(self.context.module())
+        else {
             return;
         };
         let cref = CallEffectRef { stream, event };
@@ -120,7 +124,7 @@ impl UsageProjector<'_, '_> {
                     })
                 })
             {
-                next.record_requirement(index, QualifiedEvent::new(self.context.module, event));
+                next.record_requirement(index, QualifiedEvent::new(self.context.module(), event));
             }
         }
         self.emit_requirements(&next, event);
@@ -128,17 +132,21 @@ impl UsageProjector<'_, '_> {
     }
 
     fn apply_argument(&mut self, event: FactId, argument: usize) {
-        let Some(stream) = self.session.project.module_fact_stream(self.context.module) else {
+        let Some(stream) = self
+            .session
+            .project
+            .module_fact_stream(self.context.module())
+        else {
             return;
         };
         let cref = CallEffectRef { stream, event };
         let matching_sinks = BoundFlowPaths::matching_sink_indices(self.flow, argument, |target| {
             cref.matches_target(target, self.session.names)
         });
-        if !matching_sinks.is_empty() && self.context.crossed {
+        if !matching_sinks.is_empty() && self.context.is_crossed() {
             for index in matching_sinks {
                 self.state
-                    .record_sink(index, QualifiedEvent::new(self.context.module, event));
+                    .record_sink(index, QualifiedEvent::new(self.context.module(), event));
             }
             if self.state.requirements_ready(self.flow)
                 && self.state.source().is_some()
@@ -150,8 +158,8 @@ impl UsageProjector<'_, '_> {
                         evidence: self.session.evidence,
                         arena: self.session.arena,
                     },
-                    self.context.module,
-                    self.context.state.flow_id(),
+                    self.context.module(),
+                    self.context.state().flow_id(),
                     self.state,
                     event,
                     self.flow,
@@ -159,8 +167,8 @@ impl UsageProjector<'_, '_> {
             } else {
                 mark_nonmatching(
                     self.session.evidence,
-                    self.context.module,
-                    self.context.state.flow_id(),
+                    self.context.module(),
+                    self.context.state().flow_id(),
                     event,
                     self.flow,
                 );
@@ -171,7 +179,7 @@ impl UsageProjector<'_, '_> {
     fn emit_requirements(&mut self, state: &CrossFlowState, event: FactId) {
         if self.flow.completion_mode == CompletionMode::Configuration
             && state.requirements_ready(self.flow)
-            && self.context.crossed
+            && self.context.is_crossed()
         {
             emit(
                 evidence::EmissionContext {
@@ -179,8 +187,8 @@ impl UsageProjector<'_, '_> {
                     evidence: self.session.evidence,
                     arena: self.session.arena,
                 },
-                self.context.module,
-                self.context.state.flow_id(),
+                self.context.module(),
+                self.context.state().flow_id(),
                 state,
                 event,
                 self.flow,
@@ -214,19 +222,18 @@ impl CallPropagation<'_, '_> {
             };
             for argument in call.arguments() {
                 let connected = argument.parameter().is_some_and(|parameter| {
-                    self.context
-                        .parameter
-                        .is_some_and(|index| parameter.index() == index)
-                        && parameter.is_root()
-                        && argument.is_root()
-                }) || (self.context.parameter.is_none()
-                    && self.context.source_root.is_some_and(|root| {
-                        self.effect
-                            .value_root(argument.value())
-                            .unwrap_or_else(|| argument.value())
-                            == root
-                    })
-                    && argument.is_root());
+                    self.context.matches_parameter(
+                        parameter.index(),
+                        parameter.is_root(),
+                        argument.is_root(),
+                    )
+                }) || self.context.matches_source_root(
+                    self.effect
+                        .value_root(argument.value())
+                        .unwrap_or_else(|| argument.value()),
+                    argument.is_root(),
+                    true,
+                );
                 if connected {
                     self.session.worklist.enqueue_parameters(
                         self.session.project,
@@ -234,7 +241,7 @@ impl CallPropagation<'_, '_> {
                         target_function,
                         argument.index(),
                         self.state,
-                        self.context.crossed || target_module != self.module,
+                        self.context.is_crossed() || target_module != self.module,
                     );
                 }
             }
