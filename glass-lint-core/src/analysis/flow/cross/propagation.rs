@@ -9,10 +9,10 @@ use crate::{
         flow::{
             cross::{
                 evidence::{self, effect_use_event, emit, mark_nonmatching, usage_matches_context},
-                graph::FlowPathPlan,
                 state::{CallContext, CrossFlowState, QualifiedEvent},
             },
             effect::{CallEffectRef, EffectUse, FunctionEffect},
+            planning::BoundFlowPaths,
         },
         model::flow::{RequirementIndex, SinkIndex},
     },
@@ -28,7 +28,7 @@ pub(super) struct UsageProjector<'a, 'session> {
     pub(super) context: &'a CallContext,
     pub(super) effect: &'a FunctionEffect,
     pub(super) flow: &'a CompiledObjectFlow,
-    pub(super) flow_plan: &'a FlowPathPlan,
+    pub(super) flow_plan: &'a BoundFlowPaths,
     pub(super) state: &'a mut CrossFlowState,
     pub(super) propagated: &'a mut BTreeSet<FactId>,
 }
@@ -119,7 +119,7 @@ impl UsageProjector<'_, '_> {
         let chain = cref.chain();
         let values = stream.values();
         let mut next = self.state.clone();
-        for (index, member) in self.flow_plan.req_members.iter().enumerate() {
+        for (index, member) in self.flow_plan.requirement_members().iter().enumerate() {
             if let Some(member) = member
                 && chain.is_some_and(|c| c == member || c.last_segment() == member.last_segment())
                 && let CompiledObjectRequirement::MemberCall { arguments, .. } =

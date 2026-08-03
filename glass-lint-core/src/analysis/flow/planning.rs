@@ -21,20 +21,73 @@ use crate::{
     },
 };
 
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(super) enum BoundLifecycleCallTarget {
+    Member(NamePath),
+    Global(SmolStr),
+}
+
+impl BoundLifecycleCallTarget {
+    pub(super) fn from_lifecycle(target: &LifecycleCallTarget, names: &NameTable) -> Option<Self> {
+        match target {
+            LifecycleCallTarget::RootedMember(path) => names.lookup_path(path).map(Self::Member),
+            LifecycleCallTarget::Global(name) => Some(Self::Global(name.clone())),
+        }
+    }
+
+    fn member(path: NamePath) -> Self {
+        Self::Member(path)
+    }
+
+    fn global(name: impl Into<SmolStr>) -> Self {
+        Self::Global(name.into())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct BoundTargetIndex<T> {
+    entries: BTreeMap<BoundLifecycleCallTarget, Vec<T>>,
+}
+
+impl<T> Default for BoundTargetIndex<T> {
+    fn default() -> Self {
+        Self {
+            entries: BTreeMap::new(),
+        }
+    }
+}
+
+impl<T> BoundTargetIndex<T> {
+    pub(super) fn insert(&mut self, target: BoundLifecycleCallTarget, value: T) {
+        self.entries.entry(target).or_default().push(value);
+    }
+
+    pub(super) fn get(&self, target: &BoundLifecycleCallTarget) -> Option<&[T]> {
+        self.entries.get(target).map(Vec::as_slice)
+    }
+}
+
+impl<T: Ord> BoundTargetIndex<T> {
+    pub(super) fn normalize(&mut self) {
+        for values in self.entries.values_mut() {
+            values.sort_unstable();
+            values.dedup();
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct BoundFlowPlan<'rules> {
     flows: BTreeMap<FlowId, &'rules CompiledObjectFlow>,
-    sources: BTreeMap<NamePath, Vec<BoundSource>>,
-    global_sources: BTreeMap<SmolStr, Vec<BoundSource>>,
-    sinks: BTreeMap<NamePath, Vec<FlowId>>,
-    global_sinks: BTreeMap<SmolStr, Vec<FlowId>>,
+    sources: BoundTargetIndex<BoundSource>,
+    sinks: BoundTargetIndex<FlowId>,
     /// Pre-resolved requirement member paths per flow, indexed by
     /// requirement position.  `None` for PropertyWrite requirements
     /// (which have no member-call path).
     req_members: BTreeMap<FlowId, Vec<Option<NamePath>>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) struct BoundSource {
     pub(super) flow: FlowId,
     pub(super) arguments: Vec<crate::api::rule::ArgumentConstraint>,
@@ -42,7 +95,7 @@ pub(super) struct BoundSource {
 
 #[derive(Debug, Clone)]
 pub(super) struct BoundFlowPaths {
-    pub(super) req_members: Vec<Option<NamePath>>,
+    req_members: Vec<Option<NamePath>>,
 }
 
 impl BoundFlowPaths {
@@ -57,6 +110,10 @@ impl BoundFlowPaths {
             .collect();
         Self { req_members }
     }
+
+    pub(super) fn requirement_members(&self) -> &[Option<NamePath>] {
+        &self.req_members
+    }
 }
 
 impl<'rules> BoundFlowPlan<'rules> {
@@ -66,10 +123,8 @@ impl<'rules> BoundFlowPlan<'rules> {
         names: &NameTable,
     ) -> Self {
         let mut flows = BTreeMap::new();
-        let mut sources: BTreeMap<NamePath, Vec<BoundSource>> = BTreeMap::new();
-        let mut global_sources: BTreeMap<SmolStr, Vec<BoundSource>> = BTreeMap::new();
-        let mut sinks: BTreeMap<NamePath, Vec<FlowId>> = BTreeMap::new();
-        let mut global_sinks: BTreeMap<SmolStr, Vec<FlowId>> = BTreeMap::new();
+        let mut sources = BoundTargetIndex::default();
+        let mut sinks = BoundTargetIndex::default();
         let mut req_members = BTreeMap::new();
 
         for (rule_index, flow_index, flow) in rules {
@@ -81,28 +136,17 @@ impl<'rules> BoundFlowPlan<'rules> {
                     flow: id,
                     arguments: source.arguments.clone(),
                 };
-                match &source.target {
-                    LifecycleCallTarget::RootedMember(member) => {
-                        if let Some(member) = names.lookup_path(member) {
-                            sources.entry(member).or_default().push(bound);
-                        }
-                    }
-                    LifecycleCallTarget::Global(name) => {
-                        global_sources.entry(name.clone()).or_default().push(bound);
-                    }
+                if let Some(target) =
+                    BoundLifecycleCallTarget::from_lifecycle(&source.target, names)
+                {
+                    sources.insert(target, bound);
                 }
             }
 
             for sink in &flow.sinks {
-                match &sink.target {
-                    LifecycleCallTarget::RootedMember(path) => {
-                        if let Some(member) = names.lookup_path(path) {
-                            sinks.entry(member).or_default().push(id);
-                        }
-                    }
-                    LifecycleCallTarget::Global(name) => {
-                        global_sinks.entry(name.clone()).or_default().push(id);
-                    }
+                if let Some(target) = BoundLifecycleCallTarget::from_lifecycle(&sink.target, names)
+                {
+                    sinks.insert(target, id);
                 }
             }
 
@@ -110,41 +154,13 @@ impl<'rules> BoundFlowPlan<'rules> {
             req_members.insert(id, paths.req_members);
         }
 
-        for candidates in sources.values_mut() {
-            candidates.sort_by(|left, right| {
-                left.flow
-                    .cmp(&right.flow)
-                    .then_with(|| left.arguments.cmp(&right.arguments))
-            });
-            candidates.dedup_by(|left, right| {
-                left.flow == right.flow && left.arguments == right.arguments
-            });
-        }
-        for candidates in global_sources.values_mut() {
-            candidates.sort_by(|left, right| {
-                left.flow
-                    .cmp(&right.flow)
-                    .then_with(|| left.arguments.cmp(&right.arguments))
-            });
-            candidates.dedup_by(|left, right| {
-                left.flow == right.flow && left.arguments == right.arguments
-            });
-        }
-        for ids in sinks.values_mut() {
-            ids.sort_unstable();
-            ids.dedup();
-        }
-        for ids in global_sinks.values_mut() {
-            ids.sort_unstable();
-            ids.dedup();
-        }
+        sources.normalize();
+        sinks.normalize();
 
         Self {
             flows,
             sources,
-            global_sources,
             sinks,
-            global_sinks,
             req_members,
         }
     }
@@ -156,20 +172,22 @@ impl<'rules> BoundFlowPlan<'rules> {
 
     /// Look up executable source candidates by their bound member chain.
     pub(super) fn source_candidates(&self, member_call: &NamePath) -> Option<&[BoundSource]> {
-        self.sources.get(member_call).map(Vec::as_slice)
+        self.sources
+            .get(&BoundLifecycleCallTarget::member(member_call.clone()))
     }
 
     pub(super) fn global_source_candidates(&self, name: &str) -> Option<&[BoundSource]> {
-        self.global_sources.get(name).map(Vec::as_slice)
+        self.sources.get(&BoundLifecycleCallTarget::global(name))
     }
 
     /// Look up flows whose sink chain matches `member_call`.
     pub(super) fn sink_ids(&self, member_call: &NamePath) -> Option<&[FlowId]> {
-        self.sinks.get(member_call).map(Vec::as_slice)
+        self.sinks
+            .get(&BoundLifecycleCallTarget::member(member_call.clone()))
     }
 
     pub(super) fn global_sink_ids(&self, name: &str) -> Option<&[FlowId]> {
-        self.global_sinks.get(name).map(Vec::as_slice)
+        self.sinks.get(&BoundLifecycleCallTarget::global(name))
     }
 
     /// Pre-resolved requirement member paths for `flow_id`.

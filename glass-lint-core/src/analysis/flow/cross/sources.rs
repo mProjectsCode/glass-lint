@@ -1,14 +1,16 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use glass_lint_datastructures::{Budget, NamePath, NameTable};
+use glass_lint_datastructures::{Budget, NameTable};
 use hashbrown::HashMap;
-use smol_str::SmolStr;
 
 use crate::{
     analysis::{
         ProjectSemanticModel,
         facts::FactId,
-        flow::cross::{MAX_PENDING, QualifiedCallGraph},
+        flow::{
+            cross::{MAX_PENDING, QualifiedCallGraph},
+            planning::{BoundLifecycleCallTarget, BoundTargetIndex},
+        },
         model::flow::FlowId,
         value::{FunctionId, ValueId},
     },
@@ -131,11 +133,7 @@ impl FlowSources {
     }
 }
 
-#[derive(Default)]
-struct SourceIndex {
-    members: BTreeMap<NamePath, Vec<FlowId>>,
-    globals: BTreeMap<SmolStr, Vec<FlowId>>,
-}
+type SourceIndex = BoundTargetIndex<FlowId>;
 
 /// Build a per-module source index mapping typed call targets to flow IDs.
 fn build_source_index(
@@ -145,22 +143,12 @@ fn build_source_index(
     let mut index = SourceIndex::default();
     for (id, flow) in flows {
         for source in &flow.sources {
-            match &source.target {
-                crate::api::rule::query::lifecycle::LifecycleCallTarget::RootedMember(path) => {
-                    if let Some(member) = names.lookup_path(path) {
-                        index.members.entry(member).or_default().push(*id);
-                    }
-                }
-                crate::api::rule::query::lifecycle::LifecycleCallTarget::Global(name) => {
-                    index.globals.entry(name.clone()).or_default().push(*id);
-                }
+            if let Some(target) = BoundLifecycleCallTarget::from_lifecycle(&source.target, names) {
+                index.insert(target, *id);
             }
         }
     }
-    for ids in index.members.values_mut().chain(index.globals.values_mut()) {
-        ids.sort_unstable();
-        ids.dedup();
-    }
+    index.normalize();
     index
 }
 
@@ -198,10 +186,13 @@ impl FlowSources {
                     let cref = call.as_ref(stream);
                     let candidates = cref
                         .global_name()
-                        .and_then(|name| source_index.globals.get(name))
+                        .and_then(|name| {
+                            source_index.get(&BoundLifecycleCallTarget::Global(name.clone()))
+                        })
                         .or_else(|| {
-                            cref.chain()
-                                .and_then(|chain| source_index.members.get(chain))
+                            cref.chain().and_then(|chain| {
+                                source_index.get(&BoundLifecycleCallTarget::Member(chain.clone()))
+                            })
                         });
                     let Some(candidates) = candidates else {
                         continue;

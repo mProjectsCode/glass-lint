@@ -23,12 +23,13 @@ use crate::{
         flow::{
             cross::{
                 evidence::ModuleEvidence,
-                graph::{FlowPathPlan, QualifiedCallGraph},
+                graph::QualifiedCallGraph,
                 sources::FlowSources,
                 state::{CallContext, CrossFlowState},
                 worklist::ContextWorklist,
             },
             effect::FunctionEffect,
+            planning::BoundFlowPaths,
         },
         model::flow::{FlowId, FlowLimits},
         project::state::LinkingSession,
@@ -71,7 +72,7 @@ struct ContextProjection<'a, 'session> {
     context: &'a CallContext,
     effect: &'a FunctionEffect,
     flow: &'a CompiledObjectFlow,
-    flow_plan: &'a FlowPathPlan,
+    flow_plan: &'a BoundFlowPaths,
     state: &'a CrossFlowState,
 }
 
@@ -114,7 +115,7 @@ struct CrossWorklist<'a, 'arena> {
     evidence: HashMap<ModuleId, ModuleEvidence>,
     call_graph: QualifiedCallGraph,
     worklist: ContextWorklist,
-    flow_plan_cache: HashMap<FlowPlanKey, FlowPathPlan>,
+    flow_plan_cache: HashMap<FlowPlanKey, BoundFlowPaths>,
     step_budget: Budget,
     arena: &'arena mut TraceArena,
     projections: usize,
@@ -154,7 +155,7 @@ impl CrossWorklist<'_, '_> {
                 flow: context.state.flow,
                 module: context.module,
             })
-            .or_insert_with(|| FlowPathPlan::build(flow, names));
+            .or_insert_with(|| BoundFlowPaths::build(flow, names));
         let mut session = CrossProjectionSession {
             project: self.project,
             evidence: &mut self.evidence,

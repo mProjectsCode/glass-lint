@@ -26,9 +26,7 @@ impl<'a> AssignmentAt<'a> {
         declaration: &'a BindingProvenance,
     ) -> Option<&'a BindingProvenance> {
         match self {
-            Self::Known(assignment) | Self::Ambiguous(assignment) => {
-                assignment.preferred_witness()
-            }
+            Self::Known(assignment) | Self::Ambiguous(assignment) => assignment.preferred_witness(),
             Self::Absent => parameter.or(Some(declaration)),
         }
     }

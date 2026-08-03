@@ -2,8 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::{
     analysis::{
-        ProjectSemanticModel, facts::FactId, flow::planning::BoundFlowPaths,
-        project::state::LinkingSession, value::FunctionId,
+        ProjectSemanticModel, facts::FactId, project::state::LinkingSession, value::FunctionId,
     },
     project::ModuleId,
 };
@@ -70,5 +69,3 @@ impl QualifiedCallGraph {
             .map(|target| (target.module, target.function))
     }
 }
-
-pub(super) type FlowPathPlan = BoundFlowPaths;

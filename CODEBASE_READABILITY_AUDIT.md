@@ -134,7 +134,7 @@ The export table, lookup cache, and recursion guard all mean “module plus expo
 
 **Fix Applied:** Mutable and frozen scope graphs now share one private `ScopeData` aggregate, with the mutable phase retaining only its collection/freeze operations and the frozen phase retaining the semantic query facade. The common strict-witness selection policy now lives on `AssignmentAt`, removing duplicated `binding_at` branching while preserving scope, shadowing, reassignment, and join behavior; scope and resolution tests continue to pass.
 
-#### [ ] READ-011 — Bound flow targets are represented as parallel maps in two indexes
+#### [x] READ-011 — Bound flow targets are represented as parallel maps in two indexes
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Duplication
@@ -144,7 +144,7 @@ The export table, lookup cache, and recursion guard all mean “module plus expo
 
 **Recommendation:** Bind `LifecycleCallTarget` once into a `BoundLifecycleCallTarget` enum containing either `NamePath` or a global name, then index sources and sinks by that type. Use one private normalized target-index owner for local planning and cross-flow source collection. Keep the descriptive `BoundFlowPaths` name, make its requirement paths opaque behind indexed iteration, and delete the `FlowPathPlan` alias.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `BoundLifecycleCallTarget` now binds rooted member and global targets into one typed domain key, and the shared `BoundTargetIndex` owns insertion, deterministic normalization, and lookup for both local flow plans and cross-project source discovery. `BoundFlowPaths` is retained under its descriptive name with private requirement storage and an indexed accessor, and the obsolete `FlowPathPlan` alias was removed; flow unit and integration tests pass unchanged.
 
 #### [ ] READ-012 — Project timing snapshot and accumulator duplicate the same state
 - **Severity:** Medium
