@@ -187,14 +187,8 @@ impl ProjectSemanticModel {
 
         // Insert resolved export-table entries (authoritative direct/named
         // exports) after star exports so they always win.
-        if let Some(exports) = self.exports.module_exports(module) {
-            for (name, resolved) in exports.iter() {
-                identities.insert(
-                    ModuleExportKey::new(prefix.clone(), name.clone()),
-                    resolved.clone(),
-                );
-            }
-        }
+        self.exports
+            .copy_identities_into(module, prefix, identities);
 
         // Merge star-exported entries, preserving direct exports.
         identities.merge_missing_from(star_entries);

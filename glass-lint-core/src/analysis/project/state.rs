@@ -5,7 +5,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use petgraph::{algo::kosaraju_scc, graph::DiGraph};
 use smol_str::SmolStr;
 
-use crate::analysis::{ExportResolution, ModuleId};
+use crate::analysis::{
+    ExportResolution, ModuleId,
+    matching::{ModuleExportKey, ModuleIdentityMap},
+};
 
 #[derive(Debug, Default)]
 /// Deterministic internal-module graph.
@@ -173,8 +176,13 @@ impl ModuleExports {
         self.0.insert(name, value)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&SmolStr, &ExportResolution)> {
-        self.0.iter()
+    fn copy_identities_into(&self, prefix: &SmolStr, identities: &mut ModuleIdentityMap) {
+        for (name, resolved) in &self.0 {
+            identities.insert(
+                ModuleExportKey::new(prefix.clone(), name.clone()),
+                resolved.clone(),
+            );
+        }
     }
 }
 
@@ -241,6 +249,18 @@ impl ExportTable {
     /// Borrow the resolved exports for one module.
     pub(in crate::analysis) fn module_exports(&self, module: ModuleId) -> Option<&ModuleExports> {
         self.exports.get(&module)
+    }
+
+    /// Copy direct exports into the qualified identity overlay.
+    pub(in crate::analysis) fn copy_identities_into(
+        &self,
+        module: ModuleId,
+        prefix: &SmolStr,
+        identities: &mut ModuleIdentityMap,
+    ) {
+        if let Some(exports) = self.module_exports(module) {
+            exports.copy_identities_into(prefix, identities);
+        }
     }
 }
 

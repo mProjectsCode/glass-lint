@@ -47,7 +47,7 @@ the project model or a named resolver coordinator.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-002 — Export identity propagation still consumes a map-shaped module export view
+#### [x] READ-002 — Export identity propagation still consumes a map-shaped module export view
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -68,7 +68,11 @@ monotone update and export-count accounting inside `ExportTable`; do not merge
 `ModuleExportKey` with `QualifiedExportId`, because one identifies an external
 module/export spelling while the other identifies an internal `ModuleId`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ExportTable::copy_identities_into` now owns the direct-export
+to-`ModuleExportKey` transformation and clones resolved identities into the
+overlay. Identity propagation no longer receives a generic module-export
+iterator or reconstructs qualified keys from `(name, resolution)` pairs;
+monotone export storage and count accounting remain inside `ExportTable`.
 
 ### Scope and semantic model boundaries
 
