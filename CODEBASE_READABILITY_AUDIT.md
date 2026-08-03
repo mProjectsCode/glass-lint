@@ -355,7 +355,7 @@ lifecycle source handling.
 match while preserving ordered role traversal. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-025 — Argument convenience builders repeat index validation
+#### [x] READ-025 — Argument convenience builders repeat index validation
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -376,7 +376,10 @@ methods delegate without prechecking after the helper has been made
 authoritative. Preserve the current error variant, `usize` input API, and
 bounded constraint-builder behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Centralized checked `ArgumentIndex` construction and routed
+`with_arg` plus all convenience builders through one internal constraint
+operation, preserving invalid-index precedence and errors. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-026 — Analysis-limit accessors and setters repeat a field table
 

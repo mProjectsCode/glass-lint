@@ -9,6 +9,14 @@ use super::{
     checked_module_export, checked_name, evidence_kind_for_event, limits,
 };
 
+fn checked_argument_index(index: usize) -> Result<ArgumentIndex, QueryBuildError> {
+    if index > limits::MAX_ARGUMENT_INDEX {
+        return Err(QueryBuildError::InvalidArgumentIndex(index));
+    }
+    let index = u8::try_from(index).map_err(|_| QueryBuildError::InvalidArgumentIndex(index))?;
+    Ok(ArgumentIndex::new_unchecked(index))
+}
+
 #[allow(clippy::cast_possible_truncation)]
 impl EventQuery {
     /// Global call, e.g. `fetch(...)`.
@@ -274,14 +282,19 @@ impl EventQuery {
 
     /// Add an argument predicate.
     pub fn with_arg(
-        mut self,
+        self,
         index: usize,
         matcher: impl Into<ArgumentMatcher>,
     ) -> Result<Self, QueryBuildError> {
-        if index > limits::MAX_ARGUMENT_INDEX {
-            return Err(QueryBuildError::InvalidArgumentIndex(index));
-        }
-        let arg_idx = ArgumentIndex::new_unchecked(index as u8);
+        let arg_idx = checked_argument_index(index)?;
+        self.with_arg_index(arg_idx, matcher)
+    }
+
+    fn with_arg_index(
+        mut self,
+        arg_idx: ArgumentIndex,
+        matcher: impl Into<ArgumentMatcher>,
+    ) -> Result<Self, QueryBuildError> {
         let mut builder = ArgumentConstraintsBuilder::from_constraints(&self.constraints)?;
         builder.push(arg_idx.get(), matcher)?;
         self.constraints = builder.finish();
@@ -290,10 +303,8 @@ impl EventQuery {
 
     /// Add a static-string argument constraint.
     pub fn with_arg_static_string(self, index: usize) -> Result<Self, QueryBuildError> {
-        if index > limits::MAX_ARGUMENT_INDEX {
-            return Err(QueryBuildError::InvalidArgumentIndex(index));
-        }
-        self.with_arg(index, ValueMatcher::static_string())
+        let arg_idx = checked_argument_index(index)?;
+        self.with_arg_index(arg_idx, ValueMatcher::static_string())
     }
 
     /// Add a static-string constraint with allowed values.
@@ -306,10 +317,8 @@ impl EventQuery {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        if index > limits::MAX_ARGUMENT_INDEX {
-            return Err(QueryBuildError::InvalidArgumentIndex(index));
-        }
-        self.with_arg(index, ValueMatcher::static_string().equals_any(values)?)
+        let arg_idx = checked_argument_index(index)?;
+        self.with_arg_index(arg_idx, ValueMatcher::static_string().equals_any(values)?)
     }
 
     /// Add a static-string contains constraint.
@@ -322,10 +331,8 @@ impl EventQuery {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        if index > limits::MAX_ARGUMENT_INDEX {
-            return Err(QueryBuildError::InvalidArgumentIndex(index));
-        }
-        self.with_arg(index, ValueMatcher::static_string().contains_any(values)?)
+        let arg_idx = checked_argument_index(index)?;
+        self.with_arg_index(arg_idx, ValueMatcher::static_string().contains_any(values)?)
     }
 
     /// Add an object property value constraint.
@@ -335,11 +342,9 @@ impl EventQuery {
         property: impl Into<String>,
         value: ValueMatcher,
     ) -> Result<Self, QueryBuildError> {
-        if index > limits::MAX_ARGUMENT_INDEX {
-            return Err(QueryBuildError::InvalidArgumentIndex(index));
-        }
-        self.with_arg(
-            index,
+        let arg_idx = checked_argument_index(index)?;
+        self.with_arg_index(
+            arg_idx,
             ArgumentMatcher::object_property_value(property, value)?,
         )
     }
@@ -350,10 +355,8 @@ impl EventQuery {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        if index > limits::MAX_ARGUMENT_INDEX {
-            return Err(QueryBuildError::InvalidArgumentIndex(index));
-        }
-        self.with_arg(index, ArgumentMatcher::object_keys(keys)?)
+        let arg_idx = checked_argument_index(index)?;
+        self.with_arg_index(arg_idx, ArgumentMatcher::object_keys(keys)?)
     }
 
     /// Convert this event query into a [`QueryDecl`] with inferred evidence
