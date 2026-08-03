@@ -31,17 +31,17 @@ use crate::{
 /// table, budgets, diagnostics, modules, and resolutions. Consumed into a
 /// [`ProjectSemanticModel`](super::model::ProjectSemanticModel).
 pub(super) struct ProjectLinker {
-    pub(super) modules: BTreeMap<ModuleId, ProjectModule>,
-    pub(super) resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
-    pub(super) graph: ModuleGraph,
-    pub(super) scc_partition: SccPartition,
-    pub(super) exports: ExportTable,
-    pub(super) lookup_session: LinkingSession,
-    pub(super) link_budget: BudgetTracker,
-    pub(super) link_limit: usize,
-    pub(super) link_cycle_rounds: usize,
-    pub(super) diagnostics: Vec<AnalysisDiagnostic>,
-    pub(super) status: AnalysisStatus,
+    modules: BTreeMap<ModuleId, ProjectModule>,
+    resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
+    graph: ModuleGraph,
+    scc_partition: SccPartition,
+    exports: ExportTable,
+    lookup_session: LinkingSession,
+    link_budget: BudgetTracker,
+    link_limit: usize,
+    link_cycle_rounds: usize,
+    diagnostics: Vec<AnalysisDiagnostic>,
+    status: AnalysisStatus,
 }
 
 impl ProjectLinker {
@@ -116,19 +116,16 @@ impl ProjectLinker {
         limits: &crate::AnalysisLimits,
     ) -> super::model::ProjectSemanticModel {
         let edge_count = self.graph.edge_count();
-        super::model::ProjectSemanticModel {
-            modules: self.modules,
-            resolutions: self.resolutions,
-            exports: self.exports,
+        super::model::ProjectSemanticModel::from_linker(
+            self.modules,
+            self.resolutions,
+            self.exports,
             edge_count,
-            link_cycle_rounds: self.link_cycle_rounds,
-            diagnostics: self.diagnostics,
-            status: self.status,
-            flow_limit: limits.flow_operations(),
-            effect_limit: limits.effect_operations(),
-            trace_limit: limits.trace_nodes(),
-            trace_arena: crate::analysis::trace::TraceArena::new(limits.trace_nodes()),
-        }
+            self.link_cycle_rounds,
+            self.diagnostics,
+            self.status,
+            limits,
+        )
     }
 
     /// Return the stable internal identity for one local request.

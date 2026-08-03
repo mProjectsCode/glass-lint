@@ -27,7 +27,7 @@ impl ProjectSemanticModel {
         session: &mut LinkingSession,
     ) -> BTreeMap<crate::analysis::value::ValueId, ExportResolution> {
         let mut identities = BTreeMap::new();
-        let Some(module) = self.modules.get(&importer) else {
+        let Some(module) = self.module(importer) else {
             return identities;
         };
         let stream = module.local().facts().stream();
@@ -43,8 +43,7 @@ impl ProjectSemanticModel {
                     continue;
                 };
                 let Some(target) = self
-                    .modules
-                    .get(&target_module)
+                    .module(target_module)
                     .and_then(|module| module.local().effects().get(target_function))
                 else {
                     continue;
@@ -100,7 +99,7 @@ impl ProjectSemanticModel {
         session: &mut LinkingSession,
     ) -> ModuleIdentityMap {
         let mut identities = ModuleIdentityMap::new();
-        let Some(project_module) = self.modules.get(&module) else {
+        let Some(project_module) = self.module(module) else {
             return identities;
         };
         for request in project_module.local().interface().requests() {
@@ -170,14 +169,14 @@ impl ProjectSemanticModel {
         // star-vs-star conflict detection, so that conflicting star-derived
         // names are marked Ambiguous before direct exports are considered.
         let mut star_entries = ModuleIdentityMap::new();
-        if let Some(project_module) = self.modules.get(&module) {
+        if let Some(project_module) = self.module(module) {
             for request_index in project_module.local().interface().star_exports() {
                 let Some(request) = project_module.local().interface().request(*request_index)
                 else {
                     continue;
                 };
                 let key = QualifiedRequestId::new(module, request.id());
-                if let Some(LinkedModuleTarget::Internal { id, .. }) = self.resolutions.get(&key) {
+                if let Some(LinkedModuleTarget::Internal { id, .. }) = self.resolution_for(&key) {
                     let mut child_entries = ModuleIdentityMap::new();
                     self.collect_exported_identities(*id, prefix, visiting, &mut child_entries);
                     star_entries.merge_star_from(child_entries);
@@ -199,6 +198,6 @@ impl ProjectSemanticModel {
     /// Resolve a namespace request without guessing at unsupported targets.
     fn resolve_namespace(&self, module: ModuleId, request: &ModuleRequest) -> ExportResolution {
         let key = QualifiedRequestId::new(module, request.id());
-        target_to_export_resolution(self.resolutions.get(&key), request.specifier(), "*")
+        target_to_export_resolution(self.resolution_for(&key), request.specifier(), "*")
     }
 }

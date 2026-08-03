@@ -256,7 +256,7 @@ mod tests {
                 .unwrap()
         };
         assert!(parse_diagnostics.is_empty());
-        assert_eq!(link_input.resolutions.len(), 1);
+        assert_eq!(link_input.resolution_count(), 1);
 
         let mut artifacts = AnalysisArtifacts::default();
         let requests = artifacts.record_lowered(

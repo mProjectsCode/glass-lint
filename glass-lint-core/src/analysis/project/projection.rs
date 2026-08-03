@@ -437,8 +437,7 @@ impl ProjectSemanticModel {
         let need_result_ids = plan.needs_call_result_identities();
         let mut outcome = ProjectionOutcome::default();
         let projections = self
-            .modules
-            .values()
+            .modules()
             .map(|module| {
                 let index = module.local().facts().matcher_index();
                 let identities =
@@ -489,7 +488,7 @@ impl ProjectSemanticModel {
     pub(crate) fn record_flow_exhaustion(&mut self, outcome: &ProjectionOutcome) {
         if outcome.status.effect_exhausted {
             for module in &outcome.status.effect_exhausted_modules {
-                if let Some(module) = self.modules.get(module) {
+                if let Some(module) = self.module(*module) {
                     self.status.record(
                         StatusScope::File(module.path().clone()),
                         IncompleteReason::BudgetExhausted {

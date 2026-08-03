@@ -109,8 +109,8 @@ impl ExportResolution {
 /// Source text has been consumed or dropped; only module-level semantic
 /// artifacts and their resolved import targets remain.
 pub struct ResolvedLinkInput {
-    pub(crate) modules: BTreeMap<ModuleId, ProjectModule>,
-    pub(crate) resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
+    modules: BTreeMap<ModuleId, ProjectModule>,
+    resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
 }
 
 impl ResolvedLinkInput {
@@ -166,6 +166,15 @@ impl ResolvedLinkInput {
             resolutions,
         })
     }
+
+    pub(super) fn into_linker(self, link_limit: usize) -> ProjectLinker {
+        ProjectLinker::new(self.modules, self.resolutions, link_limit)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn resolution_count(&self) -> usize {
+        self.resolutions.len()
+    }
 }
 
 fn resolve_record(
@@ -197,9 +206,9 @@ fn resolve_record(
 /// resolution results rather than merging lexical arenas.
 pub struct ProjectSemanticModel {
     /// Locally analyzed modules keyed by stable module ID.
-    pub(super) modules: BTreeMap<ModuleId, ProjectModule>,
+    modules: BTreeMap<ModuleId, ProjectModule>,
     /// Authored request resolutions keyed by importer/span/kind.
-    pub(super) resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
+    resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
     /// Fixed-point export identities for linked modules.
     pub(super) exports: ExportTable,
     /// Number of unique internal edges between modules.
@@ -218,6 +227,31 @@ pub struct ProjectSemanticModel {
 }
 
 impl ProjectSemanticModel {
+    pub(super) fn from_linker(
+        modules: BTreeMap<ModuleId, ProjectModule>,
+        resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
+        exports: ExportTable,
+        edge_count: usize,
+        link_cycle_rounds: usize,
+        diagnostics: Vec<AnalysisDiagnostic>,
+        status: AnalysisStatus,
+        limits: &crate::AnalysisLimits,
+    ) -> Self {
+        Self {
+            modules,
+            resolutions,
+            exports,
+            edge_count,
+            link_cycle_rounds,
+            diagnostics,
+            status,
+            flow_limit: limits.flow_operations(),
+            effect_limit: limits.effect_operations(),
+            trace_limit: limits.trace_nodes(),
+            trace_arena: TraceArena::new(limits.trace_nodes()),
+        }
+    }
+
     /// Create a project model for one already analyzed source without linking.
     #[cfg(test)]
     pub fn single(
@@ -263,11 +297,7 @@ impl ProjectSemanticModel {
         link_input: ResolvedLinkInput,
         limits: &crate::AnalysisLimits,
     ) -> Self {
-        let mut linker = ProjectLinker::new(
-            link_input.modules,
-            link_input.resolutions,
-            limits.link_operations(),
-        );
+        let mut linker = link_input.into_linker(limits.link_operations());
         linker.propagate_local_status();
         linker.build_graph_and_exports();
         linker.finish(limits)
@@ -275,6 +305,35 @@ impl ProjectSemanticModel {
 
     pub fn modules(&self) -> impl Iterator<Item = &ProjectModule> {
         self.modules.values()
+    }
+
+    pub(in crate::analysis) fn module(&self, module: ModuleId) -> Option<&ProjectModule> {
+        self.modules.get(&module)
+    }
+
+    pub(in crate::analysis) fn resolution_for(
+        &self,
+        key: &QualifiedRequestId,
+    ) -> Option<&LinkedModuleTarget> {
+        self.resolutions.get(key)
+    }
+
+    pub(in crate::analysis) fn resolve_imported_identity(
+        &self,
+        importer: ModuleId,
+        authored_module: &SmolStr,
+        authored_export: &SmolStr,
+        session: &mut LinkingSession,
+    ) -> ExportResolution {
+        crate::analysis::project::exports::resolve_imported_identity(
+            &self.modules,
+            &self.resolutions,
+            &self.exports,
+            importer,
+            authored_module,
+            authored_export,
+            session,
+        )
     }
 
     pub(in crate::analysis) fn effect(

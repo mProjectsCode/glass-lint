@@ -21,7 +21,7 @@ because they identify different domains.
 
 ### Project linking and semantic aggregates
 
-#### [ ] READ-001 — Linked project aggregates expose their module and resolution maps
+#### [x] READ-001 — Linked project aggregates expose their module and resolution maps
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -45,7 +45,13 @@ only if an independently repeated invariant or policy appears; keep export
 fixed-point updates on `ExportTable` and cross-module resolution decisions on
 the project model or a named resolver coordinator.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ResolvedLinkInput`, `ProjectLinker`, and
+`ProjectSemanticModel` no longer expose their physical module or resolution
+maps. Validated input now transfers ownership through `into_linker`; the
+semantic model exposes `modules()`, `module()`, and `resolution_for()` for
+observed lookups, while export identity resolution remains an aggregate-owned
+operation. Linker internals retain fixed-point export updates and resolution
+selection without new wrapper maps.
 
 #### [x] READ-002 — Export identity propagation still consumes a map-shaped module export view
 
