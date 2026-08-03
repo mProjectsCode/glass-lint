@@ -109,15 +109,13 @@ impl FrozenScopeGraph {
                 let swc_ecma_ast::Callee::Expr(callee) = &call.callee else {
                     return None;
                 };
-                let source = self.rooted_expr_chain(callee)?;
-                (!source.is_root()).then_some(source)
+                self.returned_object_call_source(callee)
             }
             Expr::OptChain(chain) => {
                 let swc_ecma_ast::OptChainBase::Call(call) = &*chain.base else {
                     return None;
                 };
-                let source = self.rooted_expr_chain(&call.callee)?;
-                (!source.is_root()).then_some(source)
+                self.returned_object_call_source(&call.callee)
             }
             Expr::Ident(ident) => match self.binding_at(ident.sym.as_ref(), ident.span)? {
                 BindingProvenance::ReturnedObject { source } => self.symbol_path(source),
@@ -136,6 +134,11 @@ impl FrozenScopeGraph {
                 .and_then(|expr| self.returned_object_source(expr)),
             _ => None,
         }
+    }
+
+    fn returned_object_call_source(&self, callee: &Expr) -> Option<SymbolPath> {
+        let source = self.rooted_expr_chain(callee)?;
+        (!source.is_root()).then_some(source)
     }
 
     pub(in crate::analysis) fn returned_member(

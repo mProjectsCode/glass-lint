@@ -280,7 +280,7 @@ and fail-closed handling of non-expression callees unchanged.
 provenance and delegated both ordinary and optional calls to it, retaining the
 `.bind` rejection and rooted-path checks. Verified with `make fmt && make ci`.
 
-#### [ ] READ-022 — Frozen returned-object source repeats ordinary and optional-call branches
+#### [x] READ-022 — Frozen returned-object source repeats ordinary and optional-call branches
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -300,7 +300,10 @@ preserve the strict non-root requirement, recursive member handling, and
 the frozen-query owner; do not combine it with the collector helper merely
 because the AST branches look alike.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a frozen-query helper for normalized call callees and
+delegated ordinary and optional returned-object calls to it, preserving rooted
+source filtering and unsupported-base behavior. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-023 — Assignment recording repeats key/version/write bookkeeping
 
