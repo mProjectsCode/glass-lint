@@ -10,10 +10,7 @@ use crate::{
         LinkedModuleTarget, ModuleId,
         lowering::status::{AnalysisComponent, IncompleteReason, StatusScope},
         module::{self, ModuleRequestRole, NAMESPACE_EXPORT},
-        project::{
-            linker::ProjectLinker, model::ExportResolution, resolver::ExportResolver,
-            state::QualifiedExportId,
-        },
+        project::{linker::ProjectLinker, model::ExportResolution, state::QualifiedExportId},
         syntax::SymbolCallProvenance,
     },
     project::{AnalysisDiagnostic, ProjectRelativePath},
@@ -296,13 +293,9 @@ impl ProjectLinker {
         authored_module: &SmolStr,
         authored_export: &SmolStr,
     ) -> ExportResolution {
-        ExportResolver::new(
-            &self.modules,
-            &self.resolutions,
-            &self.exports,
-            &mut self.lookup_session.lookup_cache,
-        )
-        .resolve_imported_identity(importer, authored_module, authored_export)
+        self.with_export_resolver(|resolver| {
+            resolver.resolve_imported_identity(importer, authored_module, authored_export)
+        })
     }
 
     fn lookup_export(
@@ -310,13 +303,7 @@ impl ProjectLinker {
         id: &QualifiedExportId,
         visiting: &mut BTreeSet<QualifiedExportId>,
     ) -> Option<ExportResolution> {
-        ExportResolver::new(
-            &self.modules,
-            &self.resolutions,
-            &self.exports,
-            &mut self.lookup_session.lookup_cache,
-        )
-        .lookup_export(id, visiting)
+        self.with_export_resolver(|resolver| resolver.lookup_export(id, visiting))
     }
 
     /// Resolve a named re-export through its authored request.

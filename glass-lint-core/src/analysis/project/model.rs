@@ -17,6 +17,7 @@ use crate::{
         project::{
             linker::ProjectLinker,
             projection::ProjectionOutcome,
+            resolver::{ExportResolver, ProjectLookup},
             state::{ExportTable, LinkingSession},
         },
         syntax::SymbolCallProvenance,
@@ -226,6 +227,22 @@ pub struct ProjectSemanticModel {
     pub(super) trace_arena: TraceArena,
 }
 
+impl ProjectLookup for ProjectSemanticModel {
+    fn module(&self, module: ModuleId) -> Option<&ProjectModule> {
+        self.modules.get(&module)
+    }
+
+    fn request_target(
+        &self,
+        module: ModuleId,
+        request: ModuleRequestId,
+    ) -> Option<&LinkedModuleTarget> {
+        self.modules.get(&module)?;
+        self.resolutions
+            .get(&QualifiedRequestId::new(module, request))
+    }
+}
+
 pub(super) struct LinkedProjectState {
     pub(super) modules: BTreeMap<ModuleId, ProjectModule>,
     pub(super) resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
@@ -326,15 +343,8 @@ impl ProjectSemanticModel {
         authored_export: &SmolStr,
         session: &mut LinkingSession,
     ) -> ExportResolution {
-        crate::analysis::project::exports::resolve_imported_identity(
-            &self.modules,
-            &self.resolutions,
-            &self.exports,
-            importer,
-            authored_module,
-            authored_export,
-            session,
-        )
+        ExportResolver::new(self, &self.exports, &mut session.lookup_cache)
+            .resolve_imported_identity(importer, authored_module, authored_export)
     }
 
     pub(in crate::analysis) fn effect(

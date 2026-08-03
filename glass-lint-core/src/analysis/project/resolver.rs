@@ -1,13 +1,13 @@
 //! Shared bounded export lookup for the linker and post-link semantic model.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use smol_str::{SmolStr, ToSmolStr};
 
 use crate::{
     analysis::{
-        ExportResolution, LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId,
-        module::{self, DEFAULT_EXPORT, ModuleRequestRole},
+        ExportResolution, LinkedModuleTarget, ModuleId, ProjectModule,
+        module::{DEFAULT_EXPORT, ModuleRequestId, ModuleRequestRole},
         project::{
             model::MAX_EXPORT_DEPTH,
             state::{ExportLookupCache, ExportTable, QualifiedExportId},
@@ -17,23 +17,30 @@ use crate::{
 };
 
 /// Shared direct/star export resolver used by both linking phases.
+pub(super) trait ProjectLookup {
+    fn module(&self, module: ModuleId) -> Option<&ProjectModule>;
+
+    fn request_target(
+        &self,
+        module: ModuleId,
+        request: ModuleRequestId,
+    ) -> Option<&LinkedModuleTarget>;
+}
+
 pub(super) struct ExportResolver<'a> {
-    modules: &'a BTreeMap<ModuleId, ProjectModule>,
-    resolutions: &'a BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
+    project: &'a dyn ProjectLookup,
     exports: &'a ExportTable,
     cache: &'a mut ExportLookupCache,
 }
 
 impl<'a> ExportResolver<'a> {
     pub(super) fn new(
-        modules: &'a BTreeMap<ModuleId, ProjectModule>,
-        resolutions: &'a BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
+        project: &'a dyn ProjectLookup,
         exports: &'a ExportTable,
         cache: &'a mut ExportLookupCache,
     ) -> Self {
         Self {
-            modules,
-            resolutions,
+            project,
             exports,
             cache,
         }
@@ -49,8 +56,8 @@ impl<'a> ExportResolver<'a> {
         authored_export: &SmolStr,
     ) -> ExportResolution {
         let Some(interface) = self
-            .modules
-            .get(&importer)
+            .project
+            .module(importer)
             .map(|module| module.local().interface())
         else {
             return ExportResolution::Unknown;
@@ -74,10 +81,7 @@ impl<'a> ExportResolver<'a> {
 
         let mut resolved = None;
         for request in requests {
-            let Some(key) = self.request_id(importer, request) else {
-                return ExportResolution::Unknown;
-            };
-            let candidate = match self.resolutions.get(&key) {
+            let candidate = match self.project.request_target(importer, request.id()) {
                 Some(LinkedModuleTarget::Internal { id, .. }) => self
                     .lookup_export(
                         &QualifiedExportId::new(*id, authored_export.clone()),
@@ -117,8 +121,8 @@ impl<'a> ExportResolver<'a> {
             return None;
         }
         let is_unknown = self
-            .modules
-            .get(&id.module())
+            .project
+            .module(id.module())
             .map(|module| module.local().interface().is_unknown())?;
         if is_unknown {
             return Some(ExportResolution::Unknown);
@@ -142,8 +146,8 @@ impl<'a> ExportResolver<'a> {
         let module = id.module();
         let export_name = id.name().clone();
         let star_exports = self
-            .modules
-            .get(&module)
+            .project
+            .module(module)
             .map(|module| {
                 module
                     .local()
@@ -157,18 +161,14 @@ impl<'a> ExportResolver<'a> {
         let mut saw_unknown = false;
         for request_index in star_exports {
             let Some(request) = self
-                .modules
-                .get(&module)
+                .project
+                .module(module)
                 .and_then(|module| module.local().interface().request(request_index))
             else {
                 saw_unknown = true;
                 continue;
             };
-            let Some(key) = self.request_id(module, request) else {
-                saw_unknown = true;
-                continue;
-            };
-            let candidate_export = match self.resolutions.get(&key) {
+            let candidate_export = match self.project.request_target(module, request.id()) {
                 Some(LinkedModuleTarget::Internal { id: target, .. }) => self.lookup_export(
                     &QualifiedExportId::new(*target, export_name.clone()),
                     visiting,
@@ -200,15 +200,6 @@ impl<'a> ExportResolver<'a> {
             }
         }
         (candidate, saw_unknown)
-    }
-
-    fn request_id(
-        &self,
-        module: ModuleId,
-        request: &module::ModuleRequest,
-    ) -> Option<QualifiedRequestId> {
-        self.modules.get(&module)?;
-        Some(QualifiedRequestId::new(module, request.id()))
     }
 }
 

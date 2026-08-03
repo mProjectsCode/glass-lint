@@ -275,6 +275,14 @@ impl LinkingSession {
             lookup_cache: ExportLookupCache::new(capacity),
         }
     }
+
+    pub(in crate::analysis) fn take_lookup_cache(&mut self) -> ExportLookupCache {
+        std::mem::replace(&mut self.lookup_cache, ExportLookupCache::new(0))
+    }
+
+    pub(in crate::analysis) fn restore_lookup_cache(&mut self, cache: ExportLookupCache) {
+        self.lookup_cache = cache;
+    }
 }
 
 #[derive(Debug)]
