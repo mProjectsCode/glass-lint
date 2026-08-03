@@ -591,7 +591,7 @@ provider catalog/environment composition is now centralized. Verified with
 
 ### Project loading and output
 
-#### [ ] READ-034 — Resolution cache checks the same key twice before returning a hit
+#### [x] READ-034 — Resolution cache checks the same key twice before returning a hit
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -610,7 +610,10 @@ by_key.get(...)` lookup, then retain the specifier-key cache and final
 occurrence-key insertion. Keep the returned reference lifetime, `did_resolve`
 metric, and deterministic request-key behavior unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Reworked resolution caching around one occurrence-key
+`BTreeMap::Entry` operation, preserving borrowed hits, semantic-specifier reuse,
+and `did_resolve` accounting; removed the obsolete cache-invariant error.
+Verified with `make fmt && make ci`.
 
 #### [ ] READ-035 — Discovery checks extension support before a classifier that checks it again
 

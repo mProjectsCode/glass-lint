@@ -44,8 +44,6 @@ pub enum ProjectLoadError {
     ConfigParseError { path: PathBuf, source: String },
     /// The tsconfig traversal budget was exhausted.
     ConfigBudgetExhausted { kind: &'static str, limit: usize },
-    /// An internal cache index lost an entry that was just observed.
-    CacheInvariant,
 }
 
 #[derive(Debug)]
@@ -129,7 +127,6 @@ impl fmt::Display for ProjectLoadError {
             Self::ConfigBudgetExhausted { kind, limit } => {
                 write!(f, "tsconfig traversal {kind} exceeded ({limit})")
             }
-            Self::CacheInvariant => f.write_str("resolution cache invariant violated"),
         }
     }
 }

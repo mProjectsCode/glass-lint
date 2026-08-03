@@ -64,25 +64,24 @@ impl ResolutionCache {
         resolver: &ProjectResolver,
     ) -> Result<(&ResolverOutcome, bool), ProjectLoadError> {
         let cache_key = request.key().clone();
-        if self.by_key.contains_key(&cache_key) {
-            let Some(outcome) = self.by_key.get(&cache_key) else {
-                debug_assert!(false, "cache key disappeared after contains_key");
-                return Err(ProjectLoadError::CacheInvariant);
-            };
-            return Ok((outcome, false));
-        }
-
-        let specifier_key = ResolutionSpecifierKey::from_request(request);
-        let (outcome, did_resolve) = match self.by_specifier.entry(specifier_key) {
-            std::collections::btree_map::Entry::Occupied(entry) => (entry.get().clone(), false),
+        match self.by_key.entry(cache_key) {
+            std::collections::btree_map::Entry::Occupied(entry) => Ok((entry.into_mut(), false)),
             std::collections::btree_map::Entry::Vacant(entry) => {
-                let outcome = resolver.resolve(request)?;
-                entry.insert(outcome.clone());
-                (outcome, true)
+                let specifier_key = ResolutionSpecifierKey::from_request(request);
+                let (outcome, did_resolve) = match self.by_specifier.entry(specifier_key) {
+                    std::collections::btree_map::Entry::Occupied(entry) => {
+                        (entry.get().clone(), false)
+                    }
+                    std::collections::btree_map::Entry::Vacant(entry) => {
+                        let outcome = resolver.resolve(request)?;
+                        entry.insert(outcome.clone());
+                        (outcome, true)
+                    }
+                };
+                let cached = entry.insert(outcome);
+                Ok((cached, did_resolve))
             }
-        };
-        let cached = self.by_key.entry(cache_key).or_insert(outcome);
-        Ok((cached, did_resolve))
+        }
     }
 
     pub(super) fn into_iter(self) -> impl Iterator<Item = (ResolutionRequestKey, ResolverOutcome)> {
