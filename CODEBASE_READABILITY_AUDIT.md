@@ -50,7 +50,7 @@ typed constructors and semantic accessors, and migrated core, project,
 harness, and test callers away from struct literals and nested field reads.
 Request ordering and resolution now consume the request abstraction directly.
 
-#### [ ] READ-003 — Resolution normalization is a free-function transformation over public internals
+#### [x] READ-003 — Resolution normalization is a free-function transformation over public internals
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -61,7 +61,11 @@ Request ordering and resolution now consume the request abstraction directly.
 
 **Recommendation:** Move normalization onto the owners, for example `ResolverOutcome::normalize` and `ResolutionRequestKey::normalize`, or make constructors produce normalized values and return the existing `ProjectInputError`. Keep `AnalysisArtifacts::into_link_input` as orchestration: validate authorship, invoke the domain operation, and insert the result. This also makes future variants less likely to bypass validation silently.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved request-key and resolver-outcome normalization onto
+their owning types as consuming operations, including validation of every
+typed outcome variant. `AnalysisArtifacts::into_link_input` now orchestrates
+those operations and authorship checking without mutating records through
+free functions; the obsolete normalization helpers were removed.
 
 ### Medium priority
 

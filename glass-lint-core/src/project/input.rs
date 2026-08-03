@@ -5,10 +5,7 @@
 //! pipeline. The functions here are shared utilities used
 //! by the session, types, and CLI loading code.
 
-use crate::project::{
-    BuiltinModuleName, NormalizedOutsidePath, PackageSpecifier, ProjectInputError,
-    ProjectRelativePath, ResolutionRequestKey, ResolverOutcome,
-};
+use crate::project::{ProjectInputError, ProjectRelativePath};
 
 /// Whether a normalized (backslash → slash) path is in an absolute form:
 /// POSIX root (`/`), drive prefix (`C:/`, `D:/`), or UNC prefix (`//`).
@@ -89,32 +86,4 @@ pub fn normalize_outside_target(path: &str) -> Result<String, ProjectInputError>
     } else {
         parts.join("/")
     })
-}
-
-/// Normalize and validate one typed resolver result.
-pub fn normalize_result(result: &mut ResolverOutcome) -> Result<(), ProjectInputError> {
-    match result {
-        ResolverOutcome::Internal { path } => *path = normalize_relative(path.as_str())?,
-        ResolverOutcome::External { package } => {
-            *package = PackageSpecifier::new(package.as_str())?;
-        }
-        ResolverOutcome::Builtin { name } => {
-            *name = BuiltinModuleName::new(name.as_str())?;
-        }
-        ResolverOutcome::OutsideProject { path } => {
-            let normalized = normalize_outside_target(path.as_str())?;
-            *path = NormalizedOutsidePath::from_validated(normalized);
-        }
-        ResolverOutcome::Unsupported { reason } if reason.trim().is_empty() => {
-            return Err(ProjectInputError::InvalidTarget(reason.clone()));
-        }
-        _ => {}
-    }
-    Ok(())
-}
-
-/// Normalize an importer/range key and enforce one-based ordered positions.
-pub fn normalize_resolution_key(key: &mut ResolutionRequestKey) -> Result<(), ProjectInputError> {
-    key.set_importer(normalize_relative(key.importer().as_str())?);
-    Ok(())
 }

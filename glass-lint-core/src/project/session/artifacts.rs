@@ -15,7 +15,6 @@ use crate::{
     project::{
         ModuleId, ProjectInputError, ProjectRelativePath, ResolutionRequest, ResolutionRequestKey,
         ResolutionTable, ResolverOutcome, SourceFile, SourceTable,
-        input::{normalize_resolution_key, normalize_result},
         session::{ExecutionEvent, ExecutionObserver},
     },
 };
@@ -121,12 +120,12 @@ impl AnalysisArtifacts {
         ProjectInputError,
     > {
         let mut resolutions = ResolutionTable::default();
-        for (mut key, mut result) in outcomes {
-            normalize_resolution_key(&mut key)?;
+        for (key, result) in outcomes {
+            let key = key.normalize()?;
             if !self.is_authored_request(&key) {
                 return Err(ProjectInputError::UnknownRequest(key));
             }
-            normalize_result(&mut result)?;
+            let result = result.normalize()?;
             resolutions.insert(key, result)?;
         }
         let Self {

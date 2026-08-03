@@ -365,8 +365,9 @@ impl ResolutionRequestKey {
         self.range.clone()
     }
 
-    pub(crate) fn set_importer(&mut self, importer: ProjectRelativePath) {
-        self.importer = importer;
+    pub(crate) fn normalize(mut self) -> Result<Self, ProjectInputError> {
+        self.importer = crate::project::input::normalize_relative(self.importer.as_str())?;
+        Ok(self)
     }
 }
 
@@ -407,6 +408,31 @@ pub enum ResolverOutcome {
     Missing,
     OutsideProject { path: NormalizedOutsidePath },
     Unsupported { reason: String },
+}
+
+impl ResolverOutcome {
+    pub(crate) fn normalize(mut self) -> Result<Self, ProjectInputError> {
+        match &mut self {
+            Self::Internal { path } => {
+                *path = crate::project::input::normalize_relative(path.as_str())?;
+            }
+            Self::External { package } => {
+                *package = PackageSpecifier::new(package.as_str())?;
+            }
+            Self::Builtin { name } => {
+                *name = BuiltinModuleName::new(name.as_str())?;
+            }
+            Self::OutsideProject { path } => {
+                let normalized = crate::project::input::normalize_outside_target(path.as_str())?;
+                *path = NormalizedOutsidePath::from_validated(normalized);
+            }
+            Self::Unsupported { reason } if reason.trim().is_empty() => {
+                return Err(ProjectInputError::InvalidTarget(reason.clone()));
+            }
+            Self::Missing | Self::Unsupported { .. } => {}
+        }
+        Ok(self)
+    }
 }
 
 /// Stable opaque identity assigned from normalized project path order.
