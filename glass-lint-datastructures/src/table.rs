@@ -98,11 +98,13 @@ impl<I: IdIndex, T> IndexTable<I, T> {
     /// Returns `Some((None, None))` when both slots are beyond the current
     /// storage length.
     pub fn get_disjoint(&mut self, read: I, write: I) -> Option<(Option<&T>, Option<&mut T>)> {
-        if read.into() == write.into() {
+        let read_raw: u32 = read.into();
+        let write_raw: u32 = write.into();
+        if read_raw == write_raw {
             return None;
         }
-        let ri = usize::try_from(read.into()).ok()?;
-        let wi = usize::try_from(write.into()).ok()?;
+        let ri = usize::try_from(read_raw).ok()?;
+        let wi = usize::try_from(write_raw).ok()?;
         if self.values.len() <= ri.max(wi) {
             return Some((None, None));
         }

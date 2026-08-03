@@ -509,7 +509,7 @@ alias an unrepresentable index.
 names, preserving sticky exhaustion and returning `NameExhausted` instead of
 panicking. Verified with `cargo test -p glass-lint-datastructures`.
 
-#### [ ] READ-031 — Dense-table disjoint lookup repeatedly converts the same IDs
+#### [x] READ-031 — Dense-table disjoint lookup repeatedly converts the same IDs
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -527,7 +527,9 @@ perform the equality, bounds, and split-at branches on those values. Preserve
 the `None` alias result, the `(None, None)` out-of-current-storage result, and
 the two mutable borrow layouts.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Converted read and write IDs to raw/index values once before
+the alias, bounds, and split-at branches, preserving disjoint borrow layouts
+and out-of-storage results. Verified with `make fmt && make ci`.
 
 ### Harness and provider tooling
 
