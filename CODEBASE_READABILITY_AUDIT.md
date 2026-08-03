@@ -8,10 +8,10 @@ phase ownership, duplicate transformations, and unnecessary public surface.
 The prior report's eleven checked-off migrations were verified as historical
 work; they are not counted as current findings.
 
-Two residual findings remain; READ-001 through READ-003 have been completed:
+One residual finding remains; READ-001 through READ-004 have been completed:
 
 - No high-priority phase/API boundaries;
-- 1 medium-priority representation leak;
+- No medium-priority representation leaks;
 - 1 low-priority visibility cleanup.
 
 The first migration preserves the current export behavior while narrowing the
@@ -130,7 +130,7 @@ the property bundle in one operation and retains the existing source-order
 and final-sort behavior. Scope collection tests pass through the new query
 boundary without exposing parallel vectors to the freeze phase.
 
-#### [ ] READ-004 — Validated extension aliases leak a resolver-facing map
+#### [x] READ-004 — Validated extension aliases leak a resolver-facing map
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -149,6 +149,12 @@ entries, or an owner operation that produces the validated alias entries for
 the resolver to copy. Keep the project options crate-independent of Oxc and
 retain the existing validation/order guarantees; do not introduce a second
 alias newtype unless another consumer needs the same invariant.
+
+**Fix Applied:** Replaced the validated options map getter with a borrowed,
+deterministically ordered iterator of alias entries. The Oxc resolver now
+copies those entries directly into its own options without depending on the
+validated map representation; extension validation and ordering behavior are
+unchanged.
 
 ### Low priority
 

@@ -30,8 +30,7 @@ impl<'a> ProjectResolver<'a> {
         let options = admission.options();
         let extension_alias = options
             .extension_aliases()
-            .iter()
-            .map(|(key, value)| (key.clone(), value.clone()))
+            .map(|(key, value)| (key.to_owned(), value.to_vec()))
             .collect();
         let mut base = ResolveOptions {
             extensions: options.extensions().map(str::to_owned).collect(),

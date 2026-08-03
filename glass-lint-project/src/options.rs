@@ -388,8 +388,11 @@ impl ValidatedProjectLoadOptions {
         self.extensions.0.iter().map(String::as_str)
     }
 
-    pub fn extension_aliases(&self) -> &BTreeMap<String, Vec<String>> {
-        &self.options.extension_aliases
+    pub fn extension_aliases(&self) -> impl Iterator<Item = (&str, &[String])> {
+        self.options
+            .extension_aliases
+            .iter()
+            .map(|(extension, aliases)| (extension.as_str(), aliases.as_slice()))
     }
 
     pub fn follow_symlinks(&self) -> bool {
