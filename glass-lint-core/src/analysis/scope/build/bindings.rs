@@ -77,7 +77,7 @@ pub(super) fn var_binding_scope(stack: &[usize], scopes: &[LexicalScope]) -> Sco
         .copied()
         .find(|index| {
             matches!(
-                scopes[*index].kind,
+                scopes[*index].kind(),
                 ScopeKind::Program | ScopeKind::Function
             )
         })

@@ -136,12 +136,12 @@ impl ScopePlanner<'_> {
             kind,
             Some(parent),
         ));
-        self.scope_shapes.record(ScopeShape {
-            scope_id: ScopeId::new(index),
+        self.scope_shapes.record(ScopeShape::new(
+            ScopeId::new(index),
             kind,
             span,
-            parent: Some(parent),
-        });
+            Some(parent),
+        ));
         self.stack.push(index);
     }
 

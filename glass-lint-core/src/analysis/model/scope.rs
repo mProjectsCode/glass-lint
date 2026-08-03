@@ -165,10 +165,10 @@ impl BindingSlot {
 
 #[derive(Debug, Clone)]
 pub struct LexicalScope {
-    pub span: Span,
-    pub depth: usize,
-    pub kind: ScopeKind,
-    pub parent: Option<ScopeId>,
+    span: Span,
+    depth: usize,
+    kind: ScopeKind,
+    parent: Option<ScopeId>,
     bindings: ScopeBindings,
 }
 
@@ -189,6 +189,22 @@ impl LexicalScope {
             parent,
             bindings: ScopeBindings::default(),
         }
+    }
+
+    pub(in crate::analysis) fn span(&self) -> Span {
+        self.span
+    }
+
+    pub(in crate::analysis) fn depth(&self) -> usize {
+        self.depth
+    }
+
+    pub(in crate::analysis) fn kind(&self) -> ScopeKind {
+        self.kind
+    }
+
+    pub(in crate::analysis) fn parent(&self) -> Option<ScopeId> {
+        self.parent
     }
 
     pub(in crate::analysis) fn insert_binding(

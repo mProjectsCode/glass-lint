@@ -112,7 +112,10 @@ impl BindingIndex {
         let mut function_ids = vec![None; scopes.len()];
         let mut next_function = 0u32;
         for (scope, lexical_scope) in scopes.iter().enumerate() {
-            if matches!(lexical_scope.kind, ScopeKind::Program | ScopeKind::Function) {
+            if matches!(
+                lexical_scope.kind(),
+                ScopeKind::Program | ScopeKind::Function
+            ) {
                 function_ids[scope] = Some(FunctionId::new(next_function));
                 next_function = next_function.saturating_add(1);
             }

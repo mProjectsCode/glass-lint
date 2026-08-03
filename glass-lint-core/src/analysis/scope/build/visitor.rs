@@ -289,7 +289,7 @@ impl ScopePass for ScopeCollector<'_> {
             let parent = self
                 .scopes
                 .get(scope.index())
-                .and_then(|s| s.parent)
+                .and_then(|scope| scope.parent())
                 .unwrap_or_else(|| ScopeId::new(0));
             self.function_scopes.insert(
                 ScopedName::new(parent, name_id),

@@ -20,7 +20,7 @@ impl From<Vec<LexicalScope>> for LexicalScopeIndex {
         let mut scopes_by_start: Vec<_> = (0..scopes.len()).map(ScopeId::new).collect();
         scopes_by_start.sort_by_key(|index| {
             let scope = &scopes[index.index()];
-            (scope.span.lo, scope.depth)
+            (scope.span().lo, scope.depth())
         });
         Self {
             scopes,
@@ -32,15 +32,15 @@ impl From<Vec<LexicalScope>> for LexicalScopeIndex {
 
 impl LexicalScopeIndex {
     pub(super) fn scope_parent(&self, scope: ScopeId) -> Option<ScopeId> {
-        self.scopes.get(scope.index())?.parent
+        self.scopes.get(scope.index())?.parent()
     }
 
     pub(super) fn scope_kind(&self, scope: ScopeId) -> Option<ScopeKind> {
-        self.scopes.get(scope.index()).map(|s| s.kind)
+        self.scopes.get(scope.index()).map(LexicalScope::kind)
     }
 
     pub(super) fn scope_span(&self, scope: ScopeId) -> Option<Span> {
-        self.scopes.get(scope.index()).map(|s| s.span)
+        self.scopes.get(scope.index()).map(LexicalScope::span)
     }
 
     pub(super) fn scope_binding(&self, scope: ScopeId, name: NameId) -> Option<&BindingProvenance> {
@@ -64,15 +64,15 @@ impl LexicalScopeIndex {
     fn find_scope_at(&self, span: Span) -> ScopeId {
         let position = self
             .scopes_by_start
-            .partition_point(|index| self.scopes[index.index()].span.lo <= span.lo);
+            .partition_point(|index| self.scopes[index.index()].span().lo <= span.lo);
         let Some(mut scope) = position
             .checked_sub(1)
             .map(|index| self.scopes_by_start[index])
         else {
             return ScopeId::new(0);
         };
-        while !contains(self.scopes[scope.index()].span, span) {
-            let Some(parent) = self.scopes[scope.index()].parent else {
+        while !contains(self.scopes[scope.index()].span(), span) {
+            let Some(parent) = self.scopes[scope.index()].parent() else {
                 return ScopeId::new(0);
             };
             scope = parent;

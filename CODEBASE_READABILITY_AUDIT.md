@@ -283,7 +283,7 @@ with a private field; `TraceArena` owns allocation and node lookup, while the
 classification API re-exports the opaque type for report data. Tests inspect
 trace nodes through the arena and no longer depend on tuple-field access.
 
-#### [ ] READ-012 — `ScopeShape` and `LexicalScope` duplicate structural records without a shared vocabulary
+#### [x] READ-012 — `ScopeShape` and `LexicalScope` duplicate structural records without a shared vocabulary
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -303,7 +303,13 @@ make explicit which fields are planning identity versus final scope identity.
 Add a private conversion helper only if a concrete repeated conversion is
 introduced; do not consolidate the types merely to remove a few fields.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The planned `ScopeShape` and collected `LexicalScope` remain
+separate phase types, but both now use named construction and semantic
+accessors for scope identity, kind, span, parent, and depth. `LexicalScope`
+metadata is no longer public storage, and the planner/collector/index/tests
+use that vocabulary instead of reconstructing the records from fields. The
+shape table still owns planning identity and ordered child matching; no shared
+metadata type was introduced.
 
 #### [ ] READ-013 — Prior-sink ordering and deduplication is duplicated outside the evidence owner
 

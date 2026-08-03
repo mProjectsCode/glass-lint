@@ -40,11 +40,11 @@ fn scope_fingerprint(collector: &ScopeCollector) -> Vec<String> {
                 .join(", ");
             format!(
                 "parent={:?} depth={} kind={:?} span=({}, {}) bindings={{{}}}",
-                scope.parent,
-                scope.depth,
-                scope.kind,
-                scope.span.lo.0,
-                scope.span.hi.0,
+                scope.parent(),
+                scope.depth(),
+                scope.kind(),
+                scope.span().lo.0,
+                scope.span().hi.0,
                 binding_str,
             )
         })
@@ -90,25 +90,25 @@ fn preserves_scope_order_for_all_scope_constructs() {
         first
             .scopes
             .iter()
-            .any(|scope| scope.kind == ScopeKind::Function)
+            .any(|scope| scope.kind() == ScopeKind::Function)
     );
     assert!(
         first
             .scopes
             .iter()
-            .any(|scope| scope.kind == ScopeKind::Block)
+            .any(|scope| scope.kind() == ScopeKind::Block)
     );
     assert!(
         first
             .scopes
             .iter()
-            .any(|scope| scope.kind == ScopeKind::Dynamic)
+            .any(|scope| scope.kind() == ScopeKind::Dynamic)
     );
     assert!(
         first
             .scopes
             .iter()
-            .any(|scope| scope.kind == ScopeKind::Function && scope.depth > 2)
+            .any(|scope| scope.kind() == ScopeKind::Function && scope.depth() > 2)
     );
 }
 
@@ -227,7 +227,7 @@ fn hoisted_var_in_blocks_preserves_function_scoping() {
         .scopes
         .iter()
         .enumerate()
-        .filter(|(_, scope)| scope.kind == ScopeKind::Function)
+        .filter(|(_, scope)| scope.kind() == ScopeKind::Function)
         .collect();
     assert_eq!(function_scopes.len(), 1);
     let (fn_idx, fn_scope) = function_scopes[0];
@@ -240,7 +240,7 @@ fn hoisted_var_in_blocks_preserves_function_scoping() {
         .scopes
         .iter()
         .enumerate()
-        .filter(|(_, scope)| scope.kind == ScopeKind::Block)
+        .filter(|(_, scope)| scope.kind() == ScopeKind::Block)
         .collect();
     // var hoisted into function scope means block scopes should not have
     // the hoisted binding
@@ -264,7 +264,7 @@ fn catch_without_param_forms_valid_scope() {
         first
             .scopes
             .iter()
-            .any(|scope| scope.kind == ScopeKind::Block && scope.depth == 1)
+            .any(|scope| scope.kind() == ScopeKind::Block && scope.depth() == 1)
     );
 }
 
@@ -283,12 +283,12 @@ fn loops_with_and_without_inits_form_valid_scopes() {
         first
             .scopes
             .iter()
-            .filter(|scope| scope.kind == ScopeKind::Block)
+            .filter(|scope| scope.kind() == ScopeKind::Block)
             .count(),
         second
             .scopes
             .iter()
-            .filter(|scope| scope.kind == ScopeKind::Block)
+            .filter(|scope| scope.kind() == ScopeKind::Block)
             .count()
     );
 }
@@ -306,7 +306,7 @@ fn with_statement_creates_dynamic_scope() {
         first
             .scopes
             .iter()
-            .any(|scope| scope.kind == ScopeKind::Dynamic)
+            .any(|scope| scope.kind() == ScopeKind::Dynamic)
     );
 }
 
@@ -323,7 +323,7 @@ fn switch_with_cases_forms_block_scope() {
         first
             .scopes
             .iter()
-            .any(|scope| scope.kind == ScopeKind::Block && scope.depth == 1)
+            .any(|scope| scope.kind() == ScopeKind::Block && scope.depth() == 1)
     );
 }
 
@@ -342,8 +342,8 @@ fn nested_function_and_arrow_scopes_have_correct_depths() {
     let function_depths: Vec<_> = collector
         .scopes
         .iter()
-        .filter(|scope| scope.kind == ScopeKind::Function)
-        .map(|scope| scope.depth)
+        .filter(|scope| scope.kind() == ScopeKind::Function)
+        .map(|scope| scope.depth())
         .collect();
     // Function bodies have intervening block scopes:
     // depth 1 = a, depth 3 = b (after a-block), depth 5 = arrow c (after a-block +
@@ -379,12 +379,14 @@ fn predeclare_and_collect_phases_produce_identical_scopes() {
     assert_eq!(first.scopes.len(), second.scopes.len());
     for (i, (a, b)) in first.scopes.iter().zip(second.scopes.iter()).enumerate() {
         assert_eq!(
-            a.kind, b.kind,
+            a.kind(),
+            b.kind(),
             "scope {i} kind differs: {:?} vs {:?}",
-            a.kind, b.kind
+            a.kind(),
+            b.kind()
         );
-        assert_eq!(a.depth, b.depth, "scope {i} depth differs");
-        assert_eq!(a.parent, b.parent, "scope {i} parent differs");
+        assert_eq!(a.depth(), b.depth(), "scope {i} depth differs");
+        assert_eq!(a.parent(), b.parent(), "scope {i} parent differs");
         let mut a_keys: Vec<_> = a.binding_names().collect();
         a_keys.sort();
         let mut b_keys: Vec<_> = b.binding_names().collect();
@@ -406,7 +408,7 @@ fn structural_lookup_distinguishes_equal_span_siblings_at_different_parents() {
         .iter()
         .enumerate()
         .find(|(_, scope)| {
-            scope.kind == ScopeKind::Block && scope.parent == Some(ScopeId::from_test(0))
+            scope.kind() == ScopeKind::Block && scope.parent() == Some(ScopeId::from_test(0))
         })
         .expect("outer block under program");
     let (function_index, _function_scope) = collector
@@ -414,7 +416,7 @@ fn structural_lookup_distinguishes_equal_span_siblings_at_different_parents() {
         .iter()
         .enumerate()
         .find(|(_, scope)| {
-            scope.kind == ScopeKind::Function && scope.parent == Some(ScopeId::from_test(0))
+            scope.kind() == ScopeKind::Function && scope.parent() == Some(ScopeId::from_test(0))
         })
         .expect("function under program");
     let (inner_block_index, inner_block) = collector
@@ -422,16 +424,19 @@ fn structural_lookup_distinguishes_equal_span_siblings_at_different_parents() {
         .iter()
         .enumerate()
         .find(|(_, scope)| {
-            scope.kind == ScopeKind::Block
-                && scope.parent == Some(ScopeId::from_test(function_index))
+            scope.kind() == ScopeKind::Block
+                && scope.parent() == Some(ScopeId::from_test(function_index))
         })
         .expect("inner block under function");
 
     // Both blocks share a Span layout but have different parents; the
     // structural lookup must keep them distinct.
     assert_ne!(program_block_index, inner_block_index);
-    assert_eq!(program_block.parent, Some(ScopeId::from_test(0)));
-    assert_eq!(inner_block.parent, Some(ScopeId::from_test(function_index)));
+    assert_eq!(program_block.parent(), Some(ScopeId::from_test(0)));
+    assert_eq!(
+        inner_block.parent(),
+        Some(ScopeId::from_test(function_index))
+    );
 }
 
 #[test]

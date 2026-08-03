@@ -6,10 +6,42 @@ use crate::analysis::scope::{ScopeId, ScopeKind};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ScopeShape {
-    pub(crate) scope_id: ScopeId,
-    pub(crate) kind: ScopeKind,
-    pub(crate) span: swc_common::Span,
-    pub(crate) parent: Option<ScopeId>,
+    scope_id: ScopeId,
+    kind: ScopeKind,
+    span: swc_common::Span,
+    parent: Option<ScopeId>,
+}
+
+impl ScopeShape {
+    pub(crate) fn new(
+        scope_id: ScopeId,
+        kind: ScopeKind,
+        span: swc_common::Span,
+        parent: Option<ScopeId>,
+    ) -> Self {
+        Self {
+            scope_id,
+            kind,
+            span,
+            parent,
+        }
+    }
+
+    pub(crate) fn scope_id(self) -> ScopeId {
+        self.scope_id
+    }
+
+    pub(crate) fn kind(self) -> ScopeKind {
+        self.kind
+    }
+
+    pub(crate) fn span(self) -> swc_common::Span {
+        self.span
+    }
+
+    pub(crate) fn parent(self) -> Option<ScopeId> {
+        self.parent
+    }
 }
 
 #[derive(Debug, Default)]
@@ -32,15 +64,15 @@ impl ScopeShapeTable {
 
     pub(crate) fn record(&mut self, shape: ScopeShape) {
         let key = ScopeShapeKey {
-            parent: shape.parent,
-            span_lo: shape.span.lo,
-            kind: shape.kind,
+            parent: shape.parent(),
+            span_lo: shape.span().lo,
+            kind: shape.kind(),
         };
         self.shapes.push(shape);
         self.children
             .entry(key)
             .or_default()
-            .push_back(shape.scope_id);
+            .push_back(shape.scope_id());
     }
 
     pub(crate) fn take_child(
