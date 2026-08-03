@@ -104,6 +104,13 @@ impl Default for AnalysisLimits {
 }
 
 impl AnalysisLimits {
+    fn validated(
+        value: usize,
+        error: AnalysisLimitError,
+    ) -> Result<PositiveLimit, AnalysisLimitError> {
+        PositiveLimit::new(value).map_err(|()| error)
+    }
+
     /// Validate every field and return a trusted instance.
     pub fn new(
         syntax_depth: usize,
@@ -115,20 +122,19 @@ impl AnalysisLimits {
         trace_nodes: usize,
     ) -> Result<Self, AnalysisLimitError> {
         Ok(Self {
-            syntax_depth: PositiveLimit::new(syntax_depth)
-                .map_err(|()| AnalysisLimitError::SyntaxDepth)?,
-            semantic_operations: PositiveLimit::new(semantic_operations)
-                .map_err(|()| AnalysisLimitError::SemanticOperations)?,
-            effect_operations: PositiveLimit::new(effect_operations)
-                .map_err(|()| AnalysisLimitError::EffectOperations)?,
-            evidence_items: PositiveLimit::new(evidence_items)
-                .map_err(|()| AnalysisLimitError::EvidenceItems)?,
-            link_operations: PositiveLimit::new(link_operations)
-                .map_err(|()| AnalysisLimitError::LinkOperations)?,
-            flow_operations: PositiveLimit::new(flow_operations)
-                .map_err(|()| AnalysisLimitError::FlowOperations)?,
-            trace_nodes: PositiveLimit::new(trace_nodes)
-                .map_err(|()| AnalysisLimitError::TraceNodes)?,
+            syntax_depth: Self::validated(syntax_depth, AnalysisLimitError::SyntaxDepth)?,
+            semantic_operations: Self::validated(
+                semantic_operations,
+                AnalysisLimitError::SemanticOperations,
+            )?,
+            effect_operations: Self::validated(
+                effect_operations,
+                AnalysisLimitError::EffectOperations,
+            )?,
+            evidence_items: Self::validated(evidence_items, AnalysisLimitError::EvidenceItems)?,
+            link_operations: Self::validated(link_operations, AnalysisLimitError::LinkOperations)?,
+            flow_operations: Self::validated(flow_operations, AnalysisLimitError::FlowOperations)?,
+            trace_nodes: Self::validated(trace_nodes, AnalysisLimitError::TraceNodes)?,
         })
     }
 
@@ -161,87 +167,107 @@ impl AnalysisLimits {
     }
 
     /// Builder-style override, validated (may return an error for zero).
-    pub fn with_syntax_depth(mut self, value: usize) -> Result<Self, AnalysisLimitError> {
-        self.syntax_depth =
-            PositiveLimit::new(value).map_err(|()| AnalysisLimitError::SyntaxDepth)?;
-        Ok(self)
+    pub fn with_syntax_depth(self, value: usize) -> Result<Self, AnalysisLimitError> {
+        self.with_limit(value, AnalysisLimitError::SyntaxDepth, |this, limit| {
+            this.syntax_depth = limit;
+        })
     }
 
-    pub fn with_semantic_operations(mut self, value: usize) -> Result<Self, AnalysisLimitError> {
-        self.semantic_operations =
-            PositiveLimit::new(value).map_err(|()| AnalysisLimitError::SemanticOperations)?;
-        Ok(self)
+    pub fn with_semantic_operations(self, value: usize) -> Result<Self, AnalysisLimitError> {
+        self.with_limit(
+            value,
+            AnalysisLimitError::SemanticOperations,
+            |this, limit| {
+                this.semantic_operations = limit;
+            },
+        )
     }
 
-    pub fn with_effect_operations(mut self, value: usize) -> Result<Self, AnalysisLimitError> {
-        self.effect_operations =
-            PositiveLimit::new(value).map_err(|()| AnalysisLimitError::EffectOperations)?;
-        Ok(self)
+    pub fn with_effect_operations(self, value: usize) -> Result<Self, AnalysisLimitError> {
+        self.with_limit(
+            value,
+            AnalysisLimitError::EffectOperations,
+            |this, limit| {
+                this.effect_operations = limit;
+            },
+        )
     }
 
-    pub fn with_evidence_items(mut self, value: usize) -> Result<Self, AnalysisLimitError> {
-        self.evidence_items =
-            PositiveLimit::new(value).map_err(|()| AnalysisLimitError::EvidenceItems)?;
-        Ok(self)
+    pub fn with_evidence_items(self, value: usize) -> Result<Self, AnalysisLimitError> {
+        self.with_limit(value, AnalysisLimitError::EvidenceItems, |this, limit| {
+            this.evidence_items = limit;
+        })
     }
 
-    pub fn with_link_operations(mut self, value: usize) -> Result<Self, AnalysisLimitError> {
-        self.link_operations =
-            PositiveLimit::new(value).map_err(|()| AnalysisLimitError::LinkOperations)?;
-        Ok(self)
+    pub fn with_link_operations(self, value: usize) -> Result<Self, AnalysisLimitError> {
+        self.with_limit(value, AnalysisLimitError::LinkOperations, |this, limit| {
+            this.link_operations = limit;
+        })
     }
 
-    pub fn with_flow_operations(mut self, value: usize) -> Result<Self, AnalysisLimitError> {
-        self.flow_operations =
-            PositiveLimit::new(value).map_err(|()| AnalysisLimitError::FlowOperations)?;
-        Ok(self)
+    pub fn with_flow_operations(self, value: usize) -> Result<Self, AnalysisLimitError> {
+        self.with_limit(value, AnalysisLimitError::FlowOperations, |this, limit| {
+            this.flow_operations = limit;
+        })
     }
 
-    pub fn with_trace_nodes(mut self, value: usize) -> Result<Self, AnalysisLimitError> {
-        self.trace_nodes =
-            PositiveLimit::new(value).map_err(|()| AnalysisLimitError::TraceNodes)?;
+    pub fn with_trace_nodes(self, value: usize) -> Result<Self, AnalysisLimitError> {
+        self.with_limit(value, AnalysisLimitError::TraceNodes, |this, limit| {
+            this.trace_nodes = limit;
+        })
+    }
+
+    fn with_limit(
+        mut self,
+        value: usize,
+        error: AnalysisLimitError,
+        assign: impl FnOnce(&mut Self, PositiveLimit),
+    ) -> Result<Self, AnalysisLimitError> {
+        let limit = Self::validated(value, error)?;
+        assign(&mut self, limit);
         Ok(self)
     }
 
     /// Test-only: set a field directly (caller must ensure positivity).
     #[cfg(test)]
     pub fn set_syntax_depth(&mut self, value: usize) {
-        self.syntax_depth = PositiveLimit::new(value).expect("test setter requires positive value");
+        self.set_limit(value, |this, limit| this.syntax_depth = limit);
     }
 
     #[cfg(test)]
     pub fn set_semantic_operations(&mut self, value: usize) {
-        self.semantic_operations =
-            PositiveLimit::new(value).expect("test setter requires positive value");
+        self.set_limit(value, |this, limit| this.semantic_operations = limit);
     }
 
     #[cfg(test)]
     pub fn set_effect_operations(&mut self, value: usize) {
-        self.effect_operations =
-            PositiveLimit::new(value).expect("test setter requires positive value");
+        self.set_limit(value, |this, limit| this.effect_operations = limit);
     }
 
     #[cfg(test)]
     pub fn set_evidence_items(&mut self, value: usize) {
-        self.evidence_items =
-            PositiveLimit::new(value).expect("test setter requires positive value");
+        self.set_limit(value, |this, limit| this.evidence_items = limit);
     }
 
     #[cfg(test)]
     pub fn set_link_operations(&mut self, value: usize) {
-        self.link_operations =
-            PositiveLimit::new(value).expect("test setter requires positive value");
+        self.set_limit(value, |this, limit| this.link_operations = limit);
     }
 
     #[cfg(test)]
     pub fn set_flow_operations(&mut self, value: usize) {
-        self.flow_operations =
-            PositiveLimit::new(value).expect("test setter requires positive value");
+        self.set_limit(value, |this, limit| this.flow_operations = limit);
     }
 
     #[cfg(test)]
     pub fn set_trace_nodes(&mut self, value: usize) {
-        self.trace_nodes = PositiveLimit::new(value).expect("test setter requires positive value");
+        self.set_limit(value, |this, limit| this.trace_nodes = limit);
+    }
+
+    #[cfg(test)]
+    fn set_limit(&mut self, value: usize, assign: impl FnOnce(&mut Self, PositiveLimit)) {
+        let limit = PositiveLimit::new(value).expect("test setter requires positive value");
+        assign(self, limit);
     }
 }
 

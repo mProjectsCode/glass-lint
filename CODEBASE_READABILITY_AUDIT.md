@@ -381,7 +381,7 @@ bounded constraint-builder behavior.
 operation, preserving invalid-index precedence and errors. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-026 — Analysis-limit accessors and setters repeat a field table
+#### [x] READ-026 — Analysis-limit accessors and setters repeat a field table
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -401,7 +401,10 @@ variant at the API boundary. Preserve the distinct error values, serde
 representation, and the invariant that every stored limit is positive; do not
 replace the validated newtype with raw `usize` fields.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Centralized positive-limit validation and field assignment in
+typed `AnalysisLimits` helpers; public accessors, builder names, and distinct
+error variants remain explicit, as do test-only setters. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-027 — Session entry points repeat source admission loops
 
