@@ -121,7 +121,7 @@ impl ProjectLoadMetrics {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct LoadAccounting {
+pub struct LoadAccounting {
     timings: ProjectPhaseTimings,
     files: usize,
     requests: usize,
