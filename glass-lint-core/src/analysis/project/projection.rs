@@ -6,6 +6,8 @@
 
 use std::collections::BTreeMap;
 
+use glass_lint_datastructures::NameTable;
+
 use crate::{
     analysis::{
         ModuleId, ProjectModule, ProjectSemanticModel,
@@ -24,8 +26,8 @@ use crate::{
     api::{
         classification::{ClassificationEvidence, RuleEvidenceTable, RuleIndex},
         compiler::{
-            CompiledRuleSelection, object_flow::CompiledObjectFlow, physical::PhysicalRoot,
-            requirements::FlowRequirements,
+            CompiledMatcherPlan, CompiledRuleSelection, object_flow::CompiledObjectFlow,
+            physical::PhysicalRoot, requirements::FlowRequirements,
         },
     },
 };
@@ -247,6 +249,25 @@ struct ProjectModuleProjection<'project> {
     index: &'project OccurrenceIndexes,
     overlay: Option<LinkedOccurrenceView<'project>>,
     projected: RuleEvidenceTable,
+}
+
+impl ProjectModuleProjection<'_> {
+    fn evidence_for(
+        &self,
+        matcher: &CompiledMatcherPlan,
+        rule_index: RuleIndex,
+        names: &NameTable,
+    ) -> Vec<ClassificationEvidence> {
+        let mut evidence =
+            self.index
+                .evidence_for_with_overlay(matcher, self.overlay.as_ref(), names);
+
+        if let Some(projected) = self.projected.for_rule(rule_index) {
+            evidence.extend_from_slice(projected);
+        }
+
+        evidence
+    }
 }
 
 /// Side effects produced by a projection that were previously written back
@@ -528,24 +549,10 @@ impl ProjectMatcherModel<'_, '_> {
             return Vec::new();
         };
         let names = module.local().facts().names();
-        let mut evidence = self
-            .projections
-            .get(&module.id())
-            .map_or_else(Vec::new, |projection| {
-                projection.index.evidence_for_with_overlay(
-                    matcher,
-                    projection.overlay.as_ref(),
-                    names,
-                )
-            });
-
-        if let Some(projected) = self
-            .projections
-            .get(&module.id())
-            .and_then(|projection| projection.projected.for_rule(rule_index))
-        {
-            evidence.extend_from_slice(projected);
-        }
+        let Some(projection) = self.projections.get(&module.id()) else {
+            return Vec::new();
+        };
+        let mut evidence = projection.evidence_for(matcher, rule_index, names);
 
         crate::analysis::matching::evidence::normalize_evidence(&mut evidence, evidence_limit);
         evidence

@@ -150,7 +150,7 @@ effect lifecycle. Verified with `make fmt && make ci`.
 
 ### Core project model and scope analysis
 
-#### [ ] READ-017 — Project evidence assembly performs two lookups for one projection
+#### [x] READ-017 — Project evidence assembly performs two lookups for one projection
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -171,7 +171,10 @@ a helper that performs the merge. Preserve selected-rule short-circuiting,
 base-before-projected evidence order, overlay matching, module-local name
 tables, and the existing bounded normalization.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a `ProjectModuleProjection::evidence_for` owner
+operation that combines indexed, overlay, and projected evidence after a single
+projection lookup; selection short-circuiting and normalization remain in the
+matcher model. Verified with `make fmt && make ci`.
 
 #### [x] READ-018 — Project semantic queries repeatedly traverse module storage
 
