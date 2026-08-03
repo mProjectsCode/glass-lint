@@ -34,12 +34,11 @@ fn staged_session_rejects_unknown_resolution_importers() {
     let mut collection = linter.begin_project().unwrap();
     assert!(collection.analyze_source(source_file("a.js", "")).is_ok());
     let result = collection.finish_local().resolve([(
-        ResolutionRequestKey {
-            importer: project_path("missing.js"),
-            kind: ResolutionRequestKind::StaticImport,
-            range: SourceRange::new(Position::new(1, 1).unwrap(), Position::new(1, 8).unwrap())
-                .unwrap(),
-        },
+        ResolutionRequestKey::new(
+            project_path("missing.js"),
+            ResolutionRequestKind::StaticImport,
+            SourceRange::new(Position::new(1, 1).unwrap(), Position::new(1, 8).unwrap()).unwrap(),
+        ),
         ResolverOutcome::Missing,
     )]);
     assert!(result.is_err());

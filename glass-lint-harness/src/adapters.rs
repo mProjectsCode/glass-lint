@@ -134,11 +134,11 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
                 .iter()
                 .find(|(candidate, importer)| {
                     importer == &resolution.importer
-                        && candidate.key.kind == kind
-                        && candidate.key.range == resolution.range
-                        && candidate.request == resolution.request
+                        && candidate.kind() == kind
+                        && candidate.range() == resolution.range
+                        && candidate.specifier() == &resolution.request
                 })
-                .map(|(request, _)| request.key.clone())
+                .map(|(request, _)| request.key().clone())
                 .ok_or_else(|| {
                     anyhow::anyhow!(
                         "project resolution does not match {} {}",

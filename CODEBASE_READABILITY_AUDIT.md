@@ -34,7 +34,7 @@ default and bounded constructors plus local and typed linked-parent operations.
 now borrow the same store type for read-only access. `SummaryPathId` remains as
 the intentional frozen/overlay distinction.
 
-#### [ ] READ-002 — Resolution requests expose their record storage to every phase
+#### [x] READ-002 — Resolution requests expose their record storage to every phase
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -45,7 +45,10 @@ the intentional frozen/overlay distinction.
 
 **Recommendation:** Make the fields private and provide validated constructors plus semantic accessors such as `importer()`, `kind()`, `range()`, `specifier()`, and `key()`. Put request ordering and normalization on the owning types, or expose one named operation for each instead of requiring callers to sort and rewrite fields themselves. Migrate struct literals in tests and adapters in the same change so there is one construction path.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made request and request-key fields private, added validated
+typed constructors and semantic accessors, and migrated core, project,
+harness, and test callers away from struct literals and nested field reads.
+Request ordering and resolution now consume the request abstraction directly.
 
 #### [ ] READ-003 — Resolution normalization is a free-function transformation over public internals
 

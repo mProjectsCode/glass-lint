@@ -115,6 +115,6 @@ pub fn normalize_result(result: &mut ResolverOutcome) -> Result<(), ProjectInput
 
 /// Normalize an importer/range key and enforce one-based ordered positions.
 pub fn normalize_resolution_key(key: &mut ResolutionRequestKey) -> Result<(), ProjectInputError> {
-    key.importer = normalize_relative(key.importer.as_str())?;
+    key.set_importer(normalize_relative(key.importer().as_str())?);
     Ok(())
 }

@@ -49,13 +49,13 @@ fn linked_internal_aliases_preserve_external_and_global_call_identity() {
         session,
         [
             (
-                helper[0].key.clone(),
+                helper[0].key().clone(),
                 ResolverOutcome::External {
                     package: PackageSpecifier::new("web").unwrap(),
                 },
             ),
             (
-                main[0].key.clone(),
+                main[0].key().clone(),
                 ResolverOutcome::Internal {
                     path: project_path("helper.js"),
                 },
@@ -89,7 +89,7 @@ fn linked_internal_aliases_preserve_external_and_global_call_identity() {
     let report = finish_collection_with(
         global,
         [(
-            main[0].key.clone(),
+            main[0].key().clone(),
             ResolverOutcome::Internal {
                 path: project_path("helper.js"),
             },
@@ -321,13 +321,13 @@ fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
         session,
         [
             (
-                helper[0].key.clone(),
+                helper[0].key().clone(),
                 ResolverOutcome::External {
                     package: PackageSpecifier::new("web").unwrap(),
                 },
             ),
             (
-                main[0].key.clone(),
+                main[0].key().clone(),
                 ResolverOutcome::Internal {
                     path: project_path("helper.js"),
                 },
@@ -359,7 +359,7 @@ fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
     let report = finish_collection_with(
         missing,
         [(
-            main[0].key.clone(),
+            main[0].key().clone(),
             ResolverOutcome::Internal {
                 path: project_path("helper.js"),
             },

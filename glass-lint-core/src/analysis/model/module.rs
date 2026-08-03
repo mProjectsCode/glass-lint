@@ -336,14 +336,14 @@ impl ModuleInterface {
             .filter_map(|request| {
                 Some((
                     request.id(),
-                    ResolutionRequest {
-                        key: ResolutionRequestKey {
-                            importer: importer.clone(),
-                            kind: request.kind(),
-                            range: lines.try_range(request.span()).ok()?,
-                        },
-                        request: request.specifier().clone(),
-                    },
+                    ResolutionRequest::new(
+                        ResolutionRequestKey::new(
+                            importer.clone(),
+                            request.kind(),
+                            lines.try_range(request.span()).ok()?,
+                        ),
+                        request.specifier().clone(),
+                    ),
                 ))
             })
             .collect()

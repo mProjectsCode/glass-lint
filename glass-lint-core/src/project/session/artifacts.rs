@@ -86,7 +86,8 @@ impl AnalysisArtifacts {
             .interface()
             .requests_with_ids(path, &local.source_context().lines);
         for (req_id, request) in &with_ids {
-            self.authored_requests.insert(request.key.clone(), *req_id);
+            self.authored_requests
+                .insert(request.key().clone(), *req_id);
         }
         self.analyzed.insert(path.clone(), local);
         with_ids.into_iter().map(|(_, request)| request).collect()
@@ -146,7 +147,7 @@ impl AnalysisArtifacts {
         let request_ids = authored_requests
             .iter()
             .filter_map(|(key, req_id)| {
-                let module = module_ids.get(&key.importer).copied()?;
+                let module = module_ids.get(key.importer()).copied()?;
                 Some((key.clone(), QualifiedRequestId::new(module, req_id)))
             })
             .collect();
@@ -250,7 +251,7 @@ mod tests {
                     .lower_source(&source)
                     .unwrap(),
             );
-            let key = requests[0].key.clone();
+            let key = requests[0].key().clone();
             artifacts
                 .into_link_input(&sources, [(key, ResolverOutcome::Missing)])
                 .unwrap()
@@ -265,8 +266,12 @@ mod tests {
                 .lower_source(&source)
                 .unwrap(),
         );
-        let mut unknown = requests[0].key.clone();
-        unknown.kind = ResolutionRequestKind::Require;
+        let mut unknown = requests[0].key().clone();
+        unknown = ResolutionRequestKey::new(
+            unknown.importer().clone(),
+            ResolutionRequestKind::Require,
+            unknown.range(),
+        );
         let error = artifacts.into_link_input(&sources, [(unknown, ResolverOutcome::Missing)]);
         assert!(matches!(error, Err(ProjectInputError::UnknownRequest(_))));
     }

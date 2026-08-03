@@ -69,30 +69,30 @@ impl<'a> ProjectResolver<'a> {
         &self,
         request: &ResolutionRequest,
     ) -> Result<ResolverOutcome, ProjectLoadError> {
-        let importer = self.admission.canonical_root().join(&request.key.importer);
+        let importer = self.admission.canonical_root().join(request.importer());
         let directory = importer
             .parent()
             .unwrap_or_else(|| self.admission.canonical_root());
-        let resolver = if request.key.kind == ResolutionRequestKind::Require {
+        let resolver = if request.kind() == ResolutionRequestKind::Require {
             &self.require
         } else {
             &self.import
         };
-        match resolver.resolve(directory, &request.request) {
-            Ok(resolution) => self.classify(&request.request, resolution.path()),
+        match resolver.resolve(directory, request.specifier()) {
+            Ok(resolution) => self.classify(request.specifier(), resolution.path()),
             Err(ResolveError::Builtin { resolved, .. }) => Ok(ResolverOutcome::Builtin {
                 name: BuiltinModuleName::new(resolved)?,
             }),
             // Deliberate not-found: bare packages remain external, internal
             // requests become missing.
             Err(ResolveError::NotFound(_) | ResolveError::MatchedAliasNotFound(..))
-                if is_internal_module_request(&request.request) =>
+                if is_internal_module_request(request.specifier()) =>
             {
                 Ok(ResolverOutcome::Missing)
             }
-            Err(ResolveError::NotFound(_) | ResolveError::MatchedAliasNotFound(..)) => {
-                Ok(external_outcome(&request.request, " in not-found request"))
-            }
+            Err(ResolveError::NotFound(_) | ResolveError::MatchedAliasNotFound(..)) => Ok(
+                external_outcome(request.specifier(), " in not-found request"),
+            ),
             // All other resolver errors (I/O, specifier, config, etc.) are
             // operational or invalid — fail closed as unsupported.
             Err(other) => Ok(ResolverOutcome::Unsupported {
@@ -161,27 +161,27 @@ mod tests {
     use crate::options::ProjectLoadOptions;
 
     fn request(specifier: &str) -> ResolutionRequest {
-        ResolutionRequest {
-            key: ResolutionRequestKey {
-                importer: ProjectRelativePath::new("main.js").unwrap(),
-                kind: ResolutionRequestKind::StaticImport,
-                range: SourceRange::new(Position::new(1, 1).unwrap(), Position::new(1, 2).unwrap())
+        ResolutionRequest::new(
+            ResolutionRequestKey::new(
+                ProjectRelativePath::new("main.js").unwrap(),
+                ResolutionRequestKind::StaticImport,
+                SourceRange::new(Position::new(1, 1).unwrap(), Position::new(1, 2).unwrap())
                     .unwrap(),
-            },
-            request: specifier.into(),
-        }
+            ),
+            specifier,
+        )
     }
 
     fn require_request(specifier: &str) -> ResolutionRequest {
-        ResolutionRequest {
-            key: ResolutionRequestKey {
-                importer: ProjectRelativePath::new("main.js").unwrap(),
-                kind: ResolutionRequestKind::Require,
-                range: SourceRange::new(Position::new(1, 1).unwrap(), Position::new(1, 2).unwrap())
+        ResolutionRequest::new(
+            ResolutionRequestKey::new(
+                ProjectRelativePath::new("main.js").unwrap(),
+                ResolutionRequestKind::Require,
+                SourceRange::new(Position::new(1, 1).unwrap(), Position::new(1, 2).unwrap())
                     .unwrap(),
-            },
-            request: specifier.into(),
-        }
+            ),
+            specifier,
+        )
     }
 
     fn with_resolver(f: impl FnOnce(&ProjectResolver)) {

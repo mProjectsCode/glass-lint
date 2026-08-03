@@ -328,16 +328,16 @@ impl<'a> ProjectCollection<'a> {
             .map_err(ProjectInputError::LocalExecution)?;
         requests.sort_by(|left, right| {
             (
-                left.key.importer.as_str(),
-                left.key.kind,
-                &left.key.range,
-                left.request.as_str(),
+                left.importer().as_str(),
+                left.kind(),
+                &left.range(),
+                left.specifier().as_str(),
             )
                 .cmp(&(
-                    right.key.importer.as_str(),
-                    right.key.kind,
-                    &right.key.range,
-                    right.request.as_str(),
+                    right.importer().as_str(),
+                    right.kind(),
+                    &right.range(),
+                    right.specifier().as_str(),
                 ))
         });
         Ok(requests)

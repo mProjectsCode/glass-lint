@@ -329,15 +329,74 @@ pub enum ResolutionRequestKind {
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct ResolutionRequestKey {
-    pub importer: ProjectRelativePath,
-    pub kind: ResolutionRequestKind,
-    pub range: glass_lint_datastructures::SourceRange,
+    importer: ProjectRelativePath,
+    kind: ResolutionRequestKind,
+    range: glass_lint_datastructures::SourceRange,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResolutionRequest {
-    pub key: ResolutionRequestKey,
-    pub request: SmolStr,
+    key: ResolutionRequestKey,
+    request: SmolStr,
+}
+
+impl ResolutionRequestKey {
+    pub fn new(
+        importer: ProjectRelativePath,
+        kind: ResolutionRequestKind,
+        range: glass_lint_datastructures::SourceRange,
+    ) -> Self {
+        Self {
+            importer,
+            kind,
+            range,
+        }
+    }
+
+    pub fn importer(&self) -> &ProjectRelativePath {
+        &self.importer
+    }
+
+    pub fn kind(&self) -> ResolutionRequestKind {
+        self.kind
+    }
+
+    pub fn range(&self) -> glass_lint_datastructures::SourceRange {
+        self.range.clone()
+    }
+
+    pub(crate) fn set_importer(&mut self, importer: ProjectRelativePath) {
+        self.importer = importer;
+    }
+}
+
+impl ResolutionRequest {
+    pub fn new(key: ResolutionRequestKey, specifier: impl Into<SmolStr>) -> Self {
+        Self {
+            key,
+            request: specifier.into(),
+        }
+    }
+
+    pub fn key(&self) -> &ResolutionRequestKey {
+        &self.key
+    }
+
+    pub fn importer(&self) -> &ProjectRelativePath {
+        self.key.importer()
+    }
+
+    pub fn kind(&self) -> ResolutionRequestKind {
+        self.key.kind()
+    }
+
+    pub fn range(&self) -> glass_lint_datastructures::SourceRange {
+        self.key.range()
+    }
+
+    pub fn specifier(&self) -> &SmolStr {
+        &self.request
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -426,13 +485,13 @@ impl std::fmt::Display for ProjectInputError {
                 write!(f, "resolution importer is not a source: `{path}`")
             }
             Self::DuplicateResolution(key) => {
-                write!(f, "duplicate resolution for `{}`", key.importer)
+                write!(f, "duplicate resolution for `{}`", key.importer())
             }
             Self::InvalidTarget(path) => write!(f, "invalid resolution target `{path}`"),
             Self::UnknownRequest(key) => write!(
                 f,
                 "resolution does not match an authored request in `{}`",
-                key.importer
+                key.importer()
             ),
             Self::BudgetExceeded(message) => write!(f, "project input budget exceeded: {message}"),
             Self::LocalExecution(error) => {

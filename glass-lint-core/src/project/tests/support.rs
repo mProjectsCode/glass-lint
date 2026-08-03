@@ -134,12 +134,11 @@ pub fn flow_linter() -> crate::Linter {
 }
 
 pub fn key(importer: &str) -> ResolutionRequestKey {
-    ResolutionRequestKey {
-        importer: ProjectRelativePath::new(importer).unwrap(),
-        kind: ResolutionRequestKind::StaticImport,
-        range: SourceRange::new(Position::new(1, 1).unwrap(), Position::new(1, 8).unwrap())
-            .unwrap(),
-    }
+    ResolutionRequestKey::new(
+        ProjectRelativePath::new(importer).unwrap(),
+        ResolutionRequestKind::StaticImport,
+        SourceRange::new(Position::new(1, 1).unwrap(), Position::new(1, 8).unwrap()).unwrap(),
+    )
 }
 
 pub struct ProjectFixture<'a> {
@@ -173,7 +172,7 @@ impl<'a> ProjectFixture<'a> {
             .unwrap()
             .requests();
         for (request, resolution) in requests.into_iter().zip(resolutions) {
-            self.outcomes.push((request.key, resolution));
+            self.outcomes.push((request.key().clone(), resolution));
         }
     }
 

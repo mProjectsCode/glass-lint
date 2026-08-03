@@ -41,9 +41,9 @@ struct ResolutionSpecifierKey {
 impl ResolutionSpecifierKey {
     fn from_request(request: &ResolutionRequest) -> Self {
         Self {
-            importer: request.key.importer.clone(),
-            kind: request.key.kind,
-            specifier: request.request.to_string(),
+            importer: request.importer().clone(),
+            kind: request.kind(),
+            specifier: request.specifier().to_string(),
         }
     }
 }
@@ -63,7 +63,7 @@ impl ResolutionCache {
         request: &ResolutionRequest,
         resolver: &ProjectResolver,
     ) -> Result<(&ResolverOutcome, bool), ProjectLoadError> {
-        let cache_key = request.key.clone();
+        let cache_key = request.key().clone();
         if self.by_key.contains_key(&cache_key) {
             let Some(outcome) = self.by_key.get(&cache_key) else {
                 debug_assert!(false, "cache key disappeared after contains_key");

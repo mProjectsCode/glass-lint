@@ -53,7 +53,7 @@ fn consuming_project_phases_validate_requests_at_the_boundary() {
         ))
         .unwrap();
     assert_eq!(analysis.requests_ref().len(), 1);
-    let key = analysis.requests_ref()[0].key.clone();
+    let key = analysis.requests_ref()[0].key().clone();
     let local = collection.finish_local();
     let resolved = local
         .resolve([(key, crate::project::ResolverOutcome::Missing)])
@@ -72,9 +72,13 @@ fn consuming_resolution_rejects_unknown_and_duplicate_outcomes() {
             "import value from './dep.js'; value();",
         ))
         .unwrap();
-    let key = analysis.requests_ref()[0].key.clone();
+    let key = analysis.requests_ref()[0].key().clone();
     let mut unknown = key;
-    unknown.kind = crate::project::ResolutionRequestKind::Require;
+    unknown = crate::project::ResolutionRequestKey::new(
+        unknown.importer().clone(),
+        crate::project::ResolutionRequestKind::Require,
+        unknown.range(),
+    );
     let local = collection.finish_local();
     let Err(error) = local.resolve([(unknown, crate::project::ResolverOutcome::Missing)]) else {
         panic!("unknown requests must be rejected")
@@ -91,7 +95,7 @@ fn consuming_resolution_rejects_unknown_and_duplicate_outcomes() {
             "import value from './dep.js'; value();",
         ))
         .unwrap();
-    let key = analysis.requests_ref()[0].key.clone();
+    let key = analysis.requests_ref()[0].key().clone();
     let Err(error) = collection.finish_local().resolve([
         (key.clone(), crate::project::ResolverOutcome::Missing),
         (key, crate::project::ResolverOutcome::Missing),

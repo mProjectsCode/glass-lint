@@ -39,7 +39,7 @@ fn session_returns_static_import_dynamic_import_require_and_reexport_requests() 
     assert_eq!(
         requests
             .iter()
-            .map(|request| request.key.kind)
+            .map(|request| request.kind())
             .collect::<Vec<_>>(),
         vec![
             ResolutionRequestKind::StaticImport,
@@ -48,11 +48,11 @@ fn session_returns_static_import_dynamic_import_require_and_reexport_requests() 
             ResolutionRequestKind::DynamicImport,
         ]
     );
-    assert_eq!(requests[0].request, "./dep");
-    assert_eq!(requests[2].request, "./cjs");
-    assert_eq!(requests[3].request, "./lazy");
-    assert_eq!(requests[2].key.range.start().column(), 19);
-    assert_eq!(requests[2].key.range.end().column(), 26);
+    assert_eq!(requests[0].specifier(), "./dep");
+    assert_eq!(requests[2].specifier(), "./cjs");
+    assert_eq!(requests[3].specifier(), "./lazy");
+    assert_eq!(requests[2].range().start().column(), 19);
+    assert_eq!(requests[2].range().end().column(), 26);
 }
 
 #[test]
