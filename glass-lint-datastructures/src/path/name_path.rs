@@ -74,6 +74,14 @@ where
         Self(ids.into_iter().collect())
     }
 
+    pub fn from_view(view: PathView<'_, T>) -> Self {
+        Self::from_ids(view.segments().iter().cloned())
+    }
+
+    pub fn suffix(&self, count: usize) -> Option<Self> {
+        self.as_view().tail_after(count).map(Self::from_view)
+    }
+
     pub fn len(&self) -> usize {
         self.0.len()
     }

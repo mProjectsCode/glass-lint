@@ -143,7 +143,7 @@ single owned mutable metrics value. Crate-private recording and bounded
 admission methods keep mutation inside the loader, while `snapshot` now
 returns a clone of the same state for the public outcome.
 
-#### [ ] READ-010 — Generic `Path<S>` aliases leave semantic path transformations at call sites
+#### [x] READ-010 — Generic `Path<S>` aliases leave semantic path transformations at call sites
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -154,7 +154,11 @@ returns a clone of the same state for the public outcome.
 
 **Recommendation:** Keep the existing shared path primitive and `PathView`; do not introduce separate `NamePath` and `SymbolPath` wrapper types speculatively. First add only the concrete operations already repeated by callers—such as `tail_after`, `suffix`, `append_chain`, and conversion from a view—and restrict new raw-segment use to datastructure algorithms. Revisit separate wrappers only if the two path domains later acquire different invariants.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added owned-path `from_view` and `suffix` operations to the
+shared path primitive and replaced provenance's manual tail copying with those
+operations. The generic path remains shared, while semantic callers now use a
+named transformation owned by the path type; focused tests cover empty and
+out-of-range suffixes.
 
 ### Low priority
 

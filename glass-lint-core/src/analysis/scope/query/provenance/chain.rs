@@ -104,23 +104,13 @@ impl FrozenScopeGraph {
                     })
                 {
                     let target = assignment.target.as_ref()?;
-                    let suffix = syntactic_chain
-                        .as_view()
-                        .tail_after(prefix.len() + 1)
-                        .map(|suffix| SymbolPath::from_ids(suffix.segments().iter().cloned()))
-                        .unwrap_or_default();
+                    let suffix = syntactic_chain.suffix(prefix.len() + 1).unwrap_or_default();
                     return Some(target.append_path(&suffix));
                 }
             }
         }
 
-        let suffix = SymbolPath::from_ids(
-            syntactic_chain
-                .as_view()
-                .tail_after(1)
-                .into_iter()
-                .flat_map(|tail| tail.segments().iter().cloned()),
-        );
+        let suffix = syntactic_chain.suffix(1).unwrap_or_default();
         let alternatives = self.binding_alternatives_at(root.sym.as_ref(), root.span);
         for provenance in &alternatives {
             let target = match provenance {

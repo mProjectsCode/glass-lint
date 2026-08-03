@@ -101,6 +101,15 @@ fn name_path_from_ids() {
 }
 
 #[test]
+fn name_path_from_view_and_suffix() {
+    let path = NamePath::from_ids([NameId(1), NameId(2), NameId(3)]);
+    assert_eq!(NamePath::from_view(path.as_view()), path);
+    assert_eq!(path.suffix(1).unwrap().segments(), &[NameId(2), NameId(3)]);
+    assert_eq!(path.suffix(3).unwrap().segments(), &[]);
+    assert_eq!(path.suffix(4), None);
+}
+
+#[test]
 fn name_path_is_equal_or_descendant_of() {
     let mut root = NamePath::new();
     root.append(NameId(1));
