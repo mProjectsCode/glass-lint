@@ -13,7 +13,7 @@ use glass_lint_core::{
 
 use crate::profile::{
     config::{ProfileConfig, ProfileCorpusIdentity, ProfileWorkload, ProfileWorkloadIdentity},
-    metrics::{accumulate_report, combined_digest, median_duration},
+    metrics::{accumulate_report, combined_digest},
     runner::support,
     types::{
         MeasuredRepetitionAccumulator, PreparedFile, ProfileOperationCounts, ProfilePhaseTimings,
@@ -54,15 +54,12 @@ pub(super) fn run(config: &ProfileConfig) -> Result<ProfileSummary> {
         warm_run,
         || measure_repetition(&root, &prepared, &linters, config.workers.get()),
     )?;
-    let findings = measured.repetitions.iter().map(|item| item.findings).sum();
-    let diagnostics = measured
-        .repetitions
-        .iter()
-        .map(|item| item.diagnostics)
-        .sum();
-    let operation_counts = support::sum_operation_counts(&measured.repetitions);
+    let findings = measured.findings();
+    let diagnostics = measured.diagnostics();
+    let operation_counts = measured.operation_counts();
     let elapsed = measured.total_duration();
-    let median_repetition_duration = median_duration(&measured.repetitions);
+    let median_repetition_duration = measured.median_duration();
+    let repetitions = measured.into_repetitions();
     let mut phase_timings = ProfilePhaseTimings::default();
     phase_timings.record_analyze_source(elapsed);
     phase_timings.record_total(total_start.elapsed());
@@ -83,7 +80,7 @@ pub(super) fn run(config: &ProfileConfig) -> Result<ProfileSummary> {
         setup_duration,
         measured_elapsed: elapsed,
         wall_duration: total_start.elapsed(),
-        repetitions: measured.repetitions,
+        repetitions,
         median_repetition_duration,
         workload_results: Vec::new(),
         phase_timings,

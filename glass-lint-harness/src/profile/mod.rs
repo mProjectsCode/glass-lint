@@ -33,7 +33,7 @@ mod tests {
     use glass_lint_core::project::ReportCompletion;
 
     use super::*;
-    use crate::profile::{metrics::median_duration, types::MeasuredRepetitionAccumulator};
+    use crate::profile::types::MeasuredRepetitionAccumulator;
 
     fn temp_root() -> crate::test_support::TempDir {
         crate::test_support::TempDir::new()
@@ -157,10 +157,7 @@ mod tests {
             });
         }
         assert_eq!(measured.total_duration(), Duration::from_millis(10));
-        assert_eq!(
-            median_duration(&measured.repetitions),
-            Duration::from_millis(3)
-        );
+        assert_eq!(measured.median_duration(), Duration::from_millis(3));
     }
 
     #[test]
@@ -191,7 +188,16 @@ mod tests {
 
         assert_eq!(warmups.get(), 3);
         assert_eq!(measured.get(), 2);
-        assert_eq!(result.repetitions.len(), 2);
+        assert_eq!(result.repetitions().len(), 2);
+    }
+
+    #[test]
+    fn repetition_accumulator_rejects_misaligned_project_merges() {
+        let mut measured = MeasuredRepetitionAccumulator::with_repetitions(2);
+        let error = measured
+            .merge_project(vec![ProfileRepetitionSummary::zero()])
+            .unwrap_err();
+        assert!(error.to_string().contains("repetition count changed"));
     }
 
     #[test]

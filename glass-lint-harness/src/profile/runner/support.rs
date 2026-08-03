@@ -15,7 +15,7 @@ use crate::{
     profile::{
         config::{ProfileCatalogProvider, ProfileConfig, RuleSelectionProfile},
         corpus::{discover_profile_files, sample_paths},
-        types::{PreparedFile, ProfileRepetitionSummary},
+        types::PreparedFile,
     },
     profile_manifest::verify_profile_manifest,
 };
@@ -129,10 +129,4 @@ pub(super) fn profile_project_parts(
         outcome.metrics,
         outcome.partial_reason.map(|error| format!("{error:#}")),
     )
-}
-
-pub(super) fn sum_operation_counts(
-    repetitions: &[ProfileRepetitionSummary],
-) -> crate::profile::types::ProfileOperationCounts {
-    crate::profile::types::sum_operation_counts(repetitions)
 }

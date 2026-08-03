@@ -26,9 +26,7 @@ pub(super) fn run(config: &ProfileConfig) -> Result<ProfileSummary> {
 
     for path in &config.paths {
         let project = profile_loader_project(path, config, &loader, &linters)?;
-        for (target, source) in measured.repetitions.iter_mut().zip(project.repetitions) {
-            target.merge(source);
-        }
+        measured.merge_project(project.repetitions)?;
         phases += project.phases;
         counts += project.counts;
         totals.record(project.result, project.successful_runs);
@@ -47,7 +45,7 @@ pub(super) fn run(config: &ProfileConfig) -> Result<ProfileSummary> {
             + phases.resolution()
             + phases.linking_and_matching(),
         wall_duration: phases.total(),
-        repetitions: measured.repetitions,
+        repetitions: measured.into_repetitions(),
         phase_timings: phases,
         operation_counts: counts,
     }))

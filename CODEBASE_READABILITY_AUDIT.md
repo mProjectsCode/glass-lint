@@ -72,7 +72,7 @@ Static objects appear as `Vec<(NameId, ValueId)>`, `Vec<NameId>`, `BTreeMap<Name
 
 **Fix Applied:** `LinkedOccurrenceView::build` now owns identity remapping, source masking, global promotion, and operation counting, while `OccurrenceIndex` exposes only a bucket visitor for that construction path. Package lookup now accepts the completed overlay through `LinkedOccurrenceView` and keeps overlay merge details inside the occurrence layer; local package scans use a separate base-only operation, and callers no longer pass optional nested bucket maps.
 
-#### [ ] READ-006 — Repetition aggregation exposes its vector and leaves reporting operations outside
+#### [x] READ-006 — Repetition aggregation exposes its vector and leaves reporting operations outside
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Encapsulation
@@ -82,7 +82,7 @@ Static objects appear as `Vec<(NameId, ValueId)>`, `Vec<NameId>`, `BTreeMap<Name
 
 **Recommendation:** Keep the vector private and add `merge_project`, aggregate getters, `median_duration`, and consuming `into_repetitions` operations. Let each runner combine those domain results with its workload-specific metadata. Restrict raw iteration to unit tests.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `MeasuredRepetitionAccumulator` now keeps repetitions private, validates project-merge alignment, and owns findings, diagnostics, operation-count, duration, and median aggregation through named methods. The profile runners use those operations and consume the final vector only at the summary boundary; the only raw repetition view is test-only, and a regression test covers mismatched project merges.
 
 #### [ ] READ-007 — Load progress and metrics duplicate counters and synchronize by field assignment
 - **Severity:** Medium

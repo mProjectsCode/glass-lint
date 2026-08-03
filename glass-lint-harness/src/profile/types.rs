@@ -380,17 +380,17 @@ impl Default for RunOutcome {
 
 #[derive(Default)]
 pub(super) struct MeasuredRepetitionAccumulator {
-    pub repetitions: Vec<ProfileRepetitionSummary>,
+    repetitions: Vec<ProfileRepetitionSummary>,
 }
 
 impl MeasuredRepetitionAccumulator {
-    pub fn with_repetitions(repetition_count: usize) -> Self {
+    pub(super) fn with_repetitions(repetition_count: usize) -> Self {
         Self {
             repetitions: vec![ProfileRepetitionSummary::zero(); repetition_count],
         }
     }
 
-    pub fn measure<W, R>(
+    pub(super) fn measure<W, R>(
         warm_up: usize,
         repeat: usize,
         mut warm_up_run: W,
@@ -417,28 +417,67 @@ impl MeasuredRepetitionAccumulator {
         Ok(measured)
     }
 
-    pub fn record(&mut self, repetition: ProfileRepetitionSummary) {
+    pub(super) fn record(&mut self, repetition: ProfileRepetitionSummary) {
         self.repetitions.push(repetition);
     }
 
-    pub fn total_duration(&self) -> Duration {
+    pub(super) fn merge_project(&mut self, project: Vec<ProfileRepetitionSummary>) -> Result<()> {
+        if project.len() != self.repetitions.len() {
+            anyhow::bail!(
+                "profile repetition count changed while merging project: expected {}, got {}",
+                self.repetitions.len(),
+                project.len()
+            );
+        }
+        for (target, source) in self.repetitions.iter_mut().zip(project) {
+            target.merge(source);
+        }
+        Ok(())
+    }
+
+    pub(super) fn findings(&self) -> usize {
+        self.repetitions
+            .iter()
+            .map(|repetition| repetition.findings)
+            .sum()
+    }
+
+    pub(super) fn diagnostics(&self) -> usize {
+        self.repetitions
+            .iter()
+            .map(|repetition| repetition.diagnostics)
+            .sum()
+    }
+
+    pub(super) fn operation_counts(&self) -> ProfileOperationCounts {
+        self.repetitions.iter().fold(
+            ProfileOperationCounts::default(),
+            |mut total, repetition| {
+                total += repetition.operation_counts;
+                total
+            },
+        )
+    }
+
+    pub(super) fn median_duration(&self) -> Duration {
+        median_duration(&self.repetitions)
+    }
+
+    pub(super) fn total_duration(&self) -> Duration {
         self.repetitions
             .iter()
             .map(|repetition| repetition.duration)
             .sum()
     }
-}
 
-pub(super) fn sum_operation_counts(
-    repetitions: &[ProfileRepetitionSummary],
-) -> ProfileOperationCounts {
-    repetitions.iter().fold(
-        ProfileOperationCounts::default(),
-        |mut total, repetition| {
-            total += repetition.operation_counts;
-            total
-        },
-    )
+    pub(super) fn into_repetitions(self) -> Vec<ProfileRepetitionSummary> {
+        self.repetitions
+    }
+
+    #[cfg(test)]
+    pub(super) fn repetitions(&self) -> &[ProfileRepetitionSummary] {
+        &self.repetitions
+    }
 }
 
 pub(super) fn project_run_outcome(

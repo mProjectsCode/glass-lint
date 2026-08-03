@@ -10,7 +10,6 @@ use crate::profile::{
     types::{
         MeasuredRepetitionAccumulator, ProfilePhaseTimings, ProfileSummary,
         ProfileSummaryAccumulator, ProfileSummaryMetadata, ProfileWorkloadSummary,
-        sum_operation_counts,
     },
 };
 
@@ -30,7 +29,7 @@ pub(super) fn file_profile(
     for result in workload_results {
         totals.record(result, config.repeat.get());
     }
-    let operation_counts = sum_operation_counts(&measured.repetitions);
+    let operation_counts = measured.operation_counts();
     let mut phase_timings = ProfilePhaseTimings::default();
     phase_timings.record_discovery(corpus.setup_duration);
     phase_timings.record_matching(lint_elapsed);
@@ -46,7 +45,7 @@ pub(super) fn file_profile(
         setup_duration: corpus.setup_duration,
         measured_elapsed: lint_elapsed,
         wall_duration: total_start.elapsed(),
-        repetitions: measured.repetitions,
+        repetitions: measured.into_repetitions(),
         phase_timings,
         operation_counts,
     })
