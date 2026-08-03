@@ -8,8 +8,8 @@ use crate::{
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct QualifiedEvent {
-    pub module: ModuleId,
-    pub fact: FactId,
+    module: ModuleId,
+    fact: FactId,
 }
 
 /// One ordered event and evidence role in a reconstructed trace.
@@ -36,6 +36,14 @@ impl TraceStep {
 impl QualifiedEvent {
     pub fn new(module: ModuleId, fact: FactId) -> Self {
         Self { module, fact }
+    }
+
+    pub fn module(&self) -> ModuleId {
+        self.module
+    }
+
+    pub fn fact(&self) -> FactId {
+        self.fact
     }
 }
 

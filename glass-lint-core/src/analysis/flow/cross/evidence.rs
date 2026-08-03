@@ -231,26 +231,18 @@ struct TraceAssembler<'a> {
 impl TraceAssembler<'_> {
     fn from_source<'a>(
         arena: &'a mut TraceArena,
-        source: &crate::analysis::flow::cross::state::QualifiedEvent,
+        source: &crate::analysis::trace::QualifiedEvent,
     ) -> Option<TraceAssembler<'a>> {
-        let tail = arena.intern(
-            None,
-            TraceQualifiedEvent::new(source.module, source.fact),
-            EvidenceRole::Source,
-        )?;
+        let tail = arena.intern(None, *source, EvidenceRole::Source)?;
         Some(TraceAssembler { arena, tail })
     }
 
     fn append(
         &mut self,
-        event: &crate::analysis::flow::cross::state::QualifiedEvent,
+        event: &crate::analysis::trace::QualifiedEvent,
         role: EvidenceRole,
     ) -> bool {
-        let Some(next) = self.arena.intern(
-            Some(self.tail),
-            TraceQualifiedEvent::new(event.module, event.fact),
-            role,
-        ) else {
+        let Some(next) = self.arena.intern(Some(self.tail), *event, role) else {
             return false;
         };
         self.tail = next;
@@ -373,24 +365,15 @@ mod tests {
     fn trace_assembly_keeps_prior_sinks_as_sinks() {
         let mut state = CrossFlowState::known(
             FlowId::new(RuleIndex::new(0), 0),
-            QualifiedEvent {
-                module: ModuleId::new(1),
-                fact: FactId::new(1),
-            },
+            QualifiedEvent::new(ModuleId::new(1), FactId::new(1)),
         );
         state.record_requirement(
             RequirementIndex::new(0),
-            QualifiedEvent {
-                module: ModuleId::new(1),
-                fact: FactId::new(2),
-            },
+            QualifiedEvent::new(ModuleId::new(1), FactId::new(2)),
         );
         state.record_sink(
             SinkIndex::new(0),
-            QualifiedEvent {
-                module: ModuleId::new(1),
-                fact: FactId::new(3),
-            },
+            QualifiedEvent::new(ModuleId::new(1), FactId::new(3)),
         );
         let mut arena = TraceArena::new(10);
         let TraceBuild::Complete(head) =

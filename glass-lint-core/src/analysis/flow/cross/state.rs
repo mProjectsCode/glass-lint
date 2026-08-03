@@ -1,6 +1,7 @@
 #[cfg(test)]
 use glass_lint_datastructures::Budget;
 
+pub(super) use crate::analysis::trace::QualifiedEvent;
 use crate::{
     analysis::{
         facts::FactId,
@@ -38,13 +39,6 @@ impl SourceBudget {
     pub(super) fn exhausted(&self) -> bool {
         self.inner.exhausted()
     }
-}
-
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
-/// A fact location qualified by its owning project module.
-pub(super) struct QualifiedEvent {
-    pub(super) module: ModuleId,
-    pub(super) fact: FactId,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
@@ -116,7 +110,7 @@ impl CrossFlowState {
         let mut sinks: Vec<_> = self
             .sinks
             .values()
-            .filter(|sink| !(sink.module == module && sink.fact == event))
+            .filter(|sink| !(sink.module() == module && sink.fact() == event))
             .cloned()
             .collect();
         sinks.sort();

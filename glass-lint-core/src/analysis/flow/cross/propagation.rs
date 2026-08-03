@@ -96,10 +96,7 @@ impl UsageProjector<'_, '_> {
             {
                 next.record_requirement(
                     RequirementIndex::new(index),
-                    QualifiedEvent {
-                        module: self.context.module,
-                        fact: event,
-                    },
+                    QualifiedEvent::new(self.context.module, event),
                 );
             }
         }
@@ -134,10 +131,7 @@ impl UsageProjector<'_, '_> {
             {
                 next.record_requirement(
                     RequirementIndex::new(index),
-                    QualifiedEvent {
-                        module: self.context.module,
-                        fact: event,
-                    },
+                    QualifiedEvent::new(self.context.module, event),
                 );
             }
         }
@@ -170,10 +164,7 @@ impl UsageProjector<'_, '_> {
             for index in matching_sinks {
                 self.state.record_sink(
                     SinkIndex::new(index),
-                    QualifiedEvent {
-                        module: self.context.module,
-                        fact: event,
-                    },
+                    QualifiedEvent::new(self.context.module, event),
                 );
             }
             if self.state.requirements_ready(self.flow)

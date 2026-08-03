@@ -183,7 +183,7 @@ inspection also uses those family boundaries.
 
 ### Duplicate semantic abstractions
 
-#### [ ] READ-007 — Cross-flow duplicates trace `QualifiedEvent`
+#### [x] READ-007 — Cross-flow duplicates trace `QualifiedEvent`
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -202,7 +202,11 @@ state, trace assembly, and tests to construct and pass that type directly.
 Do not merge it with `SourceKey` or other keys whose value domain includes a
 function or value identity; those represent different concepts.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the cross-flow duplicate and re-exported the neutral
+trace-layer `QualifiedEvent` through the cross-flow state module for existing
+internal call sites. Its fields are private behind `module()` and `fact()`;
+cross-flow evidence now passes the shared value directly into trace assembly
+without per-event conversion.
 
 ### Rule query boundary and construction
 

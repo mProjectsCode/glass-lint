@@ -132,10 +132,7 @@ impl ContextWorklist {
                 source_root: Some(key.value),
                 state: CrossFlowState::known(
                     candidate.flow,
-                    QualifiedEvent {
-                        module: key.module,
-                        fact: candidate.fact,
-                    },
+                    QualifiedEvent::new(key.module, candidate.fact),
                 ),
                 crossed: key.value != project.source_call_result(key.module, candidate.fact),
             });
@@ -172,10 +169,7 @@ impl ContextWorklist {
                         for candidate in candidates {
                             let state = CrossFlowState::known(
                                 candidate.flow,
-                                QualifiedEvent {
-                                    module: module.id(),
-                                    fact: candidate.fact,
-                                },
+                                QualifiedEvent::new(module.id(), candidate.fact),
                             );
                             self.enqueue_parameters(
                                 project,

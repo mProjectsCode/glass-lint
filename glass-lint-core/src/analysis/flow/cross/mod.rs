@@ -499,10 +499,7 @@ mod tests {
             source_root: None,
             state: CrossFlowState::known(
                 FlowId::new(RuleIndex::new(0), 0),
-                QualifiedEvent {
-                    module: ModuleId::new(1),
-                    fact: FactId::from_test(1),
-                },
+                QualifiedEvent::new(ModuleId::new(1), FactId::from_test(1)),
             ),
             crossed: false,
         }

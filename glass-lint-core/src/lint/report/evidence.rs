@@ -283,7 +283,7 @@ fn resolve_trace(
     raw.into_iter()
         .map(|step| {
             let event = step.event();
-            let location = project.fact_location(event.module, event.fact)?;
+            let location = project.fact_location(event.module(), event.fact())?;
             let message = match step.role() {
                 EvidenceRole::Source => "flow source",
                 EvidenceRole::Requirement => "flow requirement",
