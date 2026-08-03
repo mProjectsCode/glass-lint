@@ -60,7 +60,7 @@ Static objects appear as `Vec<(NameId, ValueId)>`, `Vec<NameId>`, `BTreeMap<Name
 
 **Fix Applied:** `PathView` gained the missing prefix-at-length (`prefix_at`), suffix/tail (`tail_after`), and bounded-prefix-iteration (`prefixes`) operations, and its `Copy`/`Clone` impls no longer require the element type to be `Copy`. `MutationIndex::property_aliases` and `rooted_mutations` (and their `FrozenScopeGraph` delegations) now accept `PathView<NameId>` instead of raw `&[NameId]` slices, and `Environment::global_object_paths_match` accepts `SymbolPath` pairs while the interned `NamePath` plus `NameTable` adapter stays the free coordinator. The `get(1..)`, indexed-subslice, and prefix-walk slice arithmetic was removed from identity comparison, the provenance member-chain resolver, the rooted mutation walk, and the callable member-chain join.
 
-#### [ ] READ-005 — Linked occurrence overlays expose bucket representation to the remapping algorithm
+#### [x] READ-005 — Linked occurrence overlays expose bucket representation to the remapping algorithm
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Encapsulation
@@ -70,7 +70,7 @@ Static objects appear as `Vec<(NameId, ValueId)>`, `Vec<NameId>`, `BTreeMap<Name
 
 **Recommendation:** Make `LinkedOccurrenceView` own identity remapping, masking, global promotion, and operation counting through a crate-private construction method. Let `OccurrenceIndex` provide the minimal bucket lookup needed by that constructor rather than a generic `iter` used to reproduce its storage policy. Package candidate lookup should consume `LinkedOccurrenceView`, not an optional nested map.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `LinkedOccurrenceView::build` now owns identity remapping, source masking, global promotion, and operation counting, while `OccurrenceIndex` exposes only a bucket visitor for that construction path. Package lookup now accepts the completed overlay through `LinkedOccurrenceView` and keeps overlay merge details inside the occurrence layer; local package scans use a separate base-only operation, and callers no longer pass optional nested bucket maps.
 
 #### [ ] READ-006 — Repetition aggregation exposes its vector and leaves reporting operations outside
 - **Severity:** Medium
@@ -223,4 +223,4 @@ None. The architectural choices raised by this audit are resolved in the decisio
 - Inventoried tuple structs, semantic newtypes, collection aliases, public/internal collection fields, raw accessors, phase carriers, and direct field construction; then traced the highest-signal cases through their callers.
 - Reviewed the largest production modules, error shortcuts, allow/expect usage, interior-mutability patterns, test organization, duplicate helpers, and stale-work markers. No `Rc<RefCell<_>>` pattern or actionable TODO/FIXME cluster was found.
 - Excluded ordinary public DTOs, numeric ID newtypes, test-only inspection helpers, generic iterator exposure without domain policy, and intentionally independent logical/physical compiler reference evaluators.
-- This audit changed only `CODEBASE_READABILITY_AUDIT.md`; no source, test, configuration, or other documentation changes were made.
+- READ-001 through READ-005 have been implemented in separate focused changes; each implementation preserves the existing phase boundary and matching contracts while removing the audited representation leak.

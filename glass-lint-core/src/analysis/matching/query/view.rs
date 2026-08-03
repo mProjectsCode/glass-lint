@@ -284,9 +284,7 @@ impl<'a> EventIndexView<'a> {
         let (kind, index) = self.module_view()?;
         Some(match overlay {
             Some(overlay) => overlay.resolve_package(kind, index, predicate),
-            None => CandidateOccurrences::BorrowedPackage(
-                index.package_candidates(predicate, None, None),
-            ),
+            None => CandidateOccurrences::BorrowedPackage(index.package_candidates(predicate)),
         })
     }
 

@@ -248,6 +248,22 @@ pub(in crate::analysis) struct BorrowedPackageOccurrenceIter<'a> {
 }
 
 impl<'a> BorrowedPackageOccurrenceIter<'a> {
+    pub(super) fn base(
+        predicate: PackageKeyPredicate<'a>,
+        base: &'a BTreeMap<ModuleExportKey, Vec<Occurrence>>,
+    ) -> Self {
+        Self::new(predicate, None, base, None)
+    }
+
+    pub(super) fn with_overlay(
+        predicate: PackageKeyPredicate<'a>,
+        masked: &'a BTreeSet<ModuleExportKey>,
+        base: &'a BTreeMap<ModuleExportKey, Vec<Occurrence>>,
+        overlay: &'a BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>>,
+    ) -> Self {
+        Self::new(predicate, Some(masked), base, Some(overlay))
+    }
+
     fn new(
         predicate: PackageKeyPredicate<'a>,
         masked: Option<&'a BTreeSet<ModuleExportKey>>,
@@ -358,9 +374,10 @@ impl<K: Ord> OccurrenceIndex<K> {
         self.0.is_empty()
     }
 
-    /// Iterate over keys and normalized occurrence buckets.
+    /// Iterate over buckets for reference assertions in unit tests.
+    #[cfg(test)]
     pub(super) fn iter(&self) -> impl Iterator<Item = (&K, &[Occurrence])> {
-        self.0.iter().map(|(k, v)| (k, v.as_slice()))
+        self.0.iter().map(|(key, values)| (key, values.as_slice()))
     }
 
     /// Collect occurrences from all buckets satisfying one identity
@@ -410,15 +427,32 @@ impl<K: Ord> OccurrenceIndex<K> {
 }
 
 impl OccurrenceIndex<ModuleExportKey> {
-    /// Lazily scan package exports while keeping merge and masking mechanics
-    /// inside the occurrence index.
+    /// Visit normalized module buckets without exposing the backing map.
+    pub(super) fn for_each_bucket<'a>(
+        &'a self,
+        mut visit: impl FnMut(&ModuleExportKey, &'a [Occurrence]),
+    ) {
+        for (key, occurrences) in &self.0 {
+            visit(key, occurrences.as_slice());
+        }
+    }
+
+    /// Lazily scan package exports in the local occurrence index.
     pub(super) fn package_candidates<'a>(
         &'a self,
         predicate: PackageKeyPredicate<'a>,
-        masked: Option<&'a BTreeSet<ModuleExportKey>>,
-        overlay: Option<&'a BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>>>,
     ) -> BorrowedPackageOccurrenceIter<'a> {
-        BorrowedPackageOccurrenceIter::new(predicate, masked, &self.0, overlay)
+        BorrowedPackageOccurrenceIter::base(predicate, &self.0)
+    }
+
+    /// Lazily scan package exports with a completed linked overlay.
+    pub(super) fn package_candidates_with_overlay<'a>(
+        &'a self,
+        predicate: PackageKeyPredicate<'a>,
+        masked: &'a BTreeSet<ModuleExportKey>,
+        overlay: &'a BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>>,
+    ) -> BorrowedPackageOccurrenceIter<'a> {
+        BorrowedPackageOccurrenceIter::with_overlay(predicate, masked, &self.0, overlay)
     }
 }
 

@@ -62,6 +62,114 @@ pub(in crate::analysis) enum ModuleOverlayKind {
 }
 
 impl<'a> LinkedOccurrenceView<'a> {
+    /// Build the linked occurrence overlay from the module identities.
+    ///
+    /// Identity remapping, masking, and global promotion belong to this view;
+    /// callers receive only the completed overlay and its bounded operation
+    /// count.
+    pub(in crate::analysis) fn build(
+        indexes: &'a OccurrenceIndexes,
+        identities: &ModuleIdentityMap,
+    ) -> (Self, usize) {
+        let mut view = Self::default();
+        let mut operations = 0usize;
+        operations += view.remap(
+            &indexes.call_indexes.module_calls,
+            ModuleOverlayKind::Call,
+            true,
+            identities,
+        );
+        operations += view.remap(
+            &indexes.members.module_calls,
+            ModuleOverlayKind::MemberCall,
+            false,
+            identities,
+        );
+        operations += view.remap(
+            &indexes.members.module_reads,
+            ModuleOverlayKind::MemberRead,
+            false,
+            identities,
+        );
+        operations += view.remap(
+            &indexes.constructions.module_classes,
+            ModuleOverlayKind::Class,
+            false,
+            identities,
+        );
+        operations += view.remap(
+            &indexes.constructions.module_constructors,
+            ModuleOverlayKind::Constructor,
+            false,
+            identities,
+        );
+        (view, operations)
+    }
+
+    fn remap(
+        &mut self,
+        source: &'a ModuleOccurrences,
+        kind: ModuleOverlayKind,
+        promote_globals: bool,
+        identities: &ModuleIdentityMap,
+    ) -> usize {
+        let mut operations = 0usize;
+        source.for_each_bucket(|key, occurrences| {
+            operations = operations.saturating_add(1);
+            let Some(identity) = Self::identity_for(identities, key) else {
+                return;
+            };
+            self.masked.insert(key.clone());
+            match identity {
+                ExportResolution::External { module, export } => {
+                    self.module_buckets_mut(kind)
+                        .entry(ModuleExportKey::new(module, export))
+                        .or_default()
+                        .push(occurrences);
+                }
+                ExportResolution::Global { name } if promote_globals => {
+                    self.global_calls.entry(name).or_default().push(occurrences);
+                }
+                ExportResolution::Global { .. }
+                | ExportResolution::Qualified { .. }
+                | ExportResolution::StaticString { .. }
+                | ExportResolution::Ambiguous
+                | ExportResolution::Unknown => {}
+            }
+        });
+        operations
+    }
+
+    fn identity_for(
+        identities: &ModuleIdentityMap,
+        key: &ModuleExportKey,
+    ) -> Option<ExportResolution> {
+        identities.get(key).cloned().or_else(|| {
+            identities
+                .get(&ModuleExportKey::wildcard(key.module().clone()))
+                .map(|identity| match identity {
+                    ExportResolution::External { module, .. } => ExportResolution::External {
+                        module: module.clone(),
+                        export: key.export().to_owned(),
+                    },
+                    other => other.clone(),
+                })
+        })
+    }
+
+    fn module_buckets_mut(
+        &mut self,
+        kind: ModuleOverlayKind,
+    ) -> &mut BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>> {
+        match kind {
+            ModuleOverlayKind::Call => &mut self.module_calls,
+            ModuleOverlayKind::MemberCall => &mut self.member_calls,
+            ModuleOverlayKind::MemberRead => &mut self.member_reads,
+            ModuleOverlayKind::Class => &mut self.module_classes,
+            ModuleOverlayKind::Constructor => &mut self.module_constructors,
+        }
+    }
+
     pub(in crate::analysis) fn resolve_module(
         &'a self,
         kind: ModuleOverlayKind,
@@ -105,10 +213,10 @@ impl<'a> LinkedOccurrenceView<'a> {
         base: &'a ModuleOccurrences,
         predicate: PackageKeyPredicate<'a>,
     ) -> CandidateOccurrences<'a> {
-        CandidateOccurrences::BorrowedPackage(base.package_candidates(
+        CandidateOccurrences::BorrowedPackage(base.package_candidates_with_overlay(
             predicate,
-            Some(&self.masked),
-            Some(self.module_buckets(kind)),
+            &self.masked,
+            self.module_buckets(kind),
         ))
     }
 
@@ -206,78 +314,6 @@ impl OccurrenceIndexes {
         !self.members.calls.is_empty()
             || !self.members.rooted_calls.is_empty()
             || !self.members.module_calls.is_empty()
-    }
-
-    /// Build the project overlay and return it along with the number of
-    /// module entries processed (operations charged).  When no overlay is
-    /// needed, returns `None` with zero operations.
-    pub(in crate::analysis) fn module_overlay<'a>(
-        &'a self,
-        identities: &ModuleIdentityMap,
-    ) -> (LinkedOccurrenceView<'a>, usize) {
-        let mut overlay = LinkedOccurrenceView::default();
-        let mut operations = 0usize;
-        let identity_for = |key: &ModuleExportKey| {
-            identities.get(key).cloned().or_else(|| {
-                identities
-                    .get(&ModuleExportKey::wildcard(key.module().clone()))
-                    .map(|identity| match identity {
-                        ExportResolution::External { module, .. } => ExportResolution::External {
-                            module: module.clone(),
-                            export: key.export().to_owned(),
-                        },
-                        other => other.clone(),
-                    })
-            })
-        };
-
-        let mut remap_occurrences =
-            |source: &'a ModuleOccurrences,
-             target: &mut BorrowedModuleBuckets<'a>,
-             mut global_target: Option<&mut BorrowedGlobalBuckets<'a>>| {
-                for (key, occurrences) in source.iter() {
-                    operations = operations.saturating_add(1);
-                    let Some(identity) = identity_for(key) else {
-                        continue;
-                    };
-                    overlay.masked.insert(key.clone());
-                    match identity {
-                        ExportResolution::External { module, export } => {
-                            target
-                                .entry(ModuleExportKey::new(module, export))
-                                .or_default()
-                                .push(occurrences);
-                        }
-                        ExportResolution::Global { name } => {
-                            if let Some(global_target) = global_target.as_deref_mut() {
-                                global_target.entry(name).or_default().push(occurrences);
-                            }
-                        }
-                        ExportResolution::Qualified { .. }
-                        | ExportResolution::StaticString { .. }
-                        | ExportResolution::Ambiguous
-                        | ExportResolution::Unknown => {}
-                    }
-                }
-            };
-        remap_occurrences(
-            &self.call_indexes.module_calls,
-            &mut overlay.module_calls,
-            Some(&mut overlay.global_calls),
-        );
-        remap_occurrences(&self.members.module_calls, &mut overlay.member_calls, None);
-        remap_occurrences(&self.members.module_reads, &mut overlay.member_reads, None);
-        remap_occurrences(
-            &self.constructions.module_classes,
-            &mut overlay.module_classes,
-            None,
-        );
-        remap_occurrences(
-            &self.constructions.module_constructors,
-            &mut overlay.module_constructors,
-            None,
-        );
-        (overlay, operations)
     }
 }
 

@@ -447,7 +447,7 @@ impl ProjectSemanticModel {
                     need_result_ids.then(|| self.call_result_identities(module.id(), session));
                 let (overlay, overlay_ops) = if plan.needs_overlay() {
                     identities.as_ref().map_or((None, 0), |ids| {
-                        let (view, ops) = index.module_overlay(ids);
+                        let (view, ops) = LinkedOccurrenceView::build(index, ids);
                         (Some(view), ops)
                     })
                 } else {
