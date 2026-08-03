@@ -615,7 +615,7 @@ metric, and deterministic request-key behavior unchanged.
 and `did_resolve` accounting; removed the obsolete cache-invariant error.
 Verified with `make fmt && make ci`.
 
-#### [ ] READ-035 — Discovery checks extension support before a classifier that checks it again
+#### [x] READ-035 — Discovery checks extension support before a classifier that checks it again
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -637,7 +637,10 @@ the selection-specific error context. Preserve the distinct entry-selection
 errors, fail-closed unsupported behavior, containment checks, and tsconfig
 source ordering.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed redundant support checks from entry and explicit-file
+selection; `SourceAdmission::classify` now owns canonical containment,
+exclusion, and extension decisions at both paths. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-036 — Pretty-report constructors duplicate the renderer state layout
 

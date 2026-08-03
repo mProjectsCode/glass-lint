@@ -231,9 +231,6 @@ impl<'adm, 'opt, 'budget> ProjectDiscovery<'adm, 'opt, 'budget> {
         if !path.is_file() {
             return Err(ProjectLoadError::SelectionNotFile(path.to_path_buf()));
         }
-        if !self.admission.supports(path) {
-            return Err(ProjectLoadError::UnsupportedSource(path.to_path_buf()));
-        }
         match self.admission.classify(path)? {
             crate::admission::PathAdmission::Admitted(admitted) => {
                 self.admitted.admit(&admitted)?;
@@ -297,7 +294,6 @@ impl<'adm, 'opt, 'budget> ProjectDiscovery<'adm, 'opt, 'budget> {
             for file in files {
                 let path = base.join(file);
                 if path.exists()
-                    && self.admission.supports(&path)
                     && let crate::admission::PathAdmission::Admitted(admitted) =
                         self.admission.classify(&path)?
                 {
