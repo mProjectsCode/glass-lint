@@ -12,7 +12,7 @@ The highest-value sequence is to close the project phase boundary, unify provena
 
 ### Encapsulation and Domain Ownership
 
-#### [ ] READ-001 — Analysis artifacts do not own the transition to a resolved project
+#### [x] READ-001 — Analysis artifacts do not own the transition to a resolved project
 - **Severity:** High
 - **Fix Complexity:** High
 - **Category:** Encapsulation
@@ -22,7 +22,7 @@ The highest-value sequence is to close the project phase boundary, unify provena
 
 **Recommendation:** Make the artifact stores private and add domain operations such as `needs_analysis` and authored-outcome validation. Have `LocallyAnalyzedProject::resolve` perform one private consuming transition directly into `ResolvedProject`, and delete `ResolvedLinkInputData` plus the positional result from `ResolvedLinkInput::build`. Keep all intermediate transition state private.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `AnalysisArtifacts` stores are now private; it owns the pending-source probe via `needs_analysis`, authored-outcome validation via `is_authored_request`, and one consuming `into_link_input` transition that validates outcomes, assigns module/request identities, and splits parse diagnostics. `LocallyAnalyzedProject::resolve` now calls that single transition directly into `ResolvedProject`, `ResolvedLinkInputData` was deleted, and `ResolvedLinkInput::build` consumes the validated pieces and returns only `ResolvedLinkInput` (no positional triple).
 
 #### [ ] READ-002 — Provenance alternative state is duplicated and interpreted by callers
 - **Severity:** High

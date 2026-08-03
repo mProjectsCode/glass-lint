@@ -11,7 +11,7 @@ mod session;
 mod tables;
 pub mod types;
 pub use report::ReportCombineError;
-pub(crate) use session::{AnalysisArtifacts, SessionState};
+pub(crate) use session::SessionState;
 pub use session::{LocallyAnalyzedProject, ProjectCollection, ResolvedProject, SourceAnalysis};
 pub(crate) use tables::{ResolutionTable, SourceTable};
 pub use types::{

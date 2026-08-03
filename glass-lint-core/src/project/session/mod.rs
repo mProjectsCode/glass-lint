@@ -23,10 +23,7 @@ use execution::{
 
 use crate::{
     AnalysisLimits, Environment, RuleCatalog,
-    analysis::{
-        ArtifactCacheHandle, ArtifactCacheKey, LoweredSource, Lowerer, ResolvedLinkInput,
-        ResolvedLinkInputData,
-    },
+    analysis::{ArtifactCacheHandle, ArtifactCacheKey, LoweredSource, Lowerer, ResolvedLinkInput},
     api::classification::RuleIndex,
     lint::ReportAssembly,
     project::{
@@ -283,10 +280,7 @@ impl<'a> ProjectCollection<'a> {
         let pending: Vec<_> = self
             .sources
             .iter()
-            .filter(|(path, _)| {
-                !self.artifacts.analyzed.contains_key(*path)
-                    && !self.artifacts.parse_diagnostics.contains_key(*path)
-            })
+            .filter(|(path, _)| self.artifacts.needs_analysis(path))
             .map(|(path, _)| path.to_owned())
             .collect();
         let mut requests = Vec::new();
@@ -405,15 +399,20 @@ impl<'a> ProjectCollection<'a> {
 impl<'a> LocallyAnalyzedProject<'a> {
     /// Validate resolver outcomes against the frozen authored request table
     /// and build the qualified-request-identity table that linking consumes.
+    /// One consuming transition into `ResolvedProject`; intermediate module
+    /// and request identity state is private to the artifact transition.
     pub fn resolve(
         self,
         outcomes: impl IntoIterator<Item = (ResolutionRequestKey, ResolverOutcome)>,
     ) -> Result<ResolvedProject<'a>, ProjectInputError> {
-        let (link_input, sources, parse_diagnostics) = ResolvedLinkInput::build(
-            ResolvedLinkInputData::from_resolved(self.sources, self.artifacts, outcomes)?,
-        )?;
+        let Self {
+            state,
+            sources,
+            artifacts,
+        } = self;
+        let (link_input, parse_diagnostics) = artifacts.into_link_input(&sources, outcomes)?;
         Ok(ResolvedProject {
-            state: self.state,
+            state,
             sources,
             link_input,
             parse_diagnostics,

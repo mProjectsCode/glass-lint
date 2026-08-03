@@ -7,14 +7,11 @@ use std::collections::BTreeMap;
 use glass_lint_datastructures::NameTable;
 use smol_str::SmolStr;
 
-#[cfg(test)]
-use crate::analysis::local::LocalArtifact;
 use crate::{
-    ParseDiagnostic,
     analysis::{
         facts::{FactId, FactStream, Frozen, SemanticFact},
         flow::effect::FunctionEffect,
-        local::ProjectModule,
+        local::{LocalArtifact, ProjectModule},
         lowering::status::{AnalysisStatus, IncompleteReason, StatusScope},
         module::ModuleRequestId,
         project::{
@@ -31,10 +28,8 @@ use crate::{
         compiler::{CompiledRuleRecord, CompiledRuleSelection},
     },
     project::{
-        AnalysisArtifacts, AnalysisDiagnostic, LinkedModuleTarget, ModuleId, ProjectInputError,
-        ProjectRelativePath, ResolutionRequestKey, ResolutionTable, ResolverOutcome,
-        SourceLocation, SourceTable,
-        input::{normalize_resolution_key, normalize_result},
+        AnalysisDiagnostic, LinkedModuleTarget, ModuleId, ProjectInputError, ProjectRelativePath,
+        ResolutionRequestKey, ResolutionTable, ResolverOutcome, SourceLocation,
     },
 };
 
@@ -112,96 +107,16 @@ pub struct ResolvedLinkInput {
     pub(crate) resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
 }
 
-/// Correlated project state handed to the linker as one validated boundary.
-///
-/// Construction consumes the typed source, resolution, artifact, and
-/// authored-request owners so the caller cannot assemble the linker's
-/// individual representations after this value is built.
-pub struct ResolvedLinkInputData {
-    sources: SourceTable,
-    resolutions: ResolutionTable,
-    artifacts: AnalysisArtifacts,
-    module_ids: BTreeMap<ProjectRelativePath, ModuleId>,
-    request_ids: BTreeMap<ResolutionRequestKey, QualifiedRequestId>,
-}
-
-impl ResolvedLinkInputData {
-    /// Validate authored resolver outcomes and construct the module and
-    /// request identity tables from the typed owners.
-    pub(crate) fn from_resolved(
-        sources: SourceTable,
-        artifacts: AnalysisArtifacts,
-        outcomes: impl IntoIterator<Item = (ResolutionRequestKey, ResolverOutcome)>,
-    ) -> Result<Self, ProjectInputError> {
-        let mut resolutions = ResolutionTable::default();
-        for (mut key, mut result) in outcomes {
-            normalize_resolution_key(&mut key)?;
-            if !artifacts.authored_requests.contains_key(&key) {
-                return Err(ProjectInputError::UnknownRequest(key));
-            }
-            normalize_result(&mut result)?;
-            resolutions.insert(key, result)?;
-        }
-        let module_ids = sources
-            .iter()
-            .enumerate()
-            .map(|(index, (path, _))| {
-                let id = u32::try_from(index).map_err(|_| {
-                    ProjectInputError::BudgetExceeded("module count exceeds ModuleId range".into())
-                })?;
-                Ok((path.clone(), ModuleId::new(id)))
-            })
-            .collect::<Result<BTreeMap<_, _>, _>>()?;
-        let request_ids = artifacts
-            .authored_requests
-            .iter()
-            .filter_map(|(key, req_id)| {
-                let module = module_ids.get(&key.importer).copied()?;
-                Some((
-                    key.clone(),
-                    QualifiedRequestId {
-                        module,
-                        request: req_id,
-                    },
-                ))
-            })
-            .collect();
-        Ok(Self {
-            sources,
-            resolutions,
-            artifacts,
-            module_ids,
-            request_ids,
-        })
-    }
-}
-
 impl ResolvedLinkInput {
-    /// Assemble the linker input, returning the source and parse-diagnostic
-    /// ownership that report assembly retains.
+    /// Assemble the linker input from validated module ownership. Consumes the
+    /// analyzed modules and validated request identities; the caller retains
+    /// the source table and parse diagnostics for report assembly.
     pub(crate) fn build(
-        data: ResolvedLinkInputData,
-    ) -> Result<
-        (
-            Self,
-            SourceTable,
-            BTreeMap<ProjectRelativePath, ParseDiagnostic>,
-        ),
-        ProjectInputError,
-    > {
-        let ResolvedLinkInputData {
-            sources,
-            resolutions,
-            artifacts,
-            module_ids,
-            request_ids,
-        } = data;
-        let AnalysisArtifacts {
-            analyzed,
-            parse_diagnostics,
-            ..
-        } = artifacts;
-
+        analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
+        module_ids: &BTreeMap<ProjectRelativePath, ModuleId>,
+        resolutions: ResolutionTable,
+        request_ids: &BTreeMap<ResolutionRequestKey, QualifiedRequestId>,
+    ) -> Result<Self, ProjectInputError> {
         let mut modules = BTreeMap::new();
         for (path, local) in analyzed {
             let Some(id) = module_ids.get(&path).copied() else {
@@ -236,18 +151,14 @@ impl ResolvedLinkInput {
                     .get(&key)
                     .copied()
                     .ok_or_else(|| ProjectInputError::UnknownRequest(key.clone()))?;
-                Ok((request, resolve_record(result, &module_ids)?))
+                Ok((request, resolve_record(result, module_ids)?))
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
 
-        Ok((
-            Self {
-                modules,
-                resolutions,
-            },
-            sources,
-            parse_diagnostics,
-        ))
+        Ok(Self {
+            modules,
+            resolutions,
+        })
     }
 }
 
