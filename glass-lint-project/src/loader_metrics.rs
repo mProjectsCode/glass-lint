@@ -118,26 +118,9 @@ impl ProjectLoadMetrics {
     pub fn bytes(&self) -> u64 {
         self.bytes
     }
-}
 
-#[derive(Debug, Default)]
-pub struct LoadAccounting {
-    timings: ProjectPhaseTimings,
-    files: usize,
-    requests: usize,
-    edges: usize,
-    bytes: u64,
-}
-
-impl LoadAccounting {
-    pub(crate) fn snapshot(&self) -> ProjectLoadMetrics {
-        ProjectLoadMetrics {
-            timings: self.timings,
-            files: self.files,
-            requests: self.requests,
-            edges: self.edges,
-            bytes: self.bytes,
-        }
+    pub(crate) fn snapshot(&self) -> Self {
+        self.clone()
     }
 
     pub(crate) fn record_discovery(&mut self, duration: Duration) {
@@ -217,13 +200,13 @@ mod tests {
 
     #[test]
     fn accounting_owns_bounded_counters_and_snapshot_values() {
-        let mut accounting = LoadAccounting::default();
-        accounting.record_files(3);
-        accounting.record_edge();
-        accounting.admit_requests(2, 2).unwrap();
-        accounting.admit_source_bytes(11, 11).unwrap();
+        let mut metrics = ProjectLoadMetrics::default();
+        metrics.record_files(3);
+        metrics.record_edge();
+        metrics.admit_requests(2, 2).unwrap();
+        metrics.admit_source_bytes(11, 11).unwrap();
 
-        let snapshot = accounting.snapshot();
+        let snapshot = metrics.snapshot();
         assert_eq!(snapshot.files(), 3);
         assert_eq!(snapshot.edges(), 1);
         assert_eq!(snapshot.requests(), 2);
@@ -232,8 +215,8 @@ mod tests {
 
     #[test]
     fn accounting_rejects_over_budget_updates() {
-        let mut accounting = LoadAccounting::default();
-        assert!(accounting.admit_requests(2, 1).is_err());
-        assert!(accounting.admit_source_bytes(2, 1).is_err());
+        let mut metrics = ProjectLoadMetrics::default();
+        assert!(metrics.admit_requests(2, 1).is_err());
+        assert!(metrics.admit_source_bytes(2, 1).is_err());
     }
 }

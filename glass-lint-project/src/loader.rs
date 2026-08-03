@@ -21,7 +21,6 @@ use crate::{
     budget::ProjectResourceBudget,
     discovery::{DiscoveryResult, ProjectDiscovery},
     error::ProjectLoadError,
-    loader_metrics::LoadAccounting,
     loader_phases::{PathWorkQueue, ResolutionCache},
     options::{ProjectSelection, ValidatedProjectLoadOptions},
     resolver::ProjectResolver,
@@ -89,7 +88,7 @@ impl ProjectLoader {
         linter: &Linter,
         selection: &ProjectSelection,
     ) -> Result<ProjectLoadOutcome, ProjectLoadError> {
-        let mut metrics = LoadAccounting::default();
+        let mut metrics = ProjectLoadMetrics::default();
         let total_start = Instant::now();
         let mut outcome = self.load_project_with_outcome(linter, selection, &mut metrics)?;
         metrics.record_total(total_start.elapsed());
@@ -101,7 +100,7 @@ impl ProjectLoader {
         &self,
         linter: &Linter,
         selection: &ProjectSelection,
-        metrics: &mut LoadAccounting,
+        metrics: &mut ProjectLoadMetrics,
     ) -> Result<ProjectLoadOutcome, ProjectLoadError> {
         let discovery_start = Instant::now();
         let deadline = LoadDeadline::after_millis(self.options.max_timeout_ms());
@@ -282,7 +281,7 @@ impl<'a> ProjectLoadState<'a> {
     /// always produced so callers can still assemble a partial report.
     fn close_frontier(
         mut self,
-        metrics: &mut LoadAccounting,
+        metrics: &mut ProjectLoadMetrics,
     ) -> (Result<(), ProjectLoadError>, ClosedFrontier<'a>) {
         let workers = std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
 
@@ -328,7 +327,7 @@ impl<'a> ProjectLoadState<'a> {
         &mut self,
         wave: &[AdmittedSourcePath],
         workers: NonZeroUsize,
-        metrics: &mut LoadAccounting,
+        metrics: &mut ProjectLoadMetrics,
     ) -> Result<(), ProjectLoadError> {
         let read_start = Instant::now();
         let read = self.read_wave(wave, metrics)?;
@@ -366,7 +365,7 @@ impl<'a> ProjectLoadState<'a> {
     fn read_wave(
         &mut self,
         wave: &[AdmittedSourcePath],
-        metrics: &mut LoadAccounting,
+        metrics: &mut ProjectLoadMetrics,
     ) -> Result<ReadWaveOutcome, ProjectLoadError> {
         let source_limit = self.admission.options().max_project_source_bytes();
         let mut sources = Vec::with_capacity(wave.len());
@@ -443,7 +442,7 @@ impl<'a> ProjectLoadState<'a> {
     fn apply_request_resolution(
         &mut self,
         resolution: RequestResolutionOutcome,
-        metrics: &mut LoadAccounting,
+        metrics: &mut ProjectLoadMetrics,
     ) -> Result<(), ProjectLoadError> {
         for path in resolution.internal_targets {
             self.enqueue_internal_target(path, metrics)?;
@@ -454,7 +453,7 @@ impl<'a> ProjectLoadState<'a> {
     fn enqueue_internal_target(
         &mut self,
         path: glass_lint_core::project::ProjectRelativePath,
-        metrics: &mut LoadAccounting,
+        metrics: &mut ProjectLoadMetrics,
     ) -> Result<(), ProjectLoadError> {
         metrics.record_edge();
         if let Some(admitted) = self.admitted_target_cache.get(&path) {
@@ -494,7 +493,7 @@ impl ClosedFrontier<'_> {
     fn finish(
         self,
         mode: FinishMode,
-        metrics: &mut LoadAccounting,
+        metrics: &mut ProjectLoadMetrics,
     ) -> Result<(AnalysisReport, BTreeMap<ProjectRelativePath, SourceText>), ProjectLoadError> {
         if matches!(mode, FinishMode::Complete) {
             self.deadline.check()?;
@@ -504,7 +503,7 @@ impl ClosedFrontier<'_> {
 
     fn finish_inner(
         self,
-        metrics: &mut LoadAccounting,
+        metrics: &mut ProjectLoadMetrics,
     ) -> Result<(AnalysisReport, BTreeMap<ProjectRelativePath, SourceText>), ProjectLoadError> {
         let sources = self.sources;
         let local = self.session.finish_local();

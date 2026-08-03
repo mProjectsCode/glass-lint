@@ -127,7 +127,7 @@ Although `ParameterBinding` is crate-internal, its fields are visible throughout
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-009 — `LoadAccounting` duplicates the complete storage of `ProjectLoadMetrics`
+#### [x] READ-009 — `LoadAccounting` duplicates the complete storage of `ProjectLoadMetrics`
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -138,7 +138,10 @@ Although `ParameterBinding` is crate-internal, its fields are visible throughout
 
 **Recommendation:** Use one private mutable metrics value and derive the immutable report view from it, or make `ProjectLoadMetrics` the owned state and return a clone at the reporting boundary. Preserve the current read-only getters and bounded admission methods, but eliminate the parallel field list and manual snapshot mapping. A small private mutation façade is enough if the public metrics type must remain immutable to callers.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed `LoadAccounting` and made `ProjectLoadMetrics` the
+single owned mutable metrics value. Crate-private recording and bounded
+admission methods keep mutation inside the loader, while `snapshot` now
+returns a clone of the same state for the public outcome.
 
 #### [ ] READ-010 — Generic `Path<S>` aliases leave semantic path transformations at call sites
 
