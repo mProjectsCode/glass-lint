@@ -3,7 +3,7 @@ use hashbrown::HashMap;
 use swc_common::{BytePos, Span};
 
 use crate::analysis::{
-    model::scope::{AliasAssignment, ScopeId},
+    model::scope::{AliasAssignment, BindingProvenance, ScopeId},
     value::BindingVersion,
 };
 
@@ -15,6 +15,23 @@ pub(in crate::analysis) enum AssignmentAt<'a> {
     /// A synthetic post-join assignment with multiple provenance alternatives.
     /// The assignment carries all alternatives; at least one is non-Local.
     Ambiguous(&'a AliasAssignment),
+}
+
+impl<'a> AssignmentAt<'a> {
+    /// Select the strict witness for an assignment or the declaration path
+    /// when no assignment reaches the use position.
+    pub(super) fn preferred_witness(
+        self,
+        parameter: Option<&'a BindingProvenance>,
+        declaration: &'a BindingProvenance,
+    ) -> Option<&'a BindingProvenance> {
+        match self {
+            Self::Known(assignment) | Self::Ambiguous(assignment) => {
+                assignment.preferred_witness()
+            }
+            Self::Absent => parameter.or(Some(declaration)),
+        }
+    }
 }
 
 /// Source-ordered assignment history frozen after collection.

@@ -122,7 +122,7 @@ The export table, lookup cache, and recursion guard all mean “module plus expo
 
 **Fix Applied:** `ProjectLinker::finish` now consumes the transient linker and constructs `ProjectSemanticModel` directly with the analysis limits needed for runtime projection. `LinkerOutcome` and its duplicate field wiring were deleted, leaving one consuming phase transition and keeping linker state crate-private.
 
-#### [ ] READ-010 — Mutable and frozen scope graphs duplicate storage and query logic
+#### [x] READ-010 — Mutable and frozen scope graphs duplicate storage and query logic
 - **Severity:** Medium
 - **Fix Complexity:** High
 - **Category:** Duplication
@@ -132,7 +132,7 @@ The export table, lookup cache, and recursion guard all mean “module plus expo
 
 **Recommendation:** Keep the two concrete `ScopeGraph` and `FrozenScopeGraph` types and move their common fields into one private `ScopeData` aggregate; a generic public phase parameter would add API without a current consumer. Keep only the collection-time queries required by `finish_collected_properties` on the mutable type, and keep the full semantic query surface on `FrozenScopeGraph`. Consolidating the provenance behavior from READ-002 should eliminate the duplicated `binding_at` branching.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Mutable and frozen scope graphs now share one private `ScopeData` aggregate, with the mutable phase retaining only its collection/freeze operations and the frozen phase retaining the semantic query facade. The common strict-witness selection policy now lives on `AssignmentAt`, removing duplicated `binding_at` branching while preserving scope, shadowing, reassignment, and join behavior; scope and resolution tests continue to pass.
 
 #### [ ] READ-011 — Bound flow targets are represented as parallel maps in two indexes
 - **Severity:** Medium

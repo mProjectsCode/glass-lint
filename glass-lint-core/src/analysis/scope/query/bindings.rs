@@ -32,18 +32,12 @@ impl FrozenScopeGraph {
         span: Span,
     ) -> Option<&BindingProvenance> {
         let (scope, declaration) = self.binding_with_scope_at(name, span)?;
-        match self.assignment_at(scope, self.name_id(name)?, span) {
-            AssignmentAt::Known(assignment) | AssignmentAt::Ambiguous(assignment) => {
-                assignment.preferred_witness()
-            }
-            AssignmentAt::Absent => self
-                .function_for_scope(scope)
-                .and_then(|function| {
-                    self.name_id(name)
-                        .and_then(|name| self.parameter_alias_for(function, name))
-                })
-                .or(Some(declaration)),
-        }
+        let name_id = self.name_id(name)?;
+        let parameter = self
+            .function_for_scope(scope)
+            .and_then(|function| self.parameter_alias_for(function, name_id));
+        self.assignment_at(scope, name_id, span)
+            .preferred_witness(parameter, declaration)
     }
 
     /// Return all strict provenance alternatives visible at a use position.
