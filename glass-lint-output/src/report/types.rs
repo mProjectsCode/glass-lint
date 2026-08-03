@@ -91,14 +91,14 @@ impl<'a> PrettyReport<'a> {
         options: PrettyOptions,
         line_starts: &'a [usize],
     ) -> Self {
-        Self {
+        Self::with_cache(
             report,
             filename,
             source,
             options,
             line_starts,
-            line_cache: Arc::new(LineCache::new(line_starts.len())),
-        }
+            Arc::new(LineCache::new(line_starts.len())),
+        )
     }
 
     pub(crate) fn new_with_cache(
@@ -109,13 +109,31 @@ impl<'a> PrettyReport<'a> {
         line_starts: &'a [usize],
         line_cache: &Arc<LineCache>,
     ) -> Self {
+        Self::with_cache(
+            report,
+            filename,
+            source,
+            options,
+            line_starts,
+            Arc::clone(line_cache),
+        )
+    }
+
+    fn with_cache(
+        report: &'a FileReport,
+        filename: &'a str,
+        source: &'a str,
+        options: PrettyOptions,
+        line_starts: &'a [usize],
+        line_cache: Arc<LineCache>,
+    ) -> Self {
         Self {
             report,
             filename,
             source,
             options,
             line_starts,
-            line_cache: Arc::clone(line_cache),
+            line_cache,
         }
     }
 }

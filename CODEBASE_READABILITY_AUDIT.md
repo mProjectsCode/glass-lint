@@ -642,7 +642,7 @@ selection; `SourceAdmission::classify` now owns canonical containment,
 exclusion, and extension decisions at both paths. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-036 — Pretty-report constructors duplicate the renderer state layout
+#### [x] READ-036 — Pretty-report constructors duplicate the renderer state layout
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -660,7 +660,9 @@ accepts a cache handle, keeping `new` responsible for allocating the per-file
 cache and `new_with_cache` responsible for sharing it across evidence rows.
 Preserve line-cache identity and source/line lifetime invariants.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added one private cache-taking constructor and delegated both
+public/new-with-cache paths to it, preserving per-file cache allocation and
+shared cache identity. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 
