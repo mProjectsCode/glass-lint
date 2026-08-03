@@ -423,6 +423,7 @@ impl<K: Ord> OccurrenceIndex<K> {
     }
 
     /// Append one event/span pair before normalization.
+    #[cfg(test)]
     pub(super) fn push(&mut self, key: K, event: FactId, span: ByteRange) {
         self.push_occurrence(key, Occurrence::new(event, span));
     }

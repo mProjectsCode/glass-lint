@@ -21,6 +21,9 @@ mod view;
 use view::EventIndexView;
 pub(super) use view::private_network_match;
 
+#[cfg(test)]
+use crate::analysis::matching::occurrence::Occurrence;
+
 impl OccurrenceIndexes {
     #[cfg(test)]
     pub(in crate::analysis) fn evidence_for(
@@ -120,8 +123,8 @@ impl OccurrenceIndexes {
                 .is_some_and(|m| m == *key.member())
         };
         match event {
-            EventPredicate::MemberCall { .. } => self.members.returned_calls.matching(predicate),
-            EventPredicate::MemberRead { .. } => self.members.returned_reads.matching(predicate),
+            EventPredicate::MemberCall { .. } => self.members.returned_calls().matching(predicate),
+            EventPredicate::MemberRead { .. } => self.members.returned_reads().matching(predicate),
             _ => None,
         }
     }
@@ -134,7 +137,7 @@ impl OccurrenceIndexes {
         _names: &NameTable,
     ) -> Option<CandidateOccurrences<'a>> {
         self.members
-            .instance_calls
+            .instance_calls()
             .matching(|key| match constructor {
                 IdentityConstraint::ModuleExport {
                     module: expected_module,
@@ -163,44 +166,44 @@ impl OccurrenceIndexes {
         let env = &self.environment;
         match event {
             EventPredicate::Call => EventIndexView::Call {
-                names: &self.call_indexes.calls,
-                module: &self.call_indexes.module_calls,
-                global: &self.call_indexes.global_calls,
+                names: self.call_indexes.calls(),
+                module: self.call_indexes.module_calls(),
+                global: self.call_indexes.global_calls(),
             },
             EventPredicate::MemberCall { .. } => EventIndexView::MemberCall {
-                paths: &self.members.calls,
-                module: &self.members.module_calls,
-                rooted: &self.members.rooted_calls,
+                paths: self.members.calls(),
+                module: self.members.module_calls(),
+                rooted: self.members.rooted_calls(),
                 environment: env,
             },
             EventPredicate::MemberRead { .. } => EventIndexView::MemberRead {
-                paths: &self.members.reads,
-                module: &self.members.module_reads,
-                rooted: &self.members.rooted_reads,
+                paths: self.members.reads(),
+                module: self.members.module_reads(),
+                rooted: self.members.rooted_reads(),
                 environment: env,
             },
             EventPredicate::PropertyWrite { .. } => EventIndexView::PropertyWrite {
-                paths: &self.members.rooted_writes,
-                rooted: &self.members.rooted_writes,
+                paths: self.members.rooted_writes(),
+                rooted: self.members.rooted_writes(),
                 environment: env,
             },
             EventPredicate::ClassReference => EventIndexView::ClassReference {
-                strings: &self.constructions.classes,
-                module: &self.constructions.module_classes,
+                strings: self.constructions.classes(),
+                module: self.constructions.module_classes(),
             },
             EventPredicate::Construct => EventIndexView::Construct {
-                names: &self.constructions.constructors,
-                strings: &self.constructions.global_constructors,
-                module: &self.constructions.module_constructors,
-                global: &self.constructions.global_constructors,
-                rooted: &self.constructions.rooted_constructors,
+                names: self.constructions.constructors(),
+                strings: self.constructions.global_constructors(),
+                module: self.constructions.module_constructors(),
+                global: self.constructions.global_constructors(),
+                rooted: self.constructions.rooted_constructors(),
                 environment: env,
             },
             EventPredicate::Import => EventIndexView::Import {
-                literals: &self.literals.imports,
+                literals: self.literals.imports(),
             },
             EventPredicate::StringReference => EventIndexView::StringReference {
-                literals: &self.literals.strings,
+                literals: self.literals.strings(),
             },
         }
     }
@@ -212,18 +215,16 @@ impl OccurrenceIndexes {
             MatchKind::Call => {
                 let name = self.test_name(symbol.as_str());
                 self.call_indexes
-                    .calls
-                    .push(name, FactId::from_test(u32::MAX), span);
+                    .record_call(name, Occurrence::new(FactId::from_test(u32::MAX), span));
             }
             MatchKind::MemberCall => {
                 let key = symbol
                     .split('.')
                     .map(|segment| self.test_name(segment))
                     .collect::<Vec<_>>();
-                self.members.calls.push(
+                self.members.record_call(
                     glass_lint_datastructures::NamePath::from_ids(key),
-                    FactId::from_test(u32::MAX),
-                    span,
+                    Occurrence::new(FactId::from_test(u32::MAX), span),
                 );
             }
             MatchKind::MemberRead => {
@@ -231,10 +232,9 @@ impl OccurrenceIndexes {
                     .split('.')
                     .map(|segment| self.test_name(segment))
                     .collect::<Vec<_>>();
-                self.members.reads.push(
+                self.members.record_read(
                     glass_lint_datastructures::NamePath::from_ids(key),
-                    FactId::from_test(u32::MAX),
-                    span,
+                    Occurrence::new(FactId::from_test(u32::MAX), span),
                 );
             }
             MatchKind::PropertyWrite => {
@@ -242,32 +242,27 @@ impl OccurrenceIndexes {
                     .split('.')
                     .map(|segment| self.test_name(segment))
                     .collect::<Vec<_>>();
-                self.members.rooted_writes.push(
+                self.members.record_rooted_write(
                     glass_lint_datastructures::NamePath::from_ids(key),
-                    FactId::from_test(u32::MAX),
-                    span,
+                    Occurrence::new(FactId::from_test(u32::MAX), span),
                 );
             }
             MatchKind::Import => {
                 self.literals
-                    .imports
-                    .push(symbol, FactId::from_test(u32::MAX), span);
+                    .record_import(symbol, Occurrence::new(FactId::from_test(u32::MAX), span));
             }
             MatchKind::StringContains => {
                 self.literals
-                    .strings
-                    .push(symbol, FactId::from_test(u32::MAX), span);
+                    .record_string(symbol, Occurrence::new(FactId::from_test(u32::MAX), span));
             }
             MatchKind::Class => {
                 self.constructions
-                    .classes
-                    .push(symbol, FactId::from_test(u32::MAX), span);
+                    .record_class(symbol, Occurrence::new(FactId::from_test(u32::MAX), span));
             }
             MatchKind::Constructor => {
                 let name = self.test_name(symbol.as_str());
                 self.constructions
-                    .constructors
-                    .push(name, FactId::from_test(u32::MAX), span);
+                    .record_constructor(name, Occurrence::new(FactId::from_test(u32::MAX), span));
             }
             MatchKind::CallArgument => {}
         }

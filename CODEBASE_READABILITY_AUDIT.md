@@ -153,7 +153,7 @@ linked occurrence view now constructs that semantic overlay, while
 `OccurrenceIndex` accepts it as one package-candidate source instead of
 receiving separate raw nested storage containers.
 
-#### [ ] READ-006 — Matcher index families repeat storage plumbing
+#### [x] READ-006 — Matcher index families repeat storage plumbing
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -175,7 +175,11 @@ and test inspection behind those owners. Preserve the separate indexes where
 their lookup semantics differ; the simplification is the boundary and
 repeated plumbing, not necessarily collapsing all indexes into one map.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Kept the distinct physical index families but made their
+storage fields private. Each family now owns event-specific recording methods,
+normalization, and named read-only accessors; fact projection and query code
+no longer push into or reach through individual occurrence indexes. Test-only
+inspection also uses those family boundaries.
 
 ### Duplicate semantic abstractions
 

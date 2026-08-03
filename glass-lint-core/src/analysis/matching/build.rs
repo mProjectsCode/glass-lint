@@ -11,7 +11,7 @@ use crate::analysis::{
     facts::{ClassFactRole, FactPayload, FactStream, Frozen, SemanticFact},
     matching::{
         OccurrenceIndexes,
-        occurrence::{InstanceMemberKey, ModuleExportKey, ReturnedMemberKey},
+        occurrence::{InstanceMemberKey, ModuleExportKey, Occurrence, ReturnedMemberKey},
     },
     syntax::{SymbolCallProvenance, SymbolMemberProvenance},
 };
@@ -57,16 +57,14 @@ impl OccurrenceIndexes {
                 ..
             } => {
                 self.members
-                    .rooted_writes
-                    .push(chain.clone(), fact.id, fact.span);
+                    .record_rooted_write(chain.clone(), Occurrence::new(fact.id, fact.span));
             }
 
             FactPayload::Construction { .. } => self.record_construction_fact(fact),
 
             FactPayload::Import { module } => {
                 self.literals
-                    .imports
-                    .push(module.clone().into(), fact.id, fact.span);
+                    .record_import(module.clone(), Occurrence::new(fact.id, fact.span));
             }
 
             FactPayload::Reference {
@@ -78,10 +76,9 @@ impl OccurrenceIndexes {
                     crate::analysis::value::Value::StaticString(s) => Some(s),
                     _ => None,
                 }) {
-                    self.literals.strings.push(
-                        static_string.clone().into(),
-                        fact.id,
-                        static_string_origin.unwrap_or(fact.span),
+                    self.literals.record_string(
+                        static_string.clone(),
+                        Occurrence::new(fact.id, static_string_origin.unwrap_or(fact.span)),
                     );
                 }
             }
@@ -93,16 +90,14 @@ impl OccurrenceIndexes {
             } => {
                 if let Some(name) = name {
                     self.constructions
-                        .classes
-                        .push(name.clone(), fact.id, fact.span);
+                        .record_class(name.clone(), Occurrence::new(fact.id, fact.span));
                 }
                 if !matches!(role, ClassFactRole::Declaration)
                     && let Some((module, export)) = provenance
                 {
-                    self.constructions.module_classes.push(
+                    self.constructions.record_module_class(
                         ModuleExportKey::new(module.clone(), export.clone()),
-                        fact.id,
-                        fact.span,
+                        Occurrence::new(fact.id, fact.span),
                     );
                 }
             }
@@ -128,24 +123,22 @@ impl OccurrenceIndexes {
             return;
         };
         if let Some(name) = callee_name {
-            self.call_indexes.calls.push(*name, fact.id, *callee_span);
+            self.call_indexes
+                .record_call(*name, Occurrence::new(fact.id, *callee_span));
         }
         match call_provenance {
             SymbolCallProvenance::Global { name } => {
                 self.call_indexes
-                    .global_calls
-                    .push(name.clone(), fact.id, *callee_span);
+                    .record_global_call(name.clone(), Occurrence::new(fact.id, *callee_span));
             }
             SymbolCallProvenance::ModuleExport { module, export } => {
-                self.call_indexes.module_calls.push(
+                self.call_indexes.record_module_call(
                     ModuleExportKey::new(module.clone(), export.clone()),
-                    fact.id,
-                    *callee_span,
+                    Occurrence::new(fact.id, *callee_span),
                 );
-                self.members.module_calls.push(
+                self.members.record_module_call(
                     ModuleExportKey::new(module.clone(), export.clone()),
-                    fact.id,
-                    *callee_span,
+                    Occurrence::new(fact.id, *callee_span),
                 );
             }
             SymbolCallProvenance::Local | SymbolCallProvenance::Unknown(_) => {}
@@ -169,28 +162,27 @@ impl OccurrenceIndexes {
         };
         let span = *callee_span;
         if let Some(chain) = syntactic_path {
-            self.members.calls.push(chain.clone(), fact.id, span);
+            self.members
+                .record_call(chain.clone(), Occurrence::new(fact.id, span));
         }
         if let Some(chain) = rooted_chain {
-            self.members.rooted_calls.push(chain.clone(), fact.id, span);
+            self.members
+                .record_rooted_call(chain.clone(), Occurrence::new(fact.id, span));
         }
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = module_member {
-            self.call_indexes.module_calls.push(
+            self.call_indexes.record_module_call(
                 ModuleExportKey::new(module.clone(), member.clone()),
-                fact.id,
-                span,
+                Occurrence::new(fact.id, span),
             );
-            self.members.module_calls.push(
+            self.members.record_module_call(
                 ModuleExportKey::new(module.clone(), member.clone()),
-                fact.id,
-                span,
+                Occurrence::new(fact.id, span),
             );
         }
         if let Some((source, member)) = returned_member {
-            self.members.returned_calls.push(
+            self.members.record_returned_call(
                 ReturnedMemberKey::new(source.clone(), member.clone()),
-                fact.id,
-                span,
+                Occurrence::new(fact.id, span),
             );
         }
         if let Some((module, export)) = instance_class
@@ -200,10 +192,9 @@ impl OccurrenceIndexes {
                 .copied()
                 .and_then(|id| names.resolve(id))
         {
-            self.members.instance_calls.push(
+            self.members.record_instance_call(
                 InstanceMemberKey::new(module.clone(), export.clone(), SmolStr::new(member_name)),
-                fact.id,
-                span,
+                Occurrence::new(fact.id, span),
             );
         }
     }
@@ -221,12 +212,9 @@ impl OccurrenceIndexes {
             && let Some(chain) = &unwrap.chain_path
             && chain.first_segment().is_some()
         {
-            self.members
-                .calls
-                .push(chain.clone(), fact.id, *callee_span);
-            self.members
-                .rooted_calls
-                .push(chain.clone(), fact.id, *callee_span);
+            let occurrence = Occurrence::new(fact.id, *callee_span);
+            self.members.record_call(chain.clone(), occurrence);
+            self.members.record_rooted_call(chain.clone(), occurrence);
         }
     }
 
@@ -242,25 +230,23 @@ impl OccurrenceIndexes {
             return;
         };
         if let Some(chain) = syntactic_path {
-            self.members.reads.push(chain.clone(), fact.id, fact.span);
+            self.members
+                .record_read(chain.clone(), Occurrence::new(fact.id, fact.span));
         }
         if let Some(chain) = rooted_chain {
             self.members
-                .rooted_reads
-                .push(chain.clone(), fact.id, fact.span);
+                .record_rooted_read(chain.clone(), Occurrence::new(fact.id, fact.span));
         }
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = module_member {
-            self.members.module_reads.push(
+            self.members.record_module_read(
                 ModuleExportKey::new(module.clone(), member.clone()),
-                fact.id,
-                fact.span,
+                Occurrence::new(fact.id, fact.span),
             );
         }
         if let Some((source, member)) = returned_member {
-            self.members.returned_reads.push(
+            self.members.record_returned_read(
                 ReturnedMemberKey::new(source.clone(), member.clone()),
-                fact.id,
-                fact.span,
+                Occurrence::new(fact.id, fact.span),
             );
         }
     }
@@ -278,25 +264,23 @@ impl OccurrenceIndexes {
         };
         if let Some(name) = callee_name {
             self.constructions
-                .constructors
-                .push(*name, fact.id, *callee_span);
+                .record_constructor(*name, Occurrence::new(fact.id, *callee_span));
         }
         if let Some(chain) = rooted_chain {
             self.constructions
-                .rooted_constructors
-                .push(chain.clone(), fact.id, *callee_span);
+                .record_rooted_constructor(chain.clone(), Occurrence::new(fact.id, *callee_span));
         }
         match provenance {
             SymbolCallProvenance::Global { name } => {
-                self.constructions
-                    .global_constructors
-                    .push(name.clone(), fact.id, *callee_span);
+                self.constructions.record_global_constructor(
+                    name.clone(),
+                    Occurrence::new(fact.id, *callee_span),
+                );
             }
             SymbolCallProvenance::ModuleExport { module, export } => {
-                self.constructions.module_constructors.push(
+                self.constructions.record_module_constructor(
                     ModuleExportKey::new(module.clone(), export.clone()),
-                    fact.id,
-                    *callee_span,
+                    Occurrence::new(fact.id, *callee_span),
                 );
             }
             SymbolCallProvenance::Local | SymbolCallProvenance::Unknown(_) => {}

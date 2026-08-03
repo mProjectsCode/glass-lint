@@ -74,31 +74,31 @@ impl<'a> LinkedOccurrenceView<'a> {
         let mut view = Self::default();
         let mut operations = 0usize;
         operations += view.remap(
-            &indexes.call_indexes.module_calls,
+            indexes.call_indexes.module_calls(),
             ModuleOverlayKind::Call,
             true,
             identities,
         );
         operations += view.remap(
-            &indexes.members.module_calls,
+            indexes.members.module_calls(),
             ModuleOverlayKind::MemberCall,
             false,
             identities,
         );
         operations += view.remap(
-            &indexes.members.module_reads,
+            indexes.members.module_reads(),
             ModuleOverlayKind::MemberRead,
             false,
             identities,
         );
         operations += view.remap(
-            &indexes.constructions.module_classes,
+            indexes.constructions.module_classes(),
             ModuleOverlayKind::Class,
             false,
             identities,
         );
         operations += view.remap(
-            &indexes.constructions.module_constructors,
+            indexes.constructions.module_constructors(),
             ModuleOverlayKind::Constructor,
             false,
             identities,
@@ -258,28 +258,28 @@ impl OccurrenceIndexes {
     pub(in crate::analysis) fn has_call(&self, name: &str) -> bool {
         self.test_names
             .lookup(name)
-            .is_some_and(|id| self.call_indexes.calls.get(&id).is_some())
+            .is_some_and(|id| self.call_indexes.calls().get(&id).is_some())
     }
 
     #[cfg(test)]
     pub(in crate::analysis) fn has_import(&self, module: &str) -> bool {
-        self.literals.imports.get(module).is_some()
+        self.literals.imports().get(module).is_some()
     }
 
     #[cfg(test)]
     pub(in crate::analysis) fn has_string(&self, value: &str) -> bool {
-        self.literals.strings.get(value).is_some()
+        self.literals.strings().get(value).is_some()
     }
 
     #[cfg(test)]
     pub(in crate::analysis) fn has_any_class(&self) -> bool {
-        !self.constructions.classes.is_empty()
+        !self.constructions.classes().is_empty()
     }
 
     #[cfg(test)]
     pub(in crate::analysis) fn has_module_class(&self, module: &str, name: &str) -> bool {
         self.constructions
-            .module_classes
+            .module_classes()
             .get(&ModuleExportKey::new(module, name))
             .is_some()
     }
@@ -287,7 +287,7 @@ impl OccurrenceIndexes {
     #[cfg(test)]
     pub(in crate::analysis) fn has_module_constructor(&self, module: &str, name: &str) -> bool {
         self.constructions
-            .module_constructors
+            .module_constructors()
             .get(&ModuleExportKey::new(module, name))
             .is_some()
     }
@@ -296,7 +296,7 @@ impl OccurrenceIndexes {
     pub(in crate::analysis) fn has_constructor(&self, name: &str) -> bool {
         self.test_names
             .lookup(name)
-            .is_some_and(|id| self.constructions.constructors.get(&id).is_some())
+            .is_some_and(|id| self.constructions.constructors().get(&id).is_some())
     }
 
     #[cfg(test)]
@@ -305,14 +305,17 @@ impl OccurrenceIndexes {
             .split('.')
             .filter_map(|segment| self.test_names.lookup(segment))
             .collect::<Vec<_>>();
-        self.members.calls.get(&NamePath::from_ids(path)).is_some()
+        self.members
+            .calls()
+            .get(&NamePath::from_ids(path))
+            .is_some()
     }
 
     #[cfg(test)]
     pub(in crate::analysis) fn has_any_member_call(&self) -> bool {
-        !self.members.calls.is_empty()
-            || !self.members.rooted_calls.is_empty()
-            || !self.members.module_calls.is_empty()
+        !self.members.calls().is_empty()
+            || !self.members.rooted_calls().is_empty()
+            || !self.members.module_calls().is_empty()
     }
 }
 
@@ -405,7 +408,7 @@ mod tests {
         let evidence = facts.evidence_for(&compiled);
         let reference = facts
             .members
-            .calls
+            .calls()
             .iter()
             .filter(|(symbol, _)| {
                 facts
@@ -457,25 +460,25 @@ mod tests {
         index.normalize_occurrences();
 
         assert!(
-            index.literals.imports.get("mod").is_some(),
+            index.literals.imports().get("mod").is_some(),
             "should have 'mod' import"
         );
         assert!(
-            index.literals.imports.get("other-mod").is_some(),
+            index.literals.imports().get("other-mod").is_some(),
             "should have 'other-mod' import"
         );
         assert!(
-            index.literals.imports.get("fs").is_some(),
+            index.literals.imports().get("fs").is_some(),
             "should have 'fs' require import"
         );
 
         assert!(
-            index.literals.strings.get("hello world").is_some(),
+            index.literals.strings().get("hello world").is_some(),
             "should have 'hello world' string literal"
         );
 
         assert!(
-            index.constructions.classes.get("MyClass").is_some(),
+            index.constructions.classes().get("MyClass").is_some(),
             "should have MyClass class"
         );
 
@@ -485,7 +488,7 @@ mod tests {
         assert!(
             index
                 .call_indexes
-                .module_calls
+                .module_calls()
                 .get(&ModuleExportKey::new("mod", "foo"))
                 .is_some(),
             "should have foo as module call from 'mod'"
