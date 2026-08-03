@@ -173,7 +173,7 @@ tables, and the existing bounded normalization.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-018 — Project semantic queries repeatedly traverse module storage
+#### [x] READ-018 — Project semantic queries repeatedly traverse module storage
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -194,7 +194,9 @@ especially `source_call_result` returning `ValueId::UNKNOWN` for missing or
 non-call facts and `fact_location` retaining the module path and source-range
 checks.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a local-artifact accessor and routed semantic effect,
+name, fact-stream, and fact queries through it; location lookup now uses the
+existing module accessor. Verified with `make fmt && make ci`.
 
 #### [ ] READ-019 — Module-interface accessors leak `SmolStr` and `String` storage
 

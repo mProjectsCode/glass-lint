@@ -329,6 +329,10 @@ impl ProjectSemanticModel {
         self.modules.get(&module)
     }
 
+    fn local_artifact(&self, module: ModuleId) -> Option<&LocalArtifact> {
+        self.module(module).map(ProjectModule::local)
+    }
+
     pub(in crate::analysis) fn resolution_for(
         &self,
         key: &QualifiedRequestId,
@@ -352,12 +356,12 @@ impl ProjectSemanticModel {
         module: ModuleId,
         function: FunctionId,
     ) -> Option<&FunctionEffect> {
-        self.modules.get(&module)?.local().effects().get(function)
+        self.local_artifact(module)?.effects().get(function)
     }
 
     /// Borrow the name table for a module's local artifact.
     pub(in crate::analysis) fn module_names(&self, module: ModuleId) -> Option<&NameTable> {
-        Some(self.modules.get(&module)?.local().facts().names())
+        Some(self.local_artifact(module)?.facts().names())
     }
 
     /// Borrow the fact stream for a module's local artifact.
@@ -365,7 +369,7 @@ impl ProjectSemanticModel {
         &self,
         module: ModuleId,
     ) -> Option<&FactStream<Frozen>> {
-        Some(self.modules.get(&module)?.local().facts().stream())
+        Some(self.local_artifact(module)?.facts().stream())
     }
 
     pub(in crate::analysis) fn fact(
@@ -373,12 +377,7 @@ impl ProjectSemanticModel {
         module: ModuleId,
         fact: FactId,
     ) -> Option<&SemanticFact> {
-        self.modules
-            .get(&module)?
-            .local()
-            .facts()
-            .stream()
-            .fact(fact)
+        self.local_artifact(module)?.facts().stream().fact(fact)
     }
 
     /// Return the result value produced by a source call fact, if known.
@@ -398,7 +397,7 @@ impl ProjectSemanticModel {
     /// Convert a module/fact identity into a source location for related
     /// evidence.
     pub fn fact_location(&self, module: ModuleId, fact: FactId) -> Option<SourceLocation> {
-        let module = self.modules.get(&module)?;
+        let module = self.module(module)?;
         let fact = module.local().facts().stream().fact(fact)?;
         let range = module.source_context().range(fact.span).ok()?;
 
