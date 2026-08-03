@@ -95,7 +95,7 @@ keep parser-specific `Span` details at the scope-analysis boundary.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-004 — Scope-shape storage remains public to the crate despite an existing domain API
+#### [x] READ-004 — Scope-shape storage remains public to the crate despite an existing domain API
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -114,7 +114,11 @@ retain `record`, `take_child`, and `is_consumed` as the only production
 mutation boundary. Avoid replacing the table with a generic map; its ordered
 child-claim behavior is the useful domain abstraction.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ScopeShapeTable` now keeps both its ordered shape list and
+child-claim queues private. Planning and collection continue to use the
+existing `record`, `take_child`, and `is_consumed` boundaries, while tests use
+the dedicated inspection methods, so callers cannot mutate storage without
+maintaining shape keys or consumption order.
 
 ### Lifecycle and flow state
 

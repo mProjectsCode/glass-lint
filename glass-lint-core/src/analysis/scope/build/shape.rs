@@ -46,8 +46,8 @@ impl ScopeShape {
 
 #[derive(Debug, Default)]
 pub struct ScopeShapeTable {
-    pub(crate) shapes: Vec<ScopeShape>,
-    pub(crate) children: BTreeMap<ScopeShapeKey, VecDeque<ScopeId>>,
+    shapes: Vec<ScopeShape>,
+    children: BTreeMap<ScopeShapeKey, VecDeque<ScopeId>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
