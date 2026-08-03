@@ -88,33 +88,33 @@ fn check_structure(expr: &QueryExpr) -> Result<(), QueryCompileError> {
         QueryExprKind::SelectEvent(_) => Ok(()),
         QueryExprKind::Require(predicate) => check_require_structure(predicate),
         QueryExprKind::Any(any) => {
-            if any.branches.is_empty() {
+            if any.len() == 0 {
                 return Err(QueryCompileError::InternalInvariant {
                     detail: "Any expression has zero branches (should have been rejected at construction)".into(),
                 });
             }
-            if any.branches.len() > limits::MAX_EXPR_CHILDREN {
+            if any.len() > limits::MAX_EXPR_CHILDREN {
                 return Err(QueryCompileError::UnboundedQuery {
                     detail: "Any expression exceeds maximum branch count",
                 });
             }
-            for b in &any.branches {
+            for b in any.iter() {
                 check_structure(b)?;
             }
             Ok(())
         }
         QueryExprKind::All(all) => {
-            if all.branches.is_empty() {
+            if all.len() == 0 {
                 return Err(QueryCompileError::InternalInvariant {
                     detail: "All expression has zero branches (should have been rejected at construction)".into(),
                 });
             }
-            if all.branches.len() > limits::MAX_EXPR_CHILDREN {
+            if all.len() > limits::MAX_EXPR_CHILDREN {
                 return Err(QueryCompileError::UnboundedQuery {
                     detail: "All expression exceeds maximum branch count",
                 });
             }
-            for b in &all.branches {
+            for b in all.iter() {
                 check_structure(b)?;
             }
             Ok(())
@@ -174,12 +174,12 @@ fn check_correlation_evidence(
 ) -> Result<(), QueryCompileError> {
     match &expr.kind {
         QueryExprKind::All(all) => {
-            validate_correlated_branches(&all.branches)?;
+            validate_correlated_branches(all.iter())?;
             // pass_evidence_projection
-            for branch in &all.branches {
+            for branch in all.iter() {
                 check_correlation_evidence(branch, primary, false)?;
             }
-            if !all.branches.iter().any(|b| b.contains_var(primary)) {
+            if !all.iter().any(|b| b.contains_var(primary)) {
                 return Err(QueryCompileError::MissingBinding {
                     primary_var: primary,
                 });
@@ -188,11 +188,11 @@ fn check_correlation_evidence(
         }
         QueryExprKind::Any(any) => {
             // pass_correlation_scope recurses into Any branches
-            for b in &any.branches {
+            for b in any.iter() {
                 check_correlation_scope_inner(b)?;
             }
             // pass_evidence_projection: every branch must contain the primary var
-            for branch in &any.branches {
+            for branch in any.iter() {
                 if !branch.contains_var(primary) {
                     return Err(QueryCompileError::MissingBinding {
                         primary_var: primary,
@@ -225,14 +225,14 @@ fn check_correlation_evidence(
 fn check_correlation_scope_inner(expr: &QueryExpr) -> Result<(), QueryCompileError> {
     match &expr.kind {
         QueryExprKind::All(all) => {
-            validate_correlated_branches(&all.branches)?;
-            for b in &all.branches {
+            validate_correlated_branches(all.iter())?;
+            for b in all.iter() {
                 check_correlation_scope_inner(b)?;
             }
             Ok(())
         }
         QueryExprKind::Any(any) => {
-            for b in &any.branches {
+            for b in any.iter() {
                 check_correlation_scope_inner(b)?;
             }
             Ok(())
@@ -244,7 +244,10 @@ fn check_correlation_scope_inner(expr: &QueryExpr) -> Result<(), QueryCompileErr
     }
 }
 
-fn validate_correlated_branches(branches: &[QueryExpr]) -> Result<(), QueryCompileError> {
+fn validate_correlated_branches<'a>(
+    input: impl IntoIterator<Item = &'a QueryExpr>,
+) -> Result<(), QueryCompileError> {
+    let branches = input.into_iter().collect::<Vec<_>>();
     let Some(first_branch) = branches.first() else {
         return Ok(());
     };

@@ -172,7 +172,7 @@ The export table, lookup cache, and recursion guard all mean “module plus expo
 
 ### Query Construction and Collection Invariants
 
-#### [ ] READ-014 — Logical expression branches can bypass their validated constructors
+#### [x] READ-014 — Logical expression branches can bypass their validated constructors
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Encapsulation
@@ -182,7 +182,7 @@ The export table, lookup cache, and recursion guard all mean “module plus expo
 
 **Recommendation:** Add one private `LogicalBranches` collection and route all construction through its validation. Keep the public `AnyExpr` and `AllExpr` names as thin semantic wrappers for the rule-authoring API, with no direct branch storage access. Use named expression queries such as `contains_var` instead of exporting a vector for caller-side set operations.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `AnyExpr` and `AllExpr` now store branches in one private `LogicalBranches` collection that performs non-empty, bounded, and depth validation; all composition constructors use `AnyExpr::new` or `AllExpr::new`, and compiler/validation code consumes semantic iterators and lengths instead of branch storage. The composition helper now uses `contains_var` directly, with query and compiler suites passing.
 
 #### [ ] READ-015 — Lifecycle collections repeat non-empty, bounded, and canonicalization rules
 - **Severity:** Medium

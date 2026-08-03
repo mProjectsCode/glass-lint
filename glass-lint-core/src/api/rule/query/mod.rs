@@ -439,16 +439,14 @@ fn explain_expression(expression: &QueryExpr) -> String {
         QueryExprKind::Require(predicate) => explain_predicate(predicate),
         QueryExprKind::Any(any) => format!(
             "any of: {}",
-            any.branches
-                .iter()
+            any.iter()
                 .map(explain_expression)
                 .collect::<Vec<_>>()
                 .join("; ")
         ),
         QueryExprKind::All(all) => format!(
             "all of: {}",
-            all.branches
-                .iter()
+            all.iter()
                 .map(explain_expression)
                 .collect::<Vec<_>>()
                 .join("; ")

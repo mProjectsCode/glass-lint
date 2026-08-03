@@ -31,15 +31,16 @@ pub(crate) fn normalize_all_root(
     emission: &EmissionDecl,
 ) -> Result<NormalizedRoot, QueryCompileError> {
     // Collect the set of distinct binding variables across branches.
-    let branch_vars: Vec<Vec<VarId>> = all.branches.iter().map(QueryExpr::vars).collect();
+    let branch_vars: Vec<Vec<VarId>> = all.iter().map(QueryExpr::vars).collect();
 
     // Single branch — normalize as-is (should be rare after construction).
-    if all.branches.len() == 1 {
-        return normalize_root(&all.branches[0], emission);
+    if all.len() == 1 {
+        return normalize_root(all.iter().next().expect("validated All branch"), emission);
     }
 
     // Find the common event variable that all branches share.
-    find_common_event_var(&all.branches).map_or_else(
+    let branches = all.iter().collect::<Vec<_>>();
+    find_common_event_var(&branches).map_or_else(
         || {
             // No shared variable — check correlation scope.
             let all_share_some = branch_vars
@@ -73,7 +74,7 @@ pub(crate) fn normalize_all_root(
 /// object variables; they do not reference the event variable.  The
 /// correlation is via a separate `MemberSubject` predicate.  These
 /// binding-only predicates are accepted as not breaking the chain.
-fn find_common_event_var(branches: &[QueryExpr]) -> Option<VarId> {
+fn find_common_event_var(branches: &[&QueryExpr]) -> Option<VarId> {
     if branches.is_empty() {
         return None;
     }
@@ -110,7 +111,7 @@ fn merge_same_event(
     let mut subject: Option<NormalizedSubject> = None;
     let mut constraints: Vec<ArgumentConstraint> = Vec::new();
 
-    for branch in &all.branches {
+    for branch in all.iter() {
         match &branch.kind {
             QueryExprKind::Event(eq) => {
                 merge_event_fields(&mut event_spec, &mut identity_spec, eq)?;

@@ -267,7 +267,7 @@ fn normalize_any_root(
     emission: &EmissionDecl,
 ) -> Result<NormalizedRoot, QueryCompileError> {
     let mut branches: Vec<NormalizedRoot> = Vec::new();
-    for b in &any.branches {
+    for b in any.iter() {
         match &b.kind {
             // Flatten nested Any
             QueryExprKind::Any(inner) => {

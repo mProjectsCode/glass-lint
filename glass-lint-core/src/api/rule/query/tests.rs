@@ -51,7 +51,7 @@ fn any_expr_accepts_non_empty_branches() {
         constraints: vec![],
     });
     let any = AnyExpr::new(vec![event.clone(), event]).unwrap();
-    assert_eq!(any.branches.len(), 2);
+    assert_eq!(any.len(), 2);
 }
 
 #[test]
@@ -65,7 +65,7 @@ fn all_expr_accepts_non_empty_branches() {
         constraints: vec![],
     });
     let all = AllExpr::new(vec![event]).unwrap();
-    assert_eq!(all.branches.len(), 1);
+    assert_eq!(all.len(), 1);
 }
 
 #[test]

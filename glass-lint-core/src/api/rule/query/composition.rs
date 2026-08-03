@@ -73,7 +73,7 @@ impl QueryDecl {
             }),
         ];
         Ok(Self {
-            expression: QueryExpr::all(AllExpr { branches }),
+            expression: QueryExpr::all(AllExpr::new(branches)?),
             emission: EmissionDecl {
                 primary_var: event_var,
                 kind: MatchKind::MemberCall,
@@ -117,7 +117,7 @@ impl QueryDecl {
             }),
         ];
         Ok(Self {
-            expression: QueryExpr::all(AllExpr { branches }),
+            expression: QueryExpr::all(AllExpr::new(branches)?),
             emission: EmissionDecl {
                 primary_var: event_var,
                 kind: MatchKind::MemberCall,
@@ -161,7 +161,7 @@ impl QueryDecl {
             }),
         ];
         Ok(Self {
-            expression: QueryExpr::all(AllExpr { branches }),
+            expression: QueryExpr::all(AllExpr::new(branches)?),
             emission: EmissionDecl {
                 primary_var: event_var,
                 kind: MatchKind::MemberRead,
@@ -227,7 +227,7 @@ impl QueryDecl {
         for branch in branches {
             let decl = branch?;
             if let Some(first) = &first_emission {
-                let primary_present = decl.expression.vars().contains(&first.primary_var);
+                let primary_present = decl.expression.contains_var(first.primary_var);
                 if !primary_present
                     || decl.emission.primary_var != first.primary_var
                     || decl.emission.kind != first.kind

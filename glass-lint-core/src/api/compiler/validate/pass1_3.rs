@@ -139,7 +139,7 @@ fn collect_scope_and_types(
         QueryExprKind::Require(p) => collect_require_scope(p, seen, types)?,
         QueryExprKind::Any(any) => collect_any_scope(any, types)?,
         QueryExprKind::All(all) => {
-            for branch in &all.branches {
+            for branch in all.iter() {
                 collect_scope_and_types(branch, seen, types)?;
             }
         }
@@ -218,7 +218,7 @@ fn collect_any_scope(
     types: &mut HashMap<VarId, VarType>,
 ) -> Result<(), QueryCompileError> {
     let mut merged: HashMap<VarId, VarType> = HashMap::new();
-    for branch in &any.branches {
+    for branch in any.iter() {
         let mut branch_seen = Vec::new();
         let mut branch_types = HashMap::new();
         collect_scope_and_types(branch, &mut branch_seen, &mut branch_types)?;

@@ -69,8 +69,8 @@ impl QueryExpr {
 
     fn depth(&self) -> usize {
         match &self.kind {
-            QueryExprKind::Any(any) => 1 + any.branches.iter().map(Self::depth).max().unwrap_or(0),
-            QueryExprKind::All(all) => 1 + all.branches.iter().map(Self::depth).max().unwrap_or(0),
+            QueryExprKind::Any(any) => 1 + any.iter().map(Self::depth).max().unwrap_or(0),
+            QueryExprKind::All(all) => 1 + all.iter().map(Self::depth).max().unwrap_or(0),
             QueryExprKind::Event(_)
             | QueryExprKind::SelectEvent(_)
             | QueryExprKind::Require(_)
@@ -111,8 +111,8 @@ impl QueryExpr {
                     f(*object, VarRole::Reference);
                 }
             },
-            QueryExprKind::Any(any) => any.branches.iter().for_each(|b| b.walk_vars(f)),
-            QueryExprKind::All(all) => all.branches.iter().for_each(|b| b.walk_vars(f)),
+            QueryExprKind::Any(any) => any.iter().for_each(|b| b.walk_vars(f)),
+            QueryExprKind::All(all) => all.iter().for_each(|b| b.walk_vars(f)),
             QueryExprKind::Lifecycle(lc) => {
                 lc.sources
                     .iter()
@@ -175,8 +175,8 @@ impl fmt::Display for QueryExpr {
                     write!(f, "member({event},{object})")
                 }
             },
-            QueryExprKind::Any(any) => write_list(f, "any", &any.branches),
-            QueryExprKind::All(all) => write_list(f, "all", &all.branches),
+            QueryExprKind::Any(any) => write_list(f, "any", any.iter()),
+            QueryExprKind::All(all) => write_list(f, "all", all.iter()),
             QueryExprKind::Lifecycle(lifecycle) => write!(
                 f,
                 "lifecycle sources={} condition={} completion={}",
@@ -188,9 +188,13 @@ impl fmt::Display for QueryExpr {
     }
 }
 
-fn write_list(f: &mut fmt::Formatter<'_>, name: &str, branches: &[QueryExpr]) -> fmt::Result {
+fn write_list<'a>(
+    f: &mut fmt::Formatter<'_>,
+    name: &str,
+    branches: impl Iterator<Item = &'a QueryExpr>,
+) -> fmt::Result {
     write!(f, "{name} [")?;
-    for (index, branch) in branches.iter().enumerate() {
+    for (index, branch) in branches.enumerate() {
         if index > 0 {
             write!(f, ", ")?;
         }
@@ -200,34 +204,74 @@ fn write_list(f: &mut fmt::Formatter<'_>, name: &str, branches: &[QueryExpr]) ->
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct LogicalBranches(Vec<QueryExpr>);
+
+impl LogicalBranches {
+    fn new(
+        branches: Vec<QueryExpr>,
+        label: &'static str,
+        empty: QueryBuildError,
+    ) -> Result<Self, QueryBuildError> {
+        validate_children(&branches, label, empty)?;
+        Ok(Self(branches))
+    }
+
+    fn iter(&self) -> impl Iterator<Item = &QueryExpr> {
+        self.0.iter()
+    }
+
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AnyExpr {
-    pub(crate) branches: Vec<QueryExpr>,
+    branches: LogicalBranches,
 }
 
 impl AnyExpr {
     pub(crate) fn new(branches: Vec<QueryExpr>) -> Result<Self, QueryBuildError> {
-        validate_children(
-            &branches,
-            "Any expression branches",
-            QueryBuildError::EmptyAlternatives,
-        )?;
-        Ok(Self { branches })
+        Ok(Self {
+            branches: LogicalBranches::new(
+                branches,
+                "Any expression branches",
+                QueryBuildError::EmptyAlternatives,
+            )?,
+        })
+    }
+
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &QueryExpr> {
+        self.branches.iter()
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.branches.len()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AllExpr {
-    pub(crate) branches: Vec<QueryExpr>,
+    branches: LogicalBranches,
 }
 
 impl AllExpr {
     pub(crate) fn new(branches: Vec<QueryExpr>) -> Result<Self, QueryBuildError> {
-        validate_children(
-            &branches,
-            "All expression branches",
-            QueryBuildError::EmptyConjunction,
-        )?;
-        Ok(Self { branches })
+        Ok(Self {
+            branches: LogicalBranches::new(
+                branches,
+                "All expression branches",
+                QueryBuildError::EmptyConjunction,
+            )?,
+        })
+    }
+
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &QueryExpr> {
+        self.branches.iter()
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.branches.len()
     }
 }
 
