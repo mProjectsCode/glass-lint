@@ -203,7 +203,7 @@ still be simple without exposing the declaration model's storage.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-009 — Bounded canonical collections duplicate policy code
+#### [x] READ-009 — Bounded canonical collections duplicate policy code
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -220,7 +220,11 @@ collections that accepts the per-item parser/validator and the diagnostic
 label. Keep `bounded_strings` and `bounded_paths` as readable named entry
 points, with only their genuinely different validation expressed locally.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added one private `bounded_canonical_values` helper that owns
+the shared parse-result collection, trimming, sorting, deduplication, empty
+collection, and maximum-size policy. `bounded_strings` retains its
+static-value validation, while `bounded_paths` retains checked-chain parsing,
+and both now delegate the common canonicalization and bounds behavior.
 
 #### [ ] READ-010 — Lifecycle sink factories repeat target validation
 

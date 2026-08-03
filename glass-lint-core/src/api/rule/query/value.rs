@@ -62,26 +62,45 @@ fn canonicalize_strings(values: &mut Vec<String>) {
     values.dedup();
 }
 
+fn bounded_canonical_values<I, S, F>(
+    values: I,
+    empty_label: &'static str,
+    mut parse: F,
+) -> Result<Vec<String>, QueryBuildError>
+where
+    I: IntoIterator<Item = S>,
+    F: FnMut(S) -> Result<String, QueryBuildError>,
+{
+    let mut values = values
+        .into_iter()
+        .map(&mut parse)
+        .collect::<Result<Vec<_>, _>>()?;
+    canonicalize_strings(&mut values);
+    if values.is_empty() {
+        return Err(QueryBuildError::EmptyCollection(empty_label));
+    }
+    if values.len() > limits::MAX_STATIC_ALTERNATIVES {
+        return Err(QueryBuildError::CollectionTooLarge(
+            empty_label,
+            values.len(),
+        ));
+    }
+    Ok(values)
+}
+
 fn bounded_strings<I, S>(values: I) -> Result<Vec<String>, QueryBuildError>
 where
     I: IntoIterator<Item = S>,
     S: Into<String>,
 {
-    let mut values: Vec<String> = values.into_iter().map(Into::into).collect();
-    if values.iter().any(|value| value.trim().is_empty()) {
-        return Err(QueryBuildError::EmptyStaticValue);
-    }
-    canonicalize_strings(&mut values);
-    if values.is_empty() {
-        return Err(QueryBuildError::EmptyCollection("static alternatives"));
-    }
-    if values.len() > limits::MAX_STATIC_ALTERNATIVES {
-        return Err(QueryBuildError::CollectionTooLarge(
-            "static alternatives",
-            values.len(),
-        ));
-    }
-    Ok(values)
+    bounded_canonical_values(values, "static alternatives", |value| {
+        let value = value.into();
+        if value.trim().is_empty() {
+            Err(QueryBuildError::EmptyStaticValue)
+        } else {
+            Ok(value)
+        }
+    })
 }
 
 fn bounded_paths<I, S>(values: I) -> Result<Vec<String>, QueryBuildError>
@@ -89,21 +108,9 @@ where
     I: IntoIterator<Item = S>,
     S: Into<String>,
 {
-    let mut values: Vec<String> = values
-        .into_iter()
-        .map(|value| checked_chain(value).map(|chain| chain.as_str().to_owned()))
-        .collect::<Result<_, _>>()?;
-    canonicalize_strings(&mut values);
-    if values.is_empty() {
-        return Err(QueryBuildError::EmptyCollection("rooted expression paths"));
-    }
-    if values.len() > limits::MAX_STATIC_ALTERNATIVES {
-        return Err(QueryBuildError::CollectionTooLarge(
-            "rooted expression paths",
-            values.len(),
-        ));
-    }
-    Ok(values)
+    bounded_canonical_values(values, "rooted expression paths", |value| {
+        checked_chain(value).map(|chain| chain.as_str().to_owned())
+    })
 }
 
 impl ValueMatcher {
