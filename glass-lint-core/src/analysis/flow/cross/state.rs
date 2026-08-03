@@ -5,10 +5,10 @@ pub(super) use crate::analysis::trace::QualifiedEvent;
 use crate::{
     analysis::{
         facts::FactId,
-        model::flow::{FlowId, IndexedEvidence, RequirementIndex, SinkIndex},
+        model::flow::{FlowId, LifecycleEvidence, RequirementIndex, SinkIndex},
         value::{FunctionId, ValueId},
     },
-    api::compiler::{CompiledObjectFlow, object_flow::CompletionMode},
+    api::compiler::CompiledObjectFlow,
     project::ModuleId,
 };
 
@@ -51,8 +51,7 @@ pub(super) struct CrossFlowState {
     /// certainty distinguish `Possible` from `Definite` without inventing a
     /// source from another call site.
     source: Option<QualifiedEvent>,
-    requirements: IndexedEvidence<QualifiedEvent, RequirementIndex>,
-    sinks: IndexedEvidence<QualifiedEvent, SinkIndex>,
+    evidence: LifecycleEvidence<QualifiedEvent>,
 }
 
 impl CrossFlowState {
@@ -60,8 +59,7 @@ impl CrossFlowState {
         Self {
             flow,
             source: Some(source),
-            requirements: IndexedEvidence::default(),
-            sinks: IndexedEvidence::default(),
+            evidence: LifecycleEvidence::default(),
         }
     }
 
@@ -69,8 +67,7 @@ impl CrossFlowState {
         Self {
             flow,
             source: None,
-            requirements: IndexedEvidence::default(),
-            sinks: IndexedEvidence::default(),
+            evidence: LifecycleEvidence::default(),
         }
     }
 
@@ -87,29 +84,29 @@ impl CrossFlowState {
         index: RequirementIndex,
         event: QualifiedEvent,
     ) -> bool {
-        self.requirements.insert(index, event)
+        self.evidence.record_requirement(index, event)
     }
 
     pub(super) fn record_sink(&mut self, index: SinkIndex, event: QualifiedEvent) -> bool {
-        self.sinks.insert(index, event)
+        self.evidence.record_sink(index, event)
     }
 
     pub(super) fn requirements_ready(&self, flow: &CompiledObjectFlow) -> bool {
-        flow.requirements_ready(self.requirements.len())
+        self.evidence.requirements_ready(flow)
     }
 
     pub(super) fn sinks_complete(&self, flow: &CompiledObjectFlow) -> bool {
-        flow.completion_mode != CompletionMode::AllSinks || self.sinks.len() == flow.sinks.len()
+        self.evidence.sinks_ready(flow)
     }
 
     pub(super) fn requirement_events(&self) -> impl Iterator<Item = &QualifiedEvent> {
-        self.requirements.values()
+        self.evidence.requirement_events()
     }
 
     pub(super) fn prior_sinks(&self, module: ModuleId, event: FactId) -> Vec<QualifiedEvent> {
         let mut sinks: Vec<_> = self
-            .sinks
-            .values()
+            .evidence
+            .sink_events()
             .filter(|sink| !(sink.module() == module && sink.fact() == event))
             .copied()
             .collect();

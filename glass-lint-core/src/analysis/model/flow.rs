@@ -4,10 +4,7 @@ use smallvec::SmallVec;
 
 use crate::{
     analysis::model::{fact::FactId, scope::FunctionId, value::ObjectId},
-    api::{
-        classification::RuleIndex,
-        compiler::{CompiledObjectFlow, object_flow::RequirementMode},
-    },
+    api::{classification::RuleIndex, compiler::CompiledObjectFlow},
 };
 
 pub type FunctionTable<T> = glass_lint_datastructures::IndexTable<FunctionId, T>;
@@ -145,7 +142,7 @@ impl FlowId {
 ///
 /// The compact vector storage stays private so callers cannot depend on the
 /// representation; removal deltas and restore transitions both use this type.
-#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
 pub struct EvidenceValues<K>(SmallVec<[K; 1]>);
 
 impl<K> EvidenceValues<K> {
@@ -330,6 +327,7 @@ impl<K: Clone + Ord, I: EvidenceIndex> IndexedEvidence<K, I> {
         self.mask.count_ones() as usize
     }
 
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.mask == 0
     }
@@ -348,13 +346,109 @@ impl<K: Clone + Ord, I: EvidenceIndex> IndexedEvidence<K, I> {
     }
 }
 
+/// Shared lifecycle evidence storage for local and qualified flow states.
+///
+/// The event type stays generic so local fact identity and cross-file
+/// qualified identity remain distinct while recording, readiness, and
+/// deterministic iteration have one owner.
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
+pub(in crate::analysis) struct LifecycleEvidence<E> {
+    requirements: IndexedEvidence<E, RequirementIndex>,
+    sinks: IndexedEvidence<E, SinkIndex>,
+}
+
+impl<E> Default for LifecycleEvidence<E> {
+    fn default() -> Self {
+        Self {
+            requirements: IndexedEvidence::default(),
+            sinks: IndexedEvidence::default(),
+        }
+    }
+}
+
+impl<E: Hash> Hash for LifecycleEvidence<E> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.requirements.hash(state);
+        self.sinks.hash(state);
+    }
+}
+
+impl<E: Clone + Ord> LifecycleEvidence<E> {
+    pub(in crate::analysis) fn record_requirement(
+        &mut self,
+        index: RequirementIndex,
+        event: E,
+    ) -> bool {
+        self.requirements.insert(index, event)
+    }
+
+    pub(in crate::analysis) fn clear_requirement(
+        &mut self,
+        index: RequirementIndex,
+    ) -> Option<EvidenceValues<E>> {
+        self.requirements.remove(index)
+    }
+
+    pub(in crate::analysis) fn remove_requirement_event(
+        &mut self,
+        index: RequirementIndex,
+        event: &E,
+    ) -> bool {
+        self.requirements.remove_value(index, event)
+    }
+
+    pub(in crate::analysis) fn restore_requirement(
+        &mut self,
+        index: RequirementIndex,
+        events: &EvidenceValues<E>,
+    ) {
+        self.requirements.restore(index, events);
+    }
+
+    pub(in crate::analysis) fn requirements_ready(&self, flow: &CompiledObjectFlow) -> bool {
+        flow.requirements_ready(self.requirements.len())
+    }
+
+    pub(in crate::analysis) fn record_sink(&mut self, index: SinkIndex, event: E) -> bool {
+        self.sinks.insert(index, event)
+    }
+
+    pub(in crate::analysis) fn remove_sink_event(&mut self, index: SinkIndex, event: &E) -> bool {
+        self.sinks.remove_value(index, event)
+    }
+
+    pub(in crate::analysis) fn sinks_ready(&self, flow: &CompiledObjectFlow) -> bool {
+        flow.completion_mode != crate::api::compiler::object_flow::CompletionMode::AllSinks
+            || self.sinks.len() == flow.sinks.len()
+    }
+
+    pub(in crate::analysis) fn requirement_keys(
+        &self,
+    ) -> impl Iterator<Item = (RequirementIndex, &EvidenceValues<E>)> {
+        self.requirements.iter_by_key()
+    }
+
+    pub(in crate::analysis) fn sink_keys(
+        &self,
+    ) -> impl Iterator<Item = (SinkIndex, &EvidenceValues<E>)> {
+        self.sinks.iter_by_key()
+    }
+
+    pub(in crate::analysis) fn requirement_events(&self) -> impl Iterator<Item = &E> {
+        self.requirements.values()
+    }
+
+    pub(in crate::analysis) fn sink_events(&self) -> impl Iterator<Item = &E> {
+        self.sinks.values()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FlowState {
     flow: FlowId,
     source_event: FactId,
     object_id: ObjectId,
-    requirements: IndexedEvidence<FactId, RequirementIndex>,
-    sinks: IndexedEvidence<FactId, SinkIndex>,
+    evidence: LifecycleEvidence<FactId>,
 }
 
 impl Hash for FlowState {
@@ -362,8 +456,7 @@ impl Hash for FlowState {
         self.flow.hash(state);
         self.source_event.hash(state);
         self.object_id.hash(state);
-        self.requirements.hash(state);
-        self.sinks.hash(state);
+        self.evidence.hash(state);
     }
 }
 
@@ -393,8 +486,7 @@ impl FlowState {
             flow,
             source_event,
             object_id,
-            requirements: IndexedEvidence::default(),
-            sinks: IndexedEvidence::default(),
+            evidence: LifecycleEvidence::default(),
         }
     }
 
@@ -415,15 +507,15 @@ impl FlowState {
     }
 
     pub fn record_requirement(&mut self, index: RequirementIndex, event: FactId) -> bool {
-        self.requirements.insert(index, event)
+        self.evidence.record_requirement(index, event)
     }
 
     pub fn clear_requirement(&mut self, index: RequirementIndex) -> Option<EvidenceValues<FactId>> {
-        self.requirements.remove(index)
+        self.evidence.clear_requirement(index)
     }
 
     pub fn remove_requirement_event(&mut self, index: RequirementIndex, event: FactId) -> bool {
-        self.requirements.remove_value(index, &event)
+        self.evidence.remove_requirement_event(index, &event)
     }
 
     pub fn restore_requirement(
@@ -431,37 +523,33 @@ impl FlowState {
         index: RequirementIndex,
         events: &EvidenceValues<FactId>,
     ) {
-        self.requirements.restore(index, events);
+        self.evidence.restore_requirement(index, events);
     }
 
     pub fn is_ready(&self, flow: &CompiledObjectFlow) -> bool {
-        match flow.requirement_mode {
-            RequirementMode::AllRequired => self.requirements.len() == flow.requirements.len(),
-            RequirementMode::AnyRequired => !self.requirements.is_empty(),
-        }
+        self.evidence.requirements_ready(flow)
     }
 
     pub fn record_sink(&mut self, index: SinkIndex, event: FactId) -> bool {
-        self.sinks.insert(index, event)
+        self.evidence.record_sink(index, event)
     }
 
     pub fn remove_sink_event(&mut self, index: SinkIndex, event: FactId) -> bool {
-        self.sinks.remove_value(index, &event)
+        self.evidence.remove_sink_event(index, &event)
     }
 
     pub fn sinks_ready(&self, flow: &CompiledObjectFlow) -> bool {
-        flow.completion_mode != crate::api::compiler::object_flow::CompletionMode::AllSinks
-            || self.sinks.len() == flow.sinks.len()
+        self.evidence.sinks_ready(flow)
     }
 
     pub fn requirement_keys(
         &self,
     ) -> impl Iterator<Item = (RequirementIndex, &EvidenceValues<FactId>)> {
-        self.requirements.iter_by_key()
+        self.evidence.requirement_keys()
     }
 
     pub fn sink_keys(&self) -> impl Iterator<Item = (SinkIndex, &EvidenceValues<FactId>)> {
-        self.sinks.iter_by_key()
+        self.evidence.sink_keys()
     }
 }
 
@@ -627,9 +715,9 @@ mod tests {
         let mut state = FlowState::new(flow, FactId::from_test(1), ObjectId::from_test(0));
         state.record_requirement(RequirementIndex::new(0), FactId::from_test(10));
         state.record_requirement(RequirementIndex::new(1), FactId::from_test(20));
-        assert_eq!(state.requirements.len(), 2);
+        assert_eq!(state.requirement_keys().count(), 2);
 
         state.clear_requirement(RequirementIndex::new(0));
-        assert_eq!(state.requirements.len(), 1);
+        assert_eq!(state.requirement_keys().count(), 1);
     }
 }

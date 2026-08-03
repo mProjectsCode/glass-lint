@@ -122,7 +122,7 @@ maintaining shape keys or consumption order.
 
 ### Lifecycle and flow state
 
-#### [ ] READ-005 — Local and cross-file lifecycle evidence duplicate the same state abstraction
+#### [x] READ-005 — Local and cross-file lifecycle evidence duplicate the same state abstraction
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -145,7 +145,12 @@ Keep `FlowState` and `CrossFlowState` as distinct owners of their
 object/source identity and certainty semantics, and do not erase the
 local-versus-qualified event distinction.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the private generic `LifecycleEvidence<Event>` owner in
+core flow model code. It now owns indexed requirement/sink recording,
+rollback-compatible removal/restoration, readiness/completion checks, and
+deterministic keyed/flat evidence iteration. `FlowState` and
+`CrossFlowState` retain their separate object/source and local-versus-qualified
+event semantics while delegating the shared lifecycle behavior.
 
 #### [ ] READ-006 — Requirement and sink indexes are rebuilt with positional enumeration at every projector
 
