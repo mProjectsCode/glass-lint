@@ -104,8 +104,8 @@ impl LoweredSource {
         &self.source
     }
 
-    pub(crate) fn semantic(&self) -> &Arc<SemanticArtifact> {
-        &self.semantic
+    pub(crate) fn clone_semantic(&self) -> Arc<SemanticArtifact> {
+        Arc::clone(&self.semantic)
     }
 
     pub(crate) fn into_parts(self) -> (LocatedSourceContext, Arc<SemanticArtifact>) {

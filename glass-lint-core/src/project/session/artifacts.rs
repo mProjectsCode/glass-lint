@@ -4,7 +4,7 @@
 //! the consuming transition to validated linker input, together with the
 //! cache-lookup helpers that phase-state types delegate to.
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
 
 use crate::{
     ParseDiagnostic,
@@ -162,8 +162,8 @@ pub(super) fn cached_lowered_source(
     cached: &SharedSemanticArtifact,
 ) -> LoweredSource {
     LoweredSource::new(
-        LocatedSourceContext::with_index(source.path().clone(), Arc::clone(cached.source_index())),
-        Arc::clone(cached.semantic()),
+        LocatedSourceContext::with_index(source.path().clone(), cached.clone_source_index()),
+        cached.clone_semantic(),
     )
 }
 

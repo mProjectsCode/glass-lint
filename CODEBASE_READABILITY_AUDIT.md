@@ -45,7 +45,7 @@ boundary, not a reason to merge effect events with semantic facts.
 all production and effect-test construction through it, preserving the
 unknown-fact `Option` behavior. Verified with `make fmt && make ci`.
 
-#### [ ] READ-013 — Shared artifact types expose their `Arc` storage
+#### [x] READ-013 — Shared artifact types expose their `Arc` storage
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -69,7 +69,9 @@ cache handoff, such as `clone_semantic`, `clone_source_index`, or an owning
 intentionally shared; preserve path-local source context and collision-checked
 cache identity.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Changed live source-index queries to return borrowed concrete
+types, added explicit Arc-cloning operations for cache transfer, and removed
+unused Arc-leaking semantic accessors. Verified with `make fmt && make ci`.
 
 #### [x] READ-014 — Module call occurrences are written to two indexes by hand
 

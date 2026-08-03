@@ -105,8 +105,12 @@ impl LocatedSourceContext {
         &self.path
     }
 
-    pub(crate) fn lines(&self) -> &Arc<SourceLineIndex> {
+    pub(crate) fn lines(&self) -> &SourceLineIndex {
         &self.lines
+    }
+
+    pub(crate) fn clone_lines(&self) -> Arc<SourceLineIndex> {
+        Arc::clone(&self.lines)
     }
 
     pub(crate) fn range(&self, span: ByteRange) -> Result<SourceRange, InvalidSourceBoundary> {
@@ -222,17 +226,17 @@ pub struct SharedSemanticArtifact {
 impl SharedSemanticArtifact {
     pub(crate) fn from_lowered(lowered: &crate::analysis::lowering::LoweredSource) -> Self {
         Self {
-            semantic: Arc::clone(lowered.semantic()),
-            source_index: Arc::clone(lowered.source_context().lines()),
+            semantic: lowered.clone_semantic(),
+            source_index: lowered.source_context().clone_lines(),
         }
     }
 
-    pub(crate) fn semantic(&self) -> &Arc<SemanticArtifact> {
-        &self.semantic
+    pub(crate) fn clone_semantic(&self) -> Arc<SemanticArtifact> {
+        Arc::clone(&self.semantic)
     }
 
-    pub(crate) fn source_index(&self) -> &Arc<SourceLineIndex> {
-        &self.source_index
+    pub(crate) fn clone_source_index(&self) -> Arc<SourceLineIndex> {
+        Arc::clone(&self.source_index)
     }
 }
 
