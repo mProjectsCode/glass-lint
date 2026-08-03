@@ -135,7 +135,7 @@ sink-path compatibility queries. Worklist seeding, invocation compatibility,
 sink projection, and projector evidence now use those operations instead of
 repeating parameter-index/path/rest/default decisions. Summary flow tests pass.
 
-#### [ ] READ-008 — Artifact tables expose generic iteration for a transition they should own
+#### [x] READ-008 — Artifact tables expose generic iteration for a transition they should own
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -146,7 +146,11 @@ repeating parameter-index/path/rest/default decisions. Summary flow tests pass.
 
 **Recommendation:** Put module-ID assignment and qualified-request-ID production on `AnalysisArtifacts`, `SourceTable`, or a named linker-input builder that owns both tables. Replace generic `iter()` with narrowly named operations only where a real domain query is required, such as stable source order or request IDs for a module. Keep report assembly separate if it needs a source-order view, but do not expose map iteration merely for convenience.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced generic source-table iteration with named path-order
+iteration and moved stable module-ID assignment into `SourceTable`. Moved
+qualified authored-request-ID production into `AuthoredRequestTable`; the
+artifact transition now asks each owner for its domain result instead of
+reconstructing IDs from storage at the call site. Link/session tests pass.
 
 #### [x] READ-009 — `LoadAccounting` duplicates the complete storage of `ProjectLoadMetrics`
 

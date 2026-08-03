@@ -6,7 +6,8 @@
 use std::collections::BTreeMap;
 
 use crate::project::{
-    ProjectInputError, ProjectRelativePath, ResolutionRequestKey, ResolverOutcome, SourceFile,
+    ModuleId, ProjectInputError, ProjectRelativePath, ResolutionRequestKey, ResolverOutcome,
+    SourceFile,
 };
 
 #[derive(Debug, Default)]
@@ -28,8 +29,25 @@ impl SourceTable {
         self.0.get(path)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&ProjectRelativePath, &SourceFile)> {
+    pub(crate) fn in_path_order(
+        &self,
+    ) -> impl Iterator<Item = (&ProjectRelativePath, &SourceFile)> {
         self.0.iter()
+    }
+
+    pub(crate) fn module_ids(
+        &self,
+    ) -> Result<BTreeMap<ProjectRelativePath, ModuleId>, ProjectInputError> {
+        self.0
+            .keys()
+            .enumerate()
+            .map(|(index, path)| {
+                let id = u32::try_from(index).map_err(|_| {
+                    ProjectInputError::BudgetExceeded("module count exceeds ModuleId range".into())
+                })?;
+                Ok((path.clone(), ModuleId::new(id)))
+            })
+            .collect()
     }
 }
 

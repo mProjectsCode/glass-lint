@@ -18,7 +18,7 @@ pub(super) fn initialize_project_files(
 ) {
     let mut files = BTreeMap::new();
     let mut parse_failures = BTreeMap::new();
-    for (path, source) in sources.iter() {
+    for (path, source) in sources.in_path_order() {
         let path = path.clone();
         match parse_diagnostics.remove(&path) {
             Some(diagnostic) => {

@@ -279,7 +279,7 @@ impl<'a> ProjectCollection<'a> {
         let worker_count = normalize_worker_limit(worker_count);
         let pending: Vec<_> = self
             .sources
-            .iter()
+            .in_path_order()
             .filter(|(path, _)| self.artifacts.needs_analysis(path))
             .map(|(path, _)| path.to_owned())
             .collect();

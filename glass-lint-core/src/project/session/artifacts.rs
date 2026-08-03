@@ -37,8 +37,17 @@ impl AuthoredRequestTable {
         self.by_key.insert(key, id);
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&ResolutionRequestKey, ModuleRequestId)> {
-        self.by_key.iter().map(|(key, id)| (key, *id))
+    pub(super) fn qualified_ids(
+        &self,
+        module_ids: &BTreeMap<ProjectRelativePath, ModuleId>,
+    ) -> BTreeMap<ResolutionRequestKey, QualifiedRequestId> {
+        self.by_key
+            .iter()
+            .filter_map(|(key, req_id)| {
+                let module = module_ids.get(key.importer()).copied()?;
+                Some((key.clone(), QualifiedRequestId::new(module, *req_id)))
+            })
+            .collect()
     }
 }
 
@@ -134,23 +143,8 @@ impl AnalysisArtifacts {
             analyzed,
             parse_diagnostics,
         } = self;
-        let module_ids = sources
-            .iter()
-            .enumerate()
-            .map(|(index, (path, _))| {
-                let id = u32::try_from(index).map_err(|_| {
-                    ProjectInputError::BudgetExceeded("module count exceeds ModuleId range".into())
-                })?;
-                Ok((path.clone(), ModuleId::new(id)))
-            })
-            .collect::<Result<BTreeMap<_, _>, _>>()?;
-        let request_ids = authored_requests
-            .iter()
-            .filter_map(|(key, req_id)| {
-                let module = module_ids.get(key.importer()).copied()?;
-                Some((key.clone(), QualifiedRequestId::new(module, req_id)))
-            })
-            .collect();
+        let module_ids = sources.module_ids()?;
+        let request_ids = authored_requests.qualified_ids(&module_ids);
         let link_input =
             ResolvedLinkInput::build(analyzed, &module_ids, resolutions, &request_ids)?;
         Ok((link_input, parse_diagnostics))
