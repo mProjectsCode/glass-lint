@@ -1,7 +1,6 @@
 //! Filesystem membership and source loading.
 
 use std::{
-    borrow::Cow,
     collections::BTreeSet,
     path::{Path, PathBuf},
     time::Instant,
@@ -294,7 +293,7 @@ impl<'adm, 'opt, 'budget> ProjectDiscovery<'adm, 'opt, 'budget> {
         config: &tsconfig::selection::CompiledTsconfigSelection,
         base: &Path,
     ) -> Result<(), ProjectLoadError> {
-        if let Some(files) = &config.files {
+        if let Some(files) = config.explicit_files() {
             for file in files {
                 let path = base.join(file);
                 if path.exists()
@@ -310,16 +309,7 @@ impl<'adm, 'opt, 'budget> ProjectDiscovery<'adm, 'opt, 'budget> {
                 let Ok(relative) = path.strip_prefix(base) else {
                     return false;
                 };
-                let Some(relative_str) = relative.to_str() else {
-                    return false;
-                };
-                config
-                    .pattern_set
-                    .is_included(&if relative_str.contains('\\') {
-                        Cow::Owned(relative_str.replace('\\', "/"))
-                    } else {
-                        Cow::Borrowed(relative_str)
-                    })
+                config.includes(relative)
             };
             walk::collect_files(
                 self.admission,

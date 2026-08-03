@@ -116,9 +116,9 @@ fn cycle_detection_records_diagnostic_and_skips_cyclic_extends() {
     );
     let (config, _references) = result.unwrap();
     // Cycle extends is skipped; config uses its own include
-    assert_eq!(config.files, None);
-    assert!(config.pattern_set.is_included("src/main.ts"));
-    assert!(!config.pattern_set.is_included("other/file.ts"));
+    assert_eq!(config.explicit_files(), None);
+    assert!(config.includes(Path::new("src/main.ts")));
+    assert!(!config.includes(Path::new("other/file.ts")));
     // Cycle diagnostics recorded
     assert_eq!(diagnostics.len(), 1);
     assert!(diagnostics[0].message.contains("cycle"));
@@ -153,13 +153,13 @@ fn cycle_fails_closed_does_not_broaden_admission() {
     let (config, _) = result.unwrap();
     // A should have include: ["src/**/*"] (its own setting)
     // The cycle in extends should NOT bring in B's patterns
-    assert!(config.files.is_none(), "no explicit files");
+    assert!(config.explicit_files().is_none(), "no explicit files");
     assert!(
-        config.pattern_set.is_included("src/main.ts"),
+        config.includes(Path::new("src/main.ts")),
         "A's include should be used"
     );
     assert!(
-        !config.pattern_set.is_included("other/bar.ts"),
+        !config.includes(Path::new("other/bar.ts")),
         "B's include should not be inherited through cycle"
     );
     // Cycle diagnostic recorded for the B->A link
@@ -198,7 +198,7 @@ fn extends_nonexistent_path_emits_diagnostic() {
     )
     .unwrap();
 
-    assert!(config.pattern_set.is_included("src/main.ts"));
+    assert!(config.includes(Path::new("src/main.ts")));
     assert_eq!(diagnostics.len(), 1);
     assert!(diagnostics[0].message.contains("does not exist"));
 }
@@ -225,7 +225,7 @@ fn extends_package_based_emits_unsupported_diagnostic() {
     )
     .unwrap();
 
-    assert!(config.pattern_set.is_included("src/main.ts"));
+    assert!(config.includes(Path::new("src/main.ts")));
     assert_eq!(diagnostics.len(), 1);
     assert!(diagnostics[0].message.contains("unsupported"));
 }
@@ -260,16 +260,16 @@ fn single_level_extends_merges_correctly() {
     // Parent's exclude ("**/*.test.ts") should NOT be inherited.
     // The compiled pattern set should reflect child's exclude.
     assert!(
-        config.pattern_set.is_included("src/main.test.ts"),
+        config.includes(Path::new("src/main.test.ts")),
         "parent exclude not inherited when child sets its own"
     );
     assert!(
-        !config.pattern_set.is_included("src/main.spec.ts"),
+        !config.includes(Path::new("src/main.spec.ts")),
         "child exclude should apply"
     );
     // Default exclusions still apply
     assert!(
-        !config.pattern_set.is_included("node_modules/pkg/index.js"),
+        !config.includes(Path::new("node_modules/pkg/index.js")),
         "default node_modules exclusion applies"
     );
 }
@@ -298,9 +298,9 @@ fn build_effective_config_invalid_files_null_no_broad_fallback() {
     .unwrap();
 
     // Must NOT fall back to **/* — all paths rejected
-    assert!(!config.pattern_set.is_included("src/main.ts"));
-    assert!(!config.pattern_set.is_included("index.ts"));
-    assert!(!config.pattern_set.is_included("any/file.ts"));
+    assert!(!config.includes(Path::new("src/main.ts")));
+    assert!(!config.includes(Path::new("index.ts")));
+    assert!(!config.includes(Path::new("any/file.ts")));
     // Diagnostic emitted for null files field
     assert!(diagnostics.iter().any(|d| d.message.contains("files")));
 }
@@ -325,9 +325,9 @@ fn build_effective_config_invalid_include_false_no_broad_fallback() {
     .unwrap();
 
     // Must NOT fall back to **/*
-    assert!(!config.pattern_set.is_included("src/main.ts"));
-    assert!(!config.pattern_set.is_included("lib/util.ts"));
-    assert!(!config.pattern_set.is_included("any/file.ts"));
+    assert!(!config.includes(Path::new("src/main.ts")));
+    assert!(!config.includes(Path::new("lib/util.ts")));
+    assert!(!config.includes(Path::new("any/file.ts")));
     // Diagnostic emitted for invalid include
     assert!(diagnostics.iter().any(|d| d.message.contains("include")));
 }
@@ -352,8 +352,8 @@ fn build_effective_config_invalid_include_object_no_broad_fallback() {
     .unwrap();
 
     // Must NOT fall back to **/*
-    assert!(!config.pattern_set.is_included("src/main.ts"));
-    assert!(!config.pattern_set.is_included("index.ts"));
+    assert!(!config.includes(Path::new("src/main.ts")));
+    assert!(!config.includes(Path::new("index.ts")));
     assert!(diagnostics.iter().any(|d| d.message.contains("include")));
 }
 
@@ -377,8 +377,8 @@ fn build_effective_config_invalid_include_null_no_broad_fallback() {
     .unwrap();
 
     // Must NOT fall back to **/*
-    assert!(!config.pattern_set.is_included("src/main.ts"));
-    assert!(!config.pattern_set.is_included("index.ts"));
+    assert!(!config.includes(Path::new("src/main.ts")));
+    assert!(!config.includes(Path::new("index.ts")));
     assert!(diagnostics.iter().any(|d| d.message.contains("include")));
 }
 
@@ -407,8 +407,8 @@ fn build_effective_config_invalid_parent_extends_propagates_fail_closed() {
 
     // Parent's invalid include propagates — child's valid include still
     // rejected because fail-closed flag is inherited from the parent.
-    assert!(!config.pattern_set.is_included("src/main.ts"));
-    assert!(!config.pattern_set.is_included("lib/util.ts"));
+    assert!(!config.includes(Path::new("src/main.ts")));
+    assert!(!config.includes(Path::new("lib/util.ts")));
     // Diagnostic emitted for the base config's invalid include
     assert!(diagnostics.iter().any(|d| d.message.contains("include")));
 }

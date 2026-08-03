@@ -426,10 +426,10 @@ impl<'a> TsconfigTraversal<'a> {
         self.diagnostics
             .extend(
                 compiled
-                    .pattern_diagnostics
+                    .pattern_diagnostics()
                     .iter()
                     .map(|message| TsconfigDiagnostic {
-                        config_path: compiled.config_path.clone(),
+                        config_path: compiled.config_path().to_path_buf(),
                         cycle_target: None,
                         message: message.clone(),
                     }),

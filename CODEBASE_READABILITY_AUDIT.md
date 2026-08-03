@@ -8,9 +8,9 @@ phase ownership, duplicate transformations, and unnecessary public surface.
 The prior report's eleven checked-off migrations were verified as historical
 work; they are not counted as current findings.
 
-Four residual findings remain; READ-001 has been completed:
+Three residual findings remain; READ-001 and READ-002 have been completed:
 
-- 1 high-priority phase/API boundary;
+- No high-priority phase/API boundaries;
 - 2 medium-priority representation leaks;
 - 1 low-priority visibility cleanup.
 
@@ -57,7 +57,7 @@ lookups remain owned by the project phase. The shared resolver no longer
 accepts raw module or resolution maps; its cache is transferred through the
 linker's resolver operation, and the post-link wrapper was removed.
 
-#### [ ] READ-002 — Compiled tsconfig selection exposes its phase storage
+#### [x] READ-002 — Compiled tsconfig selection exposes its phase storage
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -85,6 +85,13 @@ pattern decision and path normalization while preserving fail-closed
 behavior and deterministic diagnostics. Keep parsed tsconfig DTOs public only
 where they are genuinely parser records; do not apply this migration to the
 raw `ParsedTsconfig` representation.
+
+**Fix Applied:** Made compiled selection storage private and moved selection
+semantics behind `config_path()`, `explicit_files()`, `includes(&Path)`, and
+`pattern_diagnostics()`. The selection now owns slash normalization and the
+explicit-versus-pattern boundary; discovery and diagnostic assembly no longer
+inspect the compiled matcher or its vectors. Tsconfig tests were migrated to
+the semantic API and preserve fail-closed and rebasing coverage.
 
 ### Medium priority
 

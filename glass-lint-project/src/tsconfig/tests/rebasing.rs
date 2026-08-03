@@ -29,11 +29,11 @@ fn cross_dir_include_is_rebased_to_parent_dir() {
     // "src/**/*", but the current normalize only expands trailing-slash
     // patterns, so we assert the exact path matches.
     assert!(
-        config.pattern_set.is_included("sub/src"),
+        config.includes(Path::new("sub/src")),
         "rebased parent include should match sub/src"
     );
     assert!(
-        !config.pattern_set.is_included("src"),
+        !config.includes(Path::new("src")),
         "unrebased parent include should NOT match root src"
     );
 }
@@ -62,7 +62,7 @@ fn cross_dir_files_is_rebased_to_parent_dir() {
     )
     .unwrap();
 
-    let files = config.files.expect("files should be Some");
+    let files = config.explicit_files().expect("files should be Some");
     assert_eq!(files, vec!["sub/src/file.ts"]);
 }
 
@@ -98,15 +98,15 @@ fn cross_dir_exclude_is_rebased_to_parent_dir() {
 
     // Parent's "secret.ts" rebased to "sub/secret.ts"
     assert!(
-        config.pattern_set.is_included("main.ts"),
+        config.includes(Path::new("main.ts")),
         "unrelated file should be included"
     );
     assert!(
-        !config.pattern_set.is_included("sub/secret.ts"),
+        !config.includes(Path::new("sub/secret.ts")),
         "rebased parent exclude should apply to sub/secret.ts"
     );
     assert!(
-        config.pattern_set.is_included("secret.ts"),
+        config.includes(Path::new("secret.ts")),
         "parent's exclude should NOT apply to root/secret.ts"
     );
 }
@@ -145,12 +145,12 @@ fn cross_dir_outdir_in_exclude_is_rebased() {
     // The current glob matching for non-trailing-slash excludes only matches
     // the exact path (not children), so we test the directory path itself.
     assert!(
-        !config.pattern_set.is_included("sub/out"),
+        !config.includes(Path::new("sub/out")),
         "rebased parent outDir should exclude sub/out"
     );
     // Root's out is NOT excluded by the parent's setting
     assert!(
-        config.pattern_set.is_included("out"),
+        config.includes(Path::new("out")),
         "parent's outDir should NOT exclude root/out"
     );
 }
@@ -183,11 +183,11 @@ fn cross_dir_child_include_overrides_parent() {
 
     // Only child's include should be active
     assert!(
-        config.pattern_set.is_included("child_only/main.ts"),
+        config.includes(Path::new("child_only/main.ts")),
         "child include should be used"
     );
     assert!(
-        !config.pattern_set.is_included("sub_only/main.ts"),
+        !config.includes(Path::new("sub_only/main.ts")),
         "parent include should NOT leak when child overrides"
     );
 }
@@ -223,11 +223,11 @@ fn cross_dir_child_exclude_inherits_rebased_parent_exclude() {
 
     // Parent's "sub_secret.ts" rebased to "sub/sub_secret.ts"
     assert!(
-        !config.pattern_set.is_included("sub/sub_secret.ts"),
+        !config.includes(Path::new("sub/sub_secret.ts")),
         "rebased parent exclude should apply to sub/sub_secret.ts"
     );
     assert!(
-        config.pattern_set.is_included("sub_secret.ts"),
+        config.includes(Path::new("sub_secret.ts")),
         "parent exclude should NOT apply to root/sub_secret.ts"
     );
 }
@@ -263,11 +263,11 @@ fn cross_dir_child_exclude_overrides_parent() {
 
     // Child's exclude overrides parent's
     assert!(
-        config.pattern_set.is_included("sub/sub_secret.ts"),
+        config.includes(Path::new("sub/sub_secret.ts")),
         "parent exclude should NOT apply when child overrides"
     );
     assert!(
-        !config.pattern_set.is_included("child_secret.ts"),
+        !config.includes(Path::new("child_secret.ts")),
         "child exclude should apply"
     );
 }
@@ -316,12 +316,12 @@ fn cross_dir_three_level_chain_rebases_correctly() {
     // relative to the child config.  The path "../grandparent/src/main.ts"
     // should match.
     assert!(
-        config.pattern_set.is_included("../grandparent/src/main.ts"),
+        config.includes(Path::new("../grandparent/src/main.ts")),
         "grandparent include should match grandparent/src after two rebases"
     );
     // "src/main.ts" relative to child means child/src/main.ts — should NOT match.
     assert!(
-        !config.pattern_set.is_included("src/main.ts"),
+        !config.includes(Path::new("src/main.ts")),
         "grandparent include should not match child/src"
     );
 }

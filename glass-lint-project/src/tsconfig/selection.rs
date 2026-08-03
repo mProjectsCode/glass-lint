@@ -3,7 +3,10 @@
 //! These types consume a typed predecessor; none use a mutable
 //! `serde_json::Value` as its semantic model.
 
-use std::path::{Path, PathBuf};
+use std::{
+    borrow::Cow,
+    path::{Path, PathBuf},
+};
 
 use crate::tsconfig::{ParsedField, ParsedTsconfig};
 
@@ -299,13 +302,44 @@ pub fn merge_selection(
 #[derive(Debug)]
 pub struct CompiledTsconfigSelection {
     /// Canonical config path.
-    pub config_path: PathBuf,
+    config_path: PathBuf,
     /// Explicit files list (None = use include/exclude).
-    pub files: Option<Vec<String>>,
+    files: Option<Vec<String>>,
     /// Compiled pattern set for include/exclude matching.
-    pub pattern_set: TsconfigPatternSet,
+    pattern_set: TsconfigPatternSet,
     /// Invalid patterns that caused fail-closed source selection.
-    pub pattern_diagnostics: Vec<String>,
+    pattern_diagnostics: Vec<String>,
+}
+
+impl CompiledTsconfigSelection {
+    /// Borrow the canonical path of the config that produced this selection.
+    pub fn config_path(&self) -> &Path {
+        &self.config_path
+    }
+
+    /// Borrow the normalized explicit file list, or `None` for pattern mode.
+    pub fn explicit_files(&self) -> Option<&[String]> {
+        self.files.as_deref()
+    }
+
+    /// Return whether a config-relative path is selected by include/exclude
+    /// patterns. This operation owns slash normalization and is only valid
+    /// for the pattern mode represented by `None` from
+    /// [`Self::explicit_files`].
+    pub fn includes(&self, relative: &Path) -> bool {
+        let relative = relative.to_string_lossy();
+        let normalized = if relative.contains('\\') {
+            Cow::Owned(relative.replace('\\', "/"))
+        } else {
+            Cow::Borrowed(relative.as_ref())
+        };
+        self.pattern_set.is_included(&normalized)
+    }
+
+    /// Borrow diagnostics for invalid include or exclude patterns.
+    pub fn pattern_diagnostics(&self) -> &[String] {
+        &self.pattern_diagnostics
+    }
 }
 
 // ---------------------------------------------------------------------------
