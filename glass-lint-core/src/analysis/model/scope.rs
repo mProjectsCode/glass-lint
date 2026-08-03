@@ -257,25 +257,121 @@ pub struct MemberValueSeed {
     pub(in crate::analysis) returned_member: Option<(NamePath, NamePath)>,
 }
 
+/// The bounded set of provenance alternatives retained for one assignment.
+///
+/// A precise write carries one provenance; a control-flow join retains the
+/// bounded union of the reachable path alternatives and is marked joined.
+/// Unknown and exhausted alternatives are never retained as provenances: they
+/// are represented by the `unknown` and `exhausted` flags and cannot establish
+/// a witness.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProvenanceAlternatives {
+    provenances: Vec<BindingProvenance>,
+    unknown: bool,
+    joined: bool,
+    exhausted: bool,
+}
+
+impl ProvenanceAlternatives {
+    pub fn single(provenance: BindingProvenance) -> Self {
+        Self {
+            provenances: vec![provenance],
+            unknown: false,
+            joined: false,
+            exhausted: false,
+        }
+    }
+
+    /// An unknown alternative with no retained witness.
+    pub fn unknown() -> Self {
+        Self {
+            provenances: vec![],
+            unknown: true,
+            joined: false,
+            exhausted: false,
+        }
+    }
+
+    /// An empty joined accumulator for a control-flow merge.
+    pub fn joined() -> Self {
+        Self {
+            provenances: vec![],
+            unknown: false,
+            joined: true,
+            exhausted: false,
+        }
+    }
+
+    /// Union `other` into this set, deduplicating and bounding retention to
+    /// `limit`. When the bound is exceeded the set becomes both exhausted and
+    /// unknown, because the retained alternatives are no longer complete and
+    /// cannot establish a witness.
+    pub fn add_bounded(&mut self, other: &Self, limit: usize) {
+        self.unknown |= other.unknown;
+        self.exhausted |= other.exhausted;
+        self.joined |= other.joined;
+        for provenance in &other.provenances {
+            if self.provenances.len() >= limit {
+                self.exhausted = true;
+                self.unknown = true;
+                return;
+            }
+            if !self.provenances.contains(provenance) {
+                self.provenances.push(provenance.clone());
+            }
+        }
+    }
+
+    pub fn is_joined(&self) -> bool {
+        self.joined
+    }
+
+    #[cfg(test)]
+    pub fn is_unknown(&self) -> bool {
+        self.unknown
+    }
+
+    #[cfg(test)]
+    pub fn is_exhausted(&self) -> bool {
+        self.exhausted
+    }
+
+    pub fn has_complete_witness(&self) -> bool {
+        !self.provenances.is_empty()
+    }
+
+    /// The preferred strict witness at a use position: the single retained
+    /// provenance for a precise write, or the first non-local alternative
+    /// retained after a control-flow join. `None` when no complete witness is
+    /// retained.
+    pub fn preferred_witness(&self) -> Option<&BindingProvenance> {
+        if self.joined {
+            self.provenances
+                .iter()
+                .find(|p| !matches!(p, BindingProvenance::Local))
+        } else {
+            self.provenances.first()
+        }
+    }
+
+    /// Iterate the complete (non-unknown) witnesses retained by this
+    /// assignment. Unknown-only assignments iterate nothing.
+    pub fn complete_witnesses(&self) -> impl Iterator<Item = &BindingProvenance> + '_ {
+        self.provenances.iter()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct AliasAssignment {
-    pub span: Span,
-    pub scope: ScopeId,
-    pub name: NameId,
-    pub version: BindingVersion,
-    /// One or more provenances. Multiple alternatives arise from control-flow
-    /// joins where different paths disagree. An empty vec means unknown.
-    pub alternatives: Vec<BindingProvenance>,
-    /// Whether this assignment represents an unknown alternative in addition
-    /// to the retained provenances.
-    pub unknown: bool,
-    /// Whether this is the synthetic assignment installed after a control-flow
-    /// join. A write in a branch is precise within that branch; only the
-    /// synthetic post-join value carries multiple path alternatives.
-    pub joined: bool,
+    span: Span,
+    scope: ScopeId,
+    name: NameId,
+    version: BindingVersion,
+    alternatives: ProvenanceAlternatives,
 }
 
 impl AliasAssignment {
+    /// A precise write carrying a single provenance.
     pub fn single(
         span: Span,
         scope: ScopeId,
@@ -288,10 +384,59 @@ impl AliasAssignment {
             scope,
             name,
             version,
-            alternatives: vec![provenance],
-            unknown: false,
-            joined: false,
+            alternatives: ProvenanceAlternatives::single(provenance),
         }
+    }
+
+    /// A synthetic assignment installed after a control-flow join. The
+    /// `alternatives` set is the bounded union of the reachable paths.
+    pub fn joined(
+        span: Span,
+        scope: ScopeId,
+        name: NameId,
+        version: BindingVersion,
+        alternatives: ProvenanceAlternatives,
+    ) -> Self {
+        Self {
+            span,
+            scope,
+            name,
+            version,
+            alternatives,
+        }
+    }
+
+    pub fn span(&self) -> Span {
+        self.span
+    }
+
+    pub fn scope(&self) -> ScopeId {
+        self.scope
+    }
+
+    pub fn name(&self) -> NameId {
+        self.name
+    }
+
+    pub fn version(&self) -> BindingVersion {
+        self.version
+    }
+
+    pub fn is_joined(&self) -> bool {
+        self.alternatives.is_joined()
+    }
+
+    pub fn preferred_witness(&self) -> Option<&BindingProvenance> {
+        self.alternatives.preferred_witness()
+    }
+
+    pub fn complete_witnesses(&self) -> impl Iterator<Item = &BindingProvenance> + '_ {
+        self.alternatives.complete_witnesses()
+    }
+
+    #[cfg(test)]
+    pub fn alternatives(&self) -> &ProvenanceAlternatives {
+        &self.alternatives
     }
 }
 
@@ -481,5 +626,92 @@ mod tests {
         assert_ne!(BindingId::from_test(1), BindingId::from_test(2));
         assert_ne!(BindingVersion::from_test(0), BindingVersion::from_test(1));
         assert_eq!(BindingId::from_test(5), BindingId::from_test(5));
+    }
+
+    #[test]
+    fn provenance_alternatives_overflow_is_exhausted_and_unknown() {
+        let alias = BindingProvenance::ValueAlias {
+            target: NamePath::new(),
+        };
+        let mut set = ProvenanceAlternatives::single(BindingProvenance::Local);
+        set.add_bounded(&ProvenanceAlternatives::single(alias), 1);
+        assert!(set.is_exhausted());
+        assert!(set.is_unknown());
+        assert_eq!(
+            set.complete_witnesses().collect::<Vec<_>>(),
+            vec![&BindingProvenance::Local]
+        );
+    }
+
+    #[test]
+    fn provenance_alternatives_dedup_within_the_join_bound() {
+        let alias = BindingProvenance::ValueAlias {
+            target: NamePath::new(),
+        };
+        let mut set = ProvenanceAlternatives::joined();
+        set.add_bounded(&ProvenanceAlternatives::single(alias.clone()), 4);
+        set.add_bounded(&ProvenanceAlternatives::single(alias.clone()), 4);
+        set.add_bounded(&ProvenanceAlternatives::single(BindingProvenance::Local), 4);
+        assert!(set.is_joined());
+        assert!(!set.is_exhausted());
+        assert!(!set.is_unknown());
+        assert_eq!(
+            set.complete_witnesses().collect::<Vec<_>>(),
+            vec![&alias, &BindingProvenance::Local]
+        );
+    }
+
+    #[test]
+    fn unknown_only_alternatives_have_no_complete_witness() {
+        let unknown = ProvenanceAlternatives::unknown();
+        assert!(!unknown.has_complete_witness());
+        assert_eq!(unknown.complete_witnesses().count(), 0);
+        assert_eq!(unknown.preferred_witness(), None);
+    }
+
+    #[test]
+    fn preferred_witness_prefers_non_local_after_join() {
+        let single = ProvenanceAlternatives::single(BindingProvenance::Local);
+        assert_eq!(single.preferred_witness(), Some(&BindingProvenance::Local));
+
+        let alias = BindingProvenance::ValueAlias {
+            target: NamePath::new(),
+        };
+        let mut joined = ProvenanceAlternatives::joined();
+        joined.add_bounded(&ProvenanceAlternatives::single(BindingProvenance::Local), 4);
+        joined.add_bounded(&ProvenanceAlternatives::single(alias.clone()), 4);
+        assert_eq!(joined.preferred_witness(), Some(&alias));
+
+        let mut local_only = ProvenanceAlternatives::joined();
+        local_only.add_bounded(&ProvenanceAlternatives::single(BindingProvenance::Local), 4);
+        assert_eq!(local_only.preferred_witness(), None);
+    }
+
+    #[test]
+    fn alias_assignment_constructors_own_the_alternative_set() {
+        let mut names = NameTable::default();
+        let name = names.intern("value").unwrap();
+        let scope = ScopeId::from_test(1);
+        let span = Span::new(BytePos(0), BytePos(1));
+
+        let precise = AliasAssignment::single(
+            span,
+            scope,
+            name,
+            BindingVersion::from_test(1),
+            BindingProvenance::Local,
+        );
+        assert!(!precise.is_joined());
+        assert_eq!(precise.preferred_witness(), Some(&BindingProvenance::Local));
+        assert_eq!(precise.complete_witnesses().count(), 1);
+
+        let mut exhausted = ProvenanceAlternatives::joined();
+        exhausted.add_bounded(&ProvenanceAlternatives::single(BindingProvenance::Local), 0);
+        assert!(exhausted.is_exhausted());
+        let joined =
+            AliasAssignment::joined(span, scope, name, BindingVersion::from_test(2), exhausted);
+        assert!(joined.is_joined());
+        assert!(joined.alternatives().is_exhausted());
+        assert_eq!(joined.complete_witnesses().count(), 0);
     }
 }

@@ -24,7 +24,7 @@ The highest-value sequence is to close the project phase boundary, unify provena
 
 **Fix Applied:** `AnalysisArtifacts` stores are now private; it owns the pending-source probe via `needs_analysis`, authored-outcome validation via `is_authored_request`, and one consuming `into_link_input` transition that validates outcomes, assigns module/request identities, and splits parse diagnostics. `LocallyAnalyzedProject::resolve` now calls that single transition directly into `ResolvedProject`, `ResolvedLinkInputData` was deleted, and `ResolvedLinkInput::build` consumes the validated pieces and returns only `ResolvedLinkInput` (no positional triple).
 
-#### [ ] READ-002 — Provenance alternative state is duplicated and interpreted by callers
+#### [x] READ-002 — Provenance alternative state is duplicated and interpreted by callers
 - **Severity:** High
 - **Fix Complexity:** High
 - **Category:** Newtype
@@ -34,7 +34,7 @@ The highest-value sequence is to close the project phase boundary, unify provena
 
 **Recommendation:** Retain one opaque alternative-set value inside `AliasAssignment` and let it own bounded insertion, join state, unknown/exhausted state, preferred-witness selection, and complete-witness iteration. Give `AliasAssignment` named constructors for ordinary writes and joined writes instead of accepting field assembly. If exhaustion is intentionally translated into another status, make that conversion explicit at the owner boundary rather than dropping it during a field copy.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ProvenanceAlternatives` is now a single opaque owner in `analysis/model/scope.rs` held privately inside `AliasAssignment`; it owns bounded deduplicating insertion (`add_bounded`), join state, unknown/exhausted state, `preferred_witness`, and `complete_witnesses`, and the build-time join accumulates into `ProvenanceAlternatives::joined()` instead of copying four fields. `AliasAssignment` gained named constructors `single` and `joined`, removing all field assembly. `exhausted` is retained inside the owner rather than dropped during the old field copy, and `add_bounded` still marks an overflowing set both exhausted and unknown so exhaustion never establishes a witness.
 
 #### [ ] READ-003 — Static-object semantics are split across incompatible raw collections
 - **Severity:** High

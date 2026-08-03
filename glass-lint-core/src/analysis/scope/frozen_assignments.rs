@@ -32,19 +32,19 @@ impl FrozenAssignmentIndex {
     pub(in crate::analysis) fn from_assignments(assignments: Vec<AliasAssignment>) -> Self {
         let max_scope = assignments
             .iter()
-            .map(|a| a.scope.index())
+            .map(|a| a.scope().index())
             .max()
             .unwrap_or(0);
         let mut inner: Vec<HashMap<NameId, Vec<AliasAssignment>>> =
             vec![HashMap::new(); max_scope + 1];
         for assignment in assignments {
-            inner[assignment.scope.index()]
-                .entry(assignment.name)
+            inner[assignment.scope().index()]
+                .entry(assignment.name())
                 .or_default()
                 .push(assignment);
         }
         for binding_assignments in inner.iter_mut().flat_map(|m| m.values_mut()) {
-            binding_assignments.sort_by_key(|a| a.span.lo);
+            binding_assignments.sort_by_key(|a| a.span().lo);
         }
         Self { inner }
     }
@@ -56,7 +56,7 @@ impl FrozenAssignmentIndex {
 
     /// Find the index of the latest assignment at or before `span.lo`.
     fn latest_index(assignments: &[AliasAssignment], span: Span) -> Option<usize> {
-        let idx = assignments.partition_point(|a| a.span.lo <= span.lo);
+        let idx = assignments.partition_point(|a| a.span().lo <= span.lo);
         idx.checked_sub(1)
     }
 
@@ -73,7 +73,7 @@ impl FrozenAssignmentIndex {
         let Some(pos) = Self::latest_index(assignments, span) else {
             return AssignmentAt::Absent;
         };
-        if assignments[pos].joined {
+        if assignments[pos].is_joined() {
             AssignmentAt::Ambiguous(&assignments[pos])
         } else {
             // A branch write is precise for a use inside that branch; only
@@ -95,7 +95,7 @@ impl FrozenAssignmentIndex {
         let Some(latest) = Self::latest_index(assignments, span) else {
             return BindingVersion::new(0);
         };
-        assignments[latest].version
+        assignments[latest].version()
     }
 
     /// Whether any assignment occurred in the half-open interval `(start,
@@ -110,7 +110,7 @@ impl FrozenAssignmentIndex {
         let Some(assignments) = self.get(scope, name) else {
             return false;
         };
-        let after_start = assignments.partition_point(|a| a.span.lo <= start);
-        after_start < assignments.len() && assignments[after_start].span.lo <= end
+        let after_start = assignments.partition_point(|a| a.span().lo <= start);
+        after_start < assignments.len() && assignments[after_start].span().lo <= end
     }
 }

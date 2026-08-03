@@ -12,63 +12,12 @@
 use glass_lint_datastructures::{HistoryCursor, HistoryTransition, NameId, ParentLinkedHistory};
 use hashbrown::HashMap;
 
-use crate::analysis::scope::{BindingProvenance, ScopeId, ScopedName};
+use crate::analysis::scope::{BindingProvenance, ProvenanceAlternatives, ScopeId, ScopedName};
 
 /// Default cap on the number of provenance alternatives per (scope, name)
 /// pair. When exceeded, the assignment is marked exhausted and subsequent
 /// certainty becomes `Possible` instead of `Definite`.
 pub(super) const DEFAULT_ALTERNATIVE_LIMIT: usize = 256;
-
-#[derive(Debug, Clone, PartialEq)]
-pub(super) struct ProvenanceAlternatives {
-    pub(super) provenances: Vec<BindingProvenance>,
-    pub(super) unknown: bool,
-    pub(super) joined: bool,
-    pub(super) exhausted: bool,
-}
-
-impl ProvenanceAlternatives {
-    pub(super) fn single(provenance: BindingProvenance) -> Self {
-        Self {
-            provenances: vec![provenance],
-            unknown: false,
-            joined: false,
-            exhausted: false,
-        }
-    }
-
-    pub(super) fn unknown() -> Self {
-        Self {
-            provenances: vec![],
-            unknown: true,
-            joined: false,
-            exhausted: false,
-        }
-    }
-
-    pub(super) fn join_value(mut self) -> Self {
-        self.joined = true;
-        self
-    }
-
-    /// Same as `add`, but bounded by `limit` — when the limit is exceeded
-    /// the result is marked exhausted.
-    pub(super) fn add_bounded(&mut self, other: &Self, limit: usize) {
-        self.unknown |= other.unknown;
-        self.exhausted |= other.exhausted;
-        self.joined |= other.joined;
-        for provenance in &other.provenances {
-            if self.provenances.len() >= limit {
-                self.exhausted = true;
-                self.unknown = true;
-                return;
-            }
-            if !self.provenances.contains(provenance) {
-                self.provenances.push(provenance.clone());
-            }
-        }
-    }
-}
 
 /// A position in the assignment history.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -343,8 +292,8 @@ mod tests {
         assert_eq!(
             environment
                 .get_by_id(scope, name)
-                .map(|value| &value.provenances[..]),
-            Some(&[BindingProvenance::Local][..])
+                .map(|value| value.complete_witnesses().collect::<Vec<_>>()),
+            Some(vec![&BindingProvenance::Local])
         );
     }
 

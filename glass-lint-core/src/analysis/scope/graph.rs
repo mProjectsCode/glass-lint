@@ -207,11 +207,9 @@ impl ScopeGraph {
     pub(super) fn binding_at(&self, name: &str, span: Span) -> Option<&BindingProvenance> {
         let (scope, declaration) = self.binding_with_scope_at(name, span)?;
         match self.assignment_at(scope, name, span) {
-            AssignmentAt::Known(assignment) => assignment.alternatives.first(),
-            AssignmentAt::Ambiguous(assignment) => assignment
-                .alternatives
-                .iter()
-                .find(|p| !matches!(p, BindingProvenance::Local)),
+            AssignmentAt::Known(assignment) | AssignmentAt::Ambiguous(assignment) => {
+                assignment.preferred_witness()
+            }
             AssignmentAt::Absent => self.parameter_alias_for(scope, name).or(Some(declaration)),
         }
     }

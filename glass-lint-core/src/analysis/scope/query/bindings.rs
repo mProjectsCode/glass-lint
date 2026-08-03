@@ -33,11 +33,9 @@ impl FrozenScopeGraph {
     ) -> Option<&BindingProvenance> {
         let (scope, declaration) = self.binding_with_scope_at(name, span)?;
         match self.assignment_at(scope, self.name_id(name)?, span) {
-            AssignmentAt::Known(assignment) => assignment.alternatives.first(),
-            AssignmentAt::Ambiguous(assignment) => assignment
-                .alternatives
-                .iter()
-                .find(|p| !matches!(p, BindingProvenance::Local)),
+            AssignmentAt::Known(assignment) | AssignmentAt::Ambiguous(assignment) => {
+                assignment.preferred_witness()
+            }
             AssignmentAt::Absent => self
                 .function_for_scope(scope)
                 .and_then(|function| {
@@ -67,18 +65,8 @@ impl FrozenScopeGraph {
             return Vec::new();
         };
         match self.assignment_at(scope, name_id, span) {
-            AssignmentAt::Known(assignment) => {
-                if assignment.unknown && assignment.alternatives.is_empty() {
-                    Vec::new()
-                } else {
-                    assignment.alternatives.iter().collect()
-                }
-            }
-            AssignmentAt::Ambiguous(assignment) => {
-                if assignment.unknown && assignment.alternatives.is_empty() {
-                    return Vec::new();
-                }
-                assignment.alternatives.iter().collect()
+            AssignmentAt::Known(assignment) | AssignmentAt::Ambiguous(assignment) => {
+                assignment.complete_witnesses().collect()
             }
             AssignmentAt::Absent => self
                 .function_for_scope(scope)

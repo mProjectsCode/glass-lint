@@ -5,10 +5,8 @@ use swc_ecma_ast::Expr;
 
 use crate::analysis::{
     scope::{
-        BindingProvenance, ScopeId, ScopedName,
-        build::{
-            CollectorCheckpoint, ControlFlowFrame, ScopeCollector, history::ProvenanceAlternatives,
-        },
+        BindingProvenance, ProvenanceAlternatives, ScopeId, ScopedName,
+        build::{CollectorCheckpoint, ControlFlowFrame, ScopeCollector},
         query::rooted::rooted_expr_chain_with,
     },
     syntax::member_root_identifier,
@@ -73,28 +71,26 @@ impl ScopeCollector<'_> {
             .or_insert(0);
         *next = next.saturating_add(1);
         let version = BindingVersion::new(*next);
-        if value.provenances.is_empty() {
-            self.path_state
-                .assignment_environment
-                .record_unknown(scope, name);
-        } else {
+        if value.has_complete_witness() {
             self.path_state
                 .assignment_environment
                 .record_alternatives(scope, name, value.clone());
+        } else {
+            self.path_state
+                .assignment_environment
+                .record_unknown(scope, name);
         }
         self.path_state
             .assignment_writes
             .insert(ScopedName::new(scope, name));
         self.assignments
-            .push(crate::analysis::scope::AliasAssignment {
+            .push(crate::analysis::scope::AliasAssignment::joined(
                 span,
                 scope,
                 name,
                 version,
-                alternatives: value.provenances.clone(),
-                unknown: value.unknown,
-                joined: true,
-            });
+                value.clone(),
+            ));
     }
 
     pub(super) fn visible_binding(&self, name: &str) -> Option<&BindingProvenance> {
@@ -105,16 +101,8 @@ impl ScopeCollector<'_> {
                 .assignment_environment
                 .get_by_id(scope, name_id)
             {
-                if assignment.joined {
-                    return assignment
-                        .provenances
-                        .iter()
-                        .find(|p| !matches!(p, BindingProvenance::Local))
-                        .or(Some(&self.path_state.unknown_provenance));
-                }
                 return assignment
-                    .provenances
-                    .first()
+                    .preferred_witness()
                     .or(Some(&self.path_state.unknown_provenance));
             }
             if let Some(binding) = self.scopes[scope.index()].bindings.get(&name_id) {
@@ -212,12 +200,7 @@ impl ScopeCollector<'_> {
                         )
                 });
 
-            let mut value = ProvenanceAlternatives {
-                provenances: Vec::new(),
-                unknown: false,
-                joined: true,
-                exhausted: false,
-            };
+            let mut value = ProvenanceAlternatives::joined();
             for path in &reachable {
                 self.path_state.assignment_environment.restore(path.cursor);
                 let path_value = self
@@ -228,7 +211,6 @@ impl ScopeCollector<'_> {
                     .unwrap_or_else(|| incoming_value.clone());
                 value.add_bounded(&path_value, self.path_state.alternative_limit);
             }
-            value = value.join_value();
             self.restore(incoming);
             self.record_join_assignment(
                 Span::new(span.hi, span.hi),
