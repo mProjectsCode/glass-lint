@@ -178,7 +178,14 @@ impl FrozenScopeGraph {
         if chain.first_segment().is_none_or(|s| s != root.sym.as_ref()) {
             return None;
         }
-        let member = chain.segments().get(1..)?.join(".");
+        let member = chain
+            .as_view()
+            .tail_after(1)?
+            .segments()
+            .iter()
+            .map(SmolStr::as_str)
+            .collect::<Vec<_>>()
+            .join(".");
         match self.binding_at(root.sym.as_ref(), root.span) {
             Some(
                 BindingProvenance::DefaultImport { module }

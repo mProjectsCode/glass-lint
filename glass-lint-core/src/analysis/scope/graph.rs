@@ -1,4 +1,4 @@
-use glass_lint_datastructures::{NameId, NamePath, NameTable, SymbolPath};
+use glass_lint_datastructures::{NameId, NamePath, NameTable, PathView, SymbolPath};
 #[cfg(test)]
 use hashbrown::HashSet;
 use smol_str::SmolStr;
@@ -419,14 +419,14 @@ impl FrozenScopeGraph {
     pub(in crate::analysis) fn property_aliases(
         &self,
         receiver: &BindingKey,
-        path: &[NameId],
+        path: PathView<'_, NameId>,
     ) -> Option<&[PropertyAliasFact]> {
         self.mutations.property_aliases(receiver, path)
     }
 
     pub(in crate::analysis) fn rooted_mutations(
         &self,
-        root: &[NameId],
+        root: PathView<'_, NameId>,
     ) -> Option<&[RootedPropertyMutationFact]> {
         self.mutations.rooted_mutations(root)
     }

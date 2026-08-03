@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use glass_lint_datastructures::{NameId, NamePath};
+use glass_lint_datastructures::{NameId, NamePath, PathView};
 use hashbrown::HashSet;
 use swc_common::Span;
 
@@ -86,19 +86,21 @@ impl MutationIndex {
     pub(super) fn property_aliases(
         &self,
         receiver: &BindingKey,
-        path: &[NameId],
+        path: PathView<'_, NameId>,
     ) -> Option<&[PropertyAliasFact]> {
         self.property_assignments
             .get(receiver)?
-            .get(path)
+            .get(path.segments())
             .map(Vec::as_slice)
     }
 
     pub(super) fn rooted_mutations(
         &self,
-        root: &[NameId],
+        root: PathView<'_, NameId>,
     ) -> Option<&[RootedPropertyMutationFact]> {
-        self.rooted_property_mutations.get(root).map(Vec::as_slice)
+        self.rooted_property_mutations
+            .get(root.segments())
+            .map(Vec::as_slice)
     }
 
     pub(super) fn is_mutable_static_object(&self, scope: ScopeId, name: NameId) -> bool {

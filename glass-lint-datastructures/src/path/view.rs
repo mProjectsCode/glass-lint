@@ -1,20 +1,28 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PathView<'a, T>(pub(super) &'a [T]);
+
+impl<T> Copy for PathView<'_, T> {}
+
+impl<T> Clone for PathView<'_, T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
 
 impl<'a, T> PathView<'a, T> {
     pub fn new(slice: &'a [T]) -> Self {
         Self(slice)
     }
 
-    pub fn segments(&self) -> &[T] {
+    pub fn segments(&self) -> &'a [T] {
         self.0
     }
 
-    pub fn first_segment(&self) -> Option<&T> {
+    pub fn first_segment(&self) -> Option<&'a T> {
         self.0.first()
     }
 
-    pub fn last_segment(&self) -> Option<&T> {
+    pub fn last_segment(&self) -> Option<&'a T> {
         self.0.last()
     }
 
@@ -32,6 +40,26 @@ impl<'a, T> PathView<'a, T> {
         } else {
             Some(Self(&self.0[1..]))
         }
+    }
+
+    pub fn prefix_at(&self, len: usize) -> Option<Self> {
+        if len > self.0.len() {
+            None
+        } else {
+            Some(Self(&self.0[..len]))
+        }
+    }
+
+    pub fn tail_after(&self, count: usize) -> Option<Self> {
+        if count > self.0.len() {
+            None
+        } else {
+            Some(Self(&self.0[count..]))
+        }
+    }
+
+    pub fn prefixes(&self) -> impl DoubleEndedIterator<Item = Self> + 'a {
+        (1..=self.0.len()).map(|end| Self(&self.0[..end]))
     }
 
     pub fn is_root(&self) -> bool {

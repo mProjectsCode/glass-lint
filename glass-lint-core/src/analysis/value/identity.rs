@@ -23,14 +23,17 @@ pub fn matches_global_object_alias_with(
         return true;
     }
 
-    let Some(expected_root) = expected
+    let expected_view = expected.as_view();
+    let found_view = found.as_view();
+
+    let Some(expected_root) = expected_view
         .first_segment()
         .copied()
         .and_then(|id| table.resolve(id))
     else {
         return false;
     };
-    let Some(found_root) = found
+    let Some(found_root) = found_view
         .first_segment()
         .copied()
         .and_then(|id| table.resolve(id))
@@ -38,37 +41,37 @@ pub fn matches_global_object_alias_with(
         return false;
     };
     if environment.global_object_aliases_match(expected_root, found_root)
-        && expected.segments().get(1..) == found.segments().get(1..)
+        && expected_view.tail_after(1) == found_view.tail_after(1)
     {
         return true;
     }
 
-    if expected.segments().len() > 1
+    if expected_view.len() > 1
         && environment
             .global_objects()
             .any(|object| object == expected_root)
-        && expected
-            .segments()
-            .get(1)
+        && expected_view
+            .tail_after(1)
+            .and_then(|tail| tail.first_segment())
             .copied()
             .and_then(|id| table.resolve(id))
             .is_some_and(|member| environment.is_global_member(expected_root, member))
-        && expected.segments().get(1..) == Some(found.segments())
+        && expected_view.tail_after(1) == Some(found_view)
     {
         return true;
     }
 
-    if found.segments().len() > 1
+    if found_view.len() > 1
         && environment
             .global_objects()
             .any(|object| object == found_root)
-        && found
-            .segments()
-            .get(1)
+        && found_view
+            .tail_after(1)
+            .and_then(|tail| tail.first_segment())
             .copied()
             .and_then(|id| table.resolve(id))
             .is_some_and(|member| environment.is_global_member(found_root, member))
-        && found.segments().get(1..) == Some(expected.segments())
+        && found_view.tail_after(1) == Some(expected_view)
     {
         return true;
     }
@@ -82,7 +85,7 @@ pub fn matches_global_object_alias(
     found: &SymbolPath,
     environment: &crate::Environment,
 ) -> bool {
-    environment.global_object_paths_match(expected.segments(), found.segments())
+    environment.global_object_paths_match(expected, found)
 }
 
 #[cfg(test)]

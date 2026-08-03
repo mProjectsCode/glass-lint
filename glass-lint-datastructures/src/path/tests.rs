@@ -302,6 +302,71 @@ fn path_view_is_equal_or_descendant_of() {
 }
 
 #[test]
+fn path_view_prefix_at() {
+    let view = PathView::new(&[1, 2, 3]);
+    assert_eq!(view.prefix_at(0).unwrap().segments(), &[]);
+    assert_eq!(view.prefix_at(2).unwrap().segments(), &[1, 2]);
+    assert_eq!(view.prefix_at(3).unwrap().segments(), &[1, 2, 3]);
+    assert_eq!(view.prefix_at(4), None);
+}
+
+#[test]
+fn path_view_prefix_at_empty() {
+    let view = PathView::<i32>::new(&[]);
+    assert_eq!(view.prefix_at(0).unwrap().segments(), &[]);
+    assert_eq!(view.prefix_at(1), None);
+}
+
+#[test]
+fn path_view_tail_after_compares_suffixes() {
+    let left = PathView::new(&["window", "fetch"]);
+    let right = PathView::new(&["self", "fetch"]);
+    assert_eq!(left.tail_after(1), right.tail_after(1));
+    assert_eq!(left.tail_after(0), Some(left));
+    assert!(left.tail_after(2).unwrap().is_empty());
+    assert_eq!(left.tail_after(3), None);
+}
+
+#[test]
+fn path_view_tail_after_empty() {
+    let view = PathView::<i32>::new(&[]);
+    assert_eq!(view.tail_after(0).unwrap().segments(), &[]);
+    assert_eq!(view.tail_after(1), None);
+}
+
+#[test]
+fn path_view_prefixes_are_bounded_and_inclusive() {
+    let view = PathView::new(&[1, 2, 3]);
+    let prefixes: Vec<_> = view.prefixes().collect();
+    assert_eq!(
+        prefixes,
+        vec![
+            PathView::new(&[1]),
+            PathView::new(&[1, 2]),
+            PathView::new(&[1, 2, 3]),
+        ]
+    );
+    let reversed: Vec<_> = view.prefixes().rev().collect();
+    assert_eq!(
+        reversed,
+        vec![
+            PathView::new(&[1, 2, 3]),
+            PathView::new(&[1, 2]),
+            PathView::new(&[1]),
+        ]
+    );
+}
+
+#[test]
+fn path_view_prefixes_empty_and_single() {
+    let empty = PathView::<i32>::new(&[]);
+    assert_eq!(empty.prefixes().count(), 0);
+    let single = PathView::new(&[7]);
+    let prefixes: Vec<_> = single.prefixes().collect();
+    assert_eq!(prefixes, vec![PathView::new(&[7])]);
+}
+
+#[test]
 fn path_as_view_on_name_path() {
     let mut path = NamePath::new();
     path.append(NameId(1));

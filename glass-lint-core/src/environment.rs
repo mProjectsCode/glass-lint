@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use glass_lint_datastructures::Fingerprint;
+use glass_lint_datastructures::{Fingerprint, SymbolPath};
 use smol_str::SmolStr;
 use swc_ecma_ast::EsReserved;
 
@@ -276,28 +276,36 @@ impl Environment {
         )
     }
 
-    pub(crate) fn global_object_paths_match(&self, left: &[SmolStr], right: &[SmolStr]) -> bool {
+    pub(crate) fn global_object_paths_match(&self, left: &SymbolPath, right: &SymbolPath) -> bool {
         if left == right {
             return true;
         }
-        if let (Some(left_root), Some(right_root)) = (left.first(), right.first())
+        let left = left.as_view();
+        let right = right.as_view();
+        if let (Some(left_root), Some(right_root)) = (left.first_segment(), right.first_segment())
             && self.global_object_aliases_match(left_root, right_root)
         {
-            return left[1..] == right[1..];
+            return left.tail_after(1) == right.tail_after(1);
         }
-        if let Some(root) = left.first()
+        if let Some(root) = left.first_segment()
             && self.is_global_object(root)
             && left.len() > 1
-            && self.is_global_member(root, &left[1])
-            && &left[1..] == right
+            && left
+                .tail_after(1)
+                .and_then(|tail| tail.first_segment())
+                .is_some_and(|member| self.is_global_member(root, member))
+            && left.tail_after(1) == Some(right)
         {
             return true;
         }
-        if let Some(root) = right.first()
+        if let Some(root) = right.first_segment()
             && self.is_global_object(root)
             && right.len() > 1
-            && self.is_global_member(root, &right[1])
-            && &right[1..] == left
+            && right
+                .tail_after(1)
+                .and_then(|tail| tail.first_segment())
+                .is_some_and(|member| self.is_global_member(root, member))
+            && right.tail_after(1) == Some(left)
         {
             return true;
         }
@@ -503,23 +511,23 @@ mod tests {
         env.add_global_object("window").unwrap();
         env.add_global_object("self").unwrap();
 
-        let window_fetch: Vec<SmolStr> = vec!["window".into(), "fetch".into()];
-        let self_fetch: Vec<SmolStr> = vec!["self".into(), "fetch".into()];
+        let window_fetch = SymbolPath::from_chain("window.fetch");
+        let self_fetch = SymbolPath::from_chain("self.fetch");
         assert!(env.global_object_paths_match(&window_fetch, &self_fetch));
     }
 
     #[test]
     fn global_object_paths_match_identical_paths() {
         let env = Environment::default();
-        let path: Vec<SmolStr> = vec!["Math".into()];
+        let path = SymbolPath::from_chain("Math");
         assert!(env.global_object_paths_match(&path, &path));
     }
 
     #[test]
     fn global_object_paths_match_rejects_different_paths() {
         let env = Environment::default();
-        let left: Vec<SmolStr> = vec!["Math".into()];
-        let right: Vec<SmolStr> = vec!["JSON".into()];
+        let left = SymbolPath::from_chain("Math");
+        let right = SymbolPath::from_chain("JSON");
         assert!(!env.global_object_paths_match(&left, &right));
     }
 

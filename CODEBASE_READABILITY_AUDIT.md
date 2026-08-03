@@ -48,7 +48,7 @@ Static objects appear as `Vec<(NameId, ValueId)>`, `Vec<NameId>`, `BTreeMap<Name
 
 **Fix Applied:** `StaticObject`, `StaticObjectKeys`, and `StaticObjectValues` now wrap one opaque crate-private `StaticProperties` collection that owns bounded source-ordered construction, lookup, key projection, and text-key conversion, applying source-order last-write-wins for duplicate keys exactly as the constant evaluator does. Shapes that exceed the property bound fail construction and map to `Unknown` instead of retaining a partial or unbounded object. The text-keyed `ConstValue::Object` wrapper is unchanged, and each phase keeps only the projection it consumes: `StaticObject` retains lookup, iteration, and path-traversal for matching, summary, and constant conversion, while the provenance forms delegate key projection to the collection.
 
-#### [ ] READ-004 — Callers still implement path algebra with escaped slices
+#### [x] READ-004 — Callers still implement path algebra with escaped slices
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Encapsulation
@@ -58,7 +58,7 @@ Static objects appear as `Vec<(NameId, ValueId)>`, `Vec<NameId>`, `BTreeMap<Name
 
 **Recommendation:** Extend the existing `PathView` with the missing prefix-at-length, suffix/tail comparison, and bounded-prefix iteration operations, then accept `PathView` at mutation-query boundaries. Change the crate-private `Environment` path-equivalence operation to accept `SymbolPath`; keep the interned `NamePath` plus `NameTable` adapter as the free coordinator because it spans independent owners. Keep `segments()` for genuinely generic iteration, but remove slice arithmetic from semantic call sites.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `PathView` gained the missing prefix-at-length (`prefix_at`), suffix/tail (`tail_after`), and bounded-prefix-iteration (`prefixes`) operations, and its `Copy`/`Clone` impls no longer require the element type to be `Copy`. `MutationIndex::property_aliases` and `rooted_mutations` (and their `FrozenScopeGraph` delegations) now accept `PathView<NameId>` instead of raw `&[NameId]` slices, and `Environment::global_object_paths_match` accepts `SymbolPath` pairs while the interned `NamePath` plus `NameTable` adapter stays the free coordinator. The `get(1..)`, indexed-subslice, and prefix-walk slice arithmetic was removed from identity comparison, the provenance member-chain resolver, the rooted mutation walk, and the callable member-chain join.
 
 #### [ ] READ-005 — Linked occurrence overlays expose bucket representation to the remapping algorithm
 - **Severity:** Medium

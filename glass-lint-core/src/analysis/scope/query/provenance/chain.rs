@@ -1,4 +1,4 @@
-use glass_lint_datastructures::SymbolPath;
+use glass_lint_datastructures::{PathView, SymbolPath};
 
 use crate::analysis::{
     scope::query::{BindingKey, BindingProvenance, FrozenScopeGraph, MemberExpr, Span, contains},
@@ -11,9 +11,12 @@ impl FrozenScopeGraph {
         chain: &SymbolPath,
         span: Span,
     ) -> Option<SymbolPath> {
-        let [root, member] = chain.segments() else {
+        let view = chain.as_view();
+        if view.len() != 2 {
             return None;
-        };
+        }
+        let root = view.first_segment()?;
+        let member = view.last_segment()?;
         if !self.is_global_member(root, member) || !self.unshadowed_global_at(root, span) {
             return None;
         }
@@ -83,31 +86,41 @@ impl FrozenScopeGraph {
         };
 
         let receiver_key = self.binding_key_for_name(root.sym.as_ref(), root.span)?;
-        let segments = syntactic_chain.segments();
         let name_path = self.name_path(syntactic_chain)?;
-        let name_segments = name_path.segments();
 
-        for prefix_end in (2..=segments.len()).rev() {
-            let Some(assignments) =
-                self.property_aliases(&receiver_key, &name_segments[1..prefix_end])
-            else {
-                continue;
-            };
+        if let Some(tail) = name_path.as_view().tail_after(1) {
+            for prefix in tail.prefixes().rev() {
+                let Some(assignments) = self.property_aliases(&receiver_key, prefix) else {
+                    continue;
+                };
 
-            let prior_count =
-                assignments.partition_point(|assignment| assignment.span.lo <= member.span.lo);
+                let prior_count =
+                    assignments.partition_point(|assignment| assignment.span.lo <= member.span.lo);
 
-            if let Some(assignment) = assignments[..prior_count].iter().rev().find(|assignment| {
-                self.scope_span(assignment.scope)
-                    .is_some_and(|scope| contains(scope, member.span))
-            }) {
-                let target = assignment.target.as_ref()?;
-                let suffix = SymbolPath::from_segments(segments[prefix_end..].to_vec());
-                return Some(target.append_path(&suffix));
+                if let Some(assignment) =
+                    assignments[..prior_count].iter().rev().find(|assignment| {
+                        self.scope_span(assignment.scope)
+                            .is_some_and(|scope| contains(scope, member.span))
+                    })
+                {
+                    let target = assignment.target.as_ref()?;
+                    let suffix = syntactic_chain
+                        .as_view()
+                        .tail_after(prefix.len() + 1)
+                        .map(|suffix| SymbolPath::from_ids(suffix.segments().iter().cloned()))
+                        .unwrap_or_default();
+                    return Some(target.append_path(&suffix));
+                }
             }
         }
 
-        let suffix = SymbolPath::from_segments(segments[1..].to_vec());
+        let suffix = SymbolPath::from_ids(
+            syntactic_chain
+                .as_view()
+                .tail_after(1)
+                .into_iter()
+                .flat_map(|tail| tail.segments().iter().cloned()),
+        );
         let alternatives = self.binding_alternatives_at(root.sym.as_ref(), root.span);
         for provenance in &alternatives {
             let target = match provenance {
@@ -140,10 +153,13 @@ impl FrozenScopeGraph {
     }
 
     fn rooted_chain_available_at(&self, chain: &SymbolPath, span: Span) -> Option<SymbolPath> {
-        let segments = chain.segments();
-        let [root, first, rest @ ..] = segments else {
+        let view = chain.as_view();
+        if view.len() < 2 {
             return None;
-        };
+        }
+        let root = view.first_segment()?;
+        let first = view.tail_after(1)?.first_segment()?;
+        let rest = view.tail_after(2)?;
 
         let promoted = self.is_global_member(root, first);
         if self.is_global(root)
@@ -161,10 +177,8 @@ impl FrozenScopeGraph {
             return None;
         }
 
-        let canonical = SymbolPath::from_segments(
-            std::iter::once(first.clone())
-                .chain(rest.iter().cloned())
-                .collect(),
+        let canonical = SymbolPath::from_ids(
+            std::iter::once(first.clone()).chain(rest.segments().iter().cloned()),
         );
         if self.rooted_chain_mutated_at(&canonical, span) {
             return None;
@@ -176,19 +190,21 @@ impl FrozenScopeGraph {
         let Some(path) = self.name_path(chain) else {
             return false;
         };
-        let segments = path.segments();
-        if segments.len() < 2 {
+        let view = path.as_view();
+        if view.len() < 2 {
             return false;
         }
 
-        let first = segments[0];
+        let Some(first) = view.first_segment().copied() else {
+            return false;
+        };
         if self.resolve_name_id(first).is_some_and(|first_name| {
             self.global_objects()
                 .filter(|root| self.is_global_member(root, &first_name))
                 .filter_map(|root| self.name_id(root))
                 .any(|root| {
                     self.rooted_property_ids_were_mutated_at(
-                        std::slice::from_ref(&root),
+                        PathView::new(std::slice::from_ref(&root)),
                         Some(first),
                         span,
                     )
@@ -197,9 +213,15 @@ impl FrozenScopeGraph {
             return true;
         }
 
-        (1..segments.len()).any(|end| {
-            self.rooted_property_ids_were_mutated_at(&segments[..end], Some(segments[end]), span)
-        })
+        view.segments()
+            .iter()
+            .enumerate()
+            .skip(1)
+            .any(|(end, property)| {
+                view.prefix_at(end).is_some_and(|prefix| {
+                    self.rooted_property_ids_were_mutated_at(prefix, Some(*property), span)
+                })
+            })
     }
 
     pub(in crate::analysis) fn instance_member_available_at(&self, member: &MemberExpr) -> bool {
@@ -224,7 +246,7 @@ impl FrozenScopeGraph {
         path: &glass_lint_datastructures::NamePath,
         span: Span,
     ) -> bool {
-        self.property_aliases(receiver, path.segments())
+        self.property_aliases(receiver, path.as_view())
             .is_some_and(|assignments| {
                 assignments.iter().any(|assignment| {
                     assignment.span.lo <= span.lo
@@ -245,12 +267,12 @@ impl FrozenScopeGraph {
             return false;
         };
         let property = property.and_then(|property| self.name_id(property));
-        self.rooted_property_ids_were_mutated_at(root.segments(), property, span)
+        self.rooted_property_ids_were_mutated_at(root.as_view(), property, span)
     }
 
     fn rooted_property_ids_were_mutated_at(
         &self,
-        root: &[glass_lint_datastructures::NameId],
+        root: PathView<'_, glass_lint_datastructures::NameId>,
         property: Option<glass_lint_datastructures::NameId>,
         span: Span,
     ) -> bool {
