@@ -226,7 +226,7 @@ collection, and maximum-size policy. `bounded_strings` retains its
 static-value validation, while `bounded_paths` retains checked-chain parsing,
 and both now delegate the common canonicalization and bounds behavior.
 
-#### [ ] READ-010 — Lifecycle sink factories repeat target validation
+#### [x] READ-010 — Lifecycle sink factories repeat target validation
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -244,7 +244,11 @@ single sink builder for the argument-bearing and any-argument variants. Keep
 the four public constructors because their names are useful at call sites;
 the simplification should be internal to their implementation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the four repeated sink-construction paths with one
+private `build_call_sink` helper. It now owns empty-name checks, checked-chain
+parsing, argument-index validation, target construction, and selection of the
+indexed versus any-argument sink variant, while the public constructors retain
+their descriptive global/member and argument/any-argument names.
 
 ## Systemic Themes
 

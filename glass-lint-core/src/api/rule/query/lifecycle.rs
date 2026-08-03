@@ -357,15 +357,10 @@ impl LifecycleSink {
         name: impl Into<String>,
         index: usize,
     ) -> Result<Self, QueryBuildError> {
-        let name = name.into();
-        if name.trim().is_empty() {
-            return Err(QueryBuildError::EmptyIdentityName);
-        }
-        let chain = checked_chain(name)?;
-        Self::build_argument_sink(
-            chain.clone(),
-            LifecycleCallTarget::Global(chain.as_str().into()),
-            index,
+        Self::build_call_sink(
+            name,
+            |chain| LifecycleCallTarget::Global(chain.as_str().into()),
+            Some(index),
         )
     }
 
@@ -375,63 +370,56 @@ impl LifecycleSink {
         chain: impl Into<String>,
         index: usize,
     ) -> Result<Self, QueryBuildError> {
+        Self::build_call_sink(
+            chain,
+            |chain| LifecycleCallTarget::RootedMember(chain.path().clone()),
+            Some(index),
+        )
+    }
+
+    fn build_call_sink(
+        chain: impl Into<String>,
+        target: impl FnOnce(&MemberChain) -> LifecycleCallTarget,
+        index: Option<usize>,
+    ) -> Result<Self, QueryBuildError> {
         let chain = chain.into();
         if chain.trim().is_empty() {
             return Err(QueryBuildError::EmptyIdentityName);
         }
         let chain = checked_chain(chain)?;
-        Self::build_argument_sink(
-            chain.clone(),
-            LifecycleCallTarget::RootedMember(chain.path().clone()),
-            index,
-        )
-    }
-
-    fn build_argument_sink(
-        chain: MemberChain,
-        target: LifecycleCallTarget,
-        index: usize,
-    ) -> Result<Self, QueryBuildError> {
-        if index > limits::MAX_ARGUMENT_INDEX {
-            return Err(QueryBuildError::InvalidArgumentIndex(index));
-        }
-        Ok(Self {
-            kind: LifecycleSinkKind::ArgumentOf {
-                chain,
-                target,
-                index,
-            },
-        })
+        let target = target(&chain);
+        let kind = match index {
+            Some(index) => {
+                if index > limits::MAX_ARGUMENT_INDEX {
+                    return Err(QueryBuildError::InvalidArgumentIndex(index));
+                }
+                LifecycleSinkKind::ArgumentOf {
+                    chain,
+                    target,
+                    index,
+                }
+            }
+            None => LifecycleSinkKind::AnyArgumentOf { chain, target },
+        };
+        Ok(Self { kind })
     }
 
     /// Sink of any argument of a strict configured global call.
     pub fn any_argument_of_global(name: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let name = name.into();
-        if name.trim().is_empty() {
-            return Err(QueryBuildError::EmptyIdentityName);
-        }
-        let chain = checked_chain(name)?;
-        Ok(Self {
-            kind: LifecycleSinkKind::AnyArgumentOf {
-                chain: chain.clone(),
-                target: LifecycleCallTarget::Global(chain.as_str().into()),
-            },
-        })
+        Self::build_call_sink(
+            name,
+            |chain| LifecycleCallTarget::Global(chain.as_str().into()),
+            None,
+        )
     }
 
     /// Sink of any argument of a rooted member call.
     pub fn any_argument_of_member(chain: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let chain = chain.into();
-        if chain.trim().is_empty() {
-            return Err(QueryBuildError::EmptyIdentityName);
-        }
-        let chain = checked_chain(chain)?;
-        Ok(Self {
-            kind: LifecycleSinkKind::AnyArgumentOf {
-                target: LifecycleCallTarget::RootedMember(chain.path().clone()),
-                chain,
-            },
-        })
+        Self::build_call_sink(
+            chain,
+            |chain| LifecycleCallTarget::RootedMember(chain.path().clone()),
+            None,
+        )
     }
 
     pub fn chain(&self) -> &str {
