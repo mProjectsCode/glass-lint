@@ -300,7 +300,7 @@ impl ReturnProjection {
 }
 
 #[derive(Clone, Debug)]
-pub struct FunctionEffect {
+pub(in crate::analysis) struct FunctionEffect {
     id: FunctionId,
     calls: Vec<EffectCall>,
     uses: Vec<EffectUse>,
@@ -531,7 +531,7 @@ impl FunctionEffect {
 }
 
 #[derive(Clone, Debug)]
-pub struct FunctionEffects {
+pub(in crate::analysis) struct FunctionEffects {
     by_id: FunctionTable<FunctionEffect>,
     budget_exhausted: bool,
     operation_count: usize,

@@ -122,7 +122,7 @@ metadata is added only for simple identifier patterns.
 the ordered binding set it registers, allowing export metadata to reuse the
 same traversal and allocation. Verified with `make fmt && make ci`.
 
-#### [ ] READ-016 — Internal derived-flow records retain broader-than-needed visibility
+#### [x] READ-016 — Internal derived-flow records retain broader-than-needed visibility
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -144,7 +144,9 @@ by its actual callers (`pub(in crate::analysis)`,
 part of the migration and retain the existing frozen/overlay path distinction
 and effect lifecycle.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Restricted derived-flow records to the analysis and flow
+boundaries required by their callers, preserving the frozen/overlay path and
+effect lifecycle. Verified with `make fmt && make ci`.
 
 ### Core project model and scope analysis
 

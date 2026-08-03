@@ -3,7 +3,7 @@ use glass_lint_datastructures::{ParentRef, PathId, PathSegment, PathStore};
 const MAX_OVERLAY_NODES: usize = 4096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum SummaryPathId {
+pub(in crate::analysis::flow) enum SummaryPathId {
     Frozen(PathId),
     Overlay(PathId),
 }
@@ -36,7 +36,7 @@ impl SummaryPathId {
 }
 
 #[derive(Debug)]
-pub struct SummaryPathStore<'a> {
+pub(in crate::analysis::flow) struct SummaryPathStore<'a> {
     frozen: &'a PathStore,
     overlay: PathStore,
 }

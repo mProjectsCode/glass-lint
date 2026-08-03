@@ -17,7 +17,7 @@ use crate::analysis::{
 };
 
 #[derive(Debug)]
-pub struct FunctionSummaries<'a> {
+pub(in crate::analysis::flow) struct FunctionSummaries<'a> {
     stream: &'a FactStream<Frozen>,
     by_id: FunctionTable<FunctionSummary>,
     paths: SummaryPathStore<'a>,
