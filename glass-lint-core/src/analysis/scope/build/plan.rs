@@ -5,7 +5,6 @@
 //! aliases, calls, or other source-order facts.
 
 use glass_lint_datastructures::NameTable;
-use hashbrown::HashMap;
 use smol_str::SmolStr;
 use swc_ecma_ast::{
     ArrowExpr, ClassDecl, FnDecl, Function, Ident, ImportDecl, MemberExpr, Pat, PropName, VarDecl,
@@ -76,13 +75,7 @@ impl ScopePlanner<'_> {
         }
         ScopePlanner {
             names,
-            scopes: vec![LexicalScope {
-                span: program_span,
-                depth: 0,
-                kind: ScopeKind::Program,
-                parent: None,
-                bindings: HashMap::new(),
-            }],
+            scopes: vec![LexicalScope::new(program_span, 0, ScopeKind::Program, None)],
             stack: vec![0],
             scope_shapes: ScopeShapeTable::new(),
             name_exhausted,
@@ -110,9 +103,7 @@ impl ScopePlanner<'_> {
             self.name_exhausted = true;
             return;
         };
-        self.scopes[scope.index()]
-            .bindings
-            .insert(name_id, provenance);
+        self.scopes[scope.index()].insert_binding(name_id, provenance);
     }
 
     fn insert_local(&mut self, scope: ScopeId, name: impl Into<SmolStr>) {
@@ -139,13 +130,12 @@ impl ScopePlanner<'_> {
     pub(super) fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) {
         let parent = self.current_scope();
         let index = self.scopes.len();
-        self.scopes.push(LexicalScope {
+        self.scopes.push(LexicalScope::new(
             span,
-            depth: self.stack.len(),
+            self.stack.len(),
             kind,
-            parent: Some(parent),
-            bindings: HashMap::new(),
-        });
+            Some(parent),
+        ));
         self.scope_shapes.record(ScopeShape {
             scope_id: ScopeId::new(index),
             kind,

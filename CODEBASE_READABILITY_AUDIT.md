@@ -16,7 +16,7 @@ cross-flow propagation and trace construction.
 
 ### Semantic model ownership
 
-#### [ ] READ-001 — `LexicalScope` exposes its binding table
+#### [x] READ-001 — `LexicalScope` exposes its binding table
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -37,7 +37,12 @@ iterator. If the table needs its own policy, introduce a private
 storage. Update the builders and indexes to use those operations rather than
 reconstructing map semantics at each call site.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made the binding table a private `ScopeBindings` collection
+owned by `LexicalScope`, added the scope constructor and named operations for
+insertion, lookup, membership, and binding iteration, and migrated the
+planner, collector, indexes, assignment analysis, visitor, and scope tests to
+those operations. The physical `HashMap` is no longer part of the neighboring
+modules' API.
 
 #### [ ] READ-002 — `ExportEntry` leaks an invalid-state-prone record
 

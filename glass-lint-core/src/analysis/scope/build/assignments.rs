@@ -105,7 +105,7 @@ impl ScopeCollector<'_> {
                     .preferred_witness()
                     .or(Some(&self.path_state.unknown_provenance));
             }
-            if let Some(binding) = self.scopes[scope.index()].bindings.get(&name_id) {
+            if let Some(binding) = self.scopes[scope.index()].binding(name_id) {
                 return Some(binding);
             }
         }
@@ -123,7 +123,7 @@ impl ScopeCollector<'_> {
                 self.path_state
                     .assignment_environment
                     .contains_by_id(*scope, name_id)
-                    || self.scopes[scope.index()].bindings.contains_key(&name_id)
+                    || self.scopes[scope.index()].has_binding(name_id)
             })
     }
 
@@ -191,8 +191,7 @@ impl ScopeCollector<'_> {
                 .cloned()
                 .unwrap_or_else(|| {
                     self.scopes[key.scope().index()]
-                        .bindings
-                        .get(&key.name())
+                        .binding(key.name())
                         .cloned()
                         .map_or_else(
                             ProvenanceAlternatives::unknown,
@@ -502,7 +501,7 @@ impl ScopeCollector<'_> {
             .stack
             .iter()
             .rev()
-            .find(|scope| self.scopes[**scope].bindings.contains_key(&root_id))
+            .find(|scope| self.scopes[**scope].has_binding(root_id))
         else {
             return;
         };

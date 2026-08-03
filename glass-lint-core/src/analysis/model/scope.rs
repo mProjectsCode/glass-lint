@@ -169,7 +169,59 @@ pub struct LexicalScope {
     pub depth: usize,
     pub kind: ScopeKind,
     pub parent: Option<ScopeId>,
-    pub bindings: HashMap<NameId, BindingProvenance>,
+    bindings: ScopeBindings,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ScopeBindings(HashMap<NameId, BindingProvenance>);
+
+impl LexicalScope {
+    pub(in crate::analysis) fn new(
+        span: Span,
+        depth: usize,
+        kind: ScopeKind,
+        parent: Option<ScopeId>,
+    ) -> Self {
+        Self {
+            span,
+            depth,
+            kind,
+            parent,
+            bindings: ScopeBindings::default(),
+        }
+    }
+
+    pub(in crate::analysis) fn insert_binding(
+        &mut self,
+        name: NameId,
+        provenance: BindingProvenance,
+    ) {
+        self.bindings.0.insert(name, provenance);
+    }
+
+    pub(in crate::analysis) fn binding(&self, name: NameId) -> Option<&BindingProvenance> {
+        self.bindings.0.get(&name)
+    }
+
+    pub(in crate::analysis) fn has_binding(&self, name: NameId) -> bool {
+        self.bindings.0.contains_key(&name)
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) fn has_bindings(&self) -> bool {
+        !self.bindings.0.is_empty()
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) fn binding_entries(
+        &self,
+    ) -> impl Iterator<Item = (&NameId, &BindingProvenance)> {
+        self.bindings.0.iter()
+    }
+
+    pub(in crate::analysis) fn binding_names(&self) -> impl Iterator<Item = &NameId> {
+        self.bindings.0.keys()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

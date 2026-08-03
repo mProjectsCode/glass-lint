@@ -103,7 +103,7 @@ impl BindingIndex {
         let mut next_binding = 0u32;
         for (scope, lexical_scope) in scopes.iter().enumerate() {
             let scope = ScopeId::new(scope);
-            for name in lexical_scope.bindings.keys() {
+            for name in lexical_scope.binding_names() {
                 binding_ids.insert(ScopedName::new(scope, *name), BindingId::new(next_binding));
                 next_binding = next_binding.saturating_add(1);
             }

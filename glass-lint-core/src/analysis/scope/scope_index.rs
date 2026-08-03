@@ -44,7 +44,7 @@ impl LexicalScopeIndex {
     }
 
     pub(super) fn scope_binding(&self, scope: ScopeId, name: NameId) -> Option<&BindingProvenance> {
-        self.scopes.get(scope.index())?.bindings.get(&name)
+        self.scopes.get(scope.index())?.binding(name)
     }
 
     pub(super) fn scope_at(&self, span: Span, scope_shape_valid: bool) -> ScopeId {

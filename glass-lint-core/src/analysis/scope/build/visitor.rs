@@ -189,8 +189,7 @@ impl ScopePass for ScopeCollector<'_> {
                 };
                 if let Some((scope, ())) = self.stack.iter().rev().find_map(|scope| {
                     self.scopes[*scope]
-                        .bindings
-                        .contains_key(&name_id)
+                        .has_binding(name_id)
                         .then_some((ScopeId::new(*scope), ()))
                 }) {
                     self.record_assignment(

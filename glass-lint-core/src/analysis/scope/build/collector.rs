@@ -71,7 +71,7 @@ impl ScopeCollector<'_> {
             return;
         };
         self.intern_provenance_strings(&provenance);
-        self.scopes[scope.index()].bindings.insert(name, provenance);
+        self.scopes[scope.index()].insert_binding(name, provenance);
     }
 
     pub(super) fn intern_provenance_strings(&mut self, provenance: &BindingProvenance) {

@@ -31,7 +31,7 @@ fn scope_fingerprint(collector: &ScopeCollector) -> Vec<String> {
         .scopes
         .iter()
         .map(|scope| {
-            let mut bindings: Vec<_> = scope.bindings.iter().collect();
+            let mut bindings: Vec<_> = scope.binding_entries().collect();
             bindings.sort_by_key(|(id, _)| *id);
             let binding_str = bindings
                 .iter()
@@ -232,7 +232,7 @@ fn hoisted_var_in_blocks_preserves_function_scoping() {
     assert_eq!(function_scopes.len(), 1);
     let (fn_idx, fn_scope) = function_scopes[0];
     assert!(
-        !fn_scope.bindings.is_empty(),
+        fn_scope.has_bindings(),
         "function scope {fn_idx} has no bindings",
     );
 
@@ -246,8 +246,7 @@ fn hoisted_var_in_blocks_preserves_function_scoping() {
     // the hoisted binding
     for (idx, scope) in &block_scopes {
         let is_empty = !scope
-            .bindings
-            .iter()
+            .binding_entries()
             .any(|(_, p)| matches!(p, BindingProvenance::Local));
         assert!(is_empty, "block scope {idx} contains var bindings");
     }
@@ -386,9 +385,9 @@ fn predeclare_and_collect_phases_produce_identical_scopes() {
         );
         assert_eq!(a.depth, b.depth, "scope {i} depth differs");
         assert_eq!(a.parent, b.parent, "scope {i} parent differs");
-        let mut a_keys: Vec<_> = a.bindings.keys().collect();
+        let mut a_keys: Vec<_> = a.binding_names().collect();
         a_keys.sort();
-        let mut b_keys: Vec<_> = b.bindings.keys().collect();
+        let mut b_keys: Vec<_> = b.binding_names().collect();
         b_keys.sort();
         assert_eq!(a_keys, b_keys, "scope {i} binding keys differ");
     }
