@@ -96,7 +96,7 @@ overlay behavior, and deterministic occurrence ordering.
 call and member module indexes are updated together, and extended the stream
 projection test to assert both destinations. Verified with `make fmt && make ci`.
 
-#### [ ] READ-015 — Export declaration collection traverses each variable pattern twice
+#### [x] READ-015 — Export declaration collection traverses each variable pattern twice
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -118,7 +118,9 @@ operation that records both. Preserve deduplication, source-independent
 deterministic order, and the current restriction that function/static export
 metadata is added only for simple identifier patterns.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `ModuleInterfaceBuilder::record_pattern_locals` return
+the ordered binding set it registers, allowing export metadata to reuse the
+same traversal and allocation. Verified with `make fmt && make ci`.
 
 #### [ ] READ-016 — Internal derived-flow records retain broader-than-needed visibility
 

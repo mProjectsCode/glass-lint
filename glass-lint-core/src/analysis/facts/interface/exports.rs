@@ -12,7 +12,7 @@ use crate::{
             DEFAULT_EXPORT, ModuleExport, ModuleRequestRole, NAMESPACE_EXPORT, ReExportBinding,
         },
         resolution::Resolver,
-        syntax::{collect_pat_bindings, module_export_name},
+        syntax::module_export_name,
     },
     project::ResolutionRequestKind,
 };
@@ -50,9 +50,7 @@ impl ModuleInterfaceBuilder {
             }
             swc_ecma_ast::Decl::Var(variable) => {
                 for declarator in &variable.decls {
-                    self.record_pattern_locals(&declarator.name);
-                    let mut names = std::collections::BTreeSet::new();
-                    collect_pat_bindings(&declarator.name, &mut names);
+                    let names = self.record_pattern_locals(&declarator.name);
                     for name in names {
                         if let swc_ecma_ast::Pat::Ident(binding) = &declarator.name
                             && let Some(id) =

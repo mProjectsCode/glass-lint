@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use smol_str::SmolStr;
 use swc_ecma_ast::ImportDecl;
 
@@ -34,12 +36,13 @@ impl ModuleInterfaceBuilder {
     pub(in crate::analysis::facts) fn record_pattern_locals(
         &mut self,
         pattern: &swc_ecma_ast::Pat,
-    ) {
-        let mut names = std::collections::BTreeSet::new();
+    ) -> BTreeSet<SmolStr> {
+        let mut names = BTreeSet::new();
         collect_pat_bindings(pattern, &mut names);
-        for name in names {
-            self.interface.add_local(name);
+        for name in &names {
+            self.interface.add_local(name.clone());
         }
+        names
     }
 
     pub(in crate::analysis::facts) fn add_request(
