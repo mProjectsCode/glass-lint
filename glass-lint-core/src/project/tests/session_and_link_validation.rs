@@ -39,7 +39,7 @@ fn session_returns_static_import_dynamic_import_require_and_reexport_requests() 
     assert_eq!(
         requests
             .iter()
-            .map(|request| request.kind())
+            .map(crate::project::ResolutionRequest::kind)
             .collect::<Vec<_>>(),
         vec![
             ResolutionRequestKind::StaticImport,

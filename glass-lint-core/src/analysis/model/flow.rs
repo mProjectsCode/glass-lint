@@ -143,7 +143,7 @@ impl FlowId {
 /// The compact vector storage stays private so callers cannot depend on the
 /// representation; removal deltas and restore transitions both use this type.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
-pub struct EvidenceValues<K>(SmallVec<[K; 1]>);
+struct EvidenceValues<K>(SmallVec<[K; 1]>);
 
 impl<K> EvidenceValues<K> {
     fn new() -> Self {
@@ -152,10 +152,6 @@ impl<K> EvidenceValues<K> {
 
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
-    }
-
-    pub fn first(&self) -> Option<&K> {
-        self.0.first()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &K> {
@@ -231,11 +227,13 @@ impl From<SinkIndex> for usize {
     }
 }
 
-pub trait EvidenceIndex: Copy + Ord + Hash + Into<usize> {}
+trait EvidenceIndex: Copy + Ord + Hash + Into<usize> {}
 
-impl EvidenceIndex for usize {}
 impl EvidenceIndex for RequirementIndex {}
 impl EvidenceIndex for SinkIndex {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
+pub struct LifecycleRollback<E>(EvidenceValues<E>);
 
 /// Bounded indexed evidence for lifecycle requirements and sinks.
 ///
@@ -246,7 +244,7 @@ impl EvidenceIndex for SinkIndex {}
 /// transfer the owner's semantic [`EvidenceValues`] delta so history never
 /// re-encodes the values in a second collection.
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
-pub struct IndexedEvidence<K = FactId, I = usize> {
+struct IndexedEvidence<K, I> {
     mask: u64,
     entries: SmallVec<[(I, EvidenceValues<K>); 4]>,
 }
@@ -385,8 +383,8 @@ impl<E: Clone + Ord> LifecycleEvidence<E> {
     pub(in crate::analysis) fn clear_requirement(
         &mut self,
         index: RequirementIndex,
-    ) -> Option<EvidenceValues<E>> {
-        self.requirements.remove(index)
+    ) -> Option<LifecycleRollback<E>> {
+        self.requirements.remove(index).map(LifecycleRollback)
     }
 
     pub(in crate::analysis) fn remove_requirement_event(
@@ -400,9 +398,9 @@ impl<E: Clone + Ord> LifecycleEvidence<E> {
     pub(in crate::analysis) fn restore_requirement(
         &mut self,
         index: RequirementIndex,
-        events: &EvidenceValues<E>,
+        events: &LifecycleRollback<E>,
     ) {
-        self.requirements.restore(index, events);
+        self.requirements.restore(index, &events.0);
     }
 
     pub(in crate::analysis) fn requirements_ready(&self, flow: &CompiledObjectFlow) -> bool {
@@ -422,16 +420,18 @@ impl<E: Clone + Ord> LifecycleEvidence<E> {
             || self.sinks.len() == flow.sink_count()
     }
 
-    pub(in crate::analysis) fn requirement_keys(
+    pub(in crate::analysis) fn requirement_entries(
         &self,
-    ) -> impl Iterator<Item = (RequirementIndex, &EvidenceValues<E>)> {
-        self.requirements.iter_by_key()
+    ) -> impl Iterator<Item = (RequirementIndex, Vec<E>)> {
+        self.requirements
+            .iter_by_key()
+            .map(|(index, values)| (index, values.iter().cloned().collect()))
     }
 
-    pub(in crate::analysis) fn sink_keys(
-        &self,
-    ) -> impl Iterator<Item = (SinkIndex, &EvidenceValues<E>)> {
-        self.sinks.iter_by_key()
+    pub(in crate::analysis) fn sink_entries(&self) -> impl Iterator<Item = (SinkIndex, Vec<E>)> {
+        self.sinks
+            .iter_by_key()
+            .map(|(index, values)| (index, values.iter().cloned().collect()))
     }
 
     pub(in crate::analysis) fn requirement_events(&self) -> impl Iterator<Item = &E> {
@@ -521,7 +521,10 @@ impl FlowState {
         self.evidence.record_requirement(index, event)
     }
 
-    pub fn clear_requirement(&mut self, index: RequirementIndex) -> Option<EvidenceValues<FactId>> {
+    pub(crate) fn clear_requirement(
+        &mut self,
+        index: RequirementIndex,
+    ) -> Option<LifecycleRollback<FactId>> {
         self.evidence.clear_requirement(index)
     }
 
@@ -529,10 +532,10 @@ impl FlowState {
         self.evidence.remove_requirement_event(index, &event)
     }
 
-    pub fn restore_requirement(
+    pub(crate) fn restore_requirement(
         &mut self,
         index: RequirementIndex,
-        events: &EvidenceValues<FactId>,
+        events: &LifecycleRollback<FactId>,
     ) {
         self.evidence.restore_requirement(index, events);
     }
@@ -553,14 +556,14 @@ impl FlowState {
         self.evidence.sinks_ready(flow)
     }
 
-    pub fn requirement_keys(
+    pub(crate) fn requirement_entries(
         &self,
-    ) -> impl Iterator<Item = (RequirementIndex, &EvidenceValues<FactId>)> {
-        self.evidence.requirement_keys()
+    ) -> impl Iterator<Item = (RequirementIndex, Vec<FactId>)> {
+        self.evidence.requirement_entries()
     }
 
-    pub fn sink_keys(&self) -> impl Iterator<Item = (SinkIndex, &EvidenceValues<FactId>)> {
-        self.evidence.sink_keys()
+    pub(crate) fn sink_entries(&self) -> impl Iterator<Item = (SinkIndex, Vec<FactId>)> {
+        self.evidence.sink_entries()
     }
 
     pub(in crate::analysis) fn prior_sinks(&self, event: FactId) -> Vec<FactId> {
@@ -631,37 +634,37 @@ mod tests {
 
     #[test]
     fn indexed_evidence_default_is_empty() {
-        let set: IndexedEvidence = IndexedEvidence::default();
+        let set: IndexedEvidence<FactId, RequirementIndex> = IndexedEvidence::default();
         assert!(set.is_empty());
         assert_eq!(set.len(), 0);
     }
 
     #[test]
     fn indexed_evidence_insert_and_remove() {
-        let mut set: IndexedEvidence = IndexedEvidence::default();
-        set.insert(0, FactId::from_test(1));
-        set.insert(1, FactId::from_test(2));
+        let mut set: IndexedEvidence<FactId, RequirementIndex> = IndexedEvidence::default();
+        set.insert(RequirementIndex::new(0), FactId::from_test(1));
+        set.insert(RequirementIndex::new(1), FactId::from_test(2));
         assert_eq!(set.len(), 2);
         assert!(!set.is_empty());
 
-        set.remove(0);
+        set.remove(RequirementIndex::new(0));
         assert_eq!(set.len(), 1);
     }
 
     #[test]
     fn indexed_evidence_values_returns_all_inserted() {
-        let mut set: IndexedEvidence = IndexedEvidence::default();
-        set.insert(0, FactId::from_test(10));
-        set.insert(2, FactId::from_test(30));
+        let mut set: IndexedEvidence<FactId, RequirementIndex> = IndexedEvidence::default();
+        set.insert(RequirementIndex::new(0), FactId::from_test(10));
+        set.insert(RequirementIndex::new(2), FactId::from_test(30));
         let values: Vec<_> = set.values().copied().collect();
         assert_eq!(values, vec![FactId::from_test(10), FactId::from_test(30)]);
     }
 
     #[test]
     fn indexed_evidence_insert_duplicate_key_appends_value() {
-        let mut set: IndexedEvidence = IndexedEvidence::default();
-        set.insert(0, FactId::from_test(10));
-        set.insert(0, FactId::from_test(20));
+        let mut set: IndexedEvidence<FactId, RequirementIndex> = IndexedEvidence::default();
+        set.insert(RequirementIndex::new(0), FactId::from_test(10));
+        set.insert(RequirementIndex::new(0), FactId::from_test(20));
         let values: Vec<_> = set.values().copied().collect();
         assert_eq!(values.len(), 2);
         assert!(values.contains(&FactId::from_test(10)));
@@ -671,9 +674,9 @@ mod tests {
 
     #[test]
     fn indexed_evidence_uses_all_64_completion_bits_and_rejects_overflow() {
-        let mut set: IndexedEvidence = IndexedEvidence::default();
-        assert!(set.insert(63, FactId::from_test(63)));
-        assert!(!set.insert(64, FactId::from_test(64)));
+        let mut set: IndexedEvidence<FactId, RequirementIndex> = IndexedEvidence::default();
+        assert!(set.insert(RequirementIndex::new(63), FactId::from_test(63)));
+        assert!(!set.insert(RequirementIndex::new(64), FactId::from_test(64)));
         assert_eq!(set.len(), 1);
         assert_eq!(
             set.values().copied().collect::<Vec<_>>(),
@@ -730,9 +733,9 @@ mod tests {
         let mut state = FlowState::new(flow, FactId::from_test(1), ObjectId::from_test(0));
         state.record_requirement(RequirementIndex::new(0), FactId::from_test(10));
         state.record_requirement(RequirementIndex::new(1), FactId::from_test(20));
-        assert_eq!(state.requirement_keys().count(), 2);
+        assert_eq!(state.requirement_entries().count(), 2);
 
         state.clear_requirement(RequirementIndex::new(0));
-        assert_eq!(state.requirement_keys().count(), 1);
+        assert_eq!(state.requirement_entries().count(), 1);
     }
 }

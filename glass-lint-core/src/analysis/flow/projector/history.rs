@@ -6,7 +6,7 @@ use crate::{
     analysis::{
         facts::FactId,
         flow::projector::state::ObjectRefCounts,
-        model::flow::{EvidenceValues, FlowState, FlowStateKey, RequirementIndex, SinkIndex},
+        model::flow::{FlowState, FlowStateKey, LifecycleRollback, RequirementIndex, SinkIndex},
         value::{ObjectId, ValueId},
     },
     api::classification::RuleIndex,
@@ -22,7 +22,7 @@ pub(super) enum InverseDelta {
     StateUpdate(FlowStateKey, Box<FlowState>, Box<FlowState>),
     StateRemove(FlowStateKey, Box<FlowState>),
     RequirementInsert(FlowStateKey, RequirementIndex, FactId),
-    RequirementRemove(FlowStateKey, RequirementIndex, EvidenceValues<FactId>),
+    RequirementRemove(FlowStateKey, RequirementIndex, LifecycleRollback<FactId>),
     SinkInsert(FlowStateKey, SinkIndex, FactId),
 }
 

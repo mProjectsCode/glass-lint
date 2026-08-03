@@ -272,7 +272,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
 
         // 2. Requirement nodes (declaration order by index)
         let mut tail: Option<crate::api::classification::TraceNodeId> = Some(source_node);
-        for (_index, values) in state.requirement_keys() {
+        for (_index, values) in state.requirement_entries() {
             // Use the first (deterministic) value per requirement key for the trace.
             let first_val = match values.first() {
                 Some(v) => *v,

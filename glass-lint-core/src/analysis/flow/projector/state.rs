@@ -355,17 +355,17 @@ impl FlowStateTable {
                 // loop binding keep changing the fixed-point shape.
                 let object = objects.get(&key.object()).copied()?;
                 let requirements = state
-                    .requirement_keys()
+                    .requirement_entries()
                     .map(|(index, values)| CanonicalRequirementState {
                         index,
-                        events: values.iter().copied().collect(),
+                        events: values,
                     })
                     .collect();
                 let sinks = state
-                    .sink_keys()
+                    .sink_entries()
                     .map(|(index, values)| CanonicalSinkState {
                         index,
-                        events: values.iter().copied().collect(),
+                        events: values,
                     })
                     .collect();
                 Some(CanonicalFlowState {
@@ -804,8 +804,8 @@ mod tests {
         ));
         let retrieved = table.state(ObjectId::from_test(10), flow).unwrap();
         assert_eq!(retrieved.source_event(), FactId::from_test(1));
-        assert_eq!(retrieved.requirement_keys().count(), 1);
-        assert_eq!(retrieved.sink_keys().count(), 1);
+        assert_eq!(retrieved.requirement_entries().count(), 1);
+        assert_eq!(retrieved.sink_entries().count(), 1);
 
         let configured = table.capture(true);
         assert!(table.clear_requirement(ObjectId::from_test(10), flow, RequirementIndex::new(0),));
@@ -813,21 +813,18 @@ mod tests {
             table
                 .state(ObjectId::from_test(10), flow)
                 .unwrap()
-                .requirement_keys()
+                .requirement_entries()
                 .count(),
             0
         );
         assert!(table.restore(configured));
         let restored = table.state(ObjectId::from_test(10), flow).unwrap();
-        assert_eq!(
-            restored.requirement_keys().next().unwrap().1.iter().count(),
-            2
-        );
+        assert_eq!(restored.requirement_entries().next().unwrap().1.len(), 2);
 
         assert!(table.restore(base));
         let restored = table.state(ObjectId::from_test(10), flow).unwrap();
-        assert_eq!(restored.requirement_keys().count(), 0);
-        assert_eq!(restored.sink_keys().count(), 0);
+        assert_eq!(restored.requirement_entries().count(), 0);
+        assert_eq!(restored.sink_entries().count(), 0);
 
         assert!(table.record_requirement(
             ObjectId::from_test(10),
@@ -840,7 +837,7 @@ mod tests {
             table
                 .state(ObjectId::from_test(10), flow)
                 .unwrap()
-                .requirement_keys()
+                .requirement_entries()
                 .count(),
             0
         );

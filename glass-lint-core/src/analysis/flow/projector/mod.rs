@@ -703,9 +703,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 self.plan
                     .requirements_with_indices(flow_id)
                     .filter_map(|(index, requirement)| {
-                        let Some((expected, matcher)) = requirement.property_write() else {
-                            return None;
-                        };
+                        let (expected, matcher) = requirement.property_write()?;
                         (property.is_none() || property == Some(expected.as_str())).then(|| {
                             PropertyWriteUpdate::new(
                                 index,

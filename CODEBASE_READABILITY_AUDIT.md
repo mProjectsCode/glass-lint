@@ -4,7 +4,10 @@
 
 This audit replaces the previous report, which contained only checked-off historical findings. The current review focused on semantic newtypes, storage ownership, duplicated domain transformations, and opportunities to simplify APIs without making code terse. It covered the workspace Rust sources, the root and owning-crate architecture/testing guidance, and the existing audit history.
 
-The most valuable remaining changes are to make resolution requests domain APIs instead of public records and give flow/evidence/parameter representations owners for their matching and rollback operations. The report contains 10 active findings:
+The review identified eleven readability findings covering resolution APIs,
+flow planning, compiler representations, lifecycle evidence, parameter
+projection, project tables, metrics, paths, and stage transitions. All eleven
+findings have now been implemented and verified in focused tests.
 
 - 2 high-priority encapsulation/API boundaries;
 - 6 medium-priority ownership, duplication, or representation boundaries;
@@ -105,7 +108,7 @@ projector, summary, cross-flow, and the test-only reference evaluator now use
 those operations instead of physical vectors and fields. Compiler/reference,
 projector, and flow behavior tests pass.
 
-#### [ ] READ-006 — Generic evidence collections remain visible after lifecycle ownership was introduced
+#### [x] READ-006 — Generic evidence collections remain visible after lifecycle ownership was introduced
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -116,7 +119,12 @@ projector, and flow behavior tests pass.
 
 **Recommendation:** Make `IndexedEvidence`, `EvidenceValues`, and the generic `EvidenceIndex` implementation details. Use an opaque lifecycle-owned rollback delta for history, and let lifecycle evidence own restore semantics; callers should not receive or construct the underlying value collection. Remove raw `usize` support and retain only `RequirementIndex`/`SinkIndex` at the flow boundary.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Hid `EvidenceValues`, `IndexedEvidence`, and the generic
+index implementation, removed raw `usize` indexing, and added the opaque
+`LifecycleRollback` owned by lifecycle evidence for history replay. Flow state
+now exposes named requirement/sink entry snapshots rather than generic
+collections; history stores and replays rollback values without inspecting
+their representation. Flow projector and evidence tests pass.
 
 #### [x] READ-007 — `ParameterBinding` fields and projection rules are repeated at call sites
 
@@ -229,4 +237,6 @@ Reviewed the Rust workspace sources with emphasis on `glass-lint-core`, `glass-l
 
 The prior report's checked-off findings were treated as historical context, not as proof that all adjacent representation leaks were resolved. In particular, lifecycle consolidation, typed flow indexes, and earlier report-ordering fixes were resurfaced only where a remaining generic/raw boundary is still visible. Serialized protocol/report DTOs, provider manifests, and the intentionally separate logical/physical reference evaluator were excluded unless their surrounding internal representation was independently leaking into unrelated modules.
 
-This is a read-only audit. No source or test files were modified, and no test command was run.
+The audit began as a read-only review. Each finding was subsequently
+implemented as a focused migration, documented above, and committed
+individually; the workspace gate is run after the final migration.

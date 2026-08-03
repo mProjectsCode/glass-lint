@@ -90,7 +90,7 @@ impl<'a> FunctionSummaries<'a> {
                     effect.id(),
                     params
                         .iter()
-                        .map(|parameter| parameter.parameter_index())
+                        .map(ParameterBinding::parameter_index)
                         .max()
                         .map_or(0, |index| index.saturating_add(1)),
                     params.iter().any(ParameterBinding::is_rest),
