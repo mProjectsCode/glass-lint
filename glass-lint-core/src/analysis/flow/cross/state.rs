@@ -104,15 +104,8 @@ impl CrossFlowState {
     }
 
     pub(super) fn prior_sinks(&self, module: ModuleId, event: FactId) -> Vec<QualifiedEvent> {
-        let mut sinks: Vec<_> = self
-            .evidence
-            .sink_events()
-            .filter(|sink| !(sink.module() == module && sink.fact() == event))
-            .copied()
-            .collect();
-        sinks.sort();
-        sinks.dedup();
-        sinks
+        self.evidence
+            .prior_sink_events(|sink| sink.module() == module && sink.fact() == event)
     }
 }
 

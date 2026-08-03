@@ -441,6 +441,17 @@ impl<E: Clone + Ord> LifecycleEvidence<E> {
     pub(in crate::analysis) fn sink_events(&self) -> impl Iterator<Item = &E> {
         self.sinks.values()
     }
+
+    pub(in crate::analysis) fn prior_sink_events(&self, exclude: impl Fn(&E) -> bool) -> Vec<E> {
+        let mut events: Vec<_> = self
+            .sink_events()
+            .filter(|event| !exclude(event))
+            .cloned()
+            .collect();
+        events.sort();
+        events.dedup();
+        events
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -550,6 +561,10 @@ impl FlowState {
 
     pub fn sink_keys(&self) -> impl Iterator<Item = (SinkIndex, &EvidenceValues<FactId>)> {
         self.evidence.sink_keys()
+    }
+
+    pub(in crate::analysis) fn prior_sinks(&self, event: FactId) -> Vec<FactId> {
+        self.evidence.prior_sink_events(|sink| *sink == event)
     }
 }
 

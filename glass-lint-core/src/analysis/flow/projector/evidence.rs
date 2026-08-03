@@ -327,17 +327,9 @@ impl ObjectFlowProjector<'_, '_, '_> {
             tail = next;
         }
 
-        // A multi-sink correlation must retain the earlier sink events in its
-        // evidence projection. Sort by fact position so declaration order
-        // cannot change the trace, and avoid repeating the completing event.
-        let mut prior_sinks: Vec<FactId> = state
-            .sink_keys()
-            .flat_map(|(_, values)| values.iter().copied())
-            .filter(|fact| *fact != sink_fact)
-            .collect();
-        prior_sinks.sort();
-        prior_sinks.dedup();
-        for sink in prior_sinks {
+        // A multi-sink correlation retains earlier sinks in canonical order;
+        // trace assembly only assigns their role and interns the nodes.
+        for sink in state.prior_sinks(sink_fact) {
             tail = Some(self.trace_arena.intern(
                 tail,
                 QualifiedEvent::new(self.module_id, sink),

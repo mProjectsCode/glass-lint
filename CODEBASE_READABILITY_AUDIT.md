@@ -325,7 +325,7 @@ use that vocabulary instead of reconstructing the records from fields. The
 shape table still owns planning identity and ordered child matching; no shared
 metadata type was introduced.
 
-#### [ ] READ-013 — Prior-sink ordering and deduplication is duplicated outside the evidence owner
+#### [x] READ-013 — Prior-sink ordering and deduplication is duplicated outside the evidence owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -347,7 +347,12 @@ only for assigning roles and interning nodes; do not expose
 `IndexedEvidence::values()` to make each trace builder repeat the same
 normalization.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `LifecycleEvidence` now owns prior-sink extraction, completing
+event exclusion, deterministic sorting, and deduplication. Local and cross-file
+state expose only domain-specific exclusion wrappers, while both trace
+assemblers assign evidence roles and intern nodes without rebuilding the
+normalization policy. Existing trace tests continue to verify prior-sink
+ordering and roles.
 
 ## Systemic Themes
 
