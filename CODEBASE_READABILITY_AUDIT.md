@@ -2,342 +2,411 @@
 
 ## Summary
 
-This report replaces the previous historical audit, whose findings were all
-marked fixed. It records only current, unresolved issues found in the source
-as of 2026-08-03.
+This report replaces the previous audit and records unresolved readability and
+maintainability issues in the current worktree as of 2026-08-03. The previous
+report's ten checked-off findings were treated as historical context; this
+review confirms those changes where relevant and resurfaces the remaining
+boundaries that were not addressed.
 
-There are 10 findings: 1 High, 7 Medium, and 2 Low. The dominant theme is
-that several types have a good semantic name but still expose a map, vector,
-or field-oriented representation to neighboring modules. The clearest
-consolidation opportunity is the duplicate `QualifiedEvent` type used by
-cross-flow propagation and trace construction.
+There are 13 findings: 3 High, 8 Medium, and 2 Low. The main pattern is that
+semantic types now often hide their immediate storage, but their owning
+aggregates still return storage-shaped views or let callers reconstruct domain
+operations from indexes, `enumerate`, raw fields, and repeated sorting. The
+clearest potential consolidation is shared lifecycle-evidence behavior for
+local and cross-file flow, but it should be introduced only when that behavior
+is next changed. Several similarly named keys remain intentionally distinct
+because they identify different domains.
 
 ## Findings
 
-### Semantic model ownership
+### Project linking and semantic aggregates
 
-#### [x] READ-001 — `LexicalScope` exposes its binding table
+#### [ ] READ-001 — Linked project aggregates expose their module and resolution maps
+
+- **Severity:** High
+- **Fix Complexity:** High
+- **Category:** Encapsulation, Newtype, Architecture
+- **Location:** `glass-lint-core/src/analysis/project/model.rs:102-108, 189-212`; consumers in `analysis/project/linker/{export,mod}.rs`, `analysis/project/{identities,resolver,exports,projection}.rs`
+
+`ResolvedLinkInput` exposes its `BTreeMap<ModuleId, ProjectModule>` and
+`BTreeMap<QualifiedRequestId, LinkedModuleTarget>` to the linking transition,
+and `ProjectSemanticModel` plus `ProjectLinker` expose the same physical maps
+to neighboring project modules. Those callers repeatedly perform map lookup,
+iteration, key construction, and resolution selection themselves, so module
+ownership and resolution invariants are distributed across linker, resolver,
+identity, and projection code.
+
+**Recommendation:** Make the aggregate storage private and introduce only the
+observed domain operations, such as `module`, `modules`, and
+`resolution_for`, plus a linker-owned transition that consumes validated
+collections without exposing their maps. Do not add `ProjectModules` or
+`ProjectResolutions` merely to wrap the current maps. Add a separate collection
+only if an independently repeated invariant or policy appears; keep export
+fixed-point updates on `ExportTable` and cross-module resolution decisions on
+the project model or a named resolver coordinator.
+
+**Fix Applied:** None so far.
+
+#### [ ] READ-002 — Export identity propagation still consumes a map-shaped module export view
+
+- **Severity:** Medium
+- **Fix Complexity:** Medium
+- **Category:** Encapsulation, Newtype, Architecture
+- **Location:** `glass-lint-core/src/analysis/project/state.rs:164-179, 241-245`; `glass-lint-core/src/analysis/project/identities.rs:191-203`
+
+`ModuleExports` is a semantic collection owned by `ExportTable`, but its
+generic `get`, `insert`, and `iter` API makes identity propagation responsible
+for turning `(name, ExportResolution)` pairs into `ModuleExportKey` values and
+for deciding how direct exports are copied into a `ModuleIdentityMap`. The
+caller therefore knows both the export-table representation and the matching
+identity representation.
+
+**Recommendation:** Add an operation named for the domain transformation,
+such as `copy_identities_into(prefix, identities)`, or expose a dedicated
+iterator whose item is an export identity rather than a raw map pair. Keep
+monotone update and export-count accounting inside `ExportTable`; do not merge
+`ModuleExportKey` with `QualifiedExportId`, because one identifies an external
+module/export spelling while the other identifies an internal `ModuleId`.
+
+**Fix Applied:** None so far.
+
+### Scope and semantic model boundaries
+
+#### [ ] READ-003 — `LexicalScope` still exposes structural storage metadata
 
 - **Severity:** High
 - **Fix Complexity:** High
 - **Category:** Encapsulation, Newtype, API
-- **Location:** `glass-lint-core/src/analysis/model/scope.rs:166-173`; consumers in `glass-lint-core/src/analysis/scope/build/collector.rs:74`, `scope_index.rs:47`, `binding_index.rs:106`, and `build/assignments.rs:108-505`
+- **Location:** `glass-lint-core/src/analysis/model/scope.rs:167-223`; direct consumers in `analysis/scope/{scope_index,build/{callbacks,assignments,visitor,bindings}}.rs`
 
-`LexicalScope` is a public semantic model, but its `HashMap<NameId,
-BindingProvenance>` is public and is manipulated directly by builders,
-indexes, and assignment analysis. Those callers perform binding insertion,
-lookup, membership checks, and key iteration themselves, so the scope type
-does not own the invariants or vocabulary of its binding operations.
+The binding table was moved behind named operations, but `LexicalScope` still
+publishes `span`, `depth`, `kind`, and `parent` as independent fields. Scope
+indexing and collection code repeatedly indexes a `Vec<LexicalScope>` with
+`ScopeId`, reads those fields directly, and separately implements parent,
+containment, ordering, and function-scope decisions. The type has a semantic
+name but does not own the basic vocabulary of its structural queries.
 
-**Recommendation:** Make the fields private and give `LexicalScope` a
-validated constructor plus domain operations such as `binding`,
-`contains_binding`, `insert_binding`, and a deliberately named binding
-iterator. If the table needs its own policy, introduce a private
-`ScopeBindings` collection and keep scope metadata separate from binding
-storage. Update the builders and indexes to use those operations rather than
-reconstructing map semantics at each call site.
+**Recommendation:** Make the metadata private and expose accessors or
+predicates such as `parent`, `kind`, `span`, `contains`, `is_function_scope`,
+and `depth`. Move the `Vec<LexicalScope>` behind an owning scope collection
+with `get(ScopeId)`/iteration methods, so callers do not combine raw vector
+indexing with scope invariants. Preserve the existing binding operations and
+keep parser-specific `Span` details at the scope-analysis boundary.
 
-**Fix Applied:** Made the binding table a private `ScopeBindings` collection
-owned by `LexicalScope`, added the scope constructor and named operations for
-insertion, lookup, membership, and binding iteration, and migrated the
-planner, collector, indexes, assignment analysis, visitor, and scope tests to
-those operations. The physical `HashMap` is no longer part of the neighboring
-modules' API.
+**Fix Applied:** None so far.
 
-#### [x] READ-002 — `ExportEntry` leaks an invalid-state-prone record
+#### [ ] READ-004 — Scope-shape storage remains public to the crate despite an existing domain API
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
-- **Category:** Encapsulation, API, Newtype
-- **Location:** `glass-lint-core/src/analysis/model/module.rs:67-82`, with state updates at `module.rs:180-245`
+- **Category:** Encapsulation, Newtype
+- **Location:** `glass-lint-core/src/analysis/scope/build/shape.rs:7-18`
 
-`ExportEntry` exposes three independent `Option` fields even though it is
-stored only inside `ModuleInterface` and all current construction and updates
-already happen through `ModuleInterface` methods. Callers can therefore create
-or mutate combinations that the interface's export-resolution policy may not
-intend, while the semantic operations remain split across raw assignments.
+`ScopeShapeTable` already owns recording, child consumption, exhaustion, and
+test inspection, but its `shapes` vector and keyed `children` map are still
+`pub(crate)`. This leaves a future caller free to append shapes or mutate
+child queues without maintaining the matching key and consumption policy,
+while the existing methods demonstrate that no storage access is necessary.
 
-**Recommendation:** Make `ExportEntry` private to the module or make its
-fields private and expose read-only semantic queries if the type must remain
-visible. Move state transitions such as “unknown export”, “function export”,
-and “static string export” onto `ExportEntry` or `ModuleInterface`, so the
-three optional representations cannot be changed independently by callers.
+**Recommendation:** Make `ScopeShape` fields and `ScopeShapeTable` storage
+private. Add any missing semantic read operation needed by the planner, and
+retain `record`, `take_child`, and `is_consumed` as the only production
+mutation boundary. Avoid replacing the table with a generic map; its ordered
+child-claim behavior is the useful domain abstraction.
 
-**Fix Applied:** Made `ExportEntry` and all three optional representation
-fields private to `module.rs`. Added named entry constructors and state
-transitions for resolutions, function exports, static strings, and unknown
-exports, then migrated `ModuleInterface` updates to those operations. Callers
-continue to use the interface's semantic methods without being able to create
-or mutate invalid entry combinations directly.
+**Fix Applied:** None so far.
 
-### Cross-flow and matching containers
+### Lifecycle and flow state
 
-#### [x] READ-003 — Cross-flow state has field-level evidence transitions
+#### [ ] READ-005 — Local and cross-file lifecycle evidence duplicate the same state abstraction
 
-- **Severity:** Medium
+- **Severity:** High
 - **Fix Complexity:** High
-- **Category:** Encapsulation, Complexity, Newtype
-- **Location:** `glass-lint-core/src/analysis/flow/cross/state.rs:49-61`; direct use in `cross/propagation.rs:97-182` and `cross/evidence.rs:281-295`
+- **Category:** Duplication, Newtype, Simplification
+- **Location:** `glass-lint-core/src/analysis/model/flow.rs:252-453`; `glass-lint-core/src/analysis/flow/cross/state.rs:44-119`
 
-`CrossFlowState` is the semantic state for one propagated call context, but
-its source, requirement evidence, and sink evidence are exposed to every
-cross-flow phase. Propagation inserts directly into `IndexedEvidence`, while
-trace emission separately performs value collection, sorting, filtering, and
-deduplication for prior sinks; readiness is also recomputed from raw lengths
-at the call site.
+`FlowState` and `CrossFlowState` both own requirement and sink
+`IndexedEvidence`, expose nearly identical recording/readiness/iteration
+methods, and encode the same lifecycle completion rules. The local version
+uses `FactId` while the cross-file version uses `QualifiedEvent` and has an
+optional source, but the evidence state and its operations are duplicated;
+future changes to ordering, removal, or completion semantics can diverge.
 
-**Recommendation:** Keep the state fields private and add operations named
-after the state transitions, such as `record_requirement`, `record_sink`,
-`requirements_ready`, `sinks_complete`, and an ordered prior-sink/event view
-for trace assembly. Constructors for the “known source” and “unknown source”
-alternatives should also live on the state type, reducing repeated literal
-initialization in the worklist. This would make the certainty-preserving
-rules visible at the owner boundary instead of encoded in callers.
+**Recommendation:** When lifecycle evidence is next changed, extract one
+private `LifecycleEvidence<Event>` (or similarly small domain type) that owns
+the behavior actually shared by both implementations: requirement/sink
+recording, indexed event access, ordered event extraction, and completion
+checks. Do not introduce this layer solely because the structs look similar.
+Keep `FlowState` and `CrossFlowState` as distinct owners of their
+object/source identity and certainty semantics, and do not erase the
+local-versus-qualified event distinction.
 
-**Fix Applied:** Made `CrossFlowState` evidence and source fields private and
-added named constructors for known and unknown source alternatives. The state
-now owns requirement/sink recording, readiness and all-sink completion checks,
-source access, and deterministic prior-sink trace preparation. Propagation and
-trace assembly use those transitions instead of inserting into
-`IndexedEvidence`, inspecting raw lengths, or reimplementing sink ordering.
+**Fix Applied:** None so far.
 
-#### [x] READ-004 — `FlowSources` exposes adjacency normalization
+#### [ ] READ-006 — Requirement and sink indexes are rebuilt with positional enumeration at every projector
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
-- **Category:** Encapsulation, Newtype, Duplication
-- **Location:** `glass-lint-core/src/analysis/flow/cross/sources.rs:124-205`, `sources.rs:229-275`, and test setup in `cross/mod.rs:317-457`
+- **Category:** Newtype, Encapsulation, Simplification
+- **Location:** `glass-lint-core/src/analysis/flow/cross/propagation.rs:88-169`; `glass-lint-core/src/analysis/flow/projector/evidence.rs:40-141`; compiled flow storage in `glass-lint-core/src/api/compiler/object_flow.rs:32-38`
 
-`FlowSources` owns deduplicated source candidates and a normalized adjacency
-index, but both maps are `pub(super)`. Production code inserts adjacency
-vectors and propagates through raw map entries, while tests construct edges
-with `adjacency.insert`, bypassing the type's sorting and deduplication
-policy. The type therefore has a semantic contract that its callers can
-silently violate.
+The compiled flow stores requirements and sinks as vectors, but projection
+code repeatedly calls `iter().enumerate()`, converts positions into
+`RequirementIndex`/`SinkIndex`, and independently interprets argument and
+completion variants. This makes the positional alignment between declarations,
+pre-bound paths, and evidence indexes a caller responsibility and obscures
+which operations are supported by the flow plan.
 
-**Recommendation:** Make both maps private. Add operations such as
-`add_edge`, `destinations`, `candidates`, and a named candidate/edge iterator;
-keep vector insertion, sorting, and deduplication inside `FlowSources`. Tests
-should use the same edge operation so they exercise the actual domain API.
+**Recommendation:** Put indexed domain iteration and matching helpers on
+`CompiledObjectFlow` or `BoundFlowPlan`, such as
+`requirements_with_indices`, `matching_requirement_indices`, and
+`matching_sink_indices`. Let those methods own the conversion to typed
+indexes and the interpretation of `Any` versus explicit sink arguments, while
+leaving the physical vectors private at the authoring/compiled boundary where
+possible.
 
-**Fix Applied:** Made the source and adjacency maps private and added named
-candidate, edge, destination, and flattened-entry operations. `add_edge`
-performs sorted insertion and deduplication at the ownership boundary, so
-propagation and all tests use the same normalization policy instead of
-writing adjacency vectors directly.
+**Fix Applied:** None so far.
 
-#### [x] READ-005 — Package overlay lookup still accepts raw nested buckets
+#### [ ] READ-007 — `CallContext` is a crate-visible field bag for cross-file propagation state
+
+- **Severity:** Medium
+- **Fix Complexity:** Medium
+- **Category:** Encapsulation, Newtype, Complexity
+- **Location:** `glass-lint-core/src/analysis/flow/cross/state.rs:122-130`; consumers in `cross/{evidence,mod,propagation,worklist}.rs`
+
+`CallContext` exposes module, function, parameter, source root, state, and the
+crossed flag to every cross-flow phase. Evidence and propagation code then
+repeat the rules for matching a parameter root versus a source-root value and
+for deciding whether a target call counts as crossed, while worklist seeding
+constructs the same record literals in several forms.
+
+**Recommendation:** Make the fields private and provide named constructors
+for source-root and parameter contexts plus semantic operations such as
+`module`, `function`, `state`, `matches_argument`, `is_crossed`, and
+`for_target_call`. Keep `CallContext` as the owner of context identity and
+move the repeated connection predicate there; do not put effect-specific
+matching logic on the context.
+
+**Fix Applied:** None so far.
+
+#### [ ] READ-008 — Cross-flow source keys and candidates leak their field representation
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Encapsulation, Newtype, API
-- **Location:** `glass-lint-core/src/analysis/matching/mod.rs:160-220`; `glass-lint-core/src/analysis/matching/occurrence.rs:238-272` and `occurrence.rs:448-456`
+- **Location:** `glass-lint-core/src/analysis/flow/cross/sources.rs:21-64`; consumers in `cross/{sources,worklist}.rs` and `flow/projector/transfer.rs`
 
-`LinkedOccurrenceView` correctly centralizes identity remapping, but its
-package path still passes a `BTreeSet<ModuleExportKey>` and a nested
-`BTreeMap<ModuleExportKey, Vec<&[Occurrence]>>` into
-`OccurrenceIndex::package_candidates_with_overlay`. The receiving iterator
-then stores raw map iterators and independently understands masking and base
-versus overlay precedence. The remaining boundary is therefore still shaped
-by storage rather than by package-occurrence behavior.
+`SourceKey` and `SourceCandidate` are named semantic records, but all fields
+are `pub(super)` and callers directly assemble, destructure, and compare their
+module/function/value and flow/fact fields. `FlowSources::candidate_entries`
+then flattens the nested source map into raw key/value pairs for worklist
+seeding, exposing the storage traversal instead of expressing “all candidates
+for propagation.”
 
-**Recommendation:** Introduce an opaque overlay view or package-candidate
-source that owns masking, bucket lookup, and precedence. Have
-`LinkedOccurrenceView` pass that semantic object to the occurrence iterator,
-or let the view itself provide package iteration. Keep the nested bucket
-layout private to the matching implementation.
+**Recommendation:** Make the record fields private with constructors and
+accessors, then add operations such as `source_identity`, `candidate_flow`,
+`candidate_event`, and a named propagation-entry iterator. Keep
+`FlowSources` responsible for candidate deduplication and adjacency traversal;
+callers should not need to know that candidates are stored in a map of sets.
 
-**Fix Applied:** Added an opaque `PackageOverlay` that groups the mask and
-linked package buckets and is consumed by the lazy package iterator. The
-linked occurrence view now constructs that semantic overlay, while
-`OccurrenceIndex` accepts it as one package-candidate source instead of
-receiving separate raw nested storage containers.
+**Fix Applied:** None so far.
 
-#### [x] READ-006 — Matcher index families repeat storage plumbing
-
-- **Severity:** Medium
-- **Fix Complexity:** High
-- **Category:** Encapsulation, Duplication, Simplification
-- **Location:** `glass-lint-core/src/analysis/matching/indexes.rs:8-118`; projection writes in `matching/build.rs:42-116` and `build.rs:120-207`
-
-`CallIndexes`, `MemberIndexes`, `ConstructionIndexes`, and `LiteralIndexes`
-are named domain groups, but their individual occurrence indexes are exposed
-as `pub(super)` fields. The fact projector reaches through those groups to
-push into specific indexes, and each group repeats a long `normalize` and
-test-only `is_empty` implementation. The result is a large parallel set of
-physical choices at every recording site rather than one owner for recording
-and normalization.
-
-**Recommendation:** Keep the physical indexes private and give each family
-small recording methods, or let `OccurrenceIndexes` own event-specific
-recording methods that delegate internally. Centralize family normalization
-and test inspection behind those owners. Preserve the separate indexes where
-their lookup semantics differ; the simplification is the boundary and
-repeated plumbing, not necessarily collapsing all indexes into one map.
-
-**Fix Applied:** Kept the distinct physical index families but made their
-storage fields private. Each family now owns event-specific recording methods,
-normalization, and named read-only accessors; fact projection and query code
-no longer push into or reach through individual occurrence indexes. Test-only
-inspection also uses those family boundaries.
-
-### Duplicate semantic abstractions
-
-#### [x] READ-007 — Cross-flow duplicates trace `QualifiedEvent`
+#### [ ] READ-009 — Bound flow planning exposes raw candidate arguments and a generic target index
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
-- **Category:** Duplication, Newtype, API
-- **Location:** `glass-lint-core/src/analysis/trace.rs:9-13`; duplicate in `analysis/flow/cross/state.rs:42-47`; conversions in `flow/cross/evidence.rs:232-263`
+- **Category:** Encapsulation, Newtype, Simplification
+- **Location:** `glass-lint-core/src/analysis/flow/planning.rs:47-95`; consumers in `flow/projector/transfer.rs:70-85` and `flow/cross/sources.rs:166-180`
 
-The trace layer and cross-flow state each define the same `(ModuleId,
-FactId)` value with the same ordering and identity semantics. Trace assembly
-must manually convert every cross-flow event into the trace version, and the
-cross-flow version repeats the trace type's public field exposure.
+`BoundTargetIndex<T>` is a generic map wrapper whose public operations are
+`insert`, `get`, and `normalize`, while `BoundSource` exposes its flow and
+argument vector. Source transfer therefore iterates `candidate.arguments` and
+performs predicate matching outside the bound-flow plan, and source collection
+must remember to normalize separate source and sink indexes.
 
-**Recommendation:** Consolidate on one qualified-event type at the neutral
-analysis boundary, then give it named accessors such as `module()` and
-`fact()` rather than making its representation the API. Update cross-flow
-state, trace assembly, and tests to construct and pass that type directly.
-Do not merge it with `SourceKey` or other keys whose value domain includes a
-function or value identity; those represent different concepts.
+**Recommendation:** Keep the physical target buckets private and expose
+domain-specific source/sink lookup and candidate-matching operations from
+`BoundFlowPlan`. Replace `BoundSource` field access with methods that express
+its role, such as `flow_id` and `matches_arguments`; centralize sorting and
+deduplication in the specialized index owner. Retain one generic internal
+helper only if it remains completely behind the flow-plan boundary.
 
-**Fix Applied:** Removed the cross-flow duplicate and re-exported the neutral
-trace-layer `QualifiedEvent` through the cross-flow state module for existing
-internal call sites. Its fields are private behind `module()` and `fact()`;
-cross-flow evidence now passes the shared value directly into trace assembly
-without per-event conversion.
+**Fix Applied:** None so far.
 
-### Rule query boundary and construction
+### Typed keys and representation leaks
 
-#### [x] READ-008 — Query/compiler code bypasses validated query accessors
+#### [ ] READ-010 — `QualifiedRequestId` and `FlowStateKey` publish key fields and invite raw reconstruction
 
 - **Severity:** Medium
-- **Fix Complexity:** High
-- **Category:** API, Encapsulation, Architecture
-- **Location:** `glass-lint-core/src/api/rule/query/mod.rs:136-144` and `mod.rs:268-276`; consumers in `api/rule/query/expression.rs:116-185`, `api/compiler/normalize.rs:342-350` and `475-497`, `api/compiler/physical.rs:491-501`, and `api/compiler/reference.rs:551-568`
+- **Fix Complexity:** Low
+- **Category:** API, Newtype, Naming
+- **Location:** `glass-lint-core/src/analysis/project/model.rs:45-49`; `glass-lint-core/src/analysis/model/flow.rs:371-374`; uses in `analysis/project/{identities,resolver,linker}.rs` and `analysis/flow/projector/{state,evidence}.rs`
 
-The authoring query types already provide semantic accessors, but the query
-normalizer, expression formatter, and compiler still reach into `pub(crate)`
-fields such as `sources`, `constraints`, `var`, `event`, `identity`, and the
-nested static-string predicate `kind`. This makes the compiler depend on the
-construction representation and leaves canonicalization and matching logic
-split between the query and compiler modules.
+Both types are semantic map keys with public fields, so callers repeatedly
+write struct literals and use `key.module`, `key.request`, `key.object`, and
+`key.flow` directly. The names are useful, but their public record shape
+couples every key consumer to storage-oriented field access and makes future
+key validation or alternate representation changes unnecessarily broad.
 
-**Recommendation:** Make authoring fields private to the query module and
-add focused semantic views or transformations, such as
-`source_events()`, `argument_constraints()`, `event_identity()`, and a
-predicate alternative iterator/kind accessor. Move mutations and
-canonicalization into query-owned methods where practical. Keep normalized IR
-field-oriented only after the authoring-to-IR boundary, so compiler code can
-still be simple without exposing the declaration model's storage.
+**Recommendation:** Make fields private, add constructors and accessors with
+domain names, and provide owner methods such as `request_key(module, request)`
+and `state_for(object, flow)` where callers currently create keys only to
+perform a lookup. Keep the two key types separate: request identity and live
+object-flow state are not the same domain and should remain distinct.
 
-**Fix Applied:** Made the authoring storage private for event, lifecycle, and
-declaration queries, query expressions, and matcher predicates. Added
-semantic accessors and test-only construction helpers, then migrated query
-formatting, normalization, physical planning, reference matching, validation,
-and compiler fixtures to use those boundaries. Compiler code no longer depends
-on the authoring structs' field layout.
+**Fix Applied:** None so far.
 
-#### [x] READ-009 — Bounded canonical collections duplicate policy code
+#### [ ] READ-011 — `EffectCallId` and `TraceNodeId` still expose raw numeric identity inside core
 
 - **Severity:** Low
 - **Fix Complexity:** Low
-- **Category:** Duplication, Simplification
-- **Location:** `glass-lint-core/src/api/rule/query/value.rs:57-106`
+- **Category:** Newtype, API
+- **Location:** `glass-lint-core/src/analysis/flow/effect/mod.rs:41-42, 348-356`; `glass-lint-core/src/api/classification.rs:13`; `glass-lint-core/src/analysis/trace.rs:75-104`
 
-`bounded_strings` and `bounded_paths` independently assemble a vector, trim or
-parse values, sort and deduplicate, reject empty collections, and enforce the
-same maximum. Their different input validation is meaningful, but the shared
-canonicalization and bound policy is repeated and can drift.
+These types communicate domain identity but retain tuple-field access for raw
+indexing: `FunctionEffect::call_argument` uses `call_id.0`, and
+`TraceArena` constructs and indexes `TraceNodeId` directly. The leak is small
+today, but it makes numeric storage part of the crate-level API and weakens
+the distinction between an effect call identity, a trace node identity, and a
+plain vector position.
 
-**Recommendation:** Extract a small domain helper for bounded canonical
-collections that accepts the per-item parser/validator and the diagnostic
-label. Keep `bounded_strings` and `bounded_paths` as readable named entry
-points, with only their genuinely different validation expressed locally.
+**Recommendation:** Make the tuple fields private and add owner-scoped
+conversion methods such as `index()` or `TraceArena::node(id)`. Keep raw
+construction private to the allocating owner and use checked conversion at
+the boundary; tests can use explicit test constructors rather than making the
+production representation available.
 
-**Fix Applied:** Added one private `bounded_canonical_values` helper that owns
-the shared parse-result collection, trimming, sorting, deduplication, empty
-collection, and maximum-size policy. `bounded_strings` retains its
-static-value validation, while `bounded_paths` retains checked-chain parsing,
-and both now delegate the common canonicalization and bounds behavior.
+**Fix Applied:** None so far.
 
-#### [x] READ-010 — Lifecycle sink factories repeat target validation
+#### [ ] READ-012 — `ScopeShape` and `LexicalScope` duplicate structural records without a shared vocabulary
 
 - **Severity:** Low
+- **Fix Complexity:** Medium
+- **Category:** Duplication, Naming, Newtype
+- **Location:** `glass-lint-core/src/analysis/model/scope.rs:167-175`; `glass-lint-core/src/analysis/scope/build/shape.rs:7-26`
+
+`LexicalScope` and `ScopeShape` both carry scope kind, source span, and parent
+identity, while the shape table adds a second scope identifier and the scope
+index reconstructs ordering from the same fields. They serve different
+phases—planned shape versus collected semantic scope—so merging the structs
+outright would lose useful phase meaning, but the duplicated structural
+vocabulary makes ownership and conversion harder to follow.
+
+**Recommendation:** Keep the phase types separate and do not introduce a
+shared metadata struct now. Give each type semantic constructors/accessors and
+make explicit which fields are planning identity versus final scope identity.
+Add a private conversion helper only if a concrete repeated conversion is
+introduced; do not consolidate the types merely to remove a few fields.
+
+**Fix Applied:** None so far.
+
+#### [ ] READ-013 — Prior-sink ordering and deduplication is duplicated outside the evidence owner
+
+- **Severity:** Medium
 - **Fix Complexity:** Low
-- **Category:** Duplication, Simplification, Naming
-- **Location:** `glass-lint-core/src/api/rule/query/lifecycle.rs:355-435`
+- **Category:** Duplication, Simplification, Newtype
+- **Location:** `glass-lint-core/src/analysis/flow/cross/state.rs:109-119`; `glass-lint-core/src/analysis/flow/projector/evidence.rs:330-345`
 
-The four public sink constructors repeat empty-name checks, `checked_chain`
-parsing, and construction of either a global or rooted-member target. The
-argument and any-argument forms differ only in the stored sink variant and,
-for one pair, argument-index validation.
+Both local and cross-file trace construction flatten evidence values into a
+temporary vector, sort it, deduplicate it, and exclude the completing sink.
+This is deterministic policy, not incidental iterator cleanup, and keeping it
+at two call sites risks different evidence ordering or exclusion behavior as
+multi-sink flows evolve.
 
-**Recommendation:** Centralize chain parsing and target construction in a
-small private helper with a name that describes the target domain, then use a
-single sink builder for the argument-bearing and any-argument variants. Keep
-the four public constructors because their names are useful at call sites;
-the simplification should be internal to their implementation.
+**Recommendation:** When the shared lifecycle-evidence type in READ-005 is
+actually introduced, put an operation such as
+`prior_sink_events(completing_event)` on it, returning the canonical ordered
+unique events. Until then, keep the normalization policy in the narrowest
+existing evidence owner that is being changed. Keep trace assembly responsible
+only for assigning roles and interning nodes; do not expose
+`IndexedEvidence::values()` to make each trace builder repeat the same
+normalization.
 
-**Fix Applied:** Replaced the four repeated sink-construction paths with one
-private `build_call_sink` helper. It now owns empty-name checks, checked-chain
-parsing, argument-index validation, target construction, and selection of the
-indexed versus any-argument sink variant, while the public constructors retain
-their descriptive global/member and argument/any-argument names.
+**Fix Applied:** None so far.
 
 ## Systemic Themes
 
-- Semantic ownership is strongest when storage is private (`StaticProperties`,
-  `IndexedEvidence`, `FunctionEffects`, and the project tables are useful
-  examples), but several neighboring modules still use `pub(super)` fields as
-  an informal API.
-- The same representation leak appears at multiple scales: a single binding
-  map in `LexicalScope`, nested occurrence buckets in matching, and parallel
-  physical index families. Newtypes alone do not improve readability when
-  their callers still perform the map/set/vector operations.
-- Deterministic sorting and deduplication are often correct domain policy, but
-  they should be named operations on the owner rather than anonymous cleanup
-  near propagation, trace assembly, or query normalization.
-- The query declaration model has a clear public builder vocabulary, while
-  its compiler boundary is still field-oriented. Separating authoring views
-  from normalized IR would make that boundary easier to understand and
-  change.
+- The repository has made meaningful progress toward private storage: the
+  current `ScopeBindings`, `StaticObject`, `OriginMap`, `OccurrenceIndex`,
+  `ExportTable`, and `FlowStateTable` generally keep their physical maps or
+  vectors private. The remaining problems are mostly one layer above those
+  wrappers, where aggregate fields and generic iterators still leak the
+  representation.
+- Positional identity is reconstructed in several flow paths. Typed
+  `RequirementIndex` and `SinkIndex` are valuable, but their repeated creation
+  from vector positions means the compiled flow—not the projector—does not yet
+  own the declaration-to-evidence alignment.
+- The strongest simplification is consolidation of shared behavior, not
+  collapsing all similarly shaped types. `FlowState`/`CrossFlowState` are the
+  candidate for shared lifecycle evidence when that code next changes;
+  `QualifiedRequestId`, `FlowStateKey`,
+  `ModuleExportKey`, and `QualifiedExportId` should remain distinct because
+  their identity domains differ.
+- Generic method names such as `iter`, `get`, `insert`, and `normalize` are
+  appropriate inside a private implementation, but they become less readable
+  when returned by a domain type and immediately followed by key construction,
+  positional indexing, sorting, or deduplication at the caller.
+- The report does not recommend replacing deterministic collections with
+  compact code, removing explanatory comments, or merging logical and
+  physical reference evaluators. Those are either deliberate boundaries or
+  explicit architecture choices; the findings target operations that have a
+  narrower semantic owner.
 
-## Open Questions
+## Decisions
 
-- Should the single `QualifiedEvent` live in `analysis::trace`, in a neutral
-  `analysis::model` module, or in another shared semantic layer? The answer
-  should follow ownership rather than forcing cross-flow to depend on trace
-  internals.
-- Are all four matcher index families intended to remain separate physical
-  structures? If so, their recording and normalization APIs should make that
-  decision invisible to fact projection; if not, READ-006 may be a candidate
-  for a deeper consolidation.
-- Is `ExportEntry` intentionally part of the externally supported core API?
-  Current usage makes it an implementation detail of `ModuleInterface`; if it
-  is public by design, it needs read-only semantic accessors and documented
-  invariants instead of public mutable fields.
-- Which query accessors should remain available to providers, versus which
-  should be compiler-only views? This affects how aggressively READ-008 can
-  narrow the `pub(crate)` surface.
+The following decisions close the questions raised by this audit:
+
+- **Use existing semantic owners first.** `ProjectSemanticModel`,
+  `ExportTable`, `FlowState`/`CrossFlowState`, `CompiledObjectFlow`, and the
+  scope types should own their domain operations. Do not add aggregate
+  collection newtypes or coordinator layers unless a concrete invariant is
+  repeated independently.
+- **Prefer private storage and the smallest observed API.** Make fields,
+  vectors, and maps private where callers currently reconstruct operations from
+  representation. Add only constructors, accessors, or semantic methods
+  required by current call sites; do not add broad iterator, conversion, or
+  compatibility APIs for hypothetical users.
+- **Consolidate behavior, not identity.** Keep request, export, object-flow,
+  trace, planning-scope, and collected-scope types distinct even when their
+  fields resemble one another. The one credible shared abstraction is
+  lifecycle evidence, and it should be extracted only as part of an actual
+  lifecycle change, not speculatively.
+- **Keep lifecycle and provider boundaries intact.** Any eventual shared
+  evidence helper belongs in provider-neutral core flow/model code and must
+  remain generic over the event type. It must not absorb provider policy,
+  trace interning, or local-versus-qualified identity decisions.
+- **Narrow key APIs without guessing external consumers.** For
+  `QualifiedRequestId`, `FlowStateKey`, `EffectCallId`, and `TraceNodeId`, make
+  representation fields private and retain only owner-scoped construction or
+  read access that existing callers need. Keep a type's current visibility
+  unchanged until a public-consumer audit proves it can be narrowed; do not
+  add wrappers to preserve raw field access.
+- **Make changes in focused slices.** Address a finding only when its owning
+  code is being changed, migrate all callers in that slice, and remove the old
+  representation path. No source change is implied by this report alone.
 
 ## Coverage
 
-- Reviewed the current worktree and read the root and owning-crate
-  `ARCHITECTURE.md` files, `TESTING.md`, and `CONTRIBUTING.md` before the
-  audit.
-- Scanned the current Rust source inventory: 442 Rust files and 84,316 total
-  Rust lines across the workspace at audit time. The focused review covered
-  semantic model types, collection wrappers, map/set/vector field access,
-  repeated normalization and deduplication, duplicate key/event types, query
-  boundaries, and representative call sites in core, project, provider, and
-  harness crates.
-- Deliberately excluded ordinary serialized/request/report DTOs, internal
-  compiler IR where field-oriented access is the intended representation, and
-  the two intentionally independent logical/physical reference evaluators.
-  Previously checked-off findings were not repeated unless current source
-  still showed a distinct unresolved boundary, as with the package overlay in
-  READ-005.
+- Reviewed the current worktree, root `ARCHITECTURE.md`, every owning-crate
+  architecture document, `TESTING.md`, `CONTRIBUTING.md`, and the previous
+  `CODEBASE_READABILITY_AUDIT.md` before scanning source.
+- Scanned all 442 Rust files and 84,632 Rust lines in the workspace. The
+  focused review covered semantic model structs, typed IDs and keys, map/set/
+  vector fields, `into_*` and iterator APIs, positional index construction,
+  repeated sorting/deduplication, cross-file flow state, project linking,
+  scope planning, and provider/project/harness boundaries.
+- Confirmed the previous checked-off findings were not blindly repeated:
+  binding storage, export-entry fields, cross-flow evidence storage, source
+  adjacency normalization, package overlays, matcher index storage, the
+  shared `QualifiedEvent`, authoring query fields, bounded query collections,
+  and lifecycle sink construction now have the encapsulation described by that
+  report. The findings above are the remaining or newly visible adjacent
+  boundaries.
+- Deliberately excluded serialized protocol/report DTOs, provider manifests,
+  normalized compiler IR where field-oriented access is the intended private
+  representation, and the intentionally separate logical/physical reference
+  evaluators. Similar-looking key types were reported only when their fields
+  or operations leak; intentional domain distinctions are recorded under
+  Systemic Themes and Decisions.
 - No Rust source, tests, configuration, dependencies, or generated artifacts
   were changed. This is a report-only audit; tests and `make ci` were not run.
