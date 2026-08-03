@@ -429,7 +429,7 @@ and worker/order semantics unchanged.
 normalization and duplicate-path admission, then routed production, controlled,
 and counted execution modes through it. Verified with `make fmt && make ci`.
 
-#### [ ] READ-028 — Project resolution requests expose `SmolStr` storage
+#### [x] READ-028 — Project resolution requests expose `SmolStr` storage
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -452,7 +452,10 @@ benchmark showing that representation decoupling outweighs the clone cost;
 do not add a second speculative accessor now. Preserve normalized keys,
 specifier equality, and deterministic sorting behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Revalidated the accessor and its callers: resolution-key and
+identity paths clone `SmolStr` directly, while comparisons and sorting use its
+string view. Retained `&SmolStr` because no benchmark justifies an allocating
+`&str` ownership path. Verified with `make fmt && make ci`.
 
 #### [ ] READ-029 — Environment global registration repeats validated insertion
 
