@@ -59,21 +59,53 @@ struct PropagationItem {
 /// worklist so that only newly inserted candidates are re-propagated.
 #[derive(Default)]
 pub(super) struct FlowSources {
-    pub(super) sources: BTreeMap<SourceKey, BTreeSet<SourceCandidate>>,
-    pub(super) adjacency: BTreeMap<SourceKey, Vec<SourceKey>>,
+    sources: BTreeMap<SourceKey, BTreeSet<SourceCandidate>>,
+    adjacency: BTreeMap<SourceKey, Vec<SourceKey>>,
 }
 
 impl FlowSources {
-    pub(super) fn add(&mut self, key: SourceKey, candidate: SourceCandidate) {
-        self.sources.entry(key).or_default().insert(candidate);
+    pub(super) fn add_candidate(&mut self, key: SourceKey, candidate: SourceCandidate) -> bool {
+        self.sources.entry(key).or_default().insert(candidate)
     }
 
-    pub(super) fn get(&self, key: &SourceKey) -> Option<&BTreeSet<SourceCandidate>> {
-        self.sources.get(key)
+    pub(super) fn candidates(&self, key: &SourceKey) -> impl Iterator<Item = &SourceCandidate> {
+        self.sources.get(key).into_iter().flat_map(BTreeSet::iter)
     }
 
-    pub(super) fn iter(&self) -> impl Iterator<Item = (&SourceKey, &BTreeSet<SourceCandidate>)> {
-        self.sources.iter()
+    #[cfg(test)]
+    pub(super) fn has_candidates(&self, key: &SourceKey) -> bool {
+        self.sources.contains_key(key)
+    }
+
+    #[cfg(test)]
+    pub(super) fn candidate_count(&self, key: &SourceKey) -> usize {
+        self.candidates(key).count()
+    }
+
+    #[cfg(test)]
+    pub(super) fn contains_candidate(&self, key: &SourceKey, candidate: SourceCandidate) -> bool {
+        self.candidates(key).any(|stored| *stored == candidate)
+    }
+
+    pub(super) fn candidate_entries(&self) -> impl Iterator<Item = (SourceKey, SourceCandidate)> {
+        self.sources.iter().flat_map(|(key, candidates)| {
+            candidates.iter().map(move |candidate| (*key, *candidate))
+        })
+    }
+
+    pub(super) fn add_edge(&mut self, from: SourceKey, to: SourceKey) {
+        let destinations = self.adjacency.entry(from).or_default();
+        match destinations.binary_search(&to) {
+            Ok(_) => {}
+            Err(position) => destinations.insert(position, to),
+        }
+    }
+
+    pub(super) fn destinations(&self, key: &SourceKey) -> impl Iterator<Item = &SourceKey> {
+        self.adjacency
+            .get(key)
+            .into_iter()
+            .flat_map(|destinations| destinations.iter())
     }
 
     /// Build the adjacency index in one pass over all modules, effects, and
@@ -104,7 +136,7 @@ impl FlowSources {
                             .value_root(returned.value())
                             .unwrap_or_else(|| returned.value());
                         let from = SourceKey::new(target_module, target_function, root);
-                        self.adjacency.entry(from).or_default().push(to);
+                        self.add_edge(from, to);
                     }
 
                     for argument in call.arguments() {
@@ -121,14 +153,10 @@ impl FlowSources {
                             .value_root(argument.value())
                             .unwrap_or_else(|| argument.value());
                         let from = SourceKey::new(module.id(), effect.id(), root);
-                        self.adjacency.entry(from).or_default().push(to);
+                        self.add_edge(from, to);
                     }
                 }
             }
-        }
-        for dests in self.adjacency.values_mut() {
-            dests.sort_unstable();
-            dests.dedup();
         }
     }
 }
@@ -202,7 +230,7 @@ impl FlowSources {
                             continue;
                         };
                         if cref.matches_source(flow, names) {
-                            self.add(
+                            self.add_candidate(
                                 SourceKey::new(module.id(), effect.id(), cref.result()),
                                 SourceCandidate {
                                     flow: *flow_id,
@@ -230,18 +258,13 @@ impl FlowSources {
         let mut pending = VecDeque::<PropagationItem>::new();
         let mut pending_seen = BTreeSet::<PropagationItem>::new();
 
-        for (key, candidates) in &self.sources {
-            for &candidate in candidates {
-                if pending_seen.len() >= MAX_PENDING {
-                    return true;
-                }
-                let entry = PropagationItem {
-                    key: *key,
-                    candidate,
-                };
-                if pending_seen.insert(entry) {
-                    pending.push_back(entry);
-                }
+        for (key, candidate) in self.candidate_entries() {
+            if pending_seen.len() >= MAX_PENDING {
+                return true;
+            }
+            let entry = PropagationItem { key, candidate };
+            if pending_seen.insert(entry) {
+                pending.push_back(entry);
             }
         }
 
@@ -249,19 +272,12 @@ impl FlowSources {
             let round = std::mem::take(&mut pending);
 
             for item in &round {
-                let Some(destinations) = self.adjacency.get(&item.key) else {
-                    continue;
-                };
-                for &to_key in destinations {
+                let destinations: Vec<_> = self.destinations(&item.key).copied().collect();
+                for to_key in destinations {
                     if to_key == item.key {
                         continue;
                     }
-                    if self
-                        .sources
-                        .entry(to_key)
-                        .or_default()
-                        .insert(item.candidate)
-                    {
+                    if self.add_candidate(to_key, item.candidate) {
                         if !budget.try_push() {
                             return true;
                         }

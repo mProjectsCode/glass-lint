@@ -101,7 +101,7 @@ source access, and deterministic prior-sink trace preparation. Propagation and
 trace assembly use those transitions instead of inserting into
 `IndexedEvidence`, inspecting raw lengths, or reimplementing sink ordering.
 
-#### [ ] READ-004 — `FlowSources` exposes adjacency normalization
+#### [x] READ-004 — `FlowSources` exposes adjacency normalization
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -120,7 +120,11 @@ silently violate.
 keep vector insertion, sorting, and deduplication inside `FlowSources`. Tests
 should use the same edge operation so they exercise the actual domain API.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made the source and adjacency maps private and added named
+candidate, edge, destination, and flattened-entry operations. `add_edge`
+performs sorted insertion and deduplication at the ownership boundary, so
+propagation and all tests use the same normalization policy instead of
+writing adjacency vectors directly.
 
 #### [ ] READ-005 — Package overlay lookup still accepts raw nested buckets
 

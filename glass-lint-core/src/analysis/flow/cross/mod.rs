@@ -312,16 +312,15 @@ mod tests {
         let from = key(1, 1, 1);
         let to = key(1, 1, 2);
 
-        sources.add(from, candidate(0, 0, 10));
-        sources.add(from, candidate(0, 0, 20));
-        sources.adjacency.insert(from, vec![to]);
+        sources.add_candidate(from, candidate(0, 0, 10));
+        sources.add_candidate(from, candidate(0, 0, 20));
+        sources.add_edge(from, to);
 
         assert!(!sources.propagate(&mut budget));
 
-        let dest = sources.get(&to).unwrap();
-        assert_eq!(dest.len(), 2);
-        assert!(dest.contains(&candidate(0, 0, 10)));
-        assert!(dest.contains(&candidate(0, 0, 20)));
+        assert_eq!(sources.candidate_count(&to), 2);
+        assert!(sources.contains_candidate(&to, candidate(0, 0, 10)));
+        assert!(sources.contains_candidate(&to, candidate(0, 0, 20)));
     }
 
     #[test]
@@ -331,16 +330,16 @@ mod tests {
         let from = key(1, 1, 1);
         let to = key(1, 1, 2);
 
-        sources.add(from, candidate(0, 0, 10));
-        sources.adjacency.insert(from, vec![to]);
+        sources.add_candidate(from, candidate(0, 0, 10));
+        sources.add_edge(from, to);
 
         assert!(!sources.propagate(&mut budget));
-        assert_eq!(sources.get(&to).unwrap().len(), 1);
+        assert_eq!(sources.candidate_count(&to), 1);
 
         // Second propagation is a no-op because candidates are already at the
         // destination.
         assert!(!sources.propagate(&mut budget));
-        assert_eq!(sources.get(&to).unwrap().len(), 1);
+        assert_eq!(sources.candidate_count(&to), 1);
     }
 
     #[test]
@@ -350,13 +349,13 @@ mod tests {
         let from = key(1, 1, 1);
         let to = key(1, 1, 2);
 
-        sources.add(from, candidate(0, 0, 10));
-        sources.add(from, candidate(0, 0, 20));
-        sources.add(to, candidate(0, 0, 10));
-        sources.adjacency.insert(from, vec![to]);
+        sources.add_candidate(from, candidate(0, 0, 10));
+        sources.add_candidate(from, candidate(0, 0, 20));
+        sources.add_candidate(to, candidate(0, 0, 10));
+        sources.add_edge(from, to);
 
         assert!(!sources.propagate(&mut budget));
-        assert_eq!(sources.get(&to).unwrap().len(), 2);
+        assert_eq!(sources.candidate_count(&to), 2);
 
         assert!(!sources.propagate(&mut budget));
     }
@@ -368,11 +367,11 @@ mod tests {
         let from = key(1, 1, 1);
         let to = key(1, 1, 2);
 
-        sources.adjacency.insert(from, vec![to]);
+        sources.add_edge(from, to);
 
         assert!(!sources.propagate(&mut budget));
-        assert!(sources.get(&to).is_none());
-        assert!(sources.get(&from).is_none());
+        assert!(!sources.has_candidates(&to));
+        assert!(!sources.has_candidates(&from));
     }
 
     #[test]
@@ -380,11 +379,11 @@ mod tests {
         let mut sources = FlowSources::default();
         let mut budget = Budget::new(usize::MAX);
         let k = key(1, 1, 1);
-        sources.add(k, candidate(0, 0, 10));
-        sources.adjacency.insert(k, vec![k]);
+        sources.add_candidate(k, candidate(0, 0, 10));
+        sources.add_edge(k, k);
 
         assert!(!sources.propagate(&mut budget));
-        assert_eq!(sources.get(&k).unwrap().len(), 1);
+        assert_eq!(sources.candidate_count(&k), 1);
     }
 
     #[test]
@@ -395,16 +394,16 @@ mod tests {
         let b = key(1, 1, 2);
         let c = key(1, 1, 3);
 
-        sources.add(a, candidate(0, 0, 10));
-        sources.adjacency.insert(a, vec![b]);
-        sources.adjacency.insert(b, vec![c]);
+        sources.add_candidate(a, candidate(0, 0, 10));
+        sources.add_edge(a, b);
+        sources.add_edge(b, c);
 
         assert!(!sources.propagate(&mut budget));
 
-        assert_eq!(sources.get(&b).unwrap().len(), 1);
-        assert!(sources.get(&b).unwrap().contains(&candidate(0, 0, 10)));
-        assert_eq!(sources.get(&c).unwrap().len(), 1);
-        assert!(sources.get(&c).unwrap().contains(&candidate(0, 0, 10)));
+        assert_eq!(sources.candidate_count(&b), 1);
+        assert!(sources.contains_candidate(&b, candidate(0, 0, 10)));
+        assert_eq!(sources.candidate_count(&c), 1);
+        assert!(sources.contains_candidate(&c, candidate(0, 0, 10)));
     }
 
     #[test]
@@ -414,13 +413,13 @@ mod tests {
         let a = key(1, 1, 1);
         let b = key(1, 1, 2);
 
-        sources.add(a, candidate(0, 0, 10));
-        sources.adjacency.insert(a, vec![b]);
-        sources.adjacency.insert(b, vec![a]);
+        sources.add_candidate(a, candidate(0, 0, 10));
+        sources.add_edge(a, b);
+        sources.add_edge(b, a);
 
         let exhausted = sources.propagate(&mut budget);
         assert!(!exhausted);
-        assert!(sources.get(&b).unwrap().contains(&candidate(0, 0, 10)));
+        assert!(sources.contains_candidate(&b, candidate(0, 0, 10)));
     }
 
     #[test]
@@ -430,14 +429,14 @@ mod tests {
         let from = key(1, 1, 1);
         let to = key(1, 1, 2);
 
-        sources.add(to, candidate(0, 0, 5));
-        sources.add(from, candidate(0, 1, 20));
-        sources.add(from, candidate(0, 0, 10));
-        sources.adjacency.insert(from, vec![to]);
+        sources.add_candidate(to, candidate(0, 0, 5));
+        sources.add_candidate(from, candidate(0, 1, 20));
+        sources.add_candidate(from, candidate(0, 0, 10));
+        sources.add_edge(from, to);
 
         sources.propagate(&mut budget);
 
-        let ordered: Vec<_> = sources.get(&to).unwrap().iter().copied().collect();
+        let ordered: Vec<_> = sources.candidates(&to).copied().collect();
         assert_eq!(ordered[0], candidate(0, 0, 5));
         assert_eq!(ordered[1], candidate(0, 0, 10));
         assert_eq!(ordered[2], candidate(0, 1, 20));
@@ -450,11 +449,11 @@ mod tests {
         let a = key(1, 1, 1);
         let b = key(1, 1, 2);
         for i in 0..(u32::try_from(MAX_PENDING).unwrap_or(u32::MAX) + 10) {
-            sources.add(a, candidate(0, 0, i));
+            sources.add_candidate(a, candidate(0, 0, i));
         }
         // a → b edges cause all candidates to flow into b in one round,
         // filling the pending queue past the safety limit.
-        sources.adjacency.insert(a, vec![b]);
+        sources.add_edge(a, b);
 
         assert!(sources.propagate(&mut budget));
     }
@@ -482,11 +481,11 @@ mod tests {
         let mut sources = FlowSources::default();
         let k = key(1, 1, 1);
 
-        sources.add(k, candidate(0, 2, 30));
-        sources.add(k, candidate(0, 0, 10));
-        sources.add(k, candidate(0, 1, 20));
+        sources.add_candidate(k, candidate(0, 2, 30));
+        sources.add_candidate(k, candidate(0, 0, 10));
+        sources.add_candidate(k, candidate(0, 1, 20));
 
-        let ordered: Vec<_> = sources.get(&k).unwrap().iter().copied().collect();
+        let ordered: Vec<_> = sources.candidates(&k).copied().collect();
         assert_eq!(ordered[0], candidate(0, 0, 10));
         assert_eq!(ordered[1], candidate(0, 1, 20));
         assert_eq!(ordered[2], candidate(0, 2, 30));

@@ -113,34 +113,32 @@ impl ContextWorklist {
         let mut worklist = Self::new(MAX_CONTEXTS);
         worklist.seed_from_sources(project, sources);
         let source_flows = sources
-            .iter()
-            .flat_map(|(_, candidates)| candidates.iter().map(|candidate| candidate.flow))
+            .candidate_entries()
+            .map(|(_, candidate)| candidate.flow)
             .collect::<BTreeSet<_>>();
         worklist.seed_from_calls(project, sources, call_graph, &source_flows);
         worklist
     }
 
     fn seed_from_sources(&mut self, project: &ProjectSemanticModel, sources: &FlowSources) {
-        for (key, candidates) in sources.iter() {
+        for (key, candidate) in sources.candidate_entries() {
             if self.is_exhausted() {
                 return;
             }
-            for candidate in candidates {
-                self.push(CallContext {
-                    module: key.module,
-                    function: key.function,
-                    parameter: None,
-                    source_root: Some(key.value),
-                    state: CrossFlowState::known(
-                        candidate.flow,
-                        QualifiedEvent {
-                            module: key.module,
-                            fact: candidate.fact,
-                        },
-                    ),
-                    crossed: key.value != project.source_call_result(key.module, candidate.fact),
-                });
-            }
+            self.push(CallContext {
+                module: key.module,
+                function: key.function,
+                parameter: None,
+                source_root: Some(key.value),
+                state: CrossFlowState::known(
+                    candidate.flow,
+                    QualifiedEvent {
+                        module: key.module,
+                        fact: candidate.fact,
+                    },
+                ),
+                crossed: key.value != project.source_call_result(key.module, candidate.fact),
+            });
         }
     }
 
@@ -170,25 +168,23 @@ impl ContextWorklist {
                             .value_root(argument.value())
                             .unwrap_or_else(|| argument.value());
                         let source_key = SourceKey::new(module.id(), effect.id(), root);
-                        let candidates = sources.get(&source_key);
-                        if let Some(candidates) = candidates {
-                            for candidate in candidates {
-                                let state = CrossFlowState::known(
-                                    candidate.flow,
-                                    QualifiedEvent {
-                                        module: module.id(),
-                                        fact: candidate.fact,
-                                    },
-                                );
-                                self.enqueue_parameters(
-                                    project,
-                                    target_module,
-                                    target_function,
-                                    argument.index(),
-                                    &state,
-                                    target_module != module.id(),
-                                );
-                            }
+                        let candidates: Vec<_> = sources.candidates(&source_key).copied().collect();
+                        for candidate in candidates {
+                            let state = CrossFlowState::known(
+                                candidate.flow,
+                                QualifiedEvent {
+                                    module: module.id(),
+                                    fact: candidate.fact,
+                                },
+                            );
+                            self.enqueue_parameters(
+                                project,
+                                target_module,
+                                target_function,
+                                argument.index(),
+                                &state,
+                                target_module != module.id(),
+                            );
                         }
 
                         // A call-site without a source candidate is still a
@@ -197,8 +193,9 @@ impl ContextWorklist {
                         // unknown source so it can downgrade a matching
                         // witness to Possible without contributing evidence.
                         for &flow in source_flows {
-                            let has_source = candidates
-                                .is_some_and(|items| items.iter().any(|item| item.flow == flow));
+                            let has_source = sources
+                                .candidates(&source_key)
+                                .any(|item| item.flow == flow);
                             if has_source {
                                 continue;
                             }
