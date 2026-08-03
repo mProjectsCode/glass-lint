@@ -282,7 +282,7 @@ impl FunctionSummary {
 
 #[cfg(test)]
 mod tests {
-    use glass_lint_datastructures::{PathId, PathInterner, PathSegment};
+    use glass_lint_datastructures::{PathId, PathSegment, PathStore};
 
     use super::*;
     use crate::{
@@ -295,8 +295,8 @@ mod tests {
         api::classification::RuleIndex,
     };
 
-    fn test_paths() -> (PathInterner, PathId, PathId, PathId) {
-        let mut paths = PathInterner::new();
+    fn test_paths() -> (PathStore, PathId, PathId, PathId) {
+        let mut paths = PathStore::new();
         let p0 = paths.append(PathId::EMPTY, PathSegment::Index(0)).unwrap();
         let p1 = paths.append(PathId::EMPTY, PathSegment::Index(1)).unwrap();
         let p2 = paths.append(PathId::EMPTY, PathSegment::Index(2)).unwrap();

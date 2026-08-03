@@ -7,7 +7,7 @@ fn property(names: &mut NameTable, value: &str) -> PathSegment {
 
 #[test]
 fn shared_prefixes_are_canonical_and_index_free() {
-    let mut paths = PathInterner::new();
+    let mut paths = PathStore::new();
     let mut names = NameTable::default();
     let client = paths
         .append(PathId::EMPTY, property(&mut names, "client"))
@@ -27,7 +27,7 @@ fn shared_prefixes_are_canonical_and_index_free() {
 
 #[test]
 fn property_and_index_segments_remain_distinct() {
-    let mut paths = PathInterner::new();
+    let mut paths = PathStore::new();
     let mut names = NameTable::default();
     let property_seg = paths
         .append(PathId::EMPTY, property(&mut names, "0"))
@@ -38,7 +38,7 @@ fn property_and_index_segments_remain_distinct() {
 
 #[test]
 fn appending_shared_prefixes_does_not_duplicate_nodes() {
-    let mut paths = PathInterner::new();
+    let mut paths = PathStore::new();
     let mut names = NameTable::default();
     let root = paths
         .append(PathId::EMPTY, property(&mut names, "root"))
@@ -53,38 +53,42 @@ fn appending_shared_prefixes_does_not_duplicate_nodes() {
 
 #[test]
 fn empty_path_has_no_first_index() {
-    let paths = PathInterner::new();
+    let paths = PathStore::new();
     assert_eq!(paths.first_index(PathId::EMPTY), None);
 }
 
 #[test]
 fn invalid_path_returns_none() {
-    let paths = PathInterner::new();
-    assert_eq!(paths.first_index(PathId::from_raw(u32::MAX)), None);
-    assert_eq!(paths.without_first(PathId::from_raw(u32::MAX)), None);
+    let paths = PathStore::new();
+    let invalid = PathId::for_store(u32::MAX, 0);
+    assert_eq!(paths.first_index(invalid), None);
+    assert_eq!(paths.without_first(invalid), None);
 }
 
 #[test]
 fn path_handles_are_owned_by_their_store() {
-    let mut first = PathInterner::new();
-    let mut second = PathInterner::new();
+    let mut first = PathStore::new();
+    let mut second = PathStore::new();
     let path = first.append(PathId::EMPTY, PathSegment::Index(0)).unwrap();
+    let foreign_root = PathId::for_store(0, u64::MAX);
 
     assert!(first.is_valid(path));
     assert!(!second.is_valid(path));
     assert_eq!(second.append(path, PathSegment::Index(1)), None);
+    assert!(!second.is_valid(foreign_root));
+    assert_eq!(second.append(foreign_root, PathSegment::Index(1)), None);
 }
 
 #[test]
 fn first_index_returns_index_for_index_segment() {
-    let mut paths = PathInterner::new();
+    let mut paths = PathStore::new();
     let idx = paths.append(PathId::EMPTY, PathSegment::Index(7)).unwrap();
     assert_eq!(paths.first_index(idx), Some(7));
 }
 
 #[test]
 fn first_index_returns_none_for_property_segment() {
-    let mut paths = PathInterner::new();
+    let mut paths = PathStore::new();
     let mut names = NameTable::default();
     let prop = paths
         .append(PathId::EMPTY, property(&mut names, "x"))
@@ -94,7 +98,7 @@ fn first_index_returns_none_for_property_segment() {
 
 #[test]
 fn starts_with_matches_exact_path() {
-    let mut paths = PathInterner::new();
+    let mut paths = PathStore::new();
     let mut names = NameTable::default();
     let a = paths
         .append(PathId::EMPTY, property(&mut names, "a"))
@@ -104,7 +108,7 @@ fn starts_with_matches_exact_path() {
 
 #[test]
 fn starts_with_rejects_deeper_prefix() {
-    let mut paths = PathInterner::new();
+    let mut paths = PathStore::new();
     let mut names = NameTable::default();
     let a = paths
         .append(PathId::EMPTY, property(&mut names, "a"))
@@ -115,7 +119,7 @@ fn starts_with_rejects_deeper_prefix() {
 
 #[test]
 fn without_first_on_single_segment_returns_empty() {
-    let mut paths = PathInterner::new();
+    let mut paths = PathStore::new();
     let mut names = NameTable::default();
     let a = paths
         .append(PathId::EMPTY, property(&mut names, "a"))
@@ -125,7 +129,7 @@ fn without_first_on_single_segment_returns_empty() {
 
 #[test]
 fn without_first_on_multi_segment() {
-    let mut paths = PathInterner::new();
+    let mut paths = PathStore::new();
     let mut names = NameTable::default();
     let b = paths
         .append(PathId::EMPTY, property(&mut names, "b"))
@@ -143,13 +147,13 @@ fn without_first_on_multi_segment() {
 
 #[test]
 fn without_first_on_empty_returns_none() {
-    let paths = PathInterner::new();
+    let paths = PathStore::new();
     assert_eq!(paths.without_first(PathId::EMPTY), None);
 }
 
 #[test]
 fn concat_creates_correct_intermediate_paths() {
-    let mut paths = PathInterner::new();
+    let mut paths = PathStore::new();
     let mut names = NameTable::default();
     let a = paths
         .append(PathId::EMPTY, property(&mut names, "a"))
@@ -166,7 +170,7 @@ fn concat_creates_correct_intermediate_paths() {
 
 #[test]
 fn concat_with_empty_suffix_returns_prefix() {
-    let mut paths = PathInterner::new();
+    let mut paths = PathStore::new();
     let mut names = NameTable::default();
     let a = paths
         .append(PathId::EMPTY, property(&mut names, "a"))
@@ -176,7 +180,7 @@ fn concat_with_empty_suffix_returns_prefix() {
 
 #[test]
 fn concat_with_empty_prefix_returns_suffix() {
-    let mut paths = PathInterner::new();
+    let mut paths = PathStore::new();
     let mut names = NameTable::default();
     let a = paths
         .append(PathId::EMPTY, property(&mut names, "a"))
@@ -186,7 +190,7 @@ fn concat_with_empty_prefix_returns_suffix() {
 
 #[test]
 fn concat_with_buffer_reuses_scratch_buffer() {
-    let mut paths = PathInterner::new();
+    let mut paths = PathStore::new();
     let mut names = NameTable::default();
     let a = paths
         .append(PathId::EMPTY, property(&mut names, "a"))
@@ -203,7 +207,7 @@ fn concat_with_buffer_reuses_scratch_buffer() {
 
 #[test]
 fn edge_reuse_after_concat() {
-    let mut paths = PathInterner::new();
+    let mut paths = PathStore::new();
     let mut names = NameTable::default();
     let a = paths
         .append(PathId::EMPTY, property(&mut names, "a"))
@@ -221,20 +225,20 @@ fn edge_reuse_after_concat() {
 
 #[test]
 fn node_count_tracking() {
-    let paths = PathInterner::new();
+    let paths = PathStore::new();
     assert_eq!(paths.node_count(), 1);
 }
 
 #[test]
 fn invalid_id_rejection() {
-    let mut paths = PathInterner::new();
-    let result = paths.append(PathId::from_raw(u32::MAX), PathSegment::Index(0));
+    let mut paths = PathStore::new();
+    let result = paths.append(PathId::for_store(u32::MAX, 0), PathSegment::Index(0));
     assert_eq!(result, None);
 }
 
 #[test]
 fn parent_lookup() {
-    let mut paths = PathInterner::new();
+    let mut paths = PathStore::new();
     let mut names = NameTable::default();
     let a = paths
         .append(PathId::EMPTY, property(&mut names, "a"))
@@ -245,20 +249,20 @@ fn parent_lookup() {
 
 #[test]
 fn parent_of_root_points_to_self() {
-    let paths = PathInterner::new();
+    let paths = PathStore::new();
     assert_eq!(paths.parent(PathId::EMPTY), Some(PathId::EMPTY));
 }
 
 #[test]
 fn parent_of_invalid_is_none() {
-    let paths = PathInterner::new();
-    assert_eq!(paths.parent(PathId::from_raw(u32::MAX)), None);
+    let paths = PathStore::new();
+    assert_eq!(paths.parent(PathId::for_store(u32::MAX, 0)), None);
 }
 
 #[test]
 fn find_edge_on_existing() {
     let mut names = NameTable::default();
-    let mut store = ParentPathStore::new(100);
+    let mut store = PathStore::with_max_nodes(100);
     let seg = PathSegment::Property(names.intern("x").unwrap());
     let id = store.append(PathId::EMPTY, seg).unwrap();
     assert_eq!(store.find_edge(PathId::EMPTY, &seg), Some(id));
@@ -267,14 +271,38 @@ fn find_edge_on_existing() {
 #[test]
 fn find_edge_on_missing() {
     let mut names = NameTable::default();
-    let store = ParentPathStore::new(100);
+    let store = PathStore::with_max_nodes(100);
     let seg = PathSegment::Property(names.intern("x").unwrap());
     assert_eq!(store.find_edge(PathId::EMPTY, &seg), None);
 }
 
 #[test]
+fn linked_children_preserve_typed_parent_and_deduplicate() {
+    let mut source = PathStore::new();
+    let parent = source.append(PathId::EMPTY, PathSegment::Index(0)).unwrap();
+    let link = source.link(parent).unwrap();
+    let mut overlay = PathStore::with_max_nodes(10);
+    let segment = PathSegment::Index(1);
+
+    let child = overlay.append_linked(link, segment).unwrap();
+    assert_eq!(overlay.append_linked(link, segment), Some(child));
+    assert_eq!(overlay.find_linked_edge(link, &segment), Some(child));
+    assert_eq!(overlay.parent_ref(child), Some(ParentRef::Linked(link)));
+    assert_eq!(overlay.depth(child), Some(2));
+}
+
+#[test]
+fn linking_rejects_paths_owned_by_another_store() {
+    let mut source = PathStore::new();
+    let other = PathStore::new();
+    let path = source.append(PathId::EMPTY, PathSegment::Index(0)).unwrap();
+
+    assert!(other.link(path).is_none());
+}
+
+#[test]
 fn collect_segments_multi_segment() {
-    let mut paths = PathInterner::new();
+    let mut paths = PathStore::new();
     let mut names = NameTable::default();
     let a = paths
         .append(PathId::EMPTY, property(&mut names, "a"))
@@ -291,7 +319,7 @@ fn collect_segments_multi_segment() {
 
 #[test]
 fn collect_segments_on_root_returns_empty() {
-    let paths = PathInterner::new();
+    let paths = PathStore::new();
     let mut buf = vec![PathSegment::Index(99)];
     paths.collect_segments(PathId::EMPTY, &mut buf).unwrap();
     assert!(buf.is_empty());
@@ -299,7 +327,7 @@ fn collect_segments_on_root_returns_empty() {
 
 #[test]
 fn first_segment_of_returns_deepest_ancestor() {
-    let mut store = ParentPathStore::new(100);
+    let mut store = PathStore::with_max_nodes(100);
     let mut names = NameTable::default();
     let seg_a = PathSegment::Property(names.intern("a").unwrap());
     let seg_b = PathSegment::Property(names.intern("b").unwrap());
@@ -312,13 +340,13 @@ fn first_segment_of_returns_deepest_ancestor() {
 
 #[test]
 fn first_segment_of_root_returns_none() {
-    let store = ParentPathStore::new(100);
+    let store = PathStore::with_max_nodes(100);
     assert_eq!(store.first_segment_of(PathId::EMPTY), None);
 }
 
 #[test]
 fn is_valid_returns_true_for_existing_ids() {
-    let mut store = ParentPathStore::new(100);
+    let mut store = PathStore::with_max_nodes(100);
     let mut names = NameTable::default();
     let seg = PathSegment::Property(names.intern("x").unwrap());
     let id = store.append(PathId::EMPTY, seg).unwrap();
@@ -327,13 +355,13 @@ fn is_valid_returns_true_for_existing_ids() {
 
 #[test]
 fn is_valid_returns_false_for_out_of_range() {
-    let store = ParentPathStore::new(100);
-    assert!(!store.is_valid(PathId::from_raw(999)));
+    let store = PathStore::with_max_nodes(100);
+    assert!(!store.is_valid(PathId::for_store(999, 0)));
 }
 
 #[test]
 fn starts_with_empty_prefix() {
-    let mut paths = PathInterner::new();
+    let mut paths = PathStore::new();
     let mut names = NameTable::default();
     let a = paths
         .append(PathId::EMPTY, property(&mut names, "a"))
@@ -343,7 +371,7 @@ fn starts_with_empty_prefix() {
 
 #[test]
 fn max_nodes_limits_growth() {
-    let mut store = ParentPathStore::new(2);
+    let mut store = PathStore::with_max_nodes(2);
     let mut names = NameTable::default();
     let seg_a = PathSegment::Property(names.intern("a").unwrap());
     let seg_b = PathSegment::Property(names.intern("b").unwrap());
@@ -353,13 +381,13 @@ fn max_nodes_limits_growth() {
 
 #[test]
 fn max_nodes_accessor() {
-    let store = ParentPathStore::new(42);
+    let store = PathStore::with_max_nodes(42);
     assert_eq!(store.max_nodes(), 42);
 }
 
 #[test]
 fn segments_iterator_returns_all_segments() {
-    let mut paths = PathInterner::new();
+    let mut paths = PathStore::new();
     let mut names = NameTable::default();
     let a = paths
         .append(PathId::EMPTY, property(&mut names, "a"))
@@ -377,19 +405,19 @@ fn segments_iterator_returns_all_segments() {
 
 #[test]
 fn segments_iterator_on_root_is_empty() {
-    let paths = PathInterner::new();
+    let paths = PathStore::new();
     assert_eq!(paths.segments(PathId::EMPTY).unwrap().count(), 0);
 }
 
 #[test]
 fn segments_iterator_on_invalid_is_none() {
-    let paths = PathInterner::new();
-    assert!(paths.segments(PathId::from_raw(u32::MAX)).is_none());
+    let paths = PathStore::new();
+    assert!(paths.segments(PathId::for_store(u32::MAX, 0)).is_none());
 }
 
 #[test]
 fn exact_size_iterator() {
-    let mut paths = PathInterner::new();
+    let mut paths = PathStore::new();
     let mut names = NameTable::default();
     let a = paths
         .append(PathId::EMPTY, property(&mut names, "a"))
@@ -402,25 +430,14 @@ fn exact_size_iterator() {
 }
 
 #[test]
-fn path_id_tag_untag_roundtrip() {
-    let raw = 42u32;
-    let id = PathId::from_raw(raw);
-    assert_eq!(id.without_linked(), PathId::from_raw(raw));
-    let tagged = PathId::from_raw(raw | PathId::LINK_TAG);
-    assert!(tagged.is_linked());
-    assert_eq!(tagged.without_linked(), PathId::from_raw(raw));
-}
-
-#[test]
 fn path_id_empty_checks() {
     assert!(PathId::EMPTY.is_empty());
-    assert!(!PathId::EMPTY.is_linked());
-    assert_eq!(PathId::EMPTY.without_linked(), PathId::EMPTY);
+    assert!(!PathId::for_store(0, 1).is_empty());
 }
 
 #[test]
 fn raw_nodes_and_edges_accessors() {
-    let mut store = ParentPathStore::new(100);
+    let mut store = PathStore::with_max_nodes(100);
     let mut names = NameTable::default();
     let seg = PathSegment::Property(names.intern("x").unwrap());
     store.append(PathId::EMPTY, seg).unwrap();

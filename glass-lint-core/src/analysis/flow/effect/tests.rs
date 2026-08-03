@@ -1,4 +1,4 @@
-use glass_lint_datastructures::{NamePath, PathId, PathInterner, PathSegment};
+use glass_lint_datastructures::{NamePath, PathId, PathSegment, PathStore};
 
 use super::*;
 use crate::analysis::{
@@ -251,7 +251,7 @@ fn collect_creates_user_defined_functions() {
 
 #[test]
 fn parameter_ref_index_and_is_root() {
-    let mut paths = PathInterner::new();
+    let mut paths = PathStore::new();
     let non_empty = paths.append(PathId::EMPTY, PathSegment::Index(0)).unwrap();
     let params = [
         ParameterRef {

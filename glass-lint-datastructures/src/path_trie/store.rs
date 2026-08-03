@@ -8,13 +8,13 @@ static NEXT_STORE_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PathLink {
-    id: PathId,
+    path: PathId,
     depth: u32,
 }
 
 impl PathLink {
-    pub fn id(self) -> PathId {
-        self.id
+    pub fn path(self) -> PathId {
+        self.path
     }
 }
 
@@ -32,15 +32,19 @@ struct PathNode {
 }
 
 #[derive(Debug)]
-pub struct ParentPathStore {
+pub struct PathStore {
     nodes: Vec<PathNode>,
     by_edge: HashMap<(ParentRef, PathSegment), PathId>,
     max_nodes: usize,
     owner: u64,
 }
 
-impl ParentPathStore {
-    pub fn new(max_nodes: usize) -> Self {
+impl PathStore {
+    pub fn new() -> Self {
+        Self::with_max_nodes(super::DEFAULT_MAX_PATH_NODES)
+    }
+
+    pub fn with_max_nodes(max_nodes: usize) -> Self {
         Self {
             nodes: vec![PathNode {
                 parent: ParentRef::Local(PathId::EMPTY),
@@ -54,27 +58,15 @@ impl ParentPathStore {
     }
 
     fn local_id(&self, id: PathId) -> Option<PathId> {
-        if id.is_empty() {
+        if id == PathId::EMPTY {
             return Some(PathId::EMPTY);
         }
-        (id.owner() == self.owner).then_some(id.without_linked())
+        (id.owner() == self.owner).then_some(id)
     }
 
     fn node(&self, id: PathId) -> Option<&PathNode> {
         let id = self.local_id(id)?;
         self.nodes.get(id.index() as usize)
-    }
-
-    /// Construct a handle from a raw index, validating both capacity and this
-    /// store's ownership boundary.
-    pub fn checked_id(&self, raw: u32) -> Option<PathId> {
-        let linked = raw & PathId::LINK_TAG != 0;
-        let id = PathId::for_store(raw & !PathId::LINK_TAG, self.owner);
-        ((id.index() as usize) < self.nodes.len()).then_some(if linked {
-            id.with_linked()
-        } else {
-            id
-        })
     }
 
     pub fn is_valid(&self, id: PathId) -> bool {
@@ -93,7 +85,7 @@ impl ParentPathStore {
     pub fn link(&self, parent: PathId) -> Option<PathLink> {
         let parent = self.local_id(parent)?;
         Some(PathLink {
-            id: parent,
+            path: parent,
             depth: self.node(parent)?.depth,
         })
     }
@@ -135,7 +127,7 @@ impl ParentPathStore {
     pub fn parent(&self, id: PathId) -> Option<PathId> {
         self.parent_ref(id).map(|parent| match parent {
             ParentRef::Local(id) => id,
-            ParentRef::Linked(link) => link.id,
+            ParentRef::Linked(link) => link.path(),
         })
     }
 
@@ -233,6 +225,25 @@ impl ParentPathStore {
         self.rebuild_without_first(id)
     }
 
+    pub fn concat_with_buffer(
+        &mut self,
+        prefix: PathId,
+        suffix: PathId,
+        buf: &mut Vec<PathSegment>,
+    ) -> Option<PathId> {
+        self.collect_segments(suffix, buf)?;
+        let mut result = self.local_id(prefix)?;
+        for segment in buf.drain(..) {
+            result = self.append(result, segment)?;
+        }
+        Some(result)
+    }
+
+    pub fn concat(&mut self, prefix: PathId, suffix: PathId) -> Option<PathId> {
+        let mut buf = Vec::new();
+        self.concat_with_buffer(prefix, suffix, &mut buf)
+    }
+
     fn rebuild_without_first(&self, id: PathId) -> Option<PathId> {
         let mut segments = Vec::new();
         let mut current = self.local_id(id)?;
@@ -240,7 +251,7 @@ impl ParentPathStore {
             let node = self.node(current)?;
             if match node.parent {
                 ParentRef::Local(parent) => parent.is_empty(),
-                ParentRef::Linked(link) => link.id.is_empty(),
+                ParentRef::Linked(link) => link.path().is_empty(),
             } {
                 break;
             }
@@ -296,3 +307,9 @@ impl Iterator for PathSegments {
 }
 
 impl ExactSizeIterator for PathSegments {}
+
+impl Default for PathStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}

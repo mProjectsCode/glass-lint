@@ -11,8 +11,8 @@
 //!   representation.
 //! - `arena` — bounded interning tables that map identities to their meanings.
 //!
-//! Path trie types (`PathId`, `PathSegment`, `ParentPathStore`,
-//! `PathInterner`) live in [`glass_lint_datastructures`] and are imported
+//! Path trie types (`PathId`, `PathSegment`, `PathStore`) live in
+//! [`glass_lint_datastructures`] and are imported
 //! directly by callers.
 
 mod arena;

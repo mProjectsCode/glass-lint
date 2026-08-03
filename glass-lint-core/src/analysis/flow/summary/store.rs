@@ -1,4 +1,4 @@
-use glass_lint_datastructures::{ParentPathStore, ParentRef, PathId, PathInterner, PathSegment};
+use glass_lint_datastructures::{ParentRef, PathId, PathSegment, PathStore};
 
 const MAX_OVERLAY_NODES: usize = 4096;
 
@@ -37,15 +37,15 @@ impl SummaryPathId {
 
 #[derive(Debug)]
 pub struct SummaryPathStore<'a> {
-    frozen: &'a PathInterner,
-    overlay: ParentPathStore,
+    frozen: &'a PathStore,
+    overlay: PathStore,
 }
 
 impl<'a> SummaryPathStore<'a> {
-    pub(super) fn new(frozen: &'a PathInterner) -> Self {
+    pub(super) fn new(frozen: &'a PathStore) -> Self {
         Self {
             frozen,
-            overlay: ParentPathStore::new(MAX_OVERLAY_NODES),
+            overlay: PathStore::with_max_nodes(MAX_OVERLAY_NODES),
         }
     }
 
@@ -77,7 +77,7 @@ impl<'a> SummaryPathStore<'a> {
             },
             SummaryPathId::Overlay(path) => match self.overlay.parent_ref(path)? {
                 ParentRef::Local(parent) => Some(SummaryPathId::Overlay(parent)),
-                ParentRef::Linked(link) => Some(SummaryPathId::Frozen(link.id())),
+                ParentRef::Linked(link) => Some(SummaryPathId::Frozen(link.path())),
             },
         }
     }
@@ -256,22 +256,22 @@ impl<'a> SummaryPathStore<'a> {
     }
 
     #[cfg(test)]
-    pub(super) fn with_max_nodes(frozen: &'a PathInterner, max_nodes: usize) -> Self {
+    pub(super) fn with_max_nodes(frozen: &'a PathStore, max_nodes: usize) -> Self {
         Self {
             frozen,
-            overlay: ParentPathStore::new(max_nodes),
+            overlay: PathStore::with_max_nodes(max_nodes),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use glass_lint_datastructures::{PathId, PathInterner, PathSegment};
+    use glass_lint_datastructures::{PathId, PathSegment, PathStore};
 
     use super::*;
 
-    fn make_frozen_paths() -> (PathInterner, PathId, PathId, PathId) {
-        let mut frozen = PathInterner::new();
+    fn make_frozen_paths() -> (PathStore, PathId, PathId, PathId) {
+        let mut frozen = PathStore::new();
         let a = frozen.append(PathId::EMPTY, PathSegment::Index(0)).unwrap();
         let b = frozen.append(a, PathSegment::Index(1)).unwrap();
         let c = frozen.append(a, PathSegment::Index(2)).unwrap();
@@ -290,7 +290,7 @@ mod tests {
 
     #[test]
     fn invalid_frozen_path_returns_none() {
-        let empty = PathInterner::new();
+        let empty = PathStore::new();
         let (frozen, a, _b, _c) = make_frozen_paths();
         let store = SummaryPathStore::new(&empty);
         assert!(store.intern_frozen(a).is_none());

@@ -9,8 +9,8 @@ provider names or APIs.
 - `name` — bounded interned-name table with deterministic insertion order.
 - `path` — owned (`NamePath`, `SymbolPath`) and borrowed (`PathView`) property
   path representations.
-- `path_trie` — compact path interner (`PathInterner`, `ParentPathStore`) and
-  overlay store for summary propagation.
+- `path_trie` — compact `PathStore` with typed linked-parent support and
+  overlay storage for summary propagation.
 - `table` — dense `IndexTable<T>` backed by `Vec<Option<T>>`, keyed by
   `IdIndex` types.
 - `budget` — generic bounded-budget counter with exhaustion tracking.

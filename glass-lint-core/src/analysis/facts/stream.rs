@@ -11,7 +11,7 @@
 
 use std::marker::PhantomData;
 
-use glass_lint_datastructures::{NameTable, PathId, PathInterner, PathSegment, PathSegmentInput};
+use glass_lint_datastructures::{NameTable, PathId, PathSegment, PathSegmentInput, PathStore};
 
 use crate::analysis::{
     facts::{FactId, FactKind, FactPayload, MAX_FACTS, ParameterBinding, SemanticFact},
@@ -67,7 +67,7 @@ pub(in crate::analysis) struct FactStream<Phase = Building> {
     facts: Vec<SemanticFact>,
     max_facts: usize,
     /// Interned property/index paths used by argument projections.
-    paths: PathInterner,
+    paths: PathStore,
     /// Frozen name table, set during `freeze`.
     names: NameTable,
     /// Frozen value arena, set during `freeze`.
@@ -126,7 +126,7 @@ impl<T> FactStream<T> {
     }
 
     /// Borrow the canonical path table for read-only projection queries.
-    pub(in crate::analysis) fn paths(&self) -> &PathInterner {
+    pub(in crate::analysis) fn paths(&self) -> &PathStore {
         &self.paths
     }
 
@@ -191,7 +191,7 @@ impl FactStream<Building> {
         Self {
             facts: Vec::new(),
             max_facts: max_facts.min(MAX_FACTS),
-            paths: PathInterner::new(),
+            paths: PathStore::new(),
             names: NameTable::default(),
             values: ValueTable::default(),
             function_parameters: Vec::new(),
@@ -333,7 +333,7 @@ impl Default for FactStream<Frozen> {
         Self {
             facts: Vec::new(),
             max_facts: MAX_FACTS,
-            paths: PathInterner::default(),
+            paths: PathStore::default(),
             names: NameTable::default(),
             values: ValueTable::default(),
             function_parameters: Vec::new(),
