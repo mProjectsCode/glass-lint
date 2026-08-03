@@ -216,7 +216,7 @@ impl ProjectLinker {
                     .local()
                     .interface()
                     .static_string(name)
-                    .cloned();
+                    .map(str::to_owned);
                 if !is_local && origin.is_none() {
                     return ExportResolution::Unknown;
                 }
@@ -245,7 +245,7 @@ impl ProjectLinker {
                 .modules
                 .get(&module)
                 .and_then(|m| m.local().interface().static_string(export_name))
-                .cloned()
+                .map(str::to_owned)
                 .map_or_else(
                     || ExportResolution::Qualified {
                         module,

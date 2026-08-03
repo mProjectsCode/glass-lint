@@ -318,8 +318,10 @@ impl ModuleInterface {
         self.unknown_exports
     }
 
-    pub fn static_string(&self, name: &str) -> Option<&String> {
-        self.exports.get(name).and_then(|e| e.static_value.as_ref())
+    pub fn static_string(&self, name: &str) -> Option<&str> {
+        self.exports
+            .get(name)
+            .and_then(|e| e.static_value.as_deref())
     }
 
     pub fn function_export(&self, name: &str) -> Option<FunctionId> {

@@ -198,7 +198,7 @@ checks.
 name, fact-stream, and fact queries through it; location lookup now uses the
 existing module accessor. Verified with `make fmt && make ci`.
 
-#### [ ] READ-019 — Module-interface accessors leak `SmolStr` and `String` storage
+#### [x] READ-019 — Module-interface accessors leak `SmolStr` and `String` storage
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -223,7 +223,10 @@ internal compact storage, deterministic `BTreeMap` order, and the distinction
 between unresolved and unknown exports. Do not introduce a semantic wrapper or
 an additional compatibility accessor without a measured performance need.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Changed only `ModuleInterface::static_string` to return
+`Option<&str>` and made the two linker ownership transfers explicit with
+`map(str::to_owned)`, retaining the clone-bearing `SmolStr` accessors. Verified
+with `make fmt && make ci`.
 
 #### [ ] READ-020 — Collector visibility lookup is implemented twice with different result shapes
 
