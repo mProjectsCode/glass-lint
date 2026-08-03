@@ -138,6 +138,17 @@ impl EffectCall {
     }
 }
 
+impl FactStream<Frozen> {
+    /// Creates a call-effect view for `event` while retaining the stream's
+    /// borrow and the existing fail-closed behavior for unknown fact IDs.
+    pub(in crate::analysis) fn call_effect(&self, event: FactId) -> CallEffectRef<'_> {
+        CallEffectRef {
+            stream: self,
+            event,
+        }
+    }
+}
+
 impl CallEffectRef<'_> {
     pub(super) fn call_fact(&self) -> Option<&FactPayload> {
         self.stream.fact(self.event).map(|fact| &fact.payload)

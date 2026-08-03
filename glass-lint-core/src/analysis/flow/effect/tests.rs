@@ -19,10 +19,7 @@ fn chain_owned_resolves_direct_call_with_rooted_or_syntactic_chain() {
         .iter()
         .find(|f| matches!(&f.payload, FactPayload::Call { .. }))
         .expect("call fact should exist");
-    let cref = CallEffectRef {
-        stream: &stream,
-        event: fact.id,
-    };
+    let cref = stream.call_effect(fact.id);
     let names = stream.names();
     let chain = cref
         .chain_owned(names)
@@ -53,10 +50,7 @@ fn chain_owned_falls_back_to_callee_name_for_alias_call() {
         .collect();
     assert!(!call_facts.is_empty(), "expected at least 1 call fact");
     let alias_call = call_facts[0];
-    let cref = CallEffectRef {
-        stream: &stream,
-        event: alias_call.id,
-    };
+    let cref = stream.call_effect(alias_call.id);
     let chain = cref
         .chain_owned(names)
         .expect("alias call should have a chain via callee_name fallback");
@@ -80,10 +74,7 @@ fn rooted_is_false_for_non_global_call() {
         .collect();
     assert!(!call_facts.is_empty(), "expected at least 1 call fact");
     let call_fact = call_facts[0];
-    let cref = CallEffectRef {
-        stream: &stream,
-        event: call_fact.id,
-    };
+    let cref = stream.call_effect(call_fact.id);
     assert!(!cref.rooted(), "local function call should not be rooted");
 }
 
@@ -98,10 +89,7 @@ fn effective_args_unwraps_call_invocation() {
         .collect();
     assert!(!call_facts.is_empty(), "expected at least 1 call fact");
     let call_fact = call_facts[0];
-    let cref = CallEffectRef {
-        stream: &stream,
-        event: call_fact.id,
-    };
+    let cref = stream.call_effect(call_fact.id);
     let effective = cref
         .effective_args()
         .expect(".call() should have effective args");
@@ -130,10 +118,7 @@ fn effective_args_unwraps_apply_invocation() {
         .collect();
     assert!(!call_facts.is_empty(), "expected at least 1 call fact");
     let call_fact = call_facts[0];
-    let cref = CallEffectRef {
-        stream: &stream,
-        event: call_fact.id,
-    };
+    let cref = stream.call_effect(call_fact.id);
     let effective = cref
         .effective_args()
         .expect(".apply() should have effective args");
@@ -155,10 +140,7 @@ fn effective_args_unwraps_apply_invocation() {
 fn call_fact_returns_none_for_unknown_id() {
     let (stream, _effects) = collect_effects("const x = 1;");
     let unknown = FactId::from_test(u32::MAX);
-    let cref = CallEffectRef {
-        stream: &stream,
-        event: unknown,
-    };
+    let cref = stream.call_effect(unknown);
     assert!(cref.call_fact().is_none());
     assert!(cref.chain().is_none());
     assert!(!cref.rooted());
@@ -178,10 +160,7 @@ fn chain_returns_borrowed_without_callee_name_fallback() {
         .iter()
         .find(|f| matches!(&f.payload, FactPayload::Call { .. }))
         .expect("call fact should exist");
-    let cref = CallEffectRef {
-        stream: &stream,
-        event: fact.id,
-    };
+    let cref = stream.call_effect(fact.id);
     let names = stream.names();
     let owned = cref.chain_owned(names).unwrap();
     let borrowed = cref.chain().unwrap();

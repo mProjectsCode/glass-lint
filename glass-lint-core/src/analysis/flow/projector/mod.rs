@@ -29,11 +29,7 @@ use crate::{
         facts::{
             CallArgInfo, ControlKind, FactId, FactPayload, FactStream, Frozen, FunctionBoundary,
         },
-        flow::{
-            effect::{CallEffectRef, FunctionEffects},
-            planning::BoundFlowPlan,
-            summary::FunctionSummaries,
-        },
+        flow::{effect::FunctionEffects, planning::BoundFlowPlan, summary::FunctionSummaries},
         model::flow::{FlowId, FlowLimits, FlowState},
         trace::TraceArena,
         value::{BindingSlot, ObjectId, ValueId},
@@ -604,10 +600,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         else {
             return;
         };
-        let cref = CallEffectRef {
-            stream: self.stream,
-            event: fact.id,
-        };
+        let cref = self.stream.call_effect(fact.id);
         let effective_args = cref.effective_args().unwrap_or(&[]);
         if let Some(chain) = cref.chain_owned(self.names) {
             self.record_configuration(*receiver, &chain, effective_args, fact.id);

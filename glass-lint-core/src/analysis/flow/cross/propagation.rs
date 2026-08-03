@@ -11,7 +11,7 @@ use crate::{
                 evidence::{self, effect_use_event, emit, mark_nonmatching, usage_matches_context},
                 state::{CallContext, CrossFlowState, QualifiedEvent},
             },
-            effect::{CallEffectRef, EffectUse, FunctionEffect},
+            effect::{EffectUse, FunctionEffect},
             planning::BoundFlowPlan,
         },
     },
@@ -105,7 +105,7 @@ impl UsageProjector<'_, '_> {
         else {
             return;
         };
-        let cref = CallEffectRef { stream, event };
+        let cref = stream.call_effect(event);
         let Some(call_args) = cref.effective_args() else {
             return;
         };
@@ -142,7 +142,7 @@ impl UsageProjector<'_, '_> {
         else {
             return;
         };
-        let cref = CallEffectRef { stream, event };
+        let cref = stream.call_effect(event);
         let matching_sinks = self.flow_plan.matching_sink_indices(
             self.context.state().flow_id(),
             argument,

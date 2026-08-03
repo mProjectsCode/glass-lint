@@ -17,7 +17,7 @@ configuration, dependency, or generated documentation files were changed.
 
 ### Core flow, facts, and matching
 
-#### [ ] READ-012 — Call-effect references are constructed outside their owner
+#### [x] READ-012 — Call-effect references are constructed outside their owner
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -41,7 +41,9 @@ owner method that preserves the current `Option` behavior for invalid fact
 IDs. Keep the stream borrow and event identity separate; this is a construction
 boundary, not a reason to merge effect events with semantic facts.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a frozen fact-stream `call_effect` factory and routed
+all production and effect-test construction through it, preserving the
+unknown-fact `Option` behavior. Verified with `make fmt && make ci`.
 
 #### [ ] READ-013 — Shared artifact types expose their `Arc` storage
 

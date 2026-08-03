@@ -230,10 +230,7 @@ impl FunctionSummary {
         else {
             return InsertOutcome::default();
         };
-        let cref = crate::analysis::flow::effect::CallEffectRef {
-            stream,
-            event: call_id,
-        };
+        let cref = stream.call_effect(call_id);
         let flow_ids = cref
             .global_name()
             .and_then(|name| plan.global_sink_ids(name))

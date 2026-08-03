@@ -21,10 +21,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             return;
         }
         if let Some(fact_id) = self.calls_by_result.get(&source).copied() {
-            let cref = CallEffectRef {
-                stream: self.stream,
-                event: fact_id,
-            };
+            let cref = self.stream.call_effect(fact_id);
             if let Some(args) = cref.effective_args()
                 && let Some((object, states)) = self.match_source(&cref, args, fact_id)
             {
