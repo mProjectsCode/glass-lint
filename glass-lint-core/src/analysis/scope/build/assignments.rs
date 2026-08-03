@@ -40,18 +40,10 @@ impl ScopeCollector<'_> {
         name: glass_lint_datastructures::NameId,
         provenance: BindingProvenance,
     ) {
-        let next = self
-            .version_counters
-            .entry(ScopedName::new(scope, name))
-            .or_insert(0);
-        *next = next.saturating_add(1);
-        let version = BindingVersion::new(*next);
+        let version = self.next_assignment_version(scope, name);
         self.path_state
             .assignment_environment
             .record_known(scope, name, provenance.clone());
-        self.path_state
-            .assignment_writes
-            .insert(ScopedName::new(scope, name));
         self.assignments
             .push(crate::analysis::scope::AliasAssignment::single(
                 span, scope, name, version, provenance,
@@ -65,12 +57,7 @@ impl ScopeCollector<'_> {
         name: glass_lint_datastructures::NameId,
         value: &ProvenanceAlternatives,
     ) {
-        let next = self
-            .version_counters
-            .entry(ScopedName::new(scope, name))
-            .or_insert(0);
-        *next = next.saturating_add(1);
-        let version = BindingVersion::new(*next);
+        let version = self.next_assignment_version(scope, name);
         if value.has_complete_witness() {
             self.path_state
                 .assignment_environment
@@ -80,9 +67,6 @@ impl ScopeCollector<'_> {
                 .assignment_environment
                 .record_unknown(scope, name);
         }
-        self.path_state
-            .assignment_writes
-            .insert(ScopedName::new(scope, name));
         self.assignments
             .push(crate::analysis::scope::AliasAssignment::joined(
                 span,
@@ -91,6 +75,18 @@ impl ScopeCollector<'_> {
                 version,
                 value.clone(),
             ));
+    }
+
+    fn next_assignment_version(
+        &mut self,
+        scope: ScopeId,
+        name: glass_lint_datastructures::NameId,
+    ) -> BindingVersion {
+        let key = ScopedName::new(scope, name);
+        let next = self.version_counters.entry(key.clone()).or_insert(0);
+        *next = next.saturating_add(1);
+        self.path_state.assignment_writes.insert(key);
+        BindingVersion::new(*next)
     }
 
     fn visible_binding_with_scope(&self, name: &str) -> Option<(ScopeId, &BindingProvenance)> {

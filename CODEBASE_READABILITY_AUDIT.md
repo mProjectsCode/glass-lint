@@ -305,7 +305,7 @@ delegated ordinary and optional returned-object calls to it, preserving rooted
 source filtering and unsupported-base behavior. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-023 — Assignment recording repeats key/version/write bookkeeping
+#### [x] READ-023 — Assignment recording repeats key/version/write bookkeeping
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -324,7 +324,9 @@ that returns the `ScopedName` and next `BindingVersion`, or accepts a closure
 for the differing environment operation. Keep joined alternatives, unknown
 joins, saturation, and the existing write-set checkpoint behavior intact.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Centralized assignment version-counter advancement and write-set
+recording in `next_assignment_version`, while retaining separate precise and
+joined environment updates. Verified with `make fmt && make ci`.
 
 ### Core API, limits, and session
 
