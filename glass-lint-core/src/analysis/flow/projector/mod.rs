@@ -34,7 +34,7 @@ use crate::{
             planning::BoundFlowPlan,
             summary::FunctionSummaries,
         },
-        model::flow::{FlowId, FlowLimits, FlowState, RequirementIndex},
+        model::flow::{FlowId, FlowLimits, FlowState},
         trace::TraceArena,
         value::{BindingSlot, ObjectId, ValueId},
     },
@@ -700,12 +700,8 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         let updated = self
             .flow_state
             .apply_property_write(object, event, |flow_id| {
-                let Some(flow) = self.plan.get(flow_id) else {
-                    return Vec::new();
-                };
-                flow.requirements
-                    .iter()
-                    .enumerate()
+                self.plan
+                    .requirements_with_indices(flow_id)
                     .filter_map(|(index, requirement)| {
                         let CompiledObjectRequirement::PropertyWrite {
                             property: expected,
@@ -716,7 +712,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                         };
                         (property.is_none() || property == Some(expected.as_str())).then(|| {
                             PropertyWriteUpdate::new(
-                                RequirementIndex::new(index),
+                                index,
                                 value_is_precise
                                     && property == Some(expected.as_str())
                                     && matcher.matches_flow_value(value),

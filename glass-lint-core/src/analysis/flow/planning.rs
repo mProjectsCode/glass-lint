@@ -13,7 +13,7 @@ use glass_lint_datastructures::{NamePath, NameTable};
 use smol_str::SmolStr;
 
 use crate::{
-    analysis::model::flow::FlowId,
+    analysis::model::flow::{FlowId, RequirementIndex, SinkIndex},
     api::{
         classification::RuleIndex,
         compiler::{CompiledObjectFlow, CompiledObjectRequirement},
@@ -111,8 +111,55 @@ impl BoundFlowPaths {
         Self { req_members }
     }
 
-    pub(super) fn requirement_members(&self) -> &[Option<NamePath>] {
-        &self.req_members
+    pub(super) fn requirements_with_indices<'a>(
+        &'a self,
+        flow: &'a CompiledObjectFlow,
+    ) -> impl Iterator<Item = (RequirementIndex, &'a CompiledObjectRequirement)> {
+        flow.requirements
+            .iter()
+            .enumerate()
+            .map(|(index, requirement)| (RequirementIndex::new(index), requirement))
+    }
+
+    pub(super) fn member_requirements<'a>(
+        &'a self,
+        flow: &'a CompiledObjectFlow,
+    ) -> impl Iterator<
+        Item = (
+            RequirementIndex,
+            &'a NamePath,
+            &'a CompiledObjectRequirement,
+        ),
+    > {
+        self.req_members
+            .iter()
+            .zip(flow.requirements.iter())
+            .enumerate()
+            .filter_map(|(index, (member, requirement))| {
+                member
+                    .as_ref()
+                    .map(|member| (RequirementIndex::new(index), member, requirement))
+            })
+    }
+
+    pub(super) fn matching_sink_indices(
+        flow: &CompiledObjectFlow,
+        argument_index: usize,
+        mut target_matches: impl FnMut(&LifecycleCallTarget) -> bool,
+    ) -> Vec<SinkIndex> {
+        flow.sinks
+            .iter()
+            .enumerate()
+            .filter_map(|(index, sink)| {
+                let matches_arguments = match &sink.args {
+                    crate::api::compiler::CompiledObjectSinkArguments::Any => true,
+                    crate::api::compiler::CompiledObjectSinkArguments::Indices(indices) => {
+                        indices.contains(&argument_index)
+                    }
+                };
+                (target_matches(&sink.target) && matches_arguments).then_some(SinkIndex::new(index))
+            })
+            .collect()
     }
 }
 
@@ -190,12 +237,44 @@ impl<'rules> BoundFlowPlan<'rules> {
         self.sinks.get(&BoundLifecycleCallTarget::global(name))
     }
 
-    /// Pre-resolved requirement member paths for `flow_id`.
-    ///
-    /// Each entry is `Some(NamePath)` for a MemberCall requirement or
-    /// `None` for a PropertyWrite requirement.  Returns an empty slice
-    /// when `flow_id` is not in the plan.
-    pub(super) fn requirement_members(&self, flow_id: FlowId) -> &[Option<NamePath>] {
-        self.req_members.get(&flow_id).map_or(&[], Vec::as_slice)
+    pub(super) fn requirements_with_indices(
+        &self,
+        flow_id: FlowId,
+    ) -> impl Iterator<Item = (RequirementIndex, &CompiledObjectRequirement)> {
+        self.get(flow_id)
+            .into_iter()
+            .flat_map(|flow| flow.requirements.iter().enumerate())
+            .map(|(index, requirement)| (RequirementIndex::new(index), requirement))
+    }
+
+    pub(super) fn member_requirements(
+        &self,
+        flow_id: FlowId,
+    ) -> impl Iterator<Item = (RequirementIndex, &NamePath, &CompiledObjectRequirement)> {
+        self.get(flow_id)
+            .into_iter()
+            .zip(self.req_members.get(&flow_id))
+            .flat_map(|(flow, members)| {
+                members
+                    .iter()
+                    .zip(flow.requirements.iter())
+                    .enumerate()
+                    .filter_map(|(index, (member, requirement))| {
+                        member
+                            .as_ref()
+                            .map(|member| (RequirementIndex::new(index), member, requirement))
+                    })
+            })
+    }
+
+    pub(super) fn matching_sink_indices(
+        &self,
+        flow_id: FlowId,
+        argument_index: usize,
+        target_matches: impl FnMut(&LifecycleCallTarget) -> bool,
+    ) -> Vec<SinkIndex> {
+        self.get(flow_id).map_or_else(Vec::new, |flow| {
+            BoundFlowPaths::matching_sink_indices(flow, argument_index, target_matches)
+        })
     }
 }

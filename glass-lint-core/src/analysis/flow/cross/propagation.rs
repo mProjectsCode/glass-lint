@@ -14,12 +14,8 @@ use crate::{
             effect::{CallEffectRef, EffectUse, FunctionEffect},
             planning::BoundFlowPaths,
         },
-        model::flow::{RequirementIndex, SinkIndex},
     },
-    api::compiler::{
-        CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArguments,
-        object_flow::CompletionMode,
-    },
+    api::compiler::{CompiledObjectFlow, CompiledObjectRequirement, object_flow::CompletionMode},
     project::ModuleId,
 };
 
@@ -85,7 +81,7 @@ impl UsageProjector<'_, '_> {
                 stream.values().static_string(value)
             });
         let mut next = self.state.clone();
-        for (index, requirement) in self.flow.requirements.iter().enumerate() {
+        for (index, requirement) in self.flow_plan.requirements_with_indices(self.flow) {
             if let crate::api::compiler::CompiledObjectRequirement::PropertyWrite {
                 property: expected,
                 value,
@@ -94,10 +90,7 @@ impl UsageProjector<'_, '_> {
                 && value_is_precise
                 && value.matches_flow_value(static_value)
             {
-                next.record_requirement(
-                    RequirementIndex::new(index),
-                    QualifiedEvent::new(self.context.module, event),
-                );
+                next.record_requirement(index, QualifiedEvent::new(self.context.module, event));
             }
         }
         self.emit_requirements(&next, event);
@@ -116,11 +109,9 @@ impl UsageProjector<'_, '_> {
         let chain = cref.chain();
         let values = stream.values();
         let mut next = self.state.clone();
-        for (index, member) in self.flow_plan.requirement_members().iter().enumerate() {
-            if let Some(member) = member
-                && chain.is_some_and(|c| c == member || c.last_segment() == member.last_segment())
-                && let CompiledObjectRequirement::MemberCall { arguments, .. } =
-                    &self.flow.requirements[index]
+        for (index, member, requirement) in self.flow_plan.member_requirements(self.flow) {
+            if chain.is_some_and(|c| c == member || c.last_segment() == member.last_segment())
+                && let CompiledObjectRequirement::MemberCall { arguments, .. } = requirement
                 && arguments.iter().all(|matcher| {
                     call_args.get(matcher.index()).is_some_and(|argument| {
                         matcher
@@ -129,10 +120,7 @@ impl UsageProjector<'_, '_> {
                     })
                 })
             {
-                next.record_requirement(
-                    RequirementIndex::new(index),
-                    QualifiedEvent::new(self.context.module, event),
-                );
+                next.record_requirement(index, QualifiedEvent::new(self.context.module, event));
             }
         }
         self.emit_requirements(&next, event);
@@ -144,28 +132,13 @@ impl UsageProjector<'_, '_> {
             return;
         };
         let cref = CallEffectRef { stream, event };
-        let matching_sinks: Vec<usize> = self
-            .flow
-            .sinks
-            .iter()
-            .enumerate()
-            .filter_map(|(i, sink)| {
-                let matches = cref.matches_target(&sink.target, self.session.names)
-                    && match &sink.args {
-                        CompiledObjectSinkArguments::Any => true,
-                        CompiledObjectSinkArguments::Indices(indices) => {
-                            indices.contains(&argument)
-                        }
-                    };
-                matches.then_some(i)
-            })
-            .collect();
+        let matching_sinks = BoundFlowPaths::matching_sink_indices(self.flow, argument, |target| {
+            cref.matches_target(target, self.session.names)
+        });
         if !matching_sinks.is_empty() && self.context.crossed {
             for index in matching_sinks {
-                self.state.record_sink(
-                    SinkIndex::new(index),
-                    QualifiedEvent::new(self.context.module, event),
-                );
+                self.state
+                    .record_sink(index, QualifiedEvent::new(self.context.module, event));
             }
             if self.state.requirements_ready(self.flow)
                 && self.state.source().is_some()

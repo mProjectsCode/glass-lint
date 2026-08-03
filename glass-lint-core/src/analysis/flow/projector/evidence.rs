@@ -16,13 +16,10 @@ use crate::{
             },
             summary::SummaryPathStore,
         },
-        model::flow::{FlowId, FlowStateKey, RequirementIndex, SinkIndex},
+        model::flow::{FlowId, FlowStateKey},
         trace::QualifiedEvent,
     },
-    api::{
-        classification::ClassificationEvidenceOccurrence,
-        compiler::{CompiledObjectRequirement, CompiledObjectSinkArguments},
-    },
+    api::{classification::ClassificationEvidenceOccurrence, compiler::CompiledObjectRequirement},
     project::EvidenceRole,
 };
 
@@ -46,17 +43,12 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 .map(|(key, _)| key)
                 .collect();
             for key in keys {
-                let Some(flow) = self.plan.get(key.flow()) else {
-                    continue;
-                };
-                let req_members = self.plan.requirement_members(key.flow());
-                for (index, member) in req_members.iter().enumerate() {
-                    if let Some(member) = member
-                        && (member == chain || chain.last_segment() == member.last_segment())
+                for (index, member, requirement) in self.plan.member_requirements(key.flow()) {
+                    if (member == chain || chain.last_segment() == member.last_segment())
                         && let CompiledObjectRequirement::MemberCall {
                             arguments: matchers,
                             ..
-                        } = &flow.requirements[index]
+                        } = requirement
                         && matchers.iter().all(|matcher| {
                             args.get(matcher.index()).is_some_and(|arg| {
                                 matcher
@@ -65,12 +57,8 @@ impl ObjectFlowProjector<'_, '_, '_> {
                             })
                         })
                     {
-                        self.flow_state.record_requirement(
-                            key.object(),
-                            key.flow(),
-                            RequirementIndex::new(index),
-                            event,
-                        );
+                        self.flow_state
+                            .record_requirement(key.object(), key.flow(), index, event);
                     }
                 }
                 self.emit_if_ready(key.flow(), key.object(), event);
@@ -104,32 +92,15 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 .map(|(key, _)| (key, key.flow()))
                 .collect();
             for (key, flow_id) in pairs {
-                let Some(flow) = self.plan.get(flow_id) else {
-                    continue;
-                };
-                let matching_sinks: SmallVec<[usize; 4]> = flow
-                    .sinks
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, sink)| {
-                        let matches = call.matches_target(&sink.target, self.names)
-                            && match &sink.args {
-                                CompiledObjectSinkArguments::Any => true,
-                                CompiledObjectSinkArguments::Indices(indices) => {
-                                    indices.contains(&argument_index)
-                                }
-                            };
-                        matches.then_some(i)
-                    })
-                    .collect();
+                let matching_sinks =
+                    self.plan
+                        .matching_sink_indices(flow_id, argument_index, |target| {
+                            call.matches_target(target, self.names)
+                        });
                 if !matching_sinks.is_empty() {
                     for index in matching_sinks {
-                        self.flow_state.record_sink(
-                            key.object(),
-                            key.flow(),
-                            SinkIndex::new(index),
-                            sink_fact,
-                        );
+                        self.flow_state
+                            .record_sink(key.object(), key.flow(), index, sink_fact);
                     }
                     let state = self.flow_state.state(key.object(), key.flow()).cloned();
                     let Some(state) = state else {

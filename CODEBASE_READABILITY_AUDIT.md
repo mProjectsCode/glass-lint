@@ -152,7 +152,7 @@ deterministic keyed/flat evidence iteration. `FlowState` and
 `CrossFlowState` retain their separate object/source and local-versus-qualified
 event semantics while delegating the shared lifecycle behavior.
 
-#### [ ] READ-006 — Requirement and sink indexes are rebuilt with positional enumeration at every projector
+#### [x] READ-006 — Requirement and sink indexes are rebuilt with positional enumeration at every projector
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -174,7 +174,11 @@ indexes and the interpretation of `Any` versus explicit sink arguments, while
 leaving the physical vectors private at the authoring/compiled boundary where
 possible.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Bound flow planning now owns typed requirement iteration,
+member-requirement alignment, and sink-index matching, including `Any` versus
+explicit sink argument semantics. Local and cross-file projectors consume
+`RequirementIndex`/`SinkIndex` values from those operations instead of
+enumerating compiled vectors and reconstructing indexes at each call site.
 
 #### [ ] READ-007 — `CallContext` is a crate-visible field bag for cross-file propagation state
 
