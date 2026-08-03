@@ -123,13 +123,43 @@ impl IntoLifecycleEvent for LifecycleEventBuilder {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum LifecycleConditionKind {
-    AnyOf(Vec<LifecycleEvent>),
-    AllOf(Vec<LifecycleEvent>),
+    AnyOf(LifecycleEvents),
+    AllOf(LifecycleEvents),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct LifecycleCondition {
-    pub(crate) kind: LifecycleConditionKind,
+    kind: LifecycleConditionKind,
+}
+
+/// Non-empty, bounded, deterministic lifecycle event collections.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct LifecycleEvents(Box<[LifecycleEvent]>);
+
+impl LifecycleEvents {
+    fn new(mut events: Vec<LifecycleEvent>) -> Result<Self, QueryBuildError> {
+        if events.is_empty() {
+            return Err(QueryBuildError::EmptyLifecycleCondition);
+        }
+        events.sort();
+        events.dedup();
+        if events.len() > limits::MAX_LIFECYCLE_EVENTS {
+            return Err(QueryBuildError::CollectionTooLarge(
+                "lifecycle condition events",
+                events.len(),
+            ));
+        }
+        Ok(Self(events.into_boxed_slice()))
+    }
+
+    pub(crate) fn iter(&self) -> std::slice::Iter<'_, LifecycleEvent> {
+        self.0.iter()
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.0.len()
+    }
 }
 
 impl LifecycleCondition {
@@ -142,23 +172,12 @@ impl LifecycleCondition {
         I: IntoIterator,
         I::Item: IntoLifecycleEvent,
     {
-        let mut events = events
+        let events = events
             .into_iter()
             .map(IntoLifecycleEvent::into_lifecycle_event)
             .collect::<Result<Vec<_>, _>>()?;
-        if events.is_empty() {
-            return Err(QueryBuildError::EmptyLifecycleCondition);
-        }
-        events.sort();
-        events.dedup();
-        if events.len() > limits::MAX_LIFECYCLE_EVENTS {
-            return Err(QueryBuildError::CollectionTooLarge(
-                "lifecycle condition events",
-                events.len(),
-            ));
-        }
         Ok(Self {
-            kind: LifecycleConditionKind::AnyOf(events),
+            kind: LifecycleConditionKind::AnyOf(LifecycleEvents::new(events)?),
         })
     }
 
@@ -177,23 +196,16 @@ impl LifecycleCondition {
             .into_iter()
             .map(IntoLifecycleEvent::into_lifecycle_event)
             .collect::<Result<Vec<_>, _>>()?;
-        if events.is_empty() {
-            return Err(QueryBuildError::EmptyLifecycleCondition);
-        }
-        if events.len() > limits::MAX_LIFECYCLE_EVENTS {
-            return Err(QueryBuildError::CollectionTooLarge(
-                "lifecycle condition events",
-                events.len(),
-            ));
-        }
         Ok(Self {
-            kind: LifecycleConditionKind::AllOf(events),
+            kind: LifecycleConditionKind::AllOf(LifecycleEvents::new(events)?),
         })
     }
 
     pub fn event(event: impl IntoLifecycleEvent) -> Result<Self, QueryBuildError> {
         Ok(Self {
-            kind: LifecycleConditionKind::AllOf(vec![event.into_lifecycle_event()?]),
+            kind: LifecycleConditionKind::AllOf(LifecycleEvents::new(vec![
+                event.into_lifecycle_event()?,
+            ])?),
         })
     }
 }
@@ -203,13 +215,43 @@ impl LifecycleCondition {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum LifecycleCompletionKind {
     Configuration,
-    AnySink(Vec<LifecycleSink>),
-    AllSinks(Vec<LifecycleSink>),
+    AnySink(LifecycleSinks),
+    AllSinks(LifecycleSinks),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct LifecycleCompletion {
-    pub(crate) kind: LifecycleCompletionKind,
+    kind: LifecycleCompletionKind,
+}
+
+/// Non-empty, bounded, deterministic lifecycle sink collections.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct LifecycleSinks(Box<[LifecycleSink]>);
+
+impl LifecycleSinks {
+    fn new(mut sinks: Vec<LifecycleSink>) -> Result<Self, QueryBuildError> {
+        if sinks.is_empty() {
+            return Err(QueryBuildError::EmptyLifecycleSinks);
+        }
+        sinks.sort();
+        sinks.dedup();
+        if sinks.len() > limits::MAX_LIFECYCLE_SINKS {
+            return Err(QueryBuildError::CollectionTooLarge(
+                "lifecycle completion sinks",
+                sinks.len(),
+            ));
+        }
+        Ok(Self(sinks.into_boxed_slice()))
+    }
+
+    pub(crate) fn iter(&self) -> std::slice::Iter<'_, LifecycleSink> {
+        self.0.iter()
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.0.len()
+    }
 }
 
 impl LifecycleCompletion {
@@ -228,23 +270,12 @@ impl LifecycleCompletion {
         I: IntoIterator<Item = S>,
         S: IntoLifecycleSink,
     {
-        let mut sinks = sinks
+        let sinks = sinks
             .into_iter()
             .map(IntoLifecycleSink::into_lifecycle_sink)
             .collect::<Result<Vec<_>, _>>()?;
-        if sinks.is_empty() {
-            return Err(QueryBuildError::EmptyLifecycleSinks);
-        }
-        sinks.sort();
-        sinks.dedup();
-        if sinks.len() > limits::MAX_LIFECYCLE_SINKS {
-            return Err(QueryBuildError::CollectionTooLarge(
-                "lifecycle completion sinks",
-                sinks.len(),
-            ));
-        }
         Ok(Self {
-            kind: LifecycleCompletionKind::AnySink(sinks),
+            kind: LifecycleCompletionKind::AnySink(LifecycleSinks::new(sinks)?),
         })
     }
 
@@ -259,23 +290,12 @@ impl LifecycleCompletion {
         I: IntoIterator<Item = S>,
         S: IntoLifecycleSink,
     {
-        let mut sinks = sinks
+        let sinks = sinks
             .into_iter()
             .map(IntoLifecycleSink::into_lifecycle_sink)
             .collect::<Result<Vec<_>, _>>()?;
-        if sinks.is_empty() {
-            return Err(QueryBuildError::EmptyLifecycleSinks);
-        }
-        sinks.sort();
-        sinks.dedup();
-        if sinks.len() > limits::MAX_LIFECYCLE_SINKS {
-            return Err(QueryBuildError::CollectionTooLarge(
-                "lifecycle completion sinks",
-                sinks.len(),
-            ));
-        }
         Ok(Self {
-            kind: LifecycleCompletionKind::AllSinks(sinks),
+            kind: LifecycleCompletionKind::AllSinks(LifecycleSinks::new(sinks)?),
         })
     }
 }
@@ -551,36 +571,11 @@ impl LifecycleQueryBuilder {
             ));
         }
 
-        // Validate condition/completion consistency.
-        if let Some(ref condition) = self.condition {
-            match condition.kind() {
-                LifecycleConditionKind::AnyOf(events) | LifecycleConditionKind::AllOf(events) => {
-                    if events.is_empty() {
-                        return Err(QueryBuildError::EmptyLifecycleCondition);
-                    }
-                    if events.len() > limits::MAX_LIFECYCLE_EVENTS {
-                        return Err(QueryBuildError::CollectionTooLarge(
-                            "lifecycle condition events",
-                            events.len(),
-                        ));
-                    }
-                }
-            }
-        }
+        // Validate only relationships between lifecycle stages. Collection
+        // invariants are established by LifecycleEvents and LifecycleSinks.
         if let Some(ref completion) = self.completion {
             match completion.kind() {
-                LifecycleCompletionKind::AnySink(sinks)
-                | LifecycleCompletionKind::AllSinks(sinks) => {
-                    if sinks.is_empty() {
-                        return Err(QueryBuildError::EmptyLifecycleSinks);
-                    }
-                    if sinks.len() > limits::MAX_LIFECYCLE_SINKS {
-                        return Err(QueryBuildError::CollectionTooLarge(
-                            "lifecycle completion sinks",
-                            sinks.len(),
-                        ));
-                    }
-                }
+                LifecycleCompletionKind::AnySink(_) | LifecycleCompletionKind::AllSinks(_) => {}
                 LifecycleCompletionKind::Configuration => {
                     if self.condition.is_none() {
                         return Err(QueryBuildError::MissingLifecycleCondition);
@@ -678,6 +673,48 @@ mod tests {
             LifecycleCompletion::any_sink([first.clone(), second.clone()]).unwrap(),
             LifecycleCompletion::any_sink([second, first]).unwrap()
         );
+    }
+
+    #[test]
+    fn all_of_conditions_are_canonical() {
+        let first = LifecycleEvent::property_write("first", ValueMatcher::any_value()).unwrap();
+        let second = LifecycleEvent::property_write("second", ValueMatcher::any_value()).unwrap();
+        let a = LifecycleCondition::all_of([first.clone(), second.clone(), first.clone()]).unwrap();
+        let b = LifecycleCondition::all_of([second, first]).unwrap();
+        assert_eq!(a, b);
+        assert!(matches!(a.kind(), LifecycleConditionKind::AllOf(events) if events.len() == 2));
+    }
+
+    #[test]
+    fn lifecycle_collections_enforce_their_bounds_at_construction() {
+        let events = (0..=limits::MAX_LIFECYCLE_EVENTS)
+            .map(|index| {
+                LifecycleEvent::property_write(
+                    format!("property-{index}"),
+                    ValueMatcher::any_value(),
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert!(matches!(
+            LifecycleCondition::all_of(events),
+            Err(QueryBuildError::CollectionTooLarge(
+                "lifecycle condition events",
+                _
+            ))
+        ));
+
+        let sinks = (0..=limits::MAX_LIFECYCLE_SINKS)
+            .map(|index| LifecycleSink::argument_of_member(format!("sink-{index}"), 0))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert!(matches!(
+            LifecycleCompletion::all_sinks(sinks),
+            Err(QueryBuildError::CollectionTooLarge(
+                "lifecycle completion sinks",
+                _
+            ))
+        ));
     }
 
     #[test]

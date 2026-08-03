@@ -184,7 +184,7 @@ The export table, lookup cache, and recursion guard all mean “module plus expo
 
 **Fix Applied:** `AnyExpr` and `AllExpr` now store branches in one private `LogicalBranches` collection that performs non-empty, bounded, and depth validation; all composition constructors use `AnyExpr::new` or `AllExpr::new`, and compiler/validation code consumes semantic iterators and lengths instead of branch storage. The composition helper now uses `contains_var` directly, with query and compiler suites passing.
 
-#### [ ] READ-015 — Lifecycle collections repeat non-empty, bounded, and canonicalization rules
+#### [x] READ-015 — Lifecycle collections repeat non-empty, bounded, and canonicalization rules
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Duplication
@@ -194,7 +194,7 @@ Lifecycle conditions and completions store raw vectors inside enum variants and 
 
 **Recommendation:** Store opaque `LifecycleEvents` and `LifecycleSinks` collections that establish non-empty and bounded invariants once and apply an explicit canonicalization policy. Make `LifecycleCondition` and `LifecycleCompletion` fields private, leaving read-only semantic accessors for the compiler. Then let the builder validate only cross-stage requirements, such as configuration completion requiring a condition, rather than revalidating collection storage.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `LifecycleEvents` and `LifecycleSinks` now own non-empty, bounded, sorted, deduplicated boxed collections, and lifecycle condition/completion storage is private behind read-only kind and iterator accessors. The builder no longer revalidates collection storage and checks only cross-stage requirements such as configuration completion requiring a condition; lifecycle construction tests cover canonicalization and bounds.
 
 ## Systemic Themes
 
