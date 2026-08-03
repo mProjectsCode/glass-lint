@@ -17,6 +17,12 @@ use crate::analysis::{
 };
 
 impl OccurrenceIndexes {
+    fn record_module_call(&mut self, key: ModuleExportKey, occurrence: Occurrence) {
+        self.call_indexes
+            .record_module_call(key.clone(), occurrence);
+        self.members.record_module_call(key, occurrence);
+    }
+
     /// Deduplicate every occurrence index after fact collection.
     /// Entries are already in monotonically increasing `(event, span)` order
     /// because `build_from_stream` iterates facts in FactId order.
@@ -132,11 +138,7 @@ impl OccurrenceIndexes {
                     .record_global_call(name.clone(), Occurrence::new(fact.id, *callee_span));
             }
             SymbolCallProvenance::ModuleExport { module, export } => {
-                self.call_indexes.record_module_call(
-                    ModuleExportKey::new(module.clone(), export.clone()),
-                    Occurrence::new(fact.id, *callee_span),
-                );
-                self.members.record_module_call(
+                self.record_module_call(
                     ModuleExportKey::new(module.clone(), export.clone()),
                     Occurrence::new(fact.id, *callee_span),
                 );
@@ -170,11 +172,7 @@ impl OccurrenceIndexes {
                 .record_rooted_call(chain.clone(), Occurrence::new(fact.id, span));
         }
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = module_member {
-            self.call_indexes.record_module_call(
-                ModuleExportKey::new(module.clone(), member.clone()),
-                Occurrence::new(fact.id, span),
-            );
-            self.members.record_module_call(
+            self.record_module_call(
                 ModuleExportKey::new(module.clone(), member.clone()),
                 Occurrence::new(fact.id, span),
             );

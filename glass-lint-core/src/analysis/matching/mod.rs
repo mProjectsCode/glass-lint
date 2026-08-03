@@ -493,5 +493,13 @@ mod tests {
                 .is_some(),
             "should have foo as module call from 'mod'"
         );
+        assert!(
+            index
+                .members
+                .module_calls()
+                .get(&ModuleExportKey::new("mod", "foo"))
+                .is_some(),
+            "should have foo as member module call from 'mod'"
+        );
     }
 }

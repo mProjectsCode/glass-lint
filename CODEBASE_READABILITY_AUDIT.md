@@ -69,7 +69,7 @@ cache identity.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-014 — Module call occurrences are written to two indexes by hand
+#### [x] READ-014 — Module call occurrences are written to two indexes by hand
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -90,7 +90,9 @@ sub-indexes, or a small shared helper that receives the already-built key and
 occurrence. Preserve the distinction between call and member indexes, their
 overlay behavior, and deterministic occurrence ordering.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added an `OccurrenceIndexes::record_module_call` operation so
+call and member module indexes are updated together, and extended the stream
+projection test to assert both destinations. Verified with `make fmt && make ci`.
 
 #### [ ] READ-015 — Export declaration collection traverses each variable pattern twice
 
