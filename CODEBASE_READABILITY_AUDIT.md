@@ -103,7 +103,7 @@ a typed wrapper that preserves the `lifecycle` diagnostic. Verified with
 
 ### Query correlation validation
 
-#### [ ] READ-004 — Correlation validation traverses the query tree through two recursive engines
+#### [x] READ-004 — Correlation validation traverses the query tree through two recursive engines
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -127,7 +127,11 @@ checks at conjunctions, the rule that every `Any` branch contains the primary
 evidence variable, the top-level/branch distinction, and the current
 fail-closed error ordering.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Consolidated correlation and evidence validation into one
+recursive walker with an explicit evidence-check context, removed the second
+tree traversal, and preserved conjunction correlation checks, Any-branch
+evidence requirements, and validation ordering. Verified with
+`cargo test -p glass-lint-core --lib api::compiler`.
 
 ### Local flow projection
 

@@ -170,16 +170,15 @@ pub(crate) fn pass_correlation_evidence(decl: &QueryDecl) -> Result<(), QueryCom
 fn check_correlation_evidence(
     expr: &QueryExpr,
     primary: VarId,
-    _is_root: bool,
+    check_evidence: bool,
 ) -> Result<(), QueryCompileError> {
     match expr.kind() {
         QueryExprKind::All(all) => {
             validate_correlated_branches(all.iter())?;
-            // pass_evidence_projection
             for branch in all.iter() {
-                check_correlation_evidence(branch, primary, false)?;
+                check_correlation_evidence(branch, primary, check_evidence)?;
             }
-            if !all.iter().any(|b| b.contains_var(primary)) {
+            if check_evidence && !all.iter().any(|b| b.contains_var(primary)) {
                 return Err(QueryCompileError::MissingBinding {
                     primary_var: primary,
                 });
@@ -187,22 +186,24 @@ fn check_correlation_evidence(
             Ok(())
         }
         QueryExprKind::Any(any) => {
-            // pass_correlation_scope recurses into Any branches
             for b in any.iter() {
-                check_correlation_scope_inner(b)?;
+                check_correlation_evidence(b, primary, false)?;
             }
-            // pass_evidence_projection: every branch must contain the primary var
-            for branch in any.iter() {
-                if !branch.contains_var(primary) {
-                    return Err(QueryCompileError::MissingBinding {
-                        primary_var: primary,
-                    });
+            if check_evidence {
+                // Every branch must contain the primary variable, but nested
+                // branches are checked by their containing Any expression.
+                for branch in any.iter() {
+                    if !branch.contains_var(primary) {
+                        return Err(QueryCompileError::MissingBinding {
+                            primary_var: primary,
+                        });
+                    }
                 }
             }
             Ok(())
         }
         QueryExprKind::Event(eq) => {
-            if eq.var() != primary {
+            if check_evidence && eq.var() != primary {
                 return Err(QueryCompileError::MissingBinding {
                     primary_var: primary,
                 });
@@ -210,7 +211,7 @@ fn check_correlation_evidence(
             Ok(())
         }
         QueryExprKind::SelectEvent(s) => {
-            if s.bind != primary {
+            if check_evidence && s.bind != primary {
                 return Err(QueryCompileError::MissingBinding {
                     primary_var: primary,
                 });
@@ -218,29 +219,6 @@ fn check_correlation_evidence(
             Ok(())
         }
         QueryExprKind::Require(_) | QueryExprKind::Lifecycle(_) => Ok(()),
-    }
-}
-
-// pass_correlation_scope recursion helper (for Any branches)
-fn check_correlation_scope_inner(expr: &QueryExpr) -> Result<(), QueryCompileError> {
-    match expr.kind() {
-        QueryExprKind::All(all) => {
-            validate_correlated_branches(all.iter())?;
-            for b in all.iter() {
-                check_correlation_scope_inner(b)?;
-            }
-            Ok(())
-        }
-        QueryExprKind::Any(any) => {
-            for b in any.iter() {
-                check_correlation_scope_inner(b)?;
-            }
-            Ok(())
-        }
-        QueryExprKind::Event(_)
-        | QueryExprKind::SelectEvent(_)
-        | QueryExprKind::Require(_)
-        | QueryExprKind::Lifecycle(_) => Ok(()),
     }
 }
 
