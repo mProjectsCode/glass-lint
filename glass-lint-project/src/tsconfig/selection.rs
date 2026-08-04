@@ -29,18 +29,121 @@ pub struct MergedSelection {
     include: Vec<String>,
     exclude: Vec<String>,
     invalid_controlling_field: bool,
+    has_parent: bool,
 }
 
 impl MergedSelection {
+    fn empty() -> Self {
+        Self {
+            files: None,
+            include: Vec::new(),
+            exclude: Vec::new(),
+            invalid_controlling_field: false,
+            has_parent: false,
+        }
+    }
+
+    fn rebase_parent(&mut self, parent_directory: &Path, child_dir: &Path) {
+        self.files = self
+            .files
+            .take()
+            .map(|values| rebase_strings(values, parent_directory, child_dir));
+        self.include = rebase_strings(
+            std::mem::take(&mut self.include),
+            parent_directory,
+            child_dir,
+        );
+        self.exclude = rebase_strings(
+            std::mem::take(&mut self.exclude),
+            parent_directory,
+            child_dir,
+        );
+        self.has_parent = true;
+    }
+
+    fn merge_child(mut self, child: ParsedTsconfig) -> Self {
+        let ParsedTsconfig {
+            extends: _,
+            files,
+            include,
+            exclude,
+            compiler_options_out_dir,
+            compiler_options_declaration_dir,
+            references: _,
+            diagnostics: _,
+        } = child;
+
+        let files_invalid = !matches!(files, ParsedField::Present(_) | ParsedField::Absent);
+        let include_invalid = !matches!(include, ParsedField::Present(_) | ParsedField::Absent);
+        self.invalid_controlling_field |= files_invalid || include_invalid;
+
+        self.files = if files_invalid {
+            Some(Vec::new())
+        } else {
+            files.ok().or_else(|| self.files.take())
+        };
+        if self.files.is_some() && !files_invalid {
+            self.include.clear();
+            self.exclude.clear();
+            return self;
+        }
+
+        self.include = if include_invalid {
+            Vec::new()
+        } else {
+            match include {
+                ParsedField::Present(values) => values,
+                _ if self.has_parent => std::mem::take(&mut self.include),
+                _ => vec!["**/*".to_string()],
+            }
+        };
+        let child_exclude = match exclude {
+            ParsedField::Present(values) => values,
+            _ if self.has_parent => std::mem::take(&mut self.exclude),
+            _ => Vec::new(),
+        };
+        self.exclude = Self::append_exclusions(
+            child_exclude,
+            compiler_options_out_dir,
+            compiler_options_declaration_dir,
+        );
+        self
+    }
+
+    fn append_exclusions(
+        mut exclude: Vec<String>,
+        compiler_options_out_dir: ParsedField<String>,
+        compiler_options_declaration_dir: ParsedField<String>,
+    ) -> Vec<String> {
+        for default in &["**/node_modules", "**/bower_components"] {
+            if !exclude.iter().any(|entry| entry == default) {
+                exclude.push(default.to_string());
+            }
+        }
+        for output in [
+            compiler_options_out_dir.ok(),
+            compiler_options_declaration_dir.ok(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if !exclude.iter().any(|entry| entry == &output) {
+                exclude.push(output);
+            }
+        }
+        exclude
+    }
+
     /// Consume this merged selection and compile it into a production
     /// selection. Raw include/exclude strings are consumed and discarded.
     pub(in crate::tsconfig) fn compile(self, config_path: PathBuf) -> CompiledTsconfigSelection {
-        let (files, include, exclude, invalid_controlling_field): (
-            Option<Vec<String>>,
-            Vec<String>,
-            Vec<String>,
-            bool,
-        ) = self.into();
+        let Self {
+            files,
+            include,
+            exclude,
+            invalid_controlling_field,
+            ..
+        } = self;
 
         let pattern_set = TsconfigPatternSet::new(&include, &exclude, invalid_controlling_field);
         let pattern_diagnostics = pattern_set
@@ -57,36 +160,28 @@ impl MergedSelection {
     }
 
     /// Explicit files list, or `None` when include/exclude select sources.
+    #[cfg(test)]
     pub fn files(&self) -> Option<&[String]> {
         self.files.as_deref()
     }
 
     /// Include patterns relative to the config that declared them.
+    #[cfg(test)]
     pub fn include(&self) -> &[String] {
         &self.include
     }
 
     /// Exclude patterns relative to the config that declared them.
+    #[cfg(test)]
     pub fn exclude(&self) -> &[String] {
         &self.exclude
     }
 
     /// True when a membership-controlling field was invalid, so compilation
     /// must fail closed rather than broadening membership via `**/*`.
+    #[cfg(test)]
     pub fn invalid_controlling_field(&self) -> bool {
         self.invalid_controlling_field
-    }
-}
-
-impl From<MergedSelection> for (Option<Vec<String>>, Vec<String>, Vec<String>, bool) {
-    fn from(merged: MergedSelection) -> Self {
-        let MergedSelection {
-            files,
-            include,
-            exclude,
-            invalid_controlling_field,
-        } = merged;
-        (files, include, exclude, invalid_controlling_field)
     }
 }
 
@@ -107,17 +202,12 @@ impl ParentSelection {
     /// Consume this parent and merge the child config's selection fields into
     /// it, rebasing inherited paths to `child_dir`.
     pub fn merge(self, child: ParsedTsconfig, child_dir: &Path) -> MergedSelection {
-        merge_selection(child, Some(self), child_dir)
-    }
-}
-
-impl From<ParentSelection> for (MergedSelection, PathBuf) {
-    fn from(parent: ParentSelection) -> Self {
-        let ParentSelection {
-            merged,
+        let Self {
+            mut merged,
             parent_directory,
-        } = parent;
-        (merged, parent_directory)
+        } = self;
+        merged.rebase_parent(&parent_directory, child_dir);
+        merged.merge_child(child)
     }
 }
 
@@ -195,98 +285,9 @@ pub fn merge_selection(
     parent: Option<ParentSelection>,
     child_dir: &Path,
 ) -> MergedSelection {
-    // Destructure-and-merge in one pass: the destructuring binding of
-    // ParsedTsconfig paired with the field-by-field inheritance rule
-    // (child wins, then parent, then default) is clearest when every
-    // field is visible in the same scope.
-    let ParsedTsconfig {
-        extends: _,
-        files: child_files,
-        include: child_include,
-        exclude: child_exclude,
-        compiler_options_out_dir,
-        compiler_options_declaration_dir,
-        references: _,
-        diagnostics: _,
-    } = child;
-
-    let has_parent = parent.is_some();
-    // Rebase parent paths from the parent directory to child_dir so every
-    // path is interpreted relative to the config that declared it.
-    let (parent_files, parent_include, parent_exclude, parent_invalid) = parent.map_or_else(
-        || (None, Vec::new(), Vec::new(), false),
-        |parent| {
-            let (merged, parent_directory): (MergedSelection, PathBuf) = parent.into();
-            let (files, include, exclude, invalid_controlling_field): (
-                Option<Vec<String>>,
-                Vec<String>,
-                Vec<String>,
-                bool,
-            ) = merged.into();
-            (
-                files.map(|v| rebase_strings(v, &parent_directory, child_dir)),
-                rebase_strings(include, &parent_directory, child_dir),
-                rebase_strings(exclude, &parent_directory, child_dir),
-                invalid_controlling_field,
-            )
-        },
-    );
-    // Track whether a controlling field was invalid so that compilation can
-    // fail closed instead of broadening membership via `**/*` fallback.
-    let files_invalid = !matches!(child_files, ParsedField::Present(_) | ParsedField::Absent);
-    let include_invalid = !matches!(child_include, ParsedField::Present(_) | ParsedField::Absent);
-    let invalid_controlling_field = parent_invalid || files_invalid || include_invalid;
-
-    let files = if files_invalid {
-        Some(Vec::new())
-    } else {
-        child_files.ok().or(parent_files)
-    };
-
-    let (include, exclude) = if files.is_some() && !files_invalid {
-        (Vec::new(), Vec::new())
-    } else {
-        let include = if include_invalid {
-            Vec::new()
-        } else {
-            match child_include {
-                ParsedField::Present(v) => v,
-                _ if has_parent => parent_include,
-                _ => vec!["**/*".to_string()],
-            }
-        };
-
-        let mut exclude = match child_exclude {
-            ParsedField::Present(v) => v,
-            _ if has_parent => parent_exclude,
-            _ => Vec::new(),
-        };
-        // Always add default runtime exclusions
-        for default in &["**/node_modules", "**/bower_components"] {
-            if !exclude.iter().any(|e| e == default) {
-                exclude.push(default.to_string());
-            }
-        }
-        // Add output directories from this config's compilerOptions
-        if let Some(out_dir) = compiler_options_out_dir.ok()
-            && !exclude.iter().any(|e| e == &out_dir)
-        {
-            exclude.push(out_dir);
-        }
-        if let Some(decl_dir) = compiler_options_declaration_dir.ok()
-            && !exclude.iter().any(|e| e == &decl_dir)
-        {
-            exclude.push(decl_dir);
-        }
-
-        (include, exclude)
-    };
-
-    MergedSelection {
-        files,
-        include,
-        exclude,
-        invalid_controlling_field,
+    match parent {
+        Some(parent) => parent.merge(child, child_dir),
+        None => MergedSelection::empty().merge_child(child),
     }
 }
 
