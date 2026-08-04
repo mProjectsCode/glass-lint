@@ -10,6 +10,7 @@ use smol_str::SmolStr;
 
 use crate::analysis::{
     ExportResolution, LinkedModuleTarget, ModuleId, ProjectSemanticModel, QualifiedRequestId,
+    flow::effect::CallEffectRef,
     matching::{ModuleExportKey, ModuleIdentityMap},
     module::{ImportedBinding, ModuleRequest, ModuleRequestRole},
     project::{
@@ -37,59 +38,74 @@ impl ProjectSemanticModel {
                 let Some(provenance) = cref.provenance() else {
                     continue;
                 };
-                let Some((target_module, target_function)) =
-                    self.qualified_function_target(importer, cref.target(), provenance, session)
+                let Some(identity) = self.call_result_identity(importer, cref, provenance, session)
                 else {
                     continue;
                 };
-                let Some(target) = self
-                    .module(target_module)
-                    .and_then(|module| module.local().effects().get(target_function))
-                else {
-                    continue;
-                };
-                if target.is_invalid() {
-                    continue;
-                }
-                let mut resolution: Option<ExportResolution> = None;
-                let mut conflict = false;
-                for returned in target.returns() {
-                    if returned.parameter().is_some() {
-                        continue;
-                    }
-                    let r = match returned.provenance() {
-                        SymbolCallProvenance::ModuleExport { module, export } => {
-                            self.resolve_imported_identity(target_module, module, export, session)
-                        }
-                        SymbolCallProvenance::Global { name } => {
-                            ExportResolution::Global { name: name.clone() }
-                        }
-                        SymbolCallProvenance::Local => self
-                            .module_fact_stream(target_module)
-                            .and_then(|stream| stream.values().static_string(returned.value()))
-                            .map_or(ExportResolution::Unknown, |value| {
-                                ExportResolution::StaticString {
-                                    value: value.to_owned(),
-                                }
-                            }),
-                        SymbolCallProvenance::Unknown(_) => ExportResolution::Unknown,
-                    };
-                    match resolution {
-                        None => resolution = Some(r),
-                        Some(ref prev) if prev != &r => {
-                            conflict = true;
-                        }
-                        _ => {}
-                    }
-                }
-                let resolution = match resolution {
-                    Some(r) if !conflict => r,
-                    _ => ExportResolution::Unknown,
-                };
-                identities.insert(cref.result(), resolution);
+                identities.insert(cref.result(), identity);
             }
         }
         identities
+    }
+
+    fn call_result_identity(
+        &self,
+        importer: ModuleId,
+        call: CallEffectRef<'_>,
+        provenance: &SymbolCallProvenance,
+        session: &mut LinkingSession,
+    ) -> Option<ExportResolution> {
+        let (target_module, target_function) =
+            self.qualified_function_target(importer, call.target(), provenance, session)?;
+        self.target_return_identity(target_module, target_function, session)
+    }
+
+    fn target_return_identity(
+        &self,
+        target_module: ModuleId,
+        target_function: crate::analysis::value::FunctionId,
+        session: &mut LinkingSession,
+    ) -> Option<ExportResolution> {
+        let target = self.effect(target_module, target_function)?;
+        if target.is_invalid() {
+            return None;
+        }
+
+        let mut resolution = None;
+        let mut conflict = false;
+        for returned in target
+            .returns()
+            .iter()
+            .filter(|returned| returned.parameter().is_none())
+        {
+            let candidate = match returned.provenance() {
+                SymbolCallProvenance::ModuleExport { module, export } => {
+                    self.resolve_imported_identity(target_module, module, export, session)
+                }
+                SymbolCallProvenance::Global { name } => {
+                    ExportResolution::Global { name: name.clone() }
+                }
+                SymbolCallProvenance::Local => self
+                    .module_fact_stream(target_module)
+                    .and_then(|stream| stream.values().static_string(returned.value()))
+                    .map_or(ExportResolution::Unknown, |value| {
+                        ExportResolution::StaticString {
+                            value: value.to_owned(),
+                        }
+                    }),
+                SymbolCallProvenance::Unknown(_) => ExportResolution::Unknown,
+            };
+            match resolution {
+                None => resolution = Some(candidate),
+                Some(ref previous) if previous != &candidate => conflict = true,
+                _ => {}
+            }
+        }
+
+        Some(match resolution {
+            Some(identity) if !conflict => identity,
+            _ => ExportResolution::Unknown,
+        })
     }
 
     /// Build imported and namespace-member identities for one module.
