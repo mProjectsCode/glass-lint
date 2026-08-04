@@ -59,12 +59,8 @@ mod tests {
         let parsed =
             crate::parse_test_source(text, "projection-invariant.js").expect("source should parse");
         let coordinates = SpanNormalizer::new(parsed.source_start, &SourceText::from(text));
-        let local = lowering::lower_program(
-            &parsed.program,
-            &Environment::default(),
-            &AnalysisLimits::default(),
-            &coordinates,
-        );
+        let local = Lowerer::new(&Environment::default(), &AnalysisLimits::default())
+            .lower_program(&parsed.program, &coordinates);
         let source = SourceFile::new(
             "projection-invariant.js",
             "fetch('/remote'); document.createElement('div');",

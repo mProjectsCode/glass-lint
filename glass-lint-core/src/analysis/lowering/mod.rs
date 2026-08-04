@@ -118,6 +118,7 @@ impl LoweredSource {
 pub struct Lowerer<'a> {
     environment: &'a Environment,
     limits: &'a AnalysisLimits,
+    name_limit: usize,
 }
 
 impl<'a> Lowerer<'a> {
@@ -125,6 +126,7 @@ impl<'a> Lowerer<'a> {
         Self {
             environment,
             limits,
+            name_limit: MAX_NAMES,
         }
     }
 
@@ -134,6 +136,35 @@ impl<'a> Lowerer<'a> {
 
     pub fn limits(&self) -> &AnalysisLimits {
         self.limits
+    }
+
+    /// Lower an already-parsed SWC program into an immutable semantic
+    /// artifact. The scope graph, resolver, and fact builder are deliberately
+    /// consumed in order so no intermediate analysis state escapes this
+    /// boundary.
+    pub(in crate::analysis) fn lower_program(
+        &self,
+        program: &Program,
+        coordinates: &SpanNormalizer,
+    ) -> SemanticArtifact {
+        let budget = SemanticBudget::new(self.limits.semantic_operations());
+        let names = NameTable::with_max_entries(self.name_limit);
+        let scoped_program =
+            ScopeGraph::collect_scoped_program(program, self.environment, names, &budget);
+        ResolvedProgram::collect(
+            scoped_program,
+            program,
+            coordinates.clone(),
+            &budget,
+            self.limits.semantic_operations(),
+        )
+        .freeze(self.environment, self.limits, program.span())
+    }
+
+    #[cfg(test)]
+    fn with_name_limit(mut self, name_limit: usize) -> Self {
+        self.name_limit = name_limit;
+        self
     }
 
     /// Lower one source file into an immutable semantic artifact. The lowering
@@ -146,24 +177,12 @@ impl<'a> Lowerer<'a> {
             crate::parse::SourceParser::with_syntax_depth(source, self.limits.syntax_depth())?
                 .parse()?;
         let coordinates = SpanNormalizer::new(parsed.source_start, source.source());
-        let semantic = lower_program(&parsed.program, self.environment, self.limits, &coordinates);
+        let semantic = self.lower_program(&parsed.program, &coordinates);
         Ok(LoweredSource::new(
             LocatedSourceContext::new(source),
             Arc::new(semantic),
         ))
     }
-}
-
-/// Lower an already-parsed SWC program into a `SemanticArtifact`. Used
-/// by both the main lowering path and by tests that need fine-grained
-/// control over limits or name budgets.
-pub fn lower_program(
-    program: &Program,
-    environment: &Environment,
-    limits: &AnalysisLimits,
-    coordinates: &SpanNormalizer,
-) -> SemanticArtifact {
-    lower_program_with_name_limit(program, environment, limits, coordinates, MAX_NAMES)
 }
 
 fn check_facts_budget(
@@ -214,55 +233,6 @@ fn check_name_exhaustion(resolver: &Resolver) -> Option<IncompleteReason> {
             limit: exhaustion.limit,
             attempted: exhaustion.attempted,
         })
-}
-
-fn lower_program_with_name_limit(
-    program: &Program,
-    environment: &Environment,
-    limits: &AnalysisLimits,
-    coordinates: &SpanNormalizer,
-    name_limit: usize,
-) -> SemanticArtifact {
-    LocalLowering {
-        environment,
-        limits,
-        coordinates,
-        name_limit,
-    }
-    .run(program)
-}
-
-/// Consuming coordinator for the private local-analysis phases.  Keeping the
-/// transition in one owner makes it difficult for callers to observe or reuse
-/// an intermediate scope, resolution, or fact state.
-struct LocalLowering<'a> {
-    environment: &'a Environment,
-    limits: &'a AnalysisLimits,
-    coordinates: &'a SpanNormalizer,
-    name_limit: usize,
-}
-
-impl LocalLowering<'_> {
-    fn run(self, program: &Program) -> SemanticArtifact {
-        let Self {
-            environment,
-            limits,
-            coordinates,
-            name_limit,
-        } = self;
-        let budget = SemanticBudget::new(limits.semantic_operations());
-        let names = NameTable::with_max_entries(name_limit);
-        let scoped_program =
-            ScopeGraph::collect_scoped_program(program, environment, names, &budget);
-        ResolvedProgram::collect(
-            scoped_program,
-            program,
-            coordinates.clone(),
-            &budget,
-            limits.semantic_operations(),
-        )
-        .freeze(environment, limits, program.span())
-    }
 }
 
 /// The resolved local-analysis phase. The scope-frozen resolver, the
@@ -422,13 +392,12 @@ mod tests {
         let parsed =
             crate::parse_test_source(source, "name-exhaustion.js").expect("source should parse");
         let coordinates = SpanNormalizer::new(parsed.source_start, &SourceText::from(source));
-        let artifact = lower_program_with_name_limit(
-            &parsed.program,
+        let artifact = Lowerer::new(
             &crate::Environment::default(),
             &crate::AnalysisLimits::default(),
-            &coordinates,
-            2,
-        );
+        )
+        .with_name_limit(2)
+        .lower_program(&parsed.program, &coordinates);
 
         assert!(!artifact.facts().stream().is_valid());
         assert!(artifact.facts().matcher_index().is_empty());
@@ -442,13 +411,12 @@ mod tests {
         assert!(project_diagnostics[0].message().contains("limit=2"));
         assert!(project_diagnostics[0].message().contains("attempted=3"));
 
-        let repeated = lower_program_with_name_limit(
-            &parsed.program,
+        let repeated = Lowerer::new(
             &crate::Environment::default(),
             &crate::AnalysisLimits::default(),
-            &coordinates,
-            2,
-        );
+        )
+        .with_name_limit(2)
+        .lower_program(&parsed.program, &coordinates);
         assert_eq!(
             format!("{:?}", artifact.facts().stream().facts()),
             format!("{:?}", repeated.facts().stream().facts())
@@ -472,12 +440,8 @@ mod tests {
         let limits = crate::AnalysisLimits::default()
             .with_semantic_operations(10)
             .expect("valid limit");
-        let artifact = lower_program(
-            &parsed.program,
-            &crate::Environment::default(),
-            &limits,
-            &coordinates,
-        );
+        let artifact = Lowerer::new(&crate::Environment::default(), &limits)
+            .lower_program(&parsed.program, &coordinates);
 
         assert!(!artifact.status().is_complete());
         assert!(artifact.effects().iter_effects().next().is_none());
@@ -501,12 +465,11 @@ mod tests {
             crate::parse_test_source(source, "budget-sufficient.js").expect("source should parse");
         let coordinates = SpanNormalizer::new(parsed.source_start, &SourceText::from(source));
 
-        let artifact = lower_program(
-            &parsed.program,
+        let artifact = Lowerer::new(
             &crate::Environment::default(),
             &crate::AnalysisLimits::default(),
-            &coordinates,
-        );
+        )
+        .lower_program(&parsed.program, &coordinates);
 
         assert!(artifact.status().is_complete());
         assert!(artifact.facts().stream().facts().len() > 10);
@@ -524,12 +487,11 @@ mod tests {
             BytePos(parsed.source_start.0 + 100),
             &SourceText::from(source),
         );
-        let artifact = lower_program(
-            &parsed.program,
+        let artifact = Lowerer::new(
             &crate::Environment::default(),
             &crate::AnalysisLimits::default(),
-            &invalid,
-        );
+        )
+        .lower_program(&parsed.program, &invalid);
         assert!(!artifact.status().is_complete());
         assert!(artifact.facts().stream().facts().is_empty());
         let (files, project) = artifact.status().diagnostics();

@@ -113,7 +113,9 @@ impl Linter {
             ProviderCatalogError::InvalidRule(id, _) => LintConfigError::DuplicateRule(id),
             ProviderCatalogError::InvalidRuleId(id) => LintConfigError::InvalidSelector(id),
         })?;
+
         config.selection.validate_against(&catalog)?;
+
         let mut enabled = Vec::new();
         for (index, rule_id) in catalog.rule_ids().iter().enumerate() {
             let baseline = match config.selection.baseline() {
@@ -123,16 +125,19 @@ impl Linter {
                     catalog.records[index].confidence as u8 <= confidence as u8
                 }
             };
+
             let mut state = baseline;
             for override_ in config.selection.overrides() {
                 if override_.matches(rule_id.as_str()) {
                     state = override_.state() == RuleState::Enabled;
                 }
             }
+            
             if state {
                 enabled.push(RuleIndex::new(index));
             }
         }
+
         // Limits are guaranteed valid by construction through
         // `AnalysisLimits::new` or `Default`; no re-validation needed.
         Ok(Self {
