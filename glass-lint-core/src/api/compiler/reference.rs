@@ -227,6 +227,115 @@ fn lifecycle_plan_from_physical(flow: &CompiledObjectFlow) -> LifecycleReference
     }
 }
 
+impl LifecycleReferencePlan {
+    fn condition_sets<'a>(
+        &self,
+        path_rows: &[&'a ReferenceRow],
+        source_event: u32,
+    ) -> Option<Vec<Vec<&'a ReferenceRow>>> {
+        let requirement_matches: Vec<Vec<&ReferenceRow>> = self
+            .requirements
+            .iter()
+            .map(|matcher| {
+                path_rows
+                    .iter()
+                    .copied()
+                    .filter(|row| row.event > source_event && matches_requirement(matcher, row))
+                    .collect()
+            })
+            .collect();
+
+        if self.requirement_mode == RequirementMode::AllRequired
+            && requirement_matches.iter().any(Vec::is_empty)
+        {
+            return None;
+        }
+        let condition_sets = if self.requirements.is_empty() {
+            vec![Vec::new()]
+        } else if self.requirement_mode == RequirementMode::AllRequired {
+            vec![
+                requirement_matches
+                    .iter()
+                    .filter_map(|matches| matches.first().copied())
+                    .collect(),
+            ]
+        } else {
+            requirement_matches
+                .into_iter()
+                .flatten()
+                .map(|row| vec![row])
+                .collect()
+        };
+
+        Some(condition_sets)
+    }
+
+    fn completion_candidates<'a>(
+        &self,
+        path_rows: &[&'a ReferenceRow],
+        condition_end: u32,
+    ) -> Vec<Vec<&'a ReferenceRow>> {
+        match self.completion_mode {
+            CompletionMode::Configuration => vec![Vec::new()],
+            CompletionMode::AnySink => self
+                .sinks
+                .iter()
+                .flat_map(|sink| {
+                    path_rows
+                        .iter()
+                        .copied()
+                        .filter(move |row| row.event > condition_end && matches_sink(sink, row))
+                        .map(|row| vec![row])
+                        .collect::<Vec<_>>()
+                })
+                .collect(),
+            CompletionMode::AllSinks => {
+                let selected: Option<Vec<&ReferenceRow>> = self
+                    .sinks
+                    .iter()
+                    .map(|sink| {
+                        path_rows
+                            .iter()
+                            .copied()
+                            .find(|row| row.event > condition_end && matches_sink(sink, row))
+                    })
+                    .collect();
+                selected.into_iter().collect()
+            }
+        }
+    }
+
+    fn witness(
+        path: u32,
+        source: &ReferenceRow,
+        condition_set: &[&ReferenceRow],
+        completion_set: &[&ReferenceRow],
+    ) -> ReferenceWitness {
+        let primary_event = completion_set
+            .iter()
+            .map(|row| row.event)
+            .max()
+            .or_else(|| condition_set.iter().map(|row| row.event).max())
+            .unwrap_or(source.event);
+        let possible = source.completeness == ReferenceCompleteness::Unknown
+            || condition_set
+                .iter()
+                .chain(completion_set.iter())
+                .any(|row| row.completeness == ReferenceCompleteness::Unknown);
+
+        ReferenceWitness {
+            primary_event,
+            support_events: vec![source.event],
+            path_key: path,
+            certainty: if possible {
+                ReferenceCertainty::Possible
+            } else {
+                ReferenceCertainty::Definite
+            },
+        }
+    }
+}
+
 fn lifecycle_target(event: &EventSpec, identity: &IdentitySpec) -> Option<LifecycleCallTarget> {
     match (event, identity) {
         (EventSpec::Call, IdentitySpec::Global { name }) => {
@@ -373,73 +482,23 @@ fn evaluate_lifecycle(
                 .iter()
                 .any(|matcher| matches_source(matcher, row))
         }) {
-            let requirement_matches: Vec<Vec<&ReferenceRow>> = plan
-                .requirements
-                .iter()
-                .map(|matcher| {
-                    path_rows
-                        .iter()
-                        .copied()
-                        .filter(|row| row.event > source.event && matches_requirement(matcher, row))
-                        .collect()
-                })
-                .collect();
-            if requirement_matches.iter().any(Vec::is_empty)
-                && plan.requirement_mode == RequirementMode::AllRequired
-            {
+            let Some(condition_sets) = plan.condition_sets(&path_rows, source.event) else {
                 continue;
-            }
-            let condition_sets: Vec<Vec<&ReferenceRow>> = if plan.requirements.is_empty() {
-                vec![Vec::new()]
-            } else if plan.requirement_mode == RequirementMode::AllRequired {
-                vec![
-                    requirement_matches
-                        .iter()
-                        .filter_map(|matches| matches.first().copied())
-                        .collect(),
-                ]
-            } else {
-                requirement_matches
-                    .into_iter()
-                    .flatten()
-                    .map(|row| vec![row])
-                    .collect()
             };
             for condition_set in condition_sets {
-                if plan.requirement_mode == RequirementMode::AnyRequired
-                    && !plan.requirements.is_empty()
-                    && condition_set.is_empty()
-                {
-                    continue;
-                }
                 let condition_end = condition_set
                     .iter()
                     .map(|row| row.event)
                     .max()
                     .unwrap_or(source.event);
-                let completion_sets = lifecycle_completions(plan, &path_rows, condition_end);
+                let completion_sets = plan.completion_candidates(&path_rows, condition_end);
                 for completion_set in completion_sets {
-                    let primary_event = completion_set
-                        .iter()
-                        .map(|row| row.event)
-                        .max()
-                        .or_else(|| condition_set.iter().map(|row| row.event).max())
-                        .unwrap_or(source.event);
-                    let possible = source.completeness == ReferenceCompleteness::Unknown
-                        || condition_set
-                            .iter()
-                            .chain(completion_set.iter())
-                            .any(|row| row.completeness == ReferenceCompleteness::Unknown);
-                    witnesses.push(ReferenceWitness {
-                        primary_event,
-                        support_events: vec![source.event],
-                        path_key: path,
-                        certainty: if possible {
-                            ReferenceCertainty::Possible
-                        } else {
-                            ReferenceCertainty::Definite
-                        },
-                    });
+                    witnesses.push(LifecycleReferencePlan::witness(
+                        path,
+                        source,
+                        &condition_set,
+                        &completion_set,
+                    ));
                 }
             }
         }
@@ -447,41 +506,6 @@ fn evaluate_lifecycle(
     witnesses.sort();
     witnesses.dedup();
     witnesses
-}
-
-fn lifecycle_completions<'a>(
-    plan: &LifecycleReferencePlan,
-    path_rows: &[&'a ReferenceRow],
-    condition_end: u32,
-) -> Vec<Vec<&'a ReferenceRow>> {
-    match plan.completion_mode {
-        CompletionMode::Configuration => vec![Vec::new()],
-        CompletionMode::AnySink => plan
-            .sinks
-            .iter()
-            .flat_map(|sink| {
-                path_rows
-                    .iter()
-                    .copied()
-                    .filter(move |row| row.event > condition_end && matches_sink(sink, row))
-                    .map(|row| vec![row])
-                    .collect::<Vec<_>>()
-            })
-            .collect(),
-        CompletionMode::AllSinks => {
-            let selected: Option<Vec<&ReferenceRow>> = plan
-                .sinks
-                .iter()
-                .map(|sink| {
-                    path_rows
-                        .iter()
-                        .copied()
-                        .find(|row| row.event > condition_end && matches_sink(sink, row))
-                })
-                .collect();
-            selected.into_iter().collect()
-        }
-    }
 }
 
 fn matches_source(matcher: &LifecycleSourceMatcher, row: &ReferenceRow) -> bool {
