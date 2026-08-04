@@ -128,22 +128,7 @@ pub fn parse_with_language_and_depth(
     max_syntax_depth: usize,
 ) -> Result<ParsedSource, ParseDiagnostic> {
     admit_source(source, filename)?;
-    let (source_map, file) = source_context(source, filename);
-    let syntax = syntax_for(language);
-    let requires_depth_prescan = raw_depth_bound(source) > max_syntax_depth;
-    let program = parse_bounded(
-        &source_map,
-        &file,
-        syntax,
-        language,
-        filename,
-        max_syntax_depth,
-        requires_depth_prescan,
-    )?;
-    Ok(ParsedSource {
-        program: lower_program(program, language),
-        source_start: file.start_pos,
-    })
+    ParserContext::new(source, filename, language, max_syntax_depth).parse()
 }
 
 fn admit_source(source: &str, filename: &str) -> Result<(), ParseDiagnostic> {
@@ -159,91 +144,120 @@ fn admit_source(source: &str, filename: &str) -> Result<(), ParseDiagnostic> {
     })
 }
 
-fn source_context(source: &str, filename: &str) -> (Lrc<SourceMap>, Lrc<swc_common::SourceFile>) {
-    let source_map = Lrc::new(SourceMap::default());
-    let file =
-        source_map.new_source_file(FileName::Custom(filename.into()).into(), source.to_owned());
-    (source_map, file)
-}
-
-fn parse_bounded(
-    source_map: &Lrc<SourceMap>,
-    file: &swc_common::SourceFile,
-    syntax: Syntax,
+struct ParserContext {
+    source_map: Lrc<SourceMap>,
+    file: Lrc<swc_common::SourceFile>,
+    filename: String,
     language: SourceLanguage,
-    filename: &str,
+    syntax: Syntax,
     max_syntax_depth: usize,
     requires_depth_prescan: bool,
-) -> Result<Program, ParseDiagnostic> {
-    if requires_depth_prescan
-        && syntax_depth(file, syntax, max_syntax_depth) == Err(SyntaxDepthError::Exceeded)
-    {
-        return Err(syntax_depth_diagnostic(filename, max_syntax_depth));
-    }
-
-    let lexer = Lexer::new(syntax, EsVersion::EsNext, StringInput::from(file), None);
-    let mut parser = Parser::new_from(Capturing::new(lexer));
-    let parsed = parser.parse_program();
-    if !requires_depth_prescan
-        && syntax_depth_tokens(parser.input().iter.tokens(), max_syntax_depth)
-            == Err(SyntaxDepthError::Exceeded)
-    {
-        return Err(syntax_depth_diagnostic(filename, max_syntax_depth));
-    }
-    parsed.map_err(|error| parser_diagnostic(source_map, filename, language, &error))
 }
 
-fn syntax_depth_diagnostic(filename: &str, max_syntax_depth: usize) -> ParseDiagnostic {
-    ParseDiagnostic {
-        code: crate::project::types::DiagnosticKind::SyntaxDepthExceeded.into(),
-        message: format!("source exceeds the {max_syntax_depth} nesting-depth analysis limit"),
-        filename: filename.into(),
-        range: None,
-        failure: ParseFailureKind::SyntaxDepth,
+impl ParserContext {
+    fn new(
+        source: &str,
+        filename: &str,
+        language: SourceLanguage,
+        max_syntax_depth: usize,
+    ) -> Self {
+        let source_map = Lrc::new(SourceMap::default());
+        let file =
+            source_map.new_source_file(FileName::Custom(filename.into()).into(), source.to_owned());
+        Self {
+            source_map,
+            file,
+            filename: filename.to_owned(),
+            language,
+            syntax: syntax_for(language),
+            max_syntax_depth,
+            requires_depth_prescan: raw_depth_bound(source) > max_syntax_depth,
+        }
     }
-}
 
-fn parser_diagnostic(
-    source_map: &Lrc<SourceMap>,
-    filename: &str,
-    language: SourceLanguage,
-    error: &swc_ecma_parser::error::Error,
-) -> ParseDiagnostic {
-    let range = (!error.span().is_dummy()).then(|| {
-        let start = source_map.lookup_char_pos(error.span().lo());
-        let end = source_map.lookup_char_pos(error.span().hi());
-        let start = Position::new(
-            start.line.try_into().unwrap_or(u32::MAX),
-            start
-                .col_display
-                .try_into()
-                .unwrap_or(u32::MAX)
-                .saturating_add(1),
-        )
-        .expect("parser locations are one-based");
-        let end = Position::new(
-            end.line.try_into().unwrap_or(u32::MAX),
-            end.col_display
-                .try_into()
-                .unwrap_or(u32::MAX)
-                .saturating_add(1),
-        )
-        .expect("parser locations are one-based");
-        SourceRange::new(start, end).expect("parser spans are ordered")
-    });
-    ParseDiagnostic {
-        code: crate::project::types::DiagnosticKind::SyntaxError.into(),
-        message: format!(
-            "{} parse error: {}",
-            match language {
-                SourceLanguage::JavaScript => "JavaScript",
-                SourceLanguage::TypeScript => "TypeScript",
-            },
-            error.kind().msg()
-        ),
-        filename: filename.into(),
-        range,
-        failure: ParseFailureKind::Syntax,
+    fn parse(self) -> Result<ParsedSource, ParseDiagnostic> {
+        let program = self.parse_program()?;
+        Ok(ParsedSource {
+            program: lower_program(program, self.language),
+            source_start: self.file.start_pos,
+        })
+    }
+
+    fn parse_program(&self) -> Result<Program, ParseDiagnostic> {
+        if self.requires_depth_prescan
+            && syntax_depth(&self.file, self.syntax, self.max_syntax_depth)
+                == Err(SyntaxDepthError::Exceeded)
+        {
+            return Err(self.syntax_depth_diagnostic());
+        }
+
+        let lexer = Lexer::new(
+            self.syntax,
+            EsVersion::EsNext,
+            StringInput::from(&*self.file),
+            None,
+        );
+        let mut parser = Parser::new_from(Capturing::new(lexer));
+        let parsed = parser.parse_program();
+        if !self.requires_depth_prescan
+            && syntax_depth_tokens(parser.input().iter.tokens(), self.max_syntax_depth)
+                == Err(SyntaxDepthError::Exceeded)
+        {
+            return Err(self.syntax_depth_diagnostic());
+        }
+        parsed.map_err(|error| self.parser_diagnostic(&error))
+    }
+
+    fn syntax_depth_diagnostic(&self) -> ParseDiagnostic {
+        ParseDiagnostic {
+            code: crate::project::types::DiagnosticKind::SyntaxDepthExceeded.into(),
+            message: format!(
+                "source exceeds the {} nesting-depth analysis limit",
+                self.max_syntax_depth
+            ),
+            filename: self.filename.clone(),
+            range: None,
+            failure: ParseFailureKind::SyntaxDepth,
+        }
+    }
+
+    fn parser_diagnostic(&self, error: &swc_ecma_parser::error::Error) -> ParseDiagnostic {
+        let range = (!error.span().is_dummy()).then(|| {
+            let start = self.source_map.lookup_char_pos(error.span().lo());
+            let end = self.source_map.lookup_char_pos(error.span().hi());
+            let start = Position::new(
+                start.line.try_into().unwrap_or(u32::MAX),
+                start
+                    .col_display
+                    .try_into()
+                    .unwrap_or(u32::MAX)
+                    .saturating_add(1),
+            )
+            .expect("parser locations are one-based");
+            let end = Position::new(
+                end.line.try_into().unwrap_or(u32::MAX),
+                end.col_display
+                    .try_into()
+                    .unwrap_or(u32::MAX)
+                    .saturating_add(1),
+            )
+            .expect("parser locations are one-based");
+            SourceRange::new(start, end).expect("parser spans are ordered")
+        });
+        ParseDiagnostic {
+            code: crate::project::types::DiagnosticKind::SyntaxError.into(),
+            message: format!(
+                "{} parse error: {}",
+                match self.language {
+                    SourceLanguage::JavaScript => "JavaScript",
+                    SourceLanguage::TypeScript => "TypeScript",
+                },
+                error.kind().msg()
+            ),
+            filename: self.filename.clone(),
+            range,
+            failure: ParseFailureKind::Syntax,
+        }
     }
 }
 
