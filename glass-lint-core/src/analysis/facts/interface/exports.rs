@@ -74,24 +74,11 @@ impl ModuleInterfaceBuilder {
         }
     }
 
-    pub(in crate::analysis::facts) fn record_local_named_exports_only(
+    pub(in crate::analysis::facts) fn record_local_named_exports(
         &mut self,
         specifiers: &[ExportSpecifier],
         resolver: &Resolver,
     ) {
-        self.record_local_named_exports(specifiers, resolver);
-    }
-
-    pub(in crate::analysis::facts) fn record_reexports_from_source(
-        &mut self,
-        export: &NamedExport,
-        source: &swc_ecma_ast::Str,
-        source_span: glass_lint_datastructures::ByteRange,
-    ) {
-        self.record_reexports(export, source, source_span);
-    }
-
-    fn record_local_named_exports(&mut self, specifiers: &[ExportSpecifier], resolver: &Resolver) {
         for specifier in specifiers {
             if let ExportSpecifier::Named(named) = specifier
                 && !named.is_type_only
@@ -112,7 +99,7 @@ impl ModuleInterfaceBuilder {
         }
     }
 
-    fn record_reexports(
+    pub(in crate::analysis::facts) fn record_reexports(
         &mut self,
         export: &NamedExport,
         source: &swc_ecma_ast::Str,

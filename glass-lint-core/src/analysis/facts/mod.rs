@@ -294,10 +294,10 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
                 return;
             };
             self.interface
-                .record_reexports_from_source(export, source, span);
+                .record_reexports(export, source, span);
         } else {
             self.interface
-                .record_local_named_exports_only(&export.specifiers, self.resolver);
+                .record_local_named_exports(&export.specifiers, self.resolver);
         }
     }
 
