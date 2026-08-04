@@ -77,6 +77,98 @@ pub(crate) enum PhysicalRoot {
     },
 }
 
+impl PhysicalRoot {
+    fn validate(&self) -> Result<(), PhysicalPlanValidationError> {
+        match self {
+            Self::IndexedScan {
+                identity, evidence, ..
+            } => {
+                if identity.is_empty() {
+                    return Err(PhysicalPlanValidationError::ImpossibleDimensions);
+                }
+                if evidence.symbol.is_empty() {
+                    return Err(PhysicalPlanValidationError::UnavailablePrimaryEvidence);
+                }
+            }
+            Self::ConstrainedScan {
+                identity,
+                event,
+                constraints,
+                evidence,
+            } => {
+                if identity.is_empty() {
+                    return Err(PhysicalPlanValidationError::ImpossibleDimensions);
+                }
+                if !matches!(
+                    event,
+                    EventPredicate::Call | EventPredicate::MemberCall { .. }
+                ) {
+                    return Err(PhysicalPlanValidationError::ConstraintsRequireCallEvent);
+                }
+                if constraints.is_empty() {
+                    return Err(PhysicalPlanValidationError::NonCanonicalConstraints);
+                }
+                validate_canonical_constraints(constraints)?;
+                if evidence.symbol.is_empty() {
+                    return Err(PhysicalPlanValidationError::UnavailablePrimaryEvidence);
+                }
+            }
+            Self::ReturnedSubject {
+                producer,
+                object_slot,
+                member,
+                event,
+                evidence,
+                ..
+            } => {
+                if producer.is_empty()
+                    || !matches!(producer, IdentityConstraint::Rooted { .. })
+                    || *object_slot == u32::MAX
+                    || member.is_empty()
+                {
+                    return Err(PhysicalPlanValidationError::ImpossibleDimensions);
+                }
+                if !matches!(event, EventPredicate::MemberCall { member: event_member }
+                    | EventPredicate::MemberRead { member: event_member } if event_member == member)
+                {
+                    return Err(PhysicalPlanValidationError::ImpossibleDimensions);
+                }
+                if evidence.symbol.is_empty() {
+                    return Err(PhysicalPlanValidationError::UnavailablePrimaryEvidence);
+                }
+            }
+            Self::InstanceSubject {
+                constructor,
+                object_slot,
+                member,
+                evidence,
+                ..
+            } => {
+                if constructor.is_empty()
+                    || *object_slot == u32::MAX
+                    || !matches!(
+                        constructor,
+                        IdentityConstraint::ModuleExport { .. }
+                            | IdentityConstraint::PackageModuleExport { .. }
+                    )
+                    || member.is_empty()
+                {
+                    return Err(PhysicalPlanValidationError::ImpossibleDimensions);
+                }
+                if evidence.symbol.is_empty() {
+                    return Err(PhysicalPlanValidationError::UnavailablePrimaryEvidence);
+                }
+            }
+            Self::Lifecycle { flow } => {
+                if !flow.has_sources() {
+                    return Err(PhysicalPlanValidationError::InvalidLifecycleRoot);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 // ── PhysicalPlan ────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -323,92 +415,7 @@ pub(crate) fn validate_physical_plan(
     plan: &PhysicalPlan,
 ) -> Result<(), PhysicalPlanValidationError> {
     for root in plan.roots() {
-        match root {
-            PhysicalRoot::IndexedScan {
-                identity, evidence, ..
-            } => {
-                if identity.is_empty() {
-                    return Err(PhysicalPlanValidationError::ImpossibleDimensions);
-                }
-                if evidence.symbol.is_empty() {
-                    return Err(PhysicalPlanValidationError::UnavailablePrimaryEvidence);
-                }
-            }
-            PhysicalRoot::ConstrainedScan {
-                identity,
-                event,
-                constraints,
-                evidence,
-            } => {
-                if identity.is_empty() {
-                    return Err(PhysicalPlanValidationError::ImpossibleDimensions);
-                }
-                if !matches!(
-                    event,
-                    EventPredicate::Call | EventPredicate::MemberCall { .. }
-                ) {
-                    return Err(PhysicalPlanValidationError::ConstraintsRequireCallEvent);
-                }
-                if constraints.is_empty() {
-                    return Err(PhysicalPlanValidationError::NonCanonicalConstraints);
-                }
-                validate_canonical_constraints(constraints)?;
-                if evidence.symbol.is_empty() {
-                    return Err(PhysicalPlanValidationError::UnavailablePrimaryEvidence);
-                }
-            }
-            PhysicalRoot::ReturnedSubject {
-                producer,
-                object_slot,
-                member,
-                event,
-                evidence,
-                ..
-            } => {
-                if producer.is_empty()
-                    || !matches!(producer, IdentityConstraint::Rooted { .. })
-                    || *object_slot == u32::MAX
-                    || member.is_empty()
-                {
-                    return Err(PhysicalPlanValidationError::ImpossibleDimensions);
-                }
-                if !matches!(event, EventPredicate::MemberCall { member: event_member }
-                    | EventPredicate::MemberRead { member: event_member } if event_member == member)
-                {
-                    return Err(PhysicalPlanValidationError::ImpossibleDimensions);
-                }
-                if evidence.symbol.is_empty() {
-                    return Err(PhysicalPlanValidationError::UnavailablePrimaryEvidence);
-                }
-            }
-            PhysicalRoot::InstanceSubject {
-                constructor,
-                object_slot,
-                member,
-                evidence,
-                ..
-            } => {
-                if constructor.is_empty()
-                    || *object_slot == u32::MAX
-                    || !matches!(
-                        constructor,
-                        IdentityConstraint::ModuleExport { .. }
-                            | IdentityConstraint::PackageModuleExport { .. }
-                    )
-                    || member.is_empty()
-                {
-                    return Err(PhysicalPlanValidationError::ImpossibleDimensions);
-                }
-                if evidence.symbol.is_empty() {
-                    return Err(PhysicalPlanValidationError::UnavailablePrimaryEvidence);
-                }
-            }
-            PhysicalRoot::Lifecycle { flow } => {
-                if !flow.has_sources() {
-                    return Err(PhysicalPlanValidationError::InvalidLifecycleRoot);
-                }
-            }
-        }
+        root.validate()?;
     }
     if executable_requirements(plan.roots()) != *plan.requirements() {
         return Err(PhysicalPlanValidationError::RequirementsMismatch);
