@@ -63,7 +63,7 @@ pub(crate) fn normalize_all_root(
                 Err(QueryCompileError::UncorrelatedConjunction)
             }
         },
-        |var| merge_same_event(all, var, emission),
+        |var| merge_same_event(all, var),
     )
 }
 
@@ -101,68 +101,18 @@ fn find_common_event_var(branches: &[&QueryExpr]) -> Option<VarId> {
 ///
 /// Collects event spec, identity, subject, and argument constraints
 /// from all branches and merges them onto one event node.
-fn merge_same_event(
-    all: &AllExpr,
-    event_var: VarId,
-    _emission: &EmissionDecl,
-) -> Result<NormalizedRoot, QueryCompileError> {
-    let mut event_spec: Option<EventSpec> = None;
-    let mut identity_spec: Option<IdentitySpec> = None;
-    let mut subject: Option<NormalizedSubject> = None;
-    let mut constraints: Vec<ArgumentConstraint> = Vec::new();
+fn merge_same_event(all: &AllExpr, event_var: VarId) -> Result<NormalizedRoot, QueryCompileError> {
+    let mut merge = SameEventMerge::default();
 
     for branch in all.iter() {
         match branch.kind() {
             QueryExprKind::Event(eq) => {
-                merge_event_fields(&mut event_spec, &mut identity_spec, eq)?;
-                constraints.extend(eq.constraints().iter().cloned());
+                merge.merge_event(eq)?;
             }
             QueryExprKind::SelectEvent(_) => {
                 // Just a binding reference, no fields to merge.
             }
-            QueryExprKind::Require(p) => match p {
-                QueryPredicate::EventKind { expected, .. } => {
-                    merge_event_kind(&mut event_spec, expected.clone())?;
-                }
-                QueryPredicate::EventIdentity { expected, .. } => {
-                    merge_identity(&mut identity_spec, expected.clone())?;
-                }
-                QueryPredicate::Argument { index, matcher, .. } => {
-                    constraints.push(ArgumentConstraint::new(*index, matcher.clone()));
-                }
-                QueryPredicate::ReturnedObject { bind, identity } => {
-                    merge_subject_relation(
-                        &mut subject,
-                        NormalizedSubject::Returned {
-                            producer: identity.clone(),
-                            object_slot: var_to_slot(*bind),
-                        },
-                    )?;
-                }
-                QueryPredicate::ConstructedObject { bind, identity } => {
-                    merge_subject_relation(
-                        &mut subject,
-                        NormalizedSubject::Instance {
-                            constructor: identity.clone(),
-                            object_slot: var_to_slot(*bind),
-                        },
-                    )?;
-                }
-                QueryPredicate::MemberSubject { event, object } => {
-                    if *event != event_var {
-                        return Err(QueryCompileError::UncorrelatedConjunction);
-                    }
-                    match subject.as_ref() {
-                        Some(
-                            NormalizedSubject::Returned { object_slot, .. }
-                            | NormalizedSubject::Instance { object_slot, .. },
-                        ) if *object_slot == var_to_slot(*object) => {}
-                        _ => {
-                            return Err(QueryCompileError::UncorrelatedConjunction);
-                        }
-                    }
-                }
-            },
+            QueryExprKind::Require(predicate) => merge.merge_predicate(predicate, event_var)?,
             _ => {
                 return Err(QueryCompileError::InternalInvariant {
                     detail: "unexpected branch kind in same-event All".into(),
@@ -171,100 +121,154 @@ fn merge_same_event(
         }
     }
 
-    let event = event_spec.ok_or_else(|| QueryCompileError::InternalInvariant {
-        detail: "same-event All missing event kind".into(),
-    })?;
-
-    let identity = identity_spec.ok_or_else(|| QueryCompileError::InternalInvariant {
-        detail: "same-event All missing identity".into(),
-    })?;
-
-    // Canonicalize constraints: sort by index then by matcher payload.
-    constraints.sort_by(|a, b| {
-        a.index()
-            .cmp(&b.index())
-            .then_with(|| a.predicate().cmp(b.predicate()))
-    });
-    // Deduplicate.
-    constraints.dedup();
-
-    let subject = subject.unwrap_or_else(|| NormalizedSubject::Direct {
-        identity: identity.clone(),
-    });
-
-    // Detect contradictions on the merged event.
-    detect_event_contradictions(event_var, &event, &identity, &subject, &constraints)?;
-
-    let slot = var_to_slot(event_var);
-
-    Ok(NormalizedRoot::Event(NormalizedEvent {
-        slot,
-        event,
-        subject,
-        arguments: CanonicalArgumentConstraints::from_canonicalized(&constraints),
-    }))
+    merge.finish(event_var)
 }
 
 fn var_to_slot(var: VarId) -> u32 {
     var.get()
 }
 
-fn merge_event_fields(
-    event_spec: &mut Option<EventSpec>,
-    identity_spec: &mut Option<IdentitySpec>,
-    eq: &EventQuery,
-) -> Result<(), QueryCompileError> {
-    merge_event_kind(event_spec, eq.event().clone())?;
-    merge_identity(identity_spec, eq.identity().clone())?;
-    Ok(())
+#[derive(Default)]
+struct SameEventMerge {
+    event: Option<EventSpec>,
+    identity: Option<IdentitySpec>,
+    subject: Option<NormalizedSubject>,
+    constraints: Vec<ArgumentConstraint>,
 }
 
-fn merge_event_kind(
-    target: &mut Option<EventSpec>,
-    candidate: EventSpec,
-) -> Result<(), QueryCompileError> {
-    if let Some(existing) = target {
-        if *existing != candidate {
-            // Event kinds must be compatible. For now, exact match required.
+impl SameEventMerge {
+    fn merge_event(&mut self, query: &EventQuery) -> Result<(), QueryCompileError> {
+        self.merge_event_kind(query.event().clone())?;
+        self.merge_identity(query.identity().clone())?;
+        self.constraints.extend(query.constraints().iter().cloned());
+        Ok(())
+    }
+
+    fn merge_predicate(
+        &mut self,
+        predicate: &QueryPredicate,
+        event_var: VarId,
+    ) -> Result<(), QueryCompileError> {
+        match predicate {
+            QueryPredicate::EventKind { expected, .. } => {
+                self.merge_event_kind(expected.clone())?;
+            }
+            QueryPredicate::EventIdentity { expected, .. } => {
+                self.merge_identity(expected.clone())?;
+            }
+            QueryPredicate::Argument { index, matcher, .. } => {
+                self.constraints
+                    .push(ArgumentConstraint::new(*index, matcher.clone()));
+            }
+            QueryPredicate::ReturnedObject { bind, identity } => {
+                self.merge_subject(NormalizedSubject::Returned {
+                    producer: identity.clone(),
+                    object_slot: var_to_slot(*bind),
+                })?;
+            }
+            QueryPredicate::ConstructedObject { bind, identity } => {
+                self.merge_subject(NormalizedSubject::Instance {
+                    constructor: identity.clone(),
+                    object_slot: var_to_slot(*bind),
+                })?;
+            }
+            QueryPredicate::MemberSubject { event, object } => {
+                self.merge_member_subject(*event, *object, event_var)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn merge_event_kind(&mut self, candidate: EventSpec) -> Result<(), QueryCompileError> {
+        if let Some(existing) = &self.event {
+            if *existing != candidate {
+                return Err(QueryCompileError::ContradictoryPredicate {
+                    variable: VarId::new(0),
+                    detail: ContradictionKind::EventKind,
+                });
+            }
+        } else {
+            self.event = Some(candidate);
+        }
+        Ok(())
+    }
+
+    fn merge_identity(&mut self, candidate: IdentitySpec) -> Result<(), QueryCompileError> {
+        if let Some(existing) = &self.identity {
+            if *existing != candidate {
+                return Err(QueryCompileError::ContradictoryPredicate {
+                    variable: VarId::new(0),
+                    detail: ContradictionKind::StrictIdentity,
+                });
+            }
+        } else {
+            self.identity = Some(candidate);
+        }
+        Ok(())
+    }
+
+    fn merge_subject(&mut self, candidate: NormalizedSubject) -> Result<(), QueryCompileError> {
+        if self
+            .subject
+            .as_ref()
+            .is_some_and(|subject| *subject != candidate)
+        {
             return Err(QueryCompileError::ContradictoryPredicate {
                 variable: VarId::new(0),
-                detail: ContradictionKind::EventKind,
+                detail: ContradictionKind::SubjectRelation,
             });
         }
-    } else {
-        *target = Some(candidate);
+        self.subject = Some(candidate);
+        Ok(())
     }
-    Ok(())
-}
 
-fn merge_identity(
-    target: &mut Option<IdentitySpec>,
-    candidate: IdentitySpec,
-) -> Result<(), QueryCompileError> {
-    if let Some(existing) = target {
-        if *existing != candidate {
-            // Incompatible identities are a contradiction.
-            return Err(QueryCompileError::ContradictoryPredicate {
-                variable: VarId::new(0),
-                detail: ContradictionKind::StrictIdentity,
-            });
+    fn merge_member_subject(
+        &self,
+        event: VarId,
+        object: VarId,
+        event_var: VarId,
+    ) -> Result<(), QueryCompileError> {
+        if event != event_var {
+            return Err(QueryCompileError::UncorrelatedConjunction);
         }
-    } else {
-        *target = Some(candidate);
+        match self.subject.as_ref() {
+            Some(
+                NormalizedSubject::Returned { object_slot, .. }
+                | NormalizedSubject::Instance { object_slot, .. },
+            ) if *object_slot == var_to_slot(object) => Ok(()),
+            _ => Err(QueryCompileError::UncorrelatedConjunction),
+        }
     }
-    Ok(())
-}
 
-fn merge_subject_relation(
-    target: &mut Option<NormalizedSubject>,
-    candidate: NormalizedSubject,
-) -> Result<(), QueryCompileError> {
-    if target.as_ref().is_some_and(|target| *target != candidate) {
-        return Err(QueryCompileError::ContradictoryPredicate {
-            variable: VarId::new(0),
-            detail: ContradictionKind::SubjectRelation,
+    fn finish(mut self, event_var: VarId) -> Result<NormalizedRoot, QueryCompileError> {
+        let event = self
+            .event
+            .ok_or_else(|| QueryCompileError::InternalInvariant {
+                detail: "same-event All missing event kind".into(),
+            })?;
+        let identity = self
+            .identity
+            .ok_or_else(|| QueryCompileError::InternalInvariant {
+                detail: "same-event All missing identity".into(),
+            })?;
+
+        self.constraints.sort_by(|a, b| {
+            a.index()
+                .cmp(&b.index())
+                .then_with(|| a.predicate().cmp(b.predicate()))
         });
+        self.constraints.dedup();
+
+        let subject = self.subject.unwrap_or_else(|| NormalizedSubject::Direct {
+            identity: identity.clone(),
+        });
+        detect_event_contradictions(event_var, &event, &identity, &subject, &self.constraints)?;
+
+        Ok(NormalizedRoot::Event(NormalizedEvent {
+            slot: var_to_slot(event_var),
+            event,
+            subject,
+            arguments: CanonicalArgumentConstraints::from_canonicalized(&self.constraints),
+        }))
     }
-    *target = Some(candidate);
-    Ok(())
 }
