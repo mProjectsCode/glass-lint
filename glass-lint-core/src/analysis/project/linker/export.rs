@@ -206,84 +206,98 @@ impl ProjectLinker {
         export: &module::ModuleExport,
     ) -> ExportResolution {
         match export {
-            module::ModuleExport::Local { name } => {
-                let Some(project_module) = self.modules.get(&module) else {
-                    return ExportResolution::Unknown;
-                };
-                let is_local = project_module.local().interface().is_local(name);
-                let origin = project_module.local().export_origin(name).cloned();
-                let static_string = project_module
-                    .local()
-                    .interface()
-                    .static_string(name)
-                    .map(str::to_owned);
-                if !is_local && origin.is_none() {
-                    return ExportResolution::Unknown;
-                }
-                match origin {
-                    Some(SymbolCallProvenance::ModuleExport {
-                        module: authored_module,
-                        export: authored_export,
-                    }) => {
-                        self.resolve_imported_identity(module, &authored_module, &authored_export)
-                    }
-                    Some(SymbolCallProvenance::Global { name }) => {
-                        ExportResolution::Global { name }
-                    }
-                    Some(SymbolCallProvenance::Local | SymbolCallProvenance::Unknown(_)) | None => {
-                        static_string.map_or_else(
-                            || ExportResolution::Qualified {
-                                module,
-                                export: name.to_smolstr(),
-                            },
-                            |value| ExportResolution::StaticString { value },
-                        )
-                    }
-                }
-            }
-            module::ModuleExport::Value => self
-                .modules
-                .get(&module)
-                .and_then(|m| m.local().interface().static_string(export_name))
-                .map(str::to_owned)
-                .map_or_else(
-                    || ExportResolution::Qualified {
-                        module,
-                        export: export_name.to_smolstr(),
-                    },
-                    |value| ExportResolution::StaticString { value },
-                ),
+            module::ModuleExport::Local { name } => self.resolve_local_export(module, name),
+            module::ModuleExport::Value => self.resolve_value_export(module, export_name),
             module::ModuleExport::Unknown => ExportResolution::Unknown,
             module::ModuleExport::ReExport { request, imported } => {
                 self.resolve_request_export(module, *request, imported)
             }
             module::ModuleExport::Namespace { request } => {
-                let Some(request) = self
-                    .modules
-                    .get(&module)
-                    .and_then(|m| m.local().interface().request(*request))
-                else {
-                    return ExportResolution::Unknown;
-                };
-                let Some(key) = self.request_id(module, request) else {
-                    return ExportResolution::Unknown;
-                };
-                match self.resolutions.get(&key) {
-                    Some(LinkedModuleTarget::Internal { id, .. }) => ExportResolution::Qualified {
-                        module: *id,
-                        export: NAMESPACE_EXPORT.into(),
-                    },
-                    Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
-                        module: package.as_str().to_smolstr(),
-                        export: NAMESPACE_EXPORT.into(),
-                    },
-                    Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
-                        module: name.as_str().to_smolstr(),
-                        export: NAMESPACE_EXPORT.into(),
-                    },
-                    _ => ExportResolution::Unknown,
-                }
+                self.resolve_namespace_export(module, *request)
             }
+        }
+    }
+
+    fn resolve_local_export(&mut self, module: ModuleId, name: &SmolStr) -> ExportResolution {
+        let Some(project_module) = self.modules.get(&module) else {
+            return ExportResolution::Unknown;
+        };
+        let is_local = project_module.local().interface().is_local(name);
+        let origin = project_module.local().export_origin(name).cloned();
+        let static_string = project_module
+            .local()
+            .interface()
+            .static_string(name)
+            .map(str::to_owned);
+        if !is_local && origin.is_none() {
+            return ExportResolution::Unknown;
+        }
+        match origin {
+            Some(SymbolCallProvenance::ModuleExport {
+                module: authored_module,
+                export: authored_export,
+            }) => self.resolve_imported_identity(module, &authored_module, &authored_export),
+            Some(SymbolCallProvenance::Global { name }) => ExportResolution::Global { name },
+            Some(SymbolCallProvenance::Local | SymbolCallProvenance::Unknown(_)) | None => {
+                static_string.map_or_else(
+                    || ExportResolution::Qualified {
+                        module,
+                        export: name.to_smolstr(),
+                    },
+                    |value| ExportResolution::StaticString { value },
+                )
+            }
+        }
+    }
+
+    fn resolve_value_export(&self, module: ModuleId, export_name: &SmolStr) -> ExportResolution {
+        self.modules
+            .get(&module)
+            .and_then(|project_module| {
+                project_module
+                    .local()
+                    .interface()
+                    .static_string(export_name)
+            })
+            .map(str::to_owned)
+            .map_or_else(
+                || ExportResolution::Qualified {
+                    module,
+                    export: export_name.to_smolstr(),
+                },
+                |value| ExportResolution::StaticString { value },
+            )
+    }
+
+    fn resolve_namespace_export(
+        &self,
+        module: ModuleId,
+        request_index: module::ModuleRequestId,
+    ) -> ExportResolution {
+        let Some(request) = self
+            .modules
+            .get(&module)
+            .and_then(|project_module| project_module.local().interface().request(request_index))
+        else {
+            return ExportResolution::Unknown;
+        };
+        let Some(key) = self.request_id(module, request) else {
+            return ExportResolution::Unknown;
+        };
+        match self.resolutions.get(&key) {
+            Some(LinkedModuleTarget::Internal { id, .. }) => ExportResolution::Qualified {
+                module: *id,
+                export: NAMESPACE_EXPORT.into(),
+            },
+            Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
+                module: package.as_str().to_smolstr(),
+                export: NAMESPACE_EXPORT.into(),
+            },
+            Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
+                module: name.as_str().to_smolstr(),
+                export: NAMESPACE_EXPORT.into(),
+            },
+            _ => ExportResolution::Unknown,
         }
     }
 
