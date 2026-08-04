@@ -2,8 +2,7 @@ use std::collections::HashMap;
 
 use super::error::{QueryCompileError, is_identity_empty, is_valid_identity_event_pair};
 use crate::api::rule::query::{
-    AnyExpr, EventQuery, EventSpec, IdentitySpec, QueryDecl, QueryExpr, QueryExprKind,
-    QueryPredicate, VarId, VarType,
+    AnyExpr, EventQuery, QueryDecl, QueryExpr, QueryExprKind, QueryPredicate, VarId, VarType,
 };
 
 /// Validate an event query for well-formedness.
@@ -55,41 +54,6 @@ fn is_more_specific(candidate: VarType, existing: VarType) -> bool {
     )
 }
 
-fn var_type_for_event(event: &EventSpec, _identity: &IdentitySpec) -> VarType {
-    match event {
-        EventSpec::Call | EventSpec::Construct => VarType::CallEvent,
-        EventSpec::MemberCall { .. }
-        | EventSpec::MemberRead { .. }
-        | EventSpec::PropertyWrite { .. } => VarType::MemberEvent,
-        EventSpec::ClassReference | EventSpec::Import | EventSpec::StringReference => {
-            VarType::Event
-        }
-    }
-}
-
-fn var_type_for_event_kind(kind: &EventSpec) -> VarType {
-    match kind {
-        EventSpec::Call | EventSpec::Construct => VarType::CallEvent,
-        EventSpec::MemberCall { .. }
-        | EventSpec::MemberRead { .. }
-        | EventSpec::PropertyWrite { .. } => VarType::MemberEvent,
-        EventSpec::ClassReference | EventSpec::Import | EventSpec::StringReference => {
-            VarType::Event
-        }
-    }
-}
-
-impl VarType {
-    fn variant_name(self) -> &'static str {
-        match self {
-            Self::Event => "event",
-            Self::CallEvent => "call_event",
-            Self::MemberEvent => "member_event",
-            Self::Object => "object",
-        }
-    }
-}
-
 // ── Consolidated scope + types pass ──────────────────────────────────────
 
 /// Consolidated variable-collection and type-checking pass.
@@ -126,7 +90,7 @@ fn collect_scope_and_types(
                 return Err(QueryCompileError::DuplicateBinding { var: eq.var() });
             }
             seen.push(eq.var());
-            let ty = var_type_for_event(eq.event(), eq.identity());
+            let ty = eq.event().variable_type();
             set_type_internal(eq.var(), ty, types)?;
         }
         QueryExprKind::SelectEvent(s) => {
@@ -150,7 +114,7 @@ fn collect_scope_and_types(
                     return Err(QueryCompileError::DuplicateBinding { var: src.var() });
                 }
                 src_seen.push(src.var());
-                let ty = var_type_for_event(src.event(), src.identity());
+                let ty = src.event().variable_type();
                 set_type_internal(src.var(), ty, types)?;
             }
         }
@@ -178,7 +142,7 @@ fn collect_require_scope(
                     primary_var: *event,
                 });
             }
-            let implied = var_type_for_event_kind(expected);
+            let implied = expected.variable_type();
             check_type_internal(*event, implied, types)?;
         }
         QueryPredicate::EventIdentity { event, .. } => {

@@ -69,7 +69,7 @@ identity unchanged.
 
 ### Query compiler type validation
 
-#### [ ] READ-003 — Event-kind variable typing is duplicated across compiler passes
+#### [x] READ-003 — Event-kind variable typing is duplicated across compiler passes
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -92,7 +92,11 @@ duplicate helper and string-level match. Preserve the special `Object` and
 `Lifecycle` cases, the existing widening rules between `Event`, `CallEvent`,
 and `MemberEvent`, and the diagnostic names exposed by compile errors.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `EventSpec::variable_type` as the single event-kind
+classification operation, reused it for scope/type validation and normalized
+branch compatibility, and replaced stringly typed branch classification with
+a typed wrapper that preserves the `lifecycle` diagnostic. Verified with
+`cargo test -p glass-lint-core --lib api::compiler`.
 
 ### Query correlation validation
 

@@ -81,6 +81,17 @@ pub enum EventSpec {
 }
 
 impl EventSpec {
+    /// Return the compiler variable type represented by this event kind.
+    pub(crate) fn variable_type(&self) -> super::VarType {
+        match self {
+            Self::Call | Self::Construct => super::VarType::CallEvent,
+            Self::MemberCall { .. } | Self::MemberRead { .. } | Self::PropertyWrite { .. } => {
+                super::VarType::MemberEvent
+            }
+            Self::ClassReference | Self::Import | Self::StringReference => super::VarType::Event,
+        }
+    }
+
     pub fn diagnostic_name(&self) -> &'static str {
         match self {
             Self::Call => "call",

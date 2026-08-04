@@ -83,6 +83,18 @@ pub(crate) enum VarType {
     Object,
 }
 
+impl VarType {
+    /// Return the stable diagnostic label for this inferred variable type.
+    pub(crate) fn variant_name(self) -> &'static str {
+        match self {
+            Self::Event => "event",
+            Self::CallEvent => "call_event",
+            Self::MemberEvent => "member_event",
+            Self::Object => "object",
+        }
+    }
+}
+
 /// Binding atom: selects one event variable at a call/member/import site.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct EventSelection {

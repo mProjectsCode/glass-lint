@@ -17,7 +17,7 @@ use crate::api::{
         ArgumentConstraint,
         query::{
             AnyExpr, EmissionDecl, EventQuery, EventSpec, IdentitySpec, LifecycleQuery, QueryDecl,
-            QueryExpr, QueryExprKind, VarId,
+            QueryExpr, QueryExprKind, VarType,
         },
     },
 };
@@ -305,35 +305,42 @@ fn check_branch_evidence_compatibility(
     emission: &EmissionDecl,
 ) -> Result<(), QueryCompileError> {
     let primary = emission.primary_var;
-    let first_type = branch_var_type(&branches[0], primary);
+    let first_type = branch_var_type(&branches[0]);
     for branch in branches.iter().skip(1) {
-        let other = branch_var_type(branch, primary);
+        let other = branch_var_type(branch);
         if let (Some(a), Some(b)) = (first_type, other)
             && a != b
         {
             return Err(QueryCompileError::IncompatibleBranchOutput {
                 var: primary,
-                type_a: a,
-                type_b: b,
+                type_a: a.variant_name(),
+                type_b: b.variant_name(),
             });
         }
     }
     Ok(())
 }
 
-fn branch_var_type(root: &NormalizedRoot, _var: VarId) -> Option<&'static str> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BranchVarType {
+    Event(VarType),
+    Lifecycle,
+}
+
+impl BranchVarType {
+    fn variant_name(self) -> &'static str {
+        match self {
+            Self::Event(ty) => ty.variant_name(),
+            Self::Lifecycle => "lifecycle",
+        }
+    }
+}
+
+fn branch_var_type(root: &NormalizedRoot) -> Option<BranchVarType> {
     match root {
-        NormalizedRoot::Event(ev) => match ev.event {
-            EventSpec::Call | EventSpec::Construct => Some("call_event"),
-            EventSpec::MemberCall { .. }
-            | EventSpec::MemberRead { .. }
-            | EventSpec::PropertyWrite { .. } => Some("member_event"),
-            EventSpec::ClassReference | EventSpec::Import | EventSpec::StringReference => {
-                Some("event")
-            }
-        },
+        NormalizedRoot::Event(ev) => Some(BranchVarType::Event(ev.event.variable_type())),
         NormalizedRoot::Any(_) => None,
-        NormalizedRoot::Lifecycle(_) => Some("lifecycle"),
+        NormalizedRoot::Lifecycle(_) => Some(BranchVarType::Lifecycle),
     }
 }
 
