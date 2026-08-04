@@ -42,7 +42,7 @@ and updated the `FactBuilder` callers. Verified with
 
 ### Resolver identity queries
 
-#### [ ] READ-002 — Resolver identity APIs retain pass-through and misnamed layers
+#### [x] READ-002 — Resolver identity APIs retain pass-through and misnamed layers
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -65,7 +65,10 @@ Keep the narrow ID fast paths, cycle-to-unknown behavior, value-arena budget
 handling, module-member provenance, returned-member provenance, and cache
 identity unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Collapsed the identifier and member resolver forwarding pairs
+into their canonical cached operations, retaining each operation's distinct
+cache keys, cycle handling, provenance construction, and budget behavior.
+Verified with `cargo test -p glass-lint-core --lib analysis::resolution`.
 
 ### Query compiler type validation
 

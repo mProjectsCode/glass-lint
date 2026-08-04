@@ -49,14 +49,9 @@ impl Resolver<'_> {
         }
     }
 
-    /// Returns a CommonJS module only when the callee is proven to be the
-    /// unshadowed global loader. Import collection and alias provenance both
-    /// depend on this conservative distinction.
+    /// Resolve an identifier while preserving its position-sensitive
+    /// provenance and cached arena identity.
     pub(in crate::analysis) fn resolve_ident(&mut self, ident: &Ident) -> ResolvedValue {
-        self.resolve_ident_uncached(ident)
-    }
-
-    fn resolve_ident_uncached(&mut self, ident: &Ident) -> ResolvedValue {
         let key = ResolutionKey::Ident {
             range: ident.span.into(),
             symbol: ident.sym.to_smolstr(),
@@ -148,10 +143,6 @@ impl Resolver<'_> {
         self.scopes.function_id_for_span(span)
     }
 
-    pub(in crate::analysis) fn resolve_member(&mut self, member: &MemberExpr) -> ResolvedValue {
-        self.resolve_member_uncached(member)
-    }
-
     pub(in crate::analysis) fn rooted_write_chain(
         &self,
         member: &MemberExpr,
@@ -159,7 +150,9 @@ impl Resolver<'_> {
         self.scopes.rooted_write_member_chain(member)
     }
 
-    fn resolve_member_uncached(&mut self, member: &MemberExpr) -> ResolvedValue {
+    /// Resolve a member expression while preserving its position-sensitive
+    /// provenance and cached arena identity.
+    pub(in crate::analysis) fn resolve_member(&mut self, member: &MemberExpr) -> ResolvedValue {
         let key = ResolutionKey::Member {
             range: member.span.into(),
         };
