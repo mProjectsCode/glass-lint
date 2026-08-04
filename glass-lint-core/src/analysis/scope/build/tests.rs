@@ -5,7 +5,8 @@ use super::*;
 use crate::analysis::scope::{ScopeKind, ScopeTraversal};
 
 fn collect(source: &str) -> ScopeCollector<'static> {
-    let parsed = crate::parse(source, "scope-collector.js").expect("source should parse");
+    let parsed =
+        crate::parse_test_source(source, "scope-collector.js").expect("source should parse");
     let names = glass_lint_datastructures::NameTable::default();
     let planner = plan::ScopePlanner::new_for_test(parsed.program.span(), names);
     let mut plan_traversal = ScopeTraversal::new(planner);
@@ -114,7 +115,7 @@ fn preserves_scope_order_for_all_scope_constructs() {
 
 #[test]
 fn reuses_same_span_same_kind_siblings_by_order() {
-    let parsed = crate::parse("value;", "same-span.js").expect("source should parse");
+    let parsed = crate::parse_test_source("value;", "same-span.js").expect("source should parse");
     let span = parsed.program.span();
     let mut collector = planned_scopes(span, &[ScopeKind::Block, ScopeKind::Block]);
     let predeclared = collector.scope_shapes.shapes_len();
@@ -159,7 +160,8 @@ fn many_sibling_scopes_consume_one_shape_each() {
 
 #[test]
 fn divergence_on_extra_scope_fails_closed() {
-    let parsed = crate::parse("value;", "divergence-extra.js").expect("source should parse");
+    let parsed =
+        crate::parse_test_source("value;", "divergence-extra.js").expect("source should parse");
     let span = parsed.program.span();
     let mut collector = planned_scopes(span, &[ScopeKind::Block]);
     assert_eq!(collector.scope_shapes.shapes_len(), 1);
@@ -176,7 +178,8 @@ fn divergence_on_extra_scope_fails_closed() {
 
 #[test]
 fn divergence_on_missing_scope_fails_closed() {
-    let parsed = crate::parse("value;", "divergence-missing.js").expect("source should parse");
+    let parsed =
+        crate::parse_test_source("value;", "divergence-missing.js").expect("source should parse");
     let span = parsed.program.span();
     let mut collector = planned_scopes(span, &[ScopeKind::Block, ScopeKind::Block]);
     assert_eq!(collector.scope_shapes.shapes_len(), 2);
@@ -203,7 +206,8 @@ fn divergence_on_missing_scope_fails_closed() {
 
 #[test]
 fn divergence_on_kind_mismatch_fails_closed() {
-    let parsed = crate::parse("value;", "divergence-kind.js").expect("source should parse");
+    let parsed =
+        crate::parse_test_source("value;", "divergence-kind.js").expect("source should parse");
     let span = parsed.program.span();
     let mut collector = planned_scopes(span, &[ScopeKind::Block]);
     let before = collector.current_scope();
@@ -465,7 +469,8 @@ fn structural_lookup_resolves_visitor_pushes_without_positional_synchronization(
 #[test]
 fn deliberate_walker_divergence_fails_closed_without_fallback_allocation() {
     // Predeclare 3 sibling Block scopes under the program scope.
-    let parsed = crate::parse("value;", "walker-divergence.js").expect("source should parse");
+    let parsed =
+        crate::parse_test_source("value;", "walker-divergence.js").expect("source should parse");
     let span = parsed.program.span();
     let mut collector = planned_scopes(
         span,

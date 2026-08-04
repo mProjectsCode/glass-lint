@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn binding_keys_change_at_assignment_versions() {
-        let parsed = crate::parse(
+        let parsed = crate::parse_test_source(
             "let value = source; value = replacement; use(value);",
             "bindings.js",
         )
@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn repeated_scope_queries_preserve_nested_and_cross_scope_results() {
-        let parsed = crate::parse(
+        let parsed = crate::parse_test_source(
             r"
                 let program_value = 0;
                 {
@@ -197,7 +197,7 @@ mod tests {
             }
         }
 
-        let parsed = crate::parse(
+        let parsed = crate::parse_test_source(
             "function shadowed(PluginSettingTab) { new PluginSettingTab(); }",
             "parameter.js",
         )

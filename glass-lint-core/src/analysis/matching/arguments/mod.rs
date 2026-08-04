@@ -272,7 +272,7 @@ mod tests {
     };
 
     fn stream(source: &str, environment: &Environment) -> FactStream<Frozen> {
-        let parsed = crate::parse(source, "constrained.js").unwrap();
+        let parsed = crate::parse_test_source(source, "constrained.js").unwrap();
         let coordinates = SpanNormalizer::new(parsed.source_start, &SourceText::from(source));
         let mut resolver =
             Resolver::collect_with_environment(&parsed.program, environment, coordinates);

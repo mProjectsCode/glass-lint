@@ -334,7 +334,7 @@ pub fn build_test_stream<'a>(
 
 #[cfg(test)]
 pub fn build_test_facts(source: &str, filename: &str) -> FactStream<Frozen> {
-    let parsed = crate::parse(source, filename).expect("source should parse");
+    let parsed = crate::parse_test_source(source, filename).expect("source should parse");
     let mut resolver = Resolver::collect(&parsed.program, source);
     build_test_stream(&parsed.program, &mut resolver)
 }
@@ -555,7 +555,8 @@ mod stream_tests {
     #[test]
     fn catalog_selection_and_order_cannot_change_fact_index() {
         let source = "fetch('/api'); document.createElement('script');";
-        let parsed = crate::parse(source, "catalog-fingerprint.js").expect("source should parse");
+        let parsed = crate::parse_test_source(source, "catalog-fingerprint.js")
+            .expect("source should parse");
         let first =
             CompiledMatcherPlan::compile(&[EventQuery::call_global("fetch").unwrap().into_query()])
                 .unwrap();
@@ -587,7 +588,8 @@ mod stream_tests {
     #[test]
     fn lowering_shared_derived_pass_matches_standalone_effect_collection() {
         let source = "function helper(value) { return value; } helper('/api');";
-        let parsed = crate::parse(source, "shared-derived-pass.js").expect("source should parse");
+        let parsed = crate::parse_test_source(source, "shared-derived-pass.js")
+            .expect("source should parse");
         let limits = crate::AnalysisLimits::default()
             .with_effect_operations(usize::MAX)
             .expect("valid effect limit");
@@ -651,7 +653,7 @@ mod stream_tests {
             const a = [1, 2];
             a.push(3);
         "#;
-        let parsed = crate::parse(src, "char-index.js").expect("source should parse");
+        let parsed = crate::parse_test_source(src, "char-index.js").expect("source should parse");
         let mut resolver = Resolver::collect(&parsed.program, src);
 
         let mut builder = FactBuilder::new(&mut resolver);
@@ -696,7 +698,7 @@ mod stream_tests {
             fetch.call(null, '/api');
             fetch.apply(null, ['/api']);
         ";
-        let parsed = crate::parse(src, "unwrap.js").expect("source should parse");
+        let parsed = crate::parse_test_source(src, "unwrap.js").expect("source should parse");
         let mut resolver = Resolver::collect(&parsed.program, src);
 
         let mut builder = FactBuilder::new(&mut resolver);

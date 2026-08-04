@@ -9,7 +9,7 @@ use crate::analysis::{
 };
 
 fn run(source: &str) -> ScopeCollector<'static> {
-    let parsed = crate::parse(source, "facts.js").expect("source should parse");
+    let parsed = crate::parse_test_source(source, "facts.js").expect("source should parse");
     let names = glass_lint_datastructures::NameTable::default();
     let planner = ScopePlanner::new_for_test(parsed.program.span(), names);
     let mut plan_traversal = ScopeTraversal::new(planner);
@@ -66,14 +66,14 @@ fn declare_classify(
     source: &str,
     derived_function_pattern: bool,
 ) -> (DeclarationClassification, Expr, VarDeclKind) {
-    let parsed = crate::parse(source, "facts.js").expect("source should parse");
+    let parsed = crate::parse_test_source(source, "facts.js").expect("source should parse");
     let (pattern, expr, kind) = find_first_declarator(&parsed.program);
     let classification = classify_declaration(collector, &expr, &pattern, derived_function_pattern);
     (classification, expr, kind)
 }
 
 fn assign_prov(collector: &mut ScopeCollector, source: &str) -> BindingProvenance {
-    let parsed = crate::parse(source, "facts.js").expect("source should parse");
+    let parsed = crate::parse_test_source(source, "facts.js").expect("source should parse");
     let expr = find_first_assign(&parsed.program);
     assignment_provenance(collector, &expr)
 }
@@ -176,7 +176,7 @@ fn assignment_provenance_falls_through_to_local_for_dynamic_values() {
 fn mutability_requires_var_declaration_kind() {
     let source = "const config = { flag: host.value }; use(config);";
     let mut collector = run(source);
-    let parsed = crate::parse(source, "facts.js").expect("source should parse");
+    let parsed = crate::parse_test_source(source, "facts.js").expect("source should parse");
     let (_, expr, _) = find_first_declarator(&parsed.program);
     assert!(!expression_is_mutable_static_object(
         &mut collector,

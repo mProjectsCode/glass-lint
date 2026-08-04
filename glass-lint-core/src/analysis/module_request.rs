@@ -214,7 +214,7 @@ mod tests {
     }
 
     fn expression(source: &str) -> Expr {
-        let parsed = crate::parse(&format!("{source};"), "module-request.js")
+        let parsed = crate::parse_test_source(&format!("{source};"), "module-request.js")
             .expect("test expression should parse");
         let Program::Script(script) = parsed.program else {
             panic!("test expression should parse as a script");

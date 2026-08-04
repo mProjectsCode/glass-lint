@@ -97,7 +97,7 @@ fn fact_builder_reuses_names_collected_by_scope_pass() {
         result.then(value => value.json());
         new Constructor({ option: result });
     ";
-    let parsed = crate::parse(source, "name-reuse.js").expect("source should parse");
+    let parsed = crate::parse_test_source(source, "name-reuse.js").expect("source should parse");
     let mut resolver = Resolver::collect(&parsed.program, source);
     let before = resolver
         .name_snapshot()
@@ -282,7 +282,7 @@ fn import_fact_is_emitted() {
 #[test]
 fn string_literal_fact_is_emitted() {
     let src = r#"const x = "hello";"#;
-    let parsed = crate::parse(src, "str.js").expect("source should parse");
+    let parsed = crate::parse_test_source(src, "str.js").expect("source should parse");
     let mut resolver = Resolver::collect(&parsed.program, src);
     let mut builder = FactBuilder::new(&mut resolver);
     parsed.program.visit_with(&mut builder);

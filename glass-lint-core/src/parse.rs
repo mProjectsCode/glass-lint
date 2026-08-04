@@ -11,7 +11,10 @@ use swc_ecma_parser::{
 use swc_ecma_transforms_base::resolver;
 use swc_ecma_transforms_typescript::strip;
 
-use crate::{MAX_SOURCE_BYTES, project::DiagnosticCode};
+use crate::{
+    MAX_SOURCE_BYTES,
+    project::{DiagnosticCode, SourceFile},
+};
 
 /// Maximum syntactic nesting accepted before invoking recursive parser and
 /// visitor machinery. This is deliberately checked on source text so a
@@ -79,6 +82,28 @@ impl SourceLanguage {
             && Self::from_extension(Self::extension(filename)).is_some()
     }
 
+    fn syntax(self) -> Syntax {
+        match self {
+            Self::JavaScript => Syntax::Es(EsSyntax {
+                jsx: true,
+                decorators: true,
+                fn_bind: true,
+                export_default_from: true,
+                import_attributes: true,
+                allow_super_outside_method: true,
+                allow_return_outside_function: true,
+                auto_accessors: true,
+                explicit_resource_management: true,
+                ..Default::default()
+            }),
+            Self::TypeScript => Syntax::Typescript(TsSyntax {
+                tsx: false,
+                decorators: true,
+                ..Default::default()
+            }),
+        }
+    }
+
     fn extension(filename: &str) -> &str {
         filename
             .rsplit(['/', '\\'])
@@ -105,89 +130,70 @@ pub struct ParsedSource {
     pub(crate) source_start: swc_common::BytePos,
 }
 
-#[cfg(test)]
-/// Parse JavaScript using the default JavaScript language mode.
-pub fn parse(source: &str, filename: &str) -> Result<ParsedSource, ParseDiagnostic> {
-    parse_with_language_and_depth(
-        source,
-        filename,
-        SourceLanguage::JavaScript,
-        MAX_SYNTAX_DEPTH,
-    )
-}
-
-/// Parse a source string with an explicit structural nesting limit.
-///
-/// TypeScript sources are parsed by SWC then lowered: the resolver pass runs,
-/// TypeScript syntax is stripped, and the result is treated as JavaScript for
-/// semantic purposes. JavaScript sources pass through without transformation.
-pub fn parse_with_language_and_depth(
-    source: &str,
-    filename: &str,
-    language: SourceLanguage,
-    max_syntax_depth: usize,
-) -> Result<ParsedSource, ParseDiagnostic> {
-    admit_source(source, filename)?;
-    ParserContext::new(source, filename, language, max_syntax_depth).parse()
-}
-
-fn admit_source(source: &str, filename: &str) -> Result<(), ParseDiagnostic> {
-    if source.len() <= MAX_SOURCE_BYTES {
-        return Ok(());
-    }
-    Err(ParseDiagnostic {
-        code: crate::project::types::DiagnosticKind::SourceTooLarge.into(),
-        message: format!("source exceeds the {MAX_SOURCE_BYTES} byte analysis limit"),
-        filename: filename.into(),
-        range: None,
-        failure: ParseFailureKind::SourceTooLarge,
-    })
-}
-
-struct ParserContext {
+/// Owns the source, parser mode, bounded-depth policy, and diagnostics needed
+/// to parse one admitted source.
+pub struct SourceParser {
+    source: SourceFile,
     source_map: Lrc<SourceMap>,
     file: Lrc<swc_common::SourceFile>,
-    filename: String,
-    language: SourceLanguage,
     syntax: Syntax,
     max_syntax_depth: usize,
     requires_depth_prescan: bool,
 }
 
-impl ParserContext {
-    fn new(
-        source: &str,
-        filename: &str,
-        language: SourceLanguage,
-        max_syntax_depth: usize,
-    ) -> Self {
-        let source_map = Lrc::new(SourceMap::default());
-        let file =
-            source_map.new_source_file(FileName::Custom(filename.into()).into(), source.to_owned());
-        Self {
-            source_map,
-            file,
-            filename: filename.to_owned(),
-            language,
-            syntax: syntax_for(language),
-            max_syntax_depth,
-            requires_depth_prescan: raw_depth_bound(source) > max_syntax_depth,
-        }
+impl SourceParser {
+    /// Construct a parser using the test-only default depth limit.
+    #[cfg(test)]
+    pub(crate) fn new(source: &SourceFile) -> Result<Self, ParseDiagnostic> {
+        Self::with_syntax_depth(source, MAX_SYNTAX_DEPTH)
     }
 
-    fn parse(self) -> Result<ParsedSource, ParseDiagnostic> {
+    /// Construct a parser with an explicit structural depth limit. The source
+    /// carries its validated path, text, and language; TypeScript is lowered
+    /// after parsing and JavaScript passes through.
+    pub(crate) fn with_syntax_depth(
+        source: &SourceFile,
+        max_syntax_depth: usize,
+    ) -> Result<Self, ParseDiagnostic> {
+        Self::admit_source(source)?;
+        let source_map = Lrc::new(SourceMap::default());
+        let file = source_map.new_source_file(
+            FileName::Custom(source.path().as_str().into()).into(),
+            source.source().to_string(),
+        );
+        Ok(Self {
+            source: source.clone(),
+            source_map,
+            file,
+            syntax: source.language().syntax(),
+            max_syntax_depth,
+            requires_depth_prescan: DepthScanner::raw_bound(source.source()) > max_syntax_depth,
+        })
+    }
+
+    fn admit_source(source: &SourceFile) -> Result<(), ParseDiagnostic> {
+        if source.source().len() <= MAX_SOURCE_BYTES {
+            return Ok(());
+        }
+        Err(ParseDiagnostic {
+            code: crate::project::types::DiagnosticKind::SourceTooLarge.into(),
+            message: format!("source exceeds the {MAX_SOURCE_BYTES} byte analysis limit"),
+            filename: source.path().to_string(),
+            range: None,
+            failure: ParseFailureKind::SourceTooLarge,
+        })
+    }
+
+    pub(crate) fn parse(self) -> Result<ParsedSource, ParseDiagnostic> {
         let program = self.parse_program()?;
         Ok(ParsedSource {
-            program: lower_program(program, self.language),
+            program: self.lower_program(program),
             source_start: self.file.start_pos,
         })
     }
 
     fn parse_program(&self) -> Result<Program, ParseDiagnostic> {
-        if self.requires_depth_prescan
-            && syntax_depth(&self.file, self.syntax, self.max_syntax_depth)
-                == Err(SyntaxDepthError::Exceeded)
-        {
+        if self.requires_depth_prescan && self.syntax_depth() == Err(SyntaxDepthError::Exceeded) {
             return Err(self.syntax_depth_diagnostic());
         }
 
@@ -200,12 +206,34 @@ impl ParserContext {
         let mut parser = Parser::new_from(Capturing::new(lexer));
         let parsed = parser.parse_program();
         if !self.requires_depth_prescan
-            && syntax_depth_tokens(parser.input().iter.tokens(), self.max_syntax_depth)
+            && self.syntax_depth_tokens(parser.input().iter.tokens())
                 == Err(SyntaxDepthError::Exceeded)
         {
             return Err(self.syntax_depth_diagnostic());
         }
         parsed.map_err(|error| self.parser_diagnostic(&error))
+    }
+
+    fn syntax_depth(&self) -> Result<usize, SyntaxDepthError> {
+        DepthScanner::new(self.max_syntax_depth).scan_source(&self.file, self.syntax)
+    }
+
+    fn syntax_depth_tokens(&self, tokens: &[TokenAndSpan]) -> Result<usize, SyntaxDepthError> {
+        DepthScanner::new(self.max_syntax_depth).scan_tokens(tokens)
+    }
+
+    fn lower_program(&self, program: Program) -> Program {
+        match self.source.language() {
+            SourceLanguage::JavaScript => program,
+            SourceLanguage::TypeScript => GLOBALS.set(&Globals::default(), || {
+                let unresolved_mark = Mark::new();
+                let top_level_mark = Mark::new();
+                let mut program = program;
+                program = program.apply(resolver(unresolved_mark, top_level_mark, true));
+                program = program.apply(strip(unresolved_mark, top_level_mark));
+                program
+            }),
+        }
     }
 
     fn syntax_depth_diagnostic(&self) -> ParseDiagnostic {
@@ -215,7 +243,7 @@ impl ParserContext {
                 "source exceeds the {} nesting-depth analysis limit",
                 self.max_syntax_depth
             ),
-            filename: self.filename.clone(),
+            filename: self.source.path().to_string(),
             range: None,
             failure: ParseFailureKind::SyntaxDepth,
         }
@@ -248,52 +276,16 @@ impl ParserContext {
             code: crate::project::types::DiagnosticKind::SyntaxError.into(),
             message: format!(
                 "{} parse error: {}",
-                match self.language {
+                match self.source.language() {
                     SourceLanguage::JavaScript => "JavaScript",
                     SourceLanguage::TypeScript => "TypeScript",
                 },
                 error.kind().msg()
             ),
-            filename: self.filename.clone(),
+            filename: self.source.path().to_string(),
             range,
             failure: ParseFailureKind::Syntax,
         }
-    }
-}
-
-fn lower_program(program: Program, language: SourceLanguage) -> Program {
-    match language {
-        SourceLanguage::JavaScript => program,
-        SourceLanguage::TypeScript => GLOBALS.set(&Globals::default(), || {
-            let unresolved_mark = Mark::new();
-            let top_level_mark = Mark::new();
-            let mut program = program;
-            program = program.apply(resolver(unresolved_mark, top_level_mark, true));
-            program = program.apply(strip(unresolved_mark, top_level_mark));
-            program
-        }),
-    }
-}
-
-fn syntax_for(language: SourceLanguage) -> Syntax {
-    match language {
-        SourceLanguage::JavaScript => Syntax::Es(EsSyntax {
-            jsx: true,
-            decorators: true,
-            fn_bind: true,
-            export_default_from: true,
-            import_attributes: true,
-            allow_super_outside_method: true,
-            allow_return_outside_function: true,
-            auto_accessors: true,
-            explicit_resource_management: true,
-            ..Default::default()
-        }),
-        SourceLanguage::TypeScript => Syntax::Typescript(TsSyntax {
-            tsx: false,
-            decorators: true,
-            ..Default::default()
-        }),
     }
 }
 
@@ -309,279 +301,230 @@ enum Delimiter {
     Brace,
 }
 
-/// A conservative source-only upper bound used to decide whether a parser
-/// token stream is safe to inspect after parsing. Every delimiter and member
-/// separator that can increase the tracked depth is counted, including ones
-/// inside literals and comments, so false positives take the safe pre-scan
-/// path while false negatives cannot bypass the bound.
-fn raw_depth_bound(source: &str) -> usize {
-    source
-        .bytes()
-        .filter(|byte| matches!(byte, b'(' | b'[' | b'{' | b'.'))
-        .count()
-}
-
-fn syntax_depth_tokens(
-    tokens: &[TokenAndSpan],
-    max_depth: usize,
-) -> Result<usize, SyntaxDepthError> {
-    let mut delimiters = Vec::new();
-    let mut depth = 0usize;
-    let mut maximum = 0usize;
-    let mut member_depth = 0usize;
-    let mut expression_can_end = false;
-
-    for token_and_span in tokens {
-        let token = token_and_span.token;
-        if token == Token::Error {
-            break;
-        }
-        match token {
-            Token::LParen => push_delimiter(
-                &mut delimiters,
-                Delimiter::Parenthesis,
-                &mut depth,
-                &mut maximum,
-                max_depth,
-            )?,
-            Token::LBracket => push_delimiter(
-                &mut delimiters,
-                Delimiter::Bracket,
-                &mut depth,
-                &mut maximum,
-                max_depth,
-            )?,
-            Token::LBrace | Token::DollarLBrace | Token::TemplateHead => push_delimiter(
-                &mut delimiters,
-                Delimiter::Brace,
-                &mut depth,
-                &mut maximum,
-                max_depth,
-            )?,
-            Token::RParen => pop_delimiter(&mut delimiters, Delimiter::Parenthesis, &mut depth),
-            Token::RBracket => pop_delimiter(&mut delimiters, Delimiter::Bracket, &mut depth),
-            Token::RBrace => pop_delimiter(&mut delimiters, Delimiter::Brace, &mut depth),
-            Token::Dot | Token::OptionalChain => {
-                member_depth = member_depth.saturating_add(1);
-                maximum = maximum.max(member_depth);
-                if maximum > max_depth {
-                    return Err(SyntaxDepthError::Exceeded);
-                }
-            }
-            token if resets_member_depth(token) => member_depth = 0,
-            _ => {}
-        }
-        let postfix = matches!(token, Token::PlusPlus | Token::MinusMinus) && expression_can_end;
-        expression_can_end = token_can_end_expression(token, postfix);
-    }
-    Ok(maximum)
-}
-
-/// Count delimiter and member-chain nesting from SWC's token stream.
+/// Owns the mutable state used while measuring syntactic nesting.
 ///
-/// Template expressions contribute to brace depth via `TemplateHead` and
-/// match the `RBrace` that closes them. A `Token::Error` ends the scan
-/// early — the actual SWC parser catches real lexical errors, so the
-/// pre-scan only enforces the depth bound.
-fn syntax_depth(
-    file: &swc_common::SourceFile,
-    syntax: Syntax,
+/// The source and post-parse scans share delimiter, member-chain, and
+/// expression-ending state, while only the source scan needs regex recovery.
+struct DepthScanner {
+    delimiters: Vec<Delimiter>,
+    depth: usize,
+    maximum: usize,
+    member_depth: usize,
+    expression_can_end: bool,
+    previous: Option<Token>,
+    previous_postfix: bool,
     max_depth: usize,
-) -> Result<usize, SyntaxDepthError> {
-    let mut lexer = Lexer::new(syntax, EsVersion::EsNext, StringInput::from(file), None);
-    let mut delimiters = Vec::new();
-    let mut depth = 0usize;
-    let mut maximum = 0usize;
-    let mut member_depth = 0usize;
-    let mut previous: Option<Token> = None;
-    let mut previous_postfix = false;
-    let mut expression_can_end = false;
-    let mut skip_to = 0usize;
+}
 
-    for token_and_span in &mut lexer {
-        let offset = token_and_span
-            .span
-            .lo
-            .0
-            .checked_sub(file.start_pos.0)
-            .map_or(0, |v| v as usize);
-        if offset < skip_to {
-            continue;
+impl DepthScanner {
+    fn new(max_depth: usize) -> Self {
+        Self {
+            delimiters: Vec::new(),
+            depth: 0,
+            maximum: 0,
+            member_depth: 0,
+            expression_can_end: false,
+            previous: None,
+            previous_postfix: false,
+            max_depth,
         }
+    }
 
-        let token = token_and_span.token;
-        if token == Token::Error {
-            break;
-        }
-
-        if token == Token::Slash
-            && !previous_postfix
-            && previous.is_none_or(|token| token.before_expr() || token == Token::LBrace)
-        {
-            let source: &str = &file.src;
-            if let Some(end) = regex_end(source, offset + 1) {
-                skip_to = end;
-                previous = Some(Token::Regex);
-                previous_postfix = false;
-                expression_can_end = true;
+    fn scan_source(
+        mut self,
+        file: &swc_common::SourceFile,
+        syntax: Syntax,
+    ) -> Result<usize, SyntaxDepthError> {
+        let mut lexer = Lexer::new(syntax, EsVersion::EsNext, StringInput::from(file), None);
+        let mut skip_to = 0usize;
+        for token_and_span in &mut lexer {
+            let offset = token_and_span
+                .span
+                .lo
+                .0
+                .checked_sub(file.start_pos.0)
+                .map_or(0, |v| v as usize);
+            if offset < skip_to {
                 continue;
             }
-        }
 
-        match token {
-            Token::LParen => push_delimiter(
-                &mut delimiters,
-                Delimiter::Parenthesis,
-                &mut depth,
-                &mut maximum,
-                max_depth,
-            )?,
-            Token::LBracket => push_delimiter(
-                &mut delimiters,
-                Delimiter::Bracket,
-                &mut depth,
-                &mut maximum,
-                max_depth,
-            )?,
-            Token::LBrace | Token::DollarLBrace | Token::TemplateHead => push_delimiter(
-                &mut delimiters,
-                Delimiter::Brace,
-                &mut depth,
-                &mut maximum,
-                max_depth,
-            )?,
-            Token::RParen => pop_delimiter(&mut delimiters, Delimiter::Parenthesis, &mut depth),
-            Token::RBracket => pop_delimiter(&mut delimiters, Delimiter::Bracket, &mut depth),
-            Token::RBrace => pop_delimiter(&mut delimiters, Delimiter::Brace, &mut depth),
-            Token::Dot | Token::OptionalChain => {
-                member_depth = member_depth.saturating_add(1);
-                maximum = maximum.max(member_depth);
-                if maximum > max_depth {
-                    return Err(SyntaxDepthError::Exceeded);
-                }
+            let token = token_and_span.token;
+            if token == Token::Error {
+                break;
             }
-            token if resets_member_depth(token) => member_depth = 0,
+            if token == Token::Slash
+                && !self.previous_postfix
+                && self
+                    .previous
+                    .is_none_or(|token| token.before_expr() || token == Token::LBrace)
+                && let Some(end) = Self::regex_end(&file.src, offset + 1)
+            {
+                skip_to = end;
+                self.previous = Some(Token::Regex);
+                self.previous_postfix = false;
+                self.expression_can_end = true;
+                continue;
+            }
+            self.observe(token)?;
+        }
+        Ok(self.maximum)
+    }
+
+    fn scan_tokens(mut self, tokens: &[TokenAndSpan]) -> Result<usize, SyntaxDepthError> {
+        for token_and_span in tokens {
+            let token = token_and_span.token;
+            if token == Token::Error {
+                break;
+            }
+            self.observe(token)?;
+        }
+        Ok(self.maximum)
+    }
+
+    fn observe(&mut self, token: Token) -> Result<(), SyntaxDepthError> {
+        match token {
+            Token::LParen => self.push_delimiter(Delimiter::Parenthesis)?,
+            Token::LBracket => self.push_delimiter(Delimiter::Bracket)?,
+            Token::LBrace | Token::DollarLBrace | Token::TemplateHead => {
+                self.push_delimiter(Delimiter::Brace)?;
+            }
+            Token::RParen => self.pop_delimiter(Delimiter::Parenthesis),
+            Token::RBracket => self.pop_delimiter(Delimiter::Bracket),
+            Token::RBrace => self.pop_delimiter(Delimiter::Brace),
+            Token::Dot | Token::OptionalChain => {
+                self.member_depth = self.member_depth.saturating_add(1);
+                self.maximum = self.maximum.max(self.member_depth);
+            }
+            token if Self::resets_member_depth(token) => self.member_depth = 0,
             _ => {}
         }
-        previous_postfix =
-            matches!(token, Token::PlusPlus | Token::MinusMinus) && expression_can_end;
-        expression_can_end = token_can_end_expression(token, previous_postfix);
-        previous = Some(token);
+        self.previous_postfix =
+            matches!(token, Token::PlusPlus | Token::MinusMinus) && self.expression_can_end;
+        self.expression_can_end = Self::token_can_end_expression(token, self.previous_postfix);
+        self.previous = Some(token);
+        Ok(())
     }
-    Ok(maximum)
-}
 
-fn push_delimiter(
-    delimiters: &mut Vec<Delimiter>,
-    delimiter: Delimiter,
-    depth: &mut usize,
-    maximum: &mut usize,
-    max_depth: usize,
-) -> Result<(), SyntaxDepthError> {
-    *depth = depth.saturating_add(1);
-    *maximum = (*maximum).max(*depth);
-    if *maximum > max_depth {
-        return Err(SyntaxDepthError::Exceeded);
-    }
-    delimiters.push(delimiter);
-    Ok(())
-}
-
-fn pop_delimiter(delimiters: &mut Vec<Delimiter>, expected: Delimiter, depth: &mut usize) {
-    if delimiters.last() != Some(&expected) {
-        return;
-    }
-    delimiters.pop();
-    *depth = depth.saturating_sub(1);
-}
-
-fn resets_member_depth(token: Token) -> bool {
-    matches!(
-        token,
-        Token::Semi
-            | Token::Comma
-            | Token::Colon
-            | Token::Bang
-            | Token::Plus
-            | Token::Minus
-            | Token::Asterisk
-            | Token::Slash
-            | Token::Percent
-            | Token::Lt
-            | Token::Gt
-            | Token::Pipe
-            | Token::Caret
-            | Token::Ampersand
-            | Token::Eq
-            | Token::PlusPlus
-            | Token::MinusMinus
-            | Token::Tilde
-            | Token::DotDotDot
-    ) || token.is_bin_op()
-        || token.is_assign_op()
-}
-
-fn token_can_end_expression(token: Token, postfix: bool) -> bool {
-    postfix
-        || matches!(
-            token,
-            Token::Ident
-                | Token::Str
-                | Token::Num
-                | Token::BigInt
-                | Token::Regex
-                | Token::NoSubstitutionTemplateLiteral
-                | Token::TemplateTail
-                | Token::RParen
-                | Token::RBracket
-                | Token::RBrace
-                | Token::Null
-                | Token::True
-                | Token::False
-                | Token::This
-                | Token::Super
-        )
-}
-
-fn regex_end(source: &str, start: usize) -> Option<usize> {
-    let bytes = source.as_bytes();
-    let mut index = start;
-    let mut in_character_class = false;
-    while index < bytes.len() {
-        match bytes[index] {
-            b'\\' => index = index.checked_add(2)?,
-            b'[' if !in_character_class => {
-                in_character_class = true;
-                index += 1;
-            }
-            b']' if in_character_class => {
-                in_character_class = false;
-                index += 1;
-            }
-            b'/' if !in_character_class => return Some(index + 1),
-            b'\n' | b'\r' => return None,
-            _ => index += 1,
+    fn push_delimiter(&mut self, delimiter: Delimiter) -> Result<(), SyntaxDepthError> {
+        self.depth = self.depth.saturating_add(1);
+        self.maximum = self.maximum.max(self.depth);
+        if self.maximum > self.max_depth {
+            return Err(SyntaxDepthError::Exceeded);
         }
+        self.delimiters.push(delimiter);
+        Ok(())
     }
-    None
+
+    fn pop_delimiter(&mut self, expected: Delimiter) {
+        if self.delimiters.last() != Some(&expected) {
+            return;
+        }
+        self.delimiters.pop();
+        self.depth = self.depth.saturating_sub(1);
+    }
+
+    /// A conservative source-only upper bound used to decide whether a parser
+    /// token stream is safe to inspect after parsing. Every delimiter and
+    /// member separator that can increase tracked depth is counted, including
+    /// ones inside literals and comments.
+    fn raw_bound(source: &str) -> usize {
+        source
+            .bytes()
+            .filter(|byte| matches!(byte, b'(' | b'[' | b'{' | b'.'))
+            .count()
+    }
+
+    fn regex_end(source: &str, start: usize) -> Option<usize> {
+        let bytes = source.as_bytes();
+        let mut index = start;
+        let mut in_character_class = false;
+        while index < bytes.len() {
+            match bytes[index] {
+                b'\\' => index = index.checked_add(2)?,
+                b'[' if !in_character_class => {
+                    in_character_class = true;
+                    index += 1;
+                }
+                b']' if in_character_class => {
+                    in_character_class = false;
+                    index += 1;
+                }
+                b'/' if !in_character_class => return Some(index + 1),
+                b'\n' | b'\r' => return None,
+                _ => index += 1,
+            }
+        }
+        None
+    }
+
+    fn resets_member_depth(token: Token) -> bool {
+        matches!(
+            token,
+            Token::Semi
+                | Token::Comma
+                | Token::Colon
+                | Token::Bang
+                | Token::Plus
+                | Token::Minus
+                | Token::Asterisk
+                | Token::Slash
+                | Token::Percent
+                | Token::Lt
+                | Token::Gt
+                | Token::Pipe
+                | Token::Caret
+                | Token::Ampersand
+                | Token::Eq
+                | Token::PlusPlus
+                | Token::MinusMinus
+                | Token::Tilde
+                | Token::DotDotDot
+        ) || token.is_bin_op()
+            || token.is_assign_op()
+    }
+
+    fn token_can_end_expression(token: Token, postfix: bool) -> bool {
+        postfix
+            || matches!(
+                token,
+                Token::Ident
+                    | Token::Str
+                    | Token::Num
+                    | Token::BigInt
+                    | Token::Regex
+                    | Token::NoSubstitutionTemplateLiteral
+                    | Token::TemplateTail
+                    | Token::RParen
+                    | Token::RBracket
+                    | Token::RBrace
+                    | Token::Null
+                    | Token::True
+                    | Token::False
+                    | Token::This
+                    | Token::Super
+            )
+    }
 }
 
 #[cfg(test)]
 fn syntax_depth_for_test(source: &str) -> usize {
-    let source_map = Lrc::new(SourceMap::default());
-    let file =
-        source_map.new_source_file(FileName::Custom("test.js".into()).into(), source.to_owned());
-    syntax_depth(
-        &file,
-        syntax_for(SourceLanguage::JavaScript),
-        MAX_SYNTAX_DEPTH,
-    )
-    .unwrap_or(MAX_SYNTAX_DEPTH + 1)
+    let source = SourceFile::with_language("test.js", source, SourceLanguage::JavaScript)
+        .expect("test parser input should have a valid relative path");
+    SourceParser::new(&source)
+        .expect("test source should be admitted")
+        .syntax_depth()
+        .unwrap_or(MAX_SYNTAX_DEPTH + 1)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn parse(source: &str, filename: &str) -> Result<ParsedSource, ParseDiagnostic> {
+        let source = SourceFile::with_language(filename, source, SourceLanguage::JavaScript)
+            .expect("test parser inputs should have valid relative paths");
+        SourceParser::new(&source)?.parse()
+    }
 
     #[test]
     fn rejects_excessive_nesting_before_ast_construction() {

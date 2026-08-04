@@ -186,12 +186,11 @@ impl EcmaVersionReport {
 /// Analyze the syntax of one source without requiring a rule catalog or
 /// host environment.
 pub fn analyze_ecma_version(source: &SourceFile) -> Result<EcmaVersionReport, ParseDiagnostic> {
-    let parsed = crate::parse::parse_with_language_and_depth(
-        source.source(),
-        source.path(),
-        source.language(),
+    let parsed = crate::parse::SourceParser::with_syntax_depth(
+        source,
         AnalysisLimits::default().syntax_depth(),
-    )?;
+    )?
+    .parse()?;
     Ok(EcmaVersionReport::from_program(&parsed.program))
 }
 

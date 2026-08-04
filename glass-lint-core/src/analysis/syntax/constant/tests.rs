@@ -49,7 +49,7 @@ impl Lookup for RecursiveLookup {
 }
 
 fn expression(source: &str) -> Expr {
-    let parsed = crate::parse(&format!("({source});"), "constant-test.js").unwrap();
+    let parsed = crate::parse_test_source(&format!("({source});"), "constant-test.js").unwrap();
     let statements = match parsed.program {
         Program::Module(module) => module
             .body

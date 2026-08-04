@@ -44,7 +44,15 @@ pub mod rules {
 }
 
 #[cfg(test)]
-pub(crate) use parse::parse;
+pub(crate) fn parse_test_source(
+    source: &str,
+    filename: &str,
+) -> Result<parse::ParsedSource, ParseDiagnostic> {
+    let source =
+        project::SourceFile::with_language(filename, source, parse::SourceLanguage::JavaScript)
+            .expect("test parser inputs should have valid relative paths");
+    parse::SourceParser::new(&source)?.parse()
+}
 
 /// Version of the serialized analysis-report schema.
 pub const REPORT_VERSION: u32 = 6;

@@ -142,12 +142,9 @@ impl<'a> Lowerer<'a> {
     /// then derived together from the frozen fact tape. The result is ready for
     /// project linking and matcher projection.
     pub fn lower_source(&self, source: &SourceFile) -> Result<LoweredSource, ParseDiagnostic> {
-        let parsed = crate::parse::parse_with_language_and_depth(
-            source.source(),
-            source.path(),
-            source.language(),
-            self.limits.syntax_depth(),
-        )?;
+        let parsed =
+            crate::parse::SourceParser::with_syntax_depth(source, self.limits.syntax_depth())?
+                .parse()?;
         let coordinates = SpanNormalizer::new(parsed.source_start, source.source());
         let semantic = lower_program(&parsed.program, self.environment, self.limits, &coordinates);
         Ok(LoweredSource::new(
@@ -422,7 +419,8 @@ mod tests {
     #[test]
     fn name_exhaustion_invalidates_indexes_and_effects_with_an_accurate_status() {
         let source = "function helper(options) { return options.send; } helper({ send: 1 });";
-        let parsed = crate::parse(source, "name-exhaustion.js").expect("source should parse");
+        let parsed =
+            crate::parse_test_source(source, "name-exhaustion.js").expect("source should parse");
         let coordinates = SpanNormalizer::new(parsed.source_start, &SourceText::from(source));
         let artifact = lower_program_with_name_limit(
             &parsed.program,
@@ -467,7 +465,8 @@ mod tests {
             export const result = compute(1, 2);
             export function identity(x) { return x; }
         ";
-        let parsed = crate::parse(source, "budget-exhaustion.js").expect("source should parse");
+        let parsed =
+            crate::parse_test_source(source, "budget-exhaustion.js").expect("source should parse");
         let coordinates = SpanNormalizer::new(parsed.source_start, &SourceText::from(source));
 
         let limits = crate::AnalysisLimits::default()
@@ -498,7 +497,8 @@ mod tests {
             export const result = compute(1, 2);
             export function identity(x) { return x; }
         ";
-        let parsed = crate::parse(source, "budget-sufficient.js").expect("source should parse");
+        let parsed =
+            crate::parse_test_source(source, "budget-sufficient.js").expect("source should parse");
         let coordinates = SpanNormalizer::new(parsed.source_start, &SourceText::from(source));
 
         let artifact = lower_program(
@@ -519,7 +519,7 @@ mod tests {
     #[test]
     fn invalid_parser_span_records_incomplete_without_fake_location() {
         let source = "fetch('/remote');";
-        let parsed = crate::parse::parse(source, "main.js").unwrap();
+        let parsed = crate::parse_test_source(source, "main.js").unwrap();
         let invalid = SpanNormalizer::new(
             BytePos(parsed.source_start.0 + 100),
             &SourceText::from(source),

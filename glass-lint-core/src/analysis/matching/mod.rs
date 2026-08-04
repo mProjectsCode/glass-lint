@@ -367,7 +367,6 @@ mod tests {
             resolution::Resolver,
         },
         api::{compiler::rule::CompiledMatcherPlan, rule::EventQuery},
-        parse,
     };
 
     fn span(start: u32, end: u32) -> ByteRange {
@@ -443,7 +442,7 @@ mod tests {
             const s = "hello world";
             require('fs');
         "#;
-        let parsed = parse(src, "stream-index.js").expect("source should parse");
+        let parsed = crate::parse_test_source(src, "stream-index.js").expect("source should parse");
         let mut environment = Environment::default();
         environment
             .add_globals(["URL", "require"])
