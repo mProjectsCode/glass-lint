@@ -135,7 +135,7 @@ evidence requirements, and validation ordering. Verified with
 
 ### Local flow projection
 
-#### [ ] READ-005 — Sink projection duplicates ready-state emission policy
+#### [x] READ-005 — Sink projection duplicates ready-state emission policy
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -156,7 +156,10 @@ state updates. Keep `record_configuration`'s configuration-only completion
 rule separate, preserve the pending-state/certainty lifecycle, and retain the
 different direct-call versus helper-summary lookup behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the projector-owned `emit_completed_sink` operation
+for shared sink readiness, state cloning, and emission, then routed direct and
+helper sink paths through it while retaining their distinct state discovery.
+Verified with `cargo test -p glass-lint-core --lib analysis::flow::projector`.
 
 ## Systemic Themes
 

@@ -96,18 +96,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                         self.flow_state
                             .record_sink(key.object(), key.flow(), index, sink_fact);
                     }
-                    let state = self.flow_state.state(key.object(), key.flow()).cloned();
-                    let Some(state) = state else {
-                        continue;
-                    };
-                    let ready = self
-                        .plan
-                        .get(flow_id)
-                        .is_some_and(|flow| state.is_ready(flow) && state.sinks_ready(flow));
-                    if !ready {
-                        continue;
-                    }
-                    self.emit_state(&state, sink_fact);
+                    self.emit_completed_sink(key.object(), flow_id, sink_fact);
                 }
             }
         }
@@ -154,17 +143,20 @@ impl ObjectFlowProjector<'_, '_, '_> {
             })
             .collect();
         for (object, flow_id) in ready {
-            let state = self.flow_state.state(object, flow_id).cloned();
-            let Some(state) = state else {
-                continue;
-            };
-            let ready = self
-                .plan
-                .get(flow_id)
-                .is_some_and(|flow| state.is_ready(flow) && state.sinks_ready(flow));
-            if !ready {
-                continue;
-            }
+            self.emit_completed_sink(object, flow_id, sink_fact);
+        }
+    }
+
+    fn emit_completed_sink(&mut self, object: ObjectId, flow: FlowId, sink_fact: FactId) {
+        let state = self.flow_state.state(object, flow).cloned();
+        let Some(state) = state else {
+            return;
+        };
+        let ready = self
+            .plan
+            .get(flow)
+            .is_some_and(|flow| state.is_ready(flow) && state.sinks_ready(flow));
+        if ready {
             self.emit_state(&state, sink_fact);
         }
     }
