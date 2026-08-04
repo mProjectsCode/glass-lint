@@ -8,7 +8,7 @@ pub(super) mod status;
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use glass_lint_datastructures::NameTable;
+use glass_lint_datastructures::{ByteRange, NameTable};
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::Program;
 use swc_ecma_visit::VisitWith;
@@ -19,13 +19,14 @@ use crate::{
     AnalysisLimits, Environment, ParseDiagnostic,
     analysis::{
         LocatedSourceContext, SemanticArtifact, SemanticBudget,
-        facts::{self, BuiltFacts, SemanticFacts},
+        facts::{self, Building, BuiltFacts, FactStream, SemanticFacts},
         lowering::status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
         module,
         resolution::Resolver,
         scope::{ScopeCollectionIssue, ScopeGraph, ScopedProgram},
         syntax::name::MAX_NAMES,
     },
+    parse::SourceParser,
     project::{SourceFile, SourceText},
 };
 
@@ -74,19 +75,22 @@ impl SpanNormalizer {
     pub(in crate::analysis) fn normalize(
         &self,
         span: swc_common::Span,
-    ) -> Result<glass_lint_datastructures::ByteRange, InvalidParserSpan> {
+    ) -> Result<ByteRange, InvalidParserSpan> {
         let offset = span.lo.0.checked_sub(self.start).ok_or(InvalidParserSpan)?;
         let end = span.hi.0.checked_sub(self.start).ok_or(InvalidParserSpan)?;
         let source_len = u32::try_from(self.source.len()).unwrap_or(u32::MAX);
+
         if end > source_len {
             return Err(InvalidParserSpan);
         }
+
         if !self.source.is_char_boundary(offset as usize)
             || !self.source.is_char_boundary(end as usize)
         {
             return Err(InvalidParserSpan);
         }
-        glass_lint_datastructures::ByteRange::new(offset, end).map_err(|_| InvalidParserSpan)
+
+        ByteRange::new(offset, end).map_err(|_| InvalidParserSpan)
     }
 }
 
@@ -151,6 +155,7 @@ impl<'a> Lowerer<'a> {
         let names = NameTable::with_max_entries(self.name_limit);
         let scoped_program =
             ScopeGraph::collect_scoped_program(program, self.environment, names, &budget);
+
         ResolvedProgram::collect(
             scoped_program,
             program,
@@ -174,10 +179,10 @@ impl<'a> Lowerer<'a> {
     /// project linking and matcher projection.
     pub fn lower_source(&self, source: &SourceFile) -> Result<LoweredSource, ParseDiagnostic> {
         let parsed =
-            crate::parse::SourceParser::with_syntax_depth(source, self.limits.syntax_depth())?
-                .parse()?;
+            SourceParser::with_syntax_depth(source, self.limits.syntax_depth())?.parse()?;
         let coordinates = SpanNormalizer::new(parsed.source_start, source.source());
         let semantic = self.lower_program(&parsed.program, &coordinates);
+
         Ok(LoweredSource::new(
             LocatedSourceContext::new(source),
             Arc::new(semantic),
@@ -186,7 +191,7 @@ impl<'a> Lowerer<'a> {
 }
 
 fn check_facts_budget(
-    stream: &facts::FactStream<facts::Building>,
+    stream: &FactStream<Building>,
     resolver: &Resolver,
     limits: &AnalysisLimits,
     budget: &SemanticBudget,
@@ -218,9 +223,7 @@ fn check_facts_budget(
     None
 }
 
-fn check_invalid_parser_span(
-    stream: &facts::FactStream<facts::Building>,
-) -> Option<IncompleteReason> {
+fn check_invalid_parser_span(stream: &FactStream<Building>) -> Option<IncompleteReason> {
     stream
         .invalid_parser_span()
         .then_some(IncompleteReason::InvalidParserSpan)
@@ -258,8 +261,10 @@ impl<'a> ResolvedProgram<'a> {
         let ScopedProgram { graph, issues } = scoped;
         let mut resolver = Resolver::new(graph, coordinates, budget);
         let mut builder = facts::FactBuilder::with_limit(&mut resolver, max_facts);
+
         VisitWith::visit_with(program, &mut builder);
         let built = builder.into_built_facts();
+
         Self {
             resolver,
             issues,

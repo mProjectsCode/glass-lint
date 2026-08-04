@@ -10,7 +10,7 @@ use crate::analysis::{
     },
     scope::ScopeId,
     syntax::{BudgetComponent, UnknownReason},
-    value::MAX_VALUES,
+    value::{FunctionId, MAX_VALUES},
 };
 
 impl Resolver<'_> {
@@ -114,17 +114,11 @@ impl Resolver<'_> {
         self.scopes.scope_at(span)
     }
 
-    pub(in crate::analysis) fn function_scope_at(
-        &self,
-        scope: ScopeId,
-    ) -> crate::analysis::value::FunctionId {
+    pub(in crate::analysis) fn function_scope_at(&self, scope: ScopeId) -> FunctionId {
         self.scopes.function_scope_at(scope)
     }
 
-    pub(in crate::analysis) fn function_id_for_expr(
-        &self,
-        expr: &Expr,
-    ) -> Option<crate::analysis::value::FunctionId> {
+    pub(in crate::analysis) fn function_id_for_expr(&self, expr: &Expr) -> Option<FunctionId> {
         self.scopes.function_id_for_expr(expr)
     }
 
@@ -132,14 +126,14 @@ impl Resolver<'_> {
         &self,
         name: &str,
         span: swc_common::Span,
-    ) -> Option<crate::analysis::value::FunctionId> {
+    ) -> Option<FunctionId> {
         self.scopes.function_binding_at(name, span)
     }
 
     pub(in crate::analysis) fn function_id_for_span(
         &self,
         span: swc_common::Span,
-    ) -> Option<crate::analysis::value::FunctionId> {
+    ) -> Option<FunctionId> {
         self.scopes.function_id_for_span(span)
     }
 

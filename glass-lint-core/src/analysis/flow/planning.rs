@@ -17,7 +17,7 @@ use crate::{
     api::{
         classification::RuleIndex,
         compiler::{CompiledObjectFlow, CompiledObjectRequirement},
-        rule::query::lifecycle::LifecycleCallTarget,
+        rule::{ArgumentConstraint, query::lifecycle::LifecycleCallTarget},
     },
 };
 
@@ -90,11 +90,11 @@ pub(super) struct BoundFlowPlan<'rules> {
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) struct BoundSource {
     flow: FlowId,
-    arguments: Vec<crate::api::rule::ArgumentConstraint>,
+    arguments: Vec<ArgumentConstraint>,
 }
 
 impl BoundSource {
-    pub(super) fn new(flow: FlowId, arguments: Vec<crate::api::rule::ArgumentConstraint>) -> Self {
+    pub(super) fn new(flow: FlowId, arguments: Vec<ArgumentConstraint>) -> Self {
         Self { flow, arguments }
     }
 
@@ -104,7 +104,7 @@ impl BoundSource {
 
     pub(super) fn matches_arguments(
         &self,
-        matches: impl FnMut(&crate::api::rule::ArgumentConstraint) -> bool,
+        matches: impl FnMut(&ArgumentConstraint) -> bool,
     ) -> bool {
         self.arguments.iter().all(matches)
     }

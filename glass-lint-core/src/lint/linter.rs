@@ -132,7 +132,7 @@ impl Linter {
                     state = override_.state() == RuleState::Enabled;
                 }
             }
-            
+
             if state {
                 enabled.push(RuleIndex::new(index));
             }

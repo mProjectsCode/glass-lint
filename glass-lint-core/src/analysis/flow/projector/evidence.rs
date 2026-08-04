@@ -9,14 +9,21 @@ use smallvec::SmallVec;
 
 use crate::{
     analysis::{
-        flow::projector::{
-            CallArgInfo, ClassificationEvidence, FactId, FlowState, MatchKind, ObjectFlowProjector,
-            ObjectId, ValueId, history::ReportEvidenceKey,
+        flow::{
+            effect::CallEffectRef,
+            projector::{
+                CallArgInfo, ClassificationEvidence, FactId, FlowState, MatchKind,
+                ObjectFlowProjector, ObjectId, ValueId, history::ReportEvidenceKey,
+            },
         },
         model::flow::{FlowId, FlowStateKey},
         trace::QualifiedEvent,
+        value::FunctionId,
     },
-    api::classification::ClassificationEvidenceOccurrence,
+    api::{
+        classification::{ClassificationEvidenceOccurrence, TraceNodeId},
+        compiler::object_flow::CompletionMode,
+    },
     project::EvidenceRole,
 };
 
@@ -63,7 +70,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
     /// Check sink arguments against live states and emit completed flows.
     pub(super) fn record_sinks(
         &mut self,
-        call: &crate::analysis::flow::effect::CallEffectRef<'_>,
+        call: &CallEffectRef<'_>,
         args: &[CallArgInfo],
         sink_fact: FactId,
     ) {
@@ -105,7 +112,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
     /// Project a summarized helper sink through a concrete invocation.
     pub(super) fn record_helper_sink(
         &mut self,
-        function: crate::analysis::value::FunctionId,
+        function: FunctionId,
         args: &[CallArgInfo],
         sink_fact: FactId,
     ) {
@@ -168,8 +175,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             return;
         };
         let ready = self.plan.get(flow).is_some_and(|f| {
-            f.completion_mode() == crate::api::compiler::object_flow::CompletionMode::Configuration
-                && state.is_ready(f)
+            f.completion_mode() == CompletionMode::Configuration && state.is_ready(f)
         });
         if !ready {
             return;
@@ -250,11 +256,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
     /// Build an interned trace chain for a flow finding:
     /// Source → Requirement[0] → Requirement[1] → ... → Sink.
     /// Returns `None` if the trace arena is exhausted.
-    fn build_flow_trace(
-        &mut self,
-        state: &FlowState,
-        sink_fact: FactId,
-    ) -> Option<crate::api::classification::TraceNodeId> {
+    fn build_flow_trace(&mut self, state: &FlowState, sink_fact: FactId) -> Option<TraceNodeId> {
         // 1. Source node (first in execution order, no parent)
         let source_node = self.trace_arena.intern(
             None,
@@ -263,7 +265,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
         )?;
 
         // 2. Requirement nodes (declaration order by index)
-        let mut tail: Option<crate::api::classification::TraceNodeId> = Some(source_node);
+        let mut tail: Option<TraceNodeId> = Some(source_node);
         for (_index, values) in state.requirement_entries() {
             // Use the first (deterministic) value per requirement key for the trace.
             let first_val = match values.first() {

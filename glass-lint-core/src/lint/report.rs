@@ -1,8 +1,9 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, time::Instant};
 
 use crate::{
     AnalysisLimits, ParseDiagnostic,
-    analysis::ResolvedLinkInput,
+    analysis::{ProjectSemanticModel, ResolvedLinkInput},
+    api::classification::RuleIndex,
     lint::catalog::RuleCatalog,
     project::{AnalysisReport, ProjectRelativePath, SourceTable},
 };
@@ -19,16 +20,12 @@ pub struct ProjectAnalysis {
 
 pub struct ReportAssembly<'a> {
     pub(super) catalog: &'a RuleCatalog,
-    enabled: &'a [crate::api::classification::RuleIndex],
+    enabled: &'a [RuleIndex],
     evidence_limit: usize,
 }
 
 impl<'a> ReportAssembly<'a> {
-    pub fn new(
-        catalog: &'a RuleCatalog,
-        enabled: &'a [crate::api::classification::RuleIndex],
-        evidence_limit: usize,
-    ) -> Self {
+    pub fn new(catalog: &'a RuleCatalog, enabled: &'a [RuleIndex], evidence_limit: usize) -> Self {
         Self {
             catalog,
             enabled,
@@ -46,14 +43,14 @@ impl<'a> ReportAssembly<'a> {
         let (mut files, parse_failures) =
             diagnostics::initialize_project_files(sources, parse_diagnostics);
 
-        let linking_start = std::time::Instant::now();
-        let mut project =
-            crate::analysis::ProjectSemanticModel::link_with_limits(link_input, limits);
+        let linking_start = Instant::now();
+        let mut project = ProjectSemanticModel::link_with_limits(link_input, limits);
         for (path, failure) in parse_failures {
             project.record_parse_failure(path, failure);
         }
         let linking = linking_start.elapsed();
         let link_counts = project.operation_counts(0);
+
         tracing::info!(
             target: "glass_lint::project::link",
             files = link_counts.files(),
@@ -63,7 +60,7 @@ impl<'a> ReportAssembly<'a> {
             "stage finished"
         );
 
-        let matching_start = std::time::Instant::now();
+        let matching_start = Instant::now();
         let (classifications, projection_outcome) = project.classify_with_evidence_limit(
             self.catalog.compiled(),
             self.enabled,
@@ -77,6 +74,7 @@ impl<'a> ReportAssembly<'a> {
         let report =
             summary::assemble_project_report(&project, files, diagnostics, &projection_outcome);
         let report_summary = report.summary();
+
         tracing::info!(
             target: "glass_lint::project::matching",
             files = report.operations().files(),

@@ -293,8 +293,7 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
             let Some(span) = self.byte_range(source.span) else {
                 return;
             };
-            self.interface
-                .record_reexports(export, source, span);
+            self.interface.record_reexports(export, source, span);
         } else {
             self.interface
                 .record_local_named_exports(&export.specifiers, self.resolver);
