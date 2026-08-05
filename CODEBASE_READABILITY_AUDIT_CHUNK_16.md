@@ -75,7 +75,7 @@ provenance issue in Chunk 15 READ-076.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-081 — Remove or reconnect the unreachable invalid-limits error
+#### [x] READ-081 — Remove or reconnect the unreachable invalid-limits error
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -100,7 +100,13 @@ Preserve fallible limit builders and serde validation; the chosen path should
 leave one authoritative owner for rejecting zero/invalid limits rather than an
 unreachable duplicate error surface.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the unreachable `LintConfigError::InvalidLimits`
+variant and its `AnalysisLimitError` import. `AnalysisLimits` remains the
+single owner of limit validation through its constructors, update methods,
+defaults, and deserialization.
+
+**Verification:** `cargo test -p glass-lint-core lint::selection::tests --lib`
+(14 passed) and `make fmt && make ci` (passed).
 
 #### [ ] READ-082 — Encapsulate confidence ranking instead of casting enum variants
 
