@@ -128,7 +128,7 @@ continues to reattach only the current path to shared semantic data.
 
 ### Completeness status
 
-#### [ ] READ-050 — Make local-to-file status conversion explicit and checked
+#### [x] READ-050 — Make local-to-file status conversion explicit and checked
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -152,7 +152,13 @@ status extension separate. Preserve B-tree deduplication, completion being
 driven by status entries, parser-diagnostic de-duplication, and deterministic
 file/project diagnostic ordering.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Renamed the linker conversion to `for_local_file` and made
+its scope policy explicit: project-scoped entries attach to the local module
+path, while already file-scoped entries retain their original path. Added a
+regression test for both scopes.
+
+**Verification:** `cargo test -p glass-lint-core analysis::lowering::status::tests --lib`
+(3 passed) and `make fmt && make ci` (passed).
 
 ## Systemic Themes
 

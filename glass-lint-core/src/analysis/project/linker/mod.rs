@@ -131,7 +131,7 @@ impl ProjectLinker {
                     continue;
                 };
                 (
-                    module.local().status().for_file(module.path()),
+                    module.local().status().for_local_file(module.path()),
                     module.path().clone(),
                     module.local().interface().is_unknown(),
                 )

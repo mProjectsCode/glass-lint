@@ -98,13 +98,16 @@ impl AnalysisStatus {
         self.entries.is_empty()
     }
 
-    pub(in crate::analysis) fn for_file(&self, path: &ProjectRelativePath) -> Self {
+    pub(in crate::analysis) fn for_local_file(&self, path: &ProjectRelativePath) -> Self {
         Self {
             entries: self
                 .entries
                 .iter()
                 .map(|entry| StatusEntry {
-                    scope: StatusScope::File(path.clone()),
+                    scope: match &entry.scope {
+                        StatusScope::Project => StatusScope::File(path.clone()),
+                        StatusScope::File(existing) => StatusScope::File(existing.clone()),
+                    },
                     reason: entry.reason.clone(),
                 })
                 .collect(),
@@ -296,5 +299,21 @@ mod tests {
             },
         );
         assert!(!status.is_complete());
+    }
+
+    #[test]
+    fn local_file_conversion_preserves_existing_file_scope() {
+        let mut status = AnalysisStatus::default();
+        let reason = IncompleteReason::PathCapacityExhausted;
+        status.record(StatusScope::Project, reason.clone());
+        status.record(StatusScope::File(file()), reason);
+
+        let converted = status.for_local_file(&ProjectRelativePath::new("other.js").unwrap());
+        let (files, project) = converted.diagnostics();
+
+        assert!(project.is_empty());
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0].0.as_str(), "main.js");
+        assert_eq!(files[1].0.as_str(), "other.js");
     }
 }
