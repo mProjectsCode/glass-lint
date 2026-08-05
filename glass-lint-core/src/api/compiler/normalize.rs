@@ -13,12 +13,9 @@ use crate::api::{
         requirements::PlanRequirements,
         validate::QueryCompileError,
     },
-    rule::{
-        ArgumentConstraint,
-        query::{
-            AnyExpr, EmissionDecl, EventQuery, EventSpec, IdentitySpec, LifecycleQuery, QueryDecl,
-            QueryExpr, QueryExprKind, VarType,
-        },
+    rule::query::{
+        AnyExpr, EmissionDecl, EventQuery, EventSpec, IdentitySpec, LifecycleQuery, QueryDecl,
+        QueryExpr, QueryExprKind, VarType,
     },
 };
 
@@ -446,15 +443,10 @@ fn normalize_lifecycle_event(
         crate::api::rule::query::lifecycle::LifecycleEventKind::MemberCall {
             member,
             arguments,
-        } => {
-            let mut arguments = arguments.clone();
-            arguments.sort();
-            arguments.dedup();
-            NormalizedLifecycleEvent::MemberCall {
-                member: member.as_str().into(),
-                arguments: CanonicalArgumentConstraints::from_canonicalized(&arguments),
-            }
-        }
+        } => NormalizedLifecycleEvent::MemberCall {
+            member: member.as_str().into(),
+            arguments: CanonicalArgumentConstraints::from_constraints(arguments),
+        },
     }
 }
 
@@ -483,13 +475,8 @@ fn normalize_event_from_query(
     eq: &EventQuery,
     _emission: &EmissionDecl,
 ) -> Result<NormalizedEvent, QueryCompileError> {
-    let mut args: Vec<ArgumentConstraint> = eq.constraints().to_vec();
-    args.sort_by(|a, b| {
-        a.index()
-            .cmp(&b.index())
-            .then_with(|| a.predicate().cmp(b.predicate()))
-    });
-    args.dedup();
+    let arguments = CanonicalArgumentConstraints::from_constraints(eq.constraints());
+    let args = arguments.to_flat_vec();
 
     let subject = NormalizedSubject::Direct {
         identity: eq.identity().clone(),
@@ -500,7 +487,7 @@ fn normalize_event_from_query(
         slot: eq.var().get(),
         event: eq.event().clone(),
         subject,
-        arguments: CanonicalArgumentConstraints::from_canonicalized(&args),
+        arguments,
     })
 }
 

@@ -26,21 +26,12 @@ use crate::api::{
 /// Compile raw argument constraints into canonical grouped form.
 ///
 /// The input slice does not need to be pre-canonicalized (sorted,
-/// deduplicated). This function handles arbitrary ordering and duplicates by
-/// delegating to `CanonicalArgumentConstraints::from_canonicalized` after
-/// sorting and dedup.
+/// deduplicated). The canonical constraint owner handles both operations.
 #[cfg(test)]
 pub(crate) fn compile_argument_constraints(
     raw: &[ArgumentConstraint],
 ) -> CanonicalArgumentConstraints {
-    let mut tmp: Vec<ArgumentConstraint> = raw.to_vec();
-    tmp.sort_by(|a, b| {
-        a.index()
-            .cmp(&b.index())
-            .then_with(|| a.predicate().cmp(b.predicate()))
-    });
-    tmp.dedup();
-    CanonicalArgumentConstraints::from_canonicalized(&tmp)
+    CanonicalArgumentConstraints::from_constraints(raw)
 }
 
 // ── Physical root types ─────────────────────────────────────────────────

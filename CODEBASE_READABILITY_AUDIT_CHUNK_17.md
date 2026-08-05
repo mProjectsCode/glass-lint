@@ -51,7 +51,7 @@ owns its capacity relationship.
 
 ### Normalized argument constraints
 
-#### [ ] READ-086 — Make canonical constraint construction establish its invariant
+#### [x] READ-086 — Make canonical constraint construction establish its invariant
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -77,7 +77,14 @@ and the distinction between an intentionally empty set and a non-empty
 canonical group; update `compile_argument_constraints` and normalization to use
 the single owner and delete their repeated preconditioning.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the pre-canonicalized constructor with
+`CanonicalArgumentConstraints::from_constraints`, which sorts and deduplicates
+inputs before grouping them. Normalization and physical compilation now use
+that single owner, while empty input remains an explicit unconstrained set and
+each retained group is non-empty.
+
+**Verification:** `cargo test -p glass-lint-core api::compiler::tests --lib`
+(144 passed) and `make fmt && make ci` (passed).
 
 ### Plan capability requirements
 

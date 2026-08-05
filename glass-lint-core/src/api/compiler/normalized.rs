@@ -89,17 +89,23 @@ impl CanonicalArgumentConstraints {
         self.groups.is_empty()
     }
 
-    /// Build canonical form from already-canonicalized (sorted, deduplicated)
-    /// constraints.
+    /// Build canonical form from arbitrary constraints.
     ///
-    /// Panics if the input is empty or has duplicates — callers must
-    /// canonicalize first. Groups are accumulated with a Vec per index and
-    /// frozen once at the end, avoiding repeated Box<[_]> → Vec → Box<[_]>
-    /// conversions.
-    pub(crate) fn from_canonicalized(raw: &[ArgumentConstraint]) -> Self {
+    /// Empty input represents an unconstrained event. Groups are accumulated
+    /// with a Vec per index and frozen once at the end, so every group is
+    /// non-empty without requiring callers to pre-sort or deduplicate.
+    pub(crate) fn from_constraints(raw: &[ArgumentConstraint]) -> Self {
+        let mut raw = raw.to_vec();
+        raw.sort_by(|a, b| {
+            a.index()
+                .cmp(&b.index())
+                .then_with(|| a.predicate().cmp(b.predicate()))
+        });
+        raw.dedup();
+
         // First pass: count predicates per group so we allocate exactly once.
         let mut group_counts: Vec<(ArgumentIndex, usize)> = Vec::new();
-        for c in raw {
+        for c in &raw {
             let idx = c.arg_index();
             if let Some(last) = group_counts.last_mut()
                 && last.0 == idx

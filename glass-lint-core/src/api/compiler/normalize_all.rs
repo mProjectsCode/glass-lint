@@ -250,7 +250,7 @@ impl SameEventMerge {
         }
     }
 
-    fn finish(mut self, event_var: VarId) -> Result<NormalizedRoot, QueryCompileError> {
+    fn finish(self, event_var: VarId) -> Result<NormalizedRoot, QueryCompileError> {
         let event = self
             .event
             .ok_or_else(|| QueryCompileError::InternalInvariant {
@@ -262,23 +262,19 @@ impl SameEventMerge {
                 detail: "same-event All missing identity".into(),
             })?;
 
-        self.constraints.sort_by(|a, b| {
-            a.index()
-                .cmp(&b.index())
-                .then_with(|| a.predicate().cmp(b.predicate()))
-        });
-        self.constraints.dedup();
+        let arguments = CanonicalArgumentConstraints::from_constraints(&self.constraints);
+        let constraints = arguments.to_flat_vec();
 
         let subject = self.subject.unwrap_or_else(|| NormalizedSubject::Direct {
             identity: identity.clone(),
         });
-        detect_event_contradictions(event_var, &event, &identity, &subject, &self.constraints)?;
+        detect_event_contradictions(event_var, &event, &identity, &subject, &constraints)?;
 
         Ok(NormalizedRoot::Event(NormalizedEvent {
             slot: var_to_slot(event_var),
             event,
             subject,
-            arguments: CanonicalArgumentConstraints::from_canonicalized(&self.constraints),
+            arguments,
         }))
     }
 }
