@@ -9,7 +9,7 @@ use crate::{
         flow::{
             cross::{
                 evidence::{self, emit, mark_nonmatching, usage_matches_context},
-                state::{CallContext, CrossFlowState, QualifiedEvent},
+                state::{CallContext, CrossFlowState, EvidenceTransition, QualifiedEvent},
             },
             effect::{EffectUse, FunctionEffect},
             planning::{BoundFlowPlan, FlowMatchView},
@@ -77,6 +77,7 @@ impl UsageProjector<'_, '_> {
                 stream.values().static_string(value)
             });
         let mut next = self.state.clone();
+        let mut transition = next.requirement_transition(self.flow);
         for match_result in self.flow_plan.matching_property_requirements(
             self.context.state().flow_id(),
             property.map(SmolStr::as_str),
@@ -84,13 +85,14 @@ impl UsageProjector<'_, '_> {
             value_is_precise,
         ) {
             if match_result.value_matches() {
-                next.record_requirement(
+                transition = transition.merge(next.advance_requirement(
                     match_result.index(),
                     QualifiedEvent::new(self.context.module(), event),
-                );
+                    self.flow,
+                ));
             }
         }
-        self.emit_requirements(&next, event);
+        self.emit_requirements(&next, event, transition);
         *self.state = next;
     }
 
@@ -110,15 +112,20 @@ impl UsageProjector<'_, '_> {
         let chain = cref.chain();
         let matcher = FlowMatchView::new(self.session.names, stream.values());
         let mut next = self.state.clone();
+        let mut transition = next.requirement_transition(self.flow);
         for index in self.flow_plan.matching_member_requirement_indices(
             self.context.state().flow_id(),
             chain,
             call_args,
             &matcher,
         ) {
-            next.record_requirement(index, QualifiedEvent::new(self.context.module(), event));
+            transition = transition.merge(next.advance_requirement(
+                index,
+                QualifiedEvent::new(self.context.module(), event),
+                self.flow,
+            ));
         }
-        self.emit_requirements(&next, event);
+        self.emit_requirements(&next, event, transition);
         *self.state = next;
     }
 
@@ -145,14 +152,15 @@ impl UsageProjector<'_, '_> {
             },
         );
         if !matching_sinks.is_empty() && self.context.is_crossed() {
+            let mut transition = self.state.sink_transition(self.flow);
             for index in matching_sinks {
-                self.state
-                    .record_sink(index, QualifiedEvent::new(self.context.module(), event));
+                transition = transition.merge(self.state.advance_sink(
+                    index,
+                    QualifiedEvent::new(self.context.module(), event),
+                    self.flow,
+                ));
             }
-            if self.state.requirements_ready(self.flow)
-                && self.state.source().is_some()
-                && self.state.sinks_complete(self.flow)
-            {
+            if transition.is_ready() {
                 emit(
                     evidence::EmissionContext {
                         project: self.session.project,
@@ -177,9 +185,14 @@ impl UsageProjector<'_, '_> {
         }
     }
 
-    fn emit_requirements(&mut self, state: &CrossFlowState, event: FactId) {
+    fn emit_requirements(
+        &mut self,
+        state: &CrossFlowState,
+        event: FactId,
+        transition: EvidenceTransition,
+    ) {
         if self.flow.completion_mode() == CompletionMode::Configuration
-            && state.requirements_ready(self.flow)
+            && transition.is_ready()
             && self.context.is_crossed()
         {
             emit(

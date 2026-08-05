@@ -142,7 +142,7 @@ harnesses, doctests, generated-rule validation, and examples.
 
 ### Cross-flow state ownership
 
-#### [ ] READ-040 — Make cross-flow evidence transitions atomic at the state owner
+#### [x] READ-040 — Make cross-flow evidence transitions atomic at the state owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -170,7 +170,15 @@ combination branches. Preserve cloned branch state, source-less alternatives,
 requirement/sink index semantics, prior-sink evidence, crossed-only emission,
 and possible/definite certainty handling.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `EvidenceTransition` to `CrossFlowState`, with
+state-owned requirement/sink advancement and completion classification for
+`Advanced`, `AlreadyRecorded`, and `Ready`. Propagation now merges those
+outcomes and supplies only the existing crossed/completion-mode emission
+policy; the repeated readiness predicates and raw boolean writes were removed.
+
+**Verification:** `cargo test -p glass-lint-core analysis::flow::cross --lib`
+passes (17 tests), and `make fmt && make ci` passes, including the full
+workspace, end-to-end, rule, doctest, and example checks.
 
 ## Systemic Themes
 

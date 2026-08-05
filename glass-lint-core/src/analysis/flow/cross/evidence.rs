@@ -312,11 +312,11 @@ mod tests {
             FlowId::new(RuleIndex::new(0), 0),
             QualifiedEvent::new(ModuleId::new(1), FactId::new(1)),
         );
-        state.record_requirement(
+        state.record_requirement_for_test(
             RequirementIndex::new(0),
             QualifiedEvent::new(ModuleId::new(1), FactId::new(2)),
         );
-        state.record_sink(
+        state.record_sink_for_test(
             SinkIndex::new(0),
             QualifiedEvent::new(ModuleId::new(1), FactId::new(3)),
         );

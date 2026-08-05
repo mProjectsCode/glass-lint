@@ -56,6 +56,27 @@ pub(super) struct CrossFlowState {
     evidence: LifecycleEvidence<QualifiedEvent>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum EvidenceTransition {
+    Advanced,
+    AlreadyRecorded,
+    Ready,
+}
+
+impl EvidenceTransition {
+    pub(super) fn is_ready(self) -> bool {
+        matches!(self, Self::Ready)
+    }
+
+    pub(super) fn merge(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Ready, _) | (_, Self::Ready) => Self::Ready,
+            (Self::Advanced, _) | (_, Self::Advanced) => Self::Advanced,
+            _ => Self::AlreadyRecorded,
+        }
+    }
+}
+
 impl CrossFlowState {
     pub(super) fn known(flow: FlowId, source: QualifiedEvent) -> Self {
         Self {
@@ -81,24 +102,73 @@ impl CrossFlowState {
         self.source.as_ref()
     }
 
-    pub(super) fn record_requirement(
+    pub(super) fn advance_requirement(
         &mut self,
         index: RequirementIndex,
         event: QualifiedEvent,
-    ) -> bool {
-        self.evidence.record_requirement(index, event)
+        flow: &CompiledObjectFlow,
+    ) -> EvidenceTransition {
+        let recorded = self.evidence.record_requirement(index, event);
+        self.classify_requirement(recorded, flow)
     }
 
-    pub(super) fn record_sink(&mut self, index: SinkIndex, event: QualifiedEvent) -> bool {
-        self.evidence.record_sink(index, event)
+    pub(super) fn advance_sink(
+        &mut self,
+        index: SinkIndex,
+        event: QualifiedEvent,
+        flow: &CompiledObjectFlow,
+    ) -> EvidenceTransition {
+        let recorded = self.evidence.record_sink(index, event);
+        self.classify_sink(recorded, flow)
     }
 
-    pub(super) fn requirements_ready(&self, flow: &CompiledObjectFlow) -> bool {
-        self.evidence.requirements_ready(flow)
+    pub(super) fn requirement_transition(&self, flow: &CompiledObjectFlow) -> EvidenceTransition {
+        self.classify_requirement(false, flow)
     }
 
-    pub(super) fn sinks_complete(&self, flow: &CompiledObjectFlow) -> bool {
-        self.evidence.sinks_ready(flow)
+    fn classify_requirement(
+        &self,
+        recorded: bool,
+        flow: &CompiledObjectFlow,
+    ) -> EvidenceTransition {
+        if self.evidence.requirements_ready(flow) {
+            EvidenceTransition::Ready
+        } else if recorded {
+            EvidenceTransition::Advanced
+        } else {
+            EvidenceTransition::AlreadyRecorded
+        }
+    }
+
+    pub(super) fn sink_transition(&self, flow: &CompiledObjectFlow) -> EvidenceTransition {
+        self.classify_sink(false, flow)
+    }
+
+    #[cfg(test)]
+    pub(super) fn record_requirement_for_test(
+        &mut self,
+        index: RequirementIndex,
+        event: QualifiedEvent,
+    ) {
+        self.evidence.record_requirement(index, event);
+    }
+
+    #[cfg(test)]
+    pub(super) fn record_sink_for_test(&mut self, index: SinkIndex, event: QualifiedEvent) {
+        self.evidence.record_sink(index, event);
+    }
+
+    fn classify_sink(&self, recorded: bool, flow: &CompiledObjectFlow) -> EvidenceTransition {
+        if self.source.is_some()
+            && self.evidence.requirements_ready(flow)
+            && self.evidence.sinks_ready(flow)
+        {
+            EvidenceTransition::Ready
+        } else if recorded {
+            EvidenceTransition::Advanced
+        } else {
+            EvidenceTransition::AlreadyRecorded
+        }
     }
 
     pub(super) fn requirement_events(&self) -> impl Iterator<Item = &QualifiedEvent> {
