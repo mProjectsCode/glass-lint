@@ -22,7 +22,7 @@ by this audit.
 
 ### Trace ownership and evidence construction
 
-#### [ ] READ-033 — Give trace-chain assembly one owner
+#### [x] READ-033 — Give trace-chain assembly one owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -49,7 +49,16 @@ the existing role assignment for correlated prior sinks, node interning,
 trace-head counts, deterministic requirement order, and fail-closed behavior
 when the trace limit is exhausted.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `TraceArena::intern_chain` as the bounded owner of
+ordered trace-chain interning and exhaustion handling. Local and cross-flow
+evidence now provide their policy-specific step sequences and roles without
+duplicating parent/tail bookkeeping or arena failure handling; local prior
+sinks remain requirements while cross-flow prior sinks remain sinks.
+
+**Verification:** `cargo test -p glass-lint-core analysis::trace --lib`,
+`cargo test -p glass-lint-core analysis::flow::cross::evidence --lib`, and
+`cargo test -p glass-lint-core analysis::flow::projector --lib` passed;
+`make fmt && make ci` (passed).
 
 #### [x] READ-034 — Make `TraceNodeId` arena-local and validate trace parents
 

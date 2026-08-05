@@ -260,48 +260,31 @@ impl ObjectFlowProjector<'_, '_, '_> {
     /// Source → Requirement[0] → Requirement[1] → ... → Sink.
     /// Returns `None` if the trace arena is exhausted.
     fn build_flow_trace(&mut self, state: &FlowState, sink_fact: FactId) -> Option<TraceNodeId> {
-        // 1. Source node (first in execution order, no parent)
-        let source_node = self.trace_arena.intern(
-            None,
+        let requirements = state
+            .requirement_entries()
+            .filter_map(|(_index, values)| values.into_iter().next())
+            .map(|fact| {
+                (
+                    QualifiedEvent::new(self.module_id, fact),
+                    EvidenceRole::Requirement,
+                )
+            });
+        let prior_sinks = state.prior_sinks(sink_fact).into_iter().map(|fact| {
+            (
+                QualifiedEvent::new(self.module_id, fact),
+                EvidenceRole::Requirement,
+            )
+        });
+        let steps = std::iter::once((
             QualifiedEvent::new(self.module_id, state.source_event()),
             EvidenceRole::Source,
-        )?;
-
-        // 2. Requirement nodes (declaration order by index)
-        let mut tail: Option<TraceNodeId> = Some(source_node);
-        for (_index, values) in state.requirement_entries() {
-            // Use the first (deterministic) value per requirement key for the trace.
-            let first_val = match values.first() {
-                Some(v) => *v,
-                None => continue,
-            };
-            let next = self.trace_arena.intern(
-                tail,
-                QualifiedEvent::new(self.module_id, first_val),
-                EvidenceRole::Requirement,
-            );
-            #[allow(clippy::question_mark)]
-            if next.is_none() {
-                return None;
-            }
-            tail = next;
-        }
-
-        // A multi-sink correlation retains earlier sinks in canonical order;
-        // trace assembly only assigns their role and interns the nodes.
-        for sink in state.prior_sinks(sink_fact) {
-            tail = Some(self.trace_arena.intern(
-                tail,
-                QualifiedEvent::new(self.module_id, sink),
-                EvidenceRole::Requirement,
-            )?);
-        }
-
-        // 3. Sink node (last in execution order, becomes the trace head)
-        self.trace_arena.intern(
-            tail,
+        ))
+        .chain(requirements)
+        .chain(prior_sinks)
+        .chain(std::iter::once((
             QualifiedEvent::new(self.module_id, sink_fact),
             EvidenceRole::Sink,
-        )
+        )));
+        self.trace_arena.intern_chain(steps)
     }
 }

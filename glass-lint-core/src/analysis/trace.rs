@@ -116,6 +116,18 @@ impl TraceArena {
         Some(id)
     }
 
+    /// Intern an ordered source-to-sink chain, returning its final node.
+    pub(crate) fn intern_chain(
+        &mut self,
+        steps: impl IntoIterator<Item = (QualifiedEvent, EvidenceRole)>,
+    ) -> Option<TraceNodeId> {
+        let mut tail = None;
+        for (event, role) in steps {
+            tail = Some(self.intern(tail, event, role)?);
+        }
+        tail
+    }
+
     /// Reconstruct a complete trace, returning `None` for a foreign or
     /// otherwise invalid handle rather than silently truncating the chain.
     pub fn reconstruct_trace(&self, head: TraceNodeId) -> Option<Vec<TraceStep>> {

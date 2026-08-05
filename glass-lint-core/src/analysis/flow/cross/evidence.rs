@@ -10,7 +10,7 @@ use crate::{
             cross::state::{CallContext, CrossFlowState},
             effect::{EffectUse, FunctionEffect},
         },
-        trace::{QualifiedEvent as TraceQualifiedEvent, TraceArena},
+        trace::{QualifiedEvent, TraceArena},
     },
     api::{
         classification::{
@@ -218,73 +218,29 @@ pub(super) struct EmissionContext<'a> {
     pub(super) arena: &'a mut TraceArena,
 }
 
-enum TraceBuild {
-    Complete(TraceNodeId),
-    Exhausted,
-}
-
-struct TraceAssembler<'a> {
-    arena: &'a mut TraceArena,
-    tail: TraceNodeId,
-}
-
-impl TraceAssembler<'_> {
-    fn from_source(
-        arena: &mut TraceArena,
-        source: crate::analysis::trace::QualifiedEvent,
-    ) -> Option<TraceAssembler<'_>> {
-        let tail = arena.intern(None, source, EvidenceRole::Source)?;
-        Some(TraceAssembler { arena, tail })
-    }
-
-    fn append(
-        &mut self,
-        event: crate::analysis::trace::QualifiedEvent,
-        role: EvidenceRole,
-    ) -> bool {
-        let Some(next) = self.arena.intern(Some(self.tail), event, role) else {
-            return false;
-        };
-        self.tail = next;
-        true
-    }
-
-    fn finish_sink(self, module: ModuleId, event: FactId) -> Option<TraceNodeId> {
-        self.arena.intern(
-            Some(self.tail),
-            TraceQualifiedEvent::new(module, event),
-            EvidenceRole::Sink,
-        )
-    }
-}
-
 fn assemble_trace(
     arena: &mut TraceArena,
     state: &CrossFlowState,
     module: ModuleId,
     event: FactId,
-) -> TraceBuild {
-    let Some(source) = state.source() else {
-        return TraceBuild::Exhausted;
-    };
-    let Some(mut trace) = TraceAssembler::from_source(arena, *source) else {
-        return TraceBuild::Exhausted;
-    };
-    for requirement in state.requirement_events() {
-        if !trace.append(*requirement, EvidenceRole::Requirement) {
-            return TraceBuild::Exhausted;
-        }
-    }
-
-    for sink in state.prior_sinks(module, event) {
-        if !trace.append(sink, EvidenceRole::Sink) {
-            return TraceBuild::Exhausted;
-        }
-    }
-
-    trace
-        .finish_sink(module, event)
-        .map_or(TraceBuild::Exhausted, TraceBuild::Complete)
+) -> Option<TraceNodeId> {
+    let source = state.source().copied()?;
+    let requirements = state
+        .requirement_events()
+        .copied()
+        .map(|event| (event, EvidenceRole::Requirement));
+    let prior_sinks = state
+        .prior_sinks(module, event)
+        .into_iter()
+        .map(|event| (event, EvidenceRole::Sink));
+    let steps = std::iter::once((source, EvidenceRole::Source))
+        .chain(requirements)
+        .chain(prior_sinks)
+        .chain(std::iter::once((
+            QualifiedEvent::new(module, event),
+            EvidenceRole::Sink,
+        )));
+    arena.intern_chain(steps)
 }
 
 pub(super) fn emit(
@@ -317,10 +273,7 @@ pub(super) fn emit(
 
     // Trace construction keeps execution order and the terminal sink separate
     // from finding deduplication and certainty policy.
-    let trace_head = match assemble_trace(arena, state, module, event) {
-        TraceBuild::Complete(head) => Some(head),
-        TraceBuild::Exhausted => None,
-    };
+    let trace_head = assemble_trace(arena, state, module, event);
 
     let certainty = if values.is_nonmatching(rule_idx, &key) {
         crate::project::MatchCertainty::Possible
@@ -376,11 +329,8 @@ mod tests {
             QualifiedEvent::new(ModuleId::new(1), FactId::new(3)),
         );
         let mut arena = TraceArena::new(10);
-        let TraceBuild::Complete(head) =
-            assemble_trace(&mut arena, &state, ModuleId::new(1), FactId::new(4))
-        else {
-            panic!("trace should fit within the arena");
-        };
+        let head = assemble_trace(&mut arena, &state, ModuleId::new(1), FactId::new(4))
+            .expect("trace should fit within the arena");
         let roles: Vec<_> = arena
             .reconstruct_trace(head)
             .unwrap()
