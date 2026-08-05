@@ -127,7 +127,7 @@ now provide only their distinct typed inputs and evidence metadata.
 
 ### Static-string matcher construction
 
-#### [ ] READ-093 — Route single-value equality through canonical static-value validation
+#### [x] READ-093 — Route single-value equality through canonical static-value validation
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -150,7 +150,15 @@ meaning of exact versus prefix/contains predicates, bounded alternative
 counts, and intentional literal-string whitespace; remove the direct vector
 construction once one static-value owner establishes the invariant.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the shared `canonical_exact` parser and routed both
+`equals` and fallible `try_equals` through it. `try_equals` reports
+`EmptyStaticValue`; the existing infallible `equals` path fails closed with an
+empty exact set for invalid input, so it cannot create a match. Added coverage
+for trimming equivalence and empty-value rejection.
+
+**Verification:** `cargo test -p glass-lint-core api::rule::query::value --lib`
+(17 passed) and the query composition integration tests (29 passed);
+`make fmt && make ci` (all passed).
 
 ## Systemic Themes
 
@@ -162,7 +170,8 @@ constructors would make the public authoring behavior deterministic while
 preserving the intentional distinction between semantic identifiers and
 literal string content.
 
-No findings are marked applied.
+READ-090 through READ-093 are marked applied above; the remaining findings in
+this chunk are open.
 
 ## Open Questions
 

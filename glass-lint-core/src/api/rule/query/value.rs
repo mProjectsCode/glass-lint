@@ -107,6 +107,10 @@ where
     })
 }
 
+fn canonical_exact(value: impl Into<String>) -> Result<Vec<String>, QueryBuildError> {
+    bounded_strings([value])
+}
+
 fn bounded_paths<I, S>(values: I) -> Result<Vec<String>, QueryBuildError>
 where
     I: IntoIterator<Item = S>,
@@ -142,7 +146,14 @@ impl ValueMatcher {
 
     #[must_use]
     pub fn equals(self, value: impl Into<String>) -> Self {
-        self.with_static_predicate(StaticStringPredicateKind::Exact(vec![value.into()]))
+        match canonical_exact(value) {
+            Ok(values) => self.with_static_predicate(StaticStringPredicateKind::Exact(values)),
+            Err(_) => self.with_static_predicate(StaticStringPredicateKind::Exact(Vec::new())),
+        }
+    }
+
+    pub fn try_equals(self, value: impl Into<String>) -> Result<Self, QueryBuildError> {
+        Ok(self.with_static_predicate(StaticStringPredicateKind::Exact(canonical_exact(value)?)))
     }
 
     pub fn equals_any<I, S>(self, values: I) -> Result<Self, QueryBuildError>
@@ -379,6 +390,27 @@ mod tests {
                 StaticStringPredicateKind::Exact(vec!["a".into(), "b".into()])
             ))
         );
+    }
+
+    #[test]
+    fn value_matcher_equals_uses_canonical_static_values() {
+        let exact = ValueMatcher::static_string().equals(" x ");
+        let alternatives = ValueMatcher::static_string().equals_any(["x"]).unwrap();
+        assert_eq!(exact, alternatives);
+    }
+
+    #[test]
+    fn value_matcher_try_equals_rejects_empty_values() {
+        assert_eq!(
+            ValueMatcher::static_string().try_equals(" "),
+            Err(QueryBuildError::EmptyStaticValue)
+        );
+        assert!(matches!(
+            ValueMatcher::static_string().equals("").kind(),
+            ValueMatcherKind::StaticString(StaticStringPredicate {
+                kind: StaticStringPredicateKind::Exact(values)
+            }) if values.is_empty()
+        ));
     }
 
     #[test]
