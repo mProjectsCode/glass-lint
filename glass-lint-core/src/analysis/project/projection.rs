@@ -105,26 +105,33 @@ impl<'a> ProjectionPlan<'a> {
     }
 
     pub(in crate::analysis) fn from_selection(selection: &'a CompiledRuleSelection<'a>) -> Self {
-        let constrained_roots = selection
-            .selected_matchers()
-            .flat_map(|(rule_index, matcher)| {
-                let roots: Vec<PlannedConstrainedRoot<'a>> = matcher
-                    .physical_roots()
-                    .iter()
-                    .filter(|root| matches!(root, PhysicalRoot::ConstrainedScan { constraints, .. } if !constraints.groups().is_empty()))
-                    .map(move |root| PlannedConstrainedRoot { rule_index, root })
-                    .collect();
-                roots
-            })
-            .collect::<Vec<_>>();
-
+        let mut constrained_roots = Vec::new();
+        let mut flow_matchers = Vec::new();
         let mut needs_overall_overlay = false;
         let mut needs_overall_module_ids = false;
         let mut needs_overall_result_ids = false;
         let mut flow_local = false;
         let mut flow_cross_call = false;
         let mut flow_cross_file = false;
-        for (_, matcher) in selection.selected_matchers() {
+        for (rule_index, matcher) in selection.selected_matchers() {
+            for root in matcher.physical_roots() {
+                if matches!(
+                    root,
+                    PhysicalRoot::ConstrainedScan { constraints, .. }
+                        if !constraints.groups().is_empty()
+                ) {
+                    constrained_roots.push(PlannedConstrainedRoot { rule_index, root });
+                }
+            }
+            for (flow_index, root) in matcher.physical_roots().iter().enumerate() {
+                if let PhysicalRoot::Lifecycle { flow } = root {
+                    flow_matchers.push(PlannedFlow {
+                        rule_index,
+                        root_index: PhysicalRootIndex::new(flow_index),
+                        flow,
+                    });
+                }
+            }
             needs_overall_overlay = needs_overall_overlay || matcher.needs_project_overlay();
             needs_overall_module_ids =
                 needs_overall_module_ids || matcher.needs_module_identities();
@@ -135,27 +142,6 @@ impl<'a> ProjectionPlan<'a> {
             flow_cross_call = flow_cross_call || fr.cross_call();
             flow_cross_file = flow_cross_file || fr.cross_file();
         }
-
-        let flow_matchers =
-            selection
-                .selected_matchers()
-                .flat_map(|(rule_index, matcher)| {
-                    let ri = rule_index;
-                    matcher.physical_roots().iter().enumerate().filter_map(
-                        move |(flow_index, root)| {
-                            if let PhysicalRoot::Lifecycle { flow } = root {
-                                Some(PlannedFlow {
-                                    rule_index: ri,
-                                    root_index: PhysicalRootIndex::new(flow_index),
-                                    flow,
-                                })
-                            } else {
-                                None
-                            }
-                        },
-                    )
-                })
-                .collect::<Vec<_>>();
         Self {
             constrained_roots,
             flow_matchers,

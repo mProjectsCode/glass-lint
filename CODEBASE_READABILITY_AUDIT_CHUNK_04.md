@@ -183,7 +183,7 @@ external/unknown fallback policy.
 
 ### Projection and resolution orchestration
 
-#### [ ] READ-025 — Build `ProjectionPlan` requirements in one selection pass
+#### [x] READ-025 — Build `ProjectionPlan` requirements in one selection pass
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -207,7 +207,12 @@ order, rule/root indexes, omission of empty constrained groups, flow lifecycle
 requirements, and the rule that project identity overlays are built only when a
 selected matcher needs them.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ProjectionPlan::from_selection` now traverses selected
+matchers once, collecting constrained roots, lifecycle roots, and all overlay
+and flow requirement flags in the same pass. Rule/root ordering and omission
+of empty constrained groups are unchanged.
+
+**Verification:** `make fmt && make ci` (passed).
 
 #### [ ] READ-026 — Separate project projection from classification result assembly
 
