@@ -39,6 +39,9 @@ impl OccurrenceIndexes {
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
         names: &NameTable,
     ) -> Vec<ClassificationEvidence> {
+        // Return raw groups for the shared evidence normalization boundary;
+        // project evidence is merged here and normalized exactly once by the
+        // report-facing projection model.
         let mut evidence = Vec::new();
         for root in plan.physical_roots() {
             match root {
@@ -83,14 +86,6 @@ impl OccurrenceIndexes {
                 PhysicalRoot::ConstrainedScan { .. } | PhysicalRoot::Lifecycle { .. } => {}
             }
         }
-        evidence.sort_by(|left, right| {
-            let left_first = left.occurrences.first().map(|occurrence| occurrence.span);
-            let right_first = right.occurrences.first().map(|occurrence| occurrence.span);
-            left_first
-                .cmp(&right_first)
-                .then_with(|| left.kind.cmp(&right.kind))
-                .then_with(|| left.symbol.as_str().cmp(right.symbol.as_str()))
-        });
         evidence
     }
 

@@ -286,7 +286,7 @@ rooted-member and static-object extraction remain local to argument views.
 
 ### Evidence boundary
 
-#### [ ] READ-020 — Make evidence normalization a single pipeline boundary
+#### [x] READ-020 — Make evidence normalization a single pipeline boundary
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -318,7 +318,14 @@ other duplicate grouping step. Preserve total event counts, certainty
 combination, trace identity in deduplication, per-group and global limits,
 and deterministic ordering of the final report.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the indexed-query pre-sort and documented that query
+producers return raw evidence groups. `ProjectMatcherModel::evidence_for`
+continues to merge indexed and projected groups, then invokes the shared
+normalizer exactly once for grouping, deterministic ordering, occurrence
+deduplication, and limits.
+
+**Verification:** `cargo test -p glass-lint-core analysis::matching --lib`
+(42 passed); `make fmt && make ci` (passed).
 
 ## Systemic Themes
 
