@@ -94,7 +94,7 @@ whitespace. Added coverage for global, module-export, and namespace identities.
 
 ### Correlated query composition
 
-#### [ ] READ-092 — Centralize correlated member-query graph assembly
+#### [x] READ-092 — Centralize correlated member-query graph assembly
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -117,7 +117,13 @@ Preserve variable numbering, branch order, rooted-versus-module identity
 restrictions, and the distinct call/read evidence; delete the three repeated
 branch vectors after their callers use the shared owner.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added one private member-subject query builder for the
+shared event selection, event kind/identity, object binding, and subject
+correlation graph. Instance-call, returned-call, and returned-read constructors
+now provide only their distinct typed inputs and evidence metadata.
+
+**Verification:** `cargo test -p glass-lint-core api::rule::query::tests --lib`
+(46 passed) and `make fmt && make ci` (passed).
 
 ### Static-string matcher construction
 

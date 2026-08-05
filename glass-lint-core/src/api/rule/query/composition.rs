@@ -35,42 +35,20 @@ impl QueryDecl {
     ) -> Result<Self, QueryBuildError> {
         let (module_str, export_str) = checked_module_export(module, export)?;
         let member_path = checked_chain(member)?.into_path();
-        let event_var = VarId::new(0);
-        let object_var = VarId::new(1);
         let symbol = format!("{module_str}.{export_str}");
         let identity = IdentitySpec::ModuleExport {
             module: module_str,
             export: export_str,
         };
-        let branches = vec![
-            QueryExpr::select_event(event_var),
-            QueryExpr::require(QueryPredicate::EventKind {
-                event: event_var,
-                expected: EventSpec::MemberCall {
-                    member: member_path,
-                },
-            }),
-            QueryExpr::require(QueryPredicate::EventIdentity {
-                event: event_var,
-                expected: identity.clone(),
-            }),
-            QueryExpr::require(QueryPredicate::ConstructedObject {
-                bind: object_var,
-                identity,
-            }),
-            QueryExpr::require(QueryPredicate::MemberSubject {
-                event: event_var,
-                object: object_var,
-            }),
-        ];
-        Ok(Self {
-            expression: QueryExpr::all(AllExpr::new(branches)?),
-            emission: EmissionDecl {
-                primary_var: event_var,
-                kind: MatchKind::MemberCall,
-                symbol,
+        member_subject_query(
+            EventSpec::MemberCall {
+                member: member_path,
             },
-        })
+            identity,
+            MemberObjectBinding::Constructed,
+            MatchKind::MemberCall,
+            symbol,
+        )
     }
 
     /// Member call on an object returned by a rooted source.
@@ -79,42 +57,20 @@ impl QueryDecl {
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
         let source_str: String = source.into();
-        let event_var = VarId::new(0);
-        let object_var = VarId::new(1);
         let source_chain = checked_chain(source_str)?;
         let member_chain = checked_chain(member)?;
         let source_path = source_chain.path().clone();
         let member_path = member_chain.path().clone();
         let identity = IdentitySpec::Rooted { path: source_path };
-        let branches = vec![
-            QueryExpr::select_event(event_var),
-            QueryExpr::require(QueryPredicate::EventKind {
-                event: event_var,
-                expected: EventSpec::MemberCall {
-                    member: member_path,
-                },
-            }),
-            QueryExpr::require(QueryPredicate::EventIdentity {
-                event: event_var,
-                expected: identity.clone(),
-            }),
-            QueryExpr::require(QueryPredicate::ReturnedObject {
-                bind: object_var,
-                identity,
-            }),
-            QueryExpr::require(QueryPredicate::MemberSubject {
-                event: event_var,
-                object: object_var,
-            }),
-        ];
-        Ok(Self {
-            expression: QueryExpr::all(AllExpr::new(branches)?),
-            emission: EmissionDecl {
-                primary_var: event_var,
-                kind: MatchKind::MemberCall,
-                symbol: source_chain.as_str().into(),
+        member_subject_query(
+            EventSpec::MemberCall {
+                member: member_path,
             },
-        })
+            identity,
+            MemberObjectBinding::Returned,
+            MatchKind::MemberCall,
+            source_chain.as_str(),
+        )
     }
 
     /// Member read on an object returned by a rooted source.
@@ -123,42 +79,20 @@ impl QueryDecl {
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
         let source_str: String = source.into();
-        let event_var = VarId::new(0);
-        let object_var = VarId::new(1);
         let source_chain = checked_chain(source_str)?;
         let member_chain = checked_chain(member)?;
         let source_path = source_chain.path().clone();
         let member_path = member_chain.path().clone();
         let identity = IdentitySpec::Rooted { path: source_path };
-        let branches = vec![
-            QueryExpr::select_event(event_var),
-            QueryExpr::require(QueryPredicate::EventKind {
-                event: event_var,
-                expected: EventSpec::MemberRead {
-                    member: member_path,
-                },
-            }),
-            QueryExpr::require(QueryPredicate::EventIdentity {
-                event: event_var,
-                expected: identity.clone(),
-            }),
-            QueryExpr::require(QueryPredicate::ReturnedObject {
-                bind: object_var,
-                identity,
-            }),
-            QueryExpr::require(QueryPredicate::MemberSubject {
-                event: event_var,
-                object: object_var,
-            }),
-        ];
-        Ok(Self {
-            expression: QueryExpr::all(AllExpr::new(branches)?),
-            emission: EmissionDecl {
-                primary_var: event_var,
-                kind: MatchKind::MemberRead,
-                symbol: source_chain.as_str().into(),
+        member_subject_query(
+            EventSpec::MemberRead {
+                member: member_path,
             },
-        })
+            identity,
+            MemberObjectBinding::Returned,
+            MatchKind::MemberRead,
+            source_chain.as_str(),
+        )
     }
 
     // ── Evidence override ─────────────────────────────────────────
@@ -336,4 +270,55 @@ impl QueryDecl {
             }
         })
     }
+}
+
+#[derive(Clone, Copy)]
+enum MemberObjectBinding {
+    Constructed,
+    Returned,
+}
+
+fn member_subject_query(
+    event: EventSpec,
+    identity: IdentitySpec,
+    object_binding: MemberObjectBinding,
+    kind: MatchKind,
+    symbol: impl Into<String>,
+) -> Result<QueryDecl, QueryBuildError> {
+    let event_var = VarId::new(0);
+    let object_var = VarId::new(1);
+    let object_binding = match object_binding {
+        MemberObjectBinding::Constructed => QueryPredicate::ConstructedObject {
+            bind: object_var,
+            identity: identity.clone(),
+        },
+        MemberObjectBinding::Returned => QueryPredicate::ReturnedObject {
+            bind: object_var,
+            identity: identity.clone(),
+        },
+    };
+    let branches = vec![
+        QueryExpr::select_event(event_var),
+        QueryExpr::require(QueryPredicate::EventKind {
+            event: event_var,
+            expected: event,
+        }),
+        QueryExpr::require(QueryPredicate::EventIdentity {
+            event: event_var,
+            expected: identity,
+        }),
+        QueryExpr::require(object_binding),
+        QueryExpr::require(QueryPredicate::MemberSubject {
+            event: event_var,
+            object: object_var,
+        }),
+    ];
+    Ok(QueryDecl {
+        expression: QueryExpr::all(AllExpr::new(branches)?),
+        emission: EmissionDecl {
+            primary_var: event_var,
+            kind,
+            symbol: symbol.into(),
+        },
+    })
 }
