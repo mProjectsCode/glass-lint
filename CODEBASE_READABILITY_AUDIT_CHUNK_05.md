@@ -58,7 +58,7 @@ queries do not use a non-root scope.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-029 — Share binding lookup semantics across mutable and frozen graphs
+#### [x] READ-029 — Share binding lookup semantics across mutable and frozen graphs
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -84,7 +84,14 @@ use-position scope selection, declaration-versus-assignment precedence,
 parameter aliases, joined alternatives, TDZ/local shadowing, dynamic lookup
 invalidity, and the zero/root fallback for malformed or absent identities.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ScopeData` now owns nearest-binding lookup, parameter-alias
+selection, and enclosing-function fallback. Mutable and frozen graph adapters
+provide only their phase-specific scope selection, and frozen queries delegate
+to the shared decisions; the duplicate traversal loops and unused forwarding
+methods were removed.
+
+**Verification:** `make fmt && make ci` passes, including the focused scope
+tests and full workspace, end-to-end, rule, doctest, and example checks.
 
 ### Scope graph assembly and identity queries
 

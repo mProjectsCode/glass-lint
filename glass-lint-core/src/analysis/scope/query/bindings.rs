@@ -33,9 +33,7 @@ impl FrozenScopeGraph {
     ) -> Option<&BindingProvenance> {
         let (scope, declaration) = self.binding_with_scope_at(name, span)?;
         let name_id = self.name_id(name)?;
-        let parameter = self
-            .function_for_scope(scope)
-            .and_then(|function| self.parameter_alias_for(function, name_id));
+        let parameter = self.parameter_alias_for_scope(scope, name_id);
         self.assignment_at(scope, name_id, span)
             .preferred_witness(parameter, declaration)
     }
@@ -63,8 +61,7 @@ impl FrozenScopeGraph {
                 assignment.complete_witnesses().collect()
             }
             AssignmentAt::Absent => self
-                .function_for_scope(scope)
-                .and_then(|function| self.parameter_alias_for(function, name_id))
+                .parameter_alias_for_scope(scope, name_id)
                 .map_or_else(|| vec![declaration], |parameter| vec![parameter]),
         }
     }
@@ -157,14 +154,8 @@ impl FrozenScopeGraph {
         name: &str,
         span: Span,
     ) -> Option<(ScopeId, &BindingProvenance)> {
-        let name_id = self.name_id(name)?;
-        let mut scope = self.scope_at(span);
-        loop {
-            if let Some(binding) = self.scope_binding(scope, name_id) {
-                return Some((scope, binding));
-            }
-            scope = self.scope_parent(scope)?;
-        }
+        let name = self.name_id(name)?;
+        self.nearest_binding_at(name, span)
     }
 
     /// Whether `with` or prior unshadowed `eval` invalidates lookup here.

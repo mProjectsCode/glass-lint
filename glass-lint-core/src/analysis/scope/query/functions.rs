@@ -7,14 +7,7 @@ use crate::analysis::scope::query::{
 impl FrozenScopeGraph {
     /// Find the nearest enclosing function identity for a lexical scope.
     pub(in crate::analysis) fn function_scope_at(&self, scope: ScopeId) -> FunctionId {
-        let mut current = Some(scope);
-        while let Some(index) = current {
-            if let Some(function) = self.function_for_scope(index) {
-                return function;
-            }
-            current = self.scope_parent(index);
-        }
-        FunctionId::new(0)
+        self.enclosing_function_at(scope)
     }
 
     /// Resolve a function identifier/alias if it was not reassigned before use.
