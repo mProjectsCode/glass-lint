@@ -109,25 +109,44 @@ impl IntoIterator for SinkSet {
 }
 
 #[derive(Debug, Clone)]
-pub(in crate::analysis::flow) struct FunctionSummary {
-    id: FunctionId,
+pub(in crate::analysis::flow) struct FunctionSignature {
     parameter_count: usize,
     has_rest: bool,
+}
+
+impl FunctionSignature {
+    pub(super) fn new(parameter_count: usize, has_rest: bool) -> Self {
+        Self {
+            parameter_count,
+            has_rest,
+        }
+    }
+
+    pub(super) fn from_bindings(parameters: &[ParameterBinding]) -> Self {
+        Self::new(
+            parameters
+                .iter()
+                .map(ParameterBinding::parameter_index)
+                .max()
+                .map_or(0, |index| index.saturating_add(1)),
+            parameters.iter().any(ParameterBinding::is_rest),
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(in crate::analysis::flow) struct FunctionSummary {
+    id: FunctionId,
+    signature: FunctionSignature,
     calls: Vec<FactId>,
     sinks: SinkSet,
 }
 
 impl FunctionSummary {
-    pub(super) fn new(
-        id: FunctionId,
-        parameter_count: usize,
-        has_rest: bool,
-        calls: Vec<FactId>,
-    ) -> Self {
+    pub(super) fn new(id: FunctionId, signature: FunctionSignature, calls: Vec<FactId>) -> Self {
         Self {
             id,
-            parameter_count,
-            has_rest,
+            signature,
             calls,
             sinks: SinkSet::default(),
         }
@@ -154,7 +173,7 @@ impl FunctionSummary {
 
     #[cfg(test)]
     pub(super) fn parameter_count(&self) -> usize {
-        self.parameter_count
+        self.signature.parameter_count
     }
 
     pub(super) fn add_sink(&mut self, sink: FunctionSinkSummary) -> InsertOutcome {
@@ -187,10 +206,10 @@ impl FunctionSummary {
         if args.iter().any(|argument| argument.spread) {
             return false;
         }
-        if !self.has_rest && args.len() > self.parameter_count {
+        if !self.signature.has_rest && args.len() > self.signature.parameter_count {
             return false;
         }
-        for argument in args.iter().take(self.parameter_count) {
+        for argument in args.iter().take(self.signature.parameter_count) {
             if argument.value == ValueId::UNKNOWN {
                 return false;
             }
@@ -412,7 +431,11 @@ mod tests {
 
     #[test]
     fn function_summary_new_and_basic_accessors() {
-        let summary = FunctionSummary::new(FunctionId::from_test(5), 3, true, vec![]);
+        let summary = FunctionSummary::new(
+            FunctionId::from_test(5),
+            FunctionSignature::new(3, true),
+            vec![],
+        );
         assert_eq!(summary.id(), FunctionId::from_test(5));
         assert_eq!(summary.parameter_count(), 3);
         assert!(summary.calls().is_empty());
@@ -424,7 +447,11 @@ mod tests {
         let (_paths, p0, p1, _p2) = test_paths();
         let sp0 = SummaryPathId::from_frozen_path(p0);
         let sp1 = SummaryPathId::from_frozen_path(p1);
-        let mut summary = FunctionSummary::new(FunctionId::from_test(1), 1, false, vec![]);
+        let mut summary = FunctionSummary::new(
+            FunctionId::from_test(1),
+            FunctionSignature::new(1, false),
+            vec![],
+        );
         let s1 = FunctionSinkSummary::new(FlowId::new(ri(1), 0), 0, sp1);
         let s2 = FunctionSinkSummary::new(FlowId::new(ri(0), 0), 0, sp0);
         summary.add_sink(s2);
@@ -438,7 +465,7 @@ mod tests {
     #[test]
     fn is_invocation_compatible_accepts_matching_args() {
         let (stream, target, args) = extract_call_args("function f(a) { return a; } f(1);");
-        let summary = FunctionSummary::new(target, 1, false, vec![]);
+        let summary = FunctionSummary::new(target, FunctionSignature::new(1, false), vec![]);
         let paths = SummaryPathStore::new(stream.paths());
         assert!(summary.is_invocation_compatible(&stream, &args, &paths));
     }
@@ -446,7 +473,7 @@ mod tests {
     #[test]
     fn is_invocation_compatible_rejects_spread_args() {
         let (stream, target, args) = extract_call_args("function f(a) { return a; } f(...x);");
-        let summary = FunctionSummary::new(target, 1, false, vec![]);
+        let summary = FunctionSummary::new(target, FunctionSignature::new(1, false), vec![]);
         let paths = SummaryPathStore::new(stream.paths());
         assert!(!summary.is_invocation_compatible(&stream, &args, &paths));
     }
@@ -454,7 +481,7 @@ mod tests {
     #[test]
     fn is_invocation_compatible_rejects_too_many_args_without_rest() {
         let (stream, target, args) = extract_call_args("function f(a) { return a; } f(1, 2, 3);");
-        let summary = FunctionSummary::new(target, 1, false, vec![]);
+        let summary = FunctionSummary::new(target, FunctionSignature::new(1, false), vec![]);
         let paths = SummaryPathStore::new(stream.paths());
         assert!(!summary.is_invocation_compatible(&stream, &args, &paths));
     }
@@ -463,7 +490,7 @@ mod tests {
     fn is_invocation_compatible_accepts_rest_param_allowing_extra_args() {
         let (stream, target, args) =
             extract_call_args("function f(...args) { return args; } f(1, 2, 3);");
-        let summary = FunctionSummary::new(target, 0, true, vec![]);
+        let summary = FunctionSummary::new(target, FunctionSignature::new(0, true), vec![]);
         let paths = SummaryPathStore::new(stream.paths());
         assert!(summary.is_invocation_compatible(&stream, &args, &paths));
     }
@@ -471,7 +498,7 @@ mod tests {
     #[test]
     fn is_invocation_compatible_rejects_missing_required_arg() {
         let (stream, target, args) = extract_call_args("function f(a) { return a; } f();");
-        let summary = FunctionSummary::new(target, 1, false, vec![]);
+        let summary = FunctionSummary::new(target, FunctionSignature::new(1, false), vec![]);
         let paths = SummaryPathStore::new(stream.paths());
         assert!(!summary.is_invocation_compatible(&stream, &args, &paths));
     }

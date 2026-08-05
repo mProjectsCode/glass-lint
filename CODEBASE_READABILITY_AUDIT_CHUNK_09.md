@@ -61,7 +61,7 @@ and `make fmt && make ci` pass.
 
 ### Summary representation
 
-#### [ ] READ-048 — Encapsulate the summary function signature
+#### [x] READ-048 — Encapsulate the summary function signature
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -86,7 +86,13 @@ constructor arguments after callers migrate. Preserve default-parameter and
 rest-parameter compatibility, unknown/spread rejection, parameter path
 projection, and deterministic summary propagation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the private `FunctionSignature` value and made
+`FunctionSummary` store it as the sole owner of parameter count/rest state.
+Production collection derives the signature from frozen parameter bindings;
+invocation compatibility and summary tests query that owner.
+
+**Verification:** `cargo test -p glass-lint-core analysis::flow::summary --lib`
+(35 passed) and `make fmt && make ci` (all passed).
 
 ### Local artifact identity
 
@@ -196,5 +202,5 @@ types, lowering and span normalization, semantic budgets, and completeness
 status, with representative callers in local projection, cache sessions, and
 project linking. Existing Chunk 1–8 findings were checked to avoid re-reporting
 fact traversal, generic worklist admission, effect-builder lifecycle, flow
-projector state/history, and cross-flow emission ownership. No findings are
-marked applied.
+projector state/history, and cross-flow emission ownership. READ-047 through
+READ-050 are marked applied above.

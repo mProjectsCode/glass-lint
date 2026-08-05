@@ -9,7 +9,7 @@ use crate::analysis::{
         planning::BoundFlowPlan,
         summary::{
             MAX_SUMMARY_SINKS, MAX_SUMMARY_WORKLIST, SummaryPathStore,
-            sink::{FunctionSinkSummary, FunctionSummary},
+            sink::{FunctionSignature, FunctionSinkSummary, FunctionSummary},
         },
     },
     model::flow::FunctionTable,
@@ -88,12 +88,7 @@ impl<'a> FunctionSummaries<'a> {
                 let params = effect.parameters(self.stream);
                 self.insert(FunctionSummary::new(
                     effect.id(),
-                    params
-                        .iter()
-                        .map(ParameterBinding::parameter_index)
-                        .max()
-                        .map_or(0, |index| index.saturating_add(1)),
-                    params.iter().any(ParameterBinding::is_rest),
+                    FunctionSignature::from_bindings(params),
                     effect.calls().iter().map(EffectCall::event).collect(),
                 ));
             }
