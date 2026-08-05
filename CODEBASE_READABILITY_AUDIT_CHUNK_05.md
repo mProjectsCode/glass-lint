@@ -177,7 +177,7 @@ passed).
 
 ### Hard-to-read provenance resolution
 
-#### [ ] READ-032 — Split member-chain resolution into named resolution stages
+#### [x] READ-032 — Split member-chain resolution into named resolution stages
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -204,7 +204,15 @@ all complete alternatives, dynamic/eval invalidation, global-object aliases,
 `this` handling, property mutation rejection, and the rule that unsupported or
 ambiguous paths establish no rooted witness.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Split member-chain resolution into private assigned-prefix,
+provenance-alternative, and global-fallback stages. The top-level resolver now
+owns only dynamic rejection, root/path preparation, and stage precedence;
+assignment ordering, provenance filtering, and mutation-aware global
+promotion remain in their respective owners.
+
+**Verification:** `cargo test -p glass-lint-core analysis::scope --lib` passes
+(33 tests), and `make fmt && make ci` passes, including the full workspace,
+end-to-end, rule, doctest, and example checks.
 
 ## Systemic Themes
 

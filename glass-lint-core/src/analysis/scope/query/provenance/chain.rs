@@ -64,9 +64,7 @@ impl FrozenScopeGraph {
         Some(receiver.append_chain(&property))
     }
 
-    // Kept as a single linear algorithm: the prefix-backtracking loop and
-    // closing match over provenance share mutable symbol-path state.
-    pub fn resolve_member_chain(
+    pub(in crate::analysis) fn resolve_member_chain(
         &self,
         member: &MemberExpr,
         syntactic_chain: &SymbolPath,
@@ -88,31 +86,59 @@ impl FrozenScopeGraph {
         let receiver_key = self.binding_key_for_name(root.sym.as_ref(), root.span)?;
         let name_path = self.name_path(syntactic_chain)?;
 
-        if let Some(tail) = name_path.as_view().tail_after(1) {
-            for prefix in tail.prefixes().rev() {
-                let Some(assignments) = self.property_aliases(&receiver_key, prefix) else {
-                    continue;
-                };
-
-                let prior_count = assignments
-                    .partition_point(|assignment| assignment.span().lo <= member.span.lo);
-
-                if let Some(assignment) =
-                    assignments[..prior_count].iter().rev().find(|assignment| {
-                        self.scope_span(assignment.scope())
-                            .is_some_and(|scope| contains(scope, member.span))
-                    })
-                {
-                    let target = assignment.target()?;
-                    let suffix = syntactic_chain.suffix(prefix.len() + 1).unwrap_or_default();
-                    return Some(target.append_path(&suffix));
-                }
-            }
+        if let Some(path) =
+            self.resolve_assigned_prefix(&receiver_key, member, syntactic_chain, &name_path)
+        {
+            return Some(path);
         }
 
         let suffix = syntactic_chain.suffix(1).unwrap_or_default();
         let alternatives = self.binding_alternatives_at(root.sym.as_ref(), root.span);
-        for provenance in &alternatives {
+        self.resolve_provenance_alternatives(&alternatives, &suffix)
+            .or_else(|| {
+                self.resolve_global_fallback(
+                    root.sym.as_ref(),
+                    &alternatives,
+                    syntactic_chain,
+                    member.span,
+                )
+            })
+    }
+
+    fn resolve_assigned_prefix(
+        &self,
+        receiver: &BindingKey,
+        member: &MemberExpr,
+        syntactic_chain: &SymbolPath,
+        name_path: &glass_lint_datastructures::NamePath,
+    ) -> Option<SymbolPath> {
+        let tail = name_path.as_view().tail_after(1)?;
+        for prefix in tail.prefixes().rev() {
+            let Some(assignments) = self.property_aliases(receiver, prefix) else {
+                continue;
+            };
+
+            let prior_count =
+                assignments.partition_point(|assignment| assignment.span().lo <= member.span.lo);
+            let Some(assignment) = assignments[..prior_count].iter().rev().find(|assignment| {
+                self.scope_span(assignment.scope())
+                    .is_some_and(|scope| contains(scope, member.span))
+            }) else {
+                continue;
+            };
+            let target = assignment.target()?;
+            let suffix = syntactic_chain.suffix(prefix.len() + 1).unwrap_or_default();
+            return Some(target.append_path(&suffix));
+        }
+        None
+    }
+
+    fn resolve_provenance_alternatives(
+        &self,
+        alternatives: &[&BindingProvenance],
+        suffix: &SymbolPath,
+    ) -> Option<SymbolPath> {
+        for provenance in alternatives {
             let target = match provenance {
                 BindingProvenance::ValueAlias { target }
                 | BindingProvenance::BoundCallable { target, .. } => target,
@@ -132,14 +158,23 @@ impl FrozenScopeGraph {
             if self.rooted_path_available(target)
                 && let Some(path) = self.symbol_path(target)
             {
-                return Some(path.append_path(&suffix));
+                return Some(path.append_path(suffix));
             }
         }
-        if alternatives.is_empty() && self.is_global(root.sym.as_ref()) {
-            self.rooted_chain_available_at(syntactic_chain, member.span)
-        } else {
-            None
+        None
+    }
+
+    fn resolve_global_fallback(
+        &self,
+        root: &str,
+        alternatives: &[&BindingProvenance],
+        syntactic_chain: &SymbolPath,
+        span: Span,
+    ) -> Option<SymbolPath> {
+        if !alternatives.is_empty() || !self.is_global(root) {
+            return None;
         }
+        self.rooted_chain_available_at(syntactic_chain, span)
     }
 
     fn rooted_chain_available_at(&self, chain: &SymbolPath, span: Span) -> Option<SymbolPath> {
