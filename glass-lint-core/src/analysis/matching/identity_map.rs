@@ -84,4 +84,22 @@ mod tests {
 
         assert_eq!(merged.get(&key), Some(&external("direct", "request")));
     }
+
+    #[test]
+    fn unknown_wildcard_masks_unresolved_namespace_members() {
+        let mut identities = ModuleIdentityMap::new();
+        identities.insert(
+            ModuleExportKey::wildcard("namespace"),
+            ExportResolution::Unknown,
+        );
+
+        assert_eq!(
+            identities.get(&ModuleExportKey::wildcard("namespace")),
+            Some(&ExportResolution::Unknown)
+        );
+        assert_eq!(
+            identities.get(&ModuleExportKey::new("namespace", "request")),
+            None
+        );
+    }
 }

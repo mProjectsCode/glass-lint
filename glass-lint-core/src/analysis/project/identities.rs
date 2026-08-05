@@ -177,7 +177,18 @@ impl ProjectSemanticModel {
         visiting: &mut BTreeSet<ModuleId>,
         identities: &mut ModuleIdentityMap,
     ) {
-        if visiting.len() >= MAX_EXPORT_DEPTH || !visiting.insert(module) {
+        if visiting.len() >= MAX_EXPORT_DEPTH {
+            identities.insert(
+                ModuleExportKey::wildcard(prefix.clone()),
+                ExportResolution::Unknown,
+            );
+            return;
+        }
+        if !visiting.insert(module) {
+            identities.insert(
+                ModuleExportKey::wildcard(prefix.clone()),
+                ExportResolution::Unknown,
+            );
             return;
         }
 

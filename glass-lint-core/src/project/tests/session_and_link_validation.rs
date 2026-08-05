@@ -1,4 +1,4 @@
-use crate::project::tests::*;
+use crate::{api::rule::EventQuery, project::tests::*};
 
 #[test]
 fn project_keeps_sorted_parse_failures_separate_from_valid_modules() {
@@ -171,6 +171,53 @@ fn linker_reports_ambiguous_multiple_star_exports() {
             .flat_map(crate::project::FileReport::diagnostics)
             .any(|diagnostic| diagnostic.code() == "ambiguous_star_export")
     );
+}
+
+#[test]
+fn deep_namespace_export_chain_masks_unresolved_members() {
+    let rule = Rule::builder("namespace.request")
+        .description("Uses a deeply re-exported request")
+        .category(Category::new("network").unwrap())
+        .severity(Severity::Warning)
+        .confidence(Confidence::High)
+        .query(EventQuery::member_call_module("./mod_0.js", "request"))
+        .build()
+        .unwrap();
+    let linter = crate::Linter::new(crate::LinterConfig::new(
+        vec![crate::RuleCatalog::new("test", vec![rule]).unwrap()],
+        crate::Environment::default(),
+    ))
+    .unwrap();
+    let mut project = ProjectFixture::new(&linter);
+    let depth = 1_024;
+
+    project.add("mod_1024.js", "export const request = 1;");
+    for index in (0..depth).rev() {
+        let path = format!("mod_{index}.js");
+        let next = format!("mod_{}.js", index + 1);
+        project.add_resolved(
+            &path,
+            &format!("export * from './{next}';"),
+            [ResolverOutcome::Internal {
+                path: project_path(&next),
+            }],
+        );
+    }
+    project.add_resolved(
+        "main.js",
+        "import * as api from './mod_0.js'; api.request();",
+        [ResolverOutcome::Internal {
+            path: project_path("mod_0.js"),
+        }],
+    );
+
+    let report = project.finish();
+    let main = report
+        .files()
+        .iter()
+        .find(|file| file.path().as_str() == "main.js")
+        .expect("main report");
+    assert!(main.findings().is_empty());
 }
 
 #[test]

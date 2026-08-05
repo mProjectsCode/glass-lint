@@ -56,7 +56,7 @@ Verified with `cargo test -p glass-lint-core --lib analysis::tests` and
 
 ### Export-depth exhaustion
 
-#### [ ] READ-067 — Represent namespace export-depth exhaustion as unknown
+#### [x] READ-067 — Represent namespace export-depth exhaustion as unknown
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -84,7 +84,15 @@ and the rule that unknown or exhausted qualified identity cannot establish a
 strict witness; add a deep-cycle regression that verifies no definite match
 survives the cutoff.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Marked namespace prefixes with an `Unknown` wildcard when
+star-export traversal reaches the depth bound or revisits a module. The
+existing overlay then masks unresolved member occurrences while exact direct
+exports remain authoritative. Added overlay-mask and 1,024-hop deep-chain
+regressions. Verified with `cargo test -p glass-lint-core --lib
+analysis::matching::tests::unknown_namespace_wildcard_masks_base_module_occurrences`,
+`cargo test -p glass-lint-core --lib
+project::tests::session_and_link_validation::deep_namespace_export_chain_masks_unresolved_members`,
+and `make fmt && make ci`.
 
 ### Qualified local identities
 

@@ -429,6 +429,33 @@ mod tests {
     }
 
     #[test]
+    fn unknown_namespace_wildcard_masks_base_module_occurrences() {
+        let key = ModuleExportKey::new("namespace", "request");
+        let mut indexes = OccurrenceIndexes::default();
+        indexes.call_indexes.record_module_call(
+            key.clone(),
+            Occurrence::new(FactId::from_test(1), span(5, 12)),
+        );
+        indexes.normalize_occurrences();
+
+        let mut identities = ModuleIdentityMap::new();
+        identities.insert(
+            ModuleExportKey::wildcard("namespace"),
+            ExportResolution::Unknown,
+        );
+        let (view, _) = LinkedOccurrenceView::build(&indexes, &identities);
+
+        assert!(
+            view.resolve_module(
+                ModuleOverlayKind::Call,
+                indexes.call_indexes.module_calls(),
+                &key,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
     fn build_from_stream_populates_all_occurrence_indexes() {
         let src = r#"
             import { foo } from 'mod';
