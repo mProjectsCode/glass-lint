@@ -111,7 +111,7 @@ pub(super) fn collect_with_limits(
     module_id: ModuleId,
     trace_arena: &mut TraceArena,
 ) -> (RuleEvidenceTable, LocalFlowProjectionOutcome) {
-    let mut evidence = RuleEvidenceTable::new(rule_count);
+    let mut evidence = RuleEvidenceTable::new_for_test(rule_count);
     let outcome = collect_into(
         stream,
         effects,

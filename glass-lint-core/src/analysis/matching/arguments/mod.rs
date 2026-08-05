@@ -148,7 +148,9 @@ fn push_owned_rule_evidence(
     symbol: String,
     occurrences: impl IntoIterator<Item = Occurrence>,
 ) {
-    evidence.record_grouped(rule, kind, symbol, owned_occurrences(occurrences));
+    evidence
+        .record_grouped(rule, kind, symbol, owned_occurrences(occurrences))
+        .expect("constrained evidence uses its catalog capacity");
 }
 
 pub(in crate::analysis) fn compute_constrained_evidence<'artifact>(
@@ -421,7 +423,7 @@ mod tests {
             "client.open",
         );
         let index = build_index(&stream);
-        let mut evidence = RuleEvidenceTable::new(1);
+        let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &call), (0, &member)],
@@ -454,7 +456,7 @@ mod tests {
 
         let stream = stream("fetch('/api');\nfetch('/api');", &Environment::default());
         let index = build_index(&stream);
-        let mut evidence = RuleEvidenceTable::new(1);
+        let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &roots[0])],
@@ -510,7 +512,7 @@ mod tests {
             },
         };
         let index = build_index(&stream);
-        let mut evidence = RuleEvidenceTable::new(1);
+        let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &patched)],
@@ -535,7 +537,7 @@ mod tests {
             "fetch",
         );
         let index = build_index(&stream);
-        let mut evidence = RuleEvidenceTable::new(1);
+        let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &root)],
@@ -574,7 +576,7 @@ mod tests {
             },
         };
         let index = build_index(&stream);
-        let mut evidence = RuleEvidenceTable::new(1);
+        let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &root)],
@@ -631,8 +633,8 @@ mod tests {
             },
         };
         let index = build_index(&stream);
-        let mut ev_a = RuleEvidenceTable::new(1);
-        let mut ev_b = RuleEvidenceTable::new(1);
+        let mut ev_a = RuleEvidenceTable::new_for_test(1);
+        let mut ev_b = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &root_a)],
@@ -670,7 +672,7 @@ mod tests {
             },
         };
         let index = build_index(&stream);
-        let mut evidence = RuleEvidenceTable::new(1);
+        let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &root)],
@@ -701,7 +703,7 @@ mod tests {
             },
         };
         let index = build_index(&stream);
-        let mut evidence = RuleEvidenceTable::new(1);
+        let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &root)],
@@ -735,7 +737,7 @@ mod tests {
             },
         };
         let index = build_index(&stream);
-        let mut evidence = RuleEvidenceTable::new(1);
+        let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &root)],
@@ -772,7 +774,7 @@ mod tests {
             },
         };
         let index = build_index(&stream);
-        let mut evidence = RuleEvidenceTable::new(1);
+        let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &root)],
@@ -807,7 +809,7 @@ mod tests {
             },
         };
         let index = build_index(&stream);
-        let mut evidence = RuleEvidenceTable::new(1);
+        let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &root)],
@@ -843,7 +845,7 @@ mod tests {
             },
         };
         let index = build_index(&stream);
-        let mut evidence = RuleEvidenceTable::new(1);
+        let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &root)],
@@ -897,7 +899,7 @@ mod tests {
         roots: &[(usize, &PhysicalRoot)],
         overlay: Option<&LinkedOccurrenceView<'_>>,
     ) -> EvaluationOperations {
-        let mut evidence = RuleEvidenceTable::new(roots.len());
+        let mut evidence = RuleEvidenceTable::new_for_test(roots.len());
         let mut ops = EvaluationOperations::default();
         compute_constrained_inner(
             MatcherEvaluationContext {

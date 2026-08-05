@@ -86,14 +86,18 @@ struct RuleEvidence {
 }
 
 pub(super) struct ModuleEvidence {
+    capacity: crate::api::classification::RuleEvidenceCapacity,
     rules: Vec<RuleEvidence>,
     pub(super) trace_heads: usize,
 }
 
 impl ModuleEvidence {
-    pub(super) fn new(rule_count: usize) -> Self {
+    pub(super) fn new(capacity: crate::api::classification::RuleEvidenceCapacity) -> Self {
         Self {
-            rules: (0..rule_count).map(|_| RuleEvidence::default()).collect(),
+            capacity,
+            rules: (0..capacity.len())
+                .map(|_| RuleEvidence::default())
+                .collect(),
             trace_heads: 0,
         }
     }
@@ -175,9 +179,11 @@ impl ModuleEvidence {
     }
 
     pub(super) fn into_evidence(self) -> RuleEvidenceTable {
-        let mut evidence = RuleEvidenceTable::new(self.rules.len());
+        let mut evidence = RuleEvidenceTable::new(self.capacity);
         for (rule_index, rule) in self.rules.into_iter().enumerate() {
-            evidence.replace(RuleIndex::new(rule_index), rule.items);
+            evidence
+                .replace(RuleIndex::new(rule_index), rule.items)
+                .expect("module evidence uses its catalog capacity");
         }
         evidence
     }

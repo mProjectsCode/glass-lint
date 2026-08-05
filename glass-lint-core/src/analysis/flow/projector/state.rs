@@ -562,7 +562,9 @@ impl<'a> FlowEvidence<'a> {
     }
 
     pub(super) fn record(&mut self, rule_index: RuleIndex, evidence: ClassificationEvidence) {
-        self.items.record(rule_index, evidence);
+        self.items
+            .record(rule_index, evidence)
+            .expect("flow evidence uses its catalog capacity");
     }
 
     #[cfg(test)]
@@ -572,7 +574,9 @@ impl<'a> FlowEvidence<'a> {
 
     pub(super) fn mark_truncated(&mut self) {
         for key in &self.truncated {
-            self.items.mark_event_truncated(key.rule, key.event.raw());
+            self.items
+                .mark_event_truncated(key.rule, key.event.raw())
+                .expect("flow evidence uses its catalog capacity");
         }
     }
 
@@ -970,7 +974,7 @@ mod tests {
 
     #[test]
     fn evidence_limit_rejects_repeated_emissions_for_existing_key() {
-        let mut items = RuleEvidenceTable::new(1);
+        let mut items = RuleEvidenceTable::new_for_test(1);
         let mut evidence = FlowEvidence::new(&mut items);
         let key = ReportEvidenceKey::new(
             RuleIndex::new(0),
@@ -987,7 +991,7 @@ mod tests {
 
     #[test]
     fn evidence_limit_rejects_new_keys_after_capacity_is_full() {
-        let mut items = RuleEvidenceTable::new(1);
+        let mut items = RuleEvidenceTable::new_for_test(1);
         let mut evidence = FlowEvidence::new(&mut items);
         let first = ReportEvidenceKey::new(
             RuleIndex::new(0),

@@ -22,7 +22,7 @@ made by this audit.
 
 ### Classification evidence ownership
 
-#### [ ] READ-085 — Bind evidence tables to a validated rule selection
+#### [x] READ-085 — Bind evidence tables to a validated rule selection
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -47,7 +47,17 @@ deterministic rule order, and the current local/cross evidence merge behavior;
 remove the silent out-of-range paths and debug-only length check once the table
 owns its capacity relationship.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a catalog-derived `RuleEvidenceCapacity` carried from
+`CompiledRuleSelection` into local and cross-flow evidence tables. Table
+mutation and merge operations now return typed `RuleEvidenceError` values for
+out-of-range indices and capacity mismatches; trusted internal adapters handle
+those results explicitly, while raw-count construction is test-only. Added
+direct contract tests for both rejection cases.
+
+**Verification:** Focused matching/projector suites pass (19 and 52 tests),
+the classification capacity tests pass (2 tests), and `make fmt && make ci`
+passes, including the full workspace, end-to-end, rule, doctest, and example
+checks.
 
 ### Normalized argument constraints
 

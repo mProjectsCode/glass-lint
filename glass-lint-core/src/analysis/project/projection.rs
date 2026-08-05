@@ -23,8 +23,8 @@ use crate::{
     },
     api::{
         classification::{
-            ClassificationEvidence, ClassificationResult, MatchedCapability, RuleEvidenceTable,
-            RuleIndex,
+            ClassificationEvidence, ClassificationResult, MatchedCapability, RuleEvidenceCapacity,
+            RuleEvidenceTable, RuleIndex,
         },
         compiler::{
             CompiledMatcherPlan, CompiledRuleRecord, CompiledRuleSelection,
@@ -87,7 +87,7 @@ pub fn assemble_classification_results(
 pub(in crate::analysis) struct ProjectionPlan<'a> {
     constrained_roots: Vec<PlannedConstrainedRoot<'a>>,
     flow_matchers: Vec<PlannedFlow<'a>>,
-    rule_count: usize,
+    rule_capacity: RuleEvidenceCapacity,
     needs_module_identities: bool,
     needs_call_result_identities: bool,
     needs_overlay: bool,
@@ -194,7 +194,7 @@ impl<'a> ProjectionPlan<'a> {
         Self {
             constrained_roots,
             flow_matchers,
-            rule_count: selection.rule_capacity(),
+            rule_capacity: selection.evidence_capacity(),
             needs_module_identities: needs_overall_module_ids,
             needs_call_result_identities: needs_overall_result_ids,
             needs_overlay: needs_overall_overlay,
@@ -227,7 +227,7 @@ fn project_facts(inputs: ProjectionInputs<'_>) -> (RuleEvidenceTable, LocalFlowP
         module_id,
         trace_arena,
     } = inputs;
-    let mut projected_evidence = RuleEvidenceTable::new(plan.rule_count);
+    let mut projected_evidence = RuleEvidenceTable::new(plan.rule_capacity);
     if !facts.stream().is_valid() || facts.values().get(ValueId::UNKNOWN).is_none() {
         return (projected_evidence, LocalFlowProjectionOutcome::default());
     }
@@ -462,7 +462,10 @@ impl ProjectSemanticModel {
         let mut projections = projections;
         for (module, evidence) in cross {
             if let Some(projection) = projections.get_mut(&module) {
-                projection.projected.merge(evidence);
+                projection
+                    .projected
+                    .merge(evidence)
+                    .expect("projected evidence uses one catalog capacity");
             }
         }
 

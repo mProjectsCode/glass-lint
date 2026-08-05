@@ -6,7 +6,7 @@ pub(crate) use super::{
 use crate::{
     Severity,
     api::{
-        classification::RuleIndex,
+        classification::{RuleEvidenceCapacity, RuleIndex},
         rule::{Confidence, MatcherBuildError},
     },
 };
@@ -72,8 +72,8 @@ impl<'a> CompiledRuleSelection<'a> {
         self.rules.get(index.get()).map(|rule| &rule.matcher)
     }
 
-    pub fn rule_capacity(&self) -> usize {
-        self.rules.len()
+    pub(crate) fn evidence_capacity(&self) -> RuleEvidenceCapacity {
+        RuleEvidenceCapacity::from_catalog_len(self.rules.len())
     }
 }
 

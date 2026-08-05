@@ -94,7 +94,7 @@ fn empty_flow_catalog_skips_projection_work() {
     let stream = crate::analysis::facts::build_test_facts("fetch('/api');", "no-flow.js");
     let effects = FunctionEffects::collect(&stream, usize::MAX);
     let mut arena = TraceArena::new(4096);
-    let mut evidence = RuleEvidenceTable::new(1);
+    let mut evidence = RuleEvidenceTable::new_for_test(1);
 
     let outcome = collect_into(
         &stream,

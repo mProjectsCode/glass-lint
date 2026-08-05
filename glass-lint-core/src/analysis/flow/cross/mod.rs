@@ -224,10 +224,10 @@ pub(in crate::analysis) fn collect(
     CrossProjectionOutcome,
 ) {
     let flows = collect_flows(matchers);
-    let rule_count = matchers.rule_capacity();
+    let capacity = matchers.evidence_capacity();
     let evidence = project
         .modules()
-        .map(|module| (module.id(), ModuleEvidence::new(rule_count)))
+        .map(|module| (module.id(), ModuleEvidence::new(capacity)))
         .collect::<HashMap<_, _>>();
     if flows.is_empty() {
         let empty = evidence

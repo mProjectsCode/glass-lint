@@ -23,6 +23,25 @@ impl RuleIndex {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RuleEvidenceCapacity(usize);
+
+impl RuleEvidenceCapacity {
+    pub(crate) const fn from_catalog_len(rule_count: usize) -> Self {
+        Self(rule_count)
+    }
+
+    pub(crate) const fn len(self) -> usize {
+        self.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuleEvidenceError {
+    RuleOutOfRange { rule: RuleIndex, capacity: usize },
+    CapacityMismatch { expected: usize, actual: usize },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// One classified capability emitted by a compiled matcher.
 pub struct MatchedCapability {
@@ -71,32 +90,49 @@ pub struct RuleEvidenceTable {
 }
 
 impl RuleEvidenceTable {
-    pub(crate) fn new(rule_count: usize) -> Self {
+    pub(crate) fn new(capacity: RuleEvidenceCapacity) -> Self {
         Self {
-            values: (0..rule_count).map(|_| Vec::new()).collect(),
+            values: (0..capacity.len()).map(|_| Vec::new()).collect(),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_for_test(rule_count: usize) -> Self {
+        Self::new(RuleEvidenceCapacity::from_catalog_len(rule_count))
     }
 
     pub(crate) fn for_rule(&self, rule: RuleIndex) -> Option<&[ClassificationEvidence]> {
         self.values.get(rule.get()).map(Vec::as_slice)
     }
 
-    pub(crate) fn record(&mut self, rule: RuleIndex, evidence: ClassificationEvidence) -> bool {
+    pub(crate) fn record(
+        &mut self,
+        rule: RuleIndex,
+        evidence: ClassificationEvidence,
+    ) -> Result<(), RuleEvidenceError> {
         let Some(items) = self.values.get_mut(rule.get()) else {
-            return false;
+            return Err(RuleEvidenceError::RuleOutOfRange {
+                rule,
+                capacity: self.values.len(),
+            });
         };
         items.push(evidence);
-        true
+        Ok(())
     }
 
     pub(crate) fn extend(
         &mut self,
         rule: RuleIndex,
         evidence: impl IntoIterator<Item = ClassificationEvidence>,
-    ) {
-        if let Some(items) = self.values.get_mut(rule.get()) {
-            items.extend(evidence);
-        }
+    ) -> Result<(), RuleEvidenceError> {
+        let Some(items) = self.values.get_mut(rule.get()) else {
+            return Err(RuleEvidenceError::RuleOutOfRange {
+                rule,
+                capacity: self.values.len(),
+            });
+        };
+        items.extend(evidence);
+        Ok(())
     }
 
     pub(crate) fn record_grouped(
@@ -105,10 +141,10 @@ impl RuleEvidenceTable {
         kind: MatchKind,
         symbol: String,
         occurrences: impl IntoIterator<Item = ClassificationEvidenceOccurrence>,
-    ) -> bool {
+    ) -> Result<(), RuleEvidenceError> {
         let occurrences: Vec<_> = occurrences.into_iter().collect();
         if occurrences.is_empty() {
-            return true;
+            return Ok(());
         }
         self.record(
             rule,
@@ -123,9 +159,16 @@ impl RuleEvidenceTable {
         )
     }
 
-    pub(crate) fn mark_event_truncated(&mut self, rule: RuleIndex, event: u32) {
+    pub(crate) fn mark_event_truncated(
+        &mut self,
+        rule: RuleIndex,
+        event: u32,
+    ) -> Result<(), RuleEvidenceError> {
         let Some(items) = self.values.get_mut(rule.get()) else {
-            return;
+            return Err(RuleEvidenceError::RuleOutOfRange {
+                rule,
+                capacity: self.values.len(),
+            });
         };
         for evidence in items {
             if evidence
@@ -136,19 +179,35 @@ impl RuleEvidenceTable {
                 evidence.truncated = true;
             }
         }
+        Ok(())
     }
 
-    pub(crate) fn replace(&mut self, rule: RuleIndex, evidence: Vec<ClassificationEvidence>) {
-        if let Some(items) = self.values.get_mut(rule.get()) {
-            *items = evidence;
+    pub(crate) fn replace(
+        &mut self,
+        rule: RuleIndex,
+        evidence: Vec<ClassificationEvidence>,
+    ) -> Result<(), RuleEvidenceError> {
+        let Some(items) = self.values.get_mut(rule.get()) else {
+            return Err(RuleEvidenceError::RuleOutOfRange {
+                rule,
+                capacity: self.values.len(),
+            });
+        };
+        *items = evidence;
+        Ok(())
+    }
+
+    pub(crate) fn merge(&mut self, other: Self) -> Result<(), RuleEvidenceError> {
+        if self.values.len() != other.values.len() {
+            return Err(RuleEvidenceError::CapacityMismatch {
+                expected: self.values.len(),
+                actual: other.values.len(),
+            });
         }
-    }
-
-    pub(crate) fn merge(&mut self, other: Self) {
-        debug_assert_eq!(self.values.len(), other.values.len());
         for (rule, items) in other.values.into_iter().enumerate() {
-            self.extend(RuleIndex::new(rule), items);
+            self.extend(RuleIndex::new(rule), items)?;
         }
+        Ok(())
     }
 }
 
@@ -170,6 +229,58 @@ mod test_indexing {
         fn index_mut(&mut self, index: usize) -> &mut Self::Output {
             &mut self.values[index]
         }
+    }
+}
+
+#[cfg(test)]
+mod test_evidence_capacity {
+    use glass_lint_datastructures::ByteRange;
+
+    use super::{
+        ClassificationEvidence, ClassificationEvidenceOccurrence, MatchCertainty, MatchKind,
+        RuleEvidenceError, RuleEvidenceTable, RuleIndex,
+    };
+
+    fn evidence() -> ClassificationEvidence {
+        ClassificationEvidence {
+            kind: MatchKind::Call,
+            symbol: "fetch".to_owned(),
+            count: 1,
+            truncated: false,
+            certainty: MatchCertainty::Definite,
+            occurrences: vec![ClassificationEvidenceOccurrence {
+                span: ByteRange::empty(),
+                fact: None,
+                trace: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn rejects_rule_indices_outside_catalog_capacity() {
+        let mut table = RuleEvidenceTable::new_for_test(1);
+
+        assert_eq!(
+            table.record(RuleIndex::new(1), evidence()),
+            Err(RuleEvidenceError::RuleOutOfRange {
+                rule: RuleIndex::new(1),
+                capacity: 1,
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_merging_tables_with_different_capacities() {
+        let mut table = RuleEvidenceTable::new_for_test(1);
+        let other = RuleEvidenceTable::new_for_test(2);
+
+        assert_eq!(
+            table.merge(other),
+            Err(RuleEvidenceError::CapacityMismatch {
+                expected: 1,
+                actual: 2,
+            })
+        );
     }
 }
 
