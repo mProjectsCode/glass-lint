@@ -87,6 +87,25 @@ fn callable_transforms_use_effective_target_arguments() {
 }
 
 #[test]
+fn member_constraints_use_effective_target_arguments() {
+    let rule = [rule("test.member-callable")
+        .query(
+            EventQuery::member_call_rooted("client.request")
+                .unwrap()
+                .with_arg_static_strings(0, ["/call", "/apply"])
+                .unwrap()
+                .into_query(),
+        )
+        .build()
+        .unwrap()];
+    let result = classify(
+        "const args = ['/apply']; client.request.call(client, '/call'); client.request.apply(client, args); client.request.call(client, dynamic);",
+        &rule,
+    );
+    assert_capability_count(&result, "test.member-callable", 2);
+}
+
+#[test]
 fn global_call_matchers_cover_proven_global_object_callable_forms() {
     let rules = [rule("test.global-callable")
         .query(

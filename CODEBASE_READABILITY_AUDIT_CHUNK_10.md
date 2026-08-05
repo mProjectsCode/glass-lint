@@ -22,7 +22,7 @@ made by this audit.
 
 ### Constrained argument evaluation
 
-#### [ ] READ-051 — Apply wrapper-effective arguments to member constraints
+#### [x] READ-051 — Apply wrapper-effective arguments to member constraints
 
 - **Severity:** High
 - **Fix Complexity:** Low
@@ -46,7 +46,12 @@ raw slice choice. Preserve member identity matching, receiver removal for
 `.call()`, array expansion for `.apply()`, missing/dynamic argument
 fail-closed behavior, and deterministic operation accounting.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Routed member-call argument constraints through the same
+effective `.call()`/`.apply()` argument view used by ordinary calls. Added a
+regression covering receiver removal, array expansion, and dynamic rejection
+for member-call wrappers. Verified with
+`cargo test -p glass-lint-core --test integration matching::declarative::arguments`
+and `make fmt && make ci`.
 
 ### Matcher artifact and overlay identity
 

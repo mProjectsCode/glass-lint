@@ -174,7 +174,7 @@ impl<'a> MatcherEvaluator<'a> {
                 ) {
                     return false;
                 }
-                self.constraints_match(constraints, args, ops)
+                self.check_constrained_args(constraints, args, unwrap.as_deref(), ops)
             }
             _ => false,
         }
