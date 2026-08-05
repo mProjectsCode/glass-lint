@@ -250,7 +250,7 @@ without owning either lifecycle’s implementation.
 **Verification:** `cargo test -p glass-lint-core analysis::project --lib`
 (8 passed); `make fmt && make ci` (passed).
 
-#### [ ] READ-027 — Share identifier/member resolution post-processing
+#### [x] READ-027 — Share identifier/member resolution post-processing
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -275,7 +275,15 @@ migration. Preserve position-sensitive cache keys, cycle-to-unknown behavior,
 binding identity, global and module provenance, member rooted/syntactic paths,
 value-arena exhaustion, and the narrow ID-query fast paths.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a private `Resolver::resolve_seed` lifecycle helper
+that owns cache lookup, recursion guards, budget-to-unknown conversion, global
+canonicalization, namespace interning, result construction, and cache
+insertion. Identifier and member resolution now provide only their
+seed-specific value and provenance data; member returned-member and syntactic
+metadata remain explicit inputs to the shared path.
+
+**Verification:** `cargo test -p glass-lint-core analysis::resolution --lib`
+(12 passed); `make fmt && make ci` (passed).
 
 ## Systemic Themes
 

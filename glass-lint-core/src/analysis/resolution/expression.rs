@@ -8,10 +8,20 @@ use crate::analysis::{
         Callee, ConstValue, Expr, Ident, Lit, MemberExpr, ResolutionKey, ResolvedValue, Resolver,
         SymbolCallProvenance, SymbolMemberProvenance, Value, ValueId, syntax_constant,
     },
-    scope::ScopeId,
+    scope::{BoundArgument, ScopeId},
     syntax::{BudgetComponent, UnknownReason},
     value::{FunctionId, MAX_VALUES},
 };
+
+struct ResolutionSeed {
+    id: ValueId,
+    rooted_chain: Option<SymbolPath>,
+    call: SymbolCallProvenance,
+    module_member: Option<SymbolMemberProvenance>,
+    returned_member: Option<(SymbolPath, SymbolPath)>,
+    bound_arguments: Option<Vec<Option<BoundArgument>>>,
+    syntactic_chain: Option<SymbolPath>,
+}
 
 impl Resolver<'_> {
     /// Narrow query: return only the interned value ID for an identifier,
@@ -56,58 +66,25 @@ impl Resolver<'_> {
             range: ident.span.into(),
             symbol: ident.sym.to_smolstr(),
         };
-        if let Some(value) = self.cache.resolved_values.get(&key) {
-            return value.clone();
-        }
-        if !self.cache.resolving.insert(key.clone()) {
-            return Self::archive_unknown_with_reason(UnknownReason::Cycle);
-        }
-        let seed = self.scopes.ident_value_seed(ident);
-        let rooted_chain = seed.rooted_chain;
-        let id = match seed.constant {
-            ConstValue::Unknown => {
-                self.intern_call_value(&seed.call, rooted_chain.as_ref(), seed.binding)
+        self.resolve_seed(&key, ident.span, |resolver| {
+            let seed = resolver.scopes.ident_value_seed(ident);
+            let rooted_chain = seed.rooted_chain;
+            let id = match seed.constant {
+                ConstValue::Unknown => {
+                    resolver.intern_call_value(&seed.call, rooted_chain.as_ref(), seed.binding)
+                }
+                value => resolver.intern_const_value(value, seed.binding),
+            };
+            ResolutionSeed {
+                id,
+                rooted_chain,
+                call: seed.call,
+                module_member: None,
+                returned_member: None,
+                bound_arguments: seed.bound_arguments,
+                syntactic_chain: None,
             }
-            value => self.intern_const_value(value, seed.binding),
-        };
-        let call = if id == ValueId::UNKNOWN
-            && !matches!(seed.call, SymbolCallProvenance::Unknown(_))
-            && self.value_arena_exhausted()
-        {
-            SymbolCallProvenance::Unknown(UnknownReason::BudgetExhausted {
-                component: BudgetComponent::Values,
-                limit: MAX_VALUES,
-                observed: None,
-            })
-        } else {
-            self.call_provenance_at(id, rooted_chain.as_ref(), ident.span)
-        };
-        let id = match &call {
-            SymbolCallProvenance::Global { name } => {
-                self.values.intern(Value::Global(name.clone()))
-            }
-            _ => id,
-        };
-        let module_member = match &call {
-            SymbolCallProvenance::ModuleExport { module, export } => {
-                Some(SymbolMemberProvenance::ModuleNamespace {
-                    module: module.clone(),
-                    member: export.clone(),
-                })
-            }
-            _ => None,
-        };
-        let resolved = ResolvedValue {
-            id,
-            rooted_chain,
-            call,
-            module_member,
-            returned_member: None,
-            bound_arguments: seed.bound_arguments,
-            syntactic_chain: None,
-        };
-        self.cache_resolution(&key, resolved.clone());
-        resolved
+        })
     }
 
     pub(in crate::analysis) fn scope_at(&self, span: swc_common::Span) -> ScopeId {
@@ -150,64 +127,41 @@ impl Resolver<'_> {
         let key = ResolutionKey::Member {
             range: member.span.into(),
         };
-        if let Some(value) = self.cache.resolved_values.get(&key) {
-            return value.clone();
-        }
-        if !self.cache.resolving.insert(key.clone()) {
-            return Self::archive_unknown_with_reason(UnknownReason::Cycle);
-        }
-        let seed = self.scopes.member_value_seed(member);
-        let syntactic = seed.syntactic_chain.clone();
-        // Prefer the alias-expanded path. Falling back to a rooted member keeps
-        // direct global/`this` access available when no local alias is present.
-        let rooted_chain = seed
-            .rooted_chain
-            .and_then(|path| self.scopes.symbol_path(&path));
-        let module_member = seed.module_member;
-        let scoped_call = match &module_member {
-            Some(SymbolMemberProvenance::ModuleNamespace { module, member }) => {
-                SymbolCallProvenance::ModuleExport {
-                    module: module.clone(),
-                    export: member.clone(),
+        self.resolve_seed(&key, member.span, |resolver| {
+            let seed = resolver.scopes.member_value_seed(member);
+            let syntactic_chain = seed.syntactic_chain.clone();
+            // Prefer the alias-expanded path. Falling back to a rooted member keeps
+            // direct global/`this` access available when no local alias is present.
+            let rooted_chain = seed
+                .rooted_chain
+                .and_then(|path| resolver.scopes.symbol_path(&path));
+            let module_member = seed.module_member;
+            let scoped_call = match &module_member {
+                Some(SymbolMemberProvenance::ModuleNamespace { module, member }) => {
+                    SymbolCallProvenance::ModuleExport {
+                        module: module.clone(),
+                        export: member.clone(),
+                    }
                 }
-            }
-            None => SymbolCallProvenance::Local,
-        };
-        let id = self.intern_call_value(&scoped_call, rooted_chain.as_ref(), seed.binding);
-        let call = if id == ValueId::UNKNOWN && self.value_arena_exhausted() {
-            SymbolCallProvenance::Unknown(UnknownReason::BudgetExhausted {
-                component: BudgetComponent::Values,
-                limit: MAX_VALUES,
-                observed: None,
-            })
-        } else {
-            self.call_provenance_at(id, rooted_chain.as_ref(), member.span)
-        };
-        let id = match &call {
-            SymbolCallProvenance::Global { name } => {
-                self.values.intern(Value::Global(name.clone()))
-            }
-            _ => id,
-        };
-        if let Some(SymbolMemberProvenance::ModuleNamespace { module, .. }) = &module_member {
-            self.values.intern(Value::ModuleNamespace(module.clone()));
-        }
-        let resolved = ResolvedValue {
-            id,
-            rooted_chain,
-            call,
-            module_member,
-            returned_member: seed.returned_member.and_then(|(source, member)| {
+                None => SymbolCallProvenance::Local,
+            };
+            let id = resolver.intern_call_value(&scoped_call, rooted_chain.as_ref(), seed.binding);
+            let returned_member = seed.returned_member.and_then(|(source, member)| {
                 Some((
-                    self.scopes.symbol_path(&source)?,
-                    self.scopes.symbol_path(&member)?,
+                    resolver.scopes.symbol_path(&source)?,
+                    resolver.scopes.symbol_path(&member)?,
                 ))
-            }),
-            bound_arguments: None,
-            syntactic_chain: syntactic,
-        };
-        self.cache_resolution(&key, resolved.clone());
-        resolved
+            });
+            ResolutionSeed {
+                id,
+                rooted_chain,
+                call: scoped_call,
+                module_member,
+                returned_member,
+                bound_arguments: None,
+                syntactic_chain,
+            }
+        })
     }
 
     pub(in crate::analysis) fn resolve_expr(&mut self, expr: &Expr) -> ResolvedValue {
@@ -257,6 +211,65 @@ impl Resolver<'_> {
             Expr::New(new_expr) => self.fresh_object_value_at(new_expr.span),
             _ => Self::unknown(),
         }
+    }
+
+    fn resolve_seed<F>(
+        &mut self,
+        key: &ResolutionKey,
+        span: swc_common::Span,
+        build: F,
+    ) -> ResolvedValue
+    where
+        F: FnOnce(&mut Self) -> ResolutionSeed,
+    {
+        if let Some(value) = self.cache.resolved_values.get(key) {
+            return value.clone();
+        }
+        if !self.cache.resolving.insert(key.clone()) {
+            return Self::archive_unknown_with_reason(UnknownReason::Cycle);
+        }
+        let seed = build(self);
+        let call = if seed.id == ValueId::UNKNOWN
+            && !matches!(seed.call, SymbolCallProvenance::Unknown(_))
+            && self.value_arena_exhausted()
+        {
+            SymbolCallProvenance::Unknown(UnknownReason::BudgetExhausted {
+                component: BudgetComponent::Values,
+                limit: MAX_VALUES,
+                observed: None,
+            })
+        } else {
+            self.call_provenance_at(seed.id, seed.rooted_chain.as_ref(), span)
+        };
+        let id = match &call {
+            SymbolCallProvenance::Global { name } => {
+                self.values.intern(Value::Global(name.clone()))
+            }
+            _ => seed.id,
+        };
+        let module_member = seed.module_member.or_else(|| match &call {
+            SymbolCallProvenance::ModuleExport { module, export } => {
+                Some(SymbolMemberProvenance::ModuleNamespace {
+                    module: module.clone(),
+                    member: export.clone(),
+                })
+            }
+            _ => None,
+        });
+        if let Some(SymbolMemberProvenance::ModuleNamespace { module, .. }) = &module_member {
+            self.values.intern(Value::ModuleNamespace(module.clone()));
+        }
+        let resolved = ResolvedValue {
+            id,
+            rooted_chain: seed.rooted_chain,
+            call,
+            module_member,
+            returned_member: seed.returned_member,
+            bound_arguments: seed.bound_arguments,
+            syntactic_chain: seed.syntactic_chain,
+        };
+        self.cache_resolution(key, resolved.clone());
+        resolved
     }
 
     fn cache_resolution(&mut self, key: &ResolutionKey, value: ResolvedValue) {
