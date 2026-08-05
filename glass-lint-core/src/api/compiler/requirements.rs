@@ -58,6 +58,26 @@ pub(crate) enum ProjectRequirement {
     CallResultIdentities,
 }
 
+impl ProjectRequirement {
+    fn needs_module_identities(&self) -> bool {
+        matches!(
+            self,
+            Self::ExactModuleExports
+                | Self::PackageModuleExports
+                | Self::ExactModuleNamespaces
+                | Self::PackageModuleNamespaces
+        )
+    }
+
+    fn needs_call_result_identities(&self) -> bool {
+        matches!(self, Self::CallResultIdentities)
+    }
+
+    fn needs_project_overlay(&self) -> bool {
+        self.needs_module_identities() || self.needs_call_result_identities()
+    }
+}
+
 /// Requirements computed during normalization for physical planning.
 ///
 /// Each capability carries the exact set of work needed by the normalized
@@ -146,21 +166,16 @@ impl PlanRequirements {
     /// Whether any project-level identity work (module identities, overlays)
     /// is needed.
     pub(crate) fn needs_module_identities(&self) -> bool {
-        self.project.iter().any(|requirement| {
-            matches!(
-                requirement,
-                ProjectRequirement::ExactModuleExports
-                    | ProjectRequirement::PackageModuleExports
-                    | ProjectRequirement::ExactModuleNamespaces
-                    | ProjectRequirement::PackageModuleNamespaces
-            )
-        })
+        self.project
+            .iter()
+            .any(ProjectRequirement::needs_module_identities)
     }
 
     /// Whether call-result identity resolution is needed.
     pub(crate) fn needs_call_result_identities(&self) -> bool {
         self.project
-            .contains(&ProjectRequirement::CallResultIdentities)
+            .iter()
+            .any(ProjectRequirement::needs_call_result_identities)
             || self
                 .value_resolution
                 .contains(&ValueResolutionRequirement::CallResultIdentities)
@@ -168,16 +183,9 @@ impl PlanRequirements {
 
     /// Whether a project identity overlay is needed for any matched plan.
     pub(crate) fn needs_project_overlay(&self) -> bool {
-        self.project.iter().any(|requirement| {
-            matches!(
-                requirement,
-                ProjectRequirement::ExactModuleExports
-                    | ProjectRequirement::PackageModuleExports
-                    | ProjectRequirement::ExactModuleNamespaces
-                    | ProjectRequirement::PackageModuleNamespaces
-                    | ProjectRequirement::CallResultIdentities
-            )
-        })
+        self.project
+            .iter()
+            .any(ProjectRequirement::needs_project_overlay)
     }
 
     pub(crate) fn merge_from(&mut self, other: &Self) {

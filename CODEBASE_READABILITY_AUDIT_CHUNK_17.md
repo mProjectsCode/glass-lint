@@ -88,7 +88,7 @@ each retained group is non-empty.
 
 ### Plan capability requirements
 
-#### [ ] READ-087 — Centralize project-requirement capability classification
+#### [x] READ-087 — Centralize project-requirement capability classification
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -112,7 +112,14 @@ between module identities, call-result identities, and the broader overlay
 need; remove the repeated variant lists after the capability taxonomy has one
 authoritative owner.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added capability predicates to `ProjectRequirement` for
+module identities, call-result identities, and project overlays. The
+`PlanRequirements` queries now delegate to those predicates while preserving
+the separate value-resolution call-result requirement.
+
+**Verification:** `cargo test -p glass-lint-core
+api::compiler::tests::normalize::algebra --lib` (23 passed) and
+`make fmt && make ci` (passed).
 
 ### Lifecycle physical lowering
 
