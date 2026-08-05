@@ -23,7 +23,7 @@ made by this audit.
 
 ### Query validation and normalization
 
-#### [ ] READ-073 — Centralize identity/event dimension compatibility
+#### [x] READ-073 — Centralize identity/event dimension compatibility
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -48,7 +48,15 @@ ordered diagnostic precedence, direct-versus-subject distinctions, and
 conservative rejection of unsupported pairs; delete the second hand-written
 matrix after its callers use the shared result.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Contradiction normalization now consumes the validator’s
+shared `is_valid_identity_event_pair` predicate, including subject identity
+consistency, instead of maintaining a second event/identity matrix. The
+predicate is re-exported through the validation boundary for both callers.
+
+**Verification:** `cargo test -p glass-lint-core
+api::compiler::tests::normalize --lib` (45 passed) and
+`cargo test -p glass-lint-core api::compiler::tests::validate --lib` (47
+passed); `make fmt && make ci` (all passed).
 
 #### [x] READ-074 — Preserve the merged event variable in contradiction diagnostics
 
@@ -225,7 +233,7 @@ ordering/representation assumptions to callers. Small domain owners for
 dimensions, lifecycle endpoints, catalog errors, and selections would make
 the compiler easier to extend without adding another matcher path.
 
-READ-074, READ-075, READ-076, and READ-078 are marked applied above; the
+READ-073 through READ-078 are marked applied above; the
 remaining findings in this chunk are open.
 
 ## Open Questions

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use super::validate::{ContradictionKind, QueryCompileError};
+use super::validate::{ContradictionKind, QueryCompileError, is_valid_identity_event_pair};
 use crate::api::{
     compiler::normalized::NormalizedSubject,
     rule::{
@@ -29,34 +29,7 @@ fn check_dimension_contradictions(
     if !matches!(subject, NormalizedSubject::Direct { .. }) {
         return Ok(());
     }
-    let valid = match event {
-        EventSpec::Call => matches!(
-            identity,
-            IdentitySpec::Global { .. }
-                | IdentitySpec::Heuristic { .. }
-                | IdentitySpec::ModuleExport { .. }
-                | IdentitySpec::PackageModuleExport { .. }
-        ),
-        EventSpec::Construct => matches!(
-            identity,
-            IdentitySpec::Global { .. }
-                | IdentitySpec::Rooted { .. }
-                | IdentitySpec::Heuristic { .. }
-                | IdentitySpec::ModuleExport { .. }
-                | IdentitySpec::PackageModuleExport { .. }
-        ),
-        EventSpec::MemberCall { .. }
-        | EventSpec::MemberRead { .. }
-        | EventSpec::PropertyWrite { .. } => matches!(
-            identity,
-            IdentitySpec::Rooted { .. }
-                | IdentitySpec::Heuristic { .. }
-                | IdentitySpec::ModuleNamespace { .. }
-                | IdentitySpec::PackageModuleNamespace { .. }
-        ),
-        _ => true,
-    };
-    if !valid {
+    if !is_valid_identity_event_pair(identity, event) {
         return Err(QueryCompileError::ContradictoryPredicate {
             variable: var,
             detail: ContradictionKind::EventKind,
