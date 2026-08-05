@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 
 use glass_lint_datastructures::BudgetTracker;
 
-use super::resolver::ExportResolver;
+use super::resolver::{ExportResolver, ProjectLookup};
 use crate::{
     analysis::{
         LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId,
@@ -61,15 +61,41 @@ impl super::resolver::ProjectLookup for ProjectLinker {
     }
 }
 
+struct LinkerLookup<'a> {
+    modules: &'a BTreeMap<ModuleId, ProjectModule>,
+    resolutions: &'a BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
+}
+
+impl ProjectLookup for LinkerLookup<'_> {
+    fn module(&self, module: ModuleId) -> Option<&ProjectModule> {
+        self.modules.get(&module)
+    }
+
+    fn request_target(
+        &self,
+        module: ModuleId,
+        request: module::ModuleRequestId,
+    ) -> Option<&LinkedModuleTarget> {
+        self.modules.get(&module)?;
+        self.resolutions
+            .get(&QualifiedRequestId::new(module, request))
+    }
+}
+
 impl ProjectLinker {
     pub(super) fn with_export_resolver<T>(
         &mut self,
         operation: impl FnOnce(&mut ExportResolver<'_>) -> T,
     ) -> T {
-        let mut cache = self.lookup_session.take_lookup_cache();
-        let result = operation(&mut ExportResolver::new(self, &self.exports, &mut cache));
-        self.lookup_session.restore_lookup_cache(cache);
-        result
+        let lookup = LinkerLookup {
+            modules: &self.modules,
+            resolutions: &self.resolutions,
+        };
+        operation(&mut ExportResolver::new(
+            &lookup,
+            &self.exports,
+            &mut self.lookup_session.lookup_cache,
+        ))
     }
 
     /// Build a linker from pre-validated modules and resolutions.

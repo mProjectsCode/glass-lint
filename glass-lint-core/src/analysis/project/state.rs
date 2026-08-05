@@ -280,14 +280,6 @@ impl LinkingSession {
             lookup_cache: ExportLookupCache::new(capacity),
         }
     }
-
-    pub(in crate::analysis) fn take_lookup_cache(&mut self) -> ExportLookupCache {
-        std::mem::replace(&mut self.lookup_cache, ExportLookupCache::new(0))
-    }
-
-    pub(in crate::analysis) fn restore_lookup_cache(&mut self, cache: ExportLookupCache) {
-        self.lookup_cache = cache;
-    }
 }
 
 #[derive(Debug)]
@@ -295,6 +287,11 @@ pub(in crate::analysis) struct ExportLookupCache {
     entries: BTreeMap<QualifiedExportId, Option<ExportResolution>>,
     capacity: usize,
     count: usize,
+}
+
+pub(in crate::analysis) enum ExportLookupCacheResult<'a> {
+    Hit(Option<&'a ExportResolution>),
+    Miss,
 }
 
 impl ExportLookupCache {
@@ -306,8 +303,15 @@ impl ExportLookupCache {
         }
     }
 
-    pub fn get(&self, id: &QualifiedExportId) -> Option<&Option<ExportResolution>> {
-        self.entries.get(id)
+    pub(in crate::analysis) fn lookup(
+        &self,
+        id: &QualifiedExportId,
+    ) -> ExportLookupCacheResult<'_> {
+        self.entries
+            .get(id)
+            .map_or(ExportLookupCacheResult::Miss, |value| {
+                ExportLookupCacheResult::Hit(value.as_ref())
+            })
     }
 
     pub fn insert(&mut self, id: QualifiedExportId, value: Option<ExportResolution>) {
@@ -399,8 +403,14 @@ mod tests {
         cache.insert(first.clone(), Some(ExportResolution::Unknown));
         cache.insert(second.clone(), None);
 
-        assert_eq!(cache.get(&first), Some(&Some(ExportResolution::Unknown)));
-        assert_eq!(cache.get(&second), Some(&None));
+        assert!(matches!(
+            cache.lookup(&first),
+            ExportLookupCacheResult::Hit(Some(ExportResolution::Unknown))
+        ));
+        assert!(matches!(
+            cache.lookup(&second),
+            ExportLookupCacheResult::Hit(None)
+        ));
     }
 
     #[test]

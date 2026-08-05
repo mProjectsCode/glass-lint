@@ -10,7 +10,7 @@ use crate::{
         module::{DEFAULT_EXPORT, ModuleRequestId, ModuleRequestRole},
         project::{
             model::MAX_EXPORT_DEPTH,
-            state::{ExportLookupCache, ExportTable, QualifiedExportId},
+            state::{ExportLookupCache, ExportLookupCacheResult, ExportTable, QualifiedExportId},
         },
     },
     project::is_internal_module_request as is_internal_request,
@@ -110,8 +110,8 @@ impl<'a> ExportResolver<'a> {
         if let Some(resolved) = self.exports.resolve(id) {
             return Some(resolved.clone());
         }
-        if let Some(cached) = self.cache.get(id) {
-            return cached.clone();
+        if let ExportLookupCacheResult::Hit(cached) = self.cache.lookup(id) {
+            return cached.cloned();
         }
         if visiting.len() >= MAX_EXPORT_DEPTH || !visiting.insert(id.clone()) {
             return None;

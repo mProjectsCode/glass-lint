@@ -101,7 +101,7 @@ and `make fmt && make ci` pass.
 
 ### Project linking and export lookup
 
-#### [ ] READ-023 — Encapsulate export lookup cache ownership
+#### [x] READ-023 — Encapsulate export lookup cache ownership
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -134,7 +134,15 @@ cache capacity, cached unresolved results, recursive export lookup, stale-value
 avoidance when the export table has a direct result, and the bounded depth and
 diagnostic behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ProjectLinker::with_export_resolver` now borrows the
+linker-owned cache directly through a disjoint `LinkerLookup` view of module
+and request state; the take/replace/restore session protocol was removed.
+`ExportLookupCache::lookup` now returns a named hit/miss result that hides the
+nested storage option while preserving cached unresolved values and bounded
+first-insert behavior.
+
+**Verification:** `cargo test -p glass-lint-core analysis::project::state --lib`
+(6 passed); `make fmt && make ci` (passed).
 
 #### [ ] READ-024 — Centralize linked-target-to-export identity conversion
 
