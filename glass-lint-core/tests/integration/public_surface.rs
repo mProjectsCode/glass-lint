@@ -32,6 +32,7 @@ fn supported_public_operations_do_not_require_engine_storage() {
         .unwrap();
     let report = session
         .finish_local()
+        .unwrap()
         .resolve([])
         .unwrap()
         .finish()

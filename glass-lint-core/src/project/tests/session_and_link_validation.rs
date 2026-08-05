@@ -64,6 +64,7 @@ fn session_rejects_resolution_for_an_unauthored_request() {
         .unwrap();
     let error = session
         .finish_local()
+        .unwrap()
         .resolve([(key("main.js"), ResolverOutcome::Missing)]);
     assert!(matches!(error, Err(ProjectInputError::UnknownRequest(_))));
 }

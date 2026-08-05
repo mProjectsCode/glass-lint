@@ -75,6 +75,19 @@ impl SourceAnalysis {
 }
 
 impl AnalysisArtifacts {
+    pub(super) fn validate_complete(&self, sources: &SourceTable) -> Result<(), ProjectInputError> {
+        let incomplete = sources
+            .in_path_order()
+            .filter(|(path, _)| self.needs_analysis(path))
+            .map(|(path, _)| path.clone())
+            .collect::<Vec<_>>();
+        if incomplete.is_empty() {
+            Ok(())
+        } else {
+            Err(ProjectInputError::IncompleteLocalAnalysis(incomplete))
+        }
+    }
+
     pub(super) fn record_parse_failure(
         &mut self,
         path: ProjectRelativePath,

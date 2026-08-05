@@ -393,12 +393,13 @@ impl<'a> ProjectCollection<'a> {
 
     /// Consume the collection after local analysis and freeze its authored
     /// request set for the resolution phase.
-    pub fn finish_local(self) -> LocallyAnalyzedProject<'a> {
-        LocallyAnalyzedProject {
+    pub fn finish_local(self) -> Result<LocallyAnalyzedProject<'a>, ProjectInputError> {
+        self.artifacts.validate_complete(&self.sources)?;
+        Ok(LocallyAnalyzedProject {
             state: self.state,
             sources: self.sources,
             artifacts: self.artifacts,
-        }
+        })
     }
 }
 

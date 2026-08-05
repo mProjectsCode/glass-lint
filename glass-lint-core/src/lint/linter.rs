@@ -201,7 +201,7 @@ impl Linter {
     ) -> Result<AnalysisReport, ProjectInputError> {
         let mut collection = self.begin_project()?;
         collection.analyze_source(source)?;
-        collection.finish_local().resolve([])?.finish()
+        collection.finish_local()?.resolve([])?.finish()
     }
 
     /// Lint independent owned sources in a bounded, input-ordered stream.

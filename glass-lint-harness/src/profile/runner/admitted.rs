@@ -147,5 +147,5 @@ fn admitted_project_run(
         sources,
         std::num::NonZeroUsize::new(workers).unwrap_or(std::num::NonZeroUsize::MIN),
     )?;
-    Ok(session.finish_local().resolve([])?.finish()?)
+    Ok(session.finish_local()?.resolve([])?.finish()?)
 }

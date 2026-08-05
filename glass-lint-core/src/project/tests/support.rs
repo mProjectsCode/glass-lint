@@ -12,6 +12,7 @@ pub fn project_path(path: &str) -> ProjectRelativePath {
 pub fn finish_collection(collection: crate::project::ProjectCollection<'_>) -> AnalysisReport {
     collection
         .finish_local()
+        .unwrap()
         .resolve([])
         .unwrap()
         .finish()
@@ -24,6 +25,7 @@ pub fn finish_collection_with(
 ) -> AnalysisReport {
     collection
         .finish_local()
+        .unwrap()
         .resolve(outcomes)
         .unwrap()
         .finish()
@@ -179,6 +181,7 @@ impl<'a> ProjectFixture<'a> {
     pub fn finish(self) -> AnalysisReport {
         self.session
             .finish_local()
+            .unwrap()
             .resolve(self.outcomes)
             .unwrap()
             .finish()

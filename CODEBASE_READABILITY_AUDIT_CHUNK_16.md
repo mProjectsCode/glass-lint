@@ -129,7 +129,7 @@ accident.
 
 ### Project session and artifact transitions
 
-#### [ ] READ-083 — Make `finish_local` validate complete local analysis
+#### [x] READ-083 — Make `finish_local` validate complete local analysis
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -154,7 +154,14 @@ completed local outcomes, preserve consuming phase transitions, and add the
 completion check at the collection/artifact owner rather than requiring every
 caller to scan `SourceTable` and `AnalysisArtifacts` independently.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added owner-level completion validation to
+`AnalysisArtifacts` and made `ProjectCollection::finish_local` return a typed
+`IncompleteLocalAnalysis` error listing admitted paths without an artifact or
+parse diagnostic. All phase callers now propagate the fallible transition;
+parse failures remain valid completed local outcomes.
+
+**Verification:** `cargo test -p glass-lint-core project::tests --lib`
+(48 passed); `make fmt && make ci` (passed).
 
 #### [ ] READ-084 — Do not silently drop authored requests without importer IDs
 

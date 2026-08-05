@@ -362,6 +362,7 @@ fn direct_qualification_matches_one_file_project_shape() {
         .unwrap();
     let manual = manual_session
         .finish_local()
+        .unwrap()
         .resolve([])
         .unwrap()
         .finish()
@@ -483,6 +484,7 @@ fn parse_and_valid_sources_each_produce_one_file_report() {
         .unwrap();
     let report = collection
         .finish_local()
+        .unwrap()
         .resolve([])
         .unwrap()
         .finish()

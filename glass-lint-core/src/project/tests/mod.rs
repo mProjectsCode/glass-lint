@@ -33,6 +33,7 @@ fn admitted_sources_have_identical_reports_across_worker_counts() {
             .unwrap();
         let report = session
             .finish_local()
+            .unwrap()
             .resolve([])
             .unwrap()
             .finish()
@@ -54,12 +55,29 @@ fn consuming_project_phases_validate_requests_at_the_boundary() {
         .unwrap();
     assert_eq!(analysis.requests_ref().len(), 1);
     let key = analysis.requests_ref()[0].key().clone();
-    let local = collection.finish_local();
+    let local = collection.finish_local().unwrap();
     let resolved = local
         .resolve([(key, crate::project::ResolverOutcome::Missing)])
         .unwrap();
     let report = resolved.finish().unwrap();
     assert_eq!(report.files().len(), 1);
+}
+
+#[test]
+fn finish_local_rejects_admitted_sources_without_analysis_outcomes() {
+    let linter = test_linter();
+    let mut collection = linter.begin_project().unwrap();
+    collection
+        .admit_test_source(source_file("pending.js", "fetch('/pending');"))
+        .unwrap();
+
+    let Err(error) = collection.finish_local() else {
+        panic!("local phase must reject sources without an analysis outcome")
+    };
+    assert_eq!(
+        error,
+        ProjectInputError::IncompleteLocalAnalysis(vec![project_path("pending.js")])
+    );
 }
 
 #[test]
@@ -79,7 +97,7 @@ fn consuming_resolution_rejects_unknown_and_duplicate_outcomes() {
         crate::project::ResolutionRequestKind::Require,
         unknown.range(),
     );
-    let local = collection.finish_local();
+    let local = collection.finish_local().unwrap();
     let Err(error) = local.resolve([(unknown, crate::project::ResolverOutcome::Missing)]) else {
         panic!("unknown requests must be rejected")
     };
@@ -96,7 +114,7 @@ fn consuming_resolution_rejects_unknown_and_duplicate_outcomes() {
         ))
         .unwrap();
     let key = analysis.requests_ref()[0].key().clone();
-    let Err(error) = collection.finish_local().resolve([
+    let Err(error) = collection.finish_local().unwrap().resolve([
         (key.clone(), crate::project::ResolverOutcome::Missing),
         (key, crate::project::ResolverOutcome::Missing),
     ]) else {
@@ -137,6 +155,7 @@ fn controlled_release_orders_produce_identical_full_report() {
             serde_json::to_value(
                 session
                     .finish_local()
+                    .unwrap()
                     .resolve([])
                     .unwrap()
                     .finish()
@@ -229,6 +248,7 @@ fn session_uses_project_analysis_and_preserves_single_file_findings() {
     session.analyze_source(source_file("a.js", source)).unwrap();
     let project = session
         .finish_local()
+        .unwrap()
         .resolve([])
         .unwrap()
         .finish()

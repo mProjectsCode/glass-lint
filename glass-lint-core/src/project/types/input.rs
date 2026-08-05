@@ -498,6 +498,7 @@ pub enum ProjectInputError {
     DuplicateResolution(ResolutionRequestKey),
     InvalidTarget(String),
     UnknownRequest(ResolutionRequestKey),
+    IncompleteLocalAnalysis(Vec<ProjectRelativePath>),
     BudgetExceeded(String),
     LocalExecution(LocalExecutionError),
 }
@@ -518,6 +519,16 @@ impl std::fmt::Display for ProjectInputError {
                 f,
                 "resolution does not match an authored request in `{}`",
                 key.importer()
+            ),
+            Self::IncompleteLocalAnalysis(paths) => write!(
+                f,
+                "local analysis is incomplete for {} source(s): {}",
+                paths.len(),
+                paths
+                    .iter()
+                    .map(ProjectRelativePath::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ),
             Self::BudgetExceeded(message) => write!(f, "project input budget exceeded: {message}"),
             Self::LocalExecution(error) => {

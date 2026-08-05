@@ -506,7 +506,7 @@ impl ClosedFrontier<'_> {
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<(AnalysisReport, BTreeMap<ProjectRelativePath, SourceText>), ProjectLoadError> {
         let sources = self.sources;
-        let local = self.session.finish_local();
+        let local = self.session.finish_local()?;
         let resolved = local.resolve(self.resolved.into_iter())?;
         let result = resolved.finish_with_timings()?;
         metrics.record_linking(result.linking);
