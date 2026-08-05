@@ -20,9 +20,7 @@ use crate::{
     },
     api::{
         classification::RuleIndex,
-        compiler::{
-            CompiledObjectFlow, CompiledObjectRequirement, object_flow::CompiledObjectSource,
-        },
+        compiler::{CompiledObjectFlow, object_flow::CompiledObjectSource},
         rule::{ArgumentConstraint, query::lifecycle::LifecycleCallTarget},
     },
 };
@@ -135,6 +133,22 @@ impl<T: Ord> BoundTargetIndex<T> {
             values.sort_unstable();
             values.dedup();
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct PropertyRequirementMatch {
+    index: RequirementIndex,
+    value_matches: bool,
+}
+
+impl PropertyRequirementMatch {
+    pub(super) fn index(self) -> RequirementIndex {
+        self.index
+    }
+
+    pub(super) fn value_matches(self) -> bool {
+        self.value_matches
     }
 }
 
@@ -276,34 +290,60 @@ impl<'rules> BoundFlowPlan<'rules> {
         self.sinks.get(&BoundLifecycleCallTarget::global(name))
     }
 
-    pub(super) fn requirements_with_indices(
+    pub(super) fn matching_member_requirement_indices(
         &self,
         flow_id: FlowId,
-    ) -> impl Iterator<Item = (RequirementIndex, &CompiledObjectRequirement)> {
-        self.get(flow_id)
-            .into_iter()
-            .flat_map(|flow| flow.requirements().enumerate())
-            .map(|(index, requirement)| (RequirementIndex::new(index), requirement))
+        actual: Option<&NamePath>,
+        args: &[CallArgInfo],
+        matcher: &FlowMatchView<'_>,
+    ) -> Vec<RequirementIndex> {
+        let Some(actual) = actual else {
+            return Vec::new();
+        };
+        let Some(flow) = self.get(flow_id) else {
+            return Vec::new();
+        };
+        let Some(members) = self.req_members.get(&flow_id) else {
+            return Vec::new();
+        };
+        members
+            .iter()
+            .zip(flow.requirements())
+            .enumerate()
+            .filter_map(|(index, (member, requirement))| {
+                let member = member.as_ref()?;
+                (FlowMatchView::member_matches(actual, member)
+                    && requirement
+                        .member_call()
+                        .is_some_and(|(_, arguments)| matcher.arguments_match(arguments, args)))
+                .then_some(RequirementIndex::new(index))
+            })
+            .collect()
     }
 
-    pub(super) fn member_requirements(
+    pub(super) fn matching_property_requirements(
         &self,
         flow_id: FlowId,
-    ) -> impl Iterator<Item = (RequirementIndex, &NamePath, &CompiledObjectRequirement)> {
+        property: Option<&str>,
+        static_value: Option<&str>,
+        value_is_precise: bool,
+    ) -> Vec<PropertyRequirementMatch> {
         self.get(flow_id)
             .into_iter()
-            .zip(self.req_members.get(&flow_id))
-            .flat_map(|(flow, members)| {
-                members
-                    .iter()
-                    .zip(flow.requirements())
-                    .enumerate()
-                    .filter_map(|(index, (member, requirement))| {
-                        member
-                            .as_ref()
-                            .map(|member| (RequirementIndex::new(index), member, requirement))
-                    })
+            .flat_map(CompiledObjectFlow::requirements)
+            .enumerate()
+            .filter_map(|(index, requirement)| {
+                let (expected, matcher) = requirement.property_write()?;
+                (property.is_none() || property == Some(expected.as_str())).then_some(
+                    PropertyRequirementMatch {
+                        index: RequirementIndex::new(index),
+                        value_matches: value_is_precise
+                            && property == Some(expected.as_str())
+                            && matcher.matches_flow_value(static_value),
+                    },
+                )
             })
+            .collect()
     }
 
     pub(super) fn matching_sink_indices(

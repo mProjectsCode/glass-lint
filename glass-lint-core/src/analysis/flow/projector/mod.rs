@@ -728,17 +728,10 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             .flow_state
             .apply_property_write(object, event, |flow_id| {
                 self.plan
-                    .requirements_with_indices(flow_id)
-                    .filter_map(|(index, requirement)| {
-                        let (expected, matcher) = requirement.property_write()?;
-                        (property.is_none() || property == Some(expected.as_str())).then(|| {
-                            PropertyWriteUpdate::new(
-                                index,
-                                value_is_precise
-                                    && property == Some(expected.as_str())
-                                    && matcher.matches_flow_value(value),
-                            )
-                        })
+                    .matching_property_requirements(flow_id, property, value, value_is_precise)
+                    .into_iter()
+                    .map(|match_result| {
+                        PropertyWriteUpdate::new(match_result.index(), match_result.value_matches())
                     })
                     .collect()
             });

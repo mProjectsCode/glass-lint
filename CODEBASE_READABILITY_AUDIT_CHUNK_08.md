@@ -93,7 +93,7 @@ compiled-source traversal.
 (17 passed), `cargo test -p glass-lint-core analysis::flow::summary --lib`
 (35 passed); `make fmt && make ci` (passed).
 
-#### [ ] READ-043 — Centralize local and cross-flow transition matching
+#### [x] READ-043 — Centralize local and cross-flow transition matching
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -121,7 +121,15 @@ reachability, qualified cross-module events, crossed-only cross-flow emission,
 last-segment matching, argument constraints, and conservative possible versus
 definite outcomes.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added pure `BoundFlowPlan` matchers for member-call
+requirements and property-write requirements. Local and cross-flow projectors
+now consume those indices and value-match results while retaining ownership of
+their distinct state, event qualification, and emission policies; sink index
+selection remains on the same plan boundary.
+
+**Verification:** `cargo test -p glass-lint-core analysis::flow::projector --lib`
+(52 passed), `cargo test -p glass-lint-core analysis::flow::cross --lib`
+(17 passed); `make fmt && make ci` (passed).
 
 ### Projector state and history
 

@@ -50,14 +50,14 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 .map(|(key, _)| key)
                 .collect();
             for key in keys {
-                for (index, member, requirement) in self.plan.member_requirements(key.flow()) {
-                    if FlowMatchView::member_matches(chain, member)
-                        && let Some((_member, matchers)) = requirement.member_call()
-                        && matcher.arguments_match(matchers, args)
-                    {
-                        self.flow_state
-                            .record_requirement(key.object(), key.flow(), index, event);
-                    }
+                for index in self.plan.matching_member_requirement_indices(
+                    key.flow(),
+                    Some(chain),
+                    args,
+                    &matcher,
+                ) {
+                    self.flow_state
+                        .record_requirement(key.object(), key.flow(), index, event);
                 }
                 self.emit_if_ready(key.flow(), key.object(), event);
             }
