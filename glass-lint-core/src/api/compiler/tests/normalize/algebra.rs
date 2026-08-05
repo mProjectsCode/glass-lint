@@ -186,7 +186,7 @@ fn same_event_all_with_multiple_constraints_merges_all_constraints() {
 #[test]
 fn incompatible_event_kinds_in_all_produce_contradiction() {
     let a = QueryExpr::event(EventQuery::from_parts_for_test(
-        VarId::new(0),
+        VarId::new(7),
         EventSpec::Call,
         IdentitySpec::Global {
             name: SmolStr::new("fetch"),
@@ -194,7 +194,7 @@ fn incompatible_event_kinds_in_all_produce_contradiction() {
         vec![],
     ));
     let b = QueryExpr::event(EventQuery::from_parts_for_test(
-        VarId::new(0),
+        VarId::new(7),
         EventSpec::Construct,
         IdentitySpec::Global {
             name: SmolStr::new("URL"),
@@ -204,17 +204,17 @@ fn incompatible_event_kinds_in_all_produce_contradiction() {
     let all = AllExpr::new(vec![a, b]).unwrap();
     let d = decl(QueryExpr::all(all), 0, "test");
     let result = normalize::normalize_query_decl(&d);
-    assert!(
-        matches!(
-            result,
-            Err(
-                crate::api::compiler::validate::QueryCompileError::ContradictoryPredicate {
-                    detail: crate::api::compiler::validate::ContradictionKind::EventKind,
-                    ..
-                }
-            )
-        ),
-        "expected ContradictoryPredicate(EventKind), got {result:?}"
+    let Err(crate::api::compiler::validate::QueryCompileError::ContradictoryPredicate {
+        variable,
+        detail,
+    }) = result
+    else {
+        panic!("expected ContradictoryPredicate(EventKind), got {result:?}");
+    };
+    assert_eq!(variable, VarId::new(7));
+    assert_eq!(
+        detail,
+        crate::api::compiler::validate::ContradictionKind::EventKind
     );
 }
 

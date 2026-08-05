@@ -102,7 +102,7 @@ fn find_common_event_var(branches: &[&QueryExpr]) -> Option<VarId> {
 /// Collects event spec, identity, subject, and argument constraints
 /// from all branches and merges them onto one event node.
 fn merge_same_event(all: &AllExpr, event_var: VarId) -> Result<NormalizedRoot, QueryCompileError> {
-    let mut merge = SameEventMerge::default();
+    let mut merge = SameEventMerge::new(event_var);
 
     for branch in all.iter() {
         match branch.kind() {
@@ -128,8 +128,8 @@ fn var_to_slot(var: VarId) -> u32 {
     var.get()
 }
 
-#[derive(Default)]
 struct SameEventMerge {
+    event_var: VarId,
     event: Option<EventSpec>,
     identity: Option<IdentitySpec>,
     subject: Option<NormalizedSubject>,
@@ -137,6 +137,16 @@ struct SameEventMerge {
 }
 
 impl SameEventMerge {
+    fn new(event_var: VarId) -> Self {
+        Self {
+            event_var,
+            event: None,
+            identity: None,
+            subject: None,
+            constraints: Vec::new(),
+        }
+    }
+
     fn merge_event(&mut self, query: &EventQuery) -> Result<(), QueryCompileError> {
         self.merge_event_kind(query.event().clone())?;
         self.merge_identity(query.identity().clone())?;
@@ -183,7 +193,7 @@ impl SameEventMerge {
         if let Some(existing) = &self.event {
             if *existing != candidate {
                 return Err(QueryCompileError::ContradictoryPredicate {
-                    variable: VarId::new(0),
+                    variable: self.event_var,
                     detail: ContradictionKind::EventKind,
                 });
             }
@@ -197,7 +207,7 @@ impl SameEventMerge {
         if let Some(existing) = &self.identity {
             if *existing != candidate {
                 return Err(QueryCompileError::ContradictoryPredicate {
-                    variable: VarId::new(0),
+                    variable: self.event_var,
                     detail: ContradictionKind::StrictIdentity,
                 });
             }
@@ -214,7 +224,7 @@ impl SameEventMerge {
             .is_some_and(|subject| *subject != candidate)
         {
             return Err(QueryCompileError::ContradictoryPredicate {
-                variable: VarId::new(0),
+                variable: self.event_var,
                 detail: ContradictionKind::SubjectRelation,
             });
         }

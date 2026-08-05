@@ -50,7 +50,7 @@ matrix after its callers use the shared result.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-074 — Preserve the merged event variable in contradiction diagnostics
+#### [x] READ-074 — Preserve the merged event variable in contradiction diagnostics
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -70,7 +70,14 @@ Store the event variable on `SameEventMerge` or pass it to the three merge
 helpers. Preserve contradiction classification and normalization order, and
 remove the hardcoded zero once every error carries the owning binding.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `SameEventMerge` now owns the merged event variable and uses
+it for event-kind, identity, and subject contradiction diagnostics instead of
+hardcoding `VarId::new(0)`. Added coverage with an authored nonzero event
+variable.
+
+**Verification:** `cargo test -p glass-lint-core
+api::compiler::tests::normalize::algebra --lib` (23 passed) and `make fmt &&
+make ci` (passed).
 
 ### Lifecycle declaration representation
 
