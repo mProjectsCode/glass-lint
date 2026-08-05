@@ -187,7 +187,7 @@ fn resolve_record(
             let Some(id) = ids.get(&path).copied() else {
                 return Err(ProjectInputError::InvalidTarget(path.to_string()));
             };
-            LinkedModuleTarget::Internal { id, path }
+            LinkedModuleTarget::Internal { id }
         }
         ResolverOutcome::External { package } => LinkedModuleTarget::External { package },
         ResolverOutcome::Builtin { name } => LinkedModuleTarget::Builtin { name },

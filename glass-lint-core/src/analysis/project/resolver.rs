@@ -82,7 +82,7 @@ impl<'a> ExportResolver<'a> {
         let mut resolved = None;
         for request in requests {
             let candidate = match self.project.request_target(importer, request.id()) {
-                Some(LinkedModuleTarget::Internal { id, .. }) => self
+                Some(LinkedModuleTarget::Internal { id }) => self
                     .lookup_export(
                         &QualifiedExportId::new(*id, authored_export.clone()),
                         &mut BTreeSet::new(),
@@ -169,7 +169,7 @@ impl<'a> ExportResolver<'a> {
                 continue;
             };
             let candidate_export = match self.project.request_target(module, request.id()) {
-                Some(LinkedModuleTarget::Internal { id: target, .. }) => self.lookup_export(
+                Some(LinkedModuleTarget::Internal { id: target }) => self.lookup_export(
                     &QualifiedExportId::new(*target, export_name.clone()),
                     visiting,
                 ),
@@ -212,7 +212,7 @@ pub(super) fn target_to_export_resolution(
             module: name.to_smolstr(),
             export: export.into(),
         },
-        Some(LinkedModuleTarget::Internal { id, .. }) => ExportResolution::Qualified {
+        Some(LinkedModuleTarget::Internal { id }) => ExportResolution::Qualified {
             module: *id,
             export: export.into(),
         },
@@ -235,7 +235,7 @@ pub(super) fn linked_target_to_export_resolution(
             module: name.to_smolstr(),
             export: export.into(),
         },
-        LinkedModuleTarget::Internal { id, .. } => ExportResolution::Qualified {
+        LinkedModuleTarget::Internal { id } => ExportResolution::Qualified {
             module: *id,
             export: export.into(),
         },

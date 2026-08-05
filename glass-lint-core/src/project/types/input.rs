@@ -451,23 +451,12 @@ impl ModuleId {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LinkedModuleTarget {
-    Internal {
-        id: ModuleId,
-        path: ProjectRelativePath,
-    },
-    External {
-        package: PackageSpecifier,
-    },
-    Builtin {
-        name: BuiltinModuleName,
-    },
+    Internal { id: ModuleId },
+    External { package: PackageSpecifier },
+    Builtin { name: BuiltinModuleName },
     Missing,
-    OutsideProject {
-        path: NormalizedOutsidePath,
-    },
-    Unsupported {
-        reason: String,
-    },
+    OutsideProject { path: NormalizedOutsidePath },
+    Unsupported { reason: String },
 }
 
 /// Errors from local job execution. Parse failures are returned as ordinary

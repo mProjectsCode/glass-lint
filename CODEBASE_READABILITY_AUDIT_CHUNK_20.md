@@ -103,7 +103,7 @@ longer describes a nonexistent channel failure path.
 
 ### Linked target identity
 
-#### [ ] READ-099 — Remove the unused path from internal linked targets
+#### [x] READ-099 — Remove the unused path from internal linked targets
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -127,7 +127,13 @@ duplicate field and update all pattern matches together, preserving the
 outside-project path field because that path is itself the semantic target for
 that variant.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `LinkedModuleTarget::Internal` now stores only its resolved
+`ModuleId`; `resolve_record` remains the single path-to-ID conversion
+boundary, and all linker, resolver, graph, and identity consumers use the
+qualified ID directly. Outside-project targets retain their semantic path.
+
+**Verification:** `cargo test -p glass-lint-core project::tests::linking_and_flow --lib`
+(15 passed) and `make fmt && make ci` (passed).
 
 ### Project input errors
 
@@ -166,7 +172,7 @@ error exist without an unwind boundary. The input model also retains values
 after their identity has been reduced to a project-owned key, and one stale
 error variant survives after the request-key contract replaced it.
 
-READ-097 and READ-098 are marked applied above.
+READ-097, READ-098, and READ-099 are marked applied above.
 
 ## Open Questions
 

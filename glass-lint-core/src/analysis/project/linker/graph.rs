@@ -33,7 +33,7 @@ impl ProjectLinker {
                     }
                     continue;
                 };
-                if let LinkedModuleTarget::Internal { id, .. } = resolution {
+                if let LinkedModuleTarget::Internal { id } = resolution {
                     if edge_budget.try_push() {
                         self.graph.insert_edge(module.id(), *id);
                     } else {

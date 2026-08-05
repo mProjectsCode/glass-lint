@@ -145,8 +145,7 @@ impl ProjectLinker {
                 let Some(key) = self.request_id(module.id(), request) else {
                     continue;
                 };
-                let Some(LinkedModuleTarget::Internal { id, .. }) = self.resolutions.get(&key)
-                else {
+                let Some(LinkedModuleTarget::Internal { id }) = self.resolutions.get(&key) else {
                     continue;
                 };
                 let ModuleRequestRole::Import { bindings } = request.role() else {
@@ -331,7 +330,7 @@ impl ProjectLinker {
             return ExportResolution::Unknown;
         };
         match self.resolutions.get(&key) {
-            Some(LinkedModuleTarget::Internal { id, .. }) => self
+            Some(LinkedModuleTarget::Internal { id }) => self
                 .lookup_export(
                     &QualifiedExportId::new(*id, imported.clone()),
                     &mut BTreeSet::new(),

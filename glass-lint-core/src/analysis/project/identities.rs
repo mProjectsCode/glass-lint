@@ -203,7 +203,7 @@ impl ProjectSemanticModel {
                     continue;
                 };
                 let key = QualifiedRequestId::new(module, request.id());
-                if let Some(LinkedModuleTarget::Internal { id, .. }) = self.resolution_for(&key) {
+                if let Some(LinkedModuleTarget::Internal { id }) = self.resolution_for(&key) {
                     let mut child_entries = ModuleIdentityMap::new();
                     self.collect_exported_identities(*id, prefix, visiting, &mut child_entries);
                     star_entries.merge_star_from(child_entries);
