@@ -233,7 +233,7 @@ fn findings_for_capability(
     let arena = project.trace_arena();
     groups
         .into_iter()
-        .map(|group| {
+        .filter_map(|group| {
             let mut traces = BTreeSet::new();
             for reference in &group.occurrences {
                 let Some((ev, occurrence)) = reference.resolve(evidence_items) else {
@@ -245,28 +245,34 @@ fn findings_for_capability(
                 );
                 if let Some(steps) = steps
                     && !steps.is_empty()
+                    && let Ok(trace) = EvidenceTrace::new(steps)
                 {
-                    traces.insert(EvidenceTrace::new(steps));
+                    traces.insert(trace);
                 }
             }
-            if traces.is_empty() {
-                traces.insert(EvidenceTrace::new(vec![EvidenceStep::new(
+            if traces.is_empty()
+                && let Ok(trace) = EvidenceTrace::new(vec![EvidenceStep::new(
                     EvidenceRole::Occurrence,
                     "evidence occurrence".into(),
                     SourceLocation::new(path.clone(), group.range.clone()),
-                )]));
+                )])
+            {
+                traces.insert(trace);
             }
+            let evidence = EvidenceTraces::with_truncation(
+                traces.into_iter().collect(),
+                group.is_truncated(evidence_items),
+            )
+            .ok()?;
             Finding::new(
                 rule_id.clone(),
                 capability.label().to_string(),
                 capability.severity(),
                 SourceLocation::new(path.clone(), group.range.clone()),
-                EvidenceTraces::with_truncation(
-                    traces.into_iter().collect(),
-                    group.is_truncated(evidence_items),
-                ),
+                evidence,
                 group.certainty(evidence_items),
             )
+            .into()
         })
         .collect()
 }

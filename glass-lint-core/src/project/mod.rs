@@ -16,11 +16,12 @@ pub use session::{LocallyAnalyzedProject, ProjectCollection, ResolvedProject, So
 pub(crate) use tables::{ResolutionTable, SourceTable};
 pub use types::{
     AnalysisDiagnostic, AnalysisOperationCounts, AnalysisReport, AnalysisReportSummary,
-    BuiltinModuleName, Diagnostic, DiagnosticCode, EvidenceRole, EvidenceStep, EvidenceTrace,
-    EvidenceTraces, FileReport, Finding, LinkedModuleTarget, LocalExecutionError, MatchCertainty,
-    ModuleId, NormalizedOutsidePath, PackageSpecifier, ProjectInputError, ProjectRelativePath,
-    ReportCompletion, ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind,
-    ResolverOutcome, SourceFile, SourceLocation, SourceText, is_internal_module_request,
+    BuiltinModuleName, Diagnostic, DiagnosticCode, EvidenceConstructionError, EvidenceRole,
+    EvidenceStep, EvidenceTrace, EvidenceTraces, FileReport, Finding, LinkedModuleTarget,
+    LocalExecutionError, MatchCertainty, ModuleId, NormalizedOutsidePath, PackageSpecifier,
+    ProjectInputError, ProjectRelativePath, ReportCompletion, ResolutionRequest,
+    ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, SourceFile, SourceLocation,
+    SourceText, is_internal_module_request,
 };
 
 #[cfg(test)]

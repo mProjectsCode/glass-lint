@@ -1,5 +1,25 @@
 use crate::project::types::SourceLocation;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Error returned when an evidence collection violates its non-empty shape.
+pub enum EvidenceConstructionError {
+    /// An evidence trace has no steps.
+    EmptyTrace,
+    /// An evidence collection has no traces and is not marked truncated.
+    EmptyTraces,
+}
+
+impl std::fmt::Display for EvidenceConstructionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyTrace => f.write_str("evidence trace must have at least one step"),
+            Self::EmptyTraces => f.write_str("evidence must have at least one trace"),
+        }
+    }
+}
+
+impl std::error::Error for EvidenceConstructionError {}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
@@ -50,12 +70,11 @@ pub struct EvidenceTrace {
 }
 
 impl EvidenceTrace {
-    pub fn new(steps: Vec<EvidenceStep>) -> Self {
-        debug_assert!(
-            !steps.is_empty(),
-            "EvidenceTrace must have at least one step"
-        );
-        Self { steps }
+    pub fn new(steps: Vec<EvidenceStep>) -> Result<Self, EvidenceConstructionError> {
+        if steps.is_empty() {
+            return Err(EvidenceConstructionError::EmptyTrace);
+        }
+        Ok(Self { steps })
     }
 
     pub fn steps(&self) -> &[EvidenceStep] {
@@ -73,19 +92,18 @@ pub struct EvidenceTraces {
 }
 
 impl EvidenceTraces {
-    pub fn new(traces: Vec<EvidenceTrace>) -> Self {
-        debug_assert!(
-            !traces.is_empty(),
-            "EvidenceTraces must have at least one trace"
-        );
-        Self {
-            traces,
-            truncated: false,
-        }
+    pub fn new(traces: Vec<EvidenceTrace>) -> Result<Self, EvidenceConstructionError> {
+        Self::with_truncation(traces, false)
     }
 
-    pub fn with_truncation(traces: Vec<EvidenceTrace>, truncated: bool) -> Self {
-        Self { traces, truncated }
+    pub fn with_truncation(
+        traces: Vec<EvidenceTrace>,
+        truncated: bool,
+    ) -> Result<Self, EvidenceConstructionError> {
+        if traces.is_empty() && !truncated {
+            return Err(EvidenceConstructionError::EmptyTraces);
+        }
+        Ok(Self { traces, truncated })
     }
 
     pub fn traces(&self) -> &[EvidenceTrace] {
@@ -116,18 +134,26 @@ impl EvidenceTraces {
             .collect::<Vec<_>>();
         traces.sort();
         traces.dedup();
-        Self::with_truncation(traces, self.truncated || other.truncated)
+        Self {
+            traces,
+            truncated: self.truncated || other.truncated,
+        }
     }
 
     /// Create an EvidenceTraces with a single fallback Occurrence step at the
     /// given location. Used when an external path must produce a valid trace
     /// without explicit step data.
     pub fn fallback(location: SourceLocation) -> Self {
-        Self::new(vec![EvidenceTrace::new(vec![EvidenceStep::new(
-            EvidenceRole::Occurrence,
-            "evidence occurrence".into(),
-            location,
-        )])])
+        Self {
+            traces: vec![EvidenceTrace {
+                steps: vec![EvidenceStep::new(
+                    EvidenceRole::Occurrence,
+                    "evidence occurrence".into(),
+                    location,
+                )],
+            }],
+            truncated: false,
+        }
     }
 }
 
@@ -137,5 +163,27 @@ impl std::fmt::Display for EvidenceTraces {
             .field("trace_count", &self.traces.len())
             .field("truncated", &self.truncated)
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EvidenceConstructionError, EvidenceTrace, EvidenceTraces};
+
+    #[test]
+    fn rejects_empty_trace() {
+        assert_eq!(
+            EvidenceTrace::new(Vec::new()),
+            Err(EvidenceConstructionError::EmptyTrace)
+        );
+    }
+
+    #[test]
+    fn rejects_empty_non_truncated_collection() {
+        assert_eq!(
+            EvidenceTraces::new(Vec::new()),
+            Err(EvidenceConstructionError::EmptyTraces)
+        );
+        assert!(EvidenceTraces::with_truncation(Vec::new(), true).is_ok());
     }
 }

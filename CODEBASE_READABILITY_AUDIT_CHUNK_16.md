@@ -21,7 +21,7 @@ made by this audit.
 
 ### Report value constructors
 
-#### [ ] READ-079 — Enforce non-empty evidence constructors in all builds
+#### [x] READ-079 — Enforce non-empty evidence constructors in all builds
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -44,7 +44,15 @@ report state. Preserve evidence-step ordering, serialization, and the
 intentional semantics of `with_truncation`, and remove the release-only
 invariant gap rather than relying on debug assertions.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced debug-only evidence assertions with fallible
+constructors returning the public `EvidenceConstructionError`. Empty traces
+and non-truncated empty collections are rejected in all builds, while
+explicitly truncated empty collections remain supported; callers now handle
+construction failures explicitly.
+
+**Verification:** `cargo test -p glass-lint-core
+project::types::report::evidence::tests --lib` (2 passed) and
+`make fmt && make ci` (passed).
 
 ### Linter configuration and selection
 

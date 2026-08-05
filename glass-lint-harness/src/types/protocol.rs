@@ -311,7 +311,7 @@ impl TryFrom<AdapterFindingDto> for Finding {
                         ))
                     })
                     .collect::<Result<Vec<_>, AdapterFindingError>>()?;
-                Ok(EvidenceTrace::new(steps))
+                EvidenceTrace::new(steps).map_err(|_| AdapterFindingError::EmptyTrace)
             })
             .collect::<Result<Vec<_>, AdapterFindingError>>()?;
         if traces.iter().any(|trace| {
@@ -323,12 +323,14 @@ impl TryFrom<AdapterFindingDto> for Finding {
             return Err(AdapterFindingError::TraceDoesNotEndAtFinding);
         }
         let rule_id = RuleId::parse(finding.rule_id).map_err(AdapterFindingError::InvalidRuleId)?;
+        let evidence = EvidenceTraces::with_truncation(traces, finding.evidence.truncated)
+            .map_err(|_| AdapterFindingError::EmptyEvidence)?;
         Ok(Self::new(
             rule_id,
             finding.message,
             finding.severity,
             location,
-            EvidenceTraces::with_truncation(traces, finding.evidence.truncated),
+            evidence,
             finding.certainty,
         ))
     }

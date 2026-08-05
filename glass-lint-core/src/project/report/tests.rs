@@ -32,24 +32,28 @@ fn finding() -> Finding {
             ProjectRelativePath::new("src/é.js").unwrap(),
             range(2, 4, 12),
         ),
-        EvidenceTraces::new(vec![EvidenceTrace::new(vec![
-            EvidenceStep::new(
-                EvidenceRole::Occurrence,
-                "source".into(),
-                SourceLocation::new(
-                    ProjectRelativePath::new("src/é.js").unwrap(),
-                    range(1, 1, 3),
+        EvidenceTraces::new(vec![
+            EvidenceTrace::new(vec![
+                EvidenceStep::new(
+                    EvidenceRole::Occurrence,
+                    "source".into(),
+                    SourceLocation::new(
+                        ProjectRelativePath::new("src/é.js").unwrap(),
+                        range(1, 1, 3),
+                    ),
                 ),
-            ),
-            EvidenceStep::new(
-                EvidenceRole::Occurrence,
-                "context".into(),
-                SourceLocation::new(
-                    ProjectRelativePath::new("src/é.js").unwrap(),
-                    range(1, 1, 3),
+                EvidenceStep::new(
+                    EvidenceRole::Occurrence,
+                    "context".into(),
+                    SourceLocation::new(
+                        ProjectRelativePath::new("src/é.js").unwrap(),
+                        range(1, 1, 3),
+                    ),
                 ),
-            ),
-        ])]),
+            ])
+            .unwrap(),
+        ])
+        .unwrap(),
         MatchCertainty::Definite,
     )
 }
@@ -274,17 +278,21 @@ fn shared_evidence_path_is_replaced_by_inline_steps() {
         "related".into(),
         SourceLocation::new(ProjectRelativePath::new("dep.js").unwrap(), range(3, 1, 2)),
     );
-    let traces = EvidenceTraces::new(vec![EvidenceTrace::new(vec![
-        EvidenceStep::new(
-            EvidenceRole::Occurrence,
-            "source".into(),
-            SourceLocation::new(
-                ProjectRelativePath::new("src/é.js").unwrap(),
-                range(1, 1, 3),
+    let traces = EvidenceTraces::new(vec![
+        EvidenceTrace::new(vec![
+            EvidenceStep::new(
+                EvidenceRole::Occurrence,
+                "source".into(),
+                SourceLocation::new(
+                    ProjectRelativePath::new("src/é.js").unwrap(),
+                    range(1, 1, 3),
+                ),
             ),
-        ),
-        first,
-    ])]);
+            first,
+        ])
+        .unwrap(),
+    ])
+    .unwrap();
     let project_finding = Finding::new(
         RuleId::parse("js:network.request").unwrap(),
         "request detected".into(),
@@ -313,13 +321,17 @@ fn duplicate_findings_merge_traces_and_keep_definite_certainty() {
         first.severity(),
         first.location().clone(),
         EvidenceTraces::with_truncation(
-            vec![EvidenceTrace::new(vec![EvidenceStep::new(
-                EvidenceRole::Source,
-                "source".into(),
-                first.location().clone(),
-            )])],
+            vec![
+                EvidenceTrace::new(vec![EvidenceStep::new(
+                    EvidenceRole::Source,
+                    "source".into(),
+                    first.location().clone(),
+                )])
+                .unwrap(),
+            ],
             true,
-        ),
+        )
+        .unwrap(),
         MatchCertainty::Possible,
     );
 
@@ -400,11 +412,15 @@ fn finding_serialization_includes_certainty() {
         "test".into(),
         Severity::Warning,
         SourceLocation::new(ProjectRelativePath::new("main.js").unwrap(), range(1, 1, 2)),
-        EvidenceTraces::new(vec![EvidenceTrace::new(vec![EvidenceStep::new(
-            EvidenceRole::Occurrence,
-            "test evidence".into(),
-            SourceLocation::new(ProjectRelativePath::new("main.js").unwrap(), range(1, 1, 2)),
-        )])]),
+        EvidenceTraces::new(vec![
+            EvidenceTrace::new(vec![EvidenceStep::new(
+                EvidenceRole::Occurrence,
+                "test evidence".into(),
+                SourceLocation::new(ProjectRelativePath::new("main.js").unwrap(), range(1, 1, 2)),
+            )])
+            .unwrap(),
+        ])
+        .unwrap(),
         MatchCertainty::Definite,
     );
     let json = serde_json::to_value(&finding).unwrap();
@@ -415,11 +431,15 @@ fn finding_serialization_includes_certainty() {
         "test".into(),
         Severity::Warning,
         SourceLocation::new(ProjectRelativePath::new("main.js").unwrap(), range(1, 1, 2)),
-        EvidenceTraces::new(vec![EvidenceTrace::new(vec![EvidenceStep::new(
-            EvidenceRole::Occurrence,
-            "test evidence".into(),
-            SourceLocation::new(ProjectRelativePath::new("main.js").unwrap(), range(1, 1, 2)),
-        )])]),
+        EvidenceTraces::new(vec![
+            EvidenceTrace::new(vec![EvidenceStep::new(
+                EvidenceRole::Occurrence,
+                "test evidence".into(),
+                SourceLocation::new(ProjectRelativePath::new("main.js").unwrap(), range(1, 1, 2)),
+            )])
+            .unwrap(),
+        ])
+        .unwrap(),
         MatchCertainty::Possible,
     );
     let json = serde_json::to_value(&possible).unwrap();

@@ -10,7 +10,9 @@ mod operations;
 pub use analysis_report::{AnalysisReport, AnalysisReportSummary, ReportCompletion};
 pub use code::{DiagnosticCode, DiagnosticKind};
 pub use diagnostic::{AnalysisDiagnostic, Diagnostic};
-pub use evidence::{EvidenceRole, EvidenceStep, EvidenceTrace, EvidenceTraces};
+pub use evidence::{
+    EvidenceConstructionError, EvidenceRole, EvidenceStep, EvidenceTrace, EvidenceTraces,
+};
 pub use file_report::FileReport;
 pub use finding::{Finding, MatchCertainty};
 pub use location::SourceLocation;
