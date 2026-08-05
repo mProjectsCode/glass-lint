@@ -58,7 +58,7 @@ event-only matching while preserving each use variant's payload dispatch.
 
 ### Flow-plan and local/cross projection boundaries
 
-#### [ ] READ-042 — Reuse one bound source-index construction path
+#### [x] READ-042 — Reuse one bound source-index construction path
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -83,7 +83,15 @@ local `BoundSource` argument constraints and the cross-flow ID-only lookup as
 separate value policies. Preserve missing-name fail-closed behavior, B-tree
 ordering, deduplication, per-module lookup, and local/cross flow identity.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a planning-owned generic `build_source_index` that
+performs lifecycle target binding, insertion, and deterministic normalization
+once. Local plans provide `BoundSource` values and cross-flow provides `FlowId`
+values, preserving their separate lookup policies without duplicating the
+compiled-source traversal.
+
+**Verification:** `cargo test -p glass-lint-core analysis::flow::cross --lib`
+(17 passed), `cargo test -p glass-lint-core analysis::flow::summary --lib`
+(35 passed); `make fmt && make ci` (passed).
 
 #### [ ] READ-043 — Centralize local and cross-flow transition matching
 

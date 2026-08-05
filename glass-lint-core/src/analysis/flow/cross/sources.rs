@@ -9,7 +9,10 @@ use crate::{
         facts::FactId,
         flow::{
             cross::{MAX_PENDING, QualifiedCallGraph},
-            planning::{BoundLifecycleCallTarget, BoundTargetIndex},
+            planning::{
+                BoundLifecycleCallTarget, BoundTargetIndex,
+                build_source_index as build_bound_source_index,
+            },
         },
         model::flow::FlowId,
         value::{FunctionId, ValueId},
@@ -217,16 +220,11 @@ fn build_source_index(
     flows: &HashMap<FlowId, &CompiledObjectFlow>,
     names: &NameTable,
 ) -> SourceIndex {
-    let mut index = SourceIndex::default();
-    for (id, flow) in flows {
-        for source in flow.sources() {
-            if let Some(target) = BoundLifecycleCallTarget::from_lifecycle(source.target(), names) {
-                index.insert(target, *id);
-            }
-        }
-    }
-    index.normalize();
-    index
+    build_bound_source_index(
+        flows.iter().map(|(id, flow)| (*id, *flow)),
+        names,
+        |id, _| id,
+    )
 }
 
 impl FlowSources {
