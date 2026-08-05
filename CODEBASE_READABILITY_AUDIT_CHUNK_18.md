@@ -26,7 +26,7 @@ made by this audit.
 
 ### Rule builder diagnostics
 
-#### [ ] READ-090 — Preserve the first duplicate rule-metadata error
+#### [x] READ-090 — Preserve the first duplicate rule-metadata error
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -48,7 +48,12 @@ metadata fails before other validation” precedence and the fact that the last
 value is not semantically accepted; delete the overwrite assignment once one
 owner determines deferred error ordering.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a first-error accumulator to `RuleBuilder`. Repeated
+description, category, severity, and confidence calls now preserve the first
+duplicate field, with a regression test covering multiple duplicate fields.
+
+**Verification:** `cargo test -p glass-lint-core api::rule::tests --lib`
+(7 passed) and `make fmt && make ci` (passed).
 
 ### Query-input canonicalization
 

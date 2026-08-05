@@ -178,7 +178,7 @@ impl RuleBuilder {
     /// Set the human-readable description.
     pub fn description(mut self, description: impl Into<String>) -> Self {
         if self.description.is_some() {
-            self.duplicate_field = Some("description");
+            self.record_duplicate("description");
         }
         self.description = Some(description.into());
         self
@@ -188,7 +188,7 @@ impl RuleBuilder {
     /// Set the provider category.
     pub fn category(mut self, category: Category) -> Self {
         if self.category.is_some() {
-            self.duplicate_field = Some("category");
+            self.record_duplicate("category");
         }
         self.category = Some(category);
         self
@@ -198,7 +198,7 @@ impl RuleBuilder {
     /// Set report severity.
     pub fn severity(mut self, severity: Severity) -> Self {
         if self.severity.is_some() {
-            self.duplicate_field = Some("severity");
+            self.record_duplicate("severity");
         }
         self.severity = Some(severity);
         self
@@ -208,10 +208,16 @@ impl RuleBuilder {
     /// Set evidence confidence.
     pub fn confidence(mut self, confidence: Confidence) -> Self {
         if self.confidence.is_some() {
-            self.duplicate_field = Some("confidence");
+            self.record_duplicate("confidence");
         }
         self.confidence = Some(confidence);
         self
+    }
+
+    fn record_duplicate(&mut self, field: &'static str) {
+        if self.duplicate_field.is_none() {
+            self.duplicate_field = Some(field);
+        }
     }
 
     /// Validate metadata and construct the rule.
@@ -345,6 +351,19 @@ mod tests {
                 Err(RuleBuildError::DuplicateField(actual)) if actual == field
             ));
         }
+    }
+
+    #[test]
+    fn reports_first_duplicate_required_metadata() {
+        let error = Rule::builder("network.fetch")
+            .description("one")
+            .description("two")
+            .category(Category::new("one").unwrap())
+            .category(Category::new("two").unwrap())
+            .build()
+            .expect_err("duplicate metadata should fail");
+
+        assert_eq!(error, RuleBuildError::DuplicateField("description"));
     }
 
     #[test]
