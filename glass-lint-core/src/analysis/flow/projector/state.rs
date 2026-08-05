@@ -72,9 +72,7 @@ pub(super) struct FlowSemanticSnapshot {
 /// Mutable live alias and object-state tables for one projector pass.
 pub(super) struct FlowStateTable {
     /// Current value aliases, keyed by semantic value identity.
-    aliases: BTreeMap<ValueId, ObjectId>,
-    /// Reverse index: how many ValueIds alias each ObjectId.
-    object_refs: ObjectRefCounts,
+    aliases: AliasTable,
     /// Current lifecycle state for each object and flow matcher.
     states: BTreeMap<FlowStateKey, FlowState>,
     /// Mutation log for checkpoint/rollback.
@@ -101,7 +99,56 @@ impl PropertyWriteUpdate {
 }
 
 #[derive(Debug, Default)]
-pub(super) struct ObjectRefCounts(BTreeMap<ObjectId, usize>);
+pub(super) struct AliasTable {
+    values: BTreeMap<ValueId, ObjectId>,
+    /// Reverse index: how many ValueIds alias each ObjectId.
+    object_refs: ObjectRefCounts,
+}
+
+impl AliasTable {
+    pub(super) fn get(&self, value: ValueId) -> Option<ObjectId> {
+        self.values.get(&value).copied()
+    }
+
+    fn values(&self) -> impl Iterator<Item = &ObjectId> {
+        self.values.values()
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (&ValueId, &ObjectId)> {
+        self.values.iter()
+    }
+
+    pub(super) fn set(&mut self, value: ValueId, object: ObjectId) -> Option<ObjectId> {
+        let previous = self.values.insert(value, object);
+        if let Some(previous) = previous {
+            self.object_refs.decrement(previous);
+        }
+        self.object_refs.increment(object);
+        previous
+    }
+
+    pub(super) fn remove(&mut self, value: ValueId) -> Option<ObjectId> {
+        let object = self.values.remove(&value)?;
+        self.object_refs.decrement(object);
+        Some(object)
+    }
+
+    fn take(&mut self) -> BTreeMap<ValueId, ObjectId> {
+        self.object_refs.clear();
+        std::mem::take(&mut self.values)
+    }
+
+    fn contains_object(&self, object: ObjectId) -> bool {
+        self.object_refs.contains(object)
+    }
+
+    fn objects(&self) -> impl Iterator<Item = ObjectId> + '_ {
+        self.object_refs.keys()
+    }
+}
+
+#[derive(Debug, Default)]
+struct ObjectRefCounts(BTreeMap<ObjectId, usize>);
 
 impl ObjectRefCounts {
     pub(super) fn clear(&mut self) {
@@ -133,8 +180,7 @@ impl ObjectRefCounts {
 impl FlowStateTable {
     pub(super) fn new(state_limit: usize, mutation_limit: usize) -> Self {
         Self {
-            aliases: BTreeMap::new(),
-            object_refs: ObjectRefCounts::default(),
+            aliases: AliasTable::default(),
             states: BTreeMap::new(),
             log: MutationLog::new(mutation_limit),
             state_limit,
@@ -143,11 +189,10 @@ impl FlowStateTable {
     }
 
     pub(super) fn clear(&mut self) {
-        let aliases = std::mem::take(&mut self.aliases);
+        let aliases = self.aliases.take();
         for (value, object) in aliases {
             self.log.record(InverseDelta::AliasRemove(value, object));
         }
-        self.object_refs.clear();
         let states = std::mem::take(&mut self.states);
         for (key, state) in states {
             self.log
@@ -156,7 +201,7 @@ impl FlowStateTable {
     }
 
     pub(super) fn object_for(&self, value: ValueId) -> Option<ObjectId> {
-        self.aliases.get(&value).copied()
+        self.aliases.get(value)
     }
 
     pub(super) fn object_for_any(&self, values: &[ValueId]) -> Option<ObjectId> {
@@ -164,32 +209,27 @@ impl FlowStateTable {
     }
 
     pub(super) fn objects(&self) -> impl Iterator<Item = ObjectId> + '_ {
-        self.object_refs.keys()
+        self.aliases.objects()
     }
 
     fn bind(&mut self, value: ValueId, object: ObjectId) {
-        if let Some(&old) = self.aliases.get(&value) {
+        if let Some(old) = self.aliases.set(value, object) {
             self.log
                 .record(InverseDelta::AliasUpdate(value, old, object));
-            self.aliases.insert(value, object);
-            self.object_refs.decrement(old);
         } else {
             self.log.record(InverseDelta::AliasInsert(value, object));
-            self.aliases.insert(value, object);
         }
-        self.object_refs.increment(object);
     }
 
     fn unbind(&mut self, value: ValueId) -> Option<ObjectId> {
-        let old_object = self.aliases.remove(&value)?;
+        let old_object = self.aliases.remove(value)?;
         self.log
             .record(InverseDelta::AliasRemove(value, old_object));
-        self.object_refs.decrement(old_object);
         Some(old_object)
     }
 
     fn has_alias_for(&self, object: ObjectId) -> bool {
-        self.object_refs.contains(object)
+        self.aliases.contains_object(object)
     }
 
     pub(super) fn bind_aliases(&mut self, values: &[ValueId], object: ObjectId) {
@@ -456,12 +496,10 @@ impl FlowStateTable {
     /// Restore a previously captured environment by rolling back the mutation
     /// log to the checkpoint that corresponds to the environment.
     pub(super) fn restore(&mut self, environment: FlowEnvironment) -> bool {
-        if self.log.transition(
-            environment.checkpoint,
-            &mut self.aliases,
-            &mut self.object_refs,
-            &mut self.states,
-        ) {
+        if self
+            .log
+            .transition(environment.checkpoint, &mut self.aliases, &mut self.states)
+        {
             environment.reachable
         } else {
             false

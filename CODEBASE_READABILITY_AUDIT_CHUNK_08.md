@@ -133,7 +133,7 @@ selection remains on the same plan boundary.
 
 ### Projector state and history
 
-#### [ ] READ-044 — Make alias reference-count replay an owned state transition
+#### [x] READ-044 — Make alias reference-count replay an owned state transition
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -160,7 +160,13 @@ parallel alias bookkeeping from `apply_inverse`/`apply_forward`. Preserve O(1)
 checkpoints, parent-linked branch transitions, object liveness cleanup, and
 the bounded/incomplete result when mutation history is exhausted.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added an `AliasTable` owned by `FlowStateTable` that couples
+the alias map and reverse object-reference counts. Forward binding and history
+replay now use its shared set/remove transitions, leaving `MutationLog` to
+apply deltas without duplicating reference-count bookkeeping.
+
+**Verification:** `cargo test -p glass-lint-core analysis::flow::projector --lib`
+(52 passed); `make fmt && make ci` (passed).
 
 ### Loop fixed-point admission
 

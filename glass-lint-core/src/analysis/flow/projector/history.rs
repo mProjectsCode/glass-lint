@@ -5,7 +5,7 @@ use glass_lint_datastructures::{HistoryCursor, HistoryTransition, ParentLinkedHi
 use crate::{
     analysis::{
         facts::FactId,
-        flow::projector::state::ObjectRefCounts,
+        flow::projector::state::AliasTable,
         model::flow::{FlowState, FlowStateKey, LifecycleRollback, RequirementIndex, SinkIndex},
         value::{ObjectId, ValueId},
     },
@@ -78,8 +78,7 @@ impl MutationLog {
     pub(super) fn transition(
         &mut self,
         checkpoint: Checkpoint,
-        aliases: &mut BTreeMap<ValueId, ObjectId>,
-        object_refs: &mut ObjectRefCounts,
+        aliases: &mut AliasTable,
         states: &mut BTreeMap<FlowStateKey, FlowState>,
     ) -> bool {
         if self.budget_exhausted {
@@ -87,33 +86,26 @@ impl MutationLog {
         }
         self.history
             .transition(checkpoint.0, |direction, delta| match direction {
-                HistoryTransition::Undo => apply_inverse(delta, aliases, object_refs, states),
-                HistoryTransition::Redo => apply_forward(delta, aliases, object_refs, states),
+                HistoryTransition::Undo => apply_inverse(delta, aliases, states),
+                HistoryTransition::Redo => apply_forward(delta, aliases, states),
             })
     }
 }
 
 fn apply_inverse(
     delta: &InverseDelta,
-    aliases: &mut BTreeMap<ValueId, ObjectId>,
-    object_refs: &mut ObjectRefCounts,
+    aliases: &mut AliasTable,
     states: &mut BTreeMap<FlowStateKey, FlowState>,
 ) {
     match delta {
         InverseDelta::AliasInsert(value, _) => {
-            if let Some(object) = aliases.remove(value) {
-                object_refs.decrement(object);
-            }
+            aliases.remove(*value);
         }
         InverseDelta::AliasUpdate(value, old, _) => {
-            if let Some(prev) = aliases.insert(*value, *old) {
-                object_refs.decrement(prev);
-                object_refs.increment(*old);
-            }
+            aliases.set(*value, *old);
         }
         InverseDelta::AliasRemove(value, object) => {
-            aliases.insert(*value, *object);
-            object_refs.increment(*object);
+            aliases.set(*value, *object);
         }
         InverseDelta::StateInsert(key, _) => {
             states.remove(key);
@@ -144,23 +136,18 @@ fn apply_inverse(
 
 fn apply_forward(
     delta: &InverseDelta,
-    aliases: &mut BTreeMap<ValueId, ObjectId>,
-    object_refs: &mut ObjectRefCounts,
+    aliases: &mut AliasTable,
     states: &mut BTreeMap<FlowStateKey, FlowState>,
 ) {
     match delta {
         InverseDelta::AliasInsert(value, object) => {
-            aliases.insert(*value, *object);
-            object_refs.increment(*object);
+            aliases.set(*value, *object);
         }
-        InverseDelta::AliasUpdate(value, old, new) => {
-            aliases.insert(*value, *new);
-            object_refs.decrement(*old);
-            object_refs.increment(*new);
+        InverseDelta::AliasUpdate(value, _old, new) => {
+            aliases.set(*value, *new);
         }
-        InverseDelta::AliasRemove(value, object) => {
-            aliases.remove(value);
-            object_refs.decrement(*object);
+        InverseDelta::AliasRemove(value, _object) => {
+            aliases.remove(*value);
         }
         InverseDelta::StateInsert(key, state) => {
             states.insert(*key, (**state).clone());
