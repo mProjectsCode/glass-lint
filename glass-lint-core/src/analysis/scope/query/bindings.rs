@@ -8,6 +8,13 @@ use crate::analysis::scope::{
     },
 };
 
+#[derive(Clone, Copy)]
+enum RootMode {
+    Lexical,
+    Global,
+    LexicalOrGlobal,
+}
+
 impl FrozenScopeGraph {
     pub(in crate::analysis) fn constructed_instance_at(
         &self,
@@ -70,57 +77,54 @@ impl FrozenScopeGraph {
     /// use this instead of rebuilding identity from the expression's printed
     /// member chain.
     pub(in crate::analysis) fn binding_key_for_expr(&self, expr: &Expr) -> Option<BindingKey> {
+        self.expression_key(expr, RootMode::Lexical)
+    }
+
+    fn expression_key(&self, expr: &Expr, mode: RootMode) -> Option<BindingKey> {
         match expr {
-            Expr::Ident(ident) => {
-                let (scope, _) = self.binding_with_scope_at(ident.sym.as_ref(), ident.span)?;
-                let binding = self.binding_id_at(scope, self.name_id(ident.sym.as_ref())?)?;
-                Some(BindingKey::new(BindingRoot::Binding {
-                    function: self.function_scope_at(scope),
-                    binding,
-                    version: self.binding_version_at(scope, ident.sym.as_ref(), ident.span),
-                }))
-            }
+            Expr::Ident(ident) => self.identifier_key(ident, mode),
             Expr::Member(member) => {
-                let mut key = self
-                    .binding_key_for_expr(&member.obj)
-                    .or_else(|| self.global_key_for_expr(&member.obj))?;
+                let child_mode = match mode {
+                    RootMode::Lexical => RootMode::LexicalOrGlobal,
+                    mode => mode,
+                };
+                let mut key = self.expression_key(&member.obj, child_mode)?;
                 key.append_segment(
                     self.name_id(self.contextual_member_property_name(member)?.as_str())?,
                 );
                 Some(key)
             }
             Expr::This(_) => Some(BindingKey::new(BindingRoot::Global("this".into()))),
-            Expr::Paren(paren) => self.binding_key_for_expr(&paren.expr),
+            Expr::Paren(paren) => self.expression_key(&paren.expr, mode),
             Expr::Seq(sequence) => sequence
                 .exprs
                 .last()
-                .and_then(|expr| self.binding_key_for_expr(expr)),
+                .and_then(|expr| self.expression_key(expr, mode)),
             _ => None,
         }
     }
 
-    /// Derive a global-rooted key only when no lexical binding shadows it.
-    pub(in crate::analysis) fn global_key_for_expr(&self, expr: &Expr) -> Option<BindingKey> {
-        match expr {
-            Expr::Ident(ident) => self
+    fn identifier_key(&self, ident: &Ident, mode: RootMode) -> Option<BindingKey> {
+        match mode {
+            RootMode::Lexical => self.lexical_identifier_key(ident),
+            RootMode::Global => self
                 .binding_at(ident.sym.as_ref(), ident.span)
                 .is_none()
                 .then(|| BindingKey::new(BindingRoot::Global(ident.sym.to_string()))),
-            Expr::Member(member) => {
-                let mut key = self.global_key_for_expr(&member.obj)?;
-                key.append_segment(
-                    self.name_id(self.contextual_member_property_name(member)?.as_str())?,
-                );
-                Some(key)
-            }
-            Expr::This(_) => Some(BindingKey::new(BindingRoot::Global("this".into()))),
-            Expr::Paren(paren) => self.global_key_for_expr(&paren.expr),
-            Expr::Seq(sequence) => sequence
-                .exprs
-                .last()
-                .and_then(|expr| self.global_key_for_expr(expr)),
-            _ => None,
+            RootMode::LexicalOrGlobal => self
+                .lexical_identifier_key(ident)
+                .or_else(|| self.identifier_key(ident, RootMode::Global)),
         }
+    }
+
+    fn lexical_identifier_key(&self, ident: &Ident) -> Option<BindingKey> {
+        let (scope, _) = self.binding_with_scope_at(ident.sym.as_ref(), ident.span)?;
+        let binding = self.binding_id_at(scope, self.name_id(ident.sym.as_ref())?)?;
+        Some(BindingKey::new(BindingRoot::Binding {
+            function: self.function_scope_at(scope),
+            binding,
+            version: self.binding_version_at(scope, ident.sym.as_ref(), ident.span),
+        }))
     }
 
     /// Return the assignment version visible at a source position.

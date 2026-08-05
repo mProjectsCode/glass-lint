@@ -16,15 +16,12 @@ impl FrozenScopeGraph {
             .as_ref()
             .and_then(|chain| self.member_call_provenance_for_chain(member, chain));
         let returned_member = self.returned_member(member);
-        let binding = self
-            .binding_key_for_expr(&member.obj)
-            .or_else(|| self.global_key_for_expr(&member.obj))
-            .and_then(|mut key| {
-                key.append_segment(
-                    self.name_id(self.contextual_member_property_name(member)?.as_str())?,
-                );
-                Some(key)
-            });
+        let binding = self.binding_key_for_expr(&member.obj).and_then(|mut key| {
+            key.append_segment(
+                self.name_id(self.contextual_member_property_name(member)?.as_str())?,
+            );
+            Some(key)
+        });
         MemberValueSeed {
             syntactic_chain,
             rooted_chain,

@@ -133,7 +133,7 @@ state and immutable query state.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-031 — Unify lexical and global binding-key traversal
+#### [x] READ-031 — Unify lexical and global binding-key traversal
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -158,7 +158,14 @@ recursive matches while preserving lexical-before-global precedence, shadowing
 rejection, `this` roots, property segment interning, sequence/parenthesis
 transparency, and `None` for dynamic or unsupported expressions.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added one root-mode-aware expression-key traversal for
+lexical, global, and lexical-or-global roots. Name lookup reuses the same
+identifier owner, member-value seeding no longer retries separate traversals,
+and the obsolete global traversal API was removed.
+
+**Verification:** `cargo test -p glass-lint-core analysis::scope::query --lib`
+and the scope integration tests (31 passed); `make fmt && make ci` (all
+passed).
 
 ### Hard-to-read provenance resolution
 
@@ -235,4 +242,4 @@ query modules. Representative callers in lowering, resolution, facts, and
 matching were traced with `rg`. Existing Chunk 1–4 findings were checked to
 avoid re-reporting fact-branch transactions, pattern ownership, flow control
 state, exhaustion aggregation, lowering lifecycle, or project identity
-overlay findings. No findings are marked applied.
+overlay findings. READ-028, READ-029, and READ-031 are marked applied above.
