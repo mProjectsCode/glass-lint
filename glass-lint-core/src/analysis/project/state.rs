@@ -222,8 +222,13 @@ impl ExportTable {
         self.exports.get(&id.module)?.get(&id.name)
     }
 
-    /// Store a changed export identity and report whether it changed.
-    pub(in crate::analysis) fn set_monotone(
+    /// Replace an export identity and report whether its value changed.
+    ///
+    /// SCC resolution may replace provisional identities during later rounds,
+    /// and the linker may replace an unresolved cycle with `Unknown`; the
+    /// table owns entry accounting, while that replacement policy stays with
+    /// the linker.
+    pub(in crate::analysis) fn set_resolution(
         &mut self,
         id: &QualifiedExportId,
         value: ExportResolution,
@@ -396,5 +401,28 @@ mod tests {
 
         assert_eq!(cache.get(&first), Some(&Some(ExportResolution::Unknown)));
         assert_eq!(cache.get(&second), Some(&None));
+    }
+
+    #[test]
+    fn export_table_resolution_replacement_tracks_entry_count() {
+        let mut table = ExportTable::default();
+        let id = QualifiedExportId::new(module(0), "value");
+
+        assert!(table.set_resolution(&id, ExportResolution::Unknown));
+        assert_eq!(table.len(), 1);
+        assert!(!table.set_resolution(&id, ExportResolution::Unknown));
+        assert!(table.set_resolution(
+            &id,
+            ExportResolution::Global {
+                name: "fetch".into(),
+            },
+        ));
+        assert_eq!(table.len(), 1);
+        assert_eq!(
+            table.resolve(&id),
+            Some(&ExportResolution::Global {
+                name: "fetch".into()
+            })
+        );
     }
 }

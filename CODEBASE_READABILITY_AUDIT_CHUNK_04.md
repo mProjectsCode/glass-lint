@@ -63,7 +63,7 @@ test covers a distinct candidate at capacity.
 **Verification:** `cargo test -p glass-lint-core --lib analysis::model::scope`
 and `make fmt && make ci` pass.
 
-#### [ ] READ-022 — Make `ExportTable`’s monotonic-update contract real
+#### [x] READ-022 — Make `ExportTable`’s monotonic-update contract real
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -90,7 +90,14 @@ callers after migration. Preserve cycle convergence and final `Unknown`
 fallback, entry-count budgeting, deterministic SCC order, ambiguity handling,
 and the distinction between a missing entry and an explicitly unknown entry.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Renamed `ExportTable::set_monotone` to
+`set_resolution` and documented its actual replacement contract. The table
+continues to own equal-value suppression and entry accounting, while SCC
+provisional updates and terminal cycle fallback remain explicit linker policy.
+Added coverage for replacement, no-op equality, and stable entry counts.
+
+**Verification:** `cargo test -p glass-lint-core --lib analysis::project::state`
+and `make fmt && make ci` pass.
 
 ### Project linking and export lookup
 

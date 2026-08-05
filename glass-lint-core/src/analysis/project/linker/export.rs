@@ -107,7 +107,7 @@ impl ProjectLinker {
                 for (name, _) in exports {
                     let id = QualifiedExportId::new(*module, name.clone());
                     if self.exports.resolve(&id).is_some() {
-                        self.exports.set_monotone(&id, ExportResolution::Unknown);
+                        self.exports.set_resolution(&id, ExportResolution::Unknown);
                     }
                 }
             }
@@ -130,7 +130,7 @@ impl ProjectLinker {
             self.link_budget.mark_exhausted();
             return false;
         }
-        self.exports.set_monotone(&id, resolved)
+        self.exports.set_resolution(&id, resolved)
     }
 
     /// Diagnose imports whose statically requested named export is absent or
