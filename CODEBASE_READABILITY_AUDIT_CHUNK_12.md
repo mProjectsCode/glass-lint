@@ -22,7 +22,7 @@ made by this audit.
 
 ### Value identity safety
 
-#### [ ] READ-061 — Make binding-target interning reject invalid value IDs
+#### [x] READ-061 — Make binding-target interning reject invalid value IDs
 
 - **Severity:** High
 - **Fix Complexity:** Low
@@ -45,7 +45,12 @@ reference invariant, deduplication, terminal-cache fast path, and ordinary
 invalid-ID read behavior intact; add a regression test for an invalid binding
 target.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Validated binding targets against the existing terminal cache
+before interning, returning `ValueId::UNKNOWN` and recording exhaustion for
+invalid IDs instead of indexing with an unchecked `unwrap`. Added a regression
+test that verifies malformed targets do not insert a value. Verified with
+`cargo test -p glass-lint-core --lib analysis::model::value` and
+`make fmt && make ci`.
 
 ### Static-shape conversion
 

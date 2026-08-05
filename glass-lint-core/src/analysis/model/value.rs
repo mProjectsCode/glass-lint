@@ -161,8 +161,18 @@ impl Default for ValueTable {
 
 impl ValueTable {
     pub fn intern(&mut self, value: Value) -> ValueId {
-        let binding_target = match &value {
-            Value::Binding { target, .. } => Some(*target),
+        let binding_terminal = match &value {
+            Value::Binding { target, .. } => {
+                let Some(target_index) = usize::try_from(target.raw()).ok() else {
+                    self.exhausted = true;
+                    return ValueId::UNKNOWN;
+                };
+                let Some(terminal) = self.terminal_cache.get(target_index).copied() else {
+                    self.exhausted = true;
+                    return ValueId::UNKNOWN;
+                };
+                Some(terminal)
+            }
             _ => None,
         };
 
@@ -183,14 +193,8 @@ impl ValueTable {
             return ValueId::UNKNOWN;
         }
 
-        if let Some(target) = binding_target {
-            if target.0 >= index {
-                self.values.pop();
-                self.exhausted = true;
-                return ValueId::UNKNOWN;
-            }
-            self.terminal_cache
-                .push(self.terminal_cache[usize::try_from(target.raw()).unwrap()]);
+        if let Some(terminal) = binding_terminal {
+            self.terminal_cache.push(terminal);
         } else {
             self.terminal_cache.push(ValueId::new(index));
         }
@@ -285,6 +289,25 @@ mod tests {
         let arena = ValueTable::default();
         assert!(arena.get(ValueId::from_test(u32::MAX)).is_none());
         assert!(arena.get(ValueId::UNKNOWN).is_some());
+    }
+
+    #[test]
+    fn invalid_binding_targets_fail_closed() {
+        let mut table = ValueTable::default();
+        let key = BindingKey::new(crate::analysis::model::scope::BindingRoot::Binding {
+            function: FunctionId::from_test(0),
+            binding: crate::analysis::model::scope::BindingId::from_test(0),
+            version: crate::analysis::model::scope::BindingVersion::from_test(0),
+        });
+
+        let result = table.intern(Value::Binding {
+            key,
+            target: ValueId::from_test(u32::MAX),
+        });
+
+        assert_eq!(result, ValueId::UNKNOWN);
+        assert!(table.exhausted());
+        assert!(table.get(ValueId::from_test(1)).is_none());
     }
 
     #[test]
