@@ -34,7 +34,7 @@ mod visitor;
 
 use glass_lint_datastructures::{ByteRange, NamePath, PathId, PathSegmentInput, SymbolPath};
 pub(in crate::analysis) use model::*;
-pub(in crate::analysis) use origin_map::{OriginMap, OriginSnapshot};
+pub(in crate::analysis) use origin_map::{OriginCheckpoint, OriginMap, OriginSnapshot};
 use smol_str::SmolStr;
 pub(in crate::analysis) use stream::FactStream;
 use swc_common::{Span, Spanned};
@@ -51,6 +51,7 @@ use self::instance::InstanceCallable;
 #[cfg(test)]
 use crate::analysis::resolution::FrozenFactTables;
 use crate::analysis::{
+    SemanticBudget,
     resolution::Resolver,
     scope::{BoundArgument, ScopeId},
     syntax::{
@@ -73,6 +74,11 @@ struct FactProvenanceState {
     static_string_origins: HashMap<ValueId, ByteRange>,
 }
 
+struct ProvenanceCheckpoint {
+    instance: OriginCheckpoint,
+    class: OriginCheckpoint,
+}
+
 impl FactProvenanceState {
     fn new() -> Self {
         Self {
@@ -81,6 +87,68 @@ impl FactProvenanceState {
             class_origins: OriginMap::new(),
             static_string_origins: HashMap::new(),
         }
+    }
+
+    fn checkpoint(&mut self) -> ProvenanceCheckpoint {
+        ProvenanceCheckpoint {
+            instance: self.instance_origins.checkpoint(),
+            class: self.class_origins.checkpoint(),
+        }
+    }
+
+    fn restore(&mut self, checkpoint: &ProvenanceCheckpoint) {
+        self.instance_origins.restore(&checkpoint.instance);
+        self.class_origins.restore(&checkpoint.class);
+    }
+
+    fn restore_instances(&mut self, checkpoint: &ProvenanceCheckpoint) {
+        self.instance_origins.restore(&checkpoint.instance);
+    }
+
+    fn commit(&mut self, checkpoint: &mut ProvenanceCheckpoint) {
+        self.instance_origins.commit(&mut checkpoint.instance);
+        self.class_origins.commit(&mut checkpoint.class);
+    }
+
+    fn commit_instances(&mut self, checkpoint: &mut ProvenanceCheckpoint) {
+        self.instance_origins.commit(&mut checkpoint.instance);
+    }
+
+    fn rollback(&mut self, checkpoint: &mut ProvenanceCheckpoint) {
+        self.instance_origins.rollback(&mut checkpoint.instance);
+        self.class_origins.rollback(&mut checkpoint.class);
+    }
+
+    fn rollback_classes(&mut self, checkpoint: &mut ProvenanceCheckpoint) {
+        self.class_origins.rollback(&mut checkpoint.class);
+    }
+
+    fn snapshot_instances(&self, budget: &SemanticBudget) -> OriginSnapshot<(SmolStr, SmolStr)> {
+        self.instance_origins.snapshot(budget)
+    }
+
+    fn snapshot_classes(&self, budget: &SemanticBudget) -> OriginSnapshot<(SmolStr, SmolStr)> {
+        self.class_origins.snapshot(budget)
+    }
+
+    fn restore_instances_from(&mut self, snapshot: OriginSnapshot<(SmolStr, SmolStr)>) {
+        self.instance_origins.restore_from(snapshot);
+    }
+
+    fn retain_common_instances(
+        &mut self,
+        snapshot: &OriginSnapshot<(SmolStr, SmolStr)>,
+        budget: &SemanticBudget,
+    ) {
+        self.instance_origins.retain_common(snapshot, budget);
+    }
+
+    fn retain_common_classes(
+        &mut self,
+        snapshot: &OriginSnapshot<(SmolStr, SmolStr)>,
+        budget: &SemanticBudget,
+    ) {
+        self.class_origins.retain_common(snapshot, budget);
     }
 }
 

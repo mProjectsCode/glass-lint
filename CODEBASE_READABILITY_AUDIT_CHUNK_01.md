@@ -15,7 +15,7 @@ explicit.
 
 ### Fact construction control state
 
-#### [ ] READ-001 — Encapsulate provenance branch transactions
+#### [x] READ-001 — Encapsulate provenance branch transactions
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -43,7 +43,15 @@ class provenance domains, conservative removal at joins, bounded snapshots,
 and the special try/catch/finally semantics; this refactor must not combine
 alternatives from incompatible paths or turn incomplete state into a witness.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a private paired provenance transaction owner to
+`FactProvenanceState`. It now owns paired checkpoint, restore, commit, and
+rollback operations plus explicit instance/class snapshot, restore, and
+intersection helpers. Fact control orchestration no longer reaches into
+either origin map or coordinates their tokens directly; asymmetric
+switch/loop/try lifecycles remain explicit through owner operations.
+
+**Verification:** `cargo test -p glass-lint-core analysis::facts::tests::control --lib`
+(6 passed); `make fmt && make ci` (passed).
 
 ### Fact construction control flow
 
@@ -222,4 +230,3 @@ tests. Representative callers were traced with `rg`; workspace architecture,
 core architecture, testing guidance, contribution guidance, and agent
 instructions were read before review. This is a read-only audit; no source,
 test, configuration, dependency, or documentation files were changed.
-
