@@ -16,6 +16,7 @@ use glass_lint_datastructures::{NameTable, PathId, PathSegment, PathSegmentInput
 use crate::analysis::{
     facts::{FactId, FactKind, FactPayload, MAX_FACTS, ParameterBinding, SemanticFact},
     model::fact::{Building, Frozen},
+    resolution::FrozenFactTables,
     value::{FunctionId, ValueTable},
 };
 
@@ -68,9 +69,9 @@ pub(in crate::analysis) struct FactStream<Phase = Building> {
     max_facts: usize,
     /// Interned property/index paths used by argument projections.
     paths: PathStore,
-    /// Frozen name table, set during `freeze`.
+    /// Frozen name table, set during the resolver-owned freeze transition.
     names: NameTable,
-    /// Frozen value arena, set during `freeze`.
+    /// Frozen value arena, set during the resolver-owned freeze transition.
     values: ValueTable,
     /// Canonical function parameter bindings indexed by FunctionId. Populated
     /// during building; effects and summaries look up bindings here instead of
@@ -284,13 +285,10 @@ impl FactStream<Building> {
         self.paths.append(parent, segment)
     }
 
-    /// Consume the building stream and return a frozen stream with the name
-    /// table and value arena permanently attached.
-    pub(in crate::analysis) fn freeze(
-        self,
-        names: NameTable,
-        values: ValueTable,
-    ) -> FactStream<Frozen> {
+    /// Consume the building stream and return a frozen stream with the
+    /// resolver-owned name/value tables permanently attached.
+    pub(in crate::analysis) fn freeze(self, tables: FrozenFactTables) -> FactStream<Frozen> {
+        let (names, values) = tables.into_parts();
         FactStream {
             facts: self.facts,
             max_facts: self.max_facts,

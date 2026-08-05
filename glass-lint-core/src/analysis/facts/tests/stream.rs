@@ -3,6 +3,7 @@ use glass_lint_datastructures::NameTable;
 use crate::analysis::{
     facts::FactStream,
     model::fact::Building,
+    resolution::FrozenFactTables,
     value::{Value, ValueId, ValueTable},
 };
 
@@ -27,7 +28,8 @@ fn name_exhaustion_is_recorded_and_invalidates_stream() {
 fn freeze_transitions_to_frozen_phase_with_both_tables() {
     let mut values = ValueTable::default();
     let string = values.intern(Value::StaticString("from-arena".into()));
-    let stream = FactStream::<Building>::new().freeze(NameTable::default(), values);
+    let tables = FrozenFactTables::for_test(NameTable::default(), values);
+    let stream = FactStream::<Building>::new().freeze(tables);
 
     assert!(!stream.name_exhausted());
     assert_eq!(stream.values().static_string(string), Some("from-arena"));
@@ -38,7 +40,8 @@ fn freeze_transitions_to_frozen_phase_with_both_tables() {
 fn frozen_values_are_borrowed_by_artifact_local_id() {
     let mut values = ValueTable::default();
     let string = values.intern(Value::StaticString("from-arena".into()));
-    let stream = FactStream::<Building>::new().freeze(NameTable::default(), values);
+    let tables = FrozenFactTables::for_test(NameTable::default(), values);
+    let stream = FactStream::<Building>::new().freeze(tables);
 
     assert_eq!(stream.values().static_string(string), Some("from-arena"));
     assert!(stream.values().get(ValueId::from_test(u32::MAX)).is_none());

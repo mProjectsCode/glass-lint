@@ -25,7 +25,7 @@ by this audit.
 
 ### Fact-stream phase boundary
 
-#### [ ] READ-037 — Bind frozen fact tables to their producing artifact
+#### [x] READ-037 — Bind frozen fact tables to their producing artifact
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -51,7 +51,14 @@ two-table freeze entry point after migration. Preserve the `Building` to
 for diagnostics, deterministic indexes, and the guarantee that names and
 values are from the same local artifact.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a resolver-owned `FrozenFactTables` bundle and changed
+the building-to-frozen stream transition to consume that bundle instead of
+independent name and value tables. The production constructor is private to
+the resolver module; isolated stream tests use an explicit test-only factory.
+
+**Verification:** `make fmt && make ci` passes, including all workspace tests,
+end-to-end and provider rule harnesses, doctests, generated-rule validation,
+and examples.
 
 ### Cross-flow context and worklist state
 

@@ -13,9 +13,9 @@ mod call;
 mod constant;
 mod expression;
 
-#[cfg(test)]
-use glass_lint_datastructures::NameTable;
-use glass_lint_datastructures::{ByteRange, NameExhausted, NameId, NamePath, SymbolPath};
+use glass_lint_datastructures::{
+    ByteRange, NameExhausted, NameId, NamePath, NameTable, SymbolPath,
+};
 use hashbrown::{HashMap, HashSet};
 use smol_str::SmolStr;
 #[cfg(test)]
@@ -128,6 +128,32 @@ pub(super) struct Resolver<'a> {
     pub(super) budget: &'a SemanticBudget,
 }
 
+/// The only table bundle accepted by the fact-stream freeze transition.
+///
+/// The resolver creates this bundle after consuming its scope-owned names and
+/// value arena, so the two artifact-local ID spaces cross the phase boundary
+/// together.
+#[derive(Debug)]
+pub(in crate::analysis) struct FrozenFactTables {
+    names: NameTable,
+    values: ValueTable,
+}
+
+impl FrozenFactTables {
+    fn from_resolver(names: NameTable, values: ValueTable) -> Self {
+        Self { names, values }
+    }
+
+    pub(in crate::analysis) fn into_parts(self) -> (NameTable, ValueTable) {
+        (self.names, self.values)
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) fn for_test(names: NameTable, values: ValueTable) -> Self {
+        Self { names, values }
+    }
+}
+
 impl Lookup for Resolver<'_> {
     fn ident(&self, ident: &Ident, _state: &mut EvalState) -> ConstValue {
         self.scopes.ident_value_seed(ident).constant
@@ -170,7 +196,8 @@ impl Resolver<'_> {
         self,
         stream: FactStream<Building>,
     ) -> FactStream<Frozen> {
-        stream.freeze(self.scopes.into_name_table(), self.values)
+        let tables = FrozenFactTables::from_resolver(self.scopes.into_name_table(), self.values);
+        stream.freeze(tables)
     }
 
     /// Convert a canonical member chain into the arena's structured value.

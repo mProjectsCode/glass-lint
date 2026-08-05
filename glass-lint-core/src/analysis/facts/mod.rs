@@ -48,6 +48,8 @@ use swc_ecma_ast::{
 use swc_ecma_visit::{Visit, VisitWith};
 
 use self::instance::InstanceCallable;
+#[cfg(test)]
+use crate::analysis::resolution::FrozenFactTables;
 use crate::analysis::{
     resolution::Resolver,
     scope::{BoundArgument, ScopeId},
@@ -234,10 +236,11 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
 
     #[cfg(test)]
     pub(super) fn into_stream(self) -> FactStream<Frozen> {
-        self.stream.freeze(
+        let tables = FrozenFactTables::for_test(
             self.resolver.name_snapshot(),
             self.resolver.value_snapshot(),
-        )
+        );
+        self.stream.freeze(tables)
     }
 
     pub(in crate::analysis) fn into_built_facts(self) -> BuiltFacts {
