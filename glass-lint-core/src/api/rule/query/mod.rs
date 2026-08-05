@@ -746,11 +746,11 @@ fn explain_lifecycle_completion(completion: &lifecycle::LifecycleCompletion) -> 
 
 fn explain_lifecycle_sink(sink: &lifecycle::LifecycleSink) -> String {
     match sink.kind() {
-        lifecycle::LifecycleSinkKind::ArgumentOf { chain, index, .. } => {
-            format!("`{}` argument {index}", chain.as_str())
+        lifecycle::LifecycleSinkKind::ArgumentOf { endpoint, index } => {
+            format!("`{}` argument {index}", endpoint.chain())
         }
-        lifecycle::LifecycleSinkKind::AnyArgumentOf { chain, .. } => {
-            format!("any argument of `{}`", chain.as_str())
+        lifecycle::LifecycleSinkKind::AnyArgumentOf { endpoint } => {
+            format!("any argument of `{}`", endpoint.chain())
         }
     }
 }

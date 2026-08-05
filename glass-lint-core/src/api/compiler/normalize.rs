@@ -454,18 +454,17 @@ fn normalize_lifecycle_sink(
     sink: &crate::api::rule::query::lifecycle::LifecycleSink,
 ) -> NormalizedLifecycleSink {
     match sink.kind() {
-        crate::api::rule::query::lifecycle::LifecycleSinkKind::ArgumentOf {
-            target, index, ..
-        } => NormalizedLifecycleSink::ArgumentOf {
-            target: target.clone(),
-            index: *index,
-        },
-        crate::api::rule::query::lifecycle::LifecycleSinkKind::AnyArgumentOf {
-            chain: _,
-            target,
-        } => NormalizedLifecycleSink::AnyArgumentOf {
-            target: target.clone(),
-        },
+        crate::api::rule::query::lifecycle::LifecycleSinkKind::ArgumentOf { endpoint, index } => {
+            NormalizedLifecycleSink::ArgumentOf {
+                target: endpoint.target().clone(),
+                index: *index,
+            }
+        }
+        crate::api::rule::query::lifecycle::LifecycleSinkKind::AnyArgumentOf { endpoint } => {
+            NormalizedLifecycleSink::AnyArgumentOf {
+                target: endpoint.target().clone(),
+            }
+        }
     }
 }
 

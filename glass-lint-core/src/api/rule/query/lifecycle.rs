@@ -15,6 +15,26 @@ pub(crate) enum LifecycleCallTarget {
     RootedMember(SymbolPath),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct LifecycleCallEndpoint {
+    chain: MemberChain,
+    target: LifecycleCallTarget,
+}
+
+impl LifecycleCallEndpoint {
+    fn new(chain: MemberChain, target: LifecycleCallTarget) -> Self {
+        Self { chain, target }
+    }
+
+    pub(crate) fn target(&self) -> &LifecycleCallTarget {
+        &self.target
+    }
+
+    pub(crate) fn chain(&self) -> &str {
+        self.chain.as_str()
+    }
+}
+
 // ── LifecycleEvent ────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -332,13 +352,11 @@ define_lifecycle_adapter!(
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum LifecycleSinkKind {
     ArgumentOf {
-        chain: MemberChain,
-        target: LifecycleCallTarget,
+        endpoint: LifecycleCallEndpoint,
         index: usize,
     },
     AnyArgumentOf {
-        chain: MemberChain,
-        target: LifecycleCallTarget,
+        endpoint: LifecycleCallEndpoint,
     },
 }
 
@@ -388,18 +406,15 @@ impl LifecycleSink {
         }
         let chain = checked_chain(chain)?;
         let target = target(&chain);
+        let endpoint = LifecycleCallEndpoint::new(chain, target);
         let kind = match index {
             Some(index) => {
                 if index > limits::MAX_ARGUMENT_INDEX {
                     return Err(QueryBuildError::InvalidArgumentIndex(index));
                 }
-                LifecycleSinkKind::ArgumentOf {
-                    chain,
-                    target,
-                    index,
-                }
+                LifecycleSinkKind::ArgumentOf { endpoint, index }
             }
-            None => LifecycleSinkKind::AnyArgumentOf { chain, target },
+            None => LifecycleSinkKind::AnyArgumentOf { endpoint },
         };
         Ok(Self { kind })
     }
@@ -424,8 +439,8 @@ impl LifecycleSink {
 
     pub fn chain(&self) -> &str {
         match &self.kind {
-            LifecycleSinkKind::ArgumentOf { chain, .. }
-            | LifecycleSinkKind::AnyArgumentOf { chain, .. } => chain.as_str(),
+            LifecycleSinkKind::ArgumentOf { endpoint, .. }
+            | LifecycleSinkKind::AnyArgumentOf { endpoint } => endpoint.chain(),
         }
     }
 }

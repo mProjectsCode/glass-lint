@@ -81,7 +81,7 @@ make ci` (passed).
 
 ### Lifecycle declaration representation
 
-#### [ ] READ-075 — Give lifecycle sinks one owner for target identity
+#### [x] READ-075 — Give lifecycle sinks one owner for target identity
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -105,7 +105,15 @@ validation, deterministic ordering, sink equality/deduplication, and the
 runtime target consumed by `CompiledObjectSink`; remove the parallel chain
 storage after all explanation callers use the owner.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the private `LifecycleCallEndpoint` owner, which stores
+the validated `MemberChain` together with its derived
+`LifecycleCallTarget`. Sink variants now retain only the endpoint and any
+argument index; normalization and explanation use its target and display
+accessors.
+
+**Verification:** `cargo test -p glass-lint-core
+api::rule::query::lifecycle --lib` and `cargo test -p glass-lint-core
+api::compiler::tests::normalize --lib`; `make fmt && make ci` (all passed).
 
 ### Catalog and selection boundaries
 
@@ -209,8 +217,8 @@ ordering/representation assumptions to callers. Small domain owners for
 dimensions, lifecycle endpoints, catalog errors, and selections would make
 the compiler easier to extend without adding another matcher path.
 
-READ-074, READ-076, and READ-078 are marked applied above; the remaining
-findings in this chunk are open.
+READ-074, READ-075, READ-076, and READ-078 are marked applied above; the
+remaining findings in this chunk are open.
 
 ## Open Questions
 
