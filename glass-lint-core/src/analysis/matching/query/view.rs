@@ -104,7 +104,7 @@ impl<'a> EventIndexView<'a> {
             EventIndexView::Call { names: calls, .. } => names
                 .lookup(name)
                 .and_then(|id| calls.get(&id))
-                .map(CandidateOccurrences::Indexed),
+                .map(CandidateOccurrences::indexed),
             EventIndexView::MemberCall { paths, .. }
             | EventIndexView::MemberRead { paths, .. }
             | EventIndexView::PropertyWrite { paths, .. } => {
@@ -112,11 +112,11 @@ impl<'a> EventIndexView<'a> {
                 names
                     .lookup_path(member)
                     .and_then(|path| paths.get(&path))
-                    .map(CandidateOccurrences::Indexed)
+                    .map(CandidateOccurrences::indexed)
             }
             EventIndexView::ClassReference { strings, .. } => strings
                 .get(name.as_str())
-                .map(CandidateOccurrences::Indexed),
+                .map(CandidateOccurrences::indexed),
             EventIndexView::Construct {
                 names: constructors,
                 strings,
@@ -124,11 +124,11 @@ impl<'a> EventIndexView<'a> {
             } => names
                 .lookup(name)
                 .and_then(|id| constructors.get(&id))
-                .map(CandidateOccurrences::Indexed)
+                .map(CandidateOccurrences::indexed)
                 .or_else(|| {
                     strings
                         .get(name.as_str())
-                        .map(CandidateOccurrences::Indexed)
+                        .map(CandidateOccurrences::indexed)
                 }),
             EventIndexView::Import { .. } | EventIndexView::StringReference { .. } => None,
         }
@@ -141,7 +141,7 @@ impl<'a> EventIndexView<'a> {
     ) -> Option<CandidateOccurrences<'a>> {
         let index = self.global_index()?;
         overlay.map_or_else(
-            || index.get(name).map(CandidateOccurrences::Indexed),
+            || index.get(name).map(CandidateOccurrences::indexed),
             |overlay| overlay.resolve_global(index, name),
         )
     }
@@ -222,7 +222,7 @@ impl<'a> EventIndexView<'a> {
         match self {
             EventIndexView::Import { literals } => literals
                 .get(&SmolStr::new(predicate))
-                .map(CandidateOccurrences::Indexed),
+                .map(CandidateOccurrences::indexed),
             EventIndexView::StringReference { literals } => {
                 if predicate == crate::api::rule::query::PRIVATE_NETWORK_LITERAL {
                     literals.matching(|literal| private_network_match(literal).is_some())
@@ -253,7 +253,7 @@ impl<'a> EventIndexView<'a> {
     ) -> Option<CandidateOccurrences<'a>> {
         let (kind, index) = self.module_view()?;
         overlay.map_or_else(
-            || index.get(key).map(CandidateOccurrences::Indexed),
+            || index.get(key).map(CandidateOccurrences::indexed),
             |overlay| overlay.resolve_module(kind, index, key),
         )
     }

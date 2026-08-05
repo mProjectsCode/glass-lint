@@ -127,7 +127,7 @@ inserts out of order; the regression test now exercises that ordering.
 **Verification:** `cargo test -p glass-lint-core --lib analysis::matching`
 and `make fmt && make ci` pass.
 
-#### [ ] READ-054 — Replace mirrored candidate-collection enums with one owner
+#### [x] READ-054 — Replace mirrored candidate-collection enums with one owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -149,7 +149,13 @@ borrowed/owned payloads and expose a narrow iterator adapter. Preserve
 zero-allocation indexed and merged paths, owned scanned results, package
 overlay laziness, and deterministic occurrence ordering.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `CandidateOccurrences` now stores the iterator state directly
+and implements `Iterator`, with constructors for indexed slices and scanned
+vectors. Removed the mirrored `CandidateOccurrenceIter` enum and conversion
+match; borrowed merge and package iterators remain lazy and allocation-free.
+
+**Verification:** `cargo test -p glass-lint-core analysis::matching --lib`
+(42 passed) and `make fmt && make ci` (all passed).
 
 ### Linked overlay dispatch
 
@@ -218,5 +224,5 @@ argument preparation/evaluation, evidence accumulation, candidate iterators,
 and event query views, with representative callers in fact construction and
 project projection. Existing Chunk 1–9 findings were checked to avoid
 re-reporting fact-table pairing, summary raw/effective arguments, project
-identity overlays, and generic bounded worklist protocols. No findings are
-marked applied.
+identity overlays, and generic bounded worklist protocols. READ-051 through
+READ-055 are marked applied above.

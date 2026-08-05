@@ -121,7 +121,7 @@ impl<'a> ModuleOccurrenceOverlay<'a> {
             )));
         }
         if !self.masked.contains(key) {
-            return base.get(key).map(CandidateOccurrences::Indexed);
+            return base.get(key).map(CandidateOccurrences::indexed);
         }
         None
     }
@@ -229,7 +229,7 @@ impl<'a> LinkedOccurrenceView<'a> {
             (Some(base_slice), Some(overlay_slices)) => Some(CandidateOccurrences::Borrowed(
                 BorrowedOccurrenceIter::new(Some(base_slice), overlay_slices.as_slice()),
             )),
-            (Some(slice), None) => Some(CandidateOccurrences::Indexed(slice)),
+            (Some(slice), None) => Some(CandidateOccurrences::indexed(slice)),
             (None, Some(slices)) => Some(CandidateOccurrences::Borrowed(
                 BorrowedOccurrenceIter::new(None, slices.as_slice()),
             )),

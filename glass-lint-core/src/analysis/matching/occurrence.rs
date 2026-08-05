@@ -21,21 +21,23 @@ use crate::analysis::facts::FactId;
 /// lookups (package queries, predicate scans) still own a `Vec` because
 /// they combine multiple index buckets.
 pub(in crate::analysis) enum CandidateOccurrences<'a> {
-    Indexed(&'a [Occurrence]),
-    Borrowed(BorrowedOccurrenceIter<'a>),
-    BorrowedPackage(BorrowedPackageOccurrenceIter<'a>),
-    Scanned(Vec<Occurrence>),
-}
-
-/// Iterator over candidate occurrences from any lookup strategy.
-pub(in crate::analysis) enum CandidateOccurrenceIter<'a> {
     Indexed(core::iter::Copied<core::slice::Iter<'a, Occurrence>>),
     Borrowed(BorrowedOccurrenceIter<'a>),
     BorrowedPackage(BorrowedPackageOccurrenceIter<'a>),
     Scanned(std::vec::IntoIter<Occurrence>),
 }
 
-impl Iterator for CandidateOccurrenceIter<'_> {
+impl<'a> CandidateOccurrences<'a> {
+    pub(super) fn indexed(slice: &'a [Occurrence]) -> Self {
+        Self::Indexed(slice.iter().copied())
+    }
+
+    pub(super) fn scanned(occurrences: Vec<Occurrence>) -> Self {
+        Self::Scanned(occurrences.into_iter())
+    }
+}
+
+impl Iterator for CandidateOccurrences<'_> {
     type Item = Occurrence;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -44,20 +46,6 @@ impl Iterator for CandidateOccurrenceIter<'_> {
             Self::Borrowed(iter) => iter.next(),
             Self::BorrowedPackage(iter) => iter.next(),
             Self::Scanned(iter) => iter.next(),
-        }
-    }
-}
-
-impl<'a> IntoIterator for CandidateOccurrences<'a> {
-    type IntoIter = CandidateOccurrenceIter<'a>;
-    type Item = Occurrence;
-
-    fn into_iter(self) -> Self::IntoIter {
-        match self {
-            Self::Indexed(slice) => CandidateOccurrenceIter::Indexed(slice.iter().copied()),
-            Self::Borrowed(iter) => CandidateOccurrenceIter::Borrowed(iter),
-            Self::BorrowedPackage(iter) => CandidateOccurrenceIter::BorrowedPackage(iter),
-            Self::Scanned(vec) => CandidateOccurrenceIter::Scanned(vec.into_iter()),
         }
     }
 }
@@ -414,7 +402,7 @@ impl<K: Ord> OccurrenceIndex<K> {
         if occurrences.is_empty() {
             return None;
         }
-        Some(CandidateOccurrences::Scanned(occurrences))
+        Some(CandidateOccurrences::scanned(occurrences))
     }
 
     /// Append an already constructed occurrence before normalization.
