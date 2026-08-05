@@ -34,18 +34,33 @@ const MIN_ALTERNATIVES: usize = 16;
 
 impl FlowLimits {
     pub fn from_flow_operations(flow_operations: usize) -> Self {
-        let flow = flow_operations as u64;
         Self {
-            objects: u32::try_from(DEFAULT_OBJECTS * flow / DEFAULT_FLOW_OPERATIONS)
-                .unwrap_or(u32::MAX)
-                .max(MIN_OBJECTS),
-            states: ((DEFAULT_STATES * flow / DEFAULT_FLOW_OPERATIONS) as usize).max(MIN_STATES),
-            emissions: ((DEFAULT_EMISSIONS * flow / DEFAULT_FLOW_OPERATIONS) as usize)
-                .max(MIN_EMISSIONS),
-            mutation: ((DEFAULT_MUTATIONS * flow / DEFAULT_FLOW_OPERATIONS) as usize)
-                .max(MIN_MUTATIONS),
-            alternatives: ((DEFAULT_ALTERNATIVES as u64 * flow / DEFAULT_FLOW_OPERATIONS) as usize)
-                .max(MIN_ALTERNATIVES),
+            objects: u32::try_from(scaled_limit(
+                DEFAULT_OBJECTS,
+                flow_operations,
+                MIN_OBJECTS as usize,
+                u32::MAX as usize,
+            ))
+            .unwrap_or(u32::MAX),
+            states: scaled_limit(DEFAULT_STATES, flow_operations, MIN_STATES, usize::MAX),
+            emissions: scaled_limit(
+                DEFAULT_EMISSIONS,
+                flow_operations,
+                MIN_EMISSIONS,
+                usize::MAX,
+            ),
+            mutation: scaled_limit(
+                DEFAULT_MUTATIONS,
+                flow_operations,
+                MIN_MUTATIONS,
+                usize::MAX,
+            ),
+            alternatives: scaled_limit(
+                DEFAULT_ALTERNATIVES as u64,
+                flow_operations,
+                MIN_ALTERNATIVES,
+                usize::MAX,
+            ),
             operations: flow_operations,
             // Local projection owns one budget per module; cross-file
             // propagation owns one budget for the project phase.
@@ -113,6 +128,16 @@ impl FlowLimits {
             local_operations: operations,
         }
     }
+}
+
+fn scaled_limit(default: u64, flow_operations: usize, minimum: usize, maximum: usize) -> usize {
+    let flow = u64::try_from(flow_operations).unwrap_or(u64::MAX);
+    let scaled = default
+        .checked_mul(flow)
+        .map_or(u64::MAX, |product| product / DEFAULT_FLOW_OPERATIONS);
+    usize::try_from(scaled)
+        .unwrap_or(usize::MAX)
+        .clamp(minimum, maximum)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -595,6 +620,16 @@ mod tests {
         assert_eq!(limits.state_limit(), 4096);
         assert_eq!(limits.emission_limit(), 1024);
         assert_eq!(limits.mutation_limit(), 256);
+    }
+
+    #[test]
+    fn flow_limits_large_operation_budget_does_not_overflow() {
+        let limits = FlowLimits::from_flow_operations(usize::MAX);
+        assert!(limits.object_limit() >= 1024);
+        assert!(limits.state_limit() >= 4096);
+        assert!(limits.emission_limit() >= 1024);
+        assert!(limits.mutation_limit() >= 256);
+        assert!(limits.alternative_limit() >= 16);
     }
 
     #[test]

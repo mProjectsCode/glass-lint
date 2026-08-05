@@ -51,7 +51,7 @@ from definite completion.
 
 ### Flow-limit scaling
 
-#### [ ] READ-057 — Make flow-limit scaling overflow-safe
+#### [x] READ-057 — Make flow-limit scaling overflow-safe
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -73,7 +73,14 @@ Preserve the current minimum floors, local/project budget distinction, and
 deterministic scaling for ordinary values without turning exhaustion into a
 panic.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Flow-limit scaling now uses one checked arithmetic helper that
+converts the input safely, detects multiplication overflow, and clamps each
+derived limit to its representable range while preserving the existing minimum
+floors. Added a maximum-budget regression to ensure configuration cannot panic
+or wrap into a smaller bound.
+
+**Verification:** `cargo test -p glass-lint-core --lib analysis::model::flow`
+and `make fmt && make ci` pass.
 
 ### Fact identity construction
 
