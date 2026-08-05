@@ -35,50 +35,40 @@ impl FactBuilder<'_, '_> {
     }
 
     pub(super) fn record_if(&mut self, stmt: &IfStmt) {
-        let mut checkpoint = self.provenance.checkpoint();
-        let region = self.next_control_region();
-        self.emit_control(stmt.span(), ControlKind::BranchStart, region);
-        stmt.test.visit_with(self);
-        self.emit_control(stmt.cons.span(), ControlKind::BranchThen, region);
-        stmt.cons.visit_with(self);
-        let then_origins = self.provenance.snapshot_instances(self.resolver.budget);
-        let then_classes = self.provenance.snapshot_classes(self.resolver.budget);
-        self.provenance.restore(&checkpoint);
-        if let Some(alt) = &stmt.alt {
-            self.emit_control(alt.span(), ControlKind::BranchElse, region);
-            alt.visit_with(self);
-            self.retain_common_instance_origins(&then_origins);
-            self.retain_common_class_origins(&then_classes);
-            self.provenance.commit(&mut checkpoint);
-        } else {
-            self.provenance.rollback(&mut checkpoint);
-        }
-        self.emit_control(stmt.span(), ControlKind::BranchEnd, region);
+        self.record_branch(
+            stmt.span(),
+            |builder| stmt.test.visit_with(builder),
+            stmt.cons.span(),
+            |builder| stmt.cons.visit_with(builder),
+            stmt.alt.as_ref().map(Spanned::span),
+            |builder| {
+                if let Some(alt) = &stmt.alt {
+                    alt.visit_with(builder);
+                }
+            },
+        );
     }
 
     pub(super) fn record_for(&mut self, stmt: &ForStmt) {
         if let Some(init) = &stmt.init {
             init.visit_with(self);
         }
-        let mut checkpoint = self.provenance.checkpoint();
-        let region = self.next_control_region();
-        self.emit_control(
+        self.record_loop_with_update(
             stmt.span(),
-            ControlKind::LoopStart { guaranteed: false },
-            region,
+            false,
+            |builder| {
+                if let Some(test) = &stmt.test {
+                    test.visit_with(builder);
+                }
+                stmt.body.visit_with(builder);
+            },
+            |builder, region| {
+                if let Some(update) = &stmt.update {
+                    builder.emit_control(stmt.span(), ControlKind::LoopUpdate, region);
+                    update.visit_with(builder);
+                }
+            },
         );
-        if let Some(test) = &stmt.test {
-            test.visit_with(self);
-        }
-        stmt.body.visit_with(self);
-        if let Some(update) = &stmt.update {
-            self.emit_control(stmt.span(), ControlKind::LoopUpdate, region);
-            update.visit_with(self);
-        }
-        self.provenance.restore_instances(&checkpoint);
-        self.provenance.commit_instances(&mut checkpoint);
-        self.provenance.rollback_classes(&mut checkpoint);
-        self.emit_control(stmt.span(), ControlKind::LoopEnd, region);
     }
 
     pub(super) fn record_for_in(&mut self, stmt: &ForInStmt) {
@@ -112,10 +102,21 @@ impl FactBuilder<'_, '_> {
     }
 
     fn record_loop(&mut self, span: Span, guaranteed: bool, visit_body: impl FnOnce(&mut Self)) {
+        self.record_loop_with_update(span, guaranteed, visit_body, |_, _| {});
+    }
+
+    fn record_loop_with_update(
+        &mut self,
+        span: Span,
+        guaranteed: bool,
+        visit_body: impl FnOnce(&mut Self),
+        visit_update: impl FnOnce(&mut Self, ControlRegionId),
+    ) {
         let mut checkpoint = self.provenance.checkpoint();
         let region = self.next_control_region();
         self.emit_control(span, ControlKind::LoopStart { guaranteed }, region);
         visit_body(self);
+        visit_update(self, region);
         self.provenance.restore_instances(&checkpoint);
         self.provenance.commit_instances(&mut checkpoint);
         self.provenance.rollback_classes(&mut checkpoint);
@@ -176,21 +177,44 @@ impl FactBuilder<'_, '_> {
     }
 
     pub(super) fn record_conditional(&mut self, expr: &CondExpr) {
+        self.record_branch(
+            expr.span(),
+            |builder| expr.test.visit_with(builder),
+            expr.cons.span(),
+            |builder| expr.cons.visit_with(builder),
+            Some(expr.alt.span()),
+            |builder| expr.alt.visit_with(builder),
+        );
+    }
+
+    fn record_branch(
+        &mut self,
+        span: Span,
+        visit_test: impl FnOnce(&mut Self),
+        then_span: Span,
+        visit_then: impl FnOnce(&mut Self),
+        else_span: Option<Span>,
+        visit_else: impl FnOnce(&mut Self),
+    ) {
         let mut checkpoint = self.provenance.checkpoint();
         let region = self.next_control_region();
-        self.emit_control(expr.span(), ControlKind::BranchStart, region);
-        expr.test.visit_with(self);
-        self.emit_control(expr.cons.span(), ControlKind::BranchThen, region);
-        expr.cons.visit_with(self);
+        self.emit_control(span, ControlKind::BranchStart, region);
+        visit_test(self);
+        self.emit_control(then_span, ControlKind::BranchThen, region);
+        visit_then(self);
         let then_origins = self.provenance.snapshot_instances(self.resolver.budget);
         let then_classes = self.provenance.snapshot_classes(self.resolver.budget);
         self.provenance.restore(&checkpoint);
-        self.emit_control(expr.alt.span(), ControlKind::BranchElse, region);
-        expr.alt.visit_with(self);
-        self.retain_common_instance_origins(&then_origins);
-        self.retain_common_class_origins(&then_classes);
-        self.provenance.commit(&mut checkpoint);
-        self.emit_control(expr.span(), ControlKind::BranchEnd, region);
+        if let Some(else_span) = else_span {
+            self.emit_control(else_span, ControlKind::BranchElse, region);
+            visit_else(self);
+            self.retain_common_instance_origins(&then_origins);
+            self.retain_common_class_origins(&then_classes);
+            self.provenance.commit(&mut checkpoint);
+        } else {
+            self.provenance.rollback(&mut checkpoint);
+        }
+        self.emit_control(span, ControlKind::BranchEnd, region);
     }
 
     fn retain_common_instance_origins(&mut self, other: &OriginSnapshot<(SmolStr, SmolStr)>) {

@@ -55,7 +55,7 @@ switch/loop/try lifecycles remain explicit through owner operations.
 
 ### Fact construction control flow
 
-#### [ ] READ-002 — Consolidate branch-region orchestration
+#### [x] READ-002 — Consolidate branch-region orchestration
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -80,7 +80,14 @@ provenance owner a narrow join API. Keep the distinct `if` versus conditional
 spans, loop `guaranteed` value, update marker, switch case behavior, and
 try/catch/finally control kinds intact.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added shared branch and loop lifecycle helpers for checkpoint,
+marker, state-join, and cleanup orchestration. `if` and conditional branches
+now provide their construct-specific spans and visits, while all loop forms
+share lifecycle cleanup and `for` supplies its optional update marker.
+
+**Verification:** Focused control-flow tests (6 passed) and the full `make
+fmt && make ci` gate passed, including workspace Clippy, workspace tests,
+doctests, e2e cases, and provider rule cases.
 
 ### Function fact lifecycle
 
