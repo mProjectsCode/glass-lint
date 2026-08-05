@@ -337,9 +337,7 @@ fn plan_root(root: &NormalizedRoot, kind: MatchKind, symbol: &str) -> Vec<Physic
             }
             roots
         }
-        NormalizedRoot::Lifecycle(lc) => {
-            vec![plan_lifecycle(lc, symbol)]
-        }
+        NormalizedRoot::Lifecycle(lc) => plan_lifecycle(lc, symbol).into_iter().collect(),
     }
 }
 
@@ -402,10 +400,9 @@ fn plan_event(ev: &NormalizedEvent, kind: MatchKind, symbol: &str) -> Vec<Physic
     }
 }
 
-fn plan_lifecycle(lc: &NormalizedLifecycle, symbol: &str) -> PhysicalRoot {
-    PhysicalRoot::Lifecycle {
-        flow: CompiledObjectFlow::from_normalized_lifecycle(lc, symbol),
-    }
+fn plan_lifecycle(lc: &NormalizedLifecycle, symbol: &str) -> Option<PhysicalRoot> {
+    CompiledObjectFlow::from_normalized_lifecycle(lc, symbol)
+        .map(|flow| PhysicalRoot::Lifecycle { flow })
 }
 
 // ── Validation ──────────────────────────────────────────────────────────

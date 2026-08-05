@@ -38,6 +38,7 @@ fn compile_flow(query: &LifecycleQuery) -> CompiledObjectFlow {
         panic!("lifecycle declaration should normalize to a lifecycle root");
     };
     CompiledObjectFlow::from_normalized_lifecycle(lifecycle, normalized.emission().symbol())
+        .expect("validated lifecycle should have valid sources")
 }
 
 fn collect_source(source: &str, query: &LifecycleQuery) -> RuleEvidenceTable {

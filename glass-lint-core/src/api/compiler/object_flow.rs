@@ -108,7 +108,10 @@ impl CompiledObjectFlow {
     }
 
     /// Build a compiled flow directly from the normalized lifecycle IR.
-    pub(crate) fn from_normalized_lifecycle(lc: &NormalizedLifecycle, symbol: &str) -> Self {
+    pub(crate) fn from_normalized_lifecycle(
+        lc: &NormalizedLifecycle,
+        symbol: &str,
+    ) -> Option<Self> {
         let (requirements, requirement_mode) = lc.condition().map_or_else(
             || (Vec::new(), RequirementMode::AnyRequired),
             |cond| match cond {
@@ -144,18 +147,19 @@ impl CompiledObjectFlow {
                 ),
             },
         );
-        Self {
+        let sources = lc
+            .sources()
+            .iter()
+            .map(CompiledObjectSource::from_normalized_event)
+            .collect::<Option<Vec<_>>>()?;
+        Some(Self {
             symbol: SmolStr::new(symbol),
-            sources: lc
-                .sources()
-                .iter()
-                .map(CompiledObjectSource::from_normalized_event)
-                .collect(),
+            sources,
             requirements,
             sinks,
             requirement_mode,
             completion_mode,
-        }
+        })
     }
 }
 
@@ -166,7 +170,7 @@ pub(crate) struct CompiledObjectSource {
 }
 
 impl CompiledObjectSource {
-    fn from_normalized_event(event: &NormalizedEvent) -> Self {
+    fn from_normalized_event(event: &NormalizedEvent) -> Option<Self> {
         let target = match (event.event(), event.identity()) {
             (EventSpec::Call, IdentitySpec::Global { name }) => {
                 LifecycleCallTarget::Global(name.clone())
@@ -174,12 +178,12 @@ impl CompiledObjectSource {
             (EventSpec::MemberCall { member }, IdentitySpec::Rooted { .. }) => {
                 LifecycleCallTarget::RootedMember(member.clone())
             }
-            _ => LifecycleCallTarget::RootedMember(SymbolPath::default()),
+            _ => return None,
         };
-        Self {
+        Some(Self {
             target,
             arguments: event.arguments().to_flat_vec(),
-        }
+        })
     }
 
     pub(crate) fn target(&self) -> &LifecycleCallTarget {

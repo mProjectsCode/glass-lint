@@ -123,7 +123,7 @@ api::compiler::tests::normalize::algebra --lib` (23 passed) and
 
 ### Lifecycle physical lowering
 
-#### [ ] READ-088 — Reject impossible lifecycle sources instead of lowering an empty target
+#### [x] READ-088 — Reject impossible lifecycle sources instead of lowering an empty target
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -148,7 +148,14 @@ restriction. Preserve global versus rooted identity, argument constraints, and
 fail-closed unsupported-source behavior; delete the empty-path fallback once
 the lowerer cannot silently fabricate a target.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made normalized lifecycle-source lowering return `None` for
+unsupported event/identity pairs instead of fabricating an empty rooted path.
+The physical plan then reaches its existing validation boundary and fails
+closed; validated global and rooted-member sources retain their behavior.
+
+**Verification:** `cargo test -p glass-lint-core
+api::compiler::tests::physical --lib` (32 passed) and `make fmt && make ci`
+(passed).
 
 ### Physical plan boundary
 
