@@ -153,7 +153,7 @@ overlay laziness, and deterministic occurrence ordering.
 
 ### Linked overlay dispatch
 
-#### [ ] READ-055 — Give `ModuleOverlayKind` one bucket-access API
+#### [x] READ-055 — Give `ModuleOverlayKind` one bucket-access API
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -175,7 +175,12 @@ that supplies shared and mutable access through a single owner method. Preserve
 the distinct call/member/class/constructor buckets, masking semantics,
 global-call promotion, and borrowed overlay lifetimes.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The current `ModuleOccurrenceOverlay` already owns one
+`BTreeMap<ModuleOverlayKind, BorrowedModuleBuckets>` and routes mutable and
+shared access through `buckets_mut` and `buckets`; no duplicated
+variant-to-bucket mapping remains. Marked this stale finding as addressed.
+
+**Verification:** `make fmt && make ci` (passed).
 
 ## Systemic Themes
 
