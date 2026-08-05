@@ -23,7 +23,7 @@ made by this audit.
 
 ### Scope-shape storage
 
-#### [ ] READ-069 — Remove production scope-shape storage used only by tests
+#### [x] READ-069 — Remove production scope-shape storage used only by tests
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -44,7 +44,13 @@ explicit invariant counter that does not retain full `ScopeShape` values.
 Preserve keyed child consumption, unconsumed-shape detection, deterministic
 planner/collector matching, and the existing shape-mismatch status behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the production `Vec<ScopeShape>` with a scalar
+recorded-shape count. Child queues remain the sole production lookup state,
+while the test count helper retains its introspection contract without
+retaining duplicate shape values.
+
+**Verification:** `cargo test -p glass-lint-core analysis::scope::build --lib`
+(30 passed) and `make fmt && make ci` (passed).
 
 ### Binding-index freeze
 
