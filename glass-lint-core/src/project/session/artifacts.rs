@@ -89,8 +89,7 @@ impl AnalysisArtifacts {
         path: &ProjectRelativePath,
         lowered: LoweredSource,
     ) -> Vec<ResolutionRequest> {
-        let (source, semantic) = lowered.into_parts();
-        let local = LocalArtifact::new(source, semantic);
+        let local = LocalArtifact::from_lowered(lowered);
         let with_ids = local
             .interface()
             .requests_with_ids(path, local.source_context().lines());

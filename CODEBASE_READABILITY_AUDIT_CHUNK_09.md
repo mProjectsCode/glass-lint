@@ -90,7 +90,7 @@ projection, and deterministic summary propagation.
 
 ### Local artifact identity
 
-#### [ ] READ-049 — Bind source-location context to its semantic artifact
+#### [x] READ-049 — Bind source-location context to its semantic artifact
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -117,7 +117,14 @@ migration. Preserve cache reuse of immutable semantic state, path-specific
 line maps, project module IDs, and the separation between local facts and
 project linking overlays.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the raw `LocalArtifact::new(source, semantic)`
+constructor. `LocalArtifact` now consumes a `LoweredSource`, making the
+source-context/semantic pair an owned lowering transition; cache/session
+recording and test construction were migrated together while cache reuse
+continues to reattach only the current path to shared semantic data.
+
+**Verification:** `cargo test -p glass-lint-core analysis::tests --lib`
+(13 passed); `make fmt && make ci` (passed).
 
 ### Completeness status
 

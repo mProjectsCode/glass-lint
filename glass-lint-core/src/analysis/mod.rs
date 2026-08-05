@@ -69,7 +69,10 @@ mod tests {
         let project = ProjectSemanticModel::single(
             "projection-invariant.js",
             LocatedSourceContext::new(&source),
-            LocalArtifact::new(LocatedSourceContext::new(&source), Arc::new(local)),
+            LocalArtifact::from_lowered(LoweredSource::new(
+                LocatedSourceContext::new(&source),
+                Arc::new(local),
+            )),
         );
         let before = format!(
             "{:?}",
@@ -139,7 +142,10 @@ mod tests {
             ProjectSemanticModel::single(
                 path,
                 LocatedSourceContext::new(&source),
-                LocalArtifact::new(LocatedSourceContext::new(&source), Arc::new(local)),
+                LocalArtifact::from_lowered(LoweredSource::new(
+                    LocatedSourceContext::new(&source),
+                    Arc::new(local),
+                )),
             )
         }
 

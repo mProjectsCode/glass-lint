@@ -427,7 +427,8 @@ pub struct LocalArtifact {
 }
 
 impl LocalArtifact {
-    pub(crate) fn new(source: LocatedSourceContext, semantic: Arc<SemanticArtifact>) -> Self {
+    pub(crate) fn from_lowered(lowered: crate::analysis::lowering::LoweredSource) -> Self {
+        let (source, semantic) = lowered.into_parts();
         Self { source, semantic }
     }
 
