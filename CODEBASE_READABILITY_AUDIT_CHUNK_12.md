@@ -155,7 +155,7 @@ passed), and `make fmt && make ci` (passed).
 
 ### Module-request policy
 
-#### [ ] READ-065 — Encode supported module-request modes as a closed policy
+#### [x] READ-065 — Encode supported module-request modes as a closed policy
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -182,7 +182,13 @@ callers. Keep shadowing checks in `ModuleRequestContext`, preserve recursive
 wrapper recognition and request-kind reporting, and delete the duplicated
 field literals once all call sites use the closed modes.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the independent module-request policy booleans with a
+closed enum of the four supported recognition modes. Recognition now branches
+on those modes, so unsupported combinations cannot be constructed while
+shadowing, wrapper recursion, and request-kind reporting remain unchanged.
+
+**Verification:** `cargo test -p glass-lint-core analysis::module_request --lib`
+(3 passed) and `make fmt && make ci` (passed).
 
 ## Systemic Themes
 

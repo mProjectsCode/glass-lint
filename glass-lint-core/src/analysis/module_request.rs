@@ -26,43 +26,28 @@ pub(super) enum ModuleRequestKind {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(super) struct ModuleRequestPolicy {
-    pub(super) allow_dynamic_import: bool,
-    pub(super) allow_wrappers: bool,
-    pub(super) require_one_argument: bool,
+pub(super) enum ModuleRequestPolicy {
+    Interface,
+    DirectRequire,
+    Alias,
+    AliasWithDynamicImport,
 }
 
 impl ModuleRequestPolicy {
     pub(super) const fn interface() -> Self {
-        Self {
-            allow_dynamic_import: true,
-            allow_wrappers: false,
-            require_one_argument: true,
-        }
+        Self::Interface
     }
 
     pub(super) const fn direct_require() -> Self {
-        Self {
-            allow_dynamic_import: false,
-            allow_wrappers: false,
-            require_one_argument: false,
-        }
+        Self::DirectRequire
     }
 
     pub(super) const fn alias() -> Self {
-        Self {
-            allow_dynamic_import: false,
-            allow_wrappers: true,
-            require_one_argument: false,
-        }
+        Self::Alias
     }
 
     pub(super) const fn alias_with_dynamic_import() -> Self {
-        Self {
-            allow_dynamic_import: true,
-            allow_wrappers: true,
-            require_one_argument: false,
-        }
+        Self::AliasWithDynamicImport
     }
 }
 
@@ -104,7 +89,11 @@ pub(super) fn recognize_module_call<C: ModuleRequestContext + ?Sized>(
     policy: ModuleRequestPolicy,
 ) -> Option<RecognizedModuleRequest> {
     let Callee::Expr(callee) = &call.callee else {
-        if !policy.allow_dynamic_import || !matches!(call.callee, Callee::Import(_)) {
+        if !matches!(
+            policy,
+            ModuleRequestPolicy::Interface | ModuleRequestPolicy::AliasWithDynamicImport
+        ) || !matches!(call.callee, Callee::Import(_))
+        {
             return None;
         }
         return dynamic_import(call, context);
@@ -113,8 +102,10 @@ pub(super) fn recognize_module_call<C: ModuleRequestContext + ?Sized>(
     let Expr::Ident(ident) = &**callee else {
         return None;
     };
-    if policy.allow_wrappers
-        && is_interop_wrapper(ident.sym.as_ref())
+    if matches!(
+        policy,
+        ModuleRequestPolicy::Alias | ModuleRequestPolicy::AliasWithDynamicImport
+    ) && is_interop_wrapper(ident.sym.as_ref())
         && context.is_unshadowed_wrapper(ident)
     {
         let argument = call.args.first()?;
@@ -131,7 +122,7 @@ pub(super) fn recognize_module_call<C: ModuleRequestContext + ?Sized>(
     if ident.sym != COMMONJS_REQUIRE || !context.is_unshadowed_require(ident) {
         return None;
     }
-    if policy.require_one_argument && call.args.len() != 1 {
+    if matches!(policy, ModuleRequestPolicy::Interface) && call.args.len() != 1 {
         return None;
     }
     let argument = call.args.first()?;
