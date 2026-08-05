@@ -9,6 +9,8 @@
 //! lowest common ancestor (LCA) and applying only the diff. This is the same
 //! approach as the flow projector's `MutationLog`.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use glass_lint_datastructures::{HistoryCursor, HistoryTransition, NameId, ParentLinkedHistory};
 use hashbrown::HashMap;
 
@@ -19,9 +21,28 @@ use crate::analysis::scope::{BindingProvenance, ProvenanceAlternatives, ScopeId,
 /// certainty becomes `Possible` instead of `Definite`.
 pub(super) const DEFAULT_ALTERNATIVE_LIMIT: usize = 256;
 
+static NEXT_HISTORY_OWNER: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct HistoryOwner(u64);
+
+impl HistoryOwner {
+    fn new() -> Self {
+        Self(NEXT_HISTORY_OWNER.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum HistoryRestoreError {
+    ForeignCheckpoint,
+}
+
 /// A position in the assignment history.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct Cursor(HistoryCursor);
+pub(super) struct Cursor {
+    owner: HistoryOwner,
+    position: HistoryCursor,
+}
 
 #[derive(Debug, Clone)]
 struct AssignmentDelta {
@@ -31,7 +52,7 @@ struct AssignmentDelta {
     new: ProvenanceAlternatives,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 /// Most recent assignment provenance for each scope-local binding.
 ///
 /// A parent-linked mutation log allows checkpoint-and-restore without cloning
@@ -42,6 +63,7 @@ struct AssignmentDelta {
 pub(super) struct AssignmentEnvironment {
     assignments: HashMap<ScopeId, HashMap<NameId, ProvenanceAlternatives>>,
     history: ParentLinkedHistory<AssignmentDelta>,
+    owner: HistoryOwner,
 }
 
 impl AssignmentEnvironment {
@@ -49,6 +71,7 @@ impl AssignmentEnvironment {
         Self {
             assignments: HashMap::new(),
             history: ParentLinkedHistory::new(),
+            owner: HistoryOwner::new(),
         }
     }
 
@@ -101,23 +124,30 @@ impl AssignmentEnvironment {
 
     /// Record a cursor for later `restore`. O(1).
     pub(super) fn checkpoint(&self) -> Cursor {
-        Cursor(self.history.checkpoint())
+        Cursor {
+            owner: self.owner,
+            position: self.history.checkpoint(),
+        }
     }
 
     /// Restore to a previously recorded cursor by applying forward or inverse
     /// deltas between the current and target positions via LCA.
     /// O(|path|) where path is the number of entries between cursor and target.
-    pub(super) fn restore(&mut self, target: Cursor) {
+    pub(super) fn restore(&mut self, target: Cursor) -> Result<(), HistoryRestoreError> {
+        if target.owner != self.owner {
+            return Err(HistoryRestoreError::ForeignCheckpoint);
+        }
         let assignments = &mut self.assignments;
         if !self
             .history
-            .transition(target.0, |direction, delta| match direction {
+            .transition(target.position, |direction, delta| match direction {
                 HistoryTransition::Undo => apply_assignment_inverse(assignments, delta),
                 HistoryTransition::Redo => apply_assignment_forward(assignments, delta),
             })
         {
-            panic!("assignment checkpoint does not belong to its history");
+            return Err(HistoryRestoreError::ForeignCheckpoint);
         }
+        Ok(())
     }
 }
 
@@ -160,7 +190,10 @@ fn apply_assignment_forward(
 /// checkpoint. Restoring a checkpoint changes only parent-linked deltas,
 /// while iteration filters the compact current generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct WriteCheckpoint(HistoryCursor);
+pub(super) struct WriteCheckpoint {
+    owner: HistoryOwner,
+    position: HistoryCursor,
+}
 
 #[derive(Debug, Clone)]
 enum WriteDelta {
@@ -175,11 +208,12 @@ enum WriteDelta {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(super) struct WriteSet {
     entries: HashMap<ScopedName, u64>,
     generation: u64,
     history: ParentLinkedHistory<WriteDelta>,
+    owner: HistoryOwner,
 }
 
 impl WriteSet {
@@ -188,6 +222,7 @@ impl WriteSet {
             entries: HashMap::new(),
             generation: 0,
             history: ParentLinkedHistory::new(),
+            owner: HistoryOwner::new(),
         }
     }
 
@@ -211,21 +246,28 @@ impl WriteSet {
     }
 
     pub(super) fn checkpoint(&self) -> WriteCheckpoint {
-        WriteCheckpoint(self.history.checkpoint())
+        WriteCheckpoint {
+            owner: self.owner,
+            position: self.history.checkpoint(),
+        }
     }
 
-    pub(super) fn restore(&mut self, target: WriteCheckpoint) {
+    pub(super) fn restore(&mut self, target: WriteCheckpoint) -> Result<(), HistoryRestoreError> {
+        if target.owner != self.owner {
+            return Err(HistoryRestoreError::ForeignCheckpoint);
+        }
         let entries = &mut self.entries;
         let generation = &mut self.generation;
         if !self
             .history
-            .transition(target.0, |direction, delta| match direction {
+            .transition(target.position, |direction, delta| match direction {
                 HistoryTransition::Undo => apply_write_inverse(entries, generation, delta),
                 HistoryTransition::Redo => apply_write_forward(entries, generation, delta),
             })
         {
-            panic!("write checkpoint does not belong to its history");
+            return Err(HistoryRestoreError::ForeignCheckpoint);
         }
+        Ok(())
     }
 
     pub(super) fn iter(&self) -> impl Iterator<Item = ScopedName> + '_ {
@@ -284,12 +326,25 @@ mod tests {
         environment.record_known(scope, name, BindingProvenance::Local);
         let base = environment.checkpoint();
         environment.record_unknown(scope, name);
-        environment.restore(base);
+        environment
+            .restore(base)
+            .expect("same assignment history accepts its checkpoint");
         assert_eq!(
             environment
                 .get_by_id(scope, name)
                 .map(|value| value.complete_witnesses().collect::<Vec<_>>()),
             Some(vec![&BindingProvenance::Local])
+        );
+    }
+
+    #[test]
+    fn assignment_checkpoint_rejects_a_foreign_history() {
+        let first = AssignmentEnvironment::new();
+        let mut second = AssignmentEnvironment::new();
+
+        assert_eq!(
+            second.restore(first.checkpoint()),
+            Err(HistoryRestoreError::ForeignCheckpoint)
         );
     }
 
@@ -307,9 +362,24 @@ mod tests {
         writes.insert(second.clone());
         let branch = writes.checkpoint();
 
-        writes.restore(base);
+        writes
+            .restore(base)
+            .expect("same write history accepts its checkpoint");
         assert_eq!(writes.iter().collect::<Vec<_>>(), vec![first]);
-        writes.restore(branch);
+        writes
+            .restore(branch)
+            .expect("same write history accepts its checkpoint");
         assert_eq!(writes.iter().collect::<Vec<_>>(), vec![second]);
+    }
+
+    #[test]
+    fn write_checkpoint_rejects_a_foreign_history() {
+        let first = WriteSet::new();
+        let mut second = WriteSet::new();
+
+        assert_eq!(
+            second.restore(first.checkpoint()),
+            Err(HistoryRestoreError::ForeignCheckpoint)
+        );
     }
 }

@@ -6,7 +6,7 @@ use swc_ecma_ast::Expr;
 use crate::analysis::{
     scope::{
         BindingProvenance, ProvenanceAlternatives, ScopeId, ScopedName,
-        build::{CollectorCheckpoint, ControlFlowFrame, ScopeCollector},
+        build::{CollectorCheckpoint, ControlFlowFrame, ScopeCollectionIssue, ScopeCollector},
         query::rooted::rooted_expr_chain_with,
     },
     syntax::member_root_identifier,
@@ -141,12 +141,24 @@ impl ScopeCollector<'_> {
     /// Restore the assignment environment to a previously recorded
     /// checkpoint. O(delta) — only the entries changed since the
     /// checkpoint are rolled back.
-    fn restore(&mut self, checkpoint: &CollectorCheckpoint) {
-        self.path_state
+    fn restore(&mut self, checkpoint: &CollectorCheckpoint) -> bool {
+        let assignment_result = self
+            .path_state
             .assignment_environment
             .restore(checkpoint.cursor);
-        self.path_state.assignment_writes.restore(checkpoint.writes);
+        let writes_result = self.path_state.assignment_writes.restore(checkpoint.writes);
+        if assignment_result.is_err() || writes_result.is_err() {
+            self.record_checkpoint_failure();
+            return false;
+        }
         self.path_state.reachable = checkpoint.reachable;
+        true
+    }
+
+    fn record_checkpoint_failure(&mut self) {
+        self.artifacts
+            .record_issue(ScopeCollectionIssue::InvalidCheckpoint);
+        self.path_state.reachable = false;
     }
 
     /// Join multiple path environments at a control-flow merge point.
@@ -174,11 +186,21 @@ impl ScopeCollector<'_> {
         // same name (which the previous incoming-exclusion approach missed).
         let mut touched = BTreeSet::new();
         for path in paths {
-            self.path_state.assignment_writes.restore(path.writes);
+            if self
+                .path_state
+                .assignment_writes
+                .restore(path.writes)
+                .is_err()
+            {
+                self.record_checkpoint_failure();
+                return;
+            }
             touched.extend(self.path_state.assignment_writes.iter());
         }
 
-        self.restore(incoming);
+        if !self.restore(incoming) {
+            return;
+        }
         for key in touched {
             let incoming_value = self
                 .path_state
@@ -198,7 +220,15 @@ impl ScopeCollector<'_> {
 
             let mut value = ProvenanceAlternatives::joined();
             for path in &reachable {
-                self.path_state.assignment_environment.restore(path.cursor);
+                if self
+                    .path_state
+                    .assignment_environment
+                    .restore(path.cursor)
+                    .is_err()
+                {
+                    self.record_checkpoint_failure();
+                    return;
+                }
                 let path_value = self
                     .path_state
                     .assignment_environment
@@ -207,7 +237,9 @@ impl ScopeCollector<'_> {
                     .unwrap_or_else(|| incoming_value.clone());
                 value.add_bounded(&path_value, self.path_state.alternative_limit);
             }
-            self.restore(incoming);
+            if !self.restore(incoming) {
+                return;
+            }
             self.record_join_assignment(
                 Span::new(span.hi, span.hi),
                 key.scope(),

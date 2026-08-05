@@ -124,7 +124,7 @@ entry, releasing the path-local provenance immediately after installation.
 
 ### Assignment-history checkpoints
 
-#### [ ] READ-072 — Make assignment checkpoints owner-safe and non-panicking
+#### [x] READ-072 — Make assignment checkpoints owner-safe and non-panicking
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -150,7 +150,15 @@ LCA rollback/redo behavior, O(1) checkpoint creation, branch joins, and
 deterministic assignment versions; remove the direct panic paths after the
 caller handles the error.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added per-history owner tokens to assignment and write
+checkpoints, made restore return a typed `HistoryRestoreError`, and routed
+collector restore failures into the conservative `InvalidCheckpoint` scope
+collection issue. Direct join-path restores now use the same failure path;
+foreign checkpoint tests cover both history owners.
+
+**Verification:** `cargo test -p glass-lint-core analysis::scope::build --lib`
+passes (32 tests), and `make fmt && make ci` passes, including the full
+workspace, end-to-end, rule, doctest, and example checks.
 
 ## Systemic Themes
 
