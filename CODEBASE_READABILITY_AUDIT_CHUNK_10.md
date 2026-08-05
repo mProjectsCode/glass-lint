@@ -55,7 +55,7 @@ and `make fmt && make ci`.
 
 ### Matcher artifact and overlay identity
 
-#### [ ] READ-052 — Bind matcher evaluation to its occurrence-index artifact
+#### [x] READ-052 — Bind matcher evaluation to its occurrence-index artifact
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -82,7 +82,15 @@ parallel context arguments after migration. Preserve zero-copy borrowed
 overlays, local versus linked identity precedence, bounded fallback evaluation,
 and the rule that cross-artifact IDs cannot establish evidence.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the separate local matcher stream/index inputs and
+occurrence overlay with `MatcherArtifact`, which is built from one
+`SemanticFacts` artifact and retains its linked occurrence view. Project
+identity maps and call-result identities remain a separate qualified overlay;
+ordinary indexed evidence and constrained evaluation now consume the same
+artifact-bound index and stream.
+
+**Verification:** `cargo test -p glass-lint-core analysis::matching --lib`
+(42 passed); `make fmt && make ci` (passed).
 
 ### Occurrence storage and iteration
 

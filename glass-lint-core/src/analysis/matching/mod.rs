@@ -21,7 +21,7 @@ mod indexes;
 pub(in crate::analysis) use identity_map::ModuleIdentityMap;
 mod arguments;
 pub(in crate::analysis) use arguments::{
-    MatcherLocalInput, MatcherProjectOverlay, compute_constrained_evidence,
+    MatcherArtifact, MatcherProjectOverlay, compute_constrained_evidence,
 };
 mod build;
 mod query;
@@ -52,13 +52,13 @@ pub(in crate::analysis) enum ModuleOverlayKind {
     Constructor,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct ModuleOccurrenceOverlay<'a> {
     masked: std::collections::BTreeSet<ModuleExportKey>,
     buckets: BTreeMap<ModuleOverlayKind, BorrowedModuleBuckets<'a>>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(in crate::analysis) struct LinkedOccurrenceView<'a> {
     module: ModuleOccurrenceOverlay<'a>,
     global_calls: BorrowedGlobalBuckets<'a>,

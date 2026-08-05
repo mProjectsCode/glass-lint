@@ -15,9 +15,7 @@ use crate::{
             projector::{self as object_flow, LocalFlowProjectionOutcome},
         },
         lowering::status::{AnalysisComponent, IncompleteReason, StatusScope},
-        matching::{
-            LinkedOccurrenceView, MatcherLocalInput, MatcherProjectOverlay, OccurrenceIndexes,
-        },
+        matching::{MatcherArtifact, MatcherProjectOverlay},
         model::flow::FlowLimits,
         project::state::LinkingSession,
         trace::TraceArena,
@@ -209,6 +207,7 @@ impl<'a> ProjectionPlan<'a> {
 /// immutable facts artifact.
 struct ProjectionInputs<'a> {
     facts: &'a SemanticFacts,
+    matcher_artifact: &'a MatcherArtifact<'a>,
     effects: Option<&'a crate::analysis::flow::effect::FunctionEffects>,
     plan: &'a ProjectionPlan<'a>,
     matcher_overlay: MatcherProjectOverlay<'a>,
@@ -220,6 +219,7 @@ struct ProjectionInputs<'a> {
 fn project_facts(inputs: ProjectionInputs<'_>) -> (RuleEvidenceTable, LocalFlowProjectionOutcome) {
     let ProjectionInputs {
         facts,
+        matcher_artifact,
         effects,
         plan,
         matcher_overlay,
@@ -238,7 +238,7 @@ fn project_facts(inputs: ProjectionInputs<'_>) -> (RuleEvidenceTable, LocalFlowP
         .map(PlannedConstrainedRoot::matcher_input)
         .collect::<Vec<_>>();
     crate::analysis::matching::compute_constrained_evidence(
-        MatcherLocalInput::from_facts(facts),
+        matcher_artifact,
         &constrained_roots,
         &mut projected_evidence,
         matcher_overlay,
@@ -277,8 +277,7 @@ pub struct ProjectMatcherModel<'project, 'matchers> {
 #[derive(Debug)]
 struct ProjectModuleProjection<'project> {
     module: &'project ProjectModule,
-    index: &'project OccurrenceIndexes,
-    overlay: Option<LinkedOccurrenceView<'project>>,
+    matcher_artifact: MatcherArtifact<'project>,
     projected: RuleEvidenceTable,
 }
 
@@ -288,9 +287,9 @@ impl ProjectModuleProjection<'_> {
         matcher: &CompiledMatcherPlan,
         rule_index: RuleIndex,
     ) -> Vec<ClassificationEvidence> {
-        let mut evidence = self.index.evidence_for_with_overlay(
+        let mut evidence = self.matcher_artifact.indexes().evidence_for_with_overlay(
             matcher,
-            self.overlay.as_ref(),
+            self.matcher_artifact.overlay(),
             self.module.local().facts().names(),
         );
 
@@ -492,19 +491,16 @@ impl ProjectSemanticModel {
         let projections = self
             .modules()
             .map(|module| {
-                let index = module.local().facts().matcher_index();
                 let identities =
                     need_module_ids.then(|| self.module_identities(module.id(), session));
                 let result_identities =
                     need_result_ids.then(|| self.call_result_identities(module.id(), session));
-                let (overlay, overlay_ops) = if plan.needs_overlay() {
-                    identities.as_ref().map_or((None, 0), |ids| {
-                        let (view, ops) = LinkedOccurrenceView::build(index, ids);
-                        (Some(view), ops)
-                    })
-                } else {
-                    (None, 0)
-                };
+                let overlay_identities = plan
+                    .needs_overlay()
+                    .then_some(identities.as_ref())
+                    .flatten();
+                let (matcher_artifact, overlay_ops) =
+                    MatcherArtifact::from_facts(module.local().facts(), overlay_identities);
                 outcome.metrics.operations = outcome.metrics.operations.saturating_add(overlay_ops);
                 let effects = plan.needs_flow().then(|| module.local().effects());
                 if let Some(effects) = effects
@@ -514,10 +510,10 @@ impl ProjectSemanticModel {
                 }
                 let (projected, local) = project_facts(ProjectionInputs {
                     facts: module.local().facts(),
+                    matcher_artifact: &matcher_artifact,
                     effects,
                     plan,
-                    matcher_overlay: MatcherProjectOverlay::new(
-                        overlay.as_ref(),
+                    matcher_overlay: MatcherProjectOverlay::from_identities(
                         identities.as_ref(),
                         result_identities.as_ref(),
                     ),
@@ -530,8 +526,7 @@ impl ProjectSemanticModel {
                     module.id(),
                     ProjectModuleProjection {
                         module,
-                        index,
-                        overlay,
+                        matcher_artifact,
                         projected,
                     },
                 )

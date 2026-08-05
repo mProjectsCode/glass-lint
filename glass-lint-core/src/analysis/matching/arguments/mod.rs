@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{borrow::Borrow, collections::BTreeMap};
 
 use crate::{
     analysis::{
@@ -40,53 +40,105 @@ struct PreparedConstrainedRoot<'a> {
     occurrences: Vec<Occurrence>,
 }
 
-/// The local matcher inputs borrowed from one immutable semantic artifact.
-/// Constructing this from `SemanticFacts` keeps the fact stream and its
-/// occurrence index paired at the projection boundary.
-pub(in crate::analysis) struct MatcherLocalInput<'a> {
+/// The matcher artifact borrowed from one immutable semantic artifact.
+/// Keeping the stream, occurrence index, and linked occurrence view together
+/// prevents evaluation from combining IDs and borrowed buckets from different
+/// artifacts.
+#[derive(Debug)]
+pub(in crate::analysis) struct MatcherArtifact<'a> {
     stream: &'a FactStream<Frozen>,
     indexes: &'a OccurrenceIndexes,
+    overlay: Option<LinkedOccurrenceView<'a>>,
 }
 
-impl<'a> MatcherLocalInput<'a> {
-    pub(in crate::analysis) fn from_facts(facts: &'a SemanticFacts) -> Self {
-        Self {
-            stream: facts.stream(),
-            indexes: facts.matcher_index(),
-        }
+impl<'a> MatcherArtifact<'a> {
+    pub(in crate::analysis) fn from_facts(
+        facts: &'a SemanticFacts,
+        identities: Option<&ModuleIdentityMap>,
+    ) -> (Self, usize) {
+        let (overlay, operations) = identities.map_or((None, 0), |identities| {
+            let (overlay, operations) =
+                LinkedOccurrenceView::build(facts.matcher_index(), identities);
+            (Some(overlay), operations)
+        });
+        (
+            Self {
+                stream: facts.stream(),
+                indexes: facts.matcher_index(),
+                overlay,
+            },
+            operations,
+        )
     }
 
     #[cfg(test)]
     fn from_parts(stream: &'a FactStream<Frozen>, indexes: &'a OccurrenceIndexes) -> Self {
-        Self { stream, indexes }
+        Self {
+            stream,
+            indexes,
+            overlay: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn from_parts_with_overlay(
+        stream: &'a FactStream<Frozen>,
+        indexes: &'a OccurrenceIndexes,
+        overlay: Option<&LinkedOccurrenceView<'a>>,
+    ) -> Self {
+        Self {
+            stream,
+            indexes,
+            overlay: overlay.cloned(),
+        }
+    }
+
+    pub(in crate::analysis) fn indexes(&self) -> &OccurrenceIndexes {
+        self.indexes
+    }
+
+    pub(in crate::analysis) fn overlay(&self) -> Option<&LinkedOccurrenceView<'a>> {
+        self.overlay.as_ref()
     }
 }
 
 /// Project-level identities and occurrence remapping for one local module.
 pub(in crate::analysis) struct MatcherProjectOverlay<'a> {
-    occurrence: Option<&'a LinkedOccurrenceView<'a>>,
     identities: Option<&'a ModuleIdentityMap>,
     result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
 }
 
 impl<'a> MatcherProjectOverlay<'a> {
-    pub(in crate::analysis) fn new(
-        occurrence: Option<&'a LinkedOccurrenceView<'a>>,
+    pub(in crate::analysis) fn from_identities(
         identities: Option<&'a ModuleIdentityMap>,
         result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
     ) -> Self {
         Self {
-            occurrence,
+            identities,
+            result_identities,
+        }
+    }
+
+    #[cfg(test)]
+    fn new(
+        _occurrence: Option<&'a LinkedOccurrenceView<'a>>,
+        identities: Option<&'a ModuleIdentityMap>,
+        result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
+    ) -> Self {
+        Self {
             identities,
             result_identities,
         }
     }
 }
 
-struct MatcherEvaluationContext<'a> {
-    local: MatcherLocalInput<'a>,
-    project: MatcherProjectOverlay<'a>,
-    operations: &'a mut EvaluationOperations,
+#[cfg(test)]
+type MatcherLocalInput<'a> = MatcherArtifact<'a>;
+
+struct MatcherEvaluationContext<'borrow, 'artifact> {
+    artifact: &'borrow MatcherArtifact<'artifact>,
+    project: MatcherProjectOverlay<'borrow>,
+    operations: &'borrow mut EvaluationOperations,
 }
 
 fn push_owned_rule_evidence(
@@ -99,8 +151,8 @@ fn push_owned_rule_evidence(
     evidence.record_grouped(rule, kind, symbol, owned_occurrences(occurrences));
 }
 
-pub(in crate::analysis) fn compute_constrained_evidence(
-    local: MatcherLocalInput<'_>,
+pub(in crate::analysis) fn compute_constrained_evidence<'artifact>(
+    artifact: impl Borrow<MatcherArtifact<'artifact>>,
     roots: &[(usize, &PhysicalRoot)],
     evidence: &mut RuleEvidenceTable,
     project: MatcherProjectOverlay<'_>,
@@ -108,7 +160,7 @@ pub(in crate::analysis) fn compute_constrained_evidence(
     let mut ops = EvaluationOperations::default();
     compute_constrained_inner(
         MatcherEvaluationContext {
-            local,
+            artifact: artifact.borrow(),
             project,
             operations: &mut ops,
         },
@@ -119,18 +171,18 @@ pub(in crate::analysis) fn compute_constrained_evidence(
 
 /// Inner implementation that also tracks evaluation operations.
 fn compute_constrained_inner(
-    context: MatcherEvaluationContext<'_>,
+    context: MatcherEvaluationContext<'_, '_>,
     roots: &[(usize, &PhysicalRoot)],
     evidence: &mut RuleEvidenceTable,
 ) {
     let MatcherEvaluationContext {
-        local,
+        artifact,
         project,
         operations,
     } = context;
-    let MatcherLocalInput { stream, indexes } = local;
+    let stream = artifact.stream;
+    let indexes = artifact.indexes;
     let MatcherProjectOverlay {
-        occurrence: overlay,
         identities,
         result_identities,
     } = project;
@@ -179,7 +231,7 @@ fn compute_constrained_inner(
         &mut prepared,
         stream,
         indexes,
-        overlay,
+        artifact.overlay(),
         &evaluator,
         operations,
         evidence,
@@ -849,7 +901,7 @@ mod tests {
         let mut ops = EvaluationOperations::default();
         compute_constrained_inner(
             MatcherEvaluationContext {
-                local: MatcherLocalInput::from_parts(stream, index),
+                artifact: &MatcherArtifact::from_parts_with_overlay(stream, index, overlay),
                 project: MatcherProjectOverlay::new(overlay, None, None),
                 operations: &mut ops,
             },
