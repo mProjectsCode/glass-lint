@@ -9,7 +9,7 @@ use smol_str::SmolStr;
 
 use crate::{
     analysis::{
-        facts::{FactId, FactStream, Frozen, SemanticFact},
+        facts::{FactStream, Frozen, SemanticFact},
         flow::effect::FunctionEffect,
         local::{LocalArtifact, ProjectModule},
         lowering::status::{AnalysisStatus, IncompleteReason, StatusScope},
@@ -21,7 +21,7 @@ use crate::{
             state::{ExportTable, LinkingSession},
         },
         syntax::SymbolCallProvenance,
-        trace::TraceArena,
+        trace::{QualifiedEvent, TraceArena},
         value::{FunctionId, ValueId},
     },
     api::{
@@ -47,6 +47,26 @@ pub(super) const MAX_PROJECT_REQUESTS: usize = 500_000;
 pub struct QualifiedRequestId {
     module: ModuleId,
     request: ModuleRequestId,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub(in crate::analysis) struct QualifiedFunctionId {
+    module: ModuleId,
+    function: FunctionId,
+}
+
+impl QualifiedFunctionId {
+    pub(in crate::analysis) const fn new(module: ModuleId, function: FunctionId) -> Self {
+        Self { module, function }
+    }
+
+    pub(in crate::analysis) const fn module(self) -> ModuleId {
+        self.module
+    }
+
+    pub(in crate::analysis) const fn function(self) -> FunctionId {
+        self.function
+    }
 }
 
 impl QualifiedRequestId {
@@ -353,10 +373,11 @@ impl ProjectSemanticModel {
 
     pub(in crate::analysis) fn effect(
         &self,
-        module: ModuleId,
-        function: FunctionId,
+        target: QualifiedFunctionId,
     ) -> Option<&FunctionEffect> {
-        self.local_artifact(module)?.effects().get(function)
+        self.local_artifact(target.module())?
+            .effects()
+            .get(target.function())
     }
 
     /// Borrow the name table for a module's local artifact.
@@ -372,22 +393,17 @@ impl ProjectSemanticModel {
         Some(self.local_artifact(module)?.facts().stream())
     }
 
-    pub(in crate::analysis) fn fact(
-        &self,
-        module: ModuleId,
-        fact: FactId,
-    ) -> Option<&SemanticFact> {
-        self.local_artifact(module)?.facts().stream().fact(fact)
+    pub(in crate::analysis) fn fact(&self, event: QualifiedEvent) -> Option<&SemanticFact> {
+        self.local_artifact(event.module())?
+            .facts()
+            .stream()
+            .fact(event.fact())
     }
 
     /// Return the result value produced by a source call fact, if known.
-    pub(in crate::analysis) fn source_call_result(
-        &self,
-        module: ModuleId,
-        fact: FactId,
-    ) -> ValueId {
-        self.module_fact_stream(module)
-            .and_then(|stream| stream.fact(fact))
+    pub(in crate::analysis) fn source_call_result(&self, event: QualifiedEvent) -> ValueId {
+        self.module_fact_stream(event.module())
+            .and_then(|stream| stream.fact(event.fact()))
             .map_or(ValueId::UNKNOWN, |fact| match &fact.payload {
                 crate::analysis::facts::FactPayload::Call { result, .. } => *result,
                 _ => ValueId::UNKNOWN,
@@ -396,9 +412,9 @@ impl ProjectSemanticModel {
 
     /// Convert a module/fact identity into a source location for related
     /// evidence.
-    pub fn fact_location(&self, module: ModuleId, fact: FactId) -> Option<SourceLocation> {
-        let module = self.module(module)?;
-        let fact = module.local().facts().stream().fact(fact)?;
+    pub fn fact_location(&self, event: QualifiedEvent) -> Option<SourceLocation> {
+        let module = self.module(event.module())?;
+        let fact = module.local().facts().stream().fact(event.fact())?;
         let range = module.source_context().range(fact.span).ok()?;
 
         Some(SourceLocation::new(module.path().clone(), range))
@@ -411,9 +427,9 @@ impl ProjectSemanticModel {
         local: Option<FunctionId>,
         provenance: &SymbolCallProvenance,
         session: &mut LinkingSession,
-    ) -> Option<(ModuleId, FunctionId)> {
+    ) -> Option<QualifiedFunctionId> {
         if let Some(local) = local {
-            return Some((importer, local));
+            return Some(QualifiedFunctionId::new(importer, local));
         }
         let SymbolCallProvenance::ModuleExport { module, export } = provenance else {
             return None;
@@ -430,7 +446,7 @@ impl ProjectSemanticModel {
             .get(&target)
             .and_then(|module| module.local().interface().function_export(&target_export));
         let function = function?;
-        Some((target, function))
+        Some(QualifiedFunctionId::new(target, function))
     }
 
     /// Borrow diagnostics produced during project linking and analysis.

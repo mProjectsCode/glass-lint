@@ -15,6 +15,7 @@ use crate::{
             },
         },
         model::flow::FlowId,
+        trace::QualifiedEvent,
         value::{FunctionId, ValueId},
     },
     api::compiler::CompiledObjectFlow,
@@ -149,28 +150,32 @@ impl FlowSources {
                 }
                 for call in effect.calls() {
                     let cref = call.as_ref(stream);
-                    let Some((target_module, target_function)) =
-                        call_graph.get(module.id(), call.event())
+                    let Some(target) =
+                        call_graph.get(QualifiedEvent::new(module.id(), call.event()))
                     else {
                         continue;
                     };
-                    let Some(target) = project.effect(target_module, target_function) else {
+                    let Some(target_effect) = project.effect(target) else {
                         continue;
                     };
 
                     let to = SourceKey::new(module.id(), effect.id(), cref.result());
 
-                    for returned in target.returns().iter().filter(|r| r.parameter().is_none()) {
-                        let root = target
+                    for returned in target_effect
+                        .returns()
+                        .iter()
+                        .filter(|r| r.parameter().is_none())
+                    {
+                        let root = target_effect
                             .value_root(returned.value())
                             .unwrap_or_else(|| returned.value());
-                        let from = SourceKey::new(target_module, target_function, root);
+                        let from = SourceKey::new(target.module(), target.function(), root);
                         self.add_edge(from, to);
                     }
 
                     for argument in call.arguments() {
                         if !argument.is_root()
-                            || !target.returns().iter().any(|returned| {
+                            || !target_effect.returns().iter().any(|returned| {
                                 returned.parameter().is_some_and(|parameter| {
                                     parameter.index() == argument.index() && parameter.is_root()
                                 })

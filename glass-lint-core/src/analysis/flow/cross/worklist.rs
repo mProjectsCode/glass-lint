@@ -2,7 +2,7 @@ use std::collections::{BTreeSet, VecDeque};
 
 use crate::{
     analysis::{
-        ProjectSemanticModel,
+        ProjectSemanticModel, QualifiedFunctionId,
         flow::cross::{
             MAX_CONTEXTS,
             graph::QualifiedCallGraph,
@@ -93,7 +93,7 @@ impl ContextWorklist {
         state: &CrossFlowState,
         crossed: bool,
     ) {
-        let Some(effect) = project.effect(module, function) else {
+        let Some(effect) = project.effect(QualifiedFunctionId::new(module, function)) else {
             return;
         };
         let Some(fact_stream) = project.module_fact_stream(module) else {
@@ -145,7 +145,9 @@ impl ContextWorklist {
                     candidate.flow_id(),
                     QualifiedEvent::new(key.module(), candidate.event()),
                 ),
-                key.value() != project.source_call_result(key.module(), candidate.event()),
+                key.value()
+                    != project
+                        .source_call_result(QualifiedEvent::new(key.module(), candidate.event())),
             ));
         }
     }
@@ -163,8 +165,8 @@ impl ContextWorklist {
             }
             for effect in module.local().effects().iter_effects() {
                 for call in effect.calls() {
-                    let Some((target_module, target_function)) =
-                        call_graph.get(module.id(), call.event())
+                    let Some(target) =
+                        call_graph.get(QualifiedEvent::new(module.id(), call.event()))
                     else {
                         continue;
                     };
@@ -184,11 +186,11 @@ impl ContextWorklist {
                             );
                             self.enqueue_parameters(
                                 project,
-                                target_module,
-                                target_function,
+                                target.module(),
+                                target.function(),
                                 argument.index(),
                                 &state,
-                                target_module != module.id(),
+                                target.module() != module.id(),
                             );
                         }
 
@@ -206,11 +208,11 @@ impl ContextWorklist {
                             }
                             self.enqueue_parameters(
                                 project,
-                                target_module,
-                                target_function,
+                                target.module(),
+                                target.function(),
                                 argument.index(),
                                 &CrossFlowState::unknown(flow),
-                                target_module != module.id(),
+                                target.module() != module.id(),
                             );
                         }
                     }

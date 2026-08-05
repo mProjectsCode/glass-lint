@@ -264,7 +264,7 @@ pub(super) fn emit(
         fact: event,
     };
     let span = project
-        .fact(module, event)
+        .fact(QualifiedEvent::new(module, event))
         .map_or_else(glass_lint_datastructures::ByteRange::empty, |fact| {
             fact.span
         });

@@ -140,7 +140,13 @@ impl CrossWorklist<'_, '_> {
     }
 
     fn project_context(&mut self, context: &CallContext) {
-        let Some(effect) = self.project.effect(context.module(), context.function()) else {
+        let Some(effect) = self
+            .project
+            .effect(crate::analysis::QualifiedFunctionId::new(
+                context.module(),
+                context.function(),
+            ))
+        else {
             return;
         };
         if effect.is_invalid() {

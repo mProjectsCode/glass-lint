@@ -229,8 +229,10 @@ impl CallPropagation<'_, '_> {
             {
                 continue;
             }
-            let Some((target_module, target_function)) =
-                self.session.call_graph.get(self.module, call.event())
+            let Some(target) = self
+                .session
+                .call_graph
+                .get(QualifiedEvent::new(self.module, call.event()))
             else {
                 continue;
             };
@@ -251,11 +253,11 @@ impl CallPropagation<'_, '_> {
                 if connected {
                     self.session.worklist.enqueue_parameters(
                         self.session.project,
-                        target_module,
-                        target_function,
+                        target.module(),
+                        target.function(),
                         argument.index(),
                         self.state,
-                        self.context.is_crossed() || target_module != self.module,
+                        self.context.is_crossed() || target.module() != self.module,
                     );
                 }
             }

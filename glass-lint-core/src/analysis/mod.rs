@@ -33,7 +33,7 @@ pub use local::{
 };
 pub(in crate::analysis) use lowering::budget::SemanticBudget;
 pub use lowering::{LoweredSource, Lowerer};
-pub(in crate::analysis) use project::model::ExportResolution;
+pub(in crate::analysis) use project::model::{ExportResolution, QualifiedFunctionId};
 pub use project::model::{ProjectSemanticModel, QualifiedRequestId, ResolvedLinkInput};
 pub use value::matches_global_object_alias;
 

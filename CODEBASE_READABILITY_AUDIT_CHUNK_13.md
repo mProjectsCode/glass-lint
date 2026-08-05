@@ -96,7 +96,7 @@ and `make fmt && make ci`.
 
 ### Qualified local identities
 
-#### [ ] READ-068 — Bind artifact-local IDs to their module owner
+#### [x] READ-068 — Bind artifact-local IDs to their module owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -123,7 +123,15 @@ callers together; preserve `Option` behavior for genuinely missing facts,
 invalid functions, and unknown values, while making cross-module identity
 mixups unrepresentable or explicitly rejected.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Project fact APIs now consume the existing qualified event
+handle, while function/effect lookups and qualified call targets use the new
+`QualifiedFunctionId`. Cross-flow call-site keys and graph targets carry those
+qualified handles directly, and report/source/worklist callers were migrated
+without changing missing-artifact `Option` or unknown-value behavior.
+
+**Verification:** Cross-flow tests pass (17 tests), the core test target
+compiles, and `make fmt && make ci` passes, including the full workspace,
+end-to-end, rule, doctest, and example checks.
 
 ## Systemic Themes
 

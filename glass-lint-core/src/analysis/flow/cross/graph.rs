@@ -1,28 +1,19 @@
 use std::collections::BTreeMap;
 
-use crate::{
-    analysis::{
-        ProjectSemanticModel, facts::FactId, project::state::LinkingSession, value::FunctionId,
-    },
-    project::ModuleId,
+use crate::analysis::{
+    ProjectSemanticModel, QualifiedFunctionId, project::state::LinkingSession,
+    trace::QualifiedEvent,
 };
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct QualifiedCallSite {
-    module: ModuleId,
-    event: FactId,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-struct QualifiedCallTarget {
-    module: ModuleId,
-    function: FunctionId,
+    event: QualifiedEvent,
 }
 
 /// Pre-computed qualified call targets keyed by a caller module and event.
 /// Populated once and reused across all cross-flow phases.
 pub(super) struct QualifiedCallGraph {
-    targets: BTreeMap<QualifiedCallSite, QualifiedCallTarget>,
+    targets: BTreeMap<QualifiedCallSite, QualifiedFunctionId>,
 }
 
 impl QualifiedCallGraph {
@@ -48,13 +39,9 @@ impl QualifiedCallGraph {
                     ) {
                         targets.insert(
                             QualifiedCallSite {
-                                module: module_id,
-                                event: call.event(),
+                                event: QualifiedEvent::new(module_id, call.event()),
                             },
-                            QualifiedCallTarget {
-                                module: target.0,
-                                function: target.1,
-                            },
+                            target,
                         );
                     }
                 }
@@ -63,9 +50,7 @@ impl QualifiedCallGraph {
         Self { targets }
     }
 
-    pub(super) fn get(&self, module: ModuleId, event: FactId) -> Option<(ModuleId, FunctionId)> {
-        self.targets
-            .get(&QualifiedCallSite { module, event })
-            .map(|target| (target.module, target.function))
+    pub(super) fn get(&self, event: QualifiedEvent) -> Option<QualifiedFunctionId> {
+        self.targets.get(&QualifiedCallSite { event }).copied()
     }
 }
