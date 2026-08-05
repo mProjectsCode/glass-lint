@@ -62,7 +62,7 @@ and examples.
 
 ### Cross-flow context and worklist state
 
-#### [ ] READ-038 — Represent call-context origin as an explicit sum type
+#### [x] READ-038 — Represent call-context origin as an explicit sum type
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -90,7 +90,15 @@ alternatives, parameter-root requirements, source-root identity, crossed
 versus local propagation, context hashing/deduplication, and the rule that
 unknown input can downgrade certainty but cannot create evidence.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the mutually exclusive `parameter` and
+`source_root` options with a private `CallContextOrigin` enum containing
+source-root and target-parameter modes. The test-only unknown mode preserves
+the invalid/empty fixture without exposing an invalid production constructor,
+and matching now dispatches directly on the origin.
+
+**Verification:** `make fmt && make ci` passes, including 779 core tests,
+cross-flow origin-mode tests, workspace checks, end-to-end/provider harnesses,
+doctests, generated-rule validation, and examples.
 
 #### [ ] READ-039 — Return typed admission outcomes from bounded worklists
 

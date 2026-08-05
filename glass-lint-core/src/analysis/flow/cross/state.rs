@@ -2,6 +2,8 @@
 use glass_lint_datastructures::Budget;
 
 pub(super) use crate::analysis::trace::QualifiedEvent;
+#[cfg(test)]
+use crate::api::classification::RuleIndex;
 use crate::{
     analysis::{
         facts::FactId,
@@ -110,12 +112,19 @@ impl CrossFlowState {
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
+enum CallContextOrigin {
+    SourceRoot(ValueId),
+    TargetParameter(usize),
+    #[cfg(test)]
+    Unknown,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 /// Worklist context identifying the function/value path currently projected.
 pub(super) struct CallContext {
     module: ModuleId,
     function: FunctionId,
-    parameter: Option<usize>,
-    source_root: Option<ValueId>,
+    origin: CallContextOrigin,
     state: CrossFlowState,
     crossed: bool,
 }
@@ -131,8 +140,7 @@ impl CallContext {
         Self {
             module,
             function,
-            parameter: None,
-            source_root: Some(source_root),
+            origin: CallContextOrigin::SourceRoot(source_root),
             state,
             crossed,
         }
@@ -148,8 +156,7 @@ impl CallContext {
         Self {
             module,
             function,
-            parameter: Some(parameter),
-            source_root: None,
+            origin: CallContextOrigin::TargetParameter(parameter),
             state,
             crossed,
         }
@@ -160,8 +167,7 @@ impl CallContext {
         Self {
             module,
             function,
-            parameter: None,
-            source_root: None,
+            origin: CallContextOrigin::Unknown,
             state,
             crossed: false,
         }
@@ -189,7 +195,9 @@ impl CallContext {
         parameter_is_root: bool,
         argument_is_root: bool,
     ) -> bool {
-        self.parameter == Some(parameter) && parameter_is_root && argument_is_root
+        matches!(self.origin, CallContextOrigin::TargetParameter(candidate) if candidate == parameter)
+            && parameter_is_root
+            && argument_is_root
     }
 
     pub(super) fn matches_source_root(
@@ -198,8 +206,43 @@ impl CallContext {
         value_is_root: bool,
         require_value_root: bool,
     ) -> bool {
-        self.parameter.is_none()
+        matches!(self.origin, CallContextOrigin::SourceRoot(root) if root == value)
             && (!require_value_root || value_is_root)
-            && self.source_root.is_some_and(|root| root == value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn state() -> CrossFlowState {
+        CrossFlowState::unknown(FlowId::new(RuleIndex::new(0), 0))
+    }
+
+    #[test]
+    fn context_origin_modes_cannot_match_each_other() {
+        let source = CallContext::for_source(
+            ModuleId::new(1),
+            FunctionId::from_test(2),
+            ValueId::from_test(3),
+            state(),
+            false,
+        );
+        assert!(source.matches_source_root(ValueId::from_test(3), true, true));
+        assert!(!source.matches_parameter(0, true, true));
+
+        let target = CallContext::for_target_call(
+            ModuleId::new(1),
+            FunctionId::from_test(2),
+            0,
+            state(),
+            false,
+        );
+        assert!(target.matches_parameter(0, true, true));
+        assert!(!target.matches_source_root(ValueId::from_test(3), true, true));
+
+        let unknown = CallContext::for_test(ModuleId::new(1), FunctionId::from_test(2), state());
+        assert!(!unknown.matches_parameter(0, true, true));
+        assert!(!unknown.matches_source_root(ValueId::from_test(3), true, true));
     }
 }
