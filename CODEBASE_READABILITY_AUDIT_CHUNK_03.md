@@ -63,7 +63,7 @@ parse failure and an incomplete semantic artifact.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-015 — Make lowering completion and derived-phase policy one result
+#### [x] READ-015 — Make lowering completion and derived-phase policy one result
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -96,7 +96,15 @@ artifact. Delete the duplicate condition list and retain partial facts for
 diagnostics, name-table exhaustion behavior, invalid parser-span handling,
 fail-closed indexes/effects, and deterministic status ordering.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a private `LoweringCompletion` result containing the
+canonical status entries and explicit export-origin/effect capabilities. Its
+single assessment owns the scope, budget, parser-span, and name-exhaustion
+policy; `ResolvedProgram::freeze` now consumes those capabilities instead of
+recomputing a parallel exhaustion boolean.
+
+**Verification:** `make fmt && make ci` passes, including 780 core tests,
+lowering lifecycle tests, workspace checks, end-to-end/provider harnesses,
+doctests, generated-rule validation, and examples.
 
 ### Matching indexes and linked overlays
 

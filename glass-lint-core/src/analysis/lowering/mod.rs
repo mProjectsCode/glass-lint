@@ -238,6 +238,62 @@ fn check_name_exhaustion(resolver: &Resolver) -> Option<IncompleteReason> {
         })
 }
 
+#[derive(Clone, Copy, Debug)]
+struct LoweringCapabilities {
+    export_origins: bool,
+    effects: bool,
+}
+
+#[derive(Debug)]
+struct LoweringCompletion {
+    status: AnalysisStatus,
+    capabilities: LoweringCapabilities,
+}
+
+impl LoweringCompletion {
+    fn assess(
+        issues: &[ScopeCollectionIssue],
+        stream: &FactStream<Building>,
+        resolver: &Resolver,
+        limits: &AnalysisLimits,
+    ) -> Self {
+        let budget = resolver.budget;
+        let mut status = AnalysisStatus::default();
+
+        if !issues.is_empty() {
+            status.record(
+                StatusScope::Project,
+                IncompleteReason::ScopeShapeMismatch {
+                    count: issues.len(),
+                },
+            );
+        }
+
+        let budget_exhausted = budget.exhausted()
+            || stream.budget_exhausted()
+            || stream.path_exhausted()
+            || resolver.value_arena_exhausted()
+            || !stream.is_structurally_valid();
+        if let Some(reason) = check_facts_budget(stream, resolver, limits, budget) {
+            status.record(StatusScope::Project, reason);
+        }
+        if let Some(reason) = check_invalid_parser_span(stream) {
+            status.record(StatusScope::Project, reason);
+        }
+        if let Some(reason) = check_name_exhaustion(resolver) {
+            status.record(StatusScope::Project, reason);
+        }
+
+        Self {
+            status,
+            capabilities: LoweringCapabilities {
+                export_origins: !budget_exhausted,
+                effects: !budget_exhausted,
+            },
+        }
+    }
+}
+
 /// The resolved local-analysis phase. The scope-frozen resolver, the
 /// scope-collection issues, and the built (unfrozen) fact stream travel
 /// together until the single consuming `freeze` transition seals the name and
@@ -288,36 +344,9 @@ impl<'a> ResolvedProgram<'a> {
         } = self;
         let mut stream = built.stream;
         let interface = built.interface;
-        let budget = resolver.budget;
-        let mut status = AnalysisStatus::default();
+        let completion = LoweringCompletion::assess(&issues, &stream, &resolver, limits);
 
-        if !issues.is_empty() {
-            status.record(
-                StatusScope::Project,
-                IncompleteReason::ScopeShapeMismatch {
-                    count: issues.len(),
-                },
-            );
-        }
-
-        let budget_exhausted = budget.exhausted()
-            || stream.budget_exhausted()
-            || stream.path_exhausted()
-            || resolver.value_arena_exhausted()
-            || !stream.is_structurally_valid();
-        if let Some(reason) = check_facts_budget(&stream, &resolver, limits, budget) {
-            status.record(StatusScope::Project, reason);
-        }
-        if let Some(reason) = check_invalid_parser_span(&stream) {
-            status.record(StatusScope::Project, reason);
-        }
-        if let Some(reason) = check_name_exhaustion(&resolver) {
-            status.record(StatusScope::Project, reason);
-        }
-
-        let export_origins = if budget_exhausted {
-            BTreeMap::new()
-        } else {
+        let export_origins = if completion.capabilities.export_origins {
             interface
                 .exports()
                 .filter_map(|(_, export)| match export {
@@ -331,6 +360,8 @@ impl<'a> ResolvedProgram<'a> {
                     | module::ModuleExport::Unknown => None,
                 })
                 .collect::<BTreeMap<_, _>>()
+        } else {
+            BTreeMap::new()
         };
 
         if resolver.name_table_exhausted() {
@@ -343,8 +374,8 @@ impl<'a> ResolvedProgram<'a> {
             facts,
             export_origins,
             limits.effect_operations(),
-            !budget_exhausted,
-            status,
+            completion.capabilities.effects,
+            completion.status,
         )
     }
 }
