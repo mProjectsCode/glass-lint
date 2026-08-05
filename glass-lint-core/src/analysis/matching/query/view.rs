@@ -18,10 +18,7 @@ use crate::{
         },
         value::matches_global_object_alias_with,
     },
-    api::{
-        compiler::rule::{EventPredicate, IdentityConstraint},
-        rule::ModuleSpecifierPattern,
-    },
+    api::{compiler::rule::IdentityConstraint, rule::ModuleSpecifierPattern},
 };
 
 /// One supported event view, holding only the occurrence buckets that are
@@ -33,18 +30,21 @@ pub(super) enum EventIndexView<'a> {
         global: &'a Occurrences,
     },
     MemberCall {
+        member: &'a SymbolPath,
         paths: &'a OccurrenceIndex<NamePath>,
         module: &'a ModuleOccurrences,
         rooted: &'a OccurrenceIndex<NamePath>,
         environment: &'a Environment,
     },
     MemberRead {
+        member: &'a SymbolPath,
         paths: &'a OccurrenceIndex<NamePath>,
         module: &'a ModuleOccurrences,
         rooted: &'a OccurrenceIndex<NamePath>,
         environment: &'a Environment,
     },
     PropertyWrite {
+        property: &'a SymbolPath,
         paths: &'a OccurrenceIndex<NamePath>,
         rooted: &'a OccurrenceIndex<NamePath>,
         environment: &'a Environment,
@@ -73,12 +73,11 @@ impl<'a> EventIndexView<'a> {
     pub(super) fn resolve(
         &self,
         identity: &'a IdentityConstraint,
-        event: &'a EventPredicate,
         names: &NameTable,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
     ) -> Option<CandidateOccurrences<'a>> {
         match identity {
-            IdentityConstraint::Any { name, .. } => self.resolve_any(name, event, names),
+            IdentityConstraint::Any { name, .. } => self.resolve_any(name, names),
             IdentityConstraint::Global { name, .. } => self.resolve_global(name, overlay),
             IdentityConstraint::ModuleExport { module, export } => {
                 self.resolve_module_export(module, export, overlay)
@@ -87,27 +86,20 @@ impl<'a> EventIndexView<'a> {
                 self.resolve_package_export(module, export, overlay)
             }
             IdentityConstraint::ModuleNamespace { module } => {
-                self.resolve_module_namespace(module, event, overlay)
+                self.resolve_module_namespace(module, overlay)
             }
             IdentityConstraint::PackageModuleNamespace { module } => {
-                self.resolve_package_namespace(module, event, overlay)
+                self.resolve_package_namespace(module, overlay)
             }
-            IdentityConstraint::Rooted { path } => self.resolve_rooted(path, event, names),
-            IdentityConstraint::LiteralString { predicate } => {
-                self.resolve_literal(predicate, event)
-            }
+            IdentityConstraint::Rooted { path } => self.resolve_rooted(path, names),
+            IdentityConstraint::LiteralString { predicate } => self.resolve_literal(predicate),
             IdentityConstraint::PackageSpecifier { pattern } => {
                 self.resolve_package_specifier(pattern)
             }
         }
     }
 
-    fn resolve_any(
-        &self,
-        name: &SmolStr,
-        event: &'a EventPredicate,
-        names: &NameTable,
-    ) -> Option<CandidateOccurrences<'a>> {
+    fn resolve_any(&self, name: &SmolStr, names: &NameTable) -> Option<CandidateOccurrences<'a>> {
         match self {
             EventIndexView::Call { names: calls, .. } => names
                 .lookup(name)
@@ -116,7 +108,7 @@ impl<'a> EventIndexView<'a> {
             EventIndexView::MemberCall { paths, .. }
             | EventIndexView::MemberRead { paths, .. }
             | EventIndexView::PropertyWrite { paths, .. } => {
-                let member = member_path(event)?;
+                let member = self.member_path()?;
                 names
                     .lookup_path(member)
                     .and_then(|path| paths.get(&path))
@@ -177,10 +169,9 @@ impl<'a> EventIndexView<'a> {
     fn resolve_module_namespace(
         &self,
         module: &SmolStr,
-        event: &'a EventPredicate,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
     ) -> Option<CandidateOccurrences<'a>> {
-        let member = member_path(event)?.to_string();
+        let member = self.member_path()?.to_string();
         let key = ModuleExportKey::new(module.clone(), member);
         self.resolve_module_key(&key, overlay)
     }
@@ -188,13 +179,9 @@ impl<'a> EventIndexView<'a> {
     fn resolve_package_namespace(
         &self,
         module: &'a ModuleSpecifierPattern,
-        event: &'a EventPredicate,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
     ) -> Option<CandidateOccurrences<'a>> {
-        let (EventPredicate::MemberCall { member } | EventPredicate::MemberRead { member }) = event
-        else {
-            return None;
-        };
+        let member = self.member_path()?;
         let predicate = PackageKeyPredicate::new(module, PackageMatchKind::Namespace(member));
         self.resolve_package(predicate, overlay)
     }
@@ -202,46 +189,41 @@ impl<'a> EventIndexView<'a> {
     fn resolve_rooted(
         &self,
         path: &'a SymbolPath,
-        event: &'a EventPredicate,
         names: &NameTable,
     ) -> Option<CandidateOccurrences<'a>> {
         let expected = names.lookup_path(path)?;
-        let (rooted, environment) = match self {
-            EventIndexView::Construct {
-                rooted,
-                environment,
-                ..
-            } if matches!(event, EventPredicate::Construct) => (rooted, environment),
-            EventIndexView::MemberCall {
-                rooted,
-                environment,
-                ..
-            } if matches!(event, EventPredicate::MemberCall { .. }) => (rooted, environment),
-            EventIndexView::MemberRead {
-                rooted,
-                environment,
-                ..
-            } if matches!(event, EventPredicate::MemberRead { .. }) => (rooted, environment),
-            EventIndexView::PropertyWrite {
-                rooted,
-                environment,
-                ..
-            } if matches!(event, EventPredicate::PropertyWrite { .. }) => (rooted, environment),
-            _ => return None,
+        let (EventIndexView::Construct {
+            rooted,
+            environment,
+            ..
+        }
+        | EventIndexView::MemberCall {
+            rooted,
+            environment,
+            ..
+        }
+        | EventIndexView::MemberRead {
+            rooted,
+            environment,
+            ..
+        }
+        | EventIndexView::PropertyWrite {
+            rooted,
+            environment,
+            ..
+        }) = self
+        else {
+            return None;
         };
         rooted.matching(|key| matches_global_object_alias_with(key, &expected, names, environment))
     }
 
-    fn resolve_literal(
-        &self,
-        predicate: &str,
-        event: &EventPredicate,
-    ) -> Option<CandidateOccurrences<'a>> {
-        match (self, event) {
-            (EventIndexView::Import { literals }, EventPredicate::Import) => literals
+    fn resolve_literal(&self, predicate: &str) -> Option<CandidateOccurrences<'a>> {
+        match self {
+            EventIndexView::Import { literals } => literals
                 .get(&SmolStr::new(predicate))
                 .map(CandidateOccurrences::Indexed),
-            (EventIndexView::StringReference { literals }, EventPredicate::StringReference) => {
+            EventIndexView::StringReference { literals } => {
                 if predicate == crate::api::rule::query::PRIVATE_NETWORK_LITERAL {
                     literals.matching(|literal| private_network_match(literal).is_some())
                 } else {
@@ -307,6 +289,15 @@ impl<'a> EventIndexView<'a> {
         }
     }
 
+    fn member_path(&self) -> Option<&'a SymbolPath> {
+        match self {
+            EventIndexView::MemberCall { member, .. }
+            | EventIndexView::MemberRead { member, .. } => Some(member),
+            EventIndexView::PropertyWrite { property, .. } => Some(property),
+            _ => None,
+        }
+    }
+
     fn global_index(&self) -> Option<&'a Occurrences> {
         match self {
             EventIndexView::Call { global, .. } | EventIndexView::Construct { global, .. } => {
@@ -314,15 +305,6 @@ impl<'a> EventIndexView<'a> {
             }
             _ => None,
         }
-    }
-}
-
-fn member_path(event: &EventPredicate) -> Option<&SymbolPath> {
-    match event {
-        EventPredicate::MemberCall { member }
-        | EventPredicate::MemberRead { member }
-        | EventPredicate::PropertyWrite { property: member } => Some(member),
-        _ => None,
     }
 }
 

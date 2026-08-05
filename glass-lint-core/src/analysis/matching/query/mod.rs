@@ -103,7 +103,7 @@ impl OccurrenceIndexes {
         names: &NameTable,
     ) -> Option<CandidateOccurrences<'a>> {
         let view = self.build_event_view(event);
-        view.resolve(identity, event, names, overlay)
+        view.resolve(identity, names, overlay)
     }
 
     /// Resolve a returned-subject scan.
@@ -162,7 +162,7 @@ impl OccurrenceIndexes {
     // directly, and returned/instance subject lookups use
     // occurrences_for_returned / occurrences_for_instance.
 
-    fn build_event_view<'a>(&'a self, event: &EventPredicate) -> EventIndexView<'a> {
+    fn build_event_view<'a>(&'a self, event: &'a EventPredicate) -> EventIndexView<'a> {
         let env = &self.environment;
         match event {
             EventPredicate::Call => EventIndexView::Call {
@@ -170,19 +170,22 @@ impl OccurrenceIndexes {
                 module: self.call_indexes.module_calls(),
                 global: self.call_indexes.global_calls(),
             },
-            EventPredicate::MemberCall { .. } => EventIndexView::MemberCall {
+            EventPredicate::MemberCall { member } => EventIndexView::MemberCall {
+                member,
                 paths: self.members.calls(),
                 module: self.members.module_calls(),
                 rooted: self.members.rooted_calls(),
                 environment: env,
             },
-            EventPredicate::MemberRead { .. } => EventIndexView::MemberRead {
+            EventPredicate::MemberRead { member } => EventIndexView::MemberRead {
+                member,
                 paths: self.members.reads(),
                 module: self.members.module_reads(),
                 rooted: self.members.rooted_reads(),
                 environment: env,
             },
-            EventPredicate::PropertyWrite { .. } => EventIndexView::PropertyWrite {
+            EventPredicate::PropertyWrite { property } => EventIndexView::PropertyWrite {
+                property,
                 paths: self.members.rooted_writes(),
                 rooted: self.members.rooted_writes(),
                 environment: env,

@@ -150,7 +150,7 @@ the rule that ambiguous or unknown identities do not create occurrences.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-017 — Bind event selection to the occurrence query view
+#### [x] READ-017 — Bind event selection to the occurrence query view
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -183,7 +183,15 @@ heuristic member semantics, literal and package matching, module overlay
 masking, global-object aliases, and fail-closed `None` results for unsupported
 identity/event combinations.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `EventIndexView` now owns the event-specific selector data
+(member/property paths and literal kind) captured while it is built. Its
+resolution API accepts only the identity, name table, and overlay, removing
+the duplicated event parameter, compatibility guards, and separate event
+dispatch state. Existing rooted/member, literal/package, overlay, and
+fail-closed behavior remains covered by the matching tests.
+
+**Verification:** `cargo test -p glass-lint-core analysis::matching --lib`
+(42 passed); `make fmt && make ci` (passed).
 
 ### Constrained matcher execution
 
