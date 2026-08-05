@@ -57,7 +57,7 @@ and deterministic; added an atomicity regression test.
 
 ### ECMAScript feature detection
 
-#### [ ] READ-095 — Use the recursive default-pattern detector for arrows
+#### [x] READ-095 — Use the recursive default-pattern detector for arrows
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -79,7 +79,12 @@ child traversal. Delete the top-level-only predicate after the shared helper
 owns the default-parameter definition, and add focused tests for nested object,
 array, and rest patterns in both function forms.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Arrow parameter detection now delegates to the shared
+recursive `contains_default` helper, matching ordinary functions for nested
+object, array, and rest patterns. Added focused nested-pattern coverage.
+
+**Verification:** `cargo test -p glass-lint-core ecma_version::tests --lib`
+(5 passed) and `make fmt && make ci` (passed).
 
 ### Rule selection ownership
 

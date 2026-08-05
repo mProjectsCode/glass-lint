@@ -229,11 +229,7 @@ impl Visit for FeatureDetector {
         if arrow.is_async {
             self.record(EcmaFeature::AsyncFunctions);
         }
-        if arrow
-            .params
-            .iter()
-            .any(|param| matches!(param, swc_ecma_ast::Pat::Assign(_)))
-        {
+        if arrow.params.iter().any(contains_default) {
             self.record(EcmaFeature::DefaultParameters);
         }
         arrow.visit_children_with(self);
@@ -485,6 +481,16 @@ mod tests {
         let report = analyze("");
         assert_eq!(report.minimum_version(), Some(EcmaVersion::Es5));
         assert!(report.features().is_empty());
+    }
+
+    #[test]
+    fn arrows_detect_nested_default_parameters() {
+        let report = analyze(
+            "const object = ({ value = 1 }) => value; \
+             const array = ([value = 1]) => value; \
+             const rest = ({ value = 1, ...other }) => value + other.value;",
+        );
+        assert!(report.features().contains(&EcmaFeature::DefaultParameters));
     }
 
     #[test]
