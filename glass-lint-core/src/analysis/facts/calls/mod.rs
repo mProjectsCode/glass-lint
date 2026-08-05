@@ -9,7 +9,6 @@ use crate::analysis::{
 };
 
 mod callee;
-mod pattern;
 mod wrapper;
 
 impl FactBuilder<'_, '_> {

@@ -128,7 +128,7 @@ end-to-end, rule, doctest, and example checks.
 
 ### Pattern lowering
 
-#### [ ] READ-004 — Move pattern semantics to a shared fact-level owner
+#### [x] READ-004 — Move pattern semantics to a shared fact-level owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -154,7 +154,15 @@ to share their different leaf meanings. Preserve the current treatment of
 parameters, property/index paths, and the distinction between a declaration's
 unknown source and an assignment's conservative write kill.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved pattern semantics from `calls::pattern` into the
+fact-level `pattern` module. A shared walker now handles binding,
+destructuring, rest, array, object, expression-target, default, and path
+semantics; declaration targets, assignment writes, and parameter bindings are
+separate projections over its canonical leaves.
+
+**Verification:** Focused facts tests (32 passed) and the full `make fmt &&
+make ci` gate passed, including workspace Clippy, workspace tests, doctests,
+e2e cases, and provider rule cases.
 
 ### Declaration lowering
 

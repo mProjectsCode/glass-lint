@@ -28,6 +28,7 @@ mod instance;
 mod interface;
 mod model;
 mod origin_map;
+mod pattern;
 mod state;
 mod stream;
 mod visitor;
