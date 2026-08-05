@@ -41,26 +41,107 @@ pub struct OccurrenceIndexes {
 type BorrowedModuleBuckets<'a> = BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>>;
 type BorrowedGlobalBuckets<'a> = BTreeMap<SmolStr, Vec<&'a [Occurrence]>>;
 
-#[derive(Debug, Default)]
-pub(in crate::analysis) struct LinkedOccurrenceView<'a> {
-    masked: std::collections::BTreeSet<ModuleExportKey>,
-    global_calls: BorrowedGlobalBuckets<'a>,
-    module_calls: BorrowedModuleBuckets<'a>,
-    member_calls: BorrowedModuleBuckets<'a>,
-    member_reads: BorrowedModuleBuckets<'a>,
-    module_classes: BorrowedModuleBuckets<'a>,
-    module_constructors: BorrowedModuleBuckets<'a>,
-}
-
 /// Which module overlay bucket an event view consults for linked
 /// occurrences.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(in crate::analysis) enum ModuleOverlayKind {
     Call,
     MemberCall,
     MemberRead,
     Class,
     Constructor,
+}
+
+#[derive(Debug, Default)]
+struct ModuleOccurrenceOverlay<'a> {
+    masked: std::collections::BTreeSet<ModuleExportKey>,
+    buckets: BTreeMap<ModuleOverlayKind, BorrowedModuleBuckets<'a>>,
+}
+
+#[derive(Debug, Default)]
+pub(in crate::analysis) struct LinkedOccurrenceView<'a> {
+    module: ModuleOccurrenceOverlay<'a>,
+    global_calls: BorrowedGlobalBuckets<'a>,
+}
+
+impl<'a> ModuleOccurrenceOverlay<'a> {
+    fn remap(
+        &mut self,
+        source: &'a ModuleOccurrences,
+        kind: ModuleOverlayKind,
+        promote_globals: bool,
+        identities: &ModuleIdentityMap,
+    ) -> (usize, Vec<(SmolStr, &'a [Occurrence])>) {
+        let mut operations = 0usize;
+        let mut globals = Vec::new();
+        source.for_each_bucket(|key, occurrences| {
+            operations = operations.saturating_add(1);
+            let Some(identity) = LinkedOccurrenceView::identity_for(identities, key) else {
+                return;
+            };
+            self.masked.insert(key.clone());
+            match identity {
+                ExportResolution::External { module, export } => {
+                    self.buckets_mut(kind)
+                        .entry(ModuleExportKey::new(module, export))
+                        .or_default()
+                        .push(occurrences);
+                }
+                ExportResolution::Global { name } if promote_globals => {
+                    globals.push((name, occurrences));
+                }
+                ExportResolution::Global { .. }
+                | ExportResolution::Qualified { .. }
+                | ExportResolution::StaticString { .. }
+                | ExportResolution::Ambiguous
+                | ExportResolution::Unknown => {}
+            }
+        });
+        (operations, globals)
+    }
+
+    fn buckets_mut(&mut self, kind: ModuleOverlayKind) -> &mut BorrowedModuleBuckets<'a> {
+        self.buckets.entry(kind).or_default()
+    }
+
+    fn buckets(&self, kind: ModuleOverlayKind) -> Option<&BorrowedModuleBuckets<'a>> {
+        self.buckets.get(&kind)
+    }
+
+    fn resolve_module(
+        &'a self,
+        kind: ModuleOverlayKind,
+        base: &'a ModuleOccurrences,
+        key: &ModuleExportKey,
+    ) -> Option<CandidateOccurrences<'a>> {
+        if let Some(slices) = self.buckets(kind).and_then(|buckets| buckets.get(key)) {
+            return Some(CandidateOccurrences::Borrowed(BorrowedOccurrenceIter::new(
+                None,
+                slices.as_slice(),
+            )));
+        }
+        if !self.masked.contains(key) {
+            return base.get(key).map(CandidateOccurrences::Indexed);
+        }
+        None
+    }
+
+    fn resolve_package(
+        &'a self,
+        kind: ModuleOverlayKind,
+        base: &'a ModuleOccurrences,
+        predicate: PackageKeyPredicate<'a>,
+    ) -> CandidateOccurrences<'a> {
+        match self.buckets(kind) {
+            Some(buckets) => {
+                let overlay = PackageOverlay::new(&self.masked, buckets);
+                CandidateOccurrences::BorrowedPackage(
+                    base.package_candidates_with_overlay(predicate, overlay),
+                )
+            }
+            None => CandidateOccurrences::BorrowedPackage(base.package_candidates(predicate)),
+        }
+    }
 }
 
 impl<'a> LinkedOccurrenceView<'a> {
@@ -75,71 +156,40 @@ impl<'a> LinkedOccurrenceView<'a> {
     ) -> (Self, usize) {
         let mut view = Self::default();
         let mut operations = 0usize;
-        operations += view.remap(
-            indexes.call_indexes.module_calls(),
-            ModuleOverlayKind::Call,
-            true,
-            identities,
-        );
-        operations += view.remap(
-            indexes.members.module_calls(),
-            ModuleOverlayKind::MemberCall,
-            false,
-            identities,
-        );
-        operations += view.remap(
-            indexes.members.module_reads(),
-            ModuleOverlayKind::MemberRead,
-            false,
-            identities,
-        );
-        operations += view.remap(
-            indexes.constructions.module_classes(),
-            ModuleOverlayKind::Class,
-            false,
-            identities,
-        );
-        operations += view.remap(
-            indexes.constructions.module_constructors(),
-            ModuleOverlayKind::Constructor,
-            false,
-            identities,
-        );
-        (view, operations)
-    }
-
-    fn remap(
-        &mut self,
-        source: &'a ModuleOccurrences,
-        kind: ModuleOverlayKind,
-        promote_globals: bool,
-        identities: &ModuleIdentityMap,
-    ) -> usize {
-        let mut operations = 0usize;
-        source.for_each_bucket(|key, occurrences| {
-            operations = operations.saturating_add(1);
-            let Some(identity) = Self::identity_for(identities, key) else {
-                return;
-            };
-            self.masked.insert(key.clone());
-            match identity {
-                ExportResolution::External { module, export } => {
-                    self.module_buckets_mut(kind)
-                        .entry(ModuleExportKey::new(module, export))
-                        .or_default()
-                        .push(occurrences);
-                }
-                ExportResolution::Global { name } if promote_globals => {
-                    self.global_calls.entry(name).or_default().push(occurrences);
-                }
-                ExportResolution::Global { .. }
-                | ExportResolution::Qualified { .. }
-                | ExportResolution::StaticString { .. }
-                | ExportResolution::Ambiguous
-                | ExportResolution::Unknown => {}
+        for (source, kind, promote_globals) in [
+            (
+                indexes.call_indexes.module_calls(),
+                ModuleOverlayKind::Call,
+                true,
+            ),
+            (
+                indexes.members.module_calls(),
+                ModuleOverlayKind::MemberCall,
+                false,
+            ),
+            (
+                indexes.members.module_reads(),
+                ModuleOverlayKind::MemberRead,
+                false,
+            ),
+            (
+                indexes.constructions.module_classes(),
+                ModuleOverlayKind::Class,
+                false,
+            ),
+            (
+                indexes.constructions.module_constructors(),
+                ModuleOverlayKind::Constructor,
+                false,
+            ),
+        ] {
+            let (count, globals) = view.module.remap(source, kind, promote_globals, identities);
+            operations += count;
+            for (name, occurrences) in globals {
+                view.global_calls.entry(name).or_default().push(occurrences);
             }
-        });
-        operations
+        }
+        (view, operations)
     }
 
     fn identity_for(
@@ -159,35 +209,13 @@ impl<'a> LinkedOccurrenceView<'a> {
         })
     }
 
-    fn module_buckets_mut(
-        &mut self,
-        kind: ModuleOverlayKind,
-    ) -> &mut BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>> {
-        match kind {
-            ModuleOverlayKind::Call => &mut self.module_calls,
-            ModuleOverlayKind::MemberCall => &mut self.member_calls,
-            ModuleOverlayKind::MemberRead => &mut self.member_reads,
-            ModuleOverlayKind::Class => &mut self.module_classes,
-            ModuleOverlayKind::Constructor => &mut self.module_constructors,
-        }
-    }
-
     pub(in crate::analysis) fn resolve_module(
         &'a self,
         kind: ModuleOverlayKind,
         base: &'a ModuleOccurrences,
         key: &ModuleExportKey,
     ) -> Option<CandidateOccurrences<'a>> {
-        if let Some(slices) = self.module_buckets(kind).get(key) {
-            return Some(CandidateOccurrences::Borrowed(BorrowedOccurrenceIter::new(
-                None,
-                slices.as_slice(),
-            )));
-        }
-        if !self.masked.contains(key) {
-            return base.get(key).map(CandidateOccurrences::Indexed);
-        }
-        None
+        self.module.resolve_module(kind, base, key)
     }
 
     pub(in crate::analysis) fn resolve_global(
@@ -215,23 +243,7 @@ impl<'a> LinkedOccurrenceView<'a> {
         base: &'a ModuleOccurrences,
         predicate: PackageKeyPredicate<'a>,
     ) -> CandidateOccurrences<'a> {
-        let overlay = PackageOverlay::new(&self.masked, self.module_buckets(kind));
-        CandidateOccurrences::BorrowedPackage(
-            base.package_candidates_with_overlay(predicate, overlay),
-        )
-    }
-
-    fn module_buckets(
-        &self,
-        kind: ModuleOverlayKind,
-    ) -> &BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>> {
-        match kind {
-            ModuleOverlayKind::Call => &self.module_calls,
-            ModuleOverlayKind::MemberCall => &self.member_calls,
-            ModuleOverlayKind::MemberRead => &self.member_reads,
-            ModuleOverlayKind::Class => &self.module_classes,
-            ModuleOverlayKind::Constructor => &self.module_constructors,
-        }
+        self.module.resolve_package(kind, base, predicate)
     }
 }
 

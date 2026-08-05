@@ -116,7 +116,7 @@ doctests, generated-rule validation, and examples.
 
 ### Matching indexes and linked overlays
 
-#### [ ] READ-016 — Give linked occurrence buckets one owning dispatch type
+#### [x] READ-016 — Give linked occurrence buckets one owning dispatch type
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -148,7 +148,14 @@ Preserve deterministic bucket order, exact-key masking, wildcard identity
 fallback, external remapping, global promotion only for ordinary calls, and
 the rule that ambiguous or unknown identities do not create occurrences.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a private `ModuleOccurrenceOverlay` owner with one
+kind-indexed bucket collection, masking state, remapping, and package-overlay
+construction. `LinkedOccurrenceView` now delegates module and package lookup
+to that owner; event-specific source selection and ordinary-call-only global
+promotion remain explicit at the view boundary.
+
+**Verification:** `cargo test -p glass-lint-core analysis::matching --lib`
+(42 passed); `make fmt && make ci` (passed).
 
 #### [x] READ-017 — Bind event selection to the occurrence query view
 
