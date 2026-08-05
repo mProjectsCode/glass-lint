@@ -155,11 +155,12 @@ impl ScopePlanner<'_> {
 }
 
 impl ScopePass for ScopePlanner<'_> {
-    fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) {
+    fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) -> bool {
         self.push_scope(span, kind);
+        true
     }
 
-    fn pop_scope(&mut self) {
+    fn pop_scope(&mut self, _entered: bool) {
         self.pop_scope();
     }
 

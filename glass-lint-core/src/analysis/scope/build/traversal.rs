@@ -15,8 +15,11 @@ use crate::analysis::scope::{ScopeId, ScopeKind};
 /// non-scope-forming visit overrides. Default trait methods are no-ops so a
 /// pass overrides only the methods it needs.
 pub(in crate::analysis::scope) trait ScopePass {
-    fn push_scope(&mut self, span: Span, kind: ScopeKind);
-    fn pop_scope(&mut self);
+    /// Enter one predeclared scope. `false` means the planned shape was not
+    /// available, so the traversal must skip that subtree and keep the stack
+    /// balanced without inventing a fallback scope.
+    fn push_scope(&mut self, span: Span, kind: ScopeKind) -> bool;
+    fn pop_scope(&mut self, entered: bool);
     fn current_scope(&self) -> ScopeId;
 
     /// Returns `true` when the semantic budget is exhausted.
@@ -155,72 +158,81 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
     fn visit_fn_decl(&mut self, decl: &FnDecl) {
         let parent = self.pass.current_scope();
         self.pass.before_fn_decl(decl, parent);
-        self.pass
+        let entered = self
+            .pass
             .push_scope(decl.function.span, ScopeKind::Function);
-        let scope = self.pass.current_scope();
-        self.pass.enter_function();
-        self.pass.after_fn_decl(decl, scope);
-        if !self.pass.is_budget_exhausted() {
-            for param in &decl.function.params {
-                param.pat.visit_with(self);
+        if entered {
+            let scope = self.pass.current_scope();
+            self.pass.enter_function();
+            self.pass.after_fn_decl(decl, scope);
+            if !self.pass.is_budget_exhausted() {
+                for param in &decl.function.params {
+                    param.pat.visit_with(self);
+                }
+                decl.function.decorators.visit_with(self);
+                decl.function.body.visit_with(self);
             }
-            decl.function.decorators.visit_with(self);
-            decl.function.body.visit_with(self);
+            self.pass.exit_function();
         }
-        self.pass.exit_function();
-        self.pass.pop_scope();
+        self.pass.pop_scope(entered);
     }
 
     fn visit_function(&mut self, func: &Function) {
-        self.pass.push_scope(func.span, ScopeKind::Function);
-        let scope = self.pass.current_scope();
-        self.pass.enter_function();
-        self.pass.after_function(func, scope);
-        if !self.pass.is_budget_exhausted() {
-            for param in &func.params {
-                param.pat.visit_with(self);
+        let entered = self.pass.push_scope(func.span, ScopeKind::Function);
+        if entered {
+            let scope = self.pass.current_scope();
+            self.pass.enter_function();
+            self.pass.after_function(func, scope);
+            if !self.pass.is_budget_exhausted() {
+                for param in &func.params {
+                    param.pat.visit_with(self);
+                }
+                func.decorators.visit_with(self);
+                func.body.visit_with(self);
             }
-            func.decorators.visit_with(self);
-            func.body.visit_with(self);
+            self.pass.exit_function();
         }
-        self.pass.exit_function();
-        self.pass.pop_scope();
+        self.pass.pop_scope(entered);
     }
 
     fn visit_arrow_expr(&mut self, arrow: &ArrowExpr) {
-        self.pass.push_scope(arrow.span, ScopeKind::Function);
-        let scope = self.pass.current_scope();
-        self.pass.enter_function();
-        self.pass.after_arrow(arrow, scope);
-        if !self.pass.is_budget_exhausted() {
-            for param in &arrow.params {
-                param.visit_with(self);
+        let entered = self.pass.push_scope(arrow.span, ScopeKind::Function);
+        if entered {
+            let scope = self.pass.current_scope();
+            self.pass.enter_function();
+            self.pass.after_arrow(arrow, scope);
+            if !self.pass.is_budget_exhausted() {
+                for param in &arrow.params {
+                    param.visit_with(self);
+                }
+                arrow.body.visit_with(self);
             }
-            arrow.body.visit_with(self);
+            self.pass.exit_function();
         }
-        self.pass.exit_function();
-        self.pass.pop_scope();
+        self.pass.pop_scope(entered);
     }
 
     fn visit_block_stmt(&mut self, block: &BlockStmt) {
-        self.pass.push_scope(block.span, ScopeKind::Block);
-        if !self.pass.is_budget_exhausted() {
+        let entered = self.pass.push_scope(block.span, ScopeKind::Block);
+        if entered && !self.pass.is_budget_exhausted() {
             block.stmts.visit_with(self);
         }
-        self.pass.pop_scope();
+        self.pass.pop_scope(entered);
     }
 
     fn visit_switch_stmt(&mut self, stmt: &SwitchStmt) {
         stmt.discriminant.visit_with(self);
-        self.pass.push_scope(stmt.span, ScopeKind::Block);
-        self.pass.enter_switch();
-        if !self.pass.is_budget_exhausted() {
-            for case in &stmt.cases {
-                self.visit_switch_case(case);
+        let entered = self.pass.push_scope(stmt.span, ScopeKind::Block);
+        if entered {
+            self.pass.enter_switch();
+            if !self.pass.is_budget_exhausted() {
+                for case in &stmt.cases {
+                    self.visit_switch_case(case);
+                }
             }
+            self.pass.exit_switch(stmt.span);
         }
-        self.pass.exit_switch(stmt.span);
-        self.pass.pop_scope();
+        self.pass.pop_scope(entered);
     }
 
     fn visit_switch_case(&mut self, case: &SwitchCase) {
@@ -234,22 +246,24 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
 
     fn visit_with_stmt(&mut self, stmt: &WithStmt) {
         stmt.obj.visit_with(self);
-        self.pass.push_scope(stmt.body.span(), ScopeKind::Dynamic);
-        if !self.pass.is_budget_exhausted() {
+        let entered = self.pass.push_scope(stmt.body.span(), ScopeKind::Dynamic);
+        if entered && !self.pass.is_budget_exhausted() {
             stmt.body.visit_with(self);
         }
-        self.pass.pop_scope();
+        self.pass.pop_scope(entered);
     }
 
     fn visit_catch_clause(&mut self, clause: &CatchClause) {
-        self.pass.push_scope(clause.span, ScopeKind::Block);
-        if let Some(param) = &clause.param {
-            self.pass.visit_catch_param(param);
+        let entered = self.pass.push_scope(clause.span, ScopeKind::Block);
+        if entered {
+            if let Some(param) = &clause.param {
+                self.pass.visit_catch_param(param);
+            }
+            if !self.pass.is_budget_exhausted() {
+                clause.body.stmts.visit_with(self);
+            }
         }
-        if !self.pass.is_budget_exhausted() {
-            clause.body.stmts.visit_with(self);
-        }
-        self.pass.pop_scope();
+        self.pass.pop_scope(entered);
     }
 
     fn visit_try_stmt(&mut self, stmt: &TryStmt) {
@@ -305,40 +319,46 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
     }
 
     fn visit_for_stmt(&mut self, stmt: &ForStmt) {
-        self.pass.push_scope(stmt.span, ScopeKind::Block);
-        stmt.init.visit_with(self);
-        stmt.test.visit_with(self);
-        stmt.update.visit_with(self);
-        self.pass.enter_loop(false);
-        if !self.pass.is_budget_exhausted() {
-            stmt.body.visit_with(self);
+        let entered = self.pass.push_scope(stmt.span, ScopeKind::Block);
+        if entered {
+            stmt.init.visit_with(self);
+            stmt.test.visit_with(self);
+            stmt.update.visit_with(self);
+            self.pass.enter_loop(false);
+            if !self.pass.is_budget_exhausted() {
+                stmt.body.visit_with(self);
+            }
+            self.pass.exit_loop(stmt.span);
         }
-        self.pass.exit_loop(stmt.span);
-        self.pass.pop_scope();
+        self.pass.pop_scope(entered);
     }
 
     fn visit_for_in_stmt(&mut self, stmt: &ForInStmt) {
-        self.pass.push_scope(stmt.span, ScopeKind::Block);
-        stmt.left.visit_with(self);
-        stmt.right.visit_with(self);
-        self.pass.enter_loop(false);
-        if !self.pass.is_budget_exhausted() {
-            stmt.body.visit_with(self);
+        let entered = self.pass.push_scope(stmt.span, ScopeKind::Block);
+        if entered {
+            stmt.left.visit_with(self);
+            stmt.right.visit_with(self);
+            self.pass.enter_loop(false);
+            if !self.pass.is_budget_exhausted() {
+                stmt.body.visit_with(self);
+            }
+            self.pass.exit_loop(stmt.span);
         }
-        self.pass.exit_loop(stmt.span);
-        self.pass.pop_scope();
+        self.pass.pop_scope(entered);
     }
 
     fn visit_for_of_stmt(&mut self, stmt: &ForOfStmt) {
-        self.pass.push_scope(stmt.span, ScopeKind::Block);
-        stmt.left.visit_with(self);
-        stmt.right.visit_with(self);
-        self.pass.enter_loop(false);
-        if !self.pass.is_budget_exhausted() {
-            stmt.body.visit_with(self);
+        let entered = self.pass.push_scope(stmt.span, ScopeKind::Block);
+        if entered {
+            stmt.left.visit_with(self);
+            stmt.right.visit_with(self);
+            self.pass.enter_loop(false);
+            if !self.pass.is_budget_exhausted() {
+                stmt.body.visit_with(self);
+            }
+            self.pass.exit_loop(stmt.span);
         }
-        self.pass.exit_loop(stmt.span);
-        self.pass.pop_scope();
+        self.pass.pop_scope(entered);
     }
 
     fn visit_break_stmt(&mut self, stmt: &BreakStmt) {

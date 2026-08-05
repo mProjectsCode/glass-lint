@@ -24,7 +24,7 @@ by this audit.
 
 ### Scope-plan validity and freeze boundary
 
-#### [ ] READ-028 — Preserve scope-shape invalidity through the frozen graph
+#### [x] READ-028 — Preserve scope-shape invalidity through the frozen graph
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -56,7 +56,15 @@ invalid scope lookup, and conservative handling of all later provenance and
 constant queries. Add a test that forces a mismatch and verifies frozen
 queries do not use a non-root scope.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Scope-pass entry now returns an explicit success bit and
+scope exits receive that bit, so failed planned entries neither descend into
+the subtree nor pop a parent scope. The validity bit is carried into
+`FrozenScopeGraph`, whose scope lookup permanently falls back to root after a
+shape mismatch. Added a regression covering the frozen lookup boundary.
+
+**Verification:** `make fmt && make ci` passes, including 780 core tests,
+scope-shape divergence tests, workspace checks, end-to-end/provider harnesses,
+doctests, generated-rule validation, and examples.
 
 #### [x] READ-029 — Share binding lookup semantics across mutable and frozen graphs
 

@@ -149,7 +149,7 @@ impl ScopeCollector<'_> {
         for_each_pat_binding(pat, |binding| self.insert_local(scope, binding));
     }
 
-    pub(super) fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) {
+    pub(super) fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) -> bool {
         let parent = self.current_scope();
         if let Some(scope_id) = self.scope_shapes.take_child(Some(parent), span.lo, kind) {
             self.stack.push(scope_id.index());
@@ -157,9 +157,11 @@ impl ScopeCollector<'_> {
             {
                 self.scope_lookups += 1;
             }
+            true
         } else {
             self.artifacts
                 .record_issue(ScopeCollectionIssue::ShapeMismatch);
+            false
         }
     }
 

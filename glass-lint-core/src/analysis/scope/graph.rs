@@ -91,6 +91,8 @@ pub(in crate::analysis) struct ScopeGraph {
 /// the resolver.
 pub(in crate::analysis) struct FrozenScopeGraph {
     data: ScopeData,
+    /// False when collection and planned scope shapes diverged.
+    scope_shape_valid: bool,
 }
 
 impl ScopeGraph {
@@ -130,7 +132,10 @@ impl ScopeGraph {
 
     /// Freeze this scope graph into a read-only query graph.
     pub fn freeze(self) -> FrozenScopeGraph {
-        FrozenScopeGraph { data: self.data }
+        FrozenScopeGraph {
+            data: self.data,
+            scope_shape_valid: self.scope_shape_valid,
+        }
     }
 
     // -- Name-related helpers kept on ScopeGraph for collection --
@@ -341,7 +346,7 @@ impl FrozenScopeGraph {
     }
 
     pub(in crate::analysis) fn scope_at(&self, span: Span) -> ScopeId {
-        self.data.scopes.scope_at(span, true)
+        self.data.scopes.scope_at(span, self.scope_shape_valid)
     }
 
     pub(in crate::analysis) fn enclosing_function_at(&self, scope: ScopeId) -> FunctionId {

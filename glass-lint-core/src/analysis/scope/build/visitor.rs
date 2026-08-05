@@ -30,12 +30,14 @@ use crate::analysis::{
 };
 
 impl ScopePass for ScopeCollector<'_> {
-    fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) {
-        self.push_scope(span, kind);
+    fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) -> bool {
+        self.push_scope(span, kind)
     }
 
-    fn pop_scope(&mut self) {
-        self.pop_scope();
+    fn pop_scope(&mut self, entered: bool) {
+        if entered {
+            self.pop_scope();
+        }
     }
 
     fn current_scope(&self) -> ScopeId {
