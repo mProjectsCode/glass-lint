@@ -27,7 +27,7 @@ by this audit.
 
 ### Retained semantic model invariants
 
-#### [ ] READ-021 — Deduplicate provenance alternatives before applying the bound
+#### [x] READ-021 — Deduplicate provenance alternatives before applying the bound
 
 - **Severity:** High
 - **Fix Complexity:** Low
@@ -53,7 +53,15 @@ Preserve joined flags, unknown/exhausted propagation from the other operand,
 complete-witness retention, deterministic insertion order, and the rule that a
 new distinct alternative beyond the bound remains non-definite.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ProvenanceAlternatives::add_bounded` now delegates each
+candidate to an owned `insert_bounded` transition that checks membership before
+capacity. A duplicate at capacity therefore preserves complete-witness state,
+while a distinct candidate still marks the union exhausted and unknown. Added
+regression coverage for the duplicate-at-capacity case; the existing overflow
+test covers a distinct candidate at capacity.
+
+**Verification:** `cargo test -p glass-lint-core --lib analysis::model::scope`
+and `make fmt && make ci` pass.
 
 #### [ ] READ-022 — Make `ExportTable`’s monotonic-update contract real
 

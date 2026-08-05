@@ -423,15 +423,23 @@ impl ProvenanceAlternatives {
         self.exhausted |= other.exhausted;
         self.joined |= other.joined;
         for provenance in &other.provenances {
-            if self.provenances.len() >= limit {
-                self.exhausted = true;
-                self.unknown = true;
+            if !self.insert_bounded(provenance, limit) {
                 return;
             }
-            if !self.provenances.contains(provenance) {
-                self.provenances.push(provenance.clone());
-            }
         }
+    }
+
+    fn insert_bounded(&mut self, provenance: &BindingProvenance, limit: usize) -> bool {
+        if self.provenances.contains(provenance) {
+            return true;
+        }
+        if self.provenances.len() >= limit {
+            self.exhausted = true;
+            self.unknown = true;
+            return false;
+        }
+        self.provenances.push(provenance.clone());
+        true
     }
 
     pub fn is_joined(&self) -> bool {
@@ -815,6 +823,18 @@ mod tests {
             set.complete_witnesses().collect::<Vec<_>>(),
             vec![&alias, &BindingProvenance::Local]
         );
+    }
+
+    #[test]
+    fn provenance_alternatives_duplicate_at_bound_remains_complete() {
+        let alias = BindingProvenance::ValueAlias {
+            target: NamePath::new(),
+        };
+        let mut set = ProvenanceAlternatives::single(alias.clone());
+        set.add_bounded(&ProvenanceAlternatives::single(alias.clone()), 1);
+        assert!(!set.is_exhausted());
+        assert!(!set.is_unknown());
+        assert_eq!(set.complete_witnesses().collect::<Vec<_>>(), vec![&alias]);
     }
 
     #[test]
