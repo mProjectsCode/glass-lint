@@ -9,12 +9,12 @@ use std::collections::BTreeMap;
 use crate::{
     ParseDiagnostic,
     analysis::{
-        ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, LoweredSource,
-        QualifiedRequestId, ResolvedLinkInput, SharedSemanticArtifact, module::ModuleRequestId,
+        ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LoweredSource, QualifiedRequestId,
+        ResolvedLinkInput, module::ModuleRequestId,
     },
     project::{
         ModuleId, ProjectInputError, ProjectRelativePath, ResolutionRequest, ResolutionRequestKey,
-        ResolutionTable, ResolverOutcome, SourceFile, SourceTable,
+        ResolutionTable, ResolverOutcome, SourceTable,
         session::{ExecutionEvent, ExecutionObserver},
     },
 };
@@ -157,23 +157,13 @@ pub(super) enum CacheLookup {
     Miss(ArtifactCacheKey),
 }
 
-pub(super) fn cached_lowered_source(
-    source: &SourceFile,
-    cached: &SharedSemanticArtifact,
-) -> LoweredSource {
-    LoweredSource::new(
-        LocatedSourceContext::with_index(source.path().clone(), cached.clone_source_index()),
-        cached.clone_semantic(),
-    )
-}
-
 pub(super) fn insert_and_notify(
     cache: &ArtifactCacheHandle,
     key: ArtifactCacheKey,
     lowered: &LoweredSource,
     observer: &dyn ExecutionObserver,
 ) {
-    let evicted = cache.insert(key, SharedSemanticArtifact::from_lowered(lowered));
+    let evicted = cache.insert_lowered(key, lowered);
     observer.observe(ExecutionEvent::CacheInserted);
     if evicted {
         observer.observe(ExecutionEvent::CacheEvicted);

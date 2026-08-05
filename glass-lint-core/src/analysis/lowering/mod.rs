@@ -94,6 +94,7 @@ impl SpanNormalizer {
     }
 }
 
+#[derive(Clone)]
 pub struct LoweredSource {
     source: LocatedSourceContext,
     semantic: Arc<SemanticArtifact>,
@@ -102,14 +103,6 @@ pub struct LoweredSource {
 impl LoweredSource {
     pub(crate) fn new(source: LocatedSourceContext, semantic: Arc<SemanticArtifact>) -> Self {
         Self { source, semantic }
-    }
-
-    pub(crate) fn source_context(&self) -> &LocatedSourceContext {
-        &self.source
-    }
-
-    pub(crate) fn clone_semantic(&self) -> Arc<SemanticArtifact> {
-        Arc::clone(&self.semantic)
     }
 
     pub(crate) fn into_parts(self) -> (LocatedSourceContext, Arc<SemanticArtifact>) {

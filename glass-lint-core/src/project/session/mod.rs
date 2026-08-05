@@ -135,16 +135,19 @@ impl<'a> ProjectCollection<'a> {
     /// lowered source or the key needed to lower and cache it.
     fn check_cache(&self, source: &SourceFile, observer: &dyn ExecutionObserver) -> CacheLookup {
         let key = self.artifact_fingerprint(source);
-        self.state.artifact_cache.get(&key).map_or_else(
-            || {
-                observer.observe(ExecutionEvent::CacheMiss);
-                CacheLookup::Miss(key)
-            },
-            |cached| {
-                observer.observe(ExecutionEvent::CacheHit);
-                CacheLookup::Hit(artifacts::cached_lowered_source(source, &cached))
-            },
-        )
+        self.state
+            .artifact_cache
+            .get_lowered(source, &key)
+            .map_or_else(
+                || {
+                    observer.observe(ExecutionEvent::CacheMiss);
+                    CacheLookup::Miss(key)
+                },
+                |lowered| {
+                    observer.observe(ExecutionEvent::CacheHit);
+                    CacheLookup::Hit(lowered)
+                },
+            )
     }
 
     /// Start an empty parse-once project session under a canonical root.

@@ -225,18 +225,18 @@ pub struct SharedSemanticArtifact {
 
 impl SharedSemanticArtifact {
     pub(crate) fn from_lowered(lowered: &crate::analysis::lowering::LoweredSource) -> Self {
+        let (source, semantic) = lowered.clone().into_parts();
         Self {
-            semantic: lowered.clone_semantic(),
-            source_index: lowered.source_context().clone_lines(),
+            semantic,
+            source_index: source.clone_lines(),
         }
     }
 
-    pub(crate) fn clone_semantic(&self) -> Arc<SemanticArtifact> {
-        Arc::clone(&self.semantic)
-    }
-
-    pub(crate) fn clone_source_index(&self) -> Arc<SourceLineIndex> {
-        Arc::clone(&self.source_index)
+    fn lowered_for(&self, source: &SourceFile) -> crate::analysis::lowering::LoweredSource {
+        crate::analysis::lowering::LoweredSource::new(
+            LocatedSourceContext::with_index(source.path().clone(), Arc::clone(&self.source_index)),
+            Arc::clone(&self.semantic),
+        )
     }
 }
 
@@ -262,9 +262,7 @@ pub struct ArtifactCache {
 pub struct ArtifactCacheHandle(Arc<Mutex<ArtifactCache>>);
 
 impl ArtifactCacheHandle {
-    /// Look up an artifact by fingerprint + full key verification.
-    /// The fingerprint is computed *before* acquiring the lock.
-    pub fn get(&self, key: &ArtifactCacheKey) -> Option<SharedSemanticArtifact> {
+    fn get(&self, key: &ArtifactCacheKey) -> Option<SharedSemanticArtifact> {
         let fp = key.fingerprint();
         let cache = self
             .0
@@ -273,13 +271,32 @@ impl ArtifactCacheHandle {
         cache.get(fp, key)
     }
 
-    pub fn insert(&self, key: ArtifactCacheKey, artifact: SharedSemanticArtifact) -> bool {
+    fn insert(&self, key: ArtifactCacheKey, artifact: SharedSemanticArtifact) -> bool {
         let fp = key.fingerprint();
         let mut cache = self
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         cache.insert(fp, key, artifact)
+    }
+
+    /// Reconstruct a cache hit with the current source's path and line index.
+    pub(crate) fn get_lowered(
+        &self,
+        source: &SourceFile,
+        key: &ArtifactCacheKey,
+    ) -> Option<crate::analysis::lowering::LoweredSource> {
+        self.get(key).map(|cached| cached.lowered_for(source))
+    }
+
+    /// Cache a lowered artifact while retaining only its reusable semantic
+    /// state and source-independent line-index data.
+    pub(crate) fn insert_lowered(
+        &self,
+        key: ArtifactCacheKey,
+        lowered: &crate::analysis::lowering::LoweredSource,
+    ) -> bool {
+        self.insert(key, SharedSemanticArtifact::from_lowered(lowered))
     }
 
     #[cfg(test)]

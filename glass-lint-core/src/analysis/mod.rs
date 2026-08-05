@@ -29,7 +29,7 @@ mod value;
 
 pub use local::{
     ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, ProjectModule,
-    SemanticArtifact, SharedSemanticArtifact,
+    SemanticArtifact,
 };
 pub(in crate::analysis) use lowering::budget::SemanticBudget;
 pub use lowering::{LoweredSource, Lowerer};

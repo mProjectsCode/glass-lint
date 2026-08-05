@@ -25,7 +25,7 @@ made by this audit.
 
 ### Local artifact and lowering lifecycle
 
-#### [ ] READ-014 — Encapsulate cache-to-lowered-source conversion
+#### [x] READ-014 — Encapsulate cache-to-lowered-source conversion
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -61,7 +61,15 @@ collision verification, path-local source attachment, source-map reuse,
 successful-artifact-only caching, FIFO eviction, and the distinction between
 parse failure and an incomplete semantic artifact.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ArtifactCacheHandle` now owns lowered-source cache hits and
+insertions, including current-source path/line-index attachment and reusable
+semantic storage. Removed the session-side reconstruction helper and the raw
+semantic/source-index cloning methods; cache FIFO and full-key verification
+remain private implementation details.
+
+**Verification:** `make fmt && make ci` passes, including 780 core tests,
+cache/session reuse and eviction tests, workspace checks, end-to-end/provider
+harnesses, doctests, generated-rule validation, and examples.
 
 #### [x] READ-015 — Make lowering completion and derived-phase policy one result
 
