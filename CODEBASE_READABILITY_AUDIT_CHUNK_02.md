@@ -66,7 +66,7 @@ correlated path environments.
 **Verification:** `cargo test -p glass-lint-core analysis::flow::projector --lib`
 (50 passed); `make fmt && make ci` (passed).
 
-### [ ] READ-008 — Co-locate alias binding and object-state cleanup
+### [x] READ-008 — Co-locate alias binding and object-state cleanup
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -99,6 +99,16 @@ exists. Preserve unknown-source unbinding, shared-object behavior, lexical
 version aliases, mutation-log capture/restore, state limits, and the
 fail-closed handling of dynamic values. Add focused tests for multiple aliases,
 last-alias removal, reassignment, and reversible history.
+
+**Fix Applied:** Added `FlowStateTable` operations for binding, unbinding,
+and invalidating a complete canonical alias set. Reference-count updates and
+orphaned-object state cleanup now occur inside the table; the projector only
+derives the value aliases and delegates the atomic lifecycle operation.
+Added a regression proving shared state remains live until the final alias is
+removed.
+
+**Verification:** `cargo test -p glass-lint-core analysis::flow::projector --lib`
+(51 passed); `make fmt && make ci` (passed).
 
 ### [ ] READ-009 — Centralize flow target and argument matching predicates
 

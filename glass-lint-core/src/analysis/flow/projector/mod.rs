@@ -608,9 +608,8 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     }
 
     pub(super) fn object_for(&mut self, value: ValueId) -> Option<ObjectId> {
-        self.value_aliases(value)
-            .into_iter()
-            .find_map(|candidate| self.flow_state.object_for(candidate))
+        let aliases = self.value_aliases(value);
+        self.flow_state.object_for_any(&aliases)
     }
 
     pub(super) fn join_paths(&mut self, mut paths: Vec<FlowEnvironment>) {
@@ -706,24 +705,13 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     }
 
     fn unbind_value(&mut self, value: ValueId) {
-        let mut objects = Vec::new();
-        for candidate in self.value_aliases(value) {
-            if let Some(object) = self.flow_state.unbind(candidate) {
-                objects.push(object);
-            }
-        }
-        for object in objects {
-            if !self.flow_state.has_alias_for(object) {
-                self.flow_state.remove_states_for(object);
-            }
-        }
+        let aliases = self.value_aliases(value);
+        self.flow_state.unbind_aliases(&aliases);
     }
 
     fn bind_value(&mut self, value: ValueId, object: ObjectId) {
-        let candidates = self.value_aliases(value);
-        for candidate in candidates {
-            self.flow_state.bind(candidate, object);
-        }
+        let aliases = self.value_aliases(value);
+        self.flow_state.bind_aliases(&aliases, object);
     }
 
     fn value_aliases(&mut self, value: ValueId) -> Vec<ValueId> {
@@ -743,10 +731,8 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     }
 
     fn invalidate_object(&mut self, value: ValueId) {
-        let Some(object) = self.object_for(value) else {
-            return;
-        };
-        self.flow_state.remove_states_for(object);
+        let aliases = self.value_aliases(value);
+        self.flow_state.invalidate_aliases(&aliases);
     }
 
     fn allocate_object_id(&mut self) -> Option<ObjectId> {

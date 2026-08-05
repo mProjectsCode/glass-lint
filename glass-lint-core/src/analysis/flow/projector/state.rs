@@ -159,11 +159,15 @@ impl FlowStateTable {
         self.aliases.get(&value).copied()
     }
 
+    pub(super) fn object_for_any(&self, values: &[ValueId]) -> Option<ObjectId> {
+        values.iter().find_map(|value| self.object_for(*value))
+    }
+
     pub(super) fn objects(&self) -> impl Iterator<Item = ObjectId> + '_ {
         self.object_refs.keys()
     }
 
-    pub(super) fn bind(&mut self, value: ValueId, object: ObjectId) {
+    fn bind(&mut self, value: ValueId, object: ObjectId) {
         if let Some(&old) = self.aliases.get(&value) {
             self.log
                 .record(InverseDelta::AliasUpdate(value, old, object));
@@ -176,7 +180,7 @@ impl FlowStateTable {
         self.object_refs.increment(object);
     }
 
-    pub(super) fn unbind(&mut self, value: ValueId) -> Option<ObjectId> {
+    fn unbind(&mut self, value: ValueId) -> Option<ObjectId> {
         let old_object = self.aliases.remove(&value)?;
         self.log
             .record(InverseDelta::AliasRemove(value, old_object));
@@ -184,8 +188,38 @@ impl FlowStateTable {
         Some(old_object)
     }
 
-    pub(super) fn has_alias_for(&self, object: ObjectId) -> bool {
+    fn has_alias_for(&self, object: ObjectId) -> bool {
         self.object_refs.contains(object)
+    }
+
+    pub(super) fn bind_aliases(&mut self, values: &[ValueId], object: ObjectId) {
+        for value in values {
+            self.bind(*value, object);
+        }
+    }
+
+    pub(super) fn unbind_aliases(&mut self, values: &[ValueId]) {
+        let mut objects = BTreeSet::new();
+        for value in values {
+            if let Some(object) = self.unbind(*value) {
+                objects.insert(object);
+            }
+        }
+        for object in objects {
+            if !self.has_alias_for(object) {
+                self.remove_states_for(object);
+            }
+        }
+    }
+
+    pub(super) fn invalidate_aliases(&mut self, values: &[ValueId]) {
+        let objects = values
+            .iter()
+            .filter_map(|value| self.object_for(*value))
+            .collect::<BTreeSet<_>>();
+        for object in objects {
+            self.remove_states_for(object);
+        }
     }
 
     fn object_range(object: ObjectId) -> RangeInclusive<FlowStateKey> {
@@ -397,7 +431,7 @@ impl FlowStateTable {
         self.state_limit_rejected = true;
     }
 
-    pub(super) fn remove_states_for(&mut self, object: ObjectId) {
+    fn remove_states_for(&mut self, object: ObjectId) {
         let keys: Vec<FlowStateKey> = self
             .states
             .range(Self::object_range(object))
@@ -789,6 +823,24 @@ mod tests {
             table.objects().collect::<Vec<_>>(),
             vec![ObjectId::from_test(1), ObjectId::from_test(2)]
         );
+    }
+
+    #[test]
+    fn unbind_aliases_cleans_state_only_after_the_last_alias() {
+        let mut table = FlowStateTable::new(100, 100);
+        let aliases = [ValueId::from_test(1), ValueId::from_test(2)];
+        let object = ObjectId::from_test(1);
+        table.bind_aliases(&aliases, object);
+        table.insert_state(FlowState::new(
+            FlowId::new(RuleIndex::new(0), 0),
+            FactId::from_test(1),
+            object,
+        ));
+
+        table.unbind_aliases(&aliases[..1]);
+        assert_eq!(table.states_for(object).count(), 1);
+        table.unbind_aliases(&aliases[1..]);
+        assert_eq!(table.states_for(object).count(), 0);
     }
 
     #[test]
