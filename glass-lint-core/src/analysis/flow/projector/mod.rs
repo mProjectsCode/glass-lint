@@ -21,7 +21,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use glass_lint_datastructures::{Budget, NameTable};
 use loops::LoopFixedPoint;
 use state::{
-    AbruptExit, ControlFrame, FlowEnvironment, FlowEvidence, FlowStateTable, PropertyWriteUpdate,
+    AbruptExit, ControlFrame, ControlStack, FlowEnvironment, FlowEvidence, FlowStateTable,
+    PropertyWriteUpdate,
 };
 
 use crate::{
@@ -142,7 +143,7 @@ struct ObjectFlowProjector<'rules, 'stream, 'arena> {
     /// Bounded lifecycle, allocation, emission, and outcome state for one run.
     run: ProjectionRunState,
     /// Nested branch/function frames used to restore environments at joins.
-    control: Vec<ControlFrame>,
+    control: ControlStack,
     /// Correlated checkpoint-backed alternatives and fact-local replay cursor.
     frontier: PathFrontier,
     /// Fact-local witnesses are finalized after every reaching alternative has
@@ -382,7 +383,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             flow_evidence: FlowEvidence::new(evidence),
             flow_state: FlowStateTable::new(limits.state_limit(), limits.mutation_limit()),
             run: ProjectionRunState::new(limits, summary_exhausted),
-            control: Vec::new(),
+            control: ControlStack::default(),
             frontier: PathFrontier::initial(),
             pending: PendingFlowStates::default(),
             binding_slots: BTreeMap::new(),
@@ -526,19 +527,10 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         );
         fixed_point.converge(&mut *self, body_start, body_end);
 
-        let Some(ControlFrame::Loop {
-            body_start: expected,
-            ..
-        }) = self.control.last()
-        else {
-            self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
-            return;
-        };
-        if *expected != body_start {
+        if !self.control.pop_loop(body_start) {
             self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
             return;
         }
-        self.control.pop();
 
         let outcome = fixed_point.collect_exits(&mut self.flow_state, &mut self.run);
         if !outcome.complete {
@@ -558,7 +550,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 });
             }
             FunctionBoundary::Exit => {
-                if let Some(ControlFrame::Function { caller }) = self.control.pop() {
+                if let Some(caller) = self.control.pop_function() {
                     self.frontier.set(caller);
                 }
             }

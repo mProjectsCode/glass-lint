@@ -10,8 +10,8 @@ use std::collections::BTreeSet;
 use crate::analysis::{
     facts::FactId,
     flow::projector::{
-        AlternativeCompleteness, ControlFrame, FlowEnvironment, FlowStateTable,
-        ObjectFlowProjector, ProjectionRunState, state::FlowSemanticSnapshot,
+        AlternativeCompleteness, FlowEnvironment, FlowStateTable, ObjectFlowProjector,
+        ProjectionRunState, state::FlowSemanticSnapshot,
     },
 };
 
@@ -172,30 +172,17 @@ impl LoopFixedPoint {
             self.iterations += 1;
             projector.run.fixed_point_iterations =
                 projector.run.fixed_point_iterations.saturating_add(1);
-            let break_count = projector
-                .control
-                .iter()
-                .rev()
-                .find_map(|frame| match frame {
-                    ControlFrame::Loop { breaks, .. } => Some(breaks.len()),
-                    _ => None,
-                })
-                .unwrap_or(0);
+            let break_count = projector.control.loop_break_count();
             let inputs = std::mem::take(&mut self.frontier);
             let outputs = projector.replay_loop_body(body_start, body_end, inputs);
             let mut next = outputs;
-            if let Some(ControlFrame::Loop { continues, .. }) = projector.control.last_mut() {
-                next.append(continues);
-            }
+            next.append(&mut projector.control.take_loop_continues());
             projector.join_paths(next);
             let candidate = projector.frontier.take();
             self.exits.extend(candidate.iter().copied());
 
-            if let Some(ControlFrame::Loop { breaks, .. }) = projector.control.last()
-                && breaks.len() > break_count
-            {
-                self.exits.extend(breaks[break_count..].iter().copied());
-            }
+            self.exits
+                .extend(projector.control.new_loop_breaks_since(break_count));
 
             let mut next_frontier = Vec::new();
             for environment in candidate {

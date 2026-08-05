@@ -546,6 +546,149 @@ pub(super) enum ControlFrame {
     },
 }
 
+#[derive(Debug, Default)]
+pub(super) struct ControlStack {
+    frames: Vec<ControlFrame>,
+}
+
+impl ControlStack {
+    pub(super) fn push(&mut self, frame: ControlFrame) {
+        self.frames.push(frame);
+    }
+
+    pub(super) fn pop(&mut self) -> Option<ControlFrame> {
+        self.frames.pop()
+    }
+
+    pub(super) fn last(&self) -> Option<&ControlFrame> {
+        self.frames.last()
+    }
+
+    pub(super) fn last_mut(&mut self) -> Option<&mut ControlFrame> {
+        self.frames.last_mut()
+    }
+
+    pub(super) fn last_matching_mut(
+        &mut self,
+        region: ControlRegionId,
+    ) -> Option<&mut ControlFrame> {
+        self.frames
+            .last_mut()
+            .filter(|frame| frame.region() == Some(region))
+    }
+
+    /// Pop the top frame, rejecting a mismatched region after consuming it.
+    /// This preserves the projector's fail-closed behavior at malformed
+    /// control boundaries without allowing callers to bypass region checks.
+    pub(super) fn pop_region(&mut self, region: ControlRegionId) -> Option<ControlFrame> {
+        let frame = self.frames.pop()?;
+        (frame.region() == Some(region)).then_some(frame)
+    }
+
+    pub(super) fn loop_frame(&self, region: ControlRegionId) -> Option<ControlFrame> {
+        self.last()
+            .filter(|frame| frame.region() == Some(region))
+            .and_then(|frame| matches!(frame, ControlFrame::Loop { .. }).then(|| frame.clone()))
+    }
+
+    pub(super) fn pop_loop(&mut self, body_start: FactId) -> bool {
+        if !matches!(
+            self.last(),
+            Some(ControlFrame::Loop {
+                body_start: expected,
+                ..
+            }) if *expected == body_start
+        ) {
+            return false;
+        }
+        self.frames.pop();
+        true
+    }
+
+    pub(super) fn loop_break_count(&self) -> usize {
+        self.frames
+            .iter()
+            .rev()
+            .find_map(|frame| match frame {
+                ControlFrame::Loop { breaks, .. } => Some(breaks.len()),
+                _ => None,
+            })
+            .unwrap_or(0)
+    }
+
+    pub(super) fn take_loop_continues(&mut self) -> Vec<FlowEnvironment> {
+        match self.last_mut() {
+            Some(ControlFrame::Loop { continues, .. }) => std::mem::take(continues),
+            _ => Vec::new(),
+        }
+    }
+
+    pub(super) fn new_loop_breaks_since(&self, count: usize) -> Vec<FlowEnvironment> {
+        let Some(ControlFrame::Loop { breaks, .. }) = self.last() else {
+            return Vec::new();
+        };
+        breaks.get(count..).unwrap_or_default().to_vec()
+    }
+
+    pub(super) fn record_abrupt_exit(&mut self, kind: AbruptExit, environment: &FlowEnvironment) {
+        for frame in self.frames.iter_mut().rev() {
+            if let ControlFrame::Try { abrupt_exits, .. } = frame {
+                abrupt_exits.push((kind, *environment));
+            }
+        }
+    }
+
+    pub(super) fn route_abrupt(&mut self, kind: AbruptExit, environment: FlowEnvironment) {
+        match kind {
+            AbruptExit::Break => {
+                if let Some(frame) = self.frames.iter_mut().rev().find(|frame| {
+                    matches!(
+                        frame,
+                        ControlFrame::Loop { .. } | ControlFrame::Switch { .. }
+                    )
+                }) {
+                    match frame {
+                        ControlFrame::Loop { breaks, .. } | ControlFrame::Switch { breaks, .. } => {
+                            breaks.push(environment);
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            }
+            AbruptExit::Continue => {
+                if let Some(ControlFrame::Loop { continues, .. }) = self
+                    .frames
+                    .iter_mut()
+                    .rev()
+                    .find(|frame| matches!(frame, ControlFrame::Loop { .. }))
+                {
+                    continues.push(environment);
+                }
+            }
+            AbruptExit::Return => {}
+        }
+    }
+
+    pub(super) fn pop_function(&mut self) -> Option<Vec<FlowEnvironment>> {
+        match self.pop() {
+            Some(ControlFrame::Function { caller }) => Some(caller),
+            _ => None,
+        }
+    }
+}
+
+impl ControlFrame {
+    fn region(&self) -> Option<ControlRegionId> {
+        match self {
+            Self::Branch { region, .. }
+            | Self::Loop { region, .. }
+            | Self::Switch { region, .. }
+            | Self::Try { region, .. } => Some(*region),
+            Self::Function { .. } => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Abrupt completion that must be routed through enclosing control frames.
 pub(super) enum AbruptExit {

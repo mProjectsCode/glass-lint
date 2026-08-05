@@ -19,7 +19,7 @@ made by this audit.
 
 ## Findings
 
-### [ ] READ-007 — Make control-frame lifecycle an owned abstraction
+### [x] READ-007 — Make control-frame lifecycle an owned abstraction
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -55,6 +55,16 @@ states, nearest-target semantics for nested loops/switches, function-return
 behavior, and deterministic path ordering. Tests should specifically cover
 nested try/finally, break/continue through try blocks, returns, and region
 mismatches.
+
+**Fix Applied:** Added a private `ControlStack` owner for control-frame
+storage, region validation, loop replay bookkeeping, function boundaries,
+abrupt-exit recording, and nearest loop/switch routing. Projector control
+transitions now use typed stack operations, and the duplicated abrupt-routing
+and try-frame scans were removed while preserving fail-closed mismatches and
+correlated path environments.
+
+**Verification:** `cargo test -p glass-lint-core analysis::flow::projector --lib`
+(50 passed); `make fmt && make ci` (passed).
 
 ### [ ] READ-008 — Co-locate alias binding and object-state cleanup
 
