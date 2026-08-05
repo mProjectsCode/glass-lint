@@ -22,7 +22,7 @@ made by this audit.
 
 ### Projection ownership
 
-#### [ ] READ-066 — Bind projected evidence to the owning project module
+#### [x] READ-066 — Bind projected evidence to the owning project module
 
 - **Severity:** High
 - **Fix Complexity:** Low
@@ -47,7 +47,12 @@ normalization, and deterministic ordering while deleting the foreign-module
 possibility; add a regression test with two project models that reuse module
 IDs.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Retained the producing `ProjectModule` in each projection,
+used its own name table during evidence lookup, and rejected modules that are
+not the projection owner even when their numeric `ModuleId` coincides. Added a
+regression covering two single-module projects that both reuse module ID 0.
+Verified with `cargo test -p glass-lint-core --lib analysis::tests` and
+`make fmt && make ci`.
 
 ### Export-depth exhaustion
 

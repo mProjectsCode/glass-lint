@@ -124,4 +124,52 @@ mod tests {
         );
         assert_eq!(before, after);
     }
+
+    #[test]
+    fn project_matcher_rejects_a_module_from_another_project() {
+        fn project(source_text: &str, path: &str) -> ProjectSemanticModel {
+            let source = SourceFile::new(path, source_text).unwrap();
+            let parsed = crate::parse_test_source(source_text, path).expect("source should parse");
+            let coordinates =
+                SpanNormalizer::new(parsed.source_start, &SourceText::from(source_text));
+            let mut environment = Environment::default();
+            environment.add_global("fetch").unwrap();
+            let local = Lowerer::new(&environment, &AnalysisLimits::default())
+                .lower_program(&parsed.program, &coordinates);
+            ProjectSemanticModel::single(
+                path,
+                LocatedSourceContext::new(&source),
+                LocalArtifact::new(LocatedSourceContext::new(&source), Arc::new(local)),
+            )
+        }
+
+        let first = project("fetch('/first');", "first.js");
+        let second = project("", "second.js");
+        let plan =
+            CompiledMatcherPlan::compile(&[EventQuery::call_global("fetch").unwrap().into_query()])
+                .unwrap();
+        let rule_index = RuleIndex::new(0);
+        let records = [CompiledRuleRecord {
+            description: "fetch".into(),
+            query_explanations: Vec::new(),
+            severity: Severity::Warning,
+            confidence: Confidence::High,
+            matcher: plan,
+        }];
+        let selected = [rule_index];
+        let (matcher, _outcome) = first.project(CompiledRuleSelection::new(&records, &selected));
+        let first_module = first.modules().next().expect("first module");
+        let second_module = second.modules().next().expect("second module");
+
+        assert!(
+            !matcher
+                .evidence_for(first_module, rule_index, usize::MAX)
+                .is_empty()
+        );
+        assert!(
+            matcher
+                .evidence_for(second_module, rule_index, usize::MAX)
+                .is_empty()
+        );
+    }
 }

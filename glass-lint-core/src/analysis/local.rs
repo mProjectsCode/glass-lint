@@ -441,6 +441,7 @@ impl LocalArtifact {
 
 /// A linked project module containing one lowered local artifact and its
 /// report-local source attachment.
+#[derive(Debug)]
 pub struct ProjectModule {
     /// Stable project-local module identity.
     id: ModuleId,

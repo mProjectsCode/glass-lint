@@ -6,8 +6,6 @@
 
 use std::collections::BTreeMap;
 
-use glass_lint_datastructures::NameTable;
-
 use crate::{
     analysis::{
         ModuleId, ProjectModule, ProjectSemanticModel,
@@ -246,6 +244,7 @@ pub struct ProjectMatcherModel<'project, 'matchers> {
 
 #[derive(Debug)]
 struct ProjectModuleProjection<'project> {
+    module: &'project ProjectModule,
     index: &'project OccurrenceIndexes,
     overlay: Option<LinkedOccurrenceView<'project>>,
     projected: RuleEvidenceTable,
@@ -256,11 +255,12 @@ impl ProjectModuleProjection<'_> {
         &self,
         matcher: &CompiledMatcherPlan,
         rule_index: RuleIndex,
-        names: &NameTable,
     ) -> Vec<ClassificationEvidence> {
-        let mut evidence =
-            self.index
-                .evidence_for_with_overlay(matcher, self.overlay.as_ref(), names);
+        let mut evidence = self.index.evidence_for_with_overlay(
+            matcher,
+            self.overlay.as_ref(),
+            self.module.local().facts().names(),
+        );
 
         if let Some(projected) = self.projected.for_rule(rule_index) {
             evidence.extend_from_slice(projected);
@@ -495,6 +495,7 @@ impl ProjectSemanticModel {
                 (
                     module.id(),
                     ProjectModuleProjection {
+                        module,
                         index,
                         overlay,
                         projected,
@@ -548,11 +549,13 @@ impl ProjectMatcherModel<'_, '_> {
         let Some(matcher) = self.matchers.get(rule_index) else {
             return Vec::new();
         };
-        let names = module.local().facts().names();
         let Some(projection) = self.projections.get(&module.id()) else {
             return Vec::new();
         };
-        let mut evidence = projection.evidence_for(matcher, rule_index, names);
+        if !std::ptr::eq(module, projection.module) {
+            return Vec::new();
+        }
+        let mut evidence = projection.evidence_for(matcher, rule_index);
 
         crate::analysis::matching::evidence::normalize_evidence(&mut evidence, evidence_limit);
         evidence
