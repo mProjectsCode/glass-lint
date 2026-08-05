@@ -52,8 +52,12 @@ pub(in crate::analysis) fn provenance_to_const_value(
         BindingProvenance::StaticStringArray(values) => {
             ConstValue::Array(values.iter().cloned().map(ConstValue::String).collect())
         }
-        BindingProvenance::StaticObjectKeys(values) => values.to_const_object(resolve_name),
-        BindingProvenance::StaticObjectValues(values) => values.to_const_object(resolve_name),
+        BindingProvenance::StaticObjectKeys(values) => values
+            .to_const_object(resolve_name)
+            .unwrap_or(ConstValue::Unknown),
+        BindingProvenance::StaticObjectValues(values) => values
+            .to_const_object(resolve_name)
+            .unwrap_or(ConstValue::Unknown),
         _ => ConstValue::Unknown,
     }
 }

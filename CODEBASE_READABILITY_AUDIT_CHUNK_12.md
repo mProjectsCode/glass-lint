@@ -54,7 +54,7 @@ test that verifies malformed targets do not insert a value. Verified with
 
 ### Static-shape conversion
 
-#### [ ] READ-062 — Make unresolved static-property names fail closed
+#### [x] READ-062 — Make unresolved static-property names fail closed
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -78,7 +78,14 @@ Preserve deterministic key order, last-write-wins storage, and the distinction
 between unknown property values and an unknown property name; do not silently
 discard an unresolved identity.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `StaticProperties::to_const_object` now returns `None` when
+any retained `NameId` cannot be resolved, and the scope constant projection
+maps that incomplete shape to `ConstValue::Unknown`. Added regression coverage
+for both complete and unresolved key projections while preserving deterministic
+ordering and last-write-wins storage.
+
+**Verification:** `cargo test -p glass-lint-core --lib analysis::model::static_properties`
+and `make fmt && make ci` pass.
 
 ### Static object bounds
 

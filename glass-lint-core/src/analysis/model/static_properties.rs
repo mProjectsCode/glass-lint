@@ -75,17 +75,16 @@ impl<V> StaticProperties<V> {
     }
 
     /// Project the property keys into a text-keyed constant object whose
-    /// values are all `Unknown`. Keys that do not resolve to text are dropped.
+    /// values are all `Unknown`. An unresolved key invalidates the object.
     pub(in crate::analysis) fn to_const_object(
         &self,
         resolve_name: &impl Fn(NameId) -> Option<SmolStr>,
-    ) -> ConstValue {
-        ConstValue::Object(
+    ) -> Option<ConstValue> {
+        Some(ConstValue::Object(
             self.keys()
-                .filter_map(resolve_name)
-                .map(|key| (key, ConstValue::Unknown))
-                .collect(),
-        )
+                .map(|key| Some((resolve_name(key)?, ConstValue::Unknown)))
+                .collect::<Option<_>>()?,
+        ))
     }
 }
 
@@ -157,10 +156,32 @@ mod tests {
         let resolve = |key| names.resolve(key).map(SmolStr::new);
         assert_eq!(
             properties.to_const_object(&resolve),
-            ConstValue::Object(BTreeMap::from([
+            Some(ConstValue::Object(BTreeMap::from([
                 ("a".into(), ConstValue::Unknown),
                 ("b".into(), ConstValue::Unknown),
-            ]))
+            ])))
+        );
+    }
+
+    #[test]
+    fn unresolved_property_name_invalidates_object_projection() {
+        let properties = StaticProperties::<()>::new();
+        let resolve = |_key| None;
+        assert_eq!(
+            properties
+                .to_const_object(&resolve)
+                .unwrap_or(ConstValue::Unknown),
+            ConstValue::Object(BTreeMap::new())
+        );
+
+        let mut names = NameTable::default();
+        let unresolved = names.intern("missing").unwrap();
+        let mut properties = StaticProperties::new();
+        properties.insert(unresolved, ());
+        assert_eq!(
+            properties.to_const_object(&resolve),
+            None,
+            "unresolved property names must not be silently omitted"
         );
     }
 }
