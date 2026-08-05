@@ -86,7 +86,7 @@ and the rule that cross-artifact IDs cannot establish evidence.
 
 ### Occurrence storage and iteration
 
-#### [ ] READ-053 — Make occurrence normalization enforce its ordering contract
+#### [x] READ-053 — Make occurrence normalization enforce its ordering contract
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -111,7 +111,13 @@ the current event/span/bucket tie-break order, zero-copy indexed queries after
 normalization, and deterministic evidence output; do not rely on a caller
 comment as the only guard for the invariant.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `OccurrenceIndex::normalize` now sorts each bucket by the
+documented `(FactId, span start, span end)` key before deduplicating. The
+owner therefore enforces deterministic normalized order even when a collector
+inserts out of order; the regression test now exercises that ordering.
+
+**Verification:** `cargo test -p glass-lint-core --lib analysis::matching`
+and `make fmt && make ci` pass.
 
 #### [ ] READ-054 — Replace mirrored candidate-collection enums with one owner
 

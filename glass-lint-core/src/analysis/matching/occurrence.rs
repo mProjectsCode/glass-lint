@@ -428,13 +428,19 @@ impl<K: Ord> OccurrenceIndex<K> {
         self.push_occurrence(key, Occurrence::new(event, span));
     }
 
-    /// Deduplicate every key bucket.
+    /// Sort and deduplicate every key bucket.
     ///
-    /// Entries are already appended in monotonically increasing `(event, span)`
-    /// order because `build_from_stream` iterates facts in FactId order and
-    /// all pushes within a bucket for the same fact are sequential.
+    /// Sorting here makes the normalized ordering an owner invariant rather
+    /// than a promise that every collector happened to append monotonically.
     pub(super) fn normalize(&mut self) {
         for occurrences in self.0.values_mut() {
+            occurrences.sort_unstable_by_key(|occurrence| {
+                (
+                    occurrence.event,
+                    occurrence.span.start(),
+                    occurrence.span.end(),
+                )
+            });
             occurrences.dedup_by_key(|occurrence| {
                 (
                     occurrence.event,

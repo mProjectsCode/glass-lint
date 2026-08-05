@@ -376,9 +376,9 @@ mod tests {
     #[test]
     fn typed_occurrence_index_is_deduplicated() {
         let mut index = OccurrenceIndex::<SmolStr>::default();
-        index.push("fetch".into(), FactId::from_test(1), span(5, 11));
-        index.push("fetch".into(), FactId::from_test(1), span(5, 11));
         index.push("fetch".into(), FactId::from_test(2), span(20, 26));
+        index.push("fetch".into(), FactId::from_test(1), span(5, 11));
+        index.push("fetch".into(), FactId::from_test(1), span(5, 11));
         index.normalize();
         assert_eq!(
             index
