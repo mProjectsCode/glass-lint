@@ -84,7 +84,9 @@ impl FrozenScopeGraph {
                 let mut key = self
                     .binding_key_for_expr(&member.obj)
                     .or_else(|| self.global_key_for_expr(&member.obj))?;
-                key.append_segment(self.name_id(self.member_property_name(member)?.as_str())?);
+                key.append_segment(
+                    self.name_id(self.contextual_member_property_name(member)?.as_str())?,
+                );
                 Some(key)
             }
             Expr::This(_) => Some(BindingKey::new(BindingRoot::Global("this".into()))),
@@ -106,7 +108,9 @@ impl FrozenScopeGraph {
                 .then(|| BindingKey::new(BindingRoot::Global(ident.sym.to_string()))),
             Expr::Member(member) => {
                 let mut key = self.global_key_for_expr(&member.obj)?;
-                key.append_segment(self.name_id(self.member_property_name(member)?.as_str())?);
+                key.append_segment(
+                    self.name_id(self.contextual_member_property_name(member)?.as_str())?,
+                );
                 Some(key)
             }
             Expr::This(_) => Some(BindingKey::new(BindingRoot::Global("this".into()))),

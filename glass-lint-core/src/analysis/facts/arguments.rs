@@ -5,7 +5,7 @@ use glass_lint_datastructures::SymbolPath;
 use crate::analysis::{
     facts::{
         BoundArgument, CallArgInfo, Expr, ExprOrSpread, FactBuilder, PathId, PathSegmentInput,
-        ValueId, member_property_name,
+        ValueId, literal_member_property_name,
     },
     syntax::constant as syntax_constant,
     value::{StaticObject, Value},
@@ -91,7 +91,7 @@ impl FactBuilder<'_, '_> {
         match expr {
             Expr::Member(member) => {
                 let (base_val, base_path) = self.member_chain_projection(&member.obj);
-                let Some(property) = member_property_name(&member.prop) else {
+                let Some(property) = literal_member_property_name(&member.prop) else {
                     return (ValueId::UNKNOWN, PathId::EMPTY);
                 };
                 let extended = if let Ok(index) = property.parse::<usize>() {
@@ -143,7 +143,8 @@ impl FactBuilder<'_, '_> {
                         let value = self.resolver.resolve_expr_id(expr);
                         return (value, value, path);
                     };
-                    let Some(name) = crate::analysis::syntax::property_name(&property.key) else {
+                    let Some(name) = crate::analysis::syntax::literal_property_name(&property.key)
+                    else {
                         let value = self.resolver.resolve_expr_id(expr);
                         return (value, value, path);
                     };
@@ -183,7 +184,7 @@ impl FactBuilder<'_, '_> {
             Expr::Member(member) => {
                 let value = self.resolver.resolve_expr_id(expr);
                 let (base_value, base_path) = self.member_chain_projection(&member.obj);
-                let property = member_property_name(&member.prop);
+                let property = literal_member_property_name(&member.prop);
                 let extended = match property {
                     Some(p) if let Ok(index) = p.parse::<usize>() => match u32::try_from(index) {
                         Ok(index) => self.append_path(base_path, PathSegmentInput::Index(index)),

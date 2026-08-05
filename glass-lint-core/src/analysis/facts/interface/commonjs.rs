@@ -6,7 +6,7 @@ use crate::analysis::{
     facts::interface::ModuleInterfaceBuilder,
     module::{COMMONJS_EXPORTS, COMMONJS_MODULE, ModuleExport},
     resolution::Resolver,
-    syntax::{member_property_name, property_name},
+    syntax::{literal_member_property_name, literal_property_name},
 };
 
 impl ModuleInterfaceBuilder {
@@ -25,7 +25,7 @@ impl ModuleInterfaceBuilder {
         else {
             return;
         };
-        let prop = member_property_name(&member.prop);
+        let prop = literal_member_property_name(&member.prop);
         if is_commonjs_name(&member.obj, COMMONJS_MODULE, resolver)
             && prop.as_deref() == Some(COMMONJS_EXPORTS)
         {
@@ -40,7 +40,7 @@ impl ModuleInterfaceBuilder {
             return;
         };
         if !is_commonjs_name(&parent.obj, COMMONJS_MODULE, resolver)
-            || member_property_name(&parent.prop).as_deref() != Some(COMMONJS_EXPORTS)
+            || literal_member_property_name(&parent.prop).as_deref() != Some(COMMONJS_EXPORTS)
         {
             return;
         }
@@ -131,7 +131,7 @@ impl ModuleInterfaceBuilder {
     fn collect_commonjs_export_entries(object: &ObjectLit) -> Option<Vec<CommonJsExportEntry>> {
         // Single iterator pipeline mapping each property to an export entry.
         // Extraction would not reduce complexity because the shared match
-        // context (property_name calls, CommonJsExportEntry construction)
+        // context (literal_property_name calls, CommonJsExportEntry construction)
         // would need to be repeated in every helper.
         object
             .props
@@ -139,7 +139,7 @@ impl ModuleInterfaceBuilder {
             .map(|prop| match prop {
                 PropOrSpread::Prop(prop) => match &**prop {
                     Prop::KeyValue(value) => {
-                        let name = property_name(&value.key)?;
+                        let name = literal_property_name(&value.key)?;
                         let (local, static_value) = match &*value.value {
                             Expr::Ident(ident) => (Some(ident.sym.to_smolstr()), None),
                             Expr::Lit(Lit::Str(s)) => {
@@ -161,19 +161,19 @@ impl ModuleInterfaceBuilder {
                         static_value: None,
                     }),
                     Prop::Getter(getter) => Some(CommonJsExportEntry {
-                        name: property_name(&getter.key)?,
+                        name: literal_property_name(&getter.key)?,
                         local: None,
                         value_span: None,
                         static_value: None,
                     }),
                     Prop::Setter(setter) => Some(CommonJsExportEntry {
-                        name: property_name(&setter.key)?,
+                        name: literal_property_name(&setter.key)?,
                         local: None,
                         value_span: None,
                         static_value: None,
                     }),
                     Prop::Method(method) => Some(CommonJsExportEntry {
-                        name: property_name(&method.key)?,
+                        name: literal_property_name(&method.key)?,
                         local: None,
                         value_span: Some(method.function.span()),
                         static_value: None,

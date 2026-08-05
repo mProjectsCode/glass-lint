@@ -4,7 +4,7 @@ use swc_ecma_visit::VisitWith;
 
 use crate::analysis::{
     facts::{CallArgInfo, CallUnwrap, FactBuilder, FactPayload},
-    syntax::{effective_callee_expr, member_property_name},
+    syntax::{effective_callee_expr, literal_member_property_name},
     value::ValueId,
 };
 
@@ -53,7 +53,7 @@ impl FactBuilder<'_, '_> {
 
         if let Expr::Member(member) = effective_callee_expr(callee_expr)
             && matches!(
-                member_property_name(&member.prop).as_deref(),
+                literal_member_property_name(&member.prop).as_deref(),
                 Some("call" | "apply")
             )
         {

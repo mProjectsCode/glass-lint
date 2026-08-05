@@ -1,6 +1,6 @@
 use crate::analysis::facts::{
     CallArgInfo, CallExpr, CallUnwrap, Expr, ExprOrSpread, FactBuilder, FactPayload, MemberExpr,
-    Span, Spanned, effective_callee_expr, member_property_name,
+    Span, Spanned, effective_callee_expr, literal_member_property_name,
 };
 
 impl FactBuilder<'_, '_> {
@@ -14,7 +14,7 @@ impl FactBuilder<'_, '_> {
         span: Span,
         args: &[ExprOrSpread],
     ) {
-        let Some(property) = member_property_name(&member.prop) else {
+        let Some(property) = literal_member_property_name(&member.prop) else {
             return;
         };
         match property.as_str() {

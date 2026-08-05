@@ -25,7 +25,8 @@ pub(in crate::analysis) trait Lookup {
     where
         Self: Sized,
     {
-        let Some(property) = property_name_with_state(&member.prop, self, state) else {
+        let Some(property) = contextual_member_property_name_with_state(&member.prop, self, state)
+        else {
             return ConstValue::Unknown;
         };
         match state.evaluate(&member.obj, self) {
@@ -80,21 +81,21 @@ pub(in crate::analysis) fn evaluate(expr: &Expr, lookup: &impl Lookup) -> ConstV
 }
 
 /// Evaluate a member property with a fresh bounded state.
-pub(in crate::analysis) fn property_name(
+pub(in crate::analysis) fn contextual_member_property_name(
     prop: &MemberProp,
     lookup: &impl Lookup,
 ) -> Option<SmolStr> {
     let mut state = EvalState::default();
-    property_name_with_state(prop, lookup, &mut state)
+    contextual_member_property_name_with_state(prop, lookup, &mut state)
 }
 
 /// Evaluate a member property while sharing an existing evaluation budget.
-pub(in crate::analysis) fn property_name_with_state(
+pub(in crate::analysis) fn contextual_member_property_name_with_state(
     prop: &MemberProp,
     lookup: &impl Lookup,
     state: &mut EvalState,
 ) -> Option<SmolStr> {
-    state.member_property_name(prop, lookup)
+    state.contextual_member_property_name(prop, lookup)
 }
 
 #[derive(Default)]
@@ -237,7 +238,8 @@ impl EvalState {
                             self.evaluate(&Expr::Ident(ident.clone()), lookup),
                         ),
                         Prop::KeyValue(property) => {
-                            let Some(key) = self.property_name(&property.key, lookup) else {
+                            let Some(key) = self.contextual_property_name(&property.key, lookup)
+                            else {
                                 return ConstValue::Unknown;
                             };
                             (key, self.evaluate(&property.value, lookup))
@@ -262,7 +264,8 @@ impl EvalState {
         let Expr::Member(member) = &**callee else {
             return ConstValue::Unknown;
         };
-        if property_name_with_state(&member.prop, lookup, self).as_deref() != Some("assign")
+        if contextual_member_property_name_with_state(&member.prop, lookup, self).as_deref()
+            != Some("assign")
             || !matches!(&*member.obj, Expr::Ident(ident) if ident.sym == *"Object")
             || !lookup.unshadowed_global("Object", member.obj.span())
             || call.args.is_empty()
@@ -307,7 +310,11 @@ impl EvalState {
     /// Resolve a property name using the same bounded evaluator state as its
     /// surrounding expression. Computed keys therefore consume depth, node,
     /// and lookup budget instead of silently starting a second evaluation.
-    fn property_name(&mut self, prop: &PropName, lookup: &impl Lookup) -> Option<SmolStr> {
+    fn contextual_property_name(
+        &mut self,
+        prop: &PropName,
+        lookup: &impl Lookup,
+    ) -> Option<SmolStr> {
         match prop {
             PropName::Ident(ident) => Some(ident.sym.to_smolstr()),
             PropName::Str(value) => {
@@ -321,7 +328,11 @@ impl EvalState {
         }
     }
 
-    fn member_property_name(&mut self, prop: &MemberProp, lookup: &impl Lookup) -> Option<SmolStr> {
+    fn contextual_member_property_name(
+        &mut self,
+        prop: &MemberProp,
+        lookup: &impl Lookup,
+    ) -> Option<SmolStr> {
         match prop {
             MemberProp::Ident(ident) => Some(ident.sym.to_smolstr()),
             MemberProp::PrivateName(name) => Some(format!("#{}", name.name).to_smolstr()),

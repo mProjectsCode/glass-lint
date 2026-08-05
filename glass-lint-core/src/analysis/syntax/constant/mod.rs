@@ -3,7 +3,9 @@ pub(super) mod eval;
 mod tests;
 mod types;
 
-pub(in crate::analysis) use eval::{EvalState, Lookup, NoLookup, evaluate, property_name};
+pub(in crate::analysis) use eval::{
+    EvalState, Lookup, NoLookup, contextual_member_property_name, evaluate,
+};
 pub(in crate::analysis) use types::{ConstValue, MAX_OBJECT_KEYS, non_negative_integer};
 
 /// Evaluate an expression as one bounded static string.

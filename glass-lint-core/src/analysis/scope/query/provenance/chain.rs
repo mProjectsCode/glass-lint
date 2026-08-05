@@ -40,7 +40,7 @@ impl FrozenScopeGraph {
     ) -> Option<SymbolPath> {
         let syntactic_chain = self.member_expression_chain(member).or_else(|| {
             let object = expression_name(&member.obj)?;
-            let property = self.member_property_name(member)?;
+            let property = self.contextual_member_property_name(member)?;
             Some(object.append_chain(&property))
         })?;
         self.resolve_member_chain(member, &syntactic_chain)
@@ -55,7 +55,7 @@ impl FrozenScopeGraph {
         &self,
         member: &MemberExpr,
     ) -> Option<SymbolPath> {
-        let property = self.member_property_name(member)?;
+        let property = self.contextual_member_property_name(member)?;
         // Resolve only the receiver. Resolving the complete member chain here
         // would consult writes to `property` at the current span and erase
         // the write occurrence itself. Ancestor/receiver mutations are still
@@ -215,7 +215,7 @@ impl FrozenScopeGraph {
     }
 
     pub(in crate::analysis) fn instance_member_available_at(&self, member: &MemberExpr) -> bool {
-        let Some(property) = self.member_property_name(member) else {
+        let Some(property) = self.contextual_member_property_name(member) else {
             return false;
         };
         !self.rooted_property_was_mutated_at(&"this".into(), Some(&property), member.span)

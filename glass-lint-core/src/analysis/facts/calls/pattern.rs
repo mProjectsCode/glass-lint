@@ -152,7 +152,8 @@ impl FactBuilder<'_, '_> {
     ) {
         match property {
             swc_ecma_ast::ObjectPatProp::KeyValue(property) => {
-                let Some(name) = crate::analysis::syntax::property_name(&property.key) else {
+                let Some(name) = crate::analysis::syntax::literal_property_name(&property.key)
+                else {
                     return;
                 };
                 let path = self.append_path(path, PathSegmentInput::Property(name.as_str()));

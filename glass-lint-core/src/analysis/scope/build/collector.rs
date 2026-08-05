@@ -16,7 +16,9 @@ use crate::analysis::{
         },
         query::rooted::RootedExprContext,
     },
-    syntax::{function_prototype_builtin, is_function_constructor_member, member_property_name},
+    syntax::{
+        function_prototype_builtin, is_function_constructor_member, literal_member_property_name,
+    },
 };
 
 impl ScopeCollector<'_> {
@@ -205,7 +207,7 @@ impl RootedExprContext for ScopeCollector<'_> {
             return Some("Function".into());
         }
         let object = self.rooted_expr_name(&member.obj)?;
-        let property = member_property_name(&member.prop)?;
+        let property = literal_member_property_name(&member.prop)?;
         Some(object.append_chain(&property))
     }
 }

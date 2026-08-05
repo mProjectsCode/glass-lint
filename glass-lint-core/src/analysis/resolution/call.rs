@@ -87,7 +87,9 @@ impl Resolver<'_> {
         let Expr::Member(member) = &**callee else {
             return self.fresh_object_value_at(call.span);
         };
-        if crate::analysis::syntax::member_property_name(&member.prop).as_deref() != Some("bind") {
+        if crate::analysis::syntax::literal_member_property_name(&member.prop).as_deref()
+            != Some("bind")
+        {
             return self.fresh_object_value_at(call.span);
         }
         let target = self.resolve_expr_id(&member.obj);

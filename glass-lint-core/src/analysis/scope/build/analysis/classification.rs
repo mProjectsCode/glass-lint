@@ -4,7 +4,7 @@ use swc_ecma_ast::{Callee, Expr, Pat};
 
 use crate::analysis::{
     scope::{BindingProvenance, build::ScopeCollector},
-    syntax::member_property_name,
+    syntax::literal_member_property_name,
 };
 
 pub enum DeclarationClassification {
@@ -253,6 +253,7 @@ fn module_alias(
 fn callee_is_bind_call(call: &swc_ecma_ast::CallExpr) -> bool {
     matches!(&call.callee, Callee::Expr(callee) if matches!(
         &**callee,
-        Expr::Member(member) if member_property_name(&member.prop).as_deref() == Some("bind")
+        Expr::Member(member)
+            if literal_member_property_name(&member.prop).as_deref() == Some("bind")
     ))
 }

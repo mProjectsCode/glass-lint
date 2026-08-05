@@ -20,7 +20,9 @@ impl FrozenScopeGraph {
             .binding_key_for_expr(&member.obj)
             .or_else(|| self.global_key_for_expr(&member.obj))
             .and_then(|mut key| {
-                key.append_segment(self.name_id(self.member_property_name(member)?.as_str())?);
+                key.append_segment(
+                    self.name_id(self.contextual_member_property_name(member)?.as_str())?,
+                );
                 Some(key)
             });
         MemberValueSeed {
@@ -36,7 +38,7 @@ impl FrozenScopeGraph {
         &self,
         member: &MemberExpr,
     ) -> Option<(SmolStr, SmolStr)> {
-        let mut members = vec![self.member_property_name(member)?];
+        let mut members = vec![self.contextual_member_property_name(member)?];
         let (module, base) = self.collect_module_member(&member.obj, &mut members)?;
         Some((module, Self::join_module_member(base.as_ref(), &members)))
     }
@@ -56,7 +58,7 @@ impl FrozenScopeGraph {
                 _ => None,
             },
             Expr::Member(member) => {
-                members.push(self.member_property_name(member)?);
+                members.push(self.contextual_member_property_name(member)?);
                 self.collect_module_member(&member.obj, members)
             }
             Expr::Call(call) => {
@@ -149,7 +151,7 @@ impl FrozenScopeGraph {
         glass_lint_datastructures::NamePath,
     )> {
         let source = self.returned_object_source(&member.obj)?;
-        let property = self.member_property_name(member)?;
+        let property = self.contextual_member_property_name(member)?;
         Some((self.name_path(&source)?, self.name_path(&property.into())?))
     }
 }

@@ -8,7 +8,7 @@ use swc_ecma_ast::AssignOp;
 
 use crate::analysis::facts::{
     AssignExpr, FactBuilder, FactPayload, MemberExpr, Pat, Spanned, ValueId, VisitWith,
-    member_property_name,
+    literal_member_property_name,
 };
 
 impl FactBuilder<'_, '_> {
@@ -110,7 +110,7 @@ impl FactBuilder<'_, '_> {
         );
         assignment.right.visit_with(self);
         let receiver = self.resolver.resolve_expr_id(&member.obj);
-        let property_name = member_property_name(&member.prop);
+        let property_name = literal_member_property_name(&member.prop);
         let property = self.intern_name(property_name.as_deref());
         let value = if assignment.op == AssignOp::Assign {
             self.resolver.resolve_expr_id(&assignment.right)

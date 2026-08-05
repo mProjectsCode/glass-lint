@@ -98,7 +98,7 @@ and `make fmt && make ci` pass.
 
 ### Syntax and bounded evaluation APIs
 
-#### [ ] READ-035 — Make contextual and syntax-only property names distinct
+#### [x] READ-035 — Make contextual and syntax-only property names distinct
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -126,7 +126,15 @@ literal numeric/string keys, shared evaluation budgets for contextual keys,
 lexical shadowing checks, and the rule that a structural spelling alone never
 establishes runtime identity.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Renamed syntax-only property helpers to
+`literal_property_name` and `literal_member_property_name`, and renamed the
+bounded evaluator and scope-query helpers to their `contextual_*` forms.
+Updated all fact, scope, resolution, and provenance callers so the API name
+states whether contextual lookup may participate.
+
+**Verification:** `cargo test -p glass-lint-core analysis::syntax --lib` and
+`cargo test -p glass-lint-core analysis::scope::query --lib`; `make fmt &&
+make ci` (all passed).
 
 ### Value identity helpers
 
@@ -204,5 +212,5 @@ syntax provenance, trace arena, value root/arena/identity modules, and their
 representative callers in scope, facts, resolution, flow, matching, public
 classification, and report evidence. Existing Chunk 1–5 findings were checked
 to avoid re-reporting fact construction, scope-query, project overlay,
-evidence-normalization, or retained ValueTable findings. READ-036 is marked
-applied above; READ-035 remains open.
+evidence-normalization, or retained ValueTable findings. READ-035 and
+READ-036 are marked applied above.

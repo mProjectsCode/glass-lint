@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use smol_str::{SmolStr, ToSmolStr};
 use swc_ecma_ast::{ObjectPatProp, Pat};
 
-use crate::analysis::syntax::property_name;
+use crate::analysis::syntax::literal_property_name;
 
 #[derive(Debug, Clone)]
 pub enum CompactPat {
@@ -24,7 +24,7 @@ pub fn compact_pat(pattern: &Pat) -> CompactPat {
             for prop in &object.props {
                 match prop {
                     ObjectPatProp::KeyValue(kv) => {
-                        if let Some(key) = property_name(&kv.key) {
+                        if let Some(key) = literal_property_name(&kv.key) {
                             props.insert(key, compact_pat(&kv.value));
                         }
                     }

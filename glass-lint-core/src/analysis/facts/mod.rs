@@ -55,7 +55,8 @@ use crate::analysis::{
     resolution::Resolver,
     scope::{BoundArgument, ScopeId},
     syntax::{
-        SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr, member_property_name,
+        SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr,
+        literal_member_property_name,
     },
     value::FunctionId,
 };

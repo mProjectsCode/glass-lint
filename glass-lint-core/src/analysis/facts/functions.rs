@@ -13,7 +13,7 @@ use crate::analysis::{
         ArrowExpr, BinExpr, BinaryOp, ClassDecl, ClassExpr, ClassFactRole, Expr, FactBuilder,
         FactPayload, FnDecl, Function, FunctionBoundary, Pat, PathId, Span, VisitWith,
     },
-    syntax::member_property_name,
+    syntax::literal_member_property_name,
 };
 
 impl FactBuilder<'_, '_> {
@@ -213,7 +213,7 @@ impl FactBuilder<'_, '_> {
     fn class_operand_name(expr: &Expr) -> Option<SmolStr> {
         match expr {
             Expr::Ident(ident) => Some(ident.sym.to_smolstr()),
-            Expr::Member(member) => member_property_name(&member.prop),
+            Expr::Member(member) => literal_member_property_name(&member.prop),
             Expr::Paren(paren) => Self::class_operand_name(&paren.expr),
             Expr::Seq(sequence) => sequence
                 .exprs

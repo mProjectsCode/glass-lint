@@ -19,7 +19,7 @@ use crate::{
             ForStmt, Function, Ident, IfStmt, ImportDecl, MemberExpr, NewExpr, OptChainBase,
             OptChainExpr, Spanned, Str, SwitchStmt, SymbolCallProvenance, SymbolMemberProvenance,
             Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr, ValueId, VarDeclarator, Visit, VisitWith,
-            WhileStmt, effective_callee_expr, member_property_name,
+            WhileStmt, effective_callee_expr, literal_member_property_name,
         },
         module::{ImportedBinding, ModuleRequestRole},
     },
@@ -206,7 +206,7 @@ impl Visit for FactBuilder<'_, '_> {
                 };
                 if let Some(member) = optional_member
                     && matches!(
-                        member_property_name(&member.prop).as_deref(),
+                        literal_member_property_name(&member.prop).as_deref(),
                         Some("call" | "apply")
                     )
                 {
@@ -280,7 +280,7 @@ impl Visit for FactBuilder<'_, '_> {
                         },
                     )
                 } else {
-                    (member_property_name(&member.prop), resolved.call)
+                    (literal_member_property_name(&member.prop), resolved.call)
                 }
             }
             _ => (None, resolved.call),

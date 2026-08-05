@@ -19,7 +19,7 @@ use crate::analysis::{
     },
     syntax::{
         constant::{self, ConstValue},
-        member_property_name, property_name,
+        literal_member_property_name, literal_property_name,
     },
 };
 
@@ -55,7 +55,7 @@ impl ScopeCollector<'_> {
                 _ => None,
             },
             Expr::Member(member) => {
-                let property = member_property_name(&member.prop)?;
+                let property = literal_member_property_name(&member.prop)?;
                 let provenance = self.module_alias_provenance(&member.obj)?;
                 match provenance {
                     BindingProvenance::DefaultImport { module }
@@ -87,7 +87,7 @@ impl ScopeCollector<'_> {
                     let Expr::Member(member) = &**callee else {
                         return None;
                     };
-                    (member_property_name(&member.prop).as_deref() == Some("bind"))
+                    (literal_member_property_name(&member.prop).as_deref() == Some("bind"))
                         .then(|| self.module_alias_provenance(&member.obj))
                         .flatten()
                 }),
@@ -170,7 +170,7 @@ impl ScopeCollector<'_> {
         let Expr::Member(member) = &**callee else {
             return None;
         };
-        if member_property_name(&member.prop).as_deref() != Some("bind") {
+        if literal_member_property_name(&member.prop).as_deref() != Some("bind") {
             return None;
         }
         let module_provenance = self.module_alias_provenance(&member.obj);
@@ -267,7 +267,7 @@ impl ScopeCollector<'_> {
 
     fn returned_object_from_callee(&mut self, callee: &Expr) -> Option<BindingProvenance> {
         if let Expr::Member(member) = callee
-            && member_property_name(&member.prop).as_deref() == Some("bind")
+            && literal_member_property_name(&member.prop).as_deref() == Some("bind")
         {
             return None;
         }
@@ -294,7 +294,7 @@ impl ScopeCollector<'_> {
                 return None;
             };
             let target = self.rooted_name_path(&property.value)?;
-            let key = property_name(&property.key)?;
+            let key = literal_property_name(&property.key)?;
             let name = self.lookup_or_intern_name(key.as_str())?;
             if !values.insert(name, target) {
                 return None;

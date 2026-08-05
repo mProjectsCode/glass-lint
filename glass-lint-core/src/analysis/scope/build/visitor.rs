@@ -24,8 +24,8 @@ use crate::analysis::{
         },
     },
     syntax::{
-        function_prototype_builtin, member_expression_chain, member_property_name,
-        member_root_identifier, property_name,
+        function_prototype_builtin, literal_member_property_name, literal_property_name,
+        member_expression_chain, member_root_identifier,
     },
 };
 
@@ -210,7 +210,7 @@ impl ScopePass for ScopeCollector<'_> {
                             assignment.span,
                             self.current_scope(),
                             receiver,
-                            member_property_name(&member.prop)
+                            literal_member_property_name(&member.prop)
                                 .and_then(|property| self.interned_name(&property)),
                         ));
                 }
@@ -353,7 +353,7 @@ fn collect_derived_function_pattern(
     }
     for property in &object.props {
         if let ObjectPatProp::KeyValue(property) = property
-            && property_name(&property.key).as_deref() == Some("constructor")
+            && literal_property_name(&property.key).as_deref() == Some("constructor")
             && let Some(target) = collector.name_path(&"Function".into())
         {
             collector.collect_value_aliases(&property.value, &target, scope);

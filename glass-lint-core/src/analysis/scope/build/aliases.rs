@@ -14,7 +14,7 @@ use crate::analysis::{
         BindingProvenance, ScopeCollector, ScopeId,
         build::projection::{ProjectionError, project_destructuring},
     },
-    syntax::property_name,
+    syntax::literal_property_name,
 };
 
 impl ScopeCollector<'_> {
@@ -85,7 +85,7 @@ impl ScopeCollector<'_> {
                 for prop in &object.props {
                     match prop {
                         ObjectPatProp::KeyValue(key_value) => {
-                            if let Some(imported) = property_name(&key_value.key) {
+                            if let Some(imported) = literal_property_name(&key_value.key) {
                                 self.collect_require_export_alias(
                                     &key_value.value,
                                     &module,

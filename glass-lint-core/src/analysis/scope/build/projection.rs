@@ -20,7 +20,7 @@ use glass_lint_datastructures::NamePath;
 use smol_str::{SmolStr, ToSmolStr};
 use swc_ecma_ast::{ObjectPatProp, Pat};
 
-use crate::analysis::syntax::property_name;
+use crate::analysis::syntax::literal_property_name;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::analysis::scope) enum ProjectionError {
@@ -50,7 +50,8 @@ pub(in crate::analysis::scope) fn project_destructuring(
             for prop in &object.props {
                 match prop {
                     ObjectPatProp::KeyValue(kv) => {
-                        let key = property_name(&kv.key).ok_or(ProjectionError::Unsupported)?;
+                        let key =
+                            literal_property_name(&kv.key).ok_or(ProjectionError::Unsupported)?;
                         let child_base =
                             append_segment(base, &key).ok_or(ProjectionError::Exhausted)?;
                         bindings.extend(project_destructuring(

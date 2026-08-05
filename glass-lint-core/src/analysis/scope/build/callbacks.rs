@@ -13,7 +13,7 @@ use crate::analysis::{
         BindingProvenance, ScopeId, ScopedName,
         build::{CompactPat, ScopeCollector, compact_pat},
     },
-    syntax::member_property_name,
+    syntax::literal_member_property_name,
 };
 
 impl ScopeCollector<'_> {
@@ -194,7 +194,7 @@ impl ScopeCollector<'_> {
             return;
         };
         if promise.sym != *"Promise"
-            || member_property_name(&resolve_member.prop).as_deref() != Some("resolve")
+            || literal_member_property_name(&resolve_member.prop).as_deref() != Some("resolve")
         {
             return;
         }
@@ -237,7 +237,7 @@ impl ScopeCollector<'_> {
             _ => {}
         }
         let Expr::Member(member) = callee else { return };
-        let Some(method) = member_property_name(&member.prop) else {
+        let Some(method) = literal_member_property_name(&member.prop) else {
             return;
         };
         if method == "forEach" {

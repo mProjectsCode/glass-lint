@@ -86,7 +86,7 @@ pub fn module_export_name(name: &ModuleExportName) -> SmolStr {
 }
 
 /// Return a statically known object-literal property name.
-pub fn property_name(name: &swc_ecma_ast::PropName) -> Option<SmolStr> {
+pub fn literal_property_name(name: &swc_ecma_ast::PropName) -> Option<SmolStr> {
     match name {
         swc_ecma_ast::PropName::Ident(ident) => Some(ident.sym.to_smolstr()),
         swc_ecma_ast::PropName::Str(value) => Some(value.value.to_string_lossy().to_smolstr()),
@@ -131,12 +131,12 @@ pub fn expression_name(expr: &Expr) -> Option<SymbolPath> {
 pub fn member_expression_chain(member: &MemberExpr) -> Option<SymbolPath> {
     let mut properties = Vec::new();
     let mut expression = &member.obj;
-    properties.push(member_property_name(&member.prop)?);
+    properties.push(literal_member_property_name(&member.prop)?);
 
     loop {
         match &**expression {
             Expr::Member(parent) => {
-                properties.push(member_property_name(&parent.prop)?);
+                properties.push(literal_member_property_name(&parent.prop)?);
                 expression = &parent.obj;
             }
             Expr::Ident(ident) => {
@@ -168,7 +168,7 @@ pub fn member_expression_chain(member: &MemberExpr) -> Option<SymbolPath> {
 }
 
 /// Return a statically known member property name, including private names.
-pub fn member_property_name(prop: &MemberProp) -> Option<SmolStr> {
+pub fn literal_member_property_name(prop: &MemberProp) -> Option<SmolStr> {
     match prop {
         MemberProp::Ident(ident) => Some(ident.sym.to_smolstr()),
         MemberProp::PrivateName(name) => Some(format!("#{}", name.name).into()),
@@ -178,7 +178,7 @@ pub fn member_property_name(prop: &MemberProp) -> Option<SmolStr> {
 
 /// Recognize a supported `Function`-like `.constructor` member shape.
 pub fn is_function_constructor_member(member: &MemberExpr) -> bool {
-    member_property_name(&member.prop).as_deref() == Some("constructor")
+    literal_member_property_name(&member.prop).as_deref() == Some("constructor")
         && is_function_like_expr(&member.obj)
 }
 

@@ -112,8 +112,11 @@ impl FrozenScopeGraph {
         }
     }
 
-    pub(in crate::analysis) fn member_property_name(&self, member: &MemberExpr) -> Option<SmolStr> {
-        constant::property_name(&member.prop, self)
+    pub(in crate::analysis) fn contextual_member_property_name(
+        &self,
+        member: &MemberExpr,
+    ) -> Option<SmolStr> {
+        constant::contextual_member_property_name(&member.prop, self)
     }
 
     pub(in crate::analysis) fn member_expression_chain(
@@ -121,7 +124,7 @@ impl FrozenScopeGraph {
         member: &MemberExpr,
     ) -> Option<SymbolPath> {
         let object = expression_name(&member.obj)?;
-        Some(object.append_chain(&self.member_property_name(member)?))
+        Some(object.append_chain(&self.contextual_member_property_name(member)?))
     }
 
     pub(in crate::analysis) fn callable_member_chain(&self, ident: &Ident) -> Option<SymbolPath> {

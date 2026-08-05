@@ -7,7 +7,7 @@ use crate::analysis::{
         Callee, Expr, FactBuilder, InstanceCallable, MemberExpr, OptChainBase,
         SymbolCallProvenance, SymbolMemberProvenance, ValueId, VisitWith,
     },
-    syntax::{effective_callee_expr, member_property_name},
+    syntax::{effective_callee_expr, literal_member_property_name},
     value::FunctionId,
 };
 
@@ -120,7 +120,7 @@ impl FactBuilder<'_, '_> {
         });
         let syntactic_path = syntactic_path.or_else(|| {
             instance_class.as_ref().and_then(|_| {
-                member_property_name(&member.prop)
+                literal_member_property_name(&member.prop)
                     .and_then(|property| self.name_path(&property.into()))
             })
         });
@@ -251,7 +251,7 @@ impl FactBuilder<'_, '_> {
                     return None;
                 }
                 let (module, export) = self.instance_class_for_receiver(&member.obj)?;
-                let member = member_property_name(&member.prop)?;
+                let member = literal_member_property_name(&member.prop)?;
                 Some(InstanceCallable::new(module, export, member.into()))
             }
             Expr::Call(call) => {
@@ -261,7 +261,7 @@ impl FactBuilder<'_, '_> {
                 let Expr::Member(bind) = &**callee else {
                     return None;
                 };
-                (member_property_name(&bind.prop).as_deref() == Some("bind"))
+                (literal_member_property_name(&bind.prop).as_deref() == Some("bind"))
                     .then(|| call.args.first())
                     .flatten()
                     .filter(|argument| matches!(&*argument.expr, Expr::This(_)))

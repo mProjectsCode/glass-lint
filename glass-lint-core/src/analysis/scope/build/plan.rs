@@ -180,7 +180,8 @@ impl ScopePass for ScopePlanner<'_> {
     }
 
     fn visit_member_expr(&mut self, member: &MemberExpr) {
-        if let Some(property) = crate::analysis::syntax::member_property_name(&member.prop) {
+        if let Some(property) = crate::analysis::syntax::literal_member_property_name(&member.prop)
+        {
             self.budget.try_charge();
             if self.names.intern(property.as_str()).is_err() {
                 self.name_exhausted = true;
@@ -189,7 +190,7 @@ impl ScopePass for ScopePlanner<'_> {
     }
 
     fn visit_prop_name(&mut self, property: &PropName) {
-        if let Some(property) = crate::analysis::syntax::property_name(property) {
+        if let Some(property) = crate::analysis::syntax::literal_property_name(property) {
             self.budget.try_charge();
             if self.names.intern(property.as_str()).is_err() {
                 self.name_exhausted = true;
