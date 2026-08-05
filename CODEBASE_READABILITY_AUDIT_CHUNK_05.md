@@ -103,7 +103,7 @@ tests and full workspace, end-to-end, rule, doctest, and example checks.
 
 ### Scope graph assembly and identity queries
 
-#### [ ] READ-030 — Encapsulate correlated `ScopeGraph` construction inputs
+#### [x] READ-030 — Encapsulate correlated `ScopeGraph` construction inputs
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -131,7 +131,15 @@ source-order assignment sorting, property/mutation finalization, name-table
 identity, scope-shape validity, and the separation between mutable collection
 state and immutable query state.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the private `ScopeGraphInput` snapshot type at the
+freeze/graph boundary and changed `ScopeGraph::from_collected` to consume it
+as one coherent bundle. The freeze phase still owns index construction and
+scope-shape validity calculation, while the graph constructor no longer
+accepts six correlated values independently.
+
+**Verification:** Focused scope build/query tests pass, and `make fmt && make
+ci` passes, including the full workspace, end-to-end, rule, doctest, and
+example checks.
 
 #### [x] READ-031 — Unify lexical and global binding-key traversal
 
@@ -242,4 +250,5 @@ query modules. Representative callers in lowering, resolution, facts, and
 matching were traced with `rg`. Existing Chunk 1–4 findings were checked to
 avoid re-reporting fact-branch transactions, pattern ownership, flow control
 state, exhaustion aggregation, lowering lifecycle, or project identity
-overlay findings. READ-028, READ-029, and READ-031 are marked applied above.
+overlay findings. READ-028, READ-029, READ-030, and READ-031 are marked
+applied above.

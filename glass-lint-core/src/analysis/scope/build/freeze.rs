@@ -5,6 +5,7 @@ use crate::analysis::scope::{
         ScopeCollector,
         program::{ScopeCollectionIssue, ScopedProgram},
     },
+    graph::ScopeGraphInput,
     mutation_index::MutationIndex,
 };
 
@@ -39,14 +40,14 @@ impl ScopeCollector<'_> {
         });
         let scope_shape_valid = issues.is_empty();
         let mutations = MutationIndex::from(mutable_static_objects);
-        let mut graph = ScopeGraph::from_collected(
-            environment.clone(),
-            self.names,
-            self.scopes,
+        let mut graph = ScopeGraph::from_collected(ScopeGraphInput {
+            environment: environment.clone(),
+            names: self.names,
+            scopes: self.scopes,
             bindings,
             mutations,
             scope_shape_valid,
-        );
+        });
         graph.finish_collected_properties(property_artifacts);
         let frozen = graph.freeze();
         ScopedProgram {
