@@ -56,7 +56,7 @@ project::types::report::evidence::tests --lib` (2 passed) and
 
 ### Linter configuration and selection
 
-#### [ ] READ-080 — Preserve catalog failure kinds at the linter boundary
+#### [x] READ-080 — Preserve catalog failure kinds at the linter boundary
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -81,7 +81,14 @@ caller, and delete the catch-all `InvalidRule`-to-`DuplicateRule` mapping once
 the error owner is explicit. Do not conflate this with the separate compiler
 provenance issue in Chunk 15 READ-076.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a dedicated `ProviderCatalogError::DuplicateRule`
+variant and a matching `LintConfigError::InvalidRule` variant. Catalog
+validation and matcher/query compilation now preserve the qualified rule ID
+and diagnostic message, while only duplicate IDs map to `DuplicateRule` at the
+linter boundary.
+
+**Verification:** `cargo test -p glass-lint-core lint::catalog::tests --lib`
+(2 passed) and `make fmt && make ci` (passed).
 
 #### [x] READ-081 — Remove or reconnect the unreachable invalid-limits error
 
@@ -227,7 +234,7 @@ and session/artifact indexes are reconciled with lossy lookups. Moving these
 invariants into constructors and phase owners would simplify callers while
 preserving the current deterministic ordering and fail-closed behavior.
 
-No findings are marked applied.
+READ-079 through READ-084 are marked applied above.
 
 ## Open Questions
 

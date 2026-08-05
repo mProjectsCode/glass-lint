@@ -253,6 +253,8 @@ pub enum LintConfigError {
     InvalidSelector(String),
     /// A catalog contains the same fully-qualified rule more than once.
     DuplicateRule(RuleId),
+    /// A catalog rule failed validation or matcher/query compilation.
+    InvalidRule(RuleId, String),
 }
 
 impl std::fmt::Display for LintConfigError {
@@ -261,6 +263,7 @@ impl std::fmt::Display for LintConfigError {
             Self::UnknownRule(id) => write!(f, "unknown rule `{id}`"),
             Self::InvalidSelector(message) => write!(f, "invalid rule selector: {message}"),
             Self::DuplicateRule(id) => write!(f, "duplicate rule `{id}`"),
+            Self::InvalidRule(id, message) => write!(f, "invalid rule `{id}`: {message}"),
         }
     }
 }

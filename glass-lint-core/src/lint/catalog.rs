@@ -20,8 +20,10 @@ use crate::{
 pub enum ProviderCatalogError {
     /// Provider prefix or full rule ID is invalid.
     InvalidRuleId(String),
-    /// A rule failed catalog validation, including duplicate identity.
+    /// A rule failed validation or matcher/query compilation.
     InvalidRule(RuleId, String),
+    /// A fully-qualified rule ID occurs in more than one catalog.
+    DuplicateRule(RuleId),
 }
 
 impl fmt::Display for ProviderCatalogError {
@@ -29,6 +31,7 @@ impl fmt::Display for ProviderCatalogError {
         match self {
             Self::InvalidRuleId(id) => write!(f, "invalid rule ID `{id}`"),
             Self::InvalidRule(id, message) => write!(f, "invalid rule `{id}`: {message}"),
+            Self::DuplicateRule(id) => write!(f, "duplicate rule `{id}`"),
         }
     }
 }
@@ -113,10 +116,7 @@ impl RuleCatalog {
         for catalog in catalogs {
             for (record, rule_id) in catalog.records.into_iter().zip(catalog.rule_ids) {
                 if !seen.insert(rule_id.clone()) {
-                    return Err(ProviderCatalogError::InvalidRule(
-                        rule_id,
-                        "duplicate rule".into(),
-                    ));
+                    return Err(ProviderCatalogError::DuplicateRule(rule_id));
                 }
                 // Stage the record and ID for insertion.
                 records.push(record);
@@ -198,10 +198,7 @@ mod tests {
 
         assert_eq!(
             error,
-            ProviderCatalogError::InvalidRule(
-                RuleId::parse("same:request").unwrap(),
-                "duplicate rule".into()
-            )
+            ProviderCatalogError::DuplicateRule(RuleId::parse("same:request").unwrap())
         );
     }
 
