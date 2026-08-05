@@ -100,8 +100,61 @@ impl EvaluationOperations {
 pub(super) struct MatcherEvaluator<'a> {
     names: &'a NameTable,
     values: &'a ValueTable,
+    identity: EffectiveIdentityResolver<'a>,
+}
+
+/// Resolves one local value through the project overlay in its canonical
+/// precedence order: call-result identity, module identity, then local value
+/// data. Consumers choose the representation they need after this lookup.
+struct EffectiveIdentityResolver<'a> {
     identities: Option<&'a ModuleIdentityMap>,
     result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
+}
+
+impl<'a> EffectiveIdentityResolver<'a> {
+    fn new(
+        identities: Option<&'a ModuleIdentityMap>,
+        result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
+    ) -> Self {
+        Self {
+            identities,
+            result_identities,
+        }
+    }
+
+    fn module_identity(&self, provenance: &SymbolCallProvenance) -> Option<&ExportResolution> {
+        let (module, export) = provenance.module_export_parts()?;
+        self.identities?.get(&ModuleExportKey::new(module, export))
+    }
+
+    fn result_identity(&self, value: ValueId) -> Option<&ExportResolution> {
+        self.result_identities?.get(&value)
+    }
+
+    fn static_string<'b>(
+        &'b self,
+        value: ValueId,
+        provenance: &SymbolCallProvenance,
+        values: &'b ValueTable,
+    ) -> Option<&'b str> {
+        self.result_identity(value)
+            .and_then(ExportResolution::static_string_value)
+            .or_else(|| {
+                self.module_identity(provenance)
+                    .and_then(ExportResolution::static_string_value)
+            })
+            .or_else(|| values.static_string(value))
+    }
+
+    fn call_provenance(&self, raw: &SymbolCallProvenance, callee: ValueId) -> SymbolCallProvenance {
+        self.result_identity(callee)
+            .and_then(ExportResolution::to_call_provenance)
+            .or_else(|| {
+                self.module_identity(raw)
+                    .and_then(ExportResolution::to_call_provenance)
+            })
+            .unwrap_or_else(|| raw.clone())
+    }
 }
 
 impl<'a> MatcherEvaluator<'a> {
@@ -114,8 +167,7 @@ impl<'a> MatcherEvaluator<'a> {
         Self {
             names,
             values,
-            identities,
-            result_identities,
+            identity: EffectiveIdentityResolver::new(identities, result_identities),
         }
     }
 
@@ -144,7 +196,7 @@ impl<'a> MatcherEvaluator<'a> {
         };
         let callee_name: Option<SmolStr> =
             callee_name.and_then(|id| self.names.resolve(id).map(Into::into));
-        let call_provenance = self.overlaid_call_provenance(call_provenance, *callee);
+        let call_provenance = self.identity.call_provenance(call_provenance, *callee);
 
         match event {
             EventPredicate::Call => {
@@ -180,11 +232,6 @@ impl<'a> MatcherEvaluator<'a> {
         }
     }
 
-    fn lookup_identity(&self, provenance: &SymbolCallProvenance) -> Option<&ExportResolution> {
-        let (module, export) = provenance.module_export_parts()?;
-        self.identities?.get(&ModuleExportKey::new(module, export))
-    }
-
     pub(super) fn argument_with_overlay<'b>(
         &'b self,
         argument: &'b CallArgInfo,
@@ -198,43 +245,13 @@ impl<'a> MatcherEvaluator<'a> {
         view = view
             .with_static_object(object)
             .with_rooted_chain(rooted_chain);
-        if let Some(result_identities) = self.result_identities
-            && let Some(value) = result_identities
-                .get(&argument.value)
-                .and_then(ExportResolution::static_string_value)
-        {
-            view = view.with_static_string(value);
-        }
-        if let Some(identity) = self.lookup_identity(&argument.provenance)
-            && let Some(value) = identity.static_string_value()
-        {
-            view = view.with_static_string(value);
-        }
-        if view.static_string.is_none()
-            && let Some(value) = self.values.static_string(argument.value)
+        if let Some(value) =
+            self.identity
+                .static_string(argument.value, &argument.provenance, self.values)
         {
             view = view.with_static_string(value);
         }
         view
-    }
-
-    fn overlaid_call_provenance(
-        &self,
-        raw: &SymbolCallProvenance,
-        callee: ValueId,
-    ) -> SymbolCallProvenance {
-        if let Some(result_identities) = self.result_identities
-            && let Some(identity) = result_identities.get(&callee)
-            && let Some(provenance) = identity.to_call_provenance()
-        {
-            return provenance;
-        }
-        if let Some(identity) = self.lookup_identity(raw)
-            && let Some(provenance) = identity.to_call_provenance()
-        {
-            return provenance;
-        }
-        raw.clone()
     }
 
     fn constraints_match(

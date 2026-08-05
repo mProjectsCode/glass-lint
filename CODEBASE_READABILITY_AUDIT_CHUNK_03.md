@@ -243,7 +243,7 @@ available for independently built stream/index fixtures.
 **Verification:** `cargo test -p glass-lint-core analysis::matching --lib`
 (42 passed); `make fmt && make ci` (passed).
 
-#### [ ] READ-019 — Centralize effective identity overlay precedence
+#### [x] READ-019 — Centralize effective identity overlay precedence
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -275,7 +275,14 @@ retaining the current precedence, rejection of ambiguous/unknown resolutions,
 rooted-member and static-object extraction, and the fact that a result
 identity must remain tied to its local `ValueId`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the private evaluator-owned
+`EffectiveIdentityResolver`, which centralizes result-identity, module-identity,
+and local-value fallback precedence. Argument views now request one effective
+static string, while call matching requests one effective call provenance;
+rooted-member and static-object extraction remain local to argument views.
+
+**Verification:** `cargo test -p glass-lint-core analysis::matching::arguments --lib`
+(19 passed); `make fmt && make ci` (passed).
 
 ### Evidence boundary
 
