@@ -313,7 +313,7 @@ impl ScopePass for ScopeCollector<'_> {
                 super::FunctionBinding { scope, parameters },
             );
         }
-        if let Some(bindings) = self.inline_parameters.get(&function.span.lo).cloned() {
+        if let Some(bindings) = self.inline_parameters.remove(&function.span.lo) {
             for (name, provenance) in bindings {
                 self.record_assignment(function.span, scope, name.as_str(), provenance);
             }
@@ -331,7 +331,7 @@ impl ScopePass for ScopeCollector<'_> {
                 super::FunctionBinding { scope, parameters },
             );
         }
-        if let Some(bindings) = self.inline_parameters.get(&arrow.span.lo).cloned() {
+        if let Some(bindings) = self.inline_parameters.remove(&arrow.span.lo) {
             for (name, provenance) in bindings {
                 self.record_assignment(arrow.span, scope, name.as_str(), provenance);
             }

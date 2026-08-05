@@ -83,7 +83,7 @@ handling, and conservative failure of unsupported identity; delete the silent
 
 ### Inline callback state
 
-#### [ ] READ-071 — Retire inline callback bindings after function entry
+#### [x] READ-071 — Retire inline callback bindings after function entry
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -107,7 +107,12 @@ directly. Preserve callback span matching, nested callback setup, unsupported
 argument omission, assignment-version ordering, and the rule that only
 unambiguous callback arguments become parameter aliases.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Function and arrow entry now remove consumed inline callback
+bindings from the collector instead of cloning them through a retained map
+entry, releasing the path-local provenance immediately after installation.
+
+**Verification:** `cargo test -p glass-lint-core analysis::scope --lib`
+(33 passed) and `make fmt && make ci` (passed).
 
 ### Assignment-history checkpoints
 
@@ -151,7 +156,7 @@ fallible transitions rather than additional traversal or semantic models.
 The bounded constant evaluator and syntax provenance enums were reviewed for
 their budget, unknown, and unsupported contracts. Trace arena identity and
 parent validation, plus scope-shape validity propagation, were intentionally
-left to the existing Chunk 5–6 findings. No findings are marked applied.
+left to the existing Chunk 5–6 findings. READ-071 is marked applied above.
 
 ## Open Questions
 
