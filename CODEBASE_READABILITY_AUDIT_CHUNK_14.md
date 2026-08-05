@@ -54,7 +54,7 @@ retaining duplicate shape values.
 
 ### Binding-index freeze
 
-#### [ ] READ-070 — Validate binding-index inputs instead of silently dropping them
+#### [x] READ-070 — Validate binding-index inputs instead of silently dropping them
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -79,7 +79,15 @@ non-function scopes, deterministic ID allocation, parameter-alias conflict
 handling, and conservative failure of unsupported identity; delete the silent
 `filter_map` drops after callers handle the validation result.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the silent `filter_map` conversions with a fallible
+`BindingIndex::try_from` that rejects missing function IDs for function
+bindings, aliases, and parameter aliases. Freeze records
+`InvalidBindingIndex`, uses an empty conservative index, and carries the
+invalidity into frozen scope fallback.
+
+**Verification:** `cargo test -p glass-lint-core analysis::scope::build --lib`
+(30 passed) and `cargo test -p glass-lint-core analysis::scope::query --lib`;
+`make fmt && make ci` (all passed).
 
 ### Inline callback state
 
@@ -156,7 +164,8 @@ fallible transitions rather than additional traversal or semantic models.
 The bounded constant evaluator and syntax provenance enums were reviewed for
 their budget, unknown, and unsupported contracts. Trace arena identity and
 parent validation, plus scope-shape validity propagation, were intentionally
-left to the existing Chunk 5–6 findings. READ-071 is marked applied above.
+left to the existing Chunk 5–6 findings. READ-070 and READ-071 are marked
+applied above.
 
 ## Open Questions
 

@@ -36,6 +36,11 @@ pub(super) struct BindingIndexInput {
     pub(super) parameter_aliases: HashMap<ScopedName, BindingProvenance>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct BindingIndexError {
+    pub(super) scope: ScopeId,
+}
+
 #[derive(Debug)]
 pub(super) struct BindingIndex {
     assignments: FrozenAssignmentIndex,
@@ -46,8 +51,10 @@ pub(super) struct BindingIndex {
     parameter_aliases: HashMap<ParameterAliasKey, BindingProvenance>,
 }
 
-impl From<BindingIndexInput> for BindingIndex {
-    fn from(input: BindingIndexInput) -> Self {
+impl TryFrom<BindingIndexInput> for BindingIndex {
+    type Error = BindingIndexError;
+
+    fn try_from(input: BindingIndexInput) -> Result<Self, Self::Error> {
         let BindingIndexInput {
             assignments,
             binding_ids,
@@ -58,40 +65,43 @@ impl From<BindingIndexInput> for BindingIndex {
         } = input;
         let function_bindings = function_bindings
             .into_iter()
-            .filter_map(|(binding, scope)| {
-                function_ids
-                    .get(scope.index())
-                    .and_then(|&function| function)
-                    .map(|function| (binding, function))
+            .map(|(binding, scope)| {
+                function_for_scope(&function_ids, scope).map(|function| (binding, function))
             })
-            .collect();
+            .collect::<Result<HashMap<_, _>, _>>()?;
         let function_aliases = function_aliases
             .into_iter()
-            .filter_map(|(name, scope)| {
-                function_ids
-                    .get(scope.index())
-                    .and_then(|&function| function)
-                    .map(|function| (name, function))
+            .map(|(name, scope)| {
+                function_for_scope(&function_ids, scope).map(|function| (name, function))
             })
-            .collect();
+            .collect::<Result<HashMap<_, _>, _>>()?;
         let parameter_aliases = parameter_aliases
             .into_iter()
-            .filter_map(|(name, provenance)| {
-                function_ids
-                    .get(name.scope().index())
-                    .and_then(|&function| function)
+            .map(|(name, provenance)| {
+                function_for_scope(&function_ids, name.scope())
                     .map(|function| (ParameterAliasKey::new(function, name.name()), provenance))
             })
-            .collect();
-        Self {
+            .collect::<Result<HashMap<_, _>, _>>()?;
+        Ok(Self {
             assignments: FrozenAssignmentIndex::from_assignments(assignments),
             binding_ids,
             function_ids,
             function_bindings,
             function_aliases,
             parameter_aliases,
-        }
+        })
     }
+}
+
+fn function_for_scope(
+    function_ids: &[Option<FunctionId>],
+    scope: ScopeId,
+) -> Result<FunctionId, BindingIndexError> {
+    function_ids
+        .get(scope.index())
+        .copied()
+        .flatten()
+        .ok_or(BindingIndexError { scope })
 }
 
 impl BindingIndex {
@@ -124,8 +134,7 @@ impl BindingIndex {
         (binding_ids, function_ids)
     }
 
-    #[cfg(test)]
-    pub(in crate::analysis) fn empty() -> Self {
+    pub(super) fn empty() -> Self {
         Self {
             assignments: FrozenAssignmentIndex::from_assignments(Vec::new()),
             binding_ids: HashMap::new(),

@@ -14,8 +14,7 @@ impl ScopeCollector<'_> {
             self.artifacts
                 .record_issue(ScopeCollectionIssue::UnconsumedShape);
         }
-        let scope_shape_valid = !self.artifacts.has_issues();
-        let (issues, mutable_static_objects, property_artifacts) =
+        let (mut issues, mutable_static_objects, property_artifacts) =
             std::mem::take(&mut self.artifacts)
                 .finish_into()
                 .into_parts();
@@ -26,14 +25,19 @@ impl ScopeCollector<'_> {
             .map(|(binding, function)| (binding, function.scope))
             .collect();
         let (binding_ids, function_ids) = BindingIndex::allocate_ids(&self.scopes);
-        let bindings = BindingIndex::from(BindingIndexInput {
+        let bindings = BindingIndex::try_from(BindingIndexInput {
             assignments: std::mem::take(&mut self.assignments),
             binding_ids,
             function_ids,
             function_bindings,
             function_aliases: self.function_aliases,
             parameter_aliases,
+        })
+        .unwrap_or_else(|_| {
+            issues.push(ScopeCollectionIssue::InvalidBindingIndex);
+            BindingIndex::empty()
         });
+        let scope_shape_valid = issues.is_empty();
         let mutations = MutationIndex::from(mutable_static_objects);
         let mut graph = ScopeGraph::from_collected(
             environment.clone(),

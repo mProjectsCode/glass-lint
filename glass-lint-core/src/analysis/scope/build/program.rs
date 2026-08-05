@@ -12,6 +12,7 @@ pub(in crate::analysis) struct ScopedProgram {
 pub(in crate::analysis) enum ScopeCollectionIssue {
     ShapeMismatch,
     UnconsumedShape,
+    InvalidBindingIndex,
 }
 
 #[derive(Debug, Clone)]
