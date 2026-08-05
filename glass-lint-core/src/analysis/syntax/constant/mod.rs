@@ -4,7 +4,7 @@ mod tests;
 mod types;
 
 pub(in crate::analysis) use eval::{EvalState, Lookup, NoLookup, evaluate, property_name};
-pub(in crate::analysis) use types::{ConstValue, non_negative_integer};
+pub(in crate::analysis) use types::{ConstValue, MAX_OBJECT_KEYS, non_negative_integer};
 
 /// Evaluate an expression as one bounded static string.
 pub(in crate::analysis) fn static_string(

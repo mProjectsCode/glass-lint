@@ -7,7 +7,8 @@ pub(super) const MAX_NODES: usize = 4_096;
 pub(super) const MAX_LOOKUPS: usize = 512;
 pub(super) const MAX_STRING_BYTES: usize = 16 * 1024;
 pub(super) const MAX_ARRAY_ITEMS: usize = 256;
-pub(super) const MAX_OBJECT_KEYS: usize = 256;
+/// Maximum number of distinct keys retained in a static object shape.
+pub(in crate::analysis) const MAX_OBJECT_KEYS: usize = 256;
 
 /// Convert a finite, integral, non-negative number into a bounded index type.
 #[allow(

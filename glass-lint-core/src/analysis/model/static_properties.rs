@@ -1,13 +1,7 @@
 use glass_lint_datastructures::NameId;
 use smol_str::SmolStr;
 
-use crate::analysis::syntax::constant::ConstValue;
-
-/// Maximum number of distinct properties one static object may retain.
-///
-/// This matches the constant evaluator's object-key budget so both literal
-/// construction paths treat the same shapes as over-budget `Unknown`.
-const MAX_STATIC_PROPERTIES: usize = 256;
+use crate::analysis::syntax::constant::{ConstValue, MAX_OBJECT_KEYS};
 
 /// Opaque bounded static-property collection.
 ///
@@ -35,7 +29,7 @@ impl<V> StaticProperties<V> {
             *existing = value;
             return true;
         }
-        if self.entries.len() >= MAX_STATIC_PROPERTIES {
+        if self.entries.len() >= MAX_OBJECT_KEYS {
             return false;
         }
         self.entries.push((name, value));
@@ -126,11 +120,11 @@ mod tests {
     fn bound_exhaustion_fails_new_insertion() {
         let mut names = NameTable::default();
         let mut properties = StaticProperties::new();
-        for index in 0..MAX_STATIC_PROPERTIES {
+        for index in 0..MAX_OBJECT_KEYS {
             assert!(properties.insert(intern(&mut names, &format!("key_{index}")), index));
         }
         assert!(!properties.insert(intern(&mut names, "overflow"), 0));
-        assert_eq!(properties.len(), MAX_STATIC_PROPERTIES);
+        assert_eq!(properties.len(), MAX_OBJECT_KEYS);
     }
 
     #[test]
@@ -139,12 +133,12 @@ mod tests {
         let a = intern(&mut names, "a");
         let mut properties = StaticProperties::new();
         assert!(properties.insert(a, 0));
-        for index in 1..MAX_STATIC_PROPERTIES {
+        for index in 1..MAX_OBJECT_KEYS {
             assert!(properties.insert(intern(&mut names, &format!("key_{index}")), index));
         }
         assert!(properties.insert(a, 1));
         assert_eq!(properties.get(a), Some(&1));
-        assert_eq!(properties.len(), MAX_STATIC_PROPERTIES);
+        assert_eq!(properties.len(), MAX_OBJECT_KEYS);
     }
 
     #[test]

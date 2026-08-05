@@ -89,7 +89,7 @@ and `make fmt && make ci` pass.
 
 ### Static object bounds
 
-#### [ ] READ-063 — Share the static-object property budget with constant evaluation
+#### [x] READ-063 — Share the static-object property budget with constant evaluation
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -114,7 +114,14 @@ constructor parameter supplied by the analysis budget. Delete the duplicate
 literal and retain the current rejection-before-partial-retention behavior
 for over-budget objects.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made the constant-evaluation boundary own the shared
+`MAX_OBJECT_KEYS` limit and imported it from `StaticProperties`, removing the
+duplicate bound while preserving rejection-before-partial-retention behavior.
+
+**Verification:** `cargo test -p glass-lint-core
+analysis::model::static_properties --lib` (5 passed), `cargo test -p
+glass-lint-core analysis::syntax::constant --lib` (5 passed), and `make fmt &&
+make ci` (passed).
 
 ### Callable value representation
 
