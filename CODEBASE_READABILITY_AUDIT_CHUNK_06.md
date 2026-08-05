@@ -130,7 +130,7 @@ establishes runtime identity.
 
 ### Value identity helpers
 
-#### [ ] READ-036 — Centralize symmetric global-object alias matching
+#### [x] READ-036 — Centralize symmetric global-object alias matching
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -156,7 +156,14 @@ and fail-closed name-table lookup in the adapter. Delete the mirrored expected
 configured aliases, promoted global members, identical tails, missing-name
 rejection, and deterministic matching for both name and symbol paths.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `Environment::is_promoted_global_member` as the shared
+member-promotion predicate and routed both `SymbolPath` and `NamePath` alias
+matching through it. The adapters retain only representation-specific path
+conversion and name-table lookup.
+
+**Verification:** `cargo fmt --all && cargo test -p glass-lint-core
+analysis::value::identity::tests --lib && cargo test -p glass-lint-core
+environment::tests --lib`; `make fmt && make ci` (all passed).
 
 ## Systemic Themes
 
@@ -197,5 +204,5 @@ syntax provenance, trace arena, value root/arena/identity modules, and their
 representative callers in scope, facts, resolution, flow, matching, public
 classification, and report evidence. Existing Chunk 1–5 findings were checked
 to avoid re-reporting fact construction, scope-query, project overlay,
-evidence-normalization, or retained ValueTable findings. No findings are
-marked applied.
+evidence-normalization, or retained ValueTable findings. READ-036 is marked
+applied above; READ-035 remains open.

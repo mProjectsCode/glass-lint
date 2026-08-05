@@ -47,30 +47,24 @@ pub fn matches_global_object_alias_with(
     }
 
     if expected_view.len() > 1
-        && environment
-            .global_objects()
-            .any(|object| object == expected_root)
         && expected_view
             .tail_after(1)
             .and_then(|tail| tail.first_segment())
             .copied()
             .and_then(|id| table.resolve(id))
-            .is_some_and(|member| environment.is_global_member(expected_root, member))
+            .is_some_and(|member| environment.is_promoted_global_member(expected_root, member))
         && expected_view.tail_after(1) == Some(found_view)
     {
         return true;
     }
 
     if found_view.len() > 1
-        && environment
-            .global_objects()
-            .any(|object| object == found_root)
         && found_view
             .tail_after(1)
             .and_then(|tail| tail.first_segment())
             .copied()
             .and_then(|id| table.resolve(id))
-            .is_some_and(|member| environment.is_global_member(found_root, member))
+            .is_some_and(|member| environment.is_promoted_global_member(found_root, member))
         && found_view.tail_after(1) == Some(expected_view)
     {
         return true;

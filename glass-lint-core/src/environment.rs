@@ -259,6 +259,10 @@ impl Environment {
         }
     }
 
+    pub(crate) fn is_promoted_global_member(&self, object: &str, member: &str) -> bool {
+        self.is_global_object(object) && self.is_global_member(object, member)
+    }
+
     /// Whether two configured complete global-object bindings represent the
     /// same promoted realm identity. Restricted foreign-realm objects remain
     /// distinct even when their names are similar.
@@ -290,23 +294,21 @@ impl Environment {
             return left.tail_after(1) == right.tail_after(1);
         }
         if let Some(root) = left.first_segment()
-            && self.is_global_object(root)
             && left.len() > 1
             && left
                 .tail_after(1)
                 .and_then(|tail| tail.first_segment())
-                .is_some_and(|member| self.is_global_member(root, member))
+                .is_some_and(|member| self.is_promoted_global_member(root, member))
             && left.tail_after(1) == Some(right)
         {
             return true;
         }
         if let Some(root) = right.first_segment()
-            && self.is_global_object(root)
             && right.len() > 1
             && right
                 .tail_after(1)
                 .and_then(|tail| tail.first_segment())
-                .is_some_and(|member| self.is_global_member(root, member))
+                .is_some_and(|member| self.is_promoted_global_member(root, member))
             && right.tail_after(1) == Some(left)
         {
             return true;
