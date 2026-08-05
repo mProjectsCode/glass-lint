@@ -159,7 +159,7 @@ and `make fmt && make ci` pass.
 
 ### Model wrapper shape
 
-#### [ ] READ-060 — Encode return-only control data in the control payload shape
+#### [x] READ-060 — Encode return-only control data in the control payload shape
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -182,7 +182,14 @@ placeholder-value protocol. Preserve control-region identity, canonical fact
 ordering, return-value provenance, unsupported-control invalidation, and
 fail-closed handling for malformed control facts.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Split return facts into `FactPayload::Return { region, value }`
+and removed the placeholder value from non-return `Control` payloads. Effect
+collection reads the dedicated return value, while projector control transfer
+continues to use `ControlKind::Return` for return control flow.
+
+**Verification:** `cargo test -p glass-lint-core analysis::flow::effect --lib`
+(16 passed), `cargo test -p glass-lint-core analysis::flow::projector --lib`
+(52 passed), and `make fmt && make ci` (passed).
 
 ## Systemic Themes
 

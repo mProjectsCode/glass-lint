@@ -114,7 +114,8 @@ impl OccurrenceIndexes {
             | FactPayload::Assignment { .. }
             | FactPayload::PropertyWrite { .. }
             | FactPayload::Function { .. }
-            | FactPayload::Control { .. } => {}
+            | FactPayload::Control { .. }
+            | FactPayload::Return { .. } => {}
         }
     }
 

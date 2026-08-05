@@ -456,7 +456,10 @@ pub(in crate::analysis) enum FactPayload {
     Control {
         kind: ControlKind,
         region: ControlRegionId,
-        return_value: ValueId,
+    },
+    Return {
+        region: ControlRegionId,
+        value: ValueId,
     },
     Construction {
         callee_span: ByteRange,

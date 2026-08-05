@@ -439,8 +439,11 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     fn transfer(&mut self, fact: &crate::analysis::facts::SemanticFact) {
         match &fact.payload {
             FactPayload::Function { boundary, .. } => self.transfer_function(*boundary),
-            FactPayload::Control { kind, region, .. } => {
+            FactPayload::Control { kind, region } => {
                 self.transfer_control(*kind, *region, fact.id);
+            }
+            FactPayload::Return { region, .. } => {
+                self.transfer_control(ControlKind::Return, *region, fact.id);
             }
             _ => self.transfer_paths(fact),
         }

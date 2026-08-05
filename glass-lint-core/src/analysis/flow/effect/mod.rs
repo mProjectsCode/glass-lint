@@ -697,16 +697,9 @@ impl FunctionEffectsBuilder {
                 &mut self.budget,
             ),
             FactPayload::Call { .. } => effect.record_call(fact, stream, &mut self.budget),
-            FactPayload::Control {
-                kind: ControlKind::Return,
-                return_value,
-                ..
-            } => effect.record_return(
-                *return_value,
-                &self.value_provenance,
-                stream,
-                &mut self.budget,
-            ),
+            FactPayload::Return { value, .. } => {
+                effect.record_return(*value, &self.value_provenance, stream, &mut self.budget);
+            }
             _ => {}
         }
         effect.mark_unsupported_control(&fact.payload);

@@ -560,10 +560,9 @@ impl Visit for FactBuilder<'_, '_> {
             });
         self.emit(
             stmt.span(),
-            FactPayload::Control {
-                kind: ControlKind::Return,
+            FactPayload::Return {
                 region: ControlRegionId::new(0),
-                return_value: value,
+                value,
             },
         );
     }
