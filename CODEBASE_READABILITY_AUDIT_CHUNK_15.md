@@ -161,7 +161,7 @@ once callers receive the validated form.
 
 ### Deferred authoring errors
 
-#### [ ] READ-078 — Preserve the first deferred lifecycle-builder error
+#### [x] READ-078 — Preserve the first deferred lifecycle-builder error
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -184,7 +184,14 @@ bounded ordered error list if lifecycle diagnostics need aggregation. Preserve
 the immediate `try_*` failure behavior and stage-presence validation; delete
 the overwrite path after deferred construction has one documented owner.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a first-error accumulator to
+`LifecycleQueryBuilder`. Deferred source, condition, and completion
+failures now preserve the earliest error, matching `RuleBuilder` while
+immediate `try_*` failures remain unchanged.
+
+**Verification:** `cargo test -p glass-lint-core
+api::rule::query::lifecycle --lib` (26 passed) and `make fmt && make ci`
+(passed).
 
 ## Systemic Themes
 
