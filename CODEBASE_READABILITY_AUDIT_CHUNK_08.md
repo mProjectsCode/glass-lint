@@ -23,7 +23,7 @@ made by this audit.
 
 ### Effect-use identity
 
-#### [ ] READ-041 — Let `EffectUse` own its event identity
+#### [x] READ-041 — Let `EffectUse` own its event identity
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -48,7 +48,13 @@ are migrated. Preserve the current per-variant payload dispatch, deterministic
 use order, event anchoring, and the rule that an unsupported effect never
 becomes a cross-module witness.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `EffectUse::event()` as the single event-identity
+accessor. Cross-flow propagation now obtains the event once for propagation
+and variant-specific application, removing the free extractor and duplicated
+event-only matching while preserving each use variant's payload dispatch.
+
+**Verification:** `cargo test -p glass-lint-core analysis::flow::cross --lib`
+(17 passed); `make fmt && make ci` (passed).
 
 ### Flow-plan and local/cross projection boundaries
 

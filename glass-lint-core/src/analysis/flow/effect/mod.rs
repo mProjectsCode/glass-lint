@@ -78,6 +78,16 @@ pub(in crate::analysis) enum EffectUse {
     },
 }
 
+impl EffectUse {
+    pub(in crate::analysis) fn event(&self) -> FactId {
+        match self {
+            Self::PropertyWrite { event, .. }
+            | Self::CallArgument { event, .. }
+            | Self::CallReceiver { event, .. } => *event,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(in crate::analysis) struct ReturnProjection {
     value: ValueId,

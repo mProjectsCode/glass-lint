@@ -8,7 +8,7 @@ use crate::{
         facts::FactId,
         flow::{
             cross::{
-                evidence::{self, effect_use_event, emit, mark_nonmatching, usage_matches_context},
+                evidence::{self, emit, mark_nonmatching, usage_matches_context},
                 state::{CallContext, CrossFlowState, QualifiedEvent},
             },
             effect::{EffectUse, FunctionEffect},
@@ -32,6 +32,7 @@ pub(super) struct UsageProjector<'a, 'session> {
 impl UsageProjector<'_, '_> {
     pub(super) fn project(&mut self) {
         for usage in self.effect.uses() {
+            let event = usage.event();
             if !usage_matches_context(self.effect, usage, self.context) {
                 continue;
             }
@@ -41,26 +42,21 @@ impl UsageProjector<'_, '_> {
                 module: self.context.module(),
                 context: self.context,
                 propagated: self.propagated,
-                through: Some(effect_use_event(usage)),
+                through: Some(event),
                 state: self.state,
             }
             .propagate();
             match usage {
                 EffectUse::PropertyWrite {
-                    event,
                     property,
                     value_is_precise,
                     ..
-                } => self.apply_property(*event, property.as_ref(), *value_is_precise),
-                EffectUse::CallReceiver { event, .. } => {
-                    self.apply_receiver(*event);
+                } => self.apply_property(event, property.as_ref(), *value_is_precise),
+                EffectUse::CallReceiver { .. } => {
+                    self.apply_receiver(event);
                 }
-                EffectUse::CallArgument {
-                    event,
-                    argument_index,
-                    ..
-                } => {
-                    self.apply_argument(*event, *argument_index);
+                EffectUse::CallArgument { argument_index, .. } => {
+                    self.apply_argument(event, *argument_index);
                 }
             }
         }

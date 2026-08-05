@@ -21,14 +21,6 @@ use crate::{
     project::{EvidenceRole, ModuleId},
 };
 
-pub(super) fn effect_use_event(usage: &EffectUse) -> FactId {
-    match usage {
-        EffectUse::PropertyWrite { event, .. }
-        | EffectUse::CallArgument { event, .. }
-        | EffectUse::CallReceiver { event, .. } => *event,
-    }
-}
-
 pub(super) fn usage_matches_context(
     effect: &FunctionEffect,
     usage: &EffectUse,
