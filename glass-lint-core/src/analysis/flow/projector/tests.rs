@@ -73,6 +73,22 @@ fn collect_source_with_outcome(
 }
 
 #[test]
+fn path_batches_reject_tokens_from_another_generation() {
+    let mut frontier = PathFrontier::initial();
+    let first = frontier.begin_batch(2);
+    let first_path = first.token(1).expect("path is within the first batch");
+    assert!(first.contains(first_path));
+    assert!(frontier.select_path(1));
+    assert_eq!(frontier.active_path(), Some(first_path));
+    frontier.end_batch();
+
+    let second = frontier.begin_batch(1);
+    assert_ne!(first.generation, second.generation);
+    assert!(!second.contains(first_path));
+    assert!(second.token(1).is_none());
+}
+
+#[test]
 fn empty_flow_catalog_skips_projection_work() {
     let stream = crate::analysis::facts::build_test_facts("fetch('/api');", "no-flow.js");
     let effects = FunctionEffects::collect(&stream, usize::MAX);

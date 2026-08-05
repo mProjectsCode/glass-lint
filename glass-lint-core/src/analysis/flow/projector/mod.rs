@@ -179,8 +179,9 @@ struct ProjectionRunState {
 #[derive(Debug)]
 struct PathFrontier {
     paths: Vec<FlowEnvironment>,
-    active_count: usize,
-    active_index: usize,
+    next_batch: u64,
+    active_batch: Option<ActivePaths>,
+    active_path: Option<PathToken>,
 }
 
 /// The active frontier paths at a fact boundary, keyed by their per-transfer
@@ -188,21 +189,34 @@ struct PathFrontier {
 /// matching state.
 #[derive(Debug, Clone, Copy)]
 struct ActivePaths {
+    generation: u64,
     count: usize,
 }
 
 impl ActivePaths {
-    fn new(count: usize) -> Self {
-        Self { count }
+    fn token(self, index: usize) -> Option<PathToken> {
+        (index < self.count).then_some(PathToken {
+            generation: self.generation,
+            index,
+        })
     }
 
     fn len(self) -> usize {
         self.count
     }
 
-    fn contains(self, path_index: usize) -> bool {
-        path_index < self.count
+    fn contains(self, path: PathToken) -> bool {
+        if path.generation != self.generation {
+            return false;
+        }
+        path.index < self.count
     }
+}
+
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+struct PathToken {
+    generation: u64,
+    index: usize,
 }
 
 #[derive(Debug, Default)]
@@ -218,7 +232,7 @@ struct PendingFlowKey {
 
 #[derive(Debug)]
 struct PendingState {
-    path_index: usize,
+    path: PathToken,
     state: FlowState,
 }
 
@@ -245,7 +259,7 @@ impl PendingFlowStates {
             }
             let matching_paths = states
                 .iter()
-                .map(|pending| pending.path_index)
+                .map(|pending| pending.path)
                 .collect::<BTreeSet<_>>();
             let definite = alternatives_complete.is_complete()
                 && matching_paths.len() == active_paths.len()
@@ -275,13 +289,39 @@ impl PathFrontier {
     fn initial() -> Self {
         Self {
             paths: vec![FlowEnvironment::initial()],
-            active_count: 0,
-            active_index: 0,
+            next_batch: 0,
+            active_batch: None,
+            active_path: None,
         }
     }
 
-    fn active_paths(&self) -> ActivePaths {
-        ActivePaths::new(self.active_count)
+    fn begin_batch(&mut self, count: usize) -> ActivePaths {
+        self.next_batch = self.next_batch.saturating_add(1);
+        let batch = ActivePaths {
+            generation: self.next_batch,
+            count,
+        };
+        self.active_batch = Some(batch);
+        self.active_path = None;
+        batch
+    }
+
+    fn select_path(&mut self, index: usize) -> bool {
+        self.active_path = self.active_batch.and_then(|batch| batch.token(index));
+        self.active_path.is_some()
+    }
+
+    fn active_paths(&self) -> Option<ActivePaths> {
+        self.active_batch
+    }
+
+    fn active_path(&self) -> Option<PathToken> {
+        self.active_path
+    }
+
+    fn end_batch(&mut self) {
+        self.active_path = None;
+        self.active_batch = None;
     }
 
     fn take(&mut self) -> Vec<FlowEnvironment> {
@@ -411,7 +451,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         if incoming.is_empty() {
             return;
         }
-        self.frontier.active_count = incoming.len();
+        self.frontier.begin_batch(incoming.len());
         let mut outgoing = Vec::with_capacity(incoming.len());
         for (path_index, environment) in incoming.into_iter().enumerate() {
             if !self.run.charge_operation() {
@@ -422,7 +462,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 continue;
             }
             self.run.reachable = environment.is_reachable();
-            self.frontier.active_index = path_index;
+            self.frontier.select_path(path_index);
             self.transfer_fact(fact);
             if self.run.reachable {
                 outgoing.push(self.environment());
@@ -433,7 +473,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         self.finalize_pending();
         let paths = self.frontier.take();
         self.join_paths(paths);
-        self.frontier.active_count = 0;
+        self.frontier.end_batch();
     }
 
     fn transfer_fact(&mut self, fact: &crate::analysis::facts::SemanticFact) {
@@ -648,9 +688,12 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     }
 
     fn finalize_pending(&mut self) {
+        let Some(active_paths) = self.frontier.active_paths() else {
+            return;
+        };
         let finalized = self
             .pending
-            .finalize(self.frontier.active_paths(), self.run.alternatives_complete);
+            .finalize(active_paths, self.run.alternatives_complete);
         for record in finalized {
             for pending in record.states {
                 self.emit_state_final(&pending.state, record.event, record.certainty);
@@ -659,15 +702,15 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     }
 
     pub(super) fn queue_state(&mut self, state: FlowState, event: FactId) {
+        let Some(path) = self.frontier.active_path() else {
+            return;
+        };
         self.pending
             .entry(PendingFlowKey {
                 flow: state.flow_id(),
                 event,
             })
-            .push(PendingState {
-                path_index: self.frontier.active_index,
-                state,
-            });
+            .push(PendingState { path, state });
     }
 
     fn record_property_write(

@@ -156,7 +156,7 @@ certainty transitions.
 **Verification:** `cargo test -p glass-lint-core analysis::flow --lib`
 (119 passed); `make fmt && make ci` (passed).
 
-### [ ] READ-010 — Represent path coverage with a path-boundary type
+### [x] READ-010 — Represent path coverage with a path-boundary type
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -187,6 +187,15 @@ frontier generation. Preserve deterministic path order, duplicate-path
 coalescing, incomplete alternatives, replay suppression, and retention of
 independent complete possible witnesses. Add adversarial tests for joins,
 replays, exhausted alternatives, and pending states across fact boundaries.
+
+**Fix Applied:** Replaced raw active path count/index coordination with a
+generation-bearing `PathToken` issued by `PathFrontier` batches. Pending
+states can only capture an active token, and finalization accepts a definite
+match only when all tokens belong to the current batch and cover its paths.
+Added a regression for stale-generation and out-of-range token rejection.
+
+**Verification:** `cargo test -p glass-lint-core analysis::flow::projector --lib`
+(52 passed); `make fmt && make ci` (passed).
 
 ### [ ] READ-011 — Model incompleteness as a typed flow outcome
 
