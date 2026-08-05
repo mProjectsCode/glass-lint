@@ -84,7 +84,7 @@ try/catch/finally control kinds intact.
 
 ### Function fact lifecycle
 
-#### [ ] READ-003 — Centralize function-boundary state transitions
+#### [x] READ-003 — Centralize function-boundary state transitions
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -109,7 +109,15 @@ repeated iterator construction and state-save/reset code. Preserve enter-only
 parameter registration, lexical function ownership, class provenance, and the
 fact order consumed by flow summaries.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added one private function-body lifecycle helper that owns
+enter/visit/exit fact emission, parameter binding reuse, current-function
+restoration, and optional function-depth/static-method transitions. Function,
+arrow, and class-method adapters now provide only their parameter list, body,
+and lifecycle flags.
+
+**Verification:** `cargo test -p glass-lint-core analysis::facts --lib` passes
+(32 tests), and `make fmt && make ci` passes, including the full workspace,
+end-to-end, rule, doctest, and example checks.
 
 ### Pattern lowering
 

@@ -61,73 +61,70 @@ impl FactBuilder<'_, '_> {
     }
 
     pub(super) fn record_function(&mut self, function: &Function) {
+        let parameters = function
+            .params
+            .iter()
+            .enumerate()
+            .map(|(index, parameter)| (index, parameter.pat.clone()))
+            .collect();
+        self.record_function_body(function.span(), parameters, true, false, |builder| {
+            function.visit_children_with(builder);
+        });
+    }
+
+    fn record_function_body(
+        &mut self,
+        span: Span,
+        parameters: Vec<(usize, Pat)>,
+        track_function_depth: bool,
+        static_method: bool,
+        visit_body: impl FnOnce(&mut Self),
+    ) {
         let enclosing = self.traversal.current_function();
-        self.emit_function_fact(
-            function.span(),
-            function
-                .params
-                .iter()
-                .enumerate()
-                .map(|(index, parameter)| (index, parameter.pat.clone())),
-            FunctionBoundary::Enter,
-        );
-        self.traversal.enter_function();
-        function.visit_children_with(self);
-        self.traversal.leave_function();
-        self.emit_function_fact(
-            function.span(),
-            function
-                .params
-                .iter()
-                .enumerate()
-                .map(|(index, parameter)| (index, parameter.pat.clone())),
-            FunctionBoundary::Exit,
-        );
+        self.emit_function_fact(span, parameters.clone(), FunctionBoundary::Enter);
+        if track_function_depth {
+            self.traversal.enter_function();
+        }
+        if static_method {
+            self.traversal.enter_static_method();
+        }
+        visit_body(self);
+        if track_function_depth {
+            self.traversal.leave_function();
+        }
+        self.emit_function_fact(span, parameters, FunctionBoundary::Exit);
+        if static_method {
+            self.traversal.leave_static_method();
+        }
         self.traversal.set_function(enclosing);
     }
 
     pub(super) fn record_arrow(&mut self, arrow: &ArrowExpr) {
-        let enclosing = self.traversal.current_function();
-        self.emit_function_fact(
-            arrow.span(),
-            arrow.params.iter().cloned().enumerate(),
-            FunctionBoundary::Enter,
-        );
-        arrow.body.visit_with(self);
-        self.emit_function_fact(
-            arrow.span(),
-            arrow.params.iter().cloned().enumerate(),
-            FunctionBoundary::Exit,
-        );
-        self.traversal.set_function(enclosing);
+        let parameters = arrow.params.iter().cloned().enumerate().collect();
+        self.record_function_body(arrow.span(), parameters, false, false, |builder| {
+            arrow.body.visit_with(builder);
+        });
     }
 
     pub(super) fn record_class_method(&mut self, method: &ClassMethod) {
-        let enclosing = self.traversal.current_function();
-        let parameters = || {
-            method
-                .function
-                .params
-                .iter()
-                .enumerate()
-                .map(|(index, parameter)| (index, parameter.pat.clone()))
-        };
-        self.emit_function_fact(
+        let parameters = method
+            .function
+            .params
+            .iter()
+            .enumerate()
+            .map(|(index, parameter)| (index, parameter.pat.clone()))
+            .collect();
+        self.record_function_body(
             method.function.span(),
-            parameters(),
-            FunctionBoundary::Enter,
+            parameters,
+            false,
+            method.is_static,
+            |builder| {
+                if let Some(body) = method.function.body.as_ref() {
+                    body.visit_with(builder);
+                }
+            },
         );
-        if method.is_static {
-            self.traversal.enter_static_method();
-        }
-        if let Some(body) = method.function.body.as_ref() {
-            body.visit_with(self);
-        }
-        self.emit_function_fact(method.function.span(), parameters(), FunctionBoundary::Exit);
-        if method.is_static {
-            self.traversal.leave_static_method();
-        }
-        self.traversal.set_function(enclosing);
     }
 
     pub(super) fn record_class_decl(&mut self, class_decl: &ClassDecl) {
