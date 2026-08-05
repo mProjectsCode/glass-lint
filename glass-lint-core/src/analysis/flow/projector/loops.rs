@@ -22,8 +22,8 @@ enum LoopAdmission {
     Admitted,
     /// The shape was already seen; nothing to admit.
     Duplicate,
-    /// The environment could not be restored; the fixed point is bounded.
-    Unbounded,
+    /// The environment could not be restored; the fixed point is incomplete.
+    RestoreFailed,
     /// The operation budget is exhausted; admission must stop.
     Exhausted,
 }
@@ -97,7 +97,7 @@ impl LoopFixedPoint {
         }
         if !flow_state.restore(environment) {
             run.alternatives_complete = AlternativeCompleteness::Incomplete;
-            return LoopAdmission::Unbounded;
+            return LoopAdmission::RestoreFailed;
         }
         if shapes.insert(flow_state.semantic_snapshot()) {
             LoopAdmission::Admitted
@@ -117,7 +117,7 @@ impl LoopFixedPoint {
         let admission = Self::admit_into(&mut self.seen, flow_state, run, environment);
         if matches!(
             admission,
-            LoopAdmission::Exhausted | LoopAdmission::Unbounded
+            LoopAdmission::Exhausted | LoopAdmission::RestoreFailed
         ) {
             self.complete = false;
         }
@@ -134,7 +134,7 @@ impl LoopFixedPoint {
         let admission = Self::admit_into(&mut self.exit_shapes, flow_state, run, environment);
         if matches!(
             admission,
-            LoopAdmission::Exhausted | LoopAdmission::Unbounded
+            LoopAdmission::Exhausted | LoopAdmission::RestoreFailed
         ) {
             self.complete = false;
         }
@@ -190,7 +190,7 @@ impl LoopFixedPoint {
                 {
                     LoopAdmission::Admitted => next_frontier.push(environment),
                     LoopAdmission::Exhausted => break,
-                    LoopAdmission::Duplicate | LoopAdmission::Unbounded => {}
+                    LoopAdmission::Duplicate | LoopAdmission::RestoreFailed => {}
                 }
             }
             self.frontier = next_frontier;
@@ -210,7 +210,7 @@ impl LoopFixedPoint {
             match self.admit_exit(flow_state, run, environment) {
                 LoopAdmission::Admitted => unique_exits.push(environment),
                 LoopAdmission::Exhausted => break,
-                LoopAdmission::Duplicate | LoopAdmission::Unbounded => {}
+                LoopAdmission::Duplicate | LoopAdmission::RestoreFailed => {}
             }
         }
         LoopFixedPointOutcome {

@@ -156,7 +156,7 @@ the bounded/incomplete result when mutation history is exhausted.
 
 ### Loop fixed-point admission
 
-#### [ ] READ-045 — Name loop restoration failures separately from unboundedness
+#### [x] READ-045 — Name loop restoration failures separately from unboundedness
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -179,7 +179,13 @@ Keep all such failures incomplete and fail-closed; preserve duplicate-shape
 convergence, operation charging, and the rule that no failed restoration can
 produce a witness.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Renamed `LoopAdmission::Unbounded` to
+`LoopAdmission::RestoreFailed` and updated its documentation and fixed-point
+handling. Restoration failures remain incomplete and fail closed, while the
+name no longer attributes them to loop growth.
+
+**Verification:** `cargo test -p glass-lint-core analysis::flow::projector --lib`
+(52 passed); `make fmt && make ci` (passed).
 
 #### [ ] READ-046 — Share replay and exit admission bookkeeping
 
