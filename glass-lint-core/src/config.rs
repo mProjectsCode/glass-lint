@@ -28,6 +28,6 @@ impl CoreConfig {
     /// [`AnalysisLimits::new`] or deserialization and do not need
     /// re-validation.
     pub fn validate(&self, catalog: &RuleCatalog) -> Result<(), LintConfigError> {
-        self.selection.validate_against(catalog)
+        self.selection.resolve(catalog).map(|_| ())
     }
 }

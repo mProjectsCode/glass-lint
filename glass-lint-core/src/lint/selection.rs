@@ -4,7 +4,7 @@
 //! that enable or disable rules by pattern. Selectors support `*` wildcards
 //! for matching groups of rules.
 
-use crate::{RuleId, lint::catalog::RuleCatalog};
+use crate::{RuleId, api::classification::RuleIndex, lint::catalog::RuleCatalog};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -163,10 +163,6 @@ impl RuleOverride {
             RuleState::Disabled
         }
     }
-
-    pub(in crate::lint) fn matches(&self, id: &str) -> bool {
-        self.selector.matches(id)
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -205,13 +201,32 @@ impl RuleSelection {
         &self.overrides
     }
 
-    pub fn validate_against(&self, catalog: &RuleCatalog) -> Result<(), LintConfigError> {
-        for override_ in self.overrides() {
-            if catalog
-                .rule_ids()
-                .iter()
-                .any(|id| override_.selector.matches(id.as_str()))
-            {
+    pub(crate) fn resolve(&self, catalog: &RuleCatalog) -> Result<Vec<RuleIndex>, LintConfigError> {
+        let mut matched = vec![false; self.overrides.len()];
+        let mut enabled = Vec::new();
+
+        for (index, (rule_id, record)) in
+            catalog.rule_ids().iter().zip(&catalog.records).enumerate()
+        {
+            let baseline = match self.baseline {
+                RuleBaseline::All => true,
+                RuleBaseline::None => false,
+                RuleBaseline::MinimumConfidence(confidence) => record.confidence.meets(confidence),
+            };
+            let mut state = baseline;
+            for (override_index, override_) in self.overrides.iter().enumerate() {
+                if override_.selector.matches(rule_id.as_str()) {
+                    matched[override_index] = true;
+                    state = override_.enabled;
+                }
+            }
+            if state {
+                enabled.push(RuleIndex::new(index));
+            }
+        }
+
+        for (override_, matched) in self.overrides.iter().zip(matched) {
+            if matched {
                 continue;
             }
             if !override_.selector.has_wildcard() {
@@ -225,7 +240,7 @@ impl RuleSelection {
                 override_.selector.as_str().into(),
             ));
         }
-        Ok(())
+        Ok(enabled)
     }
 }
 

@@ -88,7 +88,7 @@ object, array, and rest patterns. Added focused nested-pattern coverage.
 
 ### Rule selection ownership
 
-#### [ ] READ-096 — Resolve rule selectors once during linter construction
+#### [x] READ-096 — Resolve rule selectors once during linter construction
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -114,7 +114,14 @@ consume the result directly. Delete the separate validation scan and matching
 loop after callers use the single resolution path; preserve deterministic
 catalog order and the existing fail-closed treatment of unknown selectors.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `RuleSelection::resolve` now owns the single catalog pass that
+tracks matched overrides, applies baseline confidence and last-declared
+precedence, and returns enabled catalog indexes. `Linter::new` consumes those
+indexes directly, while `CoreConfig::validate` delegates to the same resolver;
+the separate validation scan was removed.
+
+**Verification:** `cargo test -p glass-lint-core lint::selection --lib`
+(14 passed) and `make fmt && make ci` (passed).
 
 ## Systemic Themes
 
@@ -126,7 +133,7 @@ validation is separate from selection resolution. Domain-owned commit,
 pattern, and resolution phases would reduce semantic drift while keeping the
 current deterministic behavior.
 
-No findings are marked applied.
+READ-094, READ-095, and READ-096 are marked applied above.
 
 ## Open Questions
 

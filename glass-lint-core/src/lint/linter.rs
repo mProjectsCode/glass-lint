@@ -9,7 +9,7 @@ use crate::{
     lint::{
         batch::{BatchOptions, BatchResults, BatchStartError},
         catalog::RuleCatalog,
-        selection::{LintConfigError, RuleBaseline, RuleSelection, RuleState},
+        selection::{LintConfigError, RuleSelection},
     },
     project::{AnalysisReport, ProjectCollection, ProjectInputError, SessionState},
 };
@@ -114,29 +114,7 @@ impl Linter {
             ProviderCatalogError::InvalidRuleId(id) => LintConfigError::InvalidSelector(id),
         })?;
 
-        config.selection.validate_against(&catalog)?;
-
-        let mut enabled = Vec::new();
-        for (index, rule_id) in catalog.rule_ids().iter().enumerate() {
-            let baseline = match config.selection.baseline() {
-                RuleBaseline::All => true,
-                RuleBaseline::None => false,
-                RuleBaseline::MinimumConfidence(confidence) => {
-                    catalog.records[index].confidence.meets(confidence)
-                }
-            };
-
-            let mut state = baseline;
-            for override_ in config.selection.overrides() {
-                if override_.matches(rule_id.as_str()) {
-                    state = override_.state() == RuleState::Enabled;
-                }
-            }
-
-            if state {
-                enabled.push(RuleIndex::new(index));
-            }
-        }
+        let enabled = config.selection.resolve(&catalog)?;
 
         // Limits are guaranteed valid by construction through
         // `AnalysisLimits::new` or `Default`; no re-validation needed.
