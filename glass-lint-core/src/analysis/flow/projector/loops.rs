@@ -91,19 +91,25 @@ impl LoopFixedPoint {
         flow_state: &mut FlowStateTable,
         run: &mut ProjectionRunState,
         environment: FlowEnvironment,
+        complete: &mut bool,
     ) -> LoopAdmission {
-        if !run.charge_operation() {
-            return LoopAdmission::Exhausted;
-        }
-        if !flow_state.restore(environment) {
+        let admission = if !run.charge_operation() {
+            LoopAdmission::Exhausted
+        } else if !flow_state.restore(environment) {
             run.alternatives_complete = AlternativeCompleteness::Incomplete;
-            return LoopAdmission::RestoreFailed;
-        }
-        if shapes.insert(flow_state.semantic_snapshot()) {
+            LoopAdmission::RestoreFailed
+        } else if shapes.insert(flow_state.semantic_snapshot()) {
             LoopAdmission::Admitted
         } else {
             LoopAdmission::Duplicate
+        };
+        if matches!(
+            admission,
+            LoopAdmission::Exhausted | LoopAdmission::RestoreFailed
+        ) {
+            *complete = false;
         }
+        admission
     }
 
     /// Admit an environment to the next replay when its semantic shape has not
@@ -114,14 +120,13 @@ impl LoopFixedPoint {
         run: &mut ProjectionRunState,
         environment: FlowEnvironment,
     ) -> LoopAdmission {
-        let admission = Self::admit_into(&mut self.seen, flow_state, run, environment);
-        if matches!(
-            admission,
-            LoopAdmission::Exhausted | LoopAdmission::RestoreFailed
-        ) {
-            self.complete = false;
-        }
-        admission
+        Self::admit_into(
+            &mut self.seen,
+            flow_state,
+            run,
+            environment,
+            &mut self.complete,
+        )
     }
 
     /// Admit one exit environment to the final exit set.
@@ -131,14 +136,13 @@ impl LoopFixedPoint {
         run: &mut ProjectionRunState,
         environment: FlowEnvironment,
     ) -> LoopAdmission {
-        let admission = Self::admit_into(&mut self.exit_shapes, flow_state, run, environment);
-        if matches!(
-            admission,
-            LoopAdmission::Exhausted | LoopAdmission::RestoreFailed
-        ) {
-            self.complete = false;
-        }
-        admission
+        Self::admit_into(
+            &mut self.exit_shapes,
+            flow_state,
+            run,
+            environment,
+            &mut self.complete,
+        )
     }
 
     /// Drive the fixed point until the replay frontier converges or the bounds

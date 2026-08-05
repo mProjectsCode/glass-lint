@@ -187,7 +187,7 @@ name no longer attributes them to loop growth.
 **Verification:** `cargo test -p glass-lint-core analysis::flow::projector --lib`
 (52 passed); `make fmt && make ci` (passed).
 
-#### [ ] READ-046 — Share replay and exit admission bookkeeping
+#### [x] READ-046 — Share replay and exit admission bookkeeping
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -209,7 +209,13 @@ fixed-point narrative. Preserve separate replay/exit deduplication sets,
 semantic snapshot normalization, operation limits, and deterministic exit
 ordering.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved the shared admission transition into
+`LoopFixedPoint::admit_into`. Replay and exit admission now select their
+destination shape set while one owner applies charging, restoration failure,
+and fixed-point incompleteness consistently.
+
+**Verification:** `cargo test -p glass-lint-core analysis::flow::projector --lib`
+(52 passed); `make fmt && make ci` (passed).
 
 ## Systemic Themes
 
