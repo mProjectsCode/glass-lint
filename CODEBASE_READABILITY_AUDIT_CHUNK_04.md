@@ -214,7 +214,7 @@ of empty constrained groups are unchanged.
 
 **Verification:** `make fmt && make ci` (passed).
 
-#### [ ] READ-026 — Separate project projection from classification result assembly
+#### [x] READ-026 — Separate project projection from classification result assembly
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -240,7 +240,15 @@ trace ownership, invalid selected-rule skipping, evidence limits, empty-result
 omission, deterministic module/rule ordering, and propagation of projection
 exhaustion into project status.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a private project-matching runner that owns a fresh
+trace arena for each projection run and returns the arena with the matcher
+catalog. Added a separate classification-result assembler for selected-rule
+metadata and evidence. `ProjectSemanticModel::classify_with_evidence_limit`
+now scopes those operations and stores the completed arena after assembly,
+without owning either lifecycle’s implementation.
+
+**Verification:** `cargo test -p glass-lint-core analysis::project --lib`
+(8 passed); `make fmt && make ci` (passed).
 
 #### [ ] READ-027 — Share identifier/member resolution post-processing
 

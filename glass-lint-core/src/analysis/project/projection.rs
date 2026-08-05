@@ -24,13 +24,64 @@ use crate::{
         value::ValueId,
     },
     api::{
-        classification::{ClassificationEvidence, RuleEvidenceTable, RuleIndex},
+        classification::{
+            ClassificationEvidence, ClassificationResult, MatchedCapability, RuleEvidenceTable,
+            RuleIndex,
+        },
         compiler::{
-            CompiledMatcherPlan, CompiledRuleSelection, object_flow::CompiledObjectFlow,
-            physical::PhysicalRoot, requirements::FlowRequirements,
+            CompiledMatcherPlan, CompiledRuleRecord, CompiledRuleSelection,
+            object_flow::CompiledObjectFlow, physical::PhysicalRoot,
+            requirements::FlowRequirements,
         },
     },
 };
+
+pub fn project_for_classification<'project, 'matchers>(
+    project: &'project ProjectSemanticModel,
+    matchers: CompiledRuleSelection<'matchers>,
+) -> (
+    ProjectMatcherModel<'project, 'matchers>,
+    ProjectionOutcome,
+    TraceArena,
+) {
+    let trace_limit = project.trace_limit();
+    let mut arena = TraceArena::new(trace_limit);
+    let (catalog, outcome) = project.project_with_arena(matchers, &mut arena);
+    (catalog, outcome, arena)
+}
+
+pub fn assemble_classification_results(
+    project: &ProjectSemanticModel,
+    matcher_catalog: &ProjectMatcherModel<'_, '_>,
+    records: &[CompiledRuleRecord],
+    selected: &[RuleIndex],
+    evidence_limit: usize,
+) -> BTreeMap<ModuleId, ClassificationResult> {
+    project
+        .modules()
+        .map(|module| {
+            let mut result = ClassificationResult::default();
+            for rule_index in selected {
+                let index = rule_index.get();
+                let Some(record) = records.get(index) else {
+                    continue;
+                };
+                let evidence = matcher_catalog.evidence_for(module, *rule_index, evidence_limit);
+                if evidence.is_empty() {
+                    continue;
+                }
+
+                result.capabilities.push(MatchedCapability {
+                    rule_index: *rule_index,
+                    label: record.description.clone(),
+                    severity: record.severity,
+                    evidence,
+                });
+            }
+            (module.id(), result)
+        })
+        .collect()
+}
 
 /// Flattened matcher requirements shared by all module projections in one
 /// linked project. The plan belongs to projection orchestration rather than

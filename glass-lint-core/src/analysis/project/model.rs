@@ -25,7 +25,7 @@ use crate::{
         value::{FunctionId, ValueId},
     },
     api::{
-        classification::{ClassificationResult, MatchedCapability, RuleIndex},
+        classification::{ClassificationResult, RuleIndex},
         compiler::{CompiledRuleRecord, CompiledRuleSelection},
     },
     project::{
@@ -501,37 +501,20 @@ impl ProjectSemanticModel {
         selected: &[RuleIndex],
         evidence_limit: usize,
     ) -> (BTreeMap<ModuleId, ClassificationResult>, ProjectionOutcome) {
-        let trace_limit = self.trace_limit;
-        let mut arena = std::mem::replace(&mut self.trace_arena, TraceArena::new(trace_limit));
-        let (results, outcome) = {
-            let (matcher_catalog, outcome) =
-                self.project_with_arena(CompiledRuleSelection::new(records, selected), &mut arena);
-            let results = self
-                .modules()
-                .map(|module| {
-                    let mut result = ClassificationResult::default();
-                    for rule_index in selected {
-                        let index = rule_index.get();
-                        let Some(record) = records.get(index) else {
-                            continue;
-                        };
-                        let evidence =
-                            matcher_catalog.evidence_for(module, *rule_index, evidence_limit);
-                        if evidence.is_empty() {
-                            continue;
-                        }
-
-                        result.capabilities.push(MatchedCapability {
-                            rule_index: *rule_index,
-                            label: record.description.clone(),
-                            severity: record.severity,
-                            evidence,
-                        });
-                    }
-                    (module.id(), result)
-                })
-                .collect();
-            (results, outcome)
+        let (results, outcome, arena) = {
+            let (matcher_catalog, outcome, arena) =
+                crate::analysis::project::projection::project_for_classification(
+                    self,
+                    CompiledRuleSelection::new(records, selected),
+                );
+            let results = crate::analysis::project::projection::assemble_classification_results(
+                self,
+                &matcher_catalog,
+                records,
+                selected,
+                evidence_limit,
+            );
+            (results, outcome, arena)
         };
         self.trace_arena = arena;
         (results, outcome)
