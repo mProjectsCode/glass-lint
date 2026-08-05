@@ -65,7 +65,7 @@ starting work.
 
 ### Local execution errors
 
-#### [ ] READ-098 — Make the project worker-panic error contract real
+#### [x] READ-098 — Make the project worker-panic error contract real
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -92,7 +92,14 @@ mechanism and remove the stale channel wording. Preserve ordinary parse
 diagnostics as per-job results and keep the caller’s phase transition
 fallible rather than unwinding.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The Rayon executor now catches panics from each lowering
+attempt and from pool execution, releases successful and ordinary parse
+results, and closes panicking jobs through the callback boundary before
+returning `LocalExecutionError::WorkerPanic`. The error documentation no
+longer describes a nonexistent channel failure path.
+
+**Verification:** `cargo test -p glass-lint-core project::tests::active_and_outstanding_use_the_production_bound --lib`
+(1 passed) and `make fmt && make ci` (passed).
 
 ### Linked target identity
 
@@ -159,7 +166,7 @@ error exist without an unwind boundary. The input model also retains values
 after their identity has been reduced to a project-owned key, and one stale
 error variant survives after the request-key contract replaced it.
 
-READ-097 is marked applied above.
+READ-097 and READ-098 are marked applied above.
 
 ## Open Questions
 

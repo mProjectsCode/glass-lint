@@ -119,6 +119,10 @@ impl LocalJobCallbacks for LocalAnalysisCallbacks<'_> {
         }
         self.observer.observe(ExecutionEvent::Merged);
     }
+
+    fn discard(&mut self, _job: LocalJob) {
+        self.observer.observe(ExecutionEvent::Merged);
+    }
 }
 
 /// Project state after every admitted source has completed local analysis.

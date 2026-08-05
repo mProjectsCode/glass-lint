@@ -3,9 +3,12 @@
 //! Owns the worker-pool dispatch, executor abstraction, and observer hooks.
 //! This module contains no phase-state types.
 
-use std::num::NonZeroUsize;
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{
+    num::NonZeroUsize,
+    panic::{AssertUnwindSafe, catch_unwind},
+};
 
 use rayon::prelude::*;
 
@@ -32,9 +35,15 @@ pub(super) struct LocalJobResult {
     pub(super) result: Result<LoweredSource, ParseDiagnostic>,
 }
 
+enum LocalJobOutcome {
+    Completed(LocalJobResult),
+    Panicked(LocalJob),
+}
+
 pub(super) trait LocalJobCallbacks {
     fn prepare(&mut self, candidate: LocalJobCandidate) -> Option<LocalJob>;
     fn release(&mut self, result: LocalJobResult);
+    fn discard(&mut self, job: LocalJob);
 }
 
 pub(super) trait LocalJobExecutor {
@@ -211,25 +220,43 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
             for _ in &batch {
                 observer.observe(ExecutionEvent::Submitted);
             }
-            let results = pool.install(|| {
-                batch
-                    .into_par_iter()
-                    .map(|job| {
-                        observer.observe(ExecutionEvent::Started);
-                        observer.observe(ExecutionEvent::ParseAttempted);
-                        observer.observe(ExecutionEvent::LowerAttempted);
-                        let result = lowerer.lower_source(&job.source);
-                        observer.observe(ExecutionEvent::Finished);
-                        LocalJobResult {
-                            path: job.path,
-                            key: job.key,
-                            result,
-                        }
-                    })
-                    .collect::<Vec<_>>()
-            });
+            let results = catch_unwind(AssertUnwindSafe(|| {
+                pool.install(|| {
+                    batch
+                        .into_par_iter()
+                        .map(|job| {
+                            observer.observe(ExecutionEvent::Started);
+                            observer.observe(ExecutionEvent::ParseAttempted);
+                            observer.observe(ExecutionEvent::LowerAttempted);
+                            let result = catch_unwind(AssertUnwindSafe(|| {
+                                lowerer.lower_source(&job.source)
+                            }));
+                            observer.observe(ExecutionEvent::Finished);
+                            match result {
+                                Ok(result) => LocalJobOutcome::Completed(LocalJobResult {
+                                    path: job.path,
+                                    key: job.key,
+                                    result,
+                                }),
+                                Err(_) => LocalJobOutcome::Panicked(job),
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                })
+            }))
+            .map_err(|_| LocalExecutionError::WorkerPanic)?;
+            let mut worker_panicked = false;
             for result in results {
-                callbacks.release(result);
+                match result {
+                    LocalJobOutcome::Completed(result) => callbacks.release(result),
+                    LocalJobOutcome::Panicked(job) => {
+                        callbacks.discard(job);
+                        worker_panicked = true;
+                    }
+                }
+            }
+            if worker_panicked {
+                return Err(LocalExecutionError::WorkerPanic);
             }
         }
         Ok(())

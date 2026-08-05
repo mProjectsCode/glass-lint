@@ -470,9 +470,8 @@ pub enum LinkedModuleTarget {
     },
 }
 
-/// Errors from local job execution (worker panic, channel failure, etc.).
-/// Parse failures are returned as ordinary per-job results, not through this
-/// type.
+/// Errors from local job execution. Parse failures are returned as ordinary
+/// per-job results, not through this type.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LocalExecutionError {
     /// A worker thread panicked during local analysis.
