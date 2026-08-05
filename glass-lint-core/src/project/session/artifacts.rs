@@ -40,12 +40,14 @@ impl AuthoredRequestTable {
     pub(super) fn qualified_ids(
         &self,
         module_ids: &BTreeMap<ProjectRelativePath, ModuleId>,
-    ) -> BTreeMap<ResolutionRequestKey, QualifiedRequestId> {
+    ) -> Result<BTreeMap<ResolutionRequestKey, QualifiedRequestId>, ProjectInputError> {
         self.by_key
             .iter()
-            .filter_map(|(key, req_id)| {
-                let module = module_ids.get(key.importer()).copied()?;
-                Some((key.clone(), QualifiedRequestId::new(module, *req_id)))
+            .map(|(key, req_id)| {
+                let module = module_ids.get(key.importer()).copied().ok_or_else(|| {
+                    ProjectInputError::UnknownImporter(key.importer().as_str().to_owned())
+                })?;
+                Ok((key.clone(), QualifiedRequestId::new(module, *req_id)))
             })
             .collect()
     }
@@ -156,7 +158,7 @@ impl AnalysisArtifacts {
             parse_diagnostics,
         } = self;
         let module_ids = sources.module_ids()?;
-        let request_ids = authored_requests.qualified_ids(&module_ids);
+        let request_ids = authored_requests.qualified_ids(&module_ids)?;
         let link_input =
             ResolvedLinkInput::build(analyzed, &module_ids, resolutions, &request_ids)?;
         Ok((link_input, parse_diagnostics))
@@ -221,6 +223,23 @@ mod tests {
         assert!(artifacts.needs_analysis(&failed_path));
         artifacts.record_parse_failure(failed_path.clone(), parse_failure("b.js"));
         assert!(!artifacts.needs_analysis(&failed_path));
+    }
+
+    #[test]
+    fn qualified_ids_reject_missing_importer_modules() {
+        let source = SourceFile::new("missing.js", "import value from './dep.js';").unwrap();
+        let mut artifacts = AnalysisArtifacts::default();
+        artifacts.record_lowered(
+            source.path(),
+            Lowerer::new(&Environment::default(), &AnalysisLimits::default())
+                .lower_source(&source)
+                .unwrap(),
+        );
+
+        assert_eq!(
+            artifacts.authored_requests.qualified_ids(&BTreeMap::new()),
+            Err(ProjectInputError::UnknownImporter("missing.js".into()))
+        );
     }
 
     #[test]

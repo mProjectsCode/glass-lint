@@ -184,7 +184,7 @@ parse failures remain valid completed local outcomes.
 **Verification:** `cargo test -p glass-lint-core project::tests --lib`
 (48 passed); `make fmt && make ci` (passed).
 
-#### [ ] READ-084 — Do not silently drop authored requests without importer IDs
+#### [x] READ-084 — Do not silently drop authored requests without importer IDs
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -208,7 +208,14 @@ deterministic `BTreeMap` ordering and the distinction between an authored
 request with a resolver outcome and an unknown request; delete the silent
 `filter_map` omission after the owner establishes that relationship.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made authored-request qualification fallible. A missing
+importer module now returns the existing typed `UnknownImporter` error instead
+of being removed by `filter_map`; deterministic request ordering and authored
+request validation remain unchanged.
+
+**Verification:** `cargo test -p glass-lint-core
+project::session::artifacts::tests --lib` (3 passed) and
+`make fmt && make ci` (passed).
 
 ## Systemic Themes
 
