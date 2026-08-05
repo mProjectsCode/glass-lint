@@ -1,12 +1,10 @@
 //! Public event-query constructors and argument adapters.
 
-use smol_str::SmolStr;
-
 use super::{
     ArgumentConstraintsBuilder, ArgumentIndex, ArgumentMatcher, EmissionDecl, EventQuery,
     EventSpec, IdentitySpec, MatchKind, ModuleSpecifierPattern, PRIVATE_NETWORK_EVIDENCE_SYMBOL,
     PRIVATE_NETWORK_LITERAL, QueryBuildError, QueryDecl, QueryExpr, ValueMatcher, checked_chain,
-    checked_module_export, checked_name, evidence_kind_for_event, limits,
+    checked_module_export, checked_module_name, checked_name, evidence_kind_for_event, limits,
 };
 
 fn checked_argument_index(index: usize) -> Result<ArgumentIndex, QueryBuildError> {
@@ -93,10 +91,7 @@ impl EventQuery {
         module: impl Into<String>,
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
-        let module: SmolStr = module.into().into();
-        if module.trim().is_empty() {
-            return Err(QueryBuildError::EmptyModuleSpecifier);
-        }
+        let module = checked_module_name(module)?;
         let path = checked_chain(member)?.into_path();
         Ok(Self::from_parts(
             EventSpec::MemberCall { member: path },
@@ -145,10 +140,7 @@ impl EventQuery {
         module: impl Into<String>,
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
-        let module: SmolStr = module.into().into();
-        if module.trim().is_empty() {
-            return Err(QueryBuildError::EmptyModuleSpecifier);
-        }
+        let module = checked_module_name(module)?;
         let path = checked_chain(member)?.into_path();
         Ok(Self::from_parts(
             EventSpec::MemberRead { member: path },

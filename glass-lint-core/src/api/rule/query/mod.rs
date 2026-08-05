@@ -246,9 +246,17 @@ impl MemberChain {
 }
 
 fn checked_name(value: impl Into<String>) -> Result<SmolStr, QueryBuildError> {
-    let value: SmolStr = value.into().into();
+    let value: SmolStr = value.into().trim().to_owned().into();
     if value.trim().is_empty() {
         return Err(QueryBuildError::EmptyIdentityName);
+    }
+    Ok(value)
+}
+
+pub(super) fn checked_module_name(value: impl Into<String>) -> Result<SmolStr, QueryBuildError> {
+    let value: SmolStr = value.into().trim().to_owned().into();
+    if value.is_empty() {
+        return Err(QueryBuildError::EmptyModuleSpecifier);
     }
     Ok(value)
 }
@@ -257,10 +265,7 @@ fn checked_module_export(
     module: impl Into<String>,
     export: impl Into<String>,
 ) -> Result<(SmolStr, SmolStr), QueryBuildError> {
-    let module: SmolStr = module.into().into();
-    if module.trim().is_empty() {
-        return Err(QueryBuildError::EmptyModuleSpecifier);
-    }
+    let module = checked_module_name(module)?;
     let export = checked_name(export)?;
     Ok((module, export))
 }

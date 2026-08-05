@@ -141,6 +141,34 @@ fn lowers_call_heuristic_to_query_decl() {
 }
 
 #[test]
+fn symbolic_query_names_are_trimmed_at_construction() {
+    let global = EventQuery::call_global(" fetch ").unwrap();
+    assert_eq!(
+        global.identity(),
+        &IdentitySpec::Global {
+            name: "fetch".into()
+        }
+    );
+
+    let module = EventQuery::call_module(" fs ", " readFile ").unwrap();
+    assert_eq!(
+        module.identity(),
+        &IdentitySpec::ModuleExport {
+            module: "fs".into(),
+            export: "readFile".into(),
+        }
+    );
+
+    let namespace = EventQuery::member_call_module(" fs ", "readFile").unwrap();
+    assert_eq!(
+        namespace.identity(),
+        &IdentitySpec::ModuleNamespace {
+            module: "fs".into()
+        }
+    );
+}
+
+#[test]
 fn lowers_call_module_to_query_decl() {
     assert_event_query(
         EventQuery::call_module("fs", "readFile")

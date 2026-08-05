@@ -57,7 +57,7 @@ duplicate field, with a regression test covering multiple duplicate fields.
 
 ### Query-input canonicalization
 
-#### [ ] READ-091 — Canonicalize symbolic query names at the query boundary
+#### [x] READ-091 — Canonicalize symbolic query names at the query boundary
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -84,7 +84,13 @@ member-chain canonical spelling; only delete the repeated validation-only
 paths for identifiers/module components once all symbolic identity owners use
 the same normalization contract.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added shared trimming/validation for symbolic names and
+module components, and routed event plus correlated member-instance
+constructors through it. Literal string matchers continue preserving authored
+whitespace. Added coverage for global, module-export, and namespace identities.
+
+**Verification:** `cargo test -p glass-lint-core api::rule::query::tests --lib`
+(46 passed) and `make fmt && make ci` (passed).
 
 ### Correlated query composition
 

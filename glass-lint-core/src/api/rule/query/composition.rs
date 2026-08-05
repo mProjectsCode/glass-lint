@@ -1,11 +1,9 @@
 //! Logical query composition constructors.
 
-use smol_str::SmolStr;
-
 use super::{
     AllExpr, AnyExpr, EmissionDecl, EventQuery, EventRequirement, EventRequirementKind, EventSpec,
     IdentitySpec, LifecycleQuery, MatchKind, QueryBuildError, QueryDecl, QueryExpr, QueryPredicate,
-    VarId, checked_chain, evidence_kind_for_event, explain_expression,
+    VarId, checked_chain, checked_module_export, evidence_kind_for_event, explain_expression,
 };
 
 impl QueryDecl {
@@ -35,14 +33,7 @@ impl QueryDecl {
         export: impl Into<String>,
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
-        let module_str: SmolStr = module.into().into();
-        let export_str: SmolStr = export.into().into();
-        if module_str.trim().is_empty() {
-            return Err(QueryBuildError::EmptyModuleSpecifier);
-        }
-        if export_str.trim().is_empty() {
-            return Err(QueryBuildError::EmptyIdentityName);
-        }
+        let (module_str, export_str) = checked_module_export(module, export)?;
         let member_path = checked_chain(member)?.into_path();
         let event_var = VarId::new(0);
         let object_var = VarId::new(1);
