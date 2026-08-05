@@ -151,7 +151,7 @@ unknown source and an assignment's conservative write kill.
 
 ### Declaration lowering
 
-#### [ ] READ-005 — Split declaration traversal from provenance seeding
+#### [x] READ-005 — Split declaration traversal from provenance seeding
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -176,7 +176,16 @@ while retaining initializer-before-binding traversal, unknown sources for
 non-simple patterns, static-string alias invalidation, and independent
 instance/callable/class provenance updates.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Split declaration processing into named source evaluation,
+target extraction, provenance seeding, and emission phases.
+`FactProvenanceState` now owns the shared simple-declaration target seeding
+for instance callables, instance origins, and class origins; non-simple
+patterns remain unknown and initializer traversal remains before declaration
+emission.
+
+**Verification:** Focused facts tests (32 passed) and the full `make fmt &&
+make ci` gate passed, including workspace Clippy, workspace tests, doctests,
+e2e cases, and provider rule cases.
 
 ### Module-interface collection
 

@@ -151,6 +151,27 @@ impl FactProvenanceState {
     ) {
         self.class_origins.retain_common(snapshot, budget);
     }
+
+    fn seed_declaration(
+        &mut self,
+        targets: &[ValueId],
+        callable: Option<&InstanceCallable>,
+        instance_origin: Option<&(SmolStr, SmolStr)>,
+        class_origin: Option<&(SmolStr, SmolStr)>,
+        budget: &SemanticBudget,
+    ) {
+        for &target in targets {
+            if let Some(callable) = callable {
+                self.instance_callables.insert(target, callable.clone());
+            }
+            if let Some(origin) = instance_origin {
+                self.instance_origins.insert(target, origin.clone(), budget);
+            }
+            if let Some(origin) = class_origin {
+                self.class_origins.insert(target, origin.clone(), budget);
+            }
+        }
+    }
 }
 
 pub struct FactBuilder<'builder, 'resolver> {

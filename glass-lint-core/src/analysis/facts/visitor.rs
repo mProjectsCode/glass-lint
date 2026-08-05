@@ -17,9 +17,10 @@ use crate::{
             ArrowExpr, AssignExpr, BinExpr, CallExpr, CondExpr, ControlKind, ControlRegionId,
             DoWhileStmt, ExportDecl, Expr, FactBuilder, FactPayload, FnDecl, ForInStmt, ForOfStmt,
             ForStmt, Function, Ident, IfStmt, ImportDecl, MemberExpr, NewExpr, OptChainBase,
-            OptChainExpr, Spanned, Str, SwitchStmt, SymbolCallProvenance, SymbolMemberProvenance,
-            Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr, ValueId, VarDeclarator, Visit, VisitWith,
-            WhileStmt, effective_callee_expr, literal_member_property_name,
+            OptChainExpr, Pat, Span, Spanned, Str, SwitchStmt, SymbolCallProvenance,
+            SymbolMemberProvenance, Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr, ValueId,
+            VarDeclarator, Visit, VisitWith, WhileStmt, effective_callee_expr,
+            literal_member_property_name,
         },
         module::{ImportedBinding, ModuleRequestRole},
     },
@@ -71,64 +72,11 @@ impl Visit for FactBuilder<'_, '_> {
             return;
         }
         self.record_pattern_locals(&declarator.name);
-        let mut source = declarator
-            .init
-            .as_ref()
-            .map_or(ValueId::UNKNOWN, |init| self.value_for_expr(init));
-        // Initializers are evaluated before the declaration becomes visible.
-        // Emit the declaration after visiting the initializer so fact order is
-        // an evaluation order, not merely an AST preorder.
-        if let Some(init) = &declarator.init {
-            init.visit_with(self);
-        }
+        let source = self.declaration_source(declarator);
         declarator.name.visit_with(self);
-        let mut targets = Vec::new();
-        self.pattern_values(&declarator.name, &mut targets);
-        if !Self::is_simple_pattern(&declarator.name) {
-            source = ValueId::UNKNOWN;
-        }
-        if Self::is_simple_pattern(&declarator.name)
-            && let Some(init) = &declarator.init
-            && let Some(callable) = self.instance_callable_for_expr(init)
-        {
-            for target in &targets {
-                self.provenance
-                    .instance_callables
-                    .insert(*target, callable.clone());
-            }
-        }
-        if Self::is_simple_pattern(&declarator.name)
-            && let Some(init) = &declarator.init
-            && let Some(origin) = self.instance_origin_for_expr(init)
-        {
-            for target in &targets {
-                self.provenance.instance_origins.insert(
-                    *target,
-                    origin.clone(),
-                    self.resolver.budget,
-                );
-            }
-        }
-        if Self::is_simple_pattern(&declarator.name)
-            && let Some(init) = &declarator.init
-            && let Some(origin) = self.constructor_origin_for_expr(init)
-        {
-            for target in &targets {
-                self.provenance
-                    .class_origins
-                    .insert(*target, origin.clone(), self.resolver.budget);
-            }
-        }
-        if targets.is_empty() {
-            targets.push(ValueId::UNKNOWN);
-        }
-        for target in targets {
-            self.remember_static_string_alias(target, source);
-            self.emit(
-                declarator.span(),
-                FactPayload::Declaration { target, source },
-            );
-        }
+        let targets = self.declaration_targets(&declarator.name);
+        self.seed_declaration_provenance(&declarator.name, declarator.init.as_deref(), &targets);
+        self.emit_declarations(declarator.span(), source, targets);
     }
 
     fn visit_assign_expr(&mut self, assignment: &AssignExpr) {
@@ -603,5 +551,65 @@ impl Visit for FactBuilder<'_, '_> {
         }
         self.record_default_decl(export);
         export.decl.visit_with(self);
+    }
+}
+
+impl FactBuilder<'_, '_> {
+    fn declaration_source(&mut self, declarator: &VarDeclarator) -> ValueId {
+        let source = declarator
+            .init
+            .as_ref()
+            .map_or(ValueId::UNKNOWN, |init| self.value_for_expr(init));
+        // Initializers are evaluated before the declaration becomes visible.
+        // Emit the declaration after visiting the initializer so fact order is
+        // an evaluation order, not merely an AST preorder.
+        if let Some(init) = &declarator.init {
+            init.visit_with(self);
+        }
+        if Self::is_simple_pattern(&declarator.name) {
+            source
+        } else {
+            ValueId::UNKNOWN
+        }
+    }
+
+    fn declaration_targets(&mut self, pattern: &Pat) -> Vec<ValueId> {
+        let mut targets = Vec::new();
+        self.pattern_values(pattern, &mut targets);
+        targets
+    }
+
+    fn seed_declaration_provenance(
+        &mut self,
+        pattern: &Pat,
+        init: Option<&Expr>,
+        targets: &[ValueId],
+    ) {
+        if !Self::is_simple_pattern(pattern) {
+            return;
+        }
+        let Some(init) = init else {
+            return;
+        };
+        let callable = self.instance_callable_for_expr(init);
+        let instance_origin = self.instance_origin_for_expr(init);
+        let class_origin = self.constructor_origin_for_expr(init);
+        self.provenance.seed_declaration(
+            targets,
+            callable.as_ref(),
+            instance_origin.as_ref(),
+            class_origin.as_ref(),
+            self.resolver.budget,
+        );
+    }
+
+    fn emit_declarations(&mut self, span: Span, source: ValueId, mut targets: Vec<ValueId>) {
+        if targets.is_empty() {
+            targets.push(ValueId::UNKNOWN);
+        }
+        for target in targets {
+            self.remember_static_string_alias(target, source);
+            self.emit(span, FactPayload::Declaration { target, source });
+        }
     }
 }
