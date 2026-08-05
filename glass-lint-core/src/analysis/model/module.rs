@@ -237,6 +237,9 @@ impl ModuleInterface {
     }
 
     pub fn add_function_export(&mut self, name: impl Into<SmolStr>, function: FunctionId) {
+        if self.unknown_exports {
+            return;
+        }
         let name = name.into();
         match self.exports.get(&name) {
             None => {
@@ -253,6 +256,9 @@ impl ModuleInterface {
     }
 
     pub fn add_static_string(&mut self, name: impl Into<SmolStr>, value: impl Into<String>) {
+        if self.unknown_exports {
+            return;
+        }
         let name = name.into();
         let value = value.into();
         match self.exports.get_mut(&name) {
@@ -349,5 +355,28 @@ impl ModuleInterface {
                 ))
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unknown_exports_reject_function_and_static_metadata() {
+        let mut interface = ModuleInterface::default();
+        interface.add_function_export("function", FunctionId::from_test(1));
+        interface.add_static_string("text", "before");
+
+        interface.mark_unknown_exports();
+        interface.add_function_export("late-function", FunctionId::from_test(2));
+        interface.add_static_string("late-text", "after");
+
+        assert!(interface.is_unknown());
+        assert_eq!(interface.exports().count(), 0);
+        assert_eq!(interface.function_export("function"), None);
+        assert_eq!(interface.static_string("text"), None);
+        assert_eq!(interface.function_export("late-function"), None);
+        assert_eq!(interface.static_string("late-text"), None);
     }
 }

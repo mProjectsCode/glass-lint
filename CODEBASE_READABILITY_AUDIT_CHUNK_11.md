@@ -104,7 +104,7 @@ Building-to-Frozen validity boundary unchanged.
 
 ### Module-interface uncertainty
 
-#### [ ] READ-059 — Make unknown export state terminal for all metadata setters
+#### [x] READ-059 — Make unknown export state terminal for all metadata setters
 
 - **Severity:** High
 - **Fix Complexity:** Low
@@ -127,7 +127,14 @@ type whose setters cannot mutate the known variant after invalidation. Preserve
 local-name tracking, diagnostic retention, CommonJS ambiguity handling, and
 the rule that unknown module identity cannot establish a cross-module witness.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ModuleInterface::add_function_export` and
+`add_static_string` now reject writes after `mark_unknown_exports`, matching
+the existing guards on regular and star exports. Added a regression covering
+both cleared metadata and late metadata writes, preserving the fail-closed
+unknown interface state.
+
+**Verification:** `cargo test -p glass-lint-core --lib analysis::model::module`
+and `make fmt && make ci` pass.
 
 ### Model wrapper shape
 
