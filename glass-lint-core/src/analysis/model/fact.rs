@@ -74,7 +74,6 @@ mod test_support {
             id,
             span,
             owner,
-            FactKind::Reference,
             FactPayload::Reference {
                 value: ValueId::UNKNOWN,
                 provenance: SymbolCallProvenance::Local,
@@ -90,7 +89,6 @@ mod test_support {
             id,
             span,
             owner,
-            FactKind::Call,
             FactPayload::Call {
                 callee: ValueId::UNKNOWN,
                 receiver: None,
@@ -198,7 +196,7 @@ mod semantic_fact_tests {
             FunctionId::from_test(0),
         );
         assert_eq!(fact.id(), FactId::from_test(1));
-        assert_eq!(fact.kind(), FactKind::Reference);
+        assert!(matches!(fact.payload, FactPayload::Reference { .. }));
     }
 
     #[test]
@@ -257,19 +255,6 @@ mod fact_payload_tests {
             Some(("React", "Component"))
         );
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum FactKind {
-    Declaration,
-    Assignment,
-    PropertyWrite,
-    Call,
-    Construction,
-    Reference,
-    MemberRead,
-    Function,
-    Control,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -494,27 +479,15 @@ pub(in crate::analysis) struct SemanticFact {
     pub(in crate::analysis) id: FactId,
     pub(in crate::analysis) span: ByteRange,
     pub(in crate::analysis) function: FunctionId,
-    #[cfg(test)]
-    pub(in crate::analysis) kind: FactKind,
     pub(in crate::analysis) payload: FactPayload,
 }
 
 impl SemanticFact {
-    pub fn new(
-        id: FactId,
-        span: ByteRange,
-        function: FunctionId,
-        kind: FactKind,
-        payload: FactPayload,
-    ) -> Self {
-        #[cfg(not(test))]
-        let _ = kind;
+    pub fn new(id: FactId, span: ByteRange, function: FunctionId, payload: FactPayload) -> Self {
         Self {
             id,
             span,
             function,
-            #[cfg(test)]
-            kind,
             payload,
         }
     }
@@ -522,11 +495,6 @@ impl SemanticFact {
     #[cfg(test)]
     pub fn id(&self) -> FactId {
         self.id
-    }
-
-    #[cfg(test)]
-    pub fn kind(&self) -> FactKind {
-        self.kind
     }
 }
 

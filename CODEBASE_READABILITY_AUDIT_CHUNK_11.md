@@ -90,7 +90,7 @@ and `make fmt && make ci` pass.
 
 ### Fact identity construction
 
-#### [ ] READ-058 — Derive fact kind from the payload owner
+#### [x] READ-058 — Derive fact kind from the payload owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -113,7 +113,15 @@ argument/storage after migrating stream construction and test helpers. Keep
 dense FactId assignment, payload-specific data, test filtering, and the
 Building-to-Frozen validity boundary unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the caller-supplied `FactKind` parameter and
+test-only duplicate field from `SemanticFact` and `FactStream`, then removed
+the enum and rewrote tests to match `FactPayload` variants directly. Fact
+builders now emit only spans and payloads, leaving semantic identity solely in
+the payload owner.
+
+**Verification:** `cargo test -p glass-lint-core analysis::facts --lib`
+(32 passed), `cargo check -p glass-lint-core`, and `make fmt && make ci`
+(passed).
 
 ### Module-interface uncertainty
 

@@ -4,6 +4,5 @@
 
 pub(in crate::analysis) use crate::analysis::model::fact::{
     ArgumentView, Building, CallArgInfo, CallUnwrap, ClassFactRole, ControlKind, ControlRegionId,
-    FactId, FactKind, FactPayload, Frozen, FunctionBoundary, MAX_FACTS, ParameterBinding,
-    SemanticFact,
+    FactId, FactPayload, Frozen, FunctionBoundary, MAX_FACTS, ParameterBinding, SemanticFact,
 };

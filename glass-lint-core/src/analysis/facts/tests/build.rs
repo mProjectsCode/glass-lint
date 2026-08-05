@@ -1,7 +1,7 @@
 use swc_ecma_visit::VisitWith;
 
 use crate::analysis::{
-    facts::{FactBuilder, FactKind, FactPayload, FactStream, Frozen, build_test_facts},
+    facts::{FactBuilder, FactPayload, FactStream, Frozen, build_test_facts},
     resolution::Resolver,
     syntax::SymbolCallProvenance,
     value::ValueId,
@@ -25,11 +25,26 @@ fn fact_builder_emits_facts_for_diverse_program() {
 
     assert!(!facts.is_empty(), "fact builder should emit facts");
 
-    let kinds: Vec<_> = facts.iter().map(|f| f.kind).collect();
-    assert!(kinds.contains(&FactKind::Declaration));
-    assert!(kinds.contains(&FactKind::Call));
-    assert!(kinds.contains(&FactKind::PropertyWrite));
-    assert!(kinds.contains(&FactKind::MemberRead));
+    assert!(
+        facts
+            .iter()
+            .any(|fact| matches!(fact.payload, FactPayload::Declaration { .. }))
+    );
+    assert!(
+        facts
+            .iter()
+            .any(|fact| matches!(fact.payload, FactPayload::Call { .. }))
+    );
+    assert!(
+        facts
+            .iter()
+            .any(|fact| matches!(fact.payload, FactPayload::PropertyWrite { .. }))
+    );
+    assert!(
+        facts
+            .iter()
+            .any(|fact| matches!(fact.payload, FactPayload::MemberRead { .. }))
+    );
 }
 
 #[test]
@@ -38,7 +53,7 @@ fn facts_record_the_lexical_function_owner() {
     let calls = stream
         .facts()
         .iter()
-        .filter(|fact| fact.kind == FactKind::Call)
+        .filter(|fact| matches!(fact.payload, FactPayload::Call { .. }))
         .collect::<Vec<_>>();
     assert_eq!(calls.len(), 2);
     assert_ne!(calls[0].function, calls[1].function);
@@ -124,14 +139,17 @@ fn optional_chain_does_not_double_record_roles() {
     let facts = stream.facts();
 
     assert_eq!(
-        facts.iter().filter(|f| f.kind == FactKind::Call).count(),
+        facts
+            .iter()
+            .filter(|f| matches!(f.payload, FactPayload::Call { .. }))
+            .count(),
         1,
         "optional call must emit exactly one Call fact"
     );
 
     let member_facts: Vec<_> = facts
         .iter()
-        .filter(|f| f.kind == FactKind::MemberRead)
+        .filter(|f| matches!(f.payload, FactPayload::MemberRead { .. }))
         .collect();
     assert!(
         member_facts.len() <= 3,
@@ -146,12 +164,12 @@ fn nested_call_and_member_roles_have_distinct_facts() {
     let calls = stream
         .facts()
         .iter()
-        .filter(|fact| fact.kind == FactKind::Call)
+        .filter(|fact| matches!(fact.payload, FactPayload::Call { .. }))
         .collect::<Vec<_>>();
     let members = stream
         .facts()
         .iter()
-        .filter(|fact| fact.kind == FactKind::MemberRead)
+        .filter(|fact| matches!(fact.payload, FactPayload::MemberRead { .. }))
         .collect::<Vec<_>>();
     assert_eq!(calls.len(), 2);
     assert_eq!(members.len(), 1);
@@ -168,13 +186,7 @@ fn repeated_builds_yield_identical_fact_fingerprints() {
         document.getElementById('root');
     ";
 
-    let extract = |stream: FactStream<Frozen>| {
-        stream
-            .facts()
-            .iter()
-            .map(|f| (f.kind, f.span.start(), f.span.end(), f.function))
-            .collect::<Vec<_>>()
-    };
+    let extract = |stream: FactStream<Frozen>| stream.fingerprint();
 
     let fp1 = extract(build_test_facts(src, "fp.js"));
     let fp2 = extract(build_test_facts(src, "fp.js"));
@@ -196,7 +208,7 @@ fn call_fact_captures_callee_provenance() {
     let call_facts: Vec<_> = stream
         .facts()
         .iter()
-        .filter(|f| f.kind == FactKind::Call)
+        .filter(|f| matches!(f.payload, FactPayload::Call { .. }))
         .collect();
     assert_eq!(call_facts.len(), 1);
     if let FactPayload::Call {
@@ -338,7 +350,7 @@ fn instance_class_is_captured_for_this_calls() {
     let call_facts: Vec<_> = stream
         .facts()
         .iter()
-        .filter(|f| f.kind == FactKind::Call)
+        .filter(|f| matches!(f.payload, FactPayload::Call { .. }))
         .collect();
     let this_call = call_facts
         .iter()

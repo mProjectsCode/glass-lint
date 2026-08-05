@@ -15,12 +15,11 @@ use crate::{
     analysis::{
         facts::{
             ArrowExpr, AssignExpr, BinExpr, CallExpr, CondExpr, ControlKind, ControlRegionId,
-            DoWhileStmt, ExportDecl, Expr, FactBuilder, FactKind, FactPayload, FnDecl, ForInStmt,
-            ForOfStmt, ForStmt, Function, Ident, IfStmt, ImportDecl, MemberExpr, NewExpr,
-            OptChainBase, OptChainExpr, Spanned, Str, SwitchStmt, SymbolCallProvenance,
-            SymbolMemberProvenance, Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr, ValueId,
-            VarDeclarator, Visit, VisitWith, WhileStmt, effective_callee_expr,
-            member_property_name,
+            DoWhileStmt, ExportDecl, Expr, FactBuilder, FactPayload, FnDecl, ForInStmt, ForOfStmt,
+            ForStmt, Function, Ident, IfStmt, ImportDecl, MemberExpr, NewExpr, OptChainBase,
+            OptChainExpr, Spanned, Str, SwitchStmt, SymbolCallProvenance, SymbolMemberProvenance,
+            Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr, ValueId, VarDeclarator, Visit, VisitWith,
+            WhileStmt, effective_callee_expr, member_property_name,
         },
         module::{ImportedBinding, ModuleRequestRole},
     },
@@ -37,7 +36,6 @@ impl Visit for FactBuilder<'_, '_> {
         // keeping downstream matchers fail-closed.
         let resolved = self.resolver.resolve_ident(ident);
         self.emit(
-            FactKind::Reference,
             ident.span(),
             FactPayload::Reference {
                 value: resolved.id,
@@ -57,7 +55,6 @@ impl Visit for FactBuilder<'_, '_> {
         let chain = self.resolver.member_expression_chain(member);
         let syntactic_path = chain.as_ref().and_then(|path| self.name_path(path));
         self.emit(
-            FactKind::MemberRead,
             member.span(),
             FactPayload::MemberRead {
                 syntactic_path,
@@ -128,7 +125,6 @@ impl Visit for FactBuilder<'_, '_> {
         for target in targets {
             self.remember_static_string_alias(target, source);
             self.emit(
-                FactKind::Declaration,
                 declarator.span(),
                 FactPayload::Declaration { target, source },
             );
@@ -153,7 +149,6 @@ impl Visit for FactBuilder<'_, '_> {
             _ => None,
         };
         self.emit(
-            FactKind::Assignment,
             update.span(),
             FactPayload::Assignment {
                 target,
@@ -175,7 +170,6 @@ impl Visit for FactBuilder<'_, '_> {
                 _ => None,
             };
             self.emit(
-                FactKind::Assignment,
                 unary.span(),
                 FactPayload::Assignment {
                     target,
@@ -233,7 +227,6 @@ impl Visit for FactBuilder<'_, '_> {
                 let chain = self.resolver.member_expression_chain(member);
                 let syntactic_path = chain.as_ref().and_then(|path| self.name_path(path));
                 self.emit(
-                    FactKind::MemberRead,
                     member.span(),
                     FactPayload::MemberRead {
                         syntactic_path,
@@ -298,7 +291,6 @@ impl Visit for FactBuilder<'_, '_> {
         };
         let callee_name = self.intern_name(callee_name.as_deref());
         self.emit(
-            FactKind::Construction,
             new_expr.span(),
             FactPayload::Construction {
                 callee_span,
@@ -350,11 +342,7 @@ impl Visit for FactBuilder<'_, '_> {
             module.clone(),
             ModuleRequestRole::Import { bindings },
         );
-        self.emit(
-            FactKind::Declaration,
-            import.src.span,
-            FactPayload::Import { module },
-        );
+        self.emit(import.src.span, FactPayload::Import { module });
         // Do not visit children: the source string is already captured in the
         // Import fact, and visiting it would emit a duplicate static reference.
     }
@@ -368,7 +356,6 @@ impl Visit for FactBuilder<'_, '_> {
             .resolve_expr(&Expr::Lit(swc_ecma_ast::Lit::Str(value.clone())))
             .id;
         self.emit(
-            FactKind::Reference,
             value.span(),
             FactPayload::Reference {
                 value: id,
@@ -400,7 +387,6 @@ impl Visit for FactBuilder<'_, '_> {
                     .resolver
                     .static_value(crate::analysis::value::Value::StaticString(literal));
                 self.emit(
-                    FactKind::Reference,
                     quasi.span,
                     FactPayload::Reference {
                         value: resolved.id,
@@ -411,7 +397,6 @@ impl Visit for FactBuilder<'_, '_> {
             }
         } else {
             self.emit(
-                FactKind::Reference,
                 template.span,
                 FactPayload::Reference {
                     value: complete,
@@ -445,7 +430,6 @@ impl Visit for FactBuilder<'_, '_> {
             let complete = self.resolver.resolve_expr(&Expr::Bin(binary.clone())).id;
             if self.resolver.static_string_value(complete).is_some() {
                 self.emit(
-                    FactKind::Reference,
                     binary.span(),
                     FactPayload::Reference {
                         value: complete,
@@ -575,7 +559,6 @@ impl Visit for FactBuilder<'_, '_> {
                 self.resolver.resolve_expr_id(expr)
             });
         self.emit(
-            FactKind::Control,
             stmt.span(),
             FactPayload::Control {
                 kind: ControlKind::Return,

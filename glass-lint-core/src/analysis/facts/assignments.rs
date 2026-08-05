@@ -7,7 +7,7 @@
 use swc_ecma_ast::AssignOp;
 
 use crate::analysis::facts::{
-    AssignExpr, FactBuilder, FactKind, FactPayload, MemberExpr, Pat, Spanned, ValueId, VisitWith,
+    AssignExpr, FactBuilder, FactPayload, MemberExpr, Pat, Spanned, ValueId, VisitWith,
     member_property_name,
 };
 
@@ -77,7 +77,6 @@ impl FactBuilder<'_, '_> {
                 .insert(target, origin, self.resolver.budget);
         }
         self.emit(
-            FactKind::Assignment,
             assignment.span(),
             FactPayload::Assignment {
                 target,
@@ -101,7 +100,6 @@ impl FactBuilder<'_, '_> {
         let chain = self.resolver.member_expression_chain(member);
         let syntactic_path = chain.as_ref().and_then(|path| self.name_path(path));
         self.emit(
-            FactKind::MemberRead,
             member.span(),
             FactPayload::MemberRead {
                 syntactic_path,
@@ -122,7 +120,6 @@ impl FactBuilder<'_, '_> {
         let value_is_precise = assignment.op == AssignOp::Assign;
         let rooted_chain = self.resolver.rooted_write_chain(member);
         self.emit(
-            FactKind::PropertyWrite,
             assignment.span(),
             FactPayload::PropertyWrite {
                 receiver,
@@ -148,7 +145,6 @@ impl FactBuilder<'_, '_> {
         self.pattern_write_targets(&pattern, &mut targets);
         for (target, receiver) in targets {
             self.emit(
-                FactKind::Assignment,
                 assignment.span(),
                 FactPayload::Assignment {
                     target,

@@ -262,12 +262,10 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
         })
     }
 
-    fn emit(&mut self, kind: FactKind, span: Span, payload: FactPayload) {
+    fn emit(&mut self, span: Span, payload: FactPayload) {
         if self.resolver.budget.exhausted() {
             return;
         }
-        #[cfg(not(test))]
-        let _ = kind;
         let scope = self.scope_at(span);
         let normalized_span = if span.is_dummy() {
             match &payload {
@@ -287,7 +285,7 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
         } else {
             self.traversal.current_function()
         };
-        let _ = self.stream.try_push(span, function, kind, payload);
+        let _ = self.stream.try_push(span, function, payload);
     }
 
     fn byte_range(&mut self, span: Span) -> Option<ByteRange> {
@@ -508,53 +506,40 @@ mod stream_tests {
         api::{compiler::rule::CompiledMatcherPlan, rule::EventQuery},
     };
 
-    fn test_fact(id: u32, kind: FactKind, span: ByteRange) -> SemanticFact {
+    fn test_call(id: u32, span: ByteRange) -> SemanticFact {
         SemanticFact::new(
             FactId::from_test(id),
             span,
             FunctionId::from_test(0),
-            kind,
-            match kind {
-                FactKind::Call => FactPayload::Call {
-                    callee: ValueId::UNKNOWN,
-                    receiver: None,
-                    result: ValueId::UNKNOWN,
-                    callee_span: span,
-                    callee_name: None,
-                    call_provenance: SymbolCallProvenance::Local,
-                    syntactic_path: None,
-                    rooted_chain: None,
-                    module_member: None,
-                    returned_member: None,
-                    instance_class: None,
-                    target_function: None,
-                    args: Vec::new(),
-                    unwrap: None,
-                },
-                FactKind::MemberRead => FactPayload::MemberRead {
-                    syntactic_path: None,
-                    rooted_chain: None,
-                    module_member: None,
-                    returned_member: None,
-                },
-                FactKind::Reference => FactPayload::Reference {
-                    value: ValueId::UNKNOWN,
-                    provenance: SymbolCallProvenance::Local,
-                    static_string_origin: None,
-                },
-                FactKind::Function => FactPayload::Function {
-                    id: FunctionId::from_test(0),
-                    boundary: FunctionBoundary::Enter,
-                },
-                FactKind::Control => FactPayload::Control {
-                    kind: ControlKind::BranchStart,
-                    region: ControlRegionId::from_test(0),
-                    return_value: ValueId::UNKNOWN,
-                },
-                _ => FactPayload::Declaration {
-                    target: ValueId::UNKNOWN,
-                    source: ValueId::UNKNOWN,
-                },
+            FactPayload::Call {
+                callee: ValueId::UNKNOWN,
+                receiver: None,
+                result: ValueId::UNKNOWN,
+                callee_span: span,
+                callee_name: None,
+                call_provenance: SymbolCallProvenance::Local,
+                syntactic_path: None,
+                rooted_chain: None,
+                module_member: None,
+                returned_member: None,
+                instance_class: None,
+                target_function: None,
+                args: Vec::new(),
+                unwrap: None,
+            },
+        )
+    }
+
+    fn test_member_read(id: u32, span: ByteRange) -> SemanticFact {
+        SemanticFact::new(
+            FactId::from_test(id),
+            span,
+            FunctionId::from_test(0),
+            FactPayload::MemberRead {
+                syntactic_path: None,
+                rooted_chain: None,
+                module_member: None,
+                returned_member: None,
             },
         )
     }
@@ -563,25 +548,32 @@ mod stream_tests {
     fn direct_lookup_and_linear_test_helper_preserve_fact_order() {
         let span = ByteRange::new(10, 20).unwrap();
         let mut stream = FactStream::<Building>::new();
-        stream.push(test_fact(0, FactKind::Call, span));
-        stream.push(test_fact(1, FactKind::MemberRead, span));
-        stream.push(test_fact(2, FactKind::Call, span));
+        stream.push(test_call(0, span));
+        stream.push(test_member_read(1, span));
+        stream.push(test_call(2, span));
 
         assert_eq!(
             stream
-                .facts_at(span.start(), span.end(), FactKind::Call)
+                .facts()
                 .iter()
-                .map(|fact| fact.id())
+                .filter(|fact| {
+                    fact.span.start() == span.start()
+                        && fact.span.end() == span.end()
+                        && matches!(fact.payload, FactPayload::Call { .. })
+                })
+                .map(SemanticFact::id)
                 .collect::<Vec<_>>(),
             vec![FactId::from_test(0), FactId::from_test(2)]
         );
-        assert_eq!(
-            stream.fact(FactId::from_test(0)).map(SemanticFact::kind),
-            Some(FactKind::Call)
+        assert!(
+            stream
+                .fact(FactId::from_test(0))
+                .is_some_and(|fact| { matches!(fact.payload, FactPayload::Call { .. }) })
         );
-        assert_eq!(
-            stream.fact(FactId::from_test(2)).map(SemanticFact::kind),
-            Some(FactKind::Call)
+        assert!(
+            stream
+                .fact(FactId::from_test(2))
+                .is_some_and(|fact| { matches!(fact.payload, FactPayload::Call { .. }) })
         );
         assert!(stream.fact(FactId::from_test(3)).is_none());
     }
@@ -591,9 +583,17 @@ mod stream_tests {
         let span = ByteRange::new(100, 120).unwrap();
         let mut stream = FactStream::<Building>::new();
         for id in 0..10_001 {
-            stream.push(test_fact(id, FactKind::Call, span));
+            stream.push(test_call(id, span));
         }
-        let calls = stream.facts_at(span.start(), span.end(), FactKind::Call);
+        let calls = stream
+            .facts()
+            .iter()
+            .filter(|fact| {
+                fact.span.start() == span.start()
+                    && fact.span.end() == span.end()
+                    && matches!(fact.payload, FactPayload::Call { .. })
+            })
+            .collect::<Vec<_>>();
         assert_eq!(calls.len(), 10_001);
         assert_eq!(
             calls.first().map(|fact| fact.id()),

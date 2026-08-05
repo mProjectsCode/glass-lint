@@ -14,7 +14,7 @@ use std::marker::PhantomData;
 use glass_lint_datastructures::{NameTable, PathId, PathSegment, PathSegmentInput, PathStore};
 
 use crate::analysis::{
-    facts::{FactId, FactKind, FactPayload, MAX_FACTS, ParameterBinding, SemanticFact},
+    facts::{FactId, FactPayload, MAX_FACTS, ParameterBinding, SemanticFact},
     model::fact::{Building, Frozen},
     resolution::FrozenFactTables,
     value::{FunctionId, ValueTable},
@@ -165,14 +165,6 @@ impl<T> FactStream<T> {
     }
 
     #[cfg(test)]
-    pub(super) fn facts_at(&self, lo: u32, hi: u32, kind: FactKind) -> Vec<&SemanticFact> {
-        self.facts
-            .iter()
-            .filter(|fact| fact.span.start() == lo && fact.span.end() == hi && fact.kind() == kind)
-            .collect()
-    }
-
-    #[cfg(test)]
     pub(super) fn fingerprint(&self) -> String {
         format!("{:?}", self.facts)
     }
@@ -206,7 +198,6 @@ impl FactStream<Building> {
         &mut self,
         span: glass_lint_datastructures::ByteRange,
         function: FunctionId,
-        kind: FactKind,
         payload: FactPayload,
     ) -> Result<FactId, FactIssue> {
         // Once an invariant is broken, discard subsequent input rather than
@@ -221,7 +212,7 @@ impl FactStream<Building> {
             self.mark_budget_exhausted();
             FactIssue::BudgetExhausted
         })?);
-        let fact = SemanticFact::new(id, span, function, kind, payload);
+        let fact = SemanticFact::new(id, span, function, payload);
         self.facts.push(fact);
         Ok(id)
     }

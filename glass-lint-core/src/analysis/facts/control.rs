@@ -20,9 +20,7 @@ use swc_ecma_ast::{
 use swc_ecma_visit::VisitWith;
 
 use crate::analysis::{
-    facts::{
-        ControlKind, ControlRegionId, FactBuilder, FactKind, FactPayload, OriginSnapshot, Span,
-    },
+    facts::{ControlKind, ControlRegionId, FactBuilder, FactPayload, OriginSnapshot, Span},
     value::ValueId,
 };
 
@@ -35,7 +33,6 @@ impl FactBuilder<'_, '_> {
     /// Emit a control marker without attaching a speculative value to it.
     pub(super) fn emit_control(&mut self, span: Span, kind: ControlKind, region: ControlRegionId) {
         self.emit(
-            FactKind::Control,
             span,
             FactPayload::Control {
                 kind,

@@ -3,7 +3,7 @@ use swc_ecma_ast::{CallExpr, Callee, Expr, ExprOrSpread, OptChainBase};
 use swc_ecma_visit::VisitWith;
 
 use crate::analysis::{
-    facts::{CallArgInfo, CallUnwrap, FactBuilder, FactKind, FactPayload},
+    facts::{CallArgInfo, CallUnwrap, FactBuilder, FactPayload},
     syntax::{effective_callee_expr, member_property_name},
     value::ValueId,
 };
@@ -27,10 +27,9 @@ impl FactBuilder<'_, '_> {
             };
             let args = self.args_info(&call.args);
             if let Some((module, span)) = dynamic_import {
-                self.emit(FactKind::Declaration, span, FactPayload::Import { module });
+                self.emit(span, FactPayload::Import { module });
             }
             self.emit(
-                FactKind::Call,
                 call.span(),
                 FactPayload::Call {
                     callee: ValueId::UNKNOWN,
@@ -85,7 +84,6 @@ impl FactBuilder<'_, '_> {
         let effective_args = self.effective_call_args(&resolved, args);
         let callee_name = self.intern_name(resolved.callee_name.as_deref());
         self.emit(
-            FactKind::Call,
             span,
             FactPayload::Call {
                 callee: resolved.value,

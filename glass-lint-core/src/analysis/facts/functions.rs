@@ -11,7 +11,7 @@ use swc_ecma_ast::ClassMethod;
 use crate::analysis::{
     facts::{
         ArrowExpr, BinExpr, BinaryOp, ClassDecl, ClassExpr, ClassFactRole, Expr, FactBuilder,
-        FactKind, FactPayload, FnDecl, Function, FunctionBoundary, Pat, PathId, Span, VisitWith,
+        FactPayload, FnDecl, Function, FunctionBoundary, Pat, PathId, Span, VisitWith,
     },
     syntax::member_property_name,
 };
@@ -50,11 +50,7 @@ impl FactBuilder<'_, '_> {
             }
             self.stream.register_function_parameters(id, bindings);
         }
-        self.emit(
-            FactKind::Function,
-            span,
-            FactPayload::Function { id, boundary },
-        );
+        self.emit(span, FactPayload::Function { id, boundary });
     }
 
     pub(super) fn record_function_decl(&mut self, function: &FnDecl) {
@@ -149,7 +145,6 @@ impl FactBuilder<'_, '_> {
                 .insert(value, provenance, self.resolver.budget);
         }
         self.emit(
-            FactKind::Declaration,
             class_decl.ident.span(),
             FactPayload::Class {
                 name: Some(name),
@@ -171,7 +166,6 @@ impl FactBuilder<'_, '_> {
             .and_then(|expr| self.resolver.class_provenance(expr));
         if let Some(ident) = &class_expr.ident {
             self.emit(
-                FactKind::Declaration,
                 ident.span(),
                 FactPayload::Class {
                     name: Some(ident.sym.to_smolstr()),
@@ -190,7 +184,6 @@ impl FactBuilder<'_, '_> {
         if binary.op == BinaryOp::InstanceOf {
             let provenance = self.resolver.class_provenance(&binary.right);
             self.emit(
-                FactKind::Reference,
                 binary.right.span(),
                 FactPayload::Class {
                     name: Self::class_operand_name(&binary.right),
@@ -208,7 +201,6 @@ impl FactBuilder<'_, '_> {
         };
         let provenance = self.resolver.class_provenance(expr);
         self.emit(
-            FactKind::Reference,
             expr.span(),
             FactPayload::Class {
                 name: Self::class_operand_name(expr),
