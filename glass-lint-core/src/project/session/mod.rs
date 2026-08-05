@@ -17,8 +17,8 @@ pub(super) use execution::{
     InvocationCounts, outstanding_job_bound,
 };
 use execution::{
-    ExecutionEvent, ExecutionObserver, LocalJob, LocalJobExecutor, NoopExecutionObserver,
-    ThreadLocalJobExecutor, normalize_worker_limit,
+    ExecutionEvent, ExecutionObserver, LocalJob, LocalJobCallbacks, LocalJobCandidate,
+    LocalJobExecutor, NoopExecutionObserver, ThreadLocalJobExecutor, normalize_worker_limit,
 };
 
 use crate::{
@@ -70,6 +70,55 @@ pub struct ProjectCollection<'a> {
     fingerprint_engine_version: &'static str,
     #[cfg(test)]
     fingerprint_normalization: Option<&'static str>,
+}
+
+struct LocalAnalysisCallbacks<'a> {
+    artifacts: &'a mut AnalysisArtifacts,
+    requests: &'a mut Vec<ResolutionRequest>,
+    artifact_cache: ArtifactCacheHandle,
+    observer: &'a dyn ExecutionObserver,
+    fingerprint: Box<dyn Fn(&SourceFile) -> ArtifactCacheKey + 'a>,
+}
+
+impl LocalJobCallbacks for LocalAnalysisCallbacks<'_> {
+    fn prepare(&mut self, candidate: LocalJobCandidate) -> Option<LocalJob> {
+        if !self.artifacts.needs_analysis(&candidate.path) {
+            return None;
+        }
+        let key = (self.fingerprint)(&candidate.source);
+        if let Some(lowered) = self.artifact_cache.get_lowered(&candidate.source, &key) {
+            self.observer.observe(ExecutionEvent::CacheHit);
+            self.requests
+                .extend(self.artifacts.record_lowered(&candidate.path, lowered));
+            None
+        } else {
+            self.observer.observe(ExecutionEvent::CacheMiss);
+            Some(LocalJob {
+                path: candidate.path,
+                source: candidate.source,
+                key,
+            })
+        }
+    }
+
+    fn release(&mut self, result: execution::LocalJobResult) {
+        match result.result {
+            Ok(lowered) => {
+                artifacts::insert_and_notify(
+                    &self.artifact_cache,
+                    result.key,
+                    &lowered,
+                    self.observer,
+                );
+                self.requests
+                    .extend(self.artifacts.record_lowered(&result.path, lowered));
+            }
+            Err(error) => {
+                self.artifacts.record_parse_failure(result.path, error);
+            }
+        }
+        self.observer.observe(ExecutionEvent::Merged);
+    }
 }
 
 /// Project state after every admitted source has completed local analysis.
@@ -287,55 +336,66 @@ impl<'a> ProjectCollection<'a> {
         observer: &dyn ExecutionObserver,
     ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
         let worker_count = normalize_worker_limit(worker_count);
-        let pending: Vec<_> = self
+        let mut requests = Vec::new();
+        let environment = self.state.lowerer.environment();
+        let limits = self.state.lowerer.limits();
+        #[cfg(test)]
+        let fingerprint_engine_version = self.fingerprint_engine_version;
+        #[cfg(test)]
+        let fingerprint_normalization = self.fingerprint_normalization;
+        let fingerprint = Box::new(move |source: &SourceFile| {
+            #[cfg(test)]
+            if let Some(normalization) = fingerprint_normalization {
+                return ArtifactCacheKey::for_test_inputs(
+                    source,
+                    environment,
+                    limits,
+                    normalization,
+                    fingerprint_engine_version,
+                );
+            }
+            #[cfg(test)]
+            if fingerprint_engine_version == env!("CARGO_PKG_VERSION") {
+                return ArtifactCacheKey::new(source, environment, limits);
+            }
+            #[cfg(test)]
+            {
+                ArtifactCacheKey::for_engine_version(
+                    source,
+                    environment,
+                    limits,
+                    fingerprint_engine_version,
+                )
+            }
+            #[cfg(not(test))]
+            {
+                ArtifactCacheKey::new(source, environment, limits)
+            }
+        });
+        let mut callbacks = LocalAnalysisCallbacks {
+            artifacts: &mut self.artifacts,
+            requests: &mut requests,
+            artifact_cache: self.state.artifact_cache.clone(),
+            observer,
+            fingerprint,
+        };
+        let mut candidates = self
             .sources
             .in_path_order()
-            .filter(|(path, _)| self.artifacts.needs_analysis(path))
-            .map(|(path, _)| path.to_owned())
-            .collect();
-        let mut requests = Vec::new();
-        let mut uncached = Vec::new();
-        for pending_path in &pending {
-            let Some(source) = self.sources.get(pending_path) else {
-                continue;
-            };
-            match self.check_cache(source, observer) {
-                CacheLookup::Hit(lowered) => {
-                    requests.extend(self.record_lowered(pending_path, lowered));
-                }
-                CacheLookup::Miss(key) => {
-                    uncached.push(LocalJob {
-                        path: pending_path.clone(),
-                        source: source.clone(),
-                        key,
-                    });
-                }
-            }
-        }
-
-        let artifact_cache = self.state.artifact_cache.clone();
-        let artifacts = &mut self.artifacts;
-        let mut release = |result: execution::LocalJobResult| {
-            match result.result {
-                Ok(lowered) => {
-                    artifacts::insert_and_notify(&artifact_cache, result.key, &lowered, observer);
-                    requests.extend(artifacts.record_lowered(&result.path, lowered));
-                }
-                Err(error) => {
-                    artifacts.record_parse_failure(result.path, error);
-                }
-            }
-            observer.observe(ExecutionEvent::Merged);
-        };
+            .map(|(path, source)| LocalJobCandidate {
+                path: path.clone(),
+                source: source.clone(),
+            });
         executor
             .execute(
-                Box::new(uncached.into_iter()),
+                &mut candidates,
                 worker_count,
                 &self.state.lowerer,
                 observer,
-                &mut release,
+                &mut callbacks,
             )
             .map_err(ProjectInputError::LocalExecution)?;
+        drop(callbacks);
         requests.sort_by(|left, right| {
             (
                 left.importer().as_str(),

@@ -21,20 +21,30 @@ pub(super) struct LocalJob {
     pub(super) key: ArtifactCacheKey,
 }
 
+pub(super) struct LocalJobCandidate {
+    pub(super) path: ProjectRelativePath,
+    pub(super) source: SourceFile,
+}
+
 pub(super) struct LocalJobResult {
     pub(super) path: ProjectRelativePath,
     pub(super) key: ArtifactCacheKey,
     pub(super) result: Result<LoweredSource, ParseDiagnostic>,
 }
 
+pub(super) trait LocalJobCallbacks {
+    fn prepare(&mut self, candidate: LocalJobCandidate) -> Option<LocalJob>;
+    fn release(&mut self, result: LocalJobResult);
+}
+
 pub(super) trait LocalJobExecutor {
     fn execute(
         &self,
-        jobs: Box<dyn Iterator<Item = LocalJob>>,
+        candidates: &mut dyn Iterator<Item = LocalJobCandidate>,
         worker_limit: NonZeroUsize,
         lowerer: &Lowerer,
         observer: &dyn ExecutionObserver,
-        release: &mut dyn FnMut(LocalJobResult),
+        callbacks: &mut dyn LocalJobCallbacks,
     ) -> Result<(), LocalExecutionError>;
 }
 
@@ -171,28 +181,32 @@ pub(super) struct ThreadLocalJobExecutor;
 impl LocalJobExecutor for ThreadLocalJobExecutor {
     fn execute(
         &self,
-        jobs: Box<dyn Iterator<Item = LocalJob>>,
+        candidates: &mut dyn Iterator<Item = LocalJobCandidate>,
         worker_limit: NonZeroUsize,
         lowerer: &Lowerer,
         observer: &dyn ExecutionObserver,
-        release: &mut dyn FnMut(LocalJobResult),
+        callbacks: &mut dyn LocalJobCallbacks,
     ) -> Result<(), LocalExecutionError> {
-        let all_jobs: Vec<LocalJob> = jobs.collect();
-        if all_jobs.is_empty() {
-            return Ok(());
-        }
-        let worker_count = worker_limit.get().min(all_jobs.len()).max(1);
-        let bound =
-            outstanding_job_bound(NonZeroUsize::new(worker_count).unwrap_or(NonZeroUsize::MIN));
+        let worker_count = worker_limit.get().max(1);
+        let bound = outstanding_job_bound(worker_limit);
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(worker_count)
             .build()
             .map_err(|_| LocalExecutionError::WorkerPanic)?;
-        let mut pending = all_jobs.into_iter();
-        loop {
-            let batch = pending.by_ref().take(bound).collect::<Vec<_>>();
+        let mut exhausted = false;
+        while !exhausted {
+            let mut batch = Vec::with_capacity(bound);
+            while batch.len() < bound {
+                let Some(candidate) = candidates.next() else {
+                    exhausted = true;
+                    break;
+                };
+                if let Some(job) = callbacks.prepare(candidate) {
+                    batch.push(job);
+                }
+            }
             if batch.is_empty() {
-                break;
+                continue;
             }
             for _ in &batch {
                 observer.observe(ExecutionEvent::Submitted);
@@ -215,7 +229,7 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
                     .collect::<Vec<_>>()
             });
             for result in results {
-                release(result);
+                callbacks.release(result);
             }
         }
         Ok(())
@@ -240,13 +254,13 @@ pub struct ControlledLocalJobExecutor(pub ControlledReleaseOrder);
 impl LocalJobExecutor for ControlledLocalJobExecutor {
     fn execute(
         &self,
-        jobs: Box<dyn Iterator<Item = LocalJob>>,
+        candidates: &mut dyn Iterator<Item = LocalJobCandidate>,
         _worker_limit: NonZeroUsize,
         lowerer: &Lowerer,
         observer: &dyn ExecutionObserver,
-        release: &mut dyn FnMut(LocalJobResult),
+        callbacks: &mut dyn LocalJobCallbacks,
     ) -> Result<(), LocalExecutionError> {
-        let all: Vec<_> = jobs.collect();
+        let all: Vec<_> = candidates.collect();
         let indexes: Vec<usize> = match self.0 {
             ControlledReleaseOrder::Forward => (0..all.len()).collect(),
             ControlledReleaseOrder::Reverse => (0..all.len()).rev().collect(),
@@ -257,14 +271,17 @@ impl LocalJobExecutor for ControlledLocalJobExecutor {
         };
         let mut jobs: Vec<_> = all.into_iter().map(Some).collect();
         for index in indexes {
-            let job = jobs[index].take().expect("release index is unique");
+            let candidate = jobs[index].take().expect("release index is unique");
+            let Some(job) = callbacks.prepare(candidate) else {
+                continue;
+            };
             observer.observe(ExecutionEvent::Submitted);
             observer.observe(ExecutionEvent::Started);
             observer.observe(ExecutionEvent::ParseAttempted);
             observer.observe(ExecutionEvent::LowerAttempted);
             let result = lowerer.lower_source(&job.source);
             observer.observe(ExecutionEvent::Finished);
-            release(LocalJobResult {
+            callbacks.release(LocalJobResult {
                 path: job.path,
                 key: job.key,
                 result,

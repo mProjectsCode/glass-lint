@@ -29,7 +29,7 @@ made by this audit.
 
 ### Local execution admission
 
-#### [ ] READ-097 — Preserve the bounded job window through local execution
+#### [x] READ-097 — Preserve the bounded job window through local execution
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -54,7 +54,14 @@ ordering, cache-hit handling, observer accounting, and result merging
 unchanged. Delete the `uncached` and `all_jobs` whole-project materialization
 once one execution owner controls admission and batching.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Local execution now streams source candidates into the
+executor. A session-owned callback filters completed artifacts, handles cache
+hits immediately, and admits only lowering jobs into the bounded worker
+window; the executor no longer collects the complete uncached project before
+starting work.
+
+**Verification:** `cargo test -p glass-lint-core project::tests --lib`
+(48 passed) and `make fmt && make ci` (passed).
 
 ### Local execution errors
 
@@ -152,7 +159,7 @@ error exist without an unwind boundary. The input model also retains values
 after their identity has been reduced to a project-owned key, and one stale
 error variant survives after the request-key contract replaced it.
 
-No findings are marked applied.
+READ-097 is marked applied above.
 
 ## Open Questions
 
