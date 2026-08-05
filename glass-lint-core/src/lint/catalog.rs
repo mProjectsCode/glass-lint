@@ -70,11 +70,12 @@ impl RuleCatalog {
         let (rules, rule_ids): (Vec<_>, Vec<_>) = rules_and_ids.into_iter().unzip();
 
         // Compile once into immutable records (no declarations retained).
-        let provider_compile_id =
-            RuleId::parse(format!("{provider}:compile")).expect("valid provider and name");
         let records = compile_records(&rules).map_err(|error| match error {
-            CompiledCatalogError::InvalidMatcher(message) => {
-                ProviderCatalogError::InvalidRule(provider_compile_id.clone(), message)
+            CompiledCatalogError::InvalidMatcher { rule_id, message } => {
+                ProviderCatalogError::InvalidRule(
+                    RuleId::parse(format!("{provider}:{rule_id}")).expect("valid rule ID"),
+                    message,
+                )
             }
             CompiledCatalogError::InvalidQuery {
                 rule_id,

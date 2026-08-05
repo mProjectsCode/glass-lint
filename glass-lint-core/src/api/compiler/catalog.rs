@@ -29,7 +29,10 @@ pub(crate) fn compile_records(
                         message: qbe.to_string(),
                     },
                 },
-                _ => CompiledCatalogError::InvalidMatcher(e.to_string()),
+                _ => CompiledCatalogError::InvalidMatcher {
+                    rule_id: rule.id().to_owned(),
+                    message: e.to_string(),
+                },
             })
         })
         .collect::<Result<Vec<_>, _>>()

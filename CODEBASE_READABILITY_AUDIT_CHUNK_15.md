@@ -109,7 +109,7 @@ storage after all explanation callers use the owner.
 
 ### Catalog and selection boundaries
 
-#### [ ] READ-076 — Keep the offending rule ID on every catalog compilation error
+#### [x] READ-076 — Keep the offending rule ID on every catalog compilation error
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -133,7 +133,13 @@ the compiler. Preserve the existing structured query diagnostic code/message,
 provider namespacing, and declaration order; remove the synthetic compile ID
 once the real owner is retained.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `CompiledCatalogError::InvalidMatcher` now carries the local
+rule ID alongside its message. Provider catalog conversion qualifies that ID
+directly and no longer fabricates a `provider:compile` sentinel.
+
+**Verification:** `cargo test -p glass-lint-core api::compiler --lib` and
+`cargo test -p glass-lint-core lint::catalog --lib`; `make fmt && make ci`
+(all passed).
 
 #### [ ] READ-077 — Validate selected rule indices and ordering at the selection boundary
 
@@ -203,7 +209,8 @@ ordering/representation assumptions to callers. Small domain owners for
 dimensions, lifecycle endpoints, catalog errors, and selections would make
 the compiler easier to extend without adding another matcher path.
 
-No findings are marked applied.
+READ-074, READ-076, and READ-078 are marked applied above; the remaining
+findings in this chunk are open.
 
 ## Open Questions
 

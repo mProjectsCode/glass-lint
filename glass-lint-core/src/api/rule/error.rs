@@ -62,7 +62,7 @@ pub enum MatcherBuildError {
 /// Catalog-level rule identity failure.
 pub enum CompiledCatalogError {
     /// A rule declaration could not be lowered into a semantic query.
-    InvalidMatcher(String),
+    InvalidMatcher { rule_id: String, message: String },
     /// A rule query failed compilation with a structured diagnostic.
     InvalidQuery {
         rule_id: String,
@@ -134,7 +134,9 @@ impl Error for MatcherBuildError {}
 impl fmt::Display for CompiledCatalogError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidMatcher(message) => write!(formatter, "invalid matcher: {message}"),
+            Self::InvalidMatcher { rule_id, message } => {
+                write!(formatter, "rule `{rule_id}`: invalid matcher: {message}")
+            }
             Self::InvalidQuery {
                 rule_id,
                 diagnostic,
