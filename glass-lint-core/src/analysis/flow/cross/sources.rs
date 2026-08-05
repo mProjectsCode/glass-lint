@@ -189,6 +189,29 @@ impl FlowSources {
 
 type SourceIndex = BoundTargetIndex<FlowId>;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PropagationAdmission {
+    Inserted,
+    Duplicate,
+    Full,
+}
+
+fn admit_propagation(
+    pending: &mut VecDeque<PropagationItem>,
+    seen: &mut BTreeSet<PropagationItem>,
+    entry: PropagationItem,
+) -> PropagationAdmission {
+    if seen.contains(&entry) {
+        return PropagationAdmission::Duplicate;
+    }
+    if seen.len() >= MAX_PENDING {
+        return PropagationAdmission::Full;
+    }
+    seen.insert(entry);
+    pending.push_back(entry);
+    PropagationAdmission::Inserted
+}
+
 /// Build a per-module source index mapping typed call targets to flow IDs.
 fn build_source_index(
     flows: &HashMap<FlowId, &CompiledObjectFlow>,
@@ -282,12 +305,12 @@ impl FlowSources {
         let mut pending_seen = BTreeSet::<PropagationItem>::new();
 
         for (key, candidate) in self.propagation_entries() {
-            if pending_seen.len() >= MAX_PENDING {
-                return true;
-            }
             let entry = PropagationItem { key, candidate };
-            if pending_seen.insert(entry) {
-                pending.push_back(entry);
+            if matches!(
+                admit_propagation(&mut pending, &mut pending_seen, entry),
+                PropagationAdmission::Full
+            ) {
+                return true;
             }
         }
 
@@ -304,22 +327,18 @@ impl FlowSources {
                         if !budget.try_push() {
                             return true;
                         }
-                        if pending_seen.len() >= MAX_PENDING {
-                            return true;
-                        }
                         let entry = PropagationItem {
                             key: to_key,
                             candidate: item.candidate,
                         };
-                        if pending_seen.insert(entry) {
-                            pending.push_back(entry);
+                        if matches!(
+                            admit_propagation(&mut pending, &mut pending_seen, entry),
+                            PropagationAdmission::Full
+                        ) {
+                            return true;
                         }
                     }
                 }
-            }
-
-            if pending.len() >= MAX_PENDING {
-                return true;
             }
         }
 

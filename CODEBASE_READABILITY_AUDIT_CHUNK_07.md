@@ -100,7 +100,7 @@ and matching now dispatches directly on the origin.
 cross-flow origin-mode tests, workspace checks, end-to-end/provider harnesses,
 doctests, generated-rule validation, and examples.
 
-#### [ ] READ-039 — Return typed admission outcomes from bounded worklists
+#### [x] READ-039 — Return typed admission outcomes from bounded worklists
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -129,7 +129,16 @@ deduplication, total-retained versus pending bounds, monotone candidate
 propagation, source-less alternatives, and conservative incomplete outcomes
 when a genuinely new context or candidate is rejected.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Context admission now returns `Inserted`, `Duplicate`, or
+`Full`, with exhaustion recorded only for a rejected new context. Cross-flow
+run-loop stop detection uses that explicit state, and source propagation uses
+the same duplicate-before-capacity ordering for its bounded frontier. Exact
+capacity can therefore drain without being misclassified as incomplete; the
+retained-count helper is test-only.
+
+**Verification:** `make fmt && make ci` passes, including 779 core tests,
+cross-flow worklist/frontier tests, workspace checks, end-to-end/provider
+harnesses, doctests, generated-rule validation, and examples.
 
 ### Cross-flow state ownership
 

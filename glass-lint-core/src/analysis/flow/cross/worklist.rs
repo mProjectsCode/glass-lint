@@ -28,6 +28,15 @@ pub(super) struct ContextWorklist {
     seen: BTreeSet<CallContext>,
     /// Maximum unique contexts retained before dropping new ones.
     max_retained: usize,
+    /// Set only after a new context is rejected by the retained bound.
+    exhausted: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ContextAdmission {
+    Inserted,
+    Duplicate,
+    Full,
 }
 
 impl ContextWorklist {
@@ -36,24 +45,25 @@ impl ContextWorklist {
             queue: VecDeque::new(),
             seen: BTreeSet::new(),
             max_retained,
+            exhausted: false,
         }
     }
 
     /// Push a context if the total-retained budget allows.
     ///
-    /// Returns whether the context was newly added.  Contexts beyond the
-    /// retained limit are silently dropped (the caller will detect
-    /// exhaustion via [`len`] / [`is_exhausted`]).
-    pub(super) fn push(&mut self, context: CallContext) -> bool {
+    /// Admit one context, distinguishing deduplication from a rejected new
+    /// context at the retained bound.
+    pub(super) fn push(&mut self, context: CallContext) -> ContextAdmission {
+        if self.seen.contains(&context) {
+            return ContextAdmission::Duplicate;
+        }
         if self.seen.len() >= self.max_retained {
-            return false;
+            self.exhausted = true;
+            return ContextAdmission::Full;
         }
-        if self.seen.insert(context.clone()) {
-            self.queue.push_back(context);
-            true
-        } else {
-            false
-        }
+        self.seen.insert(context.clone());
+        self.queue.push_back(context);
+        ContextAdmission::Inserted
     }
 
     pub(super) fn pop_front(&mut self) -> Option<CallContext> {
@@ -65,12 +75,13 @@ impl ContextWorklist {
     ///
     /// This is the meaningful bound for worklist memory: it counts every
     /// unique context ever inserted, not only the pending frontier.
+    #[cfg(test)]
     pub(super) fn len(&self) -> usize {
         self.seen.len()
     }
 
     pub(super) fn is_exhausted(&self) -> bool {
-        self.seen.len() >= self.max_retained
+        self.exhausted
     }
 
     pub(super) fn enqueue_parameters(

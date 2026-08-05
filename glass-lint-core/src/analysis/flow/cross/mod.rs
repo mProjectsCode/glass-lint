@@ -123,13 +123,16 @@ struct CrossWorklist<'a, 'arena> {
 
 impl CrossWorklist<'_, '_> {
     fn run(&mut self) -> WorklistStop {
+        if self.worklist.is_exhausted() {
+            return WorklistStop::ContextLimit;
+        }
         while let Some(context) = self.worklist.pop_front() {
             self.projections = self.projections.saturating_add(1);
             if !self.step_budget.try_push() {
                 return WorklistStop::StepBudgetExhausted;
             }
             self.project_context(&context);
-            if self.worklist.len() >= MAX_CONTEXTS {
+            if self.worklist.is_exhausted() {
                 return WorklistStop::ContextLimit;
             }
         }
@@ -508,9 +511,9 @@ mod tests {
         assert_eq!(wl.len(), 0);
 
         // Push two contexts
-        assert!(wl.push(context(1, 1)));
+        assert_eq!(wl.push(context(1, 1)), worklist::ContextAdmission::Inserted);
         assert_eq!(wl.len(), 1);
-        assert!(wl.push(context(1, 2)));
+        assert_eq!(wl.push(context(1, 2)), worklist::ContextAdmission::Inserted);
         assert_eq!(wl.len(), 2);
 
         // Pop one — seen still retains both, so len is still 2
@@ -518,18 +521,22 @@ mod tests {
         assert_eq!(wl.len(), 2);
 
         // Duplicate push does not increase retained count
-        assert!(!wl.push(context(1, 1)));
+        assert_eq!(
+            wl.push(context(1, 1)),
+            worklist::ContextAdmission::Duplicate
+        );
         assert_eq!(wl.len(), 2);
     }
 
     #[test]
     fn worklist_respects_max_retained_limit() {
         let mut wl = ContextWorklist::new(3);
-        assert!(wl.push(context(1, 1)));
-        assert!(wl.push(context(1, 2)));
-        assert!(wl.push(context(1, 3)));
+        assert_eq!(wl.push(context(1, 1)), worklist::ContextAdmission::Inserted);
+        assert_eq!(wl.push(context(1, 2)), worklist::ContextAdmission::Inserted);
+        assert_eq!(wl.push(context(1, 3)), worklist::ContextAdmission::Inserted);
+        assert!(!wl.is_exhausted());
         // Fourth unique context hits the limit
-        assert!(!wl.push(context(1, 4)));
+        assert_eq!(wl.push(context(1, 4)), worklist::ContextAdmission::Full);
         assert_eq!(wl.len(), 3);
         assert!(wl.is_exhausted());
     }
@@ -538,7 +545,7 @@ mod tests {
     fn worklist_is_exhausted_false_below_limit() {
         let mut wl = ContextWorklist::new(5);
         assert!(!wl.is_exhausted());
-        wl.push(context(1, 1));
+        assert_eq!(wl.push(context(1, 1)), worklist::ContextAdmission::Inserted);
         assert!(!wl.is_exhausted());
     }
 }
