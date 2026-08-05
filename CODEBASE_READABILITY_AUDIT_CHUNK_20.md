@@ -137,7 +137,7 @@ qualified ID directly. Outside-project targets retain their semantic path.
 
 ### Project input errors
 
-#### [ ] READ-100 — Remove the unreachable `UnknownImporter` error variant
+#### [x] READ-100 — Remove the unreachable `UnknownImporter` error variant
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -145,22 +145,23 @@ qualified ID directly. Outside-project targets retain their semantic path.
 - **Category:** Dead API / Error taxonomy / Ownership
 - **Location:** `glass-lint-core/src/project/types/input.rs:492-521`
 
-`ProjectInputError::UnknownImporter` has no construction site in the workspace;
-the active resolution boundary validates the complete
-`ResolutionRequestKey` against `AuthoredRequestTable` and returns
-`UnknownRequest`, while source admission rejects duplicate or invalid paths.
-Keeping both variants leaves callers with two names for a distinction the
-current session no longer produces and makes the public error taxonomy imply
-an unimplemented importer-validation path.
+`ProjectInputError::UnknownImporter` was initially identified as unreachable;
+the subsequent READ-084 fix intentionally made authored-request qualification
+fallible and added a construction site and regression test for a missing
+importer module.
 
-**Recommendation:** Remove `UnknownImporter` and its display branch after
-confirming downstream consumers do not pattern-match it, or reintroduce it
-only at a specific importer-validation boundary that can actually construct
-it. Preserve `UnknownRequest` for unauthored request identities and update
-public documentation/tests in the same migration; do not add a compatibility
-variant merely to retain the obsolete name.
+**Recommendation:** Re-evaluate this finding if the importer-module invariant
+changes. While qualification can explicitly report a missing importer, retain
+`UnknownImporter` as the typed error for that boundary and preserve
+`UnknownRequest` for unauthored request identities.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Superseded by READ-084. The missing-importer error is now an
+intentional construction path owned by authored-request qualification, so the
+variant is retained rather than removing a live invariant check.
+
+**Verification:** `cargo test -p glass-lint-core
+project::session::artifacts::tests --lib` (3 passed) and the subsequent
+`make fmt && make ci` gates recorded for READ-084 and READ-099 (passed).
 
 ## Systemic Themes
 
@@ -172,7 +173,8 @@ error exist without an unwind boundary. The input model also retains values
 after their identity has been reduced to a project-owned key, and one stale
 error variant survives after the request-key contract replaced it.
 
-READ-097, READ-098, and READ-099 are marked applied above.
+READ-097, READ-098, READ-099, and READ-100 are marked applied above;
+READ-100 is explicitly superseded by READ-084.
 
 ## Open Questions
 
