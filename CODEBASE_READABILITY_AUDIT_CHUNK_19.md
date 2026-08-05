@@ -22,7 +22,7 @@ made by this audit.
 
 ### Environment registration
 
-#### [ ] READ-094 — Make bulk global registration atomic or explicitly fallible
+#### [x] READ-094 — Make bulk global registration atomic or explicitly fallible
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -47,7 +47,13 @@ insertion, deterministic ordering, and the existing identifier validation
 rules. Delete the per-item mutation loop once one owner establishes the batch
 commit boundary.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `Environment::add_globals` now validates the complete input
+into a temporary ordered set before mutating the environment. Failed batches
+leave prior state unchanged, while successful registration remains idempotent
+and deterministic; added an atomicity regression test.
+
+**Verification:** `cargo test -p glass-lint-core environment::tests --lib`
+(13 passed) and `make fmt && make ci` (passed).
 
 ### ECMAScript feature detection
 

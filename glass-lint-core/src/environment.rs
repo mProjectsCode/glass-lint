@@ -163,9 +163,11 @@ impl Environment {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        for name in names {
-            self.add_global(name)?;
-        }
+        let names = names
+            .into_iter()
+            .map(|name| Self::validated_identifier(&name.into()))
+            .collect::<Result<BTreeSet<_>, _>>()?;
+        self.inner_mut().global_bindings.extend(names);
         Ok(())
     }
 
@@ -566,5 +568,12 @@ mod tests {
         assert!(names.contains(&"alpha"));
         assert!(names.contains(&"beta"));
         assert!(names.contains(&"Math"));
+    }
+
+    #[test]
+    fn bulk_global_registration_is_atomic_on_validation_failure() {
+        let mut env = Environment::default();
+        assert!(env.add_globals(["alpha", ""]).is_err());
+        assert!(!env.global_bindings().any(|name| name == "alpha"));
     }
 }
