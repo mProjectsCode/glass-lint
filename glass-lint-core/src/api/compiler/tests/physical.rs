@@ -4,6 +4,7 @@ use crate::api::{
         error::PhysicalPlanValidationError,
         normalize::normalize_query_decl,
         normalized::{ArgumentConstraintGroup, CanonicalArgumentConstraints},
+        object_flow::CompiledObjectFlow,
         physical::{
             PhysicalPlan, PhysicalRoot, optimize_roots, plan_normalized, validate_physical_plan,
         },
@@ -348,6 +349,24 @@ fn requirements_must_match_executable_roots() {
     assert_eq!(
         validate_physical_plan(&plan),
         Err(PhysicalPlanValidationError::RequirementsMismatch)
+    );
+}
+
+#[test]
+fn lifecycle_evidence_bound_is_validated_at_the_physical_boundary() {
+    let flow = CompiledObjectFlow::test_with_evidence_counts(
+        limits::MAX_LIFECYCLE_EVENTS + 1,
+        limits::MAX_LIFECYCLE_SINKS,
+    );
+    let roots = Box::new([PhysicalRoot::Lifecycle { flow }]);
+    let plan = PhysicalPlan::new(roots, PlanRequirements::default());
+
+    assert_eq!(
+        validate_physical_plan(&plan),
+        Err(PhysicalPlanValidationError::ExcessiveLifecycleEvidence {
+            requirements: limits::MAX_LIFECYCLE_EVENTS + 1,
+            sinks: limits::MAX_LIFECYCLE_SINKS,
+        })
     );
 }
 

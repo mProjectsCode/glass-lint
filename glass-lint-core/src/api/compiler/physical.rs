@@ -163,6 +163,14 @@ impl PhysicalRoot {
                 if !flow.has_sources() {
                     return Err(PhysicalPlanValidationError::InvalidLifecycleRoot);
                 }
+                if flow.requirement_count() > limits::MAX_LIFECYCLE_EVENTS
+                    || flow.sink_count() > limits::MAX_LIFECYCLE_SINKS
+                {
+                    return Err(PhysicalPlanValidationError::ExcessiveLifecycleEvidence {
+                        requirements: flow.requirement_count(),
+                        sinks: flow.sink_count(),
+                    });
+                }
             }
         }
         Ok(())

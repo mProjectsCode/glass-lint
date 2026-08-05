@@ -10,6 +10,7 @@ pub(crate) enum PhysicalPlanValidationError {
     NonCanonicalConstraints,
     UnavailablePrimaryEvidence,
     InvalidLifecycleRoot,
+    ExcessiveLifecycleEvidence { requirements: usize, sinks: usize },
     RequirementsMismatch,
     ExcessiveArgumentGroups(usize),
     ExcessivePredicateCount(usize),
@@ -30,6 +31,13 @@ impl fmt::Display for PhysicalPlanValidationError {
             }
             Self::UnavailablePrimaryEvidence => f.write_str("primary evidence symbol is empty"),
             Self::InvalidLifecycleRoot => f.write_str("lifecycle root is malformed"),
+            Self::ExcessiveLifecycleEvidence {
+                requirements,
+                sinks,
+            } => write!(
+                f,
+                "lifecycle evidence has {requirements} requirements and {sinks} sinks, exceeding the indexed bound"
+            ),
             Self::RequirementsMismatch => {
                 f.write_str("physical roots and executable requirements disagree")
             }

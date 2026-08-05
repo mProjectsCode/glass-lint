@@ -21,7 +21,7 @@ made by this audit.
 
 ### Lifecycle evidence bounds
 
-#### [ ] READ-056 — Enforce the lifecycle evidence index bound at the owner
+#### [x] READ-056 — Enforce the lifecycle evidence index bound at the owner
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -47,7 +47,13 @@ Preserve compact deterministic readiness for supported flows, conservative
 fail-closed behavior for oversized flows, and separate possible witnesses
 from definite completion.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added physical-plan validation for lifecycle requirement and
+sink counts beyond the 64-entry indexed-evidence domain. Oversized roots now
+fail with a typed `ExcessiveLifecycleEvidence` error carrying both counts,
+before projector state can silently reject an out-of-range index; the compact
+readiness mask remains unchanged for supported flows.
+
+**Verification:** Added a physical-boundary regression; `cargo test -p glass-lint-core analysis::model::flow --lib` (16 passed); `make fmt && make ci` (passed).
 
 ### Flow-limit scaling
 

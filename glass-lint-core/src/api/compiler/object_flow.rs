@@ -82,6 +82,31 @@ impl CompiledObjectFlow {
         self.requirement_mode
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_with_evidence_counts(requirements: usize, sinks: usize) -> Self {
+        Self {
+            symbol: "test".into(),
+            sources: vec![CompiledObjectSource {
+                target: LifecycleCallTarget::Global("source".into()),
+                arguments: Vec::new(),
+            }],
+            requirements: (0..requirements)
+                .map(|_| CompiledObjectRequirement::PropertyWrite {
+                    property: "property".into(),
+                    value: ValueMatcher::any_value(),
+                })
+                .collect(),
+            sinks: (0..sinks)
+                .map(|_| CompiledObjectSink {
+                    target: LifecycleCallTarget::Global("sink".into()),
+                    args: CompiledObjectSinkArguments::Any,
+                })
+                .collect(),
+            requirement_mode: RequirementMode::AllRequired,
+            completion_mode: CompletionMode::AllSinks,
+        }
+    }
+
     /// Build a compiled flow directly from the normalized lifecycle IR.
     pub(crate) fn from_normalized_lifecycle(lc: &NormalizedLifecycle, symbol: &str) -> Self {
         let (requirements, requirement_mode) = lc.condition().map_or_else(
