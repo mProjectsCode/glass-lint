@@ -108,7 +108,7 @@ defaults, and deserialization.
 **Verification:** `cargo test -p glass-lint-core lint::selection::tests --lib`
 (14 passed) and `make fmt && make ci` (passed).
 
-#### [ ] READ-082 — Encapsulate confidence ranking instead of casting enum variants
+#### [x] READ-082 — Encapsulate confidence ranking instead of casting enum variants
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -131,7 +131,14 @@ High/Medium/Low threshold semantics and serialized spellings, and delete the
 raw discriminant cast so future taxonomy changes cannot alter selection by
 accident.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `Confidence::meets` with an explicit semantic rank
+and routed minimum-confidence selection through it, removing the raw enum
+discriminant cast. Added threshold-ordering coverage for all confidence
+levels.
+
+**Verification:** `cargo test -p glass-lint-core
+api::rule::taxonomy::tests --lib` (1 passed) and `make fmt && make ci`
+(passed).
 
 ### Project session and artifact transitions
 

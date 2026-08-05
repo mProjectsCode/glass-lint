@@ -122,7 +122,7 @@ impl Linter {
                 RuleBaseline::All => true,
                 RuleBaseline::None => false,
                 RuleBaseline::MinimumConfidence(confidence) => {
-                    catalog.records[index].confidence as u8 <= confidence as u8
+                    catalog.records[index].confidence.meets(confidence)
                 }
             };
 

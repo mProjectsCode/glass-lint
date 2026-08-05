@@ -68,4 +68,31 @@ impl Confidence {
             Self::Low => "low",
         }
     }
+
+    #[must_use]
+    /// Whether this confidence satisfies a minimum-confidence threshold.
+    pub fn meets(self, minimum: Self) -> bool {
+        self.rank() <= minimum.rank()
+    }
+
+    fn rank(self) -> u8 {
+        match self {
+            Self::High => 0,
+            Self::Medium => 1,
+            Self::Low => 2,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Confidence;
+
+    #[test]
+    fn confidence_thresholds_follow_semantic_strength() {
+        assert!(Confidence::High.meets(Confidence::High));
+        assert!(Confidence::High.meets(Confidence::Medium));
+        assert!(Confidence::Medium.meets(Confidence::Medium));
+        assert!(!Confidence::Low.meets(Confidence::Medium));
+    }
 }
