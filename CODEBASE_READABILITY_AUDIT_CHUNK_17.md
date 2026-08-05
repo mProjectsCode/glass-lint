@@ -159,7 +159,7 @@ api::compiler::tests::physical --lib` (32 passed) and `make fmt && make ci`
 
 ### Physical plan boundary
 
-#### [ ] READ-089 — Construct only validated physical plans
+#### [x] READ-089 — Construct only validated physical plans
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -184,7 +184,13 @@ tests, and the ability to validate deliberately malformed test fixtures; move
 the production call path to one checked owner and remove the unchecked plan
 construction from normal compilation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added fallible `PhysicalPlan::try_new` as the production
+construction boundary. Query plans and the merged catalog plan now validate
+roots and preparation requirements before becoming runtime values; the raw
+constructor remains test-only for deliberately malformed validation fixtures.
+
+**Verification:** `cargo test -p glass-lint-core api::compiler::tests --lib`
+(144 passed) and `make fmt && make ci` (passed).
 
 ## Systemic Themes
 

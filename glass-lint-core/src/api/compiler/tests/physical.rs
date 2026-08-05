@@ -19,13 +19,13 @@ use crate::api::{
 
 fn physical_summary(decl: &QueryDecl) -> String {
     let nq = normalize_query_decl(decl).unwrap();
-    let plan = plan_normalized(&nq);
+    let plan = plan_normalized(&nq).unwrap();
     plan.summary()
 }
 
 fn physical_roots_from_decl(decl: &QueryDecl) -> Vec<PhysicalRoot> {
     let nq = normalize_query_decl(decl).unwrap();
-    let plan = plan_normalized(&nq);
+    let plan = plan_normalized(&nq).unwrap();
     plan.roots().to_vec()
 }
 
@@ -209,7 +209,7 @@ fn alternatives_from_any_produce_multiple_roots() {
         },
     );
     let nq = normalize_query_decl(&query).unwrap();
-    let plan = plan_normalized(&nq);
+    let plan = plan_normalized(&nq).unwrap();
     assert_eq!(plan.roots().len(), 2);
     for root in plan.roots() {
         assert!(
@@ -237,7 +237,7 @@ fn plan_explanation_is_deterministic_and_names_operator_choice() {
     ));
     let query = decl(EventQuery::call_global("fetch").map(EventQuery::into_query));
     let normalized = normalize_query_decl(&query).unwrap();
-    let plan = plan_normalized(&normalized);
+    let plan = plan_normalized(&normalized).unwrap();
     assert!(plan.explain().contains("indexed event=Call"));
     assert!(plan.explain().contains("optimization canonical-root-order"));
     assert_eq!(first, plan.summary());
@@ -248,14 +248,20 @@ fn plan_explanation_is_deterministic_and_names_operator_choice() {
 fn optimizer_deduplicates_only_identical_evidence_bearing_roots() {
     let query = decl(EventQuery::call_global("fetch").map(EventQuery::into_query));
     let normalized = normalize_query_decl(&query).unwrap();
-    let root = plan_normalized(&normalized).roots()[0].clone();
+    let root = plan_normalized(&normalized).unwrap().roots()[0].clone();
     assert_eq!(optimize_roots(vec![root.clone(), root]).len(), 1);
 
     let first = decl(EventQuery::call_global("fetch").map(EventQuery::into_query));
     let second = decl(EventQuery::call_global("fetch").map(EventQuery::into_query))
         .with_evidence(MatchKind::CallArgument, "fetch-argument");
-    let first = plan_normalized(&normalize_query_decl(&first).unwrap()).roots()[0].clone();
-    let second = plan_normalized(&normalize_query_decl(&second).unwrap()).roots()[0].clone();
+    let first = plan_normalized(&normalize_query_decl(&first).unwrap())
+        .unwrap()
+        .roots()[0]
+        .clone();
+    let second = plan_normalized(&normalize_query_decl(&second).unwrap())
+        .unwrap()
+        .roots()[0]
+        .clone();
     assert_eq!(optimize_roots(vec![first, second]).len(), 2);
 }
 
@@ -306,6 +312,10 @@ fn empty_identity_fails_validation() {
             symbol: "test".into(),
         },
     }]);
+    assert_eq!(
+        PhysicalPlan::try_new(roots.clone(), PlanRequirements::default()),
+        Err(PhysicalPlanValidationError::ImpossibleDimensions)
+    );
     let plan = PhysicalPlan::new(roots, PlanRequirements::default());
     assert_eq!(
         validate_physical_plan(&plan),

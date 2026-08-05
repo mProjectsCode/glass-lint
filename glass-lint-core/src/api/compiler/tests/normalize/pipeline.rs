@@ -3,7 +3,7 @@ use super::*;
 fn normalized_query_compiles_through_full_pipeline() {
     let d = EventQuery::call_global("fetch").unwrap().into_query();
     let nq = normalize::normalize_query_decl(&d).unwrap();
-    let _plan = crate::api::compiler::physical::plan_normalized(&nq);
+    let _plan = crate::api::compiler::physical::plan_normalized(&nq).unwrap();
 }
 
 #[test]

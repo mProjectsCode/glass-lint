@@ -177,6 +177,19 @@ pub(crate) struct PhysicalPlan {
 }
 
 impl PhysicalPlan {
+    pub(crate) fn try_new(
+        roots: Box<[PhysicalRoot]>,
+        requirements: PlanRequirements,
+    ) -> Result<Self, PhysicalPlanValidationError> {
+        let plan = Self {
+            roots,
+            requirements,
+        };
+        validate_physical_plan(&plan)?;
+        Ok(plan)
+    }
+
+    #[cfg(test)]
     pub(crate) fn new(roots: Box<[PhysicalRoot]>, requirements: PlanRequirements) -> Self {
         Self {
             roots,
@@ -319,12 +332,14 @@ fn explain_root(root: &PhysicalRoot) -> String {
 // ── Planner ─────────────────────────────────────────────────────────────
 
 /// Plan a normalized query into a [`PhysicalPlan`].
-pub(crate) fn plan_normalized(nq: &NormalizedQuery) -> PhysicalPlan {
+pub(crate) fn plan_normalized(
+    nq: &NormalizedQuery,
+) -> Result<PhysicalPlan, PhysicalPlanValidationError> {
     let emission = nq.emission();
     let kind = emission.kind();
     let symbol = emission.symbol();
     let roots = plan_root(nq.root(), kind, symbol);
-    PhysicalPlan::new(roots.into_boxed_slice(), nq.requirements().clone())
+    PhysicalPlan::try_new(roots.into_boxed_slice(), nq.requirements().clone())
 }
 
 fn plan_root(root: &NormalizedRoot, kind: MatchKind, symbol: &str) -> Vec<PhysicalRoot> {

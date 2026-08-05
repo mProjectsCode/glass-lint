@@ -100,7 +100,7 @@ fn witnesses_equal(
 fn empty_rows_produce_no_witnesses() {
     let decl = EventQuery::call_global("fetch").unwrap().into_query();
     let nq = normalize_query_decl(&decl).unwrap();
-    let plan = plan_normalized(&nq);
+    let plan = plan_normalized(&nq).unwrap();
     assert!(witnesses_equal(&nq, &plan, &[]));
     assert!(logical_witnesses(&nq, &[]).is_empty());
     assert!(physical_witnesses(&plan, &[]).is_empty());
@@ -110,7 +110,7 @@ fn empty_rows_produce_no_witnesses() {
 fn matching_rows_produce_witnesses() {
     let decl = EventQuery::call_global("fetch").unwrap().into_query();
     let nq = normalize_query_decl(&decl).unwrap();
-    let plan = plan_normalized(&nq);
+    let plan = plan_normalized(&nq).unwrap();
 
     let rows = vec![row(
         1,
@@ -128,7 +128,7 @@ fn matching_rows_produce_witnesses() {
 fn non_matching_rows_produce_no_witnesses() {
     let decl = EventQuery::call_global("fetch").unwrap().into_query();
     let nq = normalize_query_decl(&decl).unwrap();
-    let plan = plan_normalized(&nq);
+    let plan = plan_normalized(&nq).unwrap();
 
     let rows = vec![row(
         1,
@@ -146,7 +146,7 @@ fn non_matching_rows_produce_no_witnesses() {
 fn duplicate_rows_produce_deduplicated_witnesses() {
     let decl = EventQuery::call_global("fetch").unwrap().into_query();
     let nq = normalize_query_decl(&decl).unwrap();
-    let plan = plan_normalized(&nq);
+    let plan = plan_normalized(&nq).unwrap();
 
     let rows = vec![
         row(
@@ -191,8 +191,8 @@ fn any_branch_order_produces_same_witnesses() {
 
     let nq_a = normalize_query_decl(&decl_a).unwrap();
     let nq_b = normalize_query_decl(&decl_b).unwrap();
-    let plan_a = plan_normalized(&nq_a);
-    let plan_b = plan_normalized(&nq_b);
+    let plan_a = plan_normalized(&nq_a).unwrap();
+    let plan_b = plan_normalized(&nq_b).unwrap();
 
     let rows = vec![
         row(
@@ -226,7 +226,7 @@ fn any_branch_order_produces_same_witnesses() {
 fn unknown_row_produces_possible_witness() {
     let decl = EventQuery::call_global("fetch").unwrap().into_query();
     let nq = normalize_query_decl(&decl).unwrap();
-    let plan = plan_normalized(&nq);
+    let plan = plan_normalized(&nq).unwrap();
 
     let rows = vec![row_unknown(
         1,
@@ -270,7 +270,7 @@ fn unknown_alternative_does_not_erase_complete_witness() {
     )
     .unwrap();
     let nq = normalize_query_decl(&decl).unwrap();
-    let plan = plan_normalized(&nq);
+    let plan = plan_normalized(&nq).unwrap();
 
     let rows = vec![row(
         1,
@@ -297,7 +297,7 @@ fn witnesses_are_sorted_deterministically() {
     )
     .unwrap();
     let nq = normalize_query_decl(&decl).unwrap();
-    let plan = plan_normalized(&nq);
+    let plan = plan_normalized(&nq).unwrap();
 
     let rows = vec![
         row(
@@ -340,7 +340,7 @@ fn constrained_scan_matches_arguments() {
         .unwrap();
     let decl = eq.into_query();
     let nq = normalize_query_decl(&decl).unwrap();
-    let plan = plan_normalized(&nq);
+    let plan = plan_normalized(&nq).unwrap();
 
     let mut args = BTreeMap::new();
     args.insert(
@@ -398,8 +398,8 @@ fn argument_filter_order_produces_same_witnesses() {
 
     let nq_a = normalize_query_decl(&decl_a).unwrap();
     let nq_b = normalize_query_decl(&decl_b).unwrap();
-    let plan_a = plan_normalized(&nq_a);
-    let plan_b = plan_normalized(&nq_b);
+    let plan_a = plan_normalized(&nq_a).unwrap();
+    let plan_b = plan_normalized(&nq_b).unwrap();
 
     let mut args = BTreeMap::new();
     args.insert(
@@ -440,7 +440,7 @@ fn argument_filter_order_produces_same_witnesses() {
 fn returned_subject_produces_support_evidence() {
     let decl = QueryDecl::member_call_returned("create", "send").unwrap();
     let nq = normalize_query_decl(&decl).unwrap();
-    let plan = plan_normalized(&nq);
+    let plan = plan_normalized(&nq).unwrap();
 
     let rows = vec![ReferenceRow {
         event: 42,
@@ -482,7 +482,7 @@ fn different_path_keys_produce_separate_witnesses() {
     )
     .unwrap();
     let nq = normalize_query_decl(&decl).unwrap();
-    let plan = plan_normalized(&nq);
+    let plan = plan_normalized(&nq).unwrap();
 
     let rows = vec![
         row(
@@ -533,7 +533,7 @@ fn lifecycle_reference_matches_logical_and_physical_plans() {
         },
     );
     let normalized = normalize_query_decl(&decl).unwrap();
-    let plan = plan_normalized(&normalized);
+    let plan = plan_normalized(&normalized).unwrap();
     let mut condition_args = BTreeMap::new();
     condition_args.insert(
         ArgumentIndex::new_unchecked(0),

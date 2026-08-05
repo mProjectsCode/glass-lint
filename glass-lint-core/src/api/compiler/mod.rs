@@ -234,14 +234,15 @@ fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildEr
                 ))
             })?;
 
-        let query_plan = physical::plan_normalized(&normalized);
+        let query_plan = physical::plan_normalized(&normalized)
+            .map_err(|e| MatcherBuildError::InvalidLoweredQuery(e.to_string()))?;
         all_roots.extend(query_plan.roots().iter().cloned());
         merged_requirements.merge_from(query_plan.requirements());
     }
 
-    let physical_plan = PhysicalPlan::new(physical::optimize_roots(all_roots), merged_requirements);
-    physical::validate_physical_plan(&physical_plan)
-        .map_err(|e| MatcherBuildError::InvalidLoweredQuery(e.to_string()))?;
+    let physical_plan =
+        PhysicalPlan::try_new(physical::optimize_roots(all_roots), merged_requirements)
+            .map_err(|e| MatcherBuildError::InvalidLoweredQuery(e.to_string()))?;
 
     Ok(physical_plan)
 }
