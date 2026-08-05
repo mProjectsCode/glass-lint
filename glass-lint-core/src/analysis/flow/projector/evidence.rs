@@ -6,11 +6,13 @@
 
 use glass_lint_datastructures::NamePath;
 use smallvec::SmallVec;
+use smol_str::SmolStr;
 
 use crate::{
     analysis::{
         flow::{
             effect::CallEffectRef,
+            planning::FlowMatchView,
             projector::{
                 CallArgInfo, ClassificationEvidence, FactId, FlowState, MatchKind,
                 ObjectFlowProjector, ObjectId, ValueId, history::ReportEvidenceKey,
@@ -36,6 +38,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
         args: &[CallArgInfo],
         event: FactId,
     ) {
+        let matcher = FlowMatchView::new(self.names, self.stream.values());
         let objects: SmallVec<[ObjectId; 4]> = match receiver {
             Some(value) => self.object_for(value).into_iter().collect(),
             None => self.flow_state.objects().collect(),
@@ -48,15 +51,9 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 .collect();
             for key in keys {
                 for (index, member, requirement) in self.plan.member_requirements(key.flow()) {
-                    if (member == chain || chain.last_segment() == member.last_segment())
+                    if FlowMatchView::member_matches(chain, member)
                         && let Some((_member, matchers)) = requirement.member_call()
-                        && matchers.iter().all(|matcher| {
-                            args.get(matcher.index()).is_some_and(|arg| {
-                                matcher
-                                    .predicate()
-                                    .matches(arg, self.names, self.stream.values())
-                            })
-                        })
+                        && matcher.arguments_match(matchers, args)
                     {
                         self.flow_state
                             .record_requirement(key.object(), key.flow(), index, event);
@@ -74,6 +71,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
         args: &[CallArgInfo],
         sink_fact: FactId,
     ) {
+        let matcher = FlowMatchView::new(self.names, self.stream.values());
         let flow_ids = call
             .global_name()
             .and_then(|name| self.plan.global_sink_ids(name))
@@ -96,7 +94,12 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 let matching_sinks =
                     self.plan
                         .matching_sink_indices(flow_id, argument_index, |target| {
-                            call.matches_target(target, self.names)
+                            matcher.target_matches(
+                                target,
+                                call.global_name().map(SmolStr::as_str),
+                                call.chain(),
+                                call.rooted(),
+                            )
                         });
                 if !matching_sinks.is_empty() {
                     for index in matching_sinks {

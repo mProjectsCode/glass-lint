@@ -110,7 +110,7 @@ removed.
 **Verification:** `cargo test -p glass-lint-core analysis::flow::projector --lib`
 (51 passed); `make fmt && make ci` (passed).
 
-### [ ] READ-009 — Centralize flow target and argument matching predicates
+### [x] READ-009 — Centralize flow target and argument matching predicates
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -145,6 +145,16 @@ modules. Delete the repeated chain and argument predicate loops. Guard the
 change with tests for rooted and fallback chains, aliases, dynamic arguments,
 property writes, source identity, and independent possible/definite witnesses
 across local and cross paths.
+
+**Fix Applied:** Added a private `FlowMatchView` that centralizes global and
+rooted-member target identity, full-chain/last-segment member matching, and
+argument predicate evaluation against canonical call arguments and values.
+Local evidence, source transfer, effect matching, and cross-file propagation
+now delegate these predicates while retaining their separate state and
+certainty transitions.
+
+**Verification:** `cargo test -p glass-lint-core analysis::flow --lib`
+(119 passed); `make fmt && make ci` (passed).
 
 ### [ ] READ-010 — Represent path coverage with a path-boundary type
 

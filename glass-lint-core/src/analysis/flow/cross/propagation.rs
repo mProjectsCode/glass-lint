@@ -12,7 +12,7 @@ use crate::{
                 state::{CallContext, CrossFlowState, QualifiedEvent},
             },
             effect::{EffectUse, FunctionEffect},
-            planning::BoundFlowPlan,
+            planning::{BoundFlowPlan, FlowMatchView},
         },
     },
     api::compiler::{CompiledObjectFlow, object_flow::CompletionMode},
@@ -111,21 +111,15 @@ impl UsageProjector<'_, '_> {
         };
 
         let chain = cref.chain();
-        let values = stream.values();
+        let matcher = FlowMatchView::new(self.session.names, stream.values());
         let mut next = self.state.clone();
         for (index, member, requirement) in self
             .flow_plan
             .member_requirements(self.context.state().flow_id())
         {
-            if chain.is_some_and(|c| c == member || c.last_segment() == member.last_segment())
+            if chain.is_some_and(|c| FlowMatchView::member_matches(c, member))
                 && let Some((_member, arguments)) = requirement.member_call()
-                && arguments.iter().all(|matcher| {
-                    call_args.get(matcher.index()).is_some_and(|argument| {
-                        matcher
-                            .predicate()
-                            .matches(argument, self.session.names, values)
-                    })
-                })
+                && matcher.arguments_match(arguments, call_args)
             {
                 next.record_requirement(index, QualifiedEvent::new(self.context.module(), event));
             }
@@ -143,10 +137,18 @@ impl UsageProjector<'_, '_> {
             return;
         };
         let cref = stream.call_effect(event);
+        let matcher = FlowMatchView::new(self.session.names, stream.values());
         let matching_sinks = self.flow_plan.matching_sink_indices(
             self.context.state().flow_id(),
             argument,
-            |target| cref.matches_target(target, self.session.names),
+            |target| {
+                matcher.target_matches(
+                    target,
+                    cref.global_name().map(SmolStr::as_str),
+                    cref.chain(),
+                    cref.rooted(),
+                )
+            },
         );
         if !matching_sinks.is_empty() && self.context.is_crossed() {
             for index in matching_sinks {

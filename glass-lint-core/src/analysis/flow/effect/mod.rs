@@ -19,6 +19,7 @@ use crate::analysis::{
         CallArgInfo, ControlKind, FactId, FactPayload, FactStream, Frozen, FunctionBoundary,
         ParameterBinding, SemanticFact,
     },
+    flow::planning::FlowMatchView,
     model::flow::FunctionTable,
     syntax::SymbolCallProvenance,
     value::{FunctionId, ValueId},
@@ -234,15 +235,12 @@ impl CallEffectRef<'_> {
         target: &crate::api::rule::query::lifecycle::LifecycleCallTarget,
         names: &NameTable,
     ) -> bool {
-        match target {
-            crate::api::rule::query::lifecycle::LifecycleCallTarget::Global(name) => {
-                self.global_name().is_some_and(|found| found == name)
-            }
-            crate::api::rule::query::lifecycle::LifecycleCallTarget::RootedMember(path) => self
-                .chain()
-                .and_then(|chain| names.lookup_path(path).map(|member| (member, chain)))
-                .is_some_and(|(member, chain)| member == *chain && self.rooted()),
-        }
+        FlowMatchView::new(names, self.stream.values()).target_matches(
+            target,
+            self.global_name().map(SmolStr::as_str),
+            self.chain(),
+            self.rooted(),
+        )
     }
 
     pub(in crate::analysis) fn target(&self) -> Option<FunctionId> {
@@ -273,14 +271,15 @@ impl CallEffectRef<'_> {
         let Some(args) = self.effective_args() else {
             return false;
         };
-        let values = self.stream.values();
+        let flow_matcher = FlowMatchView::new(names, self.stream.values());
         flow.sources().any(|source| {
-            self.matches_target(source.target(), names)
-                && source.matches_arguments(|matcher| {
-                    args.get(matcher.index()).is_some_and(|argument| {
-                        matcher.predicate().matches(argument, names, values)
-                    })
-                })
+            flow_matcher.target_matches(
+                source.target(),
+                self.global_name().map(SmolStr::as_str),
+                self.chain(),
+                self.rooted(),
+            ) && source
+                .matches_arguments(|constraint| flow_matcher.argument_matches(constraint, args))
         })
     }
 }

@@ -13,13 +13,73 @@ use glass_lint_datastructures::{NamePath, NameTable};
 use smol_str::SmolStr;
 
 use crate::{
-    analysis::model::flow::{FlowId, RequirementIndex, SinkIndex},
+    analysis::{
+        facts::CallArgInfo,
+        model::flow::{FlowId, RequirementIndex, SinkIndex},
+        value::ValueTable,
+    },
     api::{
         classification::RuleIndex,
         compiler::{CompiledObjectFlow, CompiledObjectRequirement},
         rule::{ArgumentConstraint, query::lifecycle::LifecycleCallTarget},
     },
 };
+
+pub(super) struct FlowMatchView<'a> {
+    names: &'a NameTable,
+    values: &'a ValueTable,
+}
+
+impl<'a> FlowMatchView<'a> {
+    pub(super) fn new(names: &'a NameTable, values: &'a ValueTable) -> Self {
+        Self { names, values }
+    }
+
+    pub(super) fn target_matches(
+        &self,
+        target: &LifecycleCallTarget,
+        global_name: Option<&str>,
+        chain: Option<&NamePath>,
+        rooted: bool,
+    ) -> bool {
+        match target {
+            LifecycleCallTarget::Global(name) => global_name == Some(name.as_str()),
+            LifecycleCallTarget::RootedMember(path) => chain.is_some_and(|chain| {
+                rooted
+                    && self
+                        .names
+                        .lookup_path(path)
+                        .is_some_and(|member| member == *chain)
+            }),
+        }
+    }
+
+    pub(super) fn argument_matches(
+        &self,
+        matcher: &ArgumentConstraint,
+        args: &[CallArgInfo],
+    ) -> bool {
+        args.get(matcher.index()).is_some_and(|argument| {
+            matcher
+                .predicate()
+                .matches(argument, self.names, self.values)
+        })
+    }
+
+    pub(super) fn arguments_match(
+        &self,
+        matchers: &[ArgumentConstraint],
+        args: &[CallArgInfo],
+    ) -> bool {
+        matchers
+            .iter()
+            .all(|matcher| self.argument_matches(matcher, args))
+    }
+
+    pub(super) fn member_matches(actual: &NamePath, expected: &NamePath) -> bool {
+        actual == expected || actual.last_segment() == expected.last_segment()
+    }
+}
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) enum BoundLifecycleCallTarget {
@@ -102,11 +162,8 @@ impl BoundSource {
         self.flow
     }
 
-    pub(super) fn matches_arguments(
-        &self,
-        matches: impl FnMut(&ArgumentConstraint) -> bool,
-    ) -> bool {
-        self.arguments.iter().all(matches)
+    pub(super) fn matches_call(&self, matcher: &FlowMatchView<'_>, args: &[CallArgInfo]) -> bool {
+        matcher.arguments_match(&self.arguments, args)
     }
 }
 
