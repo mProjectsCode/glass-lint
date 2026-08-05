@@ -59,6 +59,34 @@ impl ModuleInterfaceBuilder {
         self.interface.mark_unknown_exports();
     }
 
+    fn has_exports(&self) -> bool {
+        self.interface.has_exports()
+    }
+
+    fn add_export(
+        &mut self,
+        name: impl Into<SmolStr>,
+        export: crate::analysis::module::ModuleExport,
+    ) {
+        self.interface.add_export(name, export);
+    }
+
+    fn add_function_export(
+        &mut self,
+        name: impl Into<SmolStr>,
+        function: crate::analysis::value::FunctionId,
+    ) {
+        self.interface.add_function_export(name, function);
+    }
+
+    fn add_static_string(&mut self, name: impl Into<SmolStr>, value: impl Into<String>) {
+        self.interface.add_static_string(name, value);
+    }
+
+    fn add_star_export(&mut self, request: ModuleRequestId) {
+        self.interface.add_star_export(request);
+    }
+
     pub(in crate::analysis::facts) fn record_local_imports(&mut self, import: &ImportDecl) {
         for specifier in &import.specifiers {
             if !specifier.is_type_only() {

@@ -26,7 +26,7 @@ impl ModuleInterfaceBuilder {
         match declaration {
             swc_ecma_ast::Decl::Class(class) => {
                 self.record_local(class.ident.sym.to_string());
-                self.interface.add_export(
+                self.add_export(
                     class.ident.sym.to_string(),
                     ModuleExport::Local {
                         name: class.ident.sym.to_smolstr(),
@@ -38,10 +38,9 @@ impl ModuleInterfaceBuilder {
                 if let Some(id) =
                     resolver.function_id_for_expr(&Expr::Ident(function.ident.clone()))
                 {
-                    self.interface
-                        .add_function_export(function.ident.sym.to_string(), id);
+                    self.add_function_export(function.ident.sym.to_string(), id);
                 }
-                self.interface.add_export(
+                self.add_export(
                     function.ident.sym.to_string(),
                     ModuleExport::Local {
                         name: function.ident.sym.to_smolstr(),
@@ -56,15 +55,13 @@ impl ModuleInterfaceBuilder {
                             && let Some(id) =
                                 resolver.function_id_for_expr(&Expr::Ident(binding.id.clone()))
                         {
-                            self.interface.add_function_export(name.clone(), id);
+                            self.add_function_export(name.clone(), id);
                         }
-                        self.interface
-                            .add_export(name.clone(), ModuleExport::Local { name });
+                        self.add_export(name.clone(), ModuleExport::Local { name });
                         if let swc_ecma_ast::Pat::Ident(binding) = &declarator.name {
                             let value_id = resolver.resolve_ident_id(&binding.id);
                             if let Some(value) = resolver.static_string_value(value_id) {
-                                self.interface
-                                    .add_static_string(binding.id.sym.to_string(), value);
+                                self.add_static_string(binding.id.sym.to_string(), value);
                             }
                         }
                     }
@@ -91,10 +88,9 @@ impl ModuleInterfaceBuilder {
                 if let swc_ecma_ast::ModuleExportName::Ident(ident) = &named.orig
                     && let Some(id) = resolver.function_id_for_expr(&Expr::Ident(ident.clone()))
                 {
-                    self.interface.add_function_export(exported.clone(), id);
+                    self.add_function_export(exported.clone(), id);
                 }
-                self.interface
-                    .add_export(exported, ModuleExport::Local { name: original });
+                self.add_export(exported, ModuleExport::Local { name: original });
             }
         }
     }
@@ -116,7 +112,7 @@ impl ModuleInterfaceBuilder {
             return;
         }
         let span = source_span;
-        let request = self.interface.add_request(
+        let request = self.add_request(
             span,
             ResolutionRequestKind::StaticImport,
             source.value.to_string_lossy(),
@@ -154,7 +150,7 @@ impl ModuleInterfaceBuilder {
                         .exported
                         .as_ref()
                         .map_or_else(|| original.clone(), module_export_name);
-                    self.interface.add_export(
+                    self.add_export(
                         exported,
                         ModuleExport::ReExport {
                             request,
@@ -162,11 +158,11 @@ impl ModuleInterfaceBuilder {
                         },
                     );
                 }
-                ExportSpecifier::Namespace(namespace) => self.interface.add_export(
+                ExportSpecifier::Namespace(namespace) => self.add_export(
                     module_export_name(&namespace.name),
                     ModuleExport::Namespace { request },
                 ),
-                ExportSpecifier::Default(default) => self.interface.add_export(
+                ExportSpecifier::Default(default) => self.add_export(
                     default.exported.sym.to_string(),
                     ModuleExport::ReExport {
                         request,
@@ -186,13 +182,13 @@ impl ModuleInterfaceBuilder {
             return;
         }
         let span = source_span;
-        let request = self.interface.add_request(
+        let request = self.add_request(
             span,
             ResolutionRequestKind::StaticImport,
             export.src.value.to_string_lossy(),
             ModuleRequestRole::StarExport,
         );
-        self.interface.add_star_export(request);
+        self.add_star_export(request);
     }
 
     pub(in crate::analysis::facts) fn record_default_expr(
@@ -202,9 +198,9 @@ impl ModuleInterfaceBuilder {
     ) {
         if let Expr::Ident(ident) = &*export.expr {
             if let Some(id) = resolver.function_id_for_expr(&Expr::Ident(ident.clone())) {
-                self.interface.add_function_export("default", id);
+                self.add_function_export("default", id);
             }
-            self.interface.add_export(
+            self.add_export(
                 "default",
                 ModuleExport::Local {
                     name: ident.sym.to_smolstr(),
@@ -212,9 +208,9 @@ impl ModuleInterfaceBuilder {
             );
         } else {
             if let Some(id) = resolver.function_id_for_span(export.expr.span()) {
-                self.interface.add_function_export("default", id);
+                self.add_function_export("default", id);
             }
-            self.interface.add_export("default", ModuleExport::Value);
+            self.add_export("default", ModuleExport::Value);
         }
     }
 
@@ -228,9 +224,9 @@ impl ModuleInterfaceBuilder {
                 if let Some(ident) = &function.ident {
                     self.record_local(ident.sym.to_string());
                     if let Some(id) = resolver.function_id_for_expr(&Expr::Ident(ident.clone())) {
-                        self.interface.add_function_export("default", id);
+                        self.add_function_export("default", id);
                     }
-                    self.interface.add_export(
+                    self.add_export(
                         "default",
                         ModuleExport::Local {
                             name: ident.sym.to_smolstr(),
@@ -238,26 +234,26 @@ impl ModuleInterfaceBuilder {
                     );
                 } else {
                     if let Some(id) = resolver.function_id_for_span(function.function.span()) {
-                        self.interface.add_function_export("default", id);
+                        self.add_function_export("default", id);
                     }
-                    self.interface.add_export("default", ModuleExport::Value);
+                    self.add_export("default", ModuleExport::Value);
                 }
             }
             DefaultDecl::Class(class) => {
                 if let Some(ident) = &class.ident {
                     self.record_local(ident.sym.to_string());
-                    self.interface.add_export(
+                    self.add_export(
                         "default",
                         ModuleExport::Local {
                             name: ident.sym.to_smolstr(),
                         },
                     );
                 } else {
-                    self.interface.add_export("default", ModuleExport::Value);
+                    self.add_export("default", ModuleExport::Value);
                 }
             }
             DefaultDecl::TsInterfaceDecl(_) => {
-                self.interface.add_export("default", ModuleExport::Unknown);
+                self.add_export("default", ModuleExport::Unknown);
             }
         }
     }

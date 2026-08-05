@@ -172,7 +172,7 @@ instance/callable/class provenance updates.
 
 ### Module-interface collection
 
-#### [ ] READ-006 — Keep export invariants behind ModuleInterfaceBuilder
+#### [x] READ-006 — Keep export invariants behind ModuleInterfaceBuilder
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -199,7 +199,14 @@ Preserve conflict-to-unknown behavior, re-export request identity, star
 exports, type-only filtering, and the fact that function/static metadata is
 auxiliary to (not a replacement for) the resolved `ModuleExport`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added builder-owned wrappers for export, function metadata,
+static-value, star-export, request, and export-state operations. ESM and
+CommonJS adapters now classify syntax and call those wrappers; no child
+module directly mutates the wrapped `ModuleInterface`.
+
+**Verification:** `cargo test -p glass-lint-core analysis::facts --lib` passes
+(32 tests), and `make fmt && make ci` passes, including the full workspace,
+end-to-end, rule, doctest, and example checks.
 
 ## Systemic Themes
 

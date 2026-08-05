@@ -45,30 +45,30 @@ impl ModuleInterfaceBuilder {
             return;
         }
         let Some(property) = prop else {
-            self.interface.mark_unknown_exports();
+            self.mark_unknown_exports();
             return;
         };
         self.record_commonjs_property_export(assignment, Some(property), resolver);
     }
 
     fn record_module_exports_assignment(&mut self, assignment: &AssignExpr, resolver: &Resolver) {
-        if self.interface.has_exports() {
-            self.interface.mark_unknown_exports();
+        if self.has_exports() {
+            self.mark_unknown_exports();
             return;
         }
         if let Expr::Object(object) = &*assignment.right {
             let Some(entries) = Self::collect_commonjs_export_entries(object) else {
-                self.interface.mark_unknown_exports();
+                self.mark_unknown_exports();
                 return;
             };
-            self.interface.add_export("default", ModuleExport::Value);
+            self.add_export("default", ModuleExport::Value);
             for entry in entries {
                 if let Some(span) = entry.value_span {
-                    add_function_export_if_span(&mut self.interface, &entry.name, span, resolver);
+                    add_function_export_if_span(self, &entry.name, span, resolver);
                 }
                 if let Some(ref local) = entry.local {
                     add_function_export_if_name(
-                        &mut self.interface,
+                        self,
                         &entry.name,
                         local,
                         assignment.span(),
@@ -76,9 +76,9 @@ impl ModuleInterfaceBuilder {
                     );
                 }
                 if let Some(value) = entry.static_value {
-                    self.interface.add_static_string(entry.name.clone(), value);
+                    self.add_static_string(entry.name.clone(), value);
                 }
-                self.interface.add_export(
+                self.add_export(
                     entry.name,
                     entry
                         .local
@@ -87,9 +87,9 @@ impl ModuleInterfaceBuilder {
             }
         } else {
             if let Some(id) = resolver.function_id_for_span(assignment.right.span()) {
-                self.interface.add_function_export("default", id);
+                self.add_function_export("default", id);
             }
-            self.interface.add_export("default", ModuleExport::Value);
+            self.add_export("default", ModuleExport::Value);
         }
     }
 
@@ -100,13 +100,13 @@ impl ModuleInterfaceBuilder {
         resolver: &Resolver,
     ) {
         let Some(property) = property else {
-            self.interface.mark_unknown_exports();
+            self.mark_unknown_exports();
             return;
         };
         let export = match &*assignment.right {
             Expr::Ident(ident) => {
                 add_function_export_if_name(
-                    &mut self.interface,
+                    self,
                     &property,
                     ident.sym.as_ref(),
                     assignment.span(),
@@ -117,15 +117,14 @@ impl ModuleInterfaceBuilder {
                 }
             }
             expr => {
-                add_function_export_if_expr(&mut self.interface, &property, expr, resolver);
+                add_function_export_if_expr(self, &property, expr, resolver);
                 if let Expr::Lit(Lit::Str(value)) = expr {
-                    self.interface
-                        .add_static_string(property.clone(), value.value.to_string_lossy());
+                    self.add_static_string(property.clone(), value.value.to_string_lossy());
                 }
                 ModuleExport::Value
             }
         };
-        self.interface.add_export(property, export);
+        self.add_export(property, export);
     }
 
     fn collect_commonjs_export_entries(object: &ObjectLit) -> Option<Vec<CommonJsExportEntry>> {
@@ -203,7 +202,7 @@ fn is_commonjs_name(expr: &Expr, name: &str, resolver: &Resolver) -> bool {
 }
 
 fn add_function_export_if_name(
-    interface: &mut crate::analysis::module::ModuleInterface,
+    interface: &mut ModuleInterfaceBuilder,
     export: &str,
     local: &str,
     span: Span,
@@ -215,7 +214,7 @@ fn add_function_export_if_name(
 }
 
 fn add_function_export_if_expr(
-    interface: &mut crate::analysis::module::ModuleInterface,
+    interface: &mut ModuleInterfaceBuilder,
     export: &str,
     expr: &Expr,
     resolver: &Resolver,
@@ -224,7 +223,7 @@ fn add_function_export_if_expr(
 }
 
 fn add_function_export_if_span(
-    interface: &mut crate::analysis::module::ModuleInterface,
+    interface: &mut ModuleInterfaceBuilder,
     export: &str,
     span: Span,
     resolver: &Resolver,
