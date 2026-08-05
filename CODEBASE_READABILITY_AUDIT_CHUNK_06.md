@@ -51,7 +51,7 @@ when the trace limit is exhausted.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-034 — Make `TraceNodeId` arena-local and validate trace parents
+#### [x] READ-034 — Make `TraceNodeId` arena-local and validate trace parents
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -78,7 +78,14 @@ Preserve public evidence serialization expectations, bounded allocation,
 interning of repeated nodes, deterministic reconstruction, and the current
 fail-closed fallback when a trace cannot be reconstructed.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `TraceNodeId` now carries a stable owner token allocated by
+its `TraceArena`. Foreign parents are rejected at interning time, and trace
+reconstruction validates the head and every parent, returning `None` instead
+of silently truncating an invalid chain. Report assembly continues to use its
+existing fallback evidence path; focused coverage exercises foreign handles.
+
+**Verification:** `cargo test -p glass-lint-core --lib analysis::trace`
+and `make fmt && make ci` pass.
 
 ### Syntax and bounded evaluation APIs
 

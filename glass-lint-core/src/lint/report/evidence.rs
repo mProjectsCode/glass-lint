@@ -276,7 +276,7 @@ fn resolve_trace(
     head: TraceNodeId,
     project: &ProjectSemanticModel,
 ) -> Option<Vec<EvidenceStep>> {
-    let raw = arena.reconstruct_trace(head);
+    let raw = arena.reconstruct_trace(head)?;
     if raw.is_empty() {
         return None;
     }

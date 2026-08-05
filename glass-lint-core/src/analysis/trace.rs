@@ -1,13 +1,21 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use crate::{
     analysis::facts::FactId,
     project::{EvidenceRole, ModuleId},
 };
 
+static NEXT_TRACE_ARENA_ID: AtomicU64 = AtomicU64::new(1);
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-/// Internal index into the bounded trace arena.
-pub struct TraceNodeId(u32);
+/// Opaque handle to a node owned by one specific trace arena.
+pub struct TraceNodeId {
+    arena: u64,
+    node: u32,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct QualifiedEvent {
@@ -59,6 +67,7 @@ struct TraceNode {
 
 #[derive(Debug)]
 pub struct TraceArena {
+    arena: u64,
     nodes: Vec<TraceNode>,
     intern: HashMap<(Option<TraceNodeId>, QualifiedEvent, EvidenceRole), TraceNodeId>,
     exhausted: bool,
@@ -68,6 +77,7 @@ pub struct TraceArena {
 impl TraceArena {
     pub fn new(limit: usize) -> Self {
         Self {
+            arena: NEXT_TRACE_ARENA_ID.fetch_add(1, Ordering::Relaxed),
             nodes: Vec::new(),
             intern: HashMap::new(),
             exhausted: false,
@@ -81,6 +91,10 @@ impl TraceArena {
         event: QualifiedEvent,
         role: EvidenceRole,
     ) -> Option<TraceNodeId> {
+        if parent.is_some_and(|parent| parent.arena != self.arena) {
+            self.exhausted = true;
+            return None;
+        }
         let key = (parent, event, role);
         if let Some(&id) = self.intern.get(&key) {
             return Some(id);
@@ -89,7 +103,7 @@ impl TraceArena {
             self.exhausted = true;
             return None;
         }
-        let Some(id) = TraceNodeId::from_node_count(self.nodes.len()) else {
+        let Some(id) = TraceNodeId::from_node_count(self.arena, self.nodes.len()) else {
             self.exhausted = true;
             return None;
         };
@@ -102,19 +116,18 @@ impl TraceArena {
         Some(id)
     }
 
-    pub fn reconstruct_trace(&self, head: TraceNodeId) -> Vec<TraceStep> {
+    /// Reconstruct a complete trace, returning `None` for a foreign or
+    /// otherwise invalid handle rather than silently truncating the chain.
+    pub fn reconstruct_trace(&self, head: TraceNodeId) -> Option<Vec<TraceStep>> {
         let mut steps = Vec::new();
         let mut current = Some(head);
         while let Some(id) = current {
-            if let Some(node) = self.node(id) {
-                steps.push(TraceStep::new(node.event, node.role));
-                current = node.parent;
-            } else {
-                break;
-            }
+            let node = self.node(id)?;
+            steps.push(TraceStep::new(node.event, node.role));
+            current = node.parent;
         }
         steps.reverse();
-        steps
+        Some(steps)
     }
 
     pub fn node_count(&self) -> usize {
@@ -126,17 +139,19 @@ impl TraceArena {
     }
 
     fn node(&self, id: TraceNodeId) -> Option<&TraceNode> {
-        self.nodes.get(id.index())
+        (id.arena == self.arena)
+            .then(|| self.nodes.get(id.index()))
+            .flatten()
     }
 }
 
 impl TraceNodeId {
-    fn from_node_count(count: usize) -> Option<Self> {
-        u32::try_from(count).ok().map(Self)
+    fn from_node_count(arena: u64, count: usize) -> Option<Self> {
+        u32::try_from(count).ok().map(|node| Self { arena, node })
     }
 
     fn index(self) -> usize {
-        self.0 as usize
+        self.node as usize
     }
 }
 
@@ -189,7 +204,7 @@ mod tests {
         let step3 = arena
             .intern(Some(step2), qe(0, 3), EvidenceRole::Sink)
             .unwrap();
-        let trace = arena.reconstruct_trace(step3);
+        let trace = arena.reconstruct_trace(step3).unwrap();
         assert_eq!(trace.len(), 3);
         assert_eq!(trace[0], TraceStep::new(qe(0, 1), EvidenceRole::Source));
         assert_eq!(
@@ -205,7 +220,7 @@ mod tests {
         let head = arena
             .intern(None, qe(1, 5), EvidenceRole::Occurrence)
             .unwrap();
-        let trace = arena.reconstruct_trace(head);
+        let trace = arena.reconstruct_trace(head).unwrap();
         assert_eq!(trace.len(), 1);
         assert_eq!(trace[0], TraceStep::new(qe(1, 5), EvidenceRole::Occurrence));
     }
@@ -239,7 +254,7 @@ mod tests {
         let ev2 = arena
             .intern(Some(ev1), qe(2, 20), EvidenceRole::Sink)
             .unwrap();
-        let trace = arena.reconstruct_trace(ev2);
+        let trace = arena.reconstruct_trace(ev2).unwrap();
         assert_eq!(trace[0].event().module.get(), 1);
         assert_eq!(trace[0].event().fact.raw_for_test(), 10);
         assert_eq!(trace[1].event().module.get(), 2);
@@ -251,8 +266,25 @@ mod tests {
         let mut arena = TraceArena::new(1);
         let id = arena.intern(None, qe(0, 1), EvidenceRole::Source).unwrap();
         assert!(arena.intern(None, qe(0, 2), EvidenceRole::Sink).is_none());
-        let trace = arena.reconstruct_trace(id);
+        let trace = arena.reconstruct_trace(id).unwrap();
         assert_eq!(trace.len(), 1);
         assert_eq!(trace[0], TraceStep::new(qe(0, 1), EvidenceRole::Source));
+    }
+
+    #[test]
+    fn foreign_handles_are_rejected_and_reconstruction_is_explicitly_invalid() {
+        let mut arena = TraceArena::new(10);
+        let mut foreign = TraceArena::new(10);
+        let foreign_head = foreign
+            .intern(None, qe(1, 1), EvidenceRole::Source)
+            .unwrap();
+
+        assert!(
+            arena
+                .intern(Some(foreign_head), qe(0, 1), EvidenceRole::Sink)
+                .is_none()
+        );
+        assert!(arena.is_exhausted());
+        assert_eq!(arena.reconstruct_trace(foreign_head), None);
     }
 }

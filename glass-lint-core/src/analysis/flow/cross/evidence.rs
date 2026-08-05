@@ -383,6 +383,7 @@ mod tests {
         };
         let roles: Vec<_> = arena
             .reconstruct_trace(head)
+            .unwrap()
             .into_iter()
             .map(|step| step.role())
             .collect();
