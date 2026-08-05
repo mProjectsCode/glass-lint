@@ -97,7 +97,7 @@ mod tests {
         };
         let fetch_rules = [fetch_rule];
         let (_model, _outcome) =
-            project.project(CompiledRuleSelection::new(&fetch_rules, &selected));
+            project.project(CompiledRuleSelection::new(&fetch_rules, &selected).unwrap());
 
         let member_plan = CompiledMatcherPlan::compile(&[EventQuery::member_call_heuristic(
             "document.createElement",
@@ -114,7 +114,7 @@ mod tests {
         };
         let member_rules = [member_rule];
         let (_model, _outcome) =
-            project.project(CompiledRuleSelection::new(&member_rules, &selected));
+            project.project(CompiledRuleSelection::new(&member_rules, &selected).unwrap());
 
         let after = format!(
             "{:?}",
@@ -163,7 +163,8 @@ mod tests {
             matcher: plan,
         }];
         let selected = [rule_index];
-        let (matcher, _outcome) = first.project(CompiledRuleSelection::new(&records, &selected));
+        let (matcher, _outcome) =
+            first.project(CompiledRuleSelection::new(&records, &selected).unwrap());
         let first_module = first.modules().next().expect("first module");
         let second_module = second.modules().next().expect("second module");
 

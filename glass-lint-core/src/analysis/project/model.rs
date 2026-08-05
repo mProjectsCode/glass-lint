@@ -505,7 +505,8 @@ impl ProjectSemanticModel {
             let (matcher_catalog, outcome, arena) =
                 crate::analysis::project::projection::project_for_classification(
                     self,
-                    CompiledRuleSelection::new(records, selected),
+                    CompiledRuleSelection::new(records, selected)
+                        .expect("linter supplies a validated rule selection"),
                 );
             let results = crate::analysis::project::projection::assemble_classification_results(
                 self,

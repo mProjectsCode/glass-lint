@@ -149,7 +149,7 @@ directly and no longer fabricates a `provider:compile` sentinel.
 `cargo test -p glass-lint-core lint::catalog --lib`; `make fmt && make ci`
 (all passed).
 
-#### [ ] READ-077 — Validate selected rule indices and ordering at the selection boundary
+#### [x] READ-077 — Validate selected rule indices and ordering at the selection boundary
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -171,7 +171,15 @@ rule indices, deterministic iteration, and the ability to represent an empty
 selection; delete silent filtering and the unchecked binary-search assumption
 once callers receive the validated form.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `CompiledRuleSelection::new` now returns a typed validation
+error for out-of-range, duplicate, or unsorted indices. Validated iteration
+indexes directly into the rule records, and trusted internal callers handle
+the already-validated selection explicitly. Added focused coverage for all
+three rejected forms.
+
+**Verification:** `cargo test -p glass-lint-core
+api::compiler::rule::tests --lib` (3 passed); `make fmt && make ci` (all
+passed).
 
 ### Deferred authoring errors
 
