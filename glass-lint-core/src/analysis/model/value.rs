@@ -120,17 +120,11 @@ pub enum Value {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CallableValue {
     target: ValueId,
-    receiver: Option<ValueId>,
-    bound_arguments: Vec<ValueId>,
 }
 
 impl CallableValue {
-    pub fn new(target: ValueId, receiver: Option<ValueId>, bound_arguments: Vec<ValueId>) -> Self {
-        Self {
-            target,
-            receiver,
-            bound_arguments,
-        }
+    pub fn new(target: ValueId) -> Self {
+        Self { target }
     }
 
     pub fn target(&self) -> ValueId {
@@ -326,9 +320,7 @@ mod tests {
     #[test]
     fn callable_value_constructs_and_exposes_target() {
         let target = ValueId::from_test(42);
-        let receiver = ValueId::from_test(7);
-        let args = vec![ValueId::from_test(1), ValueId::from_test(2)];
-        let cv = CallableValue::new(target, Some(receiver), args);
+        let cv = CallableValue::new(target);
         assert_eq!(cv.target(), target);
     }
 

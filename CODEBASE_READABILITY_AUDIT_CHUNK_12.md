@@ -118,7 +118,7 @@ for over-budget objects.
 
 ### Callable value representation
 
-#### [ ] READ-064 — Remove or consume callable metadata stored outside resolver state
+#### [x] READ-064 — Remove or consume callable metadata stored outside resolver state
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -144,7 +144,14 @@ three fields through value-table APIs and delete the parallel resolver fields.
 Preserve callable target chaining, receiver-sensitive facts, bound-argument
 ordering, and cache determinism while removing the unused state.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Reduced `CallableValue` to its consumed target identity.
+Receiver and bound-argument metadata remain in resolver/scope state, where fact
+construction applies them to effective calls, removing duplicate inert arena
+state.
+
+**Verification:** `cargo test -p glass-lint-core analysis::model::value --lib`
+(24 passed), `cargo test -p glass-lint-core analysis::resolution --lib` (12
+passed), and `make fmt && make ci` (passed).
 
 ### Module-request policy
 

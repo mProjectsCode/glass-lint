@@ -91,20 +91,8 @@ impl Resolver<'_> {
             return self.fresh_object_value_at(call.span);
         }
         let target = self.resolve_expr_id(&member.obj);
-        let receiver = call
-            .args
-            .first()
-            .map(|argument| self.resolve_expr_id(&argument.expr));
-        let bound_arguments = call
-            .args
-            .iter()
-            .skip(1)
-            .map(|argument| self.resolve_expr_id(&argument.expr))
-            .collect();
         self.static_value(Value::Callable(crate::analysis::value::CallableValue::new(
             target,
-            receiver,
-            bound_arguments,
         )))
     }
 
