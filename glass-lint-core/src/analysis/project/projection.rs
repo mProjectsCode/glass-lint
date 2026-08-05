@@ -15,9 +15,11 @@ use crate::{
             projector::{self as object_flow, LocalFlowProjectionOutcome},
         },
         lowering::status::{AnalysisComponent, IncompleteReason, StatusScope},
-        matching::{LinkedOccurrenceView, OccurrenceIndexes},
+        matching::{
+            LinkedOccurrenceView, MatcherLocalInput, MatcherProjectOverlay, OccurrenceIndexes,
+        },
         model::flow::FlowLimits,
-        project::{model::ExportResolution, state::LinkingSession},
+        project::state::LinkingSession,
         trace::TraceArena,
         value::ValueId,
     },
@@ -172,9 +174,7 @@ struct ProjectionInputs<'a> {
     facts: &'a SemanticFacts,
     effects: Option<&'a crate::analysis::flow::effect::FunctionEffects>,
     plan: &'a ProjectionPlan<'a>,
-    identities: Option<&'a crate::analysis::matching::ModuleIdentityMap>,
-    result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
-    overlay: Option<&'a LinkedOccurrenceView<'a>>,
+    matcher_overlay: MatcherProjectOverlay<'a>,
     flow_limits: FlowLimits,
     module_id: ModuleId,
     trace_arena: &'a mut TraceArena,
@@ -185,9 +185,7 @@ fn project_facts(inputs: ProjectionInputs<'_>) -> (RuleEvidenceTable, LocalFlowP
         facts,
         effects,
         plan,
-        identities,
-        result_identities,
-        overlay,
+        matcher_overlay,
         flow_limits,
         module_id,
         trace_arena,
@@ -202,14 +200,11 @@ fn project_facts(inputs: ProjectionInputs<'_>) -> (RuleEvidenceTable, LocalFlowP
         .copied()
         .map(PlannedConstrainedRoot::matcher_input)
         .collect::<Vec<_>>();
-    crate::analysis::matching::compute_constrained_evidence_from_stream_with_overlay(
-        facts.stream(),
-        facts.matcher_index(),
+    crate::analysis::matching::compute_constrained_evidence(
+        MatcherLocalInput::from_facts(facts),
         &constrained_roots,
         &mut projected_evidence,
-        overlay,
-        identities,
-        result_identities,
+        matcher_overlay,
     );
     if plan.flow_matchers.is_empty() {
         return (projected_evidence, LocalFlowProjectionOutcome::default());
@@ -484,9 +479,11 @@ impl ProjectSemanticModel {
                     facts: module.local().facts(),
                     effects,
                     plan,
-                    identities: identities.as_ref(),
-                    result_identities: result_identities.as_ref(),
-                    overlay: overlay.as_ref(),
+                    matcher_overlay: MatcherProjectOverlay::new(
+                        overlay.as_ref(),
+                        identities.as_ref(),
+                        result_identities.as_ref(),
+                    ),
                     flow_limits,
                     module_id: module.id(),
                     trace_arena: arena,

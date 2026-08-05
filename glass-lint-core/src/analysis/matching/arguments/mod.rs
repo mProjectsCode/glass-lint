@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::{
     analysis::{
-        facts::{FactStream, Frozen},
+        facts::{FactStream, Frozen, SemanticFacts},
         matching::{
             LinkedOccurrenceView, ModuleIdentityMap, Occurrence, OccurrenceIndexes,
             owned_occurrences,
@@ -40,12 +40,52 @@ struct PreparedConstrainedRoot<'a> {
     occurrences: Vec<Occurrence>,
 }
 
-struct MatcherEvaluationContext<'a> {
+/// The local matcher inputs borrowed from one immutable semantic artifact.
+/// Constructing this from `SemanticFacts` keeps the fact stream and its
+/// occurrence index paired at the projection boundary.
+pub(in crate::analysis) struct MatcherLocalInput<'a> {
     stream: &'a FactStream<Frozen>,
     indexes: &'a OccurrenceIndexes,
-    overlay: Option<&'a LinkedOccurrenceView<'a>>,
+}
+
+impl<'a> MatcherLocalInput<'a> {
+    pub(in crate::analysis) fn from_facts(facts: &'a SemanticFacts) -> Self {
+        Self {
+            stream: facts.stream(),
+            indexes: facts.matcher_index(),
+        }
+    }
+
+    #[cfg(test)]
+    fn from_parts(stream: &'a FactStream<Frozen>, indexes: &'a OccurrenceIndexes) -> Self {
+        Self { stream, indexes }
+    }
+}
+
+/// Project-level identities and occurrence remapping for one local module.
+pub(in crate::analysis) struct MatcherProjectOverlay<'a> {
+    occurrence: Option<&'a LinkedOccurrenceView<'a>>,
     identities: Option<&'a ModuleIdentityMap>,
     result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
+}
+
+impl<'a> MatcherProjectOverlay<'a> {
+    pub(in crate::analysis) fn new(
+        occurrence: Option<&'a LinkedOccurrenceView<'a>>,
+        identities: Option<&'a ModuleIdentityMap>,
+        result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
+    ) -> Self {
+        Self {
+            occurrence,
+            identities,
+            result_identities,
+        }
+    }
+}
+
+struct MatcherEvaluationContext<'a> {
+    local: MatcherLocalInput<'a>,
+    project: MatcherProjectOverlay<'a>,
     operations: &'a mut EvaluationOperations,
 }
 
@@ -59,23 +99,17 @@ fn push_owned_rule_evidence(
     evidence.record_grouped(rule, kind, symbol, owned_occurrences(occurrences));
 }
 
-pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay(
-    stream: &FactStream<Frozen>,
-    indexes: &OccurrenceIndexes,
+pub(in crate::analysis) fn compute_constrained_evidence(
+    local: MatcherLocalInput<'_>,
     roots: &[(usize, &PhysicalRoot)],
     evidence: &mut RuleEvidenceTable,
-    overlay: Option<&LinkedOccurrenceView<'_>>,
-    identities: Option<&ModuleIdentityMap>,
-    result_identities: Option<&BTreeMap<ValueId, ExportResolution>>,
+    project: MatcherProjectOverlay<'_>,
 ) {
     let mut ops = EvaluationOperations::default();
     compute_constrained_inner(
         MatcherEvaluationContext {
-            stream,
-            indexes,
-            overlay,
-            identities,
-            result_identities,
+            local,
+            project,
             operations: &mut ops,
         },
         roots,
@@ -90,13 +124,16 @@ fn compute_constrained_inner(
     evidence: &mut RuleEvidenceTable,
 ) {
     let MatcherEvaluationContext {
-        stream,
-        indexes,
-        overlay,
-        identities,
-        result_identities,
+        local,
+        project,
         operations,
     } = context;
+    let MatcherLocalInput { stream, indexes } = local;
+    let MatcherProjectOverlay {
+        occurrence: overlay,
+        identities,
+        result_identities,
+    } = project;
     let names = stream.names();
     let values = stream.values();
     let evaluator = MatcherEvaluator::new(names, values, identities, result_identities);
@@ -333,14 +370,11 @@ mod tests {
         );
         let index = build_index(&stream);
         let mut evidence = RuleEvidenceTable::new(1);
-        compute_constrained_evidence_from_stream_with_overlay(
-            &stream,
-            &index,
+        compute_constrained_evidence(
+            MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &call), (0, &member)],
             &mut evidence,
-            None,
-            None,
-            None,
+            MatcherProjectOverlay::new(None, None, None),
         );
         assert_eq!(evidence[0].len(), 2);
         assert!(evidence[0].iter().all(|item| item.count == 1));
@@ -369,14 +403,11 @@ mod tests {
         let stream = stream("fetch('/api');\nfetch('/api');", &Environment::default());
         let index = build_index(&stream);
         let mut evidence = RuleEvidenceTable::new(1);
-        compute_constrained_evidence_from_stream_with_overlay(
-            &stream,
-            &index,
+        compute_constrained_evidence(
+            MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &roots[0])],
             &mut evidence,
-            None,
-            None,
-            None,
+            MatcherProjectOverlay::new(None, None, None),
         );
         assert_eq!(evidence[0].len(), 1);
         assert_eq!(evidence[0][0].occurrences.len(), 2);
@@ -428,14 +459,11 @@ mod tests {
         };
         let index = build_index(&stream);
         let mut evidence = RuleEvidenceTable::new(1);
-        compute_constrained_evidence_from_stream_with_overlay(
-            &stream,
-            &index,
+        compute_constrained_evidence(
+            MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &patched)],
             &mut evidence,
-            None,
-            None,
-            None,
+            MatcherProjectOverlay::new(None, None, None),
         );
         assert!(
             evidence[0].is_empty(),
@@ -456,14 +484,11 @@ mod tests {
         );
         let index = build_index(&stream);
         let mut evidence = RuleEvidenceTable::new(1);
-        compute_constrained_evidence_from_stream_with_overlay(
-            &stream,
-            &index,
+        compute_constrained_evidence(
+            MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &root)],
             &mut evidence,
-            None,
-            None,
-            None,
+            MatcherProjectOverlay::new(None, None, None),
         );
         // Dynamic values should not match a static string predicate.
         assert!(
@@ -498,14 +523,11 @@ mod tests {
         };
         let index = build_index(&stream);
         let mut evidence = RuleEvidenceTable::new(1);
-        compute_constrained_evidence_from_stream_with_overlay(
-            &stream,
-            &index,
+        compute_constrained_evidence(
+            MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &root)],
             &mut evidence,
-            None,
-            None,
-            None,
+            MatcherProjectOverlay::new(None, None, None),
         );
         assert!(!evidence[0].is_empty(), "sparse arguments should match");
         assert_eq!(evidence[0][0].occurrences.len(), 1);
@@ -559,23 +581,17 @@ mod tests {
         let index = build_index(&stream);
         let mut ev_a = RuleEvidenceTable::new(1);
         let mut ev_b = RuleEvidenceTable::new(1);
-        compute_constrained_evidence_from_stream_with_overlay(
-            &stream,
-            &index,
+        compute_constrained_evidence(
+            MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &root_a)],
             &mut ev_a,
-            None,
-            None,
-            None,
+            MatcherProjectOverlay::new(None, None, None),
         );
-        compute_constrained_evidence_from_stream_with_overlay(
-            &stream,
-            &index,
+        compute_constrained_evidence(
+            MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &root_b)],
             &mut ev_b,
-            None,
-            None,
-            None,
+            MatcherProjectOverlay::new(None, None, None),
         );
         assert_eq!(ev_a[0].len(), ev_b[0].len());
         assert_eq!(ev_a[0][0].count, ev_b[0][0].count);
@@ -603,14 +619,11 @@ mod tests {
         };
         let index = build_index(&stream);
         let mut evidence = RuleEvidenceTable::new(1);
-        compute_constrained_evidence_from_stream_with_overlay(
-            &stream,
-            &index,
+        compute_constrained_evidence(
+            MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &root)],
             &mut evidence,
-            None,
-            None,
-            None,
+            MatcherProjectOverlay::new(None, None, None),
         );
         assert!(!evidence[0].is_empty(), "equals_any should match /api");
     }
@@ -637,14 +650,11 @@ mod tests {
         };
         let index = build_index(&stream);
         let mut evidence = RuleEvidenceTable::new(1);
-        compute_constrained_evidence_from_stream_with_overlay(
-            &stream,
-            &index,
+        compute_constrained_evidence(
+            MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &root)],
             &mut evidence,
-            None,
-            None,
-            None,
+            MatcherProjectOverlay::new(None, None, None),
         );
         assert!(
             evidence[0].is_empty(),
@@ -674,14 +684,11 @@ mod tests {
         };
         let index = build_index(&stream);
         let mut evidence = RuleEvidenceTable::new(1);
-        compute_constrained_evidence_from_stream_with_overlay(
-            &stream,
-            &index,
+        compute_constrained_evidence(
+            MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &root)],
             &mut evidence,
-            None,
-            None,
-            None,
+            MatcherProjectOverlay::new(None, None, None),
         );
         assert!(
             !evidence[0].is_empty(),
@@ -714,14 +721,11 @@ mod tests {
         };
         let index = build_index(&stream);
         let mut evidence = RuleEvidenceTable::new(1);
-        compute_constrained_evidence_from_stream_with_overlay(
-            &stream,
-            &index,
+        compute_constrained_evidence(
+            MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &root)],
             &mut evidence,
-            None,
-            None,
-            None,
+            MatcherProjectOverlay::new(None, None, None),
         );
         assert!(
             !evidence[0].is_empty(),
@@ -752,14 +756,11 @@ mod tests {
         };
         let index = build_index(&stream);
         let mut evidence = RuleEvidenceTable::new(1);
-        compute_constrained_evidence_from_stream_with_overlay(
-            &stream,
-            &index,
+        compute_constrained_evidence(
+            MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &root)],
             &mut evidence,
-            None,
-            None,
-            None,
+            MatcherProjectOverlay::new(None, None, None),
         );
         assert!(!evidence[0].is_empty(), "object keys should match");
     }
@@ -791,14 +792,11 @@ mod tests {
         };
         let index = build_index(&stream);
         let mut evidence = RuleEvidenceTable::new(1);
-        compute_constrained_evidence_from_stream_with_overlay(
-            &stream,
-            &index,
+        compute_constrained_evidence(
+            MatcherLocalInput::from_parts(&stream, &index),
             &[(0, &root)],
             &mut evidence,
-            None,
-            None,
-            None,
+            MatcherProjectOverlay::new(None, None, None),
         );
         assert!(
             !evidence[0].is_empty(),
@@ -851,11 +849,8 @@ mod tests {
         let mut ops = EvaluationOperations::default();
         compute_constrained_inner(
             MatcherEvaluationContext {
-                stream,
-                indexes: index,
-                overlay,
-                identities: None,
-                result_identities: None,
+                local: MatcherLocalInput::from_parts(stream, index),
+                project: MatcherProjectOverlay::new(overlay, None, None),
                 operations: &mut ops,
             },
             roots,

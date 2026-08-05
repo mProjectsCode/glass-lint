@@ -195,7 +195,7 @@ fail-closed behavior remains covered by the matching tests.
 
 ### Constrained matcher execution
 
-#### [ ] READ-018 — Bundle the local artifact and project overlay context
+#### [x] READ-018 — Bundle the local artifact and project overlay context
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -232,7 +232,16 @@ construction, local/project identity separation, static value/name table
 coherence, overlay masking, bounded fallback scans, deterministic operation
 counts, and unknown/ambiguous identity rejection.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added private `MatcherLocalInput`, constructed from one
+`SemanticFacts` artifact, so the frozen fact stream and occurrence index cross
+the projection boundary as one pair. Added `MatcherProjectOverlay` to bundle
+the linked occurrence view, module identities, and call-result identities;
+projection and constrained evaluation now accept these typed inputs rather
+than seven independent relationships. Test-only construction remains
+available for independently built stream/index fixtures.
+
+**Verification:** `cargo test -p glass-lint-core analysis::matching --lib`
+(42 passed); `make fmt && make ci` (passed).
 
 #### [ ] READ-019 — Centralize effective identity overlay precedence
 

@@ -20,7 +20,9 @@ mod identity_map;
 mod indexes;
 pub(in crate::analysis) use identity_map::ModuleIdentityMap;
 mod arguments;
-pub(in crate::analysis) use arguments::compute_constrained_evidence_from_stream_with_overlay;
+pub(in crate::analysis) use arguments::{
+    MatcherLocalInput, MatcherProjectOverlay, compute_constrained_evidence,
+};
 mod build;
 mod query;
 pub use evidence::display_span;
