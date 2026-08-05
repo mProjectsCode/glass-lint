@@ -10,7 +10,10 @@ use crate::{
         LinkedModuleTarget, ModuleId,
         lowering::status::{AnalysisComponent, IncompleteReason, StatusScope},
         module::{self, ModuleRequestRole, NAMESPACE_EXPORT},
-        project::{linker::ProjectLinker, model::ExportResolution, state::QualifiedExportId},
+        project::{
+            linker::ProjectLinker, model::ExportResolution,
+            resolver::linked_target_to_export_resolution, state::QualifiedExportId,
+        },
         syntax::SymbolCallProvenance,
     },
     project::{AnalysisDiagnostic, ProjectRelativePath},
@@ -284,21 +287,11 @@ impl ProjectLinker {
         let Some(key) = self.request_id(module, request) else {
             return ExportResolution::Unknown;
         };
-        match self.resolutions.get(&key) {
-            Some(LinkedModuleTarget::Internal { id, .. }) => ExportResolution::Qualified {
-                module: *id,
-                export: NAMESPACE_EXPORT.into(),
-            },
-            Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
-                module: package.as_str().to_smolstr(),
-                export: NAMESPACE_EXPORT.into(),
-            },
-            Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
-                module: name.as_str().to_smolstr(),
-                export: NAMESPACE_EXPORT.into(),
-            },
-            _ => ExportResolution::Unknown,
-        }
+        self.resolutions
+            .get(&key)
+            .map_or(ExportResolution::Unknown, |target| {
+                linked_target_to_export_resolution(target, NAMESPACE_EXPORT)
+            })
     }
 
     fn resolve_imported_identity(
@@ -344,15 +337,8 @@ impl ProjectLinker {
                     &mut BTreeSet::new(),
                 )
                 .unwrap_or(ExportResolution::Unknown),
-            Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
-                module: package.as_str().to_smolstr(),
-                export: imported.to_smolstr(),
-            },
-            Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
-                module: name.as_str().to_smolstr(),
-                export: imported.to_smolstr(),
-            },
-            _ => ExportResolution::Unknown,
+            Some(target) => linked_target_to_export_resolution(target, imported),
+            None => ExportResolution::Unknown,
         }
     }
 }

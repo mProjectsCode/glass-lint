@@ -173,19 +173,8 @@ impl<'a> ExportResolver<'a> {
                     &QualifiedExportId::new(*target, export_name.clone()),
                     visiting,
                 ),
-                Some(LinkedModuleTarget::External { package }) => {
-                    Some(ExportResolution::External {
-                        module: package.as_str().to_smolstr(),
-                        export: export_name.clone(),
-                    })
-                }
-                Some(LinkedModuleTarget::Builtin { name: builtin }) => {
-                    Some(ExportResolution::External {
-                        module: builtin.as_str().to_smolstr(),
-                        export: export_name.clone(),
-                    })
-                }
-                _ => None,
+                Some(target) => Some(linked_target_to_export_resolution(target, &export_name)),
+                None => None,
             };
             match candidate_export {
                 Some(resolved)
@@ -227,10 +216,31 @@ pub(super) fn target_to_export_resolution(
             module: *id,
             export: export.into(),
         },
-        Some(
-            LinkedModuleTarget::Missing
-            | LinkedModuleTarget::OutsideProject { .. }
-            | LinkedModuleTarget::Unsupported { .. },
-        ) => ExportResolution::Unknown,
+        Some(target) => linked_target_to_export_resolution(target, export),
+    }
+}
+
+/// Convert a known linked target without applying the authored-specifier
+/// fallback used when a target is absent.
+pub(super) fn linked_target_to_export_resolution(
+    target: &LinkedModuleTarget,
+    export: &str,
+) -> ExportResolution {
+    match target {
+        LinkedModuleTarget::External { package } => ExportResolution::External {
+            module: package.to_smolstr(),
+            export: export.into(),
+        },
+        LinkedModuleTarget::Builtin { name } => ExportResolution::External {
+            module: name.to_smolstr(),
+            export: export.into(),
+        },
+        LinkedModuleTarget::Internal { id, .. } => ExportResolution::Qualified {
+            module: *id,
+            export: export.into(),
+        },
+        LinkedModuleTarget::Missing
+        | LinkedModuleTarget::OutsideProject { .. }
+        | LinkedModuleTarget::Unsupported { .. } => ExportResolution::Unknown,
     }
 }

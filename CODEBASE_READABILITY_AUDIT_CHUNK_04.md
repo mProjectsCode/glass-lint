@@ -144,7 +144,7 @@ first-insert behavior.
 **Verification:** `cargo test -p glass-lint-core analysis::project::state --lib`
 (6 passed); `make fmt && make ci` (passed).
 
-#### [ ] READ-024 — Centralize linked-target-to-export identity conversion
+#### [x] READ-024 — Centralize linked-target-to-export identity conversion
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -172,7 +172,14 @@ builtin, and unknown matches after migration. Preserve internal re-export
 recursion, `*` namespace identities, external package names, outside-project
 and unsupported unknowns, and ambiguity propagation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `linked_target_to_export_resolution` for known linked
+targets and routed namespace exports, named re-exports, and star-export
+projection through it. Recursive internal export lookup remains an explicit
+caller operation, while absent authored requests retain their existing
+external/unknown fallback policy.
+
+**Verification:** `cargo test -p glass-lint-core analysis::project --lib`
+(8 passed); `make fmt && make ci` (passed).
 
 ### Projection and resolution orchestration
 
