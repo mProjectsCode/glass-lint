@@ -1,7 +1,7 @@
 use glass_lint_datastructures::FastIndexSet;
 
 use crate::analysis::{
-    facts::{CallArgInfo, FactId, FactPayload, FactStream, Frozen, ParameterBinding},
+    facts::{CallArgInfo, FactId, FactStream, Frozen, ParameterBinding},
     flow::{
         planning::BoundFlowPlan,
         summary::{SummaryPathStore, store::SummaryPathId},
@@ -226,11 +226,10 @@ impl FunctionSummary {
         paths: &mut SummaryPathStore<'_>,
         call_id: FactId,
     ) -> InsertOutcome {
-        let Some(FactPayload::Call { args, .. }) = stream.fact(call_id).map(|fact| &fact.payload)
-        else {
+        let cref = stream.call_effect(call_id);
+        let Some(args) = cref.effective_args() else {
             return InsertOutcome::default();
         };
-        let cref = stream.call_effect(call_id);
         let flow_ids = cref
             .global_name()
             .and_then(|name| plan.global_sink_ids(name))

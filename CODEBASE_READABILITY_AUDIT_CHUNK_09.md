@@ -24,7 +24,7 @@ made by this audit.
 
 ### Function-summary call projection
 
-#### [ ] READ-047 — Use canonical effective arguments in summary sink projection
+#### [x] READ-047 — Use canonical effective arguments in summary sink projection
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -49,7 +49,15 @@ raw-`args` path after migration. Preserve unknown/spread rejection, wrapper
 chain matching, parameter-path identity, deterministic sink ordering, and
 fail-closed behavior when effective arguments cannot be reconstructed.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `FunctionSummary::collect_sinks_for_call` now obtains its
+argument slice from `CallEffectRef::effective_args`, so sink index checks,
+argument lookup, and parameter-path projection all use the same canonical
+`.call()`/`.apply()` view as effect extraction and local projection. Invalid or
+unreconstructable calls still fail closed. Existing effective-argument flow
+tests cover the wrapper normalization contract.
+
+**Verification:** `cargo test -p glass-lint-core --lib analysis::flow::summary`
+and `make fmt && make ci` pass.
 
 ### Summary representation
 
