@@ -103,6 +103,17 @@ impl QueryExpr {
         });
     }
 
+    pub(crate) fn shape_facts(&self) -> QueryShapeFacts {
+        let mut facts = QueryShapeFacts::default();
+        self.walk_vars(&mut |id, role| {
+            facts.variables.push(id);
+            if role == VarRole::Binding {
+                facts.bindings.push(id);
+            }
+        });
+        facts
+    }
+
     fn walk_vars_until(&self, f: &mut impl FnMut(VarId, VarRole) -> bool) -> bool {
         match &self.kind {
             QueryExprKind::Event(q) => f(q.var(), VarRole::Binding),
@@ -127,23 +138,31 @@ impl QueryExpr {
     }
 
     pub fn vars(&self) -> Vec<VarId> {
-        let mut ids = Vec::new();
-        self.walk_vars(&mut |id, _role| ids.push(id));
-        ids
+        self.shape_facts().variables
     }
 
     pub(crate) fn contains_var(&self, target: VarId) -> bool {
-        self.walk_vars_until(&mut |id, _role| id == target)
+        self.shape_facts().contains(target)
+    }
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct QueryShapeFacts {
+    variables: Vec<VarId>,
+    bindings: Vec<VarId>,
+}
+
+impl QueryShapeFacts {
+    pub(crate) fn contains(&self, target: VarId) -> bool {
+        self.variables.contains(&target)
     }
 
-    pub(crate) fn binding_vars(&self) -> Vec<VarId> {
-        let mut ids = Vec::new();
-        self.walk_vars(&mut |id, role| {
-            if role == VarRole::Binding {
-                ids.push(id);
-            }
-        });
-        ids
+    pub(crate) fn variables(&self) -> &[VarId] {
+        &self.variables
+    }
+
+    pub(crate) fn bindings(&self) -> &[VarId] {
+        &self.bindings
     }
 }
 

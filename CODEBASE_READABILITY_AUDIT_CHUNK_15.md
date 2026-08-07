@@ -145,7 +145,7 @@ flat vectors remain only at the reference-oracle boundary. Verified argument
 ordering, deduplication, dynamic/absent argument behavior, and flow matching
 with `make fmt && make ci`.
 
-#### [ ] READ-071 — Share bounded query-shape facts across validation and normalization
+#### [x] READ-071 — Share bounded query-shape facts across validation and normalization
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -181,7 +181,12 @@ Preserve duplicate-binding diagnostics, primary-variable evidence rules,
 uncorrelated-conjunction rejection, depth/child bounds, and deterministic
 variable renumbering.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the private bounded `QueryShapeFacts` artifact, built by
+one role-aware expression walk. Correlation/evidence validation and
+same-event normalization now share its variable membership and binding-role
+facts; legacy `vars`/`contains_var` behavior remains available where the
+query API still uses it. Preserved branch scope, duplicate-binding and
+uncorrelated-conjunction diagnostics, and verified with `make fmt && make ci`.
 
 ### Rule authoring API
 

@@ -6,7 +6,7 @@ use super::{
 };
 use crate::api::rule::query::{
     EventSpec, IdentitySpec, LifecycleQuery, QueryDecl, QueryExpr, QueryExprKind, QueryPredicate,
-    VarId, limits,
+    QueryShapeFacts, VarId, limits,
 };
 
 fn validate_lifecycle(lc: &LifecycleQuery) -> Result<(), QueryCompileError> {
@@ -174,11 +174,13 @@ fn check_correlation_evidence(
 ) -> Result<(), QueryCompileError> {
     match expr.kind() {
         QueryExprKind::All(all) => {
-            validate_correlated_branches(all.iter())?;
+            let branch_facts: Vec<QueryShapeFacts> =
+                all.iter().map(QueryExpr::shape_facts).collect();
+            validate_correlated_branches(&branch_facts)?;
             for branch in all.iter() {
                 check_correlation_evidence(branch, primary, check_evidence)?;
             }
-            if check_evidence && !all.iter().any(|b| b.contains_var(primary)) {
+            if check_evidence && !branch_facts.iter().any(|facts| facts.contains(primary)) {
                 return Err(QueryCompileError::MissingBinding {
                     primary_var: primary,
                 });
@@ -186,14 +188,16 @@ fn check_correlation_evidence(
             Ok(())
         }
         QueryExprKind::Any(any) => {
+            let branch_facts: Vec<QueryShapeFacts> =
+                any.iter().map(QueryExpr::shape_facts).collect();
             for b in any.iter() {
                 check_correlation_evidence(b, primary, false)?;
             }
             if check_evidence {
                 // Every branch must contain the primary variable, but nested
                 // branches are checked by their containing Any expression.
-                for branch in any.iter() {
-                    if !branch.contains_var(primary) {
+                for facts in &branch_facts {
+                    if !facts.contains(primary) {
                         return Err(QueryCompileError::MissingBinding {
                             primary_var: primary,
                         });
@@ -222,18 +226,17 @@ fn check_correlation_evidence(
     }
 }
 
-fn validate_correlated_branches<'a>(
-    input: impl IntoIterator<Item = &'a QueryExpr>,
-) -> Result<(), QueryCompileError> {
-    let branches = input.into_iter().collect::<Vec<_>>();
+fn validate_correlated_branches(branches: &[QueryShapeFacts]) -> Result<(), QueryCompileError> {
     let Some(first_branch) = branches.first() else {
         return Ok(());
     };
-    let first_vars: BTreeSet<VarId> = first_branch.vars().into_iter().collect();
-    let has_shared = branches
-        .iter()
-        .skip(1)
-        .any(|branch| branch.vars().iter().any(|var| first_vars.contains(var)));
+    let first_vars: BTreeSet<VarId> = first_branch.variables().iter().copied().collect();
+    let has_shared = branches.iter().skip(1).any(|branch| {
+        branch
+            .variables()
+            .iter()
+            .any(|var| first_vars.contains(var))
+    });
     if has_shared || branches.len() <= 1 {
         Ok(())
     } else {

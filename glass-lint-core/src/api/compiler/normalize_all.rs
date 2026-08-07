@@ -13,7 +13,7 @@ use crate::api::{
         ArgumentConstraint,
         query::{
             AllExpr, EmissionDecl, EventQuery, EventSpec, IdentitySpec, QueryExpr, QueryExprKind,
-            QueryPredicate, VarId,
+            QueryPredicate, QueryShapeFacts, VarId,
         },
     },
 };
@@ -31,7 +31,7 @@ pub(crate) fn normalize_all_root(
     emission: &EmissionDecl,
 ) -> Result<NormalizedRoot, QueryCompileError> {
     // Collect the set of distinct binding variables across branches.
-    let branch_vars: Vec<Vec<VarId>> = all.iter().map(QueryExpr::vars).collect();
+    let branch_facts: Vec<QueryShapeFacts> = all.iter().map(QueryExpr::shape_facts).collect();
 
     // Single branch — normalize as-is (should be rare after construction).
     if all.len() == 1 {
@@ -40,16 +40,21 @@ pub(crate) fn normalize_all_root(
 
     // Find the common event variable that all branches share.
     let branches = all.iter().collect::<Vec<_>>();
-    find_common_event_var(&branches).map_or_else(
+    find_common_event_var(&branches, &branch_facts).map_or_else(
         || {
             // No shared variable — check correlation scope.
-            let all_share_some = branch_vars
+            let all_share_some = branch_facts
                 .first()
                 .is_some_and(|first| {
-                    branch_vars
+                    branch_facts
                         .iter()
                         .skip(1)
-                        .any(|vars| vars.iter().any(|v| first.contains(v)))
+                        .any(|facts| {
+                            facts
+                                .variables()
+                                .iter()
+                                .any(|v| first.variables().contains(v))
+                        })
                 });
 
             if all_share_some {
@@ -74,15 +79,17 @@ pub(crate) fn normalize_all_root(
 /// object variables; they do not reference the event variable.  The
 /// correlation is via a separate `MemberSubject` predicate.  These
 /// binding-only predicates are accepted as not breaking the chain.
-fn find_common_event_var(branches: &[&QueryExpr]) -> Option<VarId> {
+fn find_common_event_var(
+    branches: &[&QueryExpr],
+    branch_facts: &[QueryShapeFacts],
+) -> Option<VarId> {
     if branches.is_empty() {
         return None;
     }
     // Collect binding vars from the first branch.
-    let first_bindings = branches[0].binding_vars();
-    for var in &first_bindings {
-        if branches.iter().skip(1).all(|b| {
-            b.contains_var(*var)
+    for var in branch_facts[0].bindings() {
+        if branches.iter().enumerate().skip(1).all(|(index, b)| {
+            branch_facts[index].contains(*var)
                 || matches!(
                     b.kind(),
                     QueryExprKind::Require(

@@ -37,8 +37,8 @@ pub(crate) mod expression;
 pub(crate) mod lifecycle;
 pub(crate) mod limits;
 pub(crate) mod value;
-pub(crate) use expression::QueryExprKind;
 pub use expression::{AllExpr, AnyExpr, QueryExpr};
+pub(crate) use expression::{QueryExprKind, QueryShapeFacts};
 
 pub(crate) mod event;
 pub use event::{EventSpec, IdentitySpec};
