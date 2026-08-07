@@ -32,7 +32,7 @@ mod model;
 mod origin_map;
 mod pattern;
 mod state;
-mod stream;
+pub(in crate::analysis) mod stream;
 mod visitor;
 
 use glass_lint_datastructures::{ByteRange, NamePath, PathId, PathSegmentInput, SymbolPath};
@@ -570,14 +570,15 @@ mod stream_tests {
     use super::*;
     use crate::{
         analysis::{
-            lowering::ResolvedProgram, model::scope::FunctionId, resolution::Resolver,
-            syntax::SymbolCallProvenance,
+            facts::stream::FactStreamToken, lowering::ResolvedProgram, model::scope::FunctionId,
+            resolution::Resolver, syntax::SymbolCallProvenance,
         },
         api::{compiler::rule::CompiledMatcherPlan, rule::EventQuery},
     };
 
     fn test_call(id: u32, span: ByteRange) -> SemanticFact {
         SemanticFact::new(
+            FactStreamToken::for_test(),
             FactId::from_test(id),
             span,
             FunctionId::from_test(0),
@@ -602,6 +603,7 @@ mod stream_tests {
 
     fn test_member_read(id: u32, span: ByteRange) -> SemanticFact {
         SemanticFact::new(
+            FactStreamToken::for_test(),
             FactId::from_test(id),
             span,
             FunctionId::from_test(0),

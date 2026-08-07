@@ -2,6 +2,7 @@ use glass_lint_datastructures::{ByteRange, NameId, NamePath, PathId};
 use smol_str::SmolStr;
 
 use crate::analysis::{
+    facts::stream::FactStreamToken,
     model::{
         scope::FunctionId,
         value::{StaticObject, ValueId},
@@ -71,6 +72,7 @@ mod test_support {
     /// Build a reference fact with the stable defaults used by model tests.
     pub(super) fn reference(id: FactId, span: ByteRange, owner: FunctionId) -> SemanticFact {
         SemanticFact::new(
+            FactStreamToken::for_test(),
             id,
             span,
             owner,
@@ -86,6 +88,7 @@ mod test_support {
     /// identities; individual tests only provide the fields under test.
     pub(super) fn call(id: FactId, span: ByteRange, owner: FunctionId) -> SemanticFact {
         SemanticFact::new(
+            FactStreamToken::for_test(),
             id,
             span,
             owner,
@@ -502,7 +505,13 @@ pub(in crate::analysis) struct SemanticFact {
 }
 
 impl SemanticFact {
-    pub fn new(id: FactId, span: ByteRange, function: FunctionId, payload: FactPayload) -> Self {
+    pub(in crate::analysis) fn new(
+        _authority: FactStreamToken,
+        id: FactId,
+        span: ByteRange,
+        function: FunctionId,
+        payload: FactPayload,
+    ) -> Self {
         Self {
             id,
             span,

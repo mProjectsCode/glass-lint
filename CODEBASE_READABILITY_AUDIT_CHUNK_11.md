@@ -19,7 +19,7 @@ the retained model APIs themselves and does not repeat those findings.
 
 ### Fact construction and argument semantics
 
-#### [ ] READ-048 — Make the fact stream the sole owner of fact identity
+#### [x] READ-048 — Make the fact stream the sole owner of fact identity
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -51,7 +51,11 @@ needed, rather than widening construction visibility. Preserve artifact-local
 IDs, source spans, function ownership, the `MAX_FACTS` cap, deterministic
 append order, and the current fail-closed invalid-stream behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added an unforgeable `FactStreamToken` owned by the
+building stream. `SemanticFact` construction now requires that authority,
+while production IDs are still assigned only by `FactStream::append`;
+test fixtures use a test-only token. This preserves dense artifact-local
+IDs, budget enforcement, and fail-closed stream behavior.
 
 #### [x] READ-049 — Give retained calls one canonical effective-argument view
 

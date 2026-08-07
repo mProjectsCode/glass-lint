@@ -31,6 +31,21 @@ enum FactStreamIssue {
     NameExhausted,
 }
 
+/// Construction authority held only by the building fact stream.
+#[derive(Debug)]
+pub(in crate::analysis) struct FactStreamToken(());
+
+impl FactStreamToken {
+    fn new() -> Self {
+        Self(())
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) const fn for_test() -> Self {
+        Self(())
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct FactStreamIssueSet(u8);
 
@@ -229,7 +244,7 @@ impl FactStream<Building> {
             return;
         };
         let id = FactId::new(raw_id);
-        let fact = SemanticFact::new(id, span, function, payload);
+        let fact = SemanticFact::new(FactStreamToken::new(), id, span, function, payload);
         self.facts.push(fact);
     }
 
