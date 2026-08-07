@@ -80,7 +80,7 @@ pub use local::{
 pub(in crate::analysis) use lowering::budget::SemanticBudget;
 pub use lowering::{
     LoweredSource, Lowerer,
-    status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
+    status::{AnalysisStatus, IncompleteReason, StatusScope},
 };
 pub(in crate::analysis) use project::model::{ExportResolution, QualifiedFunctionId};
 pub use project::model::{ProjectSemanticModel, QualifiedRequestId, ResolvedLinkInput};

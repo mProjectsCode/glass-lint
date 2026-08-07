@@ -17,6 +17,7 @@ use crate::{
             self,
             projector::{self as object_flow, FlowProjectionRule, LocalFlowProjectionOutcome},
         },
+        lowering::status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
         matching::MatcherProjectContext,
         model::{flow::FlowLimits, value::ValueId},
         project::state::LinkingSession,
@@ -344,24 +345,66 @@ impl ProjectModuleProjection<'_> {
 /// itself through a shared reference.
 #[derive(Debug, Default)]
 pub struct ProjectionOutcome {
-    pub(crate) status: ProjectionStatus,
+    status: ProjectionStatus,
     metrics: ProjectionMetrics,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum ProjectionCompletion {
+    #[default]
+    Complete,
+    Incomplete,
+}
+
+impl ProjectionCompletion {
+    fn is_incomplete(self) -> bool {
+        matches!(self, Self::Incomplete)
+    }
+
+    fn mark_incomplete(&mut self) {
+        *self = Self::Incomplete;
+    }
+}
+
 #[derive(Debug, Default)]
-pub struct ProjectionStatus {
-    /// Whether local flow projection exhausted its budget in any module.
-    pub(crate) local_exhausted: bool,
-    /// Whether cross-module flow projection exhausted its budget.
-    pub(crate) flow_exhausted: bool,
+struct ProjectionStatus {
+    flow: ProjectionCompletion,
     /// Operation count when exhaustion was reached, if applicable.
-    pub(crate) flow_observed: Option<usize>,
-    /// Whether lazy function-effect extraction reached its budget.
-    pub(crate) effect_exhausted: bool,
+    flow_observed: Option<usize>,
+    effects: ProjectionCompletion,
     /// Effect operations consumed when the effect budget was exhausted.
-    pub(crate) effect_observed: Option<usize>,
+    effect_observed: Option<usize>,
     /// Modules whose effect extraction was incomplete.
-    pub(crate) effect_exhausted_modules: Vec<ModuleId>,
+    effect_exhausted_modules: Vec<ModuleId>,
+}
+
+impl ProjectionStatus {
+    fn record_analysis_status(&self, project: &ProjectSemanticModel, status: &mut AnalysisStatus) {
+        if self.effects.is_incomplete() {
+            for module_id in &self.effect_exhausted_modules {
+                if let Some(module) = project.modules().find(|module| module.id() == *module_id) {
+                    status.record(
+                        StatusScope::File(module.path().clone()),
+                        IncompleteReason::BudgetExhausted {
+                            component: AnalysisComponent::Effects,
+                            limit: project.effect_limit(),
+                            observed: self.effect_observed,
+                        },
+                    );
+                }
+            }
+        }
+        if self.flow.is_incomplete() {
+            status.record(
+                StatusScope::Project,
+                IncompleteReason::BudgetExhausted {
+                    component: AnalysisComponent::Flow,
+                    limit: project.flow_limit(),
+                    observed: self.flow_observed,
+                },
+            );
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -380,6 +423,14 @@ pub struct ProjectionMetrics {
 }
 
 impl ProjectionOutcome {
+    pub(crate) fn record_analysis_status(
+        &self,
+        project: &ProjectSemanticModel,
+        status: &mut AnalysisStatus,
+    ) {
+        self.status.record_analysis_status(project, status);
+    }
+
     pub(crate) fn metrics(&self) -> &ProjectionMetrics {
         &self.metrics
     }
@@ -392,7 +443,7 @@ impl ProjectionOutcome {
         if !effects.budget_exhausted() {
             return;
         }
-        self.status.effect_exhausted = true;
+        self.status.effects.mark_incomplete();
         self.status.effect_exhausted_modules.push(module);
         self.status.effect_observed = Some(
             self.status
@@ -403,8 +454,9 @@ impl ProjectionOutcome {
     }
 
     fn record_local(&mut self, local: &LocalFlowProjectionOutcome) {
-        self.status.local_exhausted |= local.is_exhausted();
-        self.status.flow_exhausted |= local.is_exhausted();
+        if local.is_exhausted() {
+            self.status.flow.mark_incomplete();
+        }
         self.metrics.max_live_alternatives = self
             .metrics
             .max_live_alternatives
@@ -422,7 +474,9 @@ impl ProjectionOutcome {
     }
 
     fn record_cross(&mut self, cross: &flow::cross::CrossProjectionOutcome) {
-        self.status.flow_exhausted |= cross.exhausted;
+        if cross.exhausted {
+            self.status.flow.mark_incomplete();
+        }
         self.metrics.effect_projections = cross.projections;
         self.metrics.trace_heads = self.metrics.trace_heads.saturating_add(cross.trace_heads);
         self.metrics.operations = self.metrics.operations.saturating_add(cross.operations);
@@ -431,7 +485,8 @@ impl ProjectionOutcome {
     fn finish(mut self) -> Self {
         self.status.flow_observed = self
             .status
-            .flow_exhausted
+            .flow
+            .is_incomplete()
             .then_some(self.metrics.operations);
         self
     }

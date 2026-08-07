@@ -6,8 +6,7 @@ use std::{
 use crate::{
     AnalysisLimits, ParseDiagnostic,
     analysis::{
-        AnalysisComponent, AnalysisStatus, IncompleteReason, ProjectSemanticModel,
-        ResolvedLinkInput, StatusScope,
+        AnalysisStatus, IncompleteReason, ProjectSemanticModel, ResolvedLinkInput, StatusScope,
         project::projection::ProjectionOutcome,
         trace::{TraceArena, TraceNodeId, TraceStep},
     },
@@ -79,35 +78,12 @@ impl ProjectReportSession {
         );
     }
 
-    fn record_flow_exhaustion(
+    fn record_projection_status(
         &mut self,
         project: &ProjectSemanticModel,
         outcome: &ProjectionOutcome,
     ) {
-        if outcome.status.effect_exhausted {
-            for module_id in &outcome.status.effect_exhausted_modules {
-                if let Some(module) = project.modules().find(|module| module.id() == *module_id) {
-                    self.status.record(
-                        StatusScope::File(module.path().clone()),
-                        IncompleteReason::BudgetExhausted {
-                            component: AnalysisComponent::Effects,
-                            limit: project.effect_limit(),
-                            observed: outcome.status.effect_observed,
-                        },
-                    );
-                }
-            }
-        }
-        if outcome.status.local_exhausted || outcome.status.flow_exhausted {
-            self.status.record(
-                StatusScope::Project,
-                IncompleteReason::BudgetExhausted {
-                    component: AnalysisComponent::Flow,
-                    limit: project.flow_limit(),
-                    observed: outcome.status.flow_observed,
-                },
-            );
-        }
+        outcome.record_analysis_status(project, &mut self.status);
     }
 
     fn set_trace_arena(&mut self, trace_arena: TraceArena) {
@@ -191,7 +167,7 @@ impl<'a> ReportAssembly<'a> {
                 self.evidence_limit,
             );
         session.set_trace_arena(trace_arena);
-        session.record_flow_exhaustion(&project, &projection_outcome);
+        session.record_projection_status(&project, &projection_outcome);
         let matching = matching_start.elapsed();
 
         evidence::populate_project_files(self, &project, &session, &classifications, &mut files);

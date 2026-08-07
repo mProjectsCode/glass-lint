@@ -31,7 +31,7 @@ types, and internal artifact identities.
 
 ### Completion and uncertainty contract
 
-#### [ ] CROSS-001 — Give phase completion one canonical boundary contract
+#### [x] CROSS-001 — Give phase completion one canonical boundary contract
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -72,6 +72,14 @@ projection behavior.
 
 **Related local findings:** Chunk 1 READ-002/003, Chunk 3 READ-004, Chunk 5
 READ-001/003, Chunk 7 READ-002, Chunk 9 READ-007, and Chunk 12 READ-002.
+
+**Fix Applied:** Derived-phase admission is now carried by the private
+`DerivedPhaseCapabilities` value retained on `SemanticArtifact`. Projection
+completion uses typed monotonic states instead of parallel exhaustion
+booleans, and `ProjectionOutcome` owns the single conversion of flow/effect
+exhaustion into `AnalysisStatus`; report assembly only invokes that boundary.
+The finalized report continues to derive `ReportCompletion` from the session
+status. Verified with `make fmt && make ci`.
 
 ### Evidence lifecycle
 
