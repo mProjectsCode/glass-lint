@@ -156,7 +156,7 @@ fn flow_metrics_charge_path_and_trace_work() {
     assert!(outcome.operations > 0);
     assert!(outcome.max_live_alternatives >= 1);
     assert!(outcome.trace_heads >= 1);
-    assert!(!outcome.exhausted);
+    assert!(!outcome.is_exhausted());
 }
 
 #[test]
@@ -170,7 +170,7 @@ fn flow_metrics_are_repeatable_for_the_same_source_and_limits() {
     assert_eq!(first.coalescing_comparisons, second.coalescing_comparisons);
     assert_eq!(first.fixed_point_iterations, second.fixed_point_iterations);
     assert_eq!(first.trace_heads, second.trace_heads);
-    assert_eq!(first.exhausted, second.exhausted);
+    assert_eq!(first.is_exhausted(), second.is_exhausted());
 }
 
 #[test]
@@ -182,7 +182,7 @@ fn equivalent_branch_paths_are_coalesced_and_counted() {
     );
     assert!(outcome.coalescing_comparisons > 0);
     assert!(outcome.max_live_alternatives >= 2);
-    assert!(!outcome.exhausted);
+    assert!(!outcome.is_exhausted());
 }
 
 #[test]
@@ -194,7 +194,7 @@ fn loop_fixed_point_iterations_are_bounded_and_visible() {
     );
     assert!(outcome.fixed_point_iterations > 0);
     assert!(outcome.operations >= outcome.fixed_point_iterations);
-    assert!(!outcome.exhausted);
+    assert!(!outcome.is_exhausted());
 }
 
 #[test]
@@ -204,7 +204,7 @@ fn exhausted_flow_operation_budget_is_reported_as_incomplete() {
         &script_flow(),
         FlowLimits::test_with_operation_limit(65_536, 262_144, 65_536, 4096, 1),
     );
-    assert!(outcome.exhausted);
+    assert!(outcome.is_exhausted());
     assert!(outcome.operations <= 1);
 }
 
@@ -724,7 +724,7 @@ fn object_limit_exhaustion_returns_exhausted_outcome() {
         1,
         limits,
     );
-    assert!(outcome.exhausted, "object limit should be exhausted");
+    assert!(outcome.is_exhausted(), "object limit should be exhausted");
     assert!(
         evidence[0].is_empty(),
         "no flow can complete without a second object"
@@ -747,7 +747,10 @@ fn mutation_log_exhaustion_returns_exhausted_outcome() {
         1,
         limits,
     );
-    assert!(outcome.exhausted, "mutation log limit should be exhausted");
+    assert!(
+        outcome.is_exhausted(),
+        "mutation log limit should be exhausted"
+    );
 }
 
 #[test]
@@ -766,7 +769,7 @@ fn state_limit_exhaustion_returns_exhausted_outcome() {
         1,
         limits,
     );
-    assert!(outcome.exhausted, "state limit should be exhausted");
+    assert!(outcome.is_exhausted(), "state limit should be exhausted");
 }
 
 #[test]
@@ -785,5 +788,5 @@ fn emission_limit_exhaustion_returns_exhausted_outcome() {
         1,
         limits,
     );
-    assert!(outcome.exhausted, "emission limit should be exhausted");
+    assert!(outcome.is_exhausted(), "emission limit should be exhausted");
 }

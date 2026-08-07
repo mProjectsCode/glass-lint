@@ -179,7 +179,7 @@ precedes admission, so counters cannot represent an unrecorded occurrence.
 
 ### Local projection completion
 
-#### [ ] READ-041 — Give local projection exhaustion one completion owner
+#### [x] READ-041 — Give local projection exhaustion one completion owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -207,7 +207,11 @@ evidence clearing/interpretation, and the rule that an independent complete
 possible witness remains possible even when another alternative is
 incomplete.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the aggregate `exhausted` flag with a typed local
+projection completion value. It owns the terminal checks for summary,
+object, state, evidence, mutation, alternatives, and trace exhaustion, while
+the project layer reads that value once to update both local and flow status.
+Projection counters and fail-closed behavior remain unchanged.
 
 ## Systemic Themes
 

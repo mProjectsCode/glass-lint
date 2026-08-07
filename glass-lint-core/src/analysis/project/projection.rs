@@ -377,8 +377,8 @@ impl ProjectionOutcome {
     }
 
     fn record_local(&mut self, local: &LocalFlowProjectionOutcome) {
-        self.status.local_exhausted |= local.exhausted;
-        self.status.flow_exhausted |= local.exhausted;
+        self.status.local_exhausted |= local.is_exhausted();
+        self.status.flow_exhausted |= local.is_exhausted();
         self.metrics.max_live_alternatives = self
             .metrics
             .max_live_alternatives

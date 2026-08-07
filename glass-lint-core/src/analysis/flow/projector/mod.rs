@@ -60,11 +60,72 @@ pub(super) enum PathAdmission {
     Exhausted,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+enum LocalProjectionExhaustion {
+    Summary,
+    ObjectLimit,
+    StateLimit,
+    EvidenceLimit,
+    MutationLog,
+    Alternatives,
+    TraceArena,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct LocalProjectionCompletion(u8);
+
+impl LocalProjectionCompletion {
+    fn from_sources(
+        run: &ProjectionRunState,
+        flow_state: &FlowStateTable,
+        flow_evidence: &FlowEvidence<'_>,
+        trace_arena: &TraceArena,
+    ) -> Self {
+        let mut completion = Self::default();
+        completion.mark_if(LocalProjectionExhaustion::Summary, run.summary_exhausted);
+        completion.mark_if(
+            LocalProjectionExhaustion::ObjectLimit,
+            run.object_limit_rejected,
+        );
+        completion.mark_if(
+            LocalProjectionExhaustion::StateLimit,
+            flow_state.state_limit_rejected(),
+        );
+        completion.mark_if(
+            LocalProjectionExhaustion::EvidenceLimit,
+            flow_evidence.limit_rejected(),
+        );
+        completion.mark_if(
+            LocalProjectionExhaustion::MutationLog,
+            flow_state.mutation_exhausted(),
+        );
+        completion.mark_if(
+            LocalProjectionExhaustion::Alternatives,
+            !run.alternatives_complete.is_complete(),
+        );
+        completion.mark_if(
+            LocalProjectionExhaustion::TraceArena,
+            trace_arena.is_exhausted(),
+        );
+        completion
+    }
+
+    fn mark_if(&mut self, reason: LocalProjectionExhaustion, exhausted: bool) {
+        if exhausted {
+            self.0 |= 1 << reason as u8;
+        }
+    }
+
+    fn is_exhausted(self) -> bool {
+        self.0 != 0
+    }
+}
+
 /// Exhaustion state and bounded counters returned by local flow projection.
 #[derive(Debug, Clone, Copy, Default)]
 pub(in crate::analysis) struct LocalFlowProjectionOutcome {
-    /// Whether any budget was exhausted during projection.
-    pub exhausted: bool,
+    completion: LocalProjectionCompletion,
     /// Charged local flow operations.
     pub operations: usize,
     /// Maximum number of correlated alternatives retained at one point.
@@ -75,6 +136,13 @@ pub(in crate::analysis) struct LocalFlowProjectionOutcome {
     pub fixed_point_iterations: usize,
     /// Number of complete trace heads emitted by local flow.
     pub trace_heads: usize,
+}
+
+impl LocalFlowProjectionOutcome {
+    /// Whether any local projection resource was exhausted.
+    pub(in crate::analysis) fn is_exhausted(&self) -> bool {
+        self.completion.is_exhausted()
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -854,15 +922,14 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     fn into_outcome(self) -> LocalFlowProjectionOutcome {
         let mut flow_evidence = self.flow_evidence;
         flow_evidence.mark_truncated();
-        let exhausted = self.run.summary_exhausted
-            || self.run.object_limit_rejected
-            || self.flow_state.state_limit_rejected()
-            || flow_evidence.limit_rejected()
-            || self.flow_state.mutation_exhausted()
-            || !self.run.alternatives_complete.is_complete()
-            || self.trace_arena.is_exhausted();
+        let completion = LocalProjectionCompletion::from_sources(
+            &self.run,
+            &self.flow_state,
+            &flow_evidence,
+            self.trace_arena,
+        );
         LocalFlowProjectionOutcome {
-            exhausted,
+            completion,
             operations: self.run.operation_budget.used(),
             max_live_alternatives: self.run.max_live_alternatives,
             coalescing_comparisons: self.run.coalescing_comparisons,
