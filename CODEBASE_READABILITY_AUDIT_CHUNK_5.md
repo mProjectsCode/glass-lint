@@ -113,7 +113,7 @@ unknown or dynamically invalidated values.
 
 ### Freeze representation
 
-#### [ ] READ-024 — Replace tuple-shaped scope artifact extraction with a sealing API
+#### [x] READ-024 — Replace tuple-shaped scope artifact extraction with a sealing API
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -140,6 +140,11 @@ binding and mutation owners expose validated constructors rather than requiring
 storage APIs after migration. Preserve issue accumulation, shape validity,
 invalid binding-index fallback, dynamic-eval filtering, property assignment
 ordering, and the immutable `FrozenScopeGraph` boundary.
+
+**Fix Applied:** Replaced tuple-shaped artifact extraction with the named
+`seal` transition and named field destructuring. Removed both `into_parts`
+storage APIs while preserving property indexing, binding allocation, mutation
+construction, issue accumulation, and graph-freeze ordering.
 
 ### Expression-shape normalization
 

@@ -199,8 +199,11 @@ impl ScopeGraph {
         &mut self,
         property_artifacts: FrozenPropertyArtifacts,
     ) {
-        let (property_assignments, rooted_mutations, dynamic_evals) =
-            property_artifacts.into_parts();
+        let FrozenPropertyArtifacts {
+            property_assignments,
+            rooted_property_mutations: rooted_mutations,
+            dynamic_evals,
+        } = property_artifacts;
         for assignment in property_assignments {
             let (span, scope, property, receiver, target) = assignment.into_parts();
             let Some(receiver_key) =
