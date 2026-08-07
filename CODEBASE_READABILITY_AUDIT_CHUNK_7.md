@@ -146,7 +146,7 @@ evidence emission through the shared trace arena.
 
 ### Cross-flow evidence storage
 
-#### [ ] READ-035 — Key rule evidence by its domain identity while accumulating
+#### [x] READ-035 — Key rule evidence by its domain identity while accumulating
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -173,7 +173,10 @@ boundary. Preserve separate incompatible alternatives, possible-versus-
 definite certainty, trace identity deduplication, catalog capacity bounds,
 stable ordering, and clearing all evidence on cross-flow exhaustion.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Changed each cross-flow `RuleEvidence` accumulator to a
+`BTreeMap<EvidenceKey, ClassificationEvidence>`. Witness merges and
+nonmatching certainty downgrades now address the semantic key directly, with
+deterministic final ordering and fail-closed catalog replacement.
 
 ## Systemic Themes
 

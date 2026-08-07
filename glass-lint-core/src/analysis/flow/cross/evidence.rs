@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use hashbrown::HashMap;
 
@@ -76,7 +76,7 @@ struct EvidenceKey {
 
 #[derive(Default)]
 struct RuleEvidence {
-    items: Vec<ClassificationEvidence>,
+    items: BTreeMap<EvidenceKey, ClassificationEvidence>,
     /// Sink occurrences reached by an alternative that did not produce a
     /// complete witness. These keys are kept separate from witness traces so
     /// no evidence can be assembled from incompatible call sites.
@@ -113,14 +113,7 @@ impl ModuleEvidence {
             return;
         };
         rule.nonmatching.insert(key.clone());
-        if let Some(item) = rule.items.iter_mut().find(|item| {
-            item.kind() == key.kind
-                && item.symbol() == key.symbol
-                && item
-                    .occurrences()
-                    .iter()
-                    .any(|occurrence| occurrence.fact() == Some(key.fact.raw()))
-        }) {
+        if let Some(item) = rule.items.get_mut(key) {
             item.mark_possible();
         }
     }
@@ -137,14 +130,7 @@ impl ModuleEvidence {
         if rule.nonmatching.contains(key) {
             item.mark_possible();
         }
-        if let Some(existing) = rule.items.iter_mut().find(|existing| {
-            existing.kind() == key.kind
-                && existing.symbol() == key.symbol
-                && existing
-                    .occurrences()
-                    .iter()
-                    .any(|occurrence| occurrence.fact() == Some(key.fact.raw()))
-        }) {
+        if let Some(existing) = rule.items.get_mut(key) {
             let item_trace = item
                 .occurrences()
                 .first()
@@ -157,7 +143,7 @@ impl ModuleEvidence {
                 existing.append(item);
             }
         } else {
-            rule.items.push(item);
+            rule.items.insert(key.clone(), item);
         }
     }
 
@@ -175,9 +161,15 @@ impl ModuleEvidence {
     pub(super) fn into_evidence(self) -> RuleEvidenceTable {
         let mut evidence = RuleEvidenceTable::new(self.capacity);
         for (rule_index, rule) in self.rules.into_iter().enumerate() {
-            evidence
-                .replace(RuleIndex::new(rule_index), rule.items)
-                .expect("module evidence uses its catalog capacity");
+            if evidence
+                .replace(
+                    RuleIndex::new(rule_index),
+                    rule.items.into_values().collect(),
+                )
+                .is_err()
+            {
+                return evidence;
+            }
         }
         evidence
     }
