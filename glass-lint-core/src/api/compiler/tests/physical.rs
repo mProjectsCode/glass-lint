@@ -1,3 +1,5 @@
+use glass_lint_datastructures::SymbolPath;
+
 use crate::api::{
     classification::MatchKind,
     compiler::{
@@ -319,6 +321,27 @@ fn empty_identity_fails_validation() {
     let plan = PhysicalPlan::new(roots, PlanRequirements::default());
     assert_eq!(
         validate_physical_plan(&plan),
+        Err(PhysicalPlanValidationError::ImpossibleDimensions)
+    );
+}
+
+#[test]
+fn object_slot_sentinel_is_rejected_by_relation_constructor() {
+    assert_eq!(
+        PhysicalRoot::returned_subject(
+            IdentityConstraint::Rooted {
+                path: "document.create".into(),
+            },
+            u32::MAX,
+            SymbolPath::from("send"),
+            EventPredicate::MemberCall {
+                member: SymbolPath::from("send"),
+            },
+            EvidenceDescriptor {
+                kind: MatchKind::Call,
+                symbol: "send".into(),
+            },
+        ),
         Err(PhysicalPlanValidationError::ImpossibleDimensions)
     );
 }

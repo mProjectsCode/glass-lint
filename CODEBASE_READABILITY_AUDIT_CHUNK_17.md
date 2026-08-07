@@ -112,7 +112,7 @@ errors become `QueryDiagnostic` values; internal normalization failures and
 physical-plan failures retain typed non-authored paths. Added a focused
 mapping test and verified with `make fmt && make ci`.
 
-#### [ ] READ-083 — Give physical roots typed object-slot and relation constructors
+#### [x] READ-083 — Give physical roots typed object-slot and relation constructors
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -148,7 +148,12 @@ remove the sentinel plus ordinary-path construction of empty members. Keep
 renumbering and deterministic root ordering, and preserve the compatibility
 and requirement checks already identified in Chunk 15.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a validated `ObjectSlot` type and relation-specific
+physical-root constructors for indexed, constrained, returned-subject, and
+instance-subject roots. Event planning now rejects unsupported subject/event
+shapes instead of constructing empty member paths, while whole-plan
+validation remains defensive. Added a sentinel regression test and verified
+with `make fmt && make ci`.
 
 ### Normalization and lifecycle semantics
 

@@ -52,14 +52,14 @@ pub(crate) enum PhysicalRoot {
     },
     ReturnedSubject {
         producer: IdentityConstraint,
-        object_slot: u32,
+        object_slot: ObjectSlot,
         member: SymbolPath,
         event: EventPredicate,
         evidence: EvidenceDescriptor,
     },
     InstanceSubject {
         constructor: IdentityConstraint,
-        object_slot: u32,
+        object_slot: ObjectSlot,
         member: SymbolPath,
         evidence: EvidenceDescriptor,
     },
@@ -68,7 +68,85 @@ pub(crate) enum PhysicalRoot {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct ObjectSlot(u32);
+
+impl ObjectSlot {
+    fn new(slot: u32) -> Result<Self, PhysicalPlanValidationError> {
+        (slot != u32::MAX)
+            .then_some(Self(slot))
+            .ok_or(PhysicalPlanValidationError::ImpossibleDimensions)
+    }
+}
+
+impl std::fmt::Display for ObjectSlot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 impl PhysicalRoot {
+    fn indexed_scan(
+        identity: IdentityConstraint,
+        event: EventPredicate,
+        evidence: EvidenceDescriptor,
+    ) -> Result<Self, PhysicalPlanValidationError> {
+        Self::validated(Self::IndexedScan {
+            identity,
+            event,
+            evidence,
+        })
+    }
+
+    fn constrained_scan(
+        identity: IdentityConstraint,
+        event: EventPredicate,
+        constraints: CanonicalArgumentConstraints,
+        evidence: EvidenceDescriptor,
+    ) -> Result<Self, PhysicalPlanValidationError> {
+        Self::validated(Self::ConstrainedScan {
+            identity,
+            event,
+            constraints,
+            evidence,
+        })
+    }
+
+    pub(crate) fn returned_subject(
+        producer: IdentityConstraint,
+        object_slot: u32,
+        member: SymbolPath,
+        event: EventPredicate,
+        evidence: EvidenceDescriptor,
+    ) -> Result<Self, PhysicalPlanValidationError> {
+        Self::validated(Self::ReturnedSubject {
+            producer,
+            object_slot: ObjectSlot::new(object_slot)?,
+            member,
+            event,
+            evidence,
+        })
+    }
+
+    fn instance_subject(
+        constructor: IdentityConstraint,
+        object_slot: u32,
+        member: SymbolPath,
+        evidence: EvidenceDescriptor,
+    ) -> Result<Self, PhysicalPlanValidationError> {
+        Self::validated(Self::InstanceSubject {
+            constructor,
+            object_slot: ObjectSlot::new(object_slot)?,
+            member,
+            evidence,
+        })
+    }
+
+    fn validated(root: Self) -> Result<Self, PhysicalPlanValidationError> {
+        root.validate()?;
+        Ok(root)
+    }
+
     /// Describe the preparation capabilities owned by this executable root.
     /// Keeping this mapping on the physical operator makes the executable
     /// plan the single source of truth for runtime requirements.
@@ -129,7 +207,7 @@ impl PhysicalRoot {
             }
             Self::ReturnedSubject {
                 producer,
-                object_slot,
+                object_slot: _,
                 member,
                 event,
                 evidence,
@@ -137,7 +215,6 @@ impl PhysicalRoot {
             } => {
                 if producer.is_empty()
                     || !matches!(producer, IdentityConstraint::Rooted { .. })
-                    || *object_slot == u32::MAX
                     || member.is_empty()
                 {
                     return Err(PhysicalPlanValidationError::ImpossibleDimensions);
@@ -153,13 +230,12 @@ impl PhysicalRoot {
             }
             Self::InstanceSubject {
                 constructor,
-                object_slot,
+                object_slot: _,
                 member,
                 evidence,
                 ..
             } => {
                 if constructor.is_empty()
-                    || *object_slot == u32::MAX
                     || !matches!(
                         constructor,
                         IdentityConstraint::ModuleExport { .. }
@@ -370,25 +446,33 @@ pub(crate) fn plan_normalized(
     let emission = nq.emission();
     let kind = emission.kind();
     let symbol = emission.symbol();
-    let roots = plan_root(nq.root(), kind, symbol);
+    let roots = plan_root(nq.root(), kind, symbol)?;
     PhysicalPlan::from_roots(roots.into_boxed_slice())
 }
 
-fn plan_root(root: &NormalizedRoot, kind: MatchKind, symbol: &str) -> Vec<PhysicalRoot> {
+fn plan_root(
+    root: &NormalizedRoot,
+    kind: MatchKind,
+    symbol: &str,
+) -> Result<Vec<PhysicalRoot>, PhysicalPlanValidationError> {
     match root {
         NormalizedRoot::Event(ev) => plan_event(ev, kind, symbol),
         NormalizedRoot::Any(branches) => {
             let mut roots = Vec::new();
             for b in branches {
-                roots.extend(plan_root(b, kind, symbol));
+                roots.extend(plan_root(b, kind, symbol)?);
             }
-            roots
+            Ok(roots)
         }
-        NormalizedRoot::Lifecycle(lc) => plan_lifecycle(lc, symbol).into_iter().collect(),
+        NormalizedRoot::Lifecycle(lc) => Ok(plan_lifecycle(lc, symbol).into_iter().collect()),
     }
 }
 
-fn plan_event(ev: &NormalizedEvent, kind: MatchKind, symbol: &str) -> Vec<PhysicalRoot> {
+fn plan_event(
+    ev: &NormalizedEvent,
+    kind: MatchKind,
+    symbol: &str,
+) -> Result<Vec<PhysicalRoot>, PhysicalPlanValidationError> {
     let evidence = EvidenceDescriptor {
         kind,
         symbol: symbol.to_owned(),
@@ -397,18 +481,18 @@ fn plan_event(ev: &NormalizedEvent, kind: MatchKind, symbol: &str) -> Vec<Physic
     match ev.subject() {
         NormalizedSubject::Direct { identity } => {
             if ev.arguments().is_empty() {
-                vec![PhysicalRoot::IndexedScan {
-                    identity: lower_identity(identity),
-                    event: lower_event(ev.event()),
+                Ok(vec![PhysicalRoot::indexed_scan(
+                    lower_identity(identity),
+                    lower_event(ev.event()),
                     evidence,
-                }]
+                )?])
             } else {
-                vec![PhysicalRoot::ConstrainedScan {
-                    identity: lower_identity(identity),
-                    event: lower_event(ev.event()),
-                    constraints: ev.arguments().clone(),
+                Ok(vec![PhysicalRoot::constrained_scan(
+                    lower_identity(identity),
+                    lower_event(ev.event()),
+                    ev.arguments().clone(),
                     evidence,
-                }]
+                )?])
             }
         }
         NormalizedSubject::Returned {
@@ -419,15 +503,15 @@ fn plan_event(ev: &NormalizedEvent, kind: MatchKind, symbol: &str) -> Vec<Physic
                 EventSpec::MemberCall { member } | EventSpec::MemberRead { member } => {
                     member.clone()
                 }
-                _ => SymbolPath::default(),
+                _ => return Err(PhysicalPlanValidationError::ImpossibleDimensions),
             };
-            vec![PhysicalRoot::ReturnedSubject {
-                producer: lower_identity(producer),
-                object_slot: *object_slot,
+            Ok(vec![PhysicalRoot::returned_subject(
+                lower_identity(producer),
+                *object_slot,
                 member,
-                event: lower_event(ev.event()),
+                lower_event(ev.event()),
                 evidence,
-            }]
+            )?])
         }
         NormalizedSubject::Instance {
             constructor,
@@ -435,14 +519,14 @@ fn plan_event(ev: &NormalizedEvent, kind: MatchKind, symbol: &str) -> Vec<Physic
         } => {
             let member = match ev.event() {
                 EventSpec::MemberCall { member } => member.clone(),
-                _ => SymbolPath::default(),
+                _ => return Err(PhysicalPlanValidationError::ImpossibleDimensions),
             };
-            vec![PhysicalRoot::InstanceSubject {
-                constructor: lower_identity(constructor),
-                object_slot: *object_slot,
+            Ok(vec![PhysicalRoot::instance_subject(
+                lower_identity(constructor),
+                *object_slot,
                 member,
                 evidence,
-            }]
+            )?])
         }
     }
 }
