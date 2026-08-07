@@ -1,4 +1,10 @@
-use crate::api::rule::query::{EventSpec, IdentitySpec, VarId};
+use glass_lint_datastructures::SymbolPath;
+use smol_str::SmolStr;
+
+use crate::api::{
+    compiler::normalized::NormalizedSubject,
+    rule::query::{EventSpec, IdentitySpec, VarId},
+};
 
 // ── Error type ───────────────────────────────────────────────────────────
 
@@ -178,6 +184,57 @@ impl std::fmt::Display for QueryCompileError {
 
 // ── Dimension compatibility helpers ──────────────────────────────────────
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SubjectRelationError {
+    DirectIdentityEvent,
+    ReturnedRequiresRootedMember,
+    InstanceRequiresModuleCall,
+    EmptySubjectIdentity,
+    InvalidLifecycleSource,
+}
+
+impl SubjectRelationError {
+    pub(crate) fn detail(self) -> &'static str {
+        match self {
+            Self::DirectIdentityEvent => "identity/event combination cannot select a semantic fact",
+            Self::ReturnedRequiresRootedMember => {
+                "returned subject requires a rooted member call or read"
+            }
+            Self::InstanceRequiresModuleCall => {
+                "instance subject requires a module-export member call"
+            }
+            Self::EmptySubjectIdentity => "subject identity is empty",
+            Self::InvalidLifecycleSource => {
+                "lifecycle source must be a global call or rooted member call"
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SubjectRelation<'a> {
+    Direct {
+        identity: &'a IdentitySpec,
+    },
+    Returned {
+        producer: &'a IdentitySpec,
+        object_slot: u32,
+        member: &'a SymbolPath,
+        event: &'a EventSpec,
+    },
+    Instance {
+        constructor: &'a IdentitySpec,
+        object_slot: u32,
+        member: &'a SymbolPath,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LifecycleSource<'a> {
+    GlobalCall { name: &'a SmolStr },
+    RootedMember { member: &'a SymbolPath },
+}
+
 /// Check whether the identity/event/subject combination is compatible for
 /// a direct subject relationship (the most common case).
 pub(crate) fn is_direct_dimension_valid(identity: &IdentitySpec, event: &EventSpec) -> bool {
@@ -238,6 +295,87 @@ pub(crate) fn is_valid_identity_event_pair(identity: &IdentitySpec, event: &Even
         return false;
     }
     is_direct_dimension_valid(identity, event)
+}
+
+/// Validate the complete normalized subject relationship before lowering.
+/// This is the single compatibility matrix for direct, returned, and
+/// constructed-member event roots.
+pub(crate) fn validate_subject_relation(
+    event: &EventSpec,
+    subject: &NormalizedSubject,
+) -> Result<(), SubjectRelationError> {
+    classify_subject_relation(event, subject).map(|_| ())
+}
+
+pub(crate) fn classify_subject_relation<'a>(
+    event: &'a EventSpec,
+    subject: &'a NormalizedSubject,
+) -> Result<SubjectRelation<'a>, SubjectRelationError> {
+    match subject {
+        NormalizedSubject::Direct { identity } => {
+            if is_valid_identity_event_pair(identity, event) {
+                Ok(SubjectRelation::Direct { identity })
+            } else {
+                Err(SubjectRelationError::DirectIdentityEvent)
+            }
+        }
+        NormalizedSubject::Returned {
+            producer,
+            object_slot,
+        } => {
+            if is_identity_empty(producer) {
+                return Err(SubjectRelationError::EmptySubjectIdentity);
+            }
+            match (producer, event) {
+                (
+                    IdentitySpec::Rooted { .. },
+                    EventSpec::MemberCall { member } | EventSpec::MemberRead { member },
+                ) if !member.is_empty() => Ok(SubjectRelation::Returned {
+                    producer,
+                    object_slot: *object_slot,
+                    member,
+                    event,
+                }),
+                _ => Err(SubjectRelationError::ReturnedRequiresRootedMember),
+            }
+        }
+        NormalizedSubject::Instance {
+            constructor,
+            object_slot,
+        } => {
+            if is_identity_empty(constructor) {
+                return Err(SubjectRelationError::EmptySubjectIdentity);
+            }
+            match (constructor, event) {
+                (
+                    IdentitySpec::ModuleExport { .. } | IdentitySpec::PackageModuleExport { .. },
+                    EventSpec::MemberCall { member },
+                ) if !member.is_empty() => Ok(SubjectRelation::Instance {
+                    constructor,
+                    object_slot: *object_slot,
+                    member,
+                }),
+                _ => Err(SubjectRelationError::InstanceRequiresModuleCall),
+            }
+        }
+    }
+}
+
+pub(crate) fn classify_lifecycle_source<'a>(
+    identity: &'a IdentitySpec,
+    event: &'a EventSpec,
+) -> Result<LifecycleSource<'a>, SubjectRelationError> {
+    match (identity, event) {
+        (IdentitySpec::Global { name }, EventSpec::Call) if !name.is_empty() => {
+            Ok(LifecycleSource::GlobalCall { name })
+        }
+        (IdentitySpec::Rooted { path }, EventSpec::MemberCall { member })
+            if !path.is_empty() && !member.is_empty() =>
+        {
+            Ok(LifecycleSource::RootedMember { member })
+        }
+        _ => Err(SubjectRelationError::InvalidLifecycleSource),
+    }
 }
 
 /// Check if an identity name or pattern is empty.

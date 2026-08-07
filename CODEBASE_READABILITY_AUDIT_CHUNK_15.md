@@ -65,7 +65,7 @@ and physical compiler tests continue to cover constrained values, project
 overlays, flow, alternatives, and deterministic plans. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-069 — Centralize the identity/event/subject compatibility matrix
+#### [x] READ-069 — Centralize the identity/event/subject compatibility matrix
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -102,7 +102,13 @@ member-path equality, property-write support where it is semantically valid,
 bounded lifecycle sources, and structured diagnostics before physical plan
 construction.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added typed subject and lifecycle-source classifiers in the
+compiler validation boundary and reused them from normalized validation,
+physical planning, lifecycle validation, and object-flow lowering. Returned
+and instance relations now reject unsupported event shapes before lowering;
+lifecycle lowering returns a structured `InvalidLifecycleSource` error instead
+of silently dropping a source. Added a regression test for malformed lifecycle
+sources and verified with `make fmt && make ci`.
 
 ### Canonical data and query analysis
 

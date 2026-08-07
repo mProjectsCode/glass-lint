@@ -10,7 +10,7 @@ use crate::api::{
             NormalizedLifecycleCompletion, NormalizedLifecycleCondition, NormalizedLifecycleEvent,
             NormalizedLifecycleSink, NormalizedRoot, NormalizedSubject,
         },
-        validate::QueryCompileError,
+        validate::{QueryCompileError, classify_lifecycle_source, validate_subject_relation},
     },
     rule::query::{
         AnyExpr, EmissionDecl, EventQuery, EventSpec, IdentitySpec, LifecycleQuery, QueryDecl,
@@ -110,34 +110,10 @@ fn validate_normalized_root(root: &NormalizedRoot, is_top: bool) -> Result<(), Q
                     detail: "normalized argument constraint groups are not canonical".into(),
                 });
             }
-            // Verify subject-specific invariants.
-            match &ev.subject {
-                NormalizedSubject::Returned {
-                    producer,
-                    object_slot: _,
-                }
-                | NormalizedSubject::Instance {
-                    constructor: producer,
-                    object_slot: _,
-                } => {
-                    // Returned/Instance must have a member event, not a bare call.
-                    if !matches!(
-                        ev.event,
-                        EventSpec::MemberCall { .. }
-                            | EventSpec::MemberRead { .. }
-                            | EventSpec::PropertyWrite { .. }
-                    ) {
-                        return Err(QueryCompileError::InternalInvariant {
-                            detail: "returned/instance subject on non-member event".into(),
-                        });
-                    }
-                    if producer.display_name().is_empty() {
-                        return Err(QueryCompileError::InternalInvariant {
-                            detail: "returned/instance subject relation is incomplete".into(),
-                        });
-                    }
-                }
-                NormalizedSubject::Direct { .. } => {}
+            if let Err(error) = validate_subject_relation(&ev.event, &ev.subject) {
+                return Err(QueryCompileError::InternalInvariant {
+                    detail: error.detail().into(),
+                });
             }
             Ok(())
         }
@@ -151,6 +127,13 @@ fn validate_normalized_root(root: &NormalizedRoot, is_top: bool) -> Result<(), Q
                 return Err(QueryCompileError::InternalInvariant {
                     detail: "normalized lifecycle is missing a required stage".into(),
                 });
+            }
+            for source in &lifecycle.sources {
+                if let Err(error) = classify_lifecycle_source(source.identity(), source.event()) {
+                    return Err(QueryCompileError::InternalInvariant {
+                        detail: error.detail().into(),
+                    });
+                }
             }
             Ok(())
         }

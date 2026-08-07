@@ -5,7 +5,10 @@ use crate::api::{
     compiler::{
         error::PhysicalPlanValidationError,
         normalize::normalize_query_decl,
-        normalized::{ArgumentConstraintGroup, CanonicalArgumentConstraints},
+        normalized::{
+            ArgumentConstraintGroup, CanonicalArgumentConstraints, NormalizedEmission,
+            NormalizedEvent, NormalizedLifecycle, NormalizedRoot,
+        },
         object_flow::CompiledObjectFlow,
         physical::{
             PhysicalPlan, PhysicalRoot, optimize_roots, plan_normalized, validate_physical_plan,
@@ -399,6 +402,41 @@ fn lifecycle_evidence_bound_is_validated_at_the_physical_boundary() {
         Err(PhysicalPlanValidationError::ExcessiveLifecycleEvidence {
             requirements: limits::MAX_LIFECYCLE_EVENTS + 1,
             sinks: limits::MAX_LIFECYCLE_SINKS,
+        })
+    );
+}
+
+#[test]
+fn malformed_lifecycle_source_is_reported_instead_of_dropped() {
+    let query = crate::api::compiler::normalized::NormalizedQuery {
+        root: NormalizedRoot::Lifecycle(NormalizedLifecycle {
+            sources: vec![NormalizedEvent {
+                slot: 0,
+                event: crate::api::rule::query::EventSpec::PropertyWrite {
+                    property: SymbolPath::from("config.mode"),
+                },
+                subject: crate::api::compiler::normalized::NormalizedSubject::Direct {
+                    identity: crate::api::rule::query::IdentitySpec::Global {
+                        name: "config".into(),
+                    },
+                },
+                arguments: CanonicalArgumentConstraints::default(),
+            }],
+            condition: None,
+            completion: Some(
+                crate::api::compiler::normalized::NormalizedLifecycleCompletion::Configuration,
+            ),
+        }),
+        emission: NormalizedEmission {
+            kind: MatchKind::Call,
+            symbol: "lifecycle".into(),
+        },
+    };
+
+    assert_eq!(
+        plan_normalized(&query),
+        Err(PhysicalPlanValidationError::InvalidLifecycleSource {
+            detail: "lifecycle source must be a global call or rooted member call",
         })
     );
 }

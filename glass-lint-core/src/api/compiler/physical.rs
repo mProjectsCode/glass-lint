@@ -8,18 +8,18 @@ use crate::api::{
         error::PhysicalPlanValidationError,
         normalized::{
             CanonicalArgumentConstraints, NormalizedEvent, NormalizedLifecycle, NormalizedQuery,
-            NormalizedRoot, NormalizedSubject,
+            NormalizedRoot,
         },
         object_flow::CompiledObjectFlow,
         requirements::PlanRequirements,
         rule::{
             EventPredicate, EvidenceDescriptor, IdentityConstraint, lower_event, lower_identity,
         },
+        validate::{SubjectRelation, classify_subject_relation},
     },
     rule::{
         ArgumentIndex, ArgumentMatcher, ArgumentMatcherKind, StaticStringPredicateKind,
-        ValueMatcherKind,
-        query::{EventSpec, limits},
+        ValueMatcherKind, query::limits,
     },
 };
 
@@ -464,7 +464,7 @@ fn plan_root(
             }
             Ok(roots)
         }
-        NormalizedRoot::Lifecycle(lc) => Ok(plan_lifecycle(lc, symbol).into_iter().collect()),
+        NormalizedRoot::Lifecycle(lc) => Ok(vec![plan_lifecycle(lc, symbol)?]),
     }
 }
 
@@ -473,13 +473,15 @@ fn plan_event(
     kind: MatchKind,
     symbol: &str,
 ) -> Result<Vec<PhysicalRoot>, PhysicalPlanValidationError> {
+    let relation = classify_subject_relation(ev.event(), ev.subject())
+        .map_err(|_| PhysicalPlanValidationError::ImpossibleDimensions)?;
     let evidence = EvidenceDescriptor {
         kind,
         symbol: symbol.to_owned(),
     };
 
-    match ev.subject() {
-        NormalizedSubject::Direct { identity } => {
+    match relation {
+        SubjectRelation::Direct { identity } => {
             if ev.arguments().is_empty() {
                 Ok(vec![PhysicalRoot::indexed_scan(
                     lower_identity(identity),
@@ -495,45 +497,42 @@ fn plan_event(
                 )?])
             }
         }
-        NormalizedSubject::Returned {
+        SubjectRelation::Returned {
             producer,
             object_slot,
-        } => {
-            let member = match ev.event() {
-                EventSpec::MemberCall { member } | EventSpec::MemberRead { member } => {
-                    member.clone()
-                }
-                _ => return Err(PhysicalPlanValidationError::ImpossibleDimensions),
-            };
-            Ok(vec![PhysicalRoot::returned_subject(
-                lower_identity(producer),
-                *object_slot,
-                member,
-                lower_event(ev.event()),
-                evidence,
-            )?])
-        }
-        NormalizedSubject::Instance {
+            member,
+            event,
+        } => Ok(vec![PhysicalRoot::returned_subject(
+            lower_identity(producer),
+            object_slot,
+            member.clone(),
+            lower_event(event),
+            evidence,
+        )?]),
+        SubjectRelation::Instance {
             constructor,
             object_slot,
-        } => {
-            let member = match ev.event() {
-                EventSpec::MemberCall { member } => member.clone(),
-                _ => return Err(PhysicalPlanValidationError::ImpossibleDimensions),
-            };
-            Ok(vec![PhysicalRoot::instance_subject(
-                lower_identity(constructor),
-                *object_slot,
-                member,
-                evidence,
-            )?])
-        }
+            member,
+        } => Ok(vec![PhysicalRoot::instance_subject(
+            lower_identity(constructor),
+            object_slot,
+            member.clone(),
+            evidence,
+        )?]),
     }
 }
 
-fn plan_lifecycle(lc: &NormalizedLifecycle, symbol: &str) -> Option<PhysicalRoot> {
+fn plan_lifecycle(
+    lc: &NormalizedLifecycle,
+    symbol: &str,
+) -> Result<PhysicalRoot, PhysicalPlanValidationError> {
     CompiledObjectFlow::from_normalized_lifecycle(lc, symbol)
         .map(|flow| PhysicalRoot::Lifecycle { flow })
+        .map_err(
+            |error| PhysicalPlanValidationError::InvalidLifecycleSource {
+                detail: error.detail(),
+            },
+        )
 }
 
 // ── Validation ──────────────────────────────────────────────────────────

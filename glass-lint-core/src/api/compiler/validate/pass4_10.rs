@@ -1,11 +1,11 @@
 use std::collections::BTreeSet;
 
 use super::{
-    error::{QueryCompileError, is_identity_empty},
+    error::{QueryCompileError, classify_lifecycle_source, is_identity_empty},
     pass1_3::validate_event_query,
 };
 use crate::api::rule::query::{
-    EventSpec, IdentitySpec, LifecycleQuery, QueryDecl, QueryExpr, QueryExprKind, QueryPredicate,
+    IdentitySpec, LifecycleQuery, QueryDecl, QueryExpr, QueryExprKind, QueryPredicate,
     QueryShapeFacts, VarId, limits,
 };
 
@@ -19,13 +19,9 @@ fn validate_lifecycle(lc: &LifecycleQuery) -> Result<(), QueryCompileError> {
     for src in lc.sources() {
         validate_event_query(src)?;
 
-        if !matches!(
-            (src.identity(), src.event()),
-            (IdentitySpec::Global { .. }, EventSpec::Call)
-                | (IdentitySpec::Rooted { .. }, EventSpec::MemberCall { .. })
-        ) {
+        if let Err(error) = classify_lifecycle_source(src.identity(), src.event()) {
             return Err(QueryCompileError::InvalidLifecycle {
-                detail: "lifecycle source must be a global call or rooted member call".into(),
+                detail: error.detail().into(),
             });
         }
     }

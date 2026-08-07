@@ -4,15 +4,15 @@ use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
 use crate::api::{
-    compiler::normalized::{
-        CanonicalArgumentConstraints, NormalizedEvent, NormalizedLifecycle,
-        NormalizedLifecycleCompletion, NormalizedLifecycleCondition, NormalizedLifecycleEvent,
-        NormalizedLifecycleSink,
+    compiler::{
+        normalized::{
+            CanonicalArgumentConstraints, NormalizedEvent, NormalizedLifecycle,
+            NormalizedLifecycleCompletion, NormalizedLifecycleCondition, NormalizedLifecycleEvent,
+            NormalizedLifecycleSink,
+        },
+        validate::{LifecycleSource, SubjectRelationError, classify_lifecycle_source},
     },
-    rule::{
-        ArgumentIndex, ArgumentMatcher, ValueMatcher,
-        query::{EventSpec, IdentitySpec, lifecycle::LifecycleCallTarget},
-    },
+    rule::{ArgumentIndex, ArgumentMatcher, ValueMatcher, query::lifecycle::LifecycleCallTarget},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -192,7 +192,7 @@ impl CompiledObjectFlow {
     pub(crate) fn from_normalized_lifecycle(
         lc: &NormalizedLifecycle,
         symbol: &str,
-    ) -> Option<Self> {
+    ) -> Result<Self, SubjectRelationError> {
         let (requirements, requirement_mode) = lc.condition().map_or_else(
             || (Vec::new(), RequirementMode::AnyRequired),
             |cond| match cond {
@@ -232,8 +232,8 @@ impl CompiledObjectFlow {
             .sources()
             .iter()
             .map(CompiledObjectSource::from_normalized_event)
-            .collect::<Option<Vec<_>>>()?;
-        Some(Self {
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self {
             symbol: SmolStr::new(symbol),
             sources,
             requirements,
@@ -251,17 +251,14 @@ pub(crate) struct CompiledObjectSource {
 }
 
 impl CompiledObjectSource {
-    fn from_normalized_event(event: &NormalizedEvent) -> Option<Self> {
-        let target = match (event.event(), event.identity()) {
-            (EventSpec::Call, IdentitySpec::Global { name }) => {
-                LifecycleCallTarget::Global(name.clone())
-            }
-            (EventSpec::MemberCall { member }, IdentitySpec::Rooted { .. }) => {
+    fn from_normalized_event(event: &NormalizedEvent) -> Result<Self, SubjectRelationError> {
+        let target = match classify_lifecycle_source(event.identity(), event.event())? {
+            LifecycleSource::GlobalCall { name } => LifecycleCallTarget::Global(name.clone()),
+            LifecycleSource::RootedMember { member } => {
                 LifecycleCallTarget::RootedMember(member.clone())
             }
-            _ => return None,
         };
-        Some(Self {
+        Ok(Self {
             target,
             arguments: event.arguments().clone(),
         })
