@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// and lexical shadowing. Local lookalikes, dynamic or unlisted members, and
 /// call arguments are not analyzed.
 pub fn rule() -> Rule {
-    Rule::builder("vault.write")
+    Rule::catalog_builder("vault.write")
         .description("Writes vault files")
         .severity(Severity::Info)
         .confidence(Confidence::High)

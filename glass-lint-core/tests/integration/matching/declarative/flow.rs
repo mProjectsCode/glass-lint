@@ -148,7 +148,7 @@ fn flow_kills_object_state_for_compound_writes_updates_and_delete() {
 fn value_flow_supports_member_call_configuration_and_helper_sinks() {
     let rules = [rule("test.flow")
         .query(QueryDecl::lifecycle(
-            LifecycleQuery::builder("script insertion")
+            LifecycleQuery::catalog_builder("script insertion")
                 .source(
                     EventQuery::member_call_rooted("document.createElement")
                         .unwrap()
@@ -315,7 +315,7 @@ fn helper_summaries_fail_closed_for_incompatible_invocations() {
 fn value_flow_static_prefix_requires_static_values() {
     let rules = [rule("test.flow")
         .query(QueryDecl::lifecycle(
-            LifecycleQuery::builder("remote element")
+            LifecycleQuery::catalog_builder("remote element")
                 .source(
                     EventQuery::member_call_rooted("document.createElement")
                         .unwrap()
@@ -347,7 +347,7 @@ fn value_flow_static_prefix_requires_static_values() {
 fn flow_can_require_all_requirements() {
     let rules = [rule("test.flow")
         .query(QueryDecl::lifecycle(
-            LifecycleQuery::builder("remote stylesheet")
+            LifecycleQuery::catalog_builder("remote stylesheet")
                 .source(
                     EventQuery::member_call_rooted("document.createElement")
                         .unwrap()
@@ -384,7 +384,7 @@ fn flow_can_require_all_requirements() {
 
 #[test]
 fn flow_can_require_all_sinks_on_one_object() {
-    let lifecycle = LifecycleQuery::builder("two-stage-object-use")
+    let lifecycle = LifecycleQuery::catalog_builder("two-stage-object-use")
         .source(EventQuery::member_call_rooted("document.createElement"))
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",

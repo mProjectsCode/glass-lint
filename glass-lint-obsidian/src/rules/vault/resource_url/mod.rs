@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// other URL schemes are not analyzed. Bounded constant compositions are
 /// evaluated by core; dynamic values remain unknown.
 pub fn rule() -> Rule {
-    Rule::builder("vault.resource-url")
+    Rule::catalog_builder("vault.resource-url")
         .description("Accesses attachment resource paths")
         .severity(Severity::Info)
         .confidence(Confidence::High)

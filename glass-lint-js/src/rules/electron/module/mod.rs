@@ -68,7 +68,7 @@ const MODULE_READS: &[&str] = &[
 /// exports. Module-provenance behavior matchers reject similarly named modules,
 /// shadowed `require` calls, and local lookalikes.
 pub fn rule() -> Rule {
-    let mut builder = Rule::builder("electron.module")
+    let mut builder = Rule::catalog_builder("electron.module")
         .description("Uses Electron APIs")
         .severity(Severity::Info)
         .confidence(Confidence::High)

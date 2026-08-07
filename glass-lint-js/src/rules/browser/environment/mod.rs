@@ -37,7 +37,7 @@ const BROWSER_PROPERTIES: &[&str] = &[
 /// Rooted matchers preserve identity for configured browser globals, while
 /// unlisted properties and dynamic names are ignored.
 pub fn rule() -> Rule {
-    Rule::builder("browser.environment")
+    Rule::catalog_builder("browser.environment")
         .description("Reads browser environment data")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

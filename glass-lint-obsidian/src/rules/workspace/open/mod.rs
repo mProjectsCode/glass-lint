@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, QueryDecl, Rule, Severity};
 /// call arguments are not analyzed. Returned leaves are followed through
 /// simple aliases while reassignment and shadowing remain fail-closed.
 pub fn rule() -> Rule {
-    Rule::builder("workspace.open")
+    Rule::catalog_builder("workspace.open")
         .description("Opens files through the workspace")
         .severity(Severity::Info)
         .confidence(Confidence::High)

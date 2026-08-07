@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// alias reassignment, and lexical shadowing. Dynamic or unlisted members,
 /// local lookalikes, and the read value itself are not analyzed.
 pub fn rule() -> Rule {
-    Rule::builder("workspace.active-editor")
+    Rule::catalog_builder("workspace.active-editor")
         .description("Accesses the active editor")
         .severity(Severity::Info)
         .confidence(Confidence::High)

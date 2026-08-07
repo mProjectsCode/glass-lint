@@ -5,7 +5,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// Detects rooted plugin-manager calls that change
 /// another plugin's enabled state.
 pub fn rule() -> Rule {
-    Rule::builder("plugins.enable-disable")
+    Rule::catalog_builder("plugins.enable-disable")
         .description("Enables or disables other plugins")
         .severity(Severity::Warning)
         .confidence(Confidence::Low)

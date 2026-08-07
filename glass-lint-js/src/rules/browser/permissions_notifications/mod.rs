@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// service-worker `self.registration.showNotification`. Local host-shaped
 /// objects and aliases reassigned to another function are excluded.
 pub fn rule() -> Rule {
-    Rule::builder("browser.permissions-notifications")
+    Rule::catalog_builder("browser.permissions-notifications")
         .description("Requests browser notifications")
         .severity(Severity::Info)
         .confidence(Confidence::High)

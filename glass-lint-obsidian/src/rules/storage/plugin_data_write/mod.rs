@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, QueryDecl, Rule, Severity};
 /// proven Obsidian `Plugin` receiver and does not follow aliases, shadowing, or
 /// reassignment; dynamic properties and near-name methods are excluded.
 pub fn rule() -> Rule {
-    Rule::builder("storage.plugin-data-write")
+    Rule::catalog_builder("storage.plugin-data-write")
         .description("Writes plugin data")
         .severity(Severity::Info)
         .confidence(Confidence::High)

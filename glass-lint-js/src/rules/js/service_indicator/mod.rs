@@ -44,7 +44,7 @@ const SERVICE_ENDPOINTS: &[&str] = &[
 ];
 
 pub fn rule() -> Rule {
-    Rule::builder("network.service-indicator")
+    Rule::catalog_builder("network.service-indicator")
         .description("References service or SDK endpoints")
         .severity(Severity::Info)
         .confidence(Confidence::Low)

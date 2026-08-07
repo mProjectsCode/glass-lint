@@ -22,7 +22,7 @@ const ADAPTER_METHODS: &[&str] = &[
 /// operation. Direct rooted aliases and static computed properties are
 /// supported; arbitrary wrappers and dynamic methods are excluded.
 pub fn rule() -> Rule {
-    Rule::builder("vault.adapter")
+    Rule::catalog_builder("vault.adapter")
         .description("Uses adapter-level vault filesystem APIs")
         .severity(Severity::Info)
         .confidence(Confidence::High)

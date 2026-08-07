@@ -111,7 +111,7 @@ fn empty_flow_catalog_skips_projection_work() {
 }
 
 fn script_flow() -> LifecycleQuery {
-    LifecycleQuery::builder("script insertion")
+    LifecycleQuery::catalog_builder("script insertion")
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
@@ -210,7 +210,7 @@ fn exhausted_flow_operation_budget_is_reported_as_incomplete() {
 
 #[test]
 fn member_call_configuration_stays_with_its_receiver() {
-    let flow = LifecycleQuery::builder("configured script")
+    let flow = LifecycleQuery::catalog_builder("configured script")
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
@@ -666,7 +666,7 @@ fn flow_evidence_is_anchored_at_the_sink_event() {
 
 #[test]
 fn requirement_only_evidence_is_anchored_at_the_configuration_event() {
-    let flow = LifecycleQuery::builder("configured input")
+    let flow = LifecycleQuery::catalog_builder("configured input")
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()

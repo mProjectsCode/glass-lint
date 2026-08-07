@@ -199,7 +199,7 @@ mod tests {
     fn active_window_is_a_configured_global_object() {
         use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
-        let rule = Rule::builder("test.eval")
+        let rule = Rule::catalog_builder("test.eval")
             .description("eval")
             .severity(Severity::Info)
             .confidence(Confidence::High)
@@ -220,7 +220,7 @@ mod tests {
     fn active_window_shares_the_configured_environment() {
         use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
-        let rule = Rule::builder("test.request")
+        let rule = Rule::catalog_builder("test.request")
             .description("request")
             .severity(Severity::Info)
             .confidence(Confidence::High)

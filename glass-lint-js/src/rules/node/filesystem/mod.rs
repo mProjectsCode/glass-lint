@@ -53,7 +53,7 @@ const FS_PACKAGES: &[&str] = &[
 /// included: normalization and joining paths are not filesystem I/O. The
 /// rule reports both dependency indicators and proven operations.
 pub fn rule() -> Rule {
-    let mut builder = Rule::builder("node.filesystem")
+    let mut builder = Rule::catalog_builder("node.filesystem")
         .description("Uses Node filesystem and path APIs")
         .severity(Severity::Info)
         .confidence(Confidence::High)

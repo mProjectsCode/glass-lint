@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, QueryDecl, Rule, Severity};
 /// frontmatter from arbitrary objects, does not follow shadowed or reassigned
 /// aliases, and does not analyze the cached value itself.
 pub fn rule() -> Rule {
-    Rule::builder("metadata.frontmatter-read")
+    Rule::catalog_builder("metadata.frontmatter-read")
         .description("Reads cached frontmatter")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

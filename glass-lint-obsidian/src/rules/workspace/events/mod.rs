@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity, ValueMatche
 /// source-ordered reassignment, and lexical shadowing are handled by the
 /// matcher; dynamic event names and unrelated emitters are excluded.
 pub fn rule() -> Rule {
-    Rule::builder("workspace.events")
+    Rule::catalog_builder("workspace.events")
         .description("Registers Obsidian workspace events")
         .severity(Severity::Info)
         .confidence(Confidence::High)

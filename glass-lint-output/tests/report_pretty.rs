@@ -20,7 +20,7 @@ fn line_starts(source: &str) -> Vec<usize> {
 }
 
 fn fetch_rule(description: &str, severity: Severity) -> Rule {
-    Rule::builder("fetch")
+    Rule::catalog_builder("fetch")
         .description(description)
         .severity(severity)
         .confidence(Confidence::High)
@@ -50,7 +50,7 @@ fn lint_file(source: &str, filename: &str, rule: Rule, globals: &[&str]) -> File
 }
 
 fn script_insertion_flow() -> Result<LifecycleQuery, QueryBuildError> {
-    LifecycleQuery::builder("script-insert")
+    LifecycleQuery::catalog_builder("script-insert")
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
@@ -70,7 +70,7 @@ fn script_insertion_flow() -> Result<LifecycleQuery, QueryBuildError> {
 }
 
 fn flow_rule(id: &str, description: &str) -> Rule {
-    Rule::builder(id)
+    Rule::catalog_builder(id)
         .description(description)
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -247,7 +247,7 @@ fn renders_terminal_controls_visibly() {
 
 #[test]
 fn bounds_long_excerpt() {
-    let rule = Rule::builder("long-line")
+    let rule = Rule::catalog_builder("long-line")
         .description("long line")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -277,7 +277,7 @@ fn bounds_long_excerpt() {
 
 #[test]
 fn renders_tabs_and_wide_unicode_within_the_display_budget() {
-    let rule = Rule::builder("unicode")
+    let rule = Rule::catalog_builder("unicode")
         .description("unicode")
         .severity(Severity::Info)
         .confidence(Confidence::High)
@@ -331,7 +331,7 @@ fn aligns_caret_after_single_tab_and_wide_character() {
 
 #[test]
 fn renders_missing_source_lines_without_panicking() {
-    let rule = Rule::builder("missing")
+    let rule = Rule::catalog_builder("missing")
         .description("missing")
         .severity(Severity::Error)
         .confidence(Confidence::High)
@@ -353,7 +353,7 @@ fn renders_missing_source_lines_without_panicking() {
 
 #[test]
 fn renders_colored_findings_when_enabled() {
-    let rule = Rule::builder("color")
+    let rule = Rule::catalog_builder("color")
         .description("colored")
         .severity(Severity::Error)
         .confidence(Confidence::High)

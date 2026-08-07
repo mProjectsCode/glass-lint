@@ -41,7 +41,7 @@ const TELEMETRY_ENDPOINTS: &[&str] = &[
 /// occurs. This is intentionally a low-confidence dependency/literal
 /// indicator, not an operation witness.
 pub fn rule() -> Rule {
-    Rule::builder("network.telemetry-indicator")
+    Rule::catalog_builder("network.telemetry-indicator")
         .description("References telemetry SDKs or endpoints")
         .severity(Severity::Info)
         .confidence(Confidence::Low)

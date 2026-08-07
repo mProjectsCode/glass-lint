@@ -488,21 +488,11 @@ pub struct LifecycleQueryBuilder {
     sources: Vec<EventQuery>,
     condition: Option<LifecycleCondition>,
     completion: Option<LifecycleCompletion>,
-    invalid_operation: Option<QueryBuildError>,
 }
 
 impl LifecycleQueryBuilder {
-    fn record_error(&mut self, error: QueryBuildError) {
-        if self.invalid_operation.is_none() {
-            self.invalid_operation = Some(error);
-        }
-    }
-
-    pub fn source<S: IntoLifecycleSource>(mut self, source: S) -> Self {
-        match source.into_lifecycle_source() {
-            Ok(source) => self.sources.push(source),
-            Err(error) => self.record_error(error),
-        }
+    pub fn source(mut self, source: EventQuery) -> Self {
+        self.sources.push(source);
         self
     }
 
@@ -515,11 +505,9 @@ impl LifecycleQueryBuilder {
         Ok(self)
     }
 
-    pub fn condition(mut self, condition: Result<LifecycleCondition, QueryBuildError>) -> Self {
-        match condition {
-            Ok(condition) if self.condition.is_none() => self.condition = Some(condition),
-            Ok(_) => self.record_error(QueryBuildError::DuplicateLifecycleStage("condition")),
-            Err(error) => self.record_error(error),
+    pub fn condition(mut self, condition: LifecycleCondition) -> Self {
+        if self.condition.is_none() {
+            self.condition = Some(condition);
         }
         self
     }
@@ -527,20 +515,18 @@ impl LifecycleQueryBuilder {
     /// Set the lifecycle condition and return construction errors immediately.
     pub fn try_condition(
         mut self,
-        condition: Result<LifecycleCondition, QueryBuildError>,
+        condition: impl IntoLifecycleCondition,
     ) -> Result<Self, QueryBuildError> {
         if self.condition.is_some() {
             return Err(QueryBuildError::DuplicateLifecycleStage("condition"));
         }
-        self.condition = Some(condition?);
+        self.condition = Some(condition.into_lifecycle_condition()?);
         Ok(self)
     }
 
-    pub fn completion<C: IntoLifecycleCompletion>(mut self, completion: C) -> Self {
-        match completion.into_lifecycle_completion() {
-            Ok(completion) if self.completion.is_none() => self.completion = Some(completion),
-            Ok(_) => self.record_error(QueryBuildError::DuplicateLifecycleStage("completion")),
-            Err(error) => self.record_error(error),
+    pub fn completion(mut self, completion: LifecycleCompletion) -> Self {
+        if self.completion.is_none() {
+            self.completion = Some(completion);
         }
         self
     }
@@ -558,9 +544,6 @@ impl LifecycleQueryBuilder {
     }
 
     pub fn build(self) -> Result<LifecycleQuery, QueryBuildError> {
-        if let Some(error) = self.invalid_operation {
-            return Err(error);
-        }
         if self.symbol.trim().is_empty() {
             return Err(QueryBuildError::EmptyEvidenceSymbol);
         }
@@ -598,6 +581,73 @@ impl LifecycleQueryBuilder {
     }
 }
 
+pub trait IntoLifecycleCondition {
+    fn into_lifecycle_condition(self) -> Result<LifecycleCondition, QueryBuildError>;
+}
+
+impl IntoLifecycleCondition for LifecycleCondition {
+    fn into_lifecycle_condition(self) -> Result<LifecycleCondition, QueryBuildError> {
+        Ok(self)
+    }
+}
+
+impl IntoLifecycleCondition for Result<LifecycleCondition, QueryBuildError> {
+    fn into_lifecycle_condition(self) -> Result<LifecycleCondition, QueryBuildError> {
+        self
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CatalogLifecycleQueryBuilder {
+    inner: LifecycleQueryBuilder,
+    invalid_operation: Option<QueryBuildError>,
+}
+
+impl CatalogLifecycleQueryBuilder {
+    fn record_error(&mut self, error: QueryBuildError) {
+        if self.invalid_operation.is_none() {
+            self.invalid_operation = Some(error);
+        }
+    }
+
+    pub fn source<S: IntoLifecycleSource>(mut self, source: S) -> Self {
+        match source.into_lifecycle_source() {
+            Ok(source) => self.inner = self.inner.source(source),
+            Err(error) => self.record_error(error),
+        }
+        self
+    }
+
+    pub fn condition(mut self, condition: Result<LifecycleCondition, QueryBuildError>) -> Self {
+        match condition {
+            Ok(condition) if self.inner.condition.is_none() => {
+                self.inner = self.inner.condition(condition);
+            }
+            Ok(_) => self.record_error(QueryBuildError::DuplicateLifecycleStage("condition")),
+            Err(error) => self.record_error(error),
+        }
+        self
+    }
+
+    pub fn completion<C: IntoLifecycleCompletion>(mut self, completion: C) -> Self {
+        match completion.into_lifecycle_completion() {
+            Ok(completion) if self.inner.completion.is_none() => {
+                self.inner = self.inner.completion(completion);
+            }
+            Ok(_) => self.record_error(QueryBuildError::DuplicateLifecycleStage("completion")),
+            Err(error) => self.record_error(error),
+        }
+        self
+    }
+
+    pub fn build(self) -> Result<LifecycleQuery, QueryBuildError> {
+        if let Some(error) = self.invalid_operation {
+            return Err(error);
+        }
+        self.inner.build()
+    }
+}
+
 impl LifecycleQuery {
     pub fn builder(symbol: impl Into<String>) -> LifecycleQueryBuilder {
         LifecycleQueryBuilder {
@@ -605,6 +655,12 @@ impl LifecycleQuery {
             sources: Vec::new(),
             condition: None,
             completion: None,
+        }
+    }
+
+    pub fn catalog_builder(symbol: impl Into<String>) -> CatalogLifecycleQueryBuilder {
+        CatalogLifecycleQueryBuilder {
+            inner: Self::builder(symbol),
             invalid_operation: None,
         }
     }
@@ -620,7 +676,7 @@ mod tests {
 
     #[test]
     fn explicit_completion_and_conditions_build() {
-        let lc = LifecycleQuery::builder("input")
+        let lc = LifecycleQuery::catalog_builder("input")
             .source(source())
             .condition(LifecycleCondition::event(LifecycleEvent::property_write(
                 "type",
@@ -643,7 +699,7 @@ mod tests {
             ))
         };
         let completion = || LifecycleCompletion::configuration();
-        let error = LifecycleQuery::builder("input")
+        let error = LifecycleQuery::catalog_builder("input")
             .source(source())
             .condition(condition())
             .condition(condition())
@@ -656,7 +712,7 @@ mod tests {
 
     #[test]
     fn empty_sources_fail() {
-        let err = LifecycleQuery::builder("empty")
+        let err = LifecycleQuery::catalog_builder("empty")
             .completion(LifecycleCompletion::configuration())
             .build()
             .unwrap_err();
@@ -666,7 +722,7 @@ mod tests {
     #[test]
     fn lifecycle_source_accepts_event_query() {
         let query = EventQuery::call_global("fetch").unwrap();
-        let lifecycle = LifecycleQuery::builder("fetch result")
+        let lifecycle = LifecycleQuery::catalog_builder("fetch result")
             .source(query)
             .condition(LifecycleCondition::event(LifecycleEvent::property_write(
                 "url",
@@ -905,7 +961,7 @@ mod tests {
 
     #[test]
     fn configuration_completion_requires_condition() {
-        let err = LifecycleQuery::builder("test")
+        let err = LifecycleQuery::catalog_builder("test")
             .source(source())
             .completion(LifecycleCompletion::configuration())
             .build()
@@ -918,7 +974,7 @@ mod tests {
 
     #[test]
     fn any_sink_requires_non_empty_sinks() {
-        let err = LifecycleQuery::builder("test")
+        let err = LifecycleQuery::catalog_builder("test")
             .source(source())
             .condition(LifecycleCondition::event(LifecycleEvent::property_write(
                 "x",
@@ -934,7 +990,7 @@ mod tests {
 
     #[test]
     fn completion_is_required() {
-        let err = LifecycleQuery::builder("test")
+        let err = LifecycleQuery::catalog_builder("test")
             .source(source())
             .condition(LifecycleCondition::event(LifecycleEvent::property_write(
                 "x",
@@ -951,7 +1007,7 @@ mod tests {
     #[test]
     fn empty_any_of_condition_fails() {
         let condition = LifecycleCondition::any_of::<[LifecycleEvent; 0]>([]);
-        let err = LifecycleQuery::builder("test")
+        let err = LifecycleQuery::catalog_builder("test")
             .source(source())
             .condition(condition)
             .completion(LifecycleCompletion::any_sink([
@@ -968,7 +1024,7 @@ mod tests {
     #[test]
     fn empty_all_of_condition_fails() {
         let condition = LifecycleCondition::all_of::<[LifecycleEvent; 0]>([]);
-        let err = LifecycleQuery::builder("test")
+        let err = LifecycleQuery::catalog_builder("test")
             .source(source())
             .condition(condition)
             .completion(LifecycleCompletion::any_sink([

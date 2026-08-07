@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// similar modules, shadowing, reassignment, and foreign-realm lookalikes are
 /// excluded; request arguments are not analyzed.
 pub fn rule() -> Rule {
-    Rule::builder("network.request")
+    Rule::catalog_builder("network.request")
         .description("Uses Obsidian request APIs")
         .severity(Severity::Info)
         .confidence(Confidence::High)

@@ -16,7 +16,7 @@ const WORKER_METHODS: &[&str] = &[
 /// worklets, and worker-side `importScripts`. The launched or loaded code is
 /// outside the current JavaScript analysis boundary.
 pub fn rule() -> Rule {
-    Rule::builder("browser.worker")
+    Rule::catalog_builder("browser.worker")
         .description("Starts or loads background JavaScript")
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)

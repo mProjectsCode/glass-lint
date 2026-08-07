@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// does not follow a bare alias after reading the value; vault methods and
 /// argument/value semantics are not analyzed.
 pub fn rule() -> Rule {
-    Rule::builder("vault.access")
+    Rule::catalog_builder("vault.access")
         .description("Accesses Obsidian vault APIs")
         .severity(Severity::Info)
         .confidence(Confidence::High)

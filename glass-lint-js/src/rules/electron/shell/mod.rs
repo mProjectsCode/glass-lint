@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// `require("electron").shell` chains, unlisted shell methods, and non-call
 /// reads are intentionally outside the rule.
 pub fn rule() -> Rule {
-    Rule::builder("electron.shell")
+    Rule::catalog_builder("electron.shell")
         .description("Uses Electron shell APIs")
         .confidence(Confidence::High)
         .severity(Severity::Warning)

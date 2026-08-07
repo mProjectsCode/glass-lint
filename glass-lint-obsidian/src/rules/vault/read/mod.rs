@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// properties, bounded rooted argument flow, source-ordered reassignment, and
 /// lexical shadowing. Arguments and other read-like methods are not analyzed.
 pub fn rule() -> Rule {
-    Rule::builder("vault.read")
+    Rule::catalog_builder("vault.read")
         .description("Reads vault files")
         .severity(Severity::Info)
         .confidence(Confidence::High)

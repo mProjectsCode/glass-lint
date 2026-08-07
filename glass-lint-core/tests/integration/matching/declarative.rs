@@ -27,7 +27,7 @@ fn source(path: &str, text: &str) -> SourceFile {
 
 /// Construct the multi-step flow used by source/configuration/sink tests.
 fn script_insertion_flow() -> LifecycleQuery {
-    LifecycleQuery::builder("script insertion")
+    LifecycleQuery::catalog_builder("script insertion")
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()

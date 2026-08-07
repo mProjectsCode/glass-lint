@@ -175,7 +175,7 @@ mod tests {
     use crate::api::rule::{Confidence, EventQuery, Rule, Severity};
 
     fn make_catalog(provider: &str) -> RuleCatalog {
-        let rule = Rule::builder("request")
+        let rule = Rule::catalog_builder("request")
             .description("Request")
             .severity(Severity::Warning)
             .confidence(Confidence::High)

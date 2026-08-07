@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// Rooted aliases are followed; shadowing, reassignment, dynamic event values,
 /// computed member chains, and other event names are excluded.
 pub fn rule() -> Rule {
-    Rule::builder("metadata.events")
+    Rule::catalog_builder("metadata.events")
         .description("Registers metadata cache events")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

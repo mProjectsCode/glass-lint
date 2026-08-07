@@ -14,7 +14,7 @@ fn lifecycle_with_source_and_sink(
     sink: LifecycleSink,
 ) -> QueryDecl {
     QueryDecl::lifecycle(
-        LifecycleQuery::builder("global lifecycle")
+        LifecycleQuery::catalog_builder("global lifecycle")
             .source(source)
             .condition(LifecycleCondition::event(LifecycleEvent::property_write(
                 "ready",

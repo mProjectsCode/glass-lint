@@ -222,7 +222,7 @@ path. Empty exact values now remain rejected and cannot be represented as an
 `Exact(Vec::new())` matcher. Verified with the focused value-matcher tests and
 `make fmt && make ci`.
 
-#### [ ] READ-073 — Choose one error-timing contract for fluent rule builders
+#### [x] READ-073 — Choose one error-timing contract for fluent rule builders
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -249,7 +249,11 @@ catalog ergonomics, first-error determinism in the named deferred wrapper,
 duplicate metadata/stage diagnostics, collection bounds, and the rule that
 invalid declarations never reach query compilation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `Rule::builder` and `LifecycleQuery::builder` strict
+builders whose `query`/stage methods accept validated values, with `try_*`
+methods returning construction errors immediately. Moved first-error deferred
+collection behind explicitly named `catalog_builder` wrappers and migrated
+provider/catalog callers. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

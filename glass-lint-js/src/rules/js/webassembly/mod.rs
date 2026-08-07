@@ -28,7 +28,7 @@ const WEBASSEMBLY_CONSTRUCTORS: &[&str] = &[
 /// proven through the configured WebAssembly global object, but code compiled
 /// or executed by WebAssembly is outside the JavaScript analysis boundary.
 pub fn rule() -> Rule {
-    Rule::builder("dynamic-code.webassembly")
+    Rule::catalog_builder("dynamic-code.webassembly")
         .description("Compiles or executes WebAssembly")
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)

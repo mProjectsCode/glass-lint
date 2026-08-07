@@ -10,7 +10,7 @@ use glass_lint_datastructures::{
 
 #[test]
 fn supported_public_operations_do_not_require_engine_storage() {
-    let rule = Rule::builder("network.fetch")
+    let rule = Rule::catalog_builder("network.fetch")
         .description("Uses fetch")
         .severity(Severity::Info)
         .confidence(Confidence::High)

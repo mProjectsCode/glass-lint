@@ -52,7 +52,7 @@ const PACKAGE_MODULES: &[&str] = &[
 ];
 
 pub fn rule() -> Rule {
-    Rule::builder("node.network")
+    Rule::catalog_builder("node.network")
         .description("Uses Node HTTP modules")
         .severity(Severity::Info)
         .confidence(Confidence::High)

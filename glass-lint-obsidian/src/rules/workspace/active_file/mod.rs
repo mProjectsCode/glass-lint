@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// alias reassignment, and lexical shadowing. Dynamic or unlisted members,
 /// local lookalikes, and call arguments are not analyzed.
 pub fn rule() -> Rule {
-    Rule::builder("workspace.active-file")
+    Rule::catalog_builder("workspace.active-file")
         .description("Accesses the active file")
         .severity(Severity::Info)
         .confidence(Confidence::High)

@@ -68,7 +68,7 @@ const RECEIVERS: &[(&str, &[&str])] = &[
 /// `require("electron").ipcRenderer` chains and other IPC methods or reads are
 /// outside this call-only rule.
 pub fn rule() -> Rule {
-    let mut builder = Rule::builder("electron.ipc")
+    let mut builder = Rule::catalog_builder("electron.ipc")
         .description("Uses Electron IPC APIs")
         .severity(Severity::Info)
         .confidence(Confidence::High);

@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity, ValueMatche
 /// `rename`); handler identity, remaining arguments, and other
 /// event methods are ignored.
 pub fn rule() -> Rule {
-    Rule::builder("vault.events")
+    Rule::catalog_builder("vault.events")
         .description("Registers vault events")
         .severity(Severity::Info)
         .confidence(Confidence::High)

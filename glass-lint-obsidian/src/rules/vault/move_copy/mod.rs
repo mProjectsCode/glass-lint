@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// and lexical shadowing. Arguments, returned objects, and unlisted methods
 /// are intentionally not analyzed.
 pub fn rule() -> Rule {
-    Rule::builder("vault.move-copy")
+    Rule::catalog_builder("vault.move-copy")
         .description("Moves or copies vault files")
         .severity(Severity::Info)
         .confidence(Confidence::High)

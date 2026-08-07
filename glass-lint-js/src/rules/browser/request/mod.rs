@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// whether arguments are static or dynamic and does not model other request
 /// libraries.
 pub fn rule() -> Rule {
-    Rule::builder("network.request")
+    Rule::catalog_builder("network.request")
         .description("Uses browser network request APIs")
         .severity(Severity::Info)
         .confidence(Confidence::High)

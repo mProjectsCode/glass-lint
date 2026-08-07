@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// beyond the two configured spellings. Bounded constant compositions are
 /// evaluated by core.
 pub fn rule() -> Rule {
-    Rule::builder("vault.config-directory")
+    Rule::catalog_builder("vault.config-directory")
         .description("References .obsidian configuration paths")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

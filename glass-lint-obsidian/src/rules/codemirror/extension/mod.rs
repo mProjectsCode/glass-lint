@@ -26,7 +26,7 @@ const CODEMIRROR_PACKAGES: &[&str] = &[
 ];
 
 pub fn rule() -> Rule {
-    Rule::builder("codemirror.extension")
+    Rule::catalog_builder("codemirror.extension")
         .description("Uses CodeMirror extension primitives")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

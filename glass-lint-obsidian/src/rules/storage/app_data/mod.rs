@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// shadowed app bindings, dynamic properties, and unrelated storage objects do
 /// not match.
 pub fn rule() -> Rule {
-    Rule::builder("storage.app-data")
+    Rule::catalog_builder("storage.app-data")
         .description("Reads or writes app-scoped storage and secrets")
         .severity(Severity::Warning)
         .confidence(Confidence::High)

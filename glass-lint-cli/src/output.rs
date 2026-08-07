@@ -389,7 +389,7 @@ mod tests {
     use super::*;
 
     fn linter(semantic_operations: usize) -> Linter {
-        let rule = Rule::builder("network.fetch")
+        let rule = Rule::catalog_builder("network.fetch")
             .description("Uses fetch")
             .severity(Severity::Warning)
             .confidence(Confidence::High)

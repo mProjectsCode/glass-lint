@@ -147,7 +147,7 @@ fn multiple_lifecycle_sources_compile() {
     // Second source uses the same object variable — valid Any-of-source semantics
     // where either independently valid source can start the lifecycle.
     let src_b = glass_lint_core::rules::EventQuery::member_call_rooted("document.createTextNode");
-    let lifecycle = LifecycleQuery::builder("test.lifecycle")
+    let lifecycle = LifecycleQuery::catalog_builder("test.lifecycle")
         .source(src_a)
         .source(src_b)
         .condition(glass_lint_core::rules::LifecycleCondition::event(
@@ -296,7 +296,7 @@ fn lifecycle_sources_at_limit_succeeds() {
     let condition = glass_lint_core::rules::LifecycleCondition::event(
         glass_lint_core::rules::LifecycleEvent::property_write("type", ValueMatcher::any_value()),
     );
-    let mut builder = LifecycleQuery::builder("test").condition(condition);
+    let mut builder = LifecycleQuery::catalog_builder("test").condition(condition);
     for i in 0..64 {
         builder = builder.source(glass_lint_core::rules::EventQuery::member_call_rooted(
             format!("a.b{i}"),
@@ -314,7 +314,7 @@ fn lifecycle_sources_exceeding_limit_fails() {
     let condition = glass_lint_core::rules::LifecycleCondition::event(
         glass_lint_core::rules::LifecycleEvent::property_write("type", ValueMatcher::any_value()),
     );
-    let mut builder = LifecycleQuery::builder("test").condition(condition);
+    let mut builder = LifecycleQuery::catalog_builder("test").condition(condition);
     for i in 0..65 {
         builder = builder.source(glass_lint_core::rules::EventQuery::member_call_rooted(
             format!("a.b{i}"),
@@ -342,7 +342,7 @@ fn lifecycle_event_and_sink_limits_are_enforced_at_construction() {
             glass_lint_core::rules::LifecycleSink::any_argument_of_member(format!("sink{index}"))
         })
         .collect::<Vec<_>>();
-    let valid = LifecycleQuery::builder("limits")
+    let valid = LifecycleQuery::catalog_builder("limits")
         .source(glass_lint_core::rules::EventQuery::member_call_rooted(
             "document.createElement",
         ))
@@ -359,7 +359,7 @@ fn lifecycle_event_and_sink_limits_are_enforced_at_construction() {
             )
         })
         .collect::<Vec<_>>();
-    let event_error = LifecycleQuery::builder("too-many-events")
+    let event_error = LifecycleQuery::catalog_builder("too-many-events")
         .source(glass_lint_core::rules::EventQuery::member_call_rooted(
             "document.createElement",
         ))
@@ -379,7 +379,7 @@ fn lifecycle_event_and_sink_limits_are_enforced_at_construction() {
             glass_lint_core::rules::LifecycleSink::any_argument_of_member(format!("sink{index}"))
         })
         .collect::<Vec<_>>();
-    let sink_error = LifecycleQuery::builder("too-many-sinks")
+    let sink_error = LifecycleQuery::catalog_builder("too-many-sinks")
         .source(glass_lint_core::rules::EventQuery::member_call_rooted(
             "document.createElement",
         ))
@@ -491,7 +491,7 @@ fn query_roots_limit_plus_one_is_rejected_at_authoring() {
 // ── QueryBuildError validation tests ───────────────────────────────────
 #[test]
 fn empty_lifecycle_sources_rejected() {
-    let err = LifecycleQuery::builder("test")
+    let err = LifecycleQuery::catalog_builder("test")
         .completion(glass_lint_core::rules::LifecycleCompletion::configuration())
         .build()
         .unwrap_err();
@@ -500,7 +500,7 @@ fn empty_lifecycle_sources_rejected() {
 
 #[test]
 fn empty_lifecycle_evidence_symbol_rejected() {
-    let err = LifecycleQuery::builder(" ")
+    let err = LifecycleQuery::catalog_builder(" ")
         .source(glass_lint_core::rules::EventQuery::member_call_rooted(
             "document.create",
         ))

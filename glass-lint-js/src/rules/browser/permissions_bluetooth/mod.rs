@@ -6,7 +6,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// calls through aliases of `navigator.bluetooth`. Local lookalikes and
 /// reassigned aliases are excluded by rooted provenance tracking.
 pub fn rule() -> Rule {
-    Rule::builder("browser.permissions-bluetooth")
+    Rule::catalog_builder("browser.permissions-bluetooth")
         .description("Uses browser Bluetooth")
         .severity(Severity::Info)
         .confidence(Confidence::High)

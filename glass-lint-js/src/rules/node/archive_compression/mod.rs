@@ -41,7 +41,7 @@ fn import_query(spec: ImportSpec) -> Result<EventQuery, QueryBuildError> {
 /// compression packages. This rule reports the module load itself; it does not
 /// infer use from local API names or from similarly named packages.
 pub fn rule() -> Rule {
-    Rule::builder("archive.compression")
+    Rule::catalog_builder("archive.compression")
         .description("Uses archive or compression libraries")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

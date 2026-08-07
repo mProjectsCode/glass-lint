@@ -142,7 +142,7 @@ fn baseline_constructed_instance() {
 
 #[test]
 fn baseline_local_lifecycle() {
-    let flow = LifecycleQuery::builder("script-insert")
+    let flow = LifecycleQuery::catalog_builder("script-insert")
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
@@ -194,7 +194,7 @@ fn baseline_local_lifecycle() {
 fn baseline_within_function_lifecycle() {
     // Local flow projection traces an object through source, configuration,
     // and sink when all occur in the same scope.
-    let flow = LifecycleQuery::builder("script-local-flow")
+    let flow = LifecycleQuery::catalog_builder("script-local-flow")
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
@@ -253,7 +253,7 @@ fn baseline_project_module_identity() {
 #[test]
 fn negative_source_to_alias_no_sink() {
     // Source object is aliased but never flows to a sink.
-    let flow = LifecycleQuery::builder("source-alias")
+    let flow = LifecycleQuery::catalog_builder("source-alias")
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
@@ -289,7 +289,7 @@ fn negative_source_to_alias_no_sink() {
 #[test]
 fn negative_source_to_requirement_no_sink() {
     // Source configured but never sunk.
-    let flow = LifecycleQuery::builder("source-req")
+    let flow = LifecycleQuery::catalog_builder("source-req")
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
@@ -328,7 +328,7 @@ fn negative_source_to_requirement_no_sink() {
 fn negative_disconnected_source_and_sink() {
     // Source and sink exist but are not connected by flow:
     // createElement('div') does not match the "script" arg filter.
-    let flow = LifecycleQuery::builder("disconnected")
+    let flow = LifecycleQuery::catalog_builder("disconnected")
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
@@ -367,7 +367,7 @@ fn negative_disconnected_source_and_sink() {
 #[test]
 fn negative_source_wrong_arg_no_match() {
     // Source with non-matching argument should not trigger.
-    let flow = LifecycleQuery::builder("source-arg")
+    let flow = LifecycleQuery::catalog_builder("source-arg")
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
@@ -405,7 +405,7 @@ fn negative_source_wrong_arg_no_match() {
 #[test]
 fn negative_escaped_object_no_lifecycle() {
     // Object escapes tracked scope (returned to unknown caller).
-    let flow = LifecycleQuery::builder("escaped")
+    let flow = LifecycleQuery::catalog_builder("escaped")
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
@@ -444,7 +444,7 @@ fn negative_escaped_object_no_lifecycle() {
 #[test]
 fn negative_alias_to_requirement_no_sink() {
     // Object aliased and configured but never reaches a sink.
-    let flow = LifecycleQuery::builder("alias-req")
+    let flow = LifecycleQuery::catalog_builder("alias-req")
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
@@ -483,7 +483,7 @@ fn negative_alias_to_requirement_no_sink() {
 #[test]
 fn negative_alias_to_sink_not_configured() {
     // Object aliased and sunk but never configured (no requirement).
-    let flow = LifecycleQuery::builder("alias-sink")
+    let flow = LifecycleQuery::catalog_builder("alias-sink")
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
@@ -522,7 +522,7 @@ fn negative_alias_to_sink_not_configured() {
 #[test]
 fn negative_requirement_to_sink_disconnected_object() {
     // One object configured, different object sunk.
-    let flow = LifecycleQuery::builder("req-sink")
+    let flow = LifecycleQuery::catalog_builder("req-sink")
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
@@ -641,7 +641,7 @@ fn baseline_operation_counts_are_stable() {
 
 #[test]
 fn all_sink_correlation_has_deterministic_bounded_operations() {
-    let lifecycle = LifecycleQuery::builder("two-sinks")
+    let lifecycle = LifecycleQuery::catalog_builder("two-sinks")
         .source(Ok(
             EventQuery::member_call_rooted("document.createElement").unwrap()
         ))

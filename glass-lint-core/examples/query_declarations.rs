@@ -4,7 +4,7 @@ use glass_lint_core::rules::{
 };
 
 fn rule<Q: glass_lint_core::rules::IntoQueryDecl>(id: &str, description: &str, query: Q) -> Rule {
-    Rule::builder(id)
+    Rule::catalog_builder(id)
         .description(description)
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -70,7 +70,7 @@ fn returned_and_instance() -> (Rule, Rule) {
 }
 
 fn lifecycle() -> Rule {
-    let lifecycle = LifecycleQuery::builder("remote element")
+    let lifecycle = LifecycleQuery::catalog_builder("remote element")
         .source(Ok(EventQuery::member_call_rooted("document.createElement")
             .expect("valid source")
             .with_arg(
@@ -97,7 +97,7 @@ fn lifecycle() -> Rule {
 }
 
 fn correlated_sinks() -> Rule {
-    let lifecycle = LifecycleQuery::builder("two sinks")
+    let lifecycle = LifecycleQuery::catalog_builder("two sinks")
         .source(Ok(
             EventQuery::member_call_rooted("document.createElement").expect("valid source")
         ))

@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, QueryDecl, Rule, Severity};
 /// and reassignment are not followed. Static computed names are accepted while
 /// dynamic properties and near-name methods are excluded.
 pub fn rule() -> Rule {
-    Rule::builder("markdown.code-block-processor")
+    Rule::catalog_builder("markdown.code-block-processor")
         .description("Registers markdown code-block processors")
         .severity(Severity::Info)
         .confidence(Confidence::High)

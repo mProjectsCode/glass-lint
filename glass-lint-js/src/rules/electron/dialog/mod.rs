@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// not followed, and the rule reports the call rather than a later read or an
 /// unlisted dialog method.
 pub fn rule() -> Rule {
-    Rule::builder("electron.dialog")
+    Rule::catalog_builder("electron.dialog")
         .description("Uses Electron native dialogs")
         .severity(Severity::Info)
         .confidence(Confidence::High)

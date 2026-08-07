@@ -43,7 +43,7 @@ fn metadata_traversal(path: &str) -> glass_lint_core::rules::QueryDecl {
 /// lookalikes, dynamic arguments, unlisted metadata maps, and reassigned
 /// aliases are excluded.
 pub fn rule() -> Rule {
-    Rule::builder("metadata.traversal")
+    Rule::catalog_builder("metadata.traversal")
         .description("Traverses metadata cache maps")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

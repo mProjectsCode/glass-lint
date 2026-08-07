@@ -14,7 +14,7 @@ use glass_lint_core::{
 use crate::support;
 
 fn catalog() -> RuleCatalog {
-    let rule = Rule::builder("network.fetch")
+    let rule = Rule::catalog_builder("network.fetch")
         .description("Uses fetch")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -92,7 +92,7 @@ fn emits_one_located_finding_per_match() {
 
 #[test]
 fn findings_only_carry_evidence_for_their_own_location() {
-    let rule = Rule::builder("vault.write")
+    let rule = Rule::catalog_builder("vault.write")
         .description("Writes vault files")
         .severity(Severity::Info)
         .confidence(Confidence::High)
@@ -134,7 +134,7 @@ fn rejects_shadowed_global_lookalikes() {
 
 #[test]
 fn collapses_contained_ranges_for_same_rule() {
-    let rule = Rule::builder("metadata.read")
+    let rule = Rule::catalog_builder("metadata.read")
         .description("Reads metadata")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -206,14 +206,14 @@ fn validates_custom_rule_selection() {
 
 #[test]
 fn ordered_rule_overrides_select_stable_catalog_indexes() {
-    let first = Rule::builder("network.first")
+    let first = Rule::catalog_builder("network.first")
         .description("First")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))
         .build()
         .unwrap();
-    let second = Rule::builder("network.second")
+    let second = Rule::catalog_builder("network.second")
         .description("Second")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -373,14 +373,14 @@ fn evidence_limit_is_source_ordered_and_applied_once() {
 
 #[test]
 fn enabled_rule_order_does_not_affect_findings() {
-    let rule_a = Rule::builder("alpha.first")
+    let rule_a = Rule::catalog_builder("alpha.first")
         .description("First")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))
         .build()
         .unwrap();
-    let rule_b = Rule::builder("beta.second")
+    let rule_b = Rule::catalog_builder("beta.second")
         .description("Second")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -431,14 +431,14 @@ fn enabled_rule_order_does_not_affect_findings() {
 
 #[test]
 fn disabled_catalog_rules_do_not_produce_findings() {
-    let rule_a = Rule::builder("alpha.first")
+    let rule_a = Rule::catalog_builder("alpha.first")
         .description("First")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))
         .build()
         .unwrap();
-    let rule_b = Rule::builder("beta.second")
+    let rule_b = Rule::catalog_builder("beta.second")
         .description("Second")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -466,14 +466,14 @@ fn disabled_catalog_rules_do_not_produce_findings() {
 
 #[test]
 fn combines_provider_rules_with_overlapping_local_ids() {
-    let first = Rule::builder("network.request")
+    let first = Rule::catalog_builder("network.request")
         .description("First provider request")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))
         .build()
         .unwrap();
-    let second = Rule::builder("network.request")
+    let second = Rule::catalog_builder("network.request")
         .description("Second provider request")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -505,14 +505,14 @@ fn combines_provider_rules_with_overlapping_local_ids() {
 
 #[test]
 fn combined_linter_preserves_each_input_rule_selection() {
-    let enabled_rule = Rule::builder("enabled")
+    let enabled_rule = Rule::catalog_builder("enabled")
         .description("Enabled")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))
         .build()
         .unwrap();
-    let disabled_rule = Rule::builder("disabled")
+    let disabled_rule = Rule::catalog_builder("disabled")
         .description("Disabled")
         .severity(Severity::Warning)
         .confidence(Confidence::High)

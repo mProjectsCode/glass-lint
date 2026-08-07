@@ -9,12 +9,12 @@ use glass_lint_core::rules::{
 /// then inserted into the document. Unused or disconnected elements fail
 /// closed; direct document HTML sinks are checked separately.
 pub fn rule() -> Rule {
-    Rule::builder("dynamic-code.script-injection")
+    Rule::catalog_builder("dynamic-code.script-injection")
         .description("Injects executable script elements")
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
         .query(QueryDecl::lifecycle(
-            LifecycleQuery::builder("script-element")
+            LifecycleQuery::catalog_builder("script-element")
                 .source(
                     EventQuery::member_call_rooted("document.createElement")
                         .unwrap()

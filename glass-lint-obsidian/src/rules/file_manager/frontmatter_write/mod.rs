@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// computed properties. Shadowed `app` bindings, reassigned aliases, dynamic
 /// or unlisted properties, and the callback's contents are outside the rule.
 pub fn rule() -> Rule {
-    Rule::builder("file-manager.frontmatter-write")
+    Rule::catalog_builder("file-manager.frontmatter-write")
         .description("Updates frontmatter through Obsidian APIs")
         .severity(Severity::Info)
         .confidence(Confidence::High)

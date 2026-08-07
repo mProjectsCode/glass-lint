@@ -58,7 +58,7 @@ const CRYPTO_MODULE_CALLS: &[(&str, &str)] = &[
 /// libraries, plus rooted Web Crypto operation calls. Import reports are
 /// intentionally emitted at the import rather than later API use.
 pub fn rule() -> Rule {
-    Rule::builder("crypto.operation")
+    Rule::catalog_builder("crypto.operation")
         .description("Uses cryptographic operations")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, QueryDecl, Rule, Severity};
 /// followed through bounded returned-object paths; arbitrary wrappers remain
 /// outside this rule.
 pub fn rule() -> Rule {
-    Rule::builder("browser.filesystem")
+    Rule::catalog_builder("browser.filesystem")
         .description("Uses browser file-system access")
         .severity(Severity::Warning)
         .confidence(Confidence::High)

@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, QueryDecl, Rule, Severity};
 /// Obsidian `Plugin` receiver and does not follow aliases or reassignment;
 /// other receivers, dynamic properties, and near-name methods are excluded.
 pub fn rule() -> Rule {
-    Rule::builder("ui.ribbon")
+    Rule::catalog_builder("ui.ribbon")
         .description("Registers ribbon icons")
         .severity(Severity::Info)
         .confidence(Confidence::High)

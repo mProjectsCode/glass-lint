@@ -416,7 +416,7 @@ fn duplicate_findings_merge_traces_and_keep_definite_certainty() {
 
 #[test]
 fn direct_qualification_matches_one_file_project_shape() {
-    let rule = Rule::builder("network.request")
+    let rule = Rule::catalog_builder("network.request")
         .description("Uses fetch")
         .severity(RuleSeverity::Warning)
         .confidence(Confidence::High)
@@ -517,7 +517,7 @@ fn finding_serialization_includes_certainty() {
 #[cfg(feature = "serde")]
 #[test]
 fn snippet_serializes_as_one_analysis_file_without_source_text() {
-    let rule = Rule::builder("network.request")
+    let rule = Rule::catalog_builder("network.request")
         .description("Uses fetch")
         .severity(RuleSeverity::Warning)
         .confidence(Confidence::High)
@@ -545,7 +545,7 @@ fn snippet_serializes_as_one_analysis_file_without_source_text() {
 
 #[test]
 fn parse_and_valid_sources_each_produce_one_file_report() {
-    let rule = Rule::builder("network.request")
+    let rule = Rule::catalog_builder("network.request")
         .description("Uses fetch")
         .severity(RuleSeverity::Warning)
         .confidence(Confidence::High)

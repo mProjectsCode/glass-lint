@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, QueryDecl, Rule, Severity};
 /// proven Obsidian `Plugin` receiver and does not follow aliases/reassignment;
 /// other receivers, dynamic properties, and near-name methods are excluded.
 pub fn rule() -> Rule {
-    Rule::builder("ui.status-bar")
+    Rule::catalog_builder("ui.status-bar")
         .description("Registers status bar items")
         .severity(Severity::Info)
         .confidence(Confidence::High)

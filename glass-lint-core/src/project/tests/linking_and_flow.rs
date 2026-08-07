@@ -3,14 +3,14 @@ use crate::{api::rule::EventQuery, project::tests::*};
 #[test]
 #[allow(clippy::too_many_lines)]
 fn linked_internal_aliases_preserve_external_and_global_call_identity() {
-    let external_rule = Rule::builder("network.request")
+    let external_rule = Rule::catalog_builder("network.request")
         .description("Uses request")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_module("web", "request"))
         .build()
         .unwrap();
-    let global_rule = Rule::builder("network.fetch")
+    let global_rule = Rule::catalog_builder("network.fetch")
         .description("Uses fetch")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -279,7 +279,7 @@ fn project_flow_fails_closed_for_unsupported_helper_control_flow() {
 
 #[test]
 fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
-    let rule = Rule::builder("network.request")
+    let rule = Rule::catalog_builder("network.request")
         .description("Uses request")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -366,7 +366,7 @@ fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
 
 #[test]
 fn unresolved_internal_imports_do_not_become_external_provenance() {
-    let rule = Rule::builder("network.request")
+    let rule = Rule::catalog_builder("network.request")
         .description("Uses request")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -400,7 +400,7 @@ fn unresolved_internal_imports_do_not_become_external_provenance() {
 
 #[test]
 fn commonjs_export_aliases_preserve_external_provenance_across_modules() {
-    let rule = Rule::builder("network.request")
+    let rule = Rule::catalog_builder("network.request")
         .description("Uses request")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -440,7 +440,7 @@ fn commonjs_export_aliases_preserve_external_provenance_across_modules() {
 
 #[test]
 fn namespace_imports_follow_star_reexports() {
-    let rule = Rule::builder("network.request")
+    let rule = Rule::catalog_builder("network.request")
         .description("Uses request")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -487,7 +487,7 @@ fn namespace_imports_follow_star_reexports() {
 
 #[test]
 fn static_dynamic_imports_follow_namespace_exports() {
-    let rule = Rule::builder("network.request")
+    let rule = Rule::catalog_builder("network.request")
         .description("Uses request")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -529,7 +529,7 @@ fn static_dynamic_imports_follow_namespace_exports() {
 
 #[test]
 fn anonymous_commonjs_functions_remain_callable_across_modules() {
-    let rule = Rule::builder("network.request")
+    let rule = Rule::catalog_builder("network.request")
         .description("Uses request")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -571,7 +571,7 @@ fn anonymous_commonjs_functions_remain_callable_across_modules() {
 
 #[test]
 fn returned_callable_provenance_crosses_an_exported_function() {
-    let rule = Rule::builder("network.request")
+    let rule = Rule::catalog_builder("network.request")
         .description("Uses request")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -620,7 +620,7 @@ fn returned_callable_provenance_crosses_an_exported_function() {
 
 #[test]
 fn linked_external_call_arguments_are_projected_after_reexports() {
-    let rule = Rule::builder("network.request")
+    let rule = Rule::catalog_builder("network.request")
         .description("Uses request")
         .severity(Severity::Warning)
         .confidence(Confidence::High)

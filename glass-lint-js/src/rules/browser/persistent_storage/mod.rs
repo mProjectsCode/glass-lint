@@ -27,7 +27,7 @@ const COOKIE_METHODS: &[&str] = &["get", "getAll", "set", "delete"];
 /// arbitrary direct key properties remain outside this bounded call-oriented
 /// rule.
 pub fn rule() -> Rule {
-    let mut builder = Rule::builder("browser.persistent-storage")
+    let mut builder = Rule::catalog_builder("browser.persistent-storage")
         .description("Uses persistent browser storage")
         .severity(Severity::Info)
         .confidence(Confidence::High)

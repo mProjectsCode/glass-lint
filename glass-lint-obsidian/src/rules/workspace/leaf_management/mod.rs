@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// reassignment, and lexical shadowing. Dynamic or unlisted members, local
 /// lookalikes, and call arguments are not analyzed.
 pub fn rule() -> Rule {
-    Rule::builder("workspace.leaf-management")
+    Rule::catalog_builder("workspace.leaf-management")
         .description("Manages workspace leaves")
         .severity(Severity::Info)
         .confidence(Confidence::High)

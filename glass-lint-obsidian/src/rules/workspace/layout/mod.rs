@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// reassignment, and lexical shadowing. Dynamic or unlisted members, local
 /// lookalikes, and call arguments are not analyzed.
 pub fn rule() -> Rule {
-    Rule::builder("workspace.layout")
+    Rule::catalog_builder("workspace.layout")
         .description("Reads or writes workspace layout")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

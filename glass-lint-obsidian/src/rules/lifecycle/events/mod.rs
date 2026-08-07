@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, QueryDecl, Rule, Severity};
 /// accepts static computed names; aliases, reassignment, dynamic properties,
 /// and near-name methods are excluded.
 pub fn rule() -> Rule {
-    Rule::builder("lifecycle.events")
+    Rule::catalog_builder("lifecycle.events")
         .description("Registers Obsidian lifecycle events")
         .severity(Severity::Info)
         .confidence(Confidence::High)

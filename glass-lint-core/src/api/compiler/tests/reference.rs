@@ -513,7 +513,7 @@ fn different_path_keys_produce_separate_witnesses() {
 
 #[test]
 fn lifecycle_reference_matches_logical_and_physical_plans() {
-    let lifecycle = LifecycleQuery::builder("resource")
+    let lifecycle = LifecycleQuery::catalog_builder("resource")
         .source(EventQuery::call_global("open").unwrap())
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "ready",

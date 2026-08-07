@@ -9,12 +9,12 @@ use glass_lint_core::rules::{
 /// names and `setAttribute("type", "file")` are recognized; non-static type
 /// values are not.
 pub fn rule() -> Rule {
-    Rule::builder("browser.file-dialog")
+    Rule::catalog_builder("browser.file-dialog")
         .description("Uses browser file input dialogs")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .query(QueryDecl::lifecycle(
-            LifecycleQuery::builder("file input element")
+            LifecycleQuery::catalog_builder("file input element")
                 .source(
                     EventQuery::member_call_rooted("document.createElement")
                         .unwrap()

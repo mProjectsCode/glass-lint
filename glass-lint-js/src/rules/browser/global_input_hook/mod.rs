@@ -38,7 +38,7 @@ const INPUT_EVENTS: [&str; 27] = [
 /// also reports writes to rooted `on*` handler properties, while reads remain
 /// outside the rule.
 pub fn rule() -> Rule {
-    Rule::builder("browser.global-input-hook")
+    Rule::catalog_builder("browser.global-input-hook")
         .description("Registers global input handlers")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

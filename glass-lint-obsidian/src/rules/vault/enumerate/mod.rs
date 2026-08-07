@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// receiver aliases, static computed properties, source-ordered reassignment,
 /// and lexical shadowing, but does not analyze arguments or other vault APIs.
 pub fn rule() -> Rule {
-    Rule::builder("vault.enumerate")
+    Rule::catalog_builder("vault.enumerate")
         .description("Enumerates vault files")
         .severity(Severity::Info)
         .confidence(Confidence::High)

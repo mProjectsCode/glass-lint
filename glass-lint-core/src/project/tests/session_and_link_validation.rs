@@ -174,7 +174,7 @@ fn linker_reports_ambiguous_multiple_star_exports() {
 
 #[test]
 fn deep_namespace_export_chain_masks_unresolved_members() {
-    let rule = Rule::builder("namespace.request")
+    let rule = Rule::catalog_builder("namespace.request")
         .description("Uses a deeply re-exported request")
         .severity(Severity::Warning)
         .confidence(Confidence::High)

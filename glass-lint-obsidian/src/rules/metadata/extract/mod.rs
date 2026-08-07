@@ -30,7 +30,7 @@ const METADATA_FIELDS: &[&str] = &[
 /// are excluded. The rule reads member chains; it does not infer collections
 /// from arbitrary `getFileCache(...)` return values.
 pub fn rule() -> Rule {
-    let mut builder = Rule::builder("metadata.extract")
+    let mut builder = Rule::catalog_builder("metadata.extract")
         .description("Extracts tags, links, embeds, blocks, or headings")
         .severity(Severity::Info)
         .confidence(Confidence::Medium);

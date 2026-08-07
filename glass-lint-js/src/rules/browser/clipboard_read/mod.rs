@@ -6,7 +6,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// aliases derived from those APIs. Shadowed `navigator` bindings and aliases
 /// that have been reassigned are excluded.
 pub fn rule() -> Rule {
-    Rule::builder("browser.clipboard-read")
+    Rule::catalog_builder("browser.clipboard-read")
         .description("Reads clipboard data")
         .severity(Severity::Info)
         .confidence(Confidence::High)

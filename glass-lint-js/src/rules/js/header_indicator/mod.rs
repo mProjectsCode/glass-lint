@@ -34,7 +34,7 @@ const HEADER_MARKERS: &[&str] = &[
 /// values, and intentionally excludes other casing and unrelated lookalike
 /// prose. Bounded constant compositions are evaluated by core.
 pub fn rule() -> Rule {
-    Rule::builder("network.header-indicator")
+    Rule::catalog_builder("network.header-indicator")
         .description("References authorization or user-agent headers")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

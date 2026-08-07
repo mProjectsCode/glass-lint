@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// Local, unbound, shadowed, and reassigned names are excluded; constructor
 /// arguments and class bodies are ignored.
 pub fn rule() -> Rule {
-    Rule::builder("ui.modal")
+    Rule::catalog_builder("ui.modal")
         .description("Uses Obsidian modal UI")
         .severity(Severity::Info)
         .confidence(Confidence::High)

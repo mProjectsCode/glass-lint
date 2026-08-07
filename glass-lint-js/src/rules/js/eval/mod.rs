@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// callable identity; local, shadowed, reassigned, or mutated lookalikes do
 /// not.
 pub fn rule() -> Rule {
-    Rule::builder("dynamic-code.eval")
+    Rule::catalog_builder("dynamic-code.eval")
         .description("Evaluates dynamic code")
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)

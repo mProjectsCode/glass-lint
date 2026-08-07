@@ -12,7 +12,7 @@ use glass_lint_core::rules::{
 /// object flow; local paths, dynamic values, other tags, and unsupported sinks
 /// do not match.
 pub fn rule() -> Rule {
-    Rule::builder("dom.remote-resource")
+    Rule::catalog_builder("dom.remote-resource")
         .description("Loads remote DOM resources")
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
@@ -73,7 +73,7 @@ fn remote_element_query(
     let remote_url = ValueMatcher::static_string()
         .starts_with_any(["http://", "https://", "//"])
         .unwrap();
-    LifecycleQuery::builder(symbol)
+    LifecycleQuery::catalog_builder(symbol)
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()

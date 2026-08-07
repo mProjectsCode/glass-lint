@@ -22,7 +22,7 @@ impl Classification {
 
 /// Build a standard test rule with the given id.
 pub fn rule(id: &str) -> Builder {
-    Rule::builder(id)
+    Rule::catalog_builder(id)
         .description(id)
         .severity(Severity::Info)
         .confidence(Confidence::High)

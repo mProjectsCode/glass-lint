@@ -23,7 +23,7 @@ const ATOMICS_METHODS: &[&str] = &[
 /// agents. This is an informational capability signal; it does not claim that
 /// the program creates a worker or that a particular shared buffer is used.
 pub fn rule() -> Rule {
-    Rule::builder("concurrency.shared-memory")
+    Rule::catalog_builder("concurrency.shared-memory")
         .description("Uses shared-memory concurrency APIs")
         .confidence(Confidence::High)
         .severity(Severity::Info)

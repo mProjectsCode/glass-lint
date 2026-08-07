@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// CommonJS provenance is followed. Constructor arguments and subclass bodies
 /// are not analyzed.
 pub fn rule() -> Rule {
-    Rule::builder("ui.notice")
+    Rule::catalog_builder("ui.notice")
         .description("Uses Obsidian notices")
         .severity(Severity::Info)
         .confidence(Confidence::High)

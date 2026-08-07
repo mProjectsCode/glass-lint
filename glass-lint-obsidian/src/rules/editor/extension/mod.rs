@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, QueryDecl, Rule, Severity};
 /// accepts static computed names resolving to the configured method; dynamic
 /// properties, aliases, reassignment, and near-name methods are excluded.
 pub fn rule() -> Rule {
-    Rule::builder("editor.extension")
+    Rule::catalog_builder("editor.extension")
         .description("Registers editor extensions")
         .severity(Severity::Info)
         .confidence(Confidence::High)

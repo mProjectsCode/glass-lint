@@ -23,7 +23,7 @@ const PLATFORM_MEMBERS: &[&str] = &[
 /// properties retain module provenance; local lookalikes, shadowed namespaces,
 /// dynamic properties, and unlisted flags are excluded.
 pub fn rule() -> Rule {
-    Rule::builder("platform.branching")
+    Rule::catalog_builder("platform.branching")
         .description("Checks Obsidian platform flags")
         .severity(Severity::Info)
         .confidence(Confidence::High)

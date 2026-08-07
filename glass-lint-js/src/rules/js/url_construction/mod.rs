@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// reassigned, while local shadows and lookalikes are excluded. Constructor
 /// arguments are intentionally not inspected.
 pub fn rule() -> Rule {
-    Rule::builder("network.url-construction")
+    Rule::catalog_builder("network.url-construction")
         .description("Constructs or references URLs")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

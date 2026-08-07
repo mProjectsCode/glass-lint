@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn findings_are_sorted_by_position() {
-        let rule = Rule::builder("network.request")
+        let rule = Rule::catalog_builder("network.request")
             .description("Uses fetch")
             .severity(Severity::Warning)
             .confidence(Confidence::High)
@@ -301,7 +301,7 @@ mod tests {
 
     #[test]
     fn classify_groups_findings_by_rule() {
-        let rule = Rule::builder("network.request")
+        let rule = Rule::catalog_builder("network.request")
             .description("Uses fetch")
             .severity(Severity::Warning)
             .confidence(Confidence::High)

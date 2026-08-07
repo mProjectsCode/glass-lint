@@ -365,7 +365,7 @@ fn tracks_object_argument_keys_through_member_function_aliases() {
 
 /// Build the source/configuration/sink flow used by flow-provenance tests.
 fn script_insertion_flow() -> LifecycleQuery {
-    LifecycleQuery::builder("script insertion")
+    LifecycleQuery::catalog_builder("script insertion")
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()

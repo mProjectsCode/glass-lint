@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// and dynamic-value lookalikes are excluded. DOM event attributes and other
 /// callback-only scheduling APIs are outside this rule.
 pub fn rule() -> Rule {
-    Rule::builder("dynamic-code.string-timer")
+    Rule::catalog_builder("dynamic-code.string-timer")
         .description("Runs code from an HTML string timer")
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)

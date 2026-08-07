@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// unlisted; shadowed or reassigned aliases are excluded, and call arguments
 /// are not analyzed.
 pub fn rule() -> Rule {
-    Rule::builder("metadata.cache-read")
+    Rule::catalog_builder("metadata.cache-read")
         .description("Reads Obsidian metadata cache")
         .severity(Severity::Info)
         .confidence(Confidence::High)

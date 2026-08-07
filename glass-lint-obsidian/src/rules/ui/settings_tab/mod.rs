@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, QueryDecl, Rule, Severity};
 /// and CommonJS `obsidian` provenance, while the heuristic constructor form
 /// uses static spelling. Arguments and class bodies are ignored.
 pub fn rule() -> Rule {
-    Rule::builder("ui.settings-tab")
+    Rule::catalog_builder("ui.settings-tab")
         .description("Registers plugin settings UI")
         .severity(Severity::Info)
         .confidence(Confidence::High)

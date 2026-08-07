@@ -6,7 +6,7 @@ use glass_lint_core::rules::{Confidence, QueryDecl, Rule, Severity};
 /// Static computed method names are accepted; local lookalikes, dynamic
 /// properties, aliases, and reassigned receivers remain fail-closed.
 pub fn rule() -> Rule {
-    Rule::builder("editor.content")
+    Rule::catalog_builder("editor.content")
         .description("Reads or changes Obsidian editor content")
         .severity(Severity::Info)
         .confidence(Confidence::High)

@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// and lexical shadowing. Arguments, returned objects, and unlisted methods
 /// are intentionally not analyzed.
 pub fn rule() -> Rule {
-    Rule::builder("vault.delete")
+    Rule::catalog_builder("vault.delete")
         .description("Deletes or trashes vault files")
         .confidence(Confidence::High)
         .severity(Severity::Warning)

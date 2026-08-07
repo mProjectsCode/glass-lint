@@ -17,7 +17,8 @@ pub use query::{
     EventQuery, EventRequirement, IntoQueryDecl, LifecycleQuery, QueryBuildError, QueryDecl,
     QueryDiagnostic, VarId,
     lifecycle::{
-        IntoLifecycleSource, LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleSink,
+        IntoLifecycleCondition, IntoLifecycleSource, LifecycleCompletion, LifecycleCondition,
+        LifecycleEvent, LifecycleSink,
     },
     value::{ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ValueMatcher, ValueMatcherKind},
 };
@@ -58,6 +59,13 @@ impl Rule {
             confidence: None,
             queries: Vec::new(),
             duplicate_field: None,
+        }
+    }
+
+    /// Start the deferred-error builder used by declarative rule catalogs.
+    pub fn catalog_builder(id: impl Into<String>) -> CatalogRuleBuilder {
+        CatalogRuleBuilder {
+            inner: Self::builder(id),
             first_query_error: None,
         }
     }
@@ -102,26 +110,13 @@ pub struct RuleBuilder {
     confidence: Option<Confidence>,
     queries: Vec<QueryDecl>,
     duplicate_field: Option<&'static str>,
-    first_query_error: Option<QueryBuildError>,
 }
 
 impl RuleBuilder {
     #[must_use]
-    /// Add one query declaration (the primary authoring API).
-    ///
-    /// Accepts either a [`QueryDecl`] directly or a
-    /// [`Result<QueryDecl, QueryBuildError>`] (from the fallible
-    /// constructors), storing the first construction error for
-    /// deferred reporting at `build()` time.
-    pub fn query(mut self, query: impl IntoQueryDecl) -> Self {
-        match query.into_query_decl() {
-            Ok(decl) => self.queries.push(decl),
-            Err(e) => {
-                if self.first_query_error.is_none() {
-                    self.first_query_error = Some(e);
-                }
-            }
-        }
+    /// Add one already-validated query declaration.
+    pub fn query(mut self, query: QueryDecl) -> Self {
+        self.queries.push(query);
         self
     }
 
@@ -140,10 +135,9 @@ impl RuleBuilder {
 
     #[must_use]
     /// Add a deterministic sequence of query declarations.
-    pub fn queries<I, Q>(mut self, queries: I) -> Self
+    pub fn queries<I>(mut self, queries: I) -> Self
     where
-        I: IntoIterator<Item = Q>,
-        Q: IntoQueryDecl,
+        I: IntoIterator<Item = QueryDecl>,
     {
         for query in queries {
             self = self.query(query);
@@ -205,9 +199,6 @@ impl RuleBuilder {
         if let Some(field) = self.duplicate_field {
             return Err(RuleBuildError::DuplicateField(field));
         }
-        if let Some(err) = self.first_query_error {
-            return Err(RuleBuildError::InvalidQuery(err));
-        }
         if self.queries.is_empty() {
             return Err(RuleBuildError::MissingQuery);
         }
@@ -235,6 +226,65 @@ impl RuleBuilder {
     }
 }
 
+#[derive(Debug, Clone)]
+/// Deferred-error builder reserved for declarative provider catalogs.
+pub struct CatalogRuleBuilder {
+    inner: RuleBuilder,
+    first_query_error: Option<QueryBuildError>,
+}
+
+impl CatalogRuleBuilder {
+    #[must_use]
+    pub fn query(mut self, query: impl IntoQueryDecl) -> Self {
+        match query.into_query_decl() {
+            Ok(query) => self.inner = self.inner.query(query),
+            Err(error) => {
+                if self.first_query_error.is_none() {
+                    self.first_query_error = Some(error);
+                }
+            }
+        }
+        self
+    }
+
+    #[must_use]
+    pub fn queries<I, Q>(mut self, queries: I) -> Self
+    where
+        I: IntoIterator<Item = Q>,
+        Q: IntoQueryDecl,
+    {
+        for query in queries {
+            self = self.query(query);
+        }
+        self
+    }
+
+    #[must_use]
+    pub fn description(mut self, description: impl Into<String>) -> Self {
+        self.inner = self.inner.description(description);
+        self
+    }
+
+    #[must_use]
+    pub fn severity(mut self, severity: Severity) -> Self {
+        self.inner = self.inner.severity(severity);
+        self
+    }
+
+    #[must_use]
+    pub fn confidence(mut self, confidence: Confidence) -> Self {
+        self.inner = self.inner.confidence(confidence);
+        self
+    }
+
+    pub fn build(self) -> Result<Rule, RuleBuildError> {
+        if let Some(error) = self.first_query_error {
+            return Err(RuleBuildError::InvalidQuery(error));
+        }
+        self.inner.build()
+    }
+}
+
 fn required_string(
     value: Option<String>,
     missing_error: RuleBuildError,
@@ -252,7 +302,7 @@ mod tests {
     use super::*;
 
     fn build(id: &str) -> Result<Rule, RuleBuildError> {
-        Rule::builder(id)
+        Rule::catalog_builder(id)
             .description("rule")
             .severity(Severity::Info)
             .confidence(Confidence::High)
@@ -284,19 +334,19 @@ mod tests {
         let cases = [
             (
                 "description",
-                Rule::builder("network.fetch")
+                Rule::catalog_builder("network.fetch")
                     .description("one")
                     .description("two"),
             ),
             (
                 "severity",
-                Rule::builder("network.fetch")
+                Rule::catalog_builder("network.fetch")
                     .severity(Severity::Info)
                     .severity(Severity::Warning),
             ),
             (
                 "confidence",
-                Rule::builder("network.fetch")
+                Rule::catalog_builder("network.fetch")
                     .confidence(Confidence::High)
                     .confidence(Confidence::Medium),
             ),
@@ -323,7 +373,7 @@ mod tests {
     #[test]
     fn rejects_empty_and_incomplete_matchers() {
         assert!(
-            Rule::builder("test.test")
+            Rule::catalog_builder("test.test")
                 .description("desc")
                 .severity(Severity::Warning)
                 .confidence(Confidence::Medium)
@@ -334,7 +384,7 @@ mod tests {
 
     #[test]
     fn registers_query_iterators_in_declaration_order() {
-        let rule = Rule::builder("network.fetch")
+        let rule = Rule::catalog_builder("network.fetch")
             .description("rule")
             .severity(Severity::Info)
             .confidence(Confidence::High)

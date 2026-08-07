@@ -47,7 +47,7 @@ const PROCESS_CALLS: &[&str] = &[
 /// provenance. Local or reassigned `process` aliases, unlisted properties,
 /// and dynamic property names are excluded; the values read are not analyzed.
 pub fn rule() -> Rule {
-    Rule::builder("node.process-environment")
+    Rule::catalog_builder("node.process-environment")
         .description("Reads Node process environment or platform metadata")
         .severity(Severity::Info)
         .confidence(Confidence::High)

@@ -41,7 +41,7 @@ const SUBPROCESS_MODULE_CALLS: &[(&str, &str)] = &[
 /// `child_process`, `cluster`, and `worker_threads` APIs. Imports alone remain
 /// an indicator; operation calls are reported only with module provenance.
 pub fn rule() -> Rule {
-    Rule::builder("node.subprocess")
+    Rule::catalog_builder("node.subprocess")
         .description("Starts Node subprocesses")
         .confidence(Confidence::High)
         .severity(Severity::Warning)

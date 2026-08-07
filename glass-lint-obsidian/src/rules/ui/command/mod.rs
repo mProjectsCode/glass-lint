@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, QueryDecl, Rule, Severity};
 /// proven Obsidian `Plugin` receiver; shadowing, reassignment, and dynamic
 /// properties are excluded.
 pub fn rule() -> Rule {
-    Rule::builder("ui.command")
+    Rule::catalog_builder("ui.command")
         .description("Registers commands")
         .severity(Severity::Info)
         .confidence(Confidence::High)

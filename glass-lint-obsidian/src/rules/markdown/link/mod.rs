@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// module provenance, while similar modules, shadowed loaders, and reassigned
 /// aliases are excluded; arguments and later helper behavior are not analyzed.
 pub fn rule() -> Rule {
-    Rule::builder("markdown.link")
+    Rule::catalog_builder("markdown.link")
         .description("Uses markdown link helpers")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

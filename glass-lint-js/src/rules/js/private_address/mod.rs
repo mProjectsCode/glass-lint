@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// Boundary-aware parsing avoids matching prose or address fragments; dynamic
 /// and concatenated values remain outside this source-wide indicator.
 pub fn rule() -> Rule {
-    Rule::builder("network.private-address")
+    Rule::catalog_builder("network.private-address")
         .description("References private-network addresses")
         .severity(Severity::Info)
         .confidence(Confidence::High)

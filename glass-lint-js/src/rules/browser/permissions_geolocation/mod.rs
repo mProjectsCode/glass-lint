@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 /// lookalikes and reassigned aliases are excluded by rooted provenance
 /// tracking.
 pub fn rule() -> Rule {
-    Rule::builder("browser.permissions-geolocation")
+    Rule::catalog_builder("browser.permissions-geolocation")
         .description("Uses browser geolocation")
         .severity(Severity::Info)
         .confidence(Confidence::High)
