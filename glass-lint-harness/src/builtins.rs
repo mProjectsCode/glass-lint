@@ -57,18 +57,16 @@ pub fn linter_for_rules(
 
 fn profile_baseline(profile: BuiltinProfile) -> RuleBaseline {
     match profile {
-        BuiltinProfile::Recommended => {
-            RuleBaseline::MinimumConfidence(glass_lint_core::rules::Confidence::High)
-        }
+        BuiltinProfile::Recommended => RuleBaseline::recommended(),
         BuiltinProfile::Heuristic => RuleBaseline::All,
     }
 }
 
 fn config(provider: BuiltinProvider) -> glass_lint_core::LinterConfig {
     match provider {
-        BuiltinProvider::Js => glass_lint_js::js_config(),
-        BuiltinProvider::Node => glass_lint_js::node_config(),
-        BuiltinProvider::Electron => glass_lint_js::electron_config(),
+        BuiltinProvider::Js => glass_lint_js::JavaScriptTarget::Js.config(),
+        BuiltinProvider::Node => glass_lint_js::JavaScriptTarget::Node.config(),
+        BuiltinProvider::Electron => glass_lint_js::JavaScriptTarget::Electron.config(),
         BuiltinProvider::Obsidian => glass_lint_obsidian::obsidian_config(),
     }
 }
@@ -76,14 +74,18 @@ fn config(provider: BuiltinProvider) -> glass_lint_core::LinterConfig {
 impl BuiltinProvider {
     fn accepts_rule(self, id: &RuleId) -> bool {
         match self {
-            Self::Js => id.as_str().starts_with("js:"),
-            Self::Node => id.as_str().starts_with("js:") || id.as_str().starts_with("node:"),
-            Self::Electron => ["js:", "browser:", "node:", "electron:"]
-                .iter()
-                .any(|prefix| id.as_str().starts_with(prefix)),
-            Self::Obsidian => ["js:", "browser:", "node:", "electron:", "obsidian:"]
-                .iter()
-                .any(|prefix| id.as_str().starts_with(prefix)),
+            Self::Js => glass_lint_js::JavaScriptTarget::Js.accepts_rule(id),
+            Self::Node => glass_lint_js::JavaScriptTarget::Node.accepts_rule(id),
+            Self::Electron => glass_lint_js::JavaScriptTarget::Electron.accepts_rule(id),
+            Self::Obsidian => glass_lint_obsidian::accepts_rule(id),
+        }
+    }
+
+    pub(crate) fn accepts_profile_rule(self, id: &RuleId) -> bool {
+        match self {
+            Self::Js => glass_lint_js::JavaScriptTarget::Js.accepts_rule(id),
+            Self::Obsidian => glass_lint_obsidian::accepts_isolated_rule(id),
+            Self::Node | Self::Electron => false,
         }
     }
 
@@ -97,6 +99,7 @@ impl BuiltinProvider {
     }
 }
 
+#[allow(dead_code)]
 pub fn provider(name: &str) -> Result<BuiltinProvider> {
     match name {
         "js" => Ok(BuiltinProvider::Js),

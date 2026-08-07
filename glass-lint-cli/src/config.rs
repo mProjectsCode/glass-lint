@@ -8,7 +8,7 @@ use clap::ValueEnum;
 use glass_lint_core::project::SourceFile;
 use glass_lint_core::{
     CoreConfig, Linter, LinterConfig, MAX_SOURCE_BYTES, RuleBaseline, RuleCatalog, RuleOverride,
-    RuleSelection, Severity, rules::Confidence,
+    RuleSelection, Severity,
 };
 use glass_lint_project::ValidatedProjectLoadOptions;
 use serde::{Deserialize, Serialize};
@@ -309,7 +309,7 @@ pub fn catalog(provider: Provider, profile: RuleSelectionProfile) -> RuleCatalog
 
 fn profile_baseline(profile: RuleSelectionProfile) -> RuleBaseline {
     match profile {
-        RuleSelectionProfile::Recommended => RuleBaseline::MinimumConfidence(Confidence::High),
+        RuleSelectionProfile::Recommended => RuleBaseline::recommended(),
         RuleSelectionProfile::Heuristic => RuleBaseline::All,
     }
 }
@@ -317,9 +317,9 @@ fn profile_baseline(profile: RuleSelectionProfile) -> RuleBaseline {
 fn provider_config(provider: Provider) -> LinterConfig {
     match provider {
         Provider::Obsidian => glass_lint_obsidian::obsidian_config(),
-        Provider::Js => glass_lint_js::js_config(),
-        Provider::Node => glass_lint_js::node_config(),
-        Provider::Electron => glass_lint_js::electron_config(),
+        Provider::Js => glass_lint_js::JavaScriptTarget::Js.config(),
+        Provider::Node => glass_lint_js::JavaScriptTarget::Node.config(),
+        Provider::Electron => glass_lint_js::JavaScriptTarget::Electron.config(),
     }
 }
 

@@ -43,7 +43,7 @@ cross-crate error enum.
 
 ### Provider selection boundary
 
-#### [ ] READ-102 — Centralize provider catalog and profile selection contracts
+#### [x] READ-102 — Centralize provider catalog and profile selection contracts
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -65,7 +65,7 @@ selection validation, the harness's explicit-rule `None` baseline, canonical
 catalog ordering, and Obsidian's combined host environment; provider names and
 policy must not move into core.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added provider-owned JavaScript target descriptors for catalog/environment composition and namespace acceptance, plus Obsidian complete/isolated acceptance operations. CLI and harness construction now use those descriptors, and profile runner filtering no longer maintains provider-prefix tables.
 
 ### Profile configuration and identity
 

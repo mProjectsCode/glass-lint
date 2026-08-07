@@ -6,7 +6,7 @@
 
 #[cfg(test)]
 use glass_lint_core::project::SourceFile;
-use glass_lint_core::{Environment, LinterConfig, RuleCatalog, RuleMetadata};
+use glass_lint_core::{Environment, LinterConfig, RuleCatalog, RuleId, RuleMetadata};
 
 mod rules;
 
@@ -17,6 +17,42 @@ pub enum JavaScriptTarget {
     Browser,
     Node,
     Electron,
+}
+
+impl JavaScriptTarget {
+    /// Build the catalog and host environment for this JavaScript target.
+    #[must_use]
+    pub fn config(self) -> LinterConfig {
+        let (catalogs, environment) = match self {
+            Self::Js => (vec![js_catalog()], js_environment()),
+            Self::Browser => (vec![js_catalog(), browser_catalog()], browser_environment()),
+            Self::Node => (vec![js_catalog(), node_catalog()], node_environment()),
+            Self::Electron => (
+                vec![
+                    js_catalog(),
+                    browser_catalog(),
+                    node_catalog(),
+                    electron_catalog(),
+                ],
+                electron_environment(),
+            ),
+        };
+        LinterConfig::new(catalogs, environment)
+    }
+
+    /// Return whether a fully-qualified rule belongs to this target.
+    #[must_use]
+    pub fn accepts_rule(self, id: &RuleId) -> bool {
+        let prefixes = match self {
+            Self::Js => &["js:"][..],
+            Self::Browser => &["js:", "browser:"],
+            Self::Node => &["js:", "node:"],
+            Self::Electron => &["js:", "browser:", "node:", "electron:"],
+        };
+        prefixes
+            .iter()
+            .any(|prefix| id.as_str().starts_with(prefix))
+    }
 }
 
 /// Ordered JavaScript-provider catalogs and their target compositions.
@@ -109,37 +145,25 @@ pub fn node_catalog() -> RuleCatalog {
 /// Return the complete core configuration for the plain JavaScript target.
 #[must_use]
 pub fn js_config() -> LinterConfig {
-    LinterConfig::new(
-        JavaScriptCatalogBundle::new().into_target(JavaScriptTarget::Js),
-        js_environment(),
-    )
+    JavaScriptTarget::Js.config()
 }
 
 /// Return the complete core configuration for the browser target.
 #[must_use]
 pub fn browser_config() -> LinterConfig {
-    LinterConfig::new(
-        JavaScriptCatalogBundle::new().into_target(JavaScriptTarget::Browser),
-        browser_environment(),
-    )
+    JavaScriptTarget::Browser.config()
 }
 
 /// Return the complete core configuration for the Node target.
 #[must_use]
 pub fn node_config() -> LinterConfig {
-    LinterConfig::new(
-        JavaScriptCatalogBundle::new().into_target(JavaScriptTarget::Node),
-        node_environment(),
-    )
+    JavaScriptTarget::Node.config()
 }
 
 /// Return the complete core configuration for the Electron target.
 #[must_use]
 pub fn electron_config() -> LinterConfig {
-    LinterConfig::new(
-        JavaScriptCatalogBundle::new().into_target(JavaScriptTarget::Electron),
-        electron_environment(),
-    )
+    JavaScriptTarget::Electron.config()
 }
 
 #[must_use]

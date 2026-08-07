@@ -5,7 +5,7 @@
 
 #[cfg(test)]
 use glass_lint_core::project::SourceFile;
-use glass_lint_core::{Environment, LinterConfig, RuleCatalog, RuleMetadata};
+use glass_lint_core::{Environment, LinterConfig, RuleCatalog, RuleId, RuleMetadata};
 
 pub mod api_manifest;
 mod catalog;
@@ -72,6 +72,21 @@ pub fn rule_metadata() -> Vec<RuleMetadata> {
 pub fn obsidian_catalog() -> RuleCatalog {
     RuleCatalog::new("obsidian", catalog::obsidian_rules().to_vec())
         .expect("valid Obsidian catalog")
+}
+
+/// Return whether a fully-qualified rule belongs to the complete Obsidian
+/// renderer target, including its JavaScript host catalogs.
+#[must_use]
+pub fn accepts_rule(id: &RuleId) -> bool {
+    ["js:", "browser:", "node:", "electron:", "obsidian:"]
+        .iter()
+        .any(|prefix| id.as_str().starts_with(prefix))
+}
+
+/// Return whether a rule belongs to the isolated Obsidian catalog.
+#[must_use]
+pub fn accepts_isolated_rule(id: &RuleId) -> bool {
+    id.as_str().starts_with("obsidian:")
 }
 
 #[must_use]

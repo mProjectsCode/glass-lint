@@ -60,21 +60,23 @@ pub(super) fn build_linters(
         .map(|rule| RuleId::parse(rule.clone()).map_err(anyhow::Error::msg))
         .collect::<Result<Vec<_>>>()?;
     let providers = match provider {
-        ProfileCatalogProvider::Js => vec!["js"],
-        ProfileCatalogProvider::Obsidian => vec!["obsidian"],
-        ProfileCatalogProvider::Both => vec!["js", "obsidian"],
+        ProfileCatalogProvider::Js => vec![builtins::BuiltinProvider::Js],
+        ProfileCatalogProvider::Obsidian => vec![builtins::BuiltinProvider::Obsidian],
+        ProfileCatalogProvider::Both => vec![
+            builtins::BuiltinProvider::Js,
+            builtins::BuiltinProvider::Obsidian,
+        ],
     };
     let mut linters = Vec::new();
-    for prefix in providers {
+    for provider in providers {
         let selected: Vec<_> = parsed
             .iter()
-            .filter(|rule| rule.as_str().starts_with(&format!("{prefix}:")))
+            .filter(|rule| provider.accepts_profile_rule(rule))
             .cloned()
             .collect();
         if !rules.is_empty() && selected.is_empty() {
             continue;
         }
-        let provider = builtins::provider(prefix)?;
         let profile = match mode {
             RuleSelectionProfile::Recommended => BuiltinProfile::Recommended,
             RuleSelectionProfile::Heuristic => BuiltinProfile::Heuristic,
@@ -90,9 +92,12 @@ pub(super) fn build_linters(
         bail!("no selected rules belong to the chosen provider");
     }
     if parsed.iter().any(|rule| {
-        !["js:", "obsidian:"]
-            .iter()
-            .any(|prefix| rule.as_str().starts_with(prefix))
+        ![
+            builtins::BuiltinProvider::Js,
+            builtins::BuiltinProvider::Obsidian,
+        ]
+        .iter()
+        .any(|provider| provider.accepts_profile_rule(rule))
     }) {
         bail!("rule does not belong to a supported profiling provider");
     }

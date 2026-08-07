@@ -16,6 +16,13 @@ pub enum RuleBaseline {
     MinimumConfidence(crate::api::rule::Confidence),
 }
 
+impl RuleBaseline {
+    /// Baseline used by the recommended built-in profile.
+    pub const fn recommended() -> Self {
+        Self::MinimumConfidence(crate::api::rule::Confidence::High)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
