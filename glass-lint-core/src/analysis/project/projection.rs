@@ -4,7 +4,10 @@
 //! linking. It applies qualified identities once, composes bounded flow, and
 //! leaves rule selection to the compiled matcher catalog.
 
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use crate::{
     analysis::{
@@ -48,13 +51,12 @@ pub fn project_for_classification<'project, 'matchers>(
 }
 
 pub fn assemble_classification_results(
-    project: &ProjectSemanticModel,
     matcher_catalog: &ProjectMatcherModel<'_, '_>,
     records: &[CompiledRuleRecord],
     selected: &[RuleIndex],
     evidence_limit: usize,
 ) -> BTreeMap<ModuleId, ClassificationResult> {
-    project
+    matcher_catalog
         .modules()
         .map(|module| {
             let mut result = ClassificationResult::default();
@@ -281,8 +283,33 @@ fn project_facts(
 #[derive(Debug)]
 /// Matcher-independent facts and cross-file evidence for one linked project.
 pub struct ProjectMatcherModel<'project, 'matchers> {
+    identity: ProjectMatcherIdentity,
     matchers: CompiledRuleSelection<'matchers>,
     projections: BTreeMap<ModuleId, ProjectModuleProjection<'project>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ProjectMatcherIdentity(u64);
+
+static NEXT_PROJECT_MATCHER_ID: AtomicU64 = AtomicU64::new(1);
+
+impl ProjectMatcherIdentity {
+    fn next() -> Self {
+        Self(NEXT_PROJECT_MATCHER_ID.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+/// An opaque reference to a module retained by one projection model.
+#[derive(Clone, Copy, Debug)]
+pub struct ProjectModuleHandle<'project> {
+    module: &'project ProjectModule,
+    owner: ProjectMatcherIdentity,
+}
+
+impl ProjectModuleHandle<'_> {
+    pub fn id(self) -> ModuleId {
+        self.module.id()
+    }
 }
 
 #[derive(Debug)]
@@ -482,6 +509,7 @@ impl ProjectSemanticModel {
 
         (
             ProjectMatcherModel {
+                identity: ProjectMatcherIdentity::next(),
                 matchers,
                 projections,
             },
@@ -582,14 +610,27 @@ impl ProjectSemanticModel {
 }
 
 impl ProjectMatcherModel<'_, '_> {
+    /// Return handles that can be used to query this model's evidence.
+    pub fn modules(&self) -> impl Iterator<Item = ProjectModuleHandle<'_>> + '_ {
+        self.projections
+            .values()
+            .map(|projection| ProjectModuleHandle {
+                module: projection.module,
+                owner: self.identity,
+            })
+    }
+
     /// Return deterministic, deduplicated evidence for a selected rule.
     pub fn evidence_for(
         &self,
-        module: &ProjectModule,
+        module: ProjectModuleHandle<'_>,
         rule_index: RuleIndex,
         evidence_limit: usize,
     ) -> Vec<ClassificationEvidence> {
         if !self.matchers.is_selected(rule_index) {
+            return Vec::new();
+        }
+        if module.owner != self.identity {
             return Vec::new();
         }
         let Some(matcher) = self.matchers.get(rule_index) else {
@@ -598,9 +639,6 @@ impl ProjectMatcherModel<'_, '_> {
         let Some(projection) = self.projections.get(&module.id()) else {
             return Vec::new();
         };
-        if !std::ptr::eq(module, projection.module) {
-            return Vec::new();
-        }
         let mut evidence = projection.evidence_for(matcher, rule_index);
 
         crate::analysis::matching::evidence::normalize_evidence(&mut evidence, evidence_limit);

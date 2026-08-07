@@ -205,7 +205,7 @@ flow. Projection now passes a typed `FlowProjectionRule` to the projector,
 which performs its internal plan conversion, preserving root ordering and
 rule/evidence routing without exposing a positional tuple contract.
 
-#### [ ] READ-061 — Replace pointer identity with a model-owned evidence handle
+#### [x] READ-061 — Replace pointer identity with a model-owned evidence handle
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -233,7 +233,11 @@ boundary is public instead of silently returning no evidence. Preserve
 selected-rule filtering, deterministic deduplication/normalization, project
 isolation, and the current behavior for modules with no projection.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added opaque, model-issued `ProjectModuleHandle` values
+carrying a private per-model identity. Evidence lookup now accepts only those
+handles, and classification assembly iterates handles from the matcher model;
+foreign handles fail closed without pointer identity. Module selection,
+deterministic evidence normalization, and project isolation are preserved.
 
 ## Systemic Themes
 

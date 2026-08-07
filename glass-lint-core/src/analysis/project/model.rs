@@ -513,7 +513,6 @@ impl ProjectSemanticModel {
                         .expect("linter supplies a validated rule selection"),
                 );
             let results = crate::analysis::project::projection::assemble_classification_results(
-                self,
                 &matcher_catalog,
                 records,
                 selected,

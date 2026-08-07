@@ -165,8 +165,10 @@ mod tests {
         let selected = [rule_index];
         let (matcher, _outcome) =
             first.project(CompiledRuleSelection::new(&records, &selected).unwrap());
-        let first_module = first.modules().next().expect("first module");
-        let second_module = second.modules().next().expect("second module");
+        let first_module = matcher.modules().next().expect("first module");
+        let (second_matcher, _outcome) =
+            second.project(CompiledRuleSelection::new(&records, &selected).unwrap());
+        let second_module = second_matcher.modules().next().expect("second module");
 
         assert!(
             !matcher
