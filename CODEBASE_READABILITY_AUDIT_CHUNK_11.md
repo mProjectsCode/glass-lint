@@ -54,7 +54,7 @@ closure, completion recovery, cancellation, and pending-result ordering.
 driver keeps the bounded window, worker-panic conversion, and drop-cancellation
 semantics together. Verified with `make fmt && make ci`.
 
-#### [ ] READ-002 — `ReportAssembly::finish` coordinates every report phase through one mutable orchestration procedure
+#### [x] READ-002 — `ReportAssembly::finish` coordinates every report phase through one mutable orchestration procedure
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -80,7 +80,14 @@ work, and let the finalizer own operation-count completion and
 monotonicity, trace reconstruction, deterministic file/evidence order, and
 the distinction between semantic matching and presentation failures.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The report pipeline now transitions through private
+`LinkedReport`, `MatchedReport`, and `RenderedReport` states before producing
+the final `ProjectAnalysis`. Linking owns source initialization, parse-status
+recording, timing, and link telemetry; matching owns classification, trace
+installation, projection status, and matching timing; rendering owns evidence
+and diagnostic attachment; finalization owns summary assembly and the final
+report telemetry. Report ordering, completion state, diagnostics, traces,
+metrics, and phase timings are preserved. Verified with `make fmt && make ci`.
 
 #### [x] READ-003 — The internal report assembler is exported beside a raw timing DTO
 

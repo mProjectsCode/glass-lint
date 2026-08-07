@@ -10,9 +10,9 @@ use crate::{
         project::projection::ProjectionOutcome,
         trace::{TraceArena, TraceNodeId, TraceStep},
     },
-    api::classification::RuleIndex,
+    api::classification::{ClassificationResult, RuleIndex},
     lint::catalog::RuleCatalog,
-    project::{AnalysisReport, ProjectRelativePath, SourceTable},
+    project::{AnalysisReport, FileReport, ModuleId, ProjectRelativePath, SourceTable},
 };
 
 mod diagnostics;
@@ -118,29 +118,42 @@ pub(super) struct ReportAssembly<'a> {
     evidence_limit: usize,
 }
 
-impl<'a> ReportAssembly<'a> {
-    pub(super) fn new(
-        catalog: &'a RuleCatalog,
-        enabled: &'a [RuleIndex],
-        evidence_limit: usize,
-    ) -> Self {
-        Self {
-            catalog,
-            enabled,
-            evidence_limit,
-        }
-    }
+struct LinkedReport {
+    project: ProjectSemanticModel,
+    session: ProjectReportSession,
+    files: BTreeMap<ProjectRelativePath, FileReport>,
+    linking: Duration,
+}
 
-    pub(super) fn finish(
-        &self,
+struct MatchedReport {
+    project: ProjectSemanticModel,
+    session: ProjectReportSession,
+    files: BTreeMap<ProjectRelativePath, FileReport>,
+    classifications: BTreeMap<ModuleId, ClassificationResult>,
+    projection_outcome: ProjectionOutcome,
+    linking: Duration,
+    matching: Duration,
+}
+
+struct RenderedReport {
+    project: ProjectSemanticModel,
+    session: ProjectReportSession,
+    files: BTreeMap<ProjectRelativePath, FileReport>,
+    diagnostics: Vec<crate::project::Diagnostic>,
+    projection_outcome: ProjectionOutcome,
+    linking: Duration,
+    matching: Duration,
+}
+
+impl LinkedReport {
+    fn link(
         sources: &SourceTable,
         link_input: ResolvedLinkInput,
         parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
         limits: &AnalysisLimits,
-    ) -> ProjectAnalysis {
-        let (mut files, parse_failures) =
+    ) -> Self {
+        let (files, parse_failures) =
             diagnostics::initialize_project_files(sources, parse_diagnostics);
-
         let linking_start = Instant::now();
         let project = ProjectSemanticModel::link_with_limits(link_input, limits);
         let mut session = ProjectReportSession::new(&project, limits.trace_nodes());
@@ -159,19 +172,88 @@ impl<'a> ReportAssembly<'a> {
             "stage finished"
         );
 
+        Self {
+            project,
+            session,
+            files,
+            linking,
+        }
+    }
+
+    fn match_project(self, assembly: &ReportAssembly<'_>) -> MatchedReport {
+        let Self {
+            project,
+            mut session,
+            files,
+            linking,
+        } = self;
         let matching_start = Instant::now();
         let (classifications, projection_outcome, trace_arena) = project
             .classify_with_evidence_limit(
-                self.catalog.compiled(),
-                self.enabled,
-                self.evidence_limit,
+                assembly.catalog.compiled(),
+                assembly.enabled,
+                assembly.evidence_limit,
             );
         session.set_trace_arena(trace_arena);
         session.record_projection_status(&project, &projection_outcome);
         let matching = matching_start.elapsed();
 
-        evidence::populate_project_files(self, &project, &session, &classifications, &mut files);
+        MatchedReport {
+            project,
+            session,
+            files,
+            classifications,
+            projection_outcome,
+            linking,
+            matching,
+        }
+    }
+}
+
+impl MatchedReport {
+    fn render(self, assembly: &ReportAssembly<'_>) -> RenderedReport {
+        let Self {
+            project,
+            session,
+            files,
+            classifications,
+            projection_outcome,
+            linking,
+            matching,
+        } = self;
+        let mut files = files;
+        evidence::populate_project_files(
+            assembly,
+            &project,
+            &session,
+            &classifications,
+            &mut files,
+        );
         let diagnostics = diagnostics::attach_project_diagnostics(&project, &session, &mut files);
+
+        RenderedReport {
+            project,
+            session,
+            files,
+            diagnostics,
+            projection_outcome,
+            linking,
+            matching,
+        }
+    }
+}
+
+impl RenderedReport {
+    fn finish(self) -> ProjectAnalysis {
+        let Self {
+            project,
+            session,
+            files,
+            diagnostics,
+            projection_outcome,
+            linking,
+            matching,
+        } = self;
         let report = summary::assemble_project_report(
             &project,
             &session,
@@ -195,5 +277,32 @@ impl<'a> ReportAssembly<'a> {
             report,
             timings: ProjectAnalysisTimings { linking, matching },
         }
+    }
+}
+
+impl<'a> ReportAssembly<'a> {
+    pub(super) fn new(
+        catalog: &'a RuleCatalog,
+        enabled: &'a [RuleIndex],
+        evidence_limit: usize,
+    ) -> Self {
+        Self {
+            catalog,
+            enabled,
+            evidence_limit,
+        }
+    }
+
+    pub(super) fn finish(
+        &self,
+        sources: &SourceTable,
+        link_input: ResolvedLinkInput,
+        parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
+        limits: &AnalysisLimits,
+    ) -> ProjectAnalysis {
+        LinkedReport::link(sources, link_input, parse_diagnostics, limits)
+            .match_project(self)
+            .render(self)
+            .finish()
     }
 }
