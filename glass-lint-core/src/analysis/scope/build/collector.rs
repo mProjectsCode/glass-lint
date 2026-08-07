@@ -27,13 +27,20 @@ impl ScopeCollector<'_> {
     }
 
     pub(crate) fn from_plan(plan: ScopePlan, budget: &SemanticBudget) -> ScopeCollector<'_> {
+        let ScopePlan {
+            scopes,
+            names,
+            name_exhausted,
+            scope_shapes,
+        } = plan;
+        let program = scopes.program_scope().unwrap_or_default();
         ScopeCollector {
             lexical: super::LexicalCollectionState {
-                scopes: plan.scopes,
-                stack: vec![0],
-                names: plan.names,
-                name_exhausted: plan.name_exhausted,
-                scope_shapes: plan.scope_shapes,
+                scopes,
+                stack: vec![program],
+                names,
+                name_exhausted,
+                scope_shapes,
             },
             assignment: super::AssignmentCollectionState::default(),
             artifacts: ScopeCollectionArtifacts::default(),
@@ -45,7 +52,7 @@ impl ScopeCollector<'_> {
     }
 
     pub(super) fn current_scope(&self) -> ScopeId {
-        ScopeId::new(self.lexical.stack.last().copied().unwrap_or(0))
+        self.lexical.stack.last().copied().unwrap_or_default()
     }
 
     pub(super) fn binding_scope(&self, kind: VarDeclKind) -> ScopeId {
@@ -155,7 +162,7 @@ impl ScopeCollector<'_> {
             .scope_shapes
             .take_child(Some(parent), span.lo, kind)
         {
-            self.lexical.stack.push(scope_id.index());
+            self.lexical.stack.push(scope_id);
             #[cfg(test)]
             {
                 self.scope_lookups += 1;

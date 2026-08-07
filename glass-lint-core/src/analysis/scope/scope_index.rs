@@ -16,7 +16,7 @@ pub(super) struct LexicalScopeIndex {
 
 impl From<LexicalScopes> for LexicalScopeIndex {
     fn from(scopes: LexicalScopes) -> Self {
-        let mut scopes_by_start: Vec<_> = (0..scopes.len()).map(ScopeId::new).collect();
+        let mut scopes_by_start: Vec<_> = scopes.ids().collect();
         scopes_by_start.sort_by_key(|index| {
             let scope = scopes.get(*index).expect("scope index is allocated");
             (scope.span().lo, scope.depth())
@@ -48,7 +48,7 @@ impl LexicalScopeIndex {
 
     pub(super) fn scope_at(&self, span: Span, scope_shape_valid: bool) -> ScopeId {
         if !scope_shape_valid {
-            return ScopeId::new(0);
+            return self.scopes.program_scope().unwrap_or_default();
         }
         if let Some((cached_span, scope)) = self.last_scope_query.get()
             && cached_span == span
@@ -70,7 +70,7 @@ impl LexicalScopeIndex {
             .checked_sub(1)
             .map(|index| self.scopes_by_start[index])
         else {
-            return ScopeId::new(0);
+            return self.scopes.program_scope().unwrap_or_default();
         };
         while !self
             .scopes
@@ -78,10 +78,14 @@ impl LexicalScopeIndex {
             .is_some_and(|scope| scope.contains(span))
         {
             let Some(parent) = self.scopes.get(scope).and_then(LexicalScope::parent) else {
-                return ScopeId::new(0);
+                return self.scopes.program_scope().unwrap_or_default();
             };
             scope = parent;
         }
         scope
+    }
+
+    pub(super) fn scope_ids(&self) -> impl Iterator<Item = ScopeId> + '_ {
+        self.scopes.ids()
     }
 }

@@ -192,9 +192,9 @@ impl ScopePass for ScopeCollector<'_> {
                 if let Some((scope, ())) = self.lexical.stack.iter().rev().find_map(|scope| {
                     self.lexical
                         .scopes
-                        .get(ScopeId::new(*scope))
+                        .get(*scope)
                         .is_some_and(|scope| scope.has_binding(name_id))
-                        .then_some((ScopeId::new(*scope), ()))
+                        .then_some((*scope, ()))
                 }) {
                     self.record_assignment(
                         assignment.span,
@@ -293,7 +293,7 @@ impl ScopePass for ScopeCollector<'_> {
                 .scopes
                 .get(scope)
                 .and_then(crate::analysis::model::scope::LexicalScope::parent)
-                .unwrap_or_else(|| ScopeId::new(0));
+                .unwrap_or_default();
             self.functions.function_scopes.insert(
                 ScopedName::new(parent, name_id),
                 super::FunctionBinding { scope, parameters },

@@ -20,7 +20,7 @@ and Chunk 6 reports and are not repeated here.
 
 ### Scope identity and retained provenance
 
-#### [ ] READ-053 — Keep lexical scope identity independent of vector storage
+#### [x] READ-053 — Keep lexical scope identity independent of vector storage
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -51,7 +51,12 @@ calling `index()` or rebuilding them from enumeration. Preserve the stable
 program-first allocation order, deterministic scope traversal, parent links,
 the invalid-shape fallback behavior, and artifact-local identity.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `ScopeId` construction and representation private to the
+scope collection, with `LexicalScopes` assigning IDs, validating lookups, and
+providing ordered IDs. Planner and collector stacks now retain `ScopeId`
+values directly; binding and frozen-assignment indexes use typed scope-keyed
+maps. Program-first allocation, deterministic traversal, parent links, and
+invalid-shape fallback behavior are preserved.
 
 #### [ ] READ-054 — Seal bounded provenance joins before creating assignments
 

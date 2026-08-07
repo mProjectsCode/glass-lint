@@ -70,17 +70,18 @@ pub(super) fn for_each_import_binding(
 ///
 /// `var` bindings are hoisted to the nearest enclosing function or program
 /// scope, skipping intermediate block scopes.
-pub(super) fn var_binding_scope(stack: &[usize], scopes: &LexicalScopes) -> ScopeId {
+pub(super) fn var_binding_scope(stack: &[ScopeId], scopes: &LexicalScopes) -> ScopeId {
     stack
         .iter()
         .rev()
         .copied()
-        .find(|index| {
-            scopes.get(ScopeId::new(*index)).is_some_and(|scope| {
+        .find(|scope_id| {
+            scopes.get(*scope_id).is_some_and(|scope| {
                 matches!(scope.kind(), ScopeKind::Program | ScopeKind::Function)
             })
         })
-        .map_or_else(|| ScopeId::new(0), ScopeId::new)
+        .or_else(|| scopes.program_scope())
+        .unwrap_or_default()
 }
 
 /// Invoke `f` with every binding name introduced by a destructuring pattern.

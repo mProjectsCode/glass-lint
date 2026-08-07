@@ -168,7 +168,7 @@ impl ScopeCollector<'_> {
 
     fn visible_binding_with_scope(&self, name: &str) -> Option<(ScopeId, &BindingProvenance)> {
         let name_id = self.name_id(name)?;
-        for scope in self.lexical.stack.iter().rev().copied().map(ScopeId::new) {
+        for scope in self.lexical.stack.iter().rev().copied() {
             if let Some(assignment) = self
                 .assignment
                 .path
@@ -592,16 +592,11 @@ impl ScopeCollector<'_> {
         let Some(scope) = self.lexical.stack.iter().rev().find(|scope| {
             self.lexical
                 .scopes
-                .get(ScopeId::new(**scope))
+                .get(**scope)
                 .is_some_and(|scope| scope.has_binding(root_id))
         }) else {
             return;
         };
-        self.record_assignment(
-            span,
-            ScopeId::new(*scope),
-            root.sym.as_ref(),
-            BindingProvenance::Local,
-        );
+        self.record_assignment(span, *scope, root.sym.as_ref(), BindingProvenance::Local);
     }
 }

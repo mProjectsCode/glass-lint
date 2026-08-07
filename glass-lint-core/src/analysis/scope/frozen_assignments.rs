@@ -35,27 +35,23 @@ impl<'a> AssignmentAt<'a> {
 /// invariant is established during construction and never violated.
 #[derive(Debug, Clone)]
 pub(in crate::analysis) struct FrozenAssignmentIndex {
-    inner: Vec<HashMap<NameId, Vec<AliasAssignment>>>,
+    inner: HashMap<ScopeId, HashMap<NameId, Vec<AliasAssignment>>>,
 }
 
 impl FrozenAssignmentIndex {
     /// Build from a flat, unsorted assignment stream.
     /// Sorts and groups by (scope, name) during construction.
     pub(in crate::analysis) fn from_assignments(assignments: Vec<AliasAssignment>) -> Self {
-        let max_scope = assignments
-            .iter()
-            .map(|a| a.scope().index())
-            .max()
-            .unwrap_or(0);
-        let mut inner: Vec<HashMap<NameId, Vec<AliasAssignment>>> =
-            vec![HashMap::new(); max_scope + 1];
+        let mut inner: HashMap<ScopeId, HashMap<NameId, Vec<AliasAssignment>>> = HashMap::new();
         for assignment in assignments {
-            inner[assignment.scope().index()]
+            inner
+                .entry(assignment.scope())
+                .or_insert_with(HashMap::new)
                 .entry(assignment.name())
                 .or_default()
                 .push(assignment);
         }
-        for binding_assignments in inner.iter_mut().flat_map(|m| m.values_mut()) {
+        for binding_assignments in inner.values_mut().flat_map(|m| m.values_mut()) {
             binding_assignments.sort_by_key(|a| a.span().lo);
         }
         Self { inner }
@@ -63,7 +59,7 @@ impl FrozenAssignmentIndex {
 
     /// Retrieve the sorted slice for one scope/name pair, if it exists.
     fn get(&self, scope: ScopeId, name: NameId) -> Option<&[AliasAssignment]> {
-        self.inner.get(scope.index())?.get(&name).map(Vec::as_slice)
+        self.inner.get(&scope)?.get(&name).map(Vec::as_slice)
     }
 
     /// Find the index of the latest assignment at or before `span.lo`.

@@ -33,7 +33,7 @@ pub(in crate::analysis::scope) struct ScopePlan {
 pub(in crate::analysis::scope) struct ScopePlanner<'a> {
     names: NameTable,
     scopes: LexicalScopes,
-    stack: Vec<usize>,
+    stack: Vec<ScopeId>,
     scope_shapes: ScopeShapeTable,
     name_exhausted: bool,
     budget: &'a SemanticBudget,
@@ -74,11 +74,11 @@ impl ScopePlanner<'_> {
             }
         }
         let mut scopes = LexicalScopes::new();
-        scopes.push(LexicalScope::new(program_span, 0, ScopeKind::Program, None));
+        let program = scopes.push(LexicalScope::new(program_span, 0, ScopeKind::Program, None));
         ScopePlanner {
             names,
             scopes,
-            stack: vec![0],
+            stack: vec![program],
             scope_shapes: ScopeShapeTable::new(),
             name_exhausted,
             budget,
@@ -95,7 +95,7 @@ impl ScopePlanner<'_> {
     }
 
     fn current_scope(&self) -> ScopeId {
-        ScopeId::new(self.stack.last().copied().unwrap_or(0))
+        self.stack.last().copied().unwrap_or_default()
     }
 
     fn insert(&mut self, scope: ScopeId, name: impl Into<SmolStr>, provenance: BindingProvenance) {
@@ -133,20 +133,15 @@ impl ScopePlanner<'_> {
 
     pub(super) fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) {
         let parent = self.current_scope();
-        let index = self.scopes.len();
-        self.scopes.push(LexicalScope::new(
+        let scope_id = self.scopes.push(LexicalScope::new(
             span,
             self.stack.len(),
             kind,
             Some(parent),
         ));
-        self.scope_shapes.record(ScopeShape::new(
-            ScopeId::new(index),
-            kind,
-            span,
-            Some(parent),
-        ));
-        self.stack.push(index);
+        self.scope_shapes
+            .record(ScopeShape::new(scope_id, kind, span, Some(parent)));
+        self.stack.push(scope_id);
     }
 
     pub(super) fn pop_scope(&mut self) {

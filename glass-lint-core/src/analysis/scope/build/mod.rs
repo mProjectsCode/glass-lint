@@ -133,7 +133,7 @@ pub(super) struct FunctionBinding {
 /// Lexical identity and planner-produced scope shape state.
 struct LexicalCollectionState {
     scopes: LexicalScopes,
-    stack: Vec<usize>,
+    stack: Vec<ScopeId>,
     names: NameTable,
     name_exhausted: bool,
     scope_shapes: ScopeShapeTable,

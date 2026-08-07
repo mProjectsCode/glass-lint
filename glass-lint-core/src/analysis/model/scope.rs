@@ -10,21 +10,18 @@ use crate::analysis::{
 
 // ── Identifiers ──────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct ScopeId(usize);
 
 impl ScopeId {
-    pub(in crate::analysis) const fn new(index: usize) -> Self {
+    #[cfg(test)]
+    pub(in crate::analysis) const fn from_test(index: usize) -> Self {
         Self(index)
     }
 
-    pub fn index(self) -> usize {
-        self.0
-    }
-
     #[cfg(test)]
-    pub(in crate::analysis) const fn from_test(index: usize) -> Self {
-        Self::new(index)
+    pub(in crate::analysis) const fn index_for_test(self) -> usize {
+        self.0
     }
 }
 
@@ -206,22 +203,34 @@ impl LexicalScopes {
         Self::default()
     }
 
-    pub(in crate::analysis) fn push(&mut self, scope: LexicalScope) {
+    pub(in crate::analysis) fn push(&mut self, scope: LexicalScope) -> ScopeId {
+        let id = ScopeId(self.0.len());
         self.0.push(scope);
+        id
     }
 
+    #[cfg(test)]
     pub(in crate::analysis) fn len(&self) -> usize {
         self.0.len()
     }
 
     pub(in crate::analysis) fn get(&self, scope: ScopeId) -> Option<&LexicalScope> {
-        self.0.get(scope.index())
+        self.0.get(scope.0)
     }
 
     pub(in crate::analysis) fn get_mut(&mut self, scope: ScopeId) -> Option<&mut LexicalScope> {
-        self.0.get_mut(scope.index())
+        self.0.get_mut(scope.0)
     }
 
+    pub(in crate::analysis) fn program_scope(&self) -> Option<ScopeId> {
+        (!self.0.is_empty()).then_some(ScopeId(0))
+    }
+
+    pub(in crate::analysis) fn ids(&self) -> impl Iterator<Item = ScopeId> + '_ {
+        (0..self.0.len()).map(ScopeId)
+    }
+
+    #[cfg(test)]
     pub(in crate::analysis) fn iter(&self) -> impl Iterator<Item = &LexicalScope> {
         self.0.iter()
     }
@@ -663,7 +672,7 @@ mod tests {
     #[test]
     fn scope_id_index_and_from_usize() {
         let id = ScopeId::from_test(5);
-        assert_eq!(id.index(), 5);
+        assert_eq!(id.index_for_test(), 5);
     }
 
     #[test]
