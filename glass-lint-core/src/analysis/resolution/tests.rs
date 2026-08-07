@@ -8,7 +8,7 @@ use crate::analysis::{
     lowering::SpanNormalizer,
     model::value::{MAX_VALUES, StaticObject, Value},
     scope::ScopeGraph,
-    syntax::{BudgetComponent, UnknownReason},
+    syntax::{BudgetComponent, UnknownReason, constant::MAX_ARRAY_ITEMS},
 };
 
 #[test]
@@ -202,6 +202,20 @@ fn const_value_materializes_large_flat_array() {
                 .collect::<Vec<_>>()
         )
     );
+}
+
+#[test]
+fn const_value_applies_the_shared_container_bound() {
+    let names = NameTable::default();
+    let scopes = ScopeGraph::create_for_test(names).freeze();
+    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
+
+    let ids: Vec<_> = (0..=MAX_ARRAY_ITEMS)
+        .map(|i| resolver.values.intern(Value::StaticNumber(i)))
+        .collect();
+    let array_id = resolver.values.intern(Value::StaticArray(ids));
+
+    assert_eq!(resolver.const_value(array_id), ConstValue::Unknown);
 }
 
 #[test]

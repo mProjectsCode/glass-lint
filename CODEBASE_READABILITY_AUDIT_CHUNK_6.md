@@ -80,7 +80,7 @@ same-table fail-closed resolution remain covered by the full gate.
 
 ### Constant projection boundary
 
-#### [ ] READ-028 — Centralize constant conversion and recursive evaluation policy
+#### [x] READ-028 — Centralize constant conversion and recursive evaluation policy
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -107,6 +107,13 @@ make them thin policy callbacks rather than parallel tree transforms. Preserve
 unknown-on-unsupported behavior, shadowing and mutable-object rejection,
 lookup/depth/node/string/container bounds, deterministic object keys, and the
 fact that a complete static witness remains distinct from an exhausted one.
+
+**Fix Applied:** Centralized container, string, depth, and node admission on
+`ConstValue::array`, `ConstValue::object`, and `ConstValue::bounded`. Syntax
+evaluation, scope provenance projection, and resolver arena conversion now
+reuse those constructors and bounds, including reverse interning. Added a
+resolver regression for oversized arena arrays and verified with
+`make fmt && make ci`.
 
 ### Trace storage boundary
 

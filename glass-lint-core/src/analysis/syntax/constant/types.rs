@@ -6,7 +6,7 @@ pub(super) const MAX_DEPTH: usize = 32;
 pub(super) const MAX_NODES: usize = 4_096;
 pub(super) const MAX_LOOKUPS: usize = 512;
 pub(super) const MAX_STRING_BYTES: usize = 16 * 1024;
-pub(super) const MAX_ARRAY_ITEMS: usize = 256;
+pub(in crate::analysis) const MAX_ARRAY_ITEMS: usize = 256;
 /// Maximum number of distinct keys retained in a static object shape.
 pub(in crate::analysis) const MAX_OBJECT_KEYS: usize = 256;
 
@@ -44,6 +44,63 @@ pub(in crate::analysis) enum ConstValue {
 }
 
 impl ConstValue {
+    /// Admit an array only when its container bound is still satisfied.
+    pub(in crate::analysis) fn array(values: Vec<Self>) -> Self {
+        if values.len() <= MAX_ARRAY_ITEMS {
+            Self::Array(values)
+        } else {
+            Self::Unknown
+        }
+    }
+
+    /// Admit an object only when its distinct-key bound is still satisfied.
+    pub(in crate::analysis) fn object(values: BTreeMap<SmolStr, Self>) -> Self {
+        if values.len() <= MAX_OBJECT_KEYS {
+            Self::Object(values)
+        } else {
+            Self::Unknown
+        }
+    }
+
+    /// Re-apply the complete constant-domain bounds to a materialized tree.
+    ///
+    /// Syntax evaluation charges its own expression budget while arena and
+    /// provenance projections start from already-materialized values. Keeping
+    /// this final admission policy here prevents those projections from
+    /// creating larger or deeper trees than the evaluator can accept.
+    pub(in crate::analysis) fn bounded(self) -> Self {
+        fn visit(value: ConstValue, depth: usize, nodes: &mut usize) -> ConstValue {
+            if depth >= MAX_DEPTH || *nodes >= MAX_NODES {
+                return ConstValue::Unknown;
+            }
+            *nodes += 1;
+            match value {
+                ConstValue::String(value) => ConstValue::bounded_string(value),
+                ConstValue::NonNegativeInteger(value) => ConstValue::NonNegativeInteger(value),
+                ConstValue::Array(values) if values.len() <= MAX_ARRAY_ITEMS => ConstValue::array(
+                    values
+                        .into_iter()
+                        .map(|value| visit(value, depth + 1, nodes))
+                        .collect(),
+                ),
+                ConstValue::Object(values) if values.len() <= MAX_OBJECT_KEYS => {
+                    ConstValue::object(
+                        values
+                            .into_iter()
+                            .map(|(key, value)| (key, visit(value, depth + 1, nodes)))
+                            .collect(),
+                    )
+                }
+                ConstValue::Unknown | ConstValue::Array(_) | ConstValue::Object(_) => {
+                    ConstValue::Unknown
+                }
+            }
+        }
+
+        let mut nodes = 0;
+        visit(self, 0, &mut nodes)
+    }
+
     /// Construct a string only when it fits the evaluator's global bound.
     /// Keeping the limit at the value boundary prevents one evaluation path
     /// from accidentally returning an oversized string.

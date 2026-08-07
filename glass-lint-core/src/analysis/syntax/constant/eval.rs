@@ -178,7 +178,7 @@ impl EvalState {
                     };
                     values.push(self.evaluate(&element.expr, lookup));
                 }
-                ConstValue::Array(values)
+                ConstValue::array(values)
             }
             Expr::Object(object) => self.evaluate_object(object, lookup),
             Expr::Call(call) => self.evaluate_object_assign(call, lookup),
@@ -250,7 +250,7 @@ impl EvalState {
                 }
             }
         }
-        ConstValue::Object(values)
+        ConstValue::object(values)
     }
 
     fn evaluate_object_assign(
@@ -282,7 +282,7 @@ impl EvalState {
             }
             values.extend(argument_values);
         }
-        ConstValue::Object(values)
+        ConstValue::object(values)
     }
 
     fn lookup_ident(&mut self, lookup: &impl Lookup, ident: &Ident) -> ConstValue {

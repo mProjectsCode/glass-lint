@@ -6,6 +6,8 @@ mod types;
 pub(in crate::analysis) use eval::{
     EvalState, Lookup, NoLookup, contextual_member_property_name, evaluate,
 };
+#[cfg(test)]
+pub(in crate::analysis) use types::MAX_ARRAY_ITEMS;
 pub(in crate::analysis) use types::{ConstValue, MAX_OBJECT_KEYS, non_negative_integer};
 
 /// Evaluate an expression as one bounded static string.

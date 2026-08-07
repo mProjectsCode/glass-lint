@@ -53,14 +53,14 @@ pub(in crate::analysis) fn provenance_to_const_value(
         BindingProvenance::StaticString(value) => ConstValue::String(value.clone()),
         BindingProvenance::StaticNumber(value) => ConstValue::NonNegativeInteger(*value),
         BindingProvenance::StaticStringArray(values) => {
-            ConstValue::Array(values.iter().cloned().map(ConstValue::String).collect())
+            ConstValue::array(values.iter().cloned().map(ConstValue::String).collect()).bounded()
         }
         BindingProvenance::StaticObjectKeys(values) => values
             .to_const_object(resolve_name)
-            .unwrap_or(ConstValue::Unknown),
+            .map_or(ConstValue::Unknown, ConstValue::bounded),
         BindingProvenance::StaticObjectValues(values) => values
             .to_const_object(resolve_name)
-            .unwrap_or(ConstValue::Unknown),
+            .map_or(ConstValue::Unknown, ConstValue::bounded),
         _ => ConstValue::Unknown,
     }
 }

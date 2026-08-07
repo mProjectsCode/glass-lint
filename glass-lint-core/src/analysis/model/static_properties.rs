@@ -74,7 +74,7 @@ impl<V> StaticProperties<V> {
         &self,
         resolve_name: &impl Fn(NameId) -> Option<SmolStr>,
     ) -> Option<ConstValue> {
-        Some(ConstValue::Object(
+        Some(ConstValue::object(
             self.keys()
                 .map(|key| Some((resolve_name(key)?, ConstValue::Unknown)))
                 .collect::<Option<_>>()?,

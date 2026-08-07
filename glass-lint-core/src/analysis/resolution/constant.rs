@@ -37,7 +37,7 @@ impl Resolver<'_> {
                     .iter()
                     .map(|&id| self.const_value_depth(id, depth + 1))
                     .collect();
-                ConstValue::Array(children)
+                ConstValue::array(children)
             }
             Value::StaticObject(object) => {
                 let mut result = BTreeMap::new();
@@ -47,7 +47,7 @@ impl Resolver<'_> {
                     };
                     result.insert(key, self.const_value_depth(value_id, depth + 1));
                 }
-                ConstValue::Object(result)
+                ConstValue::object(result)
             }
             _ => ConstValue::Unknown,
         }
@@ -59,6 +59,7 @@ impl Resolver<'_> {
         value: ConstValue,
         binding: Option<BindingKey>,
     ) -> ValueId {
+        let value = value.bounded();
         let value = match value {
             ConstValue::Unknown => Value::Unknown,
             ConstValue::String(value) => Value::StaticString(value),
