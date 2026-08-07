@@ -7,6 +7,7 @@ use crate::api::classification::RuleIndex;
 use crate::{
     analysis::{
         facts::FactId,
+        flow::effect::{EffectArgument, FunctionEffect, ParameterRef},
         model::{
             flow::{FlowId, LifecycleEvidence, RequirementIndex, SinkIndex},
             scope::FunctionId,
@@ -262,7 +263,7 @@ impl CallContext {
         self.crossed
     }
 
-    pub(super) fn matches_parameter(
+    fn matches_parameter(
         &self,
         parameter: usize,
         parameter_is_root: bool,
@@ -273,7 +274,7 @@ impl CallContext {
             && argument_is_root
     }
 
-    pub(super) fn matches_source_root(
+    fn matches_source_root(
         &self,
         value: ValueId,
         value_is_root: bool,
@@ -281,6 +282,49 @@ impl CallContext {
     ) -> bool {
         matches!(self.origin, CallContextOrigin::SourceRoot(root) if root == value)
             && (!require_value_root || value_is_root)
+    }
+
+    pub(super) fn matches_argument(
+        &self,
+        effect: &FunctionEffect,
+        argument: &EffectArgument,
+    ) -> bool {
+        argument
+            .parameter()
+            .is_some_and(|parameter| self.matches_parameter_ref(parameter, argument.is_root()))
+            || self.matches_source_value(effect, argument.value(), argument.is_root(), true)
+    }
+
+    pub(super) fn matches_call_receiver(&self, receiver: &ParameterRef) -> bool {
+        self.matches_parameter_ref(receiver, true)
+    }
+
+    pub(super) fn matches_property_write(
+        &self,
+        effect: &FunctionEffect,
+        receiver: Option<&ParameterRef>,
+        receiver_value: ValueId,
+    ) -> bool {
+        receiver.is_some_and(|parameter| self.matches_parameter_ref(parameter, true))
+            || self.matches_source_value(effect, receiver_value, false, false)
+    }
+
+    fn matches_parameter_ref(&self, parameter: &ParameterRef, argument_is_root: bool) -> bool {
+        self.matches_parameter(parameter.index(), parameter.is_root(), argument_is_root)
+    }
+
+    fn matches_source_value(
+        &self,
+        effect: &FunctionEffect,
+        value: ValueId,
+        value_is_root: bool,
+        require_value_root: bool,
+    ) -> bool {
+        self.matches_source_root(
+            effect.value_root(value).unwrap_or(value),
+            value_is_root,
+            require_value_root,
+        )
     }
 }
 

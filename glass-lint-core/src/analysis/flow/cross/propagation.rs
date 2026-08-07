@@ -237,20 +237,7 @@ impl CallPropagation<'_, '_> {
                 continue;
             };
             for argument in call.arguments() {
-                let connected = argument.parameter().is_some_and(|parameter| {
-                    self.context.matches_parameter(
-                        parameter.index(),
-                        parameter.is_root(),
-                        argument.is_root(),
-                    )
-                }) || self.context.matches_source_root(
-                    self.effect
-                        .value_root(argument.value())
-                        .unwrap_or_else(|| argument.value()),
-                    argument.is_root(),
-                    true,
-                );
-                if connected {
+                if self.context.matches_argument(self.effect, argument) {
                     self.session.worklist.enqueue_parameters(
                         self.session.project,
                         target.module(),

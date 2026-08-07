@@ -85,7 +85,7 @@ test-only frozen construction.
 
 ### Cross-flow context matching
 
-#### [ ] READ-033 — Centralize context-to-use connectivity semantics
+#### [x] READ-033 — Centralize context-to-use connectivity semantics
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -111,7 +111,10 @@ distinction between source-root and target-parameter origins, required root
 precision, crossed-module state, and the rule that unknown or unsupported
 connectivity cannot establish a witness.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added typed `CallContext` relations for effect arguments,
+call receivers, and property writes. Evidence filtering and call propagation
+now consume those shared relations, with raw root-boolean helpers private to
+the context owner. Verified with `make fmt && make ci`.
 
 ### Cross-flow projection orchestration
 
