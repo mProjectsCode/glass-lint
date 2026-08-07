@@ -66,8 +66,8 @@ declaration and assignment lowering should supply the target set and proven
 source facts rather than manipulate maps. Delete the duplicated map surgery
 from `assignments.rs` and the separate partial seeding path after migration.
 Keep destructuring writes conservative, preserve current evaluation order, and
-ensure unknown, dynamic, reassigned, and unsupported values remain unable to
-establish a witness.
+ensure repeated hoisted declarations, unknown, dynamic, reassigned, and
+unsupported values remain unable to establish a witness.
 
 **Fix Applied:** None so far.
 
@@ -145,14 +145,16 @@ handling of budget/resource exhaustion.
   must preserve incomplete streams, unknown values, deterministic fact order,
   and strict path-local identity.
 
-## Open Questions
+## Decisions
 
-- Confirm with redeclaration fixtures whether a repeated `var` binding reuses
-  the same `ValueId`; if it does, READ-002 should include that case explicitly
-  when unifying declaration invalidation with assignment invalidation.
-- Confirm whether `FactBuilder::with_limit` is intentionally used outside the
-  lowering module in downstream in-crate integrations before removing it; its
-  current visibility is broader than the documented lowering lifecycle.
+- Repeated `var` declarations resolve through the same hoisted lexical binding;
+  the replacement operation therefore covers redeclarations as well as
+  assignments. The decision does not relax invalidation: each declaration
+  still replaces stale derived provenance in source order.
+- `FactBuilder::with_limit` has one production caller, the lowering owner; the
+  other callers are module-local tests using `new`. Narrow the production
+  constructor to the lowering boundary and keep test construction as a
+  test-only fixture, rather than preserving a broader internal API.
 
 ## Coverage
 

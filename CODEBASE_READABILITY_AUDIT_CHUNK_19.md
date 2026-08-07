@@ -46,14 +46,14 @@ change inconsistently. A future profile or core-baseline change must update
 and a caller can reasonably believe a configured core baseline is active when
 only its overrides are applied.
 
-**Recommendation:** Define one composition operation at the CLI/core
-boundary that produces the exact `RuleSelection` executed by `Linter::new`,
-and validate that same value against the same assembled catalog. Either make
-the profile the sole baseline owner and remove the baseline claim from
-`CoreConfig`, or explicitly merge the two policies in a named, documented
-operation. Delete the separate `CoreConfig::validate` path after migration.
-Preserve ordered override precedence, profile defaults, unknown-rule
-diagnostics, and provider-specific catalog construction.
+**Recommendation:** Define one composition operation at the CLI/core boundary
+that applies the profile baseline and core-owned ordered overrides, produces
+the exact selection executed by `Linter::new`, and validates that same value
+against the same assembled catalog. Remove the baseline claim from
+`CoreConfig` in favor of an override-only domain collection and delete the
+separate validation path after migration. Preserve ordered override
+precedence, profile defaults, unknown-rule diagnostics, and provider-specific
+catalog construction.
 
 **Fix Applied:** None so far.
 
@@ -184,13 +184,12 @@ changes to the constructor, accessor, resolver, and derived serde behavior;
 the type itself cannot express that its state is one of the supported rule
 states.
 
-**Recommendation:** Store `RuleState` directly and make serde serialize the
-explicit selector/state representation intended by the configuration API.
-Have `resolve` consume `override_.state()` or a private state predicate, then
-delete the bool-to-enum conversion. Preserve ordered last-match-wins
-semantics, wildcard validation, unknown-rule failures, and the existing
-enabled/disabled configuration compatibility through an explicit migration
-if that wire format is required.
+**Recommendation:** Store `RuleState` directly and add an explicit serde
+adapter that preserves the ergonomic `enabled` wire spelling. Have `resolve`
+consume `override_.state()` or a private state predicate, then delete the
+bool-to-enum conversion. Preserve ordered last-match-wins semantics, wildcard
+validation, unknown-rule failures, and the existing enabled/disabled
+configuration contract independently of storage.
 
 **Fix Applied:** None so far.
 
@@ -206,16 +205,15 @@ if that wire format is required.
   but parser and source-location diagnostics are externally observable error
   paths and should not require those assertions for ordinary malformed input.
 
-## Open Questions
+## Decisions
 
-- Is `CoreConfig.selection.baseline` intentionally a legacy compatibility
-  field, or should it become the source of truth alongside the CLI profile?
-  The current test and `selected_linter` implementation indicate that the
-  profile owns the baseline, but the core schema and validation API say
-  otherwise.
-- Is the `enabled` serde spelling a deliberate on-disk compatibility contract?
-  If so, the enum-backed representation should retain it through an explicit
-  serde adapter rather than exposing storage through derived serialization.
+- The CLI profile owns the baseline because it selects the provider catalog and
+  confidence policy. Remove the misleading core baseline field in favor of a
+  core-owned ordered override collection, then validate the exact assembled
+  selection consumed by the linter.
+- `enabled` is the ergonomic, existing configuration spelling. Preserve it as
+  an explicit serde compatibility adapter while storing `RuleState` internally;
+  future wire changes must be versioned rather than coupled to storage fields.
 
 ## Coverage
 

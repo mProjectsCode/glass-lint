@@ -49,7 +49,7 @@ forget to preserve total count while still producing a valid Rust value.
 `RuleEvidenceTable::record`, `extend`, and `replace` accept those values
 without a validation boundary.
 
-**Recommendation:** Keep the report structs readable from the outside but
+**Recommendation:** Keep the report structs readable through accessors but
 make their storage private and provide invariant-owning constructors such as
 `from_occurrences` and an explicit `with_total_count`/truncation operation.
 Give `RuleEvidenceTable` a narrow grouped/admit/finalize API instead of raw
@@ -233,17 +233,19 @@ detects semantic drift, and all lifecycle limits.
   semantic description should reduce drift without making the reference
   evaluator reuse the production event-search implementation.
 
-## Open Questions
+## Decisions
 
-- Should external callers be able to construct classification results, or are
-  those values read-only outputs? The answer determines whether constructors
-  are public or only report-assembly-facing.
-- Should an internal compiler invariant be surfaced as a structured build
-  failure, logged as an implementation error, or both? The authored-query
-  diagnostic namespace should remain reserved for declaration failures.
-- Is the reference evaluator required to remain intentionally independent of
-  production readiness logic? If so, share only validated lifecycle mode data
-  and add an explicit parity test rather than sharing the matcher algorithm.
+- Classification values are read-only report outputs. Keep fields private,
+  expose narrow accessors, and restrict invariant-owning constructors to
+  report assembly and test fixtures; external callers should not mint
+  arbitrary rule indexes or evidence counts.
+- Internal compiler invariants return a structured internal catalog/build
+  failure and may be recorded by internal telemetry, but they never receive
+  authored-query diagnostic codes. Core should not log as a substitute for a
+  typed failure.
+- The reference evaluator remains algorithmically independent from production
+  readiness logic. Share only validated lifecycle mode data and add a parity
+  test for semantic agreement; do not merge the two evaluators.
 
 ## Coverage
 

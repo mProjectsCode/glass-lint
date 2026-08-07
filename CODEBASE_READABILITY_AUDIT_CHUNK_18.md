@@ -45,14 +45,14 @@ metadata do not need the value. It also makes the public `Rule` appear to
 promise category preservation when the compiled catalog silently drops it.
 
 **Recommendation:** Move category construction and storage to the provider
-catalog or provider-owned metadata layer, or make it an opaque metadata value
-that core does not validate or interpret. Remove `Category`, the `Rule`
-field/accessor, duplicate-field builder branch, and unused compiled-path
-storage from core after provider callers migrate; if categories must be
-serialized, attach them in the provider/report adapter where they are actually
-consumed. Preserve rule IDs, descriptions, severity, confidence, query
-explanations, duplicate-field diagnostics for metadata that remains in core,
-and the absence of provider names/categories from core semantics.
+catalog or provider-owned metadata layer. Core reports currently do not
+serialize categories, so remove `Category`, the `Rule` field/accessor,
+duplicate-field builder branch, and unused compiled-path storage from core
+after provider callers migrate; if categories must be serialized later, attach
+them in the provider/report adapter where they are actually consumed. Preserve
+rule IDs, descriptions, severity, confidence, query explanations,
+duplicate-field diagnostics for metadata that remains in core, and the absence
+of provider names/categories from core semantics.
 
 **Fix Applied:** None so far.
 
@@ -208,18 +208,18 @@ the canonical conversion is adopted.
   assembler so the public surface remains broad while binding, evidence, and
   identity invariants have one implementation.
 
-## Open Questions
+## Decisions
 
-- Should categories exist in the serialized report at all? If yes, which
-  provider-facing adapter owns their schema and namespacing after removal from
-  core?
-- Are `EventSpec` and `IdentitySpec` intended as inspection-only values for
-  consumers, or should external callers be able to author them directly? The
-  answer determines whether to hide variants or provide fully validated
-  constructors.
-- Should query errors preserve the underlying `MatcherBuildError` as a
-  source/context chain, or is a stable query-level code sufficient for all
-  package-pattern failures?
+- Categories are not part of the provider-neutral serialized core report;
+  current classification output has no category field. Provider catalogs own
+  optional category metadata and any provider-facing serialization or
+  namespacing after the core taxonomy is removed.
+- `EventSpec` and `IdentitySpec` are authored through fully validated
+  constructors but are opaque after construction. Consumers can inspect
+  semantic accessors, not build compiler-invalid variants by struct literal.
+- Query-level errors retain stable codes and preserve the underlying typed
+  module-pattern error as source context. This gives callers deterministic
+  diagnostics without discarding the detailed package-pattern cause.
 
 ## Coverage
 

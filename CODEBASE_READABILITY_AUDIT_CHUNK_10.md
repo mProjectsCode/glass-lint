@@ -46,13 +46,13 @@ own.
 
 **Recommendation:** Split the raw lazy selection from the normalized evidence
 selection, or make a private `OccurrenceSelection` owner expose one explicit
-operation that canonicalizes order and documents whether duplicate facts are
-retained for count purposes. Keep exact lookups and linked package scans lazy
-where possible, but make the boundary at which sorting, deduplication, and
-count preservation occur explicit instead of encoding four contracts in one
-iterator enum. Preserve module-overlay masking, deterministic evidence order,
-the current count/truncation semantics, and the distinction between duplicate
-physical occurrences and distinct semantic facts.
+operation that preserves duplicate physical events for counting and performs
+span/fact/trace deduplication only at final evidence grouping. Keep exact
+lookups and linked package scans lazy where possible, but make the boundary at
+which sorting, deduplication, and count preservation occur explicit instead of
+encoding four contracts in one iterator enum. Preserve module-overlay masking,
+deterministic evidence order, and the distinction between duplicate physical
+occurrences and distinct semantic facts.
 
 **Fix Applied:** None so far.
 
@@ -138,20 +138,19 @@ unknown, or unsupported resolutions.
   ambiguous alternatives. Refactors must not turn a linked overlay into a
   textual or cross-artifact name match.
 
-## Open Questions
+## Decisions
 
-- Should candidate iteration preserve duplicate physical occurrences until
-  evidence grouping so counts remain unchanged, or should the occurrence
-  selection owner deduplicate by fact/span earlier? The choice should be made
-  once and documented at the raw-to-report boundary.
-- Are the duplicate `EventIndexView` fields intentionally kept for a planned
-  shared lookup interface, or are they compatibility remnants from the older
-  event-query path? If the latter, remove the generic alias machinery in one
-  migration.
-- Should the effective identity operation return `Option<&ExportResolution>`
-  or a typed unknown/ambiguous result? Either form must preserve the current
-  distinction between absent local data and an explicit unresolved project
-  identity.
+- Raw candidate iteration preserves duplicate physical occurrences until the
+  final evidence accumulator. Counts represent observed events, while the
+  final boundary deduplicates equivalent span/fact/trace occurrences for
+  presentation.
+- Duplicate `EventIndexView` fields are compatibility remnants, not a planned
+  shared interface. Remove the alias machinery in one migration and keep
+  event-specific lookup descriptors as the narrow internal API.
+- Effective identity uses a typed result distinguishing absent local data,
+  explicit unknown, and ambiguity. `Option` remains appropriate only for a
+  lookup that truly means “no local entry”; it must not collapse unresolved
+  project identity into absence.
 
 ## Coverage
 

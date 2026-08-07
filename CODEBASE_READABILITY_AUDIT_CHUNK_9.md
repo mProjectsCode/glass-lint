@@ -84,11 +84,11 @@ unique-set semantics and the global bounded-analysis semantics in two callers.
 
 **Recommendation:** Add a private summary-sink admission owner on
 `FunctionSummaries` (or a focused `SummarySinkBudget`) that accepts a local
-`InsertOutcome`/candidate batch, charges the budget for admitted work, updates
-the global count, and returns a typed `Accepted`, `Duplicate`, or `Exhausted`
-outcome. Have direct collection and propagation use that operation and delete
-their repeated budget/count/limit choreography. Preserve uniqueness before
-global counting, the current deterministic final sort, the hard
+`InsertOutcome`/candidate batch, charges candidate work separately, updates
+the global count only for unique retained sinks, and returns a typed
+`Accepted`, `Duplicate`, or `Exhausted` outcome. Have direct collection and
+propagation use that operation and delete their repeated budget/count/limit
+choreography. Preserve the current deterministic final sort, the hard
 `MAX_SUMMARY_SINKS` bound, and the rule that any exhausted summary result is
 cleared rather than treated as a complete witness.
 
@@ -125,9 +125,10 @@ through the orchestration and remembering to update the final cleanup branch.
 phase transitions and terminal finalization, with typed exhaustion reasons
 from fact collection, direct admission, and propagation. Keep the phases
 separate, but have the owner perform exactly one `finalize` operation that
-clears partial sinks on exhaustion or sorts all sinks on completion. Preserve
-fixed-point re-enqueue behavior, `MAX_SUMMARY_WORKLIST`, budget accounting,
-deterministic sink order, and fail-closed behavior for incomplete summaries.
+clears partial sinks on exhaustion, records an unavailable completion state,
+or sorts all sinks on completion. Preserve fixed-point re-enqueue behavior,
+`MAX_SUMMARY_WORKLIST`, budget accounting, deterministic sink order, and
+fail-closed behavior for incomplete summaries.
 
 **Fix Applied:** None so far.
 
@@ -144,19 +145,19 @@ deterministic sink order, and fail-closed behavior for incomplete summaries.
   an independent complete possible witness outside the exhausted summary
   result.
 
-## Open Questions
+## Decisions
 
-- Can `SummaryPathId` be made private to `SummaryPathStore` without making
-  `FunctionSinkSummary` carry a store reference, or is a lightweight
-  store-generation token needed to retain copyable sink values?
-- Should the summary sink limit count only unique inserted sinks, as the
-  current `InsertOutcome` flow implies, or should candidate projection work
-  also consume the global limit? The admission owner should make that choice
-  explicit before changing either path.
-- Is clearing all summary sinks on any propagation exhaustion the intended
-  contract for downstream flow projection, or should completion carry a typed
-  incomplete state so callers can distinguish unavailable summaries from empty
-  summaries without inspecting a separate boolean?
+- No store-generation token is needed. `SummaryPathId` remains a private,
+  copyable store-relative value, and every frozen-path comparison becomes an
+  instance operation that validates against the current `SummaryPathStore`.
+- `MAX_SUMMARY_SINKS` counts unique retained sinks. Candidate projection work
+  is charged to the operation budget independently, so rejected duplicates do
+  not consume the retained-sink cap while expensive candidate work remains
+  bounded.
+- Exhausted propagation clears all summary sinks, preserving fail-closed
+  behavior. A typed completion state should additionally distinguish
+  unavailable summaries from complete empty summaries for callers and
+  diagnostics; downstream projection must not inspect a boolean ad hoc.
 
 ## Coverage
 

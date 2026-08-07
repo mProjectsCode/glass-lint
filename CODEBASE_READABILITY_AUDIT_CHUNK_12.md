@@ -113,12 +113,12 @@ permission requires editing both the enum's combinations and the recognizer's
 branch conditions, increasing the chance that scope provenance, interface
 collection, and direct resolver lookup drift apart.
 
-**Recommendation:** Replace the combinatorial mode enum with a small
-capability value whose named operations express the independent contract—for
-example, `allows_dynamic_import`, `allows_interop_wrapper`, and
-`requires_single_require_argument`—or make those operations inherent methods
-on the existing policy and centralize all matching there. Delete the repeated
-policy pattern matches after migration. Preserve the current four behavior
+**Recommendation:** Keep the four policy constructors, but make the existing
+policy type expose named capability methods such as
+`allows_dynamic_import`, `allows_interop_wrapper`, and
+`requires_single_require_argument`; centralize recognition on those methods.
+Delete repeated enum pattern matches without introducing a fifth abstraction
+until a new syntax contract exists. Preserve the current four behavior
 combinations, shadowing checks supplied by `ModuleRequestContext`, static
 specifier requirements, spread rejection, wrapped-request classification, and
 fail-closed handling of unsupported or dynamic module names.
@@ -140,19 +140,19 @@ fail-closed handling of unsupported or dynamic module names.
   constant/identity conversion must stay behind their owning resolver and
   arena boundaries. This chunk does not duplicate those findings.
 
-## Open Questions
+## Decisions
 
-- Should scope IDs remain stable vector positions for deterministic debugging,
-  or should the scope collection own a separate validated handle while keeping
-  allocation order only as an internal iteration detail?
-- Should provenance overflow be represented as a typed incomplete join result
-  or remain a sticky state on the alternatives collection? Either choice must
-  preserve independent complete witnesses and make the configured bound
-  impossible to bypass.
-- Are the four current module-request policy combinations the complete intended
-  matrix? If more combinations are expected, named capabilities will make the
-  contract clearer; if not, policy constructors should document each phase's
-  exact acceptance rule.
+- Scope allocation order remains stable for deterministic traversal and
+  debugging, but vector positions are internal. `LexicalScopes` owns validated
+  scope handles and ordered iteration; callers do not reconstruct IDs from
+  raw positions.
+- Provenance joins return a sealed typed join result while the underlying
+  alternatives retain a sticky exhaustion bit for status aggregation. This
+  gives callers an explicit incomplete outcome without losing independent
+  complete witnesses or allowing a caller-supplied bound to bypass policy.
+- The four existing module-request combinations are the complete current
+  matrix. Keep the enum if its named capability methods centralize behavior;
+  add a new capability only with a new accepted syntax and contract.
 
 ## Coverage
 

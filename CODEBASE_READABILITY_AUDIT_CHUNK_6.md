@@ -148,11 +148,12 @@ semantic owner.
 **Recommendation:** Keep raw enum interning private and expose named operations
 for the supported identity families—binding-wrapped values, globals/module
 exports, rooted members, constants, callables, and fresh objects—with validated
-inputs and one exhaustion result policy. Move direct `Value` construction out
-of fact and matching callers, then delete redundant wrapper paths such as
-`intern_with_binding` once the semantic operations own them. Preserve terminal
-identity canonicalization, artifact-local names, bounded object/value IDs,
-unknown propagation, and deterministic equality/interning.
+inputs and an admission result that also records the table’s sticky exhaustion.
+Move direct `Value` construction out of fact and matching callers, then delete
+redundant wrapper paths such as `intern_with_binding` once the semantic
+operations own them. Preserve terminal identity canonicalization,
+artifact-local names, bounded object/value IDs, unknown propagation, and
+deterministic equality/interning.
 
 ## Systemic Themes
 
@@ -166,18 +167,18 @@ unknown propagation, and deterministic equality/interning.
   cleanup must preserve that opacity and keep incomplete, exhausted, foreign,
   or unsupported results from becoming successful strict witnesses.
 
-## Open Questions
+## Decisions
 
-- Confirm whether `TraceNodeId` must remain public for any downstream API user;
-  the in-repository callers only use it to connect classification to report
-  assembly, which can be replaced by an internal evidence handle or finalized
-  trace.
-- Decide whether the canonical global-object comparator should live on
-  `Environment` or on a checked path-view type; the latter must retain the
-  artifact `NameTable` in its ownership boundary.
-- Determine whether arena exhaustion should remain a sticky table state or be
-  returned as a typed result from each semantic construction operation before
-  hiding raw `ValueTable::intern`.
+- `TraceNodeId` is an internal correlation handle. Public consumers receive
+  finalized evidence, while report assembly retains the private trace view;
+  no downstream workspace API requires the handle or arena.
+- Global-object equivalence belongs to a checked artifact-local path view that
+  owns or borrows its `NameTable`; `Environment` remains the policy source,
+  and raw ID integers are never compared across artifacts.
+- Value-arena exhaustion remains sticky because several semantic operations
+  share one bounded table and completion/status aggregation needs one durable
+  reason. Named arena operations may return an admission result, but they
+  must also preserve the table’s sticky exhausted state.
 
 ## Coverage
 

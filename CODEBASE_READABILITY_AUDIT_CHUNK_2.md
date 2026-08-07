@@ -171,15 +171,15 @@ unsupported projection cannot establish a flow witness.
   reintroduce AST traversal, widen unknown values, combine incompatible paths,
   or turn exhausted analysis into a definite finding.
 
-## Open Questions
+## Decisions
 
-- Confirm whether `FunctionEffectsBuilder` is intentionally designed for a
-  future multi-stream feed; all current call sites construct and consume it
-  against one frozen stream, which supports the ownership simplification in
-  READ-005.
-- Measure whether the shared bounded queue should expose separate retained and
-  pending limits. The two current worklists use related but not identical
-  bounds, so a refactor must not silently collapse those budgets.
+- `FunctionEffectsBuilder` is an artifact-local builder over one frozen stream;
+  no multi-stream contract exists in the workspace. Make that stream lifetime
+  explicit and do not add a speculative stream collection abstraction.
+- The shared queue primitive must retain separate `max_retained` and
+  `max_pending` policies. Context worklists currently bound total retained
+  contexts, while source propagation also bounds its pending frontier; the
+  refactor may share admission mechanics but not collapse those budgets.
 
 ## Coverage
 

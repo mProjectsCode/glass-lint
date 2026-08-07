@@ -221,15 +221,13 @@ to call order, and the eventual diagnostic is detached from the operation
 that caused it. The same deferred-state pattern is separately implemented in
 two builders, so error precedence and lifecycle behavior must be kept in sync.
 
-**Recommendation:** Make the fallible `try_*` methods the single construction
-path and have fluent convenience methods accept only already-valid values, or
-introduce an explicitly named deferred/catalog builder whose delayed-error
-semantics are its type-level contract. Remove `first_query_error` and
-`invalid_operation` from the ordinary builders after callers migrate. Preserve
-declarative catalog ergonomics through the dedicated wrapper, first-error
-determinism where it is required, duplicate metadata/stage diagnostics,
-collection bounds, and the rule that invalid declarations never reach query
-compilation.
+**Recommendation:** Keep immediate `try_*` methods as the strict construction
+path, and move the existing deferred behavior behind an explicitly named
+catalog builder used by provider declarations. Remove deferred error state
+from ordinary lifecycle builders after callers migrate. Preserve declarative
+catalog ergonomics, first-error determinism in the named deferred wrapper,
+duplicate metadata/stage diagnostics, collection bounds, and the rule that
+invalid declarations never reach query compilation.
 
 **Fix Applied:** None so far.
 
@@ -246,18 +244,20 @@ compilation.
   silently unmatchable sentinels. A single failure-timing policy would make
   provider rule declarations easier to review and diagnostics easier to trust.
 
-## Open Questions
+## Decisions
 
-- Should executable requirements be derived solely from physical roots, or
-  should normalization produce capability proofs that lowering consumes? The
-  important invariant is that one implementation owns the identity/flow
-  capability mapping.
-- Is returned/constructed property-write matching intentionally unsupported,
-  or should it become a first-class relation? The answer should be encoded in
-  one compatibility constructor and covered by structured compile diagnostics.
-- Do provider catalogs depend on deferred builder errors for macro-like fluent
-  declarations? If so, a named deferred builder can preserve that ergonomics
-  without making ordinary builders silently stateful.
+- Physical roots own executable requirements. Normalization may retain
+  capability facts for diagnostics, but lowering derives the final requirements
+  from validated physical roots and checks the normalized view only as an
+  assertion.
+- Returned/constructed property-write matching is intentionally unsupported in
+  the current relation model. The authoring validator must reject it with a
+  structured diagnostic; no physical-root fallback or silent `None` lowering
+  is permitted until a first-class relation is designed.
+- Provider catalogs do rely on deferred fluent errors for declarative
+  ergonomics. Keep that behavior behind an explicitly named deferred catalog
+  builder, while ordinary `try_*` APIs remain immediate and lifecycle stage
+  errors do not leak into an unrelated builder state.
 
 ## Coverage
 

@@ -84,13 +84,14 @@ used in two scopes; callers must know which accessor corresponds to which
 phase and future changes can accidentally diverge or silently keep the wrong
 field synchronized.
 
-**Recommendation:** Represent the shared scaling policy with an explicit
-flow-operation budget type and make the local projector and cross-project
-propagator consume named scoped limits (or split local resource limits from a
-project budget). Delete the duplicated stored field, accessor, and constructor
-assignment after callers migrate. Preserve the current minimums, overflow-safe
-scaling, the distinction between per-module local charging and project-wide
-charging, and deterministic exhaustion reporting.
+**Recommendation:** Represent the one configured flow-operation value with an
+explicit budget type that exposes named local and project-wide factories. Make
+the local projector and cross-project propagator consume those scoped budgets,
+then delete the duplicated stored field, accessor, and constructor assignment.
+Preserve the current minimums, overflow-safe scaling, the distinction between
+per-module local charging and project-wide charging, and deterministic
+exhaustion reporting; introduce separate validated limit types only if policy
+diverges later.
 
 **Fix Applied:** None so far.
 
@@ -200,17 +201,19 @@ linking or exhausted projection cannot become definite coverage.
   refactor must preserve local/project charging scope, fixed-point bounds,
   trace limits, diagnostics, and possible-versus-definite certainty.
 
-## Open Questions
+## Decisions
 
-- Confirm that `ReExportBinding` has no downstream consumer outside the core
-  workspace before removal; the current in-repository search finds only its
-  constructor and the role’s `..` pattern matches.
-- Confirm whether local and project flow operation limits are intentionally
-  required to diverge in a future configuration. If they are, introduce
-  separate validated limit types rather than retaining synchronized fields.
-- Decide whether parse failures must be attached to the linked model for API
-  compatibility. If so, expose an explicit report-status accumulator instead
-  of reopening the semantic model’s lifecycle.
+- `ReExportBinding` has no consumer outside its construction and ignored
+  pattern fields in the core workspace. Remove the retained vector and keep
+  only the request-level re-export role; no compatibility wrapper is needed.
+- Local and project flow operations intentionally use the same configured
+  `flow_operations` value today, but they have different charging scopes.
+  Replace the duplicated fields with one validated configuration value and
+  named local/project budget factories; add separate limit types only if the
+  policy later diverges.
+- Parse failures are report-session state, not linked semantic state. Keep
+  the linked model immutable and pass parse-failure maps into an explicit
+  report-status accumulator owned by assembly.
 
 ## Coverage
 

@@ -152,14 +152,14 @@ values immediately, while a raw unsupported reason or equivalent malformed
 outcome survives until `resolve`. The repeated conversions obscure which
 state is actually being frozen for linking.
 
-**Recommendation:** Make resolver outcomes and request values enter through
-validated constructors (including a named constructor for unsupported
-reasons), or use an explicit validated outcome type that the session consumes.
-Remove the second path rewrite, `set_path`, and no-op normalization passes once
-all public construction/deserialization paths use those owners. Preserve
-relative-path escape rejection, explicit Missing/Unsupported/OutsideProject
-states, authored-request membership checks, deterministic normalization for
-external input, and fail-closed rejection of unknown requests.
+**Recommendation:** Keep `ResolverOutcome` as the external adapter DTO, but
+give each variant validated constructors and one linker-boundary conversion
+that canonicalizes any raw adapter values (especially unsupported reasons).
+Remove repeated normalization from already-validated internal values while
+retaining that single boundary for external input. Preserve relative-path
+escape rejection, explicit Missing/Unsupported/OutsideProject states,
+authored-request membership checks, deterministic normalization, and
+fail-closed rejection of unknown requests.
 
 **Fix Applied:** None so far.
 
@@ -269,18 +269,18 @@ deterministic operation totals for combined and partial reports.
   and batch owners rather than inferred from callers preserving map alignment,
   message order, or setter sequencing.
 
-## Open Questions
+## Decisions
 
-- Should a compiled catalog entry embed `RuleId` in `CompiledRuleRecord`, or
-  should `RuleCatalog` retain a private entry wrapper so compiler records stay
-  provider-neutral? Either choice needs one stable `RuleIndex` owner.
-- Is `ResolverOutcome` intended for arbitrary external resolver adapters, or
-  only for values produced by validated project loaders? That determines
-  whether public enum variants should be private behind constructors or whether
-  a separate raw-input DTO should own normalization.
-- Does the report API intentionally allow arbitrary post-assembly diagnostic
-  injection? If so, the injected operation still needs to be the owner of the
-  deterministic sort contract.
+- `RuleCatalog` retains a private entry wrapper containing the fully qualified
+  `RuleId` and compiled record. Compiler records stay provider-neutral, while
+  one catalog-owned `RuleIndex` controls metadata, selection, and evidence.
+- `ResolverOutcome` is intentionally the typed DTO accepted from arbitrary
+  external resolver adapters. Its public variants remain authorable, and one
+  linker-boundary normalization/validation step owns canonicalization rather
+  than pretending every adapter has already supplied normalized data.
+- Public post-assembly diagnostic injection is intentional for callers that
+  aggregate project status. The report type owns a finalization step that
+  re-sorts files and diagnostics after every consuming transformation.
 
 ## Coverage
 

@@ -116,7 +116,8 @@ than distinguishing duplicate, out-of-range, and accepted events.
 
 **Recommendation:** Establish the 64-entry invariant at one boundary: use
 validated index constructors or a bounded lifecycle-index type, and make
-admission return a result that distinguishes duplicate from overflow. Keep
+admission return a result that distinguishes duplicate from overflow while
+marking the retained model incomplete. Keep
 removal and rollback total for values admitted by that type, eliminating the
 `expect` assumptions. Preserve the compact mask, deterministic sorted evidence,
 the compiler's lifecycle limits, duplicate-event semantics, and fail-closed
@@ -181,13 +182,12 @@ drops a re-export edge and changes resolution from a concrete candidate to an
 unknown/ambiguous result; it also leaves the invalid ID in the retained state
 until each consumer filters it.
 
-**Recommendation:** Make star-export admission an operation on the owning
-request/interface, or validate the ID against `self.requests` and the request
-role before storing it. Return a typed rejection or `Result` so the interface
-builder can mark the module incomplete/unknown at the source. Preserve request
-order, repeated-request behavior if it is meaningful, unknown-export clearing,
-cross-module resolution, and fail-closed handling for genuinely unresolved
-requests.
+**Recommendation:** Make star-export admission accept only an opaque request
+handle minted by the owning interface, validate its role, and return a typed
+rejection before storage. The interface builder can then mark the module
+incomplete/unknown at the source. Preserve request order, repeated-request
+behavior if it is meaningful, unknown-export clearing, cross-module resolution,
+and fail-closed handling for genuinely unresolved requests.
 
 **Fix Applied:** None so far.
 
@@ -207,17 +207,20 @@ requests.
   identity, deterministic evidence order, and fail-closed unknown or
   unsupported alternatives.
 
-## Open Questions
+## Decisions
 
-- Should test fixtures be allowed to construct arbitrary `SemanticFact` values,
-  or should they use a dedicated stream fixture that exercises the same ID and
-  budget boundary as production?
-- Should lifecycle overflow be an impossible compiler error, a retained-model
-  `Incomplete` outcome, or a distinct admission result? The choice should be
-  made once and shared by local and qualified flow evidence.
-- Should a malformed module request ID invalidate the interface immediately,
-  or should `add_star_export` accept only request handles minted by that
-  interface? Either choice is preferable to storing an unchecked index.
+- Tests should use a dedicated stream fixture that assigns IDs and applies the
+  same budget boundary as production. Direct `SemanticFact` construction is
+  not a supported test shortcut; private model construction may remain local
+  to the fixture.
+- Lifecycle indexes are validated at construction, while runtime admission
+  returns a typed overflow/incomplete outcome shared by local and qualified
+  evidence. Overflow is not an impossible compiler bug because retained model
+  consumers still need fail-closed behavior for malformed internal inputs.
+- `ModuleRequestId` values are minted by their owning `ModuleInterface`, and
+  star-export admission validates the handle and role, returning a typed
+  rejection before storage. Invalid requests are therefore not retained for
+  downstream consumers to rediscover.
 
 ## Coverage
 

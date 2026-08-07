@@ -181,19 +181,17 @@ stable ordering, and clearing all evidence on cross-flow exhaustion.
   behavior. A possible or unsupported path must never become a definite
   witness merely because storage or traversal code was simplified.
 
-## Open Questions
+## Decisions
 
-- Confirm whether `FactIssue` is intended as a caller-facing recovery result
-  or only as an internal append diagnostic. If it remains internal, removing
-  the ignored `Result` is likely the smaller safe migration.
-- Confirm whether resolver tables can be sealed through a dedicated stream
-  owner without changing cache/artifact ownership. The current report treats
-  placeholder storage as the problem, not the resolver-owned identity tables
-  themselves.
-- Confirm whether cross-flow evidence must retain a separate item for every
-  fact key or whether report grouping may merge facts after certainty has been
-  resolved. The keyed accumulator should preserve current behavior until that
-  policy is explicit.
+- `FactIssue` is an internal append diagnostic, not a recovery API. The stream
+  owns the durable issue state; replace the ignored `Result` with one explicit
+  append transition while keeping detailed status aggregation separate.
+- Resolver-owned name/value tables remain the artifact identity owner. A
+  consuming stream-seal operation may attach those tables, but it must not
+  copy or re-home cache/artifact ownership.
+- Cross-flow accumulation retains a separate semantic item for each evidence
+  key until certainty and trace merging are complete. Presentation grouping
+  may merge only after that boundary and must not erase fact-level identity.
 
 ## Coverage
 

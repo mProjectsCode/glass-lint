@@ -116,12 +116,10 @@ file report whose grouping/path is correct while its embedded filename is
 stale, non-normalized, or unrelated. Report assembly, source rendering, and
 JSON consumers then have different owners for one location identity.
 
-**Recommendation:** Establish one conversion boundary that derives the report
-path from the validated source location. Either make the internal parse
-diagnostic carry a `ProjectRelativePath` and let standalone parser APIs expose
-a separate filename view, or make `Diagnostic::parse` validate and normalize
-the filename once and stop serializing the duplicate field. Delete the
-two-argument identity path after callers migrate. Preserve standalone parser
+**Recommendation:** Keep the standalone parser DTO’s raw filename, but make
+the report conversion derive and canonicalize that filename from the validated
+`ProjectRelativePath` before storing or serializing it. Delete the independent
+caller-supplied identity path after migration. Preserve standalone parser
 diagnostics, normalized project paths, source ranges, deterministic file
 grouping, and the existing parse-versus-project diagnostic distinction.
 
@@ -181,9 +179,8 @@ raw vector, and make it possible for future request metadata or ordering rules
 to be added to only one path. The wrapper currently adds vocabulary but does
 not own a distinct invariant from the vector it contains.
 
-**Recommendation:** Choose one owner for authored requests: either return a
-single `AuthoredRequests` domain collection from both APIs, or remove
-`SourceAnalysis` and return the same request collection consistently. Put
+**Recommendation:** Replace `SourceAnalysis` and the raw multi-source vector
+with one `AuthoredRequests` domain collection returned by both APIs. Put
 deterministic ordering, iteration, and any future request-membership metadata
 on that owner, then delete the duplicate raw `Vec`/wrapper accessors. Preserve
 single-source request inspection, multi-source sorting before project
@@ -205,19 +202,22 @@ transitions.
   not the storage representation (`u32`, `Vec`, or a second filename field)
   that callers must keep coherent.
 
-## Open Questions
+## Decisions
 
-- Should `ParseDiagnostic` remain a standalone parser-facing DTO with a raw
-  filename, or should the parser API itself adopt the validated project path?
-  The report boundary must still have one authoritative path even if both
-  external views remain supported.
-- Is `ProjectInputError` intentionally a catch-all compatibility boundary for
-  `glass-lint-project`, or can the project loader preserve the more useful
-  distinction between invalid input, incomplete analysis, and executor
-  failure?
-- Is `SourceAnalysis` expected to gain source-specific metadata in the future?
-  If not, the current single-field wrapper should not remain a second public
-  request collection shape.
+- `ParseDiagnostic` remains a standalone parser DTO with a raw filename so
+  parser users need not construct project paths. Report assembly is the one
+  conversion boundary: it derives and canonicalizes the filename from the
+  validated source path, so report grouping and embedded location cannot
+  disagree.
+- `ProjectInputError` is too broad for the phase boundaries it serves. Split
+  input validation, phase/resolution, and local execution errors, with an
+  explicit outer `ProjectError` only where a convenience API needs one. The
+  project adapter must preserve those distinctions instead of mapping all of
+  them to invalid input.
+- `SourceAnalysis` has no distinct metadata invariant today. Replace it and
+  the raw multi-source vector with one `AuthoredRequests` domain collection;
+  add source metadata later only by extending that owner, not by restoring two
+  parallel public shapes.
 
 ## Coverage
 

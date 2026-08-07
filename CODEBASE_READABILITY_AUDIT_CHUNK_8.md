@@ -212,19 +212,19 @@ incomplete.
   explicit `Possible` versus `Definite` certainty, and fail-closed behavior
   for unsupported, ambiguous, restored-failed, or exhausted alternatives.
 
-## Open Questions
+## Decisions
 
-- Confirm whether `CallEffectRef::chain_owned` is required only for the
-  projector’s alias/callee fallback. If so, a canonical call-shape operation
-  can keep that fallback opt-in without making all effect consumers carry a
-  `NameTable`.
-- Confirm whether `RuleEvidenceTable` is intentionally shared with
-  non-flow matching during one projection. If it is, the local evidence sink
-  should wrap the shared table rather than taking ownership of a second
+- `chain_owned` is needed only for the projector’s alias/callee fallback. The
+  canonical call-shape view should keep that conversion opt-in instead of
+  making every effect consumer carry a `NameTable`.
+- Local and cross-flow projection intentionally share one
+  `RuleEvidenceTable` per project projection. A local evidence sink should
+  wrap the shared table and own reservation/truncation, not allocate a second
   report matrix.
-- Confirm whether project-level `flow_exhausted` intentionally includes local
-  flow exhaustion. The completion owner should preserve the current public
-  status meaning or make the distinction explicit before changing the mapping.
+- `ProjectionStatus::flow_exhausted` intentionally includes local flow
+  exhaustion, while `local_exhausted` preserves the narrower diagnostic. A
+  completion owner must emit both meanings rather than changing the public
+  status mapping.
 
 ## Coverage
 

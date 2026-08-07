@@ -179,17 +179,18 @@ state.
   tuple extraction and repeated expression normalization weaken that boundary
   internally.
 
-## Open Questions
+## Decisions
 
-- Decide whether path joining should remain coupled to assignment-record
-  emission or return a domain-level join result that the collector timestamps
-  and records.
-- Confirm whether all transparent expression wrappers accepted by the build
-  phase are intended to be accepted by frozen query helpers before introducing
-  a shared normalizer; unsupported syntax must continue to return `None`.
-- Verify that traversal helpers can preserve the planner’s exact scope-shape
-  consumption order, especially for `for` headers, catch parameters, and
-  function decorators.
+- Path joining returns a domain-level joined-state result; the collector
+  remains responsible for source-order timestamps and assignment facts. This
+  keeps path-state invariants together without making the joiner own fact
+  emission.
+- The shared expression normalizer covers only wrappers already accepted by
+  both build and frozen-query semantics. Unsupported wrappers continue to
+  return `None`; the refactor must not broaden matching by convenience.
+- Traversal helpers are safe only when they consume the planner’s predeclared
+  shapes in the existing order. Tests must pin `for` headers, catch
+  parameters, decorators, and exhaustion short-circuiting before migration.
 
 ## Coverage
 

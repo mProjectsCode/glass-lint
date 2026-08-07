@@ -88,8 +88,7 @@ invalidity through binding, function, rooted-path, and dynamic-lookup queries
 instead of manufacturing `ScopeId(0)`; delete the parallel boolean/issue
 interpretation after migration. Preserve ordinary root queries for valid
 program spans, deterministic out-of-range handling, structural diagnostics,
-and the rule that invalid or incomplete analysis cannot establish a definite
-witness.
+and typed unavailable results that cannot establish a definite witness.
 
 **Fix Applied:** None so far.
 
@@ -246,19 +245,18 @@ alias resolution, and deterministic export discovery.
 - Prior Chunk 5, Chunk 6, and Chunk 12 findings remain applicable and are not
   duplicated here.
 
-## Open Questions
+## Decisions
 
-- Should name interning be a resolver-owned session shared by immutable lexical
-  queries, or should all names needed by constant/value resolution be admitted
-  before the lexical graph freezes? Either design needs one artifact-local ID
-  owner and an explicit exhaustion transition.
-- Does a scope-shape mismatch intentionally permit any semantic query at all?
-  If not, a typed unavailable result should replace the current root fallback;
-  if some queries remain useful, the validity type should say which ones.
-- Will function-span queries remain frequent enough to justify an interval
-  index, or is a direct function-to-span map plus a sorted span vector the
-  intended bounded representation? The ownership should still stay in the
-  binding/function index.
+- Name interning is one resolver-owned artifact session shared with immutable
+  lexical queries. The lexical graph freezes its structure, while the resolver
+  owns the final name-table exhaustion transition and transfers the table once.
+- A scope-shape mismatch makes semantic lookup unavailable; manufacturing the
+  program-root scope is not a valid recovery. Return a typed unavailable
+  result, while retaining structural diagnostics and ordinary root lookup for
+  valid graphs.
+- Function-span queries are frequent during interface extraction. Use a
+  bounded direct function-to-span map plus a deterministic sorted span index,
+  owned by `BindingIndex`; an interval tree is unnecessary at this scale.
 
 ## Coverage
 

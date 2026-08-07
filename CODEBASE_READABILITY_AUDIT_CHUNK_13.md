@@ -45,13 +45,12 @@ neighbors, report a different edge count, or compute a partition before the
 documented normalization step without an API-level indication that the graph is
 not ready.
 
-**Recommendation:** Give the graph an owning transition such as
-`into_normalized`/`NormalizedModuleGraph`, or make the read/partition methods
-normalize a private copy and keep the normalized representation immutable. Let
-SCC partitioning consume or borrow only that sealed representation, and expose
-edge counts and neighbors from the same state. Preserve deterministic module
-ordering, duplicate-edge elimination, isolated nodes, the maximum SCC bound,
-and the current oversized-component fallback.
+**Recommendation:** Give the graph an owning consuming transition to an
+immutable `NormalizedModuleGraph`. Let SCC partitioning consume or borrow only
+that sealed representation, and expose edge counts and neighbors from the
+same state. Preserve deterministic module ordering, duplicate-edge
+elimination, isolated nodes, the maximum SCC bound, and the current
+oversized-component fallback.
 
 **Fix Applied:** None so far.
 
@@ -79,11 +78,12 @@ linking limit accounts for, or make replacement behavior diverge from the
 fixed-point update path.
 
 **Recommendation:** Make `ModuleExports::insert` private and expose mutation
-only through `ExportTable::set_resolution` (or a private entry primitive that
-returns an explicit `Inserted`/`Replaced` outcome). Keep `total_entries` and any
-future admission limit in that owner. Preserve replacement without recounting,
-deterministic export lookup, provisional-to-final SCC updates, unknown
-replacement, and the existing bounded failure behavior.
+only through `ExportTable::set_resolution`, returning an explicit
+`Inserted`/`Replaced` outcome. Keep `total_entries` as the current admission
+metric in that owner; a future budget can replace it without reopening nested
+map mutation. Preserve replacement without recounting, deterministic export
+lookup, provisional-to-final SCC updates, unknown replacement, and the
+existing bounded failure behavior.
 
 **Fix Applied:** None so far.
 
@@ -208,14 +208,12 @@ result. It makes model lifetime and provenance assumptions part of every caller
 and is difficult to preserve if projections become owned, cloned, or loaded
 through another boundary.
 
-**Recommendation:** Expose a model-owned module handle or an iterator/query
-surface that yields the model's own module references, and accept that handle
-in `evidence_for`; alternatively make the raw method crate-private and expose
-a validated `module_id` query on the owning model. Return an explicit missing
-or foreign-module outcome where the boundary is public instead of silently
-returning no evidence. Preserve selected-rule filtering, deterministic
-deduplication/normalization, project isolation, and the current behavior for
-modules with no projection.
+**Recommendation:** Expose an iterator of model-owned module handles and
+accept those handles in `evidence_for`; keep the raw pointer-based method
+crate-private. Return an explicit missing or foreign-module outcome where the
+boundary is public instead of silently returning no evidence. Preserve
+selected-rule filtering, deterministic deduplication/normalization, project
+isolation, and the current behavior for modules with no projection.
 
 **Fix Applied:** None so far.
 
@@ -233,17 +231,17 @@ modules with no projection.
   mutability, flow-limit placement, matcher context, and cross-projection
   orchestration are intentionally not duplicated here.
 
-## Open Questions
+## Decisions
 
-- Should graph normalization be an explicit immutable phase, or should all
-  graph queries operate on a normalized copy? The choice should make duplicate
-  edge handling and edge-count semantics impossible to overlook.
-- Is `ExportTable::total_entries` the permanent admission metric, or will export
-  limits move into a dedicated budget object? Either way, nested map mutation
-  should not bypass the owner.
-- Should projection callers receive a model-owned module token, or should the
-  matcher model expose only iteration over its own modules? Both remove the
-  current pointer-identity contract from external callers.
+- Graph normalization is an explicit consuming phase producing an immutable
+  normalized graph. SCC partitioning, edge counts, and neighbor queries all
+  consume that representation; queries do not silently normalize copies.
+- `ExportTable::total_entries` remains the current admission metric. A future
+  export budget may replace it, but nested map mutation stays private to the
+  export owner and cannot bypass counting or replacement semantics.
+- Projection exposes model-owned module handles through iteration, and
+  evidence lookup accepts those handles. Pointer identity is not a public
+  contract, and foreign/missing handles return an explicit outcome.
 
 ## Coverage
 

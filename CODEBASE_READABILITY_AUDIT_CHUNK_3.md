@@ -187,15 +187,15 @@ and global truncation markers.
   and call-result identity resolution distinct semantically while presenting
   one coherent evaluation context to callers.
 
-## Open Questions
+## Decisions
 
-- Confirm whether cache fingerprints are intended only as a fast collision
-  prefilter. If so, the identity object should preserve the current full-key
-  equality check rather than replacing it with hash equality.
-- Confirm whether any future lowering capability can be enabled independently
-  of fact completeness. If that is required, the completion outcome should
-  expose capability-specific proofs rather than collapsing all capabilities
-  into one `budget_exhausted` condition.
+- `ArtifactFingerprint` is only a deterministic collision prefilter. The
+  cache identity must retain full-key equality after a fingerprint match; a
+  hash match alone is never a cache hit.
+- Current lowering capabilities have one completeness prerequisite and no
+  independent enablement contract. Keep the bundled completion decision for
+  now; introduce capability-specific proofs only when a capability has a
+  distinct producer and consumer, rather than anticipating that split.
 
 ## Coverage
 
