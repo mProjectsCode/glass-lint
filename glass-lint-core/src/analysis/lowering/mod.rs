@@ -16,7 +16,7 @@ use swc_ecma_ast::Program;
 #[cfg(test)]
 use crate::analysis::{facts::MAX_FACTS, resolution::test_environment};
 use crate::{
-    AnalysisLimits, Environment, ParseDiagnostic,
+    AnalysisLimits, Environment, ParseDiagnostic, SourceLineIndex,
     analysis::{
         DerivedPhaseCapabilities, LocatedSourceContext, SemanticArtifact, SemanticBudget,
         facts::{self, Building, BuiltFacts, FactStream, SemanticFacts},
@@ -48,22 +48,22 @@ impl From<swc_common::Span> for ParserSpanKey {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 /// Converts SWC `BytePos` spans to zero-based `ByteRange` values relative to
 /// the authored source text. Validation ensures the result is within bounds
 /// and on UTF-8 character boundaries.
 pub(in crate::analysis) struct SpanNormalizer {
     /// SWC `BytePos` value assigned to authored byte offset zero.
     start: u32,
-    /// Authored source text, used for UTF-8 boundary validation.
-    source: SourceText,
+    /// Shared source-coordinate validator for authored byte ranges.
+    lines: Arc<SourceLineIndex>,
 }
 
 impl SpanNormalizer {
     pub(in crate::analysis) fn new(source_start: swc_common::BytePos, source: &SourceText) -> Self {
         Self {
             start: source_start.0,
-            source: source.clone(),
+            lines: Arc::new(SourceLineIndex::from_text(source.clone())),
         }
     }
 
@@ -78,19 +78,15 @@ impl SpanNormalizer {
     ) -> Result<ByteRange, InvalidParserSpan> {
         let offset = span.lo.0.checked_sub(self.start).ok_or(InvalidParserSpan)?;
         let end = span.hi.0.checked_sub(self.start).ok_or(InvalidParserSpan)?;
-        let source_len = u32::try_from(self.source.len()).unwrap_or(u32::MAX);
+        self.lines
+            .byte_range_from_offsets(offset, end)
+            .map_err(|_| InvalidParserSpan)
+    }
+}
 
-        if end > source_len {
-            return Err(InvalidParserSpan);
-        }
-
-        if !self.source.is_char_boundary(offset as usize)
-            || !self.source.is_char_boundary(end as usize)
-        {
-            return Err(InvalidParserSpan);
-        }
-
-        ByteRange::new(offset, end).map_err(|_| InvalidParserSpan)
+impl Default for SpanNormalizer {
+    fn default() -> Self {
+        Self::new(swc_common::BytePos(0), &SourceText::default())
     }
 }
 

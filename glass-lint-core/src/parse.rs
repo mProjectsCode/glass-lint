@@ -1,6 +1,6 @@
 //! Bounded JavaScript/TypeScript parsing and source-position conversion.
 
-use glass_lint_datastructures::{ByteRange, Position, SourceRange};
+use glass_lint_datastructures::SourceRange;
 use swc_common::{FileName, GLOBALS, Globals, Mark, SourceMap, Spanned, sync::Lrc};
 use swc_ecma_ast::{EsVersion, Program};
 use swc_ecma_parser::{
@@ -12,7 +12,7 @@ use swc_ecma_transforms_base::resolver;
 use swc_ecma_transforms_typescript::strip;
 
 use crate::{
-    MAX_SOURCE_BYTES,
+    MAX_SOURCE_BYTES, SourceLineIndex,
     project::{DiagnosticCode, SourceFile},
 };
 
@@ -89,8 +89,8 @@ pub struct ParsedSource {
 /// to parse one admitted source.
 pub struct SourceParser {
     source: SourceFile,
-    source_map: Lrc<SourceMap>,
     file: Lrc<swc_common::SourceFile>,
+    lines: SourceLineIndex,
     syntax: Syntax,
     max_syntax_depth: usize,
     requires_depth_prescan: bool,
@@ -118,8 +118,8 @@ impl SourceParser {
         );
         Ok(Self {
             source: source.clone(),
-            source_map,
             file,
+            lines: SourceLineIndex::from_text(source.source().clone()),
             syntax: source.language().syntax(),
             max_syntax_depth,
             requires_depth_prescan: DepthScanner::raw_bound(source.source()) > max_syntax_depth,
@@ -230,34 +230,7 @@ impl SourceParser {
 
         let start = span.lo.0.checked_sub(self.file.start_pos.0)?;
         let end = span.hi.0.checked_sub(self.file.start_pos.0)?;
-        let source_len = u32::try_from(self.source.source().len()).ok()?;
-        let byte_range = ByteRange::new(start, end).ok()?;
-        if byte_range.end() > source_len
-            || !self
-                .source
-                .source()
-                .is_char_boundary(byte_range.start() as usize)
-            || !self
-                .source
-                .source()
-                .is_char_boundary(byte_range.end() as usize)
-        {
-            return None;
-        }
-
-        let start = self.source_map.lookup_char_pos(span.lo());
-        let end = self.source_map.lookup_char_pos(span.hi());
-        let start = Position::new(
-            u32::try_from(start.line).ok()?,
-            u32::try_from(start.col_display).ok()?.checked_add(1)?,
-        )
-        .ok()?;
-        let end = Position::new(
-            u32::try_from(end.line).ok()?,
-            u32::try_from(end.col_display).ok()?.checked_add(1)?,
-        )
-        .ok()?;
-        SourceRange::new(start, end).ok()
+        self.lines.range_from_offsets(start, end).ok()
     }
 }
 

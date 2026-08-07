@@ -48,6 +48,7 @@ impl Severity {
 }
 
 /// Precomputed byte-to-display-position boundaries for one source.
+#[derive(Clone)]
 pub struct SourceLineIndex {
     starts: Vec<usize>,
     source: SourceText,
@@ -194,6 +195,26 @@ impl SourceLineIndex {
         })
     }
 
+    pub(crate) fn byte_range_from_offsets(
+        &self,
+        start: u32,
+        end: u32,
+    ) -> Result<ByteRange, InvalidSourceBoundary> {
+        let range = ByteRange::new(start, end).map_err(|_| InvalidSourceBoundary::OutOfBounds)?;
+        self.validate_range(range)?;
+        Ok(range)
+    }
+
+    pub(crate) fn range_from_offsets(
+        &self,
+        start: u32,
+        end: u32,
+    ) -> Result<SourceRange, InvalidSourceBoundary> {
+        let range = ByteRange::new(start, end).map_err(|_| InvalidSourceBoundary::OutOfBounds)?;
+        self.range(self.validate_range(range)?)
+            .ok_or(InvalidSourceBoundary::OutOfBounds)
+    }
+
     /// Convert a checked byte range without clamping invalid parser output.
     ///
     /// ```
@@ -207,8 +228,8 @@ impl SourceLineIndex {
     /// assert!(index.try_range(ByteRange::new(1, 2).unwrap()).is_err());
     /// ```
     pub fn try_range(&self, range: ByteRange) -> Result<SourceRange, InvalidSourceBoundary> {
-        let range = self.validate_range(range)?;
-        self.range(range).ok_or(InvalidSourceBoundary::OutOfBounds)
+        self.range(self.validate_range(range)?)
+            .ok_or(InvalidSourceBoundary::OutOfBounds)
     }
 
     /// Borrow the source covered by a validated byte range.

@@ -116,7 +116,7 @@ leaves validated project identity solely in the outer `ProjectRelativePath`.
 The report combination test asserts both identities independently. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-004 — Parser ranges and semantic spans maintain competing byte-to-position validators
+#### [x] READ-004 — Parser ranges and semantic spans maintain competing byte-to-position validators
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -141,7 +141,12 @@ handling and SWC offset subtraction at the adapter boundary. Preserve
 fail-closed invalid-span behavior, UTF-8 boundary checks, one-based display
 positions, CRLF/EOF handling, and the zero-copy source-slice path.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `SourceLineIndex` now owns offset-to-`ByteRange` validation and
+display-range conversion. Parser diagnostics retain dummy-span handling and
+SWC base-offset subtraction, then use the shared line index; semantic
+`SpanNormalizer` uses the same checked-byte-range adapter. Invalid spans,
+UTF-8 boundaries, Unicode/CRLF/EOF positions, and zero-copy source slicing
+remain fail-closed and unchanged. Verified with `make fmt && make ci`.
 
 ### Parser and runtime policy boundaries
 
