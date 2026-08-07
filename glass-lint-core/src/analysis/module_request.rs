@@ -8,7 +8,7 @@
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{Callee, Expr, Ident, Lit};
 
-use crate::analysis::module::COMMONJS_REQUIRE;
+use crate::analysis::model::module::COMMONJS_REQUIRE;
 
 const INTEROP_WRAPPERS: &[&str] = &[
     "__toESM",

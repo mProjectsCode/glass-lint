@@ -13,7 +13,7 @@ use hashbrown::HashMap;
 use crate::analysis::flow::effect::FunctionEffects;
 use crate::analysis::{
     matching::OccurrenceIndexes,
-    module::ModuleInterface,
+    model::module::ModuleInterface,
     module_request::{ModuleRequestKind, ModuleRequestPolicy, recognize_module_call},
     value::{ValueId, ValueTable},
 };

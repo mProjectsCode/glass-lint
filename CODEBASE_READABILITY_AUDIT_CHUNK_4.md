@@ -16,7 +16,7 @@ state.
 
 ### Retained module-model migration
 
-#### [ ] READ-015 — Remove the obsolete `analysis::module` re-export boundary
+#### [x] READ-015 — Remove the obsolete `analysis::module` re-export boundary
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -37,7 +37,9 @@ search shows no consumers. Keep the public contracts and constants on the
 retained model module, preserve the provider-neutral module-interface
 boundary, and do not reintroduce parser or provider types into the model.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Migrated all remaining production callers to
+`analysis::model::module` and deleted the obsolete `analysis::module`
+re-export. Verified with `make fmt && make ci`.
 
 ### Module request representation
 

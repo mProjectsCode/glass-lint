@@ -10,7 +10,7 @@ use crate::{
     ParseDiagnostic,
     analysis::{
         ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LoweredSource, QualifiedRequestId,
-        ResolvedLinkInput, module::ModuleRequestId,
+        ResolvedLinkInput, model::module::ModuleRequestId,
     },
     project::{
         ModuleId, ProjectInputError, ProjectRelativePath, ResolutionRequest, ResolutionRequestKey,

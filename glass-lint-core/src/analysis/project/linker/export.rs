@@ -9,7 +9,7 @@ use crate::{
     analysis::{
         LinkedModuleTarget, ModuleId,
         lowering::status::{AnalysisComponent, IncompleteReason, StatusScope},
-        module::{self, ModuleRequestRole, NAMESPACE_EXPORT},
+        model::module::{self, ModuleRequestRole, NAMESPACE_EXPORT},
         project::{
             linker::ProjectLinker,
             model::ExportResolution,

@@ -8,7 +8,7 @@ use swc_ecma_ast::{
 use crate::{
     analysis::{
         facts::interface::ModuleInterfaceBuilder,
-        module::{
+        model::module::{
             DEFAULT_EXPORT, ModuleExport, ModuleRequestRole, NAMESPACE_EXPORT, ReExportBinding,
         },
         resolution::Resolver,

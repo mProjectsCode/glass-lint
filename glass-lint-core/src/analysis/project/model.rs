@@ -13,7 +13,7 @@ use crate::{
         flow::effect::FunctionEffect,
         local::{LocalArtifact, ProjectModule},
         lowering::status::{AnalysisStatus, IncompleteReason, StatusScope},
-        module::ModuleRequestId,
+        model::module::ModuleRequestId,
         project::{
             linker::ProjectLinker,
             projection::ProjectionOutcome,

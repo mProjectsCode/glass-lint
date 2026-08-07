@@ -7,7 +7,7 @@ use smol_str::{SmolStr, ToSmolStr};
 use crate::{
     analysis::{
         ExportResolution, LinkedModuleTarget, ModuleId, ProjectModule,
-        module::{DEFAULT_EXPORT, ModuleRequestId, ModuleRequestRole},
+        model::module::{DEFAULT_EXPORT, ModuleRequestId, ModuleRequestRole},
         project::{
             model::MAX_EXPORT_DEPTH,
             state::{ExportLookupCache, ExportLookupCacheResult, ExportTable, QualifiedExportId},

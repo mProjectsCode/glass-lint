@@ -12,7 +12,7 @@ use crate::analysis::{
     ExportResolution, LinkedModuleTarget, ModuleId, ProjectSemanticModel, QualifiedRequestId,
     flow::effect::CallEffectRef,
     matching::{ModuleExportKey, ModuleIdentityMap},
-    module::{ImportedBinding, ModuleRequest, ModuleRequestRole},
+    model::module::{ImportedBinding, ModuleRequest, ModuleRequestRole},
     project::{
         model::MAX_EXPORT_DEPTH, resolver::target_to_export_resolution, state::LinkingSession,
     },

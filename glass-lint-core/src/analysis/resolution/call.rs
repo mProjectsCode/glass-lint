@@ -181,7 +181,7 @@ impl Resolver<'_> {
 
 impl ModuleRequestContext for Resolver<'_> {
     fn is_unshadowed_require(&mut self, ident: &swc_ecma_ast::Ident) -> bool {
-        self.is_unshadowed_commonjs_name(ident, crate::analysis::module::COMMONJS_REQUIRE)
+        self.is_unshadowed_commonjs_name(ident, crate::analysis::model::module::COMMONJS_REQUIRE)
     }
 
     fn is_unshadowed_wrapper(&mut self, _ident: &swc_ecma_ast::Ident) -> bool {

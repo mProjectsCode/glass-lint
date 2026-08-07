@@ -18,7 +18,7 @@ use crate::{
     analysis::{
         LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId,
         lowering::status::AnalysisStatus,
-        module,
+        model::module,
         project::state::{ExportTable, LinkingSession, ModuleGraph, SccPartition},
     },
     project::AnalysisDiagnostic,

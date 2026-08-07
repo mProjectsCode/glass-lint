@@ -21,7 +21,7 @@ use crate::{
         LocatedSourceContext, SemanticArtifact, SemanticBudget,
         facts::{self, Building, BuiltFacts, FactStream, SemanticFacts},
         lowering::status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
-        module,
+        model::module,
         resolution::Resolver,
         scope::{ScopeCollectionIssue, ScopeGraph, ScopedProgram},
         syntax::name::MAX_NAMES,

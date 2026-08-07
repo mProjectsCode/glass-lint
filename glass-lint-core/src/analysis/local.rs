@@ -18,7 +18,7 @@ use crate::{
     AnalysisLimits, Environment, SourceLanguage, SourceLineIndex,
     analysis::{
         facts, flow::effect::FunctionEffects, lowering::status::AnalysisStatus,
-        module::ModuleInterface, syntax,
+        model::module::ModuleInterface, syntax,
     },
     project::{ModuleId, ProjectRelativePath, SourceFile, SourceText},
 };

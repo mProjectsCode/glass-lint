@@ -4,7 +4,7 @@ use swc_ecma_ast::{AssignExpr, Expr, Lit, ObjectLit, Prop, PropOrSpread};
 
 use crate::analysis::{
     facts::interface::ModuleInterfaceBuilder,
-    module::{COMMONJS_EXPORTS, COMMONJS_MODULE, ModuleExport},
+    model::module::{COMMONJS_EXPORTS, COMMONJS_MODULE, ModuleExport},
     resolution::Resolver,
     syntax::{literal_member_property_name, literal_property_name},
 };

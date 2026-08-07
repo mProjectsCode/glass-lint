@@ -22,7 +22,7 @@ use crate::{
             ValueId, VarDeclarator, Visit, VisitWith, WhileStmt, effective_callee_expr,
             literal_member_property_name,
         },
-        module::{ImportedBinding, ModuleRequestRole},
+        model::module::{ImportedBinding, ModuleRequestRole},
     },
     project::ResolutionRequestKind,
 };

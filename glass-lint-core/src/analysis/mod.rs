@@ -19,7 +19,6 @@ mod lowering;
 mod matching;
 mod module_request;
 pub use matching::display_span;
-pub mod module;
 pub mod project;
 mod resolution;
 mod scope;

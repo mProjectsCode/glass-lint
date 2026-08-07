@@ -5,7 +5,7 @@ use swc_ecma_ast::ImportDecl;
 
 use crate::{
     analysis::{
-        module::{ModuleRequestId, ModuleRequestRole},
+        model::module::{ModuleRequestId, ModuleRequestRole},
         syntax::collect_pat_bindings,
     },
     project::ResolutionRequestKind,
@@ -15,17 +15,19 @@ mod commonjs;
 mod exports;
 
 pub(super) struct ModuleInterfaceBuilder {
-    interface: crate::analysis::module::ModuleInterface,
+    interface: crate::analysis::model::module::ModuleInterface,
 }
 
 impl ModuleInterfaceBuilder {
     pub(in crate::analysis::facts) fn new() -> Self {
         Self {
-            interface: crate::analysis::module::ModuleInterface::default(),
+            interface: crate::analysis::model::module::ModuleInterface::default(),
         }
     }
 
-    pub(in crate::analysis::facts) fn finish(self) -> crate::analysis::module::ModuleInterface {
+    pub(in crate::analysis::facts) fn finish(
+        self,
+    ) -> crate::analysis::model::module::ModuleInterface {
         self.interface
     }
 
@@ -66,7 +68,7 @@ impl ModuleInterfaceBuilder {
     fn add_export(
         &mut self,
         name: impl Into<SmolStr>,
-        export: crate::analysis::module::ModuleExport,
+        export: crate::analysis::model::module::ModuleExport,
     ) {
         self.interface.add_export(name, export);
     }
