@@ -237,13 +237,7 @@ struct LoweringCompletion {
     capabilities: DerivedPhaseCapabilities,
 }
 
-#[derive(Debug)]
-struct LoweringCompletionPolicy {
-    status: AnalysisStatus,
-    capabilities: DerivedPhaseCapabilities,
-}
-
-impl LoweringCompletionPolicy {
+impl LoweringCompletion {
     fn new() -> Self {
         Self {
             status: AnalysisStatus::default(),
@@ -265,19 +259,12 @@ impl LoweringCompletionPolicy {
         }
     }
 
-    fn finish(self) -> LoweringCompletion {
-        LoweringCompletion {
-            status: self.status,
-            capabilities: self.capabilities,
-        }
-    }
-
     fn assess(
         issues: &[ScopeCollectionIssue],
         stream: &FactStream<Building>,
         resolver: &Resolver,
         limits: &AnalysisLimits,
-    ) -> LoweringCompletion {
+    ) -> Self {
         let mut policy = Self::new();
         if !issues.is_empty() {
             policy.record_scope_issue(issues.len());
@@ -291,7 +278,7 @@ impl LoweringCompletionPolicy {
         ));
         policy.record_fact_failure(check_invalid_parser_span(stream));
         policy.record_fact_failure(check_name_exhaustion(resolver));
-        policy.finish()
+        policy
     }
 }
 
@@ -327,7 +314,7 @@ impl<'a> ResolvedProgram<'a> {
     }
 
     fn assess_completion(&self, limits: &AnalysisLimits) -> LoweringCompletion {
-        LoweringCompletionPolicy::assess(&self.issues, &self.built.stream, &self.resolver, limits)
+        LoweringCompletion::assess(&self.issues, &self.built.stream, &self.resolver, limits)
     }
 
     fn derive_export_origins(

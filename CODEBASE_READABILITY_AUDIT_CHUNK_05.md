@@ -104,14 +104,15 @@ origins/effects, deterministic output, and the current consuming lifecycle.
 - **Theme:** DEDUPLICATE
 - **Category:** Duplication / Conversion
 - **Location:** `glass-lint-core/src/analysis/lowering/mod.rs:254-292`
-- **Representative callers:** `LoweringCompletionPolicy::assess` builds the policy and `ResolvedProgram::assess_completion` immediately consumes it through `finish`
+- **Representative callers:** `LoweringCompletion::assess` builds the
+  completion value and `ResolvedProgram::assess_completion` consumes it.
 
-`LoweringCompletion` and `LoweringCompletionPolicy` have the same two fields:
-`AnalysisStatus` and `LoweringCapabilities`. The policy mutates those fields
-through `record_scope_issue` and `record_fact_failure`, and `finish` merely
-moves them into the identically shaped result. This creates a parallel model
-for a short-lived builder without adding a distinct invariant or ownership
-boundary.
+Before the refactor, `LoweringCompletion` and `LoweringCompletionPolicy` had
+the same two fields: `AnalysisStatus` and `LoweringCapabilities`. The policy
+mutated those fields through `record_scope_issue` and `record_fact_failure`,
+and `finish` merely moved them into the identically shaped result. This
+created a parallel model for a short-lived builder without adding a distinct
+invariant or ownership boundary.
 
 The duplication is easy to overlook when adding a capability or status detail:
 the field must be added to both structs and the transfer must remain complete.
@@ -126,7 +127,11 @@ duplicate field declaration and trivial `finish` transfer. Preserve the
 ordered status recording, capability disabling, and immutable value passed to
 artifact construction.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `LoweringCompletion` now owns both mutable assessment and its
+consuming result state; the redundant policy/result pair and trivial `finish`
+transfer were removed. Capability disabling, ordered status recording, and
+immutable artifact construction remain unchanged. Verified with
+`make fmt && make ci`.
 
 ### READ-004 — Cache identity dimensions and match predicates are maintained in parallel
 
