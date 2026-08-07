@@ -217,7 +217,7 @@ post-parse validation, deferred syntax diagnostics, and existing delimiter,
 template, optional-chain, regex, and division behavior are preserved. Verified
 with `make fmt && make ci`.
 
-#### [ ] READ-007 — The standalone ECMAScript-version API bypasses caller-configured analysis limits
+#### [x] READ-007 — The standalone ECMAScript-version API bypasses caller-configured analysis limits
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -241,7 +241,12 @@ catalog/environment state part of the standalone API. Preserve deterministic
 feature ordering, fail-closed syntax-depth errors, and the existing default
 behavior for callers that do not opt into custom limits.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The existing `analyze_ecma_version` remains the fixed-cost
+default convenience endpoint, while new
+`analyze_ecma_version_with_limits` accepts caller-configured syntax limits and
+shares the parser boundary. Deterministic feature ordering and default
+behavior are unchanged; an explicit-limit test verifies fail-closed depth
+errors. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

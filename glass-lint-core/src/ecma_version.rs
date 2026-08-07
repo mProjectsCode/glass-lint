@@ -186,11 +186,16 @@ impl EcmaVersionReport {
 /// Analyze the syntax of one source without requiring a rule catalog or
 /// host environment.
 pub fn analyze_ecma_version(source: &SourceFile) -> Result<EcmaVersionReport, ParseDiagnostic> {
-    let parsed = crate::parse::SourceParser::with_syntax_depth(
-        source,
-        AnalysisLimits::default().syntax_depth(),
-    )?
-    .parse()?;
+    analyze_ecma_version_with_limits(source, &AnalysisLimits::default())
+}
+
+/// Analyze one source with an explicit syntax-depth analysis limit.
+pub fn analyze_ecma_version_with_limits(
+    source: &SourceFile,
+    limits: &AnalysisLimits,
+) -> Result<EcmaVersionReport, ParseDiagnostic> {
+    let parsed =
+        crate::parse::SourceParser::with_syntax_depth(source, limits.syntax_depth())?.parse()?;
     Ok(EcmaVersionReport::from_program(&parsed.program))
 }
 
@@ -526,5 +531,13 @@ mod tests {
         assert!(report.features().contains(&EcmaFeature::OptionalChaining));
         assert!(report.features().contains(&EcmaFeature::NullishCoalescing));
         assert!(report.features().contains(&EcmaFeature::BigInt));
+    }
+
+    #[test]
+    fn explicit_limits_bound_standalone_analysis() {
+        let source = SourceFile::new("deep.js", "(((value)))").unwrap();
+        let limits = AnalysisLimits::default().with_syntax_depth(1).unwrap();
+        let error = analyze_ecma_version_with_limits(&source, &limits).unwrap_err();
+        assert_eq!(error.code.as_str(), "syntax_depth_exceeded");
     }
 }
