@@ -19,7 +19,7 @@ pub const COMMONJS_REQUIRE: &str = "require";
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ModuleRequestRole {
     Import { bindings: Vec<ImportedBinding> },
-    ReExport { bindings: Vec<ReExportBinding> },
+    ReExport,
     StarExport,
     DynamicImport,
     Require,
@@ -29,13 +29,6 @@ pub enum ModuleRequestRole {
 pub struct ImportedBinding {
     imported: Option<SmolStr>,
     local: SmolStr,
-    namespace: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ReExportBinding {
-    imported: SmolStr,
-    exported: SmolStr,
     namespace: bool,
 }
 
@@ -149,16 +142,6 @@ impl ImportedBinding {
 
     pub fn is_namespace(&self) -> bool {
         self.namespace
-    }
-}
-
-impl ReExportBinding {
-    pub fn new(imported: SmolStr, exported: SmolStr, namespace: bool) -> Self {
-        Self {
-            imported,
-            exported,
-            namespace,
-        }
     }
 }
 

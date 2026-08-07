@@ -141,7 +141,7 @@ impl ProjectSemanticModel {
                     bindings.iter().any(ImportedBinding::is_namespace)
                 }
                 ModuleRequestRole::Require | ModuleRequestRole::DynamicImport => true,
-                ModuleRequestRole::ReExport { .. } | ModuleRequestRole::StarExport => false,
+                ModuleRequestRole::ReExport | ModuleRequestRole::StarExport => false,
             };
             if !is_namespace {
                 continue;

@@ -43,7 +43,7 @@ re-export. Verified with `make fmt && make ci`.
 
 ### Module request representation
 
-#### [ ] READ-016 — Delete redundant retained re-export bindings
+#### [x] READ-016 — Delete redundant retained re-export bindings
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -66,7 +66,10 @@ namespace/import/re-export behavior, and preserve every per-name exported
 mapping in `ModuleExport`, star-export handling, deterministic request order,
 and conservative behavior for unsupported or ambiguous exports.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Reduced `ModuleRequestRole::ReExport` to a unit role and
+removed the unused `ReExportBinding` representation and construction. Named
+and namespace export mappings remain in `ModuleExport`, preserving linker
+behavior and deterministic request ordering. Verified with `make fmt && make ci`.
 
 ### Flow budget model
 

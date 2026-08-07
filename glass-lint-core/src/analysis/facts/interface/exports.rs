@@ -8,9 +8,7 @@ use swc_ecma_ast::{
 use crate::{
     analysis::{
         facts::interface::ModuleInterfaceBuilder,
-        model::module::{
-            DEFAULT_EXPORT, ModuleExport, ModuleRequestRole, NAMESPACE_EXPORT, ReExportBinding,
-        },
+        model::module::{ModuleExport, ModuleRequestRole},
         resolution::Resolver,
         syntax::module_export_name,
     },
@@ -116,31 +114,7 @@ impl ModuleInterfaceBuilder {
             span,
             ResolutionRequestKind::StaticImport,
             source.value.to_string_lossy(),
-            ModuleRequestRole::ReExport {
-                bindings: specifiers
-                    .iter()
-                    .map(|specifier| match specifier {
-                        ExportSpecifier::Named(named) => ReExportBinding::new(
-                            module_export_name(&named.orig),
-                            named.exported.as_ref().map_or_else(
-                                || module_export_name(&named.orig),
-                                module_export_name,
-                            ),
-                            false,
-                        ),
-                        ExportSpecifier::Namespace(namespace) => ReExportBinding::new(
-                            NAMESPACE_EXPORT.into(),
-                            module_export_name(&namespace.name),
-                            true,
-                        ),
-                        ExportSpecifier::Default(default) => ReExportBinding::new(
-                            DEFAULT_EXPORT.into(),
-                            default.exported.sym.to_smolstr(),
-                            false,
-                        ),
-                    })
-                    .collect(),
-            },
+            ModuleRequestRole::ReExport,
         );
         for specifier in specifiers {
             match specifier {
