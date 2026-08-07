@@ -162,7 +162,7 @@ partial reports.
 
 ### Rule-selection API
 
-#### [ ] READ-095 — Store `RuleState` as the override’s domain value
+#### [x] READ-095 — Store `RuleState` as the override’s domain value
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -191,7 +191,9 @@ bool-to-enum conversion. Preserve ordered last-match-wins semantics, wildcard
 validation, unknown-rule failures, and the existing enabled/disabled
 configuration contract independently of storage.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `RuleOverride` now stores `RuleState` directly and resolves
+from that domain value. A focused serde adapter preserves the existing
+boolean `enabled` wire spelling. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

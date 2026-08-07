@@ -30,7 +30,11 @@ pub enum RuleState {
 pub struct RuleOverride {
     #[cfg_attr(feature = "serde", serde(deserialize_with = "deserialize_selector"))]
     selector: RuleSelector,
-    enabled: bool,
+    #[cfg_attr(
+        feature = "serde",
+        serde(rename = "enabled", with = "rule_state_as_bool")
+    )]
+    state: RuleState,
 }
 
 /// A segment of a parsed rule selector.
@@ -63,6 +67,32 @@ where
 {
     let value = <String as serde::Deserialize>::deserialize(deserializer)?;
     RuleSelector::parse(value).map_err(serde::de::Error::custom)
+}
+
+#[cfg(feature = "serde")]
+mod rule_state_as_bool {
+    use super::RuleState;
+
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    pub(super) fn serialize<S>(state: &RuleState, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_bool(*state == RuleState::Enabled)
+    }
+
+    pub(super) fn deserialize<'de, D>(deserializer: D) -> Result<RuleState, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(
+            if <bool as serde::Deserialize>::deserialize(deserializer)? {
+                RuleState::Enabled
+            } else {
+                RuleState::Disabled
+            },
+        )
+    }
 }
 
 #[cfg(feature = "serde")]
@@ -146,10 +176,7 @@ impl RuleSelector {
 impl RuleOverride {
     pub fn new(selector: impl Into<String>, state: RuleState) -> Result<Self, LintConfigError> {
         let selector = RuleSelector::parse(selector.into())?;
-        Ok(Self {
-            selector,
-            enabled: state == RuleState::Enabled,
-        })
+        Ok(Self { selector, state })
     }
 
     pub fn selector(&self) -> &str {
@@ -157,11 +184,7 @@ impl RuleOverride {
     }
 
     pub fn state(&self) -> RuleState {
-        if self.enabled {
-            RuleState::Enabled
-        } else {
-            RuleState::Disabled
-        }
+        self.state
     }
 }
 
@@ -216,7 +239,7 @@ impl RuleSelection {
             for (override_index, override_) in self.overrides.iter().enumerate() {
                 if override_.selector.matches(rule_id.as_str()) {
                     matched[override_index] = true;
-                    state = override_.enabled;
+                    state = override_.state() == RuleState::Enabled;
                 }
             }
             if state {
