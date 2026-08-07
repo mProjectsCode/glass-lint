@@ -120,7 +120,8 @@ pub(super) struct ReportAssembly<'a> {
     evidence_limit: usize,
 }
 
-// TODO: So these following three structs just exist to be assembled and then immediately consumed again. That seems like pointless overcomplication.
+// TODO: So these following three structs just exist to be assembled and then
+// immediately consumed again. That seems like pointless overcomplication.
 
 struct LinkedReport {
     project: ProjectSemanticModel,

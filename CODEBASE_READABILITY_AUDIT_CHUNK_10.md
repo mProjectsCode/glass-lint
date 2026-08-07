@@ -266,6 +266,10 @@ errors. Verified with `make fmt && make ci`.
   configured linter. A limits-taking sibling may be added for explicit parity,
   but the ergonomic default API remains unchanged.
 
+## Open Questions
+
+None recorded.
+
 ## Coverage
 
 Reviewed `CoreConfig`, `AnalysisLimits` and its validated serialization path,

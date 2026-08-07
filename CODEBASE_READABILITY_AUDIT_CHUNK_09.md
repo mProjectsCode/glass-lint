@@ -18,7 +18,7 @@ the evidence table repeatedly reimplements its index boundary.
 
 ## Findings
 
-### READ-001 — `compile_queries` mixes per-query compilation with catalog aggregation
+#### [ ] READ-001 — `compile_queries` mixes per-query compilation with catalog aggregation
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -50,7 +50,7 @@ plans, and the existing fail-closed errors.
 
 **Fix Applied:** None so far.
 
-### READ-002 — Flow requirements expose a cross-file state that no physical root can produce
+#### [ ] READ-002 — Flow requirements expose a cross-file state that no physical root can produce
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -82,7 +82,7 @@ semantics, and deterministic operation accounting.
 
 **Fix Applied:** None so far.
 
-### READ-003 — Physical roots are validated and their requirements recomputed at multiple boundaries
+#### [ ] READ-003 — Physical roots are validated and their requirements recomputed at multiple boundaries
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -114,7 +114,7 @@ detection, and bounded fail-closed plan construction.
 
 **Fix Applied:** None so far.
 
-### READ-004 — Normalized and physical IR pass raw slot integers through an unused remapping API
+#### [ ] READ-004 — Normalized and physical IR pass raw slot integers through an unused remapping API
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -145,7 +145,7 @@ the prohibition on exposing artifact-local IDs.
 
 **Fix Applied:** None so far.
 
-### READ-005 — Compiler error structure is flattened before the catalog boundary
+#### [ ] READ-005 — Compiler error structure is flattened before the catalog boundary
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -176,7 +176,7 @@ compiler bugs.
 
 **Fix Applied:** None so far.
 
-### READ-006 — `RuleEvidenceTable` repeats its rule-index boundary in every mutation method
+#### [ ] READ-006 — `RuleEvidenceTable` repeats its rule-index boundary in every mutation method
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -204,7 +204,7 @@ and keep empty evidence distinct from an invalid rule index.
 
 **Fix Applied:** None so far.
 
-### READ-007 — Query validation carries scope, type, correlation, and mode state through raw collections
+#### [ ] READ-007 — Query validation carries scope, type, correlation, and mode state through raw collections
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -247,7 +247,11 @@ diagnostic precedence.
 - **DEDUPLICATE:** Root validation/requirement derivation and evidence-table
   index checks are repeated at adjacent boundaries and mutation methods.
 
-## Decisions and Coverage
+## Open Questions
+
+None recorded.
+
+## Coverage
 
 Reviewed classification evidence and bounded rule-index storage, compiler
 entry points, query validation passes, normalized IR, alpha-renumbering,

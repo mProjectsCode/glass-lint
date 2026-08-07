@@ -17,7 +17,7 @@ two internal APIs make important ownership or merge policies implicit.
 
 ## Findings
 
-### READ-001 — Transient and final linked state duplicate the same project payload
+#### [ ] READ-001 — Transient and final linked state duplicate the same project payload
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -50,7 +50,7 @@ model’s independent flow/effect/trace limits.
 
 **Fix Applied:** None so far.
 
-### READ-002 — `ProjectLinker` combines graph construction, export resolution, and reporting state
+#### [ ] READ-002 — `ProjectLinker` combines graph construction, export resolution, and reporting state
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -87,7 +87,7 @@ status propagation, and deterministic sorting/deduplication.
 
 **Fix Applied:** None so far.
 
-### READ-003 — Recursive export lookup spreads cache, cycle, and uncertainty state across early returns
+#### [ ] READ-003 — Recursive export lookup spreads cache, cycle, and uncertainty state across early returns
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -125,7 +125,7 @@ cannot establish a complete export identity.
 
 **Fix Applied:** None so far.
 
-### READ-004 — Project projection coordinates local, cross-file, evidence, and outcome phases in one session
+#### [ ] READ-004 — Project projection coordinates local, cross-file, evidence, and outcome phases in one session
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -161,7 +161,7 @@ semantics.
 
 **Fix Applied:** None so far.
 
-### READ-005 — Foreign or invalid module handles silently look like empty evidence
+#### [ ] READ-005 — Foreign or invalid module handles silently look like empty evidence
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -194,7 +194,7 @@ normalization, and deterministic output.
 
 **Fix Applied:** None so far.
 
-### READ-006 — Identity-map merge semantics are encoded by caller-selected methods
+#### [ ] READ-006 — Identity-map merge semantics are encoded by caller-selected methods
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -237,7 +237,11 @@ and deterministic key ordering.
 - **DEDUPLICATE:** The transient/final project state shape is repeated across a
   lifecycle boundary even though the semantic payload is the same.
 
-## Decisions and Coverage
+## Open Questions
+
+None recorded.
+
+## Coverage
 
 Reviewed project input validation, qualified request/export identities,
 module graphs and SCC ordering, bounded export tables and lookup caches,

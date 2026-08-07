@@ -280,6 +280,10 @@ Verified with `make fmt && make ci`.
   error surface remains small and exact selectors continue to report
   `UnknownRule`.
 
+## Open Questions
+
+None recorded.
+
 ## Coverage
 
 Reviewed batch options, pending-window accounting, worker completion and

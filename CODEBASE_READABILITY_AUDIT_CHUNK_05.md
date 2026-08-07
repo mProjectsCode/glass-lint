@@ -18,7 +18,7 @@ positional than the surrounding architecture requires.
 
 ## Findings
 
-### READ-001 — Derived-phase availability is represented by several independent gates
+#### [x] READ-001 — Derived-phase availability is represented by several independent gates
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -63,7 +63,7 @@ effect collection consume its phase-specific decisions instead of rereading
 fact-stream validity or storing a separate effect boolean. Verified with
 `make fmt && make ci`.
 
-### READ-002 — `ResolvedProgram::freeze` coordinates too many phase transitions
+#### [ ] READ-002 — `ResolvedProgram::freeze` coordinates too many phase transitions
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -97,7 +97,7 @@ origins/effects, deterministic output, and the current consuming lifecycle.
 
 **Fix Applied:** None so far.
 
-### READ-003 — Completion policy and completion result duplicate their entire state
+#### [x] READ-003 — Completion policy and completion result duplicate their entire state
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -133,7 +133,7 @@ transfer were removed. Capability disabling, ordered status recording, and
 immutable artifact construction remain unchanged. Verified with
 `make fmt && make ci`.
 
-### READ-004 — Cache identity dimensions and match predicates are maintained in parallel
+#### [x] READ-004 — Cache identity dimensions and match predicates are maintained in parallel
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -171,7 +171,7 @@ fingerprint-plus-full-key collision check used by both cache lookup and
 replacement. Source, language, normalization, environment, and engine-version
 identity dimensions remain unchanged. Verified with `make fmt && make ci`.
 
-### READ-005 — Status diagnostics expose a positional split and a redundant scope argument
+#### [ ] READ-005 — Status diagnostics expose a positional split and a redundant scope argument
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -213,7 +213,11 @@ project-to-file propagation, and stable output ordering.
 - **DEDUPLICATE:** Completion state, cache identity serialization, and cache
   matching predicates are represented in parallel.
 
-## Decisions and Coverage
+## Open Questions
+
+None recorded.
+
+## Coverage
 
 Reviewed local cache keys and FIFO cache behavior, synchronized cache access,
 shared semantic-artifact reconstruction, immutable local/project wrappers,

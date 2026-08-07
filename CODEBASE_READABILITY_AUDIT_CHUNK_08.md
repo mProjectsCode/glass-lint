@@ -18,7 +18,7 @@ module-pattern type also promises a broader contract than it implements.
 
 ## Findings
 
-### READ-001 — Catalog identity is lost and rebuilt through sentinel strings
+#### [ ] READ-001 — Catalog identity is lost and rebuilt through sentinel strings
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -52,7 +52,7 @@ combination.
 
 **Fix Applied:** None so far.
 
-### READ-002 — `RuleCatalog` stores a derived index beside its source records
+#### [ ] READ-002 — `RuleCatalog` stores a derived index beside its source records
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -81,7 +81,7 @@ all-or-nothing error behavior.
 
 **Fix Applied:** None so far.
 
-### READ-003 — Deferred rule and lifecycle builders duplicate an error-policy state machine
+#### [ ] READ-003 — Deferred rule and lifecycle builders duplicate an error-policy state machine
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -114,7 +114,7 @@ and the distinct lifecycle relationship checks.
 
 **Fix Applied:** None so far.
 
-### READ-004 — Raw compiler variable slots leak through the public rule API
+#### [ ] READ-004 — Raw compiler variable slots leak through the public rule API
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -143,7 +143,7 @@ internal IDs, alpha-renumbering, diagnostics, and test-only construction.
 
 **Fix Applied:** None so far.
 
-### READ-005 — `ModuleSpecifierPattern` promises exact matching but implements only package roots
+#### [ ] READ-005 — `ModuleSpecifierPattern` promises exact matching but implements only package roots
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -172,7 +172,7 @@ checks, and keep provider policy out of Core.
 
 **Fix Applied:** None so far.
 
-### READ-006 — Argument-index validity is checked in several builders and reconstructed as a primitive
+#### [ ] READ-006 — Argument-index validity is checked in several builders and reconstructed as a primitive
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -203,7 +203,7 @@ ordering, public `get`/`index` behavior, and the existing error variant.
 
 **Fix Applied:** None so far.
 
-### READ-007 — `Any` composition and compilation duplicate evidence-projection validation
+#### [ ] READ-007 — `Any` composition and compilation duplicate evidence-projection validation
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -245,7 +245,11 @@ branches cannot emit unsupported evidence.
   argument validation, and evidence compatibility are repeated across
   adjacent stages.
 
-## Decisions and Coverage
+## Open Questions
+
+None recorded.
+
+## Coverage
 
 Reviewed the public rule facade, metadata and catalog builders, rule/query
 errors, module patterns, rule IDs, event and lifecycle declaration APIs,

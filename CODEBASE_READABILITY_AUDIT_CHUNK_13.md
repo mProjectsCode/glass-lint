@@ -316,7 +316,7 @@ operation-count meaning, and `glass-lint-project`'s ability to attach its own
 diagnostics. Do not make report DTOs mutable or move filesystem/project policy
 into Core.
 
-**Revalidation:** Covered by the current report pipeline. `ResolvedProject`
+**Fix Applied:** Covered by the current report pipeline. `ResolvedProject`
 owns the consuming `finish_with_timings` transition, `ReportAssembly` is
 `pub(super)`, and core constructs the finalized report plus phase timings in
 one pipeline. The project crate's post-core `with_project_diagnostics` call is
@@ -353,6 +353,10 @@ READ-003, Chunk 11 READ-002/003/004/005, and Chunk 12 READ-005/006.
   layers.
 - Keep provider, filesystem, and project-resolution ownership unchanged; these
   cross-cutting findings concern Core's internal phase and public API seams.
+
+## Open Questions
+
+None recorded.
 
 ## Coverage
 

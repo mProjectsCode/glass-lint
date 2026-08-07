@@ -18,7 +18,7 @@ together but is immediately returned as an order-dependent tuple.
 
 ## Findings
 
-### READ-001 — Resolution seeds duplicate the retained result shape
+#### [ ] READ-001 — Resolution seeds duplicate the retained result shape
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -51,7 +51,7 @@ and unknown/exhaustion behavior.
 
 **Fix Applied:** None so far.
 
-### READ-002 — `resolve_seed` mixes the entire resolution finalization protocol
+#### [ ] READ-002 — `resolve_seed` mixes the entire resolution finalization protocol
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -88,7 +88,7 @@ budget exhaustion and unsupported resolution.
 
 **Fix Applied:** None so far.
 
-### READ-003 — Value construction policy leaks through a broad arena API
+#### [ ] READ-003 — Value construction policy leaks through a broad arena API
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -125,7 +125,7 @@ definite witness.
 
 **Fix Applied:** None so far.
 
-### READ-004 — Module export metadata has implicit and inconsistent merge rules
+#### [ ] READ-004 — Module export metadata has implicit and inconsistent merge rules
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -167,7 +167,7 @@ semantic observation is equivalent.
 
 **Fix Applied:** None so far.
 
-### READ-005 — The frozen table bundle is dismantled into an order-dependent tuple
+#### [ ] READ-005 — The frozen table bundle is dismantled into an order-dependent tuple
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -207,7 +207,11 @@ single-freeze ownership semantics.
 - **DEDUPLICATE:** Seed/result provenance fields and their conversion are
   maintained in parallel representations.
 
-## Decisions and Coverage
+## Open Questions
+
+None recorded.
+
+## Coverage
 
 Reviewed the retained fact/value/module/scope models, static properties, flow
 evidence model, resolver cache and phase freeze, expression/call/constant

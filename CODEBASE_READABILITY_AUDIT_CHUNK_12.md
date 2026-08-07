@@ -30,10 +30,11 @@ findings are smaller API and reporting improvements.
 
 #### [x] READ-001 — Split the two `LocalAnalysisTransition::prepare` contracts
 
-- **Category:** SIMPLIFY
+- **Severity:** High
+- **Fix Complexity:** Medium
+- **Theme:** SIMPLIFY
+- **Category:** Complexity
 - **Location:** `glass-lint-core/src/project/session/mod.rs:116-145, 173-181, 245-275`
-- **Impact:** High — Complexity / Architecture
-- **Confidence:** High
 - **Evidence:** `prepare(candidate, skip_completed)` uses the boolean to choose
   whether an already completed path is skipped. The callback implementation
   always passes `true` for executor-driven jobs, while the synchronous
@@ -66,11 +67,12 @@ executor callbacks use the pending-source contract. Verified with
 
 #### [x] READ-002 — Encapsulate the per-source local-analysis state
 
-- **Category:** ENCAPSULATE
+- **Severity:** High
+- **Fix Complexity:** High
+- **Theme:** ENCAPSULATE
+- **Category:** Encapsulation
 - **Location:** `glass-lint-core/src/project/session/artifacts.rs:56-61,
   103-188`
-- **Impact:** High — Architecture / Correctness
-- **Confidence:** High
 - **Evidence:** `AnalysisArtifacts` stores `analyzed` and
   `parse_diagnostics` as independent `BTreeMap`s. `needs_analysis` defines a
   third state through absence in both maps. `record_parse_failure` removes an
@@ -107,12 +109,13 @@ and diagnostics. Verified with `make fmt && make ci`.
 
 #### [x] READ-003 — Narrow the public project API around post-link identities
 
-- **Category:** ENCAPSULATE
+- **Severity:** High
+- **Fix Complexity:** Medium
+- **Theme:** ENCAPSULATE
+- **Category:** API
 - **Location:** `glass-lint-core/src/project/mod.rs:13-25`,
   `glass-lint-core/src/project/types/input.rs:390-429`,
   `glass-lint-core/src/analysis/project/model.rs:200-217`
-- **Impact:** High — API / Architecture
-- **Confidence:** High
 - **Evidence:** The project root publicly re-exports both `LinkedModuleTarget`
   and opaque `ModuleId`. `ResolverOutcome` is the public resolver input, while
   the only production conversion to `LinkedModuleTarget` maps an internal
@@ -145,10 +148,11 @@ the caller-facing resolution contract. Verified with `make fmt && make ci`.
 
 #### [x] READ-004 — Make the valid `EvidenceTraces` states explicit
 
-- **Category:** ENCAPSULATE
+- **Severity:** Medium
+- **Fix Complexity:** Medium
+- **Theme:** ENCAPSULATE
+- **Category:** Encapsulation
 - **Location:** `glass-lint-core/src/project/types/report/evidence.rs:85-157`
-- **Impact:** Medium — API / Correctness
-- **Confidence:** High
 - **Evidence:** `EvidenceTraces` stores `Vec<EvidenceTrace>` plus a `truncated`
   boolean. `with_truncation` rejects an empty non-truncated vector but accepts
   an empty truncated vector; `merge` manually combines vectors and ORs the
@@ -181,12 +185,13 @@ representation and empty-truncated behavior are unchanged. Verified with
 
 #### [x] READ-005 — Pass path metrics as a semantic aggregate
 
-- **Category:** ENCAPSULATE
+- **Severity:** Medium
+- **Fix Complexity:** Low
+- **Theme:** ENCAPSULATE
+- **Category:** API
 - **Location:** `glass-lint-core/src/project/types/report/operations.rs:79-133`,
   `glass-lint-core/src/lint/report/summary.rs:39-50`,
   `glass-lint-core/src/analysis/project/projection.rs:367-385`
-- **Impact:** Medium — API / Duplication
-- **Confidence:** High
 - **Evidence:** `ProjectionMetrics` owns six related dimensions:
   `max_live_alternatives`, `trace_heads`, `coalescing_comparisons`,
   `fixed_point_iterations`, `effect_projections`, and an operation count.
@@ -217,11 +222,12 @@ semantics remain unchanged. Verified with `make fmt && make ci`.
 
 #### [x] READ-006 — Centralize report-summary aggregation
 
-- **Category:** DEDUPLICATE
+- **Severity:** Low
+- **Fix Complexity:** Low
+- **Theme:** DEDUPLICATE
+- **Category:** Duplication
 - **Location:** `glass-lint-core/src/project/types/report/analysis_report.rs:187-210`,
   related report assembly at `glass-lint-core/src/lint/report/summary.rs:17-50`
-- **Impact:** Low — Duplication / Maintainability
-- **Confidence:** High
 - **Evidence:** `AnalysisReport::summary` independently traverses `files` for
   file count, findings, parse diagnostics, and file project diagnostics, then
   traverses report-level diagnostics for report diagnostics. Report assembly
@@ -253,10 +259,11 @@ ci`.
 
 #### [x] READ-007 — Correct the `SourceTable` ordering contract
 
-- **Category:** ENCAPSULATE
+- **Severity:** Low
+- **Fix Complexity:** Low
+- **Theme:** ENCAPSULATE
+- **Category:** Documentation
 - **Location:** `glass-lint-core/src/project/tables.rs:1-5, 13-50`
-- **Impact:** Low — API / Documentation
-- **Confidence:** High
 - **Evidence:** The module documentation says the wrappers “preserve insertion
   order,” but `SourceTable` is a `BTreeMap`. Its `in_path_order` method returns
   the map iterator, and `module_ids` enumerates the same key order. The type
@@ -305,6 +312,10 @@ assignment are unchanged. Verified with `make fmt && make ci`.
 - Share one private finalized-report aggregation pass for file and diagnostic
   summary counts, but keep evidence/rendering and projection operation metrics
   separate because they have different owners and semantics.
+
+## Open Questions
+
+None recorded.
 
 ## Coverage
 

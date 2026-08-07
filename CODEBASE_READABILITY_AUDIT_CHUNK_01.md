@@ -173,6 +173,10 @@ Verified with `make fmt && make ci`.
   `IncompleteReason` decision. This resolves the question without collapsing
   distinct fail-closed reasons into a boolean or opaque aggregate.
 
+## Open Questions
+
+None recorded.
+
 ## Coverage
 
 Reviewed the Chunk 1 source-fact construction area described in

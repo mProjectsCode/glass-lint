@@ -17,7 +17,7 @@ source-order and fail-closed behavior are difficult to audit locally.
 
 ## Findings
 
-### READ-001 — Scope traversal lifecycle is an implicit callback protocol
+#### [ ] READ-001 — Scope traversal lifecycle is an implicit callback protocol
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -51,7 +51,7 @@ order; this is not a recommendation to add another AST walk.
 
 **Fix Applied:** None so far.
 
-### READ-002 — Empty scope stacks become the default scope
+#### [x] READ-002 — Empty scope stacks become the default scope
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -89,7 +89,7 @@ the program root, records root-pop and invalid-stack transitions as
 issue. Traversal skips callbacks when no valid scope exists. Verified with
 `make fmt && make ci`.
 
-### READ-003 — Mutable and frozen graph query adapters repeat the same delegation surface
+#### [ ] READ-003 — Mutable and frozen graph query adapters repeat the same delegation surface
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -121,7 +121,7 @@ is to centralize shared query semantics, not to erase the phase boundary.
 
 **Fix Applied:** None so far.
 
-### READ-004 — Collector visitor hooks mix unrelated source-order responsibilities
+#### [ ] READ-004 — Collector visitor hooks mix unrelated source-order responsibilities
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -157,7 +157,7 @@ cannot create a witness.
 
 **Fix Applied:** None so far.
 
-### READ-005 — Binding-index freeze input and allocation use positional/raw internal APIs
+#### [ ] READ-005 — Binding-index freeze input and allocation use positional/raw internal APIs
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -189,7 +189,7 @@ and deterministic ID allocation.
 
 **Fix Applied:** None so far.
 
-### READ-006 — Freeze artifacts lose domain names through tuple decomposition
+#### [ ] READ-006 — Freeze artifacts lose domain names through tuple decomposition
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -228,7 +228,11 @@ unsupported-artifact behavior.
 - **DEDUPLICATE:** Shared graph queries and repeated scope-to-function
   conversion policy should have one semantic owner.
 
-## Decisions and Coverage
+## Open Questions
+
+None recorded.
+
+## Coverage
 
 Reviewed the scope graph, two-pass scope builder, traversal protocol, lexical
 and assignment state, binding/provenance queries, syntax-name and bounded

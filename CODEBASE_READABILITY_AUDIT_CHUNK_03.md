@@ -19,7 +19,7 @@ multiple representations.
 
 ## Findings
 
-### READ-001 — Call-effect accessors repeatedly rebuild one call shape
+#### [ ] READ-001 — Call-effect accessors repeatedly rebuild one call shape
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -51,7 +51,7 @@ one derivation.
 
 **Fix Applied:** None so far.
 
-### READ-002 — Reversible flow mutations duplicate the entire delta algebra
+#### [ ] READ-002 — Reversible flow mutations duplicate the entire delta algebra
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -82,7 +82,7 @@ joined maps.
 
 **Fix Applied:** None so far.
 
-### READ-003 — Control-stack mismatch operations consume or hide frames
+#### [x] READ-003 — Control-stack mismatch operations consume or hide frames
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -121,7 +121,7 @@ The projector marks malformed control transitions incomplete instead of
 silently dropping frames or treating missing loop state as an empty result.
 Verified with `make fmt && make ci`.
 
-### READ-004 — ObjectFlowProjector owns too many mutable flow concerns
+#### [ ] READ-004 — ObjectFlowProjector owns too many mutable flow concerns
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -156,7 +156,7 @@ not a recommendation to introduce another semantic model or AST walk.
 
 **Fix Applied:** None so far.
 
-### READ-005 — Flow completion and exhaustion status has no single internal contract
+#### [ ] READ-005 — Flow completion and exhaustion status has no single internal contract
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -189,7 +189,7 @@ did not finish.
 
 **Fix Applied:** None so far.
 
-### READ-006 — Frozen and overlay summary paths repeat representation dispatch
+#### [ ] READ-006 — Frozen and overlay summary paths repeat representation dispatch
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -221,7 +221,7 @@ retain the overlay node bound and fail-closed invalid-path behavior.
 
 **Fix Applied:** None so far.
 
-### READ-007 — Flow emitters must panic to use a fallible evidence constructor
+#### [ ] READ-007 — Flow emitters must panic to use a fallible evidence constructor
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -256,7 +256,11 @@ exhaustion behavior.
   frozen/overlay path traversal each repeat semantic dispatch at critical
   identity boundaries.
 
-## Decisions and Coverage
+## Open Questions
+
+None recorded.
+
+## Coverage
 
 Reviewed local object projection, path and state snapshots, mutation history,
 control and loop handling, effect extraction, summary propagation, bound flow

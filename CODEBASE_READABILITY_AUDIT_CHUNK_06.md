@@ -18,7 +18,7 @@ constrained paths duplicate evidence-group construction.
 
 ## Findings
 
-### READ-001 — Call-fact projection repeatedly reconstructs one payload shape
+#### [ ] READ-001 — Call-fact projection repeatedly reconstructs one payload shape
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -51,7 +51,7 @@ fact/span identity and deterministic normalization.
 
 **Fix Applied:** None so far.
 
-### READ-002 — Overlay remapping uses a boolean mode beside a parallel source tuple
+#### [ ] READ-002 — Overlay remapping uses a boolean mode beside a parallel source tuple
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -83,7 +83,7 @@ promotion restriction, and the bounded operation count.
 
 **Fix Applied:** None so far.
 
-### READ-003 — `EventIndexView` redispatches capabilities across many matches
+#### [ ] READ-003 — `EventIndexView` redispatches capabilities across many matches
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -117,7 +117,7 @@ object matching, and `None` for unsupported or unavailable identity paths.
 
 **Fix Applied:** None so far.
 
-### READ-004 — Constrained matching coordinates preparation and two execution modes in one state protocol
+#### [ ] READ-004 — Constrained matching coordinates preparation and two execution modes in one state protocol
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -153,7 +153,7 @@ fail-closed behavior for missing effective arguments.
 
 **Fix Applied:** None so far.
 
-### READ-005 — Normal and constrained matchers duplicate evidence-group construction
+#### [ ] READ-005 — Normal and constrained matchers duplicate evidence-group construction
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -198,7 +198,11 @@ boundary.
 - **DEDUPLICATE:** Call-payload extraction and occurrence-to-evidence
   conversion are repeated at shared semantic boundaries.
 
-## Decisions and Coverage
+## Open Questions
+
+None recorded.
+
+## Coverage
 
 Reviewed occurrence storage and normalization, call/member/construction/literal
 index construction, module identity overlays and masking, borrowed and
