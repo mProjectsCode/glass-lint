@@ -22,7 +22,7 @@ against Chunks 1, 7, and 8. Those findings are not repeated here.
 
 ### Compiler phase contracts
 
-#### [ ] READ-001 — Give one plan phase ownership of executable requirements
+#### [ ] READ-068 — Give one plan phase ownership of executable requirements
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -59,7 +59,7 @@ plan explanations, and the fail-closed mismatch check during migration.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-002 — Centralize the identity/event/subject compatibility matrix
+#### [ ] READ-069 — Centralize the identity/event/subject compatibility matrix
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -100,7 +100,7 @@ construction.
 
 ### Canonical data and query analysis
 
-#### [ ] READ-003 — Keep canonical argument constraints in one executable representation
+#### [ ] READ-070 — Keep canonical argument constraints in one executable representation
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -134,7 +134,7 @@ existing matcher behavior for absent or dynamic arguments.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-004 — Share bounded query-shape facts across validation and normalization
+#### [ ] READ-071 — Share bounded query-shape facts across validation and normalization
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -174,7 +174,7 @@ variable renumbering.
 
 ### Rule authoring API
 
-#### [ ] READ-005 — Do not encode invalid value matchers as empty accepted sets
+#### [ ] READ-072 — Do not encode invalid value matchers as empty accepted sets
 
 - **Severity:** High
 - **Fix Complexity:** Low
@@ -202,7 +202,7 @@ diagnostics at the authoring boundary.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-006 — Choose one error-timing contract for fluent rule builders
+#### [ ] READ-073 — Choose one error-timing contract for fluent rule builders
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium

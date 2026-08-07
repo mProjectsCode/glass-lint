@@ -23,7 +23,7 @@ contracts themselves.
 
 ### Session construction and phase errors
 
-#### [ ] READ-001 — Make project-session construction an internal, infallible boundary
+#### [ ] READ-096 — Make project-session construction an internal, infallible boundary
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -55,7 +55,7 @@ shared artifact cache, selected catalog and evidence limit, and all consuming
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-002 — Separate project-input failures from session and execution failures
+#### [ ] READ-097 — Separate project-input failures from session and execution failures
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -93,7 +93,7 @@ distinction between parse diagnostics and worker failure.
 
 ### Identity and report contracts
 
-#### [ ] READ-003 — Give parse diagnostics one authoritative project path
+#### [ ] READ-098 — Give parse diagnostics one authoritative project path
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -127,7 +127,7 @@ grouping, and the existing parse-versus-project diagnostic distinction.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-004 — Keep `ModuleId` opaque to project callers
+#### [ ] READ-099 — Keep `ModuleId` opaque to project callers
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -159,7 +159,7 @@ project.
 
 ### Authored request result API
 
-#### [ ] READ-005 — Use one domain collection for authored-resolution requests
+#### [ ] READ-100 — Use one domain collection for authored-resolution requests
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium

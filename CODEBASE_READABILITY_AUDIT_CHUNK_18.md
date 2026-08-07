@@ -23,7 +23,7 @@ boundary.
 
 ### Rule metadata and crate ownership
 
-#### [ ] READ-001 — Remove provider taxonomy from the provider-neutral rule core
+#### [ ] READ-086 — Remove provider taxonomy from the provider-neutral rule core
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -56,7 +56,7 @@ and the absence of provider names/categories from core semantics.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-002 — Seal the nonempty-query invariant at rule construction
+#### [ ] READ-087 — Seal the nonempty-query invariant at rule construction
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -89,7 +89,7 @@ compiler planning.
 
 ### Query declaration surface
 
-#### [ ] READ-003 — Make event and identity specifications opaque validated values
+#### [ ] READ-088 — Make event and identity specifications opaque validated values
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -127,7 +127,7 @@ semantics.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-004 — Centralize event-selection expression assembly
+#### [ ] READ-089 — Centralize event-selection expression assembly
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -163,7 +163,7 @@ projection checks for `Any`, and the existing public convenience constructors.
 
 ### Error and bounded collection adapters
 
-#### [ ] READ-005 — Preserve module-pattern errors through query constructors
+#### [ ] READ-090 — Preserve module-pattern errors through query constructors
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -236,4 +236,3 @@ the canonical conversion is adopted.
   compared with Chunk 17 and excluded.
 - **Verification:** Read-only audit; no source, test, configuration, or
   dependency files were changed.
-

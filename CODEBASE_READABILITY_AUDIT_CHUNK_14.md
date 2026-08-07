@@ -22,7 +22,7 @@ Chunk 12. Those findings are not repeated here.
 
 ### Scope freeze and validity boundaries
 
-#### [ ] READ-001 — Separate the frozen lexical graph from mutable name interning
+#### [ ] READ-062 — Separate the frozen lexical graph from mutable name interning
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -57,7 +57,7 @@ conversion, and the fact that names remain local to one artifact.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-002 — Represent invalid scope queries separately from the program root
+#### [ ] READ-063 — Represent invalid scope queries separately from the program root
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -93,7 +93,7 @@ witness.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-003 — Seal mutation-index construction before exposing ordered queries
+#### [ ] READ-064 — Seal mutation-index construction before exposing ordered queries
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -129,7 +129,7 @@ static-object membership.
 
 ### Scope identity and history operations
 
-#### [ ] READ-004 — Centralize construction of versioned binding keys
+#### [ ] READ-065 — Centralize construction of versioned binding keys
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -162,7 +162,7 @@ between an unbound global root and a proven lexical binding.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-005 — Share owned checkpoint transition plumbing for assignment and write history
+#### [ ] READ-066 — Share owned checkpoint transition plumbing for assignment and write history
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -198,7 +198,7 @@ deterministic join behavior.
 
 ### Function identity indexing
 
-#### [ ] READ-006 — Let the binding index own function-span lookup
+#### [ ] READ-067 — Let the binding index own function-span lookup
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium

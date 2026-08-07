@@ -14,7 +14,7 @@ projection outcome.
 
 ### Call-effect view boundary
 
-#### [ ] READ-001 — Make `CallEffectRef` a closed call-shape boundary
+#### [ ] READ-036 — Make `CallEffectRef` a closed call-shape boundary
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -46,7 +46,7 @@ the separation between artifact-local facts and compiled rule plans.
 
 ### Prepared argument data
 
-#### [ ] READ-002 — Let `ArgumentData` own prepared-versus-arena fallback
+#### [ ] READ-037 — Let `ArgumentData` own prepared-versus-arena fallback
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -76,7 +76,7 @@ empty match.
 
 ### Projector frontier lifecycle
 
-#### [ ] READ-003 — Give `PathFrontier` ownership of path batches and transfer
+#### [ ] READ-038 — Give `PathFrontier` ownership of path batches and transfer
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -107,7 +107,7 @@ fail-closed behavior when restoration or the operation budget fails.
 
 ### Semantic path admission
 
-#### [ ] READ-004 — Share semantic-path admission between joins and loops
+#### [ ] READ-039 — Share semantic-path admission between joins and loops
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -138,7 +138,7 @@ cannot establish a definite witness.
 
 ### Local flow evidence sink
 
-#### [ ] READ-005 — Make bounded evidence reservation and recording one operation
+#### [ ] READ-040 — Make bounded evidence reservation and recording one operation
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -169,7 +169,7 @@ fact that an incomplete flow cannot be upgraded by evidence bookkeeping.
 
 ### Local projection completion
 
-#### [ ] READ-006 — Give local projection exhaustion one completion owner
+#### [ ] READ-041 — Give local projection exhaustion one completion owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium

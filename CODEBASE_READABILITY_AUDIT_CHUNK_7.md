@@ -16,7 +16,7 @@ parts of their owning policy.
 
 ### Fact-stream construction outcomes
 
-#### [ ] READ-001 — Unify fact append failures behind one stream outcome
+#### [ ] READ-031 — Unify fact append failures behind one stream outcome
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -46,7 +46,7 @@ fail-closed indexing of incomplete streams.
 
 ### Fact-stream phase storage
 
-#### [ ] READ-002 — Keep building and frozen stream storage in separate owners
+#### [ ] READ-032 — Keep building and frozen stream storage in separate owners
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -78,7 +78,7 @@ for diagnostics while refusing to index them.
 
 ### Cross-flow context matching
 
-#### [ ] READ-003 — Centralize context-to-use connectivity semantics
+#### [ ] READ-033 — Centralize context-to-use connectivity semantics
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -108,7 +108,7 @@ connectivity cannot establish a witness.
 
 ### Cross-flow projection orchestration
 
-#### [ ] READ-004 — Make one context runner own projection state and helpers
+#### [ ] READ-034 — Make one context runner own projection state and helpers
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -139,7 +139,7 @@ evidence emission through the shared trace arena.
 
 ### Cross-flow evidence storage
 
-#### [ ] READ-005 — Key rule evidence by its domain identity while accumulating
+#### [ ] READ-035 — Key rule evidence by its domain identity while accumulating
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium

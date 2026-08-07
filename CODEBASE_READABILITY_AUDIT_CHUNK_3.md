@@ -15,7 +15,7 @@ normalization/orchestration functions that combine policy phases.
 
 ### Cache identity ownership
 
-#### [ ] READ-001 — Make cache identity own its fingerprint representation
+#### [ ] READ-010 — Make cache identity own its fingerprint representation
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -48,7 +48,7 @@ evidence, link, and flow limits from local identity.
 
 ### Lowering completion policy
 
-#### [ ] READ-002 — Let one completion policy produce status and capabilities
+#### [ ] READ-011 — Let one completion policy produce status and capabilities
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -81,7 +81,7 @@ facts, paths, values, or invalid parser spans.
 
 ### Artifact sealing orchestration
 
-#### [ ] READ-003 — Split `ResolvedProgram::freeze` into named sealing phases
+#### [ ] READ-012 — Split `ResolvedProgram::freeze` into named sealing phases
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -113,7 +113,7 @@ capabilities are passed into `SemanticArtifact`.
 
 ### Matcher project context
 
-#### [ ] READ-004 — Encapsulate the shared matcher/project evaluation context
+#### [ ] READ-013 — Encapsulate the shared matcher/project evaluation context
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -146,7 +146,7 @@ and ambiguity/unknown fail-closed behavior.
 
 ### Evidence normalization phases
 
-#### [ ] READ-005 — Separate evidence grouping from bounded presentation
+#### [ ] READ-014 — Separate evidence grouping from bounded presentation
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium

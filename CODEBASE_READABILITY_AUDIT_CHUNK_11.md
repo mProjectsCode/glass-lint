@@ -19,7 +19,7 @@ the retained model APIs themselves and does not repeat those findings.
 
 ### Fact construction and argument semantics
 
-#### [ ] READ-001 — Make the fact stream the sole owner of fact identity
+#### [ ] READ-048 — Make the fact stream the sole owner of fact identity
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -53,7 +53,7 @@ append order, and the current fail-closed invalid-stream behavior.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-002 — Give retained calls one canonical effective-argument view
+#### [ ] READ-049 — Give retained calls one canonical effective-argument view
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -90,7 +90,7 @@ source locations, and the current fail-closed behavior.
 
 ### Flow limits and lifecycle evidence
 
-#### [ ] READ-003 — Make lifecycle index bounds a typed invariant
+#### [ ] READ-050 — Make lifecycle index bounds a typed invariant
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -125,7 +125,7 @@ domains distinct through the generic evidence owner.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-004 — Give operation budgets one explicit scope owner
+#### [ ] READ-051 — Give operation budgets one explicit scope owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -159,7 +159,7 @@ all other scaled limits.
 
 ### Module request ownership
 
-#### [ ] READ-005 — Validate module request ownership when recording star exports
+#### [ ] READ-052 — Validate module request ownership when recording star exports
 
 - **Severity:** Medium
 - **Fix Complexity:** Low

@@ -16,7 +16,7 @@ values directly.
 
 ### Value-model migration
 
-#### [ ] READ-001 — Remove the obsolete `analysis::value` type façade
+#### [ ] READ-026 — Remove the obsolete `analysis::value` type façade
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -41,7 +41,7 @@ identity-comparison behavior while removing the duplicate namespace.
 
 ### Global-object identity
 
-#### [ ] READ-002 — Make one owner define global-object path equivalence
+#### [ ] READ-027 — Make one owner define global-object path equivalence
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -68,7 +68,7 @@ comparable integers.
 
 ### Constant projection boundary
 
-#### [ ] READ-003 — Centralize constant conversion and recursive evaluation policy
+#### [ ] READ-028 — Centralize constant conversion and recursive evaluation policy
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -98,7 +98,7 @@ fact that a complete static witness remains distinct from an exhausted one.
 
 ### Trace storage boundary
 
-#### [ ] READ-004 — Keep trace arena storage and handles out of the public result API
+#### [ ] READ-029 — Keep trace arena storage and handles out of the public result API
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -127,7 +127,7 @@ and the rule that exhausted or invalid traces cannot become definite evidence.
 
 ### Value arena construction
 
-#### [ ] READ-005 — Hide raw value variants behind semantic arena operations
+#### [ ] READ-030 — Hide raw value variants behind semantic arena operations
 
 - **Severity:** High
 - **Fix Complexity:** High

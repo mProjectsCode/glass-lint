@@ -20,7 +20,7 @@ and Chunk 6 reports and are not repeated here.
 
 ### Scope identity and retained provenance
 
-#### [ ] READ-001 — Keep lexical scope identity independent of vector storage
+#### [ ] READ-053 — Keep lexical scope identity independent of vector storage
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -53,7 +53,7 @@ the invalid-shape fallback behavior, and artifact-local identity.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-002 — Seal bounded provenance joins before creating assignments
+#### [ ] READ-054 — Seal bounded provenance joins before creating assignments
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -90,7 +90,7 @@ the current behavior for zero or exhausted limits.
 
 ### Module request recognition
 
-#### [ ] READ-003 — Represent module-request permissions as named capabilities
+#### [ ] READ-055 — Represent module-request permissions as named capabilities
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium

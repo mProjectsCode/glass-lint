@@ -14,7 +14,7 @@ stream and expose multiple lifecycle modes.
 
 ### Effect extraction ownership
 
-#### [ ] READ-001 — Make the effect builder own its fact-stream context
+#### [ ] READ-005 — Make the effect builder own its fact-stream context
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -44,7 +44,7 @@ effect model.
 
 ### Reversible local state
 
-#### [ ] READ-002 — Keep mutation-log replay behind `FlowStateTable`
+#### [ ] READ-006 — Keep mutation-log replay behind `FlowStateTable`
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -74,7 +74,7 @@ restored state and an exhausted/failed restoration.
 
 ### State-capacity policy
 
-#### [ ] READ-003 — Centralize batched state-limit admission
+#### [ ] READ-007 — Centralize batched state-limit admission
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -102,7 +102,7 @@ fit.
 
 ### Cross-flow worklists
 
-#### [ ] READ-004 — Consolidate bounded deduplicating FIFO admission
+#### [ ] READ-008 — Consolidate bounded deduplicating FIFO admission
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -132,7 +132,7 @@ semantics are distinct.
 
 ### Function summary compatibility
 
-#### [ ] READ-005 — Separate invocation arity from parameter-path projection
+#### [ ] READ-009 — Separate invocation arity from parameter-path projection
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -176,7 +176,7 @@ unsupported projection cannot establish a flow witness.
 - Confirm whether `FunctionEffectsBuilder` is intentionally designed for a
   future multi-stream feed; all current call sites construct and consume it
   against one frozen stream, which supports the ownership simplification in
-  READ-001.
+  READ-005.
 - Measure whether the shared bounded queue should expose separate retained and
   pending limits. The two current worklists use related but not identical
   bounds, so a refactor must not silently collapse those budgets.

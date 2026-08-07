@@ -23,7 +23,7 @@ contracts themselves.
 
 ### Classification values and evidence storage
 
-#### [ ] READ-001 — Make classification evidence own its count and truncation invariant
+#### [ ] READ-081 — Make classification evidence own its count and truncation invariant
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -63,7 +63,7 @@ trace-handle boundary identified in Chunk 6.
 
 ### Compiler error and phase boundaries
 
-#### [ ] READ-002 — Separate authored query diagnostics from compiler invariant failures
+#### [ ] READ-082 — Separate authored query diagnostics from compiler invariant failures
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -103,7 +103,7 @@ plans.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-003 — Give physical roots typed object-slot and relation constructors
+#### [ ] READ-083 — Give physical roots typed object-slot and relation constructors
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -143,7 +143,7 @@ and requirement checks already identified in Chunk 15.
 
 ### Normalization and lifecycle semantics
 
-#### [ ] READ-004 — Seal same-event merging through a phase-aware accumulator
+#### [ ] READ-084 — Seal same-event merging through a phase-aware accumulator
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -181,7 +181,7 @@ state rather than a generic invariant string.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-005 — Give lifecycle modes one semantic owner across execution and reference evaluation
+#### [ ] READ-085 — Give lifecycle modes one semantic owner across execution and reference evaluation
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -259,4 +259,3 @@ detects semantic drift, and all lifecycle limits.
   handles, and flow evidence reservation/finalization were compared with
   Chunks 6, 7, 8, 13, 15, and 16 and not repeated as the same finding.
 - **Verification:** Read-only audit; no source or test changes were made.
-

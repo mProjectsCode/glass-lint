@@ -22,7 +22,7 @@ kept separate.
 
 ### Configuration and linter construction
 
-#### [ ] READ-001 — Give rule-baseline composition one configuration owner
+#### [ ] READ-091 — Give rule-baseline composition one configuration owner
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -59,7 +59,7 @@ diagnostics, and provider-specific catalog construction.
 
 ### Bounded parsing and source positions
 
-#### [ ] READ-002 — Give syntax-depth admission one scanner execution path
+#### [ ] READ-092 — Give syntax-depth admission one scanner execution path
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -95,7 +95,7 @@ configured maximum.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-003 — Seal source offsets before `SourceLineIndex` position math
+#### [ ] READ-093 — Seal source offsets before `SourceLineIndex` position math
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -128,7 +128,7 @@ layer's fail-closed behavior for spans that cannot be converted.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-004 — Keep parser diagnostics fallible at the SWC span boundary
+#### [ ] READ-094 — Keep parser diagnostics fallible at the SWC span boundary
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -162,7 +162,7 @@ partial reports.
 
 ### Rule-selection API
 
-#### [ ] READ-005 — Store `RuleState` as the override’s domain value
+#### [ ] READ-095 — Store `RuleState` as the override’s domain value
 
 - **Severity:** Medium
 - **Fix Complexity:** Low

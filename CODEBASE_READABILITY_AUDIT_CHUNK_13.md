@@ -21,7 +21,7 @@ are not repeated here.
 
 ### Project graph and export-table ownership
 
-#### [ ] READ-001 — Seal graph normalization before SCC and neighbor queries
+#### [ ] READ-056 — Seal graph normalization before SCC and neighbor queries
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -55,7 +55,7 @@ and the current oversized-component fallback.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-002 — Make `ExportTable` the sole owner of export-entry admission
+#### [ ] READ-057 — Make `ExportTable` the sole owner of export-entry admission
 
 - **Severity:** High
 - **Fix Complexity:** Low
@@ -89,7 +89,7 @@ replacement, and the existing bounded failure behavior.
 
 ### Export resolution
 
-#### [ ] READ-003 — Own the export-recursion guard inside `ExportResolver`
+#### [ ] READ-058 — Own the export-recursion guard inside `ExportResolver`
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -120,7 +120,7 @@ the distinction between unknown and ambiguous exports.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-004 — Centralize known linked-target conversion
+#### [ ] READ-059 — Centralize known linked-target conversion
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -155,7 +155,7 @@ targets.
 
 ### Projection plan and public model boundary
 
-#### [ ] READ-005 — Bind planned lifecycle flows to their physical roots
+#### [ ] READ-060 — Bind planned lifecycle flows to their physical roots
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -187,7 +187,7 @@ semantics.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-006 — Replace pointer identity with a model-owned evidence handle
+#### [ ] READ-061 — Replace pointer identity with a model-owned evidence handle
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium

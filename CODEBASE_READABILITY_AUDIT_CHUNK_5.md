@@ -16,7 +16,7 @@ the build and query phases repeat expression-shape normalization.
 
 ### Control-flow state ownership
 
-#### [ ] READ-001 — Move path joins behind a path-state operation
+#### [ ] READ-021 — Move path joins behind a path-state operation
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -48,7 +48,7 @@ ordering, and fail-closed `InvalidCheckpoint` behavior.
 
 ### Phase-neutral traversal lifecycle
 
-#### [ ] READ-002 — Centralize balanced scope and loop traversal helpers
+#### [ ] READ-022 — Centralize balanced scope and loop traversal helpers
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -77,7 +77,7 @@ retain the current ordering for tests, parameters, decorators, loop headers,
 
 ### Collector responsibility boundary
 
-#### [ ] READ-003 — Split the broad mutable scope collector state
+#### [ ] READ-023 — Split the broad mutable scope collector state
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -108,7 +108,7 @@ unknown or dynamically invalidated values.
 
 ### Freeze representation
 
-#### [ ] READ-004 — Replace tuple-shaped scope artifact extraction with a sealing API
+#### [ ] READ-024 — Replace tuple-shaped scope artifact extraction with a sealing API
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -138,7 +138,7 @@ ordering, and the immutable `FrozenScopeGraph` boundary.
 
 ### Expression-shape normalization
 
-#### [ ] READ-005 — Share wrapper and member-chain normalization across scope phases
+#### [ ] READ-025 — Share wrapper and member-chain normalization across scope phases
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium

@@ -22,7 +22,7 @@ identity-storage findings from Chunks 4, 8, 11, and 14 were not repeated.
 
 ### Catalog and selection ownership
 
-#### [ ] READ-001 — Store catalog identity and compiled records under one index owner
+#### [ ] READ-074 — Store catalog identity and compiled records under one index owner
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -57,7 +57,7 @@ absence of source query declarations after compilation.
 
 ### Local execution and batch lifecycle
 
-#### [ ] READ-002 — Give one project owner the cache/lowering transition
+#### [ ] READ-075 — Give one project owner the cache/lowering transition
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -93,7 +93,7 @@ request sorting.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-003 — Make pending batch entries own index, path, and completion state
+#### [ ] READ-076 — Make pending batch entries own index, path, and completion state
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -126,7 +126,7 @@ input-order delivery, `size_hint`, and cancellation behavior unchanged.
 
 ### Project input and phase boundaries
 
-#### [ ] READ-004 — Trust validated project types at the phase boundary
+#### [ ] READ-077 — Trust validated project types at the phase boundary
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -163,7 +163,7 @@ external input, and fail-closed rejection of unknown requests.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-005 — Keep public report transformations inside the deterministic finalization boundary
+#### [ ] READ-078 — Keep public report transformations inside the deterministic finalization boundary
 
 - **Severity:** High
 - **Fix Complexity:** Low
@@ -196,7 +196,7 @@ diagnostics without changing finding semantics.
 
 ### Numeric and metric APIs
 
-#### [ ] READ-006 — Replace positional limit construction with named limit operations
+#### [ ] READ-079 — Replace positional limit construction with named limit operations
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -224,7 +224,7 @@ created.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-007 — Give operation-count accumulation a staged owner
+#### [ ] READ-080 — Give operation-count accumulation a staged owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium

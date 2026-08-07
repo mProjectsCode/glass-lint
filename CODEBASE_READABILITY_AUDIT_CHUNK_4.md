@@ -16,7 +16,7 @@ state.
 
 ### Retained module-model migration
 
-#### [ ] READ-001 — Remove the obsolete `analysis::module` re-export boundary
+#### [ ] READ-015 — Remove the obsolete `analysis::module` re-export boundary
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -41,7 +41,7 @@ boundary, and do not reintroduce parser or provider types into the model.
 
 ### Module request representation
 
-#### [ ] READ-002 — Delete redundant retained re-export bindings
+#### [ ] READ-016 — Delete redundant retained re-export bindings
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -68,7 +68,7 @@ and conservative behavior for unsupported or ambiguous exports.
 
 ### Flow budget model
 
-#### [ ] READ-003 — Give local and project flow budgets distinct owners
+#### [ ] READ-017 — Give local and project flow budgets distinct owners
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -96,7 +96,7 @@ charging, and deterministic exhaustion reporting.
 
 ### Position-sensitive resolution
 
-#### [ ] READ-004 — Consolidate cached resolution construction
+#### [ ] READ-018 — Consolidate cached resolution construction
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -127,7 +127,7 @@ unknown or exhausted results.
 
 ### Project lookup boundary
 
-#### [ ] READ-005 — Share the project lookup adapter used by linking
+#### [ ] READ-019 — Share the project lookup adapter used by linking
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -157,7 +157,7 @@ unsupported, outside-project, or conflicting resolutions.
 
 ### Linked model lifecycle
 
-#### [ ] READ-006 — Separate immutable linked semantics from report-session state
+#### [ ] READ-020 — Separate immutable linked semantics from report-session state
 
 - **Severity:** High
 - **Fix Complexity:** High

@@ -18,7 +18,7 @@ reviewed against the existing Chunk 3 report and are not repeated here.
 
 ### Candidate occurrence contract
 
-#### [ ] READ-001 — Give candidate occurrence selection one explicit contract
+#### [ ] READ-045 — Give candidate occurrence selection one explicit contract
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -58,7 +58,7 @@ physical occurrences and distinct semantic facts.
 
 ### Event index view
 
-#### [ ] READ-002 — Remove duplicate physical references from `EventIndexView`
+#### [ ] READ-046 — Remove duplicate physical references from `EventIndexView`
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -88,7 +88,7 @@ property-write behavior.
 
 ### Effective project identity
 
-#### [ ] READ-003 — Centralize constrained-matcher identity precedence
+#### [ ] READ-047 — Centralize constrained-matcher identity precedence
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium

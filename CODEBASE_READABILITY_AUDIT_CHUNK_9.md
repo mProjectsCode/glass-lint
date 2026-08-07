@@ -19,7 +19,7 @@ repeated here.
 
 ### Summary path identity
 
-#### [ ] READ-001 — Make summary path identity store-owned
+#### [ ] READ-042 — Make summary path identity store-owned
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -57,7 +57,7 @@ path ordering.
 
 ### Summary sink admission
 
-#### [ ] READ-002 — Centralize bounded summary-sink admission
+#### [ ] READ-043 — Centralize bounded summary-sink admission
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -96,7 +96,7 @@ cleared rather than treated as a complete witness.
 
 ### Summary collection lifecycle
 
-#### [ ] READ-003 — Give summary collection one explicit completion owner
+#### [ ] READ-044 — Give summary collection one explicit completion owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
