@@ -129,6 +129,8 @@ fn is_js_identifier_continue(c: char) -> bool {
     swc_ecma_ast::Ident::is_valid_continue(c)
 }
 
+// TODO: what is the difference between this and a SymbolPath??? Why do we need
+// this similar extra type? Can we unify them?
 struct GlobalObjectPath<'a> {
     segments: SmallVec<[&'a str; 4]>,
 }

@@ -19,6 +19,8 @@ mod diagnostics;
 mod evidence;
 mod summary;
 
+// TODO: use mod.rs convention
+
 /// Result of linking and matching a resolved project, including phase timings.
 pub struct ProjectAnalysis {
     report: AnalysisReport,
@@ -117,6 +119,8 @@ pub(super) struct ReportAssembly<'a> {
     enabled: &'a [RuleIndex],
     evidence_limit: usize,
 }
+
+// TODO: So these following three structs just exist to be assembled and then immediately consumed again. That seems like pointless overcomplication.
 
 struct LinkedReport {
     project: ProjectSemanticModel,
