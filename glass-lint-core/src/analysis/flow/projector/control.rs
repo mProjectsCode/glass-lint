@@ -43,7 +43,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             ControlKind::BranchStart => {
                 self.control.push(ControlFrame::Branch {
                     region,
-                    base: self.frontier.paths.clone(),
+                    base: self.frontier.snapshot_paths(),
                     then_exit: None,
                 });
             }
@@ -51,7 +51,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 if let Some(ControlFrame::Branch { base, .. }) =
                     self.control.last_matching_mut(region)
                 {
-                    base.clone_from(&self.frontier.paths);
+                    *base = self.frontier.snapshot_paths();
                 }
             }
             ControlKind::BranchElse => {
@@ -59,13 +59,13 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     base, then_exit, ..
                 }) = self.control.last_matching_mut(region)
                 {
-                    *then_exit = Some(self.frontier.paths.clone());
+                    *then_exit = Some(self.frontier.snapshot_paths());
                     Some(base.clone())
                 } else {
                     None
                 };
                 if let Some(base) = base {
-                    self.frontier.set(base);
+                    self.frontier.replace_paths(base);
                 }
             }
             ControlKind::BranchEnd => {
@@ -76,7 +76,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     return;
                 };
                 let mut paths = then_exit.unwrap_or(base);
-                paths.append(&mut self.frontier.paths);
+                paths.extend(self.frontier.take_paths());
                 self.join_paths(paths);
             }
             _ => unreachable!(),
@@ -89,7 +89,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 self.control.push(ControlFrame::Loop {
                     region,
                     body_start: FactId::new(fact.raw().saturating_add(1)),
-                    baseline: self.frontier.paths.clone(),
+                    baseline: self.frontier.snapshot_paths(),
                     guaranteed,
                     breaks: Vec::new(),
                     continues: Vec::new(),
@@ -97,8 +97,8 @@ impl ObjectFlowProjector<'_, '_, '_> {
             }
             ControlKind::LoopUpdate => {
                 let continues = self.control.take_loop_continues();
-                self.frontier.paths.extend(continues);
-                let paths = self.frontier.take();
+                self.frontier.append_paths(continues);
+                let paths = self.frontier.take_paths();
                 self.join_paths(paths);
             }
             ControlKind::LoopEnd => {
@@ -124,7 +124,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             ControlKind::SwitchStart => {
                 self.control.push(ControlFrame::Switch {
                     region,
-                    baseline: self.frontier.paths.clone(),
+                    baseline: self.frontier.snapshot_paths(),
                     breaks: Vec::new(),
                     has_default: false,
                 });
@@ -137,7 +137,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                         ..
                     }) => {
                         *has_default |= is_default;
-                        (baseline.clone(), self.frontier.take())
+                        (baseline.clone(), self.frontier.take_paths())
                     }
                     _ => return,
                 };
@@ -155,7 +155,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 else {
                     return;
                 };
-                let mut paths = self.frontier.take();
+                let mut paths = self.frontier.take_paths();
                 paths.extend(breaks);
                 if !has_default {
                     paths.extend(baseline);
@@ -171,7 +171,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             ControlKind::TryStart => {
                 self.control.push(ControlFrame::Try {
                     region,
-                    baseline: self.frontier.paths.clone(),
+                    baseline: self.frontier.snapshot_paths(),
                     try_exit: None,
                     catch_exit: None,
                     normal_exit: None,
@@ -185,12 +185,12 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     Some(ControlFrame::Try {
                         baseline, try_exit, ..
                     }) => {
-                        *try_exit = Some(self.frontier.take());
+                        *try_exit = Some(self.frontier.take_paths());
                         baseline.clone()
                     }
                     _ => return,
                 };
-                self.frontier.set(baseline);
+                self.frontier.replace_paths(baseline);
             }
             ControlKind::FinallyStart => self.start_finally(region),
             ControlKind::TryEnd => self.end_try(region),
@@ -199,7 +199,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
     }
 
     fn start_finally(&mut self, region: ControlRegionId) {
-        let current = self.frontier.take();
+        let current = self.frontier.take_paths();
         let incoming = if let Some(ControlFrame::Try {
             try_exit,
             catch_exit,
@@ -239,7 +239,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             return;
         };
         if has_finally {
-            let after = self.frontier.take();
+            let after = self.frontier.take_paths();
             let normal_len = normal_count.min(after.len());
             let normal = after[..normal_len].to_vec();
             for (abrupt_index, (kind, _)) in (normal_len..).zip(abrupt_exits) {
@@ -248,11 +248,11 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 };
                 self.control.route_abrupt(kind, environment);
             }
-            self.frontier.set(normal);
+            self.frontier.replace_paths(normal);
         } else {
             let mut paths = try_exit.unwrap_or_default();
             paths.extend(catch_exit.unwrap_or_else(|| normal_exit.unwrap_or_default()));
-            paths.append(&mut self.frontier.paths);
+            paths.extend(self.frontier.take_paths());
             self.join_paths(paths);
         }
     }
@@ -264,7 +264,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             ControlKind::Return => AbruptExit::Return,
             _ => unreachable!(),
         };
-        let current = self.frontier.take();
+        let current = self.frontier.take_paths();
         for environment in &current {
             self.control.record_abrupt_exit(abrupt, environment);
         }

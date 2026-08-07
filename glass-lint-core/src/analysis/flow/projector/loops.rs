@@ -139,7 +139,7 @@ impl LoopFixedPoint {
             let mut next = outputs;
             next.append(&mut projector.control.take_loop_continues());
             projector.join_paths(next);
-            let candidate = projector.frontier.take();
+            let candidate = projector.frontier.take_paths();
             self.exits.extend(candidate.iter().copied());
 
             self.exits

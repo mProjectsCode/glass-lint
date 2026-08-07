@@ -80,7 +80,7 @@ locally. Dynamic and unavailable values remain fail-closed.
 
 ### Projector frontier lifecycle
 
-#### [ ] READ-038 — Give `PathFrontier` ownership of path batches and transfer
+#### [x] READ-038 — Give `PathFrontier` ownership of path batches and transfer
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -107,7 +107,12 @@ than adding a boolean mode. Preserve generation invalidation, path-local
 correlation, pending-state finalization timing, deterministic ordering, and
 fail-closed behavior when restoration or the operation budget fails.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Encapsulated frontier path storage behind snapshot, replace,
+append, take, count, and presence operations, removing direct vector access
+from control transitions and loop replay. Centralized per-environment
+operation charging, restoration, reachability, and failure classification in
+the projector’s `restore_path` helper while keeping ordinary transfer and
+function replay as separate phases.
 
 ### Semantic path admission
 
