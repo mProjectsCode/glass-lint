@@ -1,6 +1,5 @@
 use smol_str::SmolStr;
 
-use super::requirements::PlanRequirements;
 use crate::api::{
     classification::MatchKind,
     rule::{
@@ -20,7 +19,6 @@ use crate::api::{
 pub(crate) struct NormalizedQuery {
     pub(crate) root: NormalizedRoot,
     pub(crate) emission: NormalizedEmission,
-    pub(crate) requirements: PlanRequirements,
 }
 
 impl NormalizedQuery {
@@ -30,10 +28,6 @@ impl NormalizedQuery {
 
     pub(crate) fn emission(&self) -> &NormalizedEmission {
         &self.emission
-    }
-
-    pub(crate) fn requirements(&self) -> &PlanRequirements {
-        &self.requirements
     }
 }
 

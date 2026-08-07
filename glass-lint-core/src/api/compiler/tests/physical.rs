@@ -313,7 +313,7 @@ fn empty_identity_fails_validation() {
         },
     }]);
     assert_eq!(
-        PhysicalPlan::try_new(roots.clone(), PlanRequirements::default()),
+        PhysicalPlan::try_new(roots.clone(), &PlanRequirements::default()),
         Err(PhysicalPlanValidationError::ImpossibleDimensions)
     );
     let plan = PhysicalPlan::new(roots, PlanRequirements::default());

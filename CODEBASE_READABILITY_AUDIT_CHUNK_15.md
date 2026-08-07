@@ -22,7 +22,7 @@ against Chunks 1, 7, and 8. Those findings are not repeated here.
 
 ### Compiler phase contracts
 
-#### [ ] READ-068 — Give one plan phase ownership of executable requirements
+#### [x] READ-068 — Give one plan phase ownership of executable requirements
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -57,7 +57,13 @@ compiler can request, or remove an unrequestable flag until its owner exists.
 Preserve exact project/value preparation, flow short-circuiting, deterministic
 plan explanations, and the fail-closed mismatch check during migration.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed capability requirements from normalized IR and made
+`PhysicalRoot::requirements` the single executable mapping. `PhysicalPlan`
+now derives requirements from validated roots; callers may provide an
+expected set only for an explicit fail-closed mismatch check. Normalization
+and physical compiler tests continue to cover constrained values, project
+overlays, flow, alternatives, and deterministic plans. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-069 — Centralize the identity/event/subject compatibility matrix
 

@@ -9,6 +9,7 @@ use crate::api::{
     compiler::{
         normalize::{self},
         normalized::{NormalizedQuery, NormalizedRoot},
+        physical,
         requirements::{PlanRequirements, ProjectRequirement, ValueResolutionRequirement},
     },
     rule::{
@@ -53,6 +54,13 @@ fn lifecycle(
 
 fn normalize_ok(decl: &QueryDecl) -> NormalizedQuery {
     normalize::normalize_query_decl(decl).unwrap()
+}
+
+fn plan_requirements(query: &NormalizedQuery) -> PlanRequirements {
+    physical::plan_normalized(query)
+        .unwrap()
+        .requirements()
+        .clone()
 }
 
 mod algebra;

@@ -127,10 +127,8 @@ fn normalization_is_idempotent() {
     let normalized = normalize_ok(&d);
     let slots = normalize::collect_normalized_slots(normalized.root());
     assert_eq!(slots, vec![0, 1, 2]);
-    assert_eq!(
-        normalized.requirements(),
-        &PlanRequirements::for_root(normalized.root())
-    );
+    let plan = super::plan_requirements(&normalized);
+    assert!(plan.value_resolution().is_empty());
     match normalized.root() {
         NormalizedRoot::Any(branches) => {
             assert!(
@@ -300,7 +298,7 @@ fn uncorrelated_all_fails_with_uncorrelated_conjunction() {
 fn simple_query_has_no_matcher_specific_preparation_requirements() {
     let d = decl(event(0, "fetch"), 0, "fetch");
     let nq = normalize_ok(&d);
-    let req = nq.requirements();
+    let req = super::plan_requirements(&nq);
     assert!(req.value_resolution().is_empty());
     assert!(!req.flow().local());
     assert!(!req.needs_project_overlay());
@@ -314,7 +312,7 @@ fn constrained_query_has_fact_stream() {
         .unwrap();
     let d = eq.into_query();
     let nq = normalize_ok(&d);
-    let req = nq.requirements();
+    let req = super::plan_requirements(&nq);
     assert!(
         req.value_resolution()
             .contains(&ValueResolutionRequirement::LocalStaticValues)
@@ -327,7 +325,7 @@ fn module_query_has_project_overlay() {
         .unwrap()
         .into_query();
     let nq = normalize_ok(&d);
-    let req = nq.requirements();
+    let req = super::plan_requirements(&nq);
     assert!(req.needs_project_overlay());
     assert_eq!(
         req.project_requirements(),
@@ -342,7 +340,7 @@ fn module_query_has_project_overlay() {
 fn global_query_does_not_need_project_overlay() {
     let d = decl(event(0, "fetch"), 0, "fetch");
     let nq = normalize_ok(&d);
-    let req = nq.requirements();
+    let req = super::plan_requirements(&nq);
     assert!(!req.needs_project_overlay());
 }
 
@@ -357,7 +355,7 @@ fn any_merges_requirements_from_branches() {
     let any = QueryDecl::any_with_evidence(branches.into_iter().map(Ok), "test").unwrap();
     let d = any.with_evidence(MatchKind::Call, "test");
     let nq = normalize_ok(&d);
-    let req = nq.requirements();
+    let req = super::plan_requirements(&nq);
     assert!(
         req.needs_project_overlay(),
         "Any with module branch should need project overlay"
@@ -396,7 +394,7 @@ fn lifecycle_has_flow_requirements() {
         },
     );
     let nq = normalize_ok(&d);
-    let req = nq.requirements();
+    let req = super::plan_requirements(&nq);
     assert!(req.flow().local(), "lifecycle should need local flow");
     assert!(
         req.flow().cross_call(),
@@ -408,7 +406,7 @@ fn lifecycle_has_flow_requirements() {
 fn global_query_has_only_calls_requirement() {
     let d = EventQuery::call_global("fetch").unwrap().into_query();
     let nq = normalize_ok(&d);
-    let req = nq.requirements();
+    let req = super::plan_requirements(&nq);
     assert!(req.value_resolution().is_empty());
     assert!(!req.flow().local());
     assert!(!req.flow().cross_call());

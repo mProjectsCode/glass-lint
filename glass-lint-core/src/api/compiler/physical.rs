@@ -69,6 +69,29 @@ pub(crate) enum PhysicalRoot {
 }
 
 impl PhysicalRoot {
+    /// Describe the preparation capabilities owned by this executable root.
+    /// Keeping this mapping on the physical operator makes the executable
+    /// plan the single source of truth for runtime requirements.
+    fn requirements(&self) -> PlanRequirements {
+        let mut requirements = PlanRequirements::default();
+        match self {
+            Self::IndexedScan { identity, .. } => requirements.require_identity(identity),
+            Self::ConstrainedScan { identity, .. } => {
+                requirements.require_local_static_values();
+                requirements.require_identity(identity);
+            }
+            Self::ReturnedSubject { .. } => {}
+            Self::InstanceSubject { constructor, .. } => {
+                requirements.require_identity(constructor);
+            }
+            Self::Lifecycle { .. } => {
+                requirements.require_local_flow();
+                requirements.require_cross_call_flow();
+            }
+        }
+        requirements
+    }
+
     fn validate(&self) -> Result<(), PhysicalPlanValidationError> {
         match self {
             Self::IndexedScan {
@@ -177,15 +200,24 @@ pub(crate) struct PhysicalPlan {
 }
 
 impl PhysicalPlan {
-    pub(crate) fn try_new(
-        roots: Box<[PhysicalRoot]>,
-        requirements: PlanRequirements,
-    ) -> Result<Self, PhysicalPlanValidationError> {
+    fn from_roots(roots: Box<[PhysicalRoot]>) -> Result<Self, PhysicalPlanValidationError> {
+        let requirements = requirements_for_roots(&roots);
         let plan = Self {
             roots,
             requirements,
         };
         validate_physical_plan(&plan)?;
+        Ok(plan)
+    }
+
+    pub(crate) fn try_new(
+        roots: Box<[PhysicalRoot]>,
+        requirements: &PlanRequirements,
+    ) -> Result<Self, PhysicalPlanValidationError> {
+        let plan = Self::from_roots(roots)?;
+        if plan.requirements != *requirements {
+            return Err(PhysicalPlanValidationError::RequirementsMismatch);
+        }
         Ok(plan)
     }
 
@@ -339,7 +371,7 @@ pub(crate) fn plan_normalized(
     let kind = emission.kind();
     let symbol = emission.symbol();
     let roots = plan_root(nq.root(), kind, symbol);
-    PhysicalPlan::try_new(roots.into_boxed_slice(), nq.requirements().clone())
+    PhysicalPlan::from_roots(roots.into_boxed_slice())
 }
 
 fn plan_root(root: &NormalizedRoot, kind: MatchKind, symbol: &str) -> Vec<PhysicalRoot> {
@@ -428,32 +460,16 @@ pub(crate) fn validate_physical_plan(
     for root in plan.roots() {
         root.validate()?;
     }
-    if executable_requirements(plan.roots()) != *plan.requirements() {
+    if requirements_for_roots(plan.roots()) != *plan.requirements() {
         return Err(PhysicalPlanValidationError::RequirementsMismatch);
     }
     Ok(())
 }
 
-fn executable_requirements(roots: &[PhysicalRoot]) -> PlanRequirements {
+fn requirements_for_roots(roots: &[PhysicalRoot]) -> PlanRequirements {
     let mut requirements = PlanRequirements::default();
     for root in roots {
-        match root {
-            PhysicalRoot::ConstrainedScan { identity, .. }
-            | PhysicalRoot::IndexedScan { identity, .. } => {
-                if matches!(root, PhysicalRoot::ConstrainedScan { .. }) {
-                    requirements.require_local_static_values();
-                }
-                requirements.require_identity(identity);
-            }
-            PhysicalRoot::ReturnedSubject { .. } => {}
-            PhysicalRoot::InstanceSubject { constructor, .. } => {
-                requirements.require_identity(constructor);
-            }
-            PhysicalRoot::Lifecycle { .. } => {
-                requirements.require_local_flow();
-                requirements.require_cross_call_flow();
-            }
-        }
+        requirements.merge_from(&root.requirements());
     }
     requirements
 }

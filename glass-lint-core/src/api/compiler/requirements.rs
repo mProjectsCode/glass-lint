@@ -1,12 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::api::{
-    compiler::{
-        IdentityConstraint, lower_identity,
-        normalized::{NormalizedEvent, NormalizedLifecycle, NormalizedRoot, NormalizedSubject},
-    },
-    rule::query::IdentitySpec,
-};
+use crate::api::compiler::IdentityConstraint;
 
 // ── Plan requirements ─────────────────────────────────────────────────────
 
@@ -195,43 +189,5 @@ impl PlanRequirements {
         self.flow.cross_call |= other.flow.cross_call;
         self.flow.cross_file |= other.flow.cross_file;
         self.project.extend(other.project.iter().cloned());
-    }
-
-    fn for_event(event: &NormalizedEvent) -> Self {
-        let mut requirements = Self::default();
-        if !event.arguments.is_empty() {
-            requirements.require_local_static_values();
-        }
-        requirements.require_identity(&lower_identity(event_identity(event)));
-        requirements
-    }
-
-    fn for_lifecycle(_lc: &NormalizedLifecycle) -> Self {
-        let mut requirements = Self::default();
-        requirements.require_local_flow();
-        requirements.require_cross_call_flow();
-        requirements
-    }
-
-    pub(crate) fn for_root(root: &NormalizedRoot) -> Self {
-        match root {
-            NormalizedRoot::Event(ev) => Self::for_event(ev),
-            NormalizedRoot::Any(branches) => {
-                let mut req = Self::default();
-                for b in branches {
-                    req.merge_from(&Self::for_root(b));
-                }
-                req
-            }
-            NormalizedRoot::Lifecycle(lc) => Self::for_lifecycle(lc),
-        }
-    }
-}
-
-fn event_identity(event: &NormalizedEvent) -> &IdentitySpec {
-    match &event.subject {
-        NormalizedSubject::Direct { identity } => identity,
-        NormalizedSubject::Returned { producer, .. } => producer,
-        NormalizedSubject::Instance { constructor, .. } => constructor,
     }
 }

@@ -228,7 +228,7 @@ fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildEr
     }
 
     let physical_plan =
-        PhysicalPlan::try_new(physical::optimize_roots(all_roots), merged_requirements)
+        PhysicalPlan::try_new(physical::optimize_roots(all_roots), &merged_requirements)
             .map_err(|e| MatcherBuildError::InvalidPhysicalPlan(e.to_string()))?;
 
     Ok(physical_plan)

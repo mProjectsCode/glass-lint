@@ -10,7 +10,6 @@ use crate::api::{
             NormalizedLifecycleCompletion, NormalizedLifecycleCondition, NormalizedLifecycleEvent,
             NormalizedLifecycleSink, NormalizedRoot, NormalizedSubject,
         },
-        requirements::PlanRequirements,
         validate::QueryCompileError,
     },
     rule::query::{
@@ -32,7 +31,6 @@ use crate::api::{
 /// 6. Sort order-independent branches.
 /// 7. Deduplicate equal branches.
 /// 8. Alpha-normalize variables into deterministic dense slots.
-/// 9. Compute exact plan requirements.
 pub(crate) fn normalize_query_decl(decl: &QueryDecl) -> Result<NormalizedQuery, QueryCompileError> {
     let mut root = normalize_root(decl.expression(), decl.emission())?;
 
@@ -40,16 +38,12 @@ pub(crate) fn normalize_query_decl(decl: &QueryDecl) -> Result<NormalizedQuery, 
     // independent of author-assigned VarId values.
     alpha_renumber_slots(&mut root);
 
-    // Step 9: Compute exact plan requirements.
-    let req = PlanRequirements::for_root(&root);
-
     let nq = NormalizedQuery {
         root,
         emission: NormalizedEmission {
             kind: decl.emission().kind(),
             symbol: decl.emission().symbol().to_owned(),
         },
-        requirements: req,
     };
 
     // Post-normalization invariant validation.
@@ -79,12 +73,6 @@ fn validate_normalized(nq: &NormalizedQuery) -> Result<(), QueryCompileError> {
     if nq.emission.symbol.trim().is_empty() {
         return Err(QueryCompileError::InternalInvariant {
             detail: "normalized evidence symbol is empty".into(),
-        });
-    }
-    let expected_requirements = PlanRequirements::for_root(&nq.root);
-    if expected_requirements != nq.requirements {
-        return Err(QueryCompileError::InternalInvariant {
-            detail: "normalized plan requirements do not match normalized root".into(),
         });
     }
     Ok(())
