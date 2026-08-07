@@ -58,7 +58,8 @@ pub enum Diagnostic {
 }
 
 impl Diagnostic {
-    pub(crate) fn parse(path: ProjectRelativePath, diagnostic: crate::ParseDiagnostic) -> Self {
+    pub(crate) fn parse(path: ProjectRelativePath, mut diagnostic: crate::ParseDiagnostic) -> Self {
+        diagnostic.filename = path.to_string();
         Self::Parse { path, diagnostic }
     }
 

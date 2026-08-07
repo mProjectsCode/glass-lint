@@ -100,7 +100,7 @@ distinction between parse diagnostics and worker failure.
 
 ### Identity and report contracts
 
-#### [ ] READ-098 — Give parse diagnostics one authoritative project path
+#### [x] READ-098 — Give parse diagnostics one authoritative project path
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -130,7 +130,15 @@ caller-supplied identity path after migration. Preserve standalone parser
 diagnostics, normalized project paths, source ranges, deterministic file
 grouping, and the existing parse-versus-project diagnostic distinction.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The report-layer `Diagnostic::parse` conversion now derives
+the embedded parse-diagnostic filename from the validated
+`ProjectRelativePath`. Standalone parser diagnostics retain their raw
+filename field, while serialized/report diagnostics have one canonical path
+identity. Added a regression test with stale parser filename metadata.
+
+**Verified:** `make fmt && make ci` (workspace check, clippy with warnings as
+errors, 811 core tests, doctests, E2E/rule harnesses, rules documentation
+check, and examples).
 
 #### [x] READ-099 — Keep `ModuleId` opaque to project callers
 

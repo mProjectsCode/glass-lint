@@ -143,7 +143,7 @@ fn combine_reports_preserves_report_and_file_diagnostics() {
             crate::ParseDiagnostic {
                 code: crate::project::types::DiagnosticKind::SyntaxError.into(),
                 message: "invalid syntax".into(),
-                filename: "broken.js".into(),
+                filename: "stale-parser-name.js".into(),
                 range: None,
                 failure: crate::parse::ParseFailureKind::Syntax,
             },
@@ -167,6 +167,13 @@ fn combine_reports_preserves_report_and_file_diagnostics() {
     assert_eq!(combined.summary().files(), 2);
     assert_eq!(combined.summary().parse_diagnostics(), 1);
     assert_eq!(combined.files()[0].path().as_str(), "broken.js");
+    assert_eq!(
+        combined.files()[0].diagnostics()[0]
+            .parse_diagnostic()
+            .unwrap()
+            .filename,
+        "broken.js"
+    );
     assert_eq!(
         combined.diagnostics()[0].code(),
         "graph_link_budget_exhausted"
