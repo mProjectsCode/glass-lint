@@ -21,7 +21,7 @@ mod indexes;
 pub(in crate::analysis) use identity_map::ModuleIdentityMap;
 mod arguments;
 pub(in crate::analysis) use arguments::{
-    MatcherArtifact, MatcherProjectOverlay, compute_constrained_evidence,
+    MatcherArtifact, MatcherProjectContext, compute_constrained_evidence,
 };
 mod build;
 mod query;

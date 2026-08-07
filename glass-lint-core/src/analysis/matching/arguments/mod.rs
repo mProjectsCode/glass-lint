@@ -54,7 +54,7 @@ pub(in crate::analysis) struct MatcherArtifact<'a> {
 impl<'a> MatcherArtifact<'a> {
     pub(in crate::analysis) fn from_facts(
         facts: &'a SemanticFacts,
-        identities: Option<&ModuleIdentityMap>,
+        identities: Option<&'_ ModuleIdentityMap>,
     ) -> (Self, usize) {
         let (overlay, operations) = identities.map_or((None, 0), |identities| {
             let (overlay, operations) =
@@ -103,9 +103,51 @@ impl<'a> MatcherArtifact<'a> {
 }
 
 /// Project-level identities and occurrence remapping for one local module.
+#[derive(Debug, Clone, Copy)]
 pub(in crate::analysis) struct MatcherProjectOverlay<'a> {
     identities: Option<&'a ModuleIdentityMap>,
     result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
+}
+
+/// One matcher-facing view of a module's facts and project identities.
+///
+/// Keeping these views together makes it impossible for production
+/// projection to construct an occurrence artifact and identity overlay from
+/// different project inputs.
+#[derive(Debug)]
+pub(in crate::analysis) struct MatcherProjectContext<'facts, 'project> {
+    artifact: MatcherArtifact<'facts>,
+    project: MatcherProjectOverlay<'project>,
+}
+
+impl<'facts, 'project> MatcherProjectContext<'facts, 'project> {
+    pub(in crate::analysis) fn from_facts<'overlay>(
+        facts: &'facts SemanticFacts,
+        overlay_identities: Option<&'overlay ModuleIdentityMap>,
+        identities: Option<&'project ModuleIdentityMap>,
+        result_identities: Option<&'project BTreeMap<ValueId, ExportResolution>>,
+    ) -> (Self, usize) {
+        let (artifact, operations) = MatcherArtifact::from_facts(facts, overlay_identities);
+        (
+            Self {
+                artifact,
+                project: MatcherProjectOverlay::from_identities(identities, result_identities),
+            },
+            operations,
+        )
+    }
+
+    pub(in crate::analysis) fn artifact(&self) -> &MatcherArtifact<'facts> {
+        &self.artifact
+    }
+
+    pub(in crate::analysis) fn project(&self) -> MatcherProjectOverlay<'project> {
+        self.project
+    }
+
+    pub(in crate::analysis) fn into_artifact(self) -> MatcherArtifact<'facts> {
+        self.artifact
+    }
 }
 
 impl<'a> MatcherProjectOverlay<'a> {

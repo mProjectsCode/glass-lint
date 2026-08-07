@@ -15,7 +15,7 @@ use crate::{
             projector::{self as object_flow, FlowProjectionRule, LocalFlowProjectionOutcome},
         },
         lowering::status::{AnalysisComponent, IncompleteReason, StatusScope},
-        matching::{MatcherArtifact, MatcherProjectOverlay},
+        matching::MatcherProjectContext,
         model::{flow::FlowLimits, value::ValueId},
         project::state::LinkingSession,
         trace::TraceArena,
@@ -219,22 +219,21 @@ impl<'a> ProjectionPlan<'a> {
 /// immutable facts artifact.
 struct ProjectionInputs<'a> {
     facts: &'a SemanticFacts,
-    matcher_artifact: &'a MatcherArtifact<'a>,
     effects: Option<&'a crate::analysis::flow::effect::FunctionEffects>,
     plan: &'a ProjectionPlan<'a>,
-    matcher_overlay: MatcherProjectOverlay<'a>,
     flow_limits: FlowLimits,
     module_id: ModuleId,
     trace_arena: &'a mut TraceArena,
 }
 
-fn project_facts(inputs: ProjectionInputs<'_>) -> (RuleEvidenceTable, LocalFlowProjectionOutcome) {
+fn project_facts(
+    inputs: ProjectionInputs<'_>,
+    matcher_context: &MatcherProjectContext<'_, '_>,
+) -> (RuleEvidenceTable, LocalFlowProjectionOutcome) {
     let ProjectionInputs {
         facts,
-        matcher_artifact,
         effects,
         plan,
-        matcher_overlay,
         flow_limits,
         module_id,
         trace_arena,
@@ -250,10 +249,10 @@ fn project_facts(inputs: ProjectionInputs<'_>) -> (RuleEvidenceTable, LocalFlowP
         .map(PlannedConstrainedRoot::matcher_input)
         .collect::<Vec<_>>();
     crate::analysis::matching::compute_constrained_evidence(
-        matcher_artifact,
+        matcher_context.artifact(),
         &constrained_roots,
         &mut projected_evidence,
-        matcher_overlay,
+        matcher_context.project(),
     );
     if plan.flow_matchers.is_empty() {
         return (projected_evidence, LocalFlowProjectionOutcome::default());
@@ -289,7 +288,7 @@ pub struct ProjectMatcherModel<'project, 'matchers> {
 #[derive(Debug)]
 struct ProjectModuleProjection<'project> {
     module: &'project ProjectModule,
-    matcher_artifact: MatcherArtifact<'project>,
+    matcher_artifact: crate::analysis::matching::MatcherArtifact<'project>,
     projected: RuleEvidenceTable,
 }
 
@@ -514,8 +513,12 @@ impl ProjectSemanticModel {
                     .needs_overlay()
                     .then_some(identities.as_ref())
                     .flatten();
-                let (matcher_artifact, overlay_ops) =
-                    MatcherArtifact::from_facts(module.local().facts(), overlay_identities);
+                let (matcher_context, overlay_ops) = MatcherProjectContext::from_facts(
+                    module.local().facts(),
+                    overlay_identities,
+                    identities.as_ref(),
+                    result_identities.as_ref(),
+                );
                 outcome.metrics.operations = outcome.metrics.operations.saturating_add(overlay_ops);
                 let effects = plan.needs_flow().then(|| module.local().effects());
                 if let Some(effects) = effects
@@ -523,20 +526,19 @@ impl ProjectSemanticModel {
                 {
                     outcome.record_effects(module.id(), effects);
                 }
-                let (projected, local) = project_facts(ProjectionInputs {
-                    facts: module.local().facts(),
-                    matcher_artifact: &matcher_artifact,
-                    effects,
-                    plan,
-                    matcher_overlay: MatcherProjectOverlay::from_identities(
-                        identities.as_ref(),
-                        result_identities.as_ref(),
-                    ),
-                    flow_limits,
-                    module_id: module.id(),
-                    trace_arena: arena,
-                });
+                let (projected, local) = project_facts(
+                    ProjectionInputs {
+                        facts: module.local().facts(),
+                        effects,
+                        plan,
+                        flow_limits,
+                        module_id: module.id(),
+                        trace_arena: arena,
+                    },
+                    &matcher_context,
+                );
                 outcome.record_local(&local);
+                let matcher_artifact = matcher_context.into_artifact();
                 (
                     module.id(),
                     ProjectModuleProjection {

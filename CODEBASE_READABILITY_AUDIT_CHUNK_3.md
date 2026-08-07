@@ -119,7 +119,7 @@ resolver freeze transition are preserved.
 
 ### Matcher project context
 
-#### [ ] READ-013 — Encapsulate the shared matcher/project evaluation context
+#### [x] READ-013 — Encapsulate the shared matcher/project evaluation context
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -148,7 +148,13 @@ remapping identities and call-result identities, optional work based on the
 compiled plan, artifact-local borrowing, bounded overlay operation counts,
 and ambiguity/unknown fail-closed behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a private `MatcherProjectContext` that constructs the
+matcher occurrence artifact and project identity overlay from one module input.
+Production projection passes this context through constrained matching, then
+extracts the artifact for report-time occurrence evidence without allowing
+temporary identity maps to escape. Test-only constructors remain available,
+and overlay/result identity optionality and bounded operation behavior are
+preserved.
 
 ### Evidence normalization phases
 
