@@ -21,7 +21,7 @@ are not repeated here.
 
 ### Project graph and export-table ownership
 
-#### [ ] READ-056 — Seal graph normalization before SCC and neighbor queries
+#### [x] READ-056 — Seal graph normalization before SCC and neighbor queries
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -52,7 +52,11 @@ same state. Preserve deterministic module ordering, duplicate-edge
 elimination, isolated nodes, the maximum SCC bound, and the current
 oversized-component fallback.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Split graph construction from query state: consuming
+`ModuleGraph::normalize` now yields an immutable `NormalizedModuleGraph`.
+Neighbors, edge counts, and SCC partitioning are available only from the
+normalized representation, preserving deterministic deduplication, isolated
+nodes, SCC bounds, and oversized-component fallback behavior.
 
 #### [x] READ-057 — Make `ExportTable` the sole owner of export-entry admission
 

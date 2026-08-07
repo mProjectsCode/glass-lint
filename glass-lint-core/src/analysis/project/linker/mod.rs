@@ -19,7 +19,7 @@ use crate::{
         LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId,
         lowering::status::AnalysisStatus,
         model::module,
-        project::state::{ExportTable, LinkingSession, ModuleGraph, SccPartition},
+        project::state::{ExportTable, LinkingSession, NormalizedModuleGraph, SccPartition},
     },
     project::AnalysisDiagnostic,
 };
@@ -34,7 +34,7 @@ use crate::{
 pub(super) struct ProjectLinker {
     modules: BTreeMap<ModuleId, ProjectModule>,
     resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
-    graph: ModuleGraph,
+    graph: Option<NormalizedModuleGraph>,
     scc_partition: SccPartition,
     exports: ExportTable,
     lookup_session: LinkingSession,
@@ -67,7 +67,7 @@ impl ProjectLinker {
         Self {
             modules,
             resolutions,
-            graph: ModuleGraph::default(),
+            graph: None,
             scc_partition: SccPartition::default(),
             exports: ExportTable::default(),
             lookup_session: LinkingSession::new(link_limit),
@@ -128,7 +128,10 @@ impl ProjectLinker {
         self,
         limits: &crate::AnalysisLimits,
     ) -> super::model::ProjectSemanticModel {
-        let edge_count = self.graph.edge_count();
+        let edge_count = self
+            .graph
+            .as_ref()
+            .map_or(0, NormalizedModuleGraph::edge_count);
         super::model::ProjectSemanticModel::from_linker(
             super::model::LinkedProjectState {
                 modules: self.modules,

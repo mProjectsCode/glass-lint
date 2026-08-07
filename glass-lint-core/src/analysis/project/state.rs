@@ -22,21 +22,32 @@ impl ModuleGraph {
         self.forward.entry(id).or_default();
     }
 
-    /// Insert one internal edge. Duplicates are removed by `normalize`.
+    /// Insert one internal edge. Duplicates are removed by [`normalize`].
     pub(in crate::analysis) fn insert_edge(&mut self, from: ModuleId, to: ModuleId) {
         self.ensure_node(from);
         let targets = self.forward.entry(from).or_default();
         targets.push(to);
     }
 
-    /// Sort and deduplicate all graph collections for deterministic output.
-    pub(in crate::analysis) fn normalize(&mut self) {
+    /// Seal construction into a deterministic graph whose query operations
+    /// cannot observe duplicate or insertion-order edges.
+    pub(in crate::analysis) fn normalize(mut self) -> NormalizedModuleGraph {
         for values in self.forward.values_mut() {
             values.sort_unstable();
             values.dedup();
         }
+        NormalizedModuleGraph {
+            forward: self.forward,
+        }
     }
+}
 
+#[derive(Debug)]
+pub(in crate::analysis) struct NormalizedModuleGraph {
+    forward: BTreeMap<ModuleId, Vec<ModuleId>>,
+}
+
+impl NormalizedModuleGraph {
     /// Iterate over the outgoing internal neighbors of one module.
     pub(in crate::analysis) fn neighbors(
         &self,
@@ -354,7 +365,7 @@ mod tests {
         graph.insert_edge(module(0), module(1));
         graph.insert_edge(module(0), module(2));
         graph.insert_edge(module(2), module(1));
-        graph.normalize();
+        let graph = graph.normalize();
         assert_eq!(
             graph.neighbors(module(0)).collect::<Vec<_>>(),
             vec![module(1), module(2)]
@@ -375,7 +386,7 @@ mod tests {
         graph.insert_edge(module(0), module(1));
         graph.insert_edge(module(0), module(2));
         graph.insert_edge(module(2), module(1));
-        graph.normalize();
+        let graph = graph.normalize();
 
         let partition = graph.scc_partition(4).expect("no oversized component");
         let order: Vec<Vec<ModuleId>> = partition
@@ -398,7 +409,7 @@ mod tests {
         graph.insert_edge(module(0), module(1));
         graph.insert_edge(module(1), module(2));
         graph.insert_edge(module(2), module(0));
-        graph.normalize();
+        let graph = graph.normalize();
 
         assert!(graph.scc_partition(2).is_none());
     }

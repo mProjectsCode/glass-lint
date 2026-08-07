@@ -15,9 +15,10 @@ impl ProjectLinker {
     /// Convert internal resolution records into bounded graph edges, compute
     /// SCCs, build the SCC DAG, and compute the topological order.
     pub(super) fn collect_graph_edges(&mut self) {
+        let mut graph = super::super::state::ModuleGraph::default();
         let mut edge_budget = Budget::new(self.link_limit);
         for module in self.modules.values() {
-            self.graph.ensure_node(module.id());
+            graph.ensure_node(module.id());
             for request in module.local().interface().requests() {
                 let Some(request_id) = self.request_id(module.id(), request) else {
                     continue;
@@ -35,7 +36,7 @@ impl ProjectLinker {
                 };
                 if let LinkedModuleTarget::Internal { id } = resolution {
                     if edge_budget.try_push() {
-                        self.graph.insert_edge(module.id(), *id);
+                        graph.insert_edge(module.id(), *id);
                     } else {
                         self.link_budget.mark_exhausted();
                     }
@@ -70,13 +71,14 @@ impl ProjectLinker {
         if edge_budget.exhausted() {
             self.link_budget.mark_exhausted();
         }
-        self.graph.normalize();
+        let graph = graph.normalize();
 
-        if let Some(partition) = self.graph.scc_partition(MAX_SCC_SIZE) {
+        if let Some(partition) = graph.scc_partition(MAX_SCC_SIZE) {
             self.scc_partition = partition;
         } else {
             self.link_budget.mark_exhausted();
             self.scc_partition = SccPartition::default();
         }
+        self.graph = Some(graph);
     }
 }
