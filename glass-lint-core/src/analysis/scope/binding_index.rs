@@ -7,10 +7,7 @@ use crate::analysis::{
         AliasAssignment, BindingId, BindingProvenance, BindingVersion, FunctionId, LexicalScopes,
         ScopeId, ScopeKind, ScopedName,
     },
-    scope::{
-        frozen_assignments::{AssignmentAt, FrozenAssignmentIndex},
-        scope_index::LexicalScopeIndex,
-    },
+    scope::frozen_assignments::{AssignmentAt, FrozenAssignmentIndex},
 };
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -31,6 +28,7 @@ pub(super) struct BindingIndexInput {
     pub(super) assignments: Vec<AliasAssignment>,
     pub(super) binding_ids: HashMap<ScopedName, BindingId>,
     pub(super) function_ids: HashMap<ScopeId, FunctionId>,
+    pub(super) function_spans: HashMap<FunctionId, Span>,
     pub(super) function_bindings: HashMap<ScopedName, ScopeId>,
     pub(super) function_aliases: HashMap<ScopedName, ScopeId>,
     pub(super) parameter_aliases: HashMap<ScopedName, BindingProvenance>,
@@ -46,6 +44,7 @@ pub(super) struct BindingIndex {
     assignments: FrozenAssignmentIndex,
     binding_ids: HashMap<ScopedName, BindingId>,
     function_ids: HashMap<ScopeId, FunctionId>,
+    function_spans: HashMap<FunctionId, Span>,
     function_bindings: HashMap<ScopedName, FunctionId>,
     function_aliases: HashMap<ScopedName, FunctionId>,
     parameter_aliases: HashMap<ParameterAliasKey, BindingProvenance>,
@@ -59,6 +58,7 @@ impl TryFrom<BindingIndexInput> for BindingIndex {
             assignments,
             binding_ids,
             function_ids,
+            function_spans,
             function_bindings,
             function_aliases,
             parameter_aliases,
@@ -86,6 +86,7 @@ impl TryFrom<BindingIndexInput> for BindingIndex {
             assignments: FrozenAssignmentIndex::from_assignments(assignments),
             binding_ids,
             function_ids,
+            function_spans,
             function_bindings,
             function_aliases,
             parameter_aliases,
@@ -107,7 +108,11 @@ impl BindingIndex {
     /// Allocate stable binding and function IDs over the lexical scopes.
     pub(super) fn allocate_ids(
         scopes: &LexicalScopes,
-    ) -> (HashMap<ScopedName, BindingId>, HashMap<ScopeId, FunctionId>) {
+    ) -> (
+        HashMap<ScopedName, BindingId>,
+        HashMap<ScopeId, FunctionId>,
+        HashMap<FunctionId, Span>,
+    ) {
         let mut binding_ids = HashMap::new();
         let mut next_binding = 0u32;
         for scope in scopes.ids() {
@@ -121,6 +126,7 @@ impl BindingIndex {
         }
 
         let mut function_ids = HashMap::new();
+        let mut function_spans = HashMap::new();
         let mut next_function = 0u32;
         for scope in scopes.ids() {
             let Some(lexical_scope) = scopes.get(scope) else {
@@ -130,12 +136,14 @@ impl BindingIndex {
                 lexical_scope.kind(),
                 ScopeKind::Program | ScopeKind::Function
             ) {
-                function_ids.insert(scope, FunctionId::new(next_function));
+                let function = FunctionId::new(next_function);
+                function_ids.insert(scope, function);
+                function_spans.insert(function, lexical_scope.span());
                 next_function = next_function.saturating_add(1);
             }
         }
 
-        (binding_ids, function_ids)
+        (binding_ids, function_ids, function_spans)
     }
 
     pub(super) fn empty() -> Self {
@@ -143,6 +151,7 @@ impl BindingIndex {
             assignments: FrozenAssignmentIndex::from_assignments(Vec::new()),
             binding_ids: HashMap::new(),
             function_ids: HashMap::new(),
+            function_spans: HashMap::new(),
             function_bindings: HashMap::new(),
             function_aliases: HashMap::new(),
             parameter_aliases: HashMap::new(),
@@ -194,15 +203,19 @@ impl BindingIndex {
         self.function_ids.get(&scope).copied()
     }
 
-    pub(super) fn function_spans<'a>(
-        &'a self,
-        scopes: &'a LexicalScopeIndex,
-    ) -> impl Iterator<Item = (FunctionId, Span)> + 'a {
-        scopes.scope_ids().filter_map(move |scope| {
-            self.function_ids
-                .get(&scope)
-                .and_then(|function| scopes.scope_span(scope).map(|span| (*function, span)))
-        })
+    pub(super) fn function_span(&self, function: FunctionId) -> Option<Span> {
+        self.function_spans.get(&function).copied()
+    }
+
+    pub(super) fn function_containing(&self, span: Span) -> Option<FunctionId> {
+        self.function_spans
+            .iter()
+            .filter_map(|(function, candidate)| {
+                (candidate.lo <= span.lo && candidate.hi >= span.hi)
+                    .then_some((candidate.hi.0 - candidate.lo.0, *function))
+            })
+            .min()
+            .map(|(_, function)| function)
     }
 
     pub(super) fn function_binding(&self, scope: ScopeId, name: NameId) -> Option<FunctionId> {

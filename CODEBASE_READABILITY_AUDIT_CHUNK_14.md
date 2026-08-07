@@ -209,7 +209,7 @@ deterministic join behavior.
 
 ### Function identity indexing
 
-#### [ ] READ-067 — Let the binding index own function-span lookup
+#### [x] READ-067 — Let the binding index own function-span lookup
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -240,7 +240,11 @@ Let `function_id_for_expr` request the function end and let
 containing-span selection, reassignment checks between function end and use,
 alias resolution, and deterministic export discovery.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `BindingIndex` now builds a private `FunctionId`-to-span
+index during freeze and owns direct function-end and smallest-containing-span
+queries. Scope query code uses those operations instead of repeatedly scanning
+all function spans, preserving stable IDs, reassignment checks, and enclosing
+function selection.
 
 ## Systemic Themes
 

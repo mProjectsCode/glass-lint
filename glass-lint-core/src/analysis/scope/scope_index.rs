@@ -84,8 +84,4 @@ impl LexicalScopeIndex {
         }
         Some(scope)
     }
-
-    pub(super) fn scope_ids(&self) -> impl Iterator<Item = ScopeId> + '_ {
-        self.scopes.ids()
-    }
 }

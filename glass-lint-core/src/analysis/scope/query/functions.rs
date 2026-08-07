@@ -33,10 +33,7 @@ impl FrozenScopeGraph {
                         .then(|| self.function_binding_at(target.to_string().as_str(), ident.span))
                         .flatten()
                 })?;
-        let function_end = self
-            .function_spans()
-            .find(|(candidate, _)| *candidate == function)
-            .map(|(_, span)| span.hi);
+        let function_end = self.function_span(function).map(|span| span.hi);
         let reassigned = function_end.is_some_and(|end| {
             self.name_id(ident.sym.as_ref())
                 .is_some_and(|name| self.reassigned_between(scope, name, end, ident.span.lo))
@@ -63,12 +60,6 @@ impl FrozenScopeGraph {
 
     /// Find the smallest function span containing a source position.
     pub(in crate::analysis) fn function_id_for_span(&self, span: Span) -> Option<FunctionId> {
-        self.function_spans()
-            .filter_map(|(function, candidate)| {
-                (candidate.lo <= span.lo && candidate.hi >= span.hi)
-                    .then_some((candidate.hi.0 - candidate.lo.0, function))
-            })
-            .min_by_key(|(size, _)| *size)
-            .map(|(_, function)| function)
+        self.function_containing(span)
     }
 }

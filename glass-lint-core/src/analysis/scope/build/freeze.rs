@@ -27,11 +27,13 @@ impl ScopeCollector<'_> {
             .into_iter()
             .map(|(binding, function)| (binding, function.scope))
             .collect();
-        let (binding_ids, function_ids) = BindingIndex::allocate_ids(&self.lexical.scopes);
+        let (binding_ids, function_ids, function_spans) =
+            BindingIndex::allocate_ids(&self.lexical.scopes);
         let bindings = BindingIndex::try_from(BindingIndexInput {
             assignments: std::mem::take(&mut self.assignment.assignments),
             binding_ids,
             function_ids,
+            function_spans,
             function_bindings,
             function_aliases: self.functions.function_aliases,
             parameter_aliases,

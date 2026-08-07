@@ -434,10 +434,12 @@ impl FrozenScopeGraph {
         self.data.bindings.binding_version(scope, name, span)
     }
 
-    pub(in crate::analysis) fn function_spans(
-        &self,
-    ) -> impl Iterator<Item = (FunctionId, Span)> + '_ {
-        self.data.bindings.function_spans(&self.data.scopes)
+    pub(in crate::analysis) fn function_span(&self, function: FunctionId) -> Option<Span> {
+        self.data.bindings.function_span(function)
+    }
+
+    pub(in crate::analysis) fn function_containing(&self, span: Span) -> Option<FunctionId> {
+        self.data.bindings.function_containing(span)
     }
 
     pub(in crate::analysis) fn function_binding(
