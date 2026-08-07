@@ -22,7 +22,7 @@ kept separate.
 
 ### Configuration and linter construction
 
-#### [ ] READ-091 — Give rule-baseline composition one configuration owner
+#### [x] READ-091 — Give rule-baseline composition one configuration owner
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -55,7 +55,7 @@ separate validation path after migration. Preserve ordered override
 precedence, profile defaults, unknown-rule diagnostics, and provider-specific
 catalog construction.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced core’s baseline-bearing selection with ordered overrides and added one CLI-owned `Config::rule_selection()` composition operation. Configuration validation and `selected_linter` now validate and execute the same profile-baseline-plus-overrides selection.
 
 ### Bounded parsing and source positions
 

@@ -224,6 +224,11 @@ impl RuleSelection {
         &self.overrides
     }
 
+    /// Validate every override against an assembled catalog.
+    pub fn validate(&self, catalog: &RuleCatalog) -> Result<(), LintConfigError> {
+        self.resolve(catalog).map(|_| ())
+    }
+
     pub(crate) fn resolve(&self, catalog: &RuleCatalog) -> Result<Vec<RuleIndex>, LintConfigError> {
         let mut matched = vec![false; self.overrides.len()];
         let mut enabled = Vec::new();

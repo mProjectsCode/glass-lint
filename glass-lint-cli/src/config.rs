@@ -268,7 +268,7 @@ impl Config {
             bail!("pretty_max_width must be at least 20")
         }
         let catalog = catalog(self.cli.provider, self.cli.profile);
-        self.core
+        self.rule_selection()
             .validate(&catalog)
             .map_err(|error| anyhow::anyhow!("rule/provider mismatch: {error}"))?;
         Ok(self)
@@ -333,6 +333,12 @@ fn profile_selection(
     )
 }
 
+impl Config {
+    fn rule_selection(&self) -> RuleSelection {
+        profile_selection(self.cli.profile, self.core.overrides.iter().cloned())
+    }
+}
+
 /// Construct the baseline linter for a provider and confidence profile;
 /// selection is applied by `selected_linter`.
 ///
@@ -349,10 +355,7 @@ pub fn base_linter(provider: Provider, profile: RuleSelectionProfile) -> Linter 
 /// Validation happens after catalog construction so rule selections and core
 /// limits are checked against the exact provider environment that will run.
 pub fn selected_linter(config: &Config) -> Result<Linter> {
-    let selection = profile_selection(
-        config.cli.profile,
-        config.core.selection.overrides().iter().cloned(),
-    );
+    let selection = config.rule_selection();
     let linter = Linter::new(
         provider_config(config.cli.provider)
             .with_rules(selection)
@@ -457,13 +460,13 @@ mod tests {
         let mut override_config = Config::default();
         override_config.cli.provider = Provider::Js;
         override_config.cli.profile = RuleSelectionProfile::Recommended;
-        override_config.core.selection = RuleSelection::new(RuleBaseline::All).with_override(
+        override_config.core.overrides = vec![
             glass_lint_core::RuleOverride::new(
                 "js:dynamic-code.eval",
                 glass_lint_core::RuleState::Enabled,
             )
             .unwrap(),
-        );
+        ];
         let overridden = selected_linter(&override_config).unwrap();
         assert!(
             overridden
