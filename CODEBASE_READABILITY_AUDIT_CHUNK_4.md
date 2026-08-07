@@ -73,7 +73,7 @@ behavior and deterministic request ordering. Verified with `make fmt && make ci`
 
 ### Flow budget model
 
-#### [ ] READ-017 — Give local and project flow budgets distinct owners
+#### [x] READ-017 — Give local and project flow budgets distinct owners
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -98,7 +98,9 @@ per-module local charging and project-wide charging, and deterministic
 exhaustion reporting; introduce separate validated limit types only if policy
 diverges later.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Already satisfied by READ-051 (`1b3eca0`), which removed
+the duplicate local budget field/accessor and made the shared configured flow
+operation limit the sole stored budget value.
 
 ### Position-sensitive resolution
 
