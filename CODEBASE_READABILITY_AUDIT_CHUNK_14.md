@@ -173,7 +173,7 @@ queries, and identifier value seeding to use them. Version lookup and
 lexical/global fallback remain owned by their existing scope-query paths,
 while repeated root construction is centralized.
 
-#### [ ] READ-066 — Share owned checkpoint transition plumbing for assignment and write history
+#### [x] READ-066 — Share owned checkpoint transition plumbing for assignment and write history
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -205,7 +205,11 @@ migrate. Preserve branch creation after restore, LCA ordering, fail-closed
 invalid checkpoints, bounded provenance alternatives, write generations, and
 deterministic join behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a private generic `OwnedHistory<D>` that owns the
+history token, checkpoint creation, recording, foreign-checkpoint validation,
+and transition shell. Assignment and write histories retain separate delta
+types and undo/redo adapters while sharing the lifecycle protocol and all
+existing branch and restore behavior.
 
 ### Function identity indexing
 

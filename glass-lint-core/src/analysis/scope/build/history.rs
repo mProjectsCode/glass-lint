@@ -40,8 +40,50 @@ pub(super) enum HistoryRestoreError {
 /// A position in the assignment history.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Cursor {
+    position: HistoryCheckpoint,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct HistoryCheckpoint {
     owner: HistoryOwner,
     position: HistoryCursor,
+}
+
+#[derive(Debug)]
+struct OwnedHistory<D> {
+    history: ParentLinkedHistory<D>,
+    owner: HistoryOwner,
+}
+
+impl<D> OwnedHistory<D> {
+    fn new() -> Self {
+        Self {
+            history: ParentLinkedHistory::new(),
+            owner: HistoryOwner::new(),
+        }
+    }
+
+    fn checkpoint(&self) -> HistoryCheckpoint {
+        HistoryCheckpoint {
+            owner: self.owner,
+            position: self.history.checkpoint(),
+        }
+    }
+
+    fn record(&mut self, delta: D) {
+        self.history.record(delta);
+    }
+
+    fn transition(
+        &mut self,
+        target: HistoryCheckpoint,
+        apply: impl FnMut(HistoryTransition, &D),
+    ) -> Result<(), HistoryRestoreError> {
+        if target.owner != self.owner || !self.history.transition(target.position, apply) {
+            return Err(HistoryRestoreError::ForeignCheckpoint);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -62,16 +104,14 @@ struct AssignmentDelta {
 /// from the LCA to the target.
 pub(super) struct AssignmentEnvironment {
     assignments: HashMap<ScopeId, HashMap<NameId, ProvenanceAlternatives>>,
-    history: ParentLinkedHistory<AssignmentDelta>,
-    owner: HistoryOwner,
+    history: OwnedHistory<AssignmentDelta>,
 }
 
 impl AssignmentEnvironment {
     pub(super) fn new() -> Self {
         Self {
             assignments: HashMap::new(),
-            history: ParentLinkedHistory::new(),
-            owner: HistoryOwner::new(),
+            history: OwnedHistory::new(),
         }
     }
 
@@ -125,7 +165,6 @@ impl AssignmentEnvironment {
     /// Record a cursor for later `restore`. O(1).
     pub(super) fn checkpoint(&self) -> Cursor {
         Cursor {
-            owner: self.owner,
             position: self.history.checkpoint(),
         }
     }
@@ -134,20 +173,12 @@ impl AssignmentEnvironment {
     /// deltas between the current and target positions via LCA.
     /// O(|path|) where path is the number of entries between cursor and target.
     pub(super) fn restore(&mut self, target: Cursor) -> Result<(), HistoryRestoreError> {
-        if target.owner != self.owner {
-            return Err(HistoryRestoreError::ForeignCheckpoint);
-        }
         let assignments = &mut self.assignments;
-        if !self
-            .history
+        self.history
             .transition(target.position, |direction, delta| match direction {
                 HistoryTransition::Undo => apply_assignment_inverse(assignments, delta),
                 HistoryTransition::Redo => apply_assignment_forward(assignments, delta),
             })
-        {
-            return Err(HistoryRestoreError::ForeignCheckpoint);
-        }
-        Ok(())
     }
 }
 
@@ -191,8 +222,7 @@ fn apply_assignment_forward(
 /// while iteration filters the compact current generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct WriteCheckpoint {
-    owner: HistoryOwner,
-    position: HistoryCursor,
+    position: HistoryCheckpoint,
 }
 
 #[derive(Debug, Clone)]
@@ -212,8 +242,7 @@ enum WriteDelta {
 pub(super) struct WriteSet {
     entries: HashMap<ScopedName, u64>,
     generation: u64,
-    history: ParentLinkedHistory<WriteDelta>,
-    owner: HistoryOwner,
+    history: OwnedHistory<WriteDelta>,
 }
 
 impl WriteSet {
@@ -221,8 +250,7 @@ impl WriteSet {
         Self {
             entries: HashMap::new(),
             generation: 0,
-            history: ParentLinkedHistory::new(),
-            owner: HistoryOwner::new(),
+            history: OwnedHistory::new(),
         }
     }
 
@@ -247,27 +275,18 @@ impl WriteSet {
 
     pub(super) fn checkpoint(&self) -> WriteCheckpoint {
         WriteCheckpoint {
-            owner: self.owner,
             position: self.history.checkpoint(),
         }
     }
 
     pub(super) fn restore(&mut self, target: WriteCheckpoint) -> Result<(), HistoryRestoreError> {
-        if target.owner != self.owner {
-            return Err(HistoryRestoreError::ForeignCheckpoint);
-        }
         let entries = &mut self.entries;
         let generation = &mut self.generation;
-        if !self
-            .history
+        self.history
             .transition(target.position, |direction, delta| match direction {
                 HistoryTransition::Undo => apply_write_inverse(entries, generation, delta),
                 HistoryTransition::Redo => apply_write_forward(entries, generation, delta),
             })
-        {
-            return Err(HistoryRestoreError::ForeignCheckpoint);
-        }
-        Ok(())
     }
 
     pub(super) fn iter(&self) -> impl Iterator<Item = ScopedName> + '_ {
