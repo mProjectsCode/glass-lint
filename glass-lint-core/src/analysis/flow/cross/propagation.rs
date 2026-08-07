@@ -20,31 +20,51 @@ use crate::{
 };
 
 pub(super) struct UsageProjector<'a, 'session> {
-    pub(super) session: &'a mut CrossProjectionSession<'session>,
-    pub(super) context: &'a CallContext,
-    pub(super) effect: &'a FunctionEffect,
-    pub(super) flow: &'a CompiledObjectFlow,
-    pub(super) flow_plan: &'a BoundFlowPlan<'session>,
-    pub(super) state: &'a mut CrossFlowState,
-    pub(super) propagated: &'a mut BTreeSet<FactId>,
+    session: &'a mut CrossProjectionSession<'session>,
+    context: &'a CallContext,
+    effect: &'a FunctionEffect,
+    flow: &'a CompiledObjectFlow,
+    flow_plan: &'a BoundFlowPlan<'session>,
+    state: &'a mut CrossFlowState,
+    propagated: &'a mut BTreeSet<FactId>,
 }
 
 impl UsageProjector<'_, '_> {
+    pub(super) fn new<'a, 'session>(
+        session: &'a mut CrossProjectionSession<'session>,
+        context: &'a CallContext,
+        effect: &'a FunctionEffect,
+        flow: &'a CompiledObjectFlow,
+        flow_plan: &'a BoundFlowPlan<'session>,
+        state: &'a mut CrossFlowState,
+        propagated: &'a mut BTreeSet<FactId>,
+    ) -> UsageProjector<'a, 'session> {
+        UsageProjector {
+            session,
+            context,
+            effect,
+            flow,
+            flow_plan,
+            state,
+            propagated,
+        }
+    }
+
     pub(super) fn project(&mut self) {
         for usage in self.effect.uses() {
             let event = usage.event();
             if !usage_matches_context(self.effect, usage, self.context) {
                 continue;
             }
-            CallPropagation {
-                session: self.session,
-                effect: self.effect,
-                module: self.context.module(),
-                context: self.context,
-                propagated: self.propagated,
-                through: Some(event),
-                state: self.state,
-            }
+            CallPropagation::new(
+                self.session,
+                self.effect,
+                self.context.module(),
+                self.context,
+                self.propagated,
+                Some(event),
+                self.state,
+            )
             .propagate();
             match usage {
                 EffectUse::PropertyWrite {
@@ -212,16 +232,36 @@ impl UsageProjector<'_, '_> {
 }
 
 pub(super) struct CallPropagation<'a, 'session> {
-    pub(super) session: &'a mut CrossProjectionSession<'session>,
-    pub(super) effect: &'a FunctionEffect,
-    pub(super) module: ModuleId,
-    pub(super) context: &'a CallContext,
-    pub(super) propagated: &'a mut BTreeSet<FactId>,
-    pub(super) through: Option<FactId>,
-    pub(super) state: &'a CrossFlowState,
+    session: &'a mut CrossProjectionSession<'session>,
+    effect: &'a FunctionEffect,
+    module: ModuleId,
+    context: &'a CallContext,
+    propagated: &'a mut BTreeSet<FactId>,
+    through: Option<FactId>,
+    state: &'a CrossFlowState,
 }
 
 impl CallPropagation<'_, '_> {
+    pub(super) fn new<'a, 'session>(
+        session: &'a mut CrossProjectionSession<'session>,
+        effect: &'a FunctionEffect,
+        module: ModuleId,
+        context: &'a CallContext,
+        propagated: &'a mut BTreeSet<FactId>,
+        through: Option<FactId>,
+        state: &'a CrossFlowState,
+    ) -> CallPropagation<'a, 'session> {
+        CallPropagation {
+            session,
+            effect,
+            module,
+            context,
+            propagated,
+            through,
+            state,
+        }
+    }
+
     pub(super) fn propagate(&mut self) {
         for call in self.effect.calls() {
             if self.through.is_some_and(|event| call.event() > event)

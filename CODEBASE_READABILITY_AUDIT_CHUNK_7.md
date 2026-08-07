@@ -118,7 +118,7 @@ the context owner. Verified with `make fmt && make ci`.
 
 ### Cross-flow projection orchestration
 
-#### [ ] READ-034 — Make one context runner own projection state and helpers
+#### [x] READ-034 — Make one context runner own projection state and helpers
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -145,7 +145,11 @@ construction. Preserve usage-before-call ordering, cloned per-context state,
 fact-level propagation deduplication, bounded worklist admission, and
 evidence emission through the shared trace arena.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `ContextProjection` the private per-context runner that
+owns cloned flow state and propagation deduplication, with named usage and call
+operations. Projector field bags are private and constructed through narrow
+constructors, preserving usage-before-call ordering and bounded state flow.
+Verified with `make fmt && make ci`.
 
 ### Cross-flow evidence storage
 

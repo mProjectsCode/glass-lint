@@ -73,32 +73,58 @@ struct ContextProjection<'a, 'session> {
     effect: &'a FunctionEffect,
     flow: &'a CompiledObjectFlow,
     flow_plan: &'a BoundFlowPlan<'session>,
-    state: &'a CrossFlowState,
+    state: CrossFlowState,
+    propagated: BTreeSet<FactId>,
 }
 
-impl ContextProjection<'_, '_> {
-    fn project(&mut self) {
-        let mut current_state = self.state.clone();
-        let mut propagated_calls = BTreeSet::<FactId>::new();
-        propagation::UsageProjector {
-            session: self.session,
-            context: self.context,
-            effect: self.effect,
-            flow: self.flow,
-            flow_plan: self.flow_plan,
-            state: &mut current_state,
-            propagated: &mut propagated_calls,
+impl<'a, 'session> ContextProjection<'a, 'session> {
+    fn new(
+        session: &'a mut CrossProjectionSession<'session>,
+        context: &'a CallContext,
+        effect: &'a FunctionEffect,
+        flow: &'a CompiledObjectFlow,
+        flow_plan: &'a BoundFlowPlan<'session>,
+        state: &CrossFlowState,
+    ) -> Self {
+        Self {
+            session,
+            context,
+            effect,
+            flow,
+            flow_plan,
+            state: state.clone(),
+            propagated: BTreeSet::new(),
         }
+    }
+
+    fn project(mut self) {
+        self.project_usage();
+        self.propagate_calls();
+    }
+
+    fn project_usage(&mut self) {
+        propagation::UsageProjector::new(
+            self.session,
+            self.context,
+            self.effect,
+            self.flow,
+            self.flow_plan,
+            &mut self.state,
+            &mut self.propagated,
+        )
         .project();
-        propagation::CallPropagation {
-            session: self.session,
-            effect: self.effect,
-            module: self.context.module(),
-            context: self.context,
-            propagated: &mut propagated_calls,
-            through: None,
-            state: &current_state,
-        }
+    }
+
+    fn propagate_calls(&mut self) {
+        propagation::CallPropagation::new(
+            self.session,
+            self.effect,
+            self.context.module(),
+            self.context,
+            &mut self.propagated,
+            None,
+            &self.state,
+        )
         .propagate();
     }
 }
@@ -173,14 +199,14 @@ impl CrossWorklist<'_, '_> {
             names,
             arena: self.arena,
         };
-        ContextProjection {
-            session: &mut session,
+        ContextProjection::new(
+            &mut session,
             context,
             effect,
             flow,
             flow_plan,
-            state: context.state(),
-        }
+            context.state(),
+        )
         .project();
     }
 
