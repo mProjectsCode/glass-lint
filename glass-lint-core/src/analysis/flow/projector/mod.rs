@@ -68,13 +68,38 @@ pub(in crate::analysis) struct LocalFlowProjectionOutcome {
     pub trace_heads: usize,
 }
 
+#[derive(Clone, Copy)]
+pub(in crate::analysis) struct FlowProjectionRule<'a> {
+    rule_index: RuleIndex,
+    root_index: usize,
+    flow: &'a CompiledObjectFlow,
+}
+
+impl<'a> FlowProjectionRule<'a> {
+    pub(in crate::analysis) fn new(
+        rule_index: RuleIndex,
+        root_index: usize,
+        flow: &'a CompiledObjectFlow,
+    ) -> Self {
+        Self {
+            rule_index,
+            root_index,
+            flow,
+        }
+    }
+
+    fn as_bound_flow(self) -> (RuleIndex, usize, &'a CompiledObjectFlow) {
+        (self.rule_index, self.root_index, self.flow)
+    }
+}
+
 /// Push flow evidence directly into an externally-owned per-rule vec,
 /// avoiding a separate evidence matrix allocation alongside the caller's.
 /// Returns the exhaustion state and bounded counters for the caller.
 pub(in crate::analysis) fn collect_into(
     stream: &FactStream<Frozen>,
     effects: &FunctionEffects,
-    rules: &[(RuleIndex, usize, &CompiledObjectFlow)],
+    rules: &[FlowProjectionRule<'_>],
     evidence: &mut RuleEvidenceTable,
     limits: FlowLimits,
     module_id: ModuleId,
@@ -84,7 +109,12 @@ pub(in crate::analysis) fn collect_into(
         return LocalFlowProjectionOutcome::default();
     }
     let names = stream.names();
-    let plan = BoundFlowPlan::new(rules, names);
+    let bound_rules: Vec<_> = rules
+        .iter()
+        .copied()
+        .map(FlowProjectionRule::as_bound_flow)
+        .collect();
+    let plan = BoundFlowPlan::new(&bound_rules, names);
     let mut summary_budget = Budget::new(limits.emission_limit());
     let helpers = FunctionSummaries::collect(stream, effects, &plan, &mut summary_budget);
     let mut projector = ObjectFlowProjector::new(ObjectFlowProjectorInput {
@@ -118,7 +148,13 @@ pub(super) fn collect_with_limits(
     let outcome = collect_into(
         stream,
         effects,
-        rules,
+        &rules
+            .iter()
+            .copied()
+            .map(|(rule_index, root_index, flow)| {
+                FlowProjectionRule::new(rule_index, root_index, flow)
+            })
+            .collect::<Vec<_>>(),
         &mut evidence,
         limits,
         module_id,

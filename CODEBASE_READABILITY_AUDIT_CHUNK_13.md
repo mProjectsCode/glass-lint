@@ -165,7 +165,7 @@ Internal mapping arms. Verified with `make fmt && make ci`.
 
 ### Projection plan and public model boundary
 
-#### [ ] READ-060 — Bind planned lifecycle flows to their physical roots
+#### [x] READ-060 — Bind planned lifecycle flows to their physical roots
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -195,7 +195,11 @@ Preserve rule identity, physical-root ordering, multiple lifecycle roots,
 deterministic evidence routing, and the existing flow-limit/exhaustion
 semantics.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a typed `PlannedLifecycleRoot` that is constructed
+only from a lifecycle physical root and owns both the root index and compiled
+flow. Projection now passes a typed `FlowProjectionRule` to the projector,
+which performs its internal plan conversion, preserving root ordering and
+rule/evidence routing without exposing a positional tuple contract.
 
 #### [ ] READ-061 — Replace pointer identity with a model-owned evidence handle
 

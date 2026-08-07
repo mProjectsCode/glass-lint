@@ -12,7 +12,7 @@ use crate::{
         facts::SemanticFacts,
         flow::{
             self,
-            projector::{self as object_flow, LocalFlowProjectionOutcome},
+            projector::{self as object_flow, FlowProjectionRule, LocalFlowProjectionOutcome},
         },
         lowering::status::{AnalysisComponent, IncompleteReason, StatusScope},
         matching::{MatcherArtifact, MatcherProjectOverlay},
@@ -102,8 +102,7 @@ struct PlannedConstrainedRoot<'a> {
 #[derive(Clone, Copy)]
 struct PlannedFlow<'a> {
     rule_index: RuleIndex,
-    root_index: PhysicalRootIndex,
-    flow: &'a CompiledObjectFlow,
+    root: PlannedLifecycleRoot<'a>,
 }
 
 #[derive(Clone, Copy)]
@@ -119,6 +118,24 @@ impl PhysicalRootIndex {
     }
 }
 
+#[derive(Clone, Copy)]
+struct PlannedLifecycleRoot<'a> {
+    index: PhysicalRootIndex,
+    flow: &'a CompiledObjectFlow,
+}
+
+impl<'a> PlannedLifecycleRoot<'a> {
+    fn from_physical(index: usize, root: &'a PhysicalRoot) -> Option<Self> {
+        let PhysicalRoot::Lifecycle { flow } = root else {
+            return None;
+        };
+        Some(Self {
+            index: PhysicalRootIndex::new(index),
+            flow,
+        })
+    }
+}
+
 impl<'a> PlannedConstrainedRoot<'a> {
     fn matcher_input(self) -> (usize, &'a PhysicalRoot) {
         (self.rule_index.get(), self.root)
@@ -126,8 +143,8 @@ impl<'a> PlannedConstrainedRoot<'a> {
 }
 
 impl<'a> PlannedFlow<'a> {
-    fn flow_input(self) -> (RuleIndex, usize, &'a CompiledObjectFlow) {
-        (self.rule_index, self.root_index.get(), self.flow)
+    fn flow_input(self) -> FlowProjectionRule<'a> {
+        FlowProjectionRule::new(self.rule_index, self.root.index.get(), self.root.flow)
     }
 }
 
@@ -172,12 +189,8 @@ impl<'a> ProjectionPlan<'a> {
                 }
             }
             for (flow_index, root) in matcher.physical_roots().iter().enumerate() {
-                if let PhysicalRoot::Lifecycle { flow } = root {
-                    flow_matchers.push(PlannedFlow {
-                        rule_index,
-                        root_index: PhysicalRootIndex::new(flow_index),
-                        flow,
-                    });
+                if let Some(root) = PlannedLifecycleRoot::from_physical(flow_index, root) {
+                    flow_matchers.push(PlannedFlow { rule_index, root });
                 }
             }
             needs_overall_overlay = needs_overall_overlay || matcher.needs_project_overlay();
