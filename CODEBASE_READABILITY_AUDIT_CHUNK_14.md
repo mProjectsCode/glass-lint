@@ -92,7 +92,7 @@ and typed unavailable results that cannot establish a definite witness.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-064 — Seal mutation-index construction before exposing ordered queries
+#### [x] READ-064 — Seal mutation-index construction before exposing ordered queries
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -124,7 +124,11 @@ builder. Preserve source-order assignment and rooted-mutation evidence,
 dynamic-eval half-open span semantics, deterministic ordering, and mutable
 static-object membership.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Split mutation storage into a mutable
+`MutationIndexBuilder` and immutable `MutationIndex`. Scope-graph freezing now
+consumes the builder and performs sorting exactly once; dynamic-eval recording
+appends intentionally, so repeated collection cannot silently replace prior
+entries before the ordered query index is sealed.
 
 ### Scope identity and history operations
 

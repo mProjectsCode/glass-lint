@@ -9,6 +9,14 @@ use crate::analysis::model::scope::{
 };
 
 #[derive(Debug)]
+pub(super) struct MutationIndexBuilder {
+    property_assignments: BTreeMap<BindingKey, BTreeMap<NamePath, Vec<PropertyAliasFact>>>,
+    rooted_property_mutations: BTreeMap<NamePath, Vec<RootedPropertyMutationFact>>,
+    dynamic_evals_by_scope: BTreeMap<ScopeId, Vec<ScopeEffect>>,
+    mutable_static_objects: HashSet<ScopedName>,
+}
+
+#[derive(Debug)]
 pub(super) struct MutationIndex {
     property_assignments: BTreeMap<BindingKey, BTreeMap<NamePath, Vec<PropertyAliasFact>>>,
     rooted_property_mutations: BTreeMap<NamePath, Vec<RootedPropertyMutationFact>>,
@@ -16,7 +24,7 @@ pub(super) struct MutationIndex {
     mutable_static_objects: HashSet<ScopedName>,
 }
 
-impl From<HashSet<ScopedName>> for MutationIndex {
+impl From<HashSet<ScopedName>> for MutationIndexBuilder {
     fn from(mutable_static_objects: HashSet<ScopedName>) -> Self {
         Self {
             property_assignments: BTreeMap::new(),
@@ -27,7 +35,7 @@ impl From<HashSet<ScopedName>> for MutationIndex {
     }
 }
 
-impl MutationIndex {
+impl MutationIndexBuilder {
     pub(super) fn record_property_assignment(
         &mut self,
         receiver: BindingKey,
@@ -57,7 +65,6 @@ impl MutationIndex {
         &mut self,
         evals: impl IntoIterator<Item = (ScopeId, ScopeEffect)>,
     ) {
-        self.dynamic_evals_by_scope.clear();
         for (scope, effect) in evals {
             self.dynamic_evals_by_scope
                 .entry(scope)
@@ -66,7 +73,20 @@ impl MutationIndex {
         }
     }
 
-    pub(super) fn finalize(&mut self) {
+    pub(super) fn finish(self) -> MutationIndex {
+        let mut index = MutationIndex {
+            property_assignments: self.property_assignments,
+            rooted_property_mutations: self.rooted_property_mutations,
+            dynamic_evals_by_scope: self.dynamic_evals_by_scope,
+            mutable_static_objects: self.mutable_static_objects,
+        };
+        index.sort();
+        index
+    }
+}
+
+impl MutationIndex {
+    fn sort(&mut self) {
         for receiver_assignments in self.property_assignments.values_mut() {
             for assignments in receiver_assignments.values_mut() {
                 assignments.sort_by_key(|assignment| assignment.span().lo);

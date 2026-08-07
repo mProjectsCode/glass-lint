@@ -12,9 +12,12 @@ use crate::{
             PropertyAliasFact, RootedPropertyMutationFact, ScopeEffect, ScopeId, ScopeKind,
         },
         scope::{
-            binding_index::BindingIndex, build::FrozenPropertyArtifacts,
-            frozen_assignments::AssignmentAt, mutation_index::MutationIndex,
-            name_env::NameEnvironment, scope_index::LexicalScopeIndex,
+            binding_index::BindingIndex,
+            build::FrozenPropertyArtifacts,
+            frozen_assignments::AssignmentAt,
+            mutation_index::{MutationIndex, MutationIndexBuilder},
+            name_env::NameEnvironment,
+            scope_index::LexicalScopeIndex,
         },
     },
 };
@@ -24,14 +27,14 @@ use crate::{
 // ---------------------------------------------------------------------------
 
 #[derive(Debug)]
-struct ScopeData {
+struct ScopeData<M> {
     names: NameEnvironment,
     scopes: LexicalScopeIndex,
     bindings: BindingIndex,
-    mutations: MutationIndex,
+    mutations: M,
 }
 
-impl ScopeData {
+impl<M> ScopeData<M> {
     fn binding_with_scope_at(
         &self,
         name: NameId,
@@ -76,7 +79,7 @@ impl ScopeData {
 /// After calling [`finish_collected_properties`] and [`freeze`], callers
 /// receive a read-only [`FrozenScopeGraph`] for all query operations.
 pub(in crate::analysis) struct ScopeGraph {
-    data: ScopeData,
+    data: ScopeData<MutationIndexBuilder>,
     /// False when source-order collection did not consume the planned shape.
     scope_shape_valid: bool,
 }
@@ -89,7 +92,7 @@ pub(in crate::analysis) struct ScopeGraph {
 /// `ScopeGraph`, then calls `freeze()` to obtain a `FrozenScopeGraph` for
 /// the resolver.
 pub(in crate::analysis) struct FrozenScopeGraph {
-    data: ScopeData,
+    data: ScopeData<MutationIndex>,
     /// False when collection and planned scope shapes diverged.
     scope_shape_valid: bool,
 }
@@ -99,7 +102,7 @@ pub(super) struct ScopeGraphInput {
     pub(super) names: NameTable,
     pub(super) scopes: LexicalScopes,
     pub(super) bindings: BindingIndex,
-    pub(super) mutations: MutationIndex,
+    pub(super) mutations: MutationIndexBuilder,
     pub(super) scope_shape_valid: bool,
 }
 
@@ -112,7 +115,7 @@ impl ScopeGraph {
                 names: NameEnvironment::new(names, Environment::default()),
                 scopes: LexicalScopeIndex::from(LexicalScopes::new()),
                 bindings: BindingIndex::empty(),
-                mutations: MutationIndex::from(HashSet::new()),
+                mutations: MutationIndexBuilder::from(HashSet::new()),
             },
             scope_shape_valid: true,
         }
@@ -141,8 +144,19 @@ impl ScopeGraph {
 
     /// Freeze this scope graph into a read-only query graph.
     pub fn freeze(self) -> FrozenScopeGraph {
+        let ScopeData {
+            names,
+            scopes,
+            bindings,
+            mutations,
+        } = self.data;
         FrozenScopeGraph {
-            data: self.data,
+            data: ScopeData {
+                names,
+                scopes,
+                bindings,
+                mutations: mutations.finish(),
+            },
             scope_shape_valid: self.scope_shape_valid,
         }
     }
@@ -237,7 +251,6 @@ impl ScopeGraph {
             })
             .collect();
         self.data.mutations.record_dynamic_evals(evals);
-        self.data.mutations.finalize();
     }
 
     // -- Query methods needed during collection (also on FrozenScopeGraph) --

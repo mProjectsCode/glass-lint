@@ -6,7 +6,7 @@ use crate::analysis::scope::{
         program::{ScopeCollectionIssue, ScopedProgram},
     },
     graph::ScopeGraphInput,
-    mutation_index::MutationIndex,
+    mutation_index::MutationIndexBuilder,
 };
 
 impl ScopeCollector<'_> {
@@ -41,7 +41,7 @@ impl ScopeCollector<'_> {
             BindingIndex::empty()
         });
         let scope_shape_valid = issues.is_empty();
-        let mutations = MutationIndex::from(mutable_static_objects);
+        let mutations = MutationIndexBuilder::from(mutable_static_objects);
         let mut graph = ScopeGraph::from_collected(ScopeGraphInput {
             environment: environment.clone(),
             names: self.lexical.names,
