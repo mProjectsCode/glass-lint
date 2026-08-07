@@ -203,8 +203,8 @@ impl<'a> ProjectCollection<'a> {
     }
 
     /// Start an empty parse-once project session under a canonical root.
-    pub fn new(state: SessionState<'a>) -> Result<Self, ProjectInputError> {
-        Ok(Self {
+    pub(crate) fn new(state: SessionState<'a>) -> Self {
+        Self {
             state,
             sources: SourceTable::default(),
             artifacts: AnalysisArtifacts::default(),
@@ -212,7 +212,7 @@ impl<'a> ProjectCollection<'a> {
             fingerprint_engine_version: env!("CARGO_PKG_VERSION"),
             #[cfg(test)]
             fingerprint_normalization: None,
-        })
+        }
     }
 
     fn admit_normalized_source(&mut self, source: SourceFile) -> Result<(), ProjectInputError> {

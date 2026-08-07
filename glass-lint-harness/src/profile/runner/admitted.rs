@@ -129,7 +129,7 @@ fn admitted_project_run(
     linter: &Linter,
     workers: usize,
 ) -> Result<AnalysisReport> {
-    let mut session = linter.begin_project()?;
+    let mut session = linter.begin_project();
     let mut sources = Vec::with_capacity(prepared.len());
     for file in prepared {
         let relative = file.path.strip_prefix(root).with_context(|| {

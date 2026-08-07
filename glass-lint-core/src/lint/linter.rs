@@ -92,7 +92,7 @@ impl Clone for Linter {
 
 impl Linter {
     /// Starts a deterministic project collection session.
-    pub fn begin_project(&self) -> Result<ProjectCollection<'_>, ProjectInputError> {
+    pub fn begin_project(&self) -> ProjectCollection<'_> {
         let state = SessionState::new(
             self.analysis_environment(),
             self.analysis_limits(),
@@ -180,7 +180,7 @@ impl Linter {
         &self,
         source: crate::project::SourceFile,
     ) -> Result<AnalysisReport, ProjectInputError> {
-        let mut collection = self.begin_project()?;
+        let mut collection = self.begin_project();
         collection.analyze_source(source)?;
         collection.finish_local()?.resolve([])?.finish()
     }

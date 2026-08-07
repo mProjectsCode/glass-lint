@@ -154,7 +154,7 @@ pub struct ProjectFixture<'a> {
 impl<'a> ProjectFixture<'a> {
     pub fn new(linter: &'a crate::Linter) -> Self {
         Self {
-            session: linter.begin_project().unwrap(),
+            session: linter.begin_project(),
             outcomes: Vec::new(),
         }
     }

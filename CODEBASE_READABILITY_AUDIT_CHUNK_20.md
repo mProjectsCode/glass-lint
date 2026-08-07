@@ -23,7 +23,7 @@ contracts themselves.
 
 ### Session construction and phase errors
 
-#### [ ] READ-096 — Make project-session construction an internal, infallible boundary
+#### [x] READ-096 — Make project-session construction an internal, infallible boundary
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -53,7 +53,14 @@ unreachable `Result`/`?` plumbing. Preserve the borrowed linter lifetime,
 shared artifact cache, selected catalog and evidence limit, and all consuming
 `ProjectCollection → LocallyAnalyzedProject → ResolvedProject` transitions.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `ProjectCollection::new` crate-private and infallible,
+and made `Linter::begin_project` the public session factory with a direct
+`ProjectCollection` return. Removed the unreachable result propagation from
+all callers and updated tests and adapters to use the infallible boundary.
+
+**Verified:** `make fmt && make ci` (workspace check, clippy with warnings as
+errors, 811 core tests, doctests, E2E/rule harnesses, rules documentation
+check, and examples).
 
 #### [ ] READ-097 — Separate project-input failures from session and execution failures
 

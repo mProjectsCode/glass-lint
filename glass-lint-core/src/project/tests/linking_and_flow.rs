@@ -30,7 +30,7 @@ fn linked_internal_aliases_preserve_external_and_global_call_identity() {
     ))
     .unwrap();
 
-    let mut session = linter.begin_project().unwrap();
+    let mut session = linter.begin_project();
     let helper = session
         .analyze_source(source_file(
             "helper.js",
@@ -73,7 +73,7 @@ fn linked_internal_aliases_preserve_external_and_global_call_identity() {
         "test:network.request"
     );
 
-    let mut global = linter.begin_project().unwrap();
+    let mut global = linter.begin_project();
     let helper = global
         .analyze_source(source_file("helper.js", "export { fetch as send };"))
         .unwrap();
@@ -302,7 +302,7 @@ fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
     ))
     .unwrap();
 
-    let mut session = linter.begin_project().unwrap();
+    let mut session = linter.begin_project();
     let helper = session
         .analyze_source(source_file(
             "helper.js",
@@ -345,7 +345,7 @@ fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
         0
     );
 
-    let mut missing = linter.begin_project().unwrap();
+    let mut missing = linter.begin_project();
     let main = missing
         .analyze_source(source_file(
             "main.js",
@@ -393,7 +393,7 @@ fn unresolved_internal_imports_do_not_become_external_provenance() {
     ))
     .unwrap();
 
-    let mut session = linter.begin_project().unwrap();
+    let mut session = linter.begin_project();
     session
         .analyze_source(source_file(
             "main.js",

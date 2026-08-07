@@ -391,7 +391,7 @@ fn direct_qualification_matches_one_file_project_shape() {
         .unwrap()
         .files()[0]
         .clone();
-    let mut manual_session = linter.begin_project().unwrap();
+    let mut manual_session = linter.begin_project();
     manual_session
         .analyze_source(source_file("main.js", source))
         .unwrap();
@@ -518,7 +518,7 @@ fn parse_and_valid_sources_each_produce_one_file_report() {
     .unwrap();
 
     // One valid file, one parse-failure file
-    let mut collection = linter.begin_project().unwrap();
+    let mut collection = linter.begin_project();
     collection
         .analyze_source(source_file("valid.js", "fetch('/a');"))
         .unwrap();
