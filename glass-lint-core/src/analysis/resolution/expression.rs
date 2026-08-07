@@ -1,13 +1,13 @@
 //! Position-sensitive identifier, member, and expression resolution.
 
-use glass_lint_datastructures::SymbolPath;
+use glass_lint_datastructures::{NamePath, SymbolPath};
 use smol_str::{SmolStr, ToSmolStr};
 
 use crate::analysis::{
     model::{scope::FunctionId, value::MAX_VALUES},
     resolution::{
         Callee, ConstValue, Expr, Ident, Lit, MemberExpr, ResolutionKey, ResolvedValue, Resolver,
-        SymbolCallProvenance, SymbolMemberProvenance, Value, ValueId, syntax_constant,
+        SymbolCallProvenance, SymbolMemberProvenance, ValueId, syntax_constant,
     },
     scope::{BoundArgument, ScopeId},
     syntax::{BudgetComponent, UnknownReason},
@@ -205,13 +205,11 @@ impl Resolver<'_> {
                 .exprs
                 .last()
                 .map_or_else(Self::unknown, |last| self.resolve_expr(last)),
-            Expr::Lit(Lit::Str(value)) => self.static_value(Value::StaticString(
-                value.value.to_string_lossy().to_string(),
-            )),
+            Expr::Lit(Lit::Str(value)) => {
+                self.static_string(value.value.to_string_lossy().to_string())
+            }
             Expr::Lit(Lit::Num(value)) => syntax_constant::non_negative_integer(value.value)
-                .map_or_else(Self::unknown, |value| {
-                    self.static_value(Value::StaticNumber(value))
-                }),
+                .map_or_else(Self::unknown, |value| self.static_number(value)),
             Expr::Array(array) => {
                 let values = array
                     .elems
@@ -222,7 +220,7 @@ impl Resolver<'_> {
                         })
                     })
                     .collect();
-                self.static_value(Value::StaticArray(values))
+                self.static_array(values)
             }
             Expr::Object(_) | Expr::Bin(_) | Expr::Tpl(_) => {
                 let id = self.intern_const_value(syntax_constant::evaluate(expr, self), None);
@@ -268,9 +266,7 @@ impl Resolver<'_> {
             self.call_provenance_at(seed.id, seed.rooted_chain.as_ref(), span)
         };
         let id = match &call {
-            SymbolCallProvenance::Global { name } => {
-                self.values.intern(Value::Global(name.clone()))
-            }
+            SymbolCallProvenance::Global { name } => self.values.intern_global(name.clone(), None),
             _ => seed.id,
         };
         let module_member = seed.module_member.clone().or_else(|| match &call {
@@ -283,7 +279,7 @@ impl Resolver<'_> {
             _ => None,
         });
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, .. }) = &module_member {
-            self.values.intern(Value::ModuleNamespace(module.clone()));
+            self.values.intern_module_namespace(module.clone());
         }
         let resolved = seed.into_resolved(id, call, module_member);
         self.cache_resolution(key, resolved.clone());
@@ -377,9 +373,7 @@ impl Resolver<'_> {
         ResolvedValue::local(id)
     }
 
-    pub(in crate::analysis) fn static_value(&mut self, value: Value) -> ResolvedValue {
-        let is_unknown = matches!(value, Value::Unknown);
-        let id = self.values.intern(value);
+    pub(super) fn interned_value(&self, id: ValueId, is_unknown: bool) -> ResolvedValue {
         if id == ValueId::UNKNOWN && !is_unknown && self.value_arena_exhausted() {
             return Self::archive_unknown_with_reason(UnknownReason::BudgetExhausted {
                 component: BudgetComponent::Values,
@@ -390,11 +384,47 @@ impl Resolver<'_> {
         ResolvedValue::local(id)
     }
 
+    pub(in crate::analysis) fn static_string(&mut self, value: String) -> ResolvedValue {
+        let id = self.values.intern_static_string(value, None);
+        self.interned_value(id, false)
+    }
+
+    pub(in crate::analysis) fn static_number(&mut self, value: usize) -> ResolvedValue {
+        let id = self.values.intern_static_number(value, None);
+        self.interned_value(id, false)
+    }
+
+    pub(in crate::analysis) fn static_array(&mut self, values: Vec<ValueId>) -> ResolvedValue {
+        let id = self.values.intern_static_array(values, None);
+        self.interned_value(id, false)
+    }
+
+    pub(in crate::analysis) fn static_object_shape(
+        &mut self,
+        object: crate::analysis::model::value::StaticObject,
+    ) -> ResolvedValue {
+        let id = self.values.intern_static_object_shape(object, None);
+        self.interned_value(id, false)
+    }
+
+    fn intern_object_id(
+        &mut self,
+        object: crate::analysis::model::value::ObjectId,
+    ) -> ResolvedValue {
+        let id = self.values.intern_object(object, None);
+        self.interned_value(id, false)
+    }
+
+    pub(in crate::analysis) fn rooted_member(&mut self, path: NamePath) -> ResolvedValue {
+        let id = self.values.intern_rooted_member(path, None);
+        self.interned_value(id, false)
+    }
+
     pub(in crate::analysis) fn fresh_object_value(&mut self) -> ResolvedValue {
         let Some(object) = self.values.allocate_object_id() else {
             return Self::unknown();
         };
-        self.static_value(Value::Object(object))
+        self.intern_object_id(object)
     }
 
     pub(in crate::analysis) fn fresh_object_value_at(

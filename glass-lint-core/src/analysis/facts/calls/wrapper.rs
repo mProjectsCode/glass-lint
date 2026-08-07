@@ -90,9 +90,7 @@ impl FactBuilder<'_, '_> {
                     values
                         .into_iter()
                         .map(|s| {
-                            let resolved = self.resolver.static_value(
-                                crate::analysis::model::value::Value::StaticString(s),
-                            );
+                            let resolved = self.resolver.static_string(s);
                             CallArgInfo {
                                 value: resolved.id,
                                 ..CallArgInfo::unknown()

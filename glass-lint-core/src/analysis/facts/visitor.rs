@@ -336,9 +336,7 @@ impl Visit for FactBuilder<'_, '_> {
                     || quasi.raw.to_string(),
                     |value| value.to_string_lossy().to_string(),
                 );
-                let resolved = self
-                    .resolver
-                    .static_value(crate::analysis::model::value::Value::StaticString(literal));
+                let resolved = self.resolver.static_string(literal);
                 self.emit(
                     quasi.span,
                     FactPayload::Reference {

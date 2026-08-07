@@ -93,9 +93,8 @@ impl Resolver<'_> {
             return self.fresh_object_value_at(call.span);
         }
         let target = self.resolve_expr_id(&member.obj);
-        self.static_value(Value::Callable(
-            crate::analysis::model::value::CallableValue::new(target),
-        ))
+        let id = self.values.intern_callable(target, None);
+        self.interned_value(id, false)
     }
 
     /// Intern callable/module/global value identity with optional binding
@@ -106,18 +105,23 @@ impl Resolver<'_> {
         rooted: Option<&glass_lint_datastructures::SymbolPath>,
         binding: Option<crate::analysis::model::scope::BindingKey>,
     ) -> ValueId {
-        let value = match call {
-            SymbolCallProvenance::Global { name } => Value::Global(name.clone()),
-            SymbolCallProvenance::ModuleExport { module, export } => Value::ModuleExport {
-                module: module.clone(),
-                export: export.clone(),
-            },
-            SymbolCallProvenance::Local => {
-                rooted.map_or(Value::Local, |path| self.rooted_value(path))
+        let id = match call {
+            SymbolCallProvenance::Global { name } => {
+                self.values.intern_global(name.clone(), binding)
             }
-            SymbolCallProvenance::Unknown(_) => Value::Unknown,
+            SymbolCallProvenance::ModuleExport { module, export } => self
+                .values
+                .intern_module_export(module.clone(), export.clone(), binding),
+            SymbolCallProvenance::Local => match rooted {
+                Some(path) => match self.rooted_value(path) {
+                    Value::RootedMember { path } => self.values.intern_rooted_member(path, binding),
+                    Value::Local => self.values.intern_local(binding),
+                    _ => self.values.intern_unknown(binding),
+                },
+                None => self.values.intern_local(binding),
+            },
+            SymbolCallProvenance::Unknown(_) => self.values.intern_unknown(binding),
         };
-        let id = self.values.intern_with_binding(value, binding);
         debug_assert!(self.values.get(id).is_some());
         id
     }

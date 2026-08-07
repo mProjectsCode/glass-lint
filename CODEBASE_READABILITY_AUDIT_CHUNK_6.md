@@ -152,7 +152,7 @@ behavior remain covered by the full gate.
 
 ### Value arena construction
 
-#### [ ] READ-030 — Hide raw value variants behind semantic arena operations
+#### [x] READ-030 — Hide raw value variants behind semantic arena operations
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -179,6 +179,12 @@ redundant wrapper paths such as `intern_with_binding` once the semantic
 operations own them. Preserve terminal identity canonicalization,
 artifact-local names, bounded object/value IDs, unknown propagation, and
 deterministic equality/interning.
+
+**Fix Applied:** Made raw arena interning private to the value model in
+production builds and added named operations for static values, identities,
+callables, objects, bindings, and unknown/local values. Resolver and fact
+construction now use those operations instead of constructing `Value` variants
+at call sites; raw access is test-only. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

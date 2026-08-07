@@ -7,7 +7,7 @@ use crate::analysis::{
         BoundArgument, CallArgInfo, Expr, ExprOrSpread, FactBuilder, PathId, PathSegmentInput,
         ValueId, literal_member_property_name,
     },
-    model::value::{StaticObject, Value},
+    model::value::StaticObject,
     syntax::constant as syntax_constant,
 };
 
@@ -77,7 +77,7 @@ impl FactBuilder<'_, '_> {
         if value == ValueId::UNKNOWN {
             let const_value = syntax_constant::evaluate(expr, resolver);
             if let Some(s) = const_value.string() {
-                return resolver.static_value(Value::StaticString(s.to_owned())).id;
+                return resolver.static_string(s.to_owned()).id;
             }
         }
         value
@@ -161,7 +161,7 @@ impl FactBuilder<'_, '_> {
                     let value = self.resolver.resolve_expr_id(expr);
                     return (value, value, path);
                 };
-                let value = self.resolver.static_value(Value::StaticObject(object)).id;
+                let value = self.resolver.static_object_shape(object).id;
                 (value, value, path)
             }
             Expr::Array(array) => {
@@ -178,7 +178,7 @@ impl FactBuilder<'_, '_> {
                     let (child_value, _, _) = self.analyze_argument_tree(&element.expr, child_path);
                     elements.push(child_value);
                 }
-                let value = self.resolver.static_value(Value::StaticArray(elements)).id;
+                let value = self.resolver.static_array(elements).id;
                 (value, value, path)
             }
             Expr::Member(member) => {
@@ -216,22 +216,14 @@ impl FactBuilder<'_, '_> {
     pub(super) fn bound_arg_info(&mut self, argument: &BoundArgument) -> CallArgInfo {
         match argument {
             BoundArgument::StaticString(value) => {
-                let resolved =
-                    self.resolver
-                        .static_value(crate::analysis::model::value::Value::StaticString(
-                            value.clone(),
-                        ));
+                let resolved = self.resolver.static_string(value.clone());
                 CallArgInfo {
                     value: resolved.id,
                     ..CallArgInfo::unknown()
                 }
             }
             BoundArgument::RootedExpression(chain) => {
-                let resolved = self.resolver.static_value(
-                    crate::analysis::model::value::Value::RootedMember {
-                        path: chain.clone(),
-                    },
-                );
+                let resolved = self.resolver.rooted_member(chain.clone());
                 CallArgInfo {
                     value: resolved.id,
                     ..CallArgInfo::unknown()

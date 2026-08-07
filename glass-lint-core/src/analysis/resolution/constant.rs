@@ -76,10 +76,19 @@ impl Resolver<'_> {
                     .map(|(key, value)| (key, self.intern_const_value(value, None)))
                     .collect::<Vec<_>>();
                 let arena = &mut self.values;
-                let id = arena.intern_static_object(values, self.scopes.name_table_mut());
-                return binding.map_or(id, |key| arena.intern(Value::Binding { key, target: id }));
+                return arena.intern_static_object_with_binding(
+                    values,
+                    self.scopes.name_table_mut(),
+                    binding,
+                );
             }
         };
-        self.values.intern_with_binding(value, binding)
+        match value {
+            Value::Unknown => self.values.intern_unknown(binding),
+            Value::StaticString(value) => self.values.intern_static_string(value, binding),
+            Value::StaticNumber(value) => self.values.intern_static_number(value, binding),
+            Value::StaticArray(values) => self.values.intern_static_array(values, binding),
+            _ => unreachable!("constant conversion produced a non-constant value"),
+        }
     }
 }
