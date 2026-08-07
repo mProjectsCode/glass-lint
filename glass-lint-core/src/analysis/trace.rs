@@ -267,9 +267,9 @@ mod tests {
             .intern(Some(ev1), qe(2, 20), EvidenceRole::Sink)
             .unwrap();
         let trace = arena.reconstruct_trace(ev2).unwrap();
-        assert_eq!(trace[0].event().module.get(), 1);
+        assert_eq!(trace[0].event().module, ModuleId::new(1));
         assert_eq!(trace[0].event().fact.raw_for_test(), 10);
-        assert_eq!(trace[1].event().module.get(), 2);
+        assert_eq!(trace[1].event().module, ModuleId::new(2));
         assert_eq!(trace[1].event().fact.raw_for_test(), 20);
     }
 

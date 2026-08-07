@@ -132,7 +132,7 @@ grouping, and the existing parse-versus-project diagnostic distinction.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-099 — Keep `ModuleId` opaque to project callers
+#### [x] READ-099 — Keep `ModuleId` opaque to project callers
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -160,7 +160,13 @@ code, preserve `Eq`/ordering for deterministic internal maps, and retain
 path-order assignment and cross-module identity comparisons within one linked
 project.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Restricted `ModuleId::get` to crate visibility. Internal
+linking and trace tests retain numeric access where needed, while project
+callers can no longer observe or persist the table’s numeric assignment.
+
+**Verified:** `make fmt && make ci` (workspace check, clippy with warnings as
+errors, 811 core tests, doctests, E2E/rule harnesses, rules documentation
+check, and examples).
 
 ### Authored request result API
 

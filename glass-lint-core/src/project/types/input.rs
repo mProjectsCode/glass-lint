@@ -416,10 +416,6 @@ impl ModuleId {
     pub(crate) const fn new(value: u32) -> Self {
         Self(value)
     }
-
-    pub const fn get(self) -> u32 {
-        self.0
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
