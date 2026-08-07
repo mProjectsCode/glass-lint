@@ -126,7 +126,7 @@ input-order delivery, `size_hint`, and cancellation behavior unchanged.
 
 ### Project input and phase boundaries
 
-#### [ ] READ-077 — Trust validated project types at the phase boundary
+#### [x] READ-077 — Trust validated project types at the phase boundary
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -161,7 +161,11 @@ escape rejection, explicit Missing/Unsupported/OutsideProject states,
 authored-request membership checks, deterministic normalization, and
 fail-closed rejection of unknown requests.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed phase-boundary re-normalization of validated
+`SourceFile` paths and `ResolutionRequestKey`/resolver target variants. The
+linker transition now trusts those typed values and validates only the raw
+`Unsupported` reason, preserving authored-request membership checks and
+fail-closed rejection of empty reasons. Verified with `make fmt && make ci`.
 
 #### [x] READ-078 — Keep public report transformations inside the deterministic finalization boundary
 

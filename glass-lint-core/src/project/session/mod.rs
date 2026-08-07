@@ -28,8 +28,7 @@ use crate::{
     lint::ReportAssembly,
     project::{
         AnalysisReport, ProjectInputError, ProjectRelativePath, ResolutionRequest,
-        ResolutionRequestKey, ResolverOutcome, SourceFile, input::normalize_relative,
-        tables::SourceTable,
+        ResolutionRequestKey, ResolverOutcome, SourceFile, tables::SourceTable,
     },
 };
 
@@ -216,8 +215,7 @@ impl<'a> ProjectCollection<'a> {
         })
     }
 
-    fn admit_normalized_source(&mut self, mut source: SourceFile) -> Result<(), ProjectInputError> {
-        source.set_path(normalize_relative(source.path())?);
+    fn admit_normalized_source(&mut self, source: SourceFile) -> Result<(), ProjectInputError> {
         self.sources.insert(source)
     }
 
@@ -248,7 +246,7 @@ impl<'a> ProjectCollection<'a> {
         path: impl AsRef<str>,
         observer: &dyn ExecutionObserver,
     ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
-        let path = normalize_relative(path.as_ref())?;
+        let path = crate::project::input::normalize_relative(path.as_ref())?;
         self.analyze_source_at_path_with_observer(&path, observer)
     }
 

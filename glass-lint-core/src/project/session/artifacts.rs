@@ -145,11 +145,10 @@ impl AnalysisArtifacts {
     > {
         let mut resolutions = ResolutionTable::default();
         for (key, result) in outcomes {
-            let key = key.normalize()?;
             if !self.is_authored_request(&key) {
                 return Err(ProjectInputError::UnknownRequest(key));
             }
-            let result = result.normalize()?;
+            let result = result.validate()?;
             resolutions.insert(key, result)?;
         }
         let Self {

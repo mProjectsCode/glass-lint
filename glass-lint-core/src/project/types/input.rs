@@ -188,10 +188,6 @@ impl NormalizedOutsidePath {
         Ok(Self(SmolStr::from(normalized)))
     }
 
-    pub(crate) fn from_validated(inner: impl Into<SmolStr>) -> Self {
-        Self(inner.into())
-    }
-
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -314,10 +310,6 @@ impl SourceFile {
     pub fn into_source(self) -> SourceText {
         self.source
     }
-
-    pub(crate) fn set_path(&mut self, path: ProjectRelativePath) {
-        self.path = path;
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -364,11 +356,6 @@ impl ResolutionRequestKey {
     pub fn range(&self) -> glass_lint_datastructures::SourceRange {
         self.range.clone()
     }
-
-    pub(crate) fn normalize(mut self) -> Result<Self, ProjectInputError> {
-        self.importer = crate::project::input::normalize_relative(self.importer.as_str())?;
-        Ok(self)
-    }
 }
 
 impl ResolutionRequest {
@@ -411,25 +398,11 @@ pub enum ResolverOutcome {
 }
 
 impl ResolverOutcome {
-    pub(crate) fn normalize(mut self) -> Result<Self, ProjectInputError> {
-        match &mut self {
-            Self::Internal { path } => {
-                *path = crate::project::input::normalize_relative(path.as_str())?;
-            }
-            Self::External { package } => {
-                *package = PackageSpecifier::new(package.as_str())?;
-            }
-            Self::Builtin { name } => {
-                *name = BuiltinModuleName::new(name.as_str())?;
-            }
-            Self::OutsideProject { path } => {
-                let normalized = crate::project::input::normalize_outside_target(path.as_str())?;
-                *path = NormalizedOutsidePath::from_validated(normalized);
-            }
-            Self::Unsupported { reason } if reason.trim().is_empty() => {
-                return Err(ProjectInputError::InvalidTarget(reason.clone()));
-            }
-            Self::Missing | Self::Unsupported { .. } => {}
+    pub(crate) fn validate(self) -> Result<Self, ProjectInputError> {
+        if let Self::Unsupported { reason } = &self
+            && reason.trim().is_empty()
+        {
+            return Err(ProjectInputError::InvalidTarget(reason.clone()));
         }
         Ok(self)
     }
