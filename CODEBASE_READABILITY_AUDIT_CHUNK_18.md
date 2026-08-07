@@ -166,7 +166,7 @@ projection checks for `Any`, and the existing public convenience constructors.
 
 ### Error and bounded collection adapters
 
-#### [ ] READ-090 — Preserve module-pattern errors through query constructors
+#### [x] READ-090 — Preserve module-pattern errors through query constructors
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -197,7 +197,9 @@ between exact and package-root matching, package-boundary semantics, stable
 `ModuleSpecifierPattern`; delete the repeated wildcard `map_err` arms after
 the canonical conversion is adopted.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Centralized package-pattern construction in one query helper
+and changed `InvalidScopePackage` to retain the underlying module-specifier
+message. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

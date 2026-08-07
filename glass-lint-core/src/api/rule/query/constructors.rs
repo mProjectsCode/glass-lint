@@ -53,8 +53,7 @@ impl EventQuery {
         export: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
         let export = checked_name(export)?;
-        let module = ModuleSpecifierPattern::package(module)
-            .map_err(|_| QueryBuildError::InvalidScopePackage)?;
+        let module = checked_package(module)?;
         Ok(Self::from_parts(
             EventSpec::Call,
             IdentitySpec::PackageModuleExport { module, export },
@@ -105,8 +104,7 @@ impl EventQuery {
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
         let path = checked_chain(member)?.into_path();
-        let module = ModuleSpecifierPattern::package(module)
-            .map_err(|_| QueryBuildError::InvalidScopePackage)?;
+        let module = checked_package(module)?;
         Ok(Self::from_parts(
             EventSpec::MemberCall { member: path },
             IdentitySpec::PackageModuleNamespace { module },
@@ -154,8 +152,7 @@ impl EventQuery {
         member: impl Into<String>,
     ) -> Result<Self, QueryBuildError> {
         let path = checked_chain(member)?.into_path();
-        let module = ModuleSpecifierPattern::package(module)
-            .map_err(|_| QueryBuildError::InvalidScopePackage)?;
+        let module = checked_package(module)?;
         Ok(Self::from_parts(
             EventSpec::MemberRead { member: path },
             IdentitySpec::PackageModuleNamespace { module },
@@ -178,8 +175,7 @@ impl EventQuery {
 
     /// Import package pattern.
     pub fn import_package(module: impl Into<String>) -> Result<Self, QueryBuildError> {
-        let pattern = ModuleSpecifierPattern::package(module)
-            .map_err(|_| QueryBuildError::InvalidScopePackage)?;
+        let pattern = checked_package(module)?;
         Ok(Self::from_parts(
             EventSpec::Import,
             IdentitySpec::PackageSpecifier { pattern },
@@ -375,4 +371,9 @@ impl EventQuery {
             },
         }
     }
+}
+
+fn checked_package(module: impl Into<String>) -> Result<ModuleSpecifierPattern, QueryBuildError> {
+    ModuleSpecifierPattern::package(module)
+        .map_err(|error| QueryBuildError::InvalidScopePackage(error.to_string()))
 }

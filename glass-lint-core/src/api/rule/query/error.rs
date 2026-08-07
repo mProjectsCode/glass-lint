@@ -12,7 +12,7 @@ pub enum QueryBuildError {
     EmptyEvidenceSymbol,
     MalformedChain(String),
     InvalidArgumentIndex(usize),
-    InvalidScopePackage,
+    InvalidScopePackage(String),
     ExcessiveConstraints(usize),
     ExcessiveArgumentGroups(usize),
     ExcessivePredicates { index: usize, count: usize },
@@ -43,7 +43,9 @@ impl fmt::Display for QueryBuildError {
                 "argument index {idx} exceeds maximum ({})",
                 limits::MAX_ARGUMENT_INDEX
             ),
-            Self::InvalidScopePackage => write!(f, "invalid package scope pattern"),
+            Self::InvalidScopePackage(message) => {
+                write!(f, "invalid package scope pattern: {message}")
+            }
             Self::ExcessiveConstraints(count) => {
                 write!(f, "constraint count {count} exceeds limit")
             }

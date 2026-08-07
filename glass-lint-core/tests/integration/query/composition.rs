@@ -515,7 +515,7 @@ fn empty_lifecycle_evidence_symbol_rejected() {
 #[test]
 fn invalid_scope_package_rejected() {
     let err = EventQuery::call_package("  ", "export");
-    assert!(matches!(err, Err(QueryBuildError::InvalidScopePackage)));
+    assert!(matches!(err, Err(QueryBuildError::InvalidScopePackage(_))));
 }
 
 #[test]
