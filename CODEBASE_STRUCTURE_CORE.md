@@ -84,7 +84,6 @@ deterministic findings.
 - `analysis::model::scope` — Defines bindings, scopes, provenance, and mutations.
 - `analysis::model::static_properties` — Stores statically known property values.
 - `analysis::model::value` — Defines retained static objects, callables, and values.
-- `analysis::module` — Exposes analysis module identity and interface integration.
 - `analysis::module_request` — Recognizes and validates module request shapes.
 - `analysis::project` — Links local artifacts into a project semantic model.
 - `analysis::project::identities` — Resolves project-wide module and export identities.
@@ -124,6 +123,7 @@ deterministic findings.
 - `analysis::scope::build::shape` — Interns reusable scope shapes.
 - `analysis::scope::build::traversal` — Performs planned scope traversal.
 - `analysis::scope::build::visitor` — Visits syntax while collecting scope information.
+- `analysis::scope::expression` — Normalizes syntax expression shapes used by scope provenance.
 - `analysis::scope::frozen_assignments` — Exposes frozen assignment state for analysis queries.
 - `analysis::scope::graph` — Stores lexical scope parent and child relationships.
 - `analysis::scope::mutation_index` — Indexes writes that can change identity.
@@ -149,21 +149,21 @@ deterministic findings.
 - `analysis::syntax::names` — Handles syntax name collections and comparisons.
 - `analysis::syntax::provenance` — Classifies syntax-level symbol provenance and unknowns.
 - `analysis::trace` — Stores qualified semantic evidence traces.
-- `analysis::value` — Provides internal value arenas and identity helpers.
-- `analysis::value::arena` — Allocates bounded internal value records.
-- `analysis::value::identity` — Computes internal value identity relationships.
 
 ### Analysis structs and enums
 
 #### Chunk 7: Fact and cross-flow types
 
+- `facts::BranchProvenance` — Captures instance and class origins at a control-flow branch.
 - `facts::BuiltFacts` — Holds the completed facts produced for one source.
 - `facts::FactBuilder` — Builds semantic facts while traversing syntax.
 - `facts::FactProvenanceState` — Tracks provenance state during fact construction.
 - `facts::ProvenanceCheckpoint` — Marks a reversible fact-provenance checkpoint.
 - `facts::SemanticFacts` — Stores the immutable semantic fact collection.
+- `facts::TargetProvenance` — Collects provenance candidates for a fact target.
 - `facts::call_results::CallResultTable` — Maps calls to their produced values.
 - `facts::calls::callee::ResolvedCallee` — Records a resolved call target.
+- `facts::functions::FunctionBodyKind` — Classifies function and method bodies during fact construction.
 - `facts::instance::InstanceCallable` — Describes a callable associated with an instance.
 - `facts::interface::ModuleInterfaceBuilder` — Accumulates a module's export interface.
 - `facts::interface::commonjs::CommonJsExportEntry` — Records one CommonJS export entry.
@@ -174,10 +174,13 @@ deterministic findings.
 - `facts::pattern::PatternLeaf` — Stores one normalized syntax-pattern leaf.
 - `facts::pattern::PatternLeafKind` — Classifies a syntax-pattern leaf.
 - `facts::state::TraversalState` — Holds fact-builder traversal state.
-- `facts::stream::FactIssue` — Classifies a recoverable fact-building issue.
+- `facts::stream::BuildingStorage` — Marks storage available during mutable fact construction.
+- `facts::stream::FactPhase` — Associates fact-stream phases with phase-specific storage.
 - `facts::stream::FactStream` — Stores ordered facts and their source positions.
 - `facts::stream::FactStreamIssue` — Describes an issue attached to the fact stream.
 - `facts::stream::FactStreamIssueSet` — Deduplicates fact-stream issues.
+- `facts::stream::FactStreamToken` — Grants construction authority for a fact stream.
+- `facts::stream::FrozenStorage` — Stores names and values exposed by a frozen fact stream.
 - `flow::cross::ContextProjection` — Projects one caller context into a callee.
 - `flow::cross::CrossProjectionOutcome` — Reports the result of cross-file projection.
 - `flow::cross::CrossProjectionSession` — Maintains one bounded cross-flow session.
@@ -193,7 +196,6 @@ deterministic findings.
 - `flow::cross::propagation::CallPropagation` — Describes propagated call arguments and returns.
 - `flow::cross::propagation::UsageProjector` — Projects caller usage into callee effects.
 - `flow::cross::sources::FlowSources` — Indexes sources available to cross-flow analysis.
-- `flow::cross::sources::PropagationAdmission` — Classifies whether a cross-flow source may propagate.
 - `flow::cross::sources::PropagationItem` — Queues one source propagation item.
 - `flow::cross::sources::SourceCandidate` — Represents a possible cross-flow source.
 - `flow::cross::sources::SourceIndex` — Indexes cross-flow sources by flow identity.
@@ -202,12 +204,15 @@ deterministic findings.
 - `flow::cross::state::CallContextOrigin` — Classifies the origin of a cross-flow call context.
 - `flow::cross::state::CrossFlowState` — Stores cross-flow traversal state.
 - `flow::cross::state::EvidenceTransition` — Classifies a cross-flow evidence-state transition.
+- `flow::cross::worklist::BoundedFifo` — Maintains a bounded deduplicating FIFO.
 - `flow::cross::worklist::ContextAdmission` — Classifies admission of a cross-flow context.
 - `flow::cross::worklist::ContextWorklist` — Maintains bounded context work items.
+- `flow::cross::worklist::FifoAdmission` — Classifies insertion into the bounded FIFO.
 
 #### Chunk 8: Flow effects, planning, and projection types
 
 - `flow::effect::CallEffectRef` — References an effectful call in a function summary.
+- `flow::effect::CallShape` — Describes the modeled shape of an effectful call.
 - `flow::effect::EffectArgument` — Describes an argument participating in an effect.
 - `flow::effect::EffectCall` — Represents one modeled effectful call.
 - `flow::effect::EffectCallId` — Identifies an effectful call.
@@ -227,10 +232,15 @@ deterministic findings.
 - `flow::projector::ActivePaths` — Tracks complete and incomplete paths during projection.
 - `flow::projector::AlternativeCompleteness` — Classifies whether a path alternative is complete.
 - `flow::projector::EmissionMode` — Selects how projected findings are emitted.
+- `flow::projector::FlowProjectionRule` — Identifies the rule and root used by a flow projection.
 - `flow::projector::LocalFlowProjectionOutcome` — Reports local flow projection results.
+- `flow::projector::LocalProjectionCompletion` — Tracks local projection resource completion.
+- `flow::projector::LocalProjectionExhaustion` — Classifies a local projection exhaustion reason.
 - `flow::projector::ObjectFlowProjector` — Projects object values through statements and branches.
 - `flow::projector::ObjectFlowProjectorInput` — Supplies inputs to object-flow projection.
+- `flow::projector::PathAdmission` — Classifies admission of a projected path.
 - `flow::projector::PathFrontier` — Holds the current frontier of flow paths.
+- `flow::projector::PathRestoration` — Classifies restoration of a projected path.
 - `flow::projector::PathToken` — Identifies a path during local flow projection.
 - `flow::projector::PendingFlowKey` — Identifies pending flow state.
 - `flow::projector::PendingFlowStateFinal` — Stores finalized pending flow state.
@@ -241,7 +251,6 @@ deterministic findings.
 - `flow::projector::history::InverseDelta` — Describes how to undo one flow mutation.
 - `flow::projector::history::MutationLog` — Records reversible flow mutations.
 - `flow::projector::history::ReportEvidenceKey` — Identifies evidence affected by a mutation.
-- `flow::projector::loops::LoopAdmission` — Classifies whether a loop state may be explored.
 - `flow::projector::loops::LoopFixedPoint` — Stores a loop's stabilized abstract state.
 - `flow::projector::loops::LoopFixedPointOutcome` — Reports loop fixed-point computation.
 - `flow::projector::state::AbruptExit` — Describes a return, throw, break, or continue exit.
@@ -259,6 +268,7 @@ deterministic findings.
 - `flow::projector::state::FlowStateTable` — Stores canonical flow states for deduplication.
 - `flow::projector::state::ObjectRefCounts` — Tracks references to projected objects.
 - `flow::projector::state::PropertyWriteUpdate` — Represents a property write to apply to flow state.
+- `flow::projector::state::StateAdmission` — Classifies insertion of a canonical flow state.
 
 #### Chunk 9: Flow summaries and local-lowering types
 
@@ -270,8 +280,10 @@ deterministic findings.
 - `flow::summary::store::SummaryPathId` — Identifies a summary path.
 - `flow::summary::store::SummaryPathStore` — Stores summary paths compactly.
 - `flow::summary::summaries::FunctionSummaries` — Stores summaries for multiple functions.
-- `flow::summary::summaries::PropagationOutcome` — Reports summary propagation progress.
+- `flow::summary::summaries::SummaryCompletion` — Tracks completion of function-summary propagation.
+- `flow::summary::summaries::SummaryExhaustion` — Classifies a function-summary exhaustion reason.
 - `flow::summary::summaries::SummaryPropagation` — Propagates summaries across calls.
+- `flow::summary::summaries::SummarySinkBudget` — Bounds sink-summary collection.
 - `local::ArtifactCache` — Caches bounded semantic artifacts by content and configuration identity.
 - `local::ArtifactCacheHandle` — Shares access to an artifact cache.
 - `local::ArtifactCacheKey` — Identifies an artifact-cache entry.
@@ -288,6 +300,7 @@ deterministic findings.
 - `lowering::Lowerer` — Lowers parsed source into semantic artifacts.
 - `lowering::LoweringCapabilities` — Records the semantic capabilities available after lowering.
 - `lowering::LoweringCompletion` — Classifies completion of local lowering.
+- `lowering::LoweringCompletionPolicy` — Defines how local lowering completion is reported.
 - `lowering::ParserSpanKey` — Keys normalized parser spans.
 - `lowering::ResolvedProgram` — Stores the resolved syntax program used by lowering.
 - `lowering::SpanNormalizer` — Converts parser spans into validated core ranges.
@@ -311,6 +324,7 @@ deterministic findings.
 - `matching::arguments::ConstrainedRoot` — Describes an argument-constrained physical root.
 - `matching::arguments::MatcherArtifact` — Provides the artifact view used by argument matching.
 - `matching::arguments::MatcherEvaluationContext` — Supplies artifact context during matcher evaluation.
+- `matching::arguments::MatcherProjectContext` — Combines matcher facts with project identity overlays.
 - `matching::arguments::MatcherProjectOverlay` — Provides project-linked data to argument matching.
 - `matching::arguments::PreparedConstrainedRoot` — Stores a constrained root after preparation.
 - `matching::arguments::evaluator::EffectiveIdentityResolver` — Resolves effective identities during argument evaluation.
@@ -318,7 +332,9 @@ deterministic findings.
 - `matching::arguments::evaluator::MatcherEvaluator` — Executes prepared constrained roots.
 - `matching::arguments::evaluator::PreparedClausePaths` — Stores prepared paths for argument clauses.
 - `matching::evidence::EvidenceAccum` — Accumulates matching evidence before report assembly.
+- `matching::evidence::EvidenceAccumulator` — Accumulates matching evidence before presentation.
 - `matching::evidence::EvidenceKey` — Identifies one deduplicated occurrence of evidence.
+- `matching::evidence::EvidencePresenter` — Presents accumulated evidence in deterministic order.
 - `matching::identity_map::ModuleIdentityMap` — Maps local module identities to project identities.
 - `matching::indexes::CallIndexes` — Indexes call occurrences.
 - `matching::indexes::ConstructionIndexes` — Indexes construction occurrences.
@@ -326,7 +342,6 @@ deterministic findings.
 - `matching::indexes::MemberIndexes` — Indexes member reads and calls.
 - `matching::occurrence::BorrowedOccurrenceIter` — Iterates borrowed local occurrences.
 - `matching::occurrence::BorrowedPackageOccurrenceIter` — Iterates borrowed package occurrences.
-- `matching::occurrence::CandidateOccurrences` — Groups candidate occurrence collections.
 - `matching::occurrence::InstanceMemberKey` — Keys a member of a constructed instance.
 - `matching::occurrence::MergeItem` — Holds one item during deterministic occurrence merging.
 - `matching::occurrence::MergeState` — Stores occurrence-merge progress.
@@ -335,6 +350,7 @@ deterministic findings.
 - `matching::occurrence::NameOccurrences` — Stores occurrences keyed by name.
 - `matching::occurrence::Occurrence` — Represents one semantic event eligible for matching.
 - `matching::occurrence::OccurrenceIndex` — Stores occurrences under queryable identities.
+- `matching::occurrence::OccurrenceSelection` — Lazily selects occurrences for matching.
 - `matching::occurrence::Occurrences` — Stores a collection of semantic occurrences.
 - `matching::occurrence::PackageKeyPredicate` — Matches package-qualified occurrence keys.
 - `matching::occurrence::PackageMatchKind` — Classifies a package match.
@@ -376,7 +392,6 @@ deterministic findings.
 - `model::module::ModuleRequest` — Represents an authored module request.
 - `model::module::ModuleRequestId` — Identifies a module request.
 - `model::module::ModuleRequestRole` — Classifies how a module request is used.
-- `model::module::ReExportBinding` — Represents a binding re-exported from another module.
 
 #### Chunk 12: Retained scope, value, and request types
 
@@ -395,6 +410,7 @@ deterministic findings.
 - `model::scope::MemberValueSeed` — Seeds value resolution from a member expression.
 - `model::scope::PropertyAliasFact` — Records a property alias relationship.
 - `model::scope::ProvenanceAlternatives` — Stores bounded path-local provenance alternatives.
+- `model::scope::ProvenanceJoin` — Combines bounded provenance alternatives at a control-flow join.
 - `model::scope::RootedPropertyMutationFact` — Records mutation of a rooted property.
 - `model::scope::ScopeBindings` — Stores bindings owned by one scope.
 - `model::scope::ScopeEffect` — Classifies a scope-level effect.
@@ -415,7 +431,6 @@ deterministic findings.
 
 #### Chunk 13: Project and resolution types
 
-- `project::linker::LinkerLookup` — Provides linker lookups while constructing a project model.
 - `project::linker::ProjectLinker` — Coordinates construction of the linked project model.
 - `project::model::ExportResolution` — Classifies a linked export resolution.
 - `project::model::LinkedProjectState` — Stores mutable linked-project state.
@@ -426,7 +441,10 @@ deterministic findings.
 - `project::projection::PhysicalRootIndex` — Indexes physical matcher roots for a project.
 - `project::projection::PlannedConstrainedRoot` — Stores a project-bound constrained root plan.
 - `project::projection::PlannedFlow` — Stores a project-bound flow plan.
+- `project::projection::PlannedLifecycleRoot` — Stores a project-bound lifecycle root plan.
+- `project::projection::ProjectMatcherIdentity` — Identifies a project matcher model.
 - `project::projection::ProjectMatcherModel` — Represents the linked project view used by matching.
+- `project::projection::ProjectModuleHandle` — Provides access to one projected project module.
 - `project::projection::ProjectModuleProjection` — Projects one linked module into matching.
 - `project::projection::ProjectionInputs` — Groups inputs needed for project projection.
 - `project::projection::ProjectionMetrics` — Records project projection work.
@@ -435,12 +453,15 @@ deterministic findings.
 - `project::projection::ProjectionStatus` — Describes project projection completeness.
 - `project::resolver::ExportResolver` — Resolves export chains in a linked project.
 - `project::resolver::ProjectLookup` — Abstracts module and request-target lookup during export resolution.
+- `project::resolver::ProjectLookupView` — Provides resolver lookups over linked project state.
 - `project::state::ExportLookupCache` — Caches linked export lookups.
 - `project::state::ExportLookupCacheResult` — Stores the result of a cached export lookup.
 - `project::state::ExportTable` — Stores project-wide export identities.
+- `project::state::ExportUpdate` — Classifies updates to one qualified export entry.
 - `project::state::LinkingSession` — Holds state for one project linking pass.
 - `project::state::ModuleExports` — Stores exports belonging to one module.
 - `project::state::ModuleGraph` — Stores project module relationships.
+- `project::state::NormalizedModuleGraph` — Stores normalized project module edges and SCCs.
 - `project::state::QualifiedExportId` — Identifies an export in module-qualified space.
 - `project::state::SccPartition` — Stores strongly connected module components.
 - `resolution::FrozenFactTables` — Provides finalized fact tables to resolution.
@@ -456,6 +477,7 @@ deterministic findings.
 - `scope::binding_index::BindingIndexError` — Reports an invalid binding-index construction.
 - `scope::binding_index::BindingIndexInput` — Supplies data to build a binding index.
 - `scope::binding_index::ParameterAliasKey` — Keys aliases involving a function parameter.
+- `scope::build::AssignmentCollectionState` — Stores assignment collection state for one scope pass.
 - `scope::build::CollectorCheckpoint` — Marks reversible scope-collector state.
 - `scope::build::ControlFlowFrame` — Stores one active scope-building control frame.
 - `scope::build::FrozenPropertyArtifacts` — Stores finalized property alias artifacts.
@@ -463,6 +485,8 @@ deterministic findings.
 - `scope::build::FunctionBinding` — Associates a function with its binding.
 - `scope::build::FunctionCall` — Records a function call during scope collection.
 - `scope::build::FunctionCheckpoint` — Marks a function traversal checkpoint.
+- `scope::build::FunctionCollectionState` — Stores function collection state for one scope pass.
+- `scope::build::LexicalCollectionState` — Stores lexical collection state for one scope pass.
 - `scope::build::PathCollectionState` — Stores path-local scope collection state.
 - `scope::build::PendingFunctionName` — Holds a function name awaiting binding.
 - `scope::build::ScopeCollectionArtifacts` — Stores mutable scope collection results.
@@ -470,12 +494,15 @@ deterministic findings.
 - `scope::build::ScopedDynamicEval` — Records dynamic evaluation that weakens identity certainty.
 - `scope::build::analysis::classification::Candidate` — Represents a declaration classification candidate.
 - `scope::build::analysis::classification::DeclarationClassification` — Classifies a declaration's semantic role.
+- `scope::build::assignments::JoinedPathAssignments` — Groups assignment facts joined across paths.
 - `scope::build::compact_pat::CompactPat` — Stores a compact normalized binding pattern.
 - `scope::build::history::AssignmentDelta` — Describes one reversible assignment change.
 - `scope::build::history::AssignmentEnvironment` — Stores path-local assignment state.
 - `scope::build::history::Cursor` — Points into assignment history.
+- `scope::build::history::HistoryCheckpoint` — Marks a position in assignment history.
 - `scope::build::history::HistoryOwner` — Identifies the owner of assignment history.
 - `scope::build::history::HistoryRestoreError` — Reports failure restoring assignment history.
+- `scope::build::history::OwnedHistory` — Owns parent-linked assignment history.
 - `scope::build::history::WriteCheckpoint` — Marks a reversible write position.
 - `scope::build::history::WriteDelta` — Describes a reversible binding write.
 - `scope::build::history::WriteSet` — Stores writes active on one path.
@@ -491,6 +518,7 @@ deterministic findings.
 - `scope::build::shape::ScopeShapeTable` — Interns scope shapes.
 - `scope::build::traversal::ScopeTraversal` — Traverses a planned scoped program.
 - `scope::build::traversal::ScopePass` — Provides phase-specific hooks to the shared scope traversal.
+- `scope::expression::ScopeExpression` — Represents normalized syntax expression shapes for provenance.
 - `scope::frozen_assignments::AssignmentAt` — Selects assignment state at a source position.
 - `scope::frozen_assignments::FrozenAssignmentIndex` — Indexes finalized path-local assignments.
 - `scope::graph::FrozenScopeGraph` — Provides an immutable lexical scope graph.
@@ -498,6 +526,7 @@ deterministic findings.
 - `scope::graph::ScopeGraph` — Builds and owns the lexical scope graph.
 - `scope::graph::ScopeGraphInput` — Supplies inputs for building a scope graph.
 - `scope::mutation_index::MutationIndex` — Indexes identity-changing mutations.
+- `scope::mutation_index::MutationIndexBuilder` — Builds the mutation index from collected writes.
 - `scope::name_env::NameEnvironment` — Resolves names against active scopes.
 - `scope::query::bindings::RootMode` — Selects the root mode for a binding query.
 - `scope::query::rooted::RootedExprContext` — Supplies context for rooted-expression identity queries.
@@ -570,6 +599,7 @@ deterministic findings.
 - `lint::report::evidence` — Groups and orders finding evidence.
 - `lint::report::summary` — Aggregates report summary counts.
 - `lint::selection` — Applies rule baselines, overrides, and selectors.
+- `lint::selection::rule_state_as_bool` — Serializes rule state as a Boolean for serde.
 - `parse` — Parses source text and records syntax diagnostics.
 - `project` — Exposes owned project inputs, sessions, and reports.
 - `project::input` — Re-exports validated project input types.
@@ -612,6 +642,7 @@ deterministic findings.
 - `api::compiler::IdentityStrength` — Classifies how strongly an identity is proven.
 - `api::compiler::error::PhysicalPlanValidationError` — Reports an invalid physical query plan.
 - `api::compiler::normalize::BranchVarType` — Classifies a normalized branch variable.
+- `api::compiler::normalize_all::CompleteSameEventMerge` — Stores completed same-event merge state.
 - `api::compiler::normalize_all::SameEventMerge` — Stores events merged because they refer to one occurrence.
 - `api::compiler::normalized::ArgumentConstraintGroup` — Groups normalized argument constraints.
 - `api::compiler::normalized::CanonicalArgumentConstraints` — Stores canonical argument constraints.
@@ -633,6 +664,7 @@ deterministic findings.
 - `api::compiler::object_flow::CompletionMode` — Selects how object flow completes.
 - `api::compiler::object_flow::PresentIndices` — Records indexes present for an object-flow plan.
 - `api::compiler::object_flow::RequirementMode` — Selects how a flow requirement is enforced.
+- `api::compiler::physical::ObjectSlot` — Identifies an object slot in a physical plan.
 - `api::compiler::physical::PhysicalPlan` — Stores selected roots and operators for execution.
 - `api::compiler::physical::PhysicalRoot` — Selects the initial occurrence access path.
 - `api::compiler::requirements::FlowRequirements` — Lists flow data required before execution.
@@ -643,10 +675,14 @@ deterministic findings.
 - `api::compiler::rule::CompiledRuleSelection` — Stores the selected compiled rules.
 - `api::compiler::rule::RuleSelectionError` — Reports invalid compiled rule selection.
 - `api::compiler::validate::error::ContradictionKind` — Classifies a contradictory query.
+- `api::compiler::validate::error::LifecycleSource` — Describes a lifecycle source dimension.
 - `api::compiler::validate::error::QueryCompileError` — Reports failure compiling a query.
+- `api::compiler::validate::error::SubjectRelation` — Describes the relation between subject and event identities.
+- `api::compiler::validate::error::SubjectRelationError` — Reports an invalid subject relation.
 
 #### Chunk 18: Rule declaration and query types
 
+- `api::rule::CatalogRuleBuilder` — Builds catalog rules while deferring query errors.
 - `api::rule::Rule` — Represents a validated provider-neutral rule.
 - `api::rule::RuleBuilder` — Builds and validates a rule definition.
 - `api::rule::error::CompiledCatalogError` — Reports failure compiling a catalog.
@@ -659,6 +695,7 @@ deterministic findings.
 - `api::rule::query::EventRequirement` — Declares a required related event.
 - `api::rule::query::EventRequirementKind` — Classifies an event requirement.
 - `api::rule::query::EventSelection` — Stores a selected event variable.
+- `api::rule::query::EventSelectionAssembly` — Combines an event query with its evidence declaration.
 - `api::rule::query::LifecycleQuery` — Declares a bounded lifecycle matcher.
 - `api::rule::query::MemberChain` — Represents a validated member-property chain.
 - `api::rule::query::QueryDecl` — Declares the complete rule query.
@@ -676,7 +713,9 @@ deterministic findings.
 - `api::rule::query::expression::LogicalBranches` — Stores normalized logical branches.
 - `api::rule::query::expression::QueryExpr` — Represents a logical query expression.
 - `api::rule::query::expression::QueryExprKind` — Classifies a logical query expression.
+- `api::rule::query::expression::QueryShapeFacts` — Stores variables and bindings found in a query expression.
 - `api::rule::query::expression::VarRole` — Classifies how a query variable participates.
+- `api::rule::query::lifecycle::CatalogLifecycleQueryBuilder` — Builds lifecycle queries while deferring construction errors.
 - `api::rule::query::lifecycle::LifecycleCallEndpoint` — Stores a typed lifecycle call endpoint.
 - `api::rule::query::lifecycle::LifecycleCallTarget` — Identifies a lifecycle call target.
 - `api::rule::query::lifecycle::LifecycleCompletion` — Declares lifecycle completion behavior.
@@ -687,6 +726,7 @@ deterministic findings.
 - `api::rule::query::lifecycle::LifecycleEventBuilder` — Builds lifecycle events.
 - `api::rule::query::lifecycle::LifecycleEventKind` — Classifies a lifecycle event.
 - `api::rule::query::lifecycle::LifecycleEvents` — Stores lifecycle events in canonical order.
+- `api::rule::query::lifecycle::IntoLifecycleCondition` — Converts lifecycle condition inputs to validated declarations.
 - `api::rule::query::lifecycle::IntoLifecycleEvent` — Converts inputs into lifecycle event declarations.
 - `api::rule::query::lifecycle::LifecycleQueryBuilder` — Builds lifecycle queries.
 - `api::rule::query::lifecycle::LifecycleSink` — Declares a lifecycle sink.
@@ -706,7 +746,6 @@ deterministic findings.
 - `api::rule::query::value::StaticStringPredicateKind` — Classifies a static-string predicate.
 - `api::rule::query::value::ValueMatcher` — Matches a resolved value.
 - `api::rule::query::value::ValueMatcherKind` — Classifies a value matcher.
-- `api::rule::taxonomy::Category` — Stores a rule category.
 - `api::rule::taxonomy::Confidence` — Stores the rule confidence level.
 
 #### Chunk 19: Configuration, linting, parsing, and selection types
@@ -715,6 +754,8 @@ deterministic findings.
 - `diagnostic::RuleMetadata` — Stores display metadata for one rule.
 - `diagnostic::Severity` — Classifies diagnostic severity.
 - `diagnostic::SourceLineIndex` — Maps source bytes to display lines.
+- `diagnostic::ValidatedByteOffset` — Stores a validated source byte offset.
+- `diagnostic::ValidatedByteRange` — Stores a validated source byte range.
 - `ecma_version::EcmaFeature` — Identifies an ECMAScript feature.
 - `ecma_version::EcmaVersion` — Identifies a supported ECMAScript edition.
 - `ecma_version::EcmaVersionReport` — Reports detected language features and version.
@@ -732,12 +773,14 @@ deterministic findings.
 - `lint::batch::BatchStartError` — Reports failure to start batch execution.
 - `lint::batch::CompletedBatch` — Stores internal completed batch state.
 - `lint::batch::PendingBatch` — Stores internal pending batch state.
+- `lint::batch::PendingEntry` — Stores one pending batch input.
 - `lint::catalog::ProviderCatalogError` — Reports invalid provider catalog composition.
 - `lint::catalog::RuleCatalog` — Stores namespaced rules for a provider.
 - `lint::linter::Linter` — Runs selected compiled rules over source or projects.
 - `lint::linter::LinterConfig` — Configures one linter instance.
 - `lint::linter::LinterSharedConfig` — Shares immutable linter state across clones.
 - `lint::report::ProjectAnalysis` — Stores project analysis results before report assembly.
+- `lint::report::ProjectReportSession` — Holds project analysis while assembling a report.
 - `lint::report::ReportAssembly` — Builds deterministic public reports.
 - `lint::report::evidence::EvidenceOccurrenceRef` — References an occurrence in report evidence.
 - `lint::report::evidence::EvidenceRangeEntry` — Stores one evidence range for ordering.
@@ -757,6 +800,7 @@ deterministic findings.
 - `parse::SourceLanguage` — Identifies the supported source language mode.
 - `parse::SourceParser` — Parses source text into normalized syntax.
 - `parse::SyntaxDepthError` — Reports excessive or invalid syntax depth.
+- `parse::SyntaxDepthOutcome` — Classifies bounded syntax-depth scanning outcome.
 
 - `lint::batch::BatchOptions` — Configures bounded batch linting.
 - `lint::batch::BatchResult` — Stores one batch lint result.
@@ -787,15 +831,14 @@ deterministic findings.
 #### Chunk 20: Project session, input, and report types
 
 - `project::report::ReportCombineError` — Reports incompatible project report combination.
-- `project::session::LocalAnalysisCallbacks` — Coordinates local-analysis session callbacks.
+- `project::session::LocalAnalysisTransition` — Coordinates preparation and completion of local analysis jobs.
 - `project::session::LocallyAnalyzedProject` — Represents a project after local analysis and before linking.
 - `project::session::ProjectCollection` — Admits sources and coordinates local project analysis.
 - `project::session::ResolvedProject` — Represents a project after authored resolutions are applied.
 - `project::session::SessionState` — Stores internal project-session state.
 - `project::session::artifacts::AnalysisArtifacts` — Groups local artifacts for a project session.
 - `project::session::artifacts::AuthoredRequestTable` — Stores module requests authored by analyzed files.
-- `project::session::artifacts::CacheLookup` — Classifies a local artifact cache lookup.
-- `project::session::artifacts::SourceAnalysis` — Stores analysis for one admitted source.
+- `project::session::artifacts::AuthoredRequests` — Owns authored module requests from local analysis.
 - `project::session::execution::ExecutionEvent` — Reports progress of a local analysis job.
 - `project::session::execution::LocalJob` — Stores one pending local analysis job.
 - `project::session::execution::LocalJobCandidate` — Stores a candidate local-analysis job.
@@ -815,7 +858,10 @@ deterministic findings.
 - `project::types::input::ModuleId` — Identifies a project module.
 - `project::types::input::NormalizedOutsidePath` — Represents a normalized path outside the project root.
 - `project::types::input::PackageSpecifier` — Represents a package module specifier.
+- `project::types::input::ProjectError` — Combines project input, phase, and execution errors.
+- `project::types::input::ProjectExecutionError` — Classifies project execution failures.
 - `project::types::input::ProjectInputError` — Reports invalid project input.
+- `project::types::input::ProjectPhaseError` — Classifies errors advancing staged project analysis.
 - `project::types::input::ResolutionRequest` — Describes an authored module-resolution request.
 - `project::types::input::ResolutionRequestKey` — Keys a resolution request.
 - `project::types::input::ResolutionRequestKind` — Classifies a resolution request.
@@ -839,4 +885,5 @@ deterministic findings.
 - `project::types::report::finding::MatchCertainty` — Classifies a finding as definite or possible.
 - `project::types::report::location::SourceLocation` — Identifies a source range in a report.
 - `project::types::report::operations::AnalysisOperationCounts` — Counts bounded analysis operations.
+- `project::types::report::operations::AnalysisOperationCountsBuilder` — Accumulates operation metrics before finalizing report counts.
 - `rule_id::RuleId` — Stores a validated namespaced rule identifier.
