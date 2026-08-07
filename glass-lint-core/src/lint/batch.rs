@@ -100,8 +100,12 @@ impl BatchResult {
 
 pub(super) struct CompletedBatch {
     index: usize,
-    path: ProjectRelativePath,
     result: Result<AnalysisReport, ProjectInputError>,
+}
+
+struct PendingEntry {
+    path: ProjectRelativePath,
+    result: Option<Result<AnalysisReport, ProjectInputError>>,
 }
 
 struct PendingBatch {
@@ -109,8 +113,7 @@ struct PendingBatch {
     next_expected: usize,
     in_flight: usize,
     max_in_flight: usize,
-    paths: BTreeMap<usize, ProjectRelativePath>,
-    completed: BTreeMap<usize, CompletedBatch>,
+    entries: BTreeMap<usize, PendingEntry>,
 }
 
 impl PendingBatch {
@@ -120,8 +123,7 @@ impl PendingBatch {
             next_expected: 0,
             in_flight: 0,
             max_in_flight: max_in_flight.get(),
-            paths: BTreeMap::new(),
-            completed: BTreeMap::new(),
+            entries: BTreeMap::new(),
         }
     }
 
@@ -134,49 +136,46 @@ impl PendingBatch {
         let index = self.next_index;
         self.next_index = self.next_index.saturating_add(1);
         self.in_flight += 1;
-        self.paths.insert(index, path);
+        self.entries
+            .insert(index, PendingEntry { path, result: None });
         index
     }
 
     fn complete(&mut self, completed: CompletedBatch) {
-        debug_assert!(self.paths.contains_key(&completed.index));
-        self.completed.insert(completed.index, completed);
+        let Some(entry) = self.entries.get_mut(&completed.index) else {
+            debug_assert!(false, "completion was not submitted");
+            return;
+        };
+        debug_assert!(entry.result.is_none(), "completion was received twice");
+        if entry.result.is_none() {
+            entry.result = Some(completed.result);
+        }
     }
 
     fn synthesize_missing(&mut self) {
-        let missing = self
-            .paths
-            .iter()
-            .filter(|(index, _)| !self.completed.contains_key(index))
-            .map(|(index, path)| (*index, path.clone()))
-            .collect::<Vec<_>>();
-        for (index, path) in missing {
-            self.completed.insert(
-                index,
-                CompletedBatch {
-                    index,
-                    path,
-                    result: Err(ProjectInputError::LocalExecution(
-                        LocalExecutionError::WorkerPanic,
-                    )),
-                },
-            );
+        for entry in self.entries.values_mut() {
+            if entry.result.is_none() {
+                entry.result = Some(Err(ProjectInputError::LocalExecution(
+                    LocalExecutionError::WorkerPanic,
+                )));
+            }
         }
     }
 
     fn take_ready(&mut self) -> Option<BatchResult> {
-        let completed = self.completed.remove(&self.next_expected)?;
-        let path = self
-            .paths
-            .remove(&self.next_expected)
-            .expect("every completed batch item was submitted");
-        debug_assert_eq!(path, completed.path);
+        let index = self.next_expected;
+        let entry = self.entries.remove(&index)?;
+        let Some(result) = entry.result else {
+            self.entries.insert(index, entry);
+            return None;
+        };
+        let path = entry.path;
         self.next_expected = self.next_expected.saturating_add(1);
         self.in_flight -= 1;
         Some(BatchResult {
-            index: completed.index,
+            index,
             path,
-            result: completed.result,
+            result,
         })
     }
 
@@ -243,8 +242,7 @@ where
                 self.exhausted = true;
                 break;
             };
-            let path = source.path().clone();
-            let index = self.pending.submit(path.clone());
+            let index = self.pending.submit(source.path().clone());
             let cancellation = Arc::clone(&self.cancellation);
             let sender = sender.clone();
             let linter = linter.clone();
@@ -258,11 +256,7 @@ where
                             LocalExecutionError::WorkerPanic,
                         ))
                     });
-                let _ = sender.send(CompletedBatch {
-                    index,
-                    path,
-                    result,
-                });
+                let _ = sender.send(CompletedBatch { index, result });
             });
         }
     }
@@ -328,7 +322,6 @@ mod tests {
     fn completed(index: usize, name: &str) -> CompletedBatch {
         CompletedBatch {
             index,
-            path: path(name),
             result: Err(ProjectInputError::InvalidPath(name.to_owned())),
         }
     }

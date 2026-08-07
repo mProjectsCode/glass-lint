@@ -103,7 +103,7 @@ paths now share it; the explicit completed-source policy preserves repeated
 single-source cache reads while batch admission skips completed paths. Verified
 with `make fmt && make ci`.
 
-#### [ ] READ-076 — Make pending batch entries own index, path, and completion state
+#### [x] READ-076 — Make pending batch entries own index, path, and completion state
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -132,7 +132,11 @@ should consume the entry without a second path lookup or `expect`. Keep the
 index-order cursor, in-flight window, synthesized worker-panic results,
 input-order delivery, `size_hint`, and cancellation behavior unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced parallel path/completion maps with one pending-entry
+map whose entry owns the path and waiting/completed result state. Worker
+messages now carry only index and result; synthesis and ordered readiness
+operate on the same entry without duplicate path validation or `expect`.
+Verified with `make fmt && make ci`.
 
 ### Project input and phase boundaries
 
