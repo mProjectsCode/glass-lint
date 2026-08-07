@@ -138,7 +138,7 @@ unknown/exhausted behavior remain unchanged.
 
 ### Project lookup boundary
 
-#### [ ] READ-019 — Share the project lookup adapter used by linking
+#### [x] READ-019 — Share the project lookup adapter used by linking
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -164,7 +164,10 @@ Preserve the check that the importer module exists, qualified request IDs,
 lookup-cache ownership, cycle/depth bounds, and unknown results for missing,
 unsupported, outside-project, or conflicting resolutions.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a shared borrowed `ProjectLookupView` and migrated
+both transient linking and final-model export resolution to it. Qualified
+request validation, lookup caching, bounds, and unknown-result behavior are
+unchanged.
 
 ### Linked model lifecycle
 

@@ -6,7 +6,7 @@ use smol_str::{SmolStr, ToSmolStr};
 
 use crate::{
     analysis::{
-        ExportResolution, LinkedModuleTarget, ModuleId, ProjectModule,
+        ExportResolution, LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId,
         model::module::{DEFAULT_EXPORT, ModuleRequestId, ModuleRequestRole},
         project::{
             model::MAX_EXPORT_DEPTH,
@@ -25,6 +25,40 @@ pub(super) trait ProjectLookup {
         module: ModuleId,
         request: ModuleRequestId,
     ) -> Option<&LinkedModuleTarget>;
+}
+
+/// Borrowed lookup view shared by transient linking and the final model.
+pub(super) struct ProjectLookupView<'a> {
+    modules: &'a std::collections::BTreeMap<ModuleId, ProjectModule>,
+    resolutions: &'a std::collections::BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
+}
+
+impl<'a> ProjectLookupView<'a> {
+    pub(super) fn new(
+        modules: &'a std::collections::BTreeMap<ModuleId, ProjectModule>,
+        resolutions: &'a std::collections::BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
+    ) -> Self {
+        Self {
+            modules,
+            resolutions,
+        }
+    }
+}
+
+impl ProjectLookup for ProjectLookupView<'_> {
+    fn module(&self, module: ModuleId) -> Option<&ProjectModule> {
+        self.modules.get(&module)
+    }
+
+    fn request_target(
+        &self,
+        module: ModuleId,
+        request: ModuleRequestId,
+    ) -> Option<&LinkedModuleTarget> {
+        self.modules.get(&module)?;
+        self.resolutions
+            .get(&QualifiedRequestId::new(module, request))
+    }
 }
 
 pub(super) struct ExportResolver<'a> {
