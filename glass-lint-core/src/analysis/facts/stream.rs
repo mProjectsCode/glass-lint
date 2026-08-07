@@ -49,11 +49,6 @@ impl FactStreamIssueSet {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::analysis) enum FactIssue {
-    BudgetExhausted,
-}
-
 #[derive(Debug)]
 /// Canonical facts plus the path interner used by argument and flow queries.
 /// Invalid streams are retained only as a diagnostic boundary and must not be
@@ -194,27 +189,27 @@ impl FactStream<Building> {
         }
     }
 
-    pub(super) fn try_push(
+    pub(super) fn append(
         &mut self,
         span: glass_lint_datastructures::ByteRange,
         function: FunctionId,
         payload: FactPayload,
-    ) -> Result<FactId, FactIssue> {
+    ) {
         // Once an invariant is broken, discard subsequent input rather than
         // exposing a partially trustworthy stream to matcher indexes.
         if !self.valid || self.facts.len() >= self.max_facts {
             self.valid = false;
             self.mark_budget_exhausted();
-            return Err(FactIssue::BudgetExhausted);
+            return;
         }
-        let id = FactId::new(u32::try_from(self.facts.len()).map_err(|_| {
+        let Ok(raw_id) = u32::try_from(self.facts.len()) else {
             self.valid = false;
             self.mark_budget_exhausted();
-            FactIssue::BudgetExhausted
-        })?);
+            return;
+        };
+        let id = FactId::new(raw_id);
         let fact = SemanticFact::new(id, span, function, payload);
         self.facts.push(fact);
-        Ok(id)
     }
 
     #[cfg(test)]

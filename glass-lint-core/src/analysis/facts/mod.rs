@@ -342,7 +342,7 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
         } else {
             self.traversal.current_function()
         };
-        let _ = self.stream.try_push(span, function, payload);
+        self.stream.append(span, function, payload);
     }
 
     fn byte_range(&mut self, span: Span) -> Option<ByteRange> {

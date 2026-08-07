@@ -16,7 +16,7 @@ parts of their owning policy.
 
 ### Fact-stream construction outcomes
 
-#### [ ] READ-031 — Unify fact append failures behind one stream outcome
+#### [x] READ-031 — Unify fact append failures behind one stream outcome
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -42,7 +42,10 @@ invalid or incomplete as appropriate. Keep dense ID assignment, suffix
 discarding after an invariant failure, separate diagnostic reasons, and
 fail-closed indexing of incomplete streams.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the discarded `FactIssue` result with a stream-owned
+`append` transition that assigns dense IDs or records budget invalidation in
+the stream itself. Path, parser-span, and name exhaustion remain distinct
+diagnostic issues. Verified with `make fmt && make ci`.
 
 ### Fact-stream phase storage
 
