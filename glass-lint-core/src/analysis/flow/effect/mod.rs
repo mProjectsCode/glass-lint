@@ -15,6 +15,7 @@ use hashbrown::HashMap;
 use smol_str::SmolStr;
 
 use crate::analysis::{
+    DerivedPhaseAvailability,
     facts::{
         CallArgInfo, ControlKind, FactId, FactPayload, FactStream, Frozen, FunctionBoundary,
         ParameterBinding, SemanticFact,
@@ -504,8 +505,17 @@ impl FunctionEffects {
         self.operation_count
     }
 
+    #[cfg(test)]
     pub(in crate::analysis) fn collect(stream: &FactStream<Frozen>, limit: usize) -> Self {
-        let mut builder = FunctionEffectsBuilder::new(stream, limit);
+        Self::collect_with_availability(stream, limit, DerivedPhaseAvailability::Enabled)
+    }
+
+    pub(in crate::analysis) fn collect_with_availability(
+        stream: &FactStream<Frozen>,
+        limit: usize,
+        availability: DerivedPhaseAvailability,
+    ) -> Self {
+        let mut builder = FunctionEffectsBuilder::new(stream, limit, availability);
         for fact in stream.facts() {
             builder.consume(fact);
         }
@@ -524,19 +534,23 @@ pub(in crate::analysis) struct FunctionEffectsBuilder<'stream> {
     by_id: FunctionTable<FunctionEffect>,
     budget: Budget,
     value_provenance: HashMap<ValueId, SymbolCallProvenance>,
-    enabled: bool,
+    availability: DerivedPhaseAvailability,
 }
 
 impl<'stream> FunctionEffectsBuilder<'stream> {
-    pub(in crate::analysis) fn new(stream: &'stream FactStream<Frozen>, limit: usize) -> Self {
+    pub(in crate::analysis) fn new(
+        stream: &'stream FactStream<Frozen>,
+        limit: usize,
+        availability: DerivedPhaseAvailability,
+    ) -> Self {
         let mut builder = Self {
             stream,
             by_id: FunctionTable::new(stream.function_count()),
             budget: Budget::new(limit),
             value_provenance: HashMap::new(),
-            enabled: stream.is_valid(),
+            availability,
         };
-        if builder.enabled && builder.budget.try_push() {
+        if builder.availability.is_enabled() && builder.budget.try_push() {
             let _ = builder.by_id.insert(
                 FunctionId::new(0),
                 FunctionEffect {
@@ -554,7 +568,7 @@ impl<'stream> FunctionEffectsBuilder<'stream> {
     }
 
     pub(in crate::analysis) fn consume(&mut self, fact: &SemanticFact) {
-        if !self.enabled {
+        if !self.availability.is_enabled() {
             return;
         }
         if let FactPayload::Function {
@@ -634,7 +648,7 @@ impl<'stream> FunctionEffectsBuilder<'stream> {
     }
 
     pub(in crate::analysis) fn finish(self) -> FunctionEffects {
-        if !self.enabled {
+        if !self.availability.is_enabled() {
             return FunctionEffects::default();
         }
         FunctionEffects {

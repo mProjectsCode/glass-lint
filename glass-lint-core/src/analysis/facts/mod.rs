@@ -12,6 +12,7 @@ use hashbrown::HashMap;
 #[cfg(test)]
 use crate::analysis::flow::effect::FunctionEffects;
 use crate::analysis::{
+    DerivedPhaseAvailability, DerivedPhaseCapabilities,
     matching::OccurrenceIndexes,
     model::{
         module::ModuleInterface,
@@ -508,8 +509,9 @@ impl SemanticFacts {
         stream: FactStream<Frozen>,
         interface: ModuleInterface,
         environment: &crate::Environment,
+        capabilities: DerivedPhaseCapabilities,
     ) -> Self {
-        let index = Self::build_index(&stream, environment);
+        let index = Self::build_index(&stream, environment, capabilities.fact_index());
         Self {
             stream,
             index,
@@ -520,9 +522,10 @@ impl SemanticFacts {
     fn build_index(
         stream: &FactStream<Frozen>,
         environment: &crate::Environment,
+        availability: DerivedPhaseAvailability,
     ) -> OccurrenceIndexes {
         let mut index = OccurrenceIndexes::with_environment(environment);
-        if stream.is_valid() {
+        if availability.is_enabled() {
             index.build_from_stream(stream);
             index.normalize_occurrences();
         }

@@ -56,7 +56,12 @@ validity or boolean gates. Keep lazy effect computation, bounded budgets,
 empty results for disabled derived phases, and the fail-closed rule that
 incomplete facts cannot create a definite witness.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Lowering now produces one private `DerivedPhaseCapabilities`
+value with explicit enabled and disabled-by-incomplete-analysis states.
+`SemanticArtifact` retains that value, and fact-index construction plus lazy
+effect collection consume its phase-specific decisions instead of rereading
+fact-stream validity or storing a separate effect boolean. Verified with
+`make fmt && make ci`.
 
 ### READ-002 — `ResolvedProgram::freeze` coordinates too many phase transitions
 

@@ -17,8 +17,8 @@ use syntax::SymbolCallProvenance;
 use crate::{
     AnalysisLimits, Environment, SourceLanguage, SourceLineIndex,
     analysis::{
-        facts, flow::effect::FunctionEffects, lowering::status::AnalysisStatus,
-        model::module::ModuleInterface, syntax,
+        DerivedPhaseCapabilities, facts, flow::effect::FunctionEffects,
+        lowering::status::AnalysisStatus, model::module::ModuleInterface, syntax,
     },
     project::{ModuleId, ProjectRelativePath, SourceFile, SourceText},
 };
@@ -348,7 +348,7 @@ pub struct SemanticArtifact {
     /// Lazily derived function effects for project flow.
     effects: OnceLock<FunctionEffects>,
     effect_limit: usize,
-    effects_enabled: bool,
+    derived_capabilities: DerivedPhaseCapabilities,
     status: AnalysisStatus,
 }
 
@@ -357,7 +357,7 @@ impl SemanticArtifact {
         facts: SemanticFacts,
         export_origins: BTreeMap<SmolStr, SymbolCallProvenance>,
         effect_limit: usize,
-        effects_enabled: bool,
+        derived_capabilities: DerivedPhaseCapabilities,
         status: AnalysisStatus,
     ) -> Self {
         Self {
@@ -365,7 +365,7 @@ impl SemanticArtifact {
             export_origins,
             effects: OnceLock::new(),
             effect_limit,
-            effects_enabled,
+            derived_capabilities,
             status,
         }
     }
@@ -381,11 +381,11 @@ impl SemanticArtifact {
 
     pub(in crate::analysis) fn effects(&self) -> &FunctionEffects {
         self.effects.get_or_init(|| {
-            if self.effects_enabled {
-                FunctionEffects::collect(self.facts.stream(), self.effect_limit)
-            } else {
-                FunctionEffects::default()
-            }
+            FunctionEffects::collect_with_availability(
+                self.facts.stream(),
+                self.effect_limit,
+                self.derived_capabilities.effects(),
+            )
         })
     }
 
@@ -506,7 +506,7 @@ mod tests {
             crate::analysis::facts::SemanticFacts::default(),
             BTreeMap::new(),
             usize::MAX,
-            true,
+            DerivedPhaseCapabilities::enabled(),
             crate::analysis::lowering::status::AnalysisStatus::default(),
         );
         assert!(!artifact.effects_initialized());
@@ -532,7 +532,7 @@ mod tests {
                 crate::analysis::facts::SemanticFacts::default(),
                 BTreeMap::new(),
                 usize::MAX,
-                true,
+                DerivedPhaseCapabilities::enabled(),
                 crate::analysis::lowering::status::AnalysisStatus::default(),
             )),
             source_index: Arc::new(SourceLineIndex::new("")),
@@ -555,7 +555,7 @@ mod tests {
                     crate::analysis::facts::SemanticFacts::default(),
                     BTreeMap::new(),
                     usize::MAX,
-                    true,
+                    DerivedPhaseCapabilities::enabled(),
                     crate::analysis::lowering::status::AnalysisStatus::default(),
                 )),
                 source_index: Arc::new(SourceLineIndex::new("")),
@@ -587,7 +587,7 @@ mod tests {
                 crate::analysis::facts::SemanticFacts::default(),
                 BTreeMap::new(),
                 usize::MAX,
-                true,
+                DerivedPhaseCapabilities::enabled(),
                 crate::analysis::lowering::status::AnalysisStatus::default(),
             )),
             source_index: Arc::new(SourceLineIndex::new("")),
@@ -597,7 +597,7 @@ mod tests {
                 crate::analysis::facts::SemanticFacts::default(),
                 BTreeMap::new(),
                 usize::MAX,
-                true,
+                DerivedPhaseCapabilities::enabled(),
                 crate::analysis::lowering::status::AnalysisStatus::default(),
             )),
             source_index: Arc::new(SourceLineIndex::new("")),
@@ -617,7 +617,7 @@ mod tests {
                 crate::analysis::facts::SemanticFacts::default(),
                 BTreeMap::new(),
                 usize::MAX,
-                true,
+                DerivedPhaseCapabilities::enabled(),
                 crate::analysis::lowering::status::AnalysisStatus::default(),
             )),
             source_index: Arc::new(SourceLineIndex::new("")),

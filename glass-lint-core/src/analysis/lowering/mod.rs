@@ -18,7 +18,7 @@ use crate::analysis::{facts::MAX_FACTS, resolution::test_environment};
 use crate::{
     AnalysisLimits, Environment, ParseDiagnostic,
     analysis::{
-        LocatedSourceContext, SemanticArtifact, SemanticBudget,
+        DerivedPhaseCapabilities, LocatedSourceContext, SemanticArtifact, SemanticBudget,
         facts::{self, Building, BuiltFacts, FactStream, SemanticFacts},
         lowering::status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
         model::module,
@@ -231,43 +231,23 @@ fn check_name_exhaustion(resolver: &Resolver) -> Option<IncompleteReason> {
         })
 }
 
-#[derive(Clone, Copy, Debug)]
-struct LoweringCapabilities {
-    export_origins: bool,
-    effects: bool,
-}
-
-impl LoweringCapabilities {
-    const fn enabled() -> Self {
-        Self {
-            export_origins: true,
-            effects: true,
-        }
-    }
-
-    fn disable_derived_phases(&mut self) {
-        self.export_origins = false;
-        self.effects = false;
-    }
-}
-
 #[derive(Debug)]
 struct LoweringCompletion {
     status: AnalysisStatus,
-    capabilities: LoweringCapabilities,
+    capabilities: DerivedPhaseCapabilities,
 }
 
 #[derive(Debug)]
 struct LoweringCompletionPolicy {
     status: AnalysisStatus,
-    capabilities: LoweringCapabilities,
+    capabilities: DerivedPhaseCapabilities,
 }
 
 impl LoweringCompletionPolicy {
     fn new() -> Self {
         Self {
             status: AnalysisStatus::default(),
-            capabilities: LoweringCapabilities::enabled(),
+            capabilities: DerivedPhaseCapabilities::enabled(),
         }
     }
 
@@ -356,7 +336,7 @@ impl<'a> ResolvedProgram<'a> {
         completion: &LoweringCompletion,
         program_span: Span,
     ) -> BTreeMap<SmolStr, SymbolCallProvenance> {
-        if !completion.capabilities.export_origins {
+        if !completion.capabilities.export_origins().is_enabled() {
             return BTreeMap::new();
         }
         interface
@@ -404,12 +384,13 @@ impl<'a> ResolvedProgram<'a> {
         let interface = built.interface;
 
         let stream = resolver.freeze_into(stream);
-        let facts = SemanticFacts::from_lowering(stream, interface, environment);
+        let facts =
+            SemanticFacts::from_lowering(stream, interface, environment, completion.capabilities);
         SemanticArtifact::from_lowering(
             facts,
             export_origins,
             limits.effect_operations(),
-            completion.capabilities.effects,
+            completion.capabilities,
             completion.status,
         )
     }

@@ -10,6 +10,54 @@
 
 use crate::project::{LinkedModuleTarget, ModuleId};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::analysis) enum DerivedPhaseAvailability {
+    Enabled,
+    DisabledByIncompleteAnalysis,
+}
+
+impl DerivedPhaseAvailability {
+    pub(in crate::analysis) const fn is_enabled(self) -> bool {
+        matches!(self, Self::Enabled)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::analysis) struct DerivedPhaseCapabilities {
+    export_origins: DerivedPhaseAvailability,
+    fact_index: DerivedPhaseAvailability,
+    effects: DerivedPhaseAvailability,
+}
+
+impl DerivedPhaseCapabilities {
+    pub(in crate::analysis) const fn enabled() -> Self {
+        Self {
+            export_origins: DerivedPhaseAvailability::Enabled,
+            fact_index: DerivedPhaseAvailability::Enabled,
+            effects: DerivedPhaseAvailability::Enabled,
+        }
+    }
+
+    pub(in crate::analysis) fn disable_derived_phases(&mut self) {
+        let disabled = DerivedPhaseAvailability::DisabledByIncompleteAnalysis;
+        self.export_origins = disabled;
+        self.fact_index = disabled;
+        self.effects = disabled;
+    }
+
+    pub(in crate::analysis) const fn export_origins(self) -> DerivedPhaseAvailability {
+        self.export_origins
+    }
+
+    pub(in crate::analysis) const fn fact_index(self) -> DerivedPhaseAvailability {
+        self.fact_index
+    }
+
+    pub(in crate::analysis) const fn effects(self) -> DerivedPhaseAvailability {
+        self.effects
+    }
+}
+
 pub mod model;
 
 mod facts;
