@@ -61,9 +61,10 @@ fn lint_project(config: &Config, linter: &Linter, path: &std::path::Path) -> Res
     let outcome = loader
         .load_and_lint(linter, &selection)
         .with_context(|| format!("analyze project at {}", path.display()))?;
+    let partial = outcome.status().is_partial();
     let report = outcome.report;
     let sources = outcome.sources;
-    let failed = outcome.partial_reason.is_some() || config.report_fails(&report);
+    let failed = partial || config.report_fails(&report);
     crate::output::write_project_report(config, &report, &sources)?;
     tracing::info!(target: "glass_lint::cli", files = report.files().len(), "project command completed");
     Ok(failed)

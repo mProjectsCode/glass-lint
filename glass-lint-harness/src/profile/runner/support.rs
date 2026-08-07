@@ -111,9 +111,6 @@ pub(super) fn profile_project_parts(
     ProjectLoadMetrics,
     Option<String>,
 ) {
-    (
-        outcome.report,
-        outcome.metrics,
-        outcome.partial_reason.map(|error| format!("{error:#}")),
-    )
+    let partial_reason = outcome.status().reason().map(|error| format!("{error:#}"));
+    (outcome.report, outcome.metrics, partial_reason)
 }

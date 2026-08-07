@@ -16,7 +16,7 @@ unclear ownership.
 
 ### Analysis phase status
 
-#### [ ] READ-101 — Define one phase-status protocol across analysis boundaries
+#### [x] READ-101 — Define one phase-status protocol across analysis boundaries
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -39,7 +39,17 @@ partial-report diagnostics, and the distinction between authored findings and
 operational errors; do not replace them with a generic string result or broad
 cross-crate error enum.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the project-owned `ProjectLoadStatus` contract with a
+single `ProjectLoadOutcome::status()` accessor. Complete and recoverable
+partial loads are represented explicitly, while fatal failures—including
+timeouts—remain outer `Result` errors. The CLI now consumes the status for its
+failure decision, and harness profiling extracts the partial reason through
+the same accessor; core `ReportCompletion` remains the semantic report
+coverage contract.
+
+**Verified:** `make fmt && make ci` (workspace check, clippy with warnings as
+errors, workspace tests, doctests, E2E/rule harnesses, rules documentation
+check, and examples).
 
 ### Provider selection boundary
 

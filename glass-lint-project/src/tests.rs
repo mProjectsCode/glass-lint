@@ -151,9 +151,10 @@ fn deterministic_loader_budget_returns_partial_report_and_error() {
         .load_and_lint(&linter(), &ProjectSelection::directory(project.root()))
         .unwrap();
     assert!(matches!(
-        outcome.partial_reason,
+        outcome.status().reason(),
         Some(ProjectLoadError::ProjectSourceTooLarge { .. })
     ));
+    assert!(outcome.status().is_partial());
     assert_eq!(
         outcome.report.completion(),
         glass_lint_core::project::ReportCompletion::Partial

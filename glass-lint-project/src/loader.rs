@@ -42,11 +42,40 @@ pub struct ProjectLoadOutcome {
     /// Source text retained from the admitted files for presentation layers.
     /// The report itself remains source-free and serializable.
     pub sources: BTreeMap<ProjectRelativePath, SourceText>,
-    /// Recoverable boundary error that caused the partial report. Fatal
-    /// errors, including timeout, are returned through the outer `Result`.
-    pub partial_reason: Option<ProjectLoadError>,
+    /// Typed completion status for the filesystem loading phase. Fatal errors,
+    /// including timeout, are returned through the outer `Result`.
+    status: ProjectLoadStatus,
     /// Phase timings and deterministic counters for this load.
     pub metrics: ProjectLoadMetrics,
+}
+
+/// Completion status for a project load that reached report assembly.
+#[derive(Debug)]
+pub enum ProjectLoadStatus {
+    Complete,
+    Partial { reason: ProjectLoadError },
+}
+
+impl ProjectLoadStatus {
+    #[must_use]
+    pub fn is_partial(&self) -> bool {
+        matches!(self, Self::Partial { .. })
+    }
+
+    #[must_use]
+    pub fn reason(&self) -> Option<&ProjectLoadError> {
+        match self {
+            Self::Complete => None,
+            Self::Partial { reason } => Some(reason),
+        }
+    }
+}
+
+impl ProjectLoadOutcome {
+    #[must_use]
+    pub fn status(&self) -> &ProjectLoadStatus {
+        &self.status
+    }
 }
 
 impl ProjectLoadOutcome {
@@ -57,7 +86,7 @@ impl ProjectLoadOutcome {
         Self {
             report,
             sources,
-            partial_reason: None,
+            status: ProjectLoadStatus::Complete,
             metrics: ProjectLoadMetrics::default(),
         }
     }
@@ -70,7 +99,7 @@ impl ProjectLoadOutcome {
         Self {
             report: report.into_partial(&reason),
             sources,
-            partial_reason: Some(reason),
+            status: ProjectLoadStatus::Partial { reason },
             metrics: ProjectLoadMetrics::default(),
         }
     }

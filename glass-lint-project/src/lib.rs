@@ -24,7 +24,9 @@ mod walk;
 pub use budget::ProjectResourceBudget;
 pub use corpus::{CorpusFile, SourceCorpus};
 pub use error::{ProjectLoadError, ProjectOptionError};
-pub use loader::{ProjectLoadMetrics, ProjectLoadOutcome, ProjectLoader, ProjectPhaseTimings};
+pub use loader::{
+    ProjectLoadMetrics, ProjectLoadOutcome, ProjectLoadStatus, ProjectLoader, ProjectPhaseTimings,
+};
 pub use options::{ProjectLoadOptionsBuilder, ProjectSelection, ValidatedProjectLoadOptions};
 
 #[cfg(test)]
