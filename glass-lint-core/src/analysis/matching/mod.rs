@@ -338,13 +338,13 @@ pub(super) fn owned_occurrences(
 ) -> Vec<crate::api::classification::ClassificationEvidenceOccurrence> {
     occurrences
         .into_iter()
-        .map(
-            |occurrence| crate::api::classification::ClassificationEvidenceOccurrence {
-                span: occurrence.span(),
-                fact: Some(occurrence.event().raw()),
-                trace: None,
-            },
-        )
+        .map(|occurrence| {
+            crate::api::classification::ClassificationEvidenceOccurrence::new(
+                occurrence.span(),
+                Some(occurrence.event().raw()),
+                None,
+            )
+        })
         .collect()
 }
 
@@ -358,14 +358,15 @@ pub(super) fn push_owned_evidence(
     if occurrences.is_empty() {
         return;
     }
-    evidence.push(ClassificationEvidence {
-        kind,
-        symbol,
-        count: u32::try_from(occurrences.len()).unwrap_or(u32::MAX),
-        truncated: false,
-        certainty: crate::project::MatchCertainty::Definite,
-        occurrences,
-    });
+    evidence.push(
+        ClassificationEvidence::from_occurrences(
+            kind,
+            symbol,
+            occurrences,
+            crate::project::MatchCertainty::Definite,
+        )
+        .expect("non-empty evidence occurrences were checked above"),
+    );
 }
 
 #[cfg(test)]
@@ -434,9 +435,9 @@ mod tests {
         assert_eq!(evidence.len(), 1);
         assert_eq!(
             evidence[0]
-                .occurrences
+                .occurrences()
                 .iter()
-                .map(|occurrence| occurrence.span)
+                .map(crate::api::classification::ClassificationEvidenceOccurrence::span)
                 .collect::<Vec<_>>(),
             reference
         );

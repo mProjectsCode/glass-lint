@@ -69,12 +69,12 @@ pub fn assemble_classification_results(
                     continue;
                 }
 
-                result.capabilities.push(MatchedCapability {
-                    rule_index: *rule_index,
-                    label: record.description.clone(),
-                    severity: record.severity,
+                result.capabilities.push(MatchedCapability::new(
+                    *rule_index,
+                    record.description.clone(),
+                    record.severity,
                     evidence,
-                });
+                ));
             }
             (module.id(), result)
         })

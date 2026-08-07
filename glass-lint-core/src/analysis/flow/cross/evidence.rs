@@ -116,14 +116,14 @@ impl ModuleEvidence {
         };
         rule.nonmatching.insert(key.clone());
         if let Some(item) = rule.items.iter_mut().find(|item| {
-            item.kind == key.kind
-                && item.symbol == key.symbol
+            item.kind() == key.kind
+                && item.symbol() == key.symbol
                 && item
-                    .occurrences
+                    .occurrences()
                     .iter()
-                    .any(|occurrence| occurrence.fact == Some(key.fact.raw()))
+                    .any(|occurrence| occurrence.fact() == Some(key.fact.raw()))
         }) {
-            item.certainty = crate::project::MatchCertainty::Possible;
+            item.mark_possible();
         }
     }
 
@@ -137,30 +137,26 @@ impl ModuleEvidence {
             return;
         };
         if rule.nonmatching.contains(key) {
-            item.certainty = crate::project::MatchCertainty::Possible;
+            item.mark_possible();
         }
         if let Some(existing) = rule.items.iter_mut().find(|existing| {
-            existing.kind == key.kind
-                && existing.symbol == key.symbol
+            existing.kind() == key.kind
+                && existing.symbol() == key.symbol
                 && existing
-                    .occurrences
+                    .occurrences()
                     .iter()
-                    .any(|occurrence| occurrence.fact == Some(key.fact.raw()))
+                    .any(|occurrence| occurrence.fact() == Some(key.fact.raw()))
         }) {
-            existing.certainty = if existing.certainty == crate::project::MatchCertainty::Possible
-                || item.certainty == crate::project::MatchCertainty::Possible
-            {
-                crate::project::MatchCertainty::Possible
-            } else {
-                crate::project::MatchCertainty::Definite
-            };
+            let item_trace = item
+                .occurrences()
+                .first()
+                .and_then(crate::api::classification::ClassificationEvidenceOccurrence::trace);
             if !existing
-                .occurrences
+                .occurrences()
                 .iter()
-                .any(|occurrence| occurrence.trace == item.occurrences[0].trace)
+                .any(|occurrence| occurrence.trace() == item_trace)
             {
-                existing.occurrences.append(&mut item.occurrences);
-                existing.count = existing.count.saturating_add(item.count);
+                existing.append(item);
             }
         } else {
             rule.items.push(item);
@@ -278,22 +274,21 @@ pub(super) fn emit(
     } else {
         crate::project::MatchCertainty::Definite
     };
-    let occurrence = crate::api::classification::ClassificationEvidenceOccurrence {
+    let occurrence = crate::api::classification::ClassificationEvidenceOccurrence::new(
         span,
-        fact: Some(event.raw()),
-        trace: trace_head,
-    };
+        Some(event.raw()),
+        trace_head,
+    );
     values.record(
         rule_idx,
         &key,
-        ClassificationEvidence {
-            kind: MatchKind::CallArgument,
-            symbol: flow.evidence_symbol().as_str().to_owned(),
-            count: 1,
-            truncated: false,
+        ClassificationEvidence::from_occurrences(
+            MatchKind::CallArgument,
+            flow.evidence_symbol().as_str().to_owned(),
+            vec![occurrence],
             certainty,
-            occurrences: vec![occurrence],
-        },
+        )
+        .expect("flow evidence always has one occurrence"),
     );
     if trace_head.is_some() {
         values.trace_heads = values.trace_heads.saturating_add(1);

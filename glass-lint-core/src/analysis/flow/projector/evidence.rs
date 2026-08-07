@@ -240,18 +240,17 @@ impl ObjectFlowProjector<'_, '_, '_> {
 
         self.flow_evidence.record(
             state.flow_id().rule_index(),
-            ClassificationEvidence {
-                kind: MatchKind::CallArgument,
-                symbol: flow_symbol,
-                count: 1,
-                truncated: false,
-                certainty,
-                occurrences: vec![ClassificationEvidenceOccurrence {
+            ClassificationEvidence::from_occurrences(
+                MatchKind::CallArgument,
+                flow_symbol,
+                vec![ClassificationEvidenceOccurrence::new(
                     span,
-                    fact: Some(anchor.raw()),
-                    trace: Some(trace_head),
-                }],
-            },
+                    Some(anchor.raw()),
+                    Some(trace_head),
+                )],
+                certainty,
+            )
+            .expect("flow evidence always has one occurrence"),
         );
         self.run.trace_heads = self.run.trace_heads.saturating_add(1);
     }

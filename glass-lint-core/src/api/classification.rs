@@ -46,41 +46,158 @@ pub enum RuleEvidenceError {
 /// One classified capability emitted by a compiled matcher.
 pub struct MatchedCapability {
     /// Internal catalog position used to correlate rule selections.
-    pub rule_index: RuleIndex,
+    rule_index: RuleIndex,
     /// Human-readable capability label.
-    pub label: String,
+    label: String,
     /// Severity assigned by the rule declaration.
-    pub severity: Severity,
+    severity: Severity,
     /// Primary-file evidence for this capability.
-    pub evidence: Vec<ClassificationEvidence>,
+    evidence: Vec<ClassificationEvidence>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Evidence for one matched API occurrence and its related events.
 pub struct ClassificationEvidence {
     /// Semantic occurrence kind.
-    pub kind: MatchKind,
+    kind: MatchKind,
     /// Canonical matched symbol/chain.
-    pub symbol: String,
+    symbol: String,
     /// Number of source events represented by this evidence item.
-    pub count: u32,
+    count: u32,
     /// Whether the serialized occurrence list omits additional matches.
-    pub truncated: bool,
+    truncated: bool,
     /// Whether the match holds on all or only some modeled paths.
-    pub certainty: MatchCertainty,
+    certainty: MatchCertainty,
     /// Primary occurrences with their optional canonical fact identity
     /// and trace head into the interned trace arena.
-    pub occurrences: Vec<ClassificationEvidenceOccurrence>,
+    occurrences: Vec<ClassificationEvidenceOccurrence>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// A source span, the fact that established it, and an optional trace head
 /// into the interned trace arena.
 pub struct ClassificationEvidenceOccurrence {
-    pub span: ByteRange,
-    pub fact: Option<u32>,
+    span: ByteRange,
+    fact: Option<u32>,
     /// Head of the evidence trace chain in the arena, if available.
-    pub trace: Option<TraceNodeId>,
+    trace: Option<TraceNodeId>,
+}
+
+impl MatchedCapability {
+    pub(crate) fn new(
+        rule_index: RuleIndex,
+        label: String,
+        severity: Severity,
+        evidence: Vec<ClassificationEvidence>,
+    ) -> Self {
+        Self {
+            rule_index,
+            label,
+            severity,
+            evidence,
+        }
+    }
+
+    pub(crate) fn rule_index(&self) -> RuleIndex {
+        self.rule_index
+    }
+}
+
+impl ClassificationEvidenceOccurrence {
+    pub(crate) fn new(span: ByteRange, fact: Option<u32>, trace: Option<TraceNodeId>) -> Self {
+        Self { span, fact, trace }
+    }
+
+    pub fn span(&self) -> ByteRange {
+        self.span
+    }
+
+    pub fn fact(&self) -> Option<u32> {
+        self.fact
+    }
+
+    pub fn trace(&self) -> Option<TraceNodeId> {
+        self.trace
+    }
+}
+
+impl ClassificationEvidence {
+    pub(crate) fn from_occurrences(
+        kind: MatchKind,
+        symbol: String,
+        occurrences: Vec<ClassificationEvidenceOccurrence>,
+        certainty: MatchCertainty,
+    ) -> Option<Self> {
+        if occurrences.is_empty() {
+            return None;
+        }
+        Some(Self {
+            kind,
+            symbol,
+            count: u32::try_from(occurrences.len()).unwrap_or(u32::MAX),
+            truncated: false,
+            certainty,
+            occurrences,
+        })
+    }
+
+    pub(crate) fn with_total_count(
+        kind: MatchKind,
+        symbol: String,
+        total_count: usize,
+        truncated: bool,
+        certainty: MatchCertainty,
+        occurrences: Vec<ClassificationEvidenceOccurrence>,
+    ) -> Option<Self> {
+        if total_count < occurrences.len() {
+            return None;
+        }
+        Some(Self {
+            kind,
+            symbol,
+            count: u32::try_from(total_count).unwrap_or(u32::MAX),
+            truncated,
+            certainty,
+            occurrences,
+        })
+    }
+
+    pub fn count(&self) -> u32 {
+        self.count
+    }
+
+    pub fn is_truncated(&self) -> bool {
+        self.truncated
+    }
+
+    pub fn certainty(&self) -> MatchCertainty {
+        self.certainty
+    }
+
+    pub fn occurrences(&self) -> &[ClassificationEvidenceOccurrence] {
+        &self.occurrences
+    }
+
+    pub(crate) fn mark_truncated(&mut self) {
+        self.truncated = true;
+    }
+
+    pub(crate) fn mark_possible(&mut self) {
+        self.certainty = MatchCertainty::Possible;
+    }
+
+    pub(crate) fn append(&mut self, mut other: Self) {
+        self.certainty = if self.certainty == MatchCertainty::Possible
+            || other.certainty == MatchCertainty::Possible
+        {
+            MatchCertainty::Possible
+        } else {
+            MatchCertainty::Definite
+        };
+        self.count = self.count.saturating_add(other.count);
+        self.truncated |= other.truncated;
+        self.occurrences.append(&mut other.occurrences);
+    }
 }
 
 /// Bounded evidence grouped by opaque catalog rule index.
@@ -148,14 +265,13 @@ impl RuleEvidenceTable {
         }
         self.record(
             rule,
-            ClassificationEvidence {
+            ClassificationEvidence::from_occurrences(
                 kind,
                 symbol,
-                count: u32::try_from(occurrences.len()).unwrap_or(u32::MAX),
-                truncated: false,
-                certainty: MatchCertainty::Definite,
                 occurrences,
-            },
+                MatchCertainty::Definite,
+            )
+            .expect("non-empty evidence occurrences were checked above"),
         )
     }
 
@@ -172,11 +288,11 @@ impl RuleEvidenceTable {
         };
         for evidence in items {
             if evidence
-                .occurrences
+                .occurrences()
                 .iter()
-                .any(|occurrence| occurrence.fact == Some(event))
+                .any(|occurrence| occurrence.fact() == Some(event))
             {
-                evidence.truncated = true;
+                evidence.mark_truncated();
             }
         }
         Ok(())
@@ -281,6 +397,42 @@ mod test_evidence_capacity {
                 actual: 2,
             })
         );
+    }
+
+    #[test]
+    fn evidence_constructors_preserve_count_and_occurrence_invariants() {
+        let occurrence = ClassificationEvidenceOccurrence::new(ByteRange::empty(), Some(1), None);
+        assert!(
+            ClassificationEvidence::from_occurrences(
+                MatchKind::Call,
+                "fetch".into(),
+                Vec::new(),
+                MatchCertainty::Definite,
+            )
+            .is_none()
+        );
+        assert!(
+            ClassificationEvidence::with_total_count(
+                MatchKind::Call,
+                "fetch".into(),
+                0,
+                false,
+                MatchCertainty::Definite,
+                vec![occurrence],
+            )
+            .is_none()
+        );
+
+        let mut evidence = ClassificationEvidence::from_occurrences(
+            MatchKind::Call,
+            "fetch".into(),
+            vec![occurrence],
+            MatchCertainty::Definite,
+        )
+        .unwrap();
+        evidence.mark_truncated();
+        assert_eq!(evidence.count(), 1);
+        assert!(evidence.is_truncated());
     }
 }
 

@@ -137,7 +137,13 @@ fn transfers_source_configuration_and_sink_from_facts() {
         "const script = document.createElement('script'); script.src = url; document.head.appendChild(script);",
         &script_flow(),
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert_eq!(
+        evidence[0]
+            .iter()
+            .map(ClassificationEvidence::count)
+            .sum::<u32>(),
+        1
+    );
 }
 
 #[test]
@@ -229,7 +235,13 @@ fn member_call_configuration_stays_with_its_receiver() {
         "const first = document.createElement('script'); const second = document.createElement('script'); first.configure('yes'); document.head.appendChild(second); document.head.appendChild(first);",
         &flow,
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert_eq!(
+        evidence[0]
+            .iter()
+            .map(ClassificationEvidence::count)
+            .sum::<u32>(),
+        1
+    );
 }
 
 #[test]
@@ -247,7 +259,13 @@ fn separate_sink_facts_produce_separate_match_occurrences() {
         "const script = document.createElement('script'); script.src = url; document.head.appendChild(script); document.head.appendChild(script);",
         &script_flow(),
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 2);
+    assert_eq!(
+        evidence[0]
+            .iter()
+            .map(ClassificationEvidence::count)
+            .sum::<u32>(),
+        2
+    );
 }
 
 #[test]
@@ -256,7 +274,13 @@ fn unchanged_branch_paths_retain_baseline_state() {
         "const script = document.createElement('script'); script.src = url; if (ready) {} document.head.appendChild(script);",
         &script_flow(),
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert_eq!(
+        evidence[0]
+            .iter()
+            .map(ClassificationEvidence::count)
+            .sum::<u32>(),
+        1
+    );
 }
 
 #[test]
@@ -265,11 +289,17 @@ fn identical_branch_requirements_are_definite() {
         "const script = document.createElement('script'); if (ready) { script.src = url; } else { script.src = url; } document.head.appendChild(script);",
         &script_flow(),
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 2);
+    assert_eq!(
+        evidence[0]
+            .iter()
+            .map(ClassificationEvidence::count)
+            .sum::<u32>(),
+        2
+    );
     assert!(
         evidence[0]
             .iter()
-            .all(|item| item.certainty == crate::project::MatchCertainty::Definite)
+            .all(|item| item.certainty() == crate::project::MatchCertainty::Definite)
     );
 }
 
@@ -279,11 +309,17 @@ fn one_arm_requirement_does_not_leak_after_join() {
         "const script = document.createElement('script'); if (ready) { script.src = url; } document.head.appendChild(script);",
         &script_flow(),
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert_eq!(
+        evidence[0]
+            .iter()
+            .map(ClassificationEvidence::count)
+            .sum::<u32>(),
+        1
+    );
     assert!(
         evidence[0]
             .iter()
-            .all(|item| item.certainty == crate::project::MatchCertainty::Possible)
+            .all(|item| item.certainty() == crate::project::MatchCertainty::Possible)
     );
 }
 
@@ -293,11 +329,17 @@ fn zero_iteration_loops_do_not_make_body_configuration_definite() {
         "const script = document.createElement('script'); while (ready) { script.src = url; } document.head.appendChild(script);",
         &script_flow(),
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert_eq!(
+        evidence[0]
+            .iter()
+            .map(ClassificationEvidence::count)
+            .sum::<u32>(),
+        1
+    );
     assert!(
         evidence[0]
             .iter()
-            .all(|item| item.certainty == crate::project::MatchCertainty::Possible)
+            .all(|item| item.certainty() == crate::project::MatchCertainty::Possible)
     );
 }
 
@@ -307,11 +349,17 @@ fn do_while_body_configuration_is_reachable_after_loop() {
         "const script = document.createElement('script'); do { script.src = url; } while (ready); document.head.appendChild(script);",
         &script_flow(),
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert_eq!(
+        evidence[0]
+            .iter()
+            .map(ClassificationEvidence::count)
+            .sum::<u32>(),
+        1
+    );
     assert!(
         evidence[0]
             .iter()
-            .all(|item| item.certainty == crate::project::MatchCertainty::Definite)
+            .all(|item| item.certainty() == crate::project::MatchCertainty::Definite)
     );
 }
 
@@ -321,11 +369,17 @@ fn continue_is_a_loop_back_edge_not_a_post_loop_exit() {
         "const script = document.createElement('script'); while (ready) { script.src = url; continue; } document.head.appendChild(script);",
         &script_flow(),
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert_eq!(
+        evidence[0]
+            .iter()
+            .map(ClassificationEvidence::count)
+            .sum::<u32>(),
+        1
+    );
     assert!(
         evidence[0]
             .iter()
-            .all(|item| item.certainty == crate::project::MatchCertainty::Possible)
+            .all(|item| item.certainty() == crate::project::MatchCertainty::Possible)
     );
 }
 
@@ -335,11 +389,17 @@ fn for_loop_update_reaches_the_fixed_point_without_unrolling_runtime_paths() {
         "const script = document.createElement('script'); for (; ready; index++) { script.src = url; } document.head.appendChild(script);",
         &script_flow(),
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert_eq!(
+        evidence[0]
+            .iter()
+            .map(ClassificationEvidence::count)
+            .sum::<u32>(),
+        1
+    );
     assert!(
         evidence[0]
             .iter()
-            .all(|item| item.certainty == crate::project::MatchCertainty::Possible)
+            .all(|item| item.certainty() == crate::project::MatchCertainty::Possible)
     );
 }
 
@@ -353,11 +413,17 @@ fn for_in_and_for_of_include_the_zero_iteration_path() {
             "const script = document.createElement('script'); {loop_statement} document.head.appendChild(script);"
         );
         let evidence = collect_source(&source, &script_flow());
-        assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+        assert_eq!(
+            evidence[0]
+                .iter()
+                .map(ClassificationEvidence::count)
+                .sum::<u32>(),
+            1
+        );
         assert!(
             evidence[0]
                 .iter()
-                .all(|item| item.certainty == crate::project::MatchCertainty::Possible)
+                .all(|item| item.certainty() == crate::project::MatchCertainty::Possible)
         );
     }
 }
@@ -368,11 +434,17 @@ fn repeated_loop_source_rebinding_does_not_accumulate_unreachable_states() {
         "let script; while (ready) { script = document.createElement('script'); script.src = url; } document.head.appendChild(script);",
         &script_flow(),
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert_eq!(
+        evidence[0]
+            .iter()
+            .map(ClassificationEvidence::count)
+            .sum::<u32>(),
+        1
+    );
     assert!(
         evidence[0]
             .iter()
-            .all(|item| item.certainty == crate::project::MatchCertainty::Possible)
+            .all(|item| item.certainty() == crate::project::MatchCertainty::Possible)
     );
 }
 
@@ -382,11 +454,17 @@ fn catch_only_configuration_does_not_become_definite() {
         "const script = document.createElement('script'); try { work(); } catch (error) { script.src = url; } document.head.appendChild(script);",
         &script_flow(),
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert_eq!(
+        evidence[0]
+            .iter()
+            .map(ClassificationEvidence::count)
+            .sum::<u32>(),
+        1
+    );
     assert!(
         evidence[0]
             .iter()
-            .all(|item| item.certainty == crate::project::MatchCertainty::Possible)
+            .all(|item| item.certainty() == crate::project::MatchCertainty::Possible)
     );
 }
 
@@ -396,7 +474,13 @@ fn catch_sink_can_consume_a_source_from_before_try() {
         "const script = document.createElement('script'); script.src = url; try { work(); } catch (error) { document.head.appendChild(script); }",
         &script_flow(),
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert_eq!(
+        evidence[0]
+            .iter()
+            .map(ClassificationEvidence::count)
+            .sum::<u32>(),
+        1
+    );
 }
 
 #[test]
@@ -405,7 +489,13 @@ fn finally_configuration_is_applied_to_normal_completion() {
         "const script = document.createElement('script'); try { work(); } finally { script.src = url; } document.head.appendChild(script);",
         &script_flow(),
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert_eq!(
+        evidence[0]
+            .iter()
+            .map(ClassificationEvidence::count)
+            .sum::<u32>(),
+        1
+    );
 }
 
 #[test]
@@ -414,11 +504,17 @@ fn switch_no_match_path_prevents_case_only_configuration() {
         "const script = document.createElement('script'); switch (kind) { case 1: script.src = url; break; } document.head.appendChild(script);",
         &script_flow(),
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert_eq!(
+        evidence[0]
+            .iter()
+            .map(ClassificationEvidence::count)
+            .sum::<u32>(),
+        1
+    );
     assert!(
         evidence[0]
             .iter()
-            .all(|item| item.certainty == crate::project::MatchCertainty::Possible)
+            .all(|item| item.certainty() == crate::project::MatchCertainty::Possible)
     );
 }
 
@@ -428,11 +524,17 @@ fn default_case_can_make_configuration_definite() {
         "const script = document.createElement('script'); switch (kind) { case 1: script.src = url; break; default: script.src = url; } document.head.appendChild(script);",
         &script_flow(),
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 2);
+    assert_eq!(
+        evidence[0]
+            .iter()
+            .map(ClassificationEvidence::count)
+            .sum::<u32>(),
+        2
+    );
     assert!(
         evidence[0]
             .iter()
-            .all(|item| item.certainty == crate::project::MatchCertainty::Definite)
+            .all(|item| item.certainty() == crate::project::MatchCertainty::Definite)
     );
 }
 
@@ -451,11 +553,17 @@ fn source_created_on_one_branch_can_reach_a_possible_sink_after_join() {
         "let script; if (ready) { script = document.createElement('script'); script.src = url; } document.head.appendChild(script);",
         &script_flow(),
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert_eq!(
+        evidence[0]
+            .iter()
+            .map(ClassificationEvidence::count)
+            .sum::<u32>(),
+        1
+    );
     assert!(
         evidence[0]
             .iter()
-            .all(|item| item.certainty == crate::project::MatchCertainty::Possible)
+            .all(|item| item.certainty() == crate::project::MatchCertainty::Possible)
     );
 }
 
@@ -465,7 +573,13 @@ fn do_while_break_preserves_the_break_exit() {
         "const script = document.createElement('script'); do { script.src = url; break; } while (ready); document.head.appendChild(script);",
         &script_flow(),
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert_eq!(
+        evidence[0]
+            .iter()
+            .map(ClassificationEvidence::count)
+            .sum::<u32>(),
+        1
+    );
 }
 
 #[test]
@@ -474,7 +588,13 @@ fn finally_configuration_reaches_a_break_exit() {
         "const script = document.createElement('script'); do { try { break; } finally { script.src = url; } } while (ready); document.head.appendChild(script);",
         &script_flow(),
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert_eq!(
+        evidence[0]
+            .iter()
+            .map(ClassificationEvidence::count)
+            .sum::<u32>(),
+        1
+    );
 }
 
 #[test]
@@ -501,7 +621,13 @@ fn rebinding_one_alias_does_not_kill_the_shared_object() {
         "let first = document.createElement('script'); const alias = first; first = replacement; alias.src = url; document.head.appendChild(alias);",
         &script_flow(),
     );
-    assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    assert_eq!(
+        evidence[0]
+            .iter()
+            .map(ClassificationEvidence::count)
+            .sum::<u32>(),
+        1
+    );
 }
 
 #[test]
@@ -535,7 +661,7 @@ fn flow_evidence_is_anchored_at_the_sink_event() {
         1,
         FlowLimits::from_flow_operations(262_144),
     );
-    assert_eq!(evidence[0][0].occurrences[0].span, sink_span);
+    assert_eq!(evidence[0][0].occurrences()[0].span(), sink_span);
 }
 
 #[test]
@@ -575,9 +701,9 @@ fn requirement_only_evidence_is_anchored_at_the_configuration_event() {
         1,
         FlowLimits::from_flow_operations(262_144),
     );
-    assert_eq!(evidence[0][0].occurrences[0].span, configuration.1);
+    assert_eq!(evidence[0][0].occurrences()[0].span(), configuration.1);
     assert_eq!(
-        evidence[0][0].occurrences[0].fact,
+        evidence[0][0].occurrences()[0].fact(),
         Some(configuration.0.raw_for_test())
     );
 }

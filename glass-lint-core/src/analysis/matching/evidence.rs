@@ -79,19 +79,19 @@ pub(in crate::analysis) fn normalize_evidence(
     let mut acc: BTreeMap<EvidenceKey, EvidenceAccum> = BTreeMap::new();
 
     for item in evidence.drain(..) {
-        let key = EvidenceKey(item.kind, item.symbol);
+        let key = EvidenceKey(item.kind(), item.symbol().to_owned());
         let accum = acc.entry(key).or_insert_with(|| EvidenceAccum {
             total_count: 0,
             occurrences_truncated: false,
             certainty: crate::project::MatchCertainty::Definite,
             occurrences: Vec::new(),
         });
-        if item.certainty == crate::project::MatchCertainty::Possible {
+        if item.certainty() == crate::project::MatchCertainty::Possible {
             accum.certainty = crate::project::MatchCertainty::Possible;
         }
-        accum.total_count = accum.total_count.saturating_add(item.count as usize);
-        for occurrence in item.occurrences {
-            if !occurrence.span.is_empty() {
+        accum.total_count = accum.total_count.saturating_add(item.count() as usize);
+        for occurrence in item.occurrences().iter().copied() {
+            if !occurrence.span().is_empty() {
                 accum.occurrences.push(occurrence);
             }
         }
@@ -103,14 +103,14 @@ pub(in crate::analysis) fn normalize_evidence(
     for accum in acc.values_mut() {
         accum.occurrences.sort_by_key(|occurrence| {
             (
-                occurrence.span.start(),
-                occurrence.span.end(),
-                occurrence.fact.unwrap_or(u32::MAX),
+                occurrence.span().start(),
+                occurrence.span().end(),
+                occurrence.fact().unwrap_or(u32::MAX),
             )
         });
-        accum
-            .occurrences
-            .dedup_by(|a, b| a.span == b.span && a.fact == b.fact && a.trace == b.trace);
+        accum.occurrences.dedup_by(|a, b| {
+            a.span() == b.span() && a.fact() == b.fact() && a.trace() == b.trace()
+        });
         if accum.occurrences.len() > limit {
             accum.occurrences.truncate(limit);
             accum.occurrences_truncated = true;
@@ -121,29 +121,28 @@ pub(in crate::analysis) fn normalize_evidence(
     // global group limit selects the earliest groups in a stable order.
     let mut sorted: Vec<ClassificationEvidence> = acc
         .into_iter()
-        .map(|(key, accum)| ClassificationEvidence {
-            kind: key.0,
-            symbol: key.1,
-            count: u32::try_from(accum.total_count).unwrap_or(u32::MAX),
-            truncated: accum.occurrences_truncated,
-            certainty: accum.certainty,
-            occurrences: accum.occurrences,
+        .map(|(key, accum)| {
+            ClassificationEvidence::with_total_count(
+                key.0,
+                key.1,
+                accum.total_count,
+                accum.occurrences_truncated,
+                accum.certainty,
+                accum.occurrences,
+            )
+            .expect("evidence totals include every retained occurrence")
         })
         .collect();
     sorted.sort_by(|left, right| {
         let left_span = left
-            .occurrences
+            .occurrences()
             .first()
-            .map(|occurrence| (occurrence.span.start(), occurrence.span.end()));
+            .map(|occurrence| (occurrence.span().start(), occurrence.span().end()));
         let right_span = right
-            .occurrences
+            .occurrences()
             .first()
-            .map(|occurrence| (occurrence.span.start(), occurrence.span.end()));
-        (left_span, left.kind, left.symbol.as_str()).cmp(&(
-            right_span,
-            right.kind,
-            right.symbol.as_str(),
-        ))
+            .map(|occurrence| (occurrence.span().start(), occurrence.span().end()));
+        (left_span, left.kind(), left.symbol()).cmp(&(right_span, right.kind(), right.symbol()))
     });
 
     // Apply the global group limit.
@@ -155,7 +154,7 @@ pub(in crate::analysis) fn normalize_evidence(
     };
     if global_truncated {
         for item in &mut sorted {
-            item.truncated = true;
+            item.mark_truncated();
         }
     }
 
@@ -169,23 +168,22 @@ mod tests {
     use super::*;
 
     fn evidence(symbol: &str, spans: &[u32]) -> ClassificationEvidence {
-        ClassificationEvidence {
-            kind: MatchKind::Call,
-            symbol: symbol.into(),
-            count: u32::try_from(spans.len()).unwrap_or(u32::MAX),
-            truncated: false,
-            certainty: crate::project::MatchCertainty::Definite,
-            occurrences: spans
+        ClassificationEvidence::from_occurrences(
+            MatchKind::Call,
+            symbol.into(),
+            spans
                 .iter()
-                .map(
-                    |position| crate::api::classification::ClassificationEvidenceOccurrence {
-                        span: ByteRange::new(*position, *position + 1).unwrap(),
-                        fact: Some(*position),
-                        trace: None,
-                    },
-                )
+                .map(|position| {
+                    crate::api::classification::ClassificationEvidenceOccurrence::new(
+                        ByteRange::new(*position, *position + 1).unwrap(),
+                        Some(*position),
+                        None,
+                    )
+                })
                 .collect(),
-        }
+            crate::project::MatchCertainty::Definite,
+        )
+        .unwrap()
     }
 
     #[test]
@@ -197,10 +195,10 @@ mod tests {
         ];
         normalize_evidence(&mut evidence, Rule::EVIDENCE_LIMIT);
         assert_eq!(evidence.len(), 2);
-        assert_eq!(evidence[0].symbol, "request");
-        assert_eq!(evidence[0].count, 3);
-        assert_eq!(evidence[1].symbol, "other");
-        assert_eq!(evidence[1].occurrences[0].fact, Some(8));
+        assert_eq!(evidence[0].symbol(), "request");
+        assert_eq!(evidence[0].count(), 3);
+        assert_eq!(evidence[1].symbol(), "other");
+        assert_eq!(evidence[1].occurrences()[0].fact(), Some(8));
     }
 
     #[test]
@@ -212,8 +210,8 @@ mod tests {
                 .collect::<Vec<_>>(),
         )];
         normalize_evidence(&mut evidence, Rule::EVIDENCE_LIMIT);
-        assert_eq!(evidence[0].count as usize, Rule::EVIDENCE_LIMIT + 4);
-        assert_eq!(evidence[0].occurrences.len(), Rule::EVIDENCE_LIMIT);
-        assert!(evidence[0].truncated);
+        assert_eq!(evidence[0].count() as usize, Rule::EVIDENCE_LIMIT + 4);
+        assert_eq!(evidence[0].occurrences().len(), Rule::EVIDENCE_LIMIT);
+        assert!(evidence[0].is_truncated());
     }
 }

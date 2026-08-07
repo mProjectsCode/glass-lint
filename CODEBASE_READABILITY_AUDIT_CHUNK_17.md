@@ -23,7 +23,7 @@ contracts themselves.
 
 ### Classification values and evidence storage
 
-#### [ ] READ-081 — Make classification evidence own its count and truncation invariant
+#### [x] READ-081 — Make classification evidence own its count and truncation invariant
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -59,7 +59,12 @@ event-level truncation, certainty downgrades, deterministic occurrence order,
 and empty-group suppression. Keep the trace-head field private as part of the
 trace-handle boundary identified in Chunk 6.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made classification capability/evidence storage private and
+added invariant-owning constructors, accessors, certainty/truncation
+operations, and bounded append behavior. Migrated local, cross-module, and
+flow evidence producers and report consumers away from raw literals and field
+mutation. Constructors reject empty groups and total counts below retained
+occurrences; focused invariant tests and `make fmt && make ci` pass.
 
 ### Compiler error and phase boundaries
 

@@ -28,7 +28,7 @@ impl EvidenceOccurrenceRef {
         evidence_items: &[ClassificationEvidence],
     ) -> Option<(&ClassificationEvidence, &ClassificationEvidenceOccurrence)> {
         let evidence = evidence_items.get(self.evidence)?;
-        Some((evidence, evidence.occurrences.get(self.occurrence)?))
+        Some((evidence, evidence.occurrences().get(self.occurrence)?))
     }
 }
 
@@ -62,7 +62,7 @@ impl FindingGroup {
         self.occurrences
             .iter()
             .filter_map(|reference| reference.resolve(evidence_items))
-            .any(|(evidence, _)| evidence.truncated)
+            .any(|(evidence, _)| evidence.is_truncated())
     }
 
     fn certainty(&self, evidence_items: &[ClassificationEvidence]) -> MatchCertainty {
@@ -70,7 +70,7 @@ impl FindingGroup {
             .occurrences
             .iter()
             .filter_map(|reference| reference.resolve(evidence_items))
-            .any(|(evidence, _)| evidence.certainty == MatchCertainty::Definite)
+            .any(|(evidence, _)| evidence.certainty() == MatchCertainty::Definite)
         {
             MatchCertainty::Definite
         } else {
@@ -151,7 +151,7 @@ fn findings_for_module(
     let mut rule_findings: BTreeMap<RuleIndex, Vec<Finding>> = BTreeMap::new();
     for capability in classification.capabilities() {
         rule_findings
-            .entry(capability.rule_index)
+            .entry(capability.rule_index())
             .or_default()
             .extend(findings_for_capability(
                 assembly, project, capability, lines, path,
@@ -166,13 +166,8 @@ fn range_entries(
 ) -> Vec<EvidenceRangeEntry> {
     let mut by_range: BTreeMap<SourceRange, Vec<EvidenceOccurrenceRef>> = BTreeMap::new();
     for (evidence_idx, evidence) in evidence_items.iter().enumerate() {
-        for (occurrence_idx, occurrence) in evidence.occurrences.iter().enumerate() {
-            let span = display_span(
-                lines,
-                occurrence.span,
-                evidence.kind,
-                evidence.symbol.as_str(),
-            );
+        for (occurrence_idx, occurrence) in evidence.occurrences().iter().enumerate() {
+            let span = display_span(lines, occurrence.span(), evidence.kind(), evidence.symbol());
             if span.is_empty() {
                 continue;
             }
@@ -221,7 +216,7 @@ fn findings_for_capability(
     lines: &SourceLineIndex,
     path: &ProjectRelativePath,
 ) -> Vec<Finding> {
-    let Some(rule_id) = assembly.catalog.rule_id(capability.rule_index).cloned() else {
+    let Some(rule_id) = assembly.catalog.rule_id(capability.rule_index()).cloned() else {
         return Vec::new();
     };
     let evidence_items = capability.evidence();
@@ -239,7 +234,7 @@ fn findings_for_capability(
                 let Some((ev, occurrence)) = reference.resolve(evidence_items) else {
                     continue;
                 };
-                let steps = occurrence.trace.map_or_else(
+                let steps = occurrence.trace().map_or_else(
                     || Some(fallback_trace(ev, path, &group.range)),
                     |trace_id| resolve_trace(arena, trace_id, project),
                 );

@@ -431,10 +431,10 @@ mod tests {
             MatcherProjectOverlay::new(None, None, None),
         );
         assert_eq!(evidence[0].len(), 2);
-        assert!(evidence[0].iter().all(|item| item.count == 1));
+        assert!(evidence[0].iter().all(|item| item.count() == 1));
         assert_ne!(
-            evidence[0][0].occurrences[0].fact,
-            evidence[0][1].occurrences[0].fact
+            evidence[0][0].occurrences()[0].fact(),
+            evidence[0][1].occurrences()[0].fact()
         );
     }
 
@@ -464,23 +464,22 @@ mod tests {
             MatcherProjectOverlay::new(None, None, None),
         );
         assert_eq!(evidence[0].len(), 1);
-        assert_eq!(evidence[0][0].occurrences.len(), 2);
+        assert_eq!(evidence[0][0].occurrences().len(), 2);
         assert!(
             evidence[0][0]
-                .occurrences
+                .occurrences()
                 .iter()
-                .all(|occ| !occ.span.is_empty())
+                .all(|occ| !occ.span().is_empty())
         );
         let mut normalized = std::mem::take(&mut evidence[0]);
         crate::analysis::matching::evidence::normalize_evidence(&mut normalized, usize::MAX);
         assert_eq!(normalized.len(), 1);
-        assert_eq!(normalized[0].count, 2);
-        assert_eq!(normalized[0].occurrences.len(), 2);
+        assert_eq!(normalized[0].count(), 2);
+        assert_eq!(normalized[0].occurrences().len(), 2);
         assert!(
-            normalized[0]
-                .occurrences
-                .windows(2)
-                .all(|pair| { (pair[0].span, pair[0].fact) < (pair[1].span, pair[1].fact) })
+            normalized[0].occurrences().windows(2).all(|pair| {
+                (pair[0].span(), pair[0].fact()) < (pair[1].span(), pair[1].fact())
+            })
         );
     }
 
@@ -584,7 +583,7 @@ mod tests {
             MatcherProjectOverlay::new(None, None, None),
         );
         assert!(!evidence[0].is_empty(), "sparse arguments should match");
-        assert_eq!(evidence[0][0].occurrences.len(), 1);
+        assert_eq!(evidence[0][0].occurrences().len(), 1);
     }
 
     #[test]
@@ -648,7 +647,7 @@ mod tests {
             MatcherProjectOverlay::new(None, None, None),
         );
         assert_eq!(ev_a[0].len(), ev_b[0].len());
-        assert_eq!(ev_a[0][0].count, ev_b[0][0].count);
+        assert_eq!(ev_a[0][0].count(), ev_b[0][0].count());
     }
 
     #[test]
