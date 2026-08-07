@@ -36,7 +36,7 @@ impl ScopeCollector<'_> {
             }
             Err(ProjectionError::Unsupported) => {}
             Err(ProjectionError::Exhausted) => {
-                self.name_exhausted = true;
+                self.lexical.name_exhausted = true;
             }
         }
     }
@@ -66,7 +66,7 @@ impl ScopeCollector<'_> {
             }
             Err(ProjectionError::Unsupported) => {}
             Err(ProjectionError::Exhausted) => {
-                self.name_exhausted = true;
+                self.lexical.name_exhausted = true;
             }
         }
     }

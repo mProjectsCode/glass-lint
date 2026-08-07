@@ -82,7 +82,7 @@ hooks and child traversal.
 
 ### Collector responsibility boundary
 
-#### [ ] READ-023 — Split the broad mutable scope collector state
+#### [x] READ-023 — Split the broad mutable scope collector state
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -110,6 +110,13 @@ field access after callers migrate. Preserve the planner-produced scope
 identity, source-order assignment versions, callback parameter rules,
 bounded budgets, deterministic artifact ordering, and conservative handling of
 unknown or dynamically invalidated values.
+
+**Fix Applied:** Grouped collector storage into private lexical/name,
+assignment/path, and function/callback owners alongside the existing sealed
+artifact owner. Freeze now consumes those owners explicitly, and visitor,
+assignment, callback, provenance, and scope tests use the owning state boundary
+without changing planner identity, source-order versions, callback projection,
+or fail-closed behavior.
 
 ### Freeze representation
 

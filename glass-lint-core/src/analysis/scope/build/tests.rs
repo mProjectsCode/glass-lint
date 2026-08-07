@@ -29,6 +29,7 @@ fn collect(source: &str) -> ScopeCollector<'static> {
 }
 fn scope_fingerprint(collector: &ScopeCollector) -> Vec<String> {
     collector
+        .lexical
         .scopes
         .iter()
         .map(|scope| {
@@ -89,24 +90,28 @@ fn preserves_scope_order_for_all_scope_constructs() {
     assert_eq!(scope_fingerprint(&first), scope_fingerprint(&second));
     assert!(
         first
+            .lexical
             .scopes
             .iter()
             .any(|scope| scope.kind() == ScopeKind::Function)
     );
     assert!(
         first
+            .lexical
             .scopes
             .iter()
             .any(|scope| scope.kind() == ScopeKind::Block)
     );
     assert!(
         first
+            .lexical
             .scopes
             .iter()
             .any(|scope| scope.kind() == ScopeKind::Dynamic)
     );
     assert!(
         first
+            .lexical
             .scopes
             .iter()
             .any(|scope| scope.kind() == ScopeKind::Function && scope.depth() > 2)
@@ -118,7 +123,7 @@ fn reuses_same_span_same_kind_siblings_by_order() {
     let parsed = crate::parse_test_source("value;", "same-span.js").expect("source should parse");
     let span = parsed.program.span();
     let mut collector = planned_scopes(span, &[ScopeKind::Block, ScopeKind::Block]);
-    let predeclared = collector.scope_shapes.shapes_len();
+    let predeclared = collector.lexical.scope_shapes.shapes_len();
     assert_eq!(predeclared, 2);
 
     collector.push_scope(span, ScopeKind::Block);
@@ -133,9 +138,11 @@ fn reuses_same_span_same_kind_siblings_by_order() {
     );
     assert_eq!(collector.scope_lookups, 2);
     assert_eq!(
-        collector
-            .scope_shapes
-            .remaining(Some(ScopeId::from_test(0)), span.lo, ScopeKind::Block),
+        collector.lexical.scope_shapes.remaining(
+            Some(ScopeId::from_test(0)),
+            span.lo,
+            ScopeKind::Block
+        ),
         0,
     );
 }
@@ -164,7 +171,7 @@ fn divergence_on_extra_scope_fails_closed() {
         crate::parse_test_source("value;", "divergence-extra.js").expect("source should parse");
     let span = parsed.program.span();
     let mut collector = planned_scopes(span, &[ScopeKind::Block]);
-    assert_eq!(collector.scope_shapes.shapes_len(), 1);
+    assert_eq!(collector.lexical.scope_shapes.shapes_len(), 1);
     let before = collector.current_scope();
     collector.push_scope(span, ScopeKind::Block);
     collector.pop_scope();
@@ -198,14 +205,16 @@ fn divergence_on_missing_scope_fails_closed() {
         crate::parse_test_source("value;", "divergence-missing.js").expect("source should parse");
     let span = parsed.program.span();
     let mut collector = planned_scopes(span, &[ScopeKind::Block, ScopeKind::Block]);
-    assert_eq!(collector.scope_shapes.shapes_len(), 2);
+    assert_eq!(collector.lexical.scope_shapes.shapes_len(), 2);
     collector.push_scope(span, ScopeKind::Block);
     collector.pop_scope();
     assert!(!collector.artifacts.has_issues());
     assert_eq!(
-        collector
-            .scope_shapes
-            .remaining(Some(ScopeId::from_test(0)), span.lo, ScopeKind::Block),
+        collector.lexical.scope_shapes.remaining(
+            Some(ScopeId::from_test(0)),
+            span.lo,
+            ScopeKind::Block
+        ),
         1,
         "the unvisited predeclared shape stays in the table",
     );
@@ -244,6 +253,7 @@ fn hoisted_var_in_blocks_preserves_function_scoping() {
     let collector = collect(source);
 
     let function_scopes: Vec<_> = collector
+        .lexical
         .scopes
         .iter()
         .enumerate()
@@ -257,6 +267,7 @@ fn hoisted_var_in_blocks_preserves_function_scoping() {
     );
 
     let block_scopes: Vec<_> = collector
+        .lexical
         .scopes
         .iter()
         .enumerate()
@@ -282,6 +293,7 @@ fn catch_without_param_forms_valid_scope() {
     assert_eq!(scope_fingerprint(&first), scope_fingerprint(&second));
     assert!(
         first
+            .lexical
             .scopes
             .iter()
             .any(|scope| scope.kind() == ScopeKind::Block && scope.depth() == 1)
@@ -301,11 +313,13 @@ fn loops_with_and_without_inits_form_valid_scopes() {
     assert_eq!(scope_fingerprint(&first), scope_fingerprint(&second));
     assert_eq!(
         first
+            .lexical
             .scopes
             .iter()
             .filter(|scope| scope.kind() == ScopeKind::Block)
             .count(),
         second
+            .lexical
             .scopes
             .iter()
             .filter(|scope| scope.kind() == ScopeKind::Block)
@@ -324,6 +338,7 @@ fn with_statement_creates_dynamic_scope() {
     assert_eq!(scope_fingerprint(&first), scope_fingerprint(&second));
     assert!(
         first
+            .lexical
             .scopes
             .iter()
             .any(|scope| scope.kind() == ScopeKind::Dynamic)
@@ -341,6 +356,7 @@ fn switch_with_cases_forms_block_scope() {
     // Switch body is a block scope
     assert!(
         first
+            .lexical
             .scopes
             .iter()
             .any(|scope| scope.kind() == ScopeKind::Block && scope.depth() == 1)
@@ -360,6 +376,7 @@ fn nested_function_and_arrow_scopes_have_correct_depths() {
     ";
     let collector = collect(source);
     let function_depths: Vec<_> = collector
+        .lexical
         .scopes
         .iter()
         .filter(|scope| scope.kind() == ScopeKind::Function)
@@ -396,8 +413,14 @@ fn predeclare_and_collect_phases_produce_identical_scopes() {
     ";
     let first = collect(source);
     let second = collect(source);
-    assert_eq!(first.scopes.len(), second.scopes.len());
-    for (i, (a, b)) in first.scopes.iter().zip(second.scopes.iter()).enumerate() {
+    assert_eq!(first.lexical.scopes.len(), second.lexical.scopes.len());
+    for (i, (a, b)) in first
+        .lexical
+        .scopes
+        .iter()
+        .zip(second.lexical.scopes.iter())
+        .enumerate()
+    {
         assert_eq!(
             a.kind(),
             b.kind(),
@@ -424,6 +447,7 @@ fn structural_lookup_distinguishes_equal_span_siblings_at_different_parents() {
     let collector = collect(source);
 
     let (program_block_index, program_block) = collector
+        .lexical
         .scopes
         .iter()
         .enumerate()
@@ -432,6 +456,7 @@ fn structural_lookup_distinguishes_equal_span_siblings_at_different_parents() {
         })
         .expect("outer block under program");
     let (function_index, _function_scope) = collector
+        .lexical
         .scopes
         .iter()
         .enumerate()
@@ -440,6 +465,7 @@ fn structural_lookup_distinguishes_equal_span_siblings_at_different_parents() {
         })
         .expect("function under program");
     let (inner_block_index, inner_block) = collector
+        .lexical
         .scopes
         .iter()
         .enumerate()
@@ -477,7 +503,7 @@ fn structural_lookup_resolves_visitor_pushes_without_positional_synchronization(
     );
     assert_eq!(
         collector.scope_lookups,
-        collector.scope_shapes.shapes_len(),
+        collector.lexical.scope_shapes.shapes_len(),
         "every predeclared shape was consumed by one visitor push",
     );
 }
@@ -492,7 +518,7 @@ fn deliberate_walker_divergence_fails_closed_without_fallback_allocation() {
         span,
         &[ScopeKind::Block, ScopeKind::Block, ScopeKind::Block],
     );
-    let predeclared = collector.scope_shapes.shapes_len();
+    let predeclared = collector.lexical.scope_shapes.shapes_len();
     assert_eq!(predeclared, 3);
 
     // Walk the predeclared shapes in reversed order: a structural
@@ -501,6 +527,7 @@ fn deliberate_walker_divergence_fails_closed_without_fallback_allocation() {
     let program = ScopeId::from_test(0);
     let remaining_first =
         collector
+            .lexical
             .scope_shapes
             .remaining(Some(program), span.lo, ScopeKind::Block);
     assert_eq!(remaining_first, 3);

@@ -1,5 +1,4 @@
 use glass_lint_datastructures::{NameId, NamePath, SymbolPath};
-use hashbrown::HashMap;
 use smol_str::SmolStr;
 use swc_ecma_ast::{ArrowExpr, Expr, Function, ImportDecl, Pat, VarDeclKind};
 
@@ -29,20 +28,16 @@ impl ScopeCollector<'_> {
 
     pub(crate) fn from_plan(plan: ScopePlan, budget: &SemanticBudget) -> ScopeCollector<'_> {
         ScopeCollector {
-            scopes: plan.scopes,
-            stack: vec![0],
-            assignments: Vec::new(),
+            lexical: super::LexicalCollectionState {
+                scopes: plan.scopes,
+                stack: vec![0],
+                names: plan.names,
+                name_exhausted: plan.name_exhausted,
+                scope_shapes: plan.scope_shapes,
+            },
+            assignment: super::AssignmentCollectionState::default(),
             artifacts: ScopeCollectionArtifacts::default(),
-            function_scopes: HashMap::new(),
-            function_aliases: HashMap::new(),
-            calls: Vec::new(),
-            inline_parameters: HashMap::new(),
-            pending_function_names: HashMap::new(),
-            names: plan.names,
-            name_exhausted: plan.name_exhausted,
-            version_counters: HashMap::new(),
-            path_state: super::PathCollectionState::default(),
-            scope_shapes: plan.scope_shapes,
+            functions: super::FunctionCollectionState::default(),
             budget,
             #[cfg(test)]
             scope_lookups: 0,
@@ -50,14 +45,14 @@ impl ScopeCollector<'_> {
     }
 
     pub(super) fn current_scope(&self) -> ScopeId {
-        ScopeId::new(self.stack.last().copied().unwrap_or(0))
+        ScopeId::new(self.lexical.stack.last().copied().unwrap_or(0))
     }
 
     pub(super) fn binding_scope(&self, kind: VarDeclKind) -> ScopeId {
         if kind != VarDeclKind::Var {
             return self.current_scope();
         }
-        var_binding_scope(&self.stack, &self.scopes)
+        var_binding_scope(&self.lexical.stack, &self.lexical.scopes)
     }
 
     pub fn insert(
@@ -69,11 +64,11 @@ impl ScopeCollector<'_> {
         let name = name.into();
         self.budget.try_charge();
         let Some(name) = self.lookup_or_intern_name(name.as_str()) else {
-            self.name_exhausted = true;
+            self.lexical.name_exhausted = true;
             return;
         };
         self.intern_provenance_strings(&provenance);
-        if let Some(scope_data) = self.scopes.get_mut(scope) {
+        if let Some(scope_data) = self.lexical.scopes.get_mut(scope) {
             scope_data.insert_binding(name, provenance);
         }
     }
@@ -82,15 +77,15 @@ impl ScopeCollector<'_> {
         match provenance {
             BindingProvenance::StaticString(value) => {
                 self.budget.try_charge();
-                if self.names.intern(value.as_str()).is_err() {
-                    self.name_exhausted = true;
+                if self.lexical.names.intern(value.as_str()).is_err() {
+                    self.lexical.name_exhausted = true;
                 }
             }
             BindingProvenance::StaticStringArray(values) => {
                 for value in values {
                     self.budget.try_charge();
-                    if self.names.intern(value.as_str()).is_err() {
-                        self.name_exhausted = true;
+                    if self.lexical.names.intern(value.as_str()).is_err() {
+                        self.lexical.name_exhausted = true;
                     }
                 }
             }
@@ -105,17 +100,18 @@ impl ScopeCollector<'_> {
     }
 
     pub(super) fn name_id(&self, name: &str) -> Option<NameId> {
-        self.names.lookup(name)
+        self.lexical.names.lookup(name)
     }
 
     pub(super) fn lookup_or_intern_name(&mut self, name: &str) -> Option<NameId> {
-        self.names
+        self.lexical
+            .names
             .lookup(name)
-            .or_else(|| self.names.intern(name).ok())
+            .or_else(|| self.lexical.names.intern(name).ok())
     }
 
     pub(super) fn interned_name(&self, name: &str) -> Option<NameId> {
-        self.names.lookup(name)
+        self.lexical.names.lookup(name)
     }
 
     pub(super) fn name_path(&mut self, path: &SymbolPath) -> Option<NamePath> {
@@ -138,7 +134,8 @@ impl ScopeCollector<'_> {
     }
 
     pub(super) fn scoped_name(&self, scope: ScopeId, name: &str) -> Option<ScopedName> {
-        self.names
+        self.lexical
+            .names
             .lookup(name)
             .map(|name| ScopedName::new(scope, name))
     }
@@ -153,8 +150,12 @@ impl ScopeCollector<'_> {
 
     pub(super) fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) -> bool {
         let parent = self.current_scope();
-        if let Some(scope_id) = self.scope_shapes.take_child(Some(parent), span.lo, kind) {
-            self.stack.push(scope_id.index());
+        if let Some(scope_id) = self
+            .lexical
+            .scope_shapes
+            .take_child(Some(parent), span.lo, kind)
+        {
+            self.lexical.stack.push(scope_id.index());
             #[cfg(test)]
             {
                 self.scope_lookups += 1;
@@ -168,11 +169,11 @@ impl ScopeCollector<'_> {
     }
 
     pub(super) fn pop_scope(&mut self) {
-        if self.stack.len() <= 1 {
+        if self.lexical.stack.len() <= 1 {
             debug_assert!(false, "attempted to pop the program scope");
             return;
         }
-        let _ = self.stack.pop();
+        let _ = self.lexical.stack.pop();
     }
 
     pub(super) fn function_parameters(function: &Function) -> Vec<CompactPat> {
@@ -194,7 +195,7 @@ impl RootedExprContext for ScopeCollector<'_> {
             Some(
                 BindingProvenance::ValueAlias { target }
                 | BindingProvenance::BoundCallable { target, .. },
-            ) => self.names.resolve_path(target),
+            ) => self.lexical.names.resolve_path(target),
             Some(_) => None,
             None => Some(ident.sym.as_ref().into()),
         }

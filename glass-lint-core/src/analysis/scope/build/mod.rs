@@ -130,6 +130,42 @@ pub(super) struct FunctionBinding {
     parameters: Vec<CompactPat>,
 }
 
+/// Lexical identity and planner-produced scope shape state.
+struct LexicalCollectionState {
+    scopes: LexicalScopes,
+    stack: Vec<usize>,
+    names: NameTable,
+    name_exhausted: bool,
+    scope_shapes: ScopeShapeTable,
+}
+
+/// Function declarations, callback projections, and deferred call facts.
+#[derive(Default)]
+struct FunctionCollectionState {
+    function_scopes: HashMap<ScopedName, FunctionBinding>,
+    function_aliases: HashMap<ScopedName, ScopeId>,
+    calls: Vec<FunctionCall>,
+    inline_parameters: HashMap<BytePos, HashMap<SmolStr, BindingProvenance>>,
+    pending_function_names: HashMap<BytePos, PendingFunctionName>,
+}
+
+/// Source-order assignment facts and path-sensitive control-flow state.
+struct AssignmentCollectionState {
+    assignments: Vec<AliasAssignment>,
+    version_counters: HashMap<ScopedName, u32>,
+    path: PathCollectionState,
+}
+
+impl Default for AssignmentCollectionState {
+    fn default() -> Self {
+        Self {
+            assignments: Vec::new(),
+            version_counters: HashMap::new(),
+            path: PathCollectionState::default(),
+        }
+    }
+}
+
 struct FunctionCall {
     caller_scope: ScopeId,
     callee_name: NameId,
@@ -147,37 +183,16 @@ struct PendingFunctionName {
 /// reuses that scope tree while recording assignments and supported
 /// provenance at each use position.
 pub(super) struct ScopeCollector<'a> {
-    /// Lexical scopes in predeclaration/traversal order.
-    pub(super) scopes: LexicalScopes,
-    /// Current lexical path during AST traversal.
-    stack: Vec<usize>,
-    /// Assignment events retain source order for use-position provenance.
-    pub(super) assignments: Vec<AliasAssignment>,
+    /// Lexical identity and current traversal position.
+    lexical: LexicalCollectionState,
+    /// Assignment events and path-sensitive provenance state.
+    assignment: AssignmentCollectionState,
     /// Collected outputs and conservative collection diagnostics.
     pub(super) artifacts: ScopeCollectionArtifacts,
-    /// Function scopes and their parameter patterns by visible NameId.
-    pub(super) function_scopes: HashMap<ScopedName, FunctionBinding>,
-    /// Aliases that point to a locally declared helper function.
-    pub(super) function_aliases: HashMap<ScopedName, ScopeId>,
-    /// Calls retained for the later, scope-aware helper parameter pass.
-    calls: Vec<FunctionCall>,
-    /// Proven callback arguments installed when an inline function is entered.
-    inline_parameters: HashMap<BytePos, HashMap<SmolStr, BindingProvenance>>,
-    /// Function expression names stashed by `visit_var_decl` and consumed
-    /// by `after_function` / `after_arrow` hooks so `function_scopes` is
-    /// recorded only for var/let/const declared function expressions.
-    pending_function_names: HashMap<BytePos, PendingFunctionName>,
-    names: NameTable,
-    pub(super) name_exhausted: bool,
-    /// Per (scope, name) counter to avoid rescanniing all assignments.
-    version_counters: HashMap<ScopedName, u32>,
-    /// Structural scope shape table produced by the planner and consumed by
-    /// the source-order visitor.
-    scope_shapes: ScopeShapeTable,
+    /// Function declarations, calls, and callback projections.
+    functions: FunctionCollectionState,
     /// Shared semantic budget charged for each name interning operation.
     budget: &'a SemanticBudget,
-    /// Path-sensitive assignment and control-flow state owned by collection.
-    path_state: PathCollectionState,
     #[cfg(test)]
     scope_lookups: usize,
 }

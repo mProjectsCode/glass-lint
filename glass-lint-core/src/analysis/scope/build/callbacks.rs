@@ -23,7 +23,7 @@ impl ScopeCollector<'_> {
     /// another.
     pub fn parameter_aliases(&self) -> HashMap<ScopedName, BindingProvenance> {
         let mut aliases = BTreeMap::<ScopedName, Option<BindingProvenance>>::new();
-        for call in &self.calls {
+        for call in &self.functions.calls {
             let Some(function) = self.function_for_call(call.caller_scope, call.callee_name) else {
                 continue;
             };
@@ -32,7 +32,12 @@ impl ScopeCollector<'_> {
                 if call.caller_scope != function.scope
                     && let Some(Some(target)) = call.arguments.get(index)
                 {
-                    Self::project_parameter_pattern(&self.names, parameter, target, &mut projected);
+                    Self::project_parameter_pattern(
+                        &self.lexical.names,
+                        parameter,
+                        target,
+                        &mut projected,
+                    );
                 }
                 for name in Self::parameter_binding_names(parameter) {
                     let target = projected.get(&name).cloned();
@@ -119,15 +124,19 @@ impl ScopeCollector<'_> {
         name: NameId,
     ) -> Option<&super::FunctionBinding> {
         loop {
-            if let Some(function) = self.function_scopes.get(&ScopedName::new(scope, name)) {
+            if let Some(function) = self
+                .functions
+                .function_scopes
+                .get(&ScopedName::new(scope, name))
+            {
                 return Some(function);
             }
-            scope = self.scopes.get(scope)?.parent()?;
+            scope = self.lexical.scopes.get(scope)?.parent()?;
         }
     }
 
     pub(super) fn function_scope_for_name(&self, name: &str) -> Option<ScopeId> {
-        let name = self.names.lookup(name)?;
+        let name = self.lexical.names.lookup(name)?;
         self.function_for_call(self.current_scope(), name)
             .map(|function| function.scope)
     }
@@ -145,11 +154,16 @@ impl ScopeCollector<'_> {
         for (parameter, argument) in parameters.into_iter().zip(arguments) {
             if let Some(argument) = argument {
                 let compact = compact_pat(parameter);
-                Self::project_parameter_pattern(&self.names, &compact, &argument, &mut bindings);
+                Self::project_parameter_pattern(
+                    &self.lexical.names,
+                    &compact,
+                    &argument,
+                    &mut bindings,
+                );
             }
         }
         if !bindings.is_empty() {
-            self.inline_parameters.insert(span.lo, bindings);
+            self.functions.inline_parameters.insert(span.lo, bindings);
         }
     }
 

@@ -15,7 +15,7 @@ use crate::analysis::{
 impl Lookup for ScopeCollector<'_> {
     /// Resolve only constant-shaped binding provenances from the current scope.
     fn ident(&self, ident: &Ident, _state: &mut EvalState) -> ConstValue {
-        let resolve = |key| self.names.resolve(key).map(SmolStr::new);
+        let resolve = |key| self.lexical.names.resolve(key).map(SmolStr::new);
         self.visible_binding(ident.sym.as_ref())
             .map_or(ConstValue::Unknown, |provenance| {
                 provenance_to_const_value(provenance, &resolve)

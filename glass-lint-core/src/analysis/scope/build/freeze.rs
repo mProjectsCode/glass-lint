@@ -11,7 +11,7 @@ use crate::analysis::scope::{
 
 impl ScopeCollector<'_> {
     pub(crate) fn freeze(mut self, environment: &crate::Environment) -> ScopedProgram {
-        if !self.scope_shapes.is_consumed() {
+        if !self.lexical.scope_shapes.is_consumed() {
             self.artifacts
                 .record_issue(ScopeCollectionIssue::UnconsumedShape);
         }
@@ -22,17 +22,18 @@ impl ScopeCollector<'_> {
         } = std::mem::take(&mut self.artifacts).seal();
         let parameter_aliases = self.parameter_aliases();
         let function_bindings = self
+            .functions
             .function_scopes
             .into_iter()
             .map(|(binding, function)| (binding, function.scope))
             .collect();
-        let (binding_ids, function_ids) = BindingIndex::allocate_ids(&self.scopes);
+        let (binding_ids, function_ids) = BindingIndex::allocate_ids(&self.lexical.scopes);
         let bindings = BindingIndex::try_from(BindingIndexInput {
-            assignments: std::mem::take(&mut self.assignments),
+            assignments: std::mem::take(&mut self.assignment.assignments),
             binding_ids,
             function_ids,
             function_bindings,
-            function_aliases: self.function_aliases,
+            function_aliases: self.functions.function_aliases,
             parameter_aliases,
         })
         .unwrap_or_else(|_| {
@@ -43,8 +44,8 @@ impl ScopeCollector<'_> {
         let mutations = MutationIndex::from(mutable_static_objects);
         let mut graph = ScopeGraph::from_collected(ScopeGraphInput {
             environment: environment.clone(),
-            names: self.names,
-            scopes: self.scopes,
+            names: self.lexical.names,
+            scopes: self.lexical.scopes,
             bindings,
             mutations,
             scope_shape_valid,

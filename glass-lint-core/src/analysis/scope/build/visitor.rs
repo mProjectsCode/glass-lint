@@ -134,7 +134,7 @@ impl ScopePass for ScopeCollector<'_> {
                 self.budget.try_charge();
                 if let Some(name_id) = self.lookup_or_intern_name(ident.id.sym.as_ref()) {
                     if let Expr::Arrow(arrow) = init {
-                        self.pending_function_names.insert(
+                        self.functions.pending_function_names.insert(
                             arrow.span.lo,
                             super::PendingFunctionName {
                                 declaration_scope: scope,
@@ -142,7 +142,7 @@ impl ScopePass for ScopeCollector<'_> {
                             },
                         );
                     } else if let Expr::Fn(func_expr) = init {
-                        self.pending_function_names.insert(
+                        self.functions.pending_function_names.insert(
                             func_expr.function.span.lo,
                             super::PendingFunctionName {
                                 declaration_scope: scope,
@@ -151,7 +151,7 @@ impl ScopePass for ScopeCollector<'_> {
                         );
                     }
                 } else {
-                    self.name_exhausted = true;
+                    self.lexical.name_exhausted = true;
                 }
             }
 
@@ -159,7 +159,7 @@ impl ScopePass for ScopeCollector<'_> {
                 && let Some(function_scope) = self.function_scope_for_name(target.sym.as_ref())
                 && let Some(key) = self.scoped_name(scope, alias.id.sym.as_ref())
             {
-                self.function_aliases.insert(key, function_scope);
+                self.functions.function_aliases.insert(key, function_scope);
             }
             self.insert_pat_locals(scope, &declarator.name);
             let derived_function_pattern =
@@ -189,8 +189,9 @@ impl ScopePass for ScopeCollector<'_> {
                 let Some(name_id) = self.name_id(ident.id.sym.as_ref()) else {
                     return;
                 };
-                if let Some((scope, ())) = self.stack.iter().rev().find_map(|scope| {
-                    self.scopes
+                if let Some((scope, ())) = self.lexical.stack.iter().rev().find_map(|scope| {
+                    self.lexical
+                        .scopes
                         .get(ScopeId::new(*scope))
                         .is_some_and(|scope| scope.has_binding(name_id))
                         .then_some((ScopeId::new(*scope), ()))
@@ -262,7 +263,7 @@ impl ScopePass for ScopeCollector<'_> {
                     .iter()
                     .map(|argument| self.argument_provenance(&argument.expr))
                     .collect();
-                self.calls.push(super::FunctionCall {
+                self.functions.calls.push(super::FunctionCall {
                     caller_scope: self.current_scope(),
                     callee_name,
                     arguments,
@@ -288,11 +289,12 @@ impl ScopePass for ScopeCollector<'_> {
         self.budget.try_charge();
         if let Some(name_id) = self.lookup_or_intern_name(fn_decl.ident.sym.as_ref()) {
             let parent = self
+                .lexical
                 .scopes
                 .get(scope)
                 .and_then(crate::analysis::model::scope::LexicalScope::parent)
                 .unwrap_or_else(|| ScopeId::new(0));
-            self.function_scopes.insert(
+            self.functions.function_scopes.insert(
                 ScopedName::new(parent, name_id),
                 super::FunctionBinding { scope, parameters },
             );
@@ -306,14 +308,18 @@ impl ScopePass for ScopeCollector<'_> {
         for param in &function.params {
             self.insert_pat_locals(scope, &param.pat);
         }
-        if let Some(pending) = self.pending_function_names.remove(&function.span.lo) {
+        if let Some(pending) = self
+            .functions
+            .pending_function_names
+            .remove(&function.span.lo)
+        {
             let parameters = Self::function_parameters(function);
-            self.function_scopes.insert(
+            self.functions.function_scopes.insert(
                 ScopedName::new(pending.declaration_scope, pending.name),
                 super::FunctionBinding { scope, parameters },
             );
         }
-        if let Some(bindings) = self.inline_parameters.remove(&function.span.lo) {
+        if let Some(bindings) = self.functions.inline_parameters.remove(&function.span.lo) {
             for (name, provenance) in bindings {
                 self.record_assignment(function.span, scope, name.as_str(), provenance);
             }
@@ -324,14 +330,14 @@ impl ScopePass for ScopeCollector<'_> {
         for param in &arrow.params {
             self.insert_pat_locals(scope, param);
         }
-        if let Some(pending) = self.pending_function_names.remove(&arrow.span.lo) {
+        if let Some(pending) = self.functions.pending_function_names.remove(&arrow.span.lo) {
             let parameters = Self::arrow_parameters(arrow);
-            self.function_scopes.insert(
+            self.functions.function_scopes.insert(
                 ScopedName::new(pending.declaration_scope, pending.name),
                 super::FunctionBinding { scope, parameters },
             );
         }
-        if let Some(bindings) = self.inline_parameters.remove(&arrow.span.lo) {
+        if let Some(bindings) = self.functions.inline_parameters.remove(&arrow.span.lo) {
             for (name, provenance) in bindings {
                 self.record_assignment(arrow.span, scope, name.as_str(), provenance);
             }
