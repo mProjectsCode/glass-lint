@@ -115,7 +115,11 @@ propagate mismatch into the projector's incomplete outcome rather than treating
 it as an empty valid transition. Preserve normal LIFO control semantics,
 bounded environments, and the existing fail-closed result policy.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ControlStack` now exposes checked, non-consuming operations
+that distinguish empty, wrong-region, wrong-kind, and missing-target states.
+The projector marks malformed control transitions incomplete instead of
+silently dropping frames or treating missing loop state as an empty result.
+Verified with `make fmt && make ci`.
 
 ### READ-004 — ObjectFlowProjector owns too many mutable flow concerns
 

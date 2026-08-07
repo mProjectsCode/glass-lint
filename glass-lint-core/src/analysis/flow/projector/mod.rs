@@ -567,6 +567,10 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         self.run.max_live_alternatives = self.run.max_live_alternatives.max(count);
     }
 
+    pub(super) fn mark_control_stack_incomplete(&mut self) {
+        self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
+    }
+
     fn transfer(&mut self, fact: &crate::analysis::facts::SemanticFact) {
         match &fact.payload {
             FactPayload::Function { boundary, .. } => self.transfer_function(*boundary),
@@ -698,8 +702,8 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         );
         fixed_point.converge(&mut *self, body_start, body_end);
 
-        if !self.control.pop_loop(body_start) {
-            self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
+        if self.control.pop_loop(body_start).is_err() {
+            self.mark_control_stack_incomplete();
             return;
         }
 
@@ -720,11 +724,10 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                     projector.run.reachable = true;
                 });
             }
-            FunctionBoundary::Exit => {
-                if let Some(caller) = self.control.pop_function() {
-                    self.frontier.replace_paths(caller);
-                }
-            }
+            FunctionBoundary::Exit => match self.control.pop_function() {
+                Ok(caller) => self.frontier.replace_paths(caller),
+                Err(_) => self.mark_control_stack_incomplete(),
+            },
         }
     }
 

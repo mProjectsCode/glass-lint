@@ -47,32 +47,31 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     then_exit: None,
                 });
             }
-            ControlKind::BranchThen => {
-                if let Some(ControlFrame::Branch { base, .. }) =
-                    self.control.last_matching_mut(region)
-                {
+            ControlKind::BranchThen => match self.control.last_matching_mut(region) {
+                Ok(ControlFrame::Branch { base, .. }) => {
                     *base = self.frontier.snapshot_paths();
                 }
-            }
+                _ => self.mark_control_stack_incomplete(),
+            },
             ControlKind::BranchElse => {
-                let base = if let Some(ControlFrame::Branch {
+                let base = if let Ok(ControlFrame::Branch {
                     base, then_exit, ..
                 }) = self.control.last_matching_mut(region)
                 {
                     *then_exit = Some(self.frontier.snapshot_paths());
-                    Some(base.clone())
+                    base.clone()
                 } else {
-                    None
+                    self.mark_control_stack_incomplete();
+                    return;
                 };
-                if let Some(base) = base {
-                    self.frontier.replace_paths(base);
-                }
+                self.frontier.replace_paths(base);
             }
             ControlKind::BranchEnd => {
-                let Some(ControlFrame::Branch {
+                let Ok(ControlFrame::Branch {
                     base, then_exit, ..
                 }) = self.control.pop_region(region)
                 else {
+                    self.mark_control_stack_incomplete();
                     return;
                 };
                 let mut paths = then_exit.unwrap_or(base);
@@ -96,13 +95,16 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 });
             }
             ControlKind::LoopUpdate => {
-                let continues = self.control.take_loop_continues();
+                let Ok(continues) = self.control.take_loop_continues() else {
+                    self.mark_control_stack_incomplete();
+                    return;
+                };
                 self.frontier.append_paths(continues);
                 let paths = self.frontier.take_paths();
                 self.join_paths(paths);
             }
             ControlKind::LoopEnd => {
-                let Some(ControlFrame::Loop {
+                let Ok(ControlFrame::Loop {
                     body_start,
                     baseline,
                     guaranteed,
@@ -111,6 +113,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                     ..
                 }) = self.control.loop_frame(region)
                 else {
+                    self.mark_control_stack_incomplete();
                     return;
                 };
                 self.finish_loop(body_start, fact, guaranteed, baseline, breaks, continues);
@@ -130,29 +133,31 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 });
             }
             ControlKind::SwitchCase { is_default } => {
-                let (baseline, current) = match self.control.last_matching_mut(region) {
-                    Some(ControlFrame::Switch {
-                        baseline,
-                        has_default,
-                        ..
-                    }) => {
-                        *has_default |= is_default;
-                        (baseline.clone(), self.frontier.take_paths())
-                    }
-                    _ => return,
+                let (baseline, current) = if let Ok(ControlFrame::Switch {
+                    baseline,
+                    has_default,
+                    ..
+                }) = self.control.last_matching_mut(region)
+                {
+                    *has_default |= is_default;
+                    (baseline.clone(), self.frontier.take_paths())
+                } else {
+                    self.mark_control_stack_incomplete();
+                    return;
                 };
                 let mut paths = baseline;
                 paths.extend(current);
                 self.join_paths(paths);
             }
             ControlKind::SwitchEnd => {
-                let Some(ControlFrame::Switch {
+                let Ok(ControlFrame::Switch {
                     baseline,
                     breaks,
                     has_default,
                     ..
                 }) = self.control.pop_region(region)
                 else {
+                    self.mark_control_stack_incomplete();
                     return;
                 };
                 let mut paths = self.frontier.take_paths();
@@ -181,14 +186,15 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 });
             }
             ControlKind::CatchStart => {
-                let baseline = match self.control.last_matching_mut(region) {
-                    Some(ControlFrame::Try {
-                        baseline, try_exit, ..
-                    }) => {
-                        *try_exit = Some(self.frontier.take_paths());
-                        baseline.clone()
-                    }
-                    _ => return,
+                let baseline = if let Ok(ControlFrame::Try {
+                    baseline, try_exit, ..
+                }) = self.control.last_matching_mut(region)
+                {
+                    *try_exit = Some(self.frontier.take_paths());
+                    baseline.clone()
+                } else {
+                    self.mark_control_stack_incomplete();
+                    return;
                 };
                 self.frontier.replace_paths(baseline);
             }
@@ -200,7 +206,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
 
     fn start_finally(&mut self, region: ControlRegionId) {
         let current = self.frontier.take_paths();
-        let incoming = if let Some(ControlFrame::Try {
+        let incoming = if let Ok(ControlFrame::Try {
             try_exit,
             catch_exit,
             normal_exit,
@@ -220,13 +226,14 @@ impl ObjectFlowProjector<'_, '_, '_> {
             incoming.extend(abrupt_exits.iter().map(|(_, environment)| *environment));
             incoming
         } else {
-            current
+            self.mark_control_stack_incomplete();
+            return;
         };
         self.join_paths(incoming);
     }
 
     fn end_try(&mut self, region: ControlRegionId) {
-        let Some(ControlFrame::Try {
+        let Ok(ControlFrame::Try {
             try_exit,
             catch_exit,
             normal_exit,
@@ -236,6 +243,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             ..
         }) = self.control.pop_region(region)
         else {
+            self.mark_control_stack_incomplete();
             return;
         };
         if has_finally {
@@ -246,7 +254,10 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 let Some(environment) = after.get(abrupt_index).copied() else {
                     break;
                 };
-                self.control.route_abrupt(kind, environment);
+                if self.control.route_abrupt(kind, environment).is_err() {
+                    self.mark_control_stack_incomplete();
+                    return;
+                }
             }
             self.frontier.replace_paths(normal);
         } else {
@@ -269,7 +280,10 @@ impl ObjectFlowProjector<'_, '_, '_> {
             self.control.record_abrupt_exit(abrupt, environment);
         }
         for environment in current {
-            self.control.route_abrupt(abrupt, environment);
+            if self.control.route_abrupt(abrupt, environment).is_err() {
+                self.mark_control_stack_incomplete();
+                return;
+            }
         }
     }
 }

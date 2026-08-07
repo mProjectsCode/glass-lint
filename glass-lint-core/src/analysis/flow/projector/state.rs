@@ -780,17 +780,17 @@ pub(super) struct ControlStack {
     frames: Vec<ControlFrame>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ControlStackError {
+    Empty,
+    WrongRegion,
+    WrongKind,
+    NoTarget,
+}
+
 impl ControlStack {
     pub(super) fn push(&mut self, frame: ControlFrame) {
         self.frames.push(frame);
-    }
-
-    pub(super) fn pop(&mut self) -> Option<ControlFrame> {
-        self.frames.pop()
-    }
-
-    pub(super) fn last(&self) -> Option<&ControlFrame> {
-        self.frames.last()
     }
 
     pub(super) fn last_mut(&mut self) -> Option<&mut ControlFrame> {
@@ -800,41 +800,52 @@ impl ControlStack {
     pub(super) fn last_matching_mut(
         &mut self,
         region: ControlRegionId,
-    ) -> Option<&mut ControlFrame> {
-        self.frames
-            .last_mut()
-            .filter(|frame| frame.region() == Some(region))
+    ) -> Result<&mut ControlFrame, ControlStackError> {
+        let frame = self.frames.last_mut().ok_or(ControlStackError::Empty)?;
+        if frame.region() != Some(region) {
+            return Err(ControlStackError::WrongRegion);
+        }
+        Ok(frame)
     }
 
-    /// Pop the top frame, rejecting a mismatched region after consuming it.
-    /// This preserves the projector's fail-closed behavior at malformed
-    /// control boundaries without allowing callers to bypass region checks.
-    pub(super) fn pop_region(&mut self, region: ControlRegionId) -> Option<ControlFrame> {
-        let frame = self.frames.pop()?;
-        (frame.region() == Some(region)).then_some(frame)
+    pub(super) fn pop_region(
+        &mut self,
+        region: ControlRegionId,
+    ) -> Result<ControlFrame, ControlStackError> {
+        self.last_matching_mut(region)?;
+        self.frames.pop().ok_or(ControlStackError::Empty)
     }
 
-    pub(super) fn loop_frame(&self, region: ControlRegionId) -> Option<ControlFrame> {
-        self.last()
-            .filter(|frame| frame.region() == Some(region))
-            .and_then(|frame| matches!(frame, ControlFrame::Loop { .. }).then(|| frame.clone()))
+    pub(super) fn loop_frame(
+        &self,
+        region: ControlRegionId,
+    ) -> Result<ControlFrame, ControlStackError> {
+        let frame = self.frames.last().ok_or(ControlStackError::Empty)?;
+        if frame.region() != Some(region) {
+            return Err(ControlStackError::WrongRegion);
+        }
+        match frame {
+            ControlFrame::Loop { .. } => Ok(frame.clone()),
+            _ => Err(ControlStackError::WrongKind),
+        }
     }
 
-    pub(super) fn pop_loop(&mut self, body_start: FactId) -> bool {
-        if !matches!(
-            self.last(),
-            Some(ControlFrame::Loop {
+    pub(super) fn pop_loop(&mut self, body_start: FactId) -> Result<(), ControlStackError> {
+        let frame = self.frames.last().ok_or(ControlStackError::Empty)?;
+        match frame {
+            ControlFrame::Loop {
                 body_start: expected,
                 ..
-            }) if *expected == body_start
-        ) {
-            return false;
+            } if *expected == body_start => {
+                self.frames.pop();
+                Ok(())
+            }
+            ControlFrame::Loop { .. } => Err(ControlStackError::WrongRegion),
+            _ => Err(ControlStackError::WrongKind),
         }
-        self.frames.pop();
-        true
     }
 
-    pub(super) fn loop_break_count(&self) -> usize {
+    pub(super) fn loop_break_count(&self) -> Result<usize, ControlStackError> {
         self.frames
             .iter()
             .rev()
@@ -842,21 +853,28 @@ impl ControlStack {
                 ControlFrame::Loop { breaks, .. } => Some(breaks.len()),
                 _ => None,
             })
-            .unwrap_or(0)
+            .ok_or(ControlStackError::NoTarget)
     }
 
-    pub(super) fn take_loop_continues(&mut self) -> Vec<FlowEnvironment> {
+    pub(super) fn take_loop_continues(
+        &mut self,
+    ) -> Result<Vec<FlowEnvironment>, ControlStackError> {
         match self.last_mut() {
-            Some(ControlFrame::Loop { continues, .. }) => std::mem::take(continues),
-            _ => Vec::new(),
+            Some(ControlFrame::Loop { continues, .. }) => Ok(std::mem::take(continues)),
+            Some(_) => Err(ControlStackError::WrongKind),
+            None => Err(ControlStackError::Empty),
         }
     }
 
-    pub(super) fn new_loop_breaks_since(&self, count: usize) -> Vec<FlowEnvironment> {
-        let Some(ControlFrame::Loop { breaks, .. }) = self.last() else {
-            return Vec::new();
+    pub(super) fn new_loop_breaks_since(
+        &self,
+        count: usize,
+    ) -> Result<Vec<FlowEnvironment>, ControlStackError> {
+        let frame = self.frames.last().ok_or(ControlStackError::Empty)?;
+        let ControlFrame::Loop { breaks, .. } = frame else {
+            return Err(ControlStackError::WrongKind);
         };
-        breaks.get(count..).unwrap_or_default().to_vec()
+        Ok(breaks.get(count..).unwrap_or_default().to_vec())
     }
 
     pub(super) fn record_abrupt_exit(&mut self, kind: AbruptExit, environment: &FlowEnvironment) {
@@ -867,23 +885,31 @@ impl ControlStack {
         }
     }
 
-    pub(super) fn route_abrupt(&mut self, kind: AbruptExit, environment: FlowEnvironment) {
+    pub(super) fn route_abrupt(
+        &mut self,
+        kind: AbruptExit,
+        environment: FlowEnvironment,
+    ) -> Result<(), ControlStackError> {
         match kind {
-            AbruptExit::Break => {
-                if let Some(frame) = self.frames.iter_mut().rev().find(|frame| {
+            AbruptExit::Break => self
+                .frames
+                .iter_mut()
+                .rev()
+                .find(|frame| {
                     matches!(
                         frame,
                         ControlFrame::Loop { .. } | ControlFrame::Switch { .. }
                     )
-                }) {
+                })
+                .map_or(Err(ControlStackError::NoTarget), |frame| {
                     match frame {
                         ControlFrame::Loop { breaks, .. } | ControlFrame::Switch { breaks, .. } => {
                             breaks.push(environment);
                         }
                         _ => unreachable!(),
                     }
-                }
-            }
+                    Ok(())
+                }),
             AbruptExit::Continue => {
                 if let Some(ControlFrame::Loop { continues, .. }) = self
                     .frames
@@ -892,16 +918,23 @@ impl ControlStack {
                     .find(|frame| matches!(frame, ControlFrame::Loop { .. }))
                 {
                     continues.push(environment);
+                    Ok(())
+                } else {
+                    Err(ControlStackError::NoTarget)
                 }
             }
-            AbruptExit::Return => {}
+            AbruptExit::Return => Ok(()),
         }
     }
 
-    pub(super) fn pop_function(&mut self) -> Option<Vec<FlowEnvironment>> {
-        match self.pop() {
-            Some(ControlFrame::Function { caller }) => Some(caller),
-            _ => None,
+    pub(super) fn pop_function(&mut self) -> Result<Vec<FlowEnvironment>, ControlStackError> {
+        match self.frames.last() {
+            None => Err(ControlStackError::Empty),
+            Some(ControlFrame::Function { .. }) => match self.frames.pop() {
+                Some(ControlFrame::Function { caller }) => Ok(caller),
+                _ => unreachable!("control stack changed while popping function"),
+            },
+            Some(_) => Err(ControlStackError::WrongKind),
         }
     }
 }
@@ -946,7 +979,56 @@ impl FlowEnvironment {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{analysis::model::fact::FactId, api::classification::RuleIndex};
+    use crate::{
+        analysis::model::fact::{ControlRegionId, FactId},
+        api::classification::RuleIndex,
+    };
+
+    #[test]
+    fn mismatched_region_pop_preserves_the_top_frame() {
+        let mut stack = ControlStack::default();
+        stack.push(ControlFrame::Branch {
+            region: ControlRegionId::from_test(1),
+            base: vec![FlowEnvironment::initial()],
+            then_exit: None,
+        });
+
+        assert!(matches!(
+            stack.pop_region(ControlRegionId::from_test(2)),
+            Err(ControlStackError::WrongRegion)
+        ));
+        assert!(matches!(
+            stack.last_mut(),
+            Some(ControlFrame::Branch { .. })
+        ));
+        assert!(stack.pop_region(ControlRegionId::from_test(1)).is_ok());
+    }
+
+    #[test]
+    fn wrong_function_exit_preserves_the_top_frame() {
+        let mut stack = ControlStack::default();
+        stack.push(ControlFrame::Branch {
+            region: ControlRegionId::from_test(1),
+            base: vec![FlowEnvironment::initial()],
+            then_exit: None,
+        });
+
+        assert_eq!(stack.pop_function(), Err(ControlStackError::WrongKind));
+        assert!(matches!(
+            stack.last_mut(),
+            Some(ControlFrame::Branch { .. })
+        ));
+    }
+
+    #[test]
+    fn empty_loop_operations_report_missing_frames() {
+        let mut stack = ControlStack::default();
+        assert_eq!(stack.take_loop_continues(), Err(ControlStackError::Empty));
+        assert_eq!(
+            stack.new_loop_breaks_since(0),
+            Err(ControlStackError::Empty)
+        );
+    }
 
     fn test_evidence() -> ClassificationEvidence {
         ClassificationEvidence::from_occurrences(

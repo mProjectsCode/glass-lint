@@ -133,17 +133,30 @@ impl LoopFixedPoint {
             self.iterations += 1;
             projector.run.fixed_point_iterations =
                 projector.run.fixed_point_iterations.saturating_add(1);
-            let break_count = projector.control.loop_break_count();
+            let Ok(break_count) = projector.control.loop_break_count() else {
+                self.complete = false;
+                projector.mark_control_stack_incomplete();
+                break;
+            };
             let inputs = std::mem::take(&mut self.frontier);
             let outputs = projector.replay_loop_body(body_start, body_end, inputs);
             let mut next = outputs;
-            next.append(&mut projector.control.take_loop_continues());
+            let Ok(mut continues) = projector.control.take_loop_continues() else {
+                self.complete = false;
+                projector.mark_control_stack_incomplete();
+                break;
+            };
+            next.append(&mut continues);
             projector.join_paths(next);
             let candidate = projector.frontier.take_paths();
             self.exits.extend(candidate.iter().copied());
 
-            self.exits
-                .extend(projector.control.new_loop_breaks_since(break_count));
+            let Ok(new_breaks) = projector.control.new_loop_breaks_since(break_count) else {
+                self.complete = false;
+                projector.mark_control_stack_incomplete();
+                break;
+            };
+            self.exits.extend(new_breaks);
 
             let mut next_frontier = Vec::new();
             for environment in candidate {
