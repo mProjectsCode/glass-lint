@@ -102,15 +102,21 @@ impl<'a> SummaryPathStore<'a> {
         current == prefix
     }
 
-    pub(crate) fn matches_frozen(id: SummaryPathId, base: PathId) -> bool {
-        id == SummaryPathId::from_frozen_path(base)
+    pub(in crate::analysis::flow) fn matches_frozen(
+        &self,
+        id: SummaryPathId,
+        base: PathId,
+    ) -> bool {
+        let Some(base) = self.intern_frozen(base) else {
+            return false;
+        };
+        self.is_valid(id) && id == base
     }
 
     pub(crate) fn starts_with_frozen(&self, id: SummaryPathId, prefix: PathId) -> bool {
-        let prefix_id = SummaryPathId::from_frozen_path(prefix);
-        if !self.is_valid(prefix_id) {
+        let Some(prefix_id) = self.intern_frozen(prefix) else {
             return false;
-        }
+        };
         self.starts_with(id, prefix_id)
     }
 
@@ -344,15 +350,10 @@ mod tests {
 
     #[test]
     fn matches_frozen_checks_identity() {
-        let (_, a, b, _c) = make_frozen_paths();
-        assert!(SummaryPathStore::matches_frozen(
-            SummaryPathId::from_frozen_path(a),
-            a
-        ));
-        assert!(!SummaryPathStore::matches_frozen(
-            SummaryPathId::from_frozen_path(a),
-            b,
-        ));
+        let (frozen, a, b, _c) = make_frozen_paths();
+        let store = SummaryPathStore::new(&frozen);
+        assert!(store.matches_frozen(SummaryPathId::from_frozen_path(a), a));
+        assert!(!store.matches_frozen(SummaryPathId::from_frozen_path(a), b,));
     }
 
     #[test]

@@ -30,7 +30,7 @@ impl ParameterBinding {
         sink_path: SummaryPathId,
         paths: &SummaryPathStore<'_>,
     ) -> bool {
-        SummaryPathStore::matches_frozen(sink_path, self.path())
+        paths.matches_frozen(sink_path, self.path())
             || (self.is_rest() && paths.starts_with_frozen(sink_path, self.path()))
     }
 

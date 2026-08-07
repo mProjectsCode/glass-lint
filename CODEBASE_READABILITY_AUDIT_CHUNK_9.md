@@ -19,7 +19,7 @@ repeated here.
 
 ### Summary path identity
 
-#### [ ] READ-042 — Make summary path identity store-owned
+#### [x] READ-042 — Make summary path identity store-owned
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -53,7 +53,10 @@ Preserve the frozen-versus-overlay distinction, linked overlay parents,
 fail-closed invalid paths, rest-parameter prefix matching, and deterministic
 path ordering.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made frozen-path equality an instance operation on
+`SummaryPathStore`. Both the candidate and frozen base are validated against
+the current store before comparison, and parameter matching now uses that
+store-owned operation instead of reconstructing and comparing raw IDs.
 
 ### Summary sink admission
 
