@@ -152,7 +152,7 @@ and ambiguity/unknown fail-closed behavior.
 
 ### Evidence normalization phases
 
-#### [ ] READ-014 — Separate evidence grouping from bounded presentation
+#### [x] READ-014 — Separate evidence grouping from bounded presentation
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -179,7 +179,11 @@ counts, possible-certainty propagation, empty-span filtering, distinct traces
 at the same span, per-group truncation markers, first-span/kind/symbol order,
 and global truncation markers.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added separate `EvidenceAccumulator` and
+`EvidencePresenter` owners. Accumulation now handles key merging, certainty,
+empty-span filtering, and trace identity deduplication; presentation handles
+per-group/global bounds and deterministic ordering without changing counts or
+truncation behavior.
 
 ## Systemic Themes
 

@@ -19,9 +19,111 @@ struct EvidenceKey(MatchKind, String);
 /// Per-key accumulated state used during normalization.
 struct EvidenceAccum {
     total_count: usize,
-    occurrences_truncated: bool,
     certainty: crate::project::MatchCertainty,
     occurrences: Vec<crate::api::classification::ClassificationEvidenceOccurrence>,
+}
+
+#[derive(Default)]
+struct EvidenceAccumulator {
+    groups: BTreeMap<EvidenceKey, EvidenceAccum>,
+}
+
+impl EvidenceAccumulator {
+    fn add(&mut self, item: &ClassificationEvidence) {
+        let key = EvidenceKey(item.kind(), item.symbol().to_owned());
+        let accum = self.groups.entry(key).or_insert_with(|| EvidenceAccum {
+            total_count: 0,
+            certainty: crate::project::MatchCertainty::Definite,
+            occurrences: Vec::new(),
+        });
+        if item.certainty() == crate::project::MatchCertainty::Possible {
+            accum.certainty = crate::project::MatchCertainty::Possible;
+        }
+        accum.total_count = accum.total_count.saturating_add(item.count() as usize);
+        accum.occurrences.extend(
+            item.occurrences()
+                .iter()
+                .copied()
+                .filter(|occurrence| !occurrence.span().is_empty()),
+        );
+    }
+
+    fn finish(self) -> Vec<ClassificationEvidence> {
+        self.groups
+            .into_iter()
+            .map(|(key, mut accum)| {
+                accum.occurrences.sort_by_key(|occurrence| {
+                    (
+                        occurrence.span().start(),
+                        occurrence.span().end(),
+                        occurrence.fact().unwrap_or(u32::MAX),
+                    )
+                });
+                accum.occurrences.dedup_by(|a, b| {
+                    a.span() == b.span() && a.fact() == b.fact() && a.trace() == b.trace()
+                });
+                ClassificationEvidence::with_total_count(
+                    key.0,
+                    key.1,
+                    accum.total_count,
+                    false,
+                    accum.certainty,
+                    accum.occurrences,
+                )
+                .expect("evidence totals include every retained occurrence")
+            })
+            .collect()
+    }
+}
+
+struct EvidencePresenter {
+    limit: usize,
+}
+
+impl EvidencePresenter {
+    fn present(&self, mut groups: Vec<ClassificationEvidence>) -> Vec<ClassificationEvidence> {
+        for group in &mut groups {
+            if group.occurrences().len() <= self.limit {
+                continue;
+            }
+            let occurrences = group
+                .occurrences()
+                .iter()
+                .copied()
+                .take(self.limit)
+                .collect();
+            *group = ClassificationEvidence::with_total_count(
+                group.kind(),
+                group.symbol().to_owned(),
+                group.count() as usize,
+                true,
+                group.certainty(),
+                occurrences,
+            )
+            .expect("bounded evidence retains its original total count");
+        }
+
+        groups.sort_by(|left, right| {
+            let left_span = left
+                .occurrences()
+                .first()
+                .map(|occurrence| (occurrence.span().start(), occurrence.span().end()));
+            let right_span = right
+                .occurrences()
+                .first()
+                .map(|occurrence| (occurrence.span().start(), occurrence.span().end()));
+            (left_span, left.kind(), left.symbol()).cmp(&(right_span, right.kind(), right.symbol()))
+        });
+
+        let global_truncated = groups.len() > self.limit;
+        if global_truncated {
+            groups.truncate(self.limit);
+            for group in &mut groups {
+                group.mark_truncated();
+            }
+        }
+        groups
+    }
 }
 
 /// Narrow an evidence location to the text selected by its matcher.
@@ -76,89 +178,11 @@ pub(in crate::analysis) fn normalize_evidence(
     evidence: &mut Vec<ClassificationEvidence>,
     limit: usize,
 ) {
-    let mut acc: BTreeMap<EvidenceKey, EvidenceAccum> = BTreeMap::new();
-
+    let mut accumulator = EvidenceAccumulator::default();
     for item in evidence.drain(..) {
-        let key = EvidenceKey(item.kind(), item.symbol().to_owned());
-        let accum = acc.entry(key).or_insert_with(|| EvidenceAccum {
-            total_count: 0,
-            occurrences_truncated: false,
-            certainty: crate::project::MatchCertainty::Definite,
-            occurrences: Vec::new(),
-        });
-        if item.certainty() == crate::project::MatchCertainty::Possible {
-            accum.certainty = crate::project::MatchCertainty::Possible;
-        }
-        accum.total_count = accum.total_count.saturating_add(item.count() as usize);
-        for occurrence in item.occurrences().iter().copied() {
-            if !occurrence.span().is_empty() {
-                accum.occurrences.push(occurrence);
-            }
-        }
+        accumulator.add(&item);
     }
-
-    // Sort and deduplicate occurrences within each key by span, fact, and
-    // trace identity so that distinct traces at the same location are
-    // preserved.
-    for accum in acc.values_mut() {
-        accum.occurrences.sort_by_key(|occurrence| {
-            (
-                occurrence.span().start(),
-                occurrence.span().end(),
-                occurrence.fact().unwrap_or(u32::MAX),
-            )
-        });
-        accum.occurrences.dedup_by(|a, b| {
-            a.span() == b.span() && a.fact() == b.fact() && a.trace() == b.trace()
-        });
-        if accum.occurrences.len() > limit {
-            accum.occurrences.truncate(limit);
-            accum.occurrences_truncated = true;
-        }
-    }
-
-    // Build evidence items sorted by (first_span, kind, symbol) so the
-    // global group limit selects the earliest groups in a stable order.
-    let mut sorted: Vec<ClassificationEvidence> = acc
-        .into_iter()
-        .map(|(key, accum)| {
-            ClassificationEvidence::with_total_count(
-                key.0,
-                key.1,
-                accum.total_count,
-                accum.occurrences_truncated,
-                accum.certainty,
-                accum.occurrences,
-            )
-            .expect("evidence totals include every retained occurrence")
-        })
-        .collect();
-    sorted.sort_by(|left, right| {
-        let left_span = left
-            .occurrences()
-            .first()
-            .map(|occurrence| (occurrence.span().start(), occurrence.span().end()));
-        let right_span = right
-            .occurrences()
-            .first()
-            .map(|occurrence| (occurrence.span().start(), occurrence.span().end()));
-        (left_span, left.kind(), left.symbol()).cmp(&(right_span, right.kind(), right.symbol()))
-    });
-
-    // Apply the global group limit.
-    let global_truncated = if sorted.len() > limit {
-        sorted.truncate(limit);
-        true
-    } else {
-        false
-    };
-    if global_truncated {
-        for item in &mut sorted {
-            item.mark_truncated();
-        }
-    }
-
-    *evidence = sorted;
+    *evidence = EvidencePresenter { limit }.present(accumulator.finish());
 }
 
 #[cfg(test)]
