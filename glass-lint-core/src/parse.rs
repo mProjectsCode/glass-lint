@@ -193,7 +193,7 @@ impl SourceParser {
     }
 
     fn parse_program(&self) -> Result<Program, ParseDiagnostic> {
-        if self.requires_depth_prescan && self.syntax_depth() == Err(SyntaxDepthError::Exceeded) {
+        if self.requires_depth_prescan && self.syntax_depth().is_exceeded() {
             return Err(self.syntax_depth_diagnostic());
         }
 
@@ -206,19 +206,20 @@ impl SourceParser {
         let mut parser = Parser::new_from(Capturing::new(lexer));
         let parsed = parser.parse_program();
         if !self.requires_depth_prescan
-            && self.syntax_depth_tokens(parser.input().iter.tokens())
-                == Err(SyntaxDepthError::Exceeded)
+            && self
+                .syntax_depth_tokens(parser.input().iter.tokens())
+                .is_exceeded()
         {
             return Err(self.syntax_depth_diagnostic());
         }
         parsed.map_err(|error| self.parser_diagnostic(&error))
     }
 
-    fn syntax_depth(&self) -> Result<usize, SyntaxDepthError> {
+    fn syntax_depth(&self) -> SyntaxDepthOutcome {
         DepthScanner::new(self.max_syntax_depth).scan_source(&self.file, self.syntax)
     }
 
-    fn syntax_depth_tokens(&self, tokens: &[TokenAndSpan]) -> Result<usize, SyntaxDepthError> {
+    fn syntax_depth_tokens(&self, tokens: &[TokenAndSpan]) -> SyntaxDepthOutcome {
         DepthScanner::new(self.max_syntax_depth).scan_tokens(tokens)
     }
 
@@ -306,6 +307,18 @@ impl SourceParser {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SyntaxDepthOutcome {
+    WithinLimit(usize),
+    Exceeded,
+}
+
+impl SyntaxDepthOutcome {
+    fn is_exceeded(self) -> bool {
+        matches!(self, Self::Exceeded)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SyntaxDepthError {
     Exceeded,
 }
@@ -346,55 +359,70 @@ impl DepthScanner {
         }
     }
 
-    fn scan_source(
-        mut self,
-        file: &swc_common::SourceFile,
-        syntax: Syntax,
-    ) -> Result<usize, SyntaxDepthError> {
+    fn scan_source(&mut self, file: &swc_common::SourceFile, syntax: Syntax) -> SyntaxDepthOutcome {
         let mut lexer = Lexer::new(syntax, EsVersion::EsNext, StringInput::from(file), None);
         let mut skip_to = 0usize;
-        for token_and_span in &mut lexer {
-            let offset = token_and_span
-                .span
-                .lo
-                .0
-                .checked_sub(file.start_pos.0)
-                .map_or(0, |v| v as usize);
-            if offset < skip_to {
-                continue;
-            }
-
-            let token = token_and_span.token;
-            if token == Token::Error {
-                break;
-            }
-            if token == Token::Slash
-                && !self.previous_postfix
-                && self
-                    .previous
-                    .is_none_or(|token| token.before_expr() || token == Token::LBrace)
-                && let Some(end) = Self::regex_end(&file.src, offset + 1)
-            {
-                skip_to = end;
-                self.previous = Some(Token::Regex);
-                self.previous_postfix = false;
-                self.expression_can_end = true;
-                continue;
-            }
-            self.observe(token)?;
-        }
-        Ok(self.maximum)
+        self.scan(&mut lexer, |scanner, token_and_span| {
+            scanner.source_token(file, &token_and_span, &mut skip_to)
+        })
     }
 
-    fn scan_tokens(mut self, tokens: &[TokenAndSpan]) -> Result<usize, SyntaxDepthError> {
-        for token_and_span in tokens {
-            let token = token_and_span.token;
+    fn scan_tokens(&mut self, tokens: &[TokenAndSpan]) -> SyntaxDepthOutcome {
+        self.scan(tokens.iter(), |_, token_and_span| {
+            Some(token_and_span.token)
+        })
+    }
+
+    fn scan<I, F>(&mut self, tokens: I, mut token_for: F) -> SyntaxDepthOutcome
+    where
+        I: IntoIterator,
+        F: FnMut(&mut Self, I::Item) -> Option<Token>,
+    {
+        for token_item in tokens {
+            let Some(token) = token_for(self, token_item) else {
+                continue;
+            };
             if token == Token::Error {
                 break;
             }
-            self.observe(token)?;
+            if self.observe(token).is_err() {
+                return SyntaxDepthOutcome::Exceeded;
+            }
         }
-        Ok(self.maximum)
+        SyntaxDepthOutcome::WithinLimit(self.maximum)
+    }
+
+    fn source_token(
+        &mut self,
+        file: &swc_common::SourceFile,
+        token_and_span: &TokenAndSpan,
+        skip_to: &mut usize,
+    ) -> Option<Token> {
+        let offset = token_and_span
+            .span
+            .lo
+            .0
+            .checked_sub(file.start_pos.0)
+            .map_or(0, |value| value as usize);
+        if offset < *skip_to {
+            return None;
+        }
+
+        let token = token_and_span.token;
+        if token == Token::Slash
+            && !self.previous_postfix
+            && self
+                .previous
+                .is_none_or(|previous| previous.before_expr() || previous == Token::LBrace)
+            && let Some(end) = Self::regex_end(&file.src, offset + 1)
+        {
+            *skip_to = end;
+            self.previous = Some(Token::Regex);
+            self.previous_postfix = false;
+            self.expression_can_end = true;
+            return None;
+        }
+        Some(token)
     }
 
     fn observe(&mut self, token: Token) -> Result<(), SyntaxDepthError> {
@@ -526,10 +554,13 @@ impl DepthScanner {
 fn syntax_depth_for_test(source: &str) -> usize {
     let source = SourceFile::with_language("test.js", source, SourceLanguage::JavaScript)
         .expect("test parser input should have a valid relative path");
-    SourceParser::new(&source)
+    let depth = SourceParser::new(&source)
         .expect("test source should be admitted")
-        .syntax_depth()
-        .unwrap_or(MAX_SYNTAX_DEPTH + 1)
+        .syntax_depth();
+    match depth {
+        SyntaxDepthOutcome::WithinLimit(depth) => depth,
+        SyntaxDepthOutcome::Exceeded => MAX_SYNTAX_DEPTH + 1,
+    }
 }
 
 #[cfg(test)]

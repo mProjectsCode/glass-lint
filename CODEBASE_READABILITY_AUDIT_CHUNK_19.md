@@ -59,7 +59,7 @@ catalog construction.
 
 ### Bounded parsing and source positions
 
-#### [ ] READ-092 — Give syntax-depth admission one scanner execution path
+#### [x] READ-092 — Give syntax-depth admission one scanner execution path
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -93,7 +93,7 @@ pre-AST rejection for hostile input, post-parse checking when the raw bound is
 small, member-chain depth, delimiter matching, regex handling, and the
 configured maximum.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added one generic depth-scan driver with source and parser-token adapters, and introduced a named `SyntaxDepthOutcome` for admission decisions. Shared token observation and bounded-exhaustion handling are now centralized while source-only regex recovery remains in its adapter.
 
 #### [x] READ-093 — Seal source offsets before `SourceLineIndex` position math
 
