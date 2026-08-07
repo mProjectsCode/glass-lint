@@ -92,8 +92,7 @@ pub struct SourceParser {
     file: Lrc<swc_common::SourceFile>,
     lines: SourceLineIndex,
     syntax: Syntax,
-    max_syntax_depth: usize,
-    requires_depth_prescan: bool,
+    depth_guard: SyntaxDepthGuard,
 }
 
 impl SourceParser {
@@ -121,8 +120,10 @@ impl SourceParser {
             file,
             lines: SourceLineIndex::from_text(source.source().clone()),
             syntax: source.language().syntax(),
-            max_syntax_depth,
-            requires_depth_prescan: DepthScanner::raw_bound(source.source()) > max_syntax_depth,
+            depth_guard: SyntaxDepthGuard::new(
+                DepthScanner::raw_bound(source.source()),
+                max_syntax_depth,
+            ),
         })
     }
 
@@ -148,7 +149,11 @@ impl SourceParser {
     }
 
     fn parse_program(&self) -> Result<Program, ParseDiagnostic> {
-        if self.requires_depth_prescan && self.syntax_depth().is_exceeded() {
+        if self
+            .depth_guard
+            .check_before_parse(&self.file, self.syntax)
+            .is_err()
+        {
             return Err(self.syntax_depth_diagnostic());
         }
 
@@ -160,22 +165,19 @@ impl SourceParser {
         );
         let mut parser = Parser::new_from(Capturing::new(lexer));
         let parsed = parser.parse_program();
-        if !self.requires_depth_prescan
-            && self
-                .syntax_depth_tokens(parser.input().iter.tokens())
-                .is_exceeded()
+        if self
+            .depth_guard
+            .check_after_parse(parser.input().iter.tokens())
+            .is_err()
         {
             return Err(self.syntax_depth_diagnostic());
         }
         parsed.map_err(|error| self.parser_diagnostic(&error))
     }
 
+    #[cfg(test)]
     fn syntax_depth(&self) -> SyntaxDepthOutcome {
-        DepthScanner::new(self.max_syntax_depth).scan_source(&self.file, self.syntax)
-    }
-
-    fn syntax_depth_tokens(&self, tokens: &[TokenAndSpan]) -> SyntaxDepthOutcome {
-        DepthScanner::new(self.max_syntax_depth).scan_tokens(tokens)
+        self.depth_guard.scan_source(&self.file, self.syntax)
     }
 
     fn lower_program(&self, program: Program) -> Program {
@@ -197,7 +199,7 @@ impl SourceParser {
             code: crate::project::types::DiagnosticKind::SyntaxDepthExceeded.into(),
             message: format!(
                 "source exceeds the {} nesting-depth analysis limit",
-                self.max_syntax_depth
+                self.depth_guard.max_depth()
             ),
             filename: self.source.path().to_string(),
             range: None,
@@ -243,6 +245,67 @@ enum SyntaxDepthOutcome {
 impl SyntaxDepthOutcome {
     fn is_exceeded(self) -> bool {
         matches!(self, Self::Exceeded)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SyntaxDepthPhase {
+    PreParse,
+    PostParse,
+}
+
+/// Owns the phase in which syntax-depth scanning is safe for one source.
+/// Conservative raw bounds force a source scan before SWC sees the input;
+/// otherwise the parser's token stream is checked after parsing.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct SyntaxDepthGuard {
+    max_depth: usize,
+    phase: SyntaxDepthPhase,
+}
+
+impl SyntaxDepthGuard {
+    fn new(raw_bound: usize, max_depth: usize) -> Self {
+        let phase = if raw_bound > max_depth {
+            SyntaxDepthPhase::PreParse
+        } else {
+            SyntaxDepthPhase::PostParse
+        };
+        Self { max_depth, phase }
+    }
+
+    fn check_before_parse(
+        self,
+        file: &swc_common::SourceFile,
+        syntax: Syntax,
+    ) -> Result<(), SyntaxDepthError> {
+        match self.phase {
+            SyntaxDepthPhase::PreParse => DepthScanner::new(self.max_depth)
+                .scan_source(file, syntax)
+                .is_exceeded()
+                .then_some(SyntaxDepthError::Exceeded)
+                .map_or(Ok(()), Err),
+            SyntaxDepthPhase::PostParse => Ok(()),
+        }
+    }
+
+    fn check_after_parse(self, tokens: &[TokenAndSpan]) -> Result<(), SyntaxDepthError> {
+        match self.phase {
+            SyntaxDepthPhase::PreParse => Ok(()),
+            SyntaxDepthPhase::PostParse => DepthScanner::new(self.max_depth)
+                .scan_tokens(tokens)
+                .is_exceeded()
+                .then_some(SyntaxDepthError::Exceeded)
+                .map_or(Ok(()), Err),
+        }
+    }
+
+    #[cfg(test)]
+    fn scan_source(self, file: &swc_common::SourceFile, syntax: Syntax) -> SyntaxDepthOutcome {
+        DepthScanner::new(self.max_depth).scan_source(file, syntax)
+    }
+
+    fn max_depth(self) -> usize {
+        self.max_depth
     }
 }
 

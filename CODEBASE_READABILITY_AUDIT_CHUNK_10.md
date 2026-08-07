@@ -182,7 +182,7 @@ admit filenames. Validated project options now own suffix admission and map
 admitted paths to an explicit parser language; CLI, harness, profile, and test
 callers pass that language at construction. Verified with `make fmt && make ci`.
 
-#### [ ] READ-006 — Syntax-depth protection is a hidden two-phase protocol inside `SourceParser`
+#### [x] READ-006 — Syntax-depth protection is a hidden two-phase protocol inside `SourceParser`
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -209,7 +209,13 @@ than a boolean mode. Preserve pre-parse rejection for hostile bounds,
 post-parse validation for safe inputs, deferred SWC syntax diagnostics, and
 all delimiter, template, optional-chain, regex, and division semantics.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `SyntaxDepthGuard` now owns the conservative raw-bound phase
+decision and exposes named pre-parse and post-parse checks. `SourceParser`
+consumes those transitions while `DepthScanner` retains the shared delimiter
+state and source-specific regex recovery. Pre-parse hostile rejection,
+post-parse validation, deferred syntax diagnostics, and existing delimiter,
+template, optional-chain, regex, and division behavior are preserved. Verified
+with `make fmt && make ci`.
 
 #### [ ] READ-007 — The standalone ECMAScript-version API bypasses caller-configured analysis limits
 
