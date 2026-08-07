@@ -13,7 +13,7 @@ mod wrapper;
 
 impl FactBuilder<'_, '_> {
     pub(in crate::analysis::facts) fn record_call_expr(&mut self, call: &CallExpr) {
-        let dynamic_import = self.record_module_call_request(call);
+        let module_call = self.observe_module_call(call);
         let Callee::Expr(callee_expr) = &call.callee else {
             let Some(callee_span) = self.byte_range(call.span) else {
                 return;
@@ -25,8 +25,13 @@ impl FactBuilder<'_, '_> {
                 self.call_result(call.span())
             };
             let args = self.args_info(&call.args);
-            if let Some((module, span)) = dynamic_import {
-                self.emit(span, FactPayload::Import { module });
+            if let Some(observation) = module_call {
+                self.emit(
+                    call.span(),
+                    FactPayload::Import {
+                        module: observation.into_module(),
+                    },
+                );
             }
             self.emit(
                 call.span(),
@@ -59,7 +64,6 @@ impl FactBuilder<'_, '_> {
             self.visit_callee_children(callee_expr);
             call.args.visit_with(self);
             self.try_emit_callable_wrapper(member, call);
-            self.emit_require_import(call);
             return;
         }
 
@@ -69,7 +73,14 @@ impl FactBuilder<'_, '_> {
         self.visit_callee_children(callee_expr);
         call.args.visit_with(self);
         self.emit_call(call.span, resolved, &call.args, None);
-        self.emit_require_import(call);
+        if let Some(observation) = module_call {
+            self.emit(
+                call.span,
+                FactPayload::Import {
+                    module: observation.into_module(),
+                },
+            );
+        }
     }
 
     pub(in crate::analysis::facts) fn emit_call(

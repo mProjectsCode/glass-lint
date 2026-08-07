@@ -79,6 +79,16 @@ struct FactProvenanceState {
     static_string_origins: HashMap<ValueId, ByteRange>,
 }
 
+pub(super) struct ModuleCallObservation {
+    module: String,
+}
+
+impl ModuleCallObservation {
+    fn into_module(self) -> String {
+        self.module
+    }
+}
+
 struct ProvenanceCheckpoint {
     instance: OriginCheckpoint,
     class: OriginCheckpoint,
@@ -395,25 +405,20 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
             .record_export_decl(declaration, self.resolver);
     }
 
-    pub(super) fn record_module_call_request(
-        &mut self,
-        call: &CallExpr,
-    ) -> Option<(String, swc_common::Span)> {
+    pub(super) fn observe_module_call(&mut self, call: &CallExpr) -> Option<ModuleCallObservation> {
         let request = recognize_module_call(call, self.resolver, ModuleRequestPolicy::interface())?;
         let span = self.byte_range(request.specifier_span())?;
+        let module = request.module().to_owned();
         match request.kind() {
             ModuleRequestKind::DynamicImport => {
-                let module = request.module().to_owned();
                 self.interface.record_import_request(span, &module);
-                Some((module, request.specifier_span()))
             }
             ModuleRequestKind::Require => {
-                self.interface
-                    .record_require_request(span, request.module());
-                None
+                self.interface.record_require_request(span, &module);
             }
-            ModuleRequestKind::WrappedRequire => None,
+            ModuleRequestKind::WrappedRequire => return None,
         }
+        Some(ModuleCallObservation { module })
     }
 
     pub(super) fn record_named_export(&mut self, export: &NamedExport) {

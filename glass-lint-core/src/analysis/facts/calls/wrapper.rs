@@ -1,6 +1,6 @@
 use crate::analysis::facts::{
-    CallArgInfo, CallExpr, CallUnwrap, Expr, ExprOrSpread, FactBuilder, FactPayload, MemberExpr,
-    Span, Spanned, effective_callee_expr, literal_member_property_name,
+    CallArgInfo, CallExpr, CallUnwrap, Expr, ExprOrSpread, FactBuilder, MemberExpr, Span, Spanned,
+    effective_callee_expr, literal_member_property_name,
 };
 
 impl FactBuilder<'_, '_> {
@@ -98,12 +98,6 @@ impl FactBuilder<'_, '_> {
                         })
                         .collect()
                 }),
-        }
-    }
-
-    pub(super) fn emit_require_import(&mut self, call: &CallExpr) {
-        if let Some(module) = self.resolver.require_module_name(call) {
-            self.emit(call.span, FactPayload::Import { module });
         }
     }
 }

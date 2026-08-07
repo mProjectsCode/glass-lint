@@ -28,7 +28,6 @@ pub(super) enum ModuleRequestKind {
 #[derive(Clone, Copy, Debug)]
 pub(super) enum ModuleRequestPolicy {
     Interface,
-    DirectRequire,
     Alias,
     AliasWithDynamicImport,
 }
@@ -36,10 +35,6 @@ pub(super) enum ModuleRequestPolicy {
 impl ModuleRequestPolicy {
     pub(super) const fn interface() -> Self {
         Self::Interface
-    }
-
-    pub(super) const fn direct_require() -> Self {
-        Self::DirectRequire
     }
 
     pub(super) const fn alias() -> Self {
@@ -266,7 +261,7 @@ mod tests {
             recognize_module_call(
                 &require,
                 &mut TestContext::default(),
-                ModuleRequestPolicy::direct_require(),
+                ModuleRequestPolicy::interface(),
             )
             .is_none()
         );
@@ -291,12 +286,8 @@ mod tests {
             panic!("expected require call");
         };
         assert!(
-            recognize_module_call(
-                &require,
-                &mut shadowed,
-                ModuleRequestPolicy::direct_require(),
-            )
-            .is_none()
+            recognize_module_call(&require, &mut shadowed, ModuleRequestPolicy::interface(),)
+                .is_none()
         );
     }
 }

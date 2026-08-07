@@ -8,10 +8,8 @@ use smol_str::ToSmolStr;
 
 use crate::analysis::{
     model::value::MAX_VALUES,
-    module_request::{ModuleRequestContext, ModuleRequestPolicy, recognize_module_call},
-    resolution::{
-        CallExpr, Callee, Expr, ResolvedValue, Resolver, SymbolCallProvenance, Value, ValueId,
-    },
+    module_request::ModuleRequestContext,
+    resolution::{Callee, Expr, ResolvedValue, Resolver, SymbolCallProvenance, Value, ValueId},
     syntax::{BudgetComponent, UnknownReason},
 };
 
@@ -35,12 +33,6 @@ impl Resolver<'_> {
             .map_or(provenance, |name| SymbolCallProvenance::Global {
                 name: name.to_smolstr(),
             })
-    }
-
-    /// Return a literal module name for an unshadowed global `require` call.
-    pub(in crate::analysis) fn require_module_name(&mut self, call: &CallExpr) -> Option<String> {
-        recognize_module_call(call, self, ModuleRequestPolicy::direct_require())
-            .map(|request| request.module().to_owned())
     }
 
     /// Check that an identifier is the unshadowed CommonJS/global loader name.

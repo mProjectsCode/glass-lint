@@ -15,7 +15,7 @@ bookkeeping that obscures intentionally asymmetric branch semantics.
 
 ### Module-request recognition and call emission
 
-#### [ ] READ-001 — Make one canonical module-call observation drive interface and fact output
+#### [x] READ-001 — Make one canonical module-call observation drive interface and fact output
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -39,7 +39,12 @@ use the canonical result. Keep the interface policy's dynamic-import and
 single-argument rules, keep wrapped `require` distinct from direct `require`,
 and preserve child-visitation and fact insertion order.
 
-**Fix Applied:** None so far.
+**Fix Applied:** A typed `ModuleCallObservation` now comes from the interface
+recognizer and is consumed for both module-interface recording and `Import`
+fact emission. The second direct-`require` recognition and forwarding helper
+were removed; wrapped requires remain distinct, dynamic imports and
+single-argument requires keep their policies, and child/fact ordering is
+preserved. Verified with `make fmt && make ci`.
 
 ### Bounded provenance transaction state
 

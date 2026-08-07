@@ -20,7 +20,7 @@ use hashbrown::{HashMap, HashSet};
 use smol_str::SmolStr;
 #[cfg(test)]
 use swc_ecma_ast::Program;
-use swc_ecma_ast::{CallExpr, Callee, Expr, Ident, Lit, MemberExpr};
+use swc_ecma_ast::{Callee, Expr, Ident, Lit, MemberExpr};
 
 #[cfg(test)]
 use crate::Environment;
