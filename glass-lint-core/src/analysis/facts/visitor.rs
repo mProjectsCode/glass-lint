@@ -8,7 +8,9 @@
 //! role, such as an import source or a call callee; otherwise the same syntax
 //! would produce duplicate facts and distort deterministic evidence order.
 
-use smol_str::ToSmolStr;
+use glass_lint_datastructures::NamePath;
+use smol_str::{SmolStr, ToSmolStr};
+use swc_common::{Span, Spanned};
 use swc_ecma_ast::ExportDefaultExpr;
 
 use crate::{
@@ -17,15 +19,21 @@ use crate::{
             ArrowExpr, AssignExpr, BinExpr, CallExpr, CondExpr, ControlKind, ControlRegionId,
             DoWhileStmt, ExportDecl, Expr, FactBuilder, FactPayload, FnDecl, ForInStmt, ForOfStmt,
             ForStmt, Function, Ident, IfStmt, ImportDecl, MemberExpr, NewExpr, OptChainBase,
-            OptChainExpr, Pat, Span, Spanned, Str, SwitchStmt, SymbolCallProvenance,
-            SymbolMemberProvenance, TargetProvenance, Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr,
-            ValueId, VarDeclarator, Visit, VisitWith, WhileStmt, effective_callee_expr,
-            literal_member_property_name,
+            OptChainExpr, Pat, Str, SwitchStmt, SymbolCallProvenance, SymbolMemberProvenance,
+            TargetProvenance, Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr, ValueId, VarDeclarator,
+            Visit, VisitWith, WhileStmt, effective_callee_expr, literal_member_property_name,
         },
         model::module::{ImportedBinding, ModuleRequestRole},
     },
     project::ResolutionRequestKind,
 };
+
+struct ConstructionMetadata {
+    callee_span: Span,
+    callee_name: Option<SmolStr>,
+    provenance: SymbolCallProvenance,
+    rooted_chain: Option<NamePath>,
+}
 
 impl Visit for FactBuilder<'_, '_> {
     fn visit_ident(&mut self, ident: &Ident) {
@@ -197,62 +205,9 @@ impl Visit for FactBuilder<'_, '_> {
         if self.resolver.budget.exhausted() {
             return;
         }
-        let result = self.resolver.fresh_object_value_at(new_expr.span).id;
-        if let Some(instance_class) = self.instance_origin_for_constructor(&new_expr.callee) {
-            self.provenance
-                .origins
-                .instances
-                .insert(result, instance_class, self.resolver.budget);
-        }
-        let effective_callee = effective_callee_expr(&new_expr.callee);
-        let resolved = self.resolver.resolve_expr(effective_callee);
-        let rooted_chain = resolved
-            .rooted_chain
-            .as_ref()
-            .and_then(|path| self.name_path(path));
-        let callee_span = effective_callee.span();
-
-        // Resolve callee name and provenance for member expression callees
-        // like `new globalThis.URL(...)` or `new mod.Foo(...)`.
-        let (callee_name, provenance) = match effective_callee {
-            Expr::Ident(ident) => {
-                let p = resolved.call;
-                (Some(ident.sym.to_smolstr()), p)
-            }
-            Expr::Member(member) => {
-                let member_resolved = self.resolver.resolve_member(member);
-                if let Some(SymbolMemberProvenance::ModuleNamespace {
-                    ref module,
-                    member: ref member_name,
-                }) = member_resolved.module_member
-                {
-                    (
-                        Some(member_name.clone()),
-                        SymbolCallProvenance::ModuleExport {
-                            module: module.clone(),
-                            export: member_name.clone(),
-                        },
-                    )
-                } else {
-                    (literal_member_property_name(&member.prop), resolved.call)
-                }
-            }
-            _ => (None, resolved.call),
-        };
-        new_expr.visit_children_with(self);
-        let Some(callee_span) = self.byte_range(callee_span) else {
-            return;
-        };
-        let callee_name = self.intern_name(callee_name.as_deref());
-        self.emit(
-            new_expr.span(),
-            FactPayload::Construction {
-                callee_span,
-                callee_name,
-                provenance,
-                rooted_chain,
-            },
-        );
+        let metadata = self.resolve_construction_metadata(new_expr);
+        self.visit_construction_children(new_expr);
+        self.emit_construction_fact(new_expr, metadata);
     }
 
     fn visit_import_decl(&mut self, import: &ImportDecl) {
@@ -559,6 +514,78 @@ impl Visit for FactBuilder<'_, '_> {
 }
 
 impl FactBuilder<'_, '_> {
+    fn resolve_construction_metadata(&mut self, new_expr: &NewExpr) -> ConstructionMetadata {
+        let result = self.resolver.fresh_object_value_at(new_expr.span).id;
+        if let Some(instance_class) = self.instance_origin_for_constructor(&new_expr.callee) {
+            self.provenance
+                .origins
+                .instances
+                .insert(result, instance_class, self.resolver.budget);
+        }
+        let effective_callee = effective_callee_expr(&new_expr.callee);
+        let resolved = self.resolver.resolve_expr(effective_callee);
+        let rooted_chain = resolved
+            .rooted_chain
+            .as_ref()
+            .and_then(|path| self.name_path(path));
+        let callee_span = effective_callee.span();
+
+        // Resolve callee name and provenance for member expression callees
+        // like `new globalThis.URL(...)` or `new mod.Foo(...)`.
+        let (callee_name, provenance) = match effective_callee {
+            Expr::Ident(ident) => {
+                let p = resolved.call;
+                (Some(ident.sym.to_smolstr()), p)
+            }
+            Expr::Member(member) => {
+                let member_resolved = self.resolver.resolve_member(member);
+                if let Some(SymbolMemberProvenance::ModuleNamespace {
+                    ref module,
+                    member: ref member_name,
+                }) = member_resolved.module_member
+                {
+                    (
+                        Some(member_name.clone()),
+                        SymbolCallProvenance::ModuleExport {
+                            module: module.clone(),
+                            export: member_name.clone(),
+                        },
+                    )
+                } else {
+                    (literal_member_property_name(&member.prop), resolved.call)
+                }
+            }
+            _ => (None, resolved.call),
+        };
+
+        ConstructionMetadata {
+            callee_span,
+            callee_name,
+            provenance,
+            rooted_chain,
+        }
+    }
+
+    fn visit_construction_children(&mut self, new_expr: &NewExpr) {
+        new_expr.visit_children_with(self);
+    }
+
+    fn emit_construction_fact(&mut self, new_expr: &NewExpr, metadata: ConstructionMetadata) {
+        let Some(callee_span) = self.byte_range(metadata.callee_span) else {
+            return;
+        };
+        let callee_name = self.intern_name(metadata.callee_name.as_deref());
+        self.emit(
+            new_expr.span(),
+            FactPayload::Construction {
+                callee_span,
+                callee_name,
+                provenance: metadata.provenance,
+                rooted_chain: metadata.rooted_chain,
+            },
+        );
+    }
+
     fn declaration_source(&mut self, declarator: &VarDeclarator) -> ValueId {
         let source = declarator
             .init

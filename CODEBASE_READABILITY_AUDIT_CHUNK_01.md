@@ -116,7 +116,7 @@ callers no longer duplicate map plumbing. Verified with `make fmt && make ci`.
 
 ### Construction fact visitor
 
-#### [ ] READ-004 — Separate construction resolution, child traversal, and fact emission phases
+#### [x] READ-004 — Separate construction resolution, child traversal, and fact emission phases
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -142,7 +142,12 @@ Preserve the fresh result identity, superclass/module provenance rules,
 source-order fact placement, and fail-closed behavior when spans or names
 cannot be represented.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `visit_new_expr` now coordinates three named phases: metadata
+resolution (including fresh-result and constructor provenance preparation),
+one child traversal, and construction fact emission. A compact
+`ConstructionMetadata` carries the resolved callee span, name, rooted chain,
+and provenance across the traversal boundary without adding another AST walk.
+Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 
