@@ -143,7 +143,7 @@ public project facade or public type re-exports. Internal analysis and linker
 callers use a crate-private project re-export, while `ResolverOutcome` remains
 the caller-facing resolution contract. Verified with `make fmt && make ci`.
 
-#### [ ] READ-004 — Make the valid `EvidenceTraces` states explicit
+#### [x] READ-004 — Make the valid `EvidenceTraces` states explicit
 
 - **Category:** ENCAPSULATE
 - **Location:** `glass-lint-core/src/project/types/report/evidence.rs:85-157`
@@ -172,6 +172,12 @@ the caller-facing resolution contract. Verified with `make fmt && make ci`.
   and deduplication in `merge`, fallback occurrence semantics, and existing
   serialization compatibility. Keep `EvidenceConstructionError` behavior for
   empty complete traces.
+
+**Fix Applied:** A private `EvidenceTraceState` distinguishes complete and
+truncated construction, and `with_truncation`, `merge`, and `fallback` all
+pass through one invariant gate. The serialized `traces` plus `truncated`
+representation and empty-truncated behavior are unchanged. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-005 — Pass path metrics as a semantic aggregate
 
