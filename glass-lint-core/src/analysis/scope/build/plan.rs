@@ -24,6 +24,7 @@ use crate::analysis::{
 
 /// Immutable declaration result consumed by [`super::ScopeCollector`].
 pub(in crate::analysis::scope) struct ScopePlan {
+    pub(super) program: ScopeId,
     pub(super) names: NameTable,
     pub(super) scopes: LexicalScopes,
     pub(super) scope_shapes: ScopeShapeTable,
@@ -31,6 +32,7 @@ pub(in crate::analysis::scope) struct ScopePlan {
 }
 
 pub(in crate::analysis::scope) struct ScopePlanner<'a> {
+    program: ScopeId,
     names: NameTable,
     scopes: LexicalScopes,
     stack: Vec<ScopeId>,
@@ -76,6 +78,7 @@ impl ScopePlanner<'_> {
         let mut scopes = LexicalScopes::new();
         let program = scopes.push(LexicalScope::new(program_span, 0, ScopeKind::Program, None));
         ScopePlanner {
+            program,
             names,
             scopes,
             stack: vec![program],
@@ -87,6 +90,7 @@ impl ScopePlanner<'_> {
 
     pub(in crate::analysis::scope) fn finish(self) -> ScopePlan {
         ScopePlan {
+            program: self.program,
             names: self.names,
             scopes: self.scopes,
             scope_shapes: self.scope_shapes,
@@ -94,8 +98,8 @@ impl ScopePlanner<'_> {
         }
     }
 
-    fn current_scope(&self) -> ScopeId {
-        self.stack.last().copied().unwrap_or_default()
+    fn current_scope(&self) -> Option<ScopeId> {
+        self.stack.last().copied()
     }
 
     fn insert(&mut self, scope: ScopeId, name: impl Into<SmolStr>, provenance: BindingProvenance) {
@@ -124,7 +128,7 @@ impl ScopePlanner<'_> {
         for_each_pat_binding(pat, |binding| self.insert_local(scope, binding));
     }
 
-    fn binding_scope(&self, kind: swc_ecma_ast::VarDeclKind) -> ScopeId {
+    fn binding_scope(&self, kind: swc_ecma_ast::VarDeclKind) -> Option<ScopeId> {
         if kind != swc_ecma_ast::VarDeclKind::Var {
             return self.current_scope();
         }
@@ -132,7 +136,9 @@ impl ScopePlanner<'_> {
     }
 
     pub(super) fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) {
-        let parent = self.current_scope();
+        let Some(parent) = self.current_scope() else {
+            return;
+        };
         let scope_id = self.scopes.push(LexicalScope::new(
             span,
             self.stack.len(),
@@ -145,7 +151,9 @@ impl ScopePlanner<'_> {
     }
 
     pub(super) fn pop_scope(&mut self) {
-        let _ = self.stack.pop();
+        if self.stack.len() > 1 {
+            self.stack.pop();
+        }
     }
 }
 
@@ -159,7 +167,7 @@ impl ScopePass for ScopePlanner<'_> {
         self.pop_scope();
     }
 
-    fn current_scope(&self) -> ScopeId {
+    fn current_scope(&self) -> Option<ScopeId> {
         self.current_scope()
     }
 
@@ -194,18 +202,24 @@ impl ScopePass for ScopePlanner<'_> {
     }
 
     fn visit_import_decl(&mut self, import: &ImportDecl) {
-        self.insert_import(self.current_scope(), import);
+        if let Some(scope) = self.current_scope() {
+            self.insert_import(scope, import);
+        }
     }
 
     fn visit_var_decl(&mut self, declaration: &VarDecl) {
-        let scope = self.binding_scope(declaration.kind);
+        let Some(scope) = self.binding_scope(declaration.kind) else {
+            return;
+        };
         for declarator in &declaration.decls {
             self.insert_pat_locals(scope, &declarator.name);
         }
     }
 
     fn visit_class_decl(&mut self, declaration: &ClassDecl) {
-        self.insert_local(self.current_scope(), declaration.ident.sym.to_string());
+        if let Some(scope) = self.current_scope() {
+            self.insert_local(scope, declaration.ident.sym.to_string());
+        }
     }
 
     fn before_fn_decl(&mut self, declaration: &FnDecl, parent: ScopeId) {

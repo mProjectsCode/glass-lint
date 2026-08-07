@@ -70,7 +70,7 @@ pub(super) fn for_each_import_binding(
 ///
 /// `var` bindings are hoisted to the nearest enclosing function or program
 /// scope, skipping intermediate block scopes.
-pub(super) fn var_binding_scope(stack: &[ScopeId], scopes: &LexicalScopes) -> ScopeId {
+pub(super) fn var_binding_scope(stack: &[ScopeId], scopes: &LexicalScopes) -> Option<ScopeId> {
     stack
         .iter()
         .rev()
@@ -81,7 +81,6 @@ pub(super) fn var_binding_scope(stack: &[ScopeId], scopes: &LexicalScopes) -> Sc
             })
         })
         .or_else(|| scopes.program_scope())
-        .unwrap_or_default()
 }
 
 /// Invoke `f` with every binding name introduced by a destructuring pattern.

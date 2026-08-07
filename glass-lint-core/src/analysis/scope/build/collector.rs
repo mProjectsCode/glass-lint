@@ -28,12 +28,12 @@ impl ScopeCollector<'_> {
 
     pub(crate) fn from_plan(plan: ScopePlan, budget: &SemanticBudget) -> ScopeCollector<'_> {
         let ScopePlan {
+            program,
             scopes,
             names,
             name_exhausted,
             scope_shapes,
         } = plan;
-        let program = scopes.program_scope().unwrap_or_default();
         ScopeCollector {
             lexical: super::LexicalCollectionState {
                 scopes,
@@ -51,11 +51,16 @@ impl ScopeCollector<'_> {
         }
     }
 
-    pub(super) fn current_scope(&self) -> ScopeId {
-        self.lexical.stack.last().copied().unwrap_or_default()
+    pub(super) fn current_scope(&self) -> Option<ScopeId> {
+        (!self.artifacts.has_issues())
+            .then(|| self.lexical.stack.last().copied())
+            .flatten()
     }
 
-    pub(super) fn binding_scope(&self, kind: VarDeclKind) -> ScopeId {
+    pub(super) fn binding_scope(&self, kind: VarDeclKind) -> Option<ScopeId> {
+        if self.artifacts.has_issues() {
+            return None;
+        }
         if kind != VarDeclKind::Var {
             return self.current_scope();
         }
@@ -156,7 +161,11 @@ impl ScopeCollector<'_> {
     }
 
     pub(super) fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) -> bool {
-        let parent = self.current_scope();
+        let Some(parent) = self.current_scope() else {
+            self.artifacts
+                .record_issue(ScopeCollectionIssue::ScopeStackUnderflow);
+            return false;
+        };
         if let Some(scope_id) = self
             .lexical
             .scope_shapes
@@ -177,7 +186,8 @@ impl ScopeCollector<'_> {
 
     pub(super) fn pop_scope(&mut self) {
         if self.lexical.stack.len() <= 1 {
-            debug_assert!(false, "attempted to pop the program scope");
+            self.artifacts
+                .record_issue(ScopeCollectionIssue::ScopeStackUnderflow);
             return;
         }
         let _ = self.lexical.stack.pop();

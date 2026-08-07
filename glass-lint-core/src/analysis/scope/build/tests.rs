@@ -1,4 +1,5 @@
 use swc_common::{Span, Spanned};
+use swc_ecma_ast::VarDeclKind;
 use swc_ecma_visit::VisitWith;
 
 use super::*;
@@ -61,6 +62,22 @@ fn planned_scopes(span: Span, kinds: &[ScopeKind]) -> ScopeCollector<'static> {
         planner.pop_scope();
     }
     ScopeCollector::from_plan_for_test(planner.finish())
+}
+
+#[test]
+fn popping_the_program_scope_invalidates_collection_instead_of_falling_back() {
+    let parsed = crate::parse_test_source("const value = 1;", "scope-collector.js")
+        .expect("source should parse");
+    let names = glass_lint_datastructures::NameTable::default();
+    let planner = plan::ScopePlanner::new_for_test(parsed.program.span(), names);
+    let mut collector = ScopeCollector::from_plan_for_test(planner.finish());
+
+    assert!(collector.current_scope().is_some());
+    collector.pop_scope();
+
+    assert!(collector.artifacts.has_issues());
+    assert!(collector.current_scope().is_none());
+    assert!(collector.binding_scope(VarDeclKind::Var).is_none());
 }
 
 #[test]
@@ -134,7 +151,7 @@ fn reuses_same_span_same_kind_siblings_by_order() {
 
     assert_eq!(
         (first, second),
-        (ScopeId::from_test(1), ScopeId::from_test(2))
+        (Some(ScopeId::from_test(1)), Some(ScopeId::from_test(2)),)
     );
     assert_eq!(collector.scope_lookups, 2);
     assert_eq!(
@@ -179,8 +196,8 @@ fn divergence_on_extra_scope_fails_closed() {
     assert_eq!(collector.current_scope(), before);
     collector.push_scope(span, ScopeKind::Block);
     assert!(collector.artifacts.has_issues());
-    // No fallback scope was allocated during the diverged push.
-    assert_eq!(collector.current_scope(), before);
+    // The invalid collector no longer exposes a fallback scope.
+    assert!(collector.current_scope().is_none());
 }
 
 #[test]
@@ -222,11 +239,10 @@ fn divergence_on_missing_scope_fails_closed() {
     collector.push_scope(span, ScopeKind::Block);
     assert!(!collector.artifacts.has_issues());
     // A third visit finds no matching shape and fails closed.
-    let before = collector.current_scope();
     collector.push_scope(span, ScopeKind::Block);
     assert!(collector.artifacts.has_issues());
-    // No fallback scope was allocated.
-    assert_eq!(collector.current_scope(), before);
+    // The invalid collector no longer exposes a fallback scope.
+    assert!(collector.current_scope().is_none());
 }
 
 #[test]
@@ -235,11 +251,10 @@ fn divergence_on_kind_mismatch_fails_closed() {
         crate::parse_test_source("value;", "divergence-kind.js").expect("source should parse");
     let span = parsed.program.span();
     let mut collector = planned_scopes(span, &[ScopeKind::Block]);
-    let before = collector.current_scope();
     collector.push_scope(span, ScopeKind::Function);
     assert!(collector.artifacts.has_issues());
-    // The visitor stays in the parent scope; no fallback is allocated.
-    assert_eq!(collector.current_scope(), before);
+    // The invalid collector no longer exposes a fallback scope.
+    assert!(collector.current_scope().is_none());
 }
 
 #[test]
@@ -553,12 +568,7 @@ fn deliberate_walker_divergence_fails_closed_without_fallback_allocation() {
 
     // A visit that is not preceded by a matching predeclared shape
     // must fail closed without allocating a fallback scope.
-    let before = collector.current_scope();
     collector.push_scope(span, ScopeKind::Block);
     assert!(collector.artifacts.has_issues());
-    assert_eq!(
-        collector.current_scope(),
-        before,
-        "divergence leaves the visitor in the parent scope",
-    );
+    assert!(collector.current_scope().is_none());
 }

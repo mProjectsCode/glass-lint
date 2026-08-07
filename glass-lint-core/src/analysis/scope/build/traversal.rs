@@ -20,7 +20,7 @@ pub(in crate::analysis::scope) trait ScopePass {
     /// balanced without inventing a fallback scope.
     fn push_scope(&mut self, span: Span, kind: ScopeKind) -> bool;
     fn pop_scope(&mut self, entered: bool);
-    fn current_scope(&self) -> ScopeId;
+    fn current_scope(&self) -> Option<ScopeId>;
 
     /// Returns `true` when the semantic budget is exhausted.
     /// The traversal skips child descent after exhaustion so the AST walk
@@ -102,8 +102,7 @@ impl<P: ScopePass> ScopeTraversal<P> {
         body: impl FnOnce(&mut Self),
     ) {
         let entered = self.pass.push_scope(span, kind);
-        if entered {
-            let scope = self.pass.current_scope();
+        if entered && let Some(scope) = self.pass.current_scope() {
             before_body(&mut self.pass, scope);
             if !self.pass.is_budget_exhausted() {
                 body(self);
@@ -119,8 +118,7 @@ impl<P: ScopePass> ScopeTraversal<P> {
         body: impl FnOnce(&mut Self),
     ) {
         let entered = self.pass.push_scope(span, ScopeKind::Function);
-        if entered {
-            let scope = self.pass.current_scope();
+        if entered && let Some(scope) = self.pass.current_scope() {
             self.pass.enter_function();
             before_body(&mut self.pass, scope);
             if !self.pass.is_budget_exhausted() {
@@ -215,7 +213,9 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
     // === SCOPE-FORMING METHODS ===
 
     fn visit_fn_decl(&mut self, decl: &FnDecl) {
-        let parent = self.pass.current_scope();
+        let Some(parent) = self.pass.current_scope() else {
+            return;
+        };
         self.pass.before_fn_decl(decl, parent);
         self.visit_function_body(
             decl.function.span,

@@ -40,7 +40,7 @@ impl ScopePass for ScopeCollector<'_> {
         }
     }
 
-    fn current_scope(&self) -> ScopeId {
+    fn current_scope(&self) -> Option<ScopeId> {
         self.current_scope()
     }
 
@@ -117,11 +117,15 @@ impl ScopePass for ScopeCollector<'_> {
     }
 
     fn visit_import_decl(&mut self, import: &ImportDecl) {
-        self.insert_import(self.current_scope(), import);
+        if let Some(scope) = self.current_scope() {
+            self.insert_import(scope, import);
+        }
     }
 
     fn visit_var_decl(&mut self, var_decl: &VarDecl) {
-        let scope = self.binding_scope(var_decl.kind);
+        let Some(scope) = self.binding_scope(var_decl.kind) else {
+            return;
+        };
         for declarator in &var_decl.decls {
             let init = declarator.init.as_deref();
             let mutable_object = init
@@ -183,6 +187,9 @@ impl ScopePass for ScopeCollector<'_> {
     }
 
     fn visit_assign_expr(&mut self, assignment: &AssignExpr) {
+        let Some(scope) = self.current_scope() else {
+            return;
+        };
         match &assignment.left {
             AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {
                 let provenance = assignment_provenance(self, &assignment.right);
@@ -209,7 +216,7 @@ impl ScopePass for ScopeCollector<'_> {
                     self.artifacts
                         .record_rooted_property_mutation(RootedPropertyMutation::new(
                             assignment.span,
-                            self.current_scope(),
+                            scope,
                             receiver,
                             literal_member_property_name(&member.prop)
                                 .and_then(|property| self.interned_name(&property)),
@@ -223,7 +230,7 @@ impl ScopePass for ScopeCollector<'_> {
                     self.artifacts
                         .record_property_assignment(PropertyAliasAssignment::new(
                             assignment.span,
-                            self.current_scope(),
+                            scope,
                             property,
                             root.clone(),
                             self.rooted_expr_name(&assignment.right),
@@ -233,12 +240,7 @@ impl ScopePass for ScopeCollector<'_> {
             AssignTarget::Pat(pattern) => {
                 let pattern: Pat = pattern.clone().into();
                 if let Some(target) = self.rooted_name_path(&assignment.right) {
-                    self.collect_assignment_aliases(
-                        &pattern,
-                        &target,
-                        assignment.span,
-                        self.current_scope(),
-                    );
+                    self.collect_assignment_aliases(&pattern, &target, assignment.span, scope);
                 }
             }
             AssignTarget::Simple(_) => {}
@@ -250,9 +252,11 @@ impl ScopePass for ScopeCollector<'_> {
         if let Callee::Expr(callee) = &call.callee
             && let Expr::Ident(callee) = &**callee
         {
-            if callee.sym == *"eval" {
+            if callee.sym == *"eval"
+                && let Some(scope) = self.binding_scope(VarDeclKind::Var)
+            {
                 self.artifacts.record_dynamic_eval(ScopedDynamicEval::new(
-                    self.binding_scope(VarDeclKind::Var),
+                    scope,
                     DynamicEvaluation { span: call.span },
                 ));
             }
@@ -263,21 +267,27 @@ impl ScopePass for ScopeCollector<'_> {
                     .iter()
                     .map(|argument| self.argument_provenance(&argument.expr))
                     .collect();
-                self.functions.calls.push(super::FunctionCall {
-                    caller_scope: self.current_scope(),
-                    callee_name,
-                    arguments,
-                });
+                if let Some(caller_scope) = self.current_scope() {
+                    self.functions.calls.push(super::FunctionCall {
+                        caller_scope,
+                        callee_name,
+                        arguments,
+                    });
+                }
             }
         }
     }
 
     fn visit_class_decl(&mut self, class_decl: &ClassDecl) {
-        self.insert_local(self.current_scope(), class_decl.ident.sym.to_string());
+        if let Some(scope) = self.current_scope() {
+            self.insert_local(scope, class_decl.ident.sym.to_string());
+        }
     }
 
     fn visit_catch_param(&mut self, pat: &Pat) {
-        self.insert_pat_locals(self.current_scope(), pat);
+        if let Some(scope) = self.current_scope() {
+            self.insert_pat_locals(scope, pat);
+        }
     }
 
     fn before_fn_decl(&mut self, fn_decl: &FnDecl, parent: ScopeId) {

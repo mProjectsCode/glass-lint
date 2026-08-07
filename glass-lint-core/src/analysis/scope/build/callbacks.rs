@@ -137,7 +137,8 @@ impl ScopeCollector<'_> {
 
     pub(super) fn function_scope_for_name(&self, name: &str) -> Option<ScopeId> {
         let name = self.lexical.names.lookup(name)?;
-        self.function_for_call(self.current_scope(), name)
+        self.current_scope()
+            .and_then(|scope| self.function_for_call(scope, name))
             .map(|function| function.scope)
     }
 

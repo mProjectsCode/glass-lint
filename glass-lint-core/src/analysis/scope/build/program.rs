@@ -11,6 +11,7 @@ pub(in crate::analysis) struct ScopedProgram {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::analysis) enum ScopeCollectionIssue {
     ShapeMismatch,
+    ScopeStackUnderflow,
     UnconsumedShape,
     InvalidBindingIndex,
     InvalidCheckpoint,

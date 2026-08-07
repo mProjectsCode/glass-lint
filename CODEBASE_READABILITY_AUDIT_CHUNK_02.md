@@ -82,7 +82,12 @@ the structure is invalid. Keep the program scope as an intentional root and
 retain the existing bounded, deterministic behavior for planned-shape
 mismatches.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Scope planning and collection now expose an optional current
+scope instead of falling back to `ScopeId::default()`. The collector preserves
+the program root, records root-pop and invalid-stack transitions as
+`ScopeStackUnderflow`, and suppresses further scope-dependent facts after an
+issue. Traversal skips callbacks when no valid scope exists. Verified with
+`make fmt && make ci`.
 
 ### READ-003 — Mutable and frozen graph query adapters repeat the same delegation surface
 
