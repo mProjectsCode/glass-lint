@@ -10,7 +10,10 @@ use crate::analysis::{
     flow::{
         effect::CallEffectRef,
         planning::FlowMatchView,
-        projector::{CallArgInfo, FactId, FlowState, ObjectFlowProjector, ObjectId, ValueId},
+        projector::{
+            CallArgInfo, FactId, FlowState, ObjectFlowProjector, ObjectId, ValueId,
+            state::StateAdmission,
+        },
     },
     model::flow::FlowId,
 };
@@ -26,15 +29,12 @@ impl ObjectFlowProjector<'_, '_, '_> {
             if let Some(args) = cref.effective_args()
                 && let Some((object, states)) = self.match_source(&cref, args, fact_id)
             {
-                if self.flow_state.state_count().saturating_add(states.len())
-                    > self.run.limits.state_limit()
-                {
-                    self.flow_state.mark_state_limit_rejected();
+                let aliases = self.value_aliases(target);
+                if matches!(
+                    self.flow_state.admit_object(&aliases, object, &states),
+                    StateAdmission::Admitted
+                ) {
                     return;
-                }
-                self.bind_value(target, object);
-                for state in states {
-                    self.flow_state.insert_state(state);
                 }
                 return;
             }

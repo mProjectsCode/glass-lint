@@ -74,7 +74,7 @@ restored state and an exhausted/failed restoration.
 
 ### State-capacity policy
 
-#### [ ] READ-007 — Centralize batched state-limit admission
+#### [x] READ-007 — Centralize batched state-limit admission
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -98,7 +98,12 @@ admission outcome. Preserve updates to existing keys, object allocation
 limits, rollback logging, and fail-closed incompleteness when the batch cannot
 fit.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `FlowStateTable::admit_object` now owns novel-key capacity
+counting, rejection state, alias binding, and logged batch insertion. The
+projector no longer preflights capacity or ignores per-state insertion
+results; existing state-key updates remain capacity-neutral. Added direct
+admission tests for update accounting and atomic rejection. Verified with
+`make fmt && make ci`.
 
 ### Cross-flow worklists
 

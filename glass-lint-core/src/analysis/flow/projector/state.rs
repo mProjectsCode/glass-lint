@@ -82,6 +82,15 @@ pub(super) struct FlowStateTable {
     state_limit_rejected: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Result of admitting one object and its flow-state batch.
+pub(super) enum StateAdmission {
+    /// Aliases and all batch states were recorded.
+    Admitted,
+    /// The state limit rejected the batch before any mutation.
+    Rejected,
+}
+
 /// One plan-selected requirement update for a property-write transition.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct PropertyWriteUpdate {
@@ -370,9 +379,21 @@ impl FlowStateTable {
         }
     }
 
-    /// Insert or update a state. Returns `false` when the state limit has been
-    /// reached and the insertion was rejected.
+    /// Insert or update one state. Returns `false` when the state limit has
+    /// been reached and the insertion was rejected.
+    #[cfg(test)]
     pub(super) fn insert_state(&mut self, state: FlowState) -> bool {
+        let key = state.key();
+        if !self.states.contains_key(&key) && self.states.len() >= self.state_limit {
+            self.state_limit_rejected = true;
+            false
+        } else {
+            self.insert_state_unchecked(state);
+            true
+        }
+    }
+
+    fn insert_state_unchecked(&mut self, state: FlowState) {
         let key = state.key();
         if let Some(old) = self.states.insert(key, state.clone()) {
             self.log.record(InverseDelta::StateUpdate(
@@ -380,18 +401,42 @@ impl FlowStateTable {
                 Box::new(old),
                 Box::new(state),
             ));
-            true
-        } else if self.states.len() > self.state_limit {
-            self.states.remove(&key);
-            self.state_limit_rejected = true;
-            false
         } else {
             self.log
                 .record(InverseDelta::StateInsert(key, Box::new(state)));
-            true
         }
     }
 
+    /// Admit one object alias and its states as an atomic capacity decision.
+    ///
+    /// Existing state keys are updates and do not consume capacity. A
+    /// rejected batch leaves aliases and states unchanged while recording the
+    /// fail-closed state-limit outcome.
+    pub(super) fn admit_object(
+        &mut self,
+        aliases: &[ValueId],
+        object: ObjectId,
+        states: &[FlowState],
+    ) -> StateAdmission {
+        let mut new_keys = BTreeSet::new();
+        for state in states {
+            let key = state.key();
+            if !self.states.contains_key(&key) {
+                new_keys.insert(key);
+            }
+        }
+        if self.states.len().saturating_add(new_keys.len()) > self.state_limit {
+            self.state_limit_rejected = true;
+            return StateAdmission::Rejected;
+        }
+        self.bind_aliases(aliases, object);
+        for state in states {
+            self.insert_state_unchecked(state.clone());
+        }
+        StateAdmission::Admitted
+    }
+
+    #[cfg(test)]
     pub(super) fn state_count(&self) -> usize {
         self.states.len()
     }
@@ -465,10 +510,6 @@ impl FlowStateTable {
 
     pub(super) fn state_limit_rejected(&self) -> bool {
         self.state_limit_rejected
-    }
-
-    pub(super) fn mark_state_limit_rejected(&mut self) {
-        self.state_limit_rejected = true;
     }
 
     fn remove_states_for(&mut self, object: ObjectId) {
@@ -907,6 +948,75 @@ mod tests {
         assert!(table.insert_state(state2));
         assert!(!table.insert_state(state3));
         assert_eq!(table.state_count(), 2);
+    }
+
+    #[test]
+    fn admit_object_counts_updates_without_rejecting_the_batch() {
+        let mut table = FlowStateTable::new(2, 100);
+        let existing = FlowState::new(
+            FlowId::new(RuleIndex::new(0), 0),
+            FactId::from_test(1),
+            ObjectId::from_test(1),
+        );
+        table.insert_state(existing);
+        let update = FlowState::new(
+            FlowId::new(RuleIndex::new(0), 0),
+            FactId::from_test(2),
+            ObjectId::from_test(1),
+        );
+        let new_state = FlowState::new(
+            FlowId::new(RuleIndex::new(0), 1),
+            FactId::from_test(3),
+            ObjectId::from_test(2),
+        );
+
+        assert_eq!(
+            table.admit_object(
+                &[ValueId::from_test(2)],
+                ObjectId::from_test(2),
+                &[update, new_state]
+            ),
+            StateAdmission::Admitted
+        );
+        assert_eq!(
+            table.object_for(ValueId::from_test(2)),
+            Some(ObjectId::from_test(2))
+        );
+        assert_eq!(table.state_count(), 2);
+        assert_eq!(
+            table
+                .state(ObjectId::from_test(1), FlowId::new(RuleIndex::new(0), 0))
+                .map(FlowState::source_event),
+            Some(FactId::from_test(2))
+        );
+    }
+
+    #[test]
+    fn rejected_object_admission_does_not_bind_or_insert() {
+        let mut table = FlowStateTable::new(1, 100);
+        let existing = FlowState::new(
+            FlowId::new(RuleIndex::new(0), 0),
+            FactId::from_test(1),
+            ObjectId::from_test(1),
+        );
+        table.insert_state(existing);
+        let rejected = FlowState::new(
+            FlowId::new(RuleIndex::new(0), 1),
+            FactId::from_test(2),
+            ObjectId::from_test(2),
+        );
+
+        assert_eq!(
+            table.admit_object(
+                &[ValueId::from_test(2)],
+                ObjectId::from_test(2),
+                &[rejected]
+            ),
+            StateAdmission::Rejected
+        );
+        assert_eq!(table.object_for(ValueId::from_test(2)), None);
+        assert_eq!(table.state_count(), 1);
+        assert!(table.state_limit_rejected());
     }
 
     #[test]
