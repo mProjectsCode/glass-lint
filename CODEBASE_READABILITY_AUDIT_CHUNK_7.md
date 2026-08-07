@@ -49,7 +49,7 @@ diagnostic issues. Verified with `make fmt && make ci`.
 
 ### Fact-stream phase storage
 
-#### [ ] READ-032 — Keep building and frozen stream storage in separate owners
+#### [x] READ-032 — Keep building and frozen stream storage in separate owners
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -77,7 +77,11 @@ callers migrate. Preserve typestate ordering, resolver identity tables,
 deterministic paths and facts, and the ability to retain incomplete streams
 for diagnostics while refusing to index them.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced placeholder name/value fields with phase-associated
+`BuildingStorage` and `FrozenStorage`. Building streams now retain only
+construction state; `freeze` installs resolver-owned tables in the frozen
+storage owner while preserving typestate, diagnostics, path/fact order, and
+test-only frozen construction.
 
 ### Cross-flow context matching
 

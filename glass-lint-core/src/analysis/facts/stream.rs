@@ -53,24 +53,43 @@ impl FactStreamIssueSet {
 }
 
 #[derive(Debug)]
+pub(in crate::analysis) struct BuildingStorage;
+
+#[derive(Debug)]
+pub(in crate::analysis) struct FrozenStorage {
+    names: NameTable,
+    values: ValueTable,
+}
+
+pub(in crate::analysis) trait FactPhase {
+    type Storage: std::fmt::Debug;
+}
+
+impl FactPhase for Building {
+    type Storage = BuildingStorage;
+}
+
+impl FactPhase for Frozen {
+    type Storage = FrozenStorage;
+}
+
+#[derive(Debug)]
 /// Canonical facts plus the path interner used by argument and flow queries.
 /// Invalid streams are retained only as a diagnostic boundary and must not be
 /// indexed or projected as if their suffix were trustworthy.
 ///
 /// The `Phase` parameter distinguishes the mutable building phase
-/// ([`Building`]) from the frozen phase ([`Frozen`]). Names and values are
-/// always present; [`freeze`](FactStream<Building>::freeze) overwrites the
-/// building-phase defaults with the final name table and value arena.
-pub(in crate::analysis) struct FactStream<Phase = Building> {
+/// ([`Building`]) from the frozen phase ([`Frozen`]). Resolver-owned names and
+/// values exist only in the frozen phase, where
+/// [`freeze`](FactStream<Building>::freeze) installs them.
+pub(in crate::analysis) struct FactStream<Phase: FactPhase = Building> {
     /// Dense facts in canonical visitor order.
     facts: Vec<SemanticFact>,
     max_facts: usize,
     /// Interned property/index paths used by argument projections.
     paths: PathStore,
-    /// Frozen name table, set during the resolver-owned freeze transition.
-    names: NameTable,
-    /// Frozen value arena, set during the resolver-owned freeze transition.
-    values: ValueTable,
+    /// Phase-owned storage: empty while building, resolver tables when frozen.
+    storage: Phase::Storage,
     /// Canonical function parameter bindings indexed by FunctionId. Populated
     /// during building; effects and summaries look up bindings here instead of
     /// cloning from inline fact payloads.
@@ -85,7 +104,7 @@ pub(in crate::analysis) struct FactStream<Phase = Building> {
 
 // ── Shared methods (available in all phases) ────────────────────────────
 
-impl<T> FactStream<T> {
+impl<T: FactPhase> FactStream<T> {
     /// Whether every appended fact has satisfied the stream invariants.
     pub(in crate::analysis) fn is_valid(&self) -> bool {
         self.valid && self.issues.is_empty()
@@ -183,8 +202,7 @@ impl FactStream<Building> {
             facts: Vec::new(),
             max_facts: max_facts.min(MAX_FACTS),
             paths: PathStore::new(),
-            names: NameTable::default(),
-            values: ValueTable::default(),
+            storage: BuildingStorage,
             function_parameters: Vec::new(),
             valid: true,
             issues: FactStreamIssueSet::new(),
@@ -282,8 +300,7 @@ impl FactStream<Building> {
             facts: self.facts,
             max_facts: self.max_facts,
             paths: self.paths,
-            names,
-            values,
+            storage: FrozenStorage { names, values },
             function_parameters: self.function_parameters,
             valid: self.valid,
             issues: self.issues,
@@ -297,12 +314,12 @@ impl FactStream<Building> {
 impl FactStream<Frozen> {
     /// Borrow the frozen name table.
     pub(in crate::analysis) fn names(&self) -> &NameTable {
-        &self.names
+        &self.storage.names
     }
 
     /// Borrow the frozen value arena for shape lookups by ValueId.
     pub(in crate::analysis) fn values(&self) -> &ValueTable {
-        &self.values
+        &self.storage.values
     }
 
     /// Resolve a `NameId` to a `&str` via the frozen name table.
@@ -321,8 +338,10 @@ impl Default for FactStream<Frozen> {
             facts: Vec::new(),
             max_facts: MAX_FACTS,
             paths: PathStore::default(),
-            names: NameTable::default(),
-            values: ValueTable::default(),
+            storage: FrozenStorage {
+                names: NameTable::default(),
+                values: ValueTable::default(),
+            },
             function_parameters: Vec::new(),
             valid: true,
             issues: FactStreamIssueSet::new(),
