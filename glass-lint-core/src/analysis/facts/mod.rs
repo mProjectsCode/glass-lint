@@ -156,8 +156,13 @@ impl FactProvenanceState {
         }
     }
 
-    fn restore_instance_snapshot(&mut self, snapshot: OriginSnapshot<(SmolStr, SmolStr)>) {
-        self.instance_origins.restore_from(snapshot);
+    fn restore_instance_snapshot(
+        &mut self,
+        snapshot: OriginSnapshot<(SmolStr, SmolStr)>,
+        checkpoint: &mut ProvenanceCheckpoint,
+    ) {
+        self.instance_origins
+            .restore_snapshot(snapshot, &mut checkpoint.instance);
     }
 
     fn retain_common_instance_origins(

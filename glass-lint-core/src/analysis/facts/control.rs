@@ -151,19 +151,22 @@ impl FactBuilder<'_, '_> {
             handler.visit_with(self);
             if stmt.finalizer.is_some() {
                 let handler_origins = self.provenance.snapshot_instances(self.resolver.budget);
-                self.provenance.restore_instance_snapshot(try_origins);
+                self.provenance
+                    .restore_instance_snapshot(try_origins, &mut checkpoint);
                 self.provenance
                     .retain_common_instance_origins(&handler_origins, self.resolver.budget);
             }
         } else if stmt.finalizer.is_some() {
-            self.provenance.restore_instance_snapshot(try_origins);
+            self.provenance
+                .restore_instance_snapshot(try_origins, &mut checkpoint);
             self.provenance
                 .retain_common_instance_origins(&incoming_snapshot, self.resolver.budget);
         }
         if let Some(finalizer) = &stmt.finalizer {
             self.emit_control(finalizer.span(), ControlKind::FinallyStart, region);
             finalizer.visit_with(self);
-            self.provenance.restore_instance_snapshot(incoming_snapshot);
+            self.provenance
+                .restore_instance_snapshot(incoming_snapshot, &mut checkpoint);
         }
         self.provenance.finish_control_region(&mut checkpoint);
         self.emit_control(stmt.span(), ControlKind::TryEnd, region);

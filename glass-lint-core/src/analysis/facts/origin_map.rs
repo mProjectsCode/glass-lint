@@ -23,8 +23,8 @@ pub(in crate::analysis) struct OriginMap<V> {
 ///
 /// Produced by [`snapshot`](OriginMap::snapshot), merged through
 /// [`retain_common`](OriginMap::retain_common), and restored with
-/// [`restore_from`](OriginMap::restore_from). The raw map stays private so
-/// equality and branch-intersection rules remain on [`OriginMap`].
+/// [`restore_snapshot`](OriginMap::restore_snapshot). The raw map stays private
+/// so equality and branch-intersection rules remain on [`OriginMap`].
 pub(in crate::analysis) struct OriginSnapshot<V> {
     map: HashMap<ValueId, V>,
 }
@@ -113,12 +113,22 @@ impl<V: Clone> OriginMap<V> {
         }
     }
 
-    /// Replace the full contents with `snapshot`, discarding the change log
-    /// and any open checkpoints.
-    pub fn restore_from(&mut self, snapshot: OriginSnapshot<V>) {
+    /// Replace the full contents with `snapshot` and rebase its owning
+    /// checkpoint at the new log position.
+    ///
+    /// Full restoration replaces the journal, so the checkpoint that owns the
+    /// restored branch must be supplied and remains active against the new
+    /// journal. This keeps its later commit or rollback balanced with the
+    /// checkpoint count instead of silently invalidating the transaction.
+    pub fn restore_snapshot(
+        &mut self,
+        snapshot: OriginSnapshot<V>,
+        checkpoint: &mut OriginCheckpoint,
+    ) {
+        debug_assert!(checkpoint.active);
         self.map = snapshot.map;
         self.log.clear();
-        self.open_checkpoints = 0;
+        checkpoint.position = self.log.len();
     }
 
     pub fn get(&self, key: ValueId) -> Option<&V> {
@@ -186,5 +196,29 @@ impl<V: Clone> Clone for OriginMap<V> {
             log: Vec::new(),
             open_checkpoints: 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{OriginMap, OriginSnapshot};
+
+    #[test]
+    fn restoring_snapshot_rebases_owned_checkpoint() {
+        let mut origins = OriginMap::<u8>::new();
+        let mut checkpoint = origins.checkpoint();
+
+        origins.restore_snapshot(
+            OriginSnapshot {
+                map: hashbrown::HashMap::new(),
+            },
+            &mut checkpoint,
+        );
+
+        assert!(checkpoint.active);
+        assert_eq!(origins.open_checkpoints, 1);
+        origins.commit(&mut checkpoint);
+        assert!(!checkpoint.active);
+        assert_eq!(origins.open_checkpoints, 0);
     }
 }

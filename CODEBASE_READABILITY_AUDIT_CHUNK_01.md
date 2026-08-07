@@ -48,7 +48,7 @@ preserved. Verified with `make fmt && make ci`.
 
 ### Bounded provenance transaction state
 
-#### [ ] READ-002 — Encode checkpoint ownership and restoration lifecycle in the provenance API
+#### [x] READ-002 — Encode checkpoint ownership and restoration lifecycle in the provenance API
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -56,7 +56,7 @@ preserved. Verified with `make fmt && make ci`.
 - **Category:** API
 - **Location:** `glass-lint-core/src/analysis/facts/origin_map.rs:32-122`; `glass-lint-core/src/analysis/facts/control.rs:141-169`
 
-`OriginMap::restore_from` replaces the map and clears `log` and
+`OriginMap::restore_snapshot` replaces the map and clears `log` and
 `open_checkpoints`, but active `OriginCheckpoint` values remain marked active
 because the method receives an owned snapshot rather than the checkpoint
 handles. `record_try` restores a snapshot and later finishes the original
@@ -75,7 +75,12 @@ journal. Preserve bounded logging and semantic-budget charging, and retain the
 fact builder's distinction between instance-origin and class-origin merge
 rules.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Full snapshot restoration is now an explicitly owned
+`restore_snapshot` operation: the caller supplies the active checkpoint, which
+is rebased to the replacement journal and remains active for its later commit
+or rollback. `record_try` threads that provenance checkpoint through every
+instance snapshot restore, and a focused unit test verifies balanced lifecycle
+accounting. Verified with `make fmt && make ci`.
 
 ### Fact provenance state
 
