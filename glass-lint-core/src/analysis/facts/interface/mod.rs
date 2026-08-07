@@ -85,8 +85,14 @@ impl ModuleInterfaceBuilder {
         self.interface.add_static_string(name, value);
     }
 
-    fn add_star_export(&mut self, request: ModuleRequestId) {
-        self.interface.add_star_export(request);
+    fn add_star_export_request(
+        &mut self,
+        span: glass_lint_datastructures::ByteRange,
+        kind: ResolutionRequestKind,
+        specifier: impl Into<smol_str::SmolStr>,
+    ) -> ModuleRequestId {
+        self.interface
+            .add_star_export_request(span, kind, specifier)
     }
 
     pub(in crate::analysis::facts) fn record_local_imports(&mut self, import: &ImportDecl) {

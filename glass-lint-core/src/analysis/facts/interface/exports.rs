@@ -155,14 +155,11 @@ impl ModuleInterfaceBuilder {
         if export.type_only {
             return;
         }
-        let span = source_span;
-        let request = self.add_request(
-            span,
+        self.add_star_export_request(
+            source_span,
             ResolutionRequestKind::StaticImport,
             export.src.value.to_string_lossy(),
-            ModuleRequestRole::StarExport,
         );
-        self.add_star_export(request);
     }
 
     pub(in crate::analysis::facts) fn record_default_expr(

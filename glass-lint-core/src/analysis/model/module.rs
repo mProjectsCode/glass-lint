@@ -255,9 +255,18 @@ impl ModuleInterface {
         }
     }
 
-    pub fn add_star_export(&mut self, request: ModuleRequestId) {
-        if !self.unknown_exports {
+    pub fn add_star_export_request(
+        &mut self,
+        span: ByteRange,
+        kind: ResolutionRequestKind,
+        specifier: impl Into<SmolStr>,
+    ) -> ModuleRequestId {
+        if self.unknown_exports {
+            self.add_request(span, kind, specifier, ModuleRequestRole::StarExport)
+        } else {
+            let request = self.add_request(span, kind, specifier, ModuleRequestRole::StarExport);
             self.star_exports.push(request);
+            request
         }
     }
 

@@ -163,7 +163,7 @@ setup computing that limit once. Verified with `make fmt && make ci`.
 
 ### Module request ownership
 
-#### [ ] READ-052 — Validate module request ownership when recording star exports
+#### [x] READ-052 — Validate module request ownership when recording star exports
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -192,7 +192,11 @@ incomplete/unknown at the source. Preserve request order, repeated-request
 behavior if it is meaningful, unknown-export clearing, cross-module resolution,
 and fail-closed handling for genuinely unresolved requests.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced arbitrary star-export ID admission with an owning
+`add_star_export_request` transaction that mints the request and records it
+in the same interface. This removes the invalid cross-interface append path
+while preserving fail-closed unknown-export behavior. Verified with
+`make fmt && make ci`.
 
 ## Systemic Themes
 
