@@ -179,7 +179,7 @@ pass through one invariant gate. The serialized `traces` plus `truncated`
 representation and empty-truncated behavior are unchanged. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-005 — Pass path metrics as a semantic aggregate
+#### [x] READ-005 — Pass path metrics as a semantic aggregate
 
 - **Category:** ENCAPSULATE
 - **Location:** `glass-lint-core/src/project/types/report/operations.rs:79-133`,
@@ -208,6 +208,12 @@ representation and empty-truncated behavior are unchanged. Verified with
   user-facing rendered traces, current additive/max aggregation behavior, and
   deterministic counts. Do not fold wall-clock timing or budget status into
   this count object.
+
+**Fix Applied:** The report operation builder now accepts a private named
+`ReportPathMetrics` aggregate rather than six positional counters. Report
+assembly names the projection, session, and rendered-trace owners at the
+boundary; the public `AnalysisOperationCounts` DTO and its aggregation
+semantics remain unchanged. Verified with `make fmt && make ci`.
 
 #### [x] READ-006 — Centralize report-summary aggregation
 

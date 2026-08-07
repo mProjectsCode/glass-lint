@@ -82,6 +82,16 @@ pub struct AnalysisOperationCountsBuilder {
     counts: AnalysisOperationCounts,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ReportPathMetrics {
+    pub(crate) max_live_alternatives: usize,
+    pub(crate) trace_nodes: usize,
+    pub(crate) trace_heads: usize,
+    pub(crate) coalescing_comparisons: usize,
+    pub(crate) fixed_point_iterations: usize,
+    pub(crate) rendered_traces: usize,
+}
+
 impl AnalysisOperationCountsBuilder {
     pub(crate) fn record_files(&mut self, value: usize) {
         self.counts.files = value;
@@ -111,21 +121,13 @@ impl AnalysisOperationCountsBuilder {
         self.counts.evidence = value;
     }
 
-    pub(crate) fn record_path_metrics(
-        &mut self,
-        max_live_alternatives: usize,
-        trace_nodes: usize,
-        trace_heads: usize,
-        coalescing_comparisons: usize,
-        fixed_point_iterations: usize,
-        rendered_traces: usize,
-    ) {
-        self.counts.max_live_alternatives = max_live_alternatives;
-        self.counts.trace_nodes = trace_nodes;
-        self.counts.trace_heads = trace_heads;
-        self.counts.coalescing_comparisons = coalescing_comparisons;
-        self.counts.fixed_point_iterations = fixed_point_iterations;
-        self.counts.rendered_traces = rendered_traces;
+    pub(crate) fn record_path_metrics(&mut self, metrics: ReportPathMetrics) {
+        self.counts.max_live_alternatives = metrics.max_live_alternatives;
+        self.counts.trace_nodes = metrics.trace_nodes;
+        self.counts.trace_heads = metrics.trace_heads;
+        self.counts.coalescing_comparisons = metrics.coalescing_comparisons;
+        self.counts.fixed_point_iterations = metrics.fixed_point_iterations;
+        self.counts.rendered_traces = metrics.rendered_traces;
     }
 
     pub(crate) fn finish(self) -> AnalysisOperationCounts {

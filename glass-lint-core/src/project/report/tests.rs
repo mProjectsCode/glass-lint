@@ -53,14 +53,14 @@ fn operation_counts_with_path(
     rendered_traces: usize,
 ) -> AnalysisOperationCounts {
     let mut counts = AnalysisOperationCountsBuilder::default();
-    counts.record_path_metrics(
+    counts.record_path_metrics(crate::project::types::ReportPathMetrics {
         max_live_alternatives,
         trace_nodes,
         trace_heads,
         coalescing_comparisons,
         fixed_point_iterations,
         rendered_traces,
-    );
+    });
     counts.finish()
 }
 

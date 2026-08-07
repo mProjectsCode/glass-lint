@@ -4,7 +4,10 @@ use crate::{
     REPORT_VERSION,
     analysis::{ProjectSemanticModel, project::projection::ProjectionOutcome},
     lint::report::ProjectReportSession,
-    project::{AnalysisReport, Diagnostic, FileReport, ProjectRelativePath, ReportCompletion},
+    project::{
+        AnalysisReport, Diagnostic, FileReport, ProjectRelativePath, ReportCompletion,
+        types::ReportPathMetrics,
+    },
 };
 
 pub(super) fn assemble_project_report(
@@ -21,14 +24,14 @@ pub(super) fn assemble_project_report(
     operations.record_evidence(aggregate.evidence_steps());
     let metrics = outcome.metrics();
     operations.record_effect_projections(metrics.effect_projections());
-    operations.record_path_metrics(
-        metrics.max_live_alternatives(),
-        session.trace_node_count(),
-        metrics.trace_heads(),
-        metrics.coalescing_comparisons(),
-        metrics.fixed_point_iterations(),
-        aggregate.rendered_traces(),
-    );
+    operations.record_path_metrics(ReportPathMetrics {
+        max_live_alternatives: metrics.max_live_alternatives(),
+        trace_nodes: session.trace_node_count(),
+        trace_heads: metrics.trace_heads(),
+        coalescing_comparisons: metrics.coalescing_comparisons(),
+        fixed_point_iterations: metrics.fixed_point_iterations(),
+        rendered_traces: aggregate.rendered_traces(),
+    });
 
     AnalysisReport::new(
         REPORT_VERSION,
