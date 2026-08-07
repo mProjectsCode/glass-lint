@@ -3,7 +3,7 @@
 use super::{
     AllExpr, AnyExpr, EmissionDecl, EventQuery, EventRequirement, EventRequirementKind, EventSpec,
     IdentitySpec, LifecycleQuery, MatchKind, QueryBuildError, QueryDecl, QueryExpr, QueryPredicate,
-    VarId, checked_chain, checked_module_export, evidence_kind_for_event, explain_expression,
+    VarId, checked_chain, checked_module_export, explain_expression,
 };
 
 impl QueryDecl {
@@ -46,7 +46,6 @@ impl QueryDecl {
             },
             identity,
             MemberObjectBinding::Constructed,
-            MatchKind::MemberCall,
             symbol,
         )
     }
@@ -68,7 +67,6 @@ impl QueryDecl {
             },
             identity,
             MemberObjectBinding::Returned,
-            MatchKind::MemberCall,
             source_chain.as_str(),
         )
     }
@@ -90,7 +88,6 @@ impl QueryDecl {
             },
             identity,
             MemberObjectBinding::Returned,
-            MatchKind::MemberRead,
             source_chain.as_str(),
         )
     }
@@ -197,26 +194,10 @@ impl QueryDecl {
         event: Result<EventQuery, QueryBuildError>,
         requirements: impl IntoIterator<Item = Result<EventRequirement, QueryBuildError>>,
     ) -> Result<Self, QueryBuildError> {
-        let eq = event?;
-        let var = eq.var;
-        let kind = evidence_kind_for_event(&eq.event);
-        let symbol = eq.identity.display_name();
-
-        // Build All branches: SelectEvent + EventKind + EventIdentity +
-        // argument constraints as Require atoms.
-        let event_spec = eq.event;
-        let identity_spec = eq.identity;
-        let mut branches: Vec<QueryExpr> = vec![
-            QueryExpr::select_event(var),
-            QueryExpr::require(QueryPredicate::EventKind {
-                event: var,
-                expected: event_spec,
-            }),
-            QueryExpr::require(QueryPredicate::EventIdentity {
-                event: var,
-                expected: identity_spec,
-            }),
-        ];
+        let selection = event?.into_selection_assembly();
+        let var = selection.var();
+        let emission = selection.emission().clone();
+        let mut branches = selection.branches();
 
         for req_result in requirements {
             let req = req_result?;
@@ -234,11 +215,7 @@ impl QueryDecl {
         let expression = QueryExpr::all(AllExpr::new(branches)?);
         Ok(Self {
             expression,
-            emission: EmissionDecl {
-                primary_var: var,
-                kind,
-                symbol,
-            },
+            emission,
         })
     }
 
@@ -282,43 +259,31 @@ fn member_subject_query(
     event: EventSpec,
     identity: IdentitySpec,
     object_binding: MemberObjectBinding,
-    kind: MatchKind,
     symbol: impl Into<String>,
 ) -> Result<QueryDecl, QueryBuildError> {
-    let event_var = VarId::new(0);
+    let selection = EventQuery::from_parts(event, identity.clone()).into_selection_assembly();
+    let event_var = selection.var();
     let object_var = VarId::new(1);
+    let mut emission = selection.emission().clone();
+    let mut branches = selection.branches();
     let object_binding = match object_binding {
         MemberObjectBinding::Constructed => QueryPredicate::ConstructedObject {
             bind: object_var,
-            identity: identity.clone(),
+            identity,
         },
         MemberObjectBinding::Returned => QueryPredicate::ReturnedObject {
             bind: object_var,
-            identity: identity.clone(),
+            identity,
         },
     };
-    let branches = vec![
-        QueryExpr::select_event(event_var),
-        QueryExpr::require(QueryPredicate::EventKind {
-            event: event_var,
-            expected: event,
-        }),
-        QueryExpr::require(QueryPredicate::EventIdentity {
-            event: event_var,
-            expected: identity,
-        }),
-        QueryExpr::require(object_binding),
-        QueryExpr::require(QueryPredicate::MemberSubject {
-            event: event_var,
-            object: object_var,
-        }),
-    ];
+    branches.push(QueryExpr::require(object_binding));
+    branches.push(QueryExpr::require(QueryPredicate::MemberSubject {
+        event: event_var,
+        object: object_var,
+    }));
+    emission.symbol = symbol.into();
     Ok(QueryDecl {
         expression: QueryExpr::all(AllExpr::new(branches)?),
-        emission: EmissionDecl {
-            primary_var: event_var,
-            kind,
-            symbol: symbol.into(),
-        },
+        emission,
     })
 }

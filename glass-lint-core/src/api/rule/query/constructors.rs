@@ -1,10 +1,9 @@
 //! Public event-query constructors and argument adapters.
 
 use super::{
-    ArgumentConstraintsBuilder, ArgumentIndex, ArgumentMatcher, EmissionDecl, EventQuery,
-    EventSpec, IdentitySpec, MatchKind, ModuleSpecifierPattern, PRIVATE_NETWORK_EVIDENCE_SYMBOL,
-    PRIVATE_NETWORK_LITERAL, QueryBuildError, QueryDecl, QueryExpr, ValueMatcher, checked_chain,
-    checked_module_export, checked_module_name, checked_name, evidence_kind_for_event, limits,
+    ArgumentConstraintsBuilder, ArgumentIndex, ArgumentMatcher, EventQuery, EventSpec,
+    IdentitySpec, ModuleSpecifierPattern, PRIVATE_NETWORK_LITERAL, QueryBuildError, QueryDecl,
+    ValueMatcher, checked_chain, checked_module_export, checked_module_name, checked_name, limits,
 };
 
 fn checked_argument_index(index: usize) -> Result<ArgumentIndex, QueryBuildError> {
@@ -350,26 +349,7 @@ impl EventQuery {
     /// Convert this event query into a [`QueryDecl`] with inferred evidence
     /// kind and symbol derived from the event and identity.
     pub fn into_query(self) -> QueryDecl {
-        let var = self.var;
-        let kind = evidence_kind_for_event(&self.event);
-        let symbol = if kind == MatchKind::StringContains
-            && matches!(
-                &self.identity,
-                IdentitySpec::LiteralString { predicate }
-                    if predicate == PRIVATE_NETWORK_LITERAL
-            ) {
-            PRIVATE_NETWORK_EVIDENCE_SYMBOL.to_owned()
-        } else {
-            self.identity.display_name()
-        };
-        QueryDecl {
-            expression: QueryExpr::event(self),
-            emission: EmissionDecl {
-                primary_var: var,
-                kind,
-                symbol,
-            },
-        }
+        self.into_selection_assembly().into_event_decl()
     }
 }
 

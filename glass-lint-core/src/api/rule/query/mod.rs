@@ -201,6 +201,67 @@ impl EventQuery {
     }
 }
 
+struct EventSelectionAssembly {
+    event: EventQuery,
+    emission: EmissionDecl,
+}
+
+impl EventQuery {
+    fn into_selection_assembly(self) -> EventSelectionAssembly {
+        let var = self.var;
+        let kind = evidence_kind_for_event(&self.event);
+        let symbol = self.identity.display_name();
+        EventSelectionAssembly {
+            event: self,
+            emission: EmissionDecl {
+                primary_var: var,
+                kind,
+                symbol,
+            },
+        }
+    }
+}
+
+impl EventSelectionAssembly {
+    fn var(&self) -> VarId {
+        self.emission.primary_var
+    }
+
+    fn emission(&self) -> &EmissionDecl {
+        &self.emission
+    }
+
+    fn into_event_decl(self) -> QueryDecl {
+        QueryDecl {
+            expression: QueryExpr::event(self.event),
+            emission: self.emission,
+        }
+    }
+
+    fn branches(&self) -> Vec<QueryExpr> {
+        let var = self.event.var;
+        let mut branches = vec![
+            QueryExpr::select_event(var),
+            QueryExpr::require(QueryPredicate::EventKind {
+                event: var,
+                expected: self.event.event.clone(),
+            }),
+            QueryExpr::require(QueryPredicate::EventIdentity {
+                event: var,
+                expected: self.event.identity.clone(),
+            }),
+        ];
+        branches.extend(self.event.constraints.iter().map(|constraint| {
+            QueryExpr::require(QueryPredicate::Argument {
+                call: var,
+                index: constraint.arg_index(),
+                matcher: constraint.predicate().clone(),
+            })
+        }));
+        branches
+    }
+}
+
 fn is_chain_malformed(chain: &str) -> bool {
     chain.trim().is_empty()
         || chain.contains("..")

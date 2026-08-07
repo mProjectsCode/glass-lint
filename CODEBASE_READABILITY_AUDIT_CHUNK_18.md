@@ -130,7 +130,7 @@ semantics.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-089 — Centralize event-selection expression assembly
+#### [x] READ-089 — Centralize event-selection expression assembly
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -162,7 +162,7 @@ parallel symbol/kind derivation. Preserve variable bindings, same-event
 correlation, member-object relations, argument ordering and bounds, evidence
 projection checks for `Any`, and the existing public convenience constructors.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a private `EventSelectionAssembly` owned by `EventQuery` that centralizes event selection, identity, argument predicates, and inferred emission metadata. Leaf, same-event, and member-subject constructors now reuse it while retaining their distinct expression composition.
 
 ### Error and bounded collection adapters
 
