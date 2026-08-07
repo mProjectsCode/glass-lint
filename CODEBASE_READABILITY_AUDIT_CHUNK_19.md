@@ -95,7 +95,7 @@ configured maximum.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-093 — Seal source offsets before `SourceLineIndex` position math
+#### [x] READ-093 — Seal source offsets before `SourceLineIndex` position math
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -126,7 +126,15 @@ duplicate conversion in `source_slice`. Preserve Unicode and CRLF handling,
 EOF ranges, lazy checkpoints, invalid-boundary rejection, and the report
 layer's fail-closed behavior for spans that cannot be converted.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added private validated byte-offset and byte-range handles
+owned by `SourceLineIndex`. Raw ranges now pass through one bounds and UTF-8
+boundary validator before position conversion or source slicing; position and
+range math are fallible and no longer rely on unchecked offset assumptions.
+Preserved Unicode, CRLF, EOF, and invalid-boundary behavior in focused tests.
+
+**Verified:** `make fmt && make ci` (workspace check, clippy with warnings as
+errors, 811 core tests, doctests, E2E/rule harnesses, rules documentation
+check, and examples).
 
 #### [x] READ-094 — Keep parser diagnostics fallible at the SWC span boundary
 

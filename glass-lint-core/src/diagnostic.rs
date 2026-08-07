@@ -60,6 +60,15 @@ pub struct SourceLineIndex {
     checkpoints: OnceLock<Vec<Vec<(usize, usize)>>>,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct ValidatedByteOffset(usize);
+
+#[derive(Clone, Copy, Debug)]
+struct ValidatedByteRange {
+    start: ValidatedByteOffset,
+    end: ValidatedByteOffset,
+}
+
 impl std::fmt::Debug for SourceLineIndex {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SourceLineIndex")
@@ -130,7 +139,8 @@ impl SourceLineIndex {
     }
 
     /// Convert a validated byte offset into a one-based display position.
-    fn position(&self, offset: usize) -> Position {
+    fn position(&self, offset: ValidatedByteOffset) -> Option<Position> {
+        let offset = offset.0;
         let line = self
             .starts
             .partition_point(|start| *start <= offset)
@@ -155,20 +165,33 @@ impl SourceLineIndex {
         };
 
         Position::new(
-            line.try_into().unwrap_or(u32::MAX).saturating_add(1),
-            column.try_into().unwrap_or(u32::MAX).saturating_add(1),
+            u32::try_from(line).ok()?.checked_add(1)?,
+            u32::try_from(column).ok()?.checked_add(1)?,
         )
-        .expect("line index always produces one-based positions")
+        .ok()
     }
 
-    /// Convert a byte start and length through this source's cached index.
-    #[must_use]
-    fn range(&self, start: usize, length: usize) -> SourceRange {
-        SourceRange::new(
-            self.position(start),
-            self.position(start.saturating_add(length)),
-        )
-        .expect("ordered byte offsets produce ordered source positions")
+    fn range(&self, range: ValidatedByteRange) -> Option<SourceRange> {
+        SourceRange::new(self.position(range.start)?, self.position(range.end)?).ok()
+    }
+
+    fn validate_range(
+        &self,
+        range: ByteRange,
+    ) -> Result<ValidatedByteRange, InvalidSourceBoundary> {
+        let start =
+            usize::try_from(range.start()).map_err(|_| InvalidSourceBoundary::OutOfBounds)?;
+        let end = usize::try_from(range.end()).map_err(|_| InvalidSourceBoundary::OutOfBounds)?;
+        if end > self.source.len() {
+            return Err(InvalidSourceBoundary::OutOfBounds);
+        }
+        if !self.source.is_char_boundary(start) || !self.source.is_char_boundary(end) {
+            return Err(InvalidSourceBoundary::NotCharacterBoundary);
+        }
+        Ok(ValidatedByteRange {
+            start: ValidatedByteOffset(start),
+            end: ValidatedByteOffset(end),
+        })
     }
 
     /// Convert a checked byte range without clamping invalid parser output.
@@ -184,23 +207,14 @@ impl SourceLineIndex {
     /// assert!(index.try_range(ByteRange::new(1, 2).unwrap()).is_err());
     /// ```
     pub fn try_range(&self, range: ByteRange) -> Result<SourceRange, InvalidSourceBoundary> {
-        let start =
-            usize::try_from(range.start()).map_err(|_| InvalidSourceBoundary::OutOfBounds)?;
-        let end = usize::try_from(range.end()).map_err(|_| InvalidSourceBoundary::OutOfBounds)?;
-        if end > self.source.len() {
-            return Err(InvalidSourceBoundary::OutOfBounds);
-        }
-        if !self.source.is_char_boundary(start) || !self.source.is_char_boundary(end) {
-            return Err(InvalidSourceBoundary::NotCharacterBoundary);
-        }
-        Ok(self.range(start, end - start))
+        let range = self.validate_range(range)?;
+        self.range(range).ok_or(InvalidSourceBoundary::OutOfBounds)
     }
 
     /// Borrow the source covered by a validated byte range.
     pub(crate) fn source_slice(&self, range: ByteRange) -> Option<&str> {
-        let start = usize::try_from(range.start()).ok()?;
-        let end = usize::try_from(range.end()).ok()?;
-        self.source.get(start..end)
+        let range = self.validate_range(range).ok()?;
+        self.source.get(range.start.0..range.end.0)
     }
 }
 
@@ -226,13 +240,13 @@ mod tests {
     fn line_index_converts_unicode_crlf_and_eof_positions() {
         let source = "é\r\nfetch();\n";
         let index = SourceLineIndex::new(source);
-        let range = index.range(4, 5);
+        let range = index.try_range(ByteRange::new(4, 9).unwrap()).unwrap();
         assert_eq!(range.start().line(), 2);
         assert_eq!(range.start().column(), 1);
         assert_eq!(range.end().line(), 2);
         assert_eq!(range.end().column(), 6);
-        let eof = index.position(source.len());
-        assert_eq!((eof.line(), eof.column()), (3, 1));
+        let eof = index.try_range(ByteRange::new(13, 13).unwrap()).unwrap();
+        assert_eq!((eof.start().line(), eof.start().column()), (3, 1));
     }
 
     #[test]
