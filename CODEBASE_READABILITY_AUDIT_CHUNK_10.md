@@ -18,7 +18,7 @@ reviewed against the existing Chunk 3 report and are not repeated here.
 
 ### Candidate occurrence contract
 
-#### [ ] READ-045 — Give candidate occurrence selection one explicit contract
+#### [x] READ-045 — Give candidate occurrence selection one explicit contract
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -54,7 +54,12 @@ encoding four contracts in one iterator enum. Preserve module-overlay masking,
 deterministic evidence order, and the distinction between duplicate physical
 occurrences and distinct semantic facts.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Renamed the raw candidate stream to `OccurrenceSelection` and
+gave it one explicit `into_ordered` evidence-boundary operation. The operation
+globally sorts selected occurrences while preserving duplicate physical events;
+exact and package selections remain lazy until materialization, and final
+span/fact/trace presentation deduplication remains in evidence grouping.
+Verified with `make fmt && make ci`.
 
 ### Event index view
 

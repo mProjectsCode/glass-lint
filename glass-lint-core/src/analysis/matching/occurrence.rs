@@ -14,20 +14,20 @@ use smol_str::SmolStr;
 
 use crate::analysis::facts::FactId;
 
-/// A borrowed, merged, or owned collection of candidate occurrences.
+/// A raw borrowed, merged, or owned occurrence selection.
 ///
-/// Exact indexed lookups borrow the normalized slice without allocation.
-/// Merged lookups iterate two sorted slices without allocation. Scanned
-/// lookups (package queries, predicate scans) still own a `Vec` because
-/// they combine multiple index buckets.
-pub(in crate::analysis) enum CandidateOccurrences<'a> {
+/// Selection is intentionally lazy and preserves duplicate physical events.
+/// Call [`Self::into_ordered`] at the evidence boundary to establish one
+/// deterministic order without changing the count represented by the raw
+/// selection.
+pub(in crate::analysis) enum OccurrenceSelection<'a> {
     Indexed(core::iter::Copied<core::slice::Iter<'a, Occurrence>>),
     Borrowed(BorrowedOccurrenceIter<'a>),
     BorrowedPackage(BorrowedPackageOccurrenceIter<'a>),
     Scanned(std::vec::IntoIter<Occurrence>),
 }
 
-impl<'a> CandidateOccurrences<'a> {
+impl<'a> OccurrenceSelection<'a> {
     pub(super) fn indexed(slice: &'a [Occurrence]) -> Self {
         Self::Indexed(slice.iter().copied())
     }
@@ -35,9 +35,23 @@ impl<'a> CandidateOccurrences<'a> {
     pub(super) fn scanned(occurrences: Vec<Occurrence>) -> Self {
         Self::Scanned(occurrences.into_iter())
     }
+
+    /// Materialize candidates in the common evidence order while retaining
+    /// duplicates for the evidence count and later presentation policy.
+    pub(super) fn into_ordered(self) -> Vec<Occurrence> {
+        let mut occurrences: Vec<_> = self.collect();
+        occurrences.sort_unstable_by_key(|occurrence| {
+            (
+                occurrence.event,
+                occurrence.span.start(),
+                occurrence.span.end(),
+            )
+        });
+        occurrences
+    }
 }
 
-impl Iterator for CandidateOccurrences<'_> {
+impl Iterator for OccurrenceSelection<'_> {
     type Item = Occurrence;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -392,7 +406,7 @@ impl<K: Ord> OccurrenceIndex<K> {
     pub(super) fn matching(
         &self,
         mut predicate: impl FnMut(&K) -> bool,
-    ) -> Option<CandidateOccurrences<'_>> {
+    ) -> Option<OccurrenceSelection<'_>> {
         let occurrences = self
             .0
             .iter()
@@ -402,7 +416,7 @@ impl<K: Ord> OccurrenceIndex<K> {
         if occurrences.is_empty() {
             return None;
         }
-        Some(CandidateOccurrences::scanned(occurrences))
+        Some(OccurrenceSelection::scanned(occurrences))
     }
 
     /// Append an already constructed occurrence before normalization.
@@ -665,6 +679,26 @@ mod tests {
         let result: Vec<_> = iter.collect();
         let expected = reference_merge(None, &overlays);
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn ordered_selection_sorts_without_deduplicating_physical_events() {
+        let selection = OccurrenceSelection::scanned(vec![
+            occ(3, 30, 31),
+            occ(1, 10, 11),
+            occ(1, 10, 11),
+            occ(2, 20, 21),
+        ]);
+
+        assert_eq!(
+            selection.into_ordered(),
+            vec![
+                occ(1, 10, 11),
+                occ(1, 10, 11),
+                occ(2, 20, 21),
+                occ(3, 30, 31)
+            ]
+        );
     }
 
     #[test]

@@ -13,7 +13,7 @@ pub(super) mod evidence;
 mod occurrence;
 pub(in crate::analysis) use occurrence::ModuleExportKey;
 use occurrence::{
-    BorrowedOccurrenceIter, CandidateOccurrences, ModuleOccurrences, Occurrence, Occurrences,
+    BorrowedOccurrenceIter, ModuleOccurrences, Occurrence, OccurrenceSelection, Occurrences,
     PackageKeyPredicate, PackageOverlay,
 };
 mod identity_map;
@@ -113,15 +113,15 @@ impl<'a> ModuleOccurrenceOverlay<'a> {
         kind: ModuleOverlayKind,
         base: &'a ModuleOccurrences,
         key: &ModuleExportKey,
-    ) -> Option<CandidateOccurrences<'a>> {
+    ) -> Option<OccurrenceSelection<'a>> {
         if let Some(slices) = self.buckets(kind).and_then(|buckets| buckets.get(key)) {
-            return Some(CandidateOccurrences::Borrowed(BorrowedOccurrenceIter::new(
+            return Some(OccurrenceSelection::Borrowed(BorrowedOccurrenceIter::new(
                 None,
                 slices.as_slice(),
             )));
         }
         if !self.masked.contains(key) {
-            return base.get(key).map(CandidateOccurrences::indexed);
+            return base.get(key).map(OccurrenceSelection::indexed);
         }
         None
     }
@@ -131,15 +131,15 @@ impl<'a> ModuleOccurrenceOverlay<'a> {
         kind: ModuleOverlayKind,
         base: &'a ModuleOccurrences,
         predicate: PackageKeyPredicate<'a>,
-    ) -> CandidateOccurrences<'a> {
+    ) -> OccurrenceSelection<'a> {
         match self.buckets(kind) {
             Some(buckets) => {
                 let overlay = PackageOverlay::new(&self.masked, buckets);
-                CandidateOccurrences::BorrowedPackage(
+                OccurrenceSelection::BorrowedPackage(
                     base.package_candidates_with_overlay(predicate, overlay),
                 )
             }
-            None => CandidateOccurrences::BorrowedPackage(base.package_candidates(predicate)),
+            None => OccurrenceSelection::BorrowedPackage(base.package_candidates(predicate)),
         }
     }
 }
@@ -214,7 +214,7 @@ impl<'a> LinkedOccurrenceView<'a> {
         kind: ModuleOverlayKind,
         base: &'a ModuleOccurrences,
         key: &ModuleExportKey,
-    ) -> Option<CandidateOccurrences<'a>> {
+    ) -> Option<OccurrenceSelection<'a>> {
         self.module.resolve_module(kind, base, key)
     }
 
@@ -222,15 +222,15 @@ impl<'a> LinkedOccurrenceView<'a> {
         &'a self,
         base: &'a Occurrences,
         name: &SmolStr,
-    ) -> Option<CandidateOccurrences<'a>> {
+    ) -> Option<OccurrenceSelection<'a>> {
         let base_slice = base.get(name);
         let overlay_slices = self.global_calls.get(name);
         match (base_slice, overlay_slices) {
-            (Some(base_slice), Some(overlay_slices)) => Some(CandidateOccurrences::Borrowed(
+            (Some(base_slice), Some(overlay_slices)) => Some(OccurrenceSelection::Borrowed(
                 BorrowedOccurrenceIter::new(Some(base_slice), overlay_slices.as_slice()),
             )),
-            (Some(slice), None) => Some(CandidateOccurrences::indexed(slice)),
-            (None, Some(slices)) => Some(CandidateOccurrences::Borrowed(
+            (Some(slice), None) => Some(OccurrenceSelection::indexed(slice)),
+            (None, Some(slices)) => Some(OccurrenceSelection::Borrowed(
                 BorrowedOccurrenceIter::new(None, slices.as_slice()),
             )),
             (None, None) => None,
@@ -242,7 +242,7 @@ impl<'a> LinkedOccurrenceView<'a> {
         kind: ModuleOverlayKind,
         base: &'a ModuleOccurrences,
         predicate: PackageKeyPredicate<'a>,
-    ) -> CandidateOccurrences<'a> {
+    ) -> OccurrenceSelection<'a> {
         self.module.resolve_package(kind, base, predicate)
     }
 }
@@ -352,9 +352,9 @@ pub(super) fn push_owned_evidence(
     evidence: &mut Vec<ClassificationEvidence>,
     kind: MatchKind,
     symbol: String,
-    occurrences: impl IntoIterator<Item = Occurrence>,
+    occurrences: OccurrenceSelection<'_>,
 ) {
-    let occurrences = owned_occurrences(occurrences);
+    let occurrences = owned_occurrences(occurrences.into_ordered());
     if occurrences.is_empty() {
         return;
     }

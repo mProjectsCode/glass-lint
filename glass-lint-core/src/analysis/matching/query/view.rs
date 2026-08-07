@@ -11,8 +11,8 @@ use crate::{
     analysis::matching::{
         LinkedOccurrenceView, ModuleOverlayKind,
         occurrence::{
-            CandidateOccurrences, ModuleExportKey, ModuleOccurrences, NameOccurrences,
-            OccurrenceIndex, Occurrences, PackageKeyPredicate, PackageMatchKind,
+            ModuleExportKey, ModuleOccurrences, NameOccurrences, OccurrenceIndex,
+            OccurrenceSelection, Occurrences, PackageKeyPredicate, PackageMatchKind,
         },
     },
     api::{compiler::rule::IdentityConstraint, rule::ModuleSpecifierPattern},
@@ -70,7 +70,7 @@ impl<'a> EventIndexView<'a> {
         identity: &'a IdentityConstraint,
         names: &NameTable,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
-    ) -> Option<CandidateOccurrences<'a>> {
+    ) -> Option<OccurrenceSelection<'a>> {
         match identity {
             IdentityConstraint::Any { name, .. } => self.resolve_any(name, names),
             IdentityConstraint::Global { name, .. } => self.resolve_global(name, overlay),
@@ -94,12 +94,12 @@ impl<'a> EventIndexView<'a> {
         }
     }
 
-    fn resolve_any(&self, name: &SmolStr, names: &NameTable) -> Option<CandidateOccurrences<'a>> {
+    fn resolve_any(&self, name: &SmolStr, names: &NameTable) -> Option<OccurrenceSelection<'a>> {
         match self {
             EventIndexView::Call { names: calls, .. } => names
                 .lookup(name)
                 .and_then(|id| calls.get(&id))
-                .map(CandidateOccurrences::indexed),
+                .map(OccurrenceSelection::indexed),
             EventIndexView::MemberCall { paths, .. }
             | EventIndexView::MemberRead { paths, .. }
             | EventIndexView::PropertyWrite { writes: paths, .. } => {
@@ -107,11 +107,11 @@ impl<'a> EventIndexView<'a> {
                 names
                     .lookup_path(member)
                     .and_then(|path| paths.get(&path))
-                    .map(CandidateOccurrences::indexed)
+                    .map(OccurrenceSelection::indexed)
             }
-            EventIndexView::ClassReference { strings, .. } => strings
-                .get(name.as_str())
-                .map(CandidateOccurrences::indexed),
+            EventIndexView::ClassReference { strings, .. } => {
+                strings.get(name.as_str()).map(OccurrenceSelection::indexed)
+            }
             EventIndexView::Construct {
                 names: constructors,
                 global,
@@ -119,8 +119,8 @@ impl<'a> EventIndexView<'a> {
             } => names
                 .lookup(name)
                 .and_then(|id| constructors.get(&id))
-                .map(CandidateOccurrences::indexed)
-                .or_else(|| global.get(name.as_str()).map(CandidateOccurrences::indexed)),
+                .map(OccurrenceSelection::indexed)
+                .or_else(|| global.get(name.as_str()).map(OccurrenceSelection::indexed)),
             EventIndexView::Import { .. } | EventIndexView::StringReference { .. } => None,
         }
     }
@@ -129,10 +129,10 @@ impl<'a> EventIndexView<'a> {
         &self,
         name: &SmolStr,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
-    ) -> Option<CandidateOccurrences<'a>> {
+    ) -> Option<OccurrenceSelection<'a>> {
         let index = self.global_index()?;
         overlay.map_or_else(
-            || index.get(name).map(CandidateOccurrences::indexed),
+            || index.get(name).map(OccurrenceSelection::indexed),
             |overlay| overlay.resolve_global(index, name),
         )
     }
@@ -142,7 +142,7 @@ impl<'a> EventIndexView<'a> {
         module: &SmolStr,
         export: &SmolStr,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
-    ) -> Option<CandidateOccurrences<'a>> {
+    ) -> Option<OccurrenceSelection<'a>> {
         let key = ModuleExportKey::new(module.clone(), export.clone());
         self.resolve_module_key(&key, overlay)
     }
@@ -152,7 +152,7 @@ impl<'a> EventIndexView<'a> {
         module: &'a ModuleSpecifierPattern,
         export: &'a SmolStr,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
-    ) -> Option<CandidateOccurrences<'a>> {
+    ) -> Option<OccurrenceSelection<'a>> {
         let predicate = PackageKeyPredicate::new(module, PackageMatchKind::Export(export));
         self.resolve_package(predicate, overlay)
     }
@@ -161,7 +161,7 @@ impl<'a> EventIndexView<'a> {
         &self,
         module: &SmolStr,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
-    ) -> Option<CandidateOccurrences<'a>> {
+    ) -> Option<OccurrenceSelection<'a>> {
         let member = self.member_path()?.to_string();
         let key = ModuleExportKey::new(module.clone(), member);
         self.resolve_module_key(&key, overlay)
@@ -171,7 +171,7 @@ impl<'a> EventIndexView<'a> {
         &self,
         module: &'a ModuleSpecifierPattern,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
-    ) -> Option<CandidateOccurrences<'a>> {
+    ) -> Option<OccurrenceSelection<'a>> {
         let member = self.member_path()?;
         let predicate = PackageKeyPredicate::new(module, PackageMatchKind::Namespace(member));
         self.resolve_package(predicate, overlay)
@@ -181,7 +181,7 @@ impl<'a> EventIndexView<'a> {
         &self,
         path: &'a SymbolPath,
         names: &NameTable,
-    ) -> Option<CandidateOccurrences<'a>> {
+    ) -> Option<OccurrenceSelection<'a>> {
         let expected = names.lookup_path(path)?;
         let (EventIndexView::Construct {
             rooted,
@@ -209,11 +209,11 @@ impl<'a> EventIndexView<'a> {
         rooted.matching(|key| environment.global_object_name_paths_match(key, &expected, names))
     }
 
-    fn resolve_literal(&self, predicate: &str) -> Option<CandidateOccurrences<'a>> {
+    fn resolve_literal(&self, predicate: &str) -> Option<OccurrenceSelection<'a>> {
         match self {
             EventIndexView::Import { literals } => literals
                 .get(&SmolStr::new(predicate))
-                .map(CandidateOccurrences::indexed),
+                .map(OccurrenceSelection::indexed),
             EventIndexView::StringReference { literals } => {
                 if predicate == crate::api::rule::query::PRIVATE_NETWORK_LITERAL {
                     literals.matching(|literal| private_network_match(literal).is_some())
@@ -228,7 +228,7 @@ impl<'a> EventIndexView<'a> {
     fn resolve_package_specifier(
         &self,
         pattern: &ModuleSpecifierPattern,
-    ) -> Option<CandidateOccurrences<'a>> {
+    ) -> Option<OccurrenceSelection<'a>> {
         match self {
             EventIndexView::Import { literals } | EventIndexView::StringReference { literals } => {
                 literals.matching(|specifier| pattern.matches(specifier))
@@ -241,10 +241,10 @@ impl<'a> EventIndexView<'a> {
         &self,
         key: &ModuleExportKey,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
-    ) -> Option<CandidateOccurrences<'a>> {
+    ) -> Option<OccurrenceSelection<'a>> {
         let (kind, index) = self.module_view()?;
         overlay.map_or_else(
-            || index.get(key).map(CandidateOccurrences::indexed),
+            || index.get(key).map(OccurrenceSelection::indexed),
             |overlay| overlay.resolve_module(kind, index, key),
         )
     }
@@ -253,11 +253,11 @@ impl<'a> EventIndexView<'a> {
         &self,
         predicate: PackageKeyPredicate<'a>,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
-    ) -> Option<CandidateOccurrences<'a>> {
+    ) -> Option<OccurrenceSelection<'a>> {
         let (kind, index) = self.module_view()?;
         Some(match overlay {
             Some(overlay) => overlay.resolve_package(kind, index, predicate),
-            None => CandidateOccurrences::BorrowedPackage(index.package_candidates(predicate)),
+            None => OccurrenceSelection::BorrowedPackage(index.package_candidates(predicate)),
         })
     }
 

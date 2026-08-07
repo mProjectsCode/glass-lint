@@ -8,7 +8,7 @@ use smol_str::SmolStr;
 use crate::{analysis::facts::FactId, api::classification::MatchKind};
 use crate::{
     analysis::matching::{
-        CandidateOccurrences, ClassificationEvidence, LinkedOccurrenceView, OccurrenceIndexes,
+        ClassificationEvidence, LinkedOccurrenceView, OccurrenceIndexes, OccurrenceSelection,
         occurrence::ReturnedMemberKey, push_owned_evidence,
     },
     api::compiler::{
@@ -96,7 +96,7 @@ impl OccurrenceIndexes {
         event: &'a EventPredicate,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
         names: &NameTable,
-    ) -> Option<CandidateOccurrences<'a>> {
+    ) -> Option<OccurrenceSelection<'a>> {
         let view = self.build_event_view(event);
         view.resolve(identity, names, overlay)
     }
@@ -109,7 +109,7 @@ impl OccurrenceIndexes {
         event: &EventPredicate,
         _overlay: Option<&'a LinkedOccurrenceView<'a>>,
         names: &'a NameTable,
-    ) -> Option<CandidateOccurrences<'a>> {
+    ) -> Option<OccurrenceSelection<'a>> {
         let predicate = |key: &ReturnedMemberKey| {
             names.resolve_path(key.source()).is_some_and(|source| {
                 identity.root_or_descendant_matches(&source, &self.environment)
@@ -130,7 +130,7 @@ impl OccurrenceIndexes {
         constructor: &IdentityConstraint,
         member: &SymbolPath,
         _names: &NameTable,
-    ) -> Option<CandidateOccurrences<'a>> {
+    ) -> Option<OccurrenceSelection<'a>> {
         self.members
             .instance_calls()
             .matching(|key| match constructor {
