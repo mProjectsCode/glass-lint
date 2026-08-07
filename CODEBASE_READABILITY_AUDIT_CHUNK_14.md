@@ -22,7 +22,7 @@ Chunk 12. Those findings are not repeated here.
 
 ### Scope freeze and validity boundaries
 
-#### [ ] READ-062 — Separate the frozen lexical graph from mutable name interning
+#### [x] READ-062 — Separate the frozen lexical graph from mutable name interning
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -55,7 +55,11 @@ explicit resolver freeze operation. Preserve identical IDs for existing scope
 paths, bounded interning and exhaustion diagnostics, static-object key
 conversion, and the fact that names remain local to one artifact.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed mutable and consuming name-table accessors from
+`FrozenScopeGraph`. `Resolver` now owns a cloned artifact-local name session
+for post-freeze interning, name/path projection, exhaustion reporting, and the
+final transfer into `FrozenFactTables`; the lexical graph remains an immutable
+snapshot with stable pre-existing IDs. Verified with `make fmt && make ci`.
 
 #### [x] READ-063 — Represent invalid scope queries separately from the program root
 

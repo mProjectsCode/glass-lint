@@ -26,23 +26,6 @@ impl NameEnvironment {
         self.names.lookup_path(path)
     }
 
-    pub(super) fn name_table_exhausted(&self) -> bool {
-        self.names.exhausted()
-    }
-
-    pub(super) fn into_name_table(self) -> NameTable {
-        self.names
-    }
-
-    pub(super) fn name_table_mut(&mut self) -> &mut NameTable {
-        &mut self.names
-    }
-
-    pub(super) fn name_exhaustion(&self) -> Option<glass_lint_datastructures::NameExhausted> {
-        self.names.exhaustion()
-    }
-
-    #[cfg(test)]
     pub(super) fn name_snapshot(&self) -> NameTable {
         self.names.clone()
     }

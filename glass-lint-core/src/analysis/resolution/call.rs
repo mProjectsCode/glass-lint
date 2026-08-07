@@ -166,7 +166,7 @@ impl Resolver<'_> {
                     let Some(root) = path.first_segment().copied() else {
                         return SymbolCallProvenance::Unknown(UnknownReason::Unresolved);
                     };
-                    let Some(name) = self.scopes.resolve_name_id(root) else {
+                    let Some(name) = self.names.resolve(root).map(ToSmolStr::to_smolstr) else {
                         return SymbolCallProvenance::Unknown(UnknownReason::Missing);
                     };
                     if self.scopes.is_global(name.as_str()) {

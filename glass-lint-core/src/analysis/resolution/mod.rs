@@ -120,6 +120,9 @@ struct ResolverCache {
 pub(super) struct Resolver<'a> {
     /// Scope/provenance seeds from the lexical collection pass.
     scopes: FrozenScopeGraph,
+    /// Resolver-owned artifact-local names admitted after lexical freezing.
+    /// The scope graph retains its immutable name snapshot for lexical reads.
+    names: NameTable,
     /// SWC-to-domain span conversion and validation.
     coordinates: SpanNormalizer,
     /// Interned value arena. Separated from the resolution cache so that
@@ -199,7 +202,7 @@ impl Resolver<'_> {
         self,
         stream: FactStream<Building>,
     ) -> FactStream<Frozen> {
-        let tables = FrozenFactTables::from_resolver(self.scopes.into_name_table(), self.values);
+        let tables = FrozenFactTables::from_resolver(self.names, self.values);
         stream.freeze(tables)
     }
 
@@ -211,8 +214,8 @@ impl Resolver<'_> {
         // identity. Canonicalize it before interning so aliases of
         // `this.app.foo` share the same frozen value as `app.foo`.
         let chain = chain.without_this_prefix();
-        self.scopes
-            .name_path(&chain)
+        self.names
+            .lookup_path(&chain)
             .map_or(Value::Unknown, |path| Value::RootedMember { path })
     }
 
@@ -260,8 +263,10 @@ impl Resolver<'_> {
         coordinates: SpanNormalizer,
         budget: &SemanticBudget,
     ) -> Resolver<'_> {
+        let names = scopes.name_snapshot();
         Resolver {
             scopes,
+            names,
             coordinates,
             values: ValueTable::default(),
             cache: ResolverCache::default(),
@@ -274,24 +279,24 @@ impl Resolver<'_> {
         if let Some(id) = self.scopes.name_id(name) {
             return Ok(id);
         }
-        self.scopes.name_table_mut().intern(name)
+        self.names.intern(name)
     }
 
     pub(super) fn name_path(&self, path: &SymbolPath) -> Option<NamePath> {
-        self.scopes.name_path(path)
+        self.names.lookup_path(path)
     }
 
     pub(super) fn name_table_exhausted(&self) -> bool {
-        self.scopes.name_table_exhausted()
+        self.names.exhausted()
     }
 
     pub(super) fn name_exhaustion(&self) -> Option<NameExhausted> {
-        self.scopes.name_exhaustion()
+        self.names.exhaustion()
     }
 
     #[cfg(test)]
     pub(super) fn name_snapshot(&self) -> NameTable {
-        self.scopes.name_snapshot()
+        self.names.clone()
     }
 
     pub(in crate::analysis) fn normalize_span(

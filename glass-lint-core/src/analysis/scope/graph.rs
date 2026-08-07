@@ -305,25 +305,6 @@ impl ScopeGraph {
 impl FrozenScopeGraph {
     // -- Name-environment delegation --
 
-    pub(in crate::analysis) fn name_table_mut(&mut self) -> &mut NameTable {
-        self.data.names.name_table_mut()
-    }
-
-    pub(in crate::analysis) fn name_table_exhausted(&self) -> bool {
-        self.data.names.name_table_exhausted()
-    }
-
-    pub(in crate::analysis) fn name_exhaustion(
-        &self,
-    ) -> Option<glass_lint_datastructures::NameExhausted> {
-        self.data.names.name_exhaustion()
-    }
-
-    pub(in crate::analysis) fn into_name_table(self) -> NameTable {
-        self.data.names.into_name_table()
-    }
-
-    #[cfg(test)]
     pub(in crate::analysis) fn name_snapshot(&self) -> NameTable {
         self.data.names.name_snapshot()
     }

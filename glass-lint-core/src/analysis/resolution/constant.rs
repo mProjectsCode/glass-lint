@@ -6,6 +6,8 @@
 
 use std::collections::BTreeMap;
 
+use smol_str::SmolStr;
+
 use crate::analysis::resolution::{BindingKey, ConstValue, Resolver, Value, ValueId};
 
 const MAX_CONST_DEPTH: usize = 32;
@@ -42,7 +44,7 @@ impl Resolver<'_> {
             Value::StaticObject(object) => {
                 let mut result = BTreeMap::new();
                 for (name_id, value_id) in object.iter() {
-                    let Some(key) = self.scopes.resolve_name_id(name_id) else {
+                    let Some(key) = self.names.resolve(name_id).map(SmolStr::new) else {
                         return ConstValue::Unknown;
                     };
                     result.insert(key, self.const_value_depth(value_id, depth + 1));
@@ -76,11 +78,7 @@ impl Resolver<'_> {
                     .map(|(key, value)| (key, self.intern_const_value(value, None)))
                     .collect::<Vec<_>>();
                 let arena = &mut self.values;
-                return arena.intern_static_object_with_binding(
-                    values,
-                    self.scopes.name_table_mut(),
-                    binding,
-                );
+                return arena.intern_static_object_with_binding(values, &self.names, binding);
             }
         };
         match value {

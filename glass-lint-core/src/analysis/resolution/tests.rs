@@ -28,9 +28,11 @@ fn unknown_value_keeps_unsupported_and_exhausted_distinct() {
     assert!(values.exhausted());
     let names = NameTable::default();
     let scopes = ScopeGraph::create_for_test(names).freeze();
+    let resolver_names = scopes.name_snapshot();
     let budget = SemanticBudget::default();
     let resolver = Resolver {
         scopes,
+        names: resolver_names,
         coordinates: SpanNormalizer::default(),
         values,
         cache: ResolverCache::default(),
@@ -321,9 +323,11 @@ fn value_exhaustion_distinguishes_unsupported_from_budget() {
     assert!(values.exhausted());
     let names = NameTable::default();
     let scopes = ScopeGraph::create_for_test(names).freeze();
+    let resolver_names = scopes.name_snapshot();
     let budget = SemanticBudget::default();
     let resolver = Resolver {
         scopes,
+        names: resolver_names,
         coordinates: SpanNormalizer::default(),
         values,
         cache: ResolverCache::default(),
