@@ -92,7 +92,7 @@ behavior without reopening nested map mutation. Verified with `make fmt && make 
 
 ### Export resolution
 
-#### [ ] READ-058 — Own the export-recursion guard inside `ExportResolver`
+#### [x] READ-058 — Own the export-recursion guard inside `ExportResolver`
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -121,7 +121,11 @@ unknown-result behavior in the resolver. Preserve independent root lookups,
 cycle termination, bounded star-export traversal, cached negative results, and
 the distinction between unknown and ambiguous exports.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Split export lookup into a fresh-guard public operation and
+a private recursive helper. Linker and resolver callers now request one
+export identity without allocating or threading `BTreeSet` guard state,
+while cycle/depth handling, cache behavior, and unknown results remain owned
+by `ExportResolver`.
 
 #### [x] READ-059 — Centralize known linked-target conversion
 

@@ -1,8 +1,6 @@
 //! SCC-DAG export fixed-point resolution, single-export lookup, and
 //! post-link import validation.
 
-use std::collections::BTreeSet;
-
 use smol_str::{SmolStr, ToSmolStr};
 
 use crate::{
@@ -165,10 +163,7 @@ impl ProjectLinker {
             }
         }
         for (importer, target, request_id, imported) in checks {
-            match self.lookup_export(
-                &QualifiedExportId::new(target, imported.clone()),
-                &mut BTreeSet::new(),
-            ) {
+            match self.lookup_export(&QualifiedExportId::new(target, imported.clone())) {
                 Some(ExportResolution::Ambiguous) => {
                     if let Some(module) = self.modules.get(&importer) {
                         self.status.record(
@@ -309,12 +304,8 @@ impl ProjectLinker {
         })
     }
 
-    fn lookup_export(
-        &mut self,
-        id: &QualifiedExportId,
-        visiting: &mut BTreeSet<QualifiedExportId>,
-    ) -> Option<ExportResolution> {
-        self.with_export_resolver(|resolver| resolver.lookup_export(id, visiting))
+    fn lookup_export(&mut self, id: &QualifiedExportId) -> Option<ExportResolution> {
+        self.with_export_resolver(|resolver| resolver.lookup_export(id))
     }
 
     /// Resolve a named re-export through its authored request.
@@ -336,10 +327,7 @@ impl ProjectLinker {
         };
         match self.resolutions.get(&key) {
             Some(LinkedModuleTarget::Internal { id }) => self
-                .lookup_export(
-                    &QualifiedExportId::new(*id, imported.clone()),
-                    &mut BTreeSet::new(),
-                )
+                .lookup_export(&QualifiedExportId::new(*id, imported.clone()))
                 .unwrap_or(ExportResolution::Unknown),
             Some(target) => linked_target_to_export_resolution(target, imported),
             None => ExportResolution::Unknown,

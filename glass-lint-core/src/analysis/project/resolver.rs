@@ -117,10 +117,7 @@ impl<'a> ExportResolver<'a> {
         for request in requests {
             let candidate = match self.project.request_target(importer, request.id()) {
                 Some(LinkedModuleTarget::Internal { id }) => self
-                    .lookup_export(
-                        &QualifiedExportId::new(*id, authored_export.clone()),
-                        &mut BTreeSet::new(),
-                    )
+                    .lookup_export(&QualifiedExportId::new(*id, authored_export.clone()))
                     .unwrap_or(ExportResolution::Unknown),
                 target => target_to_export_resolution(target, authored_module, authored_export),
             };
@@ -136,7 +133,12 @@ impl<'a> ExportResolver<'a> {
     }
 
     /// Resolve an export through direct and star re-exports with cycle bounds.
-    pub(super) fn lookup_export(
+    pub(super) fn lookup_export(&mut self, id: &QualifiedExportId) -> Option<ExportResolution> {
+        let mut visiting = BTreeSet::new();
+        self.lookup_export_inner(id, &mut visiting)
+    }
+
+    fn lookup_export_inner(
         &mut self,
         id: &QualifiedExportId,
         visiting: &mut BTreeSet<QualifiedExportId>,
@@ -203,7 +205,7 @@ impl<'a> ExportResolver<'a> {
                 continue;
             };
             let candidate_export = match self.project.request_target(module, request.id()) {
-                Some(LinkedModuleTarget::Internal { id: target }) => self.lookup_export(
+                Some(LinkedModuleTarget::Internal { id: target }) => self.lookup_export_inner(
                     &QualifiedExportId::new(*target, export_name.clone()),
                     visiting,
                 ),
