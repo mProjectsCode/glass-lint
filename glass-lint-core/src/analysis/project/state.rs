@@ -167,13 +167,29 @@ impl SccPartition {
 #[derive(Debug, Default)]
 /// Resolved export identities for one module.
 pub(in crate::analysis) struct ModuleExports(BTreeMap<SmolStr, ExportResolution>);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Outcome of updating one qualified export entry.
+pub(in crate::analysis) enum ExportUpdate {
+    /// The requested value already matched the retained value.
+    Unchanged,
+    /// A previously absent module/export entry consumed one budget slot.
+    Inserted,
+    /// An existing module/export entry was replaced without recounting.
+    Replaced,
+}
+
 impl ModuleExports {
     pub fn get(&self, name: &SmolStr) -> Option<&ExportResolution> {
         self.0.get(name)
     }
 
-    pub fn insert(&mut self, name: SmolStr, value: ExportResolution) -> Option<ExportResolution> {
-        self.0.insert(name, value)
+    fn insert(&mut self, name: SmolStr, value: ExportResolution) -> ExportUpdate {
+        if self.0.insert(name, value).is_some() {
+            ExportUpdate::Replaced
+        } else {
+            ExportUpdate::Inserted
+        }
     }
 
     fn copy_identities_into(&self, prefix: &SmolStr, identities: &mut ModuleIdentityMap) {
@@ -222,7 +238,7 @@ impl ExportTable {
         self.exports.get(&id.module)?.get(&id.name)
     }
 
-    /// Replace an export identity and report whether its value changed.
+    /// Replace an export identity and report the bounded-table update.
     ///
     /// SCC resolution may replace provisional identities during later rounds,
     /// and the linker may replace an unresolved cycle with `Unknown`; the
@@ -232,18 +248,17 @@ impl ExportTable {
         &mut self,
         id: &QualifiedExportId,
         value: ExportResolution,
-    ) -> bool {
+    ) -> ExportUpdate {
         let entry = self.exports.entry(id.module).or_default();
 
         if entry.get(&id.name) == Some(&value) {
-            return false;
+            return ExportUpdate::Unchanged;
         }
-        let is_new = entry.get(&id.name).is_none();
-        entry.insert(id.name.clone(), value);
-        if is_new {
+        let update = entry.insert(id.name.clone(), value);
+        if update == ExportUpdate::Inserted {
             self.total_entries = self.total_entries.saturating_add(1);
         }
-        true
+        update
     }
 
     /// Return the total number of resolved module/export entries.
@@ -418,15 +433,24 @@ mod tests {
         let mut table = ExportTable::default();
         let id = QualifiedExportId::new(module(0), "value");
 
-        assert!(table.set_resolution(&id, ExportResolution::Unknown));
+        assert_eq!(
+            table.set_resolution(&id, ExportResolution::Unknown),
+            ExportUpdate::Inserted
+        );
         assert_eq!(table.len(), 1);
-        assert!(!table.set_resolution(&id, ExportResolution::Unknown));
-        assert!(table.set_resolution(
-            &id,
-            ExportResolution::Global {
-                name: "fetch".into(),
-            },
-        ));
+        assert_eq!(
+            table.set_resolution(&id, ExportResolution::Unknown),
+            ExportUpdate::Unchanged
+        );
+        assert_eq!(
+            table.set_resolution(
+                &id,
+                ExportResolution::Global {
+                    name: "fetch".into(),
+                },
+            ),
+            ExportUpdate::Replaced
+        );
         assert_eq!(table.len(), 1);
         assert_eq!(
             table.resolve(&id),

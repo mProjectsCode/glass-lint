@@ -54,7 +54,7 @@ oversized-component fallback.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-057 — Make `ExportTable` the sole owner of export-entry admission
+#### [x] READ-057 — Make `ExportTable` the sole owner of export-entry admission
 
 - **Severity:** High
 - **Fix Complexity:** Low
@@ -85,7 +85,10 @@ map mutation. Preserve replacement without recounting, deterministic export
 lookup, provisional-to-final SCC updates, unknown replacement, and the
 existing bounded failure behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ModuleExports::insert` is now private, and
+`ExportTable::set_resolution` returns the typed `ExportUpdate` outcome while
+owning first-entry accounting. Linker callers preserve changed/unchanged
+behavior without reopening nested map mutation. Verified with `make fmt && make ci`.
 
 ### Export resolution
 

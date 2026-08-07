@@ -11,8 +11,10 @@ use crate::{
         lowering::status::{AnalysisComponent, IncompleteReason, StatusScope},
         module::{self, ModuleRequestRole, NAMESPACE_EXPORT},
         project::{
-            linker::ProjectLinker, model::ExportResolution,
-            resolver::linked_target_to_export_resolution, state::QualifiedExportId,
+            linker::ProjectLinker,
+            model::ExportResolution,
+            resolver::linked_target_to_export_resolution,
+            state::{ExportUpdate, QualifiedExportId},
         },
         syntax::SymbolCallProvenance,
     },
@@ -133,7 +135,10 @@ impl ProjectLinker {
             self.link_budget.mark_exhausted();
             return false;
         }
-        self.exports.set_resolution(&id, resolved)
+        !matches!(
+            self.exports.set_resolution(&id, resolved),
+            ExportUpdate::Unchanged
+        )
     }
 
     /// Diagnose imports whose statically requested named export is absent or
