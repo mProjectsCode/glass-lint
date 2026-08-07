@@ -12,24 +12,10 @@ pub struct ModuleSpecifierPattern {
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 enum PatternValue {
-    Exact(String),
     Package(PackageSpecifier),
 }
 
 impl ModuleSpecifierPattern {
-    /// Construct an exact authored module specifier.
-    pub fn exact(name: impl Into<String>) -> Result<Self, MatcherBuildError> {
-        let name = name.into().trim().to_string();
-        if name.is_empty() {
-            return Err(MatcherBuildError::InvalidModuleSpecifier(
-                "module specifier must not be empty".into(),
-            ));
-        }
-        Ok(Self {
-            value: PatternValue::Exact(name),
-        })
-    }
-
     /// Construct a package-root pattern matching the root and `/...` subpaths.
     pub fn package(name: impl Into<String>) -> Result<Self, MatcherBuildError> {
         let name = name.into().trim().to_string();
@@ -43,7 +29,6 @@ impl ModuleSpecifierPattern {
 
     pub fn matches(&self, authored: &str) -> bool {
         match &self.value {
-            PatternValue::Exact(name) => authored == name,
             PatternValue::Package(package) => {
                 let root = package.as_str();
                 authored == root
@@ -56,14 +41,8 @@ impl ModuleSpecifierPattern {
 
     pub fn as_str(&self) -> &str {
         match &self.value {
-            PatternValue::Exact(name) => name,
             PatternValue::Package(package) => package.as_str(),
         }
-    }
-
-    /// Return whether this pattern matches a package root and its subpaths.
-    pub fn is_package(&self) -> bool {
-        matches!(self.value, PatternValue::Package(_))
     }
 }
 
@@ -104,44 +83,8 @@ mod tests {
     }
 
     #[test]
-    fn exact_pattern_matches_itself_and_rejects_subpaths() {
-        let pattern = ModuleSpecifierPattern::exact("lodash").unwrap();
-        assert!(pattern.matches("lodash"));
-        assert!(!pattern.matches("lodash/map"));
-        assert!(!pattern.matches("lodash-extra"));
-    }
-
-    #[test]
-    fn exact_pattern_rejects_empty_string() {
-        assert!(ModuleSpecifierPattern::exact("").is_err());
-    }
-
-    #[test]
-    fn exact_pattern_trims_whitespace() {
-        let pattern = ModuleSpecifierPattern::exact("  lodash  ").unwrap();
-        assert!(pattern.matches("lodash"));
-        assert!(!pattern.matches("  lodash  "));
-    }
-
-    #[test]
-    fn exact_pattern_as_str_and_not_package() {
-        let pattern = ModuleSpecifierPattern::exact("react").unwrap();
-        assert_eq!(pattern.as_str(), "react");
-        assert!(!pattern.is_package());
-    }
-
-    #[test]
-    fn package_pattern_as_str_and_is_package() {
-        let pattern = ModuleSpecifierPattern::package("@scope/pkg").unwrap();
-        assert_eq!(pattern.as_str(), "@scope/pkg");
-        assert!(pattern.is_package());
-    }
-
-    #[test]
     fn display_impl_shows_name() {
-        let exact = ModuleSpecifierPattern::exact("foo").unwrap();
         let pkg = ModuleSpecifierPattern::package("bar").unwrap();
-        assert_eq!(format!("{exact}"), "foo");
         assert_eq!(format!("{pkg}"), "bar");
     }
 

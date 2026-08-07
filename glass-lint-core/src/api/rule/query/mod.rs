@@ -41,7 +41,7 @@ pub use expression::{AllExpr, AnyExpr, QueryExpr};
 pub(crate) use expression::{QueryExprKind, QueryShapeFacts};
 
 pub(crate) mod event;
-pub use event::{EventSpec, IdentitySpec};
+pub(crate) use event::{EventSpec, IdentitySpec};
 pub(crate) mod error;
 pub use error::{QueryBuildError, QueryDiagnostic};
 
@@ -161,11 +161,11 @@ impl EventQuery {
         self.var
     }
 
-    pub fn event(&self) -> &EventSpec {
+    pub(crate) fn event(&self) -> &EventSpec {
         &self.event
     }
 
-    pub fn identity(&self) -> &IdentitySpec {
+    pub(crate) fn identity(&self) -> &IdentitySpec {
         &self.identity
     }
 

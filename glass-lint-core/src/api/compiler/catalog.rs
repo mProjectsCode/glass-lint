@@ -4,7 +4,7 @@ use crate::{
     Rule,
     api::{
         compiler::CompiledRuleRecord,
-        rule::{CompiledCatalogError, MatcherBuildError, QueryDiagnostic},
+        rule::{CompiledCatalogError, MatcherBuildError},
     },
 };
 
@@ -22,13 +22,6 @@ pub(crate) fn compile_records(
                         diagnostic,
                     }
                 }
-                MatcherBuildError::QueryBuildError(qbe) => CompiledCatalogError::InvalidQuery {
-                    rule_id: rule_id.to_string(),
-                    diagnostic: QueryDiagnostic {
-                        code: "query_build_error",
-                        message: qbe.to_string(),
-                    },
-                },
                 MatcherBuildError::CompilerInvariant(message) => {
                     CompiledCatalogError::CompilerInvariant {
                         rule_id: rule_id.to_string(),
@@ -41,10 +34,12 @@ pub(crate) fn compile_records(
                         message,
                     }
                 }
-                _ => CompiledCatalogError::InvalidMatcher {
-                    rule_id: rule_id.to_string(),
-                    message: e.to_string(),
-                },
+                MatcherBuildError::InvalidModuleSpecifier(message) => {
+                    CompiledCatalogError::InvalidMatcher {
+                        rule_id: rule_id.to_string(),
+                        message,
+                    }
+                }
             })
         })
         .collect::<Result<Vec<_>, _>>()

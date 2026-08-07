@@ -14,8 +14,8 @@ pub use error::{CompiledCatalogError, MatcherBuildError, RuleBuildError};
 pub use module::ModuleSpecifierPattern;
 pub(crate) use query::value::{ArgumentMatcherKind, StaticStringPredicateKind};
 pub use query::{
-    EventQuery, EventRequirement, EventSpec, IdentitySpec, IntoQueryDecl, LifecycleQuery,
-    QueryBuildError, QueryDecl, QueryDiagnostic, VarId,
+    EventQuery, EventRequirement, IntoQueryDecl, LifecycleQuery, QueryBuildError, QueryDecl,
+    QueryDiagnostic, VarId,
     lifecycle::{
         IntoLifecycleSource, LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleSink,
     },

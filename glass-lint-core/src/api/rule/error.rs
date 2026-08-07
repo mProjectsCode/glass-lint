@@ -30,32 +30,12 @@ pub enum RuleBuildError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MatcherBuildError {
     InvalidModuleSpecifier(String),
-    EmptyChain,
-    InvalidArgumentIndex(usize),
-    ConflictingProvenance,
-    /// Argument constraints require a call-bearing event.
-    ConstraintsOnNonCallEvent,
     /// A compiler invariant failed after authored query validation.
     CompilerInvariant(String),
     /// A normalized query could not form a valid physical plan.
     InvalidPhysicalPlan(String),
-    /// Object-flow compiled symbol is empty.
-    EmptyFlowSymbol,
-    /// Object-flow compiled plan has no sources.
-    EmptyFlowSources,
-    /// Object-flow compiled plan has no condition when
-    /// all_requirements_required is set.
-    MissingFlowCondition,
-    /// Object flow has no source matchers.
-    MissingFlowSource,
-    /// Object flow has no completion mode.
-    MissingFlowCompletion,
-    /// A flow operation was specified more than once.
-    DuplicateFlowOperation(&'static str),
     /// An authored query compilation error with a stable structured diagnostic.
     QueryCompileError(QueryDiagnostic),
-    /// A query build error.
-    QueryBuildError(super::query::QueryBuildError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,32 +85,13 @@ impl fmt::Display for MatcherBuildError {
             Self::InvalidModuleSpecifier(value) => {
                 write!(formatter, "invalid module specifier `{value}`")
             }
-            Self::EmptyChain => formatter.write_str("member chain must not be empty"),
-            Self::InvalidArgumentIndex(index) => {
-                write!(formatter, "argument index {index} exceeds maximum")
-            }
-            Self::ConflictingProvenance => formatter.write_str("conflicting provenance modes"),
-            Self::ConstraintsOnNonCallEvent => {
-                formatter.write_str("argument constraints require a call event")
-            }
             Self::CompilerInvariant(msg) => {
                 write!(formatter, "compiler invariant failure: {msg}")
             }
             Self::InvalidPhysicalPlan(msg) => {
                 write!(formatter, "invalid physical plan: {msg}")
             }
-            Self::EmptyFlowSymbol => formatter.write_str("object flow symbol must not be empty"),
-            Self::EmptyFlowSources => formatter.write_str("object flow plan has no sources"),
-            Self::MissingFlowCondition => formatter.write_str("object flow plan has no condition"),
-            Self::MissingFlowSource => {
-                formatter.write_str("object flow must have at least one source")
-            }
-            Self::MissingFlowCompletion => {
-                formatter.write_str("object flow must have a completion mode")
-            }
-            Self::DuplicateFlowOperation(op) => write!(formatter, "duplicate flow operation: {op}"),
             Self::QueryCompileError(e) => write!(formatter, "{e}"),
-            Self::QueryBuildError(e) => write!(formatter, "{e}"),
         }
     }
 }

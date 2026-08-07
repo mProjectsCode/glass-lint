@@ -4,7 +4,7 @@ use smol_str::SmolStr;
 use crate::api::rule::ModuleSpecifierPattern;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub enum IdentitySpec {
+pub(crate) enum IdentitySpec {
     Global {
         name: SmolStr,
     },
@@ -69,7 +69,7 @@ impl IdentitySpec {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub enum EventSpec {
+pub(crate) enum EventSpec {
     Call,
     Construct,
     MemberCall { member: SymbolPath },

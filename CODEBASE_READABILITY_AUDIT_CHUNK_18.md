@@ -95,7 +95,7 @@ with `make fmt && make ci`.
 
 ### Query declaration surface
 
-#### [ ] READ-088 — Make event and identity specifications opaque validated values
+#### [x] READ-088 — Make event and identity specifications opaque validated values
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -131,7 +131,11 @@ provider-neutral identity distinctions, stable diagnostic names, fail-closed
 handling of malformed test/internal declarations, and rooted/module/package
 semantics.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `EventSpec` and `IdentitySpec` crate-private compiler
+representations, removed their public re-exports and narrowed `EventQuery`
+accessors, while retaining the validated constructor matrix and defensive
+internal validation. Removed matcher error and module-pattern paths that became
+unreachable after the boundary was closed. Verified with `make fmt && make ci`.
 
 #### [x] READ-089 — Centralize event-selection expression assembly
 
