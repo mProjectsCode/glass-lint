@@ -1,8 +1,9 @@
 use glass_lint_datastructures::SymbolPath;
 use smol_str::{SmolStr, ToSmolStr};
 
-use crate::analysis::scope::query::{
-    BindingProvenance, Expr, FrozenScopeGraph, MemberExpr, MemberValueSeed,
+use crate::analysis::scope::{
+    ScopeExpression, normalize_scope_expression,
+    query::{BindingProvenance, Expr, FrozenScopeGraph, MemberExpr, MemberValueSeed},
 };
 
 impl FrozenScopeGraph {
@@ -45,24 +46,24 @@ impl FrozenScopeGraph {
         expr: &Expr,
         members: &mut Vec<SmolStr>,
     ) -> Option<(SmolStr, Option<SmolStr>)> {
-        match expr {
-            Expr::Ident(ident) => match self.binding_at(ident.sym.as_ref(), ident.span)? {
-                BindingProvenance::ModuleExport { module, export } => {
-                    Some((module.clone(), Some(export.clone())))
+        match normalize_scope_expression(expr)? {
+            ScopeExpression::Ident(ident) => {
+                match self.binding_at(ident.sym.as_ref(), ident.span)? {
+                    BindingProvenance::ModuleExport { module, export } => {
+                        Some((module.clone(), Some(export.clone())))
+                    }
+                    BindingProvenance::DefaultImport { module }
+                    | BindingProvenance::ModuleNamespace { module } => Some((module.clone(), None)),
+                    _ => None,
                 }
-                BindingProvenance::DefaultImport { module }
-                | BindingProvenance::ModuleNamespace { module } => Some((module.clone(), None)),
-                _ => None,
-            },
-            Expr::Member(member) => {
-                members.push(self.contextual_member_property_name(member)?);
-                self.collect_module_member(&member.obj, members)
             }
-            Expr::Call(call) => {
-                let swc_ecma_ast::Callee::Expr(callee) = &call.callee else {
-                    return None;
-                };
-                let Expr::Ident(require) = &**callee else {
+            ScopeExpression::Member { member, object, .. } => {
+                members.push(self.contextual_member_property_name(member)?);
+                self.collect_module_member(object, members)
+            }
+            ScopeExpression::Call { call, callee, .. } => {
+                let callee = callee?;
+                let Expr::Ident(require) = callee else {
                     return None;
                 };
                 if require.sym != *"require"
@@ -78,12 +79,7 @@ impl FrozenScopeGraph {
                 };
                 Some((module.value.to_string_lossy().to_smolstr(), None))
             }
-            Expr::Paren(paren) => self.collect_module_member(&paren.expr, members),
-            Expr::Seq(sequence) => sequence
-                .exprs
-                .last()
-                .and_then(|expr| self.collect_module_member(expr, members)),
-            _ => None,
+            ScopeExpression::OptionalCall { .. } | ScopeExpression::Await { .. } => None,
         }
     }
 
@@ -103,35 +99,26 @@ impl FrozenScopeGraph {
     }
 
     pub(in crate::analysis) fn returned_object_source(&self, expr: &Expr) -> Option<SymbolPath> {
-        match expr {
-            Expr::Call(call) => {
-                let swc_ecma_ast::Callee::Expr(callee) = &call.callee else {
-                    return None;
-                };
-                self.returned_object_call_source(callee)
+        match normalize_scope_expression(expr)? {
+            ScopeExpression::Call {
+                callee: Some(callee),
+                ..
             }
-            Expr::OptChain(chain) => {
-                let swc_ecma_ast::OptChainBase::Call(call) = &*chain.base else {
-                    return None;
-                };
-                self.returned_object_call_source(&call.callee)
+            | ScopeExpression::OptionalCall { callee } => self.returned_object_call_source(callee),
+            ScopeExpression::Ident(ident) => {
+                match self.binding_at(ident.sym.as_ref(), ident.span)? {
+                    BindingProvenance::ReturnedObject { source } => self.symbol_path(source),
+                    _ => None,
+                }
             }
-            Expr::Ident(ident) => match self.binding_at(ident.sym.as_ref(), ident.span)? {
-                BindingProvenance::ReturnedObject { source } => self.symbol_path(source),
-                _ => None,
-            },
-            Expr::Member(member) => {
-                if let Some(source) = self.returned_object_source(&member.obj) {
+            ScopeExpression::Member { member, object, .. } => {
+                if let Some(source) = self.returned_object_source(object) {
                     return Some(source);
                 }
                 self.rooted_member_chain(member)
             }
-            Expr::Paren(paren) => self.returned_object_source(&paren.expr),
-            Expr::Seq(sequence) => sequence
-                .exprs
-                .last()
-                .and_then(|expr| self.returned_object_source(expr)),
-            _ => None,
+            ScopeExpression::Call { callee: None, .. } => None,
+            ScopeExpression::Await { .. } => None,
         }
     }
 

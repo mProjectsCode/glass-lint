@@ -5,7 +5,7 @@
 //! of widening a strict match from a name-only resemblance.
 
 use smol_str::{SmolStr, ToSmolStr};
-use swc_ecma_ast::{Callee, Expr, OptChainBase};
+use swc_ecma_ast::{Callee, Expr};
 
 use crate::analysis::{
     model::StaticProperties,
@@ -13,8 +13,9 @@ use crate::analysis::{
         ModuleRequestContext, ModuleRequestPolicy, is_interop_wrapper, recognize_module_expression,
     },
     scope::{
-        BoundArgument,
+        BoundArgument, ScopeExpression,
         build::{BindingProvenance, ScopeCollector},
+        normalize_scope_expression,
         query::rooted::RootedExprContext,
     },
     syntax::{
@@ -41,22 +42,21 @@ impl ScopeCollector<'_> {
 
     /// Resolve a module export, namespace member, dynamic import, or require
     /// expression while preserving lexical shadowing checks.
-    // Kept as a single recursive match: each Expr arm follows a distinct
-    // provenance rule, and extracting individual arms would scatter the logic.
     pub(super) fn module_alias_provenance(&mut self, expr: &Expr) -> Option<BindingProvenance> {
-        // Recursive dispatch over Expr variants. Each arm has a distinct
-        // resolution strategy; keeping them together makes the full recursion
-        // visible in one place.
-        match expr {
-            Expr::Ident(ident) => match self.visible_binding(ident.sym.as_ref())? {
+        match normalize_scope_expression(expr)? {
+            ScopeExpression::Ident(ident) => match self.visible_binding(ident.sym.as_ref())? {
                 provenance @ (BindingProvenance::ModuleExport { .. }
                 | BindingProvenance::DefaultImport { .. }
                 | BindingProvenance::ModuleNamespace { .. }) => Some(provenance.clone()),
                 _ => None,
             },
-            Expr::Member(member) => {
-                let property = literal_member_property_name(&member.prop)?;
-                let provenance = self.module_alias_provenance(&member.obj)?;
+            ScopeExpression::Member {
+                object,
+                literal_property,
+                ..
+            } => {
+                let property = literal_property?;
+                let provenance = self.module_alias_provenance(object)?;
                 match provenance {
                     BindingProvenance::DefaultImport { module }
                     | BindingProvenance::ModuleNamespace { module } => {
@@ -77,27 +77,27 @@ impl ScopeCollector<'_> {
                     _ => None,
                 }
             }
-            Expr::Call(call) => self
-                .module_request_name(expr, ModuleRequestPolicy::alias_with_dynamic_import())
+            ScopeExpression::Call {
+                expression, callee, ..
+            } => self
+                .module_request_name(expression, ModuleRequestPolicy::alias_with_dynamic_import())
                 .map(|module| BindingProvenance::ModuleNamespace { module })
                 .or_else(|| {
-                    let Callee::Expr(callee) = &call.callee else {
+                    let callee = callee?;
+                    let ScopeExpression::Member {
+                        object,
+                        literal_property,
+                        ..
+                    } = normalize_scope_expression(callee)?
+                    else {
                         return None;
                     };
-                    let Expr::Member(member) = &**callee else {
-                        return None;
-                    };
-                    (literal_member_property_name(&member.prop).as_deref() == Some("bind"))
-                        .then(|| self.module_alias_provenance(&member.obj))
+                    (literal_property.as_deref() == Some("bind"))
+                        .then(|| self.module_alias_provenance(object))
                         .flatten()
                 }),
-            Expr::Await(await_expr) => self.module_alias_provenance(&await_expr.arg),
-            Expr::Paren(paren) => self.module_alias_provenance(&paren.expr),
-            Expr::Seq(sequence) => sequence
-                .exprs
-                .last()
-                .and_then(|expr| self.module_alias_provenance(expr)),
-            _ => None,
+            ScopeExpression::Await { argument } => self.module_alias_provenance(argument),
+            ScopeExpression::OptionalCall { .. } => None,
         }
     }
 
@@ -221,22 +221,13 @@ impl ScopeCollector<'_> {
 
     /// Track an object returned from a rooted callable for later member use.
     pub(super) fn returned_object_provenance(&mut self, expr: &Expr) -> Option<BindingProvenance> {
-        // Recursive match over Expr variants with shared call/member/ident
-        // resolution logic that is clearest when read as a single recursion.
-        match expr {
-            Expr::Call(call) => {
-                let Callee::Expr(callee) = &call.callee else {
-                    return None;
-                };
-                self.returned_object_from_callee(callee)
+        match crate::analysis::scope::normalize_scope_expression(expr)? {
+            ScopeExpression::Call {
+                callee: Some(callee),
+                ..
             }
-            Expr::OptChain(chain) => {
-                let OptChainBase::Call(call) = &*chain.base else {
-                    return None;
-                };
-                self.returned_object_from_callee(&call.callee)
-            }
-            Expr::Ident(ident) => match self.visible_binding(ident.sym.as_ref())? {
+            | ScopeExpression::OptionalCall { callee } => self.returned_object_from_callee(callee),
+            ScopeExpression::Ident(ident) => match self.visible_binding(ident.sym.as_ref())? {
                 BindingProvenance::ReturnedObject { source } => {
                     Some(BindingProvenance::ReturnedObject {
                         source: source.clone(),
@@ -244,8 +235,10 @@ impl ScopeCollector<'_> {
                 }
                 _ => None,
             },
-            Expr::Member(member) => {
-                if let Expr::Ident(ident) = &*member.obj
+            ScopeExpression::Member {
+                expression, object, ..
+            } => {
+                if let Expr::Ident(ident) = object
                     && let Some(BindingProvenance::ReturnedObject { source }) =
                         self.visible_binding(ident.sym.as_ref())
                 {
@@ -253,15 +246,10 @@ impl ScopeCollector<'_> {
                         source: source.clone(),
                     });
                 }
-                self.rooted_name_path(expr)
+                self.rooted_name_path(expression)
                     .map(|source| BindingProvenance::ReturnedObject { source })
             }
-            Expr::Paren(paren) => self.returned_object_provenance(&paren.expr),
-            Expr::Seq(sequence) => sequence
-                .exprs
-                .last()
-                .and_then(|expr| self.returned_object_provenance(expr)),
-            _ => None,
+            ScopeExpression::Call { callee: None, .. } | ScopeExpression::Await { .. } => None,
         }
     }
 

@@ -27,6 +27,7 @@ use crate::analysis::{SemanticBudget, syntax::constant::ConstValue};
 
 mod binding_index;
 mod build;
+mod expression;
 mod frozen_assignments;
 mod graph;
 mod mutation_index;
@@ -35,6 +36,7 @@ mod query;
 mod scope_index;
 
 pub(in crate::analysis) use build::program::{ScopeCollectionIssue, ScopedProgram};
+pub(in crate::analysis) use expression::{ScopeExpression, normalize_scope_expression};
 pub(in crate::analysis) use graph::{FrozenScopeGraph, ScopeGraph};
 
 pub(in crate::analysis) use crate::analysis::model::scope::{

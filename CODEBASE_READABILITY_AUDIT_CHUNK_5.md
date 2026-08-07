@@ -148,7 +148,7 @@ construction, issue accumulation, and graph-freeze ordering.
 
 ### Expression-shape normalization
 
-#### [ ] READ-025 — Share wrapper and member-chain normalization across scope phases
+#### [x] READ-025 — Share wrapper and member-chain normalization across scope phases
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -176,6 +176,13 @@ migration. Preserve lexical shadowing, dynamic-lookup rejection, write-time
 identity handling, module-request recognition, rooted-path mutation checks,
 and the distinction between collector-time mutable state and frozen query
 state.
+
+**Fix Applied:** Added the scope-owned `ScopeExpression` normalizer for
+parentheses, sequence tails, literal member names, calls, optional calls, and
+await expressions. Collector and frozen-query provenance now consume the same
+shape adapter while retaining their separate lexical, module-request,
+rooted-path, and mutation policies; dynamic-import recognition and all
+existing fail-closed behavior remain covered by the full gate.
 
 ## Systemic Themes
 
