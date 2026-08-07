@@ -8,9 +8,8 @@ use crate::{
     Environment,
     analysis::{
         model::scope::{
-            BindingId, BindingKey, BindingProvenance, BindingRoot, BindingVersion, FunctionId,
-            LexicalScopes, PropertyAliasFact, RootedPropertyMutationFact, ScopeEffect, ScopeId,
-            ScopeKind,
+            BindingId, BindingKey, BindingProvenance, BindingVersion, FunctionId, LexicalScopes,
+            PropertyAliasFact, RootedPropertyMutationFact, ScopeEffect, ScopeId, ScopeKind,
         },
         scope::{
             binding_index::BindingIndex, build::FrozenPropertyArtifacts,
@@ -268,13 +267,13 @@ impl ScopeGraph {
     /// Build a stable key for a name, using a global root when unbound.
     fn binding_key_for_name(&self, name: &str, span: Span) -> Option<BindingKey> {
         if let Some((scope, _)) = self.binding_with_scope_at(name, span) {
-            return Some(BindingKey::new(BindingRoot::Binding {
-                function: self.function_scope_at(scope),
-                binding: self.binding_id_at(scope, name)?,
-                version: self.binding_version_at(scope, name, span),
-            }));
+            return Some(BindingKey::lexical(
+                self.function_scope_at(scope),
+                self.binding_id_at(scope, name)?,
+                self.binding_version_at(scope, name, span),
+            ));
         }
-        Some(BindingKey::new(BindingRoot::Global(name.to_string())))
+        Some(BindingKey::global(name))
     }
 
     fn binding_version_at(&self, scope: ScopeId, name: &str, span: Span) -> BindingVersion {

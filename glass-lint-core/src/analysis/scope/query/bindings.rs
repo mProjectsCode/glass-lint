@@ -3,8 +3,8 @@
 use crate::analysis::scope::{
     frozen_assignments::AssignmentAt,
     query::{
-        BindingKey, BindingProvenance, BindingRoot, BindingVersion, BoundArgument, Expr,
-        FrozenScopeGraph, Ident, ScopeId, ScopeKind, Span,
+        BindingKey, BindingProvenance, BindingVersion, BoundArgument, Expr, FrozenScopeGraph,
+        Ident, ScopeId, ScopeKind, Span,
     },
 };
 
@@ -94,7 +94,7 @@ impl FrozenScopeGraph {
                 );
                 Some(key)
             }
-            Expr::This(_) => Some(BindingKey::new(BindingRoot::Global("this".into()))),
+            Expr::This(_) => Some(BindingKey::global("this")),
             Expr::Paren(paren) => self.expression_key(&paren.expr, mode),
             Expr::Seq(sequence) => sequence
                 .exprs
@@ -110,7 +110,7 @@ impl FrozenScopeGraph {
             RootMode::Global => self
                 .binding_at(ident.sym.as_ref(), ident.span)
                 .is_none()
-                .then(|| BindingKey::new(BindingRoot::Global(ident.sym.to_string()))),
+                .then(|| BindingKey::global(ident.sym.to_string())),
             RootMode::LexicalOrGlobal => self
                 .lexical_identifier_key(ident)
                 .or_else(|| self.identifier_key(ident, RootMode::Global)),
@@ -120,11 +120,11 @@ impl FrozenScopeGraph {
     fn lexical_identifier_key(&self, ident: &Ident) -> Option<BindingKey> {
         let (scope, _) = self.binding_with_scope_at(ident.sym.as_ref(), ident.span)?;
         let binding = self.binding_id_at(scope, self.name_id(ident.sym.as_ref())?)?;
-        Some(BindingKey::new(BindingRoot::Binding {
-            function: self.function_scope_at(scope),
+        Some(BindingKey::lexical(
+            self.function_scope_at(scope),
             binding,
-            version: self.binding_version_at(scope, ident.sym.as_ref(), ident.span),
-        }))
+            self.binding_version_at(scope, ident.sym.as_ref(), ident.span),
+        ))
     }
 
     /// Return the assignment version visible at a source position.
@@ -147,13 +147,13 @@ impl FrozenScopeGraph {
         span: Span,
     ) -> Option<BindingKey> {
         if let Some((scope, _)) = self.binding_with_scope_at(name, span) {
-            return Some(BindingKey::new(BindingRoot::Binding {
-                function: self.function_scope_at(scope),
-                binding: self.binding_id_at(scope, self.name_id(name)?)?,
-                version: self.binding_version_at(scope, name, span),
-            }));
+            return Some(BindingKey::lexical(
+                self.function_scope_at(scope),
+                self.binding_id_at(scope, self.name_id(name)?)?,
+                self.binding_version_at(scope, name, span),
+            ));
         }
-        Some(BindingKey::new(BindingRoot::Global(name.to_string())))
+        Some(BindingKey::global(name))
     }
 
     /// Find the nearest lexical declaration and its owning scope.

@@ -128,7 +128,7 @@ static-object membership.
 
 ### Scope identity and history operations
 
-#### [ ] READ-065 — Centralize construction of versioned binding keys
+#### [x] READ-065 — Centralize construction of versioned binding keys
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -159,7 +159,11 @@ that operation, deleting the repeated `BindingKey::new(BindingRoot::Binding { �
 function identity, lexical shadowing, `this` handling, and the distinction
 between an unbound global root and a proven lexical binding.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added invariant-preserving `BindingKey::lexical` and
+`BindingKey::global` constructors and migrated scope graph, frozen binding
+queries, and identifier value seeding to use them. Version lookup and
+lexical/global fallback remain owned by their existing scope-query paths,
+while repeated root construction is centralized.
 
 #### [ ] READ-066 — Share owned checkpoint transition plumbing for assignment and write history
 

@@ -2,7 +2,6 @@ use glass_lint_datastructures::SymbolPath;
 use smol_str::{SmolStr, ToSmolStr};
 
 use crate::analysis::{
-    model::scope::BindingRoot,
     scope::query::{
         BindingKey, BindingProvenance, FrozenScopeGraph, Ident, IdentValueSeed, Lookup, MemberExpr,
         Span, SymbolCallProvenance, SymbolMemberProvenance, constant,
@@ -92,11 +91,11 @@ impl FrozenScopeGraph {
         let binding = self
             .binding_with_scope_at(ident.sym.as_ref(), ident.span)
             .and_then(|(scope, _)| {
-                Some(BindingKey::new(BindingRoot::Binding {
-                    function: self.function_scope_at(scope),
-                    binding: self.binding_id_at(scope, self.name_id(ident.sym.as_ref())?)?,
-                    version: self.binding_version_at(scope, ident.sym.as_ref(), ident.span),
-                }))
+                Some(BindingKey::lexical(
+                    self.function_scope_at(scope),
+                    self.binding_id_at(scope, self.name_id(ident.sym.as_ref())?)?,
+                    self.binding_version_at(scope, ident.sym.as_ref(), ident.span),
+                ))
             });
         let constant = if self.has_dynamic_lookup_at(ident.span) {
             constant::ConstValue::Unknown

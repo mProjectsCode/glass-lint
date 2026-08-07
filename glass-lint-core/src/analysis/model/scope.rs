@@ -124,6 +124,22 @@ impl BindingKey {
         }
     }
 
+    pub(in crate::analysis) fn lexical(
+        function: FunctionId,
+        binding: BindingId,
+        version: BindingVersion,
+    ) -> Self {
+        Self::new(BindingRoot::Binding {
+            function,
+            binding,
+            version,
+        })
+    }
+
+    pub(in crate::analysis) fn global(name: impl Into<String>) -> Self {
+        Self::new(BindingRoot::Global(name.into()))
+    }
+
     pub fn append_segment(&mut self, segment: NameId) {
         self.path.append(segment);
     }
