@@ -216,7 +216,7 @@ sentinel ID. Raw selector serialization and existing wildcard behavior are
 preserved, with adversarial grammar tests added. Verified with `make fmt &&
 make ci`.
 
-#### [ ] READ-007 — `RuleSelection::resolve` mixes effective-state calculation with unmatched-override diagnostics
+#### [x] READ-007 — `RuleSelection::resolve` mixes effective-state calculation with unmatched-override diagnostics
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -243,7 +243,13 @@ last-matching-override-wins behavior, baseline confidence filtering, exact
 `UnknownRule` versus wildcard no-match errors, catalog order, and fail-closed
 configuration.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `RuleSelection` now evaluates baseline and override state in a
+private result that records matched overrides and optionally collects enabled
+rule indexes. `validate` requests only match validation, avoiding the enabled
+vector allocation; `resolve` projects the collected indexes and then shares
+the exact/wildcard diagnostic mapping. Last-matching-override-wins,
+confidence filtering, catalog order, and fail-closed errors are preserved.
+Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

@@ -248,6 +248,17 @@ pub struct RuleSelection {
     overrides: Vec<RuleOverride>,
 }
 
+#[derive(Clone, Copy)]
+enum SelectionEvaluationMode {
+    Validate,
+    Resolve,
+}
+
+struct SelectionEvaluation {
+    matched_overrides: Vec<bool>,
+    enabled: Option<Vec<RuleIndex>>,
+}
+
 impl Default for RuleSelection {
     fn default() -> Self {
         Self::new(RuleBaseline::All)
@@ -278,12 +289,28 @@ impl RuleSelection {
 
     /// Validate every override against an assembled catalog.
     pub fn validate(&self, catalog: &RuleCatalog) -> Result<(), LintConfigError> {
-        self.resolve(catalog).map(|_| ())
+        let evaluation = self.evaluate(catalog, SelectionEvaluationMode::Validate);
+        self.validate_override_matches(&evaluation.matched_overrides)
     }
 
     pub(crate) fn resolve(&self, catalog: &RuleCatalog) -> Result<Vec<RuleIndex>, LintConfigError> {
-        let mut matched = vec![false; self.overrides.len()];
-        let mut enabled = Vec::new();
+        let evaluation = self.evaluate(catalog, SelectionEvaluationMode::Resolve);
+        self.validate_override_matches(&evaluation.matched_overrides)?;
+        Ok(evaluation
+            .enabled
+            .expect("resolve evaluation collects enabled rule indices"))
+    }
+
+    fn evaluate(
+        &self,
+        catalog: &RuleCatalog,
+        mode: SelectionEvaluationMode,
+    ) -> SelectionEvaluation {
+        let mut matched_overrides = vec![false; self.overrides.len()];
+        let mut enabled = match mode {
+            SelectionEvaluationMode::Validate => None,
+            SelectionEvaluationMode::Resolve => Some(Vec::new()),
+        };
 
         for (index, record) in catalog.compiled().iter().enumerate() {
             let rule_id = &record.rule_id;
@@ -295,17 +322,24 @@ impl RuleSelection {
             let mut state = baseline;
             for (override_index, override_) in self.overrides.iter().enumerate() {
                 if override_.selector.matches(rule_id.as_str()) {
-                    matched[override_index] = true;
+                    matched_overrides[override_index] = true;
                     state = override_.state() == RuleState::Enabled;
                 }
             }
-            if state {
+            if state && let Some(enabled) = &mut enabled {
                 enabled.push(RuleIndex::new(index));
             }
         }
 
-        for (override_, matched) in self.overrides.iter().zip(matched) {
-            if matched {
+        SelectionEvaluation {
+            matched_overrides,
+            enabled,
+        }
+    }
+
+    fn validate_override_matches(&self, matched_overrides: &[bool]) -> Result<(), LintConfigError> {
+        for (override_, matched) in self.overrides.iter().zip(matched_overrides) {
+            if *matched {
                 continue;
             }
             if !override_.selector.has_wildcard() {
@@ -319,7 +353,7 @@ impl RuleSelection {
                 override_.selector.as_str().into(),
             ));
         }
-        Ok(enabled)
+        Ok(())
     }
 }
 
