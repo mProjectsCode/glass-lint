@@ -48,7 +48,7 @@ ordering, and fail-closed `InvalidCheckpoint` behavior.
 
 ### Phase-neutral traversal lifecycle
 
-#### [ ] READ-022 — Centralize balanced scope and loop traversal helpers
+#### [x] READ-022 — Centralize balanced scope and loop traversal helpers
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -74,6 +74,11 @@ visitor and phase hook into those helpers. Keep `ScopePass` as the
 phase-neutral semantic contract, preserve the planner/collector reuse, and
 retain the current ordering for tests, parameters, decorators, loop headers,
 `break`/`continue`, and exhaustion short-circuiting.
+
+**Fix Applied:** Added shared scoped-body, function-body, and loop-body
+helpers to own entered-scope balancing, budget gates, and paired lifecycle
+hooks. Function, block, and loop visitors now supply only syntax-specific
+hooks and child traversal.
 
 ### Collector responsibility boundary
 
