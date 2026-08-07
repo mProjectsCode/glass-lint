@@ -13,7 +13,7 @@ use crate::{
         ResolvedLinkInput, model::module::ModuleRequestId,
     },
     project::{
-        ModuleId, ProjectInputError, ProjectRelativePath, ResolutionRequest, ResolutionRequestKey,
+        ModuleId, ProjectPhaseError, ProjectRelativePath, ResolutionRequest, ResolutionRequestKey,
         ResolutionTable, ResolverOutcome, SourceTable,
         session::{ExecutionEvent, ExecutionObserver},
     },
@@ -40,12 +40,12 @@ impl AuthoredRequestTable {
     pub(super) fn qualified_ids(
         &self,
         module_ids: &BTreeMap<ProjectRelativePath, ModuleId>,
-    ) -> Result<BTreeMap<ResolutionRequestKey, QualifiedRequestId>, ProjectInputError> {
+    ) -> Result<BTreeMap<ResolutionRequestKey, QualifiedRequestId>, ProjectPhaseError> {
         self.by_key
             .iter()
             .map(|(key, req_id)| {
                 let module = module_ids.get(key.importer()).copied().ok_or_else(|| {
-                    ProjectInputError::UnknownImporter(key.importer().as_str().to_owned())
+                    ProjectPhaseError::UnknownImporter(key.importer().as_str().to_owned())
                 })?;
                 Ok((key.clone(), QualifiedRequestId::new(module, *req_id)))
             })
@@ -101,7 +101,7 @@ impl<'a> IntoIterator for &'a AuthoredRequests {
 }
 
 impl AnalysisArtifacts {
-    pub(super) fn validate_complete(&self, sources: &SourceTable) -> Result<(), ProjectInputError> {
+    pub(super) fn validate_complete(&self, sources: &SourceTable) -> Result<(), ProjectPhaseError> {
         let incomplete = sources
             .in_path_order()
             .filter(|(path, _)| self.needs_analysis(path))
@@ -110,7 +110,7 @@ impl AnalysisArtifacts {
         if incomplete.is_empty() {
             Ok(())
         } else {
-            Err(ProjectInputError::IncompleteLocalAnalysis(incomplete))
+            Err(ProjectPhaseError::IncompleteLocalAnalysis(incomplete))
         }
     }
 
@@ -165,12 +165,12 @@ impl AnalysisArtifacts {
             ResolvedLinkInput,
             BTreeMap<ProjectRelativePath, ParseDiagnostic>,
         ),
-        ProjectInputError,
+        ProjectPhaseError,
     > {
         let mut resolutions = ResolutionTable::default();
         for (key, result) in outcomes {
             if !self.is_authored_request(&key) {
-                return Err(ProjectInputError::UnknownRequest(key));
+                return Err(ProjectPhaseError::UnknownRequest(key));
             }
             let result = result.validate()?;
             resolutions.insert(key, result)?;
@@ -255,7 +255,7 @@ mod tests {
 
         assert_eq!(
             artifacts.authored_requests.qualified_ids(&BTreeMap::new()),
-            Err(ProjectInputError::UnknownImporter("missing.js".into()))
+            Err(ProjectPhaseError::UnknownImporter("missing.js".into()))
         );
     }
 
@@ -295,6 +295,6 @@ mod tests {
             unknown.range(),
         );
         let error = artifacts.into_link_input(&sources, [(unknown, ResolverOutcome::Missing)]);
-        assert!(matches!(error, Err(ProjectInputError::UnknownRequest(_))));
+        assert!(matches!(error, Err(ProjectPhaseError::UnknownRequest(_))));
     }
 }

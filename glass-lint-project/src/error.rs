@@ -1,6 +1,8 @@
 use std::{fmt, path::PathBuf};
 
-use glass_lint_core::project::ProjectInputError;
+use glass_lint_core::project::{
+    ProjectError, ProjectExecutionError, ProjectInputError, ProjectPhaseError,
+};
 
 /// Operational and semantic errors from project construction.
 #[derive(Debug)]
@@ -38,6 +40,10 @@ pub enum ProjectLoadError {
     Timeout,
     /// Core rejected normalized project input.
     InvalidProjectInput(ProjectInputError),
+    /// Core rejected a resolver answer or phase transition.
+    InvalidProjectPhase(ProjectPhaseError),
+    /// Core local analysis could not execute.
+    Execution(ProjectExecutionError),
     /// The corpus root is neither a file nor a directory.
     CorpusRootNotFileOrDir(PathBuf),
     /// Config parse error at the given path.
@@ -114,6 +120,8 @@ impl fmt::Display for ProjectLoadError {
             }
             Self::Timeout => write!(f, "project lint timeout exceeded"),
             Self::InvalidProjectInput(error) => write!(f, "core project error: {error}"),
+            Self::InvalidProjectPhase(error) => write!(f, "core project phase error: {error}"),
+            Self::Execution(error) => write!(f, "core project execution failed: {error}"),
             Self::CorpusRootNotFileOrDir(path) => {
                 write!(
                     f,
@@ -136,7 +144,19 @@ impl std::error::Error for ProjectLoadError {
         match self {
             Self::Io { source, .. } => Some(source),
             Self::InvalidProjectInput(error) => Some(error),
+            Self::InvalidProjectPhase(error) => Some(error),
+            Self::Execution(error) => Some(error),
             _ => None,
+        }
+    }
+}
+
+impl From<ProjectError> for ProjectLoadError {
+    fn from(error: ProjectError) -> Self {
+        match error {
+            ProjectError::Input(error) => Self::InvalidProjectInput(error),
+            ProjectError::Phase(error) => Self::InvalidProjectPhase(error),
+            ProjectError::Execution(error) => Self::Execution(error),
         }
     }
 }

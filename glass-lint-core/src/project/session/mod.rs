@@ -27,8 +27,9 @@ use crate::{
     api::classification::RuleIndex,
     lint::ReportAssembly,
     project::{
-        AnalysisReport, ProjectInputError, ProjectRelativePath, ResolutionRequest,
-        ResolutionRequestKey, ResolverOutcome, SourceFile, tables::SourceTable,
+        AnalysisReport, ProjectError, ProjectExecutionError, ProjectInputError,
+        ProjectRelativePath, ResolutionRequest, ResolutionRequestKey, ResolverOutcome, SourceFile,
+        tables::SourceTable,
     },
 };
 
@@ -225,10 +226,7 @@ impl<'a> ProjectCollection<'a> {
     }
 
     /// Analyze one owned source and return its authored requests.
-    pub fn analyze_source(
-        &mut self,
-        source: SourceFile,
-    ) -> Result<AuthoredRequests, ProjectInputError> {
+    pub fn analyze_source(&mut self, source: SourceFile) -> Result<AuthoredRequests, ProjectError> {
         let path = source.path().clone();
         self.admit_normalized_source(source)?;
         Ok(AuthoredRequests::new(self.analyze_source_at_path(&path)?))
@@ -307,7 +305,7 @@ impl<'a> ProjectCollection<'a> {
     fn analyze_pending_sources(
         &mut self,
         worker_count: usize,
-    ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
+    ) -> Result<Vec<ResolutionRequest>, ProjectError> {
         let observer = NoopExecutionObserver;
         self.analyze_pending_sources_with(worker_count, &ThreadLocalJobExecutor, &observer)
     }
@@ -317,7 +315,7 @@ impl<'a> ProjectCollection<'a> {
         &mut self,
         sources: impl IntoIterator<Item = SourceFile>,
         workers: NonZeroUsize,
-    ) -> Result<AuthoredRequests, ProjectInputError> {
+    ) -> Result<AuthoredRequests, ProjectError> {
         self.admit_sources(sources)?;
         Ok(AuthoredRequests::new(
             self.analyze_pending_sources(workers.get())?,
@@ -329,7 +327,7 @@ impl<'a> ProjectCollection<'a> {
         worker_count: usize,
         executor: &E,
         observer: &dyn ExecutionObserver,
-    ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
+    ) -> Result<Vec<ResolutionRequest>, ProjectError> {
         let worker_count = normalize_worker_limit(worker_count);
         let mut requests = Vec::new();
         {
@@ -354,7 +352,7 @@ impl<'a> ProjectCollection<'a> {
                     observer,
                     &mut callbacks,
                 )
-                .map_err(ProjectInputError::LocalExecution)?;
+                .map_err(|error| ProjectError::Execution(ProjectExecutionError::Local(error)))?;
         }
         requests.sort_by(|left, right| {
             (
@@ -380,7 +378,7 @@ impl<'a> ProjectCollection<'a> {
         sources: impl IntoIterator<Item = SourceFile>,
         worker_count: usize,
         order: ControlledReleaseOrder,
-    ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
+    ) -> Result<Vec<ResolutionRequest>, ProjectError> {
         self.admit_sources(sources)?;
         let observer = NoopExecutionObserver;
         self.analyze_pending_sources_with(
@@ -396,7 +394,7 @@ impl<'a> ProjectCollection<'a> {
         sources: impl IntoIterator<Item = SourceFile>,
         worker_count: usize,
         observer: &CountingExecutionObserver,
-    ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
+    ) -> Result<Vec<ResolutionRequest>, ProjectError> {
         self.admit_sources(sources)?;
         self.analyze_pending_sources_with(worker_count, &ThreadLocalJobExecutor, observer)
     }
@@ -413,7 +411,7 @@ impl<'a> ProjectCollection<'a> {
 
     /// Consume the collection after local analysis and freeze its authored
     /// request set for the resolution phase.
-    pub fn finish_local(self) -> Result<LocallyAnalyzedProject<'a>, ProjectInputError> {
+    pub fn finish_local(self) -> Result<LocallyAnalyzedProject<'a>, ProjectError> {
         self.artifacts.validate_complete(&self.sources)?;
         Ok(LocallyAnalyzedProject {
             state: self.state,
@@ -431,7 +429,7 @@ impl<'a> LocallyAnalyzedProject<'a> {
     pub fn resolve(
         self,
         outcomes: impl IntoIterator<Item = (ResolutionRequestKey, ResolverOutcome)>,
-    ) -> Result<ResolvedProject<'a>, ProjectInputError> {
+    ) -> Result<ResolvedProject<'a>, ProjectError> {
         let Self {
             state,
             sources,
@@ -450,11 +448,11 @@ impl<'a> LocallyAnalyzedProject<'a> {
 impl ResolvedProject<'_> {
     /// Link, match, and assemble the report. This consuming method cannot be
     /// called twice because the resolved project is moved into the pipeline.
-    pub fn finish(self) -> Result<AnalysisReport, ProjectInputError> {
+    pub fn finish(self) -> Result<AnalysisReport, ProjectError> {
         self.finish_with_timings().map(|result| result.report)
     }
 
-    pub fn finish_with_timings(self) -> Result<crate::lint::ProjectAnalysis, ProjectInputError> {
+    pub fn finish_with_timings(self) -> Result<crate::lint::ProjectAnalysis, ProjectError> {
         let assembly = ReportAssembly::new(
             self.state.catalog,
             self.state.enabled,

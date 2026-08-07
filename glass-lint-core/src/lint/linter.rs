@@ -11,7 +11,7 @@ use crate::{
         catalog::RuleCatalog,
         selection::{LintConfigError, RuleSelection},
     },
-    project::{AnalysisReport, ProjectCollection, ProjectInputError, SessionState},
+    project::{AnalysisReport, ProjectCollection, ProjectError, SessionState},
 };
 
 /// Caller-supplied input to linter construction. Validation occurs in
@@ -180,7 +180,7 @@ impl Linter {
     pub fn lint_source(
         &self,
         source: crate::project::SourceFile,
-    ) -> Result<AnalysisReport, ProjectInputError> {
+    ) -> Result<AnalysisReport, ProjectError> {
         let mut collection = self.begin_project();
         collection.analyze_source(source)?;
         collection.finish_local()?.resolve([])?.finish()

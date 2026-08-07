@@ -11,8 +11,9 @@ mod report;
 
 pub use input::{
     BuiltinModuleName, LinkedModuleTarget, LocalExecutionError, ModuleId, NormalizedOutsidePath,
-    PackageSpecifier, ProjectInputError, ResolutionRequest, ResolutionRequestKey,
-    ResolutionRequestKind, ResolverOutcome, SourceFile, SourceText,
+    PackageSpecifier, ProjectError, ProjectExecutionError, ProjectInputError, ProjectPhaseError,
+    ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, SourceFile,
+    SourceText,
 };
 pub(crate) use report::AnalysisOperationCountsBuilder;
 pub use report::{

@@ -62,7 +62,7 @@ all callers and updated tests and adapters to use the infallible boundary.
 errors, 811 core tests, doctests, E2E/rule harnesses, rules documentation
 check, and examples).
 
-#### [ ] READ-097 — Separate project-input failures from session and execution failures
+#### [x] READ-097 — Separate project-input failures from session and execution failures
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -96,7 +96,18 @@ the linter boundary, rather than adding unrelated variants to
 unknown-request rejection, incomplete-analysis fail-closed behavior, and the
 distinction between parse diagnostics and worker failure.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added nested `ProjectError::{Input, Phase, Execution}`
+boundaries with focused `ProjectInputError`, `ProjectPhaseError`, and
+`ProjectExecutionError` types. Raw constructors retain input validation
+errors, staged session and linker transitions return phase errors, and worker
+failures remain execution errors. The filesystem adapter maps the nested core
+error without collapsing phase or execution failures into
+`InvalidProjectInput`; focused session, batch, and adapter tests cover the
+distinction.
+
+**Verified:** `make fmt && make ci` (workspace check, clippy with warnings as
+errors, workspace tests, doctests, E2E/rule harnesses, rules documentation
+check, and examples).
 
 ### Identity and report contracts
 

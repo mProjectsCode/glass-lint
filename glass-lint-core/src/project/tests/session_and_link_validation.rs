@@ -65,7 +65,10 @@ fn session_rejects_resolution_for_an_unauthored_request() {
         .finish_local()
         .unwrap()
         .resolve([(key("main.js"), ResolverOutcome::Missing)]);
-    assert!(matches!(error, Err(ProjectInputError::UnknownRequest(_))));
+    assert!(matches!(
+        error,
+        Err(ProjectError::Phase(ProjectPhaseError::UnknownRequest(_)))
+    ));
 }
 
 #[test]
@@ -76,7 +79,10 @@ fn rejected_duplicate_source_does_not_replace_the_original() {
         .analyze_source(source_file("main.js", "fetch('/remote');"))
         .unwrap();
     let error = session.analyze_source(source_file("./main.js", ""));
-    assert!(matches!(error, Err(ProjectInputError::DuplicateSource(_))));
+    assert!(matches!(
+        error,
+        Err(ProjectError::Input(ProjectInputError::DuplicateSource(_)))
+    ));
     let report = finish_collection(session);
     assert_eq!(report.files()[0].findings().len(), 1);
 }

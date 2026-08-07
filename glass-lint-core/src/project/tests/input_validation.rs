@@ -1,7 +1,8 @@
 use glass_lint_datastructures::{Position, SourceRange};
 
 use crate::project::{
-    ProjectInputError, ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, tests::*,
+    ProjectError, ProjectInputError, ProjectPhaseError, ResolutionRequestKey,
+    ResolutionRequestKind, ResolverOutcome, tests::*,
 };
 
 #[test]
@@ -25,7 +26,10 @@ fn staged_session_rejects_duplicate_sources() {
     assert!(collection.analyze_source(source_file("a.js", "")).is_ok());
     let result = collection.analyze_source(source_file("a.js", ""));
     assert!(result.is_err());
-    assert!(matches!(result, Err(ProjectInputError::DuplicateSource(_))));
+    assert!(matches!(
+        result,
+        Err(ProjectError::Input(ProjectInputError::DuplicateSource(_)))
+    ));
 }
 
 #[test]
@@ -42,5 +46,8 @@ fn staged_session_rejects_unknown_resolution_importers() {
         ResolverOutcome::Missing,
     )]);
     assert!(result.is_err());
-    assert!(matches!(result, Err(ProjectInputError::UnknownRequest(_))));
+    assert!(matches!(
+        result,
+        Err(ProjectError::Phase(ProjectPhaseError::UnknownRequest(_)))
+    ));
 }

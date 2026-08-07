@@ -15,7 +15,8 @@ use std::{
 use rayon::ThreadPool;
 
 use crate::project::{
-    AnalysisReport, LocalExecutionError, ProjectInputError, ProjectRelativePath, SourceFile,
+    AnalysisReport, LocalExecutionError, ProjectError, ProjectExecutionError, ProjectRelativePath,
+    SourceFile,
 };
 
 /// Configuration for a bounded batch lint operation.
@@ -77,7 +78,7 @@ impl std::error::Error for BatchStartError {}
 pub struct BatchResult {
     index: usize,
     path: ProjectRelativePath,
-    result: Result<AnalysisReport, ProjectInputError>,
+    result: Result<AnalysisReport, ProjectError>,
 }
 
 impl BatchResult {
@@ -89,23 +90,23 @@ impl BatchResult {
         &self.path
     }
 
-    pub fn result(&self) -> &Result<AnalysisReport, ProjectInputError> {
+    pub fn result(&self) -> &Result<AnalysisReport, ProjectError> {
         &self.result
     }
 
-    pub fn into_result(self) -> Result<AnalysisReport, ProjectInputError> {
+    pub fn into_result(self) -> Result<AnalysisReport, ProjectError> {
         self.result
     }
 }
 
 pub(super) struct CompletedBatch {
     index: usize,
-    result: Result<AnalysisReport, ProjectInputError>,
+    result: Result<AnalysisReport, ProjectError>,
 }
 
 struct PendingEntry {
     path: ProjectRelativePath,
-    result: Option<Result<AnalysisReport, ProjectInputError>>,
+    result: Option<Result<AnalysisReport, ProjectError>>,
 }
 
 struct PendingBatch {
@@ -155,9 +156,9 @@ impl PendingBatch {
     fn synthesize_missing(&mut self) {
         for entry in self.entries.values_mut() {
             if entry.result.is_none() {
-                entry.result = Some(Err(ProjectInputError::LocalExecution(
+                entry.result = Some(Err(ProjectError::Execution(ProjectExecutionError::Local(
                     LocalExecutionError::WorkerPanic,
-                )));
+                ))));
             }
         }
     }
@@ -252,9 +253,9 @@ where
                 }
                 let result = catch_unwind(AssertUnwindSafe(|| linter.lint_source(source)))
                     .unwrap_or({
-                        Err(ProjectInputError::LocalExecution(
+                        Err(ProjectError::Execution(ProjectExecutionError::Local(
                             LocalExecutionError::WorkerPanic,
-                        ))
+                        )))
                     });
                 let _ = sender.send(CompletedBatch { index, result });
             });
@@ -314,6 +315,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::project::ProjectInputError;
 
     fn path(name: &str) -> ProjectRelativePath {
         ProjectRelativePath::new(name).unwrap()
@@ -322,7 +324,9 @@ mod tests {
     fn completed(index: usize, name: &str) -> CompletedBatch {
         CompletedBatch {
             index,
-            result: Err(ProjectInputError::InvalidPath(name.to_owned())),
+            result: Err(ProjectError::Input(ProjectInputError::InvalidPath(
+                name.to_owned(),
+            ))),
         }
     }
 
@@ -363,9 +367,9 @@ mod tests {
         pending.synthesize_missing();
         assert!(matches!(
             pending.take_ready().unwrap().into_result(),
-            Err(ProjectInputError::LocalExecution(
-                LocalExecutionError::WorkerPanic
-            ))
+            Err(ProjectError::Execution(ProjectExecutionError::Local(
+                LocalExecutionError::WorkerPanic,
+            )))
         ));
         assert_eq!(pending.take_ready().unwrap().path().as_str(), "b.js");
     }

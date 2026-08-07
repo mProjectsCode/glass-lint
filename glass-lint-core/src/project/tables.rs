@@ -6,8 +6,8 @@
 use std::collections::BTreeMap;
 
 use crate::project::{
-    ModuleId, ProjectInputError, ProjectRelativePath, ResolutionRequestKey, ResolverOutcome,
-    SourceFile,
+    ModuleId, ProjectInputError, ProjectPhaseError, ProjectRelativePath, ResolutionRequestKey,
+    ResolverOutcome, SourceFile,
 };
 
 #[derive(Debug, Default)]
@@ -37,13 +37,13 @@ impl SourceTable {
 
     pub(crate) fn module_ids(
         &self,
-    ) -> Result<BTreeMap<ProjectRelativePath, ModuleId>, ProjectInputError> {
+    ) -> Result<BTreeMap<ProjectRelativePath, ModuleId>, ProjectPhaseError> {
         self.0
             .keys()
             .enumerate()
             .map(|(index, path)| {
                 let id = u32::try_from(index).map_err(|_| {
-                    ProjectInputError::BudgetExceeded("module count exceeds ModuleId range".into())
+                    ProjectPhaseError::BudgetExceeded("module count exceeds ModuleId range".into())
                 })?;
                 Ok((path.clone(), ModuleId::new(id)))
             })
@@ -61,9 +61,9 @@ impl ResolutionTable {
         &mut self,
         key: ResolutionRequestKey,
         result: ResolverOutcome,
-    ) -> Result<(), ProjectInputError> {
+    ) -> Result<(), ProjectPhaseError> {
         if self.0.contains_key(&key) {
-            return Err(ProjectInputError::DuplicateResolution(key));
+            return Err(ProjectPhaseError::DuplicateResolution(key));
         }
         self.0.insert(key, result);
         Ok(())

@@ -76,7 +76,9 @@ fn finish_local_rejects_admitted_sources_without_analysis_outcomes() {
     };
     assert_eq!(
         error,
-        ProjectInputError::IncompleteLocalAnalysis(vec![project_path("pending.js")])
+        ProjectError::Phase(ProjectPhaseError::IncompleteLocalAnalysis(vec![
+            project_path("pending.js",)
+        ]))
     );
 }
 
@@ -103,7 +105,7 @@ fn consuming_resolution_rejects_unknown_and_duplicate_outcomes() {
     };
     assert!(matches!(
         error,
-        crate::project::ProjectInputError::UnknownRequest(_)
+        crate::project::ProjectError::Phase(crate::project::ProjectPhaseError::UnknownRequest(_))
     ));
 
     let mut collection = linter.begin_project();
@@ -122,7 +124,9 @@ fn consuming_resolution_rejects_unknown_and_duplicate_outcomes() {
     };
     assert!(matches!(
         error,
-        crate::project::ProjectInputError::DuplicateResolution(_)
+        crate::project::ProjectError::Phase(
+            crate::project::ProjectPhaseError::DuplicateResolution(_),
+        )
     ));
 }
 

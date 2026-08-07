@@ -28,7 +28,7 @@ use crate::{
         compiler::{CompiledRuleRecord, CompiledRuleSelection},
     },
     project::{
-        AnalysisDiagnostic, LinkedModuleTarget, ModuleId, ProjectInputError, ProjectRelativePath,
+        AnalysisDiagnostic, LinkedModuleTarget, ModuleId, ProjectPhaseError, ProjectRelativePath,
         ResolutionRequestKey, ResolutionTable, ResolverOutcome, SourceLocation,
     },
 };
@@ -142,11 +142,11 @@ impl ResolvedLinkInput {
         module_ids: &BTreeMap<ProjectRelativePath, ModuleId>,
         resolutions: ResolutionTable,
         request_ids: &BTreeMap<ResolutionRequestKey, QualifiedRequestId>,
-    ) -> Result<Self, ProjectInputError> {
+    ) -> Result<Self, ProjectPhaseError> {
         let mut modules = BTreeMap::new();
         for (path, local) in analyzed {
             let Some(id) = module_ids.get(&path).copied() else {
-                return Err(ProjectInputError::InvalidTarget(path.to_string()));
+                return Err(ProjectPhaseError::InvalidTarget(path.to_string()));
             };
             modules.insert(id, ProjectModule::new(id, local));
         }
@@ -156,7 +156,7 @@ impl ResolvedLinkInput {
             .map(|module| module.local().interface().requests().count())
             .sum::<usize>();
         if request_count > MAX_PROJECT_REQUESTS {
-            return Err(ProjectInputError::BudgetExceeded(
+            return Err(ProjectPhaseError::BudgetExceeded(
                 "authored request count".into(),
             ));
         }
@@ -165,7 +165,7 @@ impl ResolvedLinkInput {
             .map(|module| module.local().interface().exports().count())
             .sum::<usize>();
         if export_count > MAX_EXPORT_ENTRIES {
-            return Err(ProjectInputError::BudgetExceeded(
+            return Err(ProjectPhaseError::BudgetExceeded(
                 "export table size".into(),
             ));
         }
@@ -176,7 +176,7 @@ impl ResolvedLinkInput {
                 let request = request_ids
                     .get(&key)
                     .copied()
-                    .ok_or_else(|| ProjectInputError::UnknownRequest(key.clone()))?;
+                    .ok_or_else(|| ProjectPhaseError::UnknownRequest(key.clone()))?;
                 Ok((request, resolve_record(result, module_ids)?))
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
@@ -200,11 +200,11 @@ impl ResolvedLinkInput {
 fn resolve_record(
     result: ResolverOutcome,
     ids: &BTreeMap<ProjectRelativePath, ModuleId>,
-) -> Result<LinkedModuleTarget, ProjectInputError> {
+) -> Result<LinkedModuleTarget, ProjectPhaseError> {
     let resolved = match result {
         ResolverOutcome::Internal { path } => {
             let Some(id) = ids.get(&path).copied() else {
-                return Err(ProjectInputError::InvalidTarget(path.to_string()));
+                return Err(ProjectPhaseError::InvalidTarget(path.to_string()));
             };
             LinkedModuleTarget::Internal { id }
         }

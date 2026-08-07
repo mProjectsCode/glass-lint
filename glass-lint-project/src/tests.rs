@@ -7,7 +7,10 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use glass_lint_core::{Environment, Linter, LinterConfig, RuleCatalog};
+use glass_lint_core::{
+    Environment, Linter, LinterConfig, RuleCatalog,
+    project::{LocalExecutionError, ProjectError, ProjectExecutionError, ProjectPhaseError},
+};
 
 use crate::{
     ProjectLoadError, ProjectLoader, ProjectSelection, SourceCorpus,
@@ -64,6 +67,19 @@ fn linter() -> Linter {
         Environment::default(),
     ))
     .unwrap()
+}
+
+#[test]
+fn core_error_domains_remain_distinct_at_loader_boundary() {
+    let phase = ProjectLoadError::from(ProjectError::Phase(
+        ProjectPhaseError::IncompleteLocalAnalysis(Vec::new()),
+    ));
+    assert!(matches!(phase, ProjectLoadError::InvalidProjectPhase(_)));
+
+    let execution = ProjectLoadError::from(ProjectError::Execution(ProjectExecutionError::Local(
+        LocalExecutionError::WorkerPanic,
+    )));
+    assert!(matches!(execution, ProjectLoadError::Execution(_)));
 }
 
 #[test]
