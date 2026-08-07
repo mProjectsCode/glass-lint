@@ -78,7 +78,7 @@ the distinction between semantic matching and presentation failures.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-003 — The internal report assembler is exported beside a raw timing DTO
+#### [x] READ-003 — The internal report assembler is exported beside a raw timing DTO
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -106,7 +106,10 @@ named timing value rather than raw mutable fields. Preserve the ordinary
 project lifecycle that prevents linking or matching before resolution
 validation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ReportAssembly` is now crate-private and is no longer part of
+the public lint facade. `ProjectAnalysis` keeps its report and timings private,
+exposing documented timing accessors and a consuming `into_report` boundary;
+workspace callers were updated accordingly. Verified with `make fmt && make ci`.
 
 ### Evidence and finding construction
 

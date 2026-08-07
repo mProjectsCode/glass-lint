@@ -538,8 +538,8 @@ impl ClosedFrontier<'_> {
         let local = self.session.finish_local()?;
         let resolved = local.resolve(self.resolved.into_iter())?;
         let result = resolved.finish_with_timings()?;
-        metrics.record_linking(result.linking);
-        metrics.record_matching(result.matching);
+        metrics.record_linking(result.linking());
+        metrics.record_matching(result.matching());
         let code = glass_lint_core::project::DiagnosticCode::new("tsconfig")
             .expect("tsconfig is a valid diagnostic code");
         let messages: Vec<String> = self
@@ -553,7 +553,9 @@ impl ClosedFrontier<'_> {
                 )
             })
             .collect();
-        let report = result.report.with_project_diagnostics(&code, messages);
+        let report = result
+            .into_report()
+            .with_project_diagnostics(&code, messages);
         Ok((report, sources))
     }
 }

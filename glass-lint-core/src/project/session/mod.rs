@@ -25,7 +25,6 @@ use crate::{
     AnalysisLimits, Environment, RuleCatalog,
     analysis::{ArtifactCacheHandle, ArtifactCacheKey, LoweredSource, Lowerer, ResolvedLinkInput},
     api::classification::RuleIndex,
-    lint::ReportAssembly,
     project::{
         AnalysisReport, ProjectError, ProjectExecutionError, ProjectInputError,
         ProjectRelativePath, ResolutionRequest, ResolutionRequestKey, ResolverOutcome, SourceFile,
@@ -449,16 +448,15 @@ impl ResolvedProject<'_> {
     /// Link, match, and assemble the report. This consuming method cannot be
     /// called twice because the resolved project is moved into the pipeline.
     pub fn finish(self) -> Result<AnalysisReport, ProjectError> {
-        self.finish_with_timings().map(|result| result.report)
+        self.finish_with_timings()
+            .map(crate::lint::ProjectAnalysis::into_report)
     }
 
     pub fn finish_with_timings(self) -> Result<crate::lint::ProjectAnalysis, ProjectError> {
-        let assembly = ReportAssembly::new(
+        Ok(crate::finish_report(
             self.state.catalog,
             self.state.enabled,
             self.state.evidence_limit,
-        );
-        Ok(assembly.finish(
             &self.sources,
             self.link_input,
             self.parse_diagnostics,

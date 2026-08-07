@@ -17,10 +17,31 @@ mod diagnostics;
 mod evidence;
 mod summary;
 
+/// Result of linking and matching a resolved project, including phase timings.
 pub struct ProjectAnalysis {
-    pub report: AnalysisReport,
-    pub linking: std::time::Duration,
-    pub matching: std::time::Duration,
+    report: AnalysisReport,
+    linking: std::time::Duration,
+    matching: std::time::Duration,
+}
+
+impl ProjectAnalysis {
+    /// Consume the analysis result and return its assembled report.
+    #[must_use]
+    pub fn into_report(self) -> AnalysisReport {
+        self.report
+    }
+
+    /// Return the time spent linking the resolved project.
+    #[must_use]
+    pub fn linking(&self) -> std::time::Duration {
+        self.linking
+    }
+
+    /// Return the time spent matching the linked project.
+    #[must_use]
+    pub fn matching(&self) -> std::time::Duration {
+        self.matching
+    }
 }
 
 pub(super) struct ProjectReportSession {
@@ -104,14 +125,18 @@ impl ProjectReportSession {
     }
 }
 
-pub struct ReportAssembly<'a> {
+pub(super) struct ReportAssembly<'a> {
     pub(super) catalog: &'a RuleCatalog,
     enabled: &'a [RuleIndex],
     evidence_limit: usize,
 }
 
 impl<'a> ReportAssembly<'a> {
-    pub fn new(catalog: &'a RuleCatalog, enabled: &'a [RuleIndex], evidence_limit: usize) -> Self {
+    pub(super) fn new(
+        catalog: &'a RuleCatalog,
+        enabled: &'a [RuleIndex],
+        evidence_limit: usize,
+    ) -> Self {
         Self {
             catalog,
             enabled,
@@ -119,7 +144,7 @@ impl<'a> ReportAssembly<'a> {
         }
     }
 
-    pub fn finish(
+    pub(super) fn finish(
         &self,
         sources: &SourceTable,
         link_input: ResolvedLinkInput,
