@@ -49,6 +49,18 @@ impl ModuleRequestPolicy {
     pub(super) const fn alias_with_dynamic_import() -> Self {
         Self::AliasWithDynamicImport
     }
+
+    const fn allows_dynamic_import(self) -> bool {
+        matches!(self, Self::Interface | Self::AliasWithDynamicImport)
+    }
+
+    const fn allows_interop_wrapper(self) -> bool {
+        matches!(self, Self::Alias | Self::AliasWithDynamicImport)
+    }
+
+    const fn requires_single_require_argument(self) -> bool {
+        matches!(self, Self::Interface)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -89,11 +101,7 @@ pub(super) fn recognize_module_call<C: ModuleRequestContext + ?Sized>(
     policy: ModuleRequestPolicy,
 ) -> Option<RecognizedModuleRequest> {
     let Callee::Expr(callee) = &call.callee else {
-        if !matches!(
-            policy,
-            ModuleRequestPolicy::Interface | ModuleRequestPolicy::AliasWithDynamicImport
-        ) || !matches!(call.callee, Callee::Import(_))
-        {
+        if !policy.allows_dynamic_import() || !matches!(call.callee, Callee::Import(_)) {
             return None;
         }
         return dynamic_import(call, context);
@@ -102,10 +110,8 @@ pub(super) fn recognize_module_call<C: ModuleRequestContext + ?Sized>(
     let Expr::Ident(ident) = &**callee else {
         return None;
     };
-    if matches!(
-        policy,
-        ModuleRequestPolicy::Alias | ModuleRequestPolicy::AliasWithDynamicImport
-    ) && is_interop_wrapper(ident.sym.as_ref())
+    if policy.allows_interop_wrapper()
+        && is_interop_wrapper(ident.sym.as_ref())
         && context.is_unshadowed_wrapper(ident)
     {
         let argument = call.args.first()?;
@@ -122,7 +128,7 @@ pub(super) fn recognize_module_call<C: ModuleRequestContext + ?Sized>(
     if ident.sym != COMMONJS_REQUIRE || !context.is_unshadowed_require(ident) {
         return None;
     }
-    if matches!(policy, ModuleRequestPolicy::Interface) && call.args.len() != 1 {
+    if policy.requires_single_require_argument() && call.args.len() != 1 {
         return None;
     }
     let argument = call.args.first()?;

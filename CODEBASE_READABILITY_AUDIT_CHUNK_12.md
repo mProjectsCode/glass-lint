@@ -90,7 +90,7 @@ the current behavior for zero or exhausted limits.
 
 ### Module request recognition
 
-#### [ ] READ-055 — Represent module-request permissions as named capabilities
+#### [x] READ-055 — Represent module-request permissions as named capabilities
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -123,7 +123,11 @@ combinations, shadowing checks supplied by `ModuleRequestContext`, static
 specifier requirements, spread rejection, wrapped-request classification, and
 fail-closed handling of unsupported or dynamic module names.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added named policy capabilities for dynamic imports,
+interop-wrapper traversal, and single-argument `require` validation. The
+recognizer now consumes those capabilities instead of repeating enum pattern
+matches, preserving all four policy combinations and fail-closed request
+recognition.
 
 ## Systemic Themes
 
