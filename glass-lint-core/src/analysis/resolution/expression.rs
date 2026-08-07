@@ -23,16 +23,49 @@ struct ResolutionSeed {
     syntactic_chain: Option<SymbolPath>,
 }
 
+impl ResolutionSeed {
+    fn into_resolved(
+        self,
+        id: ValueId,
+        call: SymbolCallProvenance,
+        module_member: Option<SymbolMemberProvenance>,
+    ) -> ResolvedValue {
+        ResolvedValue {
+            id,
+            rooted_chain: self.rooted_chain,
+            call,
+            module_member,
+            returned_member: self.returned_member,
+            bound_arguments: self.bound_arguments,
+            syntactic_chain: self.syntactic_chain,
+        }
+    }
+}
+
 impl Resolver<'_> {
+    fn ident_key(ident: &Ident) -> ResolutionKey {
+        ResolutionKey::Ident {
+            range: ident.span.into(),
+            symbol: ident.sym.to_smolstr(),
+        }
+    }
+
+    fn member_key(member: &MemberExpr) -> ResolutionKey {
+        ResolutionKey::Member {
+            range: member.span.into(),
+        }
+    }
+
+    fn cached_id(&self, key: &ResolutionKey) -> Option<ValueId> {
+        self.cache.resolved_values.get(key).map(|cached| cached.id)
+    }
+
     /// Narrow query: return only the interned value ID for an identifier,
     /// avoiding a clone of the full `ResolvedValue` on cache hits.
     pub(in crate::analysis) fn resolve_ident_id(&mut self, ident: &Ident) -> ValueId {
-        let key = ResolutionKey::Ident {
-            range: ident.span.into(),
-            symbol: ident.sym.to_smolstr(),
-        };
-        if let Some(cached) = self.cache.resolved_values.get(&key) {
-            return cached.id;
+        let key = Self::ident_key(ident);
+        if let Some(id) = self.cached_id(&key) {
+            return id;
         }
         self.resolve_ident(ident).id
     }
@@ -41,11 +74,9 @@ impl Resolver<'_> {
     /// identity. Cache hits read the identity directly without cloning the
     /// complete provenance record.
     pub(in crate::analysis) fn resolve_member_id(&mut self, member: &MemberExpr) -> ValueId {
-        let key = ResolutionKey::Member {
-            range: member.span.into(),
-        };
-        if let Some(cached) = self.cache.resolved_values.get(&key) {
-            return cached.id;
+        let key = Self::member_key(member);
+        if let Some(id) = self.cached_id(&key) {
+            return id;
         }
         self.resolve_member(member).id
     }
@@ -62,10 +93,7 @@ impl Resolver<'_> {
     /// Resolve an identifier while preserving its position-sensitive
     /// provenance and cached arena identity.
     pub(in crate::analysis) fn resolve_ident(&mut self, ident: &Ident) -> ResolvedValue {
-        let key = ResolutionKey::Ident {
-            range: ident.span.into(),
-            symbol: ident.sym.to_smolstr(),
-        };
+        let key = Self::ident_key(ident);
         self.resolve_seed(&key, ident.span, |resolver| {
             let seed = resolver.scopes.ident_value_seed(ident);
             let rooted_chain = seed.rooted_chain;
@@ -124,9 +152,7 @@ impl Resolver<'_> {
     /// Resolve a member expression while preserving its position-sensitive
     /// provenance and cached arena identity.
     pub(in crate::analysis) fn resolve_member(&mut self, member: &MemberExpr) -> ResolvedValue {
-        let key = ResolutionKey::Member {
-            range: member.span.into(),
-        };
+        let key = Self::member_key(member);
         self.resolve_seed(&key, member.span, |resolver| {
             let seed = resolver.scopes.member_value_seed(member);
             let syntactic_chain = seed.syntactic_chain.clone();
@@ -247,7 +273,7 @@ impl Resolver<'_> {
             }
             _ => seed.id,
         };
-        let module_member = seed.module_member.or_else(|| match &call {
+        let module_member = seed.module_member.clone().or_else(|| match &call {
             SymbolCallProvenance::ModuleExport { module, export } => {
                 Some(SymbolMemberProvenance::ModuleNamespace {
                     module: module.clone(),
@@ -259,15 +285,7 @@ impl Resolver<'_> {
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, .. }) = &module_member {
             self.values.intern(Value::ModuleNamespace(module.clone()));
         }
-        let resolved = ResolvedValue {
-            id,
-            rooted_chain: seed.rooted_chain,
-            call,
-            module_member,
-            returned_member: seed.returned_member,
-            bound_arguments: seed.bound_arguments,
-            syntactic_chain: seed.syntactic_chain,
-        };
+        let resolved = seed.into_resolved(id, call, module_member);
         self.cache_resolution(key, resolved.clone());
         resolved
     }

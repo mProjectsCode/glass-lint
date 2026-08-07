@@ -104,7 +104,7 @@ operation limit the sole stored budget value.
 
 ### Position-sensitive resolution
 
-#### [ ] READ-018 — Consolidate cached resolution construction
+#### [x] READ-018 — Consolidate cached resolution construction
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -131,7 +131,10 @@ after migration. Preserve position-sensitive keys, cycle guards, fresh-object
 identity, value/name budgets, arena-derived provenance, and fail-closed
 unknown or exhausted results.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added resolver-owned identifier/member key and cached-ID
+helpers, plus a `ResolutionSeed` conversion into the full resolved value.
+Position-sensitive keys, recursion admission, arena-derived provenance, and
+unknown/exhausted behavior remain unchanged.
 
 ### Project lookup boundary
 
