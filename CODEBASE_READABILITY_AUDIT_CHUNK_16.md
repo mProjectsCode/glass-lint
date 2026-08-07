@@ -209,7 +209,7 @@ partial completion. Verified with `make fmt && make ci`.
 
 ### Numeric and metric APIs
 
-#### [ ] READ-079 — Replace positional limit construction with named limit operations
+#### [x] READ-079 — Replace positional limit construction with named limit operations
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -235,7 +235,9 @@ error specificity, serde defaults/unknown-field rejection, all seven limit
 values, and the ability to configure limits before a linter or lowerer is
 created.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced positional `AnalysisLimits` construction with
+`Default` plus named validated builder operations; deserialization now feeds
+the same named path, preserving positive-field errors and serde defaults.
 
 #### [ ] READ-080 — Give operation-count accumulation a staged owner
 

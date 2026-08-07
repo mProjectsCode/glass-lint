@@ -120,7 +120,8 @@ impl Linter {
         let enabled = config.selection.resolve(&catalog)?;
 
         // Limits are guaranteed valid by construction through
-        // `AnalysisLimits::new` or `Default`; no re-validation needed.
+        // `AnalysisLimits::default` or its named builders; no re-validation
+        // is needed.
         Ok(Self {
             shared: Arc::new(LinterSharedConfig {
                 catalog,

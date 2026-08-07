@@ -53,8 +53,8 @@ impl PositiveLimit {
 /// Validated limits for parser and semantic-analysis bounds.
 ///
 /// Every field is guaranteed positive. The only way to obtain a value is
-/// through [`Self::new`], [`Default`], or deserialization — all of which
-/// reject zero.
+/// through [`Default`] and the named builder methods, all of which reject
+/// zero.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct AnalysisLimits {
@@ -109,33 +109,6 @@ impl AnalysisLimits {
         error: AnalysisLimitError,
     ) -> Result<PositiveLimit, AnalysisLimitError> {
         PositiveLimit::new(value).map_err(|()| error)
-    }
-
-    /// Validate every field and return a trusted instance.
-    pub fn new(
-        syntax_depth: usize,
-        semantic_operations: usize,
-        effect_operations: usize,
-        evidence_items: usize,
-        link_operations: usize,
-        flow_operations: usize,
-        trace_nodes: usize,
-    ) -> Result<Self, AnalysisLimitError> {
-        Ok(Self {
-            syntax_depth: Self::validated(syntax_depth, AnalysisLimitError::SyntaxDepth)?,
-            semantic_operations: Self::validated(
-                semantic_operations,
-                AnalysisLimitError::SemanticOperations,
-            )?,
-            effect_operations: Self::validated(
-                effect_operations,
-                AnalysisLimitError::EffectOperations,
-            )?,
-            evidence_items: Self::validated(evidence_items, AnalysisLimitError::EvidenceItems)?,
-            link_operations: Self::validated(link_operations, AnalysisLimitError::LinkOperations)?,
-            flow_operations: Self::validated(flow_operations, AnalysisLimitError::FlowOperations)?,
-            trace_nodes: Self::validated(trace_nodes, AnalysisLimitError::TraceNodes)?,
-        })
     }
 
     pub fn syntax_depth(&self) -> usize {
@@ -298,16 +271,15 @@ impl<'de> Deserialize<'de> for AnalysisLimits {
             trace_nodes: usize,
         }
         let raw = Raw::deserialize(deserializer)?;
-        Self::new(
-            raw.syntax_depth,
-            raw.semantic_operations,
-            raw.effect_operations,
-            raw.evidence_items,
-            raw.link_operations,
-            raw.flow_operations,
-            raw.trace_nodes,
-        )
-        .map_err(serde::de::Error::custom)
+        Self::default()
+            .with_syntax_depth(raw.syntax_depth)
+            .and_then(|limits| limits.with_semantic_operations(raw.semantic_operations))
+            .and_then(|limits| limits.with_effect_operations(raw.effect_operations))
+            .and_then(|limits| limits.with_evidence_items(raw.evidence_items))
+            .and_then(|limits| limits.with_link_operations(raw.link_operations))
+            .and_then(|limits| limits.with_flow_operations(raw.flow_operations))
+            .and_then(|limits| limits.with_trace_nodes(raw.trace_nodes))
+            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -353,42 +325,16 @@ mod tests {
     }
 
     #[test]
-    fn constructor_rejects_zero() {
-        let ok = AnalysisLimits::new(1, 1, 1, 1, 1, 1, 1);
-        assert!(ok.is_ok());
-        assert_eq!(
-            AnalysisLimits::new(0, 1, 1, 1, 1, 1, 1),
-            Err(AnalysisLimitError::SyntaxDepth)
-        );
-        assert_eq!(
-            AnalysisLimits::new(1, 0, 1, 1, 1, 1, 1),
-            Err(AnalysisLimitError::SemanticOperations)
-        );
-        assert_eq!(
-            AnalysisLimits::new(1, 1, 0, 1, 1, 1, 1),
-            Err(AnalysisLimitError::EffectOperations)
-        );
-        assert_eq!(
-            AnalysisLimits::new(1, 1, 1, 0, 1, 1, 1),
-            Err(AnalysisLimitError::EvidenceItems)
-        );
-        assert_eq!(
-            AnalysisLimits::new(1, 1, 1, 1, 0, 1, 1),
-            Err(AnalysisLimitError::LinkOperations)
-        );
-        assert_eq!(
-            AnalysisLimits::new(1, 1, 1, 1, 1, 0, 1),
-            Err(AnalysisLimitError::FlowOperations)
-        );
-        assert_eq!(
-            AnalysisLimits::new(1, 1, 1, 1, 1, 1, 0),
-            Err(AnalysisLimitError::TraceNodes)
-        );
-    }
-
-    #[test]
     fn accessors_return_configured_values() {
-        let limits = AnalysisLimits::new(10, 20, 30, 40, 50, 60, 70).unwrap();
+        let limits = AnalysisLimits::default()
+            .with_syntax_depth(10)
+            .and_then(|limits| limits.with_semantic_operations(20))
+            .and_then(|limits| limits.with_effect_operations(30))
+            .and_then(|limits| limits.with_evidence_items(40))
+            .and_then(|limits| limits.with_link_operations(50))
+            .and_then(|limits| limits.with_flow_operations(60))
+            .and_then(|limits| limits.with_trace_nodes(70))
+            .unwrap();
         assert_eq!(limits.syntax_depth(), 10);
         assert_eq!(limits.semantic_operations(), 20);
         assert_eq!(limits.effect_operations(), 30);
