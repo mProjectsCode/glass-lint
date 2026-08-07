@@ -75,7 +75,7 @@ behavior, unresolved `NameId` fail-closed behavior, and tail ordering.
 
 ### Diagnostic and source-coordinate ownership
 
-#### [ ] READ-003 — Parse diagnostics carry both a filename string and an outer validated path
+#### [x] READ-003 — Parse diagnostics carry both a filename string and an outer validated path
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -101,7 +101,10 @@ standalone parser diagnostics, serialized field compatibility if required by
 the report contract, deterministic path ordering, and the distinction between
 parser failure metadata and project context.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `Diagnostic::parse` now preserves standalone parser metadata and
+leaves validated project identity solely in the outer `ProjectRelativePath`.
+The report combination test asserts both identities independently. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-004 — Parser ranges and semantic spans maintain competing byte-to-position validators
 

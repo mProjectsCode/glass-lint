@@ -210,10 +210,17 @@ fn combine_reports_preserves_report_and_file_diagnostics() {
     assert_eq!(combined.files()[0].path().as_str(), "broken.js");
     assert_eq!(
         combined.files()[0].diagnostics()[0]
+            .path()
+            .unwrap()
+            .as_str(),
+        "broken.js"
+    );
+    assert_eq!(
+        combined.files()[0].diagnostics()[0]
             .parse_diagnostic()
             .unwrap()
             .filename,
-        "broken.js"
+        "stale-parser-name.js"
     );
     assert_eq!(
         combined.diagnostics()[0].code(),
