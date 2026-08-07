@@ -1,11 +1,8 @@
-use std::collections::BTreeMap;
-
 use glass_lint_datastructures::{HistoryCursor, HistoryTransition, ParentLinkedHistory};
 
 use crate::{
     analysis::{
         facts::FactId,
-        flow::projector::state::AliasTable,
         model::flow::{FlowState, FlowStateKey, LifecycleRollback, RequirementIndex, SinkIndex},
         value::{ObjectId, ValueId},
     },
@@ -78,102 +75,13 @@ impl MutationLog {
     pub(super) fn transition(
         &mut self,
         checkpoint: Checkpoint,
-        aliases: &mut AliasTable,
-        states: &mut BTreeMap<FlowStateKey, FlowState>,
+        mut apply: impl FnMut(HistoryTransition, &InverseDelta),
     ) -> bool {
         if self.budget_exhausted {
             return false;
         }
         self.history
-            .transition(checkpoint.0, |direction, delta| match direction {
-                HistoryTransition::Undo => apply_inverse(delta, aliases, states),
-                HistoryTransition::Redo => apply_forward(delta, aliases, states),
-            })
-    }
-}
-
-fn apply_inverse(
-    delta: &InverseDelta,
-    aliases: &mut AliasTable,
-    states: &mut BTreeMap<FlowStateKey, FlowState>,
-) {
-    match delta {
-        InverseDelta::AliasInsert(value, _) => {
-            aliases.remove(*value);
-        }
-        InverseDelta::AliasUpdate(value, old, _) => {
-            aliases.set(*value, *old);
-        }
-        InverseDelta::AliasRemove(value, object) => {
-            aliases.set(*value, *object);
-        }
-        InverseDelta::StateInsert(key, _) => {
-            states.remove(key);
-        }
-        InverseDelta::StateUpdate(key, old, _) => {
-            states.insert(*key, (**old).clone());
-        }
-        InverseDelta::StateRemove(key, state) => {
-            states.insert(*key, (**state).clone());
-        }
-        InverseDelta::RequirementInsert(key, index, event) => {
-            if let Some(state) = states.get_mut(key) {
-                state.remove_requirement_event(*index, *event);
-            }
-        }
-        InverseDelta::RequirementRemove(key, index, events) => {
-            if let Some(state) = states.get_mut(key) {
-                state.restore_requirement(*index, events);
-            }
-        }
-        InverseDelta::SinkInsert(key, index, event) => {
-            if let Some(state) = states.get_mut(key) {
-                state.remove_sink_event(*index, *event);
-            }
-        }
-    }
-}
-
-fn apply_forward(
-    delta: &InverseDelta,
-    aliases: &mut AliasTable,
-    states: &mut BTreeMap<FlowStateKey, FlowState>,
-) {
-    match delta {
-        InverseDelta::AliasInsert(value, object) => {
-            aliases.set(*value, *object);
-        }
-        InverseDelta::AliasUpdate(value, _old, new) => {
-            aliases.set(*value, *new);
-        }
-        InverseDelta::AliasRemove(value, _object) => {
-            aliases.remove(*value);
-        }
-        InverseDelta::StateInsert(key, state) => {
-            states.insert(*key, (**state).clone());
-        }
-        InverseDelta::StateUpdate(key, _, new) => {
-            states.insert(*key, (**new).clone());
-        }
-        InverseDelta::StateRemove(key, _) => {
-            states.remove(key);
-        }
-        InverseDelta::RequirementInsert(key, index, event) => {
-            if let Some(state) = states.get_mut(key) {
-                state.record_requirement(*index, *event);
-            }
-        }
-        InverseDelta::RequirementRemove(key, index, events) => {
-            if let Some(state) = states.get_mut(key) {
-                state.clear_requirement(*index);
-                state.restore_requirement(*index, events);
-            }
-        }
-        InverseDelta::SinkInsert(key, index, event) => {
-            if let Some(state) = states.get_mut(key) {
-                state.record_sink(*index, *event);
-            }
-        }
+            .transition(checkpoint.0, |direction, delta| apply(direction, delta))
     }
 }
 

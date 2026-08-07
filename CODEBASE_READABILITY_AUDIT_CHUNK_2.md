@@ -44,7 +44,7 @@ effect model.
 
 ### Reversible local state
 
-#### [ ] READ-006 — Keep mutation-log replay behind `FlowStateTable`
+#### [x] READ-006 — Keep mutation-log replay behind `FlowStateTable`
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -70,7 +70,11 @@ Preserve alias reference-count maintenance, reversible branch and loop
 restoration, deterministic semantic snapshots, and the distinction between a
 restored state and an exhausted/failed restoration.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `MutationLog` now exposes only checkpoint transition
+callbacks; it no longer accepts alias/state storage or owns representation
+replay functions. `FlowStateTable::restore` applies both directions through
+private table-owned delta handlers, preserving reversible aliases, lifecycle
+state, and bounded-history failure behavior. Verified with `make fmt && make ci`.
 
 ### State-capacity policy
 
