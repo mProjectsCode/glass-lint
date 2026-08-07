@@ -363,7 +363,7 @@ impl ProjectionRunState {
             reachable: true,
             summary_exhausted,
             emission_mode: EmissionMode::Emit,
-            operation_budget: Budget::new(limits.local_operation_limit()),
+            operation_budget: Budget::new(limits.operation_limit()),
             max_live_alternatives: 1,
             coalescing_comparisons: 0,
             fixed_point_iterations: 0,

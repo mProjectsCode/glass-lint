@@ -17,7 +17,6 @@ pub struct FlowLimits {
     mutation: usize,
     alternatives: usize,
     operations: usize,
-    local_operations: usize,
 }
 
 const DEFAULT_OBJECTS: u64 = 65_536;
@@ -62,9 +61,6 @@ impl FlowLimits {
                 usize::MAX,
             ),
             operations: flow_operations,
-            // Local projection owns one budget per module; cross-file
-            // propagation owns one budget for the project phase.
-            local_operations: flow_operations,
         }
     }
 
@@ -88,13 +84,9 @@ impl FlowLimits {
         self.alternatives
     }
 
-    /// Maximum number of charged local flow operations.
+    /// Maximum number of charged operations for one flow scope.
     pub fn operation_limit(&self) -> usize {
         self.operations
-    }
-
-    pub fn local_operation_limit(&self) -> usize {
-        self.local_operations
     }
 
     #[cfg(test)]
@@ -106,7 +98,6 @@ impl FlowLimits {
             mutation,
             alternatives: states.max(1),
             operations: usize::MAX,
-            local_operations: usize::MAX,
         }
     }
 
@@ -125,7 +116,6 @@ impl FlowLimits {
             mutation,
             alternatives: states.max(1),
             operations,
-            local_operations: operations,
         }
     }
 }
@@ -645,7 +635,6 @@ mod tests {
     fn flow_operation_limit_tracks_the_configured_budget() {
         let limits = FlowLimits::from_flow_operations(1234);
         assert_eq!(limits.operation_limit(), 1234);
-        assert_eq!(limits.local_operation_limit(), 1234);
     }
 
     #[test]

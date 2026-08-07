@@ -244,13 +244,12 @@ pub(in crate::analysis) fn collect(
     }
 
     let call_graph = QualifiedCallGraph::build(project, session);
-    let mut source_budget =
-        Budget::new(FlowLimits::from_flow_operations(project.flow_limit()).operation_limit());
+    let operation_limit = FlowLimits::from_flow_operations(project.flow_limit()).operation_limit();
+    let mut source_budget = Budget::new(operation_limit);
     let (sources, return_budget_exhausted) =
         FlowSources::collect(project, &flows, &call_graph, &mut source_budget);
     let worklist = ContextWorklist::seed(project, &sources, &call_graph);
-    let step_budget =
-        Budget::new(FlowLimits::from_flow_operations(project.flow_limit()).operation_limit());
+    let step_budget = Budget::new(operation_limit);
     let mut collector = CrossWorklist {
         project,
         flows,

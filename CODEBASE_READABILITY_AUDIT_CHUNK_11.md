@@ -126,7 +126,7 @@ domains distinct through the generic evidence owner.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-051 — Give operation budgets one explicit scope owner
+#### [x] READ-051 — Give operation budgets one explicit scope owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -156,7 +156,10 @@ and cross phase request their scoped budget from one operation. Preserve the
 per-module versus project-wide accounting semantics, exhaustion reporting, and
 all other scaled limits.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the duplicated local-operation field from
+`FlowLimits`; local and cross-flow phases now derive their independently
+scoped `Budget` instances from one operation-limit owner, with cross-flow
+setup computing that limit once. Verified with `make fmt && make ci`.
 
 ### Module request ownership
 
