@@ -20,7 +20,7 @@ parallel policy paths.
 
 ### Batch execution and report lifecycle
 
-#### [ ] READ-001 — `BatchResults` combines scheduling, channel protocol, and iterator semantics
+#### [x] READ-001 — `BatchResults` combines scheduling, channel protocol, and iterator semantics
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -48,7 +48,11 @@ bound, input ordering, `size_hint`, worker-panic conversion, and the contract
 that dropping the iterator cancels queued work without claiming to interrupt
 running jobs.
 
-**Fix Applied:** None so far.
+**Fix Applied:** A private `BatchDriver` now owns batch submission, sender
+closure, completion recovery, cancellation, and pending-result ordering.
+`BatchResults` remains the public input-ordered iterator adapter, while the
+driver keeps the bounded window, worker-panic conversion, and drop-cancellation
+semantics together. Verified with `make fmt && make ci`.
 
 #### [ ] READ-002 — `ReportAssembly::finish` coordinates every report phase through one mutable orchestration procedure
 

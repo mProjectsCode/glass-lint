@@ -196,8 +196,8 @@ impl PendingBatch {
     }
 }
 
-/// Input-ordered results from [`crate::Linter::lint_batch`].
-pub struct BatchResults<I>
+/// Private batch protocol driver for [`crate::Linter::lint_batch`].
+struct BatchDriver<I>
 where
     I: Iterator<Item = SourceFile>,
 {
@@ -212,7 +212,7 @@ where
     finished: bool,
 }
 
-impl<I> BatchResults<I>
+impl<I> BatchDriver<I>
 where
     I: Iterator<Item = SourceFile>,
 {
@@ -237,7 +237,7 @@ where
         }
     }
 
-    fn refill(&mut self, linter: &crate::Linter, sender: &mpsc::Sender<CompletedBatch>) {
+    fn refill(&mut self) {
         while self.pending.can_submit() && !self.exhausted {
             let Some(source) = self.input.next() else {
                 self.exhausted = true;
@@ -245,8 +245,10 @@ where
             };
             let index = self.pending.submit(source.path().clone());
             let cancellation = Arc::clone(&self.cancellation);
-            let sender = sender.clone();
-            let linter = linter.clone();
+            let Some(sender) = self.sender.clone() else {
+                break;
+            };
+            let linter = self.linter.clone();
             self.pool.spawn(move || {
                 if cancellation.load(Ordering::Acquire) {
                     return;
@@ -261,6 +263,72 @@ where
             });
         }
     }
+
+    fn close_input(&mut self) {
+        if self.exhausted {
+            self.sender.take();
+        }
+    }
+
+    fn receive_completion(&mut self) {
+        match self.receiver.recv() {
+            Ok(completed) => self.pending.complete(completed),
+            Err(_) => self.pending.synthesize_missing(),
+        }
+    }
+
+    fn next_result(&mut self) -> Option<BatchResult> {
+        if self.finished {
+            return None;
+        }
+
+        self.refill();
+        self.close_input();
+        loop {
+            if let Some(result) = self.pending.take_ready() {
+                return Some(result);
+            }
+            if self.pending.in_flight() == 0 {
+                self.finished = true;
+                return None;
+            }
+            self.receive_completion();
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.pending.size_hint(&self.input)
+    }
+
+    fn cancel(&self) {
+        self.cancellation.store(true, Ordering::Release);
+    }
+}
+
+/// Input-ordered results from [`crate::Linter::lint_batch`].
+pub struct BatchResults<I>
+where
+    I: Iterator<Item = SourceFile>,
+{
+    driver: BatchDriver<I>,
+}
+
+impl<I> BatchResults<I>
+where
+    I: Iterator<Item = SourceFile>,
+{
+    pub(super) fn new(
+        input: I,
+        linter: crate::Linter,
+        pool: ThreadPool,
+        channel: (mpsc::Sender<CompletedBatch>, mpsc::Receiver<CompletedBatch>),
+        cancellation: Arc<AtomicBool>,
+        max_in_flight: NonZeroUsize,
+    ) -> Self {
+        Self {
+            driver: BatchDriver::new(input, linter, pool, channel, cancellation, max_in_flight),
+        }
+    }
 }
 
 impl<I> Iterator for BatchResults<I>
@@ -270,34 +338,11 @@ where
     type Item = BatchResult;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.finished {
-            return None;
-        }
-
-        let linter = self.linter.clone();
-        if let Some(sender) = self.sender.clone() {
-            self.refill(&linter, &sender);
-        }
-        if self.exhausted {
-            self.sender.take();
-        }
-        loop {
-            if let Some(result) = self.pending.take_ready() {
-                return Some(result);
-            }
-            if self.pending.in_flight() == 0 {
-                self.finished = true;
-                return None;
-            }
-            match self.receiver.recv() {
-                Ok(completed) => self.pending.complete(completed),
-                Err(_) => self.pending.synthesize_missing(),
-            }
-        }
+        self.driver.next_result()
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.pending.size_hint(&self.input)
+        self.driver.size_hint()
     }
 }
 
@@ -308,7 +353,7 @@ where
     I: Iterator<Item = SourceFile>,
 {
     fn drop(&mut self) {
-        self.cancellation.store(true, Ordering::Release);
+        self.driver.cancel();
     }
 }
 
