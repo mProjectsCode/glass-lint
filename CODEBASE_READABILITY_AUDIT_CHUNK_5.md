@@ -16,7 +16,7 @@ the build and query phases repeat expression-shape normalization.
 
 ### Control-flow state ownership
 
-#### [ ] READ-021 — Move path joins behind a path-state operation
+#### [x] READ-021 — Move path joins behind a path-state operation
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -45,6 +45,12 @@ iteration sequence from `ScopeCollector::join_paths` after migration. Preserve
 reachable-path filtering, incoming values for paths that do not write, complete
 witnesses alongside uncertainty, the `alternative_limit`, deterministic key
 ordering, and fail-closed `InvalidCheckpoint` behavior.
+
+**Fix Applied:** Moved checkpoint restoration, touched-key collection, bounded
+alternative union, and incoming fallback handling into
+`PathCollectionState::join_paths`. The collector now supplies lexical fallback,
+handles the explicit invalid-checkpoint result, and emits the returned joined
+assignments while preserving deterministic ordering and fail-closed behavior.
 
 ### Phase-neutral traversal lifecycle
 

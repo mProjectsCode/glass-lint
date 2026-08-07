@@ -13,6 +13,74 @@ use crate::analysis::{
     value::BindingVersion,
 };
 
+type JoinedPathAssignments = Vec<(
+    ScopeId,
+    glass_lint_datastructures::NameId,
+    ProvenanceAlternatives,
+)>;
+
+impl super::PathCollectionState {
+    fn join_paths(
+        &mut self,
+        incoming: &CollectorCheckpoint,
+        paths: &[CollectorCheckpoint],
+        fallback: impl Fn(ScopeId, glass_lint_datastructures::NameId) -> ProvenanceAlternatives,
+    ) -> Result<Option<JoinedPathAssignments>, super::history::HistoryRestoreError> {
+        let reachable: Vec<&CollectorCheckpoint> =
+            paths.iter().filter(|path| path.reachable).collect();
+
+        if reachable.is_empty() {
+            self.restore_checkpoint(incoming)?;
+            self.reachable = false;
+            return Ok(None);
+        }
+
+        let mut touched = BTreeSet::new();
+        for path in paths {
+            self.assignment_writes.restore(path.writes)?;
+            touched.extend(self.assignment_writes.iter());
+        }
+        self.restore_checkpoint(incoming)?;
+
+        let mut joined = Vec::with_capacity(touched.len());
+        for key in touched {
+            let incoming_value = self
+                .assignment_environment
+                .get_by_id(key.scope(), key.name())
+                .cloned()
+                .unwrap_or_else(|| fallback(key.scope(), key.name()));
+            let mut value = ProvenanceAlternatives::joined();
+            for path in &reachable {
+                self.assignment_environment.restore(path.cursor)?;
+                let path_value = self
+                    .assignment_environment
+                    .get_by_id(key.scope(), key.name())
+                    .cloned()
+                    .unwrap_or_else(|| incoming_value.clone());
+                value.add_bounded(&path_value, self.alternative_limit);
+            }
+            self.restore_checkpoint(incoming)?;
+            joined.push((key.scope(), key.name(), value));
+        }
+        Ok(Some(joined))
+    }
+
+    fn restore_checkpoint(
+        &mut self,
+        checkpoint: &CollectorCheckpoint,
+    ) -> Result<(), super::history::HistoryRestoreError> {
+        if let Err(error) = self.assignment_environment.restore(checkpoint.cursor) {
+            self.reachable = false;
+            return Err(error);
+        }
+        if let Err(error) = self.assignment_writes.restore(checkpoint.writes) {
+            self.reachable = false;
+            return Err(error);
+        }
+        Ok(())
+    }
+}
+
 impl ScopeCollector<'_> {
     pub fn record_assignment(
         &mut self,
@@ -188,85 +256,30 @@ impl ScopeCollector<'_> {
         incoming: &CollectorCheckpoint,
         paths: &[CollectorCheckpoint],
     ) {
-        let reachable: Vec<&CollectorCheckpoint> = paths.iter().filter(|p| p.reachable).collect();
-
-        if reachable.is_empty() {
-            self.restore(incoming);
-            self.assignment.path.reachable = false;
-            return;
-        }
-
-        // Collect all names written in any path. Record a join assignment
-        // for every name touched by any path because the join may produce
-        // provenance alternatives even when the incoming also wrote to the
-        // same name (which the previous incoming-exclusion approach missed).
-        let mut touched = BTreeSet::new();
-        for path in paths {
-            if self
-                .assignment
-                .path
-                .assignment_writes
-                .restore(path.writes)
-                .is_err()
-            {
-                self.record_checkpoint_failure();
-                return;
-            }
-            touched.extend(self.assignment.path.assignment_writes.iter());
-        }
-
-        if !self.restore(incoming) {
-            return;
-        }
-        for key in touched {
-            let incoming_value = self
-                .assignment
-                .path
-                .assignment_environment
-                .get_by_id(key.scope(), key.name())
-                .cloned()
-                .unwrap_or_else(|| {
-                    self.lexical
-                        .scopes
-                        .get(key.scope())
-                        .and_then(|scope| scope.binding(key.name()))
-                        .cloned()
-                        .map_or_else(
-                            ProvenanceAlternatives::unknown,
-                            ProvenanceAlternatives::single,
-                        )
-                });
-
-            let mut value = ProvenanceAlternatives::joined();
-            for path in &reachable {
-                if self
-                    .assignment
-                    .path
-                    .assignment_environment
-                    .restore(path.cursor)
-                    .is_err()
-                {
-                    self.record_checkpoint_failure();
-                    return;
-                }
-                let path_value = self
-                    .assignment
-                    .path
-                    .assignment_environment
-                    .get_by_id(key.scope(), key.name())
+        let Ok(joined) = self
+            .assignment
+            .path
+            .join_paths(incoming, paths, |scope, name| {
+                self.lexical
+                    .scopes
+                    .get(scope)
+                    .and_then(|scope| scope.binding(name))
                     .cloned()
-                    .unwrap_or_else(|| incoming_value.clone());
-                value.add_bounded(&path_value, self.assignment.path.alternative_limit);
-            }
-            if !self.restore(incoming) {
-                return;
-            }
-            self.record_join_assignment(
-                Span::new(span.hi, span.hi),
-                key.scope(),
-                key.name(),
-                &value,
-            );
+                    .map_or_else(
+                        ProvenanceAlternatives::unknown,
+                        ProvenanceAlternatives::single,
+                    )
+            })
+        else {
+            self.record_checkpoint_failure();
+            return;
+        };
+        let Some(joined) = joined else {
+            return;
+        };
+
+        for (scope, name, value) in joined {
+            self.record_join_assignment(Span::new(span.hi, span.hi), scope, name, &value);
         }
     }
 
