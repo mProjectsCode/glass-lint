@@ -239,7 +239,7 @@ assembly project their views from that aggregate, while projection metrics
 remain owned by the operation-count builder. Verified with `make fmt && make
 ci`.
 
-#### [ ] READ-007 — Correct the `SourceTable` ordering contract
+#### [x] READ-007 — Correct the `SourceTable` ordering contract
 
 - **Category:** ENCAPSULATE
 - **Location:** `glass-lint-core/src/project/tables.rs:1-5, 13-50`
@@ -263,6 +263,11 @@ ci`.
 - **Guardrails:** Preserve duplicate detection, deterministic path traversal,
   `ModuleId` assignment, and the existing range/budget behavior. This finding
   does not recommend changing identity ordering without an explicit migration.
+
+**Fix Applied:** `SourceTable` now documents normalized project-path ordering,
+and `in_normalized_path_order` names that contract directly. All callers were
+updated; duplicate rejection, deterministic traversal, and `ModuleId`
+assignment are unchanged. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

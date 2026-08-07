@@ -1,7 +1,7 @@
 //! Internal project tables used while a project is being assembled.
 //!
-//! The wrappers centralize duplicate detection and preserve insertion order for
-//! deterministic project traversal.
+//! The wrappers centralize duplicate detection and preserve normalized path
+//! order for deterministic project traversal.
 
 use std::collections::BTreeMap;
 
@@ -29,12 +29,14 @@ impl SourceTable {
         self.0.get(path)
     }
 
-    pub(crate) fn in_path_order(
+    /// Iterate sources in normalized project-path order.
+    pub(crate) fn in_normalized_path_order(
         &self,
     ) -> impl Iterator<Item = (&ProjectRelativePath, &SourceFile)> {
         self.0.iter()
     }
 
+    /// Assign module IDs in normalized project-path order.
     pub(crate) fn module_ids(
         &self,
     ) -> Result<BTreeMap<ProjectRelativePath, ModuleId>, ProjectPhaseError> {

@@ -107,7 +107,7 @@ impl<'a> IntoIterator for &'a AuthoredRequests {
 impl AnalysisArtifacts {
     pub(super) fn validate_complete(&self, sources: &SourceTable) -> Result<(), ProjectPhaseError> {
         let incomplete = sources
-            .in_path_order()
+            .in_normalized_path_order()
             .filter(|(path, _)| self.needs_analysis(path))
             .map(|(path, _)| path.clone())
             .collect::<Vec<_>>();

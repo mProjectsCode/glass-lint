@@ -348,13 +348,13 @@ impl<'a> ProjectCollection<'a> {
                 requests: &mut requests,
                 observer,
             };
-            let mut candidates =
-                self.sources
-                    .in_path_order()
-                    .map(|(path, source)| LocalJobCandidate {
-                        path: path.clone(),
-                        source: source.clone(),
-                    });
+            let mut candidates = self
+                .sources
+                .in_normalized_path_order()
+                .map(|(path, source)| LocalJobCandidate {
+                    path: path.clone(),
+                    source: source.clone(),
+                });
             executor
                 .execute(
                     &mut candidates,
