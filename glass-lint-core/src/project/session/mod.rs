@@ -448,8 +448,8 @@ impl ResolvedProject<'_> {
     /// Link, match, and assemble the report. This consuming method cannot be
     /// called twice because the resolved project is moved into the pipeline.
     pub fn finish(self) -> Result<AnalysisReport, ProjectError> {
-        self.finish_with_timings()
-            .map(crate::lint::ProjectAnalysis::into_report)
+        let (report, _) = self.finish_with_timings()?.into_parts();
+        Ok(report)
     }
 
     pub fn finish_with_timings(self) -> Result<crate::lint::ProjectAnalysis, ProjectError> {

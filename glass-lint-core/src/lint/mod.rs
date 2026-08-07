@@ -14,7 +14,7 @@ mod selection;
 pub use batch::{BatchOptions, BatchResult, BatchResults, BatchStartError};
 pub use catalog::{ProviderCatalogError, RuleCatalog};
 pub use linter::{Linter, LinterConfig};
-pub use report::ProjectAnalysis;
+pub use report::{ProjectAnalysis, ProjectAnalysisTimings};
 pub use selection::{LintConfigError, RuleBaseline, RuleOverride, RuleSelection, RuleState};
 
 // This bridge is visible to the crate root so sibling phase modules can use

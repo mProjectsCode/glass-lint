@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, time::Instant};
+use std::{
+    collections::BTreeMap,
+    time::{Duration, Instant},
+};
 
 use crate::{
     AnalysisLimits, ParseDiagnostic,
@@ -20,26 +23,34 @@ mod summary;
 /// Result of linking and matching a resolved project, including phase timings.
 pub struct ProjectAnalysis {
     report: AnalysisReport,
-    linking: std::time::Duration,
-    matching: std::time::Duration,
+    timings: ProjectAnalysisTimings,
 }
 
 impl ProjectAnalysis {
-    /// Consume the analysis result and return its assembled report.
+    /// Consume the result into its report and phase-timing values.
     #[must_use]
-    pub fn into_report(self) -> AnalysisReport {
-        self.report
+    pub fn into_parts(self) -> (AnalysisReport, ProjectAnalysisTimings) {
+        (self.report, self.timings)
     }
+}
 
+/// Phase timings recorded while linking and matching one resolved project.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ProjectAnalysisTimings {
+    linking: Duration,
+    matching: Duration,
+}
+
+impl ProjectAnalysisTimings {
     /// Return the time spent linking the resolved project.
     #[must_use]
-    pub fn linking(&self) -> std::time::Duration {
+    pub fn linking(&self) -> Duration {
         self.linking
     }
 
     /// Return the time spent matching the linked project.
     #[must_use]
-    pub fn matching(&self) -> std::time::Duration {
+    pub fn matching(&self) -> Duration {
         self.matching
     }
 }
@@ -206,8 +217,7 @@ impl<'a> ReportAssembly<'a> {
 
         ProjectAnalysis {
             report,
-            linking,
-            matching,
+            timings: ProjectAnalysisTimings { linking, matching },
         }
     }
 }

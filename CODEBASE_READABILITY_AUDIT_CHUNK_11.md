@@ -106,10 +106,12 @@ named timing value rather than raw mutable fields. Preserve the ordinary
 project lifecycle that prevents linking or matching before resolution
 validation.
 
-**Fix Applied:** `ReportAssembly` is now crate-private and is no longer part of
-the public lint facade. `ProjectAnalysis` keeps its report and timings private,
-exposing documented timing accessors and a consuming `into_report` boundary;
-workspace callers were updated accordingly. Verified with `make fmt && make ci`.
+**Fix Applied:** `ReportAssembly` is crate-private and is no longer part of the
+public lint facade. `ProjectAnalysis` now owns a named
+`ProjectAnalysisTimings` value and exposes one consuming `into_parts` boundary;
+the ordinary report path and project loader destructure the result directly,
+without report or timing forwarding accessors. Verified with `make fmt && make
+ci`.
 
 ### Evidence and finding construction
 
