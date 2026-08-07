@@ -37,8 +37,10 @@ pub enum MatcherBuildError {
     ConflictingProvenance,
     /// Argument constraints require a call-bearing event.
     ConstraintsOnNonCallEvent,
-    /// A lowered query clause failed validation.
-    InvalidLoweredQuery(String),
+    /// A compiler invariant failed after authored query validation.
+    CompilerInvariant(String),
+    /// A normalized query could not form a valid physical plan.
+    InvalidPhysicalPlan(String),
     /// Object-flow compiled symbol is empty.
     EmptyFlowSymbol,
     /// Object-flow compiled plan has no sources.
@@ -52,7 +54,7 @@ pub enum MatcherBuildError {
     MissingFlowCompletion,
     /// A flow operation was specified more than once.
     DuplicateFlowOperation(&'static str),
-    /// A query compilation error with a stable structured diagnostic.
+    /// An authored query compilation error with a stable structured diagnostic.
     QueryCompileError(QueryDiagnostic),
     /// A query build error.
     QueryBuildError(super::query::QueryBuildError),
@@ -68,6 +70,10 @@ pub enum CompiledCatalogError {
         rule_id: String,
         diagnostic: QueryDiagnostic,
     },
+    /// A compiler invariant failed while compiling a rule.
+    CompilerInvariant { rule_id: String, message: String },
+    /// A normalized query could not form a valid physical plan.
+    InvalidPhysicalPlan { rule_id: String, message: String },
 }
 
 impl fmt::Display for RuleBuildError {
@@ -110,8 +116,11 @@ impl fmt::Display for MatcherBuildError {
             Self::ConstraintsOnNonCallEvent => {
                 formatter.write_str("argument constraints require a call event")
             }
-            Self::InvalidLoweredQuery(msg) => {
-                write!(formatter, "invalid lowered query: {msg}")
+            Self::CompilerInvariant(msg) => {
+                write!(formatter, "compiler invariant failure: {msg}")
+            }
+            Self::InvalidPhysicalPlan(msg) => {
+                write!(formatter, "invalid physical plan: {msg}")
             }
             Self::EmptyFlowSymbol => formatter.write_str("object flow symbol must not be empty"),
             Self::EmptyFlowSources => formatter.write_str("object flow plan has no sources"),
@@ -141,6 +150,18 @@ impl fmt::Display for CompiledCatalogError {
                 rule_id,
                 diagnostic,
             } => write!(formatter, "rule `{rule_id}`: {diagnostic}"),
+            Self::CompilerInvariant { rule_id, message } => {
+                write!(
+                    formatter,
+                    "rule `{rule_id}`: compiler invariant failure: {message}"
+                )
+            }
+            Self::InvalidPhysicalPlan { rule_id, message } => {
+                write!(
+                    formatter,
+                    "rule `{rule_id}`: invalid physical plan: {message}"
+                )
+            }
         }
     }
 }

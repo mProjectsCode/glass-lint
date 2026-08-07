@@ -29,6 +29,18 @@ pub(crate) fn compile_records(
                         message: qbe.to_string(),
                     },
                 },
+                MatcherBuildError::CompilerInvariant(message) => {
+                    CompiledCatalogError::CompilerInvariant {
+                        rule_id: rule.id().to_owned(),
+                        message,
+                    }
+                }
+                MatcherBuildError::InvalidPhysicalPlan(message) => {
+                    CompiledCatalogError::InvalidPhysicalPlan {
+                        rule_id: rule.id().to_owned(),
+                        message,
+                    }
+                }
                 _ => CompiledCatalogError::InvalidMatcher {
                     rule_id: rule.id().to_owned(),
                     message: e.to_string(),

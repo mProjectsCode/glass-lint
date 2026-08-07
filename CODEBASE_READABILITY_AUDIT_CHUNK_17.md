@@ -68,7 +68,7 @@ occurrences; focused invariant tests and `make fmt && make ci` pass.
 
 ### Compiler error and phase boundaries
 
-#### [ ] READ-082 — Separate authored query diagnostics from compiler invariant failures
+#### [x] READ-082 — Separate authored query diagnostics from compiler invariant failures
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -106,7 +106,11 @@ fail-closed catalog compilation, no panics on malformed internal state, and
 the existing distinction between invalid declarations and invalid lowered
 plans.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added distinct compiler-invariant and physical-plan failure
+variants at the matcher and catalog boundaries. Only authored validation
+errors become `QueryDiagnostic` values; internal normalization failures and
+physical-plan failures retain typed non-authored paths. Added a focused
+mapping test and verified with `make fmt && make ci`.
 
 #### [ ] READ-083 — Give physical roots typed object-slot and relation constructors
 

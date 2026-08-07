@@ -219,32 +219,34 @@ fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildEr
     let mut merged_requirements = requirements::PlanRequirements::default();
 
     for query in queries {
-        validate_query_decl(query).map_err(|error| {
-            MatcherBuildError::QueryCompileError(QueryDiagnostic::new(
-                error.diagnostic_name(),
-                error.to_string(),
-            ))
-        })?;
+        validate_query_decl(query).map_err(map_query_compile_error)?;
 
         let normalized: NormalizedQuery =
-            normalize::normalize_query_decl(query).map_err(|error| {
-                MatcherBuildError::QueryCompileError(QueryDiagnostic::new(
-                    error.diagnostic_name(),
-                    error.to_string(),
-                ))
-            })?;
+            normalize::normalize_query_decl(query).map_err(map_query_compile_error)?;
 
         let query_plan = physical::plan_normalized(&normalized)
-            .map_err(|e| MatcherBuildError::InvalidLoweredQuery(e.to_string()))?;
+            .map_err(|e| MatcherBuildError::InvalidPhysicalPlan(e.to_string()))?;
         all_roots.extend(query_plan.roots().iter().cloned());
         merged_requirements.merge_from(query_plan.requirements());
     }
 
     let physical_plan =
         PhysicalPlan::try_new(physical::optimize_roots(all_roots), merged_requirements)
-            .map_err(|e| MatcherBuildError::InvalidLoweredQuery(e.to_string()))?;
+            .map_err(|e| MatcherBuildError::InvalidPhysicalPlan(e.to_string()))?;
 
     Ok(physical_plan)
+}
+
+fn map_query_compile_error(error: validate::QueryCompileError) -> MatcherBuildError {
+    match error {
+        validate::QueryCompileError::InternalInvariant { detail } => {
+            MatcherBuildError::CompilerInvariant(detail)
+        }
+        error => MatcherBuildError::QueryCompileError(QueryDiagnostic::new(
+            error.diagnostic_name(),
+            error.to_string(),
+        )),
+    }
 }
 
 impl CompiledMatcherPlan {
