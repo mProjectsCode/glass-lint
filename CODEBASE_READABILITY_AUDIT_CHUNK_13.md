@@ -279,7 +279,7 @@ Chunk 12 READ-003/007.
 
 ### Final report ownership
 
-#### [ ] CROSS-006 — Make the finalized report pipeline the sole owner of report state
+#### [x] CROSS-006 — Make the finalized report pipeline the sole owner of report state
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -315,6 +315,15 @@ separation, partial-report semantics, deterministic file/evidence ordering,
 operation-count meaning, and `glass-lint-project`'s ability to attach its own
 diagnostics. Do not make report DTOs mutable or move filesystem/project policy
 into Core.
+
+**Revalidation:** Covered by the current report pipeline. `ResolvedProject`
+owns the consuming `finish_with_timings` transition, `ReportAssembly` is
+`pub(super)`, and core constructs the finalized report plus phase timings in
+one pipeline. The project crate's post-core `with_project_diagnostics` call is
+the explicitly allowed outer composition boundary for tsconfig diagnostics.
+`AnalysisReport::summary` is a read-only derived view, not a second report
+state owner. No additional source change is justified without moving provider
+or project policy into Core.
 
 **Related local findings:** Chunk 5 READ-005, Chunk 7 READ-003, Chunk 10
 READ-003, Chunk 11 READ-002/003/004/005, and Chunk 12 READ-005/006.
