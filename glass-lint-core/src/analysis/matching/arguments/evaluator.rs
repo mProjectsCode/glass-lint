@@ -131,28 +131,29 @@ impl<'a> EffectiveIdentityResolver<'a> {
         self.result_identities?.get(&value)
     }
 
+    fn effective_identity(
+        &self,
+        value: ValueId,
+        provenance: &SymbolCallProvenance,
+    ) -> Option<&ExportResolution> {
+        self.result_identity(value)
+            .or_else(|| self.module_identity(provenance))
+    }
+
     fn static_string<'b>(
         &'b self,
         value: ValueId,
         provenance: &SymbolCallProvenance,
         values: &'b ValueTable,
     ) -> Option<&'b str> {
-        self.result_identity(value)
+        self.effective_identity(value, provenance)
             .and_then(ExportResolution::static_string_value)
-            .or_else(|| {
-                self.module_identity(provenance)
-                    .and_then(ExportResolution::static_string_value)
-            })
             .or_else(|| values.static_string(value))
     }
 
     fn call_provenance(&self, raw: &SymbolCallProvenance, callee: ValueId) -> SymbolCallProvenance {
-        self.result_identity(callee)
+        self.effective_identity(callee, raw)
             .and_then(ExportResolution::to_call_provenance)
-            .or_else(|| {
-                self.module_identity(raw)
-                    .and_then(ExportResolution::to_call_provenance)
-            })
             .unwrap_or_else(|| raw.clone())
     }
 }

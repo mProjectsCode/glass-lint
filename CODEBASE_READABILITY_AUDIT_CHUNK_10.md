@@ -91,7 +91,7 @@ without alias-only members. Verified with `make fmt && make ci`.
 
 ### Effective project identity
 
-#### [ ] READ-047 — Centralize constrained-matcher identity precedence
+#### [x] READ-047 — Centralize constrained-matcher identity precedence
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -124,7 +124,10 @@ precedence, module-identity fallback, local value fallback, raw-provenance
 fallback, artifact-local IDs, and fail-closed behavior for ambiguous,
 unknown, or unsupported resolutions.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `EffectiveIdentityResolver::effective_identity` as the
+single result-first, module-fallback lookup. Static-string and call-provenance
+matching now reuse that operation while retaining their independent local/raw
+fallbacks and fail-closed resolution behavior.
 
 ## Systemic Themes
 
