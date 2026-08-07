@@ -49,17 +49,14 @@ pub(crate) use object_flow::CompiledObjectFlow;
 pub(crate) use rule::{CompiledRuleRecord, CompiledRuleSelection};
 use smol_str::SmolStr;
 
-use crate::{
-    analysis::matches_global_object_alias,
-    api::{
-        classification::MatchKind,
-        compiler::{
-            normalized::NormalizedQuery, physical::PhysicalPlan, validate::validate_query_decl,
-        },
-        rule::{
-            MatcherBuildError, ModuleSpecifierPattern, QueryDiagnostic,
-            query::{EventSpec, IdentitySpec, QueryDecl},
-        },
+use crate::api::{
+    classification::MatchKind,
+    compiler::{
+        normalized::NormalizedQuery, physical::PhysicalPlan, validate::validate_query_decl,
+    },
+    rule::{
+        MatcherBuildError, ModuleSpecifierPattern, QueryDiagnostic,
+        query::{EventSpec, IdentitySpec, QueryDecl},
     },
 };
 
@@ -131,7 +128,7 @@ impl IdentityConstraint {
         source: &SymbolPath,
         environment: &crate::Environment,
     ) -> bool {
-        matches!(self, Self::Rooted { path } if matches_global_object_alias(path, source, environment)
+        matches!(self, Self::Rooted { path } if environment.global_object_paths_match(path, source)
             || source.is_equal_or_descendant_of(path))
     }
 }

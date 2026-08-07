@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use glass_lint_datastructures::{Fingerprint, SymbolPath};
+use glass_lint_datastructures::{Fingerprint, NamePath, NameTable, SymbolPath};
 use smol_str::SmolStr;
 use swc_ecma_ast::EsReserved;
 
@@ -313,6 +313,66 @@ impl Environment {
         {
             return true;
         }
+        false
+    }
+
+    pub(crate) fn global_object_name_paths_match(
+        &self,
+        left: &NamePath,
+        right: &NamePath,
+        names: &NameTable,
+    ) -> bool {
+        if left == right {
+            return true;
+        }
+
+        let left_view = left.as_view();
+        let right_view = right.as_view();
+        let Some(left_root) = left_view
+            .first_segment()
+            .copied()
+            .and_then(|id| names.resolve(id))
+        else {
+            return false;
+        };
+        let Some(right_root) = right_view
+            .first_segment()
+            .copied()
+            .and_then(|id| names.resolve(id))
+        else {
+            return false;
+        };
+
+        if self.global_object_aliases_match(left_root, right_root)
+            && left_view.tail_after(1) == right_view.tail_after(1)
+        {
+            return true;
+        }
+
+        if left_view.len() > 1
+            && left_view
+                .tail_after(1)
+                .and_then(|tail| tail.first_segment())
+                .copied()
+                .and_then(|id| names.resolve(id))
+                .is_some_and(|member| self.is_promoted_global_member(left_root, member))
+            && left_view.tail_after(1) == Some(right_view)
+        {
+            return true;
+        }
+
+        if right_view.len() > 1
+            && right_view
+                .tail_after(1)
+                .and_then(|tail| tail.first_segment())
+                .copied()
+                .and_then(|id| names.resolve(id))
+                .is_some_and(|member| self.is_promoted_global_member(right_root, member))
+            && right_view.tail_after(1) == Some(left_view)
+        {
+            return true;
+        }
+
         false
     }
 

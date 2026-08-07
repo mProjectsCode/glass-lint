@@ -8,15 +8,12 @@ use smol_str::SmolStr;
 
 use crate::{
     Environment,
-    analysis::{
-        matching::{
-            LinkedOccurrenceView, ModuleOverlayKind,
-            occurrence::{
-                CandidateOccurrences, ModuleExportKey, ModuleOccurrences, NameOccurrences,
-                OccurrenceIndex, Occurrences, PackageKeyPredicate, PackageMatchKind,
-            },
+    analysis::matching::{
+        LinkedOccurrenceView, ModuleOverlayKind,
+        occurrence::{
+            CandidateOccurrences, ModuleExportKey, ModuleOccurrences, NameOccurrences,
+            OccurrenceIndex, Occurrences, PackageKeyPredicate, PackageMatchKind,
         },
-        value::matches_global_object_alias_with,
     },
     api::{compiler::rule::IdentityConstraint, rule::ModuleSpecifierPattern},
 };
@@ -209,7 +206,7 @@ impl<'a> EventIndexView<'a> {
         else {
             return None;
         };
-        rooted.matching(|key| matches_global_object_alias_with(key, &expected, names, environment))
+        rooted.matching(|key| environment.global_object_name_paths_match(key, &expected, names))
     }
 
     fn resolve_literal(&self, predicate: &str) -> Option<CandidateOccurrences<'a>> {

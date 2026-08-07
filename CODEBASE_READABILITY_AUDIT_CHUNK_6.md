@@ -47,7 +47,7 @@ IDs, bounded tables, exhaustion behavior, and identity semantics are unchanged.
 
 ### Global-object identity
 
-#### [ ] READ-027 — Make one owner define global-object path equivalence
+#### [x] READ-027 — Make one owner define global-object path equivalence
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -71,6 +71,12 @@ algorithm after callers migrate. Keep the existing `SymbolPath` fast path,
 same-table ID validation, restricted foreign-realm behavior, promoted-member
 rules, and exact-tail matching; do not turn artifact-local IDs into globally
 comparable integers.
+
+**Fix Applied:** Added `Environment::global_object_name_paths_match` as the
+table-checked owner for artifact-local paths, migrated compiler and matcher
+callers, and removed the duplicated value-identity comparison layer. Existing
+symbol-path fast paths, restricted realms, promoted members, exact tails, and
+same-table fail-closed resolution remain covered by the full gate.
 
 ### Constant projection boundary
 
