@@ -4,13 +4,13 @@ use swc_common::Span;
 use swc_ecma_ast::Expr;
 
 use crate::analysis::{
+    model::scope::BindingVersion,
     scope::{
         BindingProvenance, ProvenanceAlternatives, ScopeId, ScopedName,
         build::{CollectorCheckpoint, ControlFlowFrame, ScopeCollectionIssue, ScopeCollector},
         query::rooted::rooted_expr_chain_with,
     },
     syntax::member_root_identifier,
-    value::BindingVersion,
 };
 
 type JoinedPathAssignments = Vec<(

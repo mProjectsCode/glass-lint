@@ -3,8 +3,10 @@ use glass_lint_datastructures::{HistoryCursor, HistoryTransition, ParentLinkedHi
 use crate::{
     analysis::{
         facts::FactId,
-        model::flow::{FlowState, FlowStateKey, LifecycleRollback, RequirementIndex, SinkIndex},
-        value::{ObjectId, ValueId},
+        model::{
+            flow::{FlowState, FlowStateKey, LifecycleRollback, RequirementIndex, SinkIndex},
+            value::{ObjectId, ValueId},
+        },
     },
     api::classification::RuleIndex,
 };

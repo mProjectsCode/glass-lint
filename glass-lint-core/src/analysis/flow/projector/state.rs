@@ -15,8 +15,10 @@ use crate::{
     analysis::{
         facts::{ControlRegionId, FactId},
         flow::projector::history::{Checkpoint, InverseDelta, MutationLog, ReportEvidenceKey},
-        model::flow::{FlowId, FlowState, FlowStateKey, RequirementIndex, SinkIndex},
-        value::{ObjectId, ValueId},
+        model::{
+            flow::{FlowId, FlowState, FlowStateKey, RequirementIndex, SinkIndex},
+            value::{ObjectId, ValueId},
+        },
     },
     api::classification::{ClassificationEvidence, RuleEvidenceTable, RuleIndex},
 };

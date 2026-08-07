@@ -49,7 +49,7 @@ impl OccurrenceIndexes {
         &mut self,
         fact: &SemanticFact,
         names: &NameTable,
-        values: &crate::analysis::value::ValueTable,
+        values: &crate::analysis::model::value::ValueTable,
     ) {
         // This is the sole projection from semantic facts into shared matcher
         // indexes. Rule selection must happen later, in query code.
@@ -79,7 +79,7 @@ impl OccurrenceIndexes {
                 ..
             } => {
                 if let Some(static_string) = values.get(*value).and_then(|val| match val {
-                    crate::analysis::value::Value::StaticString(s) => Some(s),
+                    crate::analysis::model::value::Value::StaticString(s) => Some(s),
                     _ => None,
                 }) {
                     self.literals.record_string(

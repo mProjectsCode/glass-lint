@@ -12,8 +12,7 @@ use crate::analysis::{
             sink::{FunctionSignature, FunctionSinkSummary, FunctionSummary},
         },
     },
-    model::flow::FunctionTable,
-    value::{FunctionId, ValueId},
+    model::{flow::FunctionTable, scope::FunctionId, value::ValueId},
 };
 
 #[derive(Debug)]

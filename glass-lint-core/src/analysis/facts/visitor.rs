@@ -338,7 +338,7 @@ impl Visit for FactBuilder<'_, '_> {
                 );
                 let resolved = self
                     .resolver
-                    .static_value(crate::analysis::value::Value::StaticString(literal));
+                    .static_value(crate::analysis::model::value::Value::StaticString(literal));
                 self.emit(
                     quasi.span,
                     FactPayload::Reference {
@@ -508,7 +508,7 @@ impl Visit for FactBuilder<'_, '_> {
         let value = stmt
             .arg
             .as_deref()
-            .map_or(crate::analysis::value::ValueId::UNKNOWN, |expr| {
+            .map_or(crate::analysis::model::value::ValueId::UNKNOWN, |expr| {
                 self.resolver.resolve_expr_id(expr)
             });
         self.emit(

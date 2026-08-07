@@ -2,9 +2,9 @@ use swc_ecma_visit::VisitWith;
 
 use crate::analysis::{
     facts::{FactBuilder, FactPayload, FactStream, Frozen, build_test_facts},
+    model::value::ValueId,
     resolution::Resolver,
     syntax::SymbolCallProvenance,
-    value::ValueId,
 };
 
 #[test]

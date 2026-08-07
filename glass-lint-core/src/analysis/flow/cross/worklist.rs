@@ -9,7 +9,7 @@ use crate::{
             sources::{FlowSources, SourceKey},
             state::{CallContext, CrossFlowState, QualifiedEvent},
         },
-        value::FunctionId,
+        model::scope::FunctionId,
     },
     project::ModuleId,
 };

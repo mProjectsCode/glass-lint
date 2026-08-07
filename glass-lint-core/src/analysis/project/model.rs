@@ -13,7 +13,7 @@ use crate::{
         flow::effect::FunctionEffect,
         local::{LocalArtifact, ProjectModule},
         lowering::status::{AnalysisStatus, IncompleteReason, StatusScope},
-        model::module::ModuleRequestId,
+        model::{module::ModuleRequestId, scope::FunctionId, value::ValueId},
         project::{
             linker::ProjectLinker,
             projection::ProjectionOutcome,
@@ -22,7 +22,6 @@ use crate::{
         },
         syntax::SymbolCallProvenance,
         trace::{QualifiedEvent, TraceArena},
-        value::{FunctionId, ValueId},
     },
     api::{
         classification::{ClassificationResult, RuleIndex},

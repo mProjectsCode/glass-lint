@@ -8,6 +8,7 @@ use swc_common::Span;
 use swc_ecma_ast::{Expr, Ident, MemberExpr};
 
 use crate::analysis::{
+    model::scope::{BindingKey, BindingRoot, BindingVersion, FunctionId},
     scope::{
         BindingProvenance, BoundArgument, FrozenScopeGraph, IdentValueSeed, MemberValueSeed,
         ScopeId, ScopeKind, build::aliases::contains,
@@ -16,7 +17,6 @@ use crate::analysis::{
         SymbolCallProvenance, SymbolMemberProvenance,
         constant::{self, ConstValue, EvalState, Lookup},
     },
-    value::{BindingKey, BindingRoot, BindingVersion, FunctionId},
 };
 
 mod bindings;

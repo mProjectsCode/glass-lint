@@ -15,8 +15,10 @@ use smol_str::SmolStr;
 use crate::{
     analysis::{
         facts::CallArgInfo,
-        model::flow::{FlowId, RequirementIndex, SinkIndex},
-        value::ValueTable,
+        model::{
+            flow::{FlowId, RequirementIndex, SinkIndex},
+            value::ValueTable,
+        },
     },
     api::{
         classification::RuleIndex,

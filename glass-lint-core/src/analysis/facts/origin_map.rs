@@ -1,6 +1,6 @@
 use hashbrown::HashMap;
 
-use crate::analysis::{SemanticBudget, value::ValueId};
+use crate::analysis::{SemanticBudget, model::value::ValueId};
 
 /// A map supporting cheap snapshot/rollback via change logging.
 ///

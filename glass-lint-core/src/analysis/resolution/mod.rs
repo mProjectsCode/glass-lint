@@ -30,12 +30,15 @@ use crate::analysis::{
     SemanticBudget,
     facts::{Building, FactStream, Frozen},
     lowering::{InvalidParserSpan, ParserSpanKey, SpanNormalizer},
+    model::{
+        scope::BindingKey,
+        value::{Value, ValueId, ValueTable},
+    },
     scope::{BoundArgument, FrozenScopeGraph},
     syntax::{
         SymbolCallProvenance, SymbolMemberProvenance,
         constant::{self as syntax_constant, ConstValue, EvalState, Lookup},
     },
-    value::{BindingKey, Value, ValueId, ValueTable},
 };
 
 #[derive(Debug, Clone)]

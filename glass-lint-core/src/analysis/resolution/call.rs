@@ -7,12 +7,12 @@
 use smol_str::ToSmolStr;
 
 use crate::analysis::{
+    model::value::MAX_VALUES,
     module_request::{ModuleRequestContext, ModuleRequestPolicy, recognize_module_call},
     resolution::{
         CallExpr, Callee, Expr, ResolvedValue, Resolver, SymbolCallProvenance, Value, ValueId,
     },
     syntax::{BudgetComponent, UnknownReason},
-    value::MAX_VALUES,
 };
 
 impl Resolver<'_> {
@@ -93,9 +93,9 @@ impl Resolver<'_> {
             return self.fresh_object_value_at(call.span);
         }
         let target = self.resolve_expr_id(&member.obj);
-        self.static_value(Value::Callable(crate::analysis::value::CallableValue::new(
-            target,
-        )))
+        self.static_value(Value::Callable(
+            crate::analysis::model::value::CallableValue::new(target),
+        ))
     }
 
     /// Intern callable/module/global value identity with optional binding
@@ -104,7 +104,7 @@ impl Resolver<'_> {
         &mut self,
         call: &SymbolCallProvenance,
         rooted: Option<&glass_lint_datastructures::SymbolPath>,
-        binding: Option<crate::analysis::value::BindingKey>,
+        binding: Option<crate::analysis::model::scope::BindingKey>,
     ) -> ValueId {
         let value = match call {
             SymbolCallProvenance::Global { name } => Value::Global(name.clone()),

@@ -6,11 +6,6 @@
 
 use glass_lint_datastructures::{NamePath, NameTable, SymbolPath};
 
-pub use crate::analysis::model::{
-    scope::{BindingId, BindingKey, BindingRoot, BindingSlot, BindingVersion, FunctionId},
-    value::ValueId,
-};
-
 /// Compare two [`NamePath`]s using the environment's rooted-object alias
 /// policy.
 pub fn matches_global_object_alias_with(

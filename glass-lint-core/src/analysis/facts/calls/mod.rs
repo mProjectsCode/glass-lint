@@ -4,8 +4,8 @@ use swc_ecma_visit::VisitWith;
 
 use crate::analysis::{
     facts::{CallArgInfo, CallUnwrap, FactBuilder, FactPayload},
+    model::value::ValueId,
     syntax::{effective_callee_expr, literal_member_property_name},
-    value::ValueId,
 };
 
 mod callee;

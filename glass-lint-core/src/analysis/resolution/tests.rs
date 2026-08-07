@@ -6,9 +6,9 @@ use super::*;
 use crate::analysis::{
     SemanticBudget,
     lowering::SpanNormalizer,
+    model::value::{MAX_VALUES, StaticObject, Value},
     scope::ScopeGraph,
     syntax::{BudgetComponent, UnknownReason},
-    value::{MAX_VALUES, StaticObject, Value},
 };
 
 #[test]
@@ -53,9 +53,9 @@ fn const_value_follows_binding_chain_to_static_values() {
     let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
     let inner = resolver.values.intern(Value::StaticString("hello".into()));
-    let key = crate::analysis::value::BindingKey::new(crate::analysis::value::BindingRoot::Global(
-        "test".into(),
-    ));
+    let key = crate::analysis::model::scope::BindingKey::new(
+        crate::analysis::model::scope::BindingRoot::Global("test".into()),
+    );
     let id = resolver
         .values
         .intern(Value::Binding { key, target: inner });
@@ -71,9 +71,9 @@ fn const_value_materializes_static_arrays_with_nested_bindings() {
     let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
     let one = resolver.values.intern(Value::StaticNumber(1));
-    let key = crate::analysis::value::BindingKey::new(crate::analysis::value::BindingRoot::Global(
-        "x".into(),
-    ));
+    let key = crate::analysis::model::scope::BindingKey::new(
+        crate::analysis::model::scope::BindingRoot::Global("x".into()),
+    );
     let wrapped = resolver.values.intern(Value::Binding { key, target: one });
     let two = resolver.values.intern(Value::StaticNumber(2));
     let array = resolver
@@ -211,16 +211,16 @@ fn const_value_follows_binding_chain_through_reassignment() {
     let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
     let inner = resolver.values.intern(Value::StaticString("first".into()));
-    let key1 = crate::analysis::value::BindingKey::new(
-        crate::analysis::value::BindingRoot::Global("v1".into()),
+    let key1 = crate::analysis::model::scope::BindingKey::new(
+        crate::analysis::model::scope::BindingRoot::Global("v1".into()),
     );
     let first = resolver.values.intern(Value::Binding {
         key: key1,
         target: inner,
     });
 
-    let key2 = crate::analysis::value::BindingKey::new(
-        crate::analysis::value::BindingRoot::Global("v2".into()),
+    let key2 = crate::analysis::model::scope::BindingKey::new(
+        crate::analysis::model::scope::BindingRoot::Global("v2".into()),
     );
     let second = resolver.values.intern(Value::Binding {
         key: key2,
@@ -244,9 +244,9 @@ fn call_provenance_follows_binding_to_global() {
     let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
     let inner = resolver.values.intern(Value::Global("fetch".into()));
-    let key = crate::analysis::value::BindingKey::new(crate::analysis::value::BindingRoot::Global(
-        "test".into(),
-    ));
+    let key = crate::analysis::model::scope::BindingKey::new(
+        crate::analysis::model::scope::BindingRoot::Global("test".into()),
+    );
     let id = resolver
         .values
         .intern(Value::Binding { key, target: inner });
@@ -269,15 +269,15 @@ fn call_provenance_follows_multi_level_binding_chain() {
         module: "mod".into(),
         export: "fn".into(),
     });
-    let key1 = crate::analysis::value::BindingKey::new(
-        crate::analysis::value::BindingRoot::Global("a".into()),
+    let key1 = crate::analysis::model::scope::BindingKey::new(
+        crate::analysis::model::scope::BindingRoot::Global("a".into()),
     );
     let mid = resolver.values.intern(Value::Binding {
         key: key1,
         target: inner,
     });
-    let key2 = crate::analysis::value::BindingKey::new(
-        crate::analysis::value::BindingRoot::Global("b".into()),
+    let key2 = crate::analysis::model::scope::BindingKey::new(
+        crate::analysis::model::scope::BindingRoot::Global("b".into()),
     );
     let id = resolver.values.intern(Value::Binding {
         key: key2,

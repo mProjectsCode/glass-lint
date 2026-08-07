@@ -26,7 +26,7 @@ impl ProjectSemanticModel {
         &self,
         importer: ModuleId,
         session: &mut LinkingSession,
-    ) -> BTreeMap<crate::analysis::value::ValueId, ExportResolution> {
+    ) -> BTreeMap<crate::analysis::model::value::ValueId, ExportResolution> {
         let mut identities = BTreeMap::new();
         let Some(module) = self.module(importer) else {
             return identities;

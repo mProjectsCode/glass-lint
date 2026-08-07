@@ -7,8 +7,8 @@ use crate::analysis::{
         Callee, Expr, FactBuilder, InstanceCallable, MemberExpr, OptChainBase,
         SymbolCallProvenance, SymbolMemberProvenance, ValueId, VisitWith,
     },
+    model::scope::FunctionId,
     syntax::{effective_callee_expr, literal_member_property_name},
-    value::FunctionId,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]

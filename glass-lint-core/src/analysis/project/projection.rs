@@ -16,10 +16,9 @@ use crate::{
         },
         lowering::status::{AnalysisComponent, IncompleteReason, StatusScope},
         matching::{MatcherArtifact, MatcherProjectOverlay},
-        model::flow::FlowLimits,
+        model::{flow::FlowLimits, value::ValueId},
         project::state::LinkingSession,
         trace::TraceArena,
-        value::ValueId,
     },
     api::{
         classification::{

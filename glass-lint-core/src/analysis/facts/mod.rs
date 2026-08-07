@@ -13,9 +13,11 @@ use hashbrown::HashMap;
 use crate::analysis::flow::effect::FunctionEffects;
 use crate::analysis::{
     matching::OccurrenceIndexes,
-    model::module::ModuleInterface,
+    model::{
+        module::ModuleInterface,
+        value::{ValueId, ValueTable},
+    },
     module_request::{ModuleRequestKind, ModuleRequestPolicy, recognize_module_call},
-    value::{ValueId, ValueTable},
 };
 
 mod arguments;
@@ -53,13 +55,13 @@ use self::instance::InstanceCallable;
 use crate::analysis::resolution::FrozenFactTables;
 use crate::analysis::{
     SemanticBudget,
+    model::scope::FunctionId,
     resolution::Resolver,
     scope::{BoundArgument, ScopeId},
     syntax::{
         SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr,
         literal_member_property_name,
     },
-    value::FunctionId,
 };
 
 /// The single authoritative semantic fact builder.
@@ -568,8 +570,8 @@ mod stream_tests {
     use super::*;
     use crate::{
         analysis::{
-            lowering::ResolvedProgram, resolution::Resolver, syntax::SymbolCallProvenance,
-            value::FunctionId,
+            lowering::ResolvedProgram, model::scope::FunctionId, resolution::Resolver,
+            syntax::SymbolCallProvenance,
         },
         api::{compiler::rule::CompiledMatcherPlan, rule::EventQuery},
     };

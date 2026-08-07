@@ -4,11 +4,8 @@ use glass_lint_datastructures::{NameId, NamePath, PathView};
 use hashbrown::HashSet;
 use swc_common::Span;
 
-use crate::analysis::{
-    model::scope::{
-        PropertyAliasFact, RootedPropertyMutationFact, ScopeEffect, ScopeId, ScopedName,
-    },
-    value::BindingKey,
+use crate::analysis::model::scope::{
+    BindingKey, PropertyAliasFact, RootedPropertyMutationFact, ScopeEffect, ScopeId, ScopedName,
 };
 
 #[derive(Debug)]

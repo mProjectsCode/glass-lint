@@ -6,8 +6,7 @@ use crate::analysis::{
         planning::BoundFlowPlan,
         summary::{SummaryPathStore, store::SummaryPathId},
     },
-    model::flow::FlowId,
-    value::{FunctionId, ValueId},
+    model::{flow::FlowId, scope::FunctionId, value::ValueId},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -289,8 +288,7 @@ mod tests {
         analysis::{
             facts::{CallArgInfo, FactPayload, build_test_facts},
             flow::summary::SummaryPathStore,
-            model::{fact::Frozen, flow::FlowId},
-            value::FunctionId,
+            model::{fact::Frozen, flow::FlowId, scope::FunctionId},
         },
         api::classification::RuleIndex,
     };

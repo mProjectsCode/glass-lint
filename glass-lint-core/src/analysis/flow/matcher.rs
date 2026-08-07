@@ -5,7 +5,7 @@ use glass_lint_datastructures::{NamePath, NameTable};
 use crate::{
     analysis::{
         facts::{ArgumentView, CallArgInfo},
-        value::{StaticObject, Value, ValueId, ValueTable},
+        model::value::{StaticObject, Value, ValueId, ValueTable},
     },
     api::rule::{
         ArgumentMatcher, ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcher,

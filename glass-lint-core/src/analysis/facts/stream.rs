@@ -15,9 +15,12 @@ use glass_lint_datastructures::{NameTable, PathId, PathSegment, PathSegmentInput
 
 use crate::analysis::{
     facts::{FactId, FactPayload, MAX_FACTS, ParameterBinding, SemanticFact},
-    model::fact::{Building, Frozen},
+    model::{
+        fact::{Building, Frozen},
+        scope::FunctionId,
+        value::ValueTable,
+    },
     resolution::FrozenFactTables,
-    value::{FunctionId, ValueTable},
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -147,7 +150,7 @@ impl<T> FactStream<T> {
     pub(in crate::analysis) fn property_write_value(
         &self,
         event: FactId,
-    ) -> Option<crate::analysis::value::ValueId> {
+    ) -> Option<crate::analysis::model::value::ValueId> {
         match &self.fact(event)?.payload {
             FactPayload::PropertyWrite { value, .. } => Some(*value),
             _ => None,

@@ -76,7 +76,7 @@ impl ModuleInterfaceBuilder {
     fn add_function_export(
         &mut self,
         name: impl Into<SmolStr>,
-        function: crate::analysis::value::FunctionId,
+        function: crate::analysis::model::scope::FunctionId,
     ) {
         self.interface.add_function_export(name, function);
     }

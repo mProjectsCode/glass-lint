@@ -4,13 +4,13 @@ use swc_common::{BytePos, Span};
 
 use crate::analysis::{
     model::scope::{
-        AliasAssignment, BindingProvenance, LexicalScopes, ScopeId, ScopeKind, ScopedName,
+        AliasAssignment, BindingId, BindingProvenance, BindingVersion, FunctionId, LexicalScopes,
+        ScopeId, ScopeKind, ScopedName,
     },
     scope::{
         frozen_assignments::{AssignmentAt, FrozenAssignmentIndex},
         scope_index::LexicalScopeIndex,
     },
-    value::{BindingId, BindingVersion, FunctionId},
 };
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

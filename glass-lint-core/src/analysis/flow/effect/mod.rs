@@ -20,9 +20,8 @@ use crate::analysis::{
         ParameterBinding, SemanticFact,
     },
     flow::planning::FlowMatchView,
-    model::flow::FunctionTable,
+    model::{flow::FunctionTable, scope::FunctionId, value::ValueId},
     syntax::SymbolCallProvenance,
-    value::{FunctionId, ValueId},
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -10,9 +10,9 @@ use crate::{
             ModuleExportKey, ModuleIdentityMap,
             arguments::identity::{call_identity_matches, member_identity_matches},
         },
+        model::value::{Value, ValueId, ValueTable},
         project::model::ExportResolution,
         syntax::SymbolCallProvenance,
-        value::{Value, ValueId, ValueTable},
     },
     api::compiler::{
         normalized::CanonicalArgumentConstraints,

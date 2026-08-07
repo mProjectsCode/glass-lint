@@ -31,9 +31,12 @@ use crate::{
             CallArgInfo, ControlKind, FactId, FactPayload, FactStream, Frozen, FunctionBoundary,
         },
         flow::{effect::FunctionEffects, planning::BoundFlowPlan, summary::FunctionSummaries},
-        model::flow::{FlowId, FlowLimits, FlowState},
+        model::{
+            flow::{FlowId, FlowLimits, FlowState},
+            scope::BindingSlot,
+            value::{ObjectId, ValueId},
+        },
         trace::TraceArena,
-        value::{BindingSlot, ObjectId, ValueId},
     },
     api::{
         classification::{ClassificationEvidence, MatchKind, RuleEvidenceTable, RuleIndex},

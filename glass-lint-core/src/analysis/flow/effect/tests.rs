@@ -4,7 +4,7 @@ use super::*;
 use crate::analysis::{
     facts,
     facts::{FactId, FactPayload, FactStream, Frozen},
-    value::{FunctionId, ValueId},
+    model::{scope::FunctionId, value::ValueId},
 };
 
 fn collect_effects(source: &str) -> (FactStream<Frozen>, FunctionEffects) {

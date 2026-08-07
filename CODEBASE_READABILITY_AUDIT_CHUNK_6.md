@@ -16,7 +16,7 @@ values directly.
 
 ### Value-model migration
 
-#### [ ] READ-026 — Remove the obsolete `analysis::value` type façade
+#### [x] READ-026 — Remove the obsolete `analysis::value` type façade
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -38,6 +38,12 @@ owner, and delete `value/arena.rs` plus the moved-type reexports from
 `value/identity.rs` and `value/mod.rs`. Keep artifact-local ID opacity,
 `ValueId::UNKNOWN`, bounded arena exhaustion, and the provider-neutral
 identity-comparison behavior while removing the duplicate namespace.
+
+**Fix Applied:** Migrated retained value and binding identities to
+`analysis::model::{scope,value}`, deleted the obsolete `value/arena.rs`, and
+removed moved-type reexports from the value façade. `analysis::value` now only
+retains environment-backed global-object comparison operations; model-owned
+IDs, bounded tables, exhaustion behavior, and identity semantics are unchanged.
 
 ### Global-object identity
 

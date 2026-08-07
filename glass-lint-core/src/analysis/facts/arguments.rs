@@ -7,8 +7,8 @@ use crate::analysis::{
         BoundArgument, CallArgInfo, Expr, ExprOrSpread, FactBuilder, PathId, PathSegmentInput,
         ValueId, literal_member_property_name,
     },
+    model::value::{StaticObject, Value},
     syntax::constant as syntax_constant,
-    value::{StaticObject, Value},
 };
 
 impl FactBuilder<'_, '_> {
@@ -216,20 +216,22 @@ impl FactBuilder<'_, '_> {
     pub(super) fn bound_arg_info(&mut self, argument: &BoundArgument) -> CallArgInfo {
         match argument {
             BoundArgument::StaticString(value) => {
-                let resolved = self
-                    .resolver
-                    .static_value(crate::analysis::value::Value::StaticString(value.clone()));
+                let resolved =
+                    self.resolver
+                        .static_value(crate::analysis::model::value::Value::StaticString(
+                            value.clone(),
+                        ));
                 CallArgInfo {
                     value: resolved.id,
                     ..CallArgInfo::unknown()
                 }
             }
             BoundArgument::RootedExpression(chain) => {
-                let resolved =
-                    self.resolver
-                        .static_value(crate::analysis::value::Value::RootedMember {
-                            path: chain.clone(),
-                        });
+                let resolved = self.resolver.static_value(
+                    crate::analysis::model::value::Value::RootedMember {
+                        path: chain.clone(),
+                    },
+                );
                 CallArgInfo {
                     value: resolved.id,
                     ..CallArgInfo::unknown()

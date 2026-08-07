@@ -8,15 +8,15 @@ use crate::{
     Environment,
     analysis::{
         model::scope::{
-            BindingProvenance, LexicalScopes, PropertyAliasFact, RootedPropertyMutationFact,
-            ScopeEffect, ScopeId, ScopeKind,
+            BindingId, BindingKey, BindingProvenance, BindingRoot, BindingVersion, FunctionId,
+            LexicalScopes, PropertyAliasFact, RootedPropertyMutationFact, ScopeEffect, ScopeId,
+            ScopeKind,
         },
         scope::{
             binding_index::BindingIndex, build::FrozenPropertyArtifacts,
             frozen_assignments::AssignmentAt, mutation_index::MutationIndex,
             name_env::NameEnvironment, scope_index::LexicalScopeIndex,
         },
-        value::{BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId},
     },
 };
 

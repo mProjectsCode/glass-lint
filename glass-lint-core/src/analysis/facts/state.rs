@@ -6,7 +6,7 @@
 
 use smol_str::SmolStr;
 
-use crate::analysis::{facts::ControlRegionId, value::FunctionId};
+use crate::analysis::{facts::ControlRegionId, model::scope::FunctionId};
 
 #[derive(Debug)]
 /// Ephemeral nesting state that affects how the current syntax is interpreted.

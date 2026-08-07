@@ -2,12 +2,12 @@ use glass_lint_datastructures::SymbolPath;
 use smol_str::{SmolStr, ToSmolStr};
 
 use crate::analysis::{
+    model::scope::BindingRoot,
     scope::query::{
         BindingKey, BindingProvenance, FrozenScopeGraph, Ident, IdentValueSeed, Lookup, MemberExpr,
         Span, SymbolCallProvenance, SymbolMemberProvenance, constant,
     },
     syntax::{expression_name, member_root_identifier},
-    value::BindingRoot,
 };
 
 impl FrozenScopeGraph {

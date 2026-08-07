@@ -2,10 +2,7 @@ use glass_lint_datastructures::NameId;
 use hashbrown::HashMap;
 use swc_common::{BytePos, Span};
 
-use crate::analysis::{
-    model::scope::{AliasAssignment, BindingProvenance, ScopeId},
-    value::BindingVersion,
-};
+use crate::analysis::model::scope::{AliasAssignment, BindingProvenance, BindingVersion, ScopeId};
 
 #[derive(Debug, Clone, Copy)]
 pub(in crate::analysis) enum AssignmentAt<'a> {

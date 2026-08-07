@@ -5,71 +5,14 @@
 //! bounded; exhaustion maps to an explicit unknown result (`ValueId::UNKNOWN`)
 //! rather than an invented ID or a panic.
 //!
-//! The layer is split into two concerns:
-//! - `identity` — opaque handle types (`ValueId`, `FunctionId`, `BindingId`,
-//!   `BindingSlot`, etc.) and `SymbolPath` for human-readable chain
-//!   representation.
-//! - `arena` — bounded interning tables that map identities to their meanings.
+//! Global-object identity comparison remains here because it coordinates the
+//! environment policy with artifact-local name paths. Retained value types and
+//! bounded tables live in `analysis::model`.
 //!
 //! Path trie types (`PathId`, `PathSegment`, `PathStore`) live in
 //! [`glass_lint_datastructures`] and are imported
 //! directly by callers.
 
-mod arena;
 mod identity;
 
-pub(in crate::analysis) use arena::{
-    CallableValue, MAX_VALUES, ObjectId, StaticObject, Value, ValueTable,
-};
-pub(in crate::analysis) use identity::{
-    BindingId, BindingKey, BindingRoot, BindingSlot, BindingVersion, FunctionId, ValueId,
-};
 pub use identity::{matches_global_object_alias, matches_global_object_alias_with};
-
-#[cfg(test)]
-mod tests {
-    use glass_lint_datastructures::SymbolPath;
-
-    use super::*;
-
-    #[test]
-    fn invalid_value_ids_fail_closed() {
-        let arena = ValueTable::default();
-        assert!(arena.get(ValueId::from_test(u32::MAX)).is_none());
-        assert!(arena.get(ValueId::UNKNOWN).is_some());
-    }
-
-    #[test]
-    fn binding_versions_are_part_of_identity() {
-        let mut first = BindingKey::new(BindingRoot::Binding {
-            function: FunctionId::from_test(1),
-            binding: BindingId::from_test(2),
-            version: BindingVersion::from_test(0),
-        });
-        let mut names = glass_lint_datastructures::NameTable::default();
-        let value = names.intern("value").unwrap();
-        first.append_segment(value);
-        let mut second = BindingKey::new(BindingRoot::Binding {
-            function: FunctionId::from_test(1),
-            binding: BindingId::from_test(2),
-            version: BindingVersion::from_test(1),
-        });
-        second.append_segment(value);
-        assert_ne!(first, second);
-    }
-
-    #[test]
-    fn symbol_paths_keep_segments_out_of_identity_formatting() {
-        let path = SymbolPath::from_chain("client.request").append_chain(".send");
-        assert_eq!(path.to_string(), "client.request.send");
-        assert!(!path.is_root());
-        assert!(SymbolPath::from_chain("fetch").is_root());
-        assert_eq!(
-            SymbolPath::from_chain("fetch.bind")
-                .without_bind_suffix()
-                .expect("bind suffix should be removable")
-                .to_string(),
-            "fetch"
-        );
-    }
-}

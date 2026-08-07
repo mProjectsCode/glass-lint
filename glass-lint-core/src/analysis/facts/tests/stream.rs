@@ -2,9 +2,11 @@ use glass_lint_datastructures::NameTable;
 
 use crate::analysis::{
     facts::FactStream,
-    model::fact::Building,
+    model::{
+        fact::Building,
+        value::{Value, ValueId, ValueTable},
+    },
     resolution::FrozenFactTables,
-    value::{Value, ValueId, ValueTable},
 };
 
 #[test]

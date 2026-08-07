@@ -7,8 +7,8 @@ use crate::{
             LinkedOccurrenceView, ModuleIdentityMap, Occurrence, OccurrenceIndexes,
             owned_occurrences,
         },
+        model::value::ValueId,
         project::model::ExportResolution,
-        value::ValueId,
     },
     api::{
         classification::{MatchKind, RuleEvidenceTable, RuleIndex},
@@ -344,9 +344,9 @@ mod tests {
             facts::{CallArgInfo, FactStream, Frozen, build_test_stream},
             lowering::SpanNormalizer,
             matching::{ExportResolution, ModuleExportKey, OccurrenceIndexes},
+            model::value::ValueId,
             resolution::Resolver,
             syntax::SymbolCallProvenance,
-            value::ValueId,
         },
         api::{
             classification::MatchKind,
@@ -879,7 +879,7 @@ mod tests {
         assert_eq!(
             MatcherEvaluator::new(
                 &glass_lint_datastructures::NameTable::default(),
-                &crate::analysis::value::ValueTable::default(),
+                &crate::analysis::model::value::ValueTable::default(),
                 Some(&identities),
                 None
             )

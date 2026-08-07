@@ -18,9 +18,11 @@ use crate::{
                 ObjectFlowProjector, ObjectId, ValueId, history::ReportEvidenceKey,
             },
         },
-        model::flow::{FlowId, FlowStateKey},
+        model::{
+            flow::{FlowId, FlowStateKey},
+            scope::FunctionId,
+        },
         trace::QualifiedEvent,
-        value::FunctionId,
     },
     api::{
         classification::{ClassificationEvidenceOccurrence, TraceNodeId},

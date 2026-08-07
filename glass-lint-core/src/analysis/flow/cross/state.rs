@@ -7,8 +7,11 @@ use crate::api::classification::RuleIndex;
 use crate::{
     analysis::{
         facts::FactId,
-        model::flow::{FlowId, LifecycleEvidence, RequirementIndex, SinkIndex},
-        value::{FunctionId, ValueId},
+        model::{
+            flow::{FlowId, LifecycleEvidence, RequirementIndex, SinkIndex},
+            scope::FunctionId,
+            value::ValueId,
+        },
     },
     api::compiler::CompiledObjectFlow,
     project::ModuleId,
