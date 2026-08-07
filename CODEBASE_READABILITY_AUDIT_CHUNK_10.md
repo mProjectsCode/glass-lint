@@ -92,14 +92,14 @@ two sources of truth and makes it possible for a directly constructed or
 serialized parse diagnostic to disagree with the path used for report
 ordering and locations.
 
-**Recommendation:** Choose one owner for parse-diagnostic path identity:
-prefer carrying the validated `ProjectRelativePath` through the project
-boundary, or let the outer `Diagnostic::Parse` own the path and remove it
-from the inner transport error. Make the conversion one-way and non-mutating
-at the report boundary. Preserve standalone parser diagnostics, serialized
-field compatibility if required by the report contract, deterministic path
-ordering, and the distinction between parser failure metadata and project
-context.
+**Recommendation:** Keep `ParseDiagnostic` independently constructible for the
+standalone parser and ECMAScript-version APIs, where its authored `filename`
+is meaningful. Make the outer `Diagnostic::Parse` the sole owner of validated
+project identity: stop mutating the inner diagnostic in `Diagnostic::parse`
+and use the outer `ProjectRelativePath` for ordering and locations. Preserve
+standalone parser diagnostics, serialized field compatibility if required by
+the report contract, deterministic path ordering, and the distinction between
+parser failure metadata and project context.
 
 **Fix Applied:** None so far.
 
@@ -206,13 +206,13 @@ same `SourceFile` follows a different resource contract. The parser already
 accepts an explicit bound, so the hidden default is an API boundary choice
 rather than a parser requirement.
 
-**Recommendation:** Make the configured limit explicit through a
-limits-taking API (with a clearly named default convenience wrapper if the
-zero-configuration use case is important), or introduce a small syntax
-analysis configuration owner shared with `Lowerer`. Preserve the helper’s
-independence from catalogs and host environments, deterministic feature
-ordering, fail-closed syntax-depth errors, and the existing default behavior
-for callers that do not opt into custom limits.
+**Recommendation:** Keep `analyze_ecma_version` as the fixed-cost,
+zero-configuration convenience endpoint, and add a clearly named
+`analyze_ecma_version_with_limits` sibling only for callers that need parity
+with a configured `Lowerer`. Do not change the existing signature or make
+catalog/environment state part of the standalone API. Preserve deterministic
+feature ordering, fail-closed syntax-depth errors, and the existing default
+behavior for callers that do not opt into custom limits.
 
 **Fix Applied:** None so far.
 
@@ -225,14 +225,14 @@ for callers that do not opt into custom limits.
 - **DEDUPLICATE:** Global-path comparison and byte-range validation repeat the
   same semantic operations across representations and phases.
 
-## Open Questions
+## Decisions
 
-- Whether parse diagnostics are intended to be independently constructible
-  outside a project session should determine whether the canonical path lives
-  in `ParseDiagnostic` or only in the outer project diagnostic.
-- Whether `analyze_ecma_version` is deliberately a fixed-cost convenience
-  endpoint or part of the configured analysis contract should determine
-  whether it takes `AnalysisLimits` directly.
+- `ParseDiagnostic` remains independently constructible and keeps its authored
+  filename; `Diagnostic::Parse` owns validated project path identity without
+  mutating the inner value.
+- `analyze_ecma_version` is deliberately fixed-cost and independent of a
+  configured linter. A limits-taking sibling may be added for explicit parity,
+  but the ergonomic default API remains unchanged.
 
 ## Coverage
 

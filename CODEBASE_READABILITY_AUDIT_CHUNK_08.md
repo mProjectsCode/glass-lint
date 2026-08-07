@@ -245,7 +245,7 @@ branches cannot emit unsupported evidence.
   argument validation, and evidence compatibility are repeated across
   adjacent stages.
 
-## Coverage and Open Questions
+## Decisions and Coverage
 
 Reviewed the public rule facade, metadata and catalog builders, rule/query
 errors, module patterns, rule IDs, event and lifecycle declaration APIs,
@@ -254,10 +254,12 @@ catalog conversion, and provider catalog callers. The physical compiler plan
 and classification storage are intentionally handed off to Chunk 9; they were
 used only where necessary to verify the authoring/compiler boundary.
 
-The main implementation question is how much of the authoring API should
-remain publicly inspectable. The stable boundary should expose validated
-semantic constructors and useful diagnostics while keeping compiler IR,
-artifact-local slots, and storage-shaped indexes private.
+The stable authoring boundary exposes validated semantic constructors,
+catalog metadata, and useful diagnostics. Compiler IR, artifact-local slots,
+and storage-shaped indexes remain private; public inspection should use
+semantic accessors or explanations rather than raw compiler structures. This
+decision preserves an ergonomic rule-authoring API without turning compiler
+storage into a compatibility contract.
 
 ## Handoff
 

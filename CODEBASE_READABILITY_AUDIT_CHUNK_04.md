@@ -207,7 +207,7 @@ single-freeze ownership semantics.
 - **DEDUPLICATE:** Seed/result provenance fields and their conversion are
   maintained in parallel representations.
 
-## Coverage and Open Questions
+## Decisions and Coverage
 
 Reviewed the retained fact/value/module/scope models, static properties, flow
 evidence model, resolver cache and phase freeze, expression/call/constant
@@ -216,11 +216,12 @@ examined for duplicate index and forwarding APIs, but its generic
 `LifecycleEvidence<E>` plus typed `FlowState` facade appears to preserve a
 useful local-versus-qualified event boundary; no separate finding was added.
 
-The main follow-up question for implementation is whether a shared resolution
-parts type should remain private to `resolution` or be placed beside the
-retained `ResolvedValue`. That choice should follow the existing ownership
-rule: the resolver owns final provenance enrichment, while the value arena
-owns interning and terminal identity.
+The shared resolution-parts type remains private to
+`analysis::resolution`, beside `ResolvedValue`, rather than moving into the
+retained value model. The resolver owns pre-finalization provenance and
+canonical-ID enrichment; `ValueTable` owns only interning and terminal
+identity. READ-001 therefore recommends a resolver-local parts value, with no
+new public or model-level conversion type.
 
 ## Handoff
 

@@ -47,13 +47,13 @@ findings are smaller API and reporting improvements.
   single-source request forces the preparation check and runs the job inline.
   The boolean does not communicate that policy at the call site, and the
   inline path duplicates the callback's prepare/lower/complete lifecycle.
-- **Recommendation:** Give the policies named methods or a private mode type,
-  for example separate `prepare_pending` and `prepare_explicit` operations,
-  with a shared lower/complete primitive only where their contracts are truly
-  identical. Keep cache hit/miss behavior, `ExecutionEvent` ordering, parse
-  failure handling, and deterministic request collection unchanged. Tests
-  should continue to cover explicit reanalysis, executor skips, cache hits,
-  cache misses, and observer event sequences.
+- **Recommendation:** Treat the synchronous single-source path as an explicit
+  force-reanalysis operation and give it a named method; give executor jobs a
+  separate `prepare_pending` operation. Share only the lower/complete
+  primitives where their contracts are identical. Keep cache hit/miss behavior,
+  `ExecutionEvent` ordering, parse failure handling, and deterministic request
+  collection unchanged. Tests should continue to cover explicit reanalysis,
+  executor skips, cache hits, cache misses, and observer event sequences.
 - **Guardrails:** Do not make the executor aware of `AnalysisArtifacts` or move
   the cache into the public collection API. The refactor should preserve the
   single-source force semantics and the batch scheduler's skip behavior.
@@ -114,10 +114,13 @@ findings are smaller API and reporting improvements.
   depend on an identity type whose assignment is an internal path-ordering
   detail. The opaque type is useful inside the analysis model, but its public
   export does not currently provide a useful external operation.
-- **Recommendation:** Keep `LinkedModuleTarget` and `ModuleId` crate-private,
-  or replace the exports with a deliberate read-only linked-result API that
-  has documented accessors and stable semantics. Preserve the explicit
-  `ResolverOutcome -> linked target` conversion and opaque IDs internally.
+- **Recommendation:** Make `LinkedModuleTarget` and `ModuleId` crate-private;
+  the current workspace search found no downstream caller that needs these
+  linker-only identities, and no public constructor/accessor makes them a
+  useful external contract. Preserve the explicit `ResolverOutcome -> linked
+  target` conversion and opaque IDs internally. If a later consumer needs
+  linked results, add a deliberate read-only semantic view rather than
+  re-exporting the storage identity.
 - **Guardrails:** Audit all workspace callers before changing visibility;
   preserve serialized report behavior and internal analysis ownership. Do not
   replace the opaque ID with a path in the internal graph merely to simplify
@@ -201,11 +204,12 @@ findings are smaller API and reporting improvements.
   aggregates unclear and means a new diagnostic or evidence category may need
   multiple independently maintained filters. It also prevents a reader from
   finding one canonical description of the report's aggregate accounting.
-- **Recommendation:** Add one private aggregation pass or accumulator owned by
-  the report boundary, then project `AnalysisReportSummary` and operation
-  counts from it where their semantics overlap. Keep genuinely phase-specific
-  projection metrics separate; the goal is one traversal/definition for
-  finalized file and diagnostic accounting, not one giant report object.
+- **Recommendation:** Add one private finalized-report aggregation pass owned
+  by the report boundary, then project `AnalysisReportSummary` and the
+  overlapping file/diagnostic counts from it. Keep evidence-step counts,
+  rendered-trace counts, and phase-specific projection metrics in their
+  operation-count owner; the goal is one traversal/definition for finalized
+  file and diagnostic accounting, not one giant report object.
 - **Guardrails:** Preserve the distinction between parse, file-level project,
   and report-level project diagnostics; keep summary computation cheap and
   deterministic; do not make the immutable public report store redundant
@@ -248,16 +252,18 @@ findings are smaller API and reporting improvements.
   semantic owners would make future schema additions safer without combining
   unrelated budget, timing, and presentation data.
 
-## Open Questions
+## Decisions
 
-- Is explicit single-source analysis intentionally a force-reanalysis API, or
-  should it use the same skip-completed policy as executor jobs?
-- Are `LinkedModuleTarget` and `ModuleId` consumed by downstream crates outside
-  the current workspace/API tests? Visibility narrowing should follow that
-  compatibility check.
-- Should report summary and operation counts remain independently callable and
-  independently computed, or is a shared finalized-report accumulator an
-  acceptable internal implementation detail?
+- `analyze_source_at_path_with_observer` is intentionally a force-reanalysis
+  path: an explicit source request may refresh an artifact, while executor
+  scheduling skips completed paths. Keep those policies separate and name them
+  rather than retaining a boolean mode.
+- The current workspace has no downstream production caller for
+  `LinkedModuleTarget` or `ModuleId`; narrow them to the linker boundary. Add a
+  semantic read-only view only if a real consumer appears.
+- Share one private finalized-report aggregation pass for file and diagnostic
+  summary counts, but keep evidence/rendering and projection operation metrics
+  separate because they have different owners and semantics.
 
 ## Coverage
 

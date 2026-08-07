@@ -142,13 +142,17 @@ cannot be represented.
   preserve deterministic order, budget charging, independent possible
   witnesses, and the distinct instance/class provenance rules.
 
-## Open Questions
+## Decisions
 
-- Should the lowering layer receive a typed fact-stream incompleteness summary
-  rather than querying the individual issue bits (`budget_exhausted`,
-  `path_exhausted`, `invalid_parser_span`, and `name_exhausted`) separately?
-  This is adjacent to Chunk 1's `FactStream` API but needs the lowering policy
-  reviewed before becoming a finding.
+- Keep the fact stream's issue set typed and private, but do not expose a
+  generic incompleteness summary to lowering. `LoweringCompletionPolicy` must
+  preserve precedence between fact capacity, path capacity, resolver arena
+  exhaustion, structural invalidity, parser spans, and name exhaustion; those
+  checks also depend on resolver state and configured limits. A future narrow
+  `FactStream::completion_issue()` may consolidate only the stream-owned
+  precedence, while the lowering policy remains the owner of the combined
+  `IncompleteReason` decision. This resolves the question without collapsing
+  distinct fail-closed reasons into a boolean or opaque aggregate.
 
 ## Coverage
 

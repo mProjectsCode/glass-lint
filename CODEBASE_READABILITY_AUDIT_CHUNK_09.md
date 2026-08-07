@@ -247,7 +247,7 @@ diagnostic precedence.
 - **DEDUPLICATE:** Root validation/requirement derivation and evidence-table
   index checks are repeated at adjacent boundaries and mutation methods.
 
-## Coverage and Open Questions
+## Decisions and Coverage
 
 Reviewed classification evidence and bounded rule-index storage, compiler
 entry points, query validation passes, normalized IR, alpha-renumbering,
@@ -257,11 +257,13 @@ mapping, compiled rule selection, and the test-only logical/physical reference
 oracle. The reference oracle was not reported as duplication because its
 independent evaluator is an intentional semantic equivalence check.
 
-The main implementation question is how much defensive validation belongs at
-each private IR boundary. The clean contract should have one owner for each
-stage’s invariants while retaining explicit test coverage for malformed
-internal plans and preserving the provider-facing separation from compiler
-storage.
+Validation ownership is split by invariant scope: each constructor validates
+its local root or declaration, while the consuming phase transition owns
+cross-root consistency and requirement derivation. `PhysicalPlan::from_roots`
+may remain the single production sealing transition; malformed private IR
+tests can call lower constructors directly to exercise their local errors.
+This removes duplicate production validation without weakening tests or
+exposing compiler storage to providers.
 
 ## Handoff
 

@@ -223,16 +223,19 @@ unsupported-artifact behavior.
 - **DEDUPLICATE:** Shared graph queries and repeated scope-to-function
   conversion policy should have one semantic owner.
 
-## Coverage and Open Questions
+## Decisions and Coverage
 
 Reviewed the scope graph, two-pass scope builder, traversal protocol, lexical
 and assignment state, binding/provenance queries, syntax-name and bounded
 constant helpers, and trace arena. No additional actionable readability issue
 was recorded in the small syntax-name or trace modules; their APIs are already
-relatively narrow and evidence-oriented. The constant evaluator's fresh versus
-shared evaluation-state entry points remain an API-design question for a later
-cross-module review, because their budget semantics are coupled to callers
-outside this chunk.
+relatively narrow and evidence-oriented. The constant evaluator's fresh
+`evaluate` and shared-state `contextual_member_property_name_with_state`
+entry points are intentionally distinct: the former starts an independent
+bounded evaluation, while the latter charges a computed property against the
+caller's existing recursion, node, and lookup budget. Keep both narrow helpers
+and document the budget scope; combining them would silently reset or
+overcharge a caller's bound.
 
 ## Handoff
 

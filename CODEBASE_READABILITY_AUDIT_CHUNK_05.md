@@ -46,14 +46,15 @@ requested,” “disabled by incomplete analysis,” or “computed and empty.�
 ambiguity is especially important because incomplete paths must not establish
 definite matches.
 
-**Recommendation:** Define one private derived-phase availability value owned
-by the lowering completion boundary, with explicit states for enabled,
+**Recommendation:** Define one private `DerivedPhaseCapabilities` value at the
+lowering completion boundary and store it on `SemanticArtifact`, which owns
+lazy derived consumers. Give it explicit states for enabled,
 disabled-by-incomplete-analysis, and not-requested/lazy where those
-distinctions are required. Pass that value into index/effect construction or
-store it in a typed artifact capability rather than reproducing boolean gates.
-Keep lazy effect computation, bounded budgets, empty results for disabled
-derived phases, and the fail-closed rule that incomplete facts cannot create a
-definite witness.
+distinctions are required; have `SemanticFacts` index construction and
+`SemanticArtifact::effects` consume that value rather than re-reading stream
+validity or boolean gates. Keep lazy effect computation, bounded budgets,
+empty results for disabled derived phases, and the fail-closed rule that
+incomplete facts cannot create a definite witness.
 
 **Fix Applied:** None so far.
 
@@ -198,7 +199,7 @@ project-to-file propagation, and stable output ordering.
 - **DEDUPLICATE:** Completion state, cache identity serialization, and cache
   matching predicates are represented in parallel.
 
-## Coverage and Open Questions
+## Decisions and Coverage
 
 Reviewed local cache keys and FIFO cache behavior, synchronized cache access,
 shared semantic-artifact reconstruction, immutable local/project wrappers,
@@ -209,10 +210,13 @@ collection. The `LoweredSource`/`LocalArtifact`/`SharedSemanticArtifact`
 wrappers were not reported as redundant because they preserve distinct
 lowering, cache, and path-attachment lifecycles.
 
-The main implementation question is whether derived-phase availability should
-be attached to `SemanticArtifact` as a capability object or consumed earlier by
-the fact/effect builders. Either choice must keep matcher indexes and effects
-fail-closed while retaining lazy computation for complete artifacts.
+Derived-phase availability belongs on `SemanticArtifact` as a private
+capability object. The artifact already owns lazy effect initialization and
+the immutable `SemanticFacts`; consuming the decision earlier would force
+callers to reconstruct whether an empty derived result means disabled or
+computed-empty. The capability must be passed into index construction and
+effect access without moving lazy work earlier or changing fail-closed
+behavior.
 
 ## Handoff
 

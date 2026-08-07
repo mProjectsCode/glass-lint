@@ -237,7 +237,7 @@ and deterministic key ordering.
 - **DEDUPLICATE:** The transient/final project state shape is repeated across a
   lifecycle boundary even though the semantic payload is the same.
 
-## Coverage and Open Questions
+## Decisions and Coverage
 
 Reviewed project input validation, qualified request/export identities,
 module graphs and SCC ordering, bounded export tables and lookup caches,
@@ -248,10 +248,12 @@ provider-specific project boundaries were not reported: they are outside this
 Core project-linking chunk and should remain owned by `glass-lint-project` or
 the provider crates.
 
-The main implementation question is where a shared linked-data aggregate
-should live. It should remain private to the Core project boundary, and it
-must not merge lexical arenas or move module discovery/resolution policy into
-Core.
+The shared linked-data aggregate remains private to the Core project boundary,
+beside the linker/project semantic model. It may combine link-owned module
+graph, identity, and status data, but must not merge lexical arenas or move
+module discovery/resolution policy into Core. This keeps the project linker as
+the owner of cross-file identity while the project crate remains the owner of
+host resolution.
 
 ## Handoff
 

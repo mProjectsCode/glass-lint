@@ -252,15 +252,17 @@ exhaustion behavior.
   frozen/overlay path traversal each repeat semantic dispatch at critical
   identity boundaries.
 
-## Coverage and Open Questions
+## Decisions and Coverage
 
 Reviewed local object projection, path and state snapshots, mutation history,
 control and loop handling, effect extraction, summary propagation, bound flow
 planning, cross-call graph/source propagation, worklists, cross-flow state, and
-evidence emission. The central semantic question for a later review is whether
-`FlowMatchView::member_matches` intentionally permits last-segment matching
-when full member paths differ (`analysis/flow/planning.rs:82-85`); that is a
-matching-policy question rather than a readability finding for this chunk.
+evidence emission. `FlowMatchView::member_matches` intentionally permits a
+final-segment match when full member paths differ
+(`analysis/flow/planning.rs:82-85`). This is a deliberate flow-policy fallback,
+not an accidental duplicate of exact path matching. Keep exact equality first,
+retain the fallback, and add a focused positive/negative test and contract
+comment; changing it would alter matching policy rather than readability.
 
 ## Handoff
 

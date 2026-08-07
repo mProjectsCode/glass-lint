@@ -98,12 +98,13 @@ timing data.
 
 **Recommendation:** Make `ReportAssembly` crate-private and remove its public
 re-export; keep the staged `ResolvedProject` methods as the sole report
-construction boundary. If timing is part of the supported API, expose a
-small documented result with accessors or a named timing value returned by
-`finish_with_timings`, rather than exporting the assembler’s inputs and raw
-fields. Preserve the ordinary `finish` convenience, profiling consumers,
-schema stability, and the consuming project lifecycle that prevents linking
-or matching before resolution validation.
+construction boundary. Treat phase timing as a supported workspace-facing
+result because `glass-lint-project` consumes it, but expose it through a small
+documented `ProjectAnalysis` result with private fields and accessors or one
+named timing value rather than raw mutable fields. Preserve the ordinary
+`finish` convenience, profiling consumers, schema stability, and the consuming
+project lifecycle that prevents linking or matching before resolution
+validation.
 
 **Fix Applied:** None so far.
 
@@ -232,14 +233,17 @@ configuration.
 - **DEDUPLICATE:** Evidence range relationships and occurrence metadata are
   repeatedly reconstructed or resolved at adjacent presentation stages.
 
-## Open Questions
+## Decisions
 
-- Whether `finish_with_timings` is intended as a stable external profiling API
-  should determine the minimal public timing result after hiding
-  `ReportAssembly`.
-- Whether invalid wildcard selectors should remain classified as
-  `InvalidSelector` when they match no catalog rule should be decided before
-  separating selection evaluation from diagnostic policy.
+- `finish_with_timings` is a supported workspace-facing profiling boundary,
+  not a public construction path for report assembly. Keep a narrow public
+  timing result for `glass-lint-project`, hide `ReportAssembly`, and avoid
+  exposing raw mutable timing fields as the long-term contract.
+- Preserve `InvalidSelector` for a syntactically valid wildcard that matches
+  no catalog rule. Internally separate selector evaluation from diagnostic
+  mapping, but map an unmatched wildcard to the existing error so the public
+  error surface remains small and exact selectors continue to report
+  `UnknownRule`.
 
 ## Coverage
 

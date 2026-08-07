@@ -178,13 +178,14 @@ demand. The raw occurrence-to-group transform and its non-empty invariant do
 not need to be separate, however. Keeping them split makes certainty, total
 count, truncation, and constructor failure behavior harder to keep aligned.
 
-**Recommendation:** Introduce one private raw evidence-group value or one
-owner method that turns occurrences plus `(MatchKind, symbol, certainty)` into
-a validated classification group, then let both the vector sink and the
-per-rule table consume it. Delete the duplicate `from_occurrences`/empty-check
-sequence while retaining per-rule capacity errors, definite-versus-possible
-certainty, physical duplicate counts, and the single final normalization and
-truncation boundary.
+**Recommendation:** Introduce one private raw evidence-group value in
+`analysis::matching::evidence`, or one matching-owned method that turns
+occurrences plus `(MatchKind, symbol, certainty)` into a validated
+classification group, then let both the vector sink and the per-rule table
+consume it. Delete the duplicate `from_occurrences`/empty-check sequence while
+retaining per-rule capacity errors, definite-versus-possible certainty,
+physical duplicate counts, and the single final normalization and truncation
+boundary.
 
 **Fix Applied:** None so far.
 
@@ -197,7 +198,7 @@ truncation boundary.
 - **DEDUPLICATE:** Call-payload extraction and occurrence-to-evidence
   conversion are repeated at shared semantic boundaries.
 
-## Coverage and Open Questions
+## Decisions and Coverage
 
 Reviewed occurrence storage and normalization, call/member/construction/literal
 index construction, module identity overlays and masking, borrowed and
@@ -208,11 +209,11 @@ separately: their base/overlay and package lifecycles are distinct and their
 shared ordering contract is deliberately centralized at
 `OccurrenceSelection::into_ordered`.
 
-The main implementation question is whether a unified raw evidence-group type
-belongs in `matching::evidence` or in the classification API. It should remain
-inside the matching boundary unless the classification layer needs to own the
-validated construction contract; provider-neutral classification must not gain
-knowledge of occurrence indexes or project overlays.
+The unified raw evidence-group type belongs in `analysis::matching::evidence`.
+That module already owns deterministic grouping and presentation limits, while
+the classification API owns the validated public evidence value. Do not move
+occurrence indexes, overlays, or their storage concepts into classification;
+the one conversion between the two boundaries is the narrow ergonomic API.
 
 ## Handoff
 
