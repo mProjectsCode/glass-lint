@@ -162,53 +162,73 @@ fn findings_for_module(
     rule_findings.into_values().flatten().collect()
 }
 
-fn range_entries(
-    evidence_items: &[ClassificationEvidence],
-    lines: &SourceLineIndex,
-) -> Vec<EvidenceRangeEntry> {
-    let mut by_range: BTreeMap<SourceRange, Vec<EvidenceOccurrenceRef>> = BTreeMap::new();
-    for (evidence_idx, evidence) in evidence_items.iter().enumerate() {
-        for (occurrence_idx, occurrence) in evidence.occurrences().iter().enumerate() {
-            let span = display_span(lines, occurrence.span(), evidence.kind(), evidence.symbol());
-            if span.is_empty() {
-                continue;
-            }
-            let Ok(range) = lines.try_range(span) else {
-                continue;
-            };
-            by_range
-                .entry(range)
-                .or_default()
-                .push(EvidenceOccurrenceRef {
-                    evidence: evidence_idx,
-                    occurrence: occurrence_idx,
-                });
-        }
-    }
-    by_range
-        .into_iter()
-        .map(|(range, occurrences)| EvidenceRangeEntry { range, occurrences })
-        .collect()
+#[derive(Debug)]
+struct FindingRangeBuilder {
+    entries: Vec<EvidenceRangeEntry>,
+    retained_ranges: Vec<SourceRange>,
 }
 
-fn finding_groups(entries: &[EvidenceRangeEntry]) -> Vec<FindingGroup> {
-    let mut ranges: Vec<SourceRange> = entries.iter().map(|entry| entry.range.clone()).collect();
-    crate::lint::ranges::remove_contained_ranges(&mut ranges);
-    let mut groups = Vec::with_capacity(ranges.len());
-    let mut entry_cursor = 0usize;
-    for retained in ranges {
-        while entry_cursor < entries.len() && entries[entry_cursor].range.end() < retained.start() {
-            entry_cursor += 1;
+impl FindingRangeBuilder {
+    fn new(evidence_items: &[ClassificationEvidence], lines: &SourceLineIndex) -> Self {
+        let mut by_range: BTreeMap<SourceRange, Vec<EvidenceOccurrenceRef>> = BTreeMap::new();
+        for (evidence_idx, evidence) in evidence_items.iter().enumerate() {
+            for (occurrence_idx, occurrence) in evidence.occurrences().iter().enumerate() {
+                let span =
+                    display_span(lines, occurrence.span(), evidence.kind(), evidence.symbol());
+                if span.is_empty() {
+                    continue;
+                }
+                let Ok(range) = lines.try_range(span) else {
+                    continue;
+                };
+                by_range
+                    .entry(range)
+                    .or_default()
+                    .push(EvidenceOccurrenceRef {
+                        evidence: evidence_idx,
+                        occurrence: occurrence_idx,
+                    });
+            }
         }
-        let mut group = FindingGroup::new(retained);
-        let mut scan = entry_cursor;
-        while scan < entries.len() && entries[scan].range.start() <= group.range.end() {
-            group.add_entry(&entries[scan]);
-            scan += 1;
+
+        let entries = by_range
+            .into_iter()
+            .map(|(range, occurrences)| EvidenceRangeEntry { range, occurrences })
+            .collect::<Vec<_>>();
+        let mut retained_ranges = entries
+            .iter()
+            .map(|entry| entry.range.clone())
+            .collect::<Vec<_>>();
+        crate::lint::ranges::remove_contained_ranges(&mut retained_ranges);
+        Self {
+            entries,
+            retained_ranges,
         }
-        groups.push(group);
     }
-    groups
+
+    fn into_groups(self) -> Vec<FindingGroup> {
+        let Self {
+            entries,
+            retained_ranges,
+        } = self;
+        let mut groups = Vec::with_capacity(retained_ranges.len());
+        let mut entry_cursor = 0usize;
+        for retained in retained_ranges {
+            while entry_cursor < entries.len()
+                && entries[entry_cursor].range.end() < retained.start()
+            {
+                entry_cursor += 1;
+            }
+            let mut group = FindingGroup::new(retained);
+            let mut scan = entry_cursor;
+            while scan < entries.len() && entries[scan].range.start() <= group.range.end() {
+                group.add_entry(&entries[scan]);
+                scan += 1;
+            }
+            groups.push(group);
+        }
+        groups
+    }
 }
 
 fn findings_for_capability(
@@ -226,8 +246,7 @@ fn findings_for_capability(
     if evidence_items.is_empty() {
         return Vec::new();
     }
-    let entries = range_entries(evidence_items, lines);
-    let groups = finding_groups(&entries);
+    let groups = FindingRangeBuilder::new(evidence_items, lines).into_groups();
     groups
         .into_iter()
         .filter_map(|group| {

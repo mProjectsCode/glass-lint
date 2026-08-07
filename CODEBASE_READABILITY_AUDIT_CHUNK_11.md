@@ -119,7 +119,7 @@ ci`.
 
 ### Evidence and finding construction
 
-#### [ ] READ-004 — Finding-range grouping discards evidence associations and reconstructs them by positional scanning
+#### [x] READ-004 — Finding-range grouping discards evidence associations and reconstructs them by positional scanning
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -145,7 +145,11 @@ equal-range coalescing, containment and overlap semantics, deterministic
 source ordering, evidence truncation, and the rule that every rendered trace
 comes from the original classification occurrence.
 
-**Fix Applied:** None so far.
+**Fix Applied:** A private `FindingRangeBuilder` now owns the evidence-range
+entries, containment reduction, and group construction together. Occurrence
+references stay attached to the builder’s entries while retained display
+ranges are selected, preserving deterministic grouping and evidence
+associations. Verified with `make fmt && make ci`.
 
 #### [ ] READ-005 — `FindingGroup` resolves the same occurrence references in three separate traversals
 
