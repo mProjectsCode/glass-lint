@@ -12,16 +12,13 @@
 //! [`OriginSnapshot`]) is used only at join points where the state of one
 //! branch must be intersected with another.
 
-use smol_str::SmolStr;
 use swc_common::Spanned;
 use swc_ecma_ast::{
     CondExpr, DoWhileStmt, ForInStmt, ForOfStmt, ForStmt, IfStmt, SwitchStmt, TryStmt, WhileStmt,
 };
 use swc_ecma_visit::VisitWith;
 
-use crate::analysis::facts::{
-    ControlKind, ControlRegionId, FactBuilder, FactPayload, OriginSnapshot, Span,
-};
+use crate::analysis::facts::{ControlKind, ControlRegionId, FactBuilder, FactPayload, Span};
 
 impl FactBuilder<'_, '_> {
     /// Allocate the region identity shared by all markers for one construct.
@@ -117,9 +114,7 @@ impl FactBuilder<'_, '_> {
         self.emit_control(span, ControlKind::LoopStart { guaranteed }, region);
         visit_body(self);
         visit_update(self, region);
-        self.provenance.restore_instances(&checkpoint);
-        self.provenance.commit_instances(&mut checkpoint);
-        self.provenance.rollback_classes(&mut checkpoint);
+        self.provenance.finish_control_region(&mut checkpoint);
         self.emit_control(span, ControlKind::LoopEnd, region);
     }
 
@@ -137,10 +132,9 @@ impl FactBuilder<'_, '_> {
                 region,
             );
             case.visit_with(self);
-            self.provenance.restore_instances(&checkpoint);
+            self.provenance.restore_instance_alternative(&checkpoint);
         }
-        self.provenance.commit_instances(&mut checkpoint);
-        self.provenance.rollback_classes(&mut checkpoint);
+        self.provenance.finish_control_region(&mut checkpoint);
         self.emit_control(stmt.span(), ControlKind::SwitchEnd, region);
     }
 
@@ -151,28 +145,27 @@ impl FactBuilder<'_, '_> {
         self.emit_control(stmt.span(), ControlKind::TryStart, region);
         stmt.block.visit_with(self);
         let try_origins = self.provenance.snapshot_instances(self.resolver.budget);
-        self.provenance.restore_instances(&checkpoint);
+        self.provenance.restore_instance_alternative(&checkpoint);
         if let Some(handler) = &stmt.handler {
             self.emit_control(handler.span(), ControlKind::CatchStart, region);
             handler.visit_with(self);
             if stmt.finalizer.is_some() {
                 let handler_origins = self.provenance.snapshot_instances(self.resolver.budget);
-                self.provenance.restore_instances_from(try_origins);
+                self.provenance.restore_instance_snapshot(try_origins);
                 self.provenance
-                    .retain_common_instances(&handler_origins, self.resolver.budget);
+                    .retain_common_instance_origins(&handler_origins, self.resolver.budget);
             }
         } else if stmt.finalizer.is_some() {
-            self.provenance.restore_instances_from(try_origins);
+            self.provenance.restore_instance_snapshot(try_origins);
             self.provenance
-                .retain_common_instances(&incoming_snapshot, self.resolver.budget);
+                .retain_common_instance_origins(&incoming_snapshot, self.resolver.budget);
         }
         if let Some(finalizer) = &stmt.finalizer {
             self.emit_control(finalizer.span(), ControlKind::FinallyStart, region);
             finalizer.visit_with(self);
-            self.provenance.restore_instances_from(incoming_snapshot);
+            self.provenance.restore_instance_snapshot(incoming_snapshot);
         }
-        self.provenance.commit_instances(&mut checkpoint);
-        self.provenance.rollback_classes(&mut checkpoint);
+        self.provenance.finish_control_region(&mut checkpoint);
         self.emit_control(stmt.span(), ControlKind::TryEnd, region);
     }
 
@@ -202,28 +195,16 @@ impl FactBuilder<'_, '_> {
         visit_test(self);
         self.emit_control(then_span, ControlKind::BranchThen, region);
         visit_then(self);
-        let then_origins = self.provenance.snapshot_instances(self.resolver.budget);
-        let then_classes = self.provenance.snapshot_classes(self.resolver.budget);
-        self.provenance.restore(&checkpoint);
+        let then = self.provenance.branch_provenance(self.resolver.budget);
+        self.provenance.restore_branch_entry(&checkpoint);
         if let Some(else_span) = else_span {
             self.emit_control(else_span, ControlKind::BranchElse, region);
             visit_else(self);
-            self.retain_common_instance_origins(&then_origins);
-            self.retain_common_class_origins(&then_classes);
-            self.provenance.commit(&mut checkpoint);
+            self.provenance
+                .finish_branch_with_else(&mut checkpoint, &then, self.resolver.budget);
         } else {
-            self.provenance.rollback(&mut checkpoint);
+            self.provenance.finish_branch_without_else(&mut checkpoint);
         }
         self.emit_control(span, ControlKind::BranchEnd, region);
-    }
-
-    fn retain_common_instance_origins(&mut self, other: &OriginSnapshot<(SmolStr, SmolStr)>) {
-        self.provenance
-            .retain_common_instances(other, self.resolver.budget);
-    }
-
-    fn retain_common_class_origins(&mut self, other: &OriginSnapshot<(SmolStr, SmolStr)>) {
-        self.provenance
-            .retain_common_classes(other, self.resolver.budget);
     }
 }

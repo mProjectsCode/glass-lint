@@ -81,6 +81,11 @@ struct ProvenanceCheckpoint {
     class: OriginCheckpoint,
 }
 
+struct BranchProvenance {
+    instances: OriginSnapshot<(SmolStr, SmolStr)>,
+    classes: OriginSnapshot<(SmolStr, SmolStr)>,
+}
+
 impl FactProvenanceState {
     fn new() -> Self {
         Self {
@@ -98,30 +103,20 @@ impl FactProvenanceState {
         }
     }
 
-    fn restore(&mut self, checkpoint: &ProvenanceCheckpoint) {
+    fn restore_branch_entry(&mut self, checkpoint: &ProvenanceCheckpoint) {
         self.instance_origins.restore(&checkpoint.instance);
         self.class_origins.restore(&checkpoint.class);
     }
 
-    fn restore_instances(&mut self, checkpoint: &ProvenanceCheckpoint) {
+    fn restore_instance_alternative(&mut self, checkpoint: &ProvenanceCheckpoint) {
         self.instance_origins.restore(&checkpoint.instance);
     }
 
-    fn commit(&mut self, checkpoint: &mut ProvenanceCheckpoint) {
+    /// Complete a control region whose instance origins can flow out of one
+    /// modeled alternative, but whose class origins cannot.
+    fn finish_control_region(&mut self, checkpoint: &mut ProvenanceCheckpoint) {
+        self.restore_instance_alternative(checkpoint);
         self.instance_origins.commit(&mut checkpoint.instance);
-        self.class_origins.commit(&mut checkpoint.class);
-    }
-
-    fn commit_instances(&mut self, checkpoint: &mut ProvenanceCheckpoint) {
-        self.instance_origins.commit(&mut checkpoint.instance);
-    }
-
-    fn rollback(&mut self, checkpoint: &mut ProvenanceCheckpoint) {
-        self.instance_origins.rollback(&mut checkpoint.instance);
-        self.class_origins.rollback(&mut checkpoint.class);
-    }
-
-    fn rollback_classes(&mut self, checkpoint: &mut ProvenanceCheckpoint) {
         self.class_origins.rollback(&mut checkpoint.class);
     }
 
@@ -133,11 +128,18 @@ impl FactProvenanceState {
         self.class_origins.snapshot(budget)
     }
 
-    fn restore_instances_from(&mut self, snapshot: OriginSnapshot<(SmolStr, SmolStr)>) {
+    fn branch_provenance(&self, budget: &SemanticBudget) -> BranchProvenance {
+        BranchProvenance {
+            instances: self.snapshot_instances(budget),
+            classes: self.snapshot_classes(budget),
+        }
+    }
+
+    fn restore_instance_snapshot(&mut self, snapshot: OriginSnapshot<(SmolStr, SmolStr)>) {
         self.instance_origins.restore_from(snapshot);
     }
 
-    fn retain_common_instances(
+    fn retain_common_instance_origins(
         &mut self,
         snapshot: &OriginSnapshot<(SmolStr, SmolStr)>,
         budget: &SemanticBudget,
@@ -145,12 +147,29 @@ impl FactProvenanceState {
         self.instance_origins.retain_common(snapshot, budget);
     }
 
-    fn retain_common_classes(
+    fn retain_common_class_origins(
         &mut self,
         snapshot: &OriginSnapshot<(SmolStr, SmolStr)>,
         budget: &SemanticBudget,
     ) {
         self.class_origins.retain_common(snapshot, budget);
+    }
+
+    fn finish_branch_with_else(
+        &mut self,
+        checkpoint: &mut ProvenanceCheckpoint,
+        then: &BranchProvenance,
+        budget: &SemanticBudget,
+    ) {
+        self.retain_common_instance_origins(&then.instances, budget);
+        self.retain_common_class_origins(&then.classes, budget);
+        self.instance_origins.commit(&mut checkpoint.instance);
+        self.class_origins.commit(&mut checkpoint.class);
+    }
+
+    fn finish_branch_without_else(&mut self, checkpoint: &mut ProvenanceCheckpoint) {
+        self.instance_origins.rollback(&mut checkpoint.instance);
+        self.class_origins.rollback(&mut checkpoint.class);
     }
 
     fn seed_declaration(

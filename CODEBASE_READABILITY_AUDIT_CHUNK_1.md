@@ -12,7 +12,7 @@ or encode important semantic modes as loosely related operations and booleans.
 
 ### Fact provenance and control-flow joins
 
-#### [ ] READ-001 — Encapsulate provenance transaction outcomes
+#### [x] READ-001 — Encapsulate provenance transaction outcomes
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -37,7 +37,12 @@ policy has one owner. Preserve correlated path-local alternatives, the
 intersection semantics at joins, bounded snapshots, and the distinction that
 an unknown or exhausted origin cannot become a proven origin.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `FactProvenanceState` now owns the named completion
+transitions for control regions and branch joins, including the instance/class
+commit and rollback policy. `control.rs` only visits construct arms and invokes
+those transitions; it no longer performs paired checkpoint operations.
+Verified with `make fmt && make ci` (including the focused
+`cargo test -p glass-lint-core` coverage).
 
 ### Fact target provenance transitions
 
