@@ -145,7 +145,7 @@ retain replay and exit sets; both now consume the same typed admission result.
 
 ### Local flow evidence sink
 
-#### [ ] READ-040 — Make bounded evidence reservation and recording one operation
+#### [x] READ-040 — Make bounded evidence reservation and recording one operation
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -172,7 +172,10 @@ as the final merge target, or wrap it in a capacity-validated sink so the
 exhaustion, deterministic evidence order, event-level truncation, and the
 fact that an incomplete flow cannot be upgraded by evidence bookkeeping.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced separate evidence reservation and report recording
+with `FlowEvidence::record_if_admitted`. The operation owns bounded admission,
+catalog insertion, rollback, and truncation state; trace construction now
+precedes admission, so counters cannot represent an unrecorded occurrence.
 
 ### Local projection completion
 

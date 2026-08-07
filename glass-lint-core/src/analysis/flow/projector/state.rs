@@ -673,15 +673,30 @@ impl<'a> FlowEvidence<'a> {
         }
     }
 
-    /// Reserve a slot for an evidence item. Returns true when the caller
-    /// may emit. Allows multiple emissions per key up to `max_per_key`,
-    /// and caps the total across all keys to `limit`.
-    pub(super) fn try_insert(
+    /// Admit one complete evidence item into the bounded report sink.
+    ///
+    /// Reservation, catalog insertion, and rollback are one operation, so a
+    /// rejected or invalid report index cannot leave the bounded counters out
+    /// of sync with the externally owned evidence table.
+    pub(super) fn record_if_admitted(
         &mut self,
         key: ReportEvidenceKey,
         limit: usize,
         max_per_key: u32,
+        rule_index: RuleIndex,
+        evidence: ClassificationEvidence,
     ) -> bool {
+        if !self.reserve(key, limit, max_per_key) {
+            return false;
+        }
+        if self.items.record(rule_index, evidence).is_err() {
+            self.release(key);
+            return false;
+        }
+        true
+    }
+
+    fn reserve(&mut self, key: ReportEvidenceKey, limit: usize, max_per_key: u32) -> bool {
         let count = self.emitted.entry(key).or_insert(0);
         if *count >= max_per_key {
             self.truncated.insert(key);
@@ -697,10 +712,14 @@ impl<'a> FlowEvidence<'a> {
         true
     }
 
-    pub(super) fn record(&mut self, rule_index: RuleIndex, evidence: ClassificationEvidence) {
-        self.items
-            .record(rule_index, evidence)
-            .expect("flow evidence uses its catalog capacity");
+    fn release(&mut self, key: ReportEvidenceKey) {
+        if let Some(count) = self.emitted.get_mut(&key) {
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                self.emitted.remove(&key);
+            }
+        }
+        self.total_emitted = self.total_emitted.saturating_sub(1);
     }
 
     #[cfg(test)]
@@ -710,9 +729,7 @@ impl<'a> FlowEvidence<'a> {
 
     pub(super) fn mark_truncated(&mut self) {
         for key in &self.truncated {
-            self.items
-                .mark_event_truncated(key.rule, key.event.raw())
-                .expect("flow evidence uses its catalog capacity");
+            let _ = self.items.mark_event_truncated(key.rule, key.event.raw());
         }
     }
 
@@ -930,6 +947,22 @@ impl FlowEnvironment {
 mod tests {
     use super::*;
     use crate::{analysis::model::fact::FactId, api::classification::RuleIndex};
+
+    fn test_evidence() -> ClassificationEvidence {
+        ClassificationEvidence::from_occurrences(
+            crate::api::classification::MatchKind::CallArgument,
+            "test".to_owned(),
+            vec![
+                crate::api::classification::ClassificationEvidenceOccurrence::new(
+                    glass_lint_datastructures::ByteRange::empty(),
+                    Some(1),
+                    None,
+                ),
+            ],
+            crate::project::MatchCertainty::Definite,
+        )
+        .expect("test evidence has one occurrence")
+    }
 
     #[test]
     fn checkpoints_restore_divergent_mutation_paths() {
@@ -1188,8 +1221,8 @@ mod tests {
             FactId::from_test(1),
         );
 
-        assert!(evidence.try_insert(key, 1, 256));
-        assert!(!evidence.try_insert(key, 1, 256));
+        assert!(evidence.record_if_admitted(key, 1, 256, RuleIndex::new(0), test_evidence(),));
+        assert!(!evidence.record_if_admitted(key, 1, 256, RuleIndex::new(0), test_evidence(),));
         assert_eq!(evidence.emitted_count(), 1);
         assert!(evidence.limit_rejected());
     }
@@ -1211,10 +1244,10 @@ mod tests {
             FactId::from_test(2),
         );
 
-        assert!(evidence.try_insert(first, 2, 256));
-        assert!(evidence.try_insert(second, 2, 256));
-        assert!(!evidence.try_insert(first, 2, 256));
-        assert!(!evidence.try_insert(second, 2, 256));
+        assert!(evidence.record_if_admitted(first, 2, 256, RuleIndex::new(0), test_evidence(),));
+        assert!(evidence.record_if_admitted(second, 2, 256, RuleIndex::new(0), test_evidence(),));
+        assert!(!evidence.record_if_admitted(first, 2, 256, RuleIndex::new(0), test_evidence(),));
+        assert!(!evidence.record_if_admitted(second, 2, 256, RuleIndex::new(0), test_evidence(),));
         assert_eq!(evidence.emitted_count(), 2);
         assert!(evidence.limit_rejected());
     }

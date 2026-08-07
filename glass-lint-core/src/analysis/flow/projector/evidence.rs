@@ -219,13 +219,6 @@ impl ObjectFlowProjector<'_, '_, '_> {
             .unwrap_or_default()
             .to_owned();
 
-        if !self
-            .flow_evidence
-            .try_insert(key, self.run.limits.emission_limit(), 256)
-        {
-            return;
-        }
-
         let anchor = match_fact;
         let span = self
             .stream
@@ -239,20 +232,26 @@ impl ObjectFlowProjector<'_, '_, '_> {
             return;
         };
 
-        self.flow_evidence.record(
+        let evidence = ClassificationEvidence::from_occurrences(
+            MatchKind::CallArgument,
+            flow_symbol,
+            vec![ClassificationEvidenceOccurrence::new(
+                span,
+                Some(anchor.raw()),
+                Some(trace_head),
+            )],
+            certainty,
+        )
+        .expect("flow evidence always has one occurrence");
+        if !self.flow_evidence.record_if_admitted(
+            key,
+            self.run.limits.emission_limit(),
+            256,
             state.flow_id().rule_index(),
-            ClassificationEvidence::from_occurrences(
-                MatchKind::CallArgument,
-                flow_symbol,
-                vec![ClassificationEvidenceOccurrence::new(
-                    span,
-                    Some(anchor.raw()),
-                    Some(trace_head),
-                )],
-                certainty,
-            )
-            .expect("flow evidence always has one occurrence"),
-        );
+            evidence,
+        ) {
+            return;
+        }
         self.run.trace_heads = self.run.trace_heads.saturating_add(1);
     }
 
