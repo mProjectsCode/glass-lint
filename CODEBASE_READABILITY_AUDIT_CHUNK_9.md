@@ -96,7 +96,7 @@ cleared rather than treated as a complete witness.
 
 ### Summary collection lifecycle
 
-#### [ ] READ-044 — Give summary collection one explicit completion owner
+#### [x] READ-044 — Give summary collection one explicit completion owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -130,7 +130,11 @@ or sorts all sinks on completion. Preserve fixed-point re-enqueue behavior,
 `MAX_SUMMARY_WORKLIST`, budget accounting, deterministic sink order, and
 fail-closed behavior for incomplete summaries.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the mutable exhaustion flag and separate
+propagation outcome with one private `SummaryCompletion` value carrying typed
+budget, sink-capacity, or worklist-capacity exhaustion. The collector now
+performs one terminal finalization: exhausted summaries clear all partial
+sinks, while complete summaries receive deterministic sorting.
 
 ## Systemic Themes
 

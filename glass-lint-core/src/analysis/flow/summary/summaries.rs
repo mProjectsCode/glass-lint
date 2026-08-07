@@ -20,8 +20,36 @@ pub(in crate::analysis::flow) struct FunctionSummaries<'a> {
     stream: &'a FactStream<Frozen>,
     by_id: FunctionTable<FunctionSummary>,
     paths: SummaryPathStore<'a>,
-    exhausted: bool,
+    completion: SummaryCompletion,
     total_sinks: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SummaryExhaustion {
+    Budget,
+    SinkCapacity,
+    WorklistCapacity,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SummaryCompletion {
+    Complete,
+    Exhausted(SummaryExhaustion),
+}
+
+impl SummaryCompletion {
+    fn is_exhausted(self) -> bool {
+        matches!(self, Self::Exhausted(_))
+    }
+
+    fn finalize(self, summaries: &mut FunctionSummaries<'_>) {
+        for (_, summary) in summaries.by_id.iter_mut() {
+            match self {
+                Self::Complete => summary.sort_sinks(),
+                Self::Exhausted(_) => summary.clear_sinks(),
+            }
+        }
+    }
 }
 
 impl<'a> FunctionSummaries<'a> {
@@ -47,31 +75,24 @@ impl<'a> FunctionSummaries<'a> {
             stream,
             by_id: FunctionTable::new(stream.function_count()),
             paths: SummaryPathStore::new(stream.paths()),
-            exhausted: false,
+            completion: SummaryCompletion::Complete,
             total_sinks: 0,
         };
         summaries.collect_facts(effects, budget);
-        if !summaries.exhausted {
+        if !summaries.completion.is_exhausted() {
             summaries.collect_direct_sinks(stream, plan, budget);
         }
-        if !summaries.exhausted
-            && matches!(
-                SummaryPropagation::new(stream, &summaries.by_id).run(&mut summaries, budget),
-                PropagationOutcome::Exhausted
-            )
-        {
-            summaries.exhausted = true;
+        if !summaries.completion.is_exhausted() {
+            summaries.completion =
+                SummaryPropagation::new(stream, &summaries.by_id).run(&mut summaries, budget);
         }
-        if summaries.exhausted {
-            for (_, summary) in summaries.by_id.iter_mut() {
-                summary.clear_sinks();
-            }
-        } else {
-            for (_, summary) in summaries.by_id.iter_mut() {
-                summary.sort_sinks();
-            }
-        }
+        let completion = summaries.completion;
+        completion.finalize(&mut summaries);
         summaries
+    }
+
+    fn exhaust(&mut self, reason: SummaryExhaustion) {
+        self.completion = SummaryCompletion::Exhausted(reason);
     }
 
     fn collect_facts(&mut self, effects: &FunctionEffects, budget: &mut Budget) {
@@ -81,7 +102,7 @@ impl<'a> FunctionSummaries<'a> {
             }
             if self.get(effect.id()).is_none() {
                 if !budget.try_push() {
-                    self.exhausted = true;
+                    self.exhaust(SummaryExhaustion::Budget);
                     return;
                 }
                 let params = effect.parameters(self.stream);
@@ -106,14 +127,14 @@ impl<'a> FunctionSummaries<'a> {
             .map(|(id, summary)| (id, summary.calls().len()))
             .collect();
         for (id, count) in entries {
-            if self.exhausted {
+            if self.completion.is_exhausted() {
                 return;
             }
             let Some(summary) = self.by_id.get_mut(id) else {
                 continue;
             };
             for idx in 0..count {
-                if self.exhausted {
+                if self.completion.is_exhausted() {
                     return;
                 }
                 if let Some(call_id) = summary.calls().get(idx).copied() {
@@ -122,13 +143,13 @@ impl<'a> FunctionSummaries<'a> {
                         .inserted();
                     for _ in 0..added {
                         if !budget.try_push() {
-                            self.exhausted = true;
+                            self.exhaust(SummaryExhaustion::Budget);
                             return;
                         }
                     }
                     self.total_sinks += added;
                     if self.total_sinks > MAX_SUMMARY_SINKS {
-                        self.exhausted = true;
+                        self.exhaust(SummaryExhaustion::SinkCapacity);
                         return;
                     }
                 }
@@ -142,7 +163,7 @@ impl<'a> FunctionSummaries<'a> {
         caller: FunctionId,
         stream: &FactStream<Frozen>,
         budget: &mut Budget,
-    ) -> Result<bool, PropagationOutcome> {
+    ) -> Result<bool, SummaryCompletion> {
         let Some((target, args)) = resolve_call_target(call_id, stream) else {
             return Ok(false);
         };
@@ -173,7 +194,9 @@ impl<'a> FunctionSummaries<'a> {
                     &self.paths,
                 ) {
                     if self.total_sinks >= MAX_SUMMARY_SINKS {
-                        return Err(PropagationOutcome::Exhausted);
+                        return Err(SummaryCompletion::Exhausted(
+                            SummaryExhaustion::SinkCapacity,
+                        ));
                     }
                     projections.push(proj);
                 }
@@ -182,19 +205,13 @@ impl<'a> FunctionSummaries<'a> {
         let mut inserted = 0;
         for proj in projections {
             if !budget.try_push() {
-                return Err(PropagationOutcome::Exhausted);
+                return Err(SummaryCompletion::Exhausted(SummaryExhaustion::Budget));
             }
             inserted += caller_summary.add_sink(proj).inserted();
         }
         self.total_sinks += inserted;
         Ok(inserted > 0)
     }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum PropagationOutcome {
-    Complete,
-    Exhausted,
 }
 
 struct SummaryPropagation<'a> {
@@ -230,10 +247,10 @@ impl<'a> SummaryPropagation<'a> {
         &mut self,
         summaries: &mut FunctionSummaries<'a>,
         budget: &mut Budget,
-    ) -> PropagationOutcome {
+    ) -> SummaryCompletion {
         while !self.worklist.is_empty() {
             if !budget.try_push() {
-                return PropagationOutcome::Exhausted;
+                return SummaryCompletion::Exhausted(SummaryExhaustion::Budget);
             }
             let current_round: Vec<FunctionId> = self.worklist.iter().copied().collect();
             self.worklist.clear();
@@ -270,14 +287,16 @@ impl<'a> SummaryPropagation<'a> {
                 if let Some(callers) = self.reverse_calls.get(&changed_id) {
                     for &caller in callers {
                         if self.worklist.len() >= MAX_SUMMARY_WORKLIST {
-                            return PropagationOutcome::Exhausted;
+                            return SummaryCompletion::Exhausted(
+                                SummaryExhaustion::WorklistCapacity,
+                            );
                         }
                         self.worklist.insert(caller);
                     }
                 }
             }
         }
-        PropagationOutcome::Complete
+        SummaryCompletion::Complete
     }
 }
 
