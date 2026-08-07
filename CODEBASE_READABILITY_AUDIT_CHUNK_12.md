@@ -28,7 +28,7 @@ findings are smaller API and reporting improvements.
 
 ## Findings
 
-#### [ ] READ-001 — Split the two `LocalAnalysisTransition::prepare` contracts
+#### [x] READ-001 — Split the two `LocalAnalysisTransition::prepare` contracts
 
 - **Category:** SIMPLIFY
 - **Location:** `glass-lint-core/src/project/session/mod.rs:116-145, 173-181, 245-275`
@@ -57,6 +57,12 @@ findings are smaller API and reporting improvements.
 - **Guardrails:** Do not make the executor aware of `AnalysisArtifacts` or move
   the cache into the public collection API. The refactor should preserve the
   single-source force semantics and the batch scheduler's skip behavior.
+
+**Fix Applied:** The transition now has named `prepare_pending` and
+`prepare_requested` paths, with cache lookup shared by `prepare_cached`.
+Explicit single-source analysis is contained in `analyze_requested`, while
+executor callbacks use the pending-source contract. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-002 — Encapsulate the per-source local-analysis state
 

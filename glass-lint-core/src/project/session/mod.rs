@@ -120,10 +120,18 @@ struct LocalAnalysisTransition<'borrow, 'state> {
 }
 
 impl LocalAnalysisTransition<'_, '_> {
-    fn prepare(&mut self, candidate: LocalJobCandidate, skip_completed: bool) -> Option<LocalJob> {
-        if skip_completed && !self.artifacts.needs_analysis(&candidate.path) {
+    fn prepare_pending(&mut self, candidate: LocalJobCandidate) -> Option<LocalJob> {
+        if !self.artifacts.needs_analysis(&candidate.path) {
             return None;
         }
+        self.prepare_cached(candidate)
+    }
+
+    fn prepare_requested(&mut self, candidate: LocalJobCandidate) -> Option<LocalJob> {
+        self.prepare_cached(candidate)
+    }
+
+    fn prepare_cached(&mut self, candidate: LocalJobCandidate) -> Option<LocalJob> {
         let key = self.state.artifact_fingerprint(&candidate.source);
         if let Some(lowered) = self
             .state
@@ -142,6 +150,18 @@ impl LocalAnalysisTransition<'_, '_> {
                 key,
             })
         }
+    }
+
+    fn analyze_requested(&mut self, candidate: LocalJobCandidate) {
+        let Some(job) = self.prepare_requested(candidate) else {
+            return;
+        };
+        let result = self.lower(&job.source);
+        self.complete(LocalJobResult {
+            path: job.path,
+            key: job.key,
+            result,
+        });
     }
 
     fn complete(&mut self, result: LocalJobResult) {
@@ -171,7 +191,7 @@ impl LocalAnalysisTransition<'_, '_> {
 
 impl LocalJobCallbacks for LocalAnalysisTransition<'_, '_> {
     fn prepare(&mut self, candidate: LocalJobCandidate) -> Option<LocalJob> {
-        Self::prepare(self, candidate, true)
+        self.prepare_pending(candidate)
     }
 
     fn release(&mut self, result: LocalJobResult) {
@@ -262,15 +282,7 @@ impl<'a> ProjectCollection<'a> {
             path: path.clone(),
             source,
         };
-        let Some(job) = transition.prepare(candidate, false) else {
-            return Ok(requests);
-        };
-        let result = transition.lower(&job.source);
-        transition.complete(LocalJobResult {
-            path: job.path,
-            key: job.key,
-            result,
-        });
+        transition.analyze_requested(candidate);
         Ok(requests)
     }
 
