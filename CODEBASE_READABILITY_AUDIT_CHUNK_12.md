@@ -64,7 +64,7 @@ Explicit single-source analysis is contained in `analyze_requested`, while
 executor callbacks use the pending-source contract. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-002 — Encapsulate the per-source local-analysis state
+#### [x] READ-002 — Encapsulate the per-source local-analysis state
 
 - **Category:** ENCAPSULATE
 - **Location:** `glass-lint-core/src/project/session/artifacts.rs:56-61,
@@ -98,6 +98,12 @@ executor callbacks use the pending-source contract. Verified with
   preserve the consuming `AnalysisArtifacts -> ResolvedLinkInput` transition.
   Tests should cover success after failure, failure after success, incomplete
   paths, authored-request validation, and cache-produced artifacts.
+
+**Fix Applied:** `AnalysisArtifacts` now stores one private
+`LocalAnalysisOutcome` per path, making analyzed and parse-failed states
+mutually exclusive while retaining authored-request indexing separately.
+Consuming link-input construction projects those outcomes into linker modules
+and diagnostics. Verified with `make fmt && make ci`.
 
 #### [ ] READ-003 — Narrow the public project API around post-link identities
 

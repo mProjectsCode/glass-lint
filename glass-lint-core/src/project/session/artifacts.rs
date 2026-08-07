@@ -1,6 +1,6 @@
 //! Local analysis artifact management and cache helpers.
 //!
-//! Owns the artifact map, parse diagnostic map, authored-request table, and
+//! Owns per-source local-analysis outcomes, the authored-request table, and
 //! the consuming transition to validated linker input, together with the
 //! cache-lookup helpers that phase-state types delegate to.
 
@@ -56,8 +56,12 @@ impl AuthoredRequestTable {
 #[derive(Default)]
 pub struct AnalysisArtifacts {
     authored_requests: AuthoredRequestTable,
-    analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
-    parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
+    outcomes: BTreeMap<ProjectRelativePath, LocalAnalysisOutcome>,
+}
+
+enum LocalAnalysisOutcome {
+    Analyzed(LocalArtifact),
+    ParseFailed(ParseDiagnostic),
 }
 
 /// Authored module requests produced by completed local source analysis.
@@ -119,8 +123,8 @@ impl AnalysisArtifacts {
         path: ProjectRelativePath,
         error: ParseDiagnostic,
     ) {
-        self.analyzed.remove(&path);
-        self.parse_diagnostics.insert(path, error);
+        self.outcomes
+            .insert(path, LocalAnalysisOutcome::ParseFailed(error));
     }
 
     pub(super) fn record_lowered(
@@ -136,14 +140,15 @@ impl AnalysisArtifacts {
             self.authored_requests
                 .insert(request.key().clone(), *req_id);
         }
-        self.analyzed.insert(path.clone(), local);
+        self.outcomes
+            .insert(path.clone(), LocalAnalysisOutcome::Analyzed(local));
         with_ids.into_iter().map(|(_, request)| request).collect()
     }
 
     /// Whether a source path still needs local analysis: it has neither a
     /// completed artifact nor a recorded parse failure.
     pub(super) fn needs_analysis(&self, path: &ProjectRelativePath) -> bool {
-        !self.analyzed.contains_key(path) && !self.parse_diagnostics.contains_key(path)
+        !self.outcomes.contains_key(path)
     }
 
     /// Whether a resolution request key was authored by a completed local
@@ -177,9 +182,20 @@ impl AnalysisArtifacts {
         }
         let Self {
             authored_requests,
-            analyzed,
-            parse_diagnostics,
+            outcomes,
         } = self;
+        let mut analyzed = BTreeMap::new();
+        let mut parse_diagnostics = BTreeMap::new();
+        for (path, outcome) in outcomes {
+            match outcome {
+                LocalAnalysisOutcome::Analyzed(local) => {
+                    analyzed.insert(path, local);
+                }
+                LocalAnalysisOutcome::ParseFailed(diagnostic) => {
+                    parse_diagnostics.insert(path, diagnostic);
+                }
+            }
+        }
         let module_ids = sources.module_ids()?;
         let request_ids = authored_requests.qualified_ids(&module_ids)?;
         let link_input =
@@ -240,6 +256,38 @@ mod tests {
         assert!(artifacts.needs_analysis(&failed_path));
         artifacts.record_parse_failure(failed_path.clone(), parse_failure("b.js"));
         assert!(!artifacts.needs_analysis(&failed_path));
+    }
+
+    #[test]
+    fn successful_retry_replaces_a_parse_failure() {
+        let source = SourceFile::new("retry.js", "fetch('/x');").unwrap();
+        let mut sources = SourceTable::default();
+        sources.insert(source.clone()).unwrap();
+        let mut artifacts = AnalysisArtifacts::default();
+        artifacts.record_parse_failure(source.path().clone(), parse_failure("retry.js"));
+        artifacts.record_lowered(
+            source.path(),
+            lower(source.path().as_str(), "fetch('/x');").1,
+        );
+
+        let (_, diagnostics) = artifacts.into_link_input(&sources, []).unwrap();
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn parse_failure_replaces_a_previous_success() {
+        let source = SourceFile::new("retry.js", "fetch('/x');").unwrap();
+        let mut sources = SourceTable::default();
+        sources.insert(source.clone()).unwrap();
+        let mut artifacts = AnalysisArtifacts::default();
+        artifacts.record_lowered(
+            source.path(),
+            lower(source.path().as_str(), "fetch('/x');").1,
+        );
+        artifacts.record_parse_failure(source.path().clone(), parse_failure("retry.js"));
+
+        let (_, diagnostics) = artifacts.into_link_input(&sources, []).unwrap();
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
