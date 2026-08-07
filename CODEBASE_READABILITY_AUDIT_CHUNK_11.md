@@ -93,7 +93,7 @@ authored arguments remain available for identity and source-location logic.
 
 ### Flow limits and lifecycle evidence
 
-#### [ ] READ-050 — Make lifecycle index bounds a typed invariant
+#### [x] READ-050 — Make lifecycle index bounds a typed invariant
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -127,7 +127,12 @@ the compiler's lifecycle limits, duplicate-event semantics, and fail-closed
 unsupported/incomplete flow behavior. Keep local `FactId` and qualified event
 domains distinct through the generic evidence owner.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `RequirementIndex::new` and `SinkIndex::new` validated
+constructors that reject indices outside the 64-entry evidence mask domain.
+Planning callers now fail closed when construction is unavailable, while
+indexed evidence no longer needs overflow checks or panic-backed removal
+assumptions. Existing duplicate-event semantics and compact deterministic
+storage are unchanged.
 
 #### [x] READ-051 — Give operation budgets one explicit scope owner
 

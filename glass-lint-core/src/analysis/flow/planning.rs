@@ -318,7 +318,8 @@ impl<'rules> BoundFlowPlan<'rules> {
                     && requirement
                         .member_call()
                         .is_some_and(|(_, arguments)| matcher.arguments_match(arguments, args)))
-                .then_some(RequirementIndex::new(index))
+                .then(|| RequirementIndex::new(index))
+                .flatten()
             })
             .collect()
     }
@@ -338,7 +339,7 @@ impl<'rules> BoundFlowPlan<'rules> {
                 let (expected, matcher) = requirement.property_write()?;
                 (property.is_none() || property == Some(expected.as_str())).then_some(
                     PropertyRequirementMatch {
-                        index: RequirementIndex::new(index),
+                        index: RequirementIndex::new(index)?,
                         value_matches: value_is_precise
                             && property == Some(expected.as_str())
                             && matcher.matches_flow_value(static_value),
@@ -359,7 +360,8 @@ impl<'rules> BoundFlowPlan<'rules> {
                 .enumerate()
                 .filter_map(|(index, sink)| {
                     (target_matches(sink.target()) && sink.matches_argument(argument_index))
-                        .then_some(SinkIndex::new(index))
+                        .then_some(index)
+                        .and_then(SinkIndex::new)
                 })
                 .collect()
         })

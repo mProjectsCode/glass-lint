@@ -1262,19 +1262,19 @@ mod tests {
         assert!(table.record_requirement(
             ObjectId::from_test(10),
             flow,
-            RequirementIndex::new(0),
+            RequirementIndex::new(0).unwrap(),
             FactId::from_test(5),
         ));
         assert!(table.record_requirement(
             ObjectId::from_test(10),
             flow,
-            RequirementIndex::new(0),
+            RequirementIndex::new(0).unwrap(),
             FactId::from_test(7),
         ));
         assert!(table.record_sink(
             ObjectId::from_test(10),
             flow,
-            SinkIndex::new(0),
+            SinkIndex::new(0).unwrap(),
             FactId::from_test(6),
         ));
         let retrieved = table.state(ObjectId::from_test(10), flow).unwrap();
@@ -1283,7 +1283,11 @@ mod tests {
         assert_eq!(retrieved.sink_entries().count(), 1);
 
         let configured = table.capture(true);
-        assert!(table.clear_requirement(ObjectId::from_test(10), flow, RequirementIndex::new(0),));
+        assert!(table.clear_requirement(
+            ObjectId::from_test(10),
+            flow,
+            RequirementIndex::new(0).unwrap(),
+        ));
         assert_eq!(
             table
                 .state(ObjectId::from_test(10), flow)
@@ -1304,7 +1308,7 @@ mod tests {
         assert!(table.record_requirement(
             ObjectId::from_test(10),
             flow,
-            RequirementIndex::new(1),
+            RequirementIndex::new(1).unwrap(),
             FactId::from_test(7),
         ));
         assert!(table.restore(base));

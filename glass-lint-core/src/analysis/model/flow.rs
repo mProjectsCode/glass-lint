@@ -207,8 +207,8 @@ impl<K: Ord> EvidenceValues<K> {
 pub struct RequirementIndex(usize);
 
 impl RequirementIndex {
-    pub fn new(index: usize) -> Self {
-        Self(index)
+    pub fn new(index: usize) -> Option<Self> {
+        (index < u64::BITS as usize).then_some(Self(index))
     }
 
     pub fn get(self) -> usize {
@@ -227,8 +227,8 @@ impl From<RequirementIndex> for usize {
 pub struct SinkIndex(usize);
 
 impl SinkIndex {
-    pub fn new(index: usize) -> Self {
-        Self(index)
+    pub fn new(index: usize) -> Option<Self> {
+        (index < u64::BITS as usize).then_some(Self(index))
     }
 
     pub fn get(self) -> usize {
@@ -287,9 +287,7 @@ impl<K, I: EvidenceIndex> Default for IndexedEvidence<K, I> {
 
 impl<K: Clone + Ord, I: EvidenceIndex> IndexedEvidence<K, I> {
     pub fn insert(&mut self, parameter: I, value: K) -> bool {
-        let Some(bit) = Self::bit(parameter) else {
-            return false;
-        };
+        let bit = Self::bit(parameter);
         match self
             .entries
             .binary_search_by_key(&parameter, |(index, _)| *index)
@@ -309,7 +307,7 @@ impl<K: Clone + Ord, I: EvidenceIndex> IndexedEvidence<K, I> {
             .entries
             .binary_search_by_key(&parameter, |(index, _)| *index)
             .ok()?;
-        self.mask &= !Self::bit(parameter).expect("stored requirement index is bounded");
+        self.mask &= !Self::bit(parameter);
         Some(self.entries.remove(position).1)
     }
 
@@ -325,14 +323,14 @@ impl<K: Clone + Ord, I: EvidenceIndex> IndexedEvidence<K, I> {
         }
         if self.entries[position].1.is_empty() {
             self.entries.remove(position);
-            self.mask &= !Self::bit(parameter).expect("stored requirement index is bounded");
+            self.mask &= !Self::bit(parameter);
         }
         true
     }
 
     pub fn restore(&mut self, parameter: I, values: &EvidenceValues<K>) {
         for value in values.iter().cloned() {
-            self.insert(parameter, value);
+            let _ = self.insert(parameter, value);
         }
     }
 
@@ -353,9 +351,8 @@ impl<K: Clone + Ord, I: EvidenceIndex> IndexedEvidence<K, I> {
         self.entries.iter().map(|(index, values)| (*index, values))
     }
 
-    fn bit(parameter: I) -> Option<u64> {
-        let parameter = parameter.into();
-        (parameter < u64::BITS as usize).then(|| 1u64 << parameter)
+    fn bit(parameter: I) -> u64 {
+        1u64 << parameter.into()
     }
 }
 
@@ -666,20 +663,20 @@ mod tests {
     #[test]
     fn indexed_evidence_insert_and_remove() {
         let mut set: IndexedEvidence<FactId, RequirementIndex> = IndexedEvidence::default();
-        set.insert(RequirementIndex::new(0), FactId::from_test(1));
-        set.insert(RequirementIndex::new(1), FactId::from_test(2));
+        set.insert(RequirementIndex::new(0).unwrap(), FactId::from_test(1));
+        set.insert(RequirementIndex::new(1).unwrap(), FactId::from_test(2));
         assert_eq!(set.len(), 2);
         assert!(!set.is_empty());
 
-        set.remove(RequirementIndex::new(0));
+        set.remove(RequirementIndex::new(0).unwrap());
         assert_eq!(set.len(), 1);
     }
 
     #[test]
     fn indexed_evidence_values_returns_all_inserted() {
         let mut set: IndexedEvidence<FactId, RequirementIndex> = IndexedEvidence::default();
-        set.insert(RequirementIndex::new(0), FactId::from_test(10));
-        set.insert(RequirementIndex::new(2), FactId::from_test(30));
+        set.insert(RequirementIndex::new(0).unwrap(), FactId::from_test(10));
+        set.insert(RequirementIndex::new(2).unwrap(), FactId::from_test(30));
         let values: Vec<_> = set.values().copied().collect();
         assert_eq!(values, vec![FactId::from_test(10), FactId::from_test(30)]);
     }
@@ -687,8 +684,8 @@ mod tests {
     #[test]
     fn indexed_evidence_insert_duplicate_key_appends_value() {
         let mut set: IndexedEvidence<FactId, RequirementIndex> = IndexedEvidence::default();
-        set.insert(RequirementIndex::new(0), FactId::from_test(10));
-        set.insert(RequirementIndex::new(0), FactId::from_test(20));
+        set.insert(RequirementIndex::new(0).unwrap(), FactId::from_test(10));
+        set.insert(RequirementIndex::new(0).unwrap(), FactId::from_test(20));
         let values: Vec<_> = set.values().copied().collect();
         assert_eq!(values.len(), 2);
         assert!(values.contains(&FactId::from_test(10)));
@@ -699,8 +696,8 @@ mod tests {
     #[test]
     fn indexed_evidence_uses_all_64_completion_bits_and_rejects_overflow() {
         let mut set: IndexedEvidence<FactId, RequirementIndex> = IndexedEvidence::default();
-        assert!(set.insert(RequirementIndex::new(63), FactId::from_test(63)));
-        assert!(!set.insert(RequirementIndex::new(64), FactId::from_test(64)));
+        assert!(set.insert(RequirementIndex::new(63).unwrap(), FactId::from_test(63)));
+        assert!(RequirementIndex::new(64).is_none());
         assert_eq!(set.len(), 1);
         assert_eq!(
             set.values().copied().collect::<Vec<_>>(),
@@ -713,24 +710,24 @@ mod tests {
         let mut requirements: IndexedEvidence<FactId, RequirementIndex> =
             IndexedEvidence::default();
         let mut sinks: IndexedEvidence<FactId, SinkIndex> = IndexedEvidence::default();
-        assert!(requirements.insert(RequirementIndex::new(63), FactId::from_test(63)));
-        assert!(sinks.insert(SinkIndex::new(63), FactId::from_test(63)));
+        assert!(requirements.insert(RequirementIndex::new(63).unwrap(), FactId::from_test(63)));
+        assert!(sinks.insert(SinkIndex::new(63).unwrap(), FactId::from_test(63)));
         assert_eq!(
             requirements
                 .iter_by_key()
-                .find(|(index, _)| *index == RequirementIndex::new(63))
+                .find(|(index, _)| *index == RequirementIndex::new(63).unwrap())
                 .map(|(_, values)| values.iter().count()),
             Some(1)
         );
         assert_eq!(
             sinks
                 .iter_by_key()
-                .find(|(index, _)| *index == SinkIndex::new(63))
+                .find(|(index, _)| *index == SinkIndex::new(63).unwrap())
                 .map(|(_, values)| values.iter().count()),
             Some(1)
         );
-        assert!(!requirements.insert(RequirementIndex::new(64), FactId::from_test(64)));
-        assert!(!sinks.insert(SinkIndex::new(64), FactId::from_test(64)));
+        assert!(RequirementIndex::new(64).is_none());
+        assert!(SinkIndex::new(64).is_none());
     }
 
     #[test]
@@ -755,11 +752,11 @@ mod tests {
     fn flow_state_records_and_clears_requirements() {
         let flow = FlowId::new(index(0), 0);
         let mut state = FlowState::new(flow, FactId::from_test(1), ObjectId::from_test(0));
-        state.record_requirement(RequirementIndex::new(0), FactId::from_test(10));
-        state.record_requirement(RequirementIndex::new(1), FactId::from_test(20));
+        state.record_requirement(RequirementIndex::new(0).unwrap(), FactId::from_test(10));
+        state.record_requirement(RequirementIndex::new(1).unwrap(), FactId::from_test(20));
         assert_eq!(state.requirement_entries().count(), 2);
 
-        state.clear_requirement(RequirementIndex::new(0));
+        state.clear_requirement(RequirementIndex::new(0).unwrap());
         assert_eq!(state.requirement_entries().count(), 1);
     }
 }
