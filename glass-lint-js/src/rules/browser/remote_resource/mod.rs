@@ -78,13 +78,13 @@ fn remote_element_query(
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
-                .with_arg(0, ValueMatcher::static_string().equals(tag)),
+                .with_arg(0, ValueMatcher::static_string().try_equals(tag)?),
         )
         .condition(LifecycleCondition::any_of([
             LifecycleEvent::property_write(property, remote_url.clone()),
             Ok(LifecycleEvent::member_call("setAttribute")
                 .unwrap()
-                .arg(0, ValueMatcher::static_string().equals(property))
+                .arg(0, ValueMatcher::static_string().try_equals(property)?)
                 .unwrap()
                 .arg(1, remote_url)
                 .unwrap()

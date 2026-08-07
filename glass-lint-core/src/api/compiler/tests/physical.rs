@@ -161,7 +161,7 @@ fn multiple_constraints_on_same_call_fuse_into_one_constrained_scan() {
         .unwrap()
         .with_arg(0, ValueMatcher::static_string())
         .unwrap()
-        .with_arg(1, ValueMatcher::static_string().equals("/api"))
+        .with_arg(1, ValueMatcher::static_string().try_equals("/api").unwrap())
         .unwrap()
         .into_query();
     let roots = physical_roots_from_decl(&d);

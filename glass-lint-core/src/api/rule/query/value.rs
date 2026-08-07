@@ -144,14 +144,6 @@ impl ValueMatcher {
         }
     }
 
-    #[must_use]
-    pub fn equals(self, value: impl Into<String>) -> Self {
-        match canonical_exact(value) {
-            Ok(values) => self.with_static_predicate(StaticStringPredicateKind::Exact(values)),
-            Err(_) => self.with_static_predicate(StaticStringPredicateKind::Exact(Vec::new())),
-        }
-    }
-
     pub fn try_equals(self, value: impl Into<String>) -> Result<Self, QueryBuildError> {
         Ok(self.with_static_predicate(StaticStringPredicateKind::Exact(canonical_exact(value)?)))
     }
@@ -370,7 +362,7 @@ mod tests {
 
     #[test]
     fn value_matcher_equals_creates_exact_predicate() {
-        let m = ValueMatcher::static_string().equals("hello");
+        let m = ValueMatcher::static_string().try_equals("hello").unwrap();
         assert_eq!(
             m.kind(),
             &ValueMatcherKind::StaticString(StaticStringPredicate::new(
@@ -394,7 +386,7 @@ mod tests {
 
     #[test]
     fn value_matcher_equals_uses_canonical_static_values() {
-        let exact = ValueMatcher::static_string().equals(" x ");
+        let exact = ValueMatcher::static_string().try_equals(" x ").unwrap();
         let alternatives = ValueMatcher::static_string().equals_any(["x"]).unwrap();
         assert_eq!(exact, alternatives);
     }
@@ -405,12 +397,10 @@ mod tests {
             ValueMatcher::static_string().try_equals(" "),
             Err(QueryBuildError::EmptyStaticValue)
         );
-        assert!(matches!(
-            ValueMatcher::static_string().equals("").kind(),
-            ValueMatcherKind::StaticString(StaticStringPredicate {
-                kind: StaticStringPredicateKind::Exact(values)
-            }) if values.is_empty()
-        ));
+        assert_eq!(
+            ValueMatcher::static_string().try_equals(""),
+            Err(QueryBuildError::EmptyStaticValue)
+        );
     }
 
     #[test]
@@ -474,7 +464,7 @@ mod tests {
 
     #[test]
     fn argument_matcher_object_property_value_holds_property_and_matcher() {
-        let value = ValueMatcher::static_string().equals("file");
+        let value = ValueMatcher::static_string().try_equals("file").unwrap();
         let m = ArgumentMatcher::object_property_value("type", value).unwrap();
         assert!(
             matches!(m.kind(), ArgumentMatcherKind::ObjectPropertyValue { property, .. } if property == "type")

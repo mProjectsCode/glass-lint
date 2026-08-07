@@ -75,10 +75,11 @@ fn same_event_all_compiles_through_rule_catalog() {
         EventQuery::call_global("fetch"),
         [
             Ok(EventRequirement::argument(0, ValueMatcher::static_string()).unwrap()),
-            Ok(
-                EventRequirement::argument(1, ValueMatcher::static_string().equals("/api"))
-                    .unwrap(),
-            ),
+            Ok(EventRequirement::argument(
+                1,
+                ValueMatcher::static_string().try_equals("/api").unwrap(),
+            )
+            .unwrap()),
         ],
     )
     .unwrap();
@@ -117,9 +118,9 @@ fn contradictory_same_event_all_fails_at_compilation() {
     // This is statically contradictory.
     let query = EventQuery::call_global("fetch")
         .unwrap()
-        .with_arg(0, ValueMatcher::static_string().equals("a"))
+        .with_arg(0, ValueMatcher::static_string().try_equals("a").unwrap())
         .unwrap()
-        .with_arg(0, ValueMatcher::static_string().equals("b"))
+        .with_arg(0, ValueMatcher::static_string().try_equals("b").unwrap())
         .unwrap()
         .into_query();
     let result = compile_rule("test.contradictory", query);
@@ -609,7 +610,7 @@ fn deduplicated_alternatives_are_removed() {
     let m = ValueMatcher::static_string()
         .equals_any(["a", "a", "a"])
         .unwrap();
-    let expected = ValueMatcher::static_string().equals("a");
+    let expected = ValueMatcher::static_string().try_equals("a").unwrap();
     assert_eq!(m, expected, "duplicates in equals_any should be removed");
 }
 

@@ -624,7 +624,7 @@ mod tests {
             .source(source())
             .condition(LifecycleCondition::event(LifecycleEvent::property_write(
                 "type",
-                ValueMatcher::static_string().equals("file"),
+                ValueMatcher::static_string().try_equals("file").unwrap(),
             )))
             .completion(LifecycleCompletion::configuration())
             .build()
@@ -639,7 +639,7 @@ mod tests {
         let condition = || {
             LifecycleCondition::event(LifecycleEvent::property_write(
                 "value",
-                ValueMatcher::static_string().equals("value"),
+                ValueMatcher::static_string().try_equals("value").unwrap(),
             ))
         };
         let completion = || LifecycleCompletion::configuration();
@@ -755,7 +755,7 @@ mod tests {
     fn lifecycle_source_arg_adds_argument_constraint() {
         let s = EventQuery::member_call_rooted("foo.bar")
             .unwrap()
-            .with_arg(0, ValueMatcher::static_string().equals("val"));
+            .with_arg(0, ValueMatcher::static_string().try_equals("val").unwrap());
         let s = s.unwrap();
         assert_eq!(s.constraints().len(), 1);
         assert_eq!(s.constraints()[0].index(), 0);
@@ -803,7 +803,7 @@ mod tests {
     fn lifecycle_event_member_call_builds_with_args() {
         let event: LifecycleEvent = LifecycleEvent::member_call("addEventListener")
             .unwrap()
-            .arg(0, ValueMatcher::static_string().equals("load"))
+            .arg(0, ValueMatcher::static_string().try_equals("load").unwrap())
             .unwrap()
             .build();
         assert!(
@@ -857,7 +857,7 @@ mod tests {
     fn lifecycle_condition_event_wraps_in_all_of() {
         let condition = LifecycleCondition::event(LifecycleEvent::property_write(
             "type",
-            ValueMatcher::static_string().equals("file"),
+            ValueMatcher::static_string().try_equals("file").unwrap(),
         ))
         .unwrap();
         assert!(

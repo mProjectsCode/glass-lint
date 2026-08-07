@@ -448,7 +448,10 @@ fn this_rooted_literal_computed_member_chains_are_rooted() {
             .query(
                 EventQuery::member_call_rooted("app.vault.on")
                     .unwrap()
-                    .with_arg(0, ValueMatcher::static_string().equals("modify"))
+                    .with_arg(
+                        0,
+                        ValueMatcher::static_string().try_equals("modify").unwrap(),
+                    )
                     .unwrap()
                     .into_query(),
             )

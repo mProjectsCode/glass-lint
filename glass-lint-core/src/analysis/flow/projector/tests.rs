@@ -115,7 +115,10 @@ fn script_flow() -> LifecycleQuery {
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
-                .with_arg(0, ValueMatcher::static_string().equals("script")),
+                .with_arg(
+                    0,
+                    ValueMatcher::static_string().try_equals("script").unwrap(),
+                ),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
@@ -205,12 +208,15 @@ fn member_call_configuration_stays_with_its_receiver() {
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
-                .with_arg(0, ValueMatcher::static_string().equals("script")),
+                .with_arg(
+                    0,
+                    ValueMatcher::static_string().try_equals("script").unwrap(),
+                ),
         )
         .condition(LifecycleCondition::event(
             LifecycleEvent::member_call("configure")
                 .unwrap()
-                .arg(0, ValueMatcher::static_string().equals("yes"))
+                .arg(0, ValueMatcher::static_string().try_equals("yes").unwrap())
                 .unwrap()
                 .build(),
         ))
@@ -538,11 +544,14 @@ fn requirement_only_evidence_is_anchored_at_the_configuration_event() {
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
-                .with_arg(0, ValueMatcher::static_string().equals("input")),
+                .with_arg(
+                    0,
+                    ValueMatcher::static_string().try_equals("input").unwrap(),
+                ),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "type",
-            ValueMatcher::static_string().equals("file"),
+            ValueMatcher::static_string().try_equals("file").unwrap(),
         )))
         .completion(LifecycleCompletion::configuration())
         .build()

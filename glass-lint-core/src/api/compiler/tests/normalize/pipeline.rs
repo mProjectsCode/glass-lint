@@ -10,9 +10,9 @@ fn normalized_query_compiles_through_full_pipeline() {
 fn duplicate_filters_do_not_duplicate_work_or_evidence() {
     let eq = EventQuery::call_global("fetch")
         .unwrap()
-        .with_arg(0, ValueMatcher::static_string().equals("/api"))
+        .with_arg(0, ValueMatcher::static_string().try_equals("/api").unwrap())
         .unwrap()
-        .with_arg(0, ValueMatcher::static_string().equals("/api"))
+        .with_arg(0, ValueMatcher::static_string().try_equals("/api").unwrap())
         .unwrap();
     let nq = normalize::normalize_query_decl(&eq.into_query()).unwrap();
     match nq.root() {
@@ -31,9 +31,11 @@ fn duplicate_filters_do_not_duplicate_work_or_evidence() {
 fn duplicate_filters_in_all_are_deduplicated() {
     let eq = EventQuery::call_global("fetch")
         .unwrap()
-        .with_arg(0, ValueMatcher::static_string().equals("/api"))
+        .with_arg(0, ValueMatcher::static_string().try_equals("/api").unwrap())
         .unwrap();
-    let req = EventRequirement::argument(0, ValueMatcher::static_string().equals("/api")).unwrap();
+    let req =
+        EventRequirement::argument(0, ValueMatcher::static_string().try_equals("/api").unwrap())
+            .unwrap();
     let d = QueryDecl::all(Ok(eq), [Ok(req)]).unwrap();
     let nq = normalize::normalize_query_decl(&d).unwrap();
     match nq.root() {

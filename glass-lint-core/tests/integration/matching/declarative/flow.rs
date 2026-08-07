@@ -152,12 +152,15 @@ fn value_flow_supports_member_call_configuration_and_helper_sinks() {
                 .source(
                     EventQuery::member_call_rooted("document.createElement")
                         .unwrap()
-                        .with_arg(0, ValueMatcher::static_string().equals("script")),
+                        .with_arg(
+                            0,
+                            ValueMatcher::static_string().try_equals("script").unwrap(),
+                        ),
                 )
                 .condition(LifecycleCondition::event(
                     LifecycleEvent::member_call("setAttribute")
                         .unwrap()
-                        .arg(0, ValueMatcher::static_string().equals("src"))
+                        .arg(0, ValueMatcher::static_string().try_equals("src").unwrap())
                         .unwrap()
                         .arg(1, ValueMatcher::any_value())
                         .unwrap()
@@ -316,7 +319,7 @@ fn value_flow_static_prefix_requires_static_values() {
                 .source(
                     EventQuery::member_call_rooted("document.createElement")
                         .unwrap()
-                        .with_arg(0, ValueMatcher::static_string().equals("img")),
+                        .with_arg(0, ValueMatcher::static_string().try_equals("img").unwrap()),
                 )
                 .condition(LifecycleCondition::event(LifecycleEvent::property_write(
                     "src",
@@ -348,12 +351,14 @@ fn flow_can_require_all_requirements() {
                 .source(
                     EventQuery::member_call_rooted("document.createElement")
                         .unwrap()
-                        .with_arg(0, ValueMatcher::static_string().equals("link")),
+                        .with_arg(0, ValueMatcher::static_string().try_equals("link").unwrap()),
                 )
                 .condition(LifecycleCondition::all_of([
                     LifecycleEvent::property_write(
                         "rel",
-                        ValueMatcher::static_string().equals("stylesheet"),
+                        ValueMatcher::static_string()
+                            .try_equals("stylesheet")
+                            .unwrap(),
                     ),
                     LifecycleEvent::property_write(
                         "href",

@@ -171,7 +171,11 @@ fn same_event_all_with_multiple_constraints_merges_all_constraints() {
     let event_query = EventQuery::call_global("fetch").unwrap();
     let reqs: Vec<Result<EventRequirement, _>> = vec![
         Ok(EventRequirement::argument(0, ValueMatcher::static_string()).unwrap()),
-        Ok(EventRequirement::argument(1, ValueMatcher::static_string().equals("/api")).unwrap()),
+        Ok(EventRequirement::argument(
+            1,
+            ValueMatcher::static_string().try_equals("/api").unwrap(),
+        )
+        .unwrap()),
     ];
     let d = QueryDecl::all(Ok(event_query), reqs).unwrap();
     let nq = normalize_ok(&d);

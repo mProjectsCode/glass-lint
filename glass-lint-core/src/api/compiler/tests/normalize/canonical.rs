@@ -32,7 +32,7 @@ fn reversed_argument_orders_normalize_equally() {
         .unwrap()
         .with_arg(1, ValueMatcher::static_string())
         .unwrap()
-        .with_arg(0, ValueMatcher::static_string().equals("/api"))
+        .with_arg(0, ValueMatcher::static_string().try_equals("/api").unwrap())
         .unwrap();
     let d = eq.into_query();
     let nq = normalize_ok(&d);
@@ -117,7 +117,7 @@ fn alpha_equivalent_single_event_normalizes_equally() {
 fn exact_and_prefix_contradiction_is_detected() {
     let eq = EventQuery::call_global("fetch")
         .unwrap()
-        .with_arg(0, ValueMatcher::static_string().equals("foo"))
+        .with_arg(0, ValueMatcher::static_string().try_equals("foo").unwrap())
         .unwrap()
         .with_arg(
             0,
@@ -145,7 +145,10 @@ fn exact_and_prefix_contradiction_is_detected() {
 fn exact_and_non_contradictory_prefix_passes() {
     let eq = EventQuery::call_global("fetch")
         .unwrap()
-        .with_arg(0, ValueMatcher::static_string().equals("foobar"))
+        .with_arg(
+            0,
+            ValueMatcher::static_string().try_equals("foobar").unwrap(),
+        )
         .unwrap()
         .with_arg(
             0,
@@ -197,7 +200,10 @@ fn three_pairwise_overlapping_exact_sets_can_still_be_contradictory() {
 fn exact_value_must_satisfy_every_prefix_conjunct() {
     let eq = EventQuery::call_global("fetch")
         .unwrap()
-        .with_arg(0, ValueMatcher::static_string().equals("foobar"))
+        .with_arg(
+            0,
+            ValueMatcher::static_string().try_equals("foobar").unwrap(),
+        )
         .unwrap()
         .with_arg(
             0,

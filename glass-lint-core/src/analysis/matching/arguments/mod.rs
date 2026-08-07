@@ -389,7 +389,7 @@ mod tests {
             event,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
-                ValueMatcher::static_string().equals("/api"),
+                ValueMatcher::static_string().try_equals("/api").unwrap(),
             )]),
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,
@@ -504,7 +504,7 @@ mod tests {
             event: EventPredicate::Call,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(5),
-                ValueMatcher::static_string().equals("/api"),
+                ValueMatcher::static_string().try_equals("/api").unwrap(),
             )]),
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,
@@ -563,11 +563,11 @@ mod tests {
             constraints: compile_argument_constraints(&[
                 ArgumentConstraint::new(
                     crate::api::rule::ArgumentIndex::new_unchecked(0),
-                    ValueMatcher::static_string().equals("/api"),
+                    ValueMatcher::static_string().try_equals("/api").unwrap(),
                 ),
                 ArgumentConstraint::new(
                     crate::api::rule::ArgumentIndex::new_unchecked(1),
-                    ValueMatcher::static_string().equals("/path"),
+                    ValueMatcher::static_string().try_equals("/path").unwrap(),
                 ),
             ]),
             evidence: EvidenceDescriptor {
@@ -599,11 +599,11 @@ mod tests {
             constraints: compile_argument_constraints(&[
                 ArgumentConstraint::new(
                     crate::api::rule::ArgumentIndex::new_unchecked(0),
-                    ValueMatcher::static_string().equals("/api"),
+                    ValueMatcher::static_string().try_equals("/api").unwrap(),
                 ),
                 ArgumentConstraint::new(
                     crate::api::rule::ArgumentIndex::new_unchecked(1),
-                    ValueMatcher::static_string().equals("/path"),
+                    ValueMatcher::static_string().try_equals("/path").unwrap(),
                 ),
             ]),
             evidence: EvidenceDescriptor {
@@ -620,11 +620,11 @@ mod tests {
             constraints: compile_argument_constraints(&[
                 ArgumentConstraint::new(
                     crate::api::rule::ArgumentIndex::new_unchecked(1),
-                    ValueMatcher::static_string().equals("/path"),
+                    ValueMatcher::static_string().try_equals("/path").unwrap(),
                 ),
                 ArgumentConstraint::new(
                     crate::api::rule::ArgumentIndex::new_unchecked(0),
-                    ValueMatcher::static_string().equals("/api"),
+                    ValueMatcher::static_string().try_equals("/api").unwrap(),
                 ),
             ]),
             evidence: EvidenceDescriptor {
@@ -835,7 +835,7 @@ mod tests {
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ArgumentMatcher::object_property_value(
                     "method",
-                    ValueMatcher::static_string().equals("POST"),
+                    ValueMatcher::static_string().try_equals("POST").unwrap(),
                 )
                 .unwrap(),
             )]),
@@ -923,7 +923,7 @@ mod tests {
         let constraints = compile_argument_constraints(&[
             ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
-                ValueMatcher::static_string().equals("/api"),
+                ValueMatcher::static_string().try_equals("/api").unwrap(),
             ),
             ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
@@ -973,7 +973,7 @@ mod tests {
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ArgumentMatcher::object_property_value(
                     "method",
-                    ValueMatcher::static_string().equals("POST"),
+                    ValueMatcher::static_string().try_equals("POST").unwrap(),
                 )
                 .unwrap(),
             ),
@@ -1008,11 +1008,11 @@ mod tests {
         let constraints = compile_argument_constraints(&[
             ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
-                ValueMatcher::static_string().equals("/api"),
+                ValueMatcher::static_string().try_equals("/api").unwrap(),
             ),
             ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(1),
-                ValueMatcher::static_string().equals("/path"),
+                ValueMatcher::static_string().try_equals("/path").unwrap(),
             ),
         ]);
         assert_eq!(constraints.groups().len(), 2, "should be two groups");
@@ -1053,19 +1053,19 @@ mod tests {
         let constraints = compile_argument_constraints(&[
             ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
-                ValueMatcher::static_string().equals("/api"),
+                ValueMatcher::static_string().try_equals("/api").unwrap(),
             ),
             ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
-                ValueMatcher::static_string().equals("/api"),
+                ValueMatcher::static_string().try_equals("/api").unwrap(),
             ),
             ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
-                ValueMatcher::static_string().equals("/api"),
+                ValueMatcher::static_string().try_equals("/api").unwrap(),
             ),
             ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
-                ValueMatcher::static_string().equals("/api"),
+                ValueMatcher::static_string().try_equals("/api").unwrap(),
             ),
         ]);
         assert_eq!(constraints.groups().len(), 1, "deduplicated to one group");
@@ -1143,7 +1143,7 @@ mod tests {
 
         let constraints = compile_argument_constraints(&[ArgumentConstraint::new(
             crate::api::rule::ArgumentIndex::new_unchecked(0),
-            ValueMatcher::static_string().equals("/api"),
+            ValueMatcher::static_string().try_equals("/api").unwrap(),
         )]);
 
         let root = PhysicalRoot::ConstrainedScan {

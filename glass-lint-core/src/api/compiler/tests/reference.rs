@@ -336,7 +336,7 @@ fn witnesses_are_sorted_deterministically() {
 fn constrained_scan_matches_arguments() {
     let eq = EventQuery::call_global("fetch")
         .unwrap()
-        .with_arg(0, ValueMatcher::static_string().equals("/api"))
+        .with_arg(0, ValueMatcher::static_string().try_equals("/api").unwrap())
         .unwrap();
     let decl = eq.into_query();
     let nq = normalize_query_decl(&decl).unwrap();
@@ -382,15 +382,15 @@ fn constrained_scan_matches_arguments() {
 fn argument_filter_order_produces_same_witnesses() {
     let eq_a = EventQuery::call_global("fetch")
         .unwrap()
-        .with_arg(0, ValueMatcher::static_string().equals("/api"))
+        .with_arg(0, ValueMatcher::static_string().try_equals("/api").unwrap())
         .unwrap()
-        .with_arg(1, ValueMatcher::static_string().equals("post"))
+        .with_arg(1, ValueMatcher::static_string().try_equals("post").unwrap())
         .unwrap();
     let eq_b = EventQuery::call_global("fetch")
         .unwrap()
-        .with_arg(1, ValueMatcher::static_string().equals("post"))
+        .with_arg(1, ValueMatcher::static_string().try_equals("post").unwrap())
         .unwrap()
-        .with_arg(0, ValueMatcher::static_string().equals("/api"))
+        .with_arg(0, ValueMatcher::static_string().try_equals("/api").unwrap())
         .unwrap();
 
     let decl_a = eq_a.into_query();

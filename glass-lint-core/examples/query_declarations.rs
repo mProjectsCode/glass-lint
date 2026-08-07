@@ -74,7 +74,10 @@ fn lifecycle() -> Rule {
     let lifecycle = LifecycleQuery::builder("remote element")
         .source(Ok(EventQuery::member_call_rooted("document.createElement")
             .expect("valid source")
-            .with_arg(0, ValueMatcher::static_string().equals("script"))
+            .with_arg(
+                0,
+                ValueMatcher::static_string().try_equals("script").unwrap(),
+            )
             .expect("valid source argument")))
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",

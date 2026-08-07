@@ -19,18 +19,21 @@ pub fn rule() -> Rule {
                 .source(
                     EventQuery::member_call_rooted("document.createElement")
                         .unwrap()
-                        .with_arg(0, ValueMatcher::static_string().equals("input")),
+                        .with_arg(
+                            0,
+                            ValueMatcher::static_string().try_equals("input").unwrap(),
+                        ),
                 )
                 .condition(LifecycleCondition::any_of([
                     LifecycleEvent::property_write(
                         "type",
-                        ValueMatcher::static_string().equals("file"),
+                        ValueMatcher::static_string().try_equals("file").unwrap(),
                     ),
                     Ok(LifecycleEvent::member_call("setAttribute")
                         .unwrap()
-                        .arg(0, ValueMatcher::static_string().equals("type"))
+                        .arg(0, ValueMatcher::static_string().try_equals("type").unwrap())
                         .unwrap()
-                        .arg(1, ValueMatcher::static_string().equals("file"))
+                        .arg(1, ValueMatcher::static_string().try_equals("file").unwrap())
                         .unwrap()
                         .build()),
                 ]))

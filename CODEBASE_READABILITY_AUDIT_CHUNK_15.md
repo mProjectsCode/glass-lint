@@ -174,7 +174,7 @@ variable renumbering.
 
 ### Rule authoring API
 
-#### [ ] READ-072 — Do not encode invalid value matchers as empty accepted sets
+#### [x] READ-072 — Do not encode invalid value matchers as empty accepted sets
 
 - **Severity:** High
 - **Fix Complexity:** Low
@@ -200,7 +200,11 @@ type unable to represent an accidental empty exact set, and keep trimming,
 deterministic canonicalization, alternative limits, and compile-time
 diagnostics at the authoring boundary.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the infallible `equals` constructor and migrated all
+callers to `try_equals`, preserving the existing canonicalization and error
+path. Empty exact values now remain rejected and cannot be represented as an
+`Exact(Vec::new())` matcher. Verified with the focused value-matcher tests and
+`make fmt && make ci`.
 
 #### [ ] READ-073 — Choose one error-timing contract for fluent rule builders
 

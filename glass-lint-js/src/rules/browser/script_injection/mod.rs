@@ -19,7 +19,10 @@ pub fn rule() -> Rule {
                 .source(
                     EventQuery::member_call_rooted("document.createElement")
                         .unwrap()
-                        .with_arg(0, ValueMatcher::static_string().equals("script")),
+                        .with_arg(
+                            0,
+                            ValueMatcher::static_string().try_equals("script").unwrap(),
+                        ),
                 )
                 .condition(LifecycleCondition::any_of([
                     LifecycleEvent::property_write("src", ValueMatcher::static_string()),
@@ -27,7 +30,7 @@ pub fn rule() -> Rule {
                     LifecycleEvent::property_write("textContent", ValueMatcher::static_string()),
                     Ok(LifecycleEvent::member_call("setAttribute")
                         .unwrap()
-                        .arg(0, ValueMatcher::static_string().equals("src"))
+                        .arg(0, ValueMatcher::static_string().try_equals("src").unwrap())
                         .unwrap()
                         .arg(1, ValueMatcher::static_string())
                         .unwrap()

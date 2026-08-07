@@ -56,7 +56,12 @@ fn baseline_constrained_call() {
             .query(
                 EventQuery::call_global("fetch")
                     .unwrap()
-                    .with_arg(0, ValueMatcher::static_string().equals("/api/data"))
+                    .with_arg(
+                        0,
+                        ValueMatcher::static_string()
+                            .try_equals("/api/data")
+                            .unwrap(),
+                    )
                     .unwrap()
                     .into_query(),
             )
@@ -76,7 +81,12 @@ fn baseline_constrained_call() {
             .query(
                 EventQuery::call_global("fetch")
                     .unwrap()
-                    .with_arg(0, ValueMatcher::static_string().equals("/api/data"))
+                    .with_arg(
+                        0,
+                        ValueMatcher::static_string()
+                            .try_equals("/api/data")
+                            .unwrap(),
+                    )
                     .unwrap()
                     .into_query(),
             )
@@ -136,7 +146,10 @@ fn baseline_local_lifecycle() {
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
-                .with_arg(0, ValueMatcher::static_string().equals("script")),
+                .with_arg(
+                    0,
+                    ValueMatcher::static_string().try_equals("script").unwrap(),
+                ),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
@@ -185,7 +198,10 @@ fn baseline_within_function_lifecycle() {
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
-                .with_arg(0, ValueMatcher::static_string().equals("script")),
+                .with_arg(
+                    0,
+                    ValueMatcher::static_string().try_equals("script").unwrap(),
+                ),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
@@ -241,7 +257,7 @@ fn negative_source_to_alias_no_sink() {
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
-                .with_arg(0, ValueMatcher::static_string().equals("div")),
+                .with_arg(0, ValueMatcher::static_string().try_equals("div").unwrap()),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "textContent",
@@ -277,7 +293,10 @@ fn negative_source_to_requirement_no_sink() {
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
-                .with_arg(0, ValueMatcher::static_string().equals("script")),
+                .with_arg(
+                    0,
+                    ValueMatcher::static_string().try_equals("script").unwrap(),
+                ),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
@@ -313,7 +332,10 @@ fn negative_disconnected_source_and_sink() {
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
-                .with_arg(0, ValueMatcher::static_string().equals("script")),
+                .with_arg(
+                    0,
+                    ValueMatcher::static_string().try_equals("script").unwrap(),
+                ),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
@@ -349,7 +371,10 @@ fn negative_source_wrong_arg_no_match() {
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
-                .with_arg(0, ValueMatcher::static_string().equals("script")),
+                .with_arg(
+                    0,
+                    ValueMatcher::static_string().try_equals("script").unwrap(),
+                ),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
@@ -384,7 +409,10 @@ fn negative_escaped_object_no_lifecycle() {
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
-                .with_arg(0, ValueMatcher::static_string().equals("script")),
+                .with_arg(
+                    0,
+                    ValueMatcher::static_string().try_equals("script").unwrap(),
+                ),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
@@ -420,7 +448,10 @@ fn negative_alias_to_requirement_no_sink() {
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
-                .with_arg(0, ValueMatcher::static_string().equals("script")),
+                .with_arg(
+                    0,
+                    ValueMatcher::static_string().try_equals("script").unwrap(),
+                ),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
@@ -456,7 +487,10 @@ fn negative_alias_to_sink_not_configured() {
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
-                .with_arg(0, ValueMatcher::static_string().equals("script")),
+                .with_arg(
+                    0,
+                    ValueMatcher::static_string().try_equals("script").unwrap(),
+                ),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
@@ -492,7 +526,10 @@ fn negative_requirement_to_sink_disconnected_object() {
         .source(
             EventQuery::member_call_rooted("document.createElement")
                 .unwrap()
-                .with_arg(0, ValueMatcher::static_string().equals("script")),
+                .with_arg(
+                    0,
+                    ValueMatcher::static_string().try_equals("script").unwrap(),
+                ),
         )
         .condition(LifecycleCondition::event(LifecycleEvent::property_write(
             "src",
