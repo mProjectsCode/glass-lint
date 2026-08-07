@@ -120,7 +120,94 @@ pub struct ProfileSummary {
     pub operation_counts: ProfileOperationCounts,
 }
 
-pub type ProfileOperationCounts = AnalysisOperationCounts;
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ProfileOperationCounts(AnalysisOperationCounts);
+
+impl ProfileOperationCounts {
+    pub fn new(
+        files: usize,
+        requests: usize,
+        edges: usize,
+        exports: usize,
+        scc_rounds: usize,
+        effect_projections: usize,
+        evidence: usize,
+    ) -> Self {
+        Self(AnalysisOperationCounts::new(
+            files,
+            requests,
+            edges,
+            exports,
+            scc_rounds,
+            effect_projections,
+            evidence,
+        ))
+    }
+
+    pub fn files(self) -> usize {
+        self.0.files()
+    }
+
+    pub fn requests(self) -> usize {
+        self.0.requests()
+    }
+
+    pub fn edges(self) -> usize {
+        self.0.edges()
+    }
+
+    pub fn exports(self) -> usize {
+        self.0.exports()
+    }
+
+    pub fn scc_rounds(self) -> usize {
+        self.0.scc_rounds()
+    }
+
+    pub fn effect_projections(self) -> usize {
+        self.0.effect_projections()
+    }
+
+    pub fn evidence(self) -> usize {
+        self.0.evidence()
+    }
+
+    pub fn max_live_alternatives(self) -> usize {
+        self.0.max_live_alternatives()
+    }
+
+    pub fn trace_nodes(self) -> usize {
+        self.0.trace_nodes()
+    }
+
+    pub fn trace_heads(self) -> usize {
+        self.0.trace_heads()
+    }
+
+    pub fn coalescing_comparisons(self) -> usize {
+        self.0.coalescing_comparisons()
+    }
+
+    pub fn fixed_point_iterations(self) -> usize {
+        self.0.fixed_point_iterations()
+    }
+
+    pub fn rendered_traces(self) -> usize {
+        self.0.rendered_traces()
+    }
+}
+
+impl From<AnalysisOperationCounts> for ProfileOperationCounts {
+    fn from(counts: AnalysisOperationCounts) -> Self {
+        Self(counts)
+    }
+}
+
+impl AddAssign for ProfileOperationCounts {
+    fn add_assign(&mut self, rhs: Self) {
+        self.0 += rhs.0;
+    }
+}
 
 pub(super) struct ProfileProjectRun {
     pub result: ProfileWorkloadSummary,

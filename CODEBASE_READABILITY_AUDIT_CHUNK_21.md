@@ -158,7 +158,7 @@ check, and examples).
 
 ### Metrics ownership
 
-#### [ ] READ-106 — Separate report metrics from loader and profile metrics
+#### [x] READ-106 — Separate report metrics from loader and profile metrics
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -181,7 +181,15 @@ and document each field's scope while preserving core operation semantics,
 project resource accounting, deterministic aggregation, and the existing
 report schema.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the profile-to-core type alias with an explicit
+`ProfileOperationCounts` domain wrapper. It owns profile-facing accessors,
+construction, saturating accumulation, and conversion from core report counts;
+loader and profile scopes remain separate while preserving all metric fields
+and aggregation behavior.
+
+**Verified:** `make fmt && make ci` (workspace check, clippy with warnings as
+errors, 811 core tests, doctests, E2E/rule harnesses, rules documentation
+check, and examples).
 
 ## Systemic Themes
 

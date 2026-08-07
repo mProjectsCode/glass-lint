@@ -34,7 +34,7 @@ pub(super) fn all_diagnostic_count(report: &AnalysisReport) -> usize {
 }
 
 pub(super) fn report_operation_counts(report: &AnalysisReport) -> ProfileOperationCounts {
-    report.operations()
+    report.operations().into()
 }
 
 pub(super) fn evidence_order_digest(report: &AnalysisReport) -> String {
