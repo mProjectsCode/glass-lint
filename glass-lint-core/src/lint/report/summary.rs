@@ -14,30 +14,11 @@ pub(super) fn assemble_project_report(
     diagnostics: Vec<Diagnostic>,
     outcome: &ProjectionOutcome,
 ) -> AnalysisReport {
-    let evidence = files
-        .values()
-        .map(|file| {
-            file.findings()
-                .iter()
-                .map(|finding| {
-                    finding
-                        .evidence()
-                        .traces()
-                        .iter()
-                        .map(|trace| trace.steps().len())
-                        .sum::<usize>()
-                })
-                .sum::<usize>()
-        })
-        .sum();
-    let rendered_traces = files
-        .values()
-        .flat_map(FileReport::findings)
-        .map(|finding| finding.evidence().traces().len())
-        .sum();
+    let files: Vec<FileReport> = files.into_values().collect();
+    let aggregate = AnalysisReport::aggregate(&files, &diagnostics);
 
     let mut operations = project.operation_counts();
-    operations.record_evidence(evidence);
+    operations.record_evidence(aggregate.evidence_steps());
     let metrics = outcome.metrics();
     operations.record_effect_projections(metrics.effect_projections());
     operations.record_path_metrics(
@@ -46,13 +27,13 @@ pub(super) fn assemble_project_report(
         metrics.trace_heads(),
         metrics.coalescing_comparisons(),
         metrics.fixed_point_iterations(),
-        rendered_traces,
+        aggregate.rendered_traces(),
     );
 
     AnalysisReport::new(
         REPORT_VERSION,
         env!("CARGO_PKG_VERSION").into(),
-        files.into_values().collect(),
+        files,
         diagnostics,
         operations.finish(),
         if session.is_complete() {

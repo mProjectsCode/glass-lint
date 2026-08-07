@@ -134,6 +134,13 @@ impl AnalysisReport {
         self.completion = self.completion.join(ReportCompletion::Partial);
         self.finalize()
     }
+
+    pub(crate) fn aggregate(
+        files: &[FileReport],
+        diagnostics: &[Diagnostic],
+    ) -> FinalizedReportAggregate {
+        FinalizedReportAggregate::from_parts(files, diagnostics)
+    }
 }
 
 #[cfg(test)]
@@ -162,6 +169,65 @@ pub struct AnalysisReportSummary {
     report_diagnostics: usize,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct FinalizedReportAggregate {
+    summary: AnalysisReportSummary,
+    evidence_steps: usize,
+    rendered_traces: usize,
+}
+
+impl FinalizedReportAggregate {
+    fn from_parts(files: &[FileReport], diagnostics: &[Diagnostic]) -> Self {
+        let mut aggregate = Self {
+            summary: AnalysisReportSummary {
+                files: files.len(),
+                ..AnalysisReportSummary::default()
+            },
+            ..Self::default()
+        };
+
+        for file in files {
+            aggregate.summary.findings += file.findings().len();
+            aggregate.summary.parse_diagnostics += file
+                .diagnostics()
+                .iter()
+                .filter(|diagnostic| matches!(diagnostic, Diagnostic::Parse { .. }))
+                .count();
+            aggregate.summary.file_diagnostics += file
+                .diagnostics()
+                .iter()
+                .filter(|diagnostic| matches!(diagnostic, Diagnostic::Project(_)))
+                .count();
+            for finding in file.findings() {
+                aggregate.evidence_steps += finding
+                    .evidence()
+                    .traces()
+                    .iter()
+                    .map(|trace| trace.steps().len())
+                    .sum::<usize>();
+                aggregate.rendered_traces += finding.evidence().traces().len();
+            }
+        }
+        aggregate.summary.report_diagnostics = diagnostics
+            .iter()
+            .filter(|diagnostic| matches!(diagnostic, Diagnostic::Project(_)))
+            .count();
+        aggregate
+    }
+
+    pub(crate) const fn summary(self) -> AnalysisReportSummary {
+        self.summary
+    }
+
+    pub(crate) const fn evidence_steps(self) -> usize {
+        self.evidence_steps
+    }
+
+    pub(crate) const fn rendered_traces(self) -> usize {
+        self.rendered_traces
+    }
+}
+
 impl AnalysisReportSummary {
     pub fn files(&self) -> usize {
         self.files
@@ -186,26 +252,6 @@ impl AnalysisReportSummary {
 
 impl AnalysisReport {
     pub fn summary(&self) -> AnalysisReportSummary {
-        AnalysisReportSummary {
-            files: self.files.len(),
-            findings: self.files.iter().map(|f| f.findings().len()).sum(),
-            parse_diagnostics: self
-                .files
-                .iter()
-                .flat_map(|f| f.diagnostics().iter())
-                .filter(|d| matches!(d, Diagnostic::Parse { .. }))
-                .count(),
-            file_diagnostics: self
-                .files
-                .iter()
-                .flat_map(|f| f.diagnostics().iter())
-                .filter(|d| matches!(d, Diagnostic::Project(_)))
-                .count(),
-            report_diagnostics: self
-                .diagnostics
-                .iter()
-                .filter(|d| matches!(d, Diagnostic::Project(_)))
-                .count(),
-        }
+        Self::aggregate(&self.files, &self.diagnostics).summary()
     }
 }

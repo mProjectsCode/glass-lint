@@ -203,7 +203,7 @@ the caller-facing resolution contract. Verified with `make fmt && make ci`.
   deterministic counts. Do not fold wall-clock timing or budget status into
   this count object.
 
-#### [ ] READ-006 — Centralize report-summary aggregation
+#### [x] READ-006 — Centralize report-summary aggregation
 
 - **Category:** DEDUPLICATE
 - **Location:** `glass-lint-core/src/project/types/report/analysis_report.rs:187-210`,
@@ -231,6 +231,13 @@ the caller-facing resolution contract. Verified with `make fmt && make ci`.
   and report-level project diagnostics; keep summary computation cheap and
   deterministic; do not make the immutable public report store redundant
   mutable counters without an invariant owner.
+
+**Fix Applied:** `FinalizedReportAggregate` now owns one private traversal of
+the finalized file/diagnostic tree, including findings, diagnostic categories,
+evidence steps, and rendered traces. `AnalysisReport::summary` and report
+assembly project their views from that aggregate, while projection metrics
+remain owned by the operation-count builder. Verified with `make fmt && make
+ci`.
 
 #### [ ] READ-007 — Correct the `SourceTable` ordering contract
 
