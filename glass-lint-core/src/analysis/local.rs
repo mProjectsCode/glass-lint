@@ -243,7 +243,6 @@ impl SharedSemanticArtifact {
 /// One entry in the artifact cache, retaining the full key for collision
 /// verification. A fingerprint match is not a hit until the full key matches.
 struct CacheEntry {
-    fingerprint: ArtifactFingerprint,
     key: ArtifactCacheKey,
     artifact: SharedSemanticArtifact,
 }
@@ -263,21 +262,19 @@ pub struct ArtifactCacheHandle(Arc<Mutex<ArtifactCache>>);
 
 impl ArtifactCacheHandle {
     fn get(&self, key: &ArtifactCacheKey) -> Option<SharedSemanticArtifact> {
-        let fp = key.fingerprint();
         let cache = self
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        cache.get(fp, key)
+        cache.get(key)
     }
 
     fn insert(&self, key: ArtifactCacheKey, artifact: SharedSemanticArtifact) -> bool {
-        let fp = key.fingerprint();
         let mut cache = self
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        cache.insert(fp, key, artifact)
+        cache.insert(key, artifact)
     }
 
     /// Reconstruct a cache hit with the current source's path and line index.
@@ -311,31 +308,22 @@ impl ArtifactCache {
     /// Look up by fingerprint then verify full key. Scans the deque linearly;
     /// at the fixed capacity of 64 entries this is faster than maintaining
     /// separate index structures.
-    fn get(
-        &self,
-        fp: ArtifactFingerprint,
-        key: &ArtifactCacheKey,
-    ) -> Option<SharedSemanticArtifact> {
+    fn get(&self, key: &ArtifactCacheKey) -> Option<SharedSemanticArtifact> {
         self.entries
             .iter()
-            .find(|entry| entry.fingerprint == fp && entry.key == *key)
+            .find(|entry| entry.key.fingerprint() == key.fingerprint() && entry.key == *key)
             .map(|entry| entry.artifact.clone())
     }
 
     /// Insert or replace an artifact. Returns whether the FIFO policy evicted
     /// the oldest entry. An exact-match replacement does not touch the FIFO
     /// and never counts as eviction.
-    fn insert(
-        &mut self,
-        fp: ArtifactFingerprint,
-        key: ArtifactCacheKey,
-        artifact: SharedSemanticArtifact,
-    ) -> bool {
+    fn insert(&mut self, key: ArtifactCacheKey, artifact: SharedSemanticArtifact) -> bool {
         // Try to replace an exact existing key first.
         if let Some(entry) = self
             .entries
             .iter_mut()
-            .find(|entry| entry.fingerprint == fp && entry.key == key)
+            .find(|entry| entry.key.fingerprint() == key.fingerprint() && entry.key == key)
         {
             entry.artifact = artifact;
             return false;
@@ -345,11 +333,7 @@ impl ArtifactCache {
         if evicted {
             self.entries.pop_front();
         }
-        self.entries.push_back(CacheEntry {
-            fingerprint: fp,
-            key,
-            artifact,
-        });
+        self.entries.push_back(CacheEntry { key, artifact });
         evicted
     }
 }
@@ -543,7 +527,6 @@ mod tests {
     fn artifact_cache_insert_then_get_hit() {
         let mut cache = ArtifactCache::default();
         let key = test_key("x = 1;", "1.0.0");
-        let fp = key.fingerprint();
         let artifact = SharedSemanticArtifact {
             semantic: Arc::new(SemanticArtifact::from_lowering(
                 crate::analysis::facts::SemanticFacts::default(),
@@ -554,9 +537,9 @@ mod tests {
             )),
             source_index: Arc::new(SourceLineIndex::new("")),
         };
-        assert!(cache.get(fp, &key).is_none());
-        cache.insert(fp, key.clone(), artifact);
-        let retrieved = cache.get(fp, &key);
+        assert!(cache.get(&key).is_none());
+        cache.insert(key.clone(), artifact);
+        let retrieved = cache.get(&key);
         assert!(retrieved.is_some());
     }
 
@@ -567,7 +550,6 @@ mod tests {
         for i in 0..ArtifactCache::MAX_ENTRIES + 5 {
             let text = format!("x = {i};");
             let key = test_key(&text, "1.0.0");
-            let fp = key.fingerprint();
             let artifact = SharedSemanticArtifact {
                 semantic: Arc::new(SemanticArtifact::from_lowering(
                     crate::analysis::facts::SemanticFacts::default(),
@@ -578,20 +560,20 @@ mod tests {
                 )),
                 source_index: Arc::new(SourceLineIndex::new("")),
             };
-            let evicted = cache.insert(fp, key.clone(), artifact);
-            keys.push((fp, key));
+            let evicted = cache.insert(key.clone(), artifact);
+            keys.push(key);
             if i >= ArtifactCache::MAX_ENTRIES {
                 assert!(evicted, "insert {i} should evict oldest");
             }
         }
-        let (oldest_fp, oldest_key) = &keys[0];
+        let oldest_key = &keys[0];
         assert!(
-            cache.get(*oldest_fp, oldest_key).is_none(),
+            cache.get(oldest_key).is_none(),
             "oldest entry should be evicted"
         );
-        let (newest_fp, newest_key) = keys.last().unwrap();
+        let newest_key = keys.last().unwrap();
         assert!(
-            cache.get(*newest_fp, newest_key).is_some(),
+            cache.get(newest_key).is_some(),
             "newest entry should be present"
         );
     }
@@ -600,7 +582,6 @@ mod tests {
     fn artifact_cache_replacement_does_not_evict() {
         let mut cache = ArtifactCache::default();
         let key = test_key("x = 1;", "1.0.0");
-        let fp = key.fingerprint();
         let artifact_a = SharedSemanticArtifact {
             semantic: Arc::new(SemanticArtifact::from_lowering(
                 crate::analysis::facts::SemanticFacts::default(),
@@ -621,8 +602,8 @@ mod tests {
             )),
             source_index: Arc::new(SourceLineIndex::new("")),
         };
-        cache.insert(fp, key.clone(), artifact_a);
-        let evicted = cache.insert(fp, key, artifact_b);
+        cache.insert(key.clone(), artifact_a);
+        let evicted = cache.insert(key, artifact_b);
         assert!(!evicted, "replacing exact key should not evict");
     }
 
@@ -631,7 +612,6 @@ mod tests {
         let mut cache = ArtifactCache::default();
         let key_a = test_key("x = 1;", "1.0.0");
         let key_b = test_key("y = 2;", "1.0.0");
-        let fp_a = key_a.fingerprint();
         let artifact = SharedSemanticArtifact {
             semantic: Arc::new(SemanticArtifact::from_lowering(
                 crate::analysis::facts::SemanticFacts::default(),
@@ -642,10 +622,7 @@ mod tests {
             )),
             source_index: Arc::new(SourceLineIndex::new("")),
         };
-        cache.insert(fp_a, key_a, artifact);
-        assert!(
-            cache.get(key_b.fingerprint(), &key_b).is_none(),
-            "different key should not hit"
-        );
+        cache.insert(key_a, artifact);
+        assert!(cache.get(&key_b).is_none(), "different key should not hit");
     }
 }

@@ -15,7 +15,7 @@ normalization/orchestration functions that combine policy phases.
 
 ### Cache identity ownership
 
-#### [ ] READ-010 — Make cache identity own its fingerprint representation
+#### [x] READ-010 — Make cache identity own its fingerprint representation
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -44,7 +44,10 @@ established. Preserve full-key collision verification, source-independent
 semantic reuse, engine-version invalidation, and exclusion of downstream rule,
 evidence, link, and flow limits from local identity.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Cache lookup/insertion now pass only `ArtifactCacheKey`; the
+cache entry no longer stores or receives a parallel fingerprint. The key’s
+canonical constructor remains the sole fingerprint derivation point, and
+lookup still verifies both the fingerprint and complete key inputs.
 
 ### Lowering completion policy
 
