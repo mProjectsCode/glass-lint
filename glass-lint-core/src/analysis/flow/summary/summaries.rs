@@ -21,7 +21,7 @@ pub(in crate::analysis::flow) struct FunctionSummaries<'a> {
     by_id: FunctionTable<FunctionSummary>,
     paths: SummaryPathStore<'a>,
     completion: SummaryCompletion,
-    total_sinks: usize,
+    sink_budget: SummarySinkBudget,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -35,6 +35,33 @@ enum SummaryExhaustion {
 enum SummaryCompletion {
     Complete,
     Exhausted(SummaryExhaustion),
+}
+
+#[derive(Debug, Default)]
+struct SummarySinkBudget {
+    retained: usize,
+}
+
+impl SummarySinkBudget {
+    fn admit(&mut self, budget: &mut Budget, inserted: usize) -> Result<(), SummaryCompletion> {
+        for _ in 0..inserted {
+            if !budget.try_push() {
+                return Err(SummaryCompletion::Exhausted(SummaryExhaustion::Budget));
+            }
+        }
+        let Some(retained) = self.retained.checked_add(inserted) else {
+            return Err(SummaryCompletion::Exhausted(
+                SummaryExhaustion::SinkCapacity,
+            ));
+        };
+        if retained > MAX_SUMMARY_SINKS {
+            return Err(SummaryCompletion::Exhausted(
+                SummaryExhaustion::SinkCapacity,
+            ));
+        }
+        self.retained = retained;
+        Ok(())
+    }
 }
 
 impl SummaryCompletion {
@@ -76,7 +103,7 @@ impl<'a> FunctionSummaries<'a> {
             by_id: FunctionTable::new(stream.function_count()),
             paths: SummaryPathStore::new(stream.paths()),
             completion: SummaryCompletion::Complete,
-            total_sinks: 0,
+            sink_budget: SummarySinkBudget::default(),
         };
         summaries.collect_facts(effects, budget);
         if !summaries.completion.is_exhausted() {
@@ -141,15 +168,8 @@ impl<'a> FunctionSummaries<'a> {
                     let added = summary
                         .collect_sinks_for_call(stream, plan, &mut self.paths, call_id)
                         .inserted();
-                    for _ in 0..added {
-                        if !budget.try_push() {
-                            self.exhaust(SummaryExhaustion::Budget);
-                            return;
-                        }
-                    }
-                    self.total_sinks += added;
-                    if self.total_sinks > MAX_SUMMARY_SINKS {
-                        self.exhaust(SummaryExhaustion::SinkCapacity);
+                    if let Err(completion) = self.sink_budget.admit(budget, added) {
+                        self.completion = completion;
                         return;
                     }
                 }
@@ -193,24 +213,17 @@ impl<'a> FunctionSummaries<'a> {
                     args,
                     &self.paths,
                 ) {
-                    if self.total_sinks >= MAX_SUMMARY_SINKS {
-                        return Err(SummaryCompletion::Exhausted(
-                            SummaryExhaustion::SinkCapacity,
-                        ));
-                    }
                     projections.push(proj);
                 }
             }
         }
-        let mut inserted = 0;
+        let mut inserted_any = false;
         for proj in projections {
-            if !budget.try_push() {
-                return Err(SummaryCompletion::Exhausted(SummaryExhaustion::Budget));
-            }
-            inserted += caller_summary.add_sink(proj).inserted();
+            let inserted = caller_summary.add_sink(proj).inserted();
+            inserted_any |= inserted > 0;
+            self.sink_budget.admit(budget, inserted)?;
         }
-        self.total_sinks += inserted;
-        Ok(inserted > 0)
+        Ok(inserted_any)
     }
 }
 

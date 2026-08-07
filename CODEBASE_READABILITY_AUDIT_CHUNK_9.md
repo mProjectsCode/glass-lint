@@ -57,7 +57,7 @@ path ordering.
 
 ### Summary sink admission
 
-#### [ ] READ-043 — Centralize bounded summary-sink admission
+#### [x] READ-043 — Centralize bounded summary-sink admission
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -92,7 +92,10 @@ choreography. Preserve the current deterministic final sort, the hard
 `MAX_SUMMARY_SINKS` bound, and the rule that any exhausted summary result is
 cleared rather than treated as a complete witness.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a private `SummarySinkBudget` that owns global retained
+sink counting, per-insert budget charging, and the hard sink-capacity outcome.
+Direct and propagated sink collection now use the same admission operation;
+local `SinkSet` deduplication and deterministic finalization remain separate.
 
 ### Summary collection lifecycle
 
