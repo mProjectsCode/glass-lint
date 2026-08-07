@@ -43,6 +43,14 @@ impl From<&AnalysisLimits> for LocalLoweringConfig {
     }
 }
 
+impl LocalLoweringConfig {
+    fn write_fingerprint(self, fingerprint: &mut Fingerprint) {
+        fingerprint.write(&self.syntax_depth.to_le_bytes());
+        fingerprint.write(&self.semantic_operations.to_le_bytes());
+        fingerprint.write(&self.effect_operations.to_le_bytes());
+    }
+}
+
 // ---- Deterministic hasher for cache fingerprints -------------------------
 
 /// XXH3 hash that is deterministic across processes (fixed seed).
@@ -75,9 +83,7 @@ impl ArtifactFingerprint {
         fp.write(normalization_mode.as_bytes());
         fp.write(&[0u8]); // separator
         environment.write_fingerprint_bytes(&mut fp);
-        fp.write(&limits.syntax_depth.to_le_bytes());
-        fp.write(&limits.semantic_operations.to_le_bytes());
-        fp.write(&limits.effect_operations.to_le_bytes());
+        limits.write_fingerprint(&mut fp);
         fp.write(engine_version.as_bytes());
         Self(fp.into_raw())
     }
@@ -247,6 +253,12 @@ struct CacheEntry {
     artifact: SharedSemanticArtifact,
 }
 
+impl CacheEntry {
+    fn matches(&self, key: &ArtifactCacheKey) -> bool {
+        self.key.fingerprint() == key.fingerprint() && self.key == *key
+    }
+}
+
 /// Bounded FIFO artifact cache. Entries are stored in insertion order in a
 /// single `VecDeque`, keeping the structure small enough for linear scan
 /// (max 64 entries). No internal index synchronization is required.
@@ -311,7 +323,7 @@ impl ArtifactCache {
     fn get(&self, key: &ArtifactCacheKey) -> Option<SharedSemanticArtifact> {
         self.entries
             .iter()
-            .find(|entry| entry.key.fingerprint() == key.fingerprint() && entry.key == *key)
+            .find(|entry| entry.matches(key))
             .map(|entry| entry.artifact.clone())
     }
 
@@ -320,11 +332,7 @@ impl ArtifactCache {
     /// and never counts as eviction.
     fn insert(&mut self, key: ArtifactCacheKey, artifact: SharedSemanticArtifact) -> bool {
         // Try to replace an exact existing key first.
-        if let Some(entry) = self
-            .entries
-            .iter_mut()
-            .find(|entry| entry.key.fingerprint() == key.fingerprint() && entry.key == key)
-        {
+        if let Some(entry) = self.entries.iter_mut().find(|entry| entry.matches(&key)) {
             entry.artifact = artifact;
             return false;
         }

@@ -165,7 +165,11 @@ key verification after fingerprint comparison. Keep source text, language,
 normalization mode, environment, all artifact-affecting limits, and engine
 version in the identity, and preserve deterministic FIFO replacement.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `LocalLoweringConfig::write_fingerprint` now owns the
+artifact-affecting limit encoding, and `CacheEntry::matches` owns the
+fingerprint-plus-full-key collision check used by both cache lookup and
+replacement. Source, language, normalization, environment, and engine-version
+identity dimensions remain unchanged. Verified with `make fmt && make ci`.
 
 ### READ-005 — Status diagnostics expose a positional split and a redundant scope argument
 
