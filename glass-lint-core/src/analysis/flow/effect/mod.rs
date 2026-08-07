@@ -326,7 +326,6 @@ impl FunctionEffect {
         receiver: ValueId,
         property: Option<&str>,
         value_is_precise: bool,
-        stream: &FactStream<Frozen>,
         budget: &mut Budget,
     ) {
         if !budget.try_push() {
@@ -335,7 +334,7 @@ impl FunctionEffect {
         }
         self.uses.push(EffectUse::PropertyWrite {
             event,
-            receiver: self.parameter_for(receiver, stream),
+            receiver: self.parameter_for(receiver),
             receiver_value: receiver,
             property: property.map(SmolStr::new),
             value_is_precise,
@@ -400,12 +399,7 @@ impl FunctionEffect {
         }
     }
 
-    fn record_call(
-        &mut self,
-        fact: &SemanticFact,
-        stream: &FactStream<Frozen>,
-        budget: &mut Budget,
-    ) {
+    fn record_call(&mut self, fact: &SemanticFact, budget: &mut Budget) {
         let FactPayload::Call {
             args,
             result,
@@ -420,7 +414,7 @@ impl FunctionEffect {
         let effective_args = unwrap
             .as_deref()
             .map_or(args.as_slice(), |u| u.effective_args.as_slice());
-        let arguments = self.build_effect_arguments(effective_args, stream);
+        let arguments = self.build_effect_arguments(effective_args);
         let call_id = EffectCallId::new(self.calls.len());
         for argument in &arguments {
             if !budget.try_push() {
@@ -441,7 +435,7 @@ impl FunctionEffect {
         } else {
             self.invalid = true;
         }
-        if let Some(receiver) = receiver.and_then(|value| self.parameter_for(value, stream)) {
+        if let Some(receiver) = receiver.and_then(|value| self.parameter_for(value)) {
             if budget.try_push() {
                 self.uses.push(EffectUse::CallReceiver {
                     event: fact.id,
@@ -454,11 +448,7 @@ impl FunctionEffect {
         self.value_roots.entry(*result).or_insert(*result);
     }
 
-    fn build_effect_arguments(
-        &self,
-        call_args: &[CallArgInfo],
-        stream: &FactStream<Frozen>,
-    ) -> Vec<EffectArgument> {
+    fn build_effect_arguments(&self, call_args: &[CallArgInfo]) -> Vec<EffectArgument> {
         call_args
             .iter()
             .enumerate()
@@ -466,7 +456,7 @@ impl FunctionEffect {
                 index,
                 value: argument.base_value,
                 path: argument.base_path,
-                parameter: self.parameter_for(argument.base_value, stream),
+                parameter: self.parameter_for(argument.base_value),
             })
             .collect()
     }
@@ -487,7 +477,7 @@ impl FunctionEffect {
         }
     }
 
-    fn parameter_for(&self, value: ValueId, _stream: &FactStream<Frozen>) -> Option<ParameterRef> {
+    fn parameter_for(&self, value: ValueId) -> Option<ParameterRef> {
         let root = self.value_roots.get(&value).copied().unwrap_or(value);
         if root == ValueId::UNKNOWN {
             return None;
@@ -511,10 +501,9 @@ impl FunctionEffect {
         &mut self,
         value: ValueId,
         value_provenance: &HashMap<ValueId, SymbolCallProvenance>,
-        stream: &FactStream<Frozen>,
         budget: &mut Budget,
     ) {
-        let parameter = self.parameter_for(value, stream);
+        let parameter = self.parameter_for(value);
         if parameter.is_none()
             && (value == ValueId::UNKNOWN || !self.value_roots.contains_key(&value))
         {
@@ -576,7 +565,7 @@ impl FunctionEffects {
     pub(in crate::analysis) fn collect(stream: &FactStream<Frozen>, limit: usize) -> Self {
         let mut builder = FunctionEffectsBuilder::new(stream, limit);
         for fact in stream.facts() {
-            builder.consume(fact, stream);
+            builder.consume(fact);
         }
         builder.finish()
     }
@@ -588,16 +577,18 @@ impl FunctionEffects {
 /// into occurrence indexes. Keeping construction separate from the immutable
 /// `FunctionEffects` value makes the shared derived pass explicit without
 /// exposing either consumer's storage.
-pub(in crate::analysis) struct FunctionEffectsBuilder {
+pub(in crate::analysis) struct FunctionEffectsBuilder<'stream> {
+    stream: &'stream FactStream<Frozen>,
     by_id: FunctionTable<FunctionEffect>,
     budget: Budget,
     value_provenance: HashMap<ValueId, SymbolCallProvenance>,
     enabled: bool,
 }
 
-impl FunctionEffectsBuilder {
-    pub(in crate::analysis) fn new(stream: &FactStream<Frozen>, limit: usize) -> Self {
+impl<'stream> FunctionEffectsBuilder<'stream> {
+    pub(in crate::analysis) fn new(stream: &'stream FactStream<Frozen>, limit: usize) -> Self {
         let mut builder = Self {
+            stream,
             by_id: FunctionTable::new(stream.function_count()),
             budget: Budget::new(limit),
             value_provenance: HashMap::new(),
@@ -620,11 +611,7 @@ impl FunctionEffectsBuilder {
         builder
     }
 
-    pub(in crate::analysis) fn consume(
-        &mut self,
-        fact: &SemanticFact,
-        stream: &FactStream<Frozen>,
-    ) {
+    pub(in crate::analysis) fn consume(&mut self, fact: &SemanticFact) {
         if !self.enabled {
             return;
         }
@@ -637,7 +624,7 @@ impl FunctionEffectsBuilder {
             if !self.by_id.contains(*id) && !self.budget.try_push() {
                 return;
             }
-            let params = stream.function_parameters(*id);
+            let params = self.stream.function_parameters(*id);
             let _ = self.by_id.insert(
                 *id,
                 FunctionEffect {
@@ -691,14 +678,13 @@ impl FunctionEffectsBuilder {
             } => effect.record_property_write(
                 fact.id,
                 *receiver,
-                property.and_then(|id| stream.resolve_name(id)),
+                property.and_then(|id| self.stream.resolve_name(id)),
                 *value_is_precise,
-                stream,
                 &mut self.budget,
             ),
-            FactPayload::Call { .. } => effect.record_call(fact, stream, &mut self.budget),
+            FactPayload::Call { .. } => effect.record_call(fact, &mut self.budget),
             FactPayload::Return { value, .. } => {
-                effect.record_return(*value, &self.value_provenance, stream, &mut self.budget);
+                effect.record_return(*value, &self.value_provenance, &mut self.budget);
             }
             _ => {}
         }

@@ -14,7 +14,7 @@ stream and expose multiple lifecycle modes.
 
 ### Effect extraction ownership
 
-#### [ ] READ-005 — Make the effect builder own its fact-stream context
+#### [x] READ-005 — Make the effect builder own its fact-stream context
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -40,7 +40,11 @@ established. Preserve the shared fact pass, artifact-local identities,
 invalid-effect fail-closed behavior, budget accounting, and the rule-neutral
 effect model.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `FunctionEffectsBuilder` now borrows and owns its frozen
+fact-stream context for the construction lifetime. Removed repeated stream
+arguments from effect consumption and recording, including the unused
+`parameter_for` argument, while preserving bounded effect collection and
+fail-closed behavior. Verified with `make fmt && make ci`.
 
 ### Reversible local state
 
