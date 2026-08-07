@@ -7,6 +7,24 @@ use crate::analysis::{
 };
 
 impl ParameterBinding {
+    pub(super) fn accepts_invocation_projection(
+        &self,
+        stream: &FactStream<Frozen>,
+        args: &[CallArgInfo],
+        paths: &SummaryPathStore<'_>,
+    ) -> bool {
+        if self.is_rest() {
+            return true;
+        }
+        if self.parameter_index() >= args.len() {
+            return self.default_value().is_some();
+        }
+        if self.path().is_empty() {
+            return true;
+        }
+        self.project_argument(stream, args, paths).is_some() || self.default_value().is_some()
+    }
+
     pub(in crate::analysis::flow) fn matches_sink_path(
         &self,
         sink_path: SummaryPathId,

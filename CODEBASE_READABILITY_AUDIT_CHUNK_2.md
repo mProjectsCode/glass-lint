@@ -145,7 +145,7 @@ semantics are distinct.
 
 ### Function summary compatibility
 
-#### [ ] READ-009 — Separate invocation arity from parameter-path projection
+#### [x] READ-009 — Separate invocation arity from parameter-path projection
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -170,7 +170,10 @@ Preserve rejection of spread and unknown values, required-parameter/default
 semantics, rest-parameter paths, dynamic or invalid paths, and the rule that
 unsupported projection cannot establish a flow witness.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved spread, arity, and known-argument checks into
+`FunctionSignature::accepts_call_shape`; `ParameterBinding` now owns the
+fail-closed default/path projection check. Summary compatibility composes the
+two contracts without changing rest or unsupported-path semantics.
 
 ## Systemic Themes
 

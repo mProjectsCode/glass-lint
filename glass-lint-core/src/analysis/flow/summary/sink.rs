@@ -132,6 +132,17 @@ impl FunctionSignature {
             parameters.iter().any(ParameterBinding::is_rest),
         )
     }
+
+    fn accepts_call_shape(&self, args: &[CallArgInfo]) -> bool {
+        if args.iter().any(|argument| argument.spread)
+            || (!self.has_rest && args.len() > self.parameter_count)
+        {
+            return false;
+        }
+        args.iter()
+            .take(self.parameter_count)
+            .all(|argument| argument.value != ValueId::UNKNOWN)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -203,37 +214,11 @@ impl FunctionSummary {
         args: &[CallArgInfo],
         paths: &SummaryPathStore<'_>,
     ) -> bool {
-        if args.iter().any(|argument| argument.spread) {
-            return false;
-        }
-        if !self.signature.has_rest && args.len() > self.signature.parameter_count {
-            return false;
-        }
-        for argument in args.iter().take(self.signature.parameter_count) {
-            if argument.value == ValueId::UNKNOWN {
-                return false;
-            }
-        }
-        for parameter in self.parameter_bindings(stream) {
-            if parameter.is_rest() || parameter.parameter_index() >= args.len() {
-                if parameter.parameter_index() >= args.len()
-                    && parameter.default_value().is_none()
-                    && !parameter.is_rest()
-                {
-                    return false;
-                }
-                continue;
-            }
-            if parameter.path().is_empty() {
-                continue;
-            }
-            if parameter.project_argument(stream, args, paths).is_none()
-                && parameter.default_value().is_none()
-            {
-                return false;
-            }
-        }
-        true
+        self.signature.accepts_call_shape(args)
+            && self
+                .parameter_bindings(stream)
+                .iter()
+                .all(|parameter| parameter.accepts_invocation_projection(stream, args, paths))
     }
 }
 
