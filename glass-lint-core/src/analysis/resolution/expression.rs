@@ -115,7 +115,7 @@ impl Resolver<'_> {
         })
     }
 
-    pub(in crate::analysis) fn scope_at(&self, span: swc_common::Span) -> ScopeId {
+    pub(in crate::analysis) fn scope_at(&self, span: swc_common::Span) -> Option<ScopeId> {
         self.scopes.scope_at(span)
     }
 

@@ -57,7 +57,7 @@ conversion, and the fact that names remain local to one artifact.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-063 — Represent invalid scope queries separately from the program root
+#### [x] READ-063 — Represent invalid scope queries separately from the program root
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -90,7 +90,11 @@ interpretation after migration. Preserve ordinary root queries for valid
 program spans, deterministic out-of-range handling, structural diagnostics,
 and typed unavailable results that cannot establish a definite witness.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Scope lookup now returns `Option<ScopeId>`: invalid
+structural shapes propagate `None`, while valid out-of-range spans retain the
+program-root fallback. Binding, function, rooted, fact, and dynamic-lookup
+callers propagate or fail closed on unavailable scope identity instead of
+resolving against a synthetic root.
 
 #### [x] READ-064 — Seal mutation-index construction before exposing ordered queries
 

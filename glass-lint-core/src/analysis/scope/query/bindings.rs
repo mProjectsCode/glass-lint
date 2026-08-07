@@ -168,7 +168,9 @@ impl FrozenScopeGraph {
 
     /// Whether `with` or prior unshadowed `eval` invalidates lookup here.
     pub(in crate::analysis) fn has_dynamic_lookup_at(&self, span: Span) -> bool {
-        let scope = self.scope_at(span);
+        let Some(scope) = self.scope_at(span) else {
+            return true;
+        };
         self.scope_or_ancestor_has_kind(scope, ScopeKind::Dynamic)
             || self.has_prior_eval(scope, span)
     }

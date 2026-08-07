@@ -50,7 +50,7 @@ impl FrozenScopeGraph {
         name: &str,
         span: Span,
     ) -> Option<FunctionId> {
-        let mut scope = self.scope_at(span);
+        let mut scope = self.scope_at(span)?;
         loop {
             if let Some(name) = self.name_id(name)
                 && let Some(function) = self.function_binding(scope, name)

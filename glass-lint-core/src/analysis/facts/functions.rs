@@ -51,7 +51,9 @@ impl FactBuilder<'_, '_> {
         parameters: impl IntoIterator<Item = (usize, Pat)>,
         boundary: FunctionBoundary,
     ) {
-        let scope = self.scope_at(span);
+        let Some(scope) = self.scope_at(span) else {
+            return;
+        };
         let id = self.resolver.function_scope_at(scope);
         self.traversal.set_function(id);
         if boundary == FunctionBoundary::Enter {

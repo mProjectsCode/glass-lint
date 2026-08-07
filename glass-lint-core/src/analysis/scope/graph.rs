@@ -173,7 +173,7 @@ impl ScopeGraph {
 
     // -- Lexical-scope helpers on ScopeGraph --
 
-    pub(in crate::analysis) fn scope_at(&self, span: Span) -> ScopeId {
+    pub(in crate::analysis) fn scope_at(&self, span: Span) -> Option<ScopeId> {
         self.data.scopes.scope_at(span, self.scope_shape_valid)
     }
 
@@ -274,7 +274,7 @@ impl ScopeGraph {
     ) -> Option<(ScopeId, &BindingProvenance)> {
         let name_id = self.name_id(name)?;
         self.data
-            .binding_with_scope_at(name_id, self.scope_at(span))
+            .binding_with_scope_at(name_id, self.scope_at(span)?)
     }
 
     /// Build a stable key for a name, using a global root when unbound.
@@ -370,7 +370,7 @@ impl FrozenScopeGraph {
         self.data.scopes.scope_span(scope)
     }
 
-    pub(in crate::analysis) fn scope_at(&self, span: Span) -> ScopeId {
+    pub(in crate::analysis) fn scope_at(&self, span: Span) -> Option<ScopeId> {
         self.data.scopes.scope_at(span, self.scope_shape_valid)
     }
 
@@ -383,7 +383,7 @@ impl FrozenScopeGraph {
         name: NameId,
         span: Span,
     ) -> Option<(ScopeId, &BindingProvenance)> {
-        self.data.binding_with_scope_at(name, self.scope_at(span))
+        self.data.binding_with_scope_at(name, self.scope_at(span)?)
     }
 
     pub(in crate::analysis) fn parameter_alias_for_scope(

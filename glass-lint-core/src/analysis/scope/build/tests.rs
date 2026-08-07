@@ -184,7 +184,7 @@ fn divergence_on_extra_scope_fails_closed() {
 }
 
 #[test]
-fn frozen_scope_queries_fall_back_to_root_after_shape_mismatch() {
+fn frozen_scope_queries_fail_closed_after_shape_mismatch() {
     let parsed =
         crate::parse_test_source("value;", "frozen-divergence.js").expect("source should parse");
     let span = parsed.program.span();
@@ -196,7 +196,7 @@ fn frozen_scope_queries_fall_back_to_root_after_shape_mismatch() {
 
     let scoped = collector.freeze(&crate::Environment::default());
     assert!(scoped.issues.contains(&ScopeCollectionIssue::ShapeMismatch));
-    assert_eq!(scoped.graph.scope_at(span), ScopeId::from_test(0));
+    assert_eq!(scoped.graph.scope_at(span), None);
 }
 
 #[test]

@@ -11,7 +11,7 @@ use crate::analysis::model::scope::{
 pub(super) struct LexicalScopeIndex {
     scopes: LexicalScopes,
     scopes_by_start: Vec<ScopeId>,
-    last_scope_query: Cell<Option<(Span, ScopeId)>>,
+    last_scope_query: Cell<Option<(Span, Option<ScopeId>)>>,
 }
 
 impl From<LexicalScopes> for LexicalScopeIndex {
@@ -46,9 +46,9 @@ impl LexicalScopeIndex {
         self.scopes.get(scope)?.binding(name)
     }
 
-    pub(super) fn scope_at(&self, span: Span, scope_shape_valid: bool) -> ScopeId {
+    pub(super) fn scope_at(&self, span: Span, scope_shape_valid: bool) -> Option<ScopeId> {
         if !scope_shape_valid {
-            return self.scopes.program_scope().unwrap_or_default();
+            return None;
         }
         if let Some((cached_span, scope)) = self.last_scope_query.get()
             && cached_span == span
@@ -60,7 +60,7 @@ impl LexicalScopeIndex {
         scope
     }
 
-    fn find_scope_at(&self, span: Span) -> ScopeId {
+    fn find_scope_at(&self, span: Span) -> Option<ScopeId> {
         let position = self.scopes_by_start.partition_point(|index| {
             self.scopes
                 .get(*index)
@@ -70,7 +70,7 @@ impl LexicalScopeIndex {
             .checked_sub(1)
             .map(|index| self.scopes_by_start[index])
         else {
-            return self.scopes.program_scope().unwrap_or_default();
+            return self.scopes.program_scope();
         };
         while !self
             .scopes
@@ -78,11 +78,11 @@ impl LexicalScopeIndex {
             .is_some_and(|scope| scope.contains(span))
         {
             let Some(parent) = self.scopes.get(scope).and_then(LexicalScope::parent) else {
-                return self.scopes.program_scope().unwrap_or_default();
+                return self.scopes.program_scope();
             };
             scope = parent;
         }
-        scope
+        Some(scope)
     }
 
     pub(super) fn scope_ids(&self) -> impl Iterator<Item = ScopeId> + '_ {

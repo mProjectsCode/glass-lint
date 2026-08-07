@@ -283,7 +283,7 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
         }
     }
 
-    fn scope_at(&self, span: Span) -> ScopeId {
+    fn scope_at(&self, span: Span) -> Option<ScopeId> {
         self.resolver.scope_at(span)
     }
 
@@ -325,7 +325,9 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
         if self.resolver.budget.exhausted() {
             return;
         }
-        let scope = self.scope_at(span);
+        let Some(scope) = self.scope_at(span) else {
+            return;
+        };
         let normalized_span = if span.is_dummy() {
             match &payload {
                 FactPayload::Call { callee_span, .. }
