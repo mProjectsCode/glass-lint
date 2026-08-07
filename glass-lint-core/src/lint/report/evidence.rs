@@ -9,7 +9,7 @@ use crate::{
         MatchedCapability, RuleIndex,
     },
     diagnostic::SourceLineIndex,
-    lint::report::ReportAssembly,
+    lint::report::{ProjectReportSession, ReportAssembly},
     project::{
         EvidenceRole, EvidenceStep, EvidenceTrace, EvidenceTraces, FileReport, Finding,
         MatchCertainty, ModuleId, ProjectRelativePath, SourceLocation,
@@ -82,6 +82,7 @@ impl FindingGroup {
 pub(super) fn populate_project_files(
     assembly: &ReportAssembly<'_>,
     project: &ProjectSemanticModel,
+    session: &ProjectReportSession,
     classifications: &BTreeMap<ModuleId, ClassificationResult>,
     files: &mut BTreeMap<ProjectRelativePath, FileReport>,
 ) {
@@ -89,7 +90,7 @@ pub(super) fn populate_project_files(
         let Some(classification) = classifications.get(&module.id()) else {
             continue;
         };
-        let findings = findings_for_module(assembly, project, module, classification);
+        let findings = findings_for_module(assembly, project, session, module, classification);
         let mut findings = merge_duplicate_findings(findings);
         findings.sort_by(compare_findings);
         files.insert(
@@ -143,6 +144,7 @@ fn merge_duplicate_findings(mut findings: Vec<Finding>) -> Vec<Finding> {
 fn findings_for_module(
     assembly: &ReportAssembly<'_>,
     project: &ProjectSemanticModel,
+    session: &ProjectReportSession,
     module: &crate::analysis::ProjectModule,
     classification: &ClassificationResult,
 ) -> Vec<Finding> {
@@ -154,7 +156,7 @@ fn findings_for_module(
             .entry(capability.rule_index())
             .or_default()
             .extend(findings_for_capability(
-                assembly, project, capability, lines, path,
+                assembly, project, session, capability, lines, path,
             ));
     }
     rule_findings.into_values().flatten().collect()
@@ -212,6 +214,7 @@ fn finding_groups(entries: &[EvidenceRangeEntry]) -> Vec<FindingGroup> {
 fn findings_for_capability(
     assembly: &ReportAssembly<'_>,
     project: &ProjectSemanticModel,
+    session: &ProjectReportSession,
     capability: &MatchedCapability,
     lines: &SourceLineIndex,
     path: &ProjectRelativePath,
@@ -235,7 +238,7 @@ fn findings_for_capability(
                 };
                 let steps = occurrence.trace().map_or_else(
                     || Some(fallback_trace(ev, path, &group.range)),
-                    |trace_id| resolve_trace(trace_id, project),
+                    |trace_id| resolve_trace(trace_id, project, session),
                 );
                 if let Some(steps) = steps
                     && !steps.is_empty()
@@ -274,8 +277,9 @@ fn findings_for_capability(
 fn resolve_trace(
     head: crate::analysis::trace::TraceNodeId,
     project: &ProjectSemanticModel,
+    session: &ProjectReportSession,
 ) -> Option<Vec<EvidenceStep>> {
-    let raw = project.reconstruct_trace(head)?;
+    let raw = session.reconstruct_trace(head)?;
     if raw.is_empty() {
         return None;
     }

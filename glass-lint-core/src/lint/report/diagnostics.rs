@@ -5,6 +5,7 @@ use glass_lint_datastructures::{Position, SourceRange};
 use crate::{
     ParseDiagnostic,
     analysis::ProjectSemanticModel,
+    lint::report::ProjectReportSession,
     parse::ParseFailureKind,
     project::{Diagnostic, FileReport, ProjectRelativePath, SourceLocation, SourceTable},
 };
@@ -45,9 +46,10 @@ pub(super) fn initialize_project_files(
 
 pub(super) fn attach_project_diagnostics(
     project: &ProjectSemanticModel,
+    session: &ProjectReportSession,
     files: &mut BTreeMap<ProjectRelativePath, FileReport>,
 ) -> Vec<Diagnostic> {
-    let (status_files, status_project) = project.status_diagnostics();
+    let (status_files, status_project) = session.status_diagnostics();
     for (path, mut diagnostic) in status_files {
         diagnostic.set_location(Some(SourceLocation::new(
             path.clone(),

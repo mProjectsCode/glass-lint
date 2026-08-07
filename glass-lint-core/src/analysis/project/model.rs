@@ -12,7 +12,7 @@ use crate::{
         facts::{FactStream, Frozen, SemanticFact},
         flow::effect::FunctionEffect,
         local::{LocalArtifact, ProjectModule},
-        lowering::status::{AnalysisStatus, IncompleteReason, StatusScope},
+        lowering::status::AnalysisStatus,
         model::{module::ModuleRequestId, scope::FunctionId, value::ValueId},
         project::{
             linker::ProjectLinker,
@@ -21,7 +21,7 @@ use crate::{
             state::{ExportTable, LinkingSession},
         },
         syntax::SymbolCallProvenance,
-        trace::{QualifiedEvent, TraceArena, TraceNodeId, TraceStep},
+        trace::QualifiedEvent,
     },
     api::{
         classification::{ClassificationResult, RuleIndex},
@@ -241,9 +241,6 @@ pub struct ProjectSemanticModel {
     pub(super) flow_limit: usize,
     pub(super) effect_limit: usize,
     pub(super) trace_limit: usize,
-    /// Trace storage is mutable only while projection runs, then remains
-    /// immutably owned by the linked project for report assembly.
-    pub(super) trace_arena: TraceArena,
 }
 
 pub(super) struct LinkedProjectState {
@@ -269,7 +266,6 @@ impl ProjectSemanticModel {
             flow_limit: limits.flow_operations(),
             effect_limit: limits.effect_operations(),
             trace_limit: limits.trace_nodes(),
-            trace_arena: TraceArena::new(limits.trace_nodes()),
         }
     }
 
@@ -306,7 +302,6 @@ impl ProjectSemanticModel {
             flow_limit: limits.flow_operations(),
             effect_limit: limits.effect_operations(),
             trace_limit: limits.trace_nodes(),
-            trace_arena: TraceArena::new(limits.trace_nodes()),
         }
     }
 
@@ -438,49 +433,21 @@ impl ProjectSemanticModel {
         &self.diagnostics
     }
 
-    pub(crate) fn is_complete(&self) -> bool {
-        self.status.is_complete()
+    pub(crate) fn status_snapshot(&self) -> AnalysisStatus {
+        self.status.clone()
     }
 
-    pub(crate) fn status_diagnostics(
-        &self,
-    ) -> (
-        Vec<(ProjectRelativePath, AnalysisDiagnostic)>,
-        Vec<AnalysisDiagnostic>,
-    ) {
-        self.status.diagnostics()
-    }
-
-    pub(crate) fn record_parse_failure(
-        &mut self,
-        path: ProjectRelativePath,
-        kind: crate::parse::ParseFailureKind,
-    ) {
-        self.status.record(
-            StatusScope::File(path),
-            IncompleteReason::ParseFailure { kind },
-        );
-    }
-
-    pub(in crate::analysis) fn flow_limit(&self) -> usize {
+    pub(crate) fn flow_limit(&self) -> usize {
         self.flow_limit
     }
 
-    pub(in crate::analysis) fn effect_limit(&self) -> usize {
+    pub(crate) fn effect_limit(&self) -> usize {
         self.effect_limit
     }
 
     #[allow(dead_code)]
     pub(in crate::analysis) fn trace_limit(&self) -> usize {
         self.trace_limit
-    }
-
-    pub(crate) fn reconstruct_trace(&self, head: TraceNodeId) -> Option<Vec<TraceStep>> {
-        self.trace_arena.reconstruct_trace(head)
-    }
-
-    pub(crate) fn trace_node_count(&self) -> usize {
-        self.trace_arena.node_count()
     }
 
     /// Return deterministic phase and evidence operation counts.
@@ -500,28 +467,28 @@ impl ProjectSemanticModel {
     }
 
     pub fn classify_with_evidence_limit(
-        &mut self,
+        &self,
         records: &[CompiledRuleRecord],
         selected: &[RuleIndex],
         evidence_limit: usize,
-    ) -> (BTreeMap<ModuleId, ClassificationResult>, ProjectionOutcome) {
-        let (results, outcome, arena) = {
-            let (matcher_catalog, outcome, arena) =
-                crate::analysis::project::projection::project_for_classification(
-                    self,
-                    CompiledRuleSelection::new(records, selected)
-                        .expect("linter supplies a validated rule selection"),
-                );
-            let results = crate::analysis::project::projection::assemble_classification_results(
-                &matcher_catalog,
-                records,
-                selected,
-                evidence_limit,
+    ) -> (
+        BTreeMap<ModuleId, ClassificationResult>,
+        ProjectionOutcome,
+        crate::analysis::trace::TraceArena,
+    ) {
+        let (matcher_catalog, outcome, arena) =
+            crate::analysis::project::projection::project_for_classification(
+                self,
+                CompiledRuleSelection::new(records, selected)
+                    .expect("linter supplies a validated rule selection"),
             );
-            (results, outcome, arena)
-        };
-        self.trace_arena = arena;
-        (results, outcome)
+        let results = crate::analysis::project::projection::assemble_classification_results(
+            &matcher_catalog,
+            records,
+            selected,
+            evidence_limit,
+        );
+        (results, outcome, arena)
     }
 }
 

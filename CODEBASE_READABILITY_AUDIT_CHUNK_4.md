@@ -171,7 +171,7 @@ unchanged.
 
 ### Linked model lifecycle
 
-#### [ ] READ-020 — Separate immutable linked semantics from report-session state
+#### [x] READ-020 — Separate immutable linked semantics from report-session state
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -200,7 +200,18 @@ after callers migrate. Preserve post-parse diagnostic coverage, trace identity
 resolution, deterministic operation counts, and the rule that incomplete
 linking or exhausted projection cannot become definite coverage.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed report-owned trace storage and mutable parse/flow
+status updates from `ProjectSemanticModel`. Classification now returns its
+trace arena with classifications and projection status, while
+`ProjectReportSession` owns parse-status aggregation, projection exhaustion,
+trace reconstruction, and report operation inputs. Evidence, diagnostics, and
+summary assembly consume that session explicitly; the linked model remains
+stable after linking and all completion, diagnostic, trace, and metric output
+remains deterministic.
+
+**Verified:** `make fmt && make ci` (workspace check, clippy with warnings as
+errors, 803 core tests, workspace tests, doctests, E2E/rule harnesses, rules
+documentation check, and examples).
 
 ## Systemic Themes
 

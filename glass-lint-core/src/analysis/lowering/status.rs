@@ -8,7 +8,7 @@ use crate::{
 };
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(in crate::analysis) enum AnalysisComponent {
+pub enum AnalysisComponent {
     Facts,
     Effects,
     Flow,
@@ -16,18 +16,18 @@ pub(in crate::analysis) enum AnalysisComponent {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(in crate::analysis) enum ModuleInterfaceKind {
+pub enum ModuleInterfaceKind {
     CommonJsExports,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(in crate::analysis) enum ResolutionKind {
+pub enum ResolutionKind {
     Unsupported,
     OutsideProject,
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(in crate::analysis) enum IncompleteReason {
+pub enum IncompleteReason {
     InvalidParserSpan,
     ParseFailure {
         kind: ParseFailureKind,
@@ -69,7 +69,7 @@ pub(in crate::analysis) enum IncompleteReason {
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(in crate::analysis) enum StatusScope {
+pub enum StatusScope {
     File(ProjectRelativePath),
     Project,
 }
@@ -81,12 +81,12 @@ pub(in crate::analysis) struct StatusEntry {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(in crate::analysis) struct AnalysisStatus {
+pub struct AnalysisStatus {
     entries: BTreeSet<StatusEntry>,
 }
 
 impl AnalysisStatus {
-    pub(in crate::analysis) fn record(&mut self, scope: StatusScope, reason: IncompleteReason) {
+    pub fn record(&mut self, scope: StatusScope, reason: IncompleteReason) {
         self.entries.insert(StatusEntry { scope, reason });
     }
 
@@ -94,7 +94,7 @@ impl AnalysisStatus {
         self.entries.extend(other.entries.iter().cloned());
     }
 
-    pub(in crate::analysis) fn is_complete(&self) -> bool {
+    pub fn is_complete(&self) -> bool {
         self.entries.is_empty()
     }
 
@@ -114,7 +114,7 @@ impl AnalysisStatus {
         }
     }
 
-    pub(in crate::analysis) fn diagnostics(
+    pub fn diagnostics(
         &self,
     ) -> (
         Vec<(ProjectRelativePath, AnalysisDiagnostic)>,

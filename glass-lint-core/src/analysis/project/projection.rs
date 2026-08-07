@@ -17,7 +17,6 @@ use crate::{
             self,
             projector::{self as object_flow, FlowProjectionRule, LocalFlowProjectionOutcome},
         },
-        lowering::status::{AnalysisComponent, IncompleteReason, StatusScope},
         matching::MatcherProjectContext,
         model::{flow::FlowLimits, value::ValueId},
         project::state::LinkingSession,
@@ -345,24 +344,24 @@ impl ProjectModuleProjection<'_> {
 /// itself through a shared reference.
 #[derive(Debug, Default)]
 pub struct ProjectionOutcome {
-    status: ProjectionStatus,
+    pub(crate) status: ProjectionStatus,
     metrics: ProjectionMetrics,
 }
 
 #[derive(Debug, Default)]
 pub struct ProjectionStatus {
     /// Whether local flow projection exhausted its budget in any module.
-    local_exhausted: bool,
+    pub(crate) local_exhausted: bool,
     /// Whether cross-module flow projection exhausted its budget.
-    flow_exhausted: bool,
+    pub(crate) flow_exhausted: bool,
     /// Operation count when exhaustion was reached, if applicable.
-    flow_observed: Option<usize>,
+    pub(crate) flow_observed: Option<usize>,
     /// Whether lazy function-effect extraction reached its budget.
-    effect_exhausted: bool,
+    pub(crate) effect_exhausted: bool,
     /// Effect operations consumed when the effect budget was exhausted.
-    effect_observed: Option<usize>,
+    pub(crate) effect_observed: Option<usize>,
     /// Modules whose effect extraction was incomplete.
-    effect_exhausted_modules: Vec<ModuleId>,
+    pub(crate) effect_exhausted_modules: Vec<ModuleId>,
 }
 
 #[derive(Debug, Default)]
@@ -578,34 +577,6 @@ impl ProjectSemanticModel {
             })
             .collect();
         (projections, outcome)
-    }
-
-    /// Record flow exhaustion status from a projection outcome.
-    pub(crate) fn record_flow_exhaustion(&mut self, outcome: &ProjectionOutcome) {
-        if outcome.status.effect_exhausted {
-            for module in &outcome.status.effect_exhausted_modules {
-                if let Some(module) = self.module(*module) {
-                    self.status.record(
-                        StatusScope::File(module.path().clone()),
-                        IncompleteReason::BudgetExhausted {
-                            component: AnalysisComponent::Effects,
-                            limit: self.effect_limit(),
-                            observed: outcome.status.effect_observed,
-                        },
-                    );
-                }
-            }
-        }
-        if outcome.status.local_exhausted || outcome.status.flow_exhausted {
-            self.status.record(
-                StatusScope::Project,
-                IncompleteReason::BudgetExhausted {
-                    component: AnalysisComponent::Flow,
-                    limit: self.flow_limit(),
-                    observed: outcome.status.flow_observed,
-                },
-            );
-        }
     }
 }
 

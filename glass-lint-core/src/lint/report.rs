@@ -2,7 +2,12 @@ use std::{collections::BTreeMap, time::Instant};
 
 use crate::{
     AnalysisLimits, ParseDiagnostic,
-    analysis::{ProjectSemanticModel, ResolvedLinkInput},
+    analysis::{
+        AnalysisComponent, AnalysisStatus, IncompleteReason, ProjectSemanticModel,
+        ResolvedLinkInput, StatusScope,
+        project::projection::ProjectionOutcome,
+        trace::{TraceArena, TraceNodeId, TraceStep},
+    },
     api::classification::RuleIndex,
     lint::catalog::RuleCatalog,
     project::{AnalysisReport, ProjectRelativePath, SourceTable},
@@ -16,6 +21,87 @@ pub struct ProjectAnalysis {
     pub report: AnalysisReport,
     pub linking: std::time::Duration,
     pub matching: std::time::Duration,
+}
+
+pub(super) struct ProjectReportSession {
+    status: AnalysisStatus,
+    trace_arena: TraceArena,
+}
+
+impl ProjectReportSession {
+    fn new(project: &ProjectSemanticModel, trace_limit: usize) -> Self {
+        Self {
+            status: project.status_snapshot(),
+            trace_arena: TraceArena::new(trace_limit),
+        }
+    }
+
+    fn record_parse_failure(
+        &mut self,
+        path: ProjectRelativePath,
+        kind: crate::parse::ParseFailureKind,
+    ) {
+        self.status.record(
+            StatusScope::File(path),
+            IncompleteReason::ParseFailure { kind },
+        );
+    }
+
+    fn record_flow_exhaustion(
+        &mut self,
+        project: &ProjectSemanticModel,
+        outcome: &ProjectionOutcome,
+    ) {
+        if outcome.status.effect_exhausted {
+            for module_id in &outcome.status.effect_exhausted_modules {
+                if let Some(module) = project.modules().find(|module| module.id() == *module_id) {
+                    self.status.record(
+                        StatusScope::File(module.path().clone()),
+                        IncompleteReason::BudgetExhausted {
+                            component: AnalysisComponent::Effects,
+                            limit: project.effect_limit(),
+                            observed: outcome.status.effect_observed,
+                        },
+                    );
+                }
+            }
+        }
+        if outcome.status.local_exhausted || outcome.status.flow_exhausted {
+            self.status.record(
+                StatusScope::Project,
+                IncompleteReason::BudgetExhausted {
+                    component: AnalysisComponent::Flow,
+                    limit: project.flow_limit(),
+                    observed: outcome.status.flow_observed,
+                },
+            );
+        }
+    }
+
+    fn set_trace_arena(&mut self, trace_arena: TraceArena) {
+        self.trace_arena = trace_arena;
+    }
+
+    pub(super) fn status_diagnostics(
+        &self,
+    ) -> (
+        Vec<(ProjectRelativePath, crate::project::AnalysisDiagnostic)>,
+        Vec<crate::project::AnalysisDiagnostic>,
+    ) {
+        self.status.diagnostics()
+    }
+
+    pub(super) fn is_complete(&self) -> bool {
+        self.status.is_complete()
+    }
+
+    pub(super) fn reconstruct_trace(&self, head: TraceNodeId) -> Option<Vec<TraceStep>> {
+        self.trace_arena.reconstruct_trace(head)
+    }
+
+    pub(super) fn trace_node_count(&self) -> usize {
+        self.trace_arena.node_count()
+    }
 }
 
 pub struct ReportAssembly<'a> {
@@ -44,9 +130,10 @@ impl<'a> ReportAssembly<'a> {
             diagnostics::initialize_project_files(sources, parse_diagnostics);
 
         let linking_start = Instant::now();
-        let mut project = ProjectSemanticModel::link_with_limits(link_input, limits);
+        let project = ProjectSemanticModel::link_with_limits(link_input, limits);
+        let mut session = ProjectReportSession::new(&project, limits.trace_nodes());
         for (path, failure) in parse_failures {
-            project.record_parse_failure(path, failure);
+            session.record_parse_failure(path, failure);
         }
         let linking = linking_start.elapsed();
         let link_counts = project.operation_counts().finish();
@@ -61,18 +148,25 @@ impl<'a> ReportAssembly<'a> {
         );
 
         let matching_start = Instant::now();
-        let (classifications, projection_outcome) = project.classify_with_evidence_limit(
-            self.catalog.compiled(),
-            self.enabled,
-            self.evidence_limit,
-        );
-        project.record_flow_exhaustion(&projection_outcome);
+        let (classifications, projection_outcome, trace_arena) = project
+            .classify_with_evidence_limit(
+                self.catalog.compiled(),
+                self.enabled,
+                self.evidence_limit,
+            );
+        session.set_trace_arena(trace_arena);
+        session.record_flow_exhaustion(&project, &projection_outcome);
         let matching = matching_start.elapsed();
 
-        evidence::populate_project_files(self, &project, &classifications, &mut files);
-        let diagnostics = diagnostics::attach_project_diagnostics(&project, &mut files);
-        let report =
-            summary::assemble_project_report(&project, files, diagnostics, &projection_outcome);
+        evidence::populate_project_files(self, &project, &session, &classifications, &mut files);
+        let diagnostics = diagnostics::attach_project_diagnostics(&project, &session, &mut files);
+        let report = summary::assemble_project_report(
+            &project,
+            &session,
+            files,
+            diagnostics,
+            &projection_outcome,
+        );
         let report_summary = report.summary();
 
         tracing::info!(

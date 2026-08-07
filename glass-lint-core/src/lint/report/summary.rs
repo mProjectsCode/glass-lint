@@ -3,11 +3,13 @@ use std::collections::BTreeMap;
 use crate::{
     REPORT_VERSION,
     analysis::{ProjectSemanticModel, project::projection::ProjectionOutcome},
+    lint::report::ProjectReportSession,
     project::{AnalysisReport, Diagnostic, FileReport, ProjectRelativePath, ReportCompletion},
 };
 
 pub(super) fn assemble_project_report(
     project: &ProjectSemanticModel,
+    session: &ProjectReportSession,
     files: BTreeMap<ProjectRelativePath, FileReport>,
     diagnostics: Vec<Diagnostic>,
     outcome: &ProjectionOutcome,
@@ -40,7 +42,7 @@ pub(super) fn assemble_project_report(
     operations.record_effect_projections(metrics.effect_projections());
     operations.record_path_metrics(
         metrics.max_live_alternatives(),
-        project.trace_node_count(),
+        session.trace_node_count(),
         metrics.trace_heads(),
         metrics.coalescing_comparisons(),
         metrics.fixed_point_iterations(),
@@ -53,7 +55,7 @@ pub(super) fn assemble_project_report(
         files.into_values().collect(),
         diagnostics,
         operations.finish(),
-        if project.is_complete() {
+        if session.is_complete() {
             ReportCompletion::Complete
         } else {
             ReportCompletion::Partial
