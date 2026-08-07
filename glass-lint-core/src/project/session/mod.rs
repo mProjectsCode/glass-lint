@@ -9,7 +9,6 @@ pub(super) mod execution;
 
 use std::{collections::BTreeMap, num::NonZeroUsize};
 
-use artifacts::CacheLookup;
 pub use artifacts::{AnalysisArtifacts, AuthoredRequests};
 #[cfg(test)]
 pub(super) use execution::{
@@ -18,7 +17,8 @@ pub(super) use execution::{
 };
 use execution::{
     ExecutionEvent, ExecutionObserver, LocalJob, LocalJobCallbacks, LocalJobCandidate,
-    LocalJobExecutor, NoopExecutionObserver, ThreadLocalJobExecutor, normalize_worker_limit,
+    LocalJobExecutor, LocalJobResult, NoopExecutionObserver, ThreadLocalJobExecutor,
+    normalize_worker_limit,
 };
 
 use crate::{
@@ -40,6 +40,10 @@ pub struct SessionState<'a> {
     catalog: &'a RuleCatalog,
     enabled: &'a [RuleIndex],
     evidence_limit: usize,
+    #[cfg(test)]
+    fingerprint_engine_version: &'static str,
+    #[cfg(test)]
+    fingerprint_normalization: Option<&'static str>,
 }
 
 impl<'a> SessionState<'a> {
@@ -57,7 +61,48 @@ impl<'a> SessionState<'a> {
             catalog,
             enabled,
             evidence_limit,
+            #[cfg(test)]
+            fingerprint_engine_version: env!("CARGO_PKG_VERSION"),
+            #[cfg(test)]
+            fingerprint_normalization: None,
         }
+    }
+
+    #[cfg(test)]
+    fn artifact_fingerprint(&self, source: &SourceFile) -> ArtifactCacheKey {
+        if self.fingerprint_normalization.is_none()
+            && self.fingerprint_engine_version == env!("CARGO_PKG_VERSION")
+        {
+            return ArtifactCacheKey::new(
+                source,
+                self.lowerer.environment(),
+                self.lowerer.limits(),
+            );
+        }
+        self.fingerprint_normalization.map_or_else(
+            || {
+                ArtifactCacheKey::for_engine_version(
+                    source,
+                    self.lowerer.environment(),
+                    self.lowerer.limits(),
+                    self.fingerprint_engine_version,
+                )
+            },
+            |normalization| {
+                ArtifactCacheKey::for_test_inputs(
+                    source,
+                    self.lowerer.environment(),
+                    self.lowerer.limits(),
+                    normalization,
+                    self.fingerprint_engine_version,
+                )
+            },
+        )
+    }
+
+    #[cfg(not(test))]
+    fn artifact_fingerprint(&self, source: &SourceFile) -> ArtifactCacheKey {
+        ArtifactCacheKey::new(source, self.lowerer.environment(), self.lowerer.limits())
     }
 }
 
@@ -65,27 +110,26 @@ pub struct ProjectCollection<'a> {
     pub(super) state: SessionState<'a>,
     pub(super) sources: SourceTable,
     artifacts: AnalysisArtifacts,
-    #[cfg(test)]
-    fingerprint_engine_version: &'static str,
-    #[cfg(test)]
-    fingerprint_normalization: Option<&'static str>,
 }
 
-struct LocalAnalysisCallbacks<'a> {
-    artifacts: &'a mut AnalysisArtifacts,
-    requests: &'a mut Vec<ResolutionRequest>,
-    artifact_cache: ArtifactCacheHandle,
-    observer: &'a dyn ExecutionObserver,
-    fingerprint: Box<dyn Fn(&SourceFile) -> ArtifactCacheKey + 'a>,
+struct LocalAnalysisTransition<'borrow, 'state> {
+    state: &'borrow SessionState<'state>,
+    artifacts: &'borrow mut AnalysisArtifacts,
+    requests: &'borrow mut Vec<ResolutionRequest>,
+    observer: &'borrow dyn ExecutionObserver,
 }
 
-impl LocalJobCallbacks for LocalAnalysisCallbacks<'_> {
-    fn prepare(&mut self, candidate: LocalJobCandidate) -> Option<LocalJob> {
-        if !self.artifacts.needs_analysis(&candidate.path) {
+impl LocalAnalysisTransition<'_, '_> {
+    fn prepare(&mut self, candidate: LocalJobCandidate, skip_completed: bool) -> Option<LocalJob> {
+        if skip_completed && !self.artifacts.needs_analysis(&candidate.path) {
             return None;
         }
-        let key = (self.fingerprint)(&candidate.source);
-        if let Some(lowered) = self.artifact_cache.get_lowered(&candidate.source, &key) {
+        let key = self.state.artifact_fingerprint(&candidate.source);
+        if let Some(lowered) = self
+            .state
+            .artifact_cache
+            .get_lowered(&candidate.source, &key)
+        {
             self.observer.observe(ExecutionEvent::CacheHit);
             self.requests
                 .extend(self.artifacts.record_lowered(&candidate.path, lowered));
@@ -100,11 +144,11 @@ impl LocalJobCallbacks for LocalAnalysisCallbacks<'_> {
         }
     }
 
-    fn release(&mut self, result: execution::LocalJobResult) {
+    fn complete(&mut self, result: LocalJobResult) {
         match result.result {
             Ok(lowered) => {
                 artifacts::insert_and_notify(
-                    &self.artifact_cache,
+                    &self.state.artifact_cache,
                     result.key,
                     &lowered,
                     self.observer,
@@ -116,6 +160,22 @@ impl LocalJobCallbacks for LocalAnalysisCallbacks<'_> {
                 self.artifacts.record_parse_failure(result.path, error);
             }
         }
+    }
+
+    fn lower(&self, source: &SourceFile) -> Result<LoweredSource, crate::ParseDiagnostic> {
+        self.observer.observe(ExecutionEvent::ParseAttempted);
+        self.observer.observe(ExecutionEvent::LowerAttempted);
+        self.state.lowerer.lower_source(source)
+    }
+}
+
+impl LocalJobCallbacks for LocalAnalysisTransition<'_, '_> {
+    fn prepare(&mut self, candidate: LocalJobCandidate) -> Option<LocalJob> {
+        Self::prepare(self, candidate, true)
+    }
+
+    fn release(&mut self, result: LocalJobResult) {
+        self.complete(result);
         self.observer.observe(ExecutionEvent::Merged);
     }
 
@@ -142,76 +202,12 @@ pub struct ResolvedProject<'a> {
 }
 
 impl<'a> ProjectCollection<'a> {
-    #[cfg(test)]
-    fn artifact_fingerprint(&self, source: &SourceFile) -> ArtifactCacheKey {
-        if self.fingerprint_normalization.is_none()
-            && self.fingerprint_engine_version == env!("CARGO_PKG_VERSION")
-        {
-            return ArtifactCacheKey::new(
-                source,
-                self.state.lowerer.environment(),
-                self.state.lowerer.limits(),
-            );
-        }
-        self.fingerprint_normalization.map_or_else(
-            || {
-                ArtifactCacheKey::for_engine_version(
-                    source,
-                    self.state.lowerer.environment(),
-                    self.state.lowerer.limits(),
-                    self.fingerprint_engine_version,
-                )
-            },
-            |normalization| {
-                ArtifactCacheKey::for_test_inputs(
-                    source,
-                    self.state.lowerer.environment(),
-                    self.state.lowerer.limits(),
-                    normalization,
-                    self.fingerprint_engine_version,
-                )
-            },
-        )
-    }
-
-    #[cfg(not(test))]
-    fn artifact_fingerprint(&self, source: &SourceFile) -> ArtifactCacheKey {
-        ArtifactCacheKey::new(
-            source,
-            self.state.lowerer.environment(),
-            self.state.lowerer.limits(),
-        )
-    }
-
-    /// Check the artifact cache for a source, returning either a cached
-    /// lowered source or the key needed to lower and cache it.
-    fn check_cache(&self, source: &SourceFile, observer: &dyn ExecutionObserver) -> CacheLookup {
-        let key = self.artifact_fingerprint(source);
-        self.state
-            .artifact_cache
-            .get_lowered(source, &key)
-            .map_or_else(
-                || {
-                    observer.observe(ExecutionEvent::CacheMiss);
-                    CacheLookup::Miss(key)
-                },
-                |lowered| {
-                    observer.observe(ExecutionEvent::CacheHit);
-                    CacheLookup::Hit(lowered)
-                },
-            )
-    }
-
     /// Start an empty parse-once project session under a canonical root.
     pub(crate) fn new(state: SessionState<'a>) -> Self {
         Self {
             state,
             sources: SourceTable::default(),
             artifacts: AnalysisArtifacts::default(),
-            #[cfg(test)]
-            fingerprint_engine_version: env!("CARGO_PKG_VERSION"),
-            #[cfg(test)]
-            fingerprint_normalization: None,
         }
     }
 
@@ -256,24 +252,29 @@ impl<'a> ProjectCollection<'a> {
         let source = self
             .sources
             .get(path)
+            .cloned()
             .ok_or_else(|| ProjectInputError::InvalidPath(path.to_string()))?;
-        let lowered = match self.check_cache(source, observer) {
-            CacheLookup::Hit(lowered) => lowered,
-            CacheLookup::Miss(key) => {
-                observer.observe(ExecutionEvent::ParseAttempted);
-                observer.observe(ExecutionEvent::LowerAttempted);
-                let lowered = match self.state.lowerer.lower_source(source) {
-                    Ok(lowered) => lowered,
-                    Err(error) => {
-                        self.artifacts.record_parse_failure(path.clone(), error);
-                        return Ok(Vec::new());
-                    }
-                };
-                artifacts::insert_and_notify(&self.state.artifact_cache, key, &lowered, observer);
-                lowered
-            }
+        let mut requests = Vec::new();
+        let mut transition = LocalAnalysisTransition {
+            state: &self.state,
+            artifacts: &mut self.artifacts,
+            requests: &mut requests,
+            observer,
         };
-        Ok(self.record_lowered(path, lowered))
+        let candidate = LocalJobCandidate {
+            path: path.clone(),
+            source,
+        };
+        let Some(job) = transition.prepare(candidate, false) else {
+            return Ok(requests);
+        };
+        let result = transition.lower(&job.source);
+        transition.complete(LocalJobResult {
+            path: job.path,
+            key: job.key,
+            result,
+        });
+        Ok(requests)
     }
 
     pub(crate) fn analyze_source_at_path(
@@ -298,14 +299,6 @@ impl<'a> ProjectCollection<'a> {
         source: SourceFile,
     ) -> Result<(), ProjectInputError> {
         self.admit_normalized_source(source)
-    }
-
-    fn record_lowered(
-        &mut self,
-        path: &ProjectRelativePath,
-        lowered: LoweredSource,
-    ) -> Vec<ResolutionRequest> {
-        self.artifacts.record_lowered(path, lowered)
     }
 
     /// Analyze all admitted sources using a bounded worker count. Canonical
@@ -339,65 +332,30 @@ impl<'a> ProjectCollection<'a> {
     ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
         let worker_count = normalize_worker_limit(worker_count);
         let mut requests = Vec::new();
-        let environment = self.state.lowerer.environment();
-        let limits = self.state.lowerer.limits();
-        #[cfg(test)]
-        let fingerprint_engine_version = self.fingerprint_engine_version;
-        #[cfg(test)]
-        let fingerprint_normalization = self.fingerprint_normalization;
-        let fingerprint = Box::new(move |source: &SourceFile| {
-            #[cfg(test)]
-            if let Some(normalization) = fingerprint_normalization {
-                return ArtifactCacheKey::for_test_inputs(
-                    source,
-                    environment,
-                    limits,
-                    normalization,
-                    fingerprint_engine_version,
-                );
-            }
-            #[cfg(test)]
-            if fingerprint_engine_version == env!("CARGO_PKG_VERSION") {
-                return ArtifactCacheKey::new(source, environment, limits);
-            }
-            #[cfg(test)]
-            {
-                ArtifactCacheKey::for_engine_version(
-                    source,
-                    environment,
-                    limits,
-                    fingerprint_engine_version,
-                )
-            }
-            #[cfg(not(test))]
-            {
-                ArtifactCacheKey::new(source, environment, limits)
-            }
-        });
-        let mut callbacks = LocalAnalysisCallbacks {
-            artifacts: &mut self.artifacts,
-            requests: &mut requests,
-            artifact_cache: self.state.artifact_cache.clone(),
-            observer,
-            fingerprint,
-        };
-        let mut candidates = self
-            .sources
-            .in_path_order()
-            .map(|(path, source)| LocalJobCandidate {
-                path: path.clone(),
-                source: source.clone(),
-            });
-        executor
-            .execute(
-                &mut candidates,
-                worker_count,
-                &self.state.lowerer,
+        {
+            let mut callbacks = LocalAnalysisTransition {
+                state: &self.state,
+                artifacts: &mut self.artifacts,
+                requests: &mut requests,
                 observer,
-                &mut callbacks,
-            )
-            .map_err(ProjectInputError::LocalExecution)?;
-        drop(callbacks);
+            };
+            let mut candidates =
+                self.sources
+                    .in_path_order()
+                    .map(|(path, source)| LocalJobCandidate {
+                        path: path.clone(),
+                        source: source.clone(),
+                    });
+            executor
+                .execute(
+                    &mut candidates,
+                    worker_count,
+                    &self.state.lowerer,
+                    observer,
+                    &mut callbacks,
+                )
+                .map_err(ProjectInputError::LocalExecution)?;
+        }
         requests.sort_by(|left, right| {
             (
                 left.importer().as_str(),
@@ -445,12 +403,12 @@ impl<'a> ProjectCollection<'a> {
 
     #[cfg(test)]
     pub(super) fn set_fingerprint_engine_version(&mut self, version: &'static str) {
-        self.fingerprint_engine_version = version;
+        self.state.fingerprint_engine_version = version;
     }
 
     #[cfg(test)]
     pub(super) fn set_fingerprint_normalization(&mut self, normalization: &'static str) {
-        self.fingerprint_normalization = Some(normalization);
+        self.state.fingerprint_normalization = Some(normalization);
     }
 
     /// Consume the collection after local analysis and freeze its authored

@@ -188,12 +188,6 @@ impl AnalysisArtifacts {
     }
 }
 
-/// Outcome of looking up a source in the artifact cache.
-pub(super) enum CacheLookup {
-    Hit(LoweredSource),
-    Miss(ArtifactCacheKey),
-}
-
 pub(super) fn insert_and_notify(
     cache: &ArtifactCacheHandle,
     key: ArtifactCacheKey,

@@ -62,7 +62,7 @@ Verified with `make fmt && make ci`.
 
 ### Local execution and batch lifecycle
 
-#### [ ] READ-075 — Give one project owner the cache/lowering transition
+#### [x] READ-075 — Give one project owner the cache/lowering transition
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -96,7 +96,12 @@ cache hit and eviction telemetry, parse failures as ordinary per-source
 outcomes, bounded worker submission, completion-order independence, and final
 request sorting.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added one session-owned local-analysis transition for
+fingerprinting, cache hit/miss handling, lowering completion, parse-failure
+recording, and authored-request recording. Synchronous and bounded executor
+paths now share it; the explicit completed-source policy preserves repeated
+single-source cache reads while batch admission skips completed paths. Verified
+with `make fmt && make ci`.
 
 #### [ ] READ-076 — Make pending batch entries own index, path, and completion state
 
