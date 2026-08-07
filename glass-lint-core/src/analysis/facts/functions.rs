@@ -16,6 +16,24 @@ use crate::analysis::{
     syntax::literal_member_property_name,
 };
 
+#[derive(Clone, Copy)]
+enum FunctionBodyKind {
+    Function,
+    Arrow,
+    InstanceMethod,
+    StaticMethod,
+}
+
+impl FunctionBodyKind {
+    fn tracks_function_depth(self) -> bool {
+        matches!(self, Self::Function)
+    }
+
+    fn is_static_method(self) -> bool {
+        matches!(self, Self::StaticMethod)
+    }
+}
+
 impl FactBuilder<'_, '_> {
     /// Return the proven class provenance for the current non-static method.
     pub(super) fn current_class(&self) -> Option<(SmolStr, SmolStr)> {
@@ -67,33 +85,41 @@ impl FactBuilder<'_, '_> {
             .enumerate()
             .map(|(index, parameter)| (index, parameter.pat.clone()))
             .collect();
-        self.record_function_body(function.span(), parameters, true, false, |builder| {
-            function.visit_children_with(builder);
-        });
+        self.record_function_body(
+            function.span(),
+            parameters,
+            FunctionBodyKind::Function,
+            |builder| {
+                function.visit_children_with(builder);
+            },
+        );
     }
 
     fn record_function_body(
         &mut self,
         span: Span,
         parameters: Vec<(usize, Pat)>,
-        track_function_depth: bool,
-        static_method: bool,
+        kind: FunctionBodyKind,
         visit_body: impl FnOnce(&mut Self),
     ) {
         let enclosing = self.traversal.current_function();
-        self.emit_function_fact(span, parameters.clone(), FunctionBoundary::Enter);
-        if track_function_depth {
+        self.emit_function_fact(span, parameters, FunctionBoundary::Enter);
+        if kind.tracks_function_depth() {
             self.traversal.enter_function();
         }
-        if static_method {
+        if kind.is_static_method() {
             self.traversal.enter_static_method();
         }
         visit_body(self);
-        if track_function_depth {
+        if kind.tracks_function_depth() {
             self.traversal.leave_function();
         }
-        self.emit_function_fact(span, parameters, FunctionBoundary::Exit);
-        if static_method {
+        self.emit_function_fact(
+            span,
+            std::iter::empty::<(usize, Pat)>(),
+            FunctionBoundary::Exit,
+        );
+        if kind.is_static_method() {
             self.traversal.leave_static_method();
         }
         self.traversal.set_function(enclosing);
@@ -101,9 +127,14 @@ impl FactBuilder<'_, '_> {
 
     pub(super) fn record_arrow(&mut self, arrow: &ArrowExpr) {
         let parameters = arrow.params.iter().cloned().enumerate().collect();
-        self.record_function_body(arrow.span(), parameters, false, false, |builder| {
-            arrow.body.visit_with(builder);
-        });
+        self.record_function_body(
+            arrow.span(),
+            parameters,
+            FunctionBodyKind::Arrow,
+            |builder| {
+                arrow.body.visit_with(builder);
+            },
+        );
     }
 
     pub(super) fn record_class_method(&mut self, method: &ClassMethod) {
@@ -117,8 +148,11 @@ impl FactBuilder<'_, '_> {
         self.record_function_body(
             method.function.span(),
             parameters,
-            false,
-            method.is_static,
+            if method.is_static {
+                FunctionBodyKind::StaticMethod
+            } else {
+                FunctionBodyKind::InstanceMethod
+            },
             |builder| {
                 if let Some(body) = method.function.body.as_ref() {
                     body.visit_with(builder);

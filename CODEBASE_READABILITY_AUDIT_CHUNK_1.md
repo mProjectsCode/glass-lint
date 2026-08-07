@@ -83,7 +83,7 @@ destructuring writes. Verified with `make fmt && make ci`.
 
 ### Function boundary fact construction
 
-#### [ ] READ-003 — Replace boolean function-body modes with an explicit boundary API
+#### [x] READ-003 — Replace boolean function-body modes with an explicit boundary API
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -111,7 +111,10 @@ enter/exit fact order, lexical function IDs, declaration-vs-body nesting
 behavior, static-method `this` handling, and restoration of the enclosing
 function after nested traversal.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the boolean function-body flags with an explicit
+`FunctionBodyKind` covering functions, arrows, and instance/static methods.
+Exit facts now carry no parameter bindings, while enter/exit ordering and
+function-depth/static-method restoration remain unchanged.
 
 ### Fact-builder construction boundary
 
