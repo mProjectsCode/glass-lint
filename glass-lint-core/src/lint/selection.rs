@@ -44,13 +44,93 @@ pub struct RuleOverride {
     state: RuleState,
 }
 
-/// A segment of a parsed rule selector.
+/// A segment of a parsed rule pattern.
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum PatternSegment {
     /// A literal string that must appear verbatim.
     Literal(String),
     /// A `*` wildcard matching any sequence of characters.
     Wildcard,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RulePattern {
+    segments: Vec<PatternSegment>,
+    ends_with_wildcard: bool,
+}
+
+impl RulePattern {
+    fn parse(selector: &str) -> Result<Self, LintConfigError> {
+        let Some((provider, name)) = selector.split_once(':') else {
+            return Err(LintConfigError::InvalidSelector(selector.to_owned()));
+        };
+        if selector[provider.len() + 1..].contains(':')
+            || !valid_pattern_part(provider, false)
+            || !valid_pattern_part(name, true)
+        {
+            return Err(LintConfigError::InvalidSelector(selector.to_owned()));
+        }
+
+        let mut segments = Vec::new();
+        for part in selector.split('*') {
+            if !part.is_empty() {
+                segments.push(PatternSegment::Literal(part.to_owned()));
+            }
+            segments.push(PatternSegment::Wildcard);
+        }
+        segments.pop();
+        Ok(Self {
+            segments,
+            ends_with_wildcard: selector.ends_with('*'),
+        })
+    }
+
+    fn has_wildcard(&self) -> bool {
+        self.ends_with_wildcard
+            || self
+                .segments
+                .iter()
+                .any(|segment| matches!(segment, PatternSegment::Wildcard))
+    }
+
+    fn matches(&self, id: &str) -> bool {
+        let mut pos = 0usize;
+        for (index, segment) in self.segments.iter().enumerate() {
+            let PatternSegment::Literal(literal) = segment else {
+                continue;
+            };
+            if index == 0 {
+                if !id.starts_with(literal) {
+                    return false;
+                }
+                pos = literal.len();
+            } else if index == self.segments.len() - 1 && !self.ends_with_wildcard {
+                if !id[pos..].ends_with(literal) {
+                    return false;
+                }
+            } else {
+                let Some(found) = id[pos..].find(literal) else {
+                    return false;
+                };
+                pos += found + literal.len();
+            }
+        }
+        true
+    }
+}
+
+fn valid_pattern_part(part: &str, allow_dot: bool) -> bool {
+    if part.is_empty() || part.starts_with(['-', '_', '.']) || part.contains("..") {
+        return false;
+    }
+    part.chars().enumerate().all(|(index, character)| {
+        character == '*'
+            || character.is_ascii_lowercase()
+            || (index > 0 && character.is_ascii_digit())
+            || character == '-'
+            || character == '_'
+            || (allow_dot && character == '.')
+    }) && !part.ends_with(['-', '_', '.'])
 }
 
 /// Parsed rule selector. The wildcard language is intentionally tiny: `*`
@@ -61,10 +141,8 @@ enum PatternSegment {
 pub struct RuleSelector {
     /// Original selector text for serialization and display.
     raw: String,
-    /// Pre-parsed segments for O(n) matching.
-    segments: Vec<PatternSegment>,
-    /// Whether the original selector ends with `*` (anchors the final literal).
-    ends_with_wildcard: bool,
+    /// Validated wildcard pattern used for O(n) matching.
+    pattern: RulePattern,
 }
 
 #[cfg(feature = "serde")]
@@ -118,23 +196,15 @@ impl RuleSelector {
         {
             return Err(LintConfigError::InvalidSelector(selector));
         }
-        RuleId::parse(selector.replace('*', "placeholder"))
-            .map_err(|_| LintConfigError::InvalidSelector(selector.clone()))?;
-
-        let mut segments = Vec::new();
-        for part in selector.split('*') {
-            if !part.is_empty() {
-                segments.push(PatternSegment::Literal(part.to_owned()));
-            }
-            segments.push(PatternSegment::Wildcard);
+        let pattern = RulePattern::parse(&selector)?;
+        if !pattern.has_wildcard() {
+            RuleId::parse(selector.clone())
+                .map_err(|_| LintConfigError::InvalidSelector(selector.clone()))?;
         }
-        segments.pop(); // Remove trailing wildcard added by split.
-        let ends_with_wildcard = selector.ends_with('*');
 
         Ok(Self {
             raw: selector,
-            segments,
-            ends_with_wildcard,
+            pattern,
         })
     }
 
@@ -143,11 +213,7 @@ impl RuleSelector {
     }
 
     pub fn has_wildcard(&self) -> bool {
-        self.ends_with_wildcard
-            || self
-                .segments
-                .iter()
-                .any(|s| matches!(s, PatternSegment::Wildcard))
+        self.pattern.has_wildcard()
     }
 
     fn matches(&self, id: &str) -> bool {
@@ -155,28 +221,7 @@ impl RuleSelector {
         if !self.has_wildcard() {
             return id == self.raw;
         }
-        let mut pos = 0usize;
-        for (i, segment) in self.segments.iter().enumerate() {
-            let PatternSegment::Literal(lit) = segment else {
-                continue;
-            };
-            if i == 0 {
-                if !id.starts_with(lit) {
-                    return false;
-                }
-                pos = lit.len();
-            } else if i == self.segments.len() - 1 && !self.ends_with_wildcard {
-                if !id[pos..].ends_with(lit) {
-                    return false;
-                }
-            } else {
-                let Some(found) = id[pos..].find(lit) else {
-                    return false;
-                };
-                pos += found + lit.len();
-            }
-        }
-        true
+        self.pattern.matches(id)
     }
 }
 
@@ -404,5 +449,22 @@ mod tests {
         assert!(s.matches("a:x.b"));
         assert!(s.matches("a:b"));
         assert!(!s.matches("b:x.c"));
+    }
+
+    #[test]
+    fn wildcard_pattern_validates_its_own_rule_parts() {
+        for selector in ["JS:*", "js:*:extra", "js:*..request", "js:-*request"] {
+            assert!(
+                RuleSelector::parse(selector.to_owned()).is_err(),
+                "{selector}"
+            );
+        }
+    }
+
+    #[test]
+    fn wildcard_can_supply_a_valid_boundary_before_a_literal() {
+        let s = sel("js:*-request");
+        assert!(s.matches("js:network-request"));
+        assert!(!s.matches("js:request"));
     }
 }

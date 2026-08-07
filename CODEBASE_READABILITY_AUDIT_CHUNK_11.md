@@ -183,7 +183,7 @@ Verified with `make fmt && make ci`.
 
 ### Rule selection API
 
-#### [ ] READ-006 — Selector parsing couples wildcard grammar to `RuleId` through a sentinel string
+#### [x] READ-006 — Selector parsing couples wildcard grammar to `RuleId` through a sentinel string
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -209,7 +209,12 @@ sentinel validation path. Preserve exact selectors, leading/trailing and
 adjacent wildcard behavior, serialized raw spelling, namespaced rule-ID
 validation, and deterministic matching.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `RulePattern` now validates namespaced wildcard parts and
+owns the parsed segments, anchoring, and matching logic. Exact selectors use
+an explicit `RuleId` conversion; wildcard selectors no longer rewrite into a
+sentinel ID. Raw selector serialization and existing wildcard behavior are
+preserved, with adversarial grammar tests added. Verified with `make fmt &&
+make ci`.
 
 #### [ ] READ-007 — `RuleSelection::resolve` mixes effective-state calculation with unmatched-override diagnostics
 
