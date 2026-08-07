@@ -7,8 +7,8 @@
 use swc_ecma_ast::AssignOp;
 
 use crate::analysis::facts::{
-    AssignExpr, FactBuilder, FactPayload, MemberExpr, Pat, Spanned, ValueId, VisitWith,
-    literal_member_property_name,
+    AssignExpr, FactBuilder, FactPayload, MemberExpr, Pat, Spanned, TargetProvenance, ValueId,
+    VisitWith, literal_member_property_name,
 };
 
 impl FactBuilder<'_, '_> {
@@ -55,27 +55,12 @@ impl FactBuilder<'_, '_> {
     ) {
         assignment.right.visit_with(self);
         let target = self.resolver.resolve_ident_id(&ident.id);
-        self.remember_static_string_alias(target, source);
-        self.provenance.instance_callables.remove(&target);
-        self.provenance
-            .instance_origins
-            .remove(target, self.resolver.budget);
-        self.provenance
-            .class_origins
-            .remove(target, self.resolver.budget);
-        if let Some(callable) = self.instance_callable_for_expr(&assignment.right) {
-            self.provenance.instance_callables.insert(target, callable);
-        }
-        if let Some(origin) = self.instance_origin_for_expr(&assignment.right) {
-            self.provenance
-                .instance_origins
-                .insert(target, origin, self.resolver.budget);
-        }
-        if let Some(origin) = self.constructor_origin_for_expr(&assignment.right) {
-            self.provenance
-                .class_origins
-                .insert(target, origin, self.resolver.budget);
-        }
+        let replacement = self.target_provenance(&assignment.right, source);
+        self.provenance.replace_targets(
+            std::slice::from_ref(&target),
+            &replacement,
+            self.resolver.budget,
+        );
         self.emit(
             assignment.span(),
             FactPayload::Assignment {
@@ -143,6 +128,12 @@ impl FactBuilder<'_, '_> {
         let pattern: Pat = pattern.clone().into();
         let mut targets = Vec::new();
         self.pattern_write_targets(&pattern, &mut targets);
+        let target_values: Vec<ValueId> = targets.iter().map(|(target, _)| *target).collect();
+        self.provenance.replace_targets(
+            &target_values,
+            &TargetProvenance::default(),
+            self.resolver.budget,
+        );
         for (target, receiver) in targets {
             self.emit(
                 assignment.span(),

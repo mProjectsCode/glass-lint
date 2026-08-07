@@ -18,8 +18,8 @@ use crate::{
             DoWhileStmt, ExportDecl, Expr, FactBuilder, FactPayload, FnDecl, ForInStmt, ForOfStmt,
             ForStmt, Function, Ident, IfStmt, ImportDecl, MemberExpr, NewExpr, OptChainBase,
             OptChainExpr, Pat, Span, Spanned, Str, SwitchStmt, SymbolCallProvenance,
-            SymbolMemberProvenance, Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr, ValueId,
-            VarDeclarator, Visit, VisitWith, WhileStmt, effective_callee_expr,
+            SymbolMemberProvenance, TargetProvenance, Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr,
+            ValueId, VarDeclarator, Visit, VisitWith, WhileStmt, effective_callee_expr,
             literal_member_property_name,
         },
         module::{ImportedBinding, ModuleRequestRole},
@@ -75,7 +75,12 @@ impl Visit for FactBuilder<'_, '_> {
         let source = self.declaration_source(declarator);
         declarator.name.visit_with(self);
         let targets = self.declaration_targets(&declarator.name);
-        self.seed_declaration_provenance(&declarator.name, declarator.init.as_deref(), &targets);
+        self.replace_declaration_provenance(
+            &declarator.name,
+            declarator.init.as_deref(),
+            source,
+            &targets,
+        );
         self.emit_declarations(declarator.span(), source, targets);
     }
 
@@ -579,28 +584,22 @@ impl FactBuilder<'_, '_> {
         targets
     }
 
-    fn seed_declaration_provenance(
+    fn replace_declaration_provenance(
         &mut self,
         pattern: &Pat,
         init: Option<&Expr>,
+        source: ValueId,
         targets: &[ValueId],
     ) {
-        if !Self::is_simple_pattern(pattern) {
-            return;
-        }
-        let Some(init) = init else {
-            return;
+        let replacement = if Self::is_simple_pattern(pattern) {
+            init.map_or_else(TargetProvenance::default, |init| {
+                self.target_provenance(init, source)
+            })
+        } else {
+            TargetProvenance::default()
         };
-        let callable = self.instance_callable_for_expr(init);
-        let instance_origin = self.instance_origin_for_expr(init);
-        let class_origin = self.constructor_origin_for_expr(init);
-        self.provenance.seed_declaration(
-            targets,
-            callable.as_ref(),
-            instance_origin.as_ref(),
-            class_origin.as_ref(),
-            self.resolver.budget,
-        );
+        self.provenance
+            .replace_targets(targets, &replacement, self.resolver.budget);
     }
 
     fn emit_declarations(&mut self, span: Span, source: ValueId, mut targets: Vec<ValueId>) {
@@ -608,7 +607,6 @@ impl FactBuilder<'_, '_> {
             targets.push(ValueId::UNKNOWN);
         }
         for target in targets {
-            self.remember_static_string_alias(target, source);
             self.emit(span, FactPayload::Declaration { target, source });
         }
     }

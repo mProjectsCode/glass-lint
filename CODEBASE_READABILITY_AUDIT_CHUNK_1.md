@@ -46,7 +46,7 @@ Verified with `make fmt && make ci` (including the focused
 
 ### Fact target provenance transitions
 
-#### [ ] READ-002 — Centralize target replacement and invalidation
+#### [x] READ-002 — Centralize target replacement and invalidation
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -74,7 +74,12 @@ Keep destructuring writes conservative, preserve current evaluation order, and
 ensure repeated hoisted declarations, unknown, dynamic, reassigned, and
 unsupported values remain unable to establish a witness.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `FactProvenanceState::replace_targets` now owns clearing and
+replacing instance callables, instance/class origins, and static-string
+origins. Identifier assignments, declarations, and destructuring writes all
+use that operation, so uninitialized or unsupported replacements cannot retain
+stale derived provenance. Added regressions for redeclarations and
+destructuring writes. Verified with `make fmt && make ci`.
 
 ### Function boundary fact construction
 

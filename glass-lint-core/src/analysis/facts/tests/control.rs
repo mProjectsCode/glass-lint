@@ -63,6 +63,38 @@ fn ternary_class_origins_do_not_cross_incompatible_arms() {
     }
 }
 
+#[test]
+fn redeclaration_replaces_prior_instance_origin() {
+    let source = r"
+        import { Foo } from 'lib';
+        var value = new Foo();
+        var value;
+        value.method();
+    ";
+    let stream = build_test_facts(source, "redeclaration.js");
+    assert_eq!(
+        count_instance_calls(&stream),
+        0,
+        "a later hoisted declaration must invalidate the earlier origin"
+    );
+}
+
+#[test]
+fn destructuring_write_replaces_prior_instance_origin() {
+    let source = r"
+        import { Foo } from 'lib';
+        var value = new Foo();
+        ({ value } = source);
+        value.method();
+    ";
+    let stream = build_test_facts(source, "destructuring-write.js");
+    assert_eq!(
+        count_instance_calls(&stream),
+        0,
+        "a destructuring write must invalidate the earlier origin"
+    );
+}
+
 /// Construction in try is visible to a call inside try.
 #[test]
 fn construction_inside_try_is_visible_there() {

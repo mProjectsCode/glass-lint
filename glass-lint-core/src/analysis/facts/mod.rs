@@ -86,6 +86,14 @@ struct BranchProvenance {
     classes: OriginSnapshot<(SmolStr, SmolStr)>,
 }
 
+#[derive(Default)]
+struct TargetProvenance {
+    callable: Option<InstanceCallable>,
+    instance_origin: Option<(SmolStr, SmolStr)>,
+    class_origin: Option<(SmolStr, SmolStr)>,
+    static_string_origin: Option<ByteRange>,
+}
+
 impl FactProvenanceState {
     fn new() -> Self {
         Self {
@@ -172,23 +180,28 @@ impl FactProvenanceState {
         self.class_origins.rollback(&mut checkpoint.class);
     }
 
-    fn seed_declaration(
+    fn replace_targets(
         &mut self,
         targets: &[ValueId],
-        callable: Option<&InstanceCallable>,
-        instance_origin: Option<&(SmolStr, SmolStr)>,
-        class_origin: Option<&(SmolStr, SmolStr)>,
+        replacement: &TargetProvenance,
         budget: &SemanticBudget,
     ) {
         for &target in targets {
-            if let Some(callable) = callable {
+            self.instance_callables.remove(&target);
+            self.instance_origins.remove(target, budget);
+            self.class_origins.remove(target, budget);
+            self.static_string_origins.remove(&target);
+            if let Some(callable) = &replacement.callable {
                 self.instance_callables.insert(target, callable.clone());
             }
-            if let Some(origin) = instance_origin {
+            if let Some(origin) = &replacement.instance_origin {
                 self.instance_origins.insert(target, origin.clone(), budget);
             }
-            if let Some(origin) = class_origin {
+            if let Some(origin) = &replacement.class_origin {
                 self.class_origins.insert(target, origin.clone(), budget);
+            }
+            if let Some(origin) = replacement.static_string_origin {
+                self.static_string_origins.insert(target, origin);
             }
         }
     }
@@ -228,10 +241,12 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
             })
     }
 
-    pub(super) fn remember_static_string_alias(&mut self, target: ValueId, source: ValueId) {
-        self.provenance.static_string_origins.remove(&target);
-        if let Some(origin) = self.static_string_origin(source) {
-            self.provenance.static_string_origins.insert(target, origin);
+    fn target_provenance(&mut self, expression: &Expr, source: ValueId) -> TargetProvenance {
+        TargetProvenance {
+            callable: self.instance_callable_for_expr(expression),
+            instance_origin: self.instance_origin_for_expr(expression),
+            class_origin: self.constructor_origin_for_expr(expression),
+            static_string_origin: self.static_string_origin(source),
         }
     }
 
