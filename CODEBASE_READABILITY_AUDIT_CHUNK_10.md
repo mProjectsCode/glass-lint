@@ -58,7 +58,7 @@ occurrences and distinct semantic facts.
 
 ### Event index view
 
-#### [ ] READ-046 — Remove duplicate physical references from `EventIndexView`
+#### [x] READ-046 — Remove duplicate physical references from `EventIndexView`
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -84,7 +84,10 @@ the current rejection of unsupported identity/event combinations, rooted
 global-object matching, constructor-name fallback, module overlays, and
 property-write behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Collapsed duplicate `PropertyWrite` storage into one
+`writes` index and duplicate `Construct` storage into one `global` index;
+the view’s operation-specific patterns now borrow the same named field
+without alias-only members. Verified with `make fmt && make ci`.
 
 ### Effective project identity
 

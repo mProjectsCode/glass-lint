@@ -181,8 +181,7 @@ impl OccurrenceIndexes {
             },
             EventPredicate::PropertyWrite { property } => EventIndexView::PropertyWrite {
                 property,
-                paths: self.members.rooted_writes(),
-                rooted: self.members.rooted_writes(),
+                writes: self.members.rooted_writes(),
                 environment: env,
             },
             EventPredicate::ClassReference => EventIndexView::ClassReference {
@@ -191,7 +190,6 @@ impl OccurrenceIndexes {
             },
             EventPredicate::Construct => EventIndexView::Construct {
                 names: self.constructions.constructors(),
-                strings: self.constructions.global_constructors(),
                 module: self.constructions.module_constructors(),
                 global: self.constructions.global_constructors(),
                 rooted: self.constructions.rooted_constructors(),

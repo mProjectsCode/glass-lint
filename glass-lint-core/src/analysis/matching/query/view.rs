@@ -45,8 +45,7 @@ pub(super) enum EventIndexView<'a> {
     },
     PropertyWrite {
         property: &'a SymbolPath,
-        paths: &'a OccurrenceIndex<NamePath>,
-        rooted: &'a OccurrenceIndex<NamePath>,
+        writes: &'a OccurrenceIndex<NamePath>,
         environment: &'a Environment,
     },
     ClassReference {
@@ -55,7 +54,6 @@ pub(super) enum EventIndexView<'a> {
     },
     Construct {
         names: &'a NameOccurrences,
-        strings: &'a Occurrences,
         module: &'a ModuleOccurrences,
         global: &'a Occurrences,
         rooted: &'a OccurrenceIndex<NamePath>,
@@ -107,7 +105,7 @@ impl<'a> EventIndexView<'a> {
                 .map(CandidateOccurrences::indexed),
             EventIndexView::MemberCall { paths, .. }
             | EventIndexView::MemberRead { paths, .. }
-            | EventIndexView::PropertyWrite { paths, .. } => {
+            | EventIndexView::PropertyWrite { writes: paths, .. } => {
                 let member = self.member_path()?;
                 names
                     .lookup_path(member)
@@ -119,17 +117,13 @@ impl<'a> EventIndexView<'a> {
                 .map(CandidateOccurrences::indexed),
             EventIndexView::Construct {
                 names: constructors,
-                strings,
+                global,
                 ..
             } => names
                 .lookup(name)
                 .and_then(|id| constructors.get(&id))
                 .map(CandidateOccurrences::indexed)
-                .or_else(|| {
-                    strings
-                        .get(name.as_str())
-                        .map(CandidateOccurrences::indexed)
-                }),
+                .or_else(|| global.get(name.as_str()).map(CandidateOccurrences::indexed)),
             EventIndexView::Import { .. } | EventIndexView::StringReference { .. } => None,
         }
     }
@@ -208,7 +202,7 @@ impl<'a> EventIndexView<'a> {
             ..
         }
         | EventIndexView::PropertyWrite {
-            rooted,
+            writes: rooted,
             environment,
             ..
         }) = self
