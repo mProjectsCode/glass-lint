@@ -5,7 +5,6 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use glass_lint_core::SourceLanguage;
 use glass_lint_datastructures::{Position, SourceRange};
 
 use super::{language_for_path, snippet::parse_case};
@@ -138,7 +137,7 @@ pub(super) fn load_project_case(root: &Path, directory: &Path) -> Result<Case> {
         .filter(|entry| {
             entry.file_type().is_file()
                 && entry.file_name() != "case.toml"
-                && SourceLanguage::is_supported_filename(&entry.path().to_string_lossy())
+                && super::is_supported_fixture_filename(entry.path())
         })
         .map(walkdir::DirEntry::into_path)
         .collect();

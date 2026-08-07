@@ -234,9 +234,14 @@ impl<'a> SourceAdmission<'a> {
         admitted: &AdmittedSourcePath,
     ) -> Result<SourceFile, ProjectLoadError> {
         let corpus_file = read_source_bytes(admitted.as_ref(), self.options.max_source_bytes())?;
-        Ok(SourceFile::from_relative(
+        let language = self
+            .options
+            .source_language(admitted.as_ref())
+            .ok_or_else(|| ProjectLoadError::UnsupportedSource(admitted.as_ref().to_path_buf()))?;
+        Ok(SourceFile::from_relative_with_language(
             admitted.relative().clone(),
             corpus_file.source,
+            language,
         ))
     }
 }

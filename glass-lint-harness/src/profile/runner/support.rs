@@ -5,7 +5,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use glass_lint_core::{Linter, RuleId};
+use glass_lint_core::{Linter, RuleId, SourceLanguage};
 use glass_lint_project::{ProjectLoadMetrics, ProjectLoadOutcome};
 
 use crate::{
@@ -48,6 +48,20 @@ pub(super) fn prepare_file(path: &Path) -> Result<PreparedFile> {
         bytes: metadata.len(),
         source,
     })
+}
+
+pub(super) fn source_language(path: &Path) -> SourceLanguage {
+    match path.extension().and_then(|extension| extension.to_str()) {
+        Some(extension)
+            if matches!(
+                extension.to_ascii_lowercase().as_str(),
+                "ts" | "cts" | "mts"
+            ) =>
+        {
+            SourceLanguage::TypeScript
+        }
+        _ => SourceLanguage::JavaScript,
+    }
 }
 
 pub(super) fn build_linters(

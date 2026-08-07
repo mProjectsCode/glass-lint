@@ -11,7 +11,7 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use glass_lint_core::{
-    Linter, RuleId,
+    Linter, RuleId, SourceLanguage,
     project::{Finding, SourceFile},
 };
 
@@ -45,6 +45,14 @@ pub trait Adapter {
 
 pub struct GlassLintAdapter;
 
+fn source_language(language: &str) -> Result<SourceLanguage> {
+    match language {
+        "javascript" => Ok(SourceLanguage::JavaScript),
+        "typescript" => Ok(SourceLanguage::TypeScript),
+        other => bail!("unknown source language `{other}`"),
+    }
+}
+
 impl Adapter for GlassLintAdapter {
     fn name(&self) -> &'static str {
         "glass-lint"
@@ -70,7 +78,11 @@ impl Adapter for GlassLintAdapter {
         if let Some(project) = &case.project {
             return Ok(run_project(project, expectation)?.findings);
         }
-        let source = SourceFile::new(case.filename.clone(), case.source.clone())?;
+        let source = SourceFile::with_language(
+            case.filename.clone(),
+            case.source.clone(),
+            source_language(&case.language)?,
+        )?;
         Ok(project_report_to_run(&configured_linter(expectation)?.lint_source(source)?)?.findings)
     }
 }
@@ -116,7 +128,11 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
         for file in project.files() {
             authored.extend(
                 session
-                    .analyze_source(SourceFile::new(file.path.clone(), file.source.clone())?)?
+                    .analyze_source(SourceFile::with_language(
+                        file.path.clone(),
+                        file.source.clone(),
+                        source_language(&file.language)?,
+                    )?)?
                     .into_iter()
                     .map(|request| (request, file.path.clone())),
             );

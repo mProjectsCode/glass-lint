@@ -54,34 +54,6 @@ pub enum SourceLanguage {
 }
 
 impl SourceLanguage {
-    /// Selects the parser language for a filename. Unknown names use
-    /// JavaScript for virtual sources and paths without a recognized
-    /// extension; callers that know an extensionless source is TypeScript must
-    /// provide the language directly.
-    #[must_use]
-    pub fn from_filename(filename: &str) -> Self {
-        Self::from_extension(Self::extension(filename)).unwrap_or(Self::JavaScript)
-    }
-
-    /// Returns the language associated with a supported source extension.
-    #[must_use]
-    pub fn from_extension(extension: &str) -> Option<Self> {
-        match extension.to_ascii_lowercase().as_str() {
-            "js" | "cjs" | "mjs" => Some(Self::JavaScript),
-            "ts" | "cts" | "mts" => Some(Self::TypeScript),
-            _ => None,
-        }
-    }
-
-    /// Returns whether a filename is a discoverable runtime source file.
-    /// TypeScript declaration files are excluded because they contain no
-    /// runtime behavior for the semantic engine to analyze.
-    #[must_use]
-    pub fn is_supported_filename(filename: &str) -> bool {
-        !Self::is_declaration_filename(filename)
-            && Self::from_extension(Self::extension(filename)).is_some()
-    }
-
     fn syntax(self) -> Syntax {
         match self {
             Self::JavaScript => Syntax::Es(EsSyntax {
@@ -102,23 +74,6 @@ impl SourceLanguage {
                 ..Default::default()
             }),
         }
-    }
-
-    fn extension(filename: &str) -> &str {
-        filename
-            .rsplit(['/', '\\'])
-            .next()
-            .and_then(|basename| basename.rsplit_once('.'))
-            .map_or("", |(_, extension)| extension)
-    }
-
-    fn is_declaration_filename(filename: &str) -> bool {
-        filename.rsplit(['/', '\\']).next().is_some_and(|basename| {
-            let basename = basename.to_ascii_lowercase();
-            [".d.ts", ".d.cts", ".d.mts"]
-                .iter()
-                .any(|suffix| basename.ends_with(suffix))
-        })
     }
 }
 

@@ -135,7 +135,7 @@ positions, CRLF/EOF handling, and the zero-copy source-slice path.
 
 ### Parser and runtime policy boundaries
 
-#### [ ] READ-005 — Source-language admission is split between core and project discovery
+#### [x] READ-005 — Source-language admission is split between core and project discovery
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -162,7 +162,10 @@ configured extensions, declaration-file exclusion, direct virtual-source
 construction, and the project/core boundary that keeps filesystem policy out
 of core.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Core `SourceLanguage` and `SourceFile` no longer infer or
+admit filenames. Validated project options now own suffix admission and map
+admitted paths to an explicit parser language; CLI, harness, profile, and test
+callers pass that language at construction. Verified with `make fmt && make ci`.
 
 #### [ ] READ-006 — Syntax-depth protection is a hidden two-phase protocol inside `SourceParser`
 

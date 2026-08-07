@@ -139,9 +139,10 @@ fn admitted_project_run(
                 file.path.display()
             )
         })?;
-        sources.push(glass_lint_core::project::SourceFile::new(
+        sources.push(glass_lint_core::project::SourceFile::with_language(
             relative.to_string_lossy(),
             file.source.clone(),
+            support::source_language(relative),
         )?);
     }
     session.analyze_sources(

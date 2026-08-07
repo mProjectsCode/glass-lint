@@ -2,7 +2,16 @@ use super::*;
 use crate::api::rule::{EventQuery, QueryDecl};
 
 pub fn source_file(path: impl Into<String>, source: impl Into<SourceText>) -> SourceFile {
-    SourceFile::new(path, source).unwrap()
+    let path = path.into();
+    let language = if path.to_ascii_lowercase().ends_with(".ts")
+        || path.to_ascii_lowercase().ends_with(".cts")
+        || path.to_ascii_lowercase().ends_with(".mts")
+    {
+        crate::SourceLanguage::TypeScript
+    } else {
+        crate::SourceLanguage::JavaScript
+    };
+    SourceFile::with_language(path, source, language).unwrap()
 }
 
 pub fn project_path(path: &str) -> ProjectRelativePath {

@@ -240,7 +240,11 @@ fn all_fingerprint_dimensions_have_independent_hit_miss_tests() {
     assert_miss_for(
         &base_cache,
         &base_linter,
-        SourceFile::from_relative(project_path("typed.ts"), SourceText::from("fetch('/api');")),
+        SourceFile::from_relative_with_language(
+            project_path("typed.ts"),
+            SourceText::from("fetch('/api');"),
+            crate::SourceLanguage::TypeScript,
+        ),
         |_| {},
     );
 

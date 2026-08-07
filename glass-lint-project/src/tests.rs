@@ -8,7 +8,7 @@ use std::{
 };
 
 use glass_lint_core::{
-    Environment, Linter, LinterConfig, RuleCatalog,
+    Environment, Linter, LinterConfig, RuleCatalog, SourceLanguage,
     project::{LocalExecutionError, ProjectError, ProjectExecutionError, ProjectPhaseError},
 };
 
@@ -120,6 +120,25 @@ fn resolver_suffix_options_are_validated_and_declarations_are_excluded() {
     let mut options = ProjectLoadOptions::default();
     options.extensions.push(".d.cts".into());
     let _loader = ProjectLoader::new(options.validated().unwrap());
+}
+
+#[test]
+fn admitted_extensions_select_parser_mode_at_the_project_boundary() {
+    let options = ValidatedProjectLoadOptions::default();
+    assert_eq!(
+        options.source_language(Path::new("main.ts")),
+        Some(SourceLanguage::TypeScript)
+    );
+    assert_eq!(
+        options.source_language(Path::new("main.MTS")),
+        Some(SourceLanguage::TypeScript)
+    );
+    assert_eq!(
+        options.source_language(Path::new("main.js")),
+        Some(SourceLanguage::JavaScript)
+    );
+    assert_eq!(options.source_language(Path::new("main.d.ts")), None);
+    assert_eq!(options.source_language(Path::new("main.jsx")), None);
 }
 
 #[test]

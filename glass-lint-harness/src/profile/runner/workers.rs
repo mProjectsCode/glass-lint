@@ -40,8 +40,12 @@ fn profile_file(
                 .unwrap_or("snippet.js");
             let report = linter
                 .lint_source(
-                    SourceFile::new(filename, file.source.clone())
-                        .expect("profile paths are valid snippet project identities"),
+                    SourceFile::with_language(
+                        filename,
+                        file.source.clone(),
+                        super::support::source_language(&file.path),
+                    )
+                    .expect("profile paths are valid snippet project identities"),
                 )
                 .expect("profile paths are valid snippet project identities");
             if iteration >= warm_up {

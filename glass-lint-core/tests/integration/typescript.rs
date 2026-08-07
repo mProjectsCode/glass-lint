@@ -4,6 +4,8 @@
 //! The fixtures distinguish runtime syntax from type-only declarations and keep
 //! source coordinates authoritative after TypeScript syntax is stripped.
 
+use std::path::Path;
+
 use glass_lint_core::{
     Environment, Linter, LinterConfig, RuleCatalog, SourceLanguage,
     project::SourceFile,
@@ -28,16 +30,17 @@ fn linter() -> Linter {
     .unwrap()
 }
 
+fn typescript_source(path: &str, source: &str) -> SourceFile {
+    SourceFile::with_language(path, source, SourceLanguage::TypeScript).unwrap()
+}
+
 #[test]
 fn typed_runtime_calls_match_at_original_locations() {
     let report = linter()
-        .lint_source(
-            SourceFile::new(
-                "input.ts",
-                "const call = (url: string): void => fetch(url as string);",
-            )
-            .unwrap(),
-        )
+        .lint_source(typescript_source(
+            "input.ts",
+            "const call = (url: string): void => fetch(url as string);",
+        ))
         .unwrap();
     assert!(!report.files()[0].has_parse_diagnostics());
     assert_eq!(report.files()[0].findings().len(), 1);
@@ -62,13 +65,10 @@ fn typed_runtime_calls_match_at_original_locations() {
 #[test]
 fn assertions_and_type_annotations_do_not_move_runtime_locations() {
     let report = linter()
-        .lint_source(
-            SourceFile::new(
-                "input.ts",
-                "const value: string = (fetch! as (url: string) => string)('/data');",
-            )
-            .unwrap(),
-        )
+        .lint_source(typescript_source(
+            "input.ts",
+            "const value: string = (fetch! as (url: string) => string)('/data');",
+        ))
         .unwrap();
     assert!(!report.files()[0].has_parse_diagnostics());
     assert_eq!(report.files()[0].findings().len(), 1);
@@ -92,20 +92,22 @@ fn assertions_and_type_annotations_do_not_move_runtime_locations() {
 
 #[test]
 fn type_only_api_lookalikes_do_not_create_findings() {
-    let report = linter().lint_source(SourceFile::new(
+    let report = linter().lint_source(typescript_source(
         "input.ts",
         "interface Fetch { call(): void }\ntype Alias = typeof fetch;\nimport type { fetch as imported } from 'api';\ndeclare function fetch(url: string): void;",
-    ).unwrap()).unwrap();
+    ))
+    .unwrap();
     assert!(!report.files()[0].has_parse_diagnostics());
     assert!(report.files()[0].findings().is_empty());
 }
 
 #[test]
 fn runtime_enum_calls_are_detected_without_matching_enum_lookalikes() {
-    let report = linter().lint_source(SourceFile::new(
+    let report = linter().lint_source(typescript_source(
         "runtime.ts",
         "enum Local { fetch }\nenum Values { Remote = fetch('/remote') }\nnamespace window { export const fetch = 1 }",
-    ).unwrap()).unwrap();
+    ))
+    .unwrap();
     assert!(!report.files()[0].has_parse_diagnostics());
     assert_eq!(report.files()[0].findings().len(), 1);
     assert_eq!(
@@ -128,10 +130,11 @@ fn runtime_enum_calls_are_detected_without_matching_enum_lookalikes() {
 
 #[test]
 fn parameter_properties_and_namespace_names_do_not_create_global_provenance() {
-    let report = linter().lint_source(SourceFile::new(
+    let report = linter().lint_source(typescript_source(
         "lookalikes.ts",
         "class Local { constructor(public fetch: unknown) {}\n  run() { this.fetch; }\n}\nnamespace fetch { export const value = 1 }",
-    ).unwrap()).unwrap();
+    ))
+    .unwrap();
     assert!(!report.files()[0].has_parse_diagnostics());
     assert!(report.files()[0].findings().is_empty());
 }
@@ -149,7 +152,16 @@ fn js_ts_unicode_crlf_locations_preserve_expected_ranges() {
         ),
     ] {
         let report = linter()
-            .lint_source(SourceFile::new(filename, source).unwrap())
+            .lint_source(
+                if Path::new(filename)
+                    .extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("ts"))
+                {
+                    typescript_source(filename, source)
+                } else {
+                    SourceFile::new(filename, source).unwrap()
+                },
+            )
             .unwrap();
         assert!(!report.files()[0].has_parse_diagnostics(), "{filename}");
         assert_eq!(report.files()[0].findings().len(), 1, "{filename}");
@@ -168,31 +180,14 @@ fn js_ts_unicode_crlf_locations_preserve_expected_ranges() {
 }
 
 #[test]
-fn language_is_selected_by_filename() {
-    for filename in ["main.ts", "main.cts", "main.mts"] {
-        assert_eq!(
-            SourceLanguage::from_filename(filename),
-            SourceLanguage::TypeScript
-        );
-        assert!(SourceLanguage::is_supported_filename(filename));
-    }
-    for filename in ["main.js", "main.cjs", "main.mjs"] {
-        assert_eq!(
-            SourceLanguage::from_filename(filename),
-            SourceLanguage::JavaScript
-        );
-        assert!(SourceLanguage::is_supported_filename(filename));
-    }
-    for filename in ["main.d.ts", "main.d.cts", "main.d.mts"] {
-        assert!(!SourceLanguage::is_supported_filename(filename));
-    }
+fn virtual_sources_require_an_explicit_typescript_language() {
     assert_eq!(
-        SourceLanguage::from_filename("MAIN.MTS"),
-        SourceLanguage::TypeScript
+        SourceFile::new("main.ts", "").unwrap().language(),
+        SourceLanguage::JavaScript
     );
     assert_eq!(
-        SourceLanguage::from_filename("virtual"),
-        SourceLanguage::JavaScript
+        typescript_source("virtual", "").language(),
+        SourceLanguage::TypeScript
     );
 }
 
@@ -200,9 +195,10 @@ fn language_is_selected_by_filename() {
 fn module_specific_extensions_select_the_expected_parser() {
     for filename in ["input.cts", "input.mts"] {
         let report = linter()
-            .lint_source(
-                SourceFile::new(filename, "const value: string = fetch('/data');").unwrap(),
-            )
+            .lint_source(typescript_source(
+                filename,
+                "const value: string = fetch('/data');",
+            ))
             .unwrap();
         assert!(!report.files()[0].has_parse_diagnostics(), "{filename}");
         assert_eq!(report.files()[0].findings().len(), 1, "{filename}");
@@ -219,7 +215,7 @@ fn module_specific_extensions_select_the_expected_parser() {
 #[test]
 fn malformed_typescript_reports_original_location() {
     let report = linter()
-        .lint_source(SourceFile::new("broken.ts", "const value: = 1;").unwrap())
+        .lint_source(typescript_source("broken.ts", "const value: = 1;"))
         .unwrap();
     assert_eq!(report.files()[0].parse_diagnostic_count(), 1);
     assert_eq!(

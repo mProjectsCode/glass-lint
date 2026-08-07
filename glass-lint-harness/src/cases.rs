@@ -6,7 +6,6 @@
 use std::{collections::BTreeSet, fs, path::Path};
 
 use anyhow::{Context, Result, bail};
-use glass_lint_core::SourceLanguage;
 use walkdir::WalkDir;
 
 use crate::types::Case;
@@ -23,10 +22,31 @@ use project::load_project_case;
 use snippet::parse_case;
 
 fn language_for_path(path: &Path) -> &'static str {
-    match SourceLanguage::from_filename(&path.to_string_lossy()) {
-        SourceLanguage::TypeScript => "typescript",
-        SourceLanguage::JavaScript => "javascript",
+    match path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .and_then(|name| name.rsplit_once('.'))
+        .map(|(_, extension)| extension.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("ts" | "cts" | "mts") => "typescript",
+        _ => "javascript",
     }
+}
+
+fn is_supported_fixture_filename(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    let Some((_, extension)) = name.rsplit_once('.') else {
+        return false;
+    };
+    matches!(
+        extension.to_ascii_lowercase().as_str(),
+        "js" | "cjs" | "mjs" | "ts" | "cts" | "mts"
+    ) && ![".d.ts", ".d.cts", ".d.mts"]
+        .iter()
+        .any(|suffix| name.to_ascii_lowercase().ends_with(suffix))
 }
 
 fn default_filename(path: &Path) -> String {
@@ -52,7 +72,7 @@ pub fn load_cases(root: &Path) -> Result<Vec<Case>> {
         .into_iter()
         .filter(|entry| {
             entry.file_type().is_file()
-                && SourceLanguage::is_supported_filename(&entry.path().to_string_lossy())
+                && is_supported_fixture_filename(entry.path())
                 && !project_directories
                     .iter()
                     .any(|directory| entry.path().starts_with(directory))

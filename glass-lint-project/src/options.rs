@@ -3,6 +3,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use glass_lint_core::SourceLanguage;
+
 use crate::{ProjectLoadError, error::ProjectOptionError};
 
 const DEFAULT_MAX_FILES: usize = 10_000;
@@ -97,26 +99,43 @@ pub struct ValidatedProjectLoadOptions {
 struct SourceExtensionSet(BTreeSet<String>);
 
 impl SourceExtensionSet {
-    fn supports(&self, path: &Path) -> bool {
-        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-            return false;
-        };
+    fn matching_extension<'a>(&'a self, name: &str) -> Option<&'a str> {
         // Case-insensitive suffix check without allocating a lowered copy.
-        let matched = self.0.iter().any(|ext| {
-            name.len() >= ext.len() && name[(name.len() - ext.len())..].eq_ignore_ascii_case(ext)
-        });
-        if !matched {
-            return false;
+        self.0.iter().find_map(|extension| {
+            name.len()
+                .checked_sub(extension.len())
+                .filter(|start| name[*start..].eq_ignore_ascii_case(extension))
+                .map(|_| extension.as_str())
+        })
+    }
+
+    fn is_declaration(name: &str) -> bool {
+        [".d.ts", ".d.cts", ".d.mts"].iter().any(|declaration| {
+            name.len() >= declaration.len()
+                && name[(name.len() - declaration.len())..].eq_ignore_ascii_case(declaration)
+        })
+    }
+
+    fn language(&self, path: &Path) -> Option<SourceLanguage> {
+        let name = path.file_name().and_then(|name| name.to_str())?;
+        let extension = self.matching_extension(name)?;
+        if Self::is_declaration(name) {
+            return None;
         }
-        // Reject declaration files (they are not source).
-        for decl in [".d.ts", ".d.cts", ".d.mts"] {
-            if name.len() >= decl.len()
-                && name[(name.len() - decl.len())..].eq_ignore_ascii_case(decl)
+        Some(
+            if [".ts", ".cts", ".mts"]
+                .iter()
+                .any(|typescript| extension.eq_ignore_ascii_case(typescript))
             {
-                return false;
-            }
-        }
-        true
+                SourceLanguage::TypeScript
+            } else {
+                SourceLanguage::JavaScript
+            },
+        )
+    }
+
+    fn supports(&self, path: &Path) -> bool {
+        self.language(path).is_some()
     }
 }
 
@@ -401,6 +420,11 @@ impl ValidatedProjectLoadOptions {
 
     pub fn supports(&self, path: &Path) -> bool {
         self.extensions.supports(path)
+    }
+
+    /// Return the parser language for an admitted source path.
+    pub fn source_language(&self, path: &Path) -> Option<SourceLanguage> {
+        self.extensions.language(path)
     }
 
     pub fn excludes_path(&self, root: &Path, path: &Path) -> bool {

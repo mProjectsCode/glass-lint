@@ -104,7 +104,13 @@ fn lint_files(config: &Config, linter: &Linter, paths: Vec<PathBuf>) -> Result<b
         );
 
         let project_report = linter
-            .lint_source(SourceFile::new(name.clone(), source.clone())?)
+            .lint_source(SourceFile::with_language(
+                name.clone(),
+                source.clone(),
+                options
+                    .source_language(&path)
+                    .ok_or_else(|| anyhow::anyhow!("unsupported source path {}", path.display()))?,
+            )?)
             .map_err(|error| anyhow::anyhow!(error))?;
         failed |= config.report_fails(&project_report);
         files.push(FileOutput {

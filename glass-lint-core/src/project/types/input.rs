@@ -239,6 +239,9 @@ pub struct SourceFile {
 }
 
 impl SourceFile {
+    /// Construct a virtual source using JavaScript parser semantics.
+    /// Filename extensions do not select a language; filesystem admission
+    /// supplies one explicitly through [`Self::with_language`].
     pub fn new(
         path: impl Into<String>,
         source: impl Into<SourceText>,
@@ -246,13 +249,13 @@ impl SourceFile {
         let path = path.into();
         let path = ProjectRelativePath::new(&path)?;
         Ok(Self {
-            language: SourceLanguage::from_filename(&path),
+            language: SourceLanguage::JavaScript,
             path,
             source: source.into(),
         })
     }
 
-    /// Construct with an explicit language, ignoring the filename extension.
+    /// Construct a virtual source with an explicit parser language.
     pub fn with_language(
         path: impl Into<String>,
         source: impl Into<SourceText>,
@@ -267,12 +270,12 @@ impl SourceFile {
         })
     }
 
-    /// Construct from a validated project-relative path without re-parsing.
+    /// Construct a virtual source from a validated path using JavaScript
+    /// parser semantics. Filesystem admission supplies an explicit language.
     pub fn from_relative(path: ProjectRelativePath, source: impl Into<SourceText>) -> Self {
-        let language = SourceLanguage::from_filename(&path);
         Self {
             path,
-            language,
+            language: SourceLanguage::JavaScript,
             source: source.into(),
         }
     }
