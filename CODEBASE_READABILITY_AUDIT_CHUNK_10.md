@@ -53,7 +53,7 @@ Deterministic ordering, configured versus restricted object identity, and
 collision-safe cache-key equality are unchanged. Verified with `make fmt &&
 make ci`.
 
-#### [ ] READ-002 — Global-object path matching duplicates one semantic relation across two path types
+#### [x] READ-002 — Global-object path matching duplicates one semantic relation across two path types
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -76,7 +76,12 @@ matching and promoted-member matching rather than making callers reproduce
 the symmetry. Preserve exact path identity, restricted foreign-realm
 behavior, unresolved `NameId` fail-closed behavior, and tail ordering.
 
-**Fix Applied:** None so far.
+**Fix Applied:** A private `GlobalObjectPath` now owns exact, configured-alias,
+and promoted-member path relations. `SymbolPath` uses a direct string adapter;
+`NamePath` resolves all `NameId` segments through a fail-closed adapter before
+using the same relation owner. Restricted foreign-realm behavior, tail
+ordering, and exact-path identity are preserved, with a name-path contract
+test added. Verified with `make fmt && make ci`.
 
 ### Diagnostic and source-coordinate ownership
 

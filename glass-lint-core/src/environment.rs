@@ -6,6 +6,7 @@ use std::{
 };
 
 use glass_lint_datastructures::{Fingerprint, NamePath, NameTable, SymbolPath};
+use smallvec::SmallVec;
 use smol_str::SmolStr;
 use swc_ecma_ast::EsReserved;
 
@@ -126,6 +127,57 @@ fn is_js_identifier_continue(c: char) -> bool {
         return true;
     }
     swc_ecma_ast::Ident::is_valid_continue(c)
+}
+
+struct GlobalObjectPath<'a> {
+    segments: SmallVec<[&'a str; 4]>,
+}
+
+impl<'a> GlobalObjectPath<'a> {
+    fn from_symbols(path: &'a SymbolPath) -> Self {
+        Self {
+            segments: path.segments().iter().map(SmolStr::as_str).collect(),
+        }
+    }
+
+    fn from_names(path: &'a NamePath, names: &'a NameTable) -> Option<Self> {
+        Some(Self {
+            segments: path
+                .segments()
+                .iter()
+                .map(|id| names.resolve(*id))
+                .collect::<Option<_>>()?,
+        })
+    }
+
+    fn matches(&self, environment: &Environment, other: &Self) -> bool {
+        if self.segments == other.segments {
+            return true;
+        }
+
+        if let (Some(left_root), Some(right_root)) = (self.segments.first(), other.segments.first())
+            && environment.global_object_aliases_match(left_root, right_root)
+        {
+            return self.segments[1..] == other.segments[1..];
+        }
+
+        if self.is_promoted_member(environment) && &self.segments[1..] == other.segments.as_slice()
+        {
+            return true;
+        }
+        if other.is_promoted_member(environment) && &other.segments[1..] == self.segments.as_slice()
+        {
+            return true;
+        }
+        false
+    }
+
+    fn is_promoted_member(&self, environment: &Environment) -> bool {
+        self.segments
+            .split_first()
+            .and_then(|(root, tail)| tail.first().map(|member| (root, member)))
+            .is_some_and(|(root, member)| environment.is_promoted_global_member(root, member))
+    }
 }
 
 impl Environment {
@@ -320,34 +372,7 @@ impl Environment {
         if left == right {
             return true;
         }
-        let left = left.as_view();
-        let right = right.as_view();
-        if let (Some(left_root), Some(right_root)) = (left.first_segment(), right.first_segment())
-            && self.global_object_aliases_match(left_root, right_root)
-        {
-            return left.tail_after(1) == right.tail_after(1);
-        }
-        if let Some(root) = left.first_segment()
-            && left.len() > 1
-            && left
-                .tail_after(1)
-                .and_then(|tail| tail.first_segment())
-                .is_some_and(|member| self.is_promoted_global_member(root, member))
-            && left.tail_after(1) == Some(right)
-        {
-            return true;
-        }
-        if let Some(root) = right.first_segment()
-            && right.len() > 1
-            && right
-                .tail_after(1)
-                .and_then(|tail| tail.first_segment())
-                .is_some_and(|member| self.is_promoted_global_member(root, member))
-            && right.tail_after(1) == Some(left)
-        {
-            return true;
-        }
-        false
+        GlobalObjectPath::from_symbols(left).matches(self, &GlobalObjectPath::from_symbols(right))
     }
 
     pub(crate) fn global_object_name_paths_match(
@@ -359,55 +384,13 @@ impl Environment {
         if left == right {
             return true;
         }
-
-        let left_view = left.as_view();
-        let right_view = right.as_view();
-        let Some(left_root) = left_view
-            .first_segment()
-            .copied()
-            .and_then(|id| names.resolve(id))
-        else {
+        let Some(left) = GlobalObjectPath::from_names(left, names) else {
             return false;
         };
-        let Some(right_root) = right_view
-            .first_segment()
-            .copied()
-            .and_then(|id| names.resolve(id))
-        else {
+        let Some(right) = GlobalObjectPath::from_names(right, names) else {
             return false;
         };
-
-        if self.global_object_aliases_match(left_root, right_root)
-            && left_view.tail_after(1) == right_view.tail_after(1)
-        {
-            return true;
-        }
-
-        if left_view.len() > 1
-            && left_view
-                .tail_after(1)
-                .and_then(|tail| tail.first_segment())
-                .copied()
-                .and_then(|id| names.resolve(id))
-                .is_some_and(|member| self.is_promoted_global_member(left_root, member))
-            && left_view.tail_after(1) == Some(right_view)
-        {
-            return true;
-        }
-
-        if right_view.len() > 1
-            && right_view
-                .tail_after(1)
-                .and_then(|tail| tail.first_segment())
-                .copied()
-                .and_then(|id| names.resolve(id))
-                .is_some_and(|member| self.is_promoted_global_member(right_root, member))
-            && right_view.tail_after(1) == Some(left_view)
-        {
-            return true;
-        }
-
-        false
+        left.matches(self, &right)
     }
 
     fn is_global_object(&self, name: &str) -> bool {
@@ -587,6 +570,28 @@ mod tests {
         let window_fetch = SymbolPath::from_chain("window.fetch");
         let self_fetch = SymbolPath::from_chain("self.fetch");
         assert!(env.global_object_paths_match(&window_fetch, &self_fetch));
+    }
+
+    #[test]
+    fn global_object_name_paths_use_the_same_relation() {
+        let mut env = Environment::default();
+        env.add_global("fetch").unwrap();
+        env.add_global_object("window").unwrap();
+        env.add_global_object("self").unwrap();
+        let mut names = NameTable::default();
+        for name in ["window", "self", "fetch"] {
+            names.intern(name).unwrap();
+        }
+        let window_fetch = names
+            .lookup_path(&SymbolPath::from_chain("window.fetch"))
+            .unwrap();
+        let self_fetch = names
+            .lookup_path(&SymbolPath::from_chain("self.fetch"))
+            .unwrap();
+        let fetch = names.lookup_path(&SymbolPath::from_chain("fetch")).unwrap();
+
+        assert!(env.global_object_name_paths_match(&window_fetch, &self_fetch, &names));
+        assert!(env.global_object_name_paths_match(&window_fetch, &fetch, &names));
     }
 
     #[test]
