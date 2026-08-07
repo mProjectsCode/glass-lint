@@ -128,7 +128,7 @@ layer's fail-closed behavior for spans that cannot be converted.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-094 — Keep parser diagnostics fallible at the SWC span boundary
+#### [x] READ-094 — Keep parser diagnostics fallible at the SWC span boundary
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -158,7 +158,15 @@ the current language-specific message, while deleting the parser-path
 `expect` assertions. Preserve deterministic diagnostics and fail-closed
 partial reports.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a fallible `SourceParser::parser_range` boundary that
+rejects dummy, reversed, out-of-bounds, non-UTF-8-boundary, and unrepresentable
+spans before converting SWC display positions. Parser diagnostics now retain
+their syntax code and message while omitting only an invalid range. Added a
+focused unit test covering malformed spans.
+
+**Verified:** `make fmt && make ci` (workspace check, clippy with warnings as
+errors, 811 core tests, doctests, E2E/rule harnesses, rules documentation
+check, and examples).
 
 ### Rule-selection API
 

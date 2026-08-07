@@ -1,6 +1,6 @@
 //! Bounded JavaScript/TypeScript parsing and source-position conversion.
 
-use glass_lint_datastructures::{Position, SourceRange};
+use glass_lint_datastructures::{ByteRange, Position, SourceRange};
 use swc_common::{FileName, GLOBALS, Globals, Mark, SourceMap, Spanned, sync::Lrc};
 use swc_ecma_ast::{EsVersion, Program};
 use swc_ecma_parser::{
@@ -250,28 +250,7 @@ impl SourceParser {
     }
 
     fn parser_diagnostic(&self, error: &swc_ecma_parser::error::Error) -> ParseDiagnostic {
-        let range = (!error.span().is_dummy()).then(|| {
-            let start = self.source_map.lookup_char_pos(error.span().lo());
-            let end = self.source_map.lookup_char_pos(error.span().hi());
-            let start = Position::new(
-                start.line.try_into().unwrap_or(u32::MAX),
-                start
-                    .col_display
-                    .try_into()
-                    .unwrap_or(u32::MAX)
-                    .saturating_add(1),
-            )
-            .expect("parser locations are one-based");
-            let end = Position::new(
-                end.line.try_into().unwrap_or(u32::MAX),
-                end.col_display
-                    .try_into()
-                    .unwrap_or(u32::MAX)
-                    .saturating_add(1),
-            )
-            .expect("parser locations are one-based");
-            SourceRange::new(start, end).expect("parser spans are ordered")
-        });
+        let range = self.parser_range(error.span());
         ParseDiagnostic {
             code: crate::project::types::DiagnosticKind::SyntaxError.into(),
             message: format!(
@@ -286,6 +265,43 @@ impl SourceParser {
             range,
             failure: ParseFailureKind::Syntax,
         }
+    }
+
+    fn parser_range(&self, span: swc_common::Span) -> Option<SourceRange> {
+        if span.is_dummy() {
+            return None;
+        }
+
+        let start = span.lo.0.checked_sub(self.file.start_pos.0)?;
+        let end = span.hi.0.checked_sub(self.file.start_pos.0)?;
+        let source_len = u32::try_from(self.source.source().len()).ok()?;
+        let byte_range = ByteRange::new(start, end).ok()?;
+        if byte_range.end() > source_len
+            || !self
+                .source
+                .source()
+                .is_char_boundary(byte_range.start() as usize)
+            || !self
+                .source
+                .source()
+                .is_char_boundary(byte_range.end() as usize)
+        {
+            return None;
+        }
+
+        let start = self.source_map.lookup_char_pos(span.lo());
+        let end = self.source_map.lookup_char_pos(span.hi());
+        let start = Position::new(
+            u32::try_from(start.line).ok()?,
+            u32::try_from(start.col_display).ok()?.checked_add(1)?,
+        )
+        .ok()?;
+        let end = Position::new(
+            u32::try_from(end.line).ok()?,
+            u32::try_from(end.col_display).ok()?.checked_add(1)?,
+        )
+        .ok()?;
+        SourceRange::new(start, end).ok()
     }
 }
 
@@ -548,6 +564,33 @@ mod tests {
             panic!("deep input unexpectedly parsed")
         };
         assert_eq!(error.code.as_str(), "syntax_depth_exceeded");
+    }
+
+    #[test]
+    fn parser_range_rejects_invalid_spans_without_panicking() {
+        let source =
+            SourceFile::with_language("invalid-span.js", "value", SourceLanguage::JavaScript)
+                .expect("test parser input should have a valid relative path");
+        let parser = SourceParser::new(&source).expect("test source should be admitted");
+        let start = parser.file.start_pos.0;
+
+        assert!(parser.parser_range(swc_common::DUMMY_SP).is_none());
+        assert!(
+            parser
+                .parser_range(swc_common::Span {
+                    lo: swc_common::BytePos(start + 2),
+                    hi: swc_common::BytePos(start + 1),
+                })
+                .is_none()
+        );
+        assert!(
+            parser
+                .parser_range(swc_common::Span::new(
+                    swc_common::BytePos(start),
+                    swc_common::BytePos(start + 7),
+                ))
+                .is_none()
+        );
     }
 
     #[test]
