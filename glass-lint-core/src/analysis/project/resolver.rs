@@ -204,18 +204,6 @@ pub(super) fn target_to_export_resolution(
             module: specifier.clone(),
             export: export.into(),
         },
-        Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
-            module: package.to_smolstr(),
-            export: export.into(),
-        },
-        Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
-            module: name.to_smolstr(),
-            export: export.into(),
-        },
-        Some(LinkedModuleTarget::Internal { id }) => ExportResolution::Qualified {
-            module: *id,
-            export: export.into(),
-        },
         Some(target) => linked_target_to_export_resolution(target, export),
     }
 }

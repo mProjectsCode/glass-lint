@@ -123,7 +123,7 @@ the distinction between unknown and ambiguous exports.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-059 — Centralize known linked-target conversion
+#### [x] READ-059 — Centralize known linked-target conversion
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -154,7 +154,10 @@ internal-request fallback to `Unknown`, external and builtin naming, qualified
 internal identities, and fail-closed handling of missing/outside/unsupported
 targets.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Kept authored-specifier fallback in
+`target_to_export_resolution` and routed every present target through the
+single known-target conversion helper, removing duplicate External/Builtin/
+Internal mapping arms. Verified with `make fmt && make ci`.
 
 ### Projection plan and public model boundary
 
