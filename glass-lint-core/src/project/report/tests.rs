@@ -7,7 +7,7 @@ use crate::{
     project::{
         AnalysisDiagnostic, AnalysisOperationCounts, Diagnostic, EvidenceRole, EvidenceStep,
         EvidenceTrace, EvidenceTraces, FileReport, Finding, MatchCertainty, ProjectRelativePath,
-        ReportCompletion, SourceFile, SourceLocation, SourceText,
+        ReportCompletion, SourceFile, SourceLocation, SourceText, types::DiagnosticCode,
     },
 };
 
@@ -268,6 +268,29 @@ fn combine_reports_rejects_tool_version_mismatch() {
             expected: "test".into(),
             actual: "other".into(),
         })
+    );
+}
+
+#[test]
+fn public_report_transformations_preserve_diagnostic_order() {
+    let later_code = DiagnosticCode::new("z_project_diagnostic").unwrap();
+    let earlier_code = DiagnosticCode::new("a_project_diagnostic").unwrap();
+    let report = report("a.js", ReportCompletion::Complete)
+        .with_project_diagnostics(&later_code, ["later code".into()])
+        .with_project_diagnostics(&earlier_code, ["earlier code".into()])
+        .into_partial("partial");
+
+    assert_eq!(
+        report
+            .diagnostics()
+            .iter()
+            .map(Diagnostic::code)
+            .collect::<Vec<_>>(),
+        [
+            "a_project_diagnostic",
+            "incomplete_project",
+            "z_project_diagnostic"
+        ]
     );
 }
 

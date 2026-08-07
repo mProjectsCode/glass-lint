@@ -94,11 +94,12 @@ impl AnalysisReport {
         self
     }
 
-    pub(crate) fn sort_deterministically(&mut self) {
+    pub(crate) fn finalize(mut self) -> Self {
         self.files
             .sort_by(|left, right| left.ordering_key().cmp(right.ordering_key()));
         self.diagnostics
             .sort_by(|left, right| left.ordering_key().cmp(&right.ordering_key()));
+        self
     }
 
     #[must_use]
@@ -110,7 +111,7 @@ impl AnalysisReport {
         self.diagnostics.extend(messages.into_iter().map(|message| {
             Diagnostic::Project(AnalysisDiagnostic::new(code.clone(), message, None))
         }));
-        self
+        self.finalize()
     }
 
     #[must_use]
@@ -124,7 +125,7 @@ impl AnalysisReport {
                 None,
             )));
         self.completion = self.completion.join(ReportCompletion::Partial);
-        self
+        self.finalize()
     }
 }
 

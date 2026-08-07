@@ -66,8 +66,7 @@ impl AnalysisReport {
             }
             combined = combined.merge(report);
         }
-        combined.sort_deterministically();
-        Ok(combined)
+        Ok(combined.finalize())
     }
 }
 

@@ -163,7 +163,7 @@ fail-closed rejection of unknown requests.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-078 — Keep public report transformations inside the deterministic finalization boundary
+#### [x] READ-078 — Keep public report transformations inside the deterministic finalization boundary
 
 - **Severity:** High
 - **Fix Complexity:** Low
@@ -192,7 +192,11 @@ tool-version checks, file/path ordering, diagnostic code/path/message ordering,
 monotone `ReportCompletion::join`, and the ability to add project-level
 diagnostics without changing finding semantics.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added one report-owned `finalize` operation and routed
+combination, project-diagnostic enrichment, and partial-report conversion
+through it. Public transformations now preserve deterministic file and
+diagnostic ordering; a regression test covers chained transformations and
+partial completion. Verified with `make fmt && make ci`.
 
 ### Numeric and metric APIs
 
