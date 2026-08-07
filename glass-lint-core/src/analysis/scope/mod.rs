@@ -41,7 +41,8 @@ pub(in crate::analysis) use graph::{FrozenScopeGraph, ScopeGraph};
 
 pub(in crate::analysis) use crate::analysis::model::scope::{
     AliasAssignment, BindingProvenance, BoundArgument, IdentValueSeed, LexicalScope, LexicalScopes,
-    MemberValueSeed, ProvenanceAlternatives, ScopeEffect, ScopeId, ScopeKind, ScopedName,
+    MemberValueSeed, ProvenanceAlternatives, ProvenanceJoin, ScopeEffect, ScopeId, ScopeKind,
+    ScopedName,
 };
 
 pub(in crate::analysis) fn provenance_to_const_value(

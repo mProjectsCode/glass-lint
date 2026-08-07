@@ -429,21 +429,11 @@ impl ProvenanceAlternatives {
         }
     }
 
-    /// An empty joined accumulator for a control-flow merge.
-    pub fn joined() -> Self {
-        Self {
-            provenances: vec![],
-            unknown: false,
-            joined: true,
-            exhausted: false,
-        }
-    }
-
     /// Union `other` into this set, deduplicating and bounding retention to
     /// `limit`. When the bound is exceeded the set becomes both exhausted and
     /// unknown, because the retained alternatives are no longer complete and
     /// cannot establish a witness.
-    pub fn add_bounded(&mut self, other: &Self, limit: usize) {
+    fn add_bounded(&mut self, other: &Self, limit: usize) {
         self.unknown |= other.unknown;
         self.exhausted |= other.exhausted;
         self.joined |= other.joined;
@@ -506,6 +496,39 @@ impl ProvenanceAlternatives {
     }
 }
 
+/// A control-flow join whose retention bound is fixed when the merge starts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::analysis) struct ProvenanceJoin {
+    alternatives: ProvenanceAlternatives,
+    limit: usize,
+}
+
+impl ProvenanceJoin {
+    pub(in crate::analysis) fn new(limit: usize) -> Self {
+        Self {
+            alternatives: ProvenanceAlternatives {
+                provenances: Vec::new(),
+                unknown: false,
+                joined: true,
+                exhausted: false,
+            },
+            limit,
+        }
+    }
+
+    pub(in crate::analysis) fn add(&mut self, other: &ProvenanceAlternatives) {
+        self.alternatives.add_bounded(other, self.limit);
+    }
+
+    pub(in crate::analysis) fn alternatives(&self) -> &ProvenanceAlternatives {
+        &self.alternatives
+    }
+
+    fn into_alternatives(self) -> ProvenanceAlternatives {
+        self.alternatives
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct AliasAssignment {
     span: Span,
@@ -535,19 +558,19 @@ impl AliasAssignment {
 
     /// A synthetic assignment installed after a control-flow join. The
     /// `alternatives` set is the bounded union of the reachable paths.
-    pub fn joined(
+    pub(in crate::analysis) fn joined(
         span: Span,
         scope: ScopeId,
         name: NameId,
         version: BindingVersion,
-        alternatives: ProvenanceAlternatives,
+        join: ProvenanceJoin,
     ) -> Self {
         Self {
             span,
             scope,
             name,
             version,
-            alternatives,
+            alternatives: join.into_alternatives(),
         }
     }
 
@@ -822,8 +845,10 @@ mod tests {
         let alias = BindingProvenance::ValueAlias {
             target: NamePath::new(),
         };
-        let mut set = ProvenanceAlternatives::single(BindingProvenance::Local);
-        set.add_bounded(&ProvenanceAlternatives::single(alias), 1);
+        let mut set = ProvenanceJoin::new(1);
+        set.add(&ProvenanceAlternatives::single(BindingProvenance::Local));
+        set.add(&ProvenanceAlternatives::single(alias));
+        let set = set.alternatives();
         assert!(set.is_exhausted());
         assert!(set.is_unknown());
         assert_eq!(
@@ -837,10 +862,11 @@ mod tests {
         let alias = BindingProvenance::ValueAlias {
             target: NamePath::new(),
         };
-        let mut set = ProvenanceAlternatives::joined();
-        set.add_bounded(&ProvenanceAlternatives::single(alias.clone()), 4);
-        set.add_bounded(&ProvenanceAlternatives::single(alias.clone()), 4);
-        set.add_bounded(&ProvenanceAlternatives::single(BindingProvenance::Local), 4);
+        let mut set = ProvenanceJoin::new(4);
+        set.add(&ProvenanceAlternatives::single(alias.clone()));
+        set.add(&ProvenanceAlternatives::single(alias.clone()));
+        set.add(&ProvenanceAlternatives::single(BindingProvenance::Local));
+        let set = set.alternatives();
         assert!(set.is_joined());
         assert!(!set.is_exhausted());
         assert!(!set.is_unknown());
@@ -855,8 +881,10 @@ mod tests {
         let alias = BindingProvenance::ValueAlias {
             target: NamePath::new(),
         };
-        let mut set = ProvenanceAlternatives::single(alias.clone());
-        set.add_bounded(&ProvenanceAlternatives::single(alias.clone()), 1);
+        let mut set = ProvenanceJoin::new(1);
+        set.add(&ProvenanceAlternatives::single(alias.clone()));
+        set.add(&ProvenanceAlternatives::single(alias.clone()));
+        let set = set.alternatives();
         assert!(!set.is_exhausted());
         assert!(!set.is_unknown());
         assert_eq!(set.complete_witnesses().collect::<Vec<_>>(), vec![&alias]);
@@ -878,13 +906,15 @@ mod tests {
         let alias = BindingProvenance::ValueAlias {
             target: NamePath::new(),
         };
-        let mut joined = ProvenanceAlternatives::joined();
-        joined.add_bounded(&ProvenanceAlternatives::single(BindingProvenance::Local), 4);
-        joined.add_bounded(&ProvenanceAlternatives::single(alias.clone()), 4);
+        let mut joined = ProvenanceJoin::new(4);
+        joined.add(&ProvenanceAlternatives::single(BindingProvenance::Local));
+        joined.add(&ProvenanceAlternatives::single(alias.clone()));
+        let joined = joined.alternatives();
         assert_eq!(joined.preferred_witness(), Some(&alias));
 
-        let mut local_only = ProvenanceAlternatives::joined();
-        local_only.add_bounded(&ProvenanceAlternatives::single(BindingProvenance::Local), 4);
+        let mut local_only = ProvenanceJoin::new(4);
+        local_only.add(&ProvenanceAlternatives::single(BindingProvenance::Local));
+        let local_only = local_only.alternatives();
         assert_eq!(local_only.preferred_witness(), None);
     }
 
@@ -906,9 +936,9 @@ mod tests {
         assert_eq!(precise.preferred_witness(), Some(&BindingProvenance::Local));
         assert_eq!(precise.complete_witnesses().count(), 1);
 
-        let mut exhausted = ProvenanceAlternatives::joined();
-        exhausted.add_bounded(&ProvenanceAlternatives::single(BindingProvenance::Local), 0);
-        assert!(exhausted.is_exhausted());
+        let mut exhausted = ProvenanceJoin::new(0);
+        exhausted.add(&ProvenanceAlternatives::single(BindingProvenance::Local));
+        assert!(exhausted.alternatives().is_exhausted());
         let joined =
             AliasAssignment::joined(span, scope, name, BindingVersion::from_test(2), exhausted);
         assert!(joined.is_joined());

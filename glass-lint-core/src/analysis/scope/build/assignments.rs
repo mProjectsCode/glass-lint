@@ -6,18 +6,14 @@ use swc_ecma_ast::Expr;
 use crate::analysis::{
     model::scope::BindingVersion,
     scope::{
-        BindingProvenance, ProvenanceAlternatives, ScopeId, ScopedName,
+        BindingProvenance, ProvenanceAlternatives, ProvenanceJoin, ScopeId, ScopedName,
         build::{CollectorCheckpoint, ControlFlowFrame, ScopeCollectionIssue, ScopeCollector},
         query::rooted::rooted_expr_chain_with,
     },
     syntax::member_root_identifier,
 };
 
-type JoinedPathAssignments = Vec<(
-    ScopeId,
-    glass_lint_datastructures::NameId,
-    ProvenanceAlternatives,
-)>;
+type JoinedPathAssignments = Vec<(ScopeId, glass_lint_datastructures::NameId, ProvenanceJoin)>;
 
 impl super::PathCollectionState {
     fn join_paths(
@@ -49,7 +45,7 @@ impl super::PathCollectionState {
                 .get_by_id(key.scope(), key.name())
                 .cloned()
                 .unwrap_or_else(|| fallback(key.scope(), key.name()));
-            let mut value = ProvenanceAlternatives::joined();
+            let mut value = ProvenanceJoin::new(self.alternative_limit);
             for path in &reachable {
                 self.assignment_environment.restore(path.cursor)?;
                 let path_value = self
@@ -57,7 +53,7 @@ impl super::PathCollectionState {
                     .get_by_id(key.scope(), key.name())
                     .cloned()
                     .unwrap_or_else(|| incoming_value.clone());
-                value.add_bounded(&path_value, self.alternative_limit);
+                value.add(&path_value);
             }
             self.restore_checkpoint(incoming)?;
             joined.push((key.scope(), key.name(), value));
@@ -125,14 +121,14 @@ impl ScopeCollector<'_> {
         span: Span,
         scope: ScopeId,
         name: glass_lint_datastructures::NameId,
-        value: &ProvenanceAlternatives,
+        value: &ProvenanceJoin,
     ) {
         let version = self.next_assignment_version(scope, name);
-        if value.has_complete_witness() {
+        if value.alternatives().has_complete_witness() {
             self.assignment
                 .path
                 .assignment_environment
-                .record_alternatives(scope, name, value.clone());
+                .record_alternatives(scope, name, value.alternatives().clone());
         } else {
             self.assignment
                 .path

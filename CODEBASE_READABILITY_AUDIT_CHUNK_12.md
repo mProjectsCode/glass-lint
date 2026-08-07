@@ -58,7 +58,7 @@ values directly; binding and frozen-assignment indexes use typed scope-keyed
 maps. Program-first allocation, deterministic traversal, parent links, and
 invalid-shape fallback behavior are preserved.
 
-#### [ ] READ-054 — Seal bounded provenance joins before creating assignments
+#### [x] READ-054 — Seal bounded provenance joins before creating assignments
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -91,7 +91,12 @@ Preserve deduplication, deterministic insertion order, complete witnesses
 alongside unknown alternatives, exhaustion preventing definite coverage, and
 the current behavior for zero or exhausted limits.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a sealed `ProvenanceJoin` that captures the
+collector-configured alternative limit and owns bounded merging. Raw bounded
+merges are private, and `AliasAssignment::joined` accepts only the sealed
+join, while precise writes remain on the single-provenance path. Deduplication,
+complete witnesses, unknown/exhausted state, and zero-limit behavior remain
+unchanged.
 
 ### Module request recognition
 
