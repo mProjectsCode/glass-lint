@@ -34,10 +34,11 @@ pub(super) fn assemble_project_report(
         .map(|finding| finding.evidence().traces().len())
         .sum();
 
-    let mut operations = project.operation_counts(evidence);
+    let mut operations = project.operation_counts();
+    operations.record_evidence(evidence);
     let metrics = outcome.metrics();
-    operations.set_effect_projections(metrics.effect_projections());
-    operations.set_path_metrics(
+    operations.record_effect_projections(metrics.effect_projections());
+    operations.record_path_metrics(
         metrics.max_live_alternatives(),
         project.trace_arena().node_count(),
         metrics.trace_heads(),
@@ -51,7 +52,7 @@ pub(super) fn assemble_project_report(
         env!("CARGO_PKG_VERSION").into(),
         files.into_values().collect(),
         diagnostics,
-        operations,
+        operations.finish(),
         if project.is_complete() {
             ReportCompletion::Complete
         } else {

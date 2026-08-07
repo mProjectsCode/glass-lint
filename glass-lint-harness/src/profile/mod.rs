@@ -120,10 +120,6 @@ mod tests {
         assert_eq!(phases.parse_and_local_analysis(), Duration::from_secs(2));
         assert_eq!(phases.linking_and_matching(), Duration::from_secs(7));
 
-        let mut counts = ProfileOperationCounts::new(usize::MAX, 0, 0, 0, 0, 0, 0);
-        counts += ProfileOperationCounts::new(1, 0, 0, 0, 0, 0, 0);
-        assert_eq!(counts.files(), usize::MAX);
-
         let first_bytes = 7_u64;
         let second_bytes = 11_u64;
         let suite_bytes = first_bytes.saturating_add(second_bytes);

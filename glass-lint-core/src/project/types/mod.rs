@@ -14,6 +14,7 @@ pub use input::{
     PackageSpecifier, ProjectInputError, ResolutionRequest, ResolutionRequestKey,
     ResolutionRequestKind, ResolverOutcome, SourceFile, SourceText,
 };
+pub(crate) use report::AnalysisOperationCountsBuilder;
 pub use report::{
     AnalysisDiagnostic, AnalysisOperationCounts, AnalysisReport, AnalysisReportSummary, Diagnostic,
     DiagnosticCode, DiagnosticKind, EvidenceConstructionError, EvidenceRole, EvidenceStep,

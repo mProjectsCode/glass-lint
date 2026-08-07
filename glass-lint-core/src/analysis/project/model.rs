@@ -496,19 +496,19 @@ impl ProjectSemanticModel {
     }
 
     /// Return deterministic phase and evidence operation counts.
-    pub fn operation_counts(&self, evidence: usize) -> crate::project::AnalysisOperationCounts {
-        crate::project::AnalysisOperationCounts::new(
-            self.modules.len(),
+    pub(crate) fn operation_counts(&self) -> crate::project::types::AnalysisOperationCountsBuilder {
+        let mut counts = crate::project::types::AnalysisOperationCountsBuilder::default();
+        counts.record_files(self.modules.len());
+        counts.record_requests(
             self.modules
                 .values()
                 .map(|module| module.local().interface().requests().count())
                 .sum(),
-            self.edge_count,
-            self.exports.len(),
-            self.link_cycle_rounds,
-            0,
-            evidence,
-        )
+        );
+        counts.record_edges(self.edge_count);
+        counts.record_exports(self.exports.len());
+        counts.record_scc_rounds(self.link_cycle_rounds);
+        counts
     }
 
     pub fn classify_with_evidence_limit(

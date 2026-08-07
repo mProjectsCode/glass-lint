@@ -49,7 +49,7 @@ impl<'a> ReportAssembly<'a> {
             project.record_parse_failure(path, failure);
         }
         let linking = linking_start.elapsed();
-        let link_counts = project.operation_counts(0);
+        let link_counts = project.operation_counts().finish();
 
         tracing::info!(
             target: "glass_lint::project::link",

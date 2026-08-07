@@ -124,26 +124,6 @@ pub struct ProfileSummary {
 pub struct ProfileOperationCounts(AnalysisOperationCounts);
 
 impl ProfileOperationCounts {
-    pub fn new(
-        files: usize,
-        requests: usize,
-        edges: usize,
-        exports: usize,
-        scc_rounds: usize,
-        effect_projections: usize,
-        evidence: usize,
-    ) -> Self {
-        Self(AnalysisOperationCounts::new(
-            files,
-            requests,
-            edges,
-            exports,
-            scc_rounds,
-            effect_projections,
-            evidence,
-        ))
-    }
-
     pub fn files(self) -> usize {
         self.0.files()
     }

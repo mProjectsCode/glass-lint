@@ -17,32 +17,6 @@ pub struct AnalysisOperationCounts {
 }
 
 impl AnalysisOperationCounts {
-    pub fn new(
-        files: usize,
-        requests: usize,
-        edges: usize,
-        exports: usize,
-        scc_rounds: usize,
-        effect_projections: usize,
-        evidence: usize,
-    ) -> Self {
-        Self {
-            files,
-            requests,
-            edges,
-            exports,
-            scc_rounds,
-            effect_projections,
-            evidence,
-            max_live_alternatives: 0,
-            trace_nodes: 0,
-            trace_heads: 0,
-            coalescing_comparisons: 0,
-            fixed_point_iterations: 0,
-            rendered_traces: 0,
-        }
-    }
-
     pub fn files(&self) -> usize {
         self.files
     }
@@ -100,8 +74,44 @@ impl AnalysisOperationCounts {
     pub fn rendered_traces(&self) -> usize {
         self.rendered_traces
     }
+}
 
-    pub(crate) fn set_path_metrics(
+/// Crate-private phase accumulator for the finalized operation-count DTO.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct AnalysisOperationCountsBuilder {
+    counts: AnalysisOperationCounts,
+}
+
+impl AnalysisOperationCountsBuilder {
+    pub(crate) fn record_files(&mut self, value: usize) {
+        self.counts.files = value;
+    }
+
+    pub(crate) fn record_requests(&mut self, value: usize) {
+        self.counts.requests = value;
+    }
+
+    pub(crate) fn record_edges(&mut self, value: usize) {
+        self.counts.edges = value;
+    }
+
+    pub(crate) fn record_exports(&mut self, value: usize) {
+        self.counts.exports = value;
+    }
+
+    pub(crate) fn record_scc_rounds(&mut self, value: usize) {
+        self.counts.scc_rounds = value;
+    }
+
+    pub(crate) fn record_effect_projections(&mut self, value: usize) {
+        self.counts.effect_projections = value;
+    }
+
+    pub(crate) fn record_evidence(&mut self, value: usize) {
+        self.counts.evidence = value;
+    }
+
+    pub(crate) fn record_path_metrics(
         &mut self,
         max_live_alternatives: usize,
         trace_nodes: usize,
@@ -110,16 +120,16 @@ impl AnalysisOperationCounts {
         fixed_point_iterations: usize,
         rendered_traces: usize,
     ) {
-        self.max_live_alternatives = max_live_alternatives;
-        self.trace_nodes = trace_nodes;
-        self.trace_heads = trace_heads;
-        self.coalescing_comparisons = coalescing_comparisons;
-        self.fixed_point_iterations = fixed_point_iterations;
-        self.rendered_traces = rendered_traces;
+        self.counts.max_live_alternatives = max_live_alternatives;
+        self.counts.trace_nodes = trace_nodes;
+        self.counts.trace_heads = trace_heads;
+        self.counts.coalescing_comparisons = coalescing_comparisons;
+        self.counts.fixed_point_iterations = fixed_point_iterations;
+        self.counts.rendered_traces = rendered_traces;
     }
 
-    pub(crate) fn set_effect_projections(&mut self, value: usize) {
-        self.effect_projections = value;
+    pub(crate) fn finish(self) -> AnalysisOperationCounts {
+        self.counts
     }
 }
 

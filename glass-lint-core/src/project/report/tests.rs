@@ -7,7 +7,8 @@ use crate::{
     project::{
         AnalysisDiagnostic, AnalysisOperationCounts, Diagnostic, EvidenceRole, EvidenceStep,
         EvidenceTrace, EvidenceTraces, FileReport, Finding, MatchCertainty, ProjectRelativePath,
-        ReportCompletion, SourceFile, SourceLocation, SourceText, types::DiagnosticCode,
+        ReportCompletion, SourceFile, SourceLocation, SourceText,
+        types::{AnalysisOperationCountsBuilder, DiagnosticCode},
     },
 };
 
@@ -21,6 +22,46 @@ fn range(line: u32, start: u32, end: u32) -> SourceRange {
         Position::new(line, end).unwrap(),
     )
     .unwrap()
+}
+
+fn operation_counts(
+    files: usize,
+    requests: usize,
+    edges: usize,
+    exports: usize,
+    scc_rounds: usize,
+    effect_projections: usize,
+    evidence: usize,
+) -> AnalysisOperationCounts {
+    let mut counts = AnalysisOperationCountsBuilder::default();
+    counts.record_files(files);
+    counts.record_requests(requests);
+    counts.record_edges(edges);
+    counts.record_exports(exports);
+    counts.record_scc_rounds(scc_rounds);
+    counts.record_effect_projections(effect_projections);
+    counts.record_evidence(evidence);
+    counts.finish()
+}
+
+fn operation_counts_with_path(
+    max_live_alternatives: usize,
+    trace_nodes: usize,
+    trace_heads: usize,
+    coalescing_comparisons: usize,
+    fixed_point_iterations: usize,
+    rendered_traces: usize,
+) -> AnalysisOperationCounts {
+    let mut counts = AnalysisOperationCountsBuilder::default();
+    counts.record_path_metrics(
+        max_live_alternatives,
+        trace_nodes,
+        trace_heads,
+        coalescing_comparisons,
+        fixed_point_iterations,
+        rendered_traces,
+    );
+    counts.finish()
 }
 
 fn finding() -> Finding {
@@ -191,7 +232,7 @@ fn combine_reports_adds_all_operation_counts() {
             Vec::new(),
         )],
         Vec::new(),
-        AnalysisOperationCounts::new(1, 2, 3, 4, 5, 6, 7),
+        operation_counts(1, 2, 3, 4, 5, 6, 7),
         ReportCompletion::Complete,
     );
     let second = AnalysisReport::new(
@@ -203,22 +244,20 @@ fn combine_reports_adds_all_operation_counts() {
             Vec::new(),
         )],
         Vec::new(),
-        AnalysisOperationCounts::new(usize::MAX, 20, 30, 40, 50, 60, 70),
+        operation_counts(usize::MAX, 20, 30, 40, 50, 60, 70),
         ReportCompletion::Complete,
     );
     let combined = AnalysisReport::combine([first, second]).unwrap();
     assert_eq!(
         combined.operations(),
-        AnalysisOperationCounts::new(usize::MAX, 22, 33, 44, 55, 66, 77)
+        operation_counts(usize::MAX, 22, 33, 44, 55, 66, 77)
     );
 }
 
 #[test]
 fn operation_counts_preserve_path_metrics_deterministically() {
-    let mut first = AnalysisOperationCounts::new(0, 0, 0, 0, 0, 0, 0);
-    first.set_path_metrics(8, 13, 5, 21, 3, 4);
-    let mut second = AnalysisOperationCounts::new(0, 0, 0, 0, 0, 0, 0);
-    second.set_path_metrics(4, 7, 2, 9, 6, 1);
+    let mut first = operation_counts_with_path(8, 13, 5, 21, 3, 4);
+    let second = operation_counts_with_path(4, 7, 2, 9, 6, 1);
 
     first += second;
 

@@ -239,7 +239,7 @@ created.
 `Default` plus named validated builder operations; deserialization now feeds
 the same named path, preserving positive-field errors and serde defaults.
 
-#### [ ] READ-080 — Give operation-count accumulation a staged owner
+#### [x] READ-080 — Give operation-count accumulation a staged owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -268,7 +268,11 @@ constructor and broad setter pair. Preserve saturating aggregate addition,
 zero values for stages that did not run, all current counter meanings, and
 deterministic operation totals for combined and partial reports.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a crate-private staged operation-count builder with
+named phase recording methods. The public report DTO is now finalized through
+one `finish` operation, while linking, projection, and path metrics are
+assembled by the report owner; the raw constructor and broad setters were
+removed without changing saturating aggregation semantics.
 
 ## Systemic Themes
 
