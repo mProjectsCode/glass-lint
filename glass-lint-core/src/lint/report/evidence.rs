@@ -48,22 +48,44 @@ impl<'a> FindingGroup<'a> {
         }
     }
 
-    fn is_truncated(&self) -> bool {
-        self.occurrences
-            .iter()
-            .any(|resolved| resolved.evidence.is_truncated())
-    }
-
-    fn certainty(&self) -> MatchCertainty {
-        if self
-            .occurrences
-            .iter()
-            .any(|resolved| resolved.evidence.certainty() == MatchCertainty::Definite)
-        {
-            MatchCertainty::Definite
-        } else {
-            MatchCertainty::Possible
+    fn into_evidence(
+        self,
+        project: &ProjectSemanticModel,
+        session: &ProjectReportSession,
+        path: &ProjectRelativePath,
+    ) -> Option<(SourceRange, EvidenceTraces, MatchCertainty)> {
+        let Self { range, occurrences } = self;
+        let mut traces = BTreeSet::new();
+        let mut truncated = false;
+        let mut certainty = MatchCertainty::Possible;
+        for resolved in occurrences {
+            truncated |= resolved.evidence.is_truncated();
+            if resolved.evidence.certainty() == MatchCertainty::Definite {
+                certainty = MatchCertainty::Definite;
+            }
+            let steps = resolved.occurrence.trace().map_or_else(
+                || Some(fallback_trace(resolved.evidence, path, &range)),
+                |trace_id| resolve_trace(trace_id, project, session),
+            );
+            if let Some(steps) = steps
+                && !steps.is_empty()
+                && let Ok(trace) = EvidenceTrace::new(steps)
+            {
+                traces.insert(trace);
+            }
         }
+        if traces.is_empty()
+            && let Ok(trace) = EvidenceTrace::new(vec![EvidenceStep::new(
+                EvidenceRole::Occurrence,
+                "evidence occurrence".into(),
+                SourceLocation::new(path.clone(), range.clone()),
+            )])
+        {
+            traces.insert(trace);
+        }
+        let evidence =
+            EvidenceTraces::with_truncation(traces.into_iter().collect(), truncated).ok()?;
+        Some((range, evidence, certainty))
     }
 }
 
@@ -239,40 +261,14 @@ fn findings_for_capability(
     groups
         .into_iter()
         .filter_map(|group| {
-            let mut traces = BTreeSet::new();
-            for resolved in &group.occurrences {
-                let ev = resolved.evidence;
-                let occurrence = resolved.occurrence;
-                let steps = occurrence.trace().map_or_else(
-                    || Some(fallback_trace(ev, path, &group.range)),
-                    |trace_id| resolve_trace(trace_id, project, session),
-                );
-                if let Some(steps) = steps
-                    && !steps.is_empty()
-                    && let Ok(trace) = EvidenceTrace::new(steps)
-                {
-                    traces.insert(trace);
-                }
-            }
-            if traces.is_empty()
-                && let Ok(trace) = EvidenceTrace::new(vec![EvidenceStep::new(
-                    EvidenceRole::Occurrence,
-                    "evidence occurrence".into(),
-                    SourceLocation::new(path.clone(), group.range.clone()),
-                )])
-            {
-                traces.insert(trace);
-            }
-            let evidence =
-                EvidenceTraces::with_truncation(traces.into_iter().collect(), group.is_truncated())
-                    .ok()?;
+            let (range, evidence, certainty) = group.into_evidence(project, session, path)?;
             Finding::new(
                 rule_id.clone(),
                 capability.label().to_string(),
                 capability.severity(),
-                SourceLocation::new(path.clone(), group.range.clone()),
+                SourceLocation::new(path.clone(), range),
                 evidence,
-                group.certainty(),
+                certainty,
             )
             .into()
         })

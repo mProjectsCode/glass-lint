@@ -151,7 +151,7 @@ references stay attached to the builder’s entries while retained display
 ranges are selected, preserving deterministic grouping and evidence
 associations. Verified with `make fmt && make ci`.
 
-#### [ ] READ-005 — `FindingGroup` resolves the same occurrence references in three separate traversals
+#### [x] READ-005 — `FindingGroup` resolves the same occurrence references in three separate traversals
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -175,7 +175,11 @@ Keep fail-closed handling for invalid refs, definite-over-possible certainty,
 truncation propagation, deterministic `BTreeSet` trace ordering, and the
 fallback occurrence trace when no usable trace survives.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `FindingGroup::into_evidence` now performs one consuming
+traversal of its already-resolved occurrences to build traces, propagate
+truncation, and compute certainty. The prior CROSS-002 refactor supplies the
+resolved references; this change removes the remaining metadata traversals.
+Verified with `make fmt && make ci`.
 
 ### Rule selection API
 
