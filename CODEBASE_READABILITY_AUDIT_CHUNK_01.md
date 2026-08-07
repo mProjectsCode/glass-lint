@@ -84,7 +84,7 @@ accounting. Verified with `make fmt && make ci`.
 
 ### Fact provenance state
 
-#### [ ] READ-003 — Consolidate repeated provenance-channel operations without erasing their asymmetry
+#### [x] READ-003 — Consolidate repeated provenance-channel operations without erasing their asymmetry
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -108,7 +108,11 @@ methods for every map. Do not merge instance and class origins into one
 uncertainty state: loops, branches, try/catch/finally, and class provenance
 must retain their current fail-closed behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** A private `OriginChannels` aggregate now owns paired
+instance/class checkpointing, branch snapshots, intersections, restoration,
+and target replacement. The channel owner keeps try-only instance operations
+and the instance-commit/class-rollback control-region asymmetry explicit, while
+callers no longer duplicate map plumbing. Verified with `make fmt && make ci`.
 
 ### Construction fact visitor
 

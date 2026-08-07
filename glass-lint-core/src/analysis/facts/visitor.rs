@@ -200,7 +200,8 @@ impl Visit for FactBuilder<'_, '_> {
         let result = self.resolver.fresh_object_value_at(new_expr.span).id;
         if let Some(instance_class) = self.instance_origin_for_constructor(&new_expr.callee) {
             self.provenance
-                .instance_origins
+                .origins
+                .instances
                 .insert(result, instance_class, self.resolver.budget);
         }
         let effective_callee = effective_callee_expr(&new_expr.callee);
