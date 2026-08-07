@@ -17,7 +17,7 @@ use crate::{
 struct EvidenceKey(MatchKind, String);
 
 /// Per-key accumulated state used during normalization.
-struct EvidenceAccum {
+struct RawEvidenceGroup {
     total_count: usize,
     certainty: crate::project::MatchCertainty,
     occurrences: Vec<crate::api::classification::ClassificationEvidenceOccurrence>,
@@ -25,13 +25,13 @@ struct EvidenceAccum {
 
 #[derive(Default)]
 struct EvidenceAccumulator {
-    groups: BTreeMap<EvidenceKey, EvidenceAccum>,
+    groups: BTreeMap<EvidenceKey, RawEvidenceGroup>,
 }
 
 impl EvidenceAccumulator {
     fn add(&mut self, item: &ClassificationEvidence) {
         let key = EvidenceKey(item.kind(), item.symbol().to_owned());
-        let accum = self.groups.entry(key).or_insert_with(|| EvidenceAccum {
+        let accum = self.groups.entry(key).or_insert_with(|| RawEvidenceGroup {
             total_count: 0,
             certainty: crate::project::MatchCertainty::Definite,
             occurrences: Vec::new(),

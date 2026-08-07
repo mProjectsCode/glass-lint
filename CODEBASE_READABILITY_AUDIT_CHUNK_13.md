@@ -83,7 +83,7 @@ status. Verified with `make fmt && make ci`.
 
 ### Evidence lifecycle
 
-#### [ ] CROSS-002 — Establish one typed evidence pipeline across matching and reporting
+#### [x] CROSS-002 — Establish one typed evidence pipeline across matching and reporting
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -122,6 +122,13 @@ classification free of occurrence-index and project-overlay knowledge.
 
 **Related local findings:** Chunk 6 READ-005, Chunk 9 READ-006, Chunk 11
 READ-004/005, and Chunk 12 READ-004/006.
+
+**Fix Applied:** Matching now names its private accumulated group state as
+`RawEvidenceGroup`, while report assembly consumes a private
+`ResolvedEvidenceOccurrence` view that holds validated evidence/occurrence
+pairs directly. Range grouping, trace construction, truncation, and certainty
+no longer resolve positional references through parallel scans. Verified with
+`make fmt && make ci`.
 
 ### Public phase boundaries
 

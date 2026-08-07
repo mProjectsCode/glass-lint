@@ -16,35 +16,25 @@ use crate::{
     },
 };
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct EvidenceOccurrenceRef {
-    evidence: usize,
-    occurrence: usize,
-}
-
-impl EvidenceOccurrenceRef {
-    fn resolve(
-        self,
-        evidence_items: &[ClassificationEvidence],
-    ) -> Option<(&ClassificationEvidence, &ClassificationEvidenceOccurrence)> {
-        let evidence = evidence_items.get(self.evidence)?;
-        Some((evidence, evidence.occurrences().get(self.occurrence)?))
-    }
+#[derive(Clone, Copy, Debug)]
+struct ResolvedEvidenceOccurrence<'a> {
+    evidence: &'a ClassificationEvidence,
+    occurrence: &'a ClassificationEvidenceOccurrence,
 }
 
 #[derive(Debug)]
-struct EvidenceRangeEntry {
+struct EvidenceRangeEntry<'a> {
     range: SourceRange,
-    occurrences: Vec<EvidenceOccurrenceRef>,
+    occurrences: Vec<ResolvedEvidenceOccurrence<'a>>,
 }
 
 #[derive(Debug)]
-struct FindingGroup {
+struct FindingGroup<'a> {
     range: SourceRange,
-    occurrences: Vec<EvidenceOccurrenceRef>,
+    occurrences: Vec<ResolvedEvidenceOccurrence<'a>>,
 }
 
-impl FindingGroup {
+impl<'a> FindingGroup<'a> {
     fn new(range: SourceRange) -> Self {
         Self {
             range,
@@ -52,25 +42,23 @@ impl FindingGroup {
         }
     }
 
-    fn add_entry(&mut self, entry: &EvidenceRangeEntry) {
+    fn add_entry(&mut self, entry: &EvidenceRangeEntry<'a>) {
         if self.range.contains(&entry.range) {
             self.occurrences.extend(entry.occurrences.iter().copied());
         }
     }
 
-    fn is_truncated(&self, evidence_items: &[ClassificationEvidence]) -> bool {
+    fn is_truncated(&self) -> bool {
         self.occurrences
             .iter()
-            .filter_map(|reference| reference.resolve(evidence_items))
-            .any(|(evidence, _)| evidence.is_truncated())
+            .any(|resolved| resolved.evidence.is_truncated())
     }
 
-    fn certainty(&self, evidence_items: &[ClassificationEvidence]) -> MatchCertainty {
+    fn certainty(&self) -> MatchCertainty {
         if self
             .occurrences
             .iter()
-            .filter_map(|reference| reference.resolve(evidence_items))
-            .any(|(evidence, _)| evidence.certainty() == MatchCertainty::Definite)
+            .any(|resolved| resolved.evidence.certainty() == MatchCertainty::Definite)
         {
             MatchCertainty::Definite
         } else {
@@ -163,16 +151,17 @@ fn findings_for_module(
 }
 
 #[derive(Debug)]
-struct FindingRangeBuilder {
-    entries: Vec<EvidenceRangeEntry>,
+struct FindingRangeBuilder<'a> {
+    entries: Vec<EvidenceRangeEntry<'a>>,
     retained_ranges: Vec<SourceRange>,
 }
 
-impl FindingRangeBuilder {
-    fn new(evidence_items: &[ClassificationEvidence], lines: &SourceLineIndex) -> Self {
-        let mut by_range: BTreeMap<SourceRange, Vec<EvidenceOccurrenceRef>> = BTreeMap::new();
-        for (evidence_idx, evidence) in evidence_items.iter().enumerate() {
-            for (occurrence_idx, occurrence) in evidence.occurrences().iter().enumerate() {
+impl<'a> FindingRangeBuilder<'a> {
+    fn new(evidence_items: &'a [ClassificationEvidence], lines: &SourceLineIndex) -> Self {
+        let mut by_range: BTreeMap<SourceRange, Vec<ResolvedEvidenceOccurrence<'a>>> =
+            BTreeMap::new();
+        for evidence in evidence_items {
+            for occurrence in evidence.occurrences() {
                 let span =
                     display_span(lines, occurrence.span(), evidence.kind(), evidence.symbol());
                 if span.is_empty() {
@@ -184,9 +173,9 @@ impl FindingRangeBuilder {
                 by_range
                     .entry(range)
                     .or_default()
-                    .push(EvidenceOccurrenceRef {
-                        evidence: evidence_idx,
-                        occurrence: occurrence_idx,
+                    .push(ResolvedEvidenceOccurrence {
+                        evidence,
+                        occurrence,
                     });
             }
         }
@@ -206,7 +195,7 @@ impl FindingRangeBuilder {
         }
     }
 
-    fn into_groups(self) -> Vec<FindingGroup> {
+    fn into_groups(self) -> Vec<FindingGroup<'a>> {
         let Self {
             entries,
             retained_ranges,
@@ -251,10 +240,9 @@ fn findings_for_capability(
         .into_iter()
         .filter_map(|group| {
             let mut traces = BTreeSet::new();
-            for reference in &group.occurrences {
-                let Some((ev, occurrence)) = reference.resolve(evidence_items) else {
-                    continue;
-                };
+            for resolved in &group.occurrences {
+                let ev = resolved.evidence;
+                let occurrence = resolved.occurrence;
                 let steps = occurrence.trace().map_or_else(
                     || Some(fallback_trace(ev, path, &group.range)),
                     |trace_id| resolve_trace(trace_id, project, session),
@@ -275,18 +263,16 @@ fn findings_for_capability(
             {
                 traces.insert(trace);
             }
-            let evidence = EvidenceTraces::with_truncation(
-                traces.into_iter().collect(),
-                group.is_truncated(evidence_items),
-            )
-            .ok()?;
+            let evidence =
+                EvidenceTraces::with_truncation(traces.into_iter().collect(), group.is_truncated())
+                    .ok()?;
             Finding::new(
                 rule_id.clone(),
                 capability.label().to_string(),
                 capability.severity(),
                 SourceLocation::new(path.clone(), group.range.clone()),
                 evidence,
-                group.certainty(evidence_items),
+                group.certainty(),
             )
             .into()
         })
