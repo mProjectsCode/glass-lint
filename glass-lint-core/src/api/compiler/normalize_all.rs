@@ -102,7 +102,7 @@ fn find_common_event_var(branches: &[&QueryExpr]) -> Option<VarId> {
 /// Collects event spec, identity, subject, and argument constraints
 /// from all branches and merges them onto one event node.
 fn merge_same_event(all: &AllExpr, event_var: VarId) -> Result<NormalizedRoot, QueryCompileError> {
-    let mut merge = SameEventMerge::new(event_var);
+    let mut merge = SameEventMerge::new(event_var, all)?;
 
     for branch in all.iter() {
         match branch.kind() {
@@ -112,7 +112,7 @@ fn merge_same_event(all: &AllExpr, event_var: VarId) -> Result<NormalizedRoot, Q
             QueryExprKind::SelectEvent(_) => {
                 // Just a binding reference, no fields to merge.
             }
-            QueryExprKind::Require(predicate) => merge.merge_predicate(predicate, event_var)?,
+            QueryExprKind::Require(predicate) => merge.merge_predicate(predicate)?,
             _ => {
                 return Err(QueryCompileError::InternalInvariant {
                     detail: "unexpected branch kind in same-event All".into(),
@@ -121,7 +121,7 @@ fn merge_same_event(all: &AllExpr, event_var: VarId) -> Result<NormalizedRoot, Q
         }
     }
 
-    merge.finish(event_var)
+    merge.finish().into_root()
 }
 
 fn var_to_slot(var: VarId) -> u32 {
@@ -130,41 +130,51 @@ fn var_to_slot(var: VarId) -> u32 {
 
 struct SameEventMerge {
     event_var: VarId,
-    event: Option<EventSpec>,
-    identity: Option<IdentitySpec>,
+    event: EventSpec,
+    identity: IdentitySpec,
     subject: Option<NormalizedSubject>,
     constraints: Vec<ArgumentConstraint>,
+    member_objects: Vec<VarId>,
 }
 
 impl SameEventMerge {
-    fn new(event_var: VarId) -> Self {
-        Self {
+    fn new(event_var: VarId, all: &AllExpr) -> Result<Self, QueryCompileError> {
+        let event = all
+            .iter()
+            .find_map(|branch| event_kind_for(branch, event_var))
+            .ok_or(QueryCompileError::IncompleteSameEvent {
+                missing: "event kind",
+            })?;
+        let identity = all
+            .iter()
+            .find_map(|branch| event_identity_for(branch, event_var))
+            .ok_or(QueryCompileError::IncompleteSameEvent {
+                missing: "identity",
+            })?;
+        Ok(Self {
             event_var,
-            event: None,
-            identity: None,
+            event,
+            identity,
             subject: None,
             constraints: Vec::new(),
-        }
+            member_objects: Vec::new(),
+        })
     }
 
     fn merge_event(&mut self, query: &EventQuery) -> Result<(), QueryCompileError> {
-        self.merge_event_kind(query.event().clone())?;
-        self.merge_identity(query.identity().clone())?;
+        self.merge_event_kind(query.event())?;
+        self.merge_identity(query.identity())?;
         self.constraints.extend(query.constraints().iter().cloned());
         Ok(())
     }
 
-    fn merge_predicate(
-        &mut self,
-        predicate: &QueryPredicate,
-        event_var: VarId,
-    ) -> Result<(), QueryCompileError> {
+    fn merge_predicate(&mut self, predicate: &QueryPredicate) -> Result<(), QueryCompileError> {
         match predicate {
             QueryPredicate::EventKind { expected, .. } => {
-                self.merge_event_kind(expected.clone())?;
+                self.merge_event_kind(expected)?;
             }
             QueryPredicate::EventIdentity { expected, .. } => {
-                self.merge_identity(expected.clone())?;
+                self.merge_identity(expected)?;
             }
             QueryPredicate::Argument { index, matcher, .. } => {
                 self.constraints
@@ -183,36 +193,28 @@ impl SameEventMerge {
                 })?;
             }
             QueryPredicate::MemberSubject { event, object } => {
-                self.merge_member_subject(*event, *object, event_var)?;
+                self.merge_member_subject(*event, *object)?;
             }
         }
         Ok(())
     }
 
-    fn merge_event_kind(&mut self, candidate: EventSpec) -> Result<(), QueryCompileError> {
-        if let Some(existing) = &self.event {
-            if *existing != candidate {
-                return Err(QueryCompileError::ContradictoryPredicate {
-                    variable: self.event_var,
-                    detail: ContradictionKind::EventKind,
-                });
-            }
-        } else {
-            self.event = Some(candidate);
+    fn merge_event_kind(&self, candidate: &EventSpec) -> Result<(), QueryCompileError> {
+        if self.event != *candidate {
+            return Err(QueryCompileError::ContradictoryPredicate {
+                variable: self.event_var,
+                detail: ContradictionKind::EventKind,
+            });
         }
         Ok(())
     }
 
-    fn merge_identity(&mut self, candidate: IdentitySpec) -> Result<(), QueryCompileError> {
-        if let Some(existing) = &self.identity {
-            if *existing != candidate {
-                return Err(QueryCompileError::ContradictoryPredicate {
-                    variable: self.event_var,
-                    detail: ContradictionKind::StrictIdentity,
-                });
-            }
-        } else {
-            self.identity = Some(candidate);
+    fn merge_identity(&self, candidate: &IdentitySpec) -> Result<(), QueryCompileError> {
+        if self.identity != *candidate {
+            return Err(QueryCompileError::ContradictoryPredicate {
+                variable: self.event_var,
+                detail: ContradictionKind::StrictIdentity,
+            });
         }
         Ok(())
     }
@@ -233,41 +235,87 @@ impl SameEventMerge {
     }
 
     fn merge_member_subject(
-        &self,
+        &mut self,
         event: VarId,
         object: VarId,
-        event_var: VarId,
     ) -> Result<(), QueryCompileError> {
-        if event != event_var {
+        if event != self.event_var {
             return Err(QueryCompileError::UncorrelatedConjunction);
         }
-        match self.subject.as_ref() {
-            Some(
-                NormalizedSubject::Returned { object_slot, .. }
-                | NormalizedSubject::Instance { object_slot, .. },
-            ) if *object_slot == var_to_slot(object) => Ok(()),
-            _ => Err(QueryCompileError::UncorrelatedConjunction),
-        }
+        self.member_objects.push(object);
+        Ok(())
     }
 
-    fn finish(self, event_var: VarId) -> Result<NormalizedRoot, QueryCompileError> {
-        let event = self
-            .event
-            .ok_or_else(|| QueryCompileError::InternalInvariant {
-                detail: "same-event All missing event kind".into(),
-            })?;
-        let identity = self
-            .identity
-            .ok_or_else(|| QueryCompileError::InternalInvariant {
-                detail: "same-event All missing identity".into(),
-            })?;
+    fn finish(self) -> CompleteSameEventMerge {
+        CompleteSameEventMerge {
+            event_var: self.event_var,
+            event: self.event,
+            identity: self.identity,
+            subject: self.subject,
+            constraints: self.constraints,
+            member_objects: self.member_objects,
+        }
+    }
+}
 
-        let arguments = CanonicalArgumentConstraints::from_constraints(&self.constraints);
+fn event_kind_for(branch: &QueryExpr, event_var: VarId) -> Option<EventSpec> {
+    match branch.kind() {
+        QueryExprKind::Event(query) if query.var() == event_var => Some(query.event().clone()),
+        QueryExprKind::Require(QueryPredicate::EventKind { event, expected })
+            if *event == event_var =>
+        {
+            Some(expected.clone())
+        }
+        _ => None,
+    }
+}
+
+fn event_identity_for(branch: &QueryExpr, event_var: VarId) -> Option<IdentitySpec> {
+    match branch.kind() {
+        QueryExprKind::Event(query) if query.var() == event_var => Some(query.identity().clone()),
+        QueryExprKind::Require(QueryPredicate::EventIdentity { event, expected })
+            if *event == event_var =>
+        {
+            Some(expected.clone())
+        }
+        _ => None,
+    }
+}
+
+struct CompleteSameEventMerge {
+    event_var: VarId,
+    event: EventSpec,
+    identity: IdentitySpec,
+    subject: Option<NormalizedSubject>,
+    constraints: Vec<ArgumentConstraint>,
+    member_objects: Vec<VarId>,
+}
+
+impl CompleteSameEventMerge {
+    fn into_root(self) -> Result<NormalizedRoot, QueryCompileError> {
+        let Self {
+            event_var,
+            event,
+            identity,
+            subject,
+            constraints,
+            member_objects,
+        } = self;
+
+        let arguments = CanonicalArgumentConstraints::from_constraints(&constraints);
         let constraints = arguments.to_flat_vec();
 
-        let subject = self.subject.unwrap_or_else(|| NormalizedSubject::Direct {
+        let subject = subject.unwrap_or_else(|| NormalizedSubject::Direct {
             identity: identity.clone(),
         });
+        for object in member_objects {
+            match &subject {
+                NormalizedSubject::Returned { object_slot, .. }
+                | NormalizedSubject::Instance { object_slot, .. }
+                    if *object_slot == var_to_slot(object) => {}
+                _ => return Err(QueryCompileError::UncorrelatedConjunction),
+            }
+        }
         detect_event_contradictions(event_var, &event, &identity, &subject, &constraints)?;
 
         Ok(NormalizedRoot::Event(NormalizedEvent {

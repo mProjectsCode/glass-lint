@@ -152,7 +152,7 @@ and requirement checks already identified in Chunk 15.
 
 ### Normalization and lifecycle semantics
 
-#### [ ] READ-084 — Seal same-event merging through a phase-aware accumulator
+#### [x] READ-084 — Seal same-event merging through a phase-aware accumulator
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -188,7 +188,7 @@ the duplicate `event_var` parameters and the open-ended `Option` state after
 callers migrate; use a separate explicit error for an impossible compiler
 state rather than a generic invariant string.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Same-event normalization now initializes required event/identity details at the merger boundary, removes duplicate event-variable parameters, carries member-subject links until the completed phase, and lowers only from a typed complete merger state.
 
 #### [ ] READ-085 — Give lifecycle modes one semantic owner across execution and reference evaluation
 

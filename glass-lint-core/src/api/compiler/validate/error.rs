@@ -50,6 +50,8 @@ pub(crate) enum QueryCompileError {
     InvalidLifecycle { detail: String },
     /// Query shape cannot be bounded at compile time.
     UnboundedQuery { detail: &'static str },
+    /// Internal same-event merger state was incomplete at its sealing boundary.
+    IncompleteSameEvent { missing: &'static str },
     /// Internal compiler invariant violation (bug, not authored error).
     InternalInvariant { detail: String },
 }
@@ -69,6 +71,7 @@ impl QueryCompileError {
             Self::UnavailablePrimaryLocation { .. } => "unavailable_primary_location",
             Self::InvalidLifecycle { .. } => "invalid_lifecycle",
             Self::UnboundedQuery { .. } => "unbounded_query",
+            Self::IncompleteSameEvent { .. } => "incomplete_same_event",
             Self::InternalInvariant { .. } => "internal_invariant",
         }
     }
@@ -162,6 +165,9 @@ impl std::fmt::Display for QueryCompileError {
             }
             Self::UnboundedQuery { detail } => {
                 write!(f, "unbounded query: {detail}")
+            }
+            Self::IncompleteSameEvent { missing } => {
+                write!(f, "incomplete same-event merge: missing {missing}")
             }
             Self::InternalInvariant { detail } => {
                 write!(f, "internal invariant: {detail}")

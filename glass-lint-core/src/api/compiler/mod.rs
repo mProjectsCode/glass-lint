@@ -239,6 +239,9 @@ fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildEr
 
 fn map_query_compile_error(error: validate::QueryCompileError) -> MatcherBuildError {
     match error {
+        validate::QueryCompileError::IncompleteSameEvent { missing } => {
+            MatcherBuildError::CompilerInvariant(format!("same-event merge missing {missing}"))
+        }
         validate::QueryCompileError::InternalInvariant { detail } => {
             MatcherBuildError::CompilerInvariant(detail)
         }
