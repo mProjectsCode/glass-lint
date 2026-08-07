@@ -11,7 +11,6 @@ use std::{collections::BTreeMap, sync::Arc};
 use glass_lint_datastructures::{ByteRange, NameTable};
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::Program;
-use swc_ecma_visit::VisitWith;
 
 #[cfg(test)]
 use crate::analysis::{facts::MAX_FACTS, resolution::test_environment};
@@ -309,10 +308,7 @@ impl<'a> ResolvedProgram<'a> {
     ) -> Self {
         let ScopedProgram { graph, issues } = scoped;
         let mut resolver = Resolver::new(graph, coordinates, budget);
-        let mut builder = facts::FactBuilder::with_limit(&mut resolver, max_facts);
-
-        VisitWith::visit_with(program, &mut builder);
-        let built = builder.into_built_facts();
+        let built = facts::build(program, &mut resolver, max_facts);
 
         Self {
             resolver,

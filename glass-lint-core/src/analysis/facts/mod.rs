@@ -207,7 +207,7 @@ impl FactProvenanceState {
     }
 }
 
-pub struct FactBuilder<'builder, 'resolver> {
+pub(in crate::analysis) struct FactBuilder<'builder, 'resolver> {
     /// Scope and provenance answers are prepared before this AST walk.
     resolver: &'builder mut Resolver<'resolver>,
     /// Facts are appended in source traversal order and never rewritten.
@@ -270,7 +270,7 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
         Self::with_limit(resolver, MAX_FACTS)
     }
 
-    pub fn with_limit(resolver: &'builder mut Resolver<'resolver>, max_facts: usize) -> Self {
+    fn with_limit(resolver: &'builder mut Resolver<'resolver>, max_facts: usize) -> Self {
         Self {
             resolver,
             stream: FactStream::with_limit(max_facts),
@@ -445,6 +445,17 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
         self.interface
             .record_commonjs_export(assignment, self.resolver);
     }
+}
+
+/// Build the matcher-independent facts and module interface for one AST.
+pub(in crate::analysis) fn build(
+    program: &swc_ecma_ast::Program,
+    resolver: &mut Resolver<'_>,
+    max_facts: usize,
+) -> BuiltFacts {
+    let mut builder = FactBuilder::with_limit(resolver, max_facts);
+    program.visit_with(&mut builder);
+    builder.into_built_facts()
 }
 
 #[cfg(test)]

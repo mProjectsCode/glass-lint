@@ -118,7 +118,7 @@ function-depth/static-method restoration remain unchanged.
 
 ### Fact-builder construction boundary
 
-#### [ ] READ-004 — Hide internal fact-builder construction behind the lowering owner
+#### [x] READ-004 — Hide internal fact-builder construction behind the lowering owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -144,7 +144,10 @@ visitor genuinely needs. Preserve one AST traversal, matcher-independent
 facts plus module interface output, deterministic ordering, and fail-closed
 handling of budget/resource exhaustion.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Narrowed `FactBuilder` visibility and moved production
+construction plus AST traversal behind the facts `build` entry point used by
+lowering. The raw limit constructor is no longer a production-facing seam;
+test-only helpers retain their focused setup path.
 
 ## Systemic Themes
 
