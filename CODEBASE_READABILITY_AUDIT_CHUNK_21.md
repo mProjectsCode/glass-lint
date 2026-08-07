@@ -94,7 +94,7 @@ introducing a shared mutable budget implementation.
 
 ### Source admission boundary
 
-#### [ ] READ-104 — Establish one source-admission identity boundary
+#### [x] READ-104 — Establish one source-admission identity boundary
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -116,7 +116,13 @@ migration, preserving project-root rejection, language selection,
 virtual-project support, and the separation between filesystem admission and
 provider-neutral core values.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Already satisfied by the validated `SourceFile` boundary:
+filesystem admission constructs sources with `SourceFile::from_relative`,
+virtual callers use the public validated constructors, and project sessions
+accept those values without a second normalization or mutable path setter.
+This closes the duplicate identity path identified by the finding.
+
+**Verified:** `make fmt && make ci` on the current source-admission boundary.
 
 ### Machine report boundary
 
