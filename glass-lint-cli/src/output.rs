@@ -383,7 +383,7 @@ mod tests {
     use glass_lint_core::{
         AnalysisLimits, Environment, Linter, Rule, RuleCatalog, Severity,
         project::{AnalysisReport, ReportCompletion},
-        rules::{Category, Confidence, EventQuery},
+        rules::{Confidence, EventQuery},
     };
 
     use super::*;
@@ -391,7 +391,6 @@ mod tests {
     fn linter(semantic_operations: usize) -> Linter {
         let rule = Rule::builder("network.fetch")
             .description("Uses fetch")
-            .category(Category::new("network").unwrap())
             .severity(Severity::Warning)
             .confidence(Confidence::High)
             .query(EventQuery::call_global("fetch"))

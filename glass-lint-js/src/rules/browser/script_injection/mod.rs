@@ -1,7 +1,7 @@
 //! Browser executable-script-injection rule definition.
 
 use glass_lint_core::rules::{
-    Category, Confidence, EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
+    Confidence, EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
     LifecycleQuery, LifecycleSink, QueryDecl, Rule, Severity, ValueMatcher,
 };
 
@@ -11,7 +11,6 @@ use glass_lint_core::rules::{
 pub fn rule() -> Rule {
     Rule::builder("dynamic-code.script-injection")
         .description("Injects executable script elements")
-        .category(Category::new("browser/dom").unwrap())
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
         .query(QueryDecl::lifecycle(

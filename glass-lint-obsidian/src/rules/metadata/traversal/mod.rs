@@ -1,6 +1,6 @@
 //! Obsidian metadata-map traversal rule definition.
 
-use glass_lint_core::rules::{ArgumentMatcher, Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{ArgumentMatcher, Confidence, EventQuery, Rule, Severity};
 
 const METADATA_MAPS: [&str; 2] = [
     "app.metadataCache.resolvedLinks",
@@ -45,7 +45,6 @@ fn metadata_traversal(path: &str) -> glass_lint_core::rules::QueryDecl {
 pub fn rule() -> Rule {
     Rule::builder("metadata.traversal")
         .description("Traverses metadata cache maps")
-        .category(Category::new("metadata").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .queries(METADATA_TRAVERSALS.iter().copied().map(metadata_traversal))

@@ -1,6 +1,6 @@
 //! Browser notification-permission rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 /// Detects unshadowed `Notification.requestPermission` calls, its rooted
 /// `window.Notification` spelling, notification construction, and
@@ -9,7 +9,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("browser.permissions-notifications")
         .description("Requests browser notifications")
-        .category(Category::new("browser/permissions").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(EventQuery::member_call_rooted(

@@ -1,6 +1,6 @@
 //! Obsidian network-request rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 /// Detects calls to the exact `request` and `requestUrl` exports of the
 /// `obsidian` module or the corresponding globals injected into the plugin's
@@ -10,7 +10,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("network.request")
         .description("Uses Obsidian request APIs")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("request"))

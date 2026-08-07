@@ -41,7 +41,6 @@ pub fn test_linter() -> crate::Linter {
 pub fn test_linter_with_environment(environment: crate::Environment) -> crate::Linter {
     let rule = Rule::builder("network.fetch")
         .description("Uses fetch")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))
@@ -59,7 +58,6 @@ pub fn test_linter_with_limits(limits: crate::AnalysisLimits) -> crate::Linter {
     environment.add_global("fetch").unwrap();
     let rule = Rule::builder("network.fetch")
         .description("Uses fetch")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))
@@ -83,7 +81,6 @@ pub fn test_linter_with_selection(
     environment.add_global("fetch").unwrap();
     let rule = Rule::builder("network.fetch")
         .description("Uses fetch")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))
@@ -103,7 +100,6 @@ pub fn test_linter_with_selection(
 pub fn flow_linter() -> crate::Linter {
     let rule = Rule::builder("flow.append")
         .description("Appends a configured script")
-        .category(Category::new("flow").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(QueryDecl::lifecycle(

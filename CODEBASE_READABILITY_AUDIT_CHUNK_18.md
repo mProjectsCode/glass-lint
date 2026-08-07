@@ -23,7 +23,7 @@ boundary.
 
 ### Rule metadata and crate ownership
 
-#### [ ] READ-086 — Remove provider taxonomy from the provider-neutral rule core
+#### [x] READ-086 — Remove provider taxonomy from the provider-neutral rule core
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -54,7 +54,10 @@ rule IDs, descriptions, severity, confidence, query explanations,
 duplicate-field diagnostics for metadata that remains in core, and the absence
 of provider names/categories from core semantics.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the provider-defined `Category` type, rule storage and
+accessors, category validation and duplicate-field handling from core, then
+migrated provider, test, example, and CLI declarations to the metadata that
+core actually consumes. Verified with `make fmt && make ci`.
 
 #### [x] READ-087 — Seal the nonempty-query invariant at rule construction
 

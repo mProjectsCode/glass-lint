@@ -1,6 +1,6 @@
 //! Obsidian settings-tab rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, QueryDecl, Rule, Severity};
 
 /// Detects syntactic `this.addSettingTab()` registration calls and
 /// `PluginSettingTab` constructors/subclasses. The registration form requires
@@ -11,7 +11,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, QueryDecl, Rule, 
 pub fn rule() -> Rule {
     Rule::builder("ui.settings-tab")
         .description("Registers plugin settings UI")
-        .category(Category::new("ui").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(QueryDecl::member_call_instance(

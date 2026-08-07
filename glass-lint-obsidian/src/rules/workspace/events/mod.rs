@@ -1,6 +1,6 @@
 //! Obsidian workspace-event registration rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity, ValueMatcher};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity, ValueMatcher};
 
 /// Detects rooted `app.workspace.on` registrations for the documented
 /// workspace and editor/menu events. Rooted aliases, static computed names,
@@ -9,7 +9,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity, V
 pub fn rule() -> Rule {
     Rule::builder("workspace.events")
         .description("Registers Obsidian workspace events")
-        .category(Category::new("workspace").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(

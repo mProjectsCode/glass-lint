@@ -1,12 +1,11 @@
 use glass_lint_core::rules::{
-    Category, Confidence, EventQuery, EventRequirement, LifecycleCompletion, LifecycleCondition,
+    Confidence, EventQuery, EventRequirement, LifecycleCompletion, LifecycleCondition,
     LifecycleEvent, LifecycleQuery, LifecycleSink, QueryDecl, Rule, Severity, ValueMatcher,
 };
 
 fn rule<Q: glass_lint_core::rules::IntoQueryDecl>(id: &str, description: &str, query: Q) -> Rule {
     Rule::builder(id)
         .description(description)
-        .category(Category::new("example").expect("static category"))
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(query)

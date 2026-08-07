@@ -1,6 +1,6 @@
 //! Obsidian plugin-manager access rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 /// Detects reads from Obsidian's plugin manager:
 /// instances, manifests, and enabled-plugin state. The rooted collection read
@@ -9,7 +9,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("plugins.access")
         .description("Accesses other plugins")
-        .category(Category::new("plugins").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Low)
         .query(EventQuery::member_call_rooted("app.plugins.getPlugin"))

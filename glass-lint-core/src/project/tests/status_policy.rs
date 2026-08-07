@@ -1,8 +1,4 @@
-use crate::{
-    AnalysisLimits,
-    api::rule::{Category, EventQuery},
-    project::tests::*,
-};
+use crate::{AnalysisLimits, api::rule::EventQuery, project::tests::*};
 
 fn configured_linter(limits: AnalysisLimits) -> crate::Linter {
     test_linter_with_selection(crate::RuleSelection::default(), limits)
@@ -316,7 +312,6 @@ fn facts_effects_flow_and_link_limits_cover_below_at_above() {
 fn partial_status_never_emits_unproved_strict_finding() {
     let rule = Rule::builder("network.request")
         .description("Uses request")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_module("./dep", "request"))

@@ -1,6 +1,6 @@
 //! Browser hardware-permission rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 /// Detects unshadowed WebHID, Web Serial, and WebUSB device requests. Rooted
 /// aliases and static computed properties retain browser provenance; local
@@ -8,7 +8,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("browser.permissions-hardware")
         .description("Uses browser hardware permissions")
-        .category(Category::new("browser/permissions").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(EventQuery::member_call_rooted(

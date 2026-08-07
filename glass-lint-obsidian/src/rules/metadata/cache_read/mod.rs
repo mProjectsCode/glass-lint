@@ -1,6 +1,6 @@
 //! Obsidian metadata-cache access rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 /// Detects rooted reads of `app.metadataCache`, `resolvedLinks`, and
 /// `unresolvedLinks`, plus calls to the three configured cache lookup methods.
@@ -11,7 +11,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("metadata.cache-read")
         .description("Reads Obsidian metadata cache")
-        .category(Category::new("metadata").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(EventQuery::member_read_rooted("app.metadataCache"))

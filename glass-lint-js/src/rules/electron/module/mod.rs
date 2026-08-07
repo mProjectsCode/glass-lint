@@ -1,6 +1,6 @@
 //! Electron module-boundary rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 const MODULE_CALLS: &[&str] = &[
     "webContents.fromId",
@@ -70,7 +70,6 @@ const MODULE_READS: &[&str] = &[
 pub fn rule() -> Rule {
     let mut builder = Rule::builder("electron.module")
         .description("Uses Electron APIs")
-        .category(Category::new("electron/module").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(EventQuery::import_exact("electron"))

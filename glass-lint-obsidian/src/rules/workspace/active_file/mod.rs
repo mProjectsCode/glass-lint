@@ -1,6 +1,6 @@
 //! Obsidian active-file workspace rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 /// Detects rooted calls to `app.workspace.getActiveFile`. Provenance follows
 /// `this.app`, workspace aliases, static computed properties, source-ordered
@@ -9,7 +9,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("workspace.active-file")
         .description("Accesses the active file")
-        .category(Category::new("workspace").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(EventQuery::member_call_rooted(

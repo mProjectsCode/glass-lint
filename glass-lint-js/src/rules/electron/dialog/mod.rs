@@ -1,6 +1,6 @@
 //! Electron native-dialog rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 /// Detects calls to Electron's `dialog.showOpenDialog` and
 /// `dialog.showSaveDialog` when the receiver has proven `electron` module
@@ -12,7 +12,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("electron.dialog")
         .description("Uses Electron native dialogs")
-        .category(Category::new("electron/dialog").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(EventQuery::member_call_module(

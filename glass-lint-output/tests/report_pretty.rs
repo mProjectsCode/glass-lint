@@ -7,7 +7,7 @@ use glass_lint_core::{
     Environment, Linter, LinterConfig, Rule, RuleCatalog,
     project::{FileReport, SourceFile},
     rules::{
-        Category, Confidence, EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
+        Confidence, EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
         LifecycleQuery, LifecycleSink, QueryBuildError, QueryDecl, Severity, ValueMatcher,
     },
 };
@@ -22,7 +22,6 @@ fn line_starts(source: &str) -> Vec<usize> {
 fn fetch_rule(description: &str, severity: Severity) -> Rule {
     Rule::builder("fetch")
         .description(description)
-        .category(Category::new("network").unwrap())
         .severity(severity)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))
@@ -73,7 +72,6 @@ fn script_insertion_flow() -> Result<LifecycleQuery, QueryBuildError> {
 fn flow_rule(id: &str, description: &str) -> Rule {
     Rule::builder(id)
         .description(description)
-        .category(Category::new("test").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(QueryDecl::lifecycle(script_insertion_flow()))
@@ -251,7 +249,6 @@ fn renders_terminal_controls_visibly() {
 fn bounds_long_excerpt() {
     let rule = Rule::builder("long-line")
         .description("long line")
-        .category(Category::new("test").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::string_contains("fetch"))
@@ -282,7 +279,6 @@ fn bounds_long_excerpt() {
 fn renders_tabs_and_wide_unicode_within_the_display_budget() {
     let rule = Rule::builder("unicode")
         .description("unicode")
-        .category(Category::new("test").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(EventQuery::string_contains("\u{1f600}"))
@@ -337,7 +333,6 @@ fn aligns_caret_after_single_tab_and_wide_character() {
 fn renders_missing_source_lines_without_panicking() {
     let rule = Rule::builder("missing")
         .description("missing")
-        .category(Category::new("test").unwrap())
         .severity(Severity::Error)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))
@@ -360,7 +355,6 @@ fn renders_missing_source_lines_without_panicking() {
 fn renders_colored_findings_when_enabled() {
     let rule = Rule::builder("color")
         .description("colored")
-        .category(Category::new("test").unwrap())
         .severity(Severity::Error)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))

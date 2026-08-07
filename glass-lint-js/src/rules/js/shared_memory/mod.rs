@@ -1,6 +1,6 @@
 //! Shared-memory concurrency rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 const ATOMICS_METHODS: &[&str] = &[
     "Atomics.add",
@@ -25,7 +25,6 @@ const ATOMICS_METHODS: &[&str] = &[
 pub fn rule() -> Rule {
     Rule::builder("concurrency.shared-memory")
         .description("Uses shared-memory concurrency APIs")
-        .category(Category::new("language/concurrency").unwrap())
         .confidence(Confidence::High)
         .severity(Severity::Info)
         .query(EventQuery::constructor_global("SharedArrayBuffer"))

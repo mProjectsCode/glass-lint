@@ -5,8 +5,8 @@ use glass_lint_datastructures::{Position, SourceRange};
 
 use crate::{
     api::rule::{
-        Category, Confidence, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
-        LifecycleQuery, LifecycleSink, Rule, Severity, ValueMatcher,
+        Confidence, LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleQuery,
+        LifecycleSink, Rule, Severity, ValueMatcher,
     },
     project::{
         session::{CountingExecutionObserver, outstanding_job_bound},

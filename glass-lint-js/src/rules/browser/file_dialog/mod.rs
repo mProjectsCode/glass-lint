@@ -1,5 +1,5 @@
 use glass_lint_core::rules::{
-    Category, Confidence, EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
+    Confidence, EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
     LifecycleQuery, QueryDecl, Rule, Severity, ValueMatcher,
 };
 
@@ -11,7 +11,6 @@ use glass_lint_core::rules::{
 pub fn rule() -> Rule {
     Rule::builder("browser.file-dialog")
         .description("Uses browser file input dialogs")
-        .category(Category::new("browser/file-dialog").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .query(QueryDecl::lifecycle(

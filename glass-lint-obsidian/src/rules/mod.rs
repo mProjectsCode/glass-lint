@@ -1,7 +1,7 @@
 //! Complete Obsidian provider rule catalog.
 //!
-//! Category modules own their policies; this assembly point fixes category
-//! order so metadata, profiles, and findings remain deterministic.
+//! Rule modules own their policies; this assembly point fixes rule order so
+//! profiles and findings remain deterministic.
 
 mod bases;
 mod cli;

@@ -3,7 +3,7 @@ use glass_lint_datastructures::{Position, SourceRange};
 use super::*;
 use crate::{
     RuleCatalog, RuleId, Severity,
-    api::rule::{Category, Confidence, EventQuery, Rule, Severity as RuleSeverity},
+    api::rule::{Confidence, EventQuery, Rule, Severity as RuleSeverity},
     project::{
         AnalysisDiagnostic, AnalysisOperationCounts, Diagnostic, EvidenceRole, EvidenceStep,
         EvidenceTrace, EvidenceTraces, FileReport, Finding, MatchCertainty, ProjectRelativePath,
@@ -418,7 +418,6 @@ fn duplicate_findings_merge_traces_and_keep_definite_certainty() {
 fn direct_qualification_matches_one_file_project_shape() {
     let rule = Rule::builder("network.request")
         .description("Uses fetch")
-        .category(Category::new("network").unwrap())
         .severity(RuleSeverity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))
@@ -520,7 +519,6 @@ fn finding_serialization_includes_certainty() {
 fn snippet_serializes_as_one_analysis_file_without_source_text() {
     let rule = Rule::builder("network.request")
         .description("Uses fetch")
-        .category(Category::new("network").unwrap())
         .severity(RuleSeverity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))
@@ -549,7 +547,6 @@ fn snippet_serializes_as_one_analysis_file_without_source_text() {
 fn parse_and_valid_sources_each_produce_one_file_report() {
     let rule = Rule::builder("network.request")
         .description("Uses fetch")
-        .category(Category::new("network").unwrap())
         .severity(RuleSeverity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))

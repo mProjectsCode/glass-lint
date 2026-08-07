@@ -21,7 +21,7 @@ pub use query::{
     },
     value::{ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ValueMatcher, ValueMatcherKind},
 };
-pub use taxonomy::{Category, Confidence};
+pub use taxonomy::Confidence;
 
 pub use crate::Severity;
 
@@ -35,8 +35,6 @@ pub struct Rule {
     id: String,
     /// Human-readable rule description.
     description: String,
-    /// Provider-defined category, preserved for catalog metadata.
-    category: Option<Category>,
     /// Report severity.
     severity: Severity,
     /// Evidence confidence.
@@ -56,7 +54,6 @@ impl Rule {
         RuleBuilder {
             id: id.into(),
             description: None,
-            category: None,
             severity: None,
             confidence: None,
             queries: Vec::new(),
@@ -75,12 +72,6 @@ impl Rule {
     /// Borrow the human-readable description.
     pub fn description(&self) -> &str {
         &self.description
-    }
-
-    #[must_use]
-    /// Borrow the provider category, if set.
-    pub fn category(&self) -> Option<&Category> {
-        self.category.as_ref()
     }
 
     #[must_use]
@@ -107,7 +98,6 @@ impl Rule {
 pub struct RuleBuilder {
     id: String,
     description: Option<String>,
-    category: Option<Category>,
     severity: Option<Severity>,
     confidence: Option<Confidence>,
     queries: Vec<QueryDecl>,
@@ -185,16 +175,6 @@ impl RuleBuilder {
     }
 
     #[must_use]
-    /// Set the provider category.
-    pub fn category(mut self, category: Category) -> Self {
-        if self.category.is_some() {
-            self.record_duplicate("category");
-        }
-        self.category = Some(category);
-        self
-    }
-
-    #[must_use]
     /// Set report severity.
     pub fn severity(mut self, severity: Severity) -> Self {
         if self.severity.is_some() {
@@ -248,7 +228,6 @@ impl RuleBuilder {
         Ok(Rule {
             id,
             description,
-            category: self.category,
             severity,
             confidence,
             queries: self.queries,
@@ -272,12 +251,9 @@ fn required_string(
 mod tests {
     use super::*;
 
-    fn build(id: &str, category: &str) -> Result<Rule, RuleBuildError> {
-        let cat = Category::new(category)
-            .map_err(|_| RuleBuildError::InvalidCategory(category.trim().to_string()))?;
+    fn build(id: &str) -> Result<Rule, RuleBuildError> {
         Rule::builder(id)
             .description("rule")
-            .category(cat)
             .severity(Severity::Info)
             .confidence(Confidence::High)
             .query(EventQuery::call_global("fetch"))
@@ -285,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_noncanonical_rule_ids_and_categories() {
+    fn rejects_noncanonical_rule_ids() {
         for id in [
             "Network.fetch",
             ".network",
@@ -293,21 +269,13 @@ mod tests {
             "network..fetch",
             "network:fetch",
         ] {
-            assert!(matches!(
-                build(id, "network"),
-                Err(RuleBuildError::InvalidId(_))
-            ));
+            assert!(matches!(build(id), Err(RuleBuildError::InvalidId(_))));
         }
-        assert!(matches!(
-            build("network.fetch", "  "),
-            Err(RuleBuildError::InvalidCategory(_))
-        ));
     }
 
     #[test]
-    fn accepts_provider_category_paths_and_displayable_errors() {
-        assert!(build("network.fetch", "browser/network").is_ok());
-        let error = build("UPPER", "network").unwrap_err();
+    fn reports_displayable_rule_id_errors() {
+        let error = build("UPPER").unwrap_err();
         assert!(error.to_string().contains("invalid rule ID"));
     }
 
@@ -319,12 +287,6 @@ mod tests {
                 Rule::builder("network.fetch")
                     .description("one")
                     .description("two"),
-            ),
-            (
-                "category",
-                Rule::builder("network.fetch")
-                    .category(Category::new("one").unwrap())
-                    .category(Category::new("two").unwrap()),
             ),
             (
                 "severity",
@@ -352,8 +314,6 @@ mod tests {
         let error = Rule::builder("network.fetch")
             .description("one")
             .description("two")
-            .category(Category::new("one").unwrap())
-            .category(Category::new("two").unwrap())
             .build()
             .expect_err("duplicate metadata should fail");
 
@@ -365,7 +325,6 @@ mod tests {
         assert!(
             Rule::builder("test.test")
                 .description("desc")
-                .category(Category::new("cat").unwrap())
                 .severity(Severity::Warning)
                 .confidence(Confidence::Medium)
                 .build()
@@ -377,7 +336,6 @@ mod tests {
     fn registers_query_iterators_in_declaration_order() {
         let rule = Rule::builder("network.fetch")
             .description("rule")
-            .category(Category::new("network").unwrap())
             .severity(Severity::Info)
             .confidence(Confidence::High)
             .queries([

@@ -1,6 +1,6 @@
 //! Obsidian cached-frontmatter rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, QueryDecl, Rule, Severity};
 
 /// Detects rooted reads of `app.metadataCache.getFileCache.frontmatter`,
 /// including aliases and static computed properties. It does not infer
@@ -9,7 +9,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, QueryDecl, Rule, 
 pub fn rule() -> Rule {
     Rule::builder("metadata.frontmatter-read")
         .description("Reads cached frontmatter")
-        .category(Category::new("metadata").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .query(EventQuery::member_read_rooted(

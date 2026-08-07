@@ -1,6 +1,6 @@
 //! Obsidian workspace-leaf management rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 /// Detects rooted calls to workspace leaf creation, lookup, traversal, and
 /// management methods on `app.workspace`. Provenance follows `this.app`,
@@ -10,7 +10,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("workspace.leaf-management")
         .description("Manages workspace leaves")
-        .category(Category::new("workspace").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(EventQuery::member_call_rooted(

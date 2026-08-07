@@ -172,12 +172,11 @@ impl RuleCatalog {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::rule::{Category, Confidence, EventQuery, Rule, Severity};
+    use crate::api::rule::{Confidence, EventQuery, Rule, Severity};
 
     fn make_catalog(provider: &str) -> RuleCatalog {
         let rule = Rule::builder("request")
             .description("Request")
-            .category(Category::new("network").unwrap())
             .severity(Severity::Warning)
             .confidence(Confidence::High)
             .query(EventQuery::call_global("fetch"))

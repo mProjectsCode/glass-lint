@@ -1,7 +1,7 @@
 //! Browser remote-DOM-resource flow rule definition.
 
 use glass_lint_core::rules::{
-    Category, Confidence, EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
+    Confidence, EventQuery, LifecycleCompletion, LifecycleCondition, LifecycleEvent,
     LifecycleQuery, LifecycleSink, QueryBuildError, QueryDecl, Rule, Severity, ValueMatcher,
 };
 
@@ -14,7 +14,6 @@ use glass_lint_core::rules::{
 pub fn rule() -> Rule {
     Rule::builder("dom.remote-resource")
         .description("Loads remote DOM resources")
-        .category(Category::new("browser/dom").unwrap())
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
         .query(QueryDecl::lifecycle(remote_element_query(

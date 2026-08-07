@@ -1,6 +1,6 @@
 //! Obsidian vault-adapter access rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 const ADAPTER_METHODS: &[&str] = &[
     "app.vault.adapter.exists",
@@ -24,7 +24,6 @@ const ADAPTER_METHODS: &[&str] = &[
 pub fn rule() -> Rule {
     Rule::builder("vault.adapter")
         .description("Uses adapter-level vault filesystem APIs")
-        .category(Category::new("vault").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .queries(

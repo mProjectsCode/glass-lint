@@ -1,6 +1,6 @@
 //! Node subprocess-module rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 const SUBPROCESS_MODULES: &[&str] = &[
     "child_process",
@@ -43,7 +43,6 @@ const SUBPROCESS_MODULE_CALLS: &[(&str, &str)] = &[
 pub fn rule() -> Rule {
     Rule::builder("node.subprocess")
         .description("Starts Node subprocesses")
-        .category(Category::new("node/process").unwrap())
         .confidence(Confidence::High)
         .severity(Severity::Warning)
         .queries(

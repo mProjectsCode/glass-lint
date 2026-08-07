@@ -1,6 +1,6 @@
 //! Obsidian configuration-directory indicator rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 /// Detects string and static-template fragments containing the exact
 /// `.obsidian/` or `.obsidian\\` configuration-directory markers. This is a
@@ -11,7 +11,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("vault.config-directory")
         .description("References .obsidian configuration paths")
-        .category(Category::new("vault").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .query(EventQuery::string_contains(".obsidian/"))

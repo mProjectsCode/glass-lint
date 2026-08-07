@@ -1,6 +1,6 @@
 //! Obsidian metadata-cache event rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 /// Detects rooted `app.metadataCache.on` registrations only when the first
 /// argument is a literal event name: `changed`, `deleted`, `resolve`, or
@@ -10,7 +10,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("metadata.events")
         .description("Registers metadata cache events")
-        .category(Category::new("metadata").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .query(

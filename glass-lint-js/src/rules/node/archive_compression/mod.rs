@@ -1,6 +1,6 @@
 //! Node archive and compression rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, QueryBuildError, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, QueryBuildError, Rule, Severity};
 
 #[derive(Clone, Copy)]
 enum ImportSpec {
@@ -43,7 +43,6 @@ fn import_query(spec: ImportSpec) -> Result<EventQuery, QueryBuildError> {
 pub fn rule() -> Rule {
     Rule::builder("archive.compression")
         .description("Uses archive or compression libraries")
-        .category(Category::new("node/archive").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .queries(IMPORTS.iter().copied().map(import_query))

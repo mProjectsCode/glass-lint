@@ -1,6 +1,6 @@
 //! Obsidian vault write rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 /// Detects rooted calls to the eight configured vault write APIs: `create`,
 /// `createBinary`, `modify`, `modifyBinary`, `append`, `appendBinary`,
@@ -11,7 +11,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("vault.write")
         .description("Writes vault files")
-        .category(Category::new("vault").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(EventQuery::member_call_rooted("app.vault.create"))

@@ -1,6 +1,6 @@
 //! Node process-environment rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 const PROCESS_READS: &[&str] = &[
     "process.env",
@@ -49,7 +49,6 @@ const PROCESS_CALLS: &[&str] = &[
 pub fn rule() -> Rule {
     Rule::builder("node.process-environment")
         .description("Reads Node process environment or platform metadata")
-        .category(Category::new("node/process").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .queries(

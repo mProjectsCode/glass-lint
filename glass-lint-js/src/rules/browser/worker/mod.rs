@@ -1,6 +1,6 @@
 //! Browser worker and worklet opaque-execution rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 const WORKER_METHODS: &[&str] = &[
     "CSS.animationWorklet.addModule",
@@ -18,7 +18,6 @@ const WORKER_METHODS: &[&str] = &[
 pub fn rule() -> Rule {
     Rule::builder("browser.worker")
         .description("Starts or loads background JavaScript")
-        .category(Category::new("browser/concurrency").unwrap())
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
         .query(EventQuery::constructor_global("Worker"))

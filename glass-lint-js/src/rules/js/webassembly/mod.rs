@@ -1,6 +1,6 @@
 //! WebAssembly opaque-execution rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 const WEBASSEMBLY_METHODS: &[&str] = &[
     "WebAssembly.compile",
@@ -30,7 +30,6 @@ const WEBASSEMBLY_CONSTRUCTORS: &[&str] = &[
 pub fn rule() -> Rule {
     Rule::builder("dynamic-code.webassembly")
         .description("Compiles or executes WebAssembly")
-        .category(Category::new("language/dynamic-code").unwrap())
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
         .queries(

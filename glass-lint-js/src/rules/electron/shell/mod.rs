@@ -1,6 +1,6 @@
 //! Electron shell rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 /// Detects Electron `shell.openExternal` and `shell.openPath` calls through a
 /// proven `electron` module namespace. ESM/CommonJS namespace aliases and
@@ -11,7 +11,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("electron.shell")
         .description("Uses Electron shell APIs")
-        .category(Category::new("electron/shell").unwrap())
         .confidence(Confidence::High)
         .severity(Severity::Warning)
         .query(EventQuery::member_call_module(

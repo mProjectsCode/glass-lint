@@ -7,14 +7,13 @@
 use glass_lint_core::{
     Environment, Linter, LinterConfig, RuleCatalog, SourceLanguage,
     project::SourceFile,
-    rules::{Category, Confidence, EventQuery, Rule, Severity},
+    rules::{Confidence, EventQuery, Rule, Severity},
 };
 
 /// Build the minimal TypeScript-capable linter used by every fixture.
 fn linter() -> Linter {
     let rule = Rule::builder("network.fetch")
         .description("Uses fetch")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))

@@ -1,6 +1,6 @@
 //! Browser persistent-storage rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, QueryDecl, Rule, Severity};
 
 const WEB_STORAGE_ROOTS: &[&str] = &["localStorage", "sessionStorage"];
 const WEB_STORAGE_METHODS: &[&str] = &["getItem", "setItem", "removeItem", "clear", "key"];
@@ -29,7 +29,6 @@ const COOKIE_METHODS: &[&str] = &["get", "getAll", "set", "delete"];
 pub fn rule() -> Rule {
     let mut builder = Rule::builder("browser.persistent-storage")
         .description("Uses persistent browser storage")
-        .category(Category::new("browser/storage").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(EventQuery::member_read_rooted("document.cookie"));

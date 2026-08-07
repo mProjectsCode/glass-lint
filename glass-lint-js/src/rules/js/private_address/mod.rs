@@ -1,6 +1,6 @@
 //! Private-network address indicator rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 /// Detects complete static localhost, private, loopback, link-local,
 /// documentation, wildcard, and selected special-use IPv4/IPv6 addresses.
@@ -9,7 +9,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("network.private-address")
         .description("References private-network addresses")
-        .category(Category::new("browser/network").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(EventQuery::string_private_network_address())

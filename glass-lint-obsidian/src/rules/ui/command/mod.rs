@@ -1,6 +1,6 @@
 //! Obsidian command-registration rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Confidence, QueryDecl, Rule, Severity};
 
 /// Detects `this.addCommand()` registrations, including static computed
 /// properties and bounded extracted aliases. The instance matcher requires a
@@ -9,7 +9,6 @@ use glass_lint_core::rules::{Category, Confidence, QueryDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("ui.command")
         .description("Registers commands")
-        .category(Category::new("ui").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(QueryDecl::member_call_instance(

@@ -1,6 +1,6 @@
 //! Dynamic-code evaluation rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 /// Detects calls whose target is proven to be the global `eval` or `Function`
 /// callable, plus construction through the global `Function`. Global-object
@@ -10,7 +10,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("dynamic-code.eval")
         .description("Evaluates dynamic code")
-        .category(Category::new("language/dynamic-code").unwrap())
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
         .query(EventQuery::call_global("eval"))

@@ -1,6 +1,6 @@
 //! Service and SDK endpoint indicator rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 /// Detects static ESM or unshadowed CommonJS loads of the listed service SDKs
 /// and string literals containing configured service endpoint markers. Module
@@ -46,7 +46,6 @@ const SERVICE_ENDPOINTS: &[&str] = &[
 pub fn rule() -> Rule {
     Rule::builder("network.service-indicator")
         .description("References service or SDK endpoints")
-        .category(Category::new("browser/network").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Low)
         .queries(

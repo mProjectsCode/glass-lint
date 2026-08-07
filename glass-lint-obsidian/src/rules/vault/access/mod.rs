@@ -1,6 +1,6 @@
 //! Obsidian vault-root access rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 /// Detects reads of the rooted `app.vault` object, including `this.app` and
 /// direct aliases of the root receiver plus static computed properties. The
@@ -10,7 +10,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("vault.access")
         .description("Accesses Obsidian vault APIs")
-        .category(Category::new("vault").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(EventQuery::member_read_rooted("app.vault"))

@@ -1,6 +1,6 @@
 //! Obsidian active-editor workspace rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 /// Detects rooted reads of `app.workspace.activeEditor`. Provenance follows
 /// `this.app`, workspace aliases, static computed properties, source-ordered
@@ -9,7 +9,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("workspace.active-editor")
         .description("Accesses the active editor")
-        .category(Category::new("workspace").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(EventQuery::member_read_rooted("app.workspace.activeEditor"))

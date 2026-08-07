@@ -2,7 +2,7 @@ use glass_lint_core::{
     AnalysisLimits, EcmaFeature, EcmaVersion, Environment, Linter, Rule, RuleCatalog, Severity,
     analyze_ecma_version,
     project::{DiagnosticCode, SourceFile},
-    rules::{Category, Confidence, EventQuery},
+    rules::{Confidence, EventQuery},
 };
 use glass_lint_datastructures::{
     ByteRange, InvalidPosition, Position, ReversedSourcePositionRange, SourceRange,
@@ -12,7 +12,6 @@ use glass_lint_datastructures::{
 fn supported_public_operations_do_not_require_engine_storage() {
     let rule = Rule::builder("network.fetch")
         .description("Uses fetch")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))

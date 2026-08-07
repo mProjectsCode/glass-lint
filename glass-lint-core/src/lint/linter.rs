@@ -227,7 +227,7 @@ mod tests {
         Environment, LintConfigError, Linter, LinterConfig, RuleBaseline, RuleCatalog,
         RuleOverride, RuleSelection, RuleState,
         lint::ranges::remove_contained_ranges,
-        rules::{Category, Confidence, EventQuery, Rule, Severity},
+        rules::{Confidence, EventQuery, Rule, Severity},
     };
 
     #[test]
@@ -253,7 +253,6 @@ mod tests {
     fn findings_are_sorted_by_position() {
         let rule = Rule::builder("network.request")
             .description("Uses fetch")
-            .category(Category::new("network").unwrap())
             .severity(Severity::Warning)
             .confidence(Confidence::High)
             .query(EventQuery::call_global("fetch"))
@@ -304,7 +303,6 @@ mod tests {
     fn classify_groups_findings_by_rule() {
         let rule = Rule::builder("network.request")
             .description("Uses fetch")
-            .category(Category::new("network").unwrap())
             .severity(Severity::Warning)
             .confidence(Confidence::High)
             .query(EventQuery::call_global("fetch"))

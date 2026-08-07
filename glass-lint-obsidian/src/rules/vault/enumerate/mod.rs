@@ -1,6 +1,6 @@
 //! Obsidian vault enumeration rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 /// Detects rooted calls to the configured vault lookup and enumeration methods:
 /// `getFiles`, `getMarkdownFiles`, `getAllLoadedFiles`, `getAllFolders`,
@@ -12,7 +12,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("vault.enumerate")
         .description("Enumerates vault files")
-        .category(Category::new("vault").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(EventQuery::member_call_rooted("app.vault.getFiles"))

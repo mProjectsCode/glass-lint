@@ -1,14 +1,10 @@
-use crate::{
-    api::rule::{Category, EventQuery},
-    project::tests::*,
-};
+use crate::{api::rule::EventQuery, project::tests::*};
 
 #[test]
 #[allow(clippy::too_many_lines)]
 fn linked_internal_aliases_preserve_external_and_global_call_identity() {
     let external_rule = Rule::builder("network.request")
         .description("Uses request")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_module("web", "request"))
@@ -16,7 +12,6 @@ fn linked_internal_aliases_preserve_external_and_global_call_identity() {
         .unwrap();
     let global_rule = Rule::builder("network.fetch")
         .description("Uses fetch")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))
@@ -286,7 +281,6 @@ fn project_flow_fails_closed_for_unsupported_helper_control_flow() {
 fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
     let rule = Rule::builder("network.request")
         .description("Uses request")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_module("web", "request"))
@@ -374,7 +368,6 @@ fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
 fn unresolved_internal_imports_do_not_become_external_provenance() {
     let rule = Rule::builder("network.request")
         .description("Uses request")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_module("./helper", "request"))
@@ -409,7 +402,6 @@ fn unresolved_internal_imports_do_not_become_external_provenance() {
 fn commonjs_export_aliases_preserve_external_provenance_across_modules() {
     let rule = Rule::builder("network.request")
         .description("Uses request")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_module("web", "request"))
@@ -450,7 +442,6 @@ fn commonjs_export_aliases_preserve_external_provenance_across_modules() {
 fn namespace_imports_follow_star_reexports() {
     let rule = Rule::builder("network.request")
         .description("Uses request")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_module("web", "request"))
@@ -498,7 +489,6 @@ fn namespace_imports_follow_star_reexports() {
 fn static_dynamic_imports_follow_namespace_exports() {
     let rule = Rule::builder("network.request")
         .description("Uses request")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_module("web", "request"))
@@ -541,7 +531,6 @@ fn static_dynamic_imports_follow_namespace_exports() {
 fn anonymous_commonjs_functions_remain_callable_across_modules() {
     let rule = Rule::builder("network.request")
         .description("Uses request")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_module("web", "request"))
@@ -584,7 +573,6 @@ fn anonymous_commonjs_functions_remain_callable_across_modules() {
 fn returned_callable_provenance_crosses_an_exported_function() {
     let rule = Rule::builder("network.request")
         .description("Uses request")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(
@@ -634,7 +622,6 @@ fn returned_callable_provenance_crosses_an_exported_function() {
 fn linked_external_call_arguments_are_projected_after_reexports() {
     let rule = Rule::builder("network.request")
         .description("Uses request")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(

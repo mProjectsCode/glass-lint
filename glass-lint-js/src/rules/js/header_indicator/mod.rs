@@ -1,6 +1,6 @@
 //! Header-marker indicator rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 const HEADER_MARKERS: &[&str] = &[
     "User-Agent",
@@ -36,7 +36,6 @@ const HEADER_MARKERS: &[&str] = &[
 pub fn rule() -> Rule {
     Rule::builder("network.header-indicator")
         .description("References authorization or user-agent headers")
-        .category(Category::new("browser/network").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         // Sink-associated coverage proves header names in request option

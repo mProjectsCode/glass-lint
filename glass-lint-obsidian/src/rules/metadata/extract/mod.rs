@@ -1,6 +1,6 @@
 //! Obsidian metadata collection-extraction rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, QueryDecl, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, QueryDecl, Rule, Severity};
 
 const METADATA_FIELDS: &[&str] = &[
     "tags",
@@ -32,7 +32,6 @@ const METADATA_FIELDS: &[&str] = &[
 pub fn rule() -> Rule {
     let mut builder = Rule::builder("metadata.extract")
         .description("Extracts tags, links, embeds, blocks, or headings")
-        .category(Category::new("metadata").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium);
 

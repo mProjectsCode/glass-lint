@@ -1,6 +1,6 @@
 //! Obsidian platform-branching rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 const PLATFORM_MEMBERS: &[&str] = &[
     "Platform.isMobile",
@@ -25,7 +25,6 @@ const PLATFORM_MEMBERS: &[&str] = &[
 pub fn rule() -> Rule {
     Rule::builder("platform.branching")
         .description("Checks Obsidian platform flags")
-        .category(Category::new("platform").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .queries(

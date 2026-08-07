@@ -8,7 +8,7 @@ use glass_lint_core::{
     Environment, LintConfigError, Linter, LinterConfig, RuleBaseline, RuleCatalog, RuleId,
     RuleOverride, RuleSelection, RuleState,
     project::{SourceFile, types::DiagnosticKind},
-    rules::{Category, Confidence, EventQuery, Rule, Severity},
+    rules::{Confidence, EventQuery, Rule, Severity},
 };
 
 use crate::support;
@@ -16,7 +16,6 @@ use crate::support;
 fn catalog() -> RuleCatalog {
     let rule = Rule::builder("network.fetch")
         .description("Uses fetch")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))
@@ -95,7 +94,6 @@ fn emits_one_located_finding_per_match() {
 fn findings_only_carry_evidence_for_their_own_location() {
     let rule = Rule::builder("vault.write")
         .description("Writes vault files")
-        .category(Category::new("vault").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .query(EventQuery::member_call_rooted("app.vault.create"))
@@ -138,7 +136,6 @@ fn rejects_shadowed_global_lookalikes() {
 fn collapses_contained_ranges_for_same_rule() {
     let rule = Rule::builder("metadata.read")
         .description("Reads metadata")
-        .category(Category::new("metadata").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::member_read_rooted("app.metadataCache"))
@@ -211,7 +208,6 @@ fn validates_custom_rule_selection() {
 fn ordered_rule_overrides_select_stable_catalog_indexes() {
     let first = Rule::builder("network.first")
         .description("First")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))
@@ -219,7 +215,6 @@ fn ordered_rule_overrides_select_stable_catalog_indexes() {
         .unwrap();
     let second = Rule::builder("network.second")
         .description("Second")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))
@@ -380,7 +375,6 @@ fn evidence_limit_is_source_ordered_and_applied_once() {
 fn enabled_rule_order_does_not_affect_findings() {
     let rule_a = Rule::builder("alpha.first")
         .description("First")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))
@@ -388,7 +382,6 @@ fn enabled_rule_order_does_not_affect_findings() {
         .unwrap();
     let rule_b = Rule::builder("beta.second")
         .description("Second")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("XMLHttpRequest"))
@@ -440,7 +433,6 @@ fn enabled_rule_order_does_not_affect_findings() {
 fn disabled_catalog_rules_do_not_produce_findings() {
     let rule_a = Rule::builder("alpha.first")
         .description("First")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))
@@ -448,7 +440,6 @@ fn disabled_catalog_rules_do_not_produce_findings() {
         .unwrap();
     let rule_b = Rule::builder("beta.second")
         .description("Second")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("XMLHttpRequest"))
@@ -477,7 +468,6 @@ fn disabled_catalog_rules_do_not_produce_findings() {
 fn combines_provider_rules_with_overlapping_local_ids() {
     let first = Rule::builder("network.request")
         .description("First provider request")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))
@@ -485,7 +475,6 @@ fn combines_provider_rules_with_overlapping_local_ids() {
         .unwrap();
     let second = Rule::builder("network.request")
         .description("Second provider request")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("requestUrl"))
@@ -518,7 +507,6 @@ fn combines_provider_rules_with_overlapping_local_ids() {
 fn combined_linter_preserves_each_input_rule_selection() {
     let enabled_rule = Rule::builder("enabled")
         .description("Enabled")
-        .category(Category::new("test").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("fetch"))
@@ -526,7 +514,6 @@ fn combined_linter_preserves_each_input_rule_selection() {
         .unwrap();
     let disabled_rule = Rule::builder("disabled")
         .description("Disabled")
-        .category(Category::new("test").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::call_global("requestUrl"))

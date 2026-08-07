@@ -1,6 +1,6 @@
 //! Node and Web Crypto operation rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 const CRYPTO_MODULES: &[&str] = &[
     "crypto",
@@ -60,7 +60,6 @@ const CRYPTO_MODULE_CALLS: &[(&str, &str)] = &[
 pub fn rule() -> Rule {
     Rule::builder("crypto.operation")
         .description("Uses cryptographic operations")
-        .category(Category::new("language/crypto").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .queries(CRYPTO_MODULES.iter().copied().map(EventQuery::import_exact))

@@ -1,6 +1,6 @@
 //! Browser environment-property rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 const BROWSER_PROPERTIES: &[&str] = &[
     "navigator.userAgent",
@@ -39,7 +39,6 @@ const BROWSER_PROPERTIES: &[&str] = &[
 pub fn rule() -> Rule {
     Rule::builder("browser.environment")
         .description("Reads browser environment data")
-        .category(Category::new("browser/environment").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .queries(

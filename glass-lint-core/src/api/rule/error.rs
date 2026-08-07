@@ -21,8 +21,6 @@ pub enum RuleBuildError {
     MissingQuery,
     /// A required metadata field was supplied more than once.
     DuplicateField(&'static str),
-    /// Category failed taxonomy validation.
-    InvalidCategory(String),
     /// A query declaration could not be constructed.
     InvalidQuery(super::query::QueryBuildError),
     /// The rule contains more query roots than the bounded authoring limit.
@@ -88,7 +86,6 @@ impl fmt::Display for RuleBuildError {
             Self::DuplicateField(field) => {
                 write!(formatter, "rule {field} was supplied more than once")
             }
-            Self::InvalidCategory(value) => write!(formatter, "invalid rule category `{value}`"),
             Self::InvalidQuery(err) => write!(formatter, "invalid query: {err}"),
             Self::TooManyQueries(count) => {
                 write!(

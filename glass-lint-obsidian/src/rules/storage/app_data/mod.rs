@@ -1,6 +1,6 @@
 //! Obsidian app-scoped storage rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 /// Detects rooted app-scoped storage and secret-store operations. Rooted
 /// aliases and static computed properties retain provenance; local lookalikes,
@@ -9,7 +9,6 @@ use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("storage.app-data")
         .description("Reads or writes app-scoped storage and secrets")
-        .category(Category::new("storage").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::member_call_rooted("app.loadLocalStorage"))

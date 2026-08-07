@@ -176,7 +176,6 @@ fn linker_reports_ambiguous_multiple_star_exports() {
 fn deep_namespace_export_chain_masks_unresolved_members() {
     let rule = Rule::builder("namespace.request")
         .description("Uses a deeply re-exported request")
-        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .query(EventQuery::member_call_module("./mod_0.js", "request"))

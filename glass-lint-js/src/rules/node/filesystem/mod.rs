@@ -1,6 +1,6 @@
 //! Node filesystem and path module rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 const FS_MODULES: &[&str] = &["fs", "fs/promises", "node:fs", "node:fs/promises"];
 const FS_METHODS: &[&str] = &[
@@ -55,7 +55,6 @@ const FS_PACKAGES: &[&str] = &[
 pub fn rule() -> Rule {
     let mut builder = Rule::builder("node.filesystem")
         .description("Uses Node filesystem and path APIs")
-        .category(Category::new("node/filesystem").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .queries(FS_MODULES.iter().copied().map(EventQuery::import_exact))

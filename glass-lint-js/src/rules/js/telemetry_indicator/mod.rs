@@ -1,6 +1,6 @@
 //! Telemetry SDK and endpoint indicator rule definition.
 
-use glass_lint_core::rules::{Category, Confidence, EventQuery, Rule, Severity};
+use glass_lint_core::rules::{Confidence, EventQuery, Rule, Severity};
 
 const TELEMETRY_PACKAGES: &[&str] = &[
     "@sentry/browser",
@@ -43,7 +43,6 @@ const TELEMETRY_ENDPOINTS: &[&str] = &[
 pub fn rule() -> Rule {
     Rule::builder("network.telemetry-indicator")
         .description("References telemetry SDKs or endpoints")
-        .category(Category::new("browser/network").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Low)
         .queries(
