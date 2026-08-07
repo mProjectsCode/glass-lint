@@ -22,8 +22,11 @@ use crate::{
     },
     api::{
         classification::RuleIndex,
-        compiler::{CompiledObjectFlow, object_flow::CompiledObjectSource},
-        rule::{ArgumentConstraint, query::lifecycle::LifecycleCallTarget},
+        compiler::{
+            CompiledObjectFlow, normalized::CanonicalArgumentConstraints,
+            object_flow::CompiledObjectSource,
+        },
+        rule::{ArgumentIndex, ArgumentMatcher, query::lifecycle::LifecycleCallTarget},
     },
 };
 
@@ -56,26 +59,24 @@ impl<'a> FlowMatchView<'a> {
         }
     }
 
-    pub(super) fn argument_matches(
+    pub(super) fn argument_matches_predicate(
         &self,
-        matcher: &ArgumentConstraint,
+        index: ArgumentIndex,
+        matcher: &ArgumentMatcher,
         args: &[CallArgInfo],
     ) -> bool {
-        args.get(matcher.index()).is_some_and(|argument| {
-            matcher
-                .predicate()
-                .matches(argument, self.names, self.values)
-        })
+        args.get(index.get())
+            .is_some_and(|argument| matcher.matches(argument, self.names, self.values))
     }
 
     pub(super) fn arguments_match(
         &self,
-        matchers: &[ArgumentConstraint],
+        matchers: &CanonicalArgumentConstraints,
         args: &[CallArgInfo],
     ) -> bool {
         matchers
             .iter()
-            .all(|matcher| self.argument_matches(matcher, args))
+            .all(|(index, matcher)| self.argument_matches_predicate(index, matcher, args))
     }
 
     pub(super) fn member_matches(actual: &NamePath, expected: &NamePath) -> bool {
@@ -188,11 +189,11 @@ pub(super) struct BoundFlowPlan<'rules> {
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) struct BoundSource {
     flow: FlowId,
-    arguments: Vec<ArgumentConstraint>,
+    arguments: CanonicalArgumentConstraints,
 }
 
 impl BoundSource {
-    pub(super) fn new(flow: FlowId, arguments: Vec<ArgumentConstraint>) -> Self {
+    pub(super) fn new(flow: FlowId, arguments: CanonicalArgumentConstraints) -> Self {
         Self { flow, arguments }
     }
 
@@ -234,7 +235,7 @@ impl<'rules> BoundFlowPlan<'rules> {
                 (FlowId::new(*rule_index, *flow_index), *flow)
             }),
             names,
-            |id, source| BoundSource::new(id, source.argument_constraints().cloned().collect()),
+            |id, source| BoundSource::new(id, source.argument_constraints().clone()),
         );
         sinks.normalize();
 

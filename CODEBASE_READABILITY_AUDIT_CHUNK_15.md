@@ -106,7 +106,7 @@ construction.
 
 ### Canonical data and query analysis
 
-#### [ ] READ-070 — Keep canonical argument constraints in one executable representation
+#### [x] READ-070 — Keep canonical argument constraints in one executable representation
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -138,7 +138,12 @@ that boundary explicit. Preserve argument-index conjunction semantics,
 deterministic ordering, deduplication, static-alternative limits, and the
 existing matcher behavior for absent or dynamic arguments.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Preserved `CanonicalArgumentConstraints` through compiled
+lifecycle sources, member-call requirements, and bound flow sources. Added a
+zero-copy indexed predicate iterator used by local and cross-file matching;
+flat vectors remain only at the reference-oracle boundary. Verified argument
+ordering, deduplication, dynamic/absent argument behavior, and flow matching
+with `make fmt && make ci`.
 
 #### [ ] READ-071 — Share bounded query-shape facts across validation and normalization
 

@@ -62,13 +62,13 @@ pub(crate) enum NormalizedRoot {
 /// - Groups are ordered by argument index.
 /// - Within each group, predicates are sorted and deduplicated.
 /// - No group is empty.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub(crate) struct CanonicalArgumentConstraints {
     pub(crate) groups: Box<[ArgumentConstraintGroup]>,
 }
 
 /// A group of predicates all applying to the same argument index.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct ArgumentConstraintGroup {
     pub(crate) index: ArgumentIndex,
     pub(crate) predicates: Box<[ArgumentMatcher]>,
@@ -77,6 +77,12 @@ pub(crate) struct ArgumentConstraintGroup {
 impl CanonicalArgumentConstraints {
     pub(crate) fn groups(&self) -> &[ArgumentConstraintGroup] {
         &self.groups
+    }
+
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (ArgumentIndex, &ArgumentMatcher)> + '_ {
+        self.groups.iter().flat_map(|group| {
+            std::iter::repeat_n(group.index, group.predicates.len()).zip(group.predicates.iter())
+        })
     }
 
     pub(crate) fn is_empty(&self) -> bool {

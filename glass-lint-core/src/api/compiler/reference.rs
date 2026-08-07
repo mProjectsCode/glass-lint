@@ -194,7 +194,7 @@ fn lifecycle_plan_from_physical(flow: &CompiledObjectFlow) -> LifecycleReference
             .sources()
             .map(|source| LifecycleSourceMatcher::Target {
                 target: source.target().clone(),
-                arguments: source.arguments().to_vec(),
+                arguments: source.arguments().to_flat_vec(),
             })
             .collect(),
         requirements: flow
@@ -210,7 +210,7 @@ fn lifecycle_plan_from_physical(flow: &CompiledObjectFlow) -> LifecycleReference
                     let (member, arguments) = requirement.member_call().unwrap();
                     LifecycleRequirementMatcher::Member {
                         member: member.clone(),
-                        arguments: arguments.to_vec(),
+                        arguments: arguments.to_flat_vec(),
                     }
                 }
             })

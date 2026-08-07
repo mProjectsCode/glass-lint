@@ -5,11 +5,12 @@ use smol_str::SmolStr;
 
 use crate::api::{
     compiler::normalized::{
-        NormalizedEvent, NormalizedLifecycle, NormalizedLifecycleCompletion,
-        NormalizedLifecycleCondition, NormalizedLifecycleEvent, NormalizedLifecycleSink,
+        CanonicalArgumentConstraints, NormalizedEvent, NormalizedLifecycle,
+        NormalizedLifecycleCompletion, NormalizedLifecycleCondition, NormalizedLifecycleEvent,
+        NormalizedLifecycleSink,
     },
     rule::{
-        ArgumentConstraint, ValueMatcher,
+        ArgumentIndex, ArgumentMatcher, ValueMatcher,
         query::{EventSpec, IdentitySpec, lifecycle::LifecycleCallTarget},
     },
 };
@@ -88,7 +89,7 @@ impl CompiledObjectFlow {
             symbol: "test".into(),
             sources: vec![CompiledObjectSource {
                 target: LifecycleCallTarget::Global("source".into()),
-                arguments: Vec::new(),
+                arguments: CanonicalArgumentConstraints::default(),
             }],
             requirements: (0..requirements)
                 .map(|_| CompiledObjectRequirement::PropertyWrite {
@@ -166,7 +167,7 @@ impl CompiledObjectFlow {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct CompiledObjectSource {
     target: LifecycleCallTarget,
-    arguments: Vec<ArgumentConstraint>,
+    arguments: CanonicalArgumentConstraints,
 }
 
 impl CompiledObjectSource {
@@ -182,7 +183,7 @@ impl CompiledObjectSource {
         };
         Some(Self {
             target,
-            arguments: event.arguments().to_flat_vec(),
+            arguments: event.arguments().clone(),
         })
     }
 
@@ -191,19 +192,21 @@ impl CompiledObjectSource {
     }
 
     #[cfg(test)]
-    pub(crate) fn arguments(&self) -> &[ArgumentConstraint] {
+    pub(crate) fn arguments(&self) -> &CanonicalArgumentConstraints {
         &self.arguments
     }
 
     pub(crate) fn matches_arguments(
         &self,
-        mut matches: impl FnMut(&ArgumentConstraint) -> bool,
+        mut matches: impl FnMut(ArgumentIndex, &ArgumentMatcher) -> bool,
     ) -> bool {
-        self.arguments.iter().all(&mut matches)
+        self.arguments
+            .iter()
+            .all(|(index, matcher)| matches(index, matcher))
     }
 
-    pub(crate) fn argument_constraints(&self) -> impl Iterator<Item = &ArgumentConstraint> {
-        self.arguments.iter()
+    pub(crate) fn argument_constraints(&self) -> &CanonicalArgumentConstraints {
+        &self.arguments
     }
 }
 
@@ -215,7 +218,7 @@ pub(crate) enum CompiledObjectRequirement {
     },
     MemberCall {
         member: SymbolPath,
-        arguments: Vec<ArgumentConstraint>,
+        arguments: CanonicalArgumentConstraints,
     },
 }
 
@@ -228,12 +231,12 @@ impl CompiledObjectRequirement {
             },
             NormalizedLifecycleEvent::MemberCall { member, arguments } => Self::MemberCall {
                 member: SymbolPath::from(member.as_str()),
-                arguments: arguments.to_flat_vec(),
+                arguments: arguments.clone(),
             },
         }
     }
 
-    pub(crate) fn member_call(&self) -> Option<(&SymbolPath, &[ArgumentConstraint])> {
+    pub(crate) fn member_call(&self) -> Option<(&SymbolPath, &CanonicalArgumentConstraints)> {
         match self {
             Self::MemberCall { member, arguments } => Some((member, arguments)),
             Self::PropertyWrite { .. } => None,

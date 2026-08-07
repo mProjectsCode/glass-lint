@@ -270,8 +270,8 @@ impl FlowSources {
                                 cref.global_name().map(smol_str::SmolStr::as_str),
                                 cref.chain(),
                                 cref.rooted(),
-                            ) && source.matches_arguments(|constraint| {
-                                matcher.argument_matches(constraint, args)
+                            ) && source.matches_arguments(|index, predicate| {
+                                matcher.argument_matches_predicate(index, predicate, args)
                             })
                         }) {
                             self.add_candidate(
