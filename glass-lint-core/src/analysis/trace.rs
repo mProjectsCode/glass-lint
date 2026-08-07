@@ -35,25 +35,25 @@ impl TraceStep {
         Self { event, role }
     }
 
-    pub fn event(&self) -> QualifiedEvent {
+    pub(crate) fn event(&self) -> QualifiedEvent {
         self.event
     }
 
-    pub fn role(&self) -> EvidenceRole {
+    pub(crate) fn role(&self) -> EvidenceRole {
         self.role
     }
 }
 
 impl QualifiedEvent {
-    pub fn new(module: ModuleId, fact: FactId) -> Self {
+    pub(crate) fn new(module: ModuleId, fact: FactId) -> Self {
         Self { module, fact }
     }
 
-    pub fn module(self) -> ModuleId {
+    pub(crate) fn module(self) -> ModuleId {
         self.module
     }
 
-    pub fn fact(self) -> FactId {
+    pub(crate) fn fact(self) -> FactId {
         self.fact
     }
 }
@@ -75,7 +75,7 @@ pub struct TraceArena {
 }
 
 impl TraceArena {
-    pub fn new(limit: usize) -> Self {
+    pub(crate) fn new(limit: usize) -> Self {
         Self {
             arena: NEXT_TRACE_ARENA_ID.fetch_add(1, Ordering::Relaxed),
             nodes: Vec::new(),
@@ -85,7 +85,7 @@ impl TraceArena {
         }
     }
 
-    pub fn intern(
+    fn intern(
         &mut self,
         parent: Option<TraceNodeId>,
         event: QualifiedEvent,
@@ -130,7 +130,7 @@ impl TraceArena {
 
     /// Reconstruct a complete trace, returning `None` for a foreign or
     /// otherwise invalid handle rather than silently truncating the chain.
-    pub fn reconstruct_trace(&self, head: TraceNodeId) -> Option<Vec<TraceStep>> {
+    pub(crate) fn reconstruct_trace(&self, head: TraceNodeId) -> Option<Vec<TraceStep>> {
         let mut steps = Vec::new();
         let mut current = Some(head);
         while let Some(id) = current {
@@ -142,11 +142,11 @@ impl TraceArena {
         Some(steps)
     }
 
-    pub fn node_count(&self) -> usize {
+    pub(crate) fn node_count(&self) -> usize {
         self.nodes.len()
     }
 
-    pub fn is_exhausted(&self) -> bool {
+    pub(crate) fn is_exhausted(&self) -> bool {
         self.exhausted
     }
 

@@ -6,8 +6,7 @@
 
 use glass_lint_datastructures::ByteRange;
 
-pub use crate::analysis::trace::TraceNodeId;
-use crate::{api::rule::Severity, project::MatchCertainty};
+use crate::{analysis::trace::TraceNodeId, api::rule::Severity, project::MatchCertainty};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Stable position of a rule within a validated catalog.
@@ -116,7 +115,7 @@ impl ClassificationEvidenceOccurrence {
         self.fact
     }
 
-    pub fn trace(&self) -> Option<TraceNodeId> {
+    pub(crate) fn trace(&self) -> Option<TraceNodeId> {
         self.trace
     }
 }

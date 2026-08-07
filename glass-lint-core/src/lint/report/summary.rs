@@ -40,7 +40,7 @@ pub(super) fn assemble_project_report(
     operations.record_effect_projections(metrics.effect_projections());
     operations.record_path_metrics(
         metrics.max_live_alternatives(),
-        project.trace_arena().node_count(),
+        project.trace_node_count(),
         metrics.trace_heads(),
         metrics.coalescing_comparisons(),
         metrics.fixed_point_iterations(),

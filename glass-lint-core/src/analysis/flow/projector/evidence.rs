@@ -22,11 +22,10 @@ use crate::{
             flow::{FlowId, FlowStateKey},
             scope::FunctionId,
         },
-        trace::QualifiedEvent,
+        trace::{QualifiedEvent, TraceNodeId},
     },
     api::{
-        classification::{ClassificationEvidenceOccurrence, TraceNodeId},
-        compiler::object_flow::CompletionMode,
+        classification::ClassificationEvidenceOccurrence, compiler::object_flow::CompletionMode,
     },
     project::EvidenceRole,
 };

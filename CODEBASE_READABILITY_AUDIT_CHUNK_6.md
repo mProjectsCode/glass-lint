@@ -110,7 +110,7 @@ fact that a complete static witness remains distinct from an exhausted one.
 
 ### Trace storage boundary
 
-#### [ ] READ-029 — Keep trace arena storage and handles out of the public result API
+#### [x] READ-029 — Keep trace arena storage and handles out of the public result API
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -136,6 +136,12 @@ Remove the public `trace_arena` accessor and trace-head field from the public
 classification contract after callers migrate. Preserve foreign-handle
 rejection, deterministic source-to-sink order, interning, exhaustion metrics,
 and the rule that exhausted or invalid traces cannot become definite evidence.
+
+**Fix Applied:** Made trace storage and low-level interning internal, removed
+the public arena accessor and trace-ID re-export, and routed report assembly
+through project-owned reconstruction and metric methods. Foreign-handle
+rejection, deterministic traces, exhaustion handling, and evidence certainty
+behavior remain covered by the full gate.
 
 ### Value arena construction
 

@@ -3,10 +3,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use glass_lint_datastructures::SourceRange;
 
 use crate::{
-    analysis::{ProjectSemanticModel, display_span, trace::TraceArena},
+    analysis::{ProjectSemanticModel, display_span},
     api::classification::{
         ClassificationEvidence, ClassificationEvidenceOccurrence, ClassificationResult,
-        MatchedCapability, RuleIndex, TraceNodeId,
+        MatchedCapability, RuleIndex,
     },
     diagnostic::SourceLineIndex,
     lint::report::ReportAssembly,
@@ -225,7 +225,6 @@ fn findings_for_capability(
     }
     let entries = range_entries(evidence_items, lines);
     let groups = finding_groups(&entries);
-    let arena = project.trace_arena();
     groups
         .into_iter()
         .filter_map(|group| {
@@ -236,7 +235,7 @@ fn findings_for_capability(
                 };
                 let steps = occurrence.trace().map_or_else(
                     || Some(fallback_trace(ev, path, &group.range)),
-                    |trace_id| resolve_trace(arena, trace_id, project),
+                    |trace_id| resolve_trace(trace_id, project),
                 );
                 if let Some(steps) = steps
                     && !steps.is_empty()
@@ -273,11 +272,10 @@ fn findings_for_capability(
 }
 
 fn resolve_trace(
-    arena: &TraceArena,
-    head: TraceNodeId,
+    head: crate::analysis::trace::TraceNodeId,
     project: &ProjectSemanticModel,
 ) -> Option<Vec<EvidenceStep>> {
-    let raw = arena.reconstruct_trace(head)?;
+    let raw = project.reconstruct_trace(head)?;
     if raw.is_empty() {
         return None;
     }

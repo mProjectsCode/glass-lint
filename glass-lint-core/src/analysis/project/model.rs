@@ -21,7 +21,7 @@ use crate::{
             state::{ExportTable, LinkingSession},
         },
         syntax::SymbolCallProvenance,
-        trace::{QualifiedEvent, TraceArena},
+        trace::{QualifiedEvent, TraceArena, TraceNodeId, TraceStep},
     },
     api::{
         classification::{ClassificationResult, RuleIndex},
@@ -475,8 +475,12 @@ impl ProjectSemanticModel {
         self.trace_limit
     }
 
-    pub fn trace_arena(&self) -> &TraceArena {
-        &self.trace_arena
+    pub(crate) fn reconstruct_trace(&self, head: TraceNodeId) -> Option<Vec<TraceStep>> {
+        self.trace_arena.reconstruct_trace(head)
+    }
+
+    pub(crate) fn trace_node_count(&self) -> usize {
+        self.trace_arena.node_count()
     }
 
     /// Return deterministic phase and evidence operation counts.

@@ -10,12 +10,10 @@ use crate::{
             cross::state::{CallContext, CrossFlowState},
             effect::{EffectUse, FunctionEffect},
         },
-        trace::{QualifiedEvent, TraceArena},
+        trace::{QualifiedEvent, TraceArena, TraceNodeId},
     },
     api::{
-        classification::{
-            ClassificationEvidence, MatchKind, RuleEvidenceTable, RuleIndex, TraceNodeId,
-        },
+        classification::{ClassificationEvidence, MatchKind, RuleEvidenceTable, RuleIndex},
         compiler::CompiledObjectFlow,
     },
     project::{EvidenceRole, ModuleId},
