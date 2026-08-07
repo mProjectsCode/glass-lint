@@ -84,7 +84,7 @@ facts, paths, values, or invalid parser spans.
 
 ### Artifact sealing orchestration
 
-#### [ ] READ-012 — Split `ResolvedProgram::freeze` into named sealing phases
+#### [x] READ-012 — Split `ResolvedProgram::freeze` into named sealing phases
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -112,7 +112,10 @@ the order in which status is assessed, name exhaustion is recorded, resolver
 tables are frozen, export origins are suppressed when incomplete, and effects
 capabilities are passed into `SemanticArtifact`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Split the consuming transition into named completion
+assessment, export-origin derivation, name-exhaustion annotation, and final
+stream sealing phases. The existing status ordering, capability gates, and
+resolver freeze transition are preserved.
 
 ### Matcher project context
 

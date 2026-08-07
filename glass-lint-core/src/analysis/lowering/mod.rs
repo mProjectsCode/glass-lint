@@ -9,6 +9,7 @@ pub(super) mod status;
 use std::{collections::BTreeMap, sync::Arc};
 
 use glass_lint_datastructures::{ByteRange, NameTable};
+use smol_str::SmolStr;
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::Program;
 
@@ -23,7 +24,7 @@ use crate::{
         model::module,
         resolution::Resolver,
         scope::{ScopeCollectionIssue, ScopeGraph, ScopedProgram},
-        syntax::name::MAX_NAMES,
+        syntax::{SymbolCallProvenance, name::MAX_NAMES},
     },
     parse::SourceParser,
     project::{SourceFile, SourceText},
@@ -317,6 +318,44 @@ impl<'a> ResolvedProgram<'a> {
         }
     }
 
+    fn assess_completion(&self, limits: &AnalysisLimits) -> LoweringCompletion {
+        LoweringCompletion::assess(&self.issues, &self.built.stream, &self.resolver, limits)
+    }
+
+    fn derive_export_origins(
+        &self,
+        interface: &module::ModuleInterface,
+        completion: &LoweringCompletion,
+        program_span: Span,
+    ) -> BTreeMap<SmolStr, SymbolCallProvenance> {
+        if !completion.capabilities.export_origins {
+            return BTreeMap::new();
+        }
+        interface
+            .exports()
+            .filter_map(|(_, export)| match export {
+                module::ModuleExport::Local { name } => Some((
+                    name.clone(),
+                    self.resolver.exported_provenance(name, program_span),
+                )),
+                module::ModuleExport::Value
+                | module::ModuleExport::ReExport { .. }
+                | module::ModuleExport::Namespace { .. }
+                | module::ModuleExport::Unknown => None,
+            })
+            .collect()
+    }
+
+    fn annotate_name_exhaustion(
+        mut stream: FactStream<Building>,
+        name_table_exhausted: bool,
+    ) -> FactStream<Building> {
+        if name_table_exhausted {
+            stream.mark_name_exhausted();
+        }
+        stream
+    }
+
     /// One consuming transition from the resolved phase to the immutable
     /// artifact. The name and value tables are extracted from the resolver
     /// inside this transition and sealed into the frozen stream.
@@ -326,36 +365,15 @@ impl<'a> ResolvedProgram<'a> {
         limits: &AnalysisLimits,
         program_span: Span,
     ) -> SemanticArtifact {
+        let completion = self.assess_completion(limits);
+        let export_origins =
+            self.derive_export_origins(&self.built.interface, &completion, program_span);
+        let name_table_exhausted = self.resolver.name_table_exhausted();
         let Self {
-            resolver,
-            issues,
-            built,
+            resolver, built, ..
         } = self;
-        let mut stream = built.stream;
+        let stream = Self::annotate_name_exhaustion(built.stream, name_table_exhausted);
         let interface = built.interface;
-        let completion = LoweringCompletion::assess(&issues, &stream, &resolver, limits);
-
-        let export_origins = if completion.capabilities.export_origins {
-            interface
-                .exports()
-                .filter_map(|(_, export)| match export {
-                    module::ModuleExport::Local { name } => Some((
-                        name.clone(),
-                        resolver.exported_provenance(name, program_span),
-                    )),
-                    module::ModuleExport::Value
-                    | module::ModuleExport::ReExport { .. }
-                    | module::ModuleExport::Namespace { .. }
-                    | module::ModuleExport::Unknown => None,
-                })
-                .collect::<BTreeMap<_, _>>()
-        } else {
-            BTreeMap::new()
-        };
-
-        if resolver.name_table_exhausted() {
-            stream.mark_name_exhausted();
-        }
 
         let stream = resolver.freeze_into(stream);
         let facts = SemanticFacts::from_lowering(stream, interface, environment);
