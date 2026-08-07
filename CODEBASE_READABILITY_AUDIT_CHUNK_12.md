@@ -105,7 +105,7 @@ mutually exclusive while retaining authored-request indexing separately.
 Consuming link-input construction projects those outcomes into linker modules
 and diagnostics. Verified with `make fmt && make ci`.
 
-#### [ ] READ-003 — Narrow the public project API around post-link identities
+#### [x] READ-003 — Narrow the public project API around post-link identities
 
 - **Category:** ENCAPSULATE
 - **Location:** `glass-lint-core/src/project/mod.rs:13-25`,
@@ -137,6 +137,11 @@ and diagnostics. Verified with `make fmt && make ci`.
   preserve serialized report behavior and internal analysis ownership. Do not
   replace the opaque ID with a path in the internal graph merely to simplify
   the public surface.
+
+**Fix Applied:** `ModuleId` and `LinkedModuleTarget` are no longer part of the
+public project facade or public type re-exports. Internal analysis and linker
+callers use a crate-private project re-export, while `ResolverOutcome` remains
+the caller-facing resolution contract. Verified with `make fmt && make ci`.
 
 #### [ ] READ-004 — Make the valid `EvidenceTraces` states explicit
 

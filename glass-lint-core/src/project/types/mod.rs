@@ -10,11 +10,11 @@ mod input;
 mod report;
 
 pub use input::{
-    BuiltinModuleName, LinkedModuleTarget, LocalExecutionError, ModuleId, NormalizedOutsidePath,
-    PackageSpecifier, ProjectError, ProjectExecutionError, ProjectInputError, ProjectPhaseError,
-    ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, SourceFile,
-    SourceText,
+    BuiltinModuleName, LocalExecutionError, NormalizedOutsidePath, PackageSpecifier, ProjectError,
+    ProjectExecutionError, ProjectInputError, ProjectPhaseError, ResolutionRequest,
+    ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, SourceFile, SourceText,
 };
+pub(crate) use input::{LinkedModuleTarget, ModuleId};
 pub(crate) use report::AnalysisOperationCountsBuilder;
 pub use report::{
     AnalysisDiagnostic, AnalysisOperationCounts, AnalysisReport, AnalysisReportSummary, Diagnostic,

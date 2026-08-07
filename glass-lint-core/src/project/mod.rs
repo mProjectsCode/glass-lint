@@ -17,12 +17,13 @@ pub(crate) use tables::{ResolutionTable, SourceTable};
 pub use types::{
     AnalysisDiagnostic, AnalysisOperationCounts, AnalysisReport, AnalysisReportSummary,
     BuiltinModuleName, Diagnostic, DiagnosticCode, EvidenceConstructionError, EvidenceRole,
-    EvidenceStep, EvidenceTrace, EvidenceTraces, FileReport, Finding, LinkedModuleTarget,
-    LocalExecutionError, MatchCertainty, ModuleId, NormalizedOutsidePath, PackageSpecifier,
-    ProjectError, ProjectExecutionError, ProjectInputError, ProjectPhaseError, ProjectRelativePath,
-    ReportCompletion, ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind,
-    ResolverOutcome, SourceFile, SourceLocation, SourceText, is_internal_module_request,
+    EvidenceStep, EvidenceTrace, EvidenceTraces, FileReport, Finding, LocalExecutionError,
+    MatchCertainty, NormalizedOutsidePath, PackageSpecifier, ProjectError, ProjectExecutionError,
+    ProjectInputError, ProjectPhaseError, ProjectRelativePath, ReportCompletion, ResolutionRequest,
+    ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, SourceFile, SourceLocation,
+    SourceText, is_internal_module_request,
 };
+pub(crate) use types::{LinkedModuleTarget, ModuleId};
 
 #[cfg(test)]
 mod tests;
