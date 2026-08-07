@@ -178,7 +178,7 @@ check, and examples).
 
 ### Authored request result API
 
-#### [ ] READ-100 — Use one domain collection for authored-resolution requests
+#### [x] READ-100 — Use one domain collection for authored-resolution requests
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -208,7 +208,15 @@ single-source request inspection, multi-source sorting before project
 resolution, authored-key validation, and the existing consuming phase
 transitions.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the single-source `SourceAnalysis` wrapper and
+multi-source raw vector result with the shared public `AuthoredRequests`
+collection. The collection owns borrowed/consuming iteration and size
+inspection; project loading, harness adaptation, and tests now consume one
+request shape while preserving existing source and multi-source ordering.
+
+**Verified:** `make fmt && make ci` (workspace check, clippy with warnings as
+errors, 811 core tests, doctests, E2E/rule harnesses, rules documentation
+check, and examples).
 
 ## Systemic Themes
 

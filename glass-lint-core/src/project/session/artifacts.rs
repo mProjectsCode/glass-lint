@@ -60,19 +60,43 @@ pub struct AnalysisArtifacts {
     parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
 }
 
-/// Authored module requests produced by one completed local source analysis.
+/// Authored module requests produced by completed local source analysis.
 /// Source and artifact storage remains owned by the collection phase.
-pub struct SourceAnalysis {
-    pub(super) requests: Vec<ResolutionRequest>,
-}
+pub struct AuthoredRequests(Vec<ResolutionRequest>);
 
-impl SourceAnalysis {
-    pub fn requests(self) -> Vec<ResolutionRequest> {
-        self.requests
+impl AuthoredRequests {
+    pub(super) fn new(requests: Vec<ResolutionRequest>) -> Self {
+        Self(requests)
     }
 
-    pub fn requests_ref(&self) -> &[ResolutionRequest] {
-        &self.requests
+    pub fn iter(&self) -> std::slice::Iter<'_, ResolutionRequest> {
+        self.0.iter()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl IntoIterator for AuthoredRequests {
+    type IntoIter = std::vec::IntoIter<ResolutionRequest>;
+    type Item = ResolutionRequest;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a AuthoredRequests {
+    type IntoIter = std::slice::Iter<'a, ResolutionRequest>;
+    type Item = &'a ResolutionRequest;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
     }
 }
 

@@ -36,26 +36,24 @@ fn linked_internal_aliases_preserve_external_and_global_call_identity() {
             "helper.js",
             "import { request } from 'web'; export { request as send };",
         ))
-        .unwrap()
-        .requests();
+        .unwrap();
     let main = session
         .analyze_source(source_file(
             "main.js",
             "import { send } from './helper'; send();",
         ))
-        .unwrap()
-        .requests();
+        .unwrap();
     let report = finish_collection_with(
         session,
         [
             (
-                helper[0].key().clone(),
+                helper.iter().next().unwrap().key().clone(),
                 ResolverOutcome::External {
                     package: PackageSpecifier::new("web").unwrap(),
                 },
             ),
             (
-                main[0].key().clone(),
+                main.iter().next().unwrap().key().clone(),
                 ResolverOutcome::Internal {
                     path: project_path("helper.js"),
                 },
@@ -83,13 +81,11 @@ fn linked_internal_aliases_preserve_external_and_global_call_identity() {
             "import { send } from './helper'; send();",
         ))
         .unwrap();
-    let helper = helper.requests();
-    let main = main.requests();
     assert!(helper.is_empty());
     let report = finish_collection_with(
         global,
         [(
-            main[0].key().clone(),
+            main.iter().next().unwrap().key().clone(),
             ResolverOutcome::Internal {
                 path: project_path("helper.js"),
             },
@@ -308,26 +304,24 @@ fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
             "helper.js",
             "import { request } from 'web'; export { request as send };",
         ))
-        .unwrap()
-        .requests();
+        .unwrap();
     let main = session
         .analyze_source(source_file(
             "main.js",
             "import { send } from './helper'; send = local; send();",
         ))
-        .unwrap()
-        .requests();
+        .unwrap();
     let report = finish_collection_with(
         session,
         [
             (
-                helper[0].key().clone(),
+                helper.iter().next().unwrap().key().clone(),
                 ResolverOutcome::External {
                     package: PackageSpecifier::new("web").unwrap(),
                 },
             ),
             (
-                main[0].key().clone(),
+                main.iter().next().unwrap().key().clone(),
                 ResolverOutcome::Internal {
                     path: project_path("helper.js"),
                 },
@@ -355,11 +349,10 @@ fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
     missing
         .analyze_source(source_file("helper.js", "export const other = 1;"))
         .unwrap();
-    let main = main.requests();
     let report = finish_collection_with(
         missing,
         [(
-            main[0].key().clone(),
+            main.iter().next().unwrap().key().clone(),
             ResolverOutcome::Internal {
                 path: project_path("helper.js"),
             },

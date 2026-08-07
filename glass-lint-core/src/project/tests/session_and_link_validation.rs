@@ -33,8 +33,7 @@ fn session_returns_static_import_dynamic_import_require_and_reexport_requests() 
             "main.js",
             "import { value as local } from './dep';\nexport { local as renamed } from './dep';\nconst x = require('./cjs');\nimport('./lazy');",
         ))
-        .unwrap()
-        .requests();
+        .unwrap();
     assert_eq!(requests.len(), 4);
     assert_eq!(
         requests
@@ -48,11 +47,11 @@ fn session_returns_static_import_dynamic_import_require_and_reexport_requests() 
             ResolutionRequestKind::DynamicImport,
         ]
     );
-    assert_eq!(requests[0].specifier(), "./dep");
-    assert_eq!(requests[2].specifier(), "./cjs");
-    assert_eq!(requests[3].specifier(), "./lazy");
-    assert_eq!(requests[2].range().start().column(), 19);
-    assert_eq!(requests[2].range().end().column(), 26);
+    assert_eq!(requests.iter().next().unwrap().specifier(), "./dep");
+    assert_eq!(requests.iter().nth(2).unwrap().specifier(), "./cjs");
+    assert_eq!(requests.iter().nth(3).unwrap().specifier(), "./lazy");
+    assert_eq!(requests.iter().nth(2).unwrap().range().start().column(), 19);
+    assert_eq!(requests.iter().nth(2).unwrap().range().end().column(), 26);
 }
 
 #[test]
@@ -91,8 +90,7 @@ fn type_only_reexports_do_not_create_runtime_requests() {
             "types.ts",
             "export { type Foo } from './dependency';",
         ))
-        .unwrap()
-        .requests();
+        .unwrap();
     assert!(requests.is_empty());
 }
 

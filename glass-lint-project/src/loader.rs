@@ -10,7 +10,7 @@ use std::{
 use glass_lint_core::{
     Linter,
     project::{
-        AnalysisReport, ProjectRelativePath, ResolutionRequest, ResolverOutcome, SourceFile,
+        AnalysisReport, AuthoredRequests, ProjectRelativePath, ResolverOutcome, SourceFile,
         SourceText,
     },
 };
@@ -410,7 +410,7 @@ impl<'a> ProjectLoadState<'a> {
         &mut self,
         sources: Vec<SourceFile>,
         workers: NonZeroUsize,
-    ) -> Result<Vec<ResolutionRequest>, ProjectLoadError> {
+    ) -> Result<AuthoredRequests, ProjectLoadError> {
         self.session
             .analyze_sources(sources, workers)
             .map_err(ProjectLoadError::from)
@@ -418,7 +418,7 @@ impl<'a> ProjectLoadState<'a> {
 
     fn resolve_requests(
         &mut self,
-        requests: Vec<ResolutionRequest>,
+        requests: AuthoredRequests,
     ) -> Result<RequestResolutionOutcome, ProjectLoadError> {
         let mut internal_targets = Vec::new();
         let mut elapsed = Duration::ZERO;

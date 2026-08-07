@@ -117,7 +117,6 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
             authored.extend(
                 session
                     .analyze_source(SourceFile::new(file.path.clone(), file.source.clone())?)?
-                    .requests()
                     .into_iter()
                     .map(|request| (request, file.path.clone())),
             );

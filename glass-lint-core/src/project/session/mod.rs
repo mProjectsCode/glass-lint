@@ -10,7 +10,7 @@ pub(super) mod execution;
 use std::{collections::BTreeMap, num::NonZeroUsize};
 
 use artifacts::CacheLookup;
-pub use artifacts::{AnalysisArtifacts, SourceAnalysis};
+pub use artifacts::{AnalysisArtifacts, AuthoredRequests};
 #[cfg(test)]
 pub(super) use execution::{
     ControlledLocalJobExecutor, ControlledReleaseOrder, CountingExecutionObserver,
@@ -232,12 +232,10 @@ impl<'a> ProjectCollection<'a> {
     pub fn analyze_source(
         &mut self,
         source: SourceFile,
-    ) -> Result<SourceAnalysis, ProjectInputError> {
+    ) -> Result<AuthoredRequests, ProjectInputError> {
         let path = source.path().clone();
         self.admit_normalized_source(source)?;
-        Ok(SourceAnalysis {
-            requests: self.analyze_source_at_path(&path)?,
-        })
+        Ok(AuthoredRequests::new(self.analyze_source_at_path(&path)?))
     }
 
     #[cfg(test)]
@@ -326,9 +324,11 @@ impl<'a> ProjectCollection<'a> {
         &mut self,
         sources: impl IntoIterator<Item = SourceFile>,
         workers: NonZeroUsize,
-    ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
+    ) -> Result<AuthoredRequests, ProjectInputError> {
         self.admit_sources(sources)?;
-        self.analyze_pending_sources(workers.get())
+        Ok(AuthoredRequests::new(
+            self.analyze_pending_sources(workers.get())?,
+        ))
     }
 
     fn analyze_pending_sources_with<E: LocalJobExecutor>(

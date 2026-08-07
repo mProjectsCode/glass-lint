@@ -175,7 +175,7 @@ impl<'a> ProjectFixture<'a> {
             .session
             .analyze_source(source_file(path, source))
             .unwrap()
-            .requests();
+            .into_iter();
         for (request, resolution) in requests.into_iter().zip(resolutions) {
             self.outcomes.push((request.key().clone(), resolution));
         }
