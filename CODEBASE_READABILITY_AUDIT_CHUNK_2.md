@@ -115,7 +115,7 @@ admission tests for update accounting and atomic rejection. Verified with
 
 ### Cross-flow worklists
 
-#### [ ] READ-008 — Consolidate bounded deduplicating FIFO admission
+#### [x] READ-008 — Consolidate bounded deduplicating FIFO admission
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -141,7 +141,11 @@ frontier limits. Do not merge this with the summary `BTreeSet` worklist or the
 local projector’s correlated path frontier; their convergence and certainty
 semantics are distinct.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added one bounded deduplicating FIFO primitive for the
+cross-flow layer. Context worklists now wrap it with context-specific
+admission results, and source propagation uses the same retained-bound and
+duplicate policy for candidate entries while preserving its round-based
+frontier and budget semantics.
 
 ### Function summary compatibility
 

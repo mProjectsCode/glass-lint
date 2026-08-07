@@ -14,6 +14,66 @@ use crate::{
     project::ModuleId,
 };
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(super) enum FifoAdmission {
+    Inserted,
+    Duplicate,
+    Full,
+}
+
+/// Bounded deduplicating FIFO shared by cross-flow traversals.
+pub(super) struct BoundedFifo<T> {
+    queue: VecDeque<T>,
+    seen: BTreeSet<T>,
+    max_retained: usize,
+    exhausted: bool,
+}
+
+impl<T: Ord + Clone> BoundedFifo<T> {
+    pub(super) fn new(max_retained: usize) -> Self {
+        Self {
+            queue: VecDeque::new(),
+            seen: BTreeSet::new(),
+            max_retained,
+            exhausted: false,
+        }
+    }
+
+    pub(super) fn push(&mut self, entry: T) -> FifoAdmission {
+        if self.seen.contains(&entry) {
+            return FifoAdmission::Duplicate;
+        }
+        if self.seen.len() >= self.max_retained {
+            self.exhausted = true;
+            return FifoAdmission::Full;
+        }
+        self.seen.insert(entry.clone());
+        self.queue.push_back(entry);
+        FifoAdmission::Inserted
+    }
+
+    pub(super) fn pop_front(&mut self) -> Option<T> {
+        self.queue.pop_front()
+    }
+
+    pub(super) fn take_pending(&mut self) -> Vec<T> {
+        std::mem::take(&mut self.queue).into_iter().collect()
+    }
+
+    pub(super) fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+
+    pub(super) fn is_exhausted(&self) -> bool {
+        self.exhausted
+    }
+
+    #[cfg(test)]
+    pub(super) fn retained_len(&self) -> usize {
+        self.seen.len()
+    }
+}
+
 /// Deduplicating FIFO worklist for bounded interprocedural contexts.
 ///
 /// Uses `VecDeque` for O(1) pop-front and a `BTreeSet` for O(log n) dedup,
@@ -22,14 +82,7 @@ use crate::{
 /// The worklist enforces [`MAX_CONTEXTS`] total retained contexts so that
 /// the seen-set (not only the pending frontier) is bounded.
 pub(super) struct ContextWorklist {
-    /// FIFO queue of pending contexts.
-    queue: VecDeque<CallContext>,
-    /// Seen-set for O(log n) deduplication and total-retained tracking.
-    seen: BTreeSet<CallContext>,
-    /// Maximum unique contexts retained before dropping new ones.
-    max_retained: usize,
-    /// Set only after a new context is rejected by the retained bound.
-    exhausted: bool,
+    fifo: BoundedFifo<CallContext>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -42,10 +95,7 @@ pub(super) enum ContextAdmission {
 impl ContextWorklist {
     pub(super) fn new(max_retained: usize) -> Self {
         Self {
-            queue: VecDeque::new(),
-            seen: BTreeSet::new(),
-            max_retained,
-            exhausted: false,
+            fifo: BoundedFifo::new(max_retained),
         }
     }
 
@@ -54,21 +104,15 @@ impl ContextWorklist {
     /// Admit one context, distinguishing deduplication from a rejected new
     /// context at the retained bound.
     pub(super) fn push(&mut self, context: CallContext) -> ContextAdmission {
-        if self.seen.contains(&context) {
-            return ContextAdmission::Duplicate;
+        match self.fifo.push(context) {
+            FifoAdmission::Inserted => ContextAdmission::Inserted,
+            FifoAdmission::Duplicate => ContextAdmission::Duplicate,
+            FifoAdmission::Full => ContextAdmission::Full,
         }
-        if self.seen.len() >= self.max_retained {
-            self.exhausted = true;
-            return ContextAdmission::Full;
-        }
-        self.seen.insert(context.clone());
-        self.queue.push_back(context);
-        ContextAdmission::Inserted
     }
 
     pub(super) fn pop_front(&mut self) -> Option<CallContext> {
-        let context = self.queue.pop_front()?;
-        Some(context)
+        self.fifo.pop_front()
     }
 
     /// Total unique contexts retained (seen-set size).
@@ -77,11 +121,11 @@ impl ContextWorklist {
     /// unique context ever inserted, not only the pending frontier.
     #[cfg(test)]
     pub(super) fn len(&self) -> usize {
-        self.seen.len()
+        self.fifo.retained_len()
     }
 
     pub(super) fn is_exhausted(&self) -> bool {
-        self.exhausted
+        self.fifo.is_exhausted()
     }
 
     pub(super) fn enqueue_parameters(

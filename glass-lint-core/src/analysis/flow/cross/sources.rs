@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet};
 
 use glass_lint_datastructures::{Budget, NameTable};
 use hashbrown::HashMap;
@@ -8,7 +8,10 @@ use crate::{
         ProjectSemanticModel,
         facts::FactId,
         flow::{
-            cross::{MAX_PENDING, QualifiedCallGraph},
+            cross::{
+                MAX_PENDING, QualifiedCallGraph,
+                worklist::{BoundedFifo, FifoAdmission},
+            },
             planning::{
                 BoundLifecycleCallTarget, BoundTargetIndex,
                 build_source_index as build_bound_source_index,
@@ -196,29 +199,6 @@ impl FlowSources {
 
 type SourceIndex = BoundTargetIndex<FlowId>;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum PropagationAdmission {
-    Inserted,
-    Duplicate,
-    Full,
-}
-
-fn admit_propagation(
-    pending: &mut VecDeque<PropagationItem>,
-    seen: &mut BTreeSet<PropagationItem>,
-    entry: PropagationItem,
-) -> PropagationAdmission {
-    if seen.contains(&entry) {
-        return PropagationAdmission::Duplicate;
-    }
-    if seen.len() >= MAX_PENDING {
-        return PropagationAdmission::Full;
-    }
-    seen.insert(entry);
-    pending.push_back(entry);
-    PropagationAdmission::Inserted
-}
-
 /// Build a per-module source index mapping typed call targets to flow IDs.
 fn build_source_index(
     flows: &HashMap<FlowId, &CompiledObjectFlow>,
@@ -303,21 +283,17 @@ impl FlowSources {
     /// that a long, narrow propagation graph cannot retain unbounded state
     /// without tripping the frontier limit.
     pub(super) fn propagate(&mut self, budget: &mut Budget) -> bool {
-        let mut pending = VecDeque::<PropagationItem>::new();
-        let mut pending_seen = BTreeSet::<PropagationItem>::new();
+        let mut pending = BoundedFifo::<PropagationItem>::new(MAX_PENDING);
 
         for (key, candidate) in self.propagation_entries() {
             let entry = PropagationItem { key, candidate };
-            if matches!(
-                admit_propagation(&mut pending, &mut pending_seen, entry),
-                PropagationAdmission::Full
-            ) {
+            if matches!(pending.push(entry), FifoAdmission::Full) {
                 return true;
             }
         }
 
         while !pending.is_empty() {
-            let round = std::mem::take(&mut pending);
+            let round = pending.take_pending();
 
             for item in &round {
                 let destinations: Vec<_> = self.destinations(&item.key).copied().collect();
@@ -333,10 +309,7 @@ impl FlowSources {
                             key: to_key,
                             candidate: item.candidate,
                         };
-                        if matches!(
-                            admit_propagation(&mut pending, &mut pending_seen, entry),
-                            PropagationAdmission::Full
-                        ) {
+                        if matches!(pending.push(entry), FifoAdmission::Full) {
                             return true;
                         }
                     }
