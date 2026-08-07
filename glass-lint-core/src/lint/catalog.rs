@@ -1,10 +1,6 @@
 //! Validated rule catalogs and stable rule-index selection.
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    error::Error,
-    fmt,
-};
+use std::{collections::BTreeSet, error::Error, fmt};
 
 use crate::{
     RuleId, RuleMetadata,
@@ -43,7 +39,6 @@ impl Error for ProviderCatalogError {}
 pub struct RuleCatalog {
     /// Compiled rule records (no source declaration trees retained).
     records: Vec<CompiledRuleRecord>,
-    rule_indices: BTreeMap<RuleId, RuleIndex>,
 }
 
 impl RuleCatalog {
@@ -82,15 +77,7 @@ impl RuleCatalog {
             ),
         })?;
 
-        let rule_indices = records
-            .iter()
-            .enumerate()
-            .map(|(index, record)| (record.rule_id.clone(), RuleIndex::new(index)))
-            .collect();
-        Ok(Self {
-            records,
-            rule_indices,
-        })
+        Ok(Self { records })
     }
 
     /// Combine validated provider catalogs under one shared host environment.
@@ -116,15 +103,7 @@ impl RuleCatalog {
             }
         }
 
-        let rule_indices = records
-            .iter()
-            .enumerate()
-            .map(|(index, record)| (record.rule_id.clone(), RuleIndex::new(index)))
-            .collect();
-        Ok(Self {
-            records,
-            rule_indices,
-        })
+        Ok(Self { records })
     }
 
     #[must_use]
@@ -154,18 +133,13 @@ impl RuleCatalog {
 
     #[must_use]
     /// Borrow the ID at a stable catalog index.
-    pub fn rule_id(&self, index: RuleIndex) -> Option<&RuleId> {
+    pub(crate) fn rule_id(&self, index: RuleIndex) -> Option<&RuleId> {
         self.records.get(index.get()).map(|record| &record.rule_id)
     }
 
     /// Borrow compiled matcher plans.
     pub(crate) fn compiled(&self) -> &[CompiledRuleRecord] {
         &self.records
-    }
-
-    /// Resolve a fully-qualified ID to its catalog index.
-    pub fn rule_index(&self, id: &RuleId) -> Option<RuleIndex> {
-        self.rule_indices.get(id).copied()
     }
 }
 

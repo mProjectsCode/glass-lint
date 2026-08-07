@@ -1,4 +1,12 @@
 //! Generic, provenance-aware JavaScript linting.
+//!
+//! Identity policy is intentionally split by ownership. Public rule values
+//! such as [`rules::VarId`] and [`rules::ArgumentIndex`] describe authored
+//! semantics and remain stable across compilation. Compiler, classification,
+//! cache, and linker IDs are phase-local and crate-private; they must not be
+//! compared across artifacts. [`project::ProjectRelativePath`] is the
+//! validated project boundary identity, while parser diagnostics retain their
+//! authored filename for standalone parser use.
 
 //! Core owns provider-neutral parsing, semantic analysis, matcher execution,
 //! bounded reports, and diagnostics. Host policy and rule catalogs are passed

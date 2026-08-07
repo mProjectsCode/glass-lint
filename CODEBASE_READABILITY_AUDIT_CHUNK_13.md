@@ -227,7 +227,7 @@ ownership pattern. Verified with `make fmt && make ci`.
 
 ### Identity ownership
 
-#### [ ] CROSS-005 — Publish an explicit policy for semantic IDs versus artifact IDs
+#### [x] CROSS-005 — Publish an explicit policy for semantic IDs versus artifact IDs
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -262,6 +262,16 @@ owner and conversion for every identity.
 rule declaration ergonomics, deterministic path/module assignment, and
 standalone parser diagnostics. Never make an artifact-local ID comparable
 across files or projects merely to reduce conversion code.
+
+**Fix Applied:** The crate-level API now documents the three-way identity
+policy: `VarId` and `ArgumentIndex` remain public authored semantics,
+`ProjectRelativePath` remains the validated project boundary, and parser
+diagnostics retain authored filenames. Classification indices, evidence
+tables, cache fingerprints/keys, qualified request IDs, module IDs, and
+linker targets remain behind private implementation-module boundaries. The
+unused catalog rule-index reverse map and accessor were removed, so no public
+catalog operation leaks an artifact-local key. Verified with `make fmt && make
+ci`.
 
 **Related local findings:** Chunk 2 READ-005, Chunk 4 READ-001/005, Chunk 7
 READ-001/005, Chunk 8 READ-004/006, Chunk 9 READ-004, Chunk 10 READ-003, and

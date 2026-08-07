@@ -47,12 +47,12 @@ pub use error::{QueryBuildError, QueryDiagnostic};
 
 // ── Typed logical query algebra ───────────────────────────────────────
 
-/// Dense compiler variable ID assigned during query construction.
+/// Stable semantic variable ID assigned in an authored query.
 ///
-/// Variables are the main extensibility mechanism. Each variable has a semantic
-/// type (event, object, identity, value) enforced by the predicates that bind
-/// or constrain it. Variable names are authoring concerns and should not remain
-/// in physical plans; runtime slots use dense validated IDs.
+/// Variables are the main extensibility mechanism. Each variable has a
+/// semantic type (event, object, identity, value) enforced by the predicates
+/// that bind or constrain it. This ID belongs to the rule declaration and is
+/// distinct from the private dense slots used by physical plans.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct VarId(u32);
 

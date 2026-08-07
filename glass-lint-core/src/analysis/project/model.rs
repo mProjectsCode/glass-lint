@@ -69,7 +69,7 @@ impl QualifiedFunctionId {
 }
 
 impl QualifiedRequestId {
-    pub fn new(module: ModuleId, request: ModuleRequestId) -> Self {
+    pub(crate) fn new(module: ModuleId, request: ModuleRequestId) -> Self {
         Self { module, request }
     }
 }

@@ -2,7 +2,10 @@ use std::collections::BTreeMap;
 
 use super::{QueryBuildError, checked_chain, limits};
 
-/// A validated bounded argument position index.
+/// A validated authored argument position in a call query.
+///
+/// This semantic position is lowered into private physical slots; it is not a
+/// slot identity and must not be compared with compiler artifact IDs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ArgumentIndex(u8);
 
