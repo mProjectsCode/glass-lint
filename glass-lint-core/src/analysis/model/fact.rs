@@ -402,6 +402,22 @@ pub(in crate::analysis) struct CallUnwrap {
     pub(in crate::analysis) effective_args: Vec<CallArgInfo>,
 }
 
+impl FactPayload {
+    /// Return the arguments visible to call-effect and constraint consumers.
+    /// Wrapper calls replace authored arguments with their bound/effective
+    /// projection; ordinary calls retain their authored argument list.
+    pub(in crate::analysis) fn effective_call_args(&self) -> Option<&[CallArgInfo]> {
+        let Self::Call { args, unwrap, .. } = self else {
+            return None;
+        };
+        Some(
+            unwrap
+                .as_deref()
+                .map_or(args.as_slice(), |call| call.effective_args.as_slice()),
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(in crate::analysis) enum FactPayload {
     Reference {

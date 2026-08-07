@@ -5,7 +5,7 @@ use smol_str::SmolStr;
 
 use crate::{
     analysis::{
-        facts::{ArgumentView, CallArgInfo, CallUnwrap, FactPayload, SemanticFact},
+        facts::{ArgumentView, CallArgInfo, FactPayload, SemanticFact},
         matching::{
             ModuleExportKey, ModuleIdentityMap,
             arguments::identity::{call_identity_matches, member_identity_matches},
@@ -188,8 +188,6 @@ impl<'a> MatcherEvaluator<'a> {
             rooted_chain,
             call_provenance,
             callee_name,
-            args,
-            unwrap,
             ..
         } = &fact.payload
         else {
@@ -210,7 +208,7 @@ impl<'a> MatcherEvaluator<'a> {
                 ) {
                     return false;
                 }
-                self.check_constrained_args(constraints, args, unwrap.as_deref(), ops)
+                self.check_constrained_args(&fact.payload, constraints, ops)
             }
             EventPredicate::MemberCall { .. } => {
                 let Some(ref member) = paths.member else {
@@ -227,7 +225,7 @@ impl<'a> MatcherEvaluator<'a> {
                 ) {
                     return false;
                 }
-                self.check_constrained_args(constraints, args, unwrap.as_deref(), ops)
+                self.check_constrained_args(&fact.payload, constraints, ops)
             }
             _ => false,
         }
@@ -279,12 +277,13 @@ impl<'a> MatcherEvaluator<'a> {
 
     fn check_constrained_args(
         &self,
+        payload: &FactPayload,
         constraints: &CanonicalArgumentConstraints,
-        args: &[CallArgInfo],
-        unwrap: Option<&CallUnwrap>,
         ops: &mut EvaluationOperations,
     ) -> bool {
-        let effective = unwrap.map_or(args, |u| &u.effective_args);
+        let Some(effective) = payload.effective_call_args() else {
+            return false;
+        };
         self.constraints_match(constraints, effective, ops)
     }
 }

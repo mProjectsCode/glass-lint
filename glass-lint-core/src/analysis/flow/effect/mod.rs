@@ -172,7 +172,6 @@ impl CallEffectRef<'_> {
             syntactic_path,
             rooted_chain,
             target_function,
-            args,
             unwrap,
             ..
         } = self.call_fact()?
@@ -184,9 +183,7 @@ impl CallEffectRef<'_> {
             .and_then(|call| call.chain_path.as_ref())
             .or(rooted_chain.as_ref())
             .or(syntactic_path.as_ref());
-        let arguments = unwrap
-            .as_deref()
-            .map_or(args.as_slice(), |call| call.effective_args.as_slice());
+        let arguments = self.call_fact()?.effective_call_args()?;
         let global_name = match call_provenance {
             SymbolCallProvenance::Global { name } => Some(name),
             _ => None,
@@ -350,19 +347,15 @@ impl FunctionEffect {
 
     fn record_call(&mut self, fact: &SemanticFact, budget: &mut Budget) {
         let FactPayload::Call {
-            args,
-            result,
-            unwrap,
-            receiver,
-            ..
+            result, receiver, ..
         } = &fact.payload
         else {
             return;
         };
 
-        let effective_args = unwrap
-            .as_deref()
-            .map_or(args.as_slice(), |u| u.effective_args.as_slice());
+        let Some(effective_args) = fact.payload.effective_call_args() else {
+            return;
+        };
         let arguments = self.build_effect_arguments(effective_args);
         let call_id = EffectCallId::new(self.calls.len());
         for argument in &arguments {

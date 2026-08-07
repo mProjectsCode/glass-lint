@@ -53,7 +53,7 @@ append order, and the current fail-closed invalid-stream behavior.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-049 — Give retained calls one canonical effective-argument view
+#### [x] READ-049 — Give retained calls one canonical effective-argument view
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -86,7 +86,10 @@ propagation, and summary sinks consume that operation, deleting their raw
 projection, `.call`/`.apply` handling, spread and unknown values, authored
 source locations, and the current fail-closed behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `FactPayload::effective_call_args` as the retained-call
+model’s canonical wrapper/effective-argument operation. The effect builder,
+canonical call shape, and constrained evaluator now consume it, while
+authored arguments remain available for identity and source-location logic.
 
 ### Flow limits and lifecycle evidence
 
