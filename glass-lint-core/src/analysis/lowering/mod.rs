@@ -237,53 +237,81 @@ struct LoweringCapabilities {
     effects: bool,
 }
 
+impl LoweringCapabilities {
+    const fn enabled() -> Self {
+        Self {
+            export_origins: true,
+            effects: true,
+        }
+    }
+
+    fn disable_derived_phases(&mut self) {
+        self.export_origins = false;
+        self.effects = false;
+    }
+}
+
 #[derive(Debug)]
 struct LoweringCompletion {
     status: AnalysisStatus,
     capabilities: LoweringCapabilities,
 }
 
-impl LoweringCompletion {
+#[derive(Debug)]
+struct LoweringCompletionPolicy {
+    status: AnalysisStatus,
+    capabilities: LoweringCapabilities,
+}
+
+impl LoweringCompletionPolicy {
+    fn new() -> Self {
+        Self {
+            status: AnalysisStatus::default(),
+            capabilities: LoweringCapabilities::enabled(),
+        }
+    }
+
+    fn record_scope_issue(&mut self, issue_count: usize) {
+        self.status.record(
+            StatusScope::Project,
+            IncompleteReason::ScopeShapeMismatch { count: issue_count },
+        );
+    }
+
+    fn record_fact_failure(&mut self, reason: Option<IncompleteReason>) {
+        if let Some(reason) = reason {
+            self.status.record(StatusScope::Project, reason);
+            self.capabilities.disable_derived_phases();
+        }
+    }
+
+    fn finish(self) -> LoweringCompletion {
+        LoweringCompletion {
+            status: self.status,
+            capabilities: self.capabilities,
+        }
+    }
+
     fn assess(
         issues: &[ScopeCollectionIssue],
         stream: &FactStream<Building>,
         resolver: &Resolver,
         limits: &AnalysisLimits,
-    ) -> Self {
-        let budget = resolver.budget;
-        let mut status = AnalysisStatus::default();
-
+    ) -> LoweringCompletion {
+        let mut policy = Self::new();
         if !issues.is_empty() {
-            status.record(
-                StatusScope::Project,
-                IncompleteReason::ScopeShapeMismatch {
-                    count: issues.len(),
-                },
-            );
+            policy.record_scope_issue(issues.len());
         }
 
-        let budget_exhausted = budget.exhausted()
-            || stream.budget_exhausted()
-            || stream.path_exhausted()
-            || resolver.value_arena_exhausted()
-            || !stream.is_structurally_valid();
-        if let Some(reason) = check_facts_budget(stream, resolver, limits, budget) {
-            status.record(StatusScope::Project, reason);
-        }
-        if let Some(reason) = check_invalid_parser_span(stream) {
-            status.record(StatusScope::Project, reason);
-        }
-        if let Some(reason) = check_name_exhaustion(resolver) {
-            status.record(StatusScope::Project, reason);
-        }
-
-        Self {
-            status,
-            capabilities: LoweringCapabilities {
-                export_origins: !budget_exhausted,
-                effects: !budget_exhausted,
-            },
-        }
+        policy.record_fact_failure(check_facts_budget(
+            stream,
+            resolver,
+            limits,
+            resolver.budget,
+        ));
+        policy.record_fact_failure(check_invalid_parser_span(stream));
+        policy.record_fact_failure(check_name_exhaustion(resolver));
+        policy.finish()
     }
 }
 
@@ -319,7 +347,7 @@ impl<'a> ResolvedProgram<'a> {
     }
 
     fn assess_completion(&self, limits: &AnalysisLimits) -> LoweringCompletion {
-        LoweringCompletion::assess(&self.issues, &self.built.stream, &self.resolver, limits)
+        LoweringCompletionPolicy::assess(&self.issues, &self.built.stream, &self.resolver, limits)
     }
 
     fn derive_export_origins(

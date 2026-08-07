@@ -51,7 +51,7 @@ lookup still verifies both the fingerprint and complete key inputs.
 
 ### Lowering completion policy
 
-#### [ ] READ-011 — Let one completion policy produce status and capabilities
+#### [x] READ-011 — Let one completion policy produce status and capabilities
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -80,7 +80,11 @@ possible witness, all existing diagnostic reasons, independent name-table
 exhaustion reporting, and fail-closed capability decisions for exhausted
 facts, paths, values, or invalid parser spans.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `LoweringCompletionPolicy` as the single owner of
+completion checks. It records each diagnostic and disables derived export and
+effect capabilities from the same fact-integrity outcome, including parser
+span and name-table exhaustion, so `ResolvedProgram::freeze` consumes one
+typed status-plus-capabilities result.
 
 ### Artifact sealing orchestration
 
