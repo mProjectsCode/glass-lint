@@ -46,7 +46,7 @@ the separation between artifact-local facts and compiled rule plans.
 
 ### Prepared argument data
 
-#### [ ] READ-037 — Let `ArgumentData` own prepared-versus-arena fallback
+#### [x] READ-037 — Let `ArgumentData` own prepared-versus-arena fallback
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -72,7 +72,11 @@ resolution, overlay precedence, dynamic-value rejection, rooted-chain
 matching, and the distinction between an unavailable value and a successful
 empty match.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added canonical `ArgumentData` accessors for static strings,
+static objects, and rooted chains. Each accessor applies prepared or overlay
+data before frozen-arena fallback, and all matcher variants—including object
+property values—now consume those accessors instead of rebuilding precedence
+locally. Dynamic and unavailable values remain fail-closed.
 
 ### Projector frontier lifecycle
 

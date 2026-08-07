@@ -62,46 +62,36 @@ impl ArgumentMatcher {
         values: &ValueTable,
     ) -> bool {
         match self.kind() {
-            ArgumentMatcherKind::Value(value) => value.matches_flow_value(
-                argument
-                    .overlay_static_string()
-                    .or_else(|| values.static_string(argument.value())),
-            ),
-            ArgumentMatcherKind::ObjectKeys(expected) => argument
-                .prepared_static_object()
-                .or_else(|| argument.static_object(values))
-                .is_some_and(|object| {
+            ArgumentMatcherKind::Value(value) => {
+                value.matches_flow_value(argument.static_string(values))
+            }
+            ArgumentMatcherKind::ObjectKeys(expected) => {
+                argument.static_object(values).is_some_and(|object| {
                     expected.iter().all(|expected| {
                         names
                             .lookup(expected.as_str())
                             .is_some_and(|key| object.contains_key(key))
                     })
-                }),
-            ArgumentMatcherKind::RootedExpressions(expected) => argument
-                .prepared_rooted_chain()
-                .or_else(|| argument.rooted_chain(values))
-                .is_some_and(|chain| {
+                })
+            }
+            ArgumentMatcherKind::RootedExpressions(expected) => {
+                argument.rooted_chain(values).is_some_and(|chain| {
                     let Some(chain) = names.resolve_path(chain) else {
                         return false;
                     };
                     expected.iter().any(|candidate| chain.eq_chain(candidate))
-                }),
+                })
+            }
             ArgumentMatcherKind::ObjectPropertyValue { property, value } => {
-                let val = argument.value();
-                let entry = values.resolve(val);
-                entry.is_some_and(|e| match e {
-                    Value::StaticObject(object) => names
+                if let Some(object) = argument.static_object(values) {
+                    return names
                         .lookup(property.as_str())
                         .and_then(|key| object.get(key))
                         .is_some_and(|value_id| {
                             value.matches_flow_value(values.static_string(value_id))
-                        }),
-                    _ => value.matches_flow_value(
-                        argument
-                            .overlay_static_string()
-                            .or_else(|| values.static_string(argument.value())),
-                    ),
-                })
+                        });
+                }
+                value.matches_flow_value(argument.static_string(values))
             }
         }
     }
@@ -110,13 +100,28 @@ impl ArgumentMatcher {
 pub(in crate::analysis) trait ArgumentData {
     fn value(&self) -> ValueId;
 
+    fn static_string<'a>(&'a self, values: &'a ValueTable) -> Option<&'a str> {
+        self.overlay_static_string()
+            .or_else(|| values.static_string(self.value()))
+    }
+
     fn overlay_static_string(&self) -> Option<&str> {
         None
     }
 
-    fn static_object<'v>(&self, values: &'v ValueTable) -> Option<&'v StaticObject>;
+    fn static_object<'a>(&'a self, values: &'a ValueTable) -> Option<&'a StaticObject> {
+        self.prepared_static_object()
+            .or_else(|| self.arena_static_object(values))
+    }
 
-    fn rooted_chain<'v>(&self, values: &'v ValueTable) -> Option<&'v NamePath>;
+    fn arena_static_object<'v>(&self, values: &'v ValueTable) -> Option<&'v StaticObject>;
+
+    fn rooted_chain<'a>(&'a self, values: &'a ValueTable) -> Option<&'a NamePath> {
+        self.prepared_rooted_chain()
+            .or_else(|| self.arena_rooted_chain(values))
+    }
+
+    fn arena_rooted_chain<'v>(&self, values: &'v ValueTable) -> Option<&'v NamePath>;
 
     fn prepared_static_object(&self) -> Option<&StaticObject> {
         None
@@ -132,14 +137,14 @@ impl ArgumentData for CallArgInfo {
         self.value
     }
 
-    fn static_object<'v>(&self, values: &'v ValueTable) -> Option<&'v StaticObject> {
+    fn arena_static_object<'v>(&self, values: &'v ValueTable) -> Option<&'v StaticObject> {
         match values.resolve(self.value)? {
             Value::StaticObject(object) => Some(object),
             _ => None,
         }
     }
 
-    fn rooted_chain<'v>(&self, values: &'v ValueTable) -> Option<&'v NamePath> {
+    fn arena_rooted_chain<'v>(&self, values: &'v ValueTable) -> Option<&'v NamePath> {
         match values.resolve(self.value)? {
             Value::RootedMember { path } => Some(path),
             _ => None,
@@ -156,12 +161,12 @@ impl ArgumentData for ArgumentView<'_> {
         self.static_string
     }
 
-    fn static_object<'v>(&self, values: &'v ValueTable) -> Option<&'v StaticObject> {
-        self.argument.static_object(values)
+    fn arena_static_object<'v>(&self, values: &'v ValueTable) -> Option<&'v StaticObject> {
+        self.argument.arena_static_object(values)
     }
 
-    fn rooted_chain<'v>(&self, values: &'v ValueTable) -> Option<&'v NamePath> {
-        self.argument.rooted_chain(values)
+    fn arena_rooted_chain<'v>(&self, values: &'v ValueTable) -> Option<&'v NamePath> {
+        self.argument.arena_rooted_chain(values)
     }
 
     fn prepared_static_object(&self) -> Option<&StaticObject> {
