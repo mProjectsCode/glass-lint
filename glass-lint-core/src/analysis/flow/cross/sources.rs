@@ -13,7 +13,7 @@ use crate::{
                 worklist::{BoundedFifo, FifoAdmission},
             },
             planning::{
-                BoundLifecycleCallTarget, BoundTargetIndex,
+                BoundLifecycleCallTarget, BoundTargetIndex, FlowMatchView,
                 build_source_index as build_bound_source_index,
             },
         },
@@ -151,7 +151,7 @@ impl FlowSources {
                     continue;
                 }
                 for call in effect.calls() {
-                    let cref = call.as_ref(stream);
+                    let cref = stream.call_effect(call.event());
                     let Some(target) =
                         call_graph.get(QualifiedEvent::new(module.id(), call.event()))
                     else {
@@ -242,7 +242,11 @@ impl FlowSources {
                     continue;
                 }
                 for call in effect.calls() {
-                    let cref = call.as_ref(stream);
+                    let cref = stream.call_effect(call.event());
+                    let Some(args) = cref.effective_args() else {
+                        continue;
+                    };
+                    let matcher = FlowMatchView::new(names, stream.values());
                     let candidates = cref
                         .global_name()
                         .and_then(|name| {
@@ -260,7 +264,16 @@ impl FlowSources {
                         let Some(flow) = flows.get(flow_id) else {
                             continue;
                         };
-                        if cref.matches_source(flow, names) {
+                        if flow.sources().any(|source| {
+                            matcher.target_matches(
+                                source.target(),
+                                cref.global_name().map(smol_str::SmolStr::as_str),
+                                cref.chain(),
+                                cref.rooted(),
+                            ) && source.matches_arguments(|constraint| {
+                                matcher.argument_matches(constraint, args)
+                            })
+                        }) {
                             self.add_candidate(
                                 SourceKey::new(module.id(), effect.id(), cref.result()),
                                 SourceCandidate::new(*flow_id, call.event()),

@@ -14,7 +14,7 @@ projection outcome.
 
 ### Call-effect view boundary
 
-#### [ ] READ-036 — Make `CallEffectRef` a closed call-shape boundary
+#### [x] READ-036 — Make `CallEffectRef` a closed call-shape boundary
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -42,7 +42,12 @@ forwarding matcher methods and duplicated chain extraction from
 precedence, rooted-versus-syntactic distinction, static name resolution, and
 the separation between artifact-local facts and compiled rule plans.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `FactStream::call_effect` the sole validated factory
+and made `CallEffectRef` fields private. Added a canonical `CallShape` that
+owns call-fact decoding, unwrap/effective-argument selection, chain
+precedence, rootedness, and call identity metadata. Removed compiled
+source/target matching from the effect view and performed it through
+`FlowMatchView` at the planning, summary, and cross-flow callers.
 
 ### Prepared argument data
 

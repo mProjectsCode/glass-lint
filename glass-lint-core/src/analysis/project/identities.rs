@@ -34,7 +34,7 @@ impl ProjectSemanticModel {
         let stream = module.local().facts().stream();
         for effect in module.local().effects().iter_effects() {
             for call in effect.calls() {
-                let cref = call.as_ref(stream);
+                let cref = stream.call_effect(call.event());
                 let Some(provenance) = cref.provenance() else {
                     continue;
                 };

@@ -3,7 +3,7 @@ use glass_lint_datastructures::FastIndexSet;
 use crate::analysis::{
     facts::{CallArgInfo, FactId, FactStream, Frozen, ParameterBinding},
     flow::{
-        planning::BoundFlowPlan,
+        planning::{BoundFlowPlan, FlowMatchView},
         summary::{SummaryPathStore, store::SummaryPathId},
     },
     model::{flow::FlowId, scope::FunctionId, value::ValueId},
@@ -233,6 +233,7 @@ impl FunctionSummary {
         let Some(args) = cref.effective_args() else {
             return InsertOutcome::default();
         };
+        let matcher = FlowMatchView::new(stream.names(), stream.values());
         let flow_ids = cref
             .global_name()
             .and_then(|name| plan.global_sink_ids(name))
@@ -243,7 +244,12 @@ impl FunctionSummary {
                 continue;
             };
             for sink in flow.sinks() {
-                if !cref.matches_target(sink.target(), stream.names()) {
+                if !matcher.target_matches(
+                    sink.target(),
+                    cref.global_name().map(smol_str::SmolStr::as_str),
+                    cref.chain(),
+                    cref.rooted(),
+                ) {
                     continue;
                 }
                 for argument_index in sink.present_indices(args.len()) {

@@ -10,7 +10,7 @@
 
 use std::borrow::Cow;
 
-use glass_lint_datastructures::{Budget, NamePath, NameTable, PathId, SymbolPath};
+use glass_lint_datastructures::{Budget, NameId, NamePath, NameTable, PathId, SymbolPath};
 use hashbrown::HashMap;
 use smol_str::SmolStr;
 
@@ -19,7 +19,6 @@ use crate::analysis::{
         CallArgInfo, ControlKind, FactId, FactPayload, FactStream, Frozen, FunctionBoundary,
         ParameterBinding, SemanticFact,
     },
-    flow::planning::FlowMatchView,
     model::{flow::FunctionTable, scope::FunctionId, value::ValueId},
     syntax::SymbolCallProvenance,
 };
@@ -96,8 +95,19 @@ pub(in crate::analysis) struct ReturnProjection {
 
 #[derive(Clone, Copy)]
 pub(in crate::analysis) struct CallEffectRef<'stream> {
-    pub(in crate::analysis) stream: &'stream FactStream<Frozen>,
-    pub(in crate::analysis) event: FactId,
+    stream: &'stream FactStream<Frozen>,
+    event: FactId,
+}
+
+pub(in crate::analysis) struct CallShape<'a> {
+    chain: Option<&'a NamePath>,
+    rooted: bool,
+    global_name: Option<&'a SmolStr>,
+    arguments: &'a [CallArgInfo],
+    result: ValueId,
+    provenance: &'a SymbolCallProvenance,
+    target: Option<FunctionId>,
+    callee_name: Option<NameId>,
 }
 
 impl ParameterRef {
@@ -136,16 +146,6 @@ impl EffectCall {
     pub(in crate::analysis) fn arguments(&self) -> &[EffectArgument] {
         &self.arguments
     }
-
-    pub(in crate::analysis) fn as_ref<'s>(
-        &'s self,
-        stream: &'s FactStream<Frozen>,
-    ) -> CallEffectRef<'s> {
-        CallEffectRef {
-            stream,
-            event: self.event,
-        }
-    }
 }
 
 impl FactStream<Frozen> {
@@ -164,132 +164,82 @@ impl CallEffectRef<'_> {
         self.stream.fact(self.event).map(|fact| &fact.payload)
     }
 
-    pub(in crate::analysis) fn chain(&self) -> Option<&NamePath> {
-        match self.call_fact()? {
-            FactPayload::Call {
-                rooted_chain,
-                syntactic_path,
-                unwrap,
-                ..
-            } => unwrap
-                .as_deref()
-                .and_then(|u| u.chain_path.as_ref())
-                .or(rooted_chain.as_ref())
-                .or(syntactic_path.as_ref()),
+    pub(in crate::analysis) fn shape(&self) -> Option<CallShape<'_>> {
+        let FactPayload::Call {
+            result,
+            callee_name,
+            call_provenance,
+            syntactic_path,
+            rooted_chain,
+            target_function,
+            args,
+            unwrap,
+            ..
+        } = self.call_fact()?
+        else {
+            return None;
+        };
+        let chain = unwrap
+            .as_deref()
+            .and_then(|call| call.chain_path.as_ref())
+            .or(rooted_chain.as_ref())
+            .or(syntactic_path.as_ref());
+        let arguments = unwrap
+            .as_deref()
+            .map_or(args.as_slice(), |call| call.effective_args.as_slice());
+        let global_name = match call_provenance {
+            SymbolCallProvenance::Global { name } => Some(name),
             _ => None,
-        }
+        };
+        Some(CallShape {
+            chain,
+            rooted: rooted_chain.is_some(),
+            global_name,
+            arguments,
+            result: *result,
+            provenance: call_provenance,
+            target: *target_function,
+            callee_name: *callee_name,
+        })
+    }
+
+    pub(in crate::analysis) fn chain(&self) -> Option<&NamePath> {
+        self.shape()?.chain
     }
 
     pub(in crate::analysis) fn chain_owned(&self, names: &NameTable) -> Option<Cow<'_, NamePath>> {
-        match self.call_fact()? {
-            FactPayload::Call {
-                rooted_chain,
-                syntactic_path,
-                callee_name,
-                unwrap,
-                ..
-            } => unwrap
-                .as_deref()
-                .and_then(|u| u.chain_path.as_ref())
-                .map(Cow::Borrowed)
-                .or_else(|| rooted_chain.as_ref().map(Cow::Borrowed))
-                .or_else(|| syntactic_path.as_ref().map(Cow::Borrowed))
-                .or_else(|| {
-                    callee_name
-                        .and_then(|id| self.stream.resolve_name(id))
-                        .and_then(|name| names.lookup_path(&SymbolPath::from(name)))
-                        .map(Cow::Owned)
-                }),
-            _ => None,
-        }
+        let shape = self.shape()?;
+        shape.chain.map(Cow::Borrowed).or_else(|| {
+            shape
+                .callee_name
+                .and_then(|id| self.stream.resolve_name(id))
+                .and_then(|name| names.lookup_path(&SymbolPath::from(name)))
+                .map(Cow::Owned)
+        })
     }
 
     pub(in crate::analysis) fn rooted(&self) -> bool {
-        self.call_fact().is_some_and(|fact| {
-            matches!(
-                fact,
-                FactPayload::Call {
-                    rooted_chain: Some(_),
-                    ..
-                }
-            )
-        })
+        self.shape().is_some_and(|shape| shape.rooted)
     }
 
     pub(in crate::analysis) fn result(&self) -> ValueId {
-        match self.call_fact() {
-            Some(FactPayload::Call { result, .. }) => *result,
-            _ => ValueId::UNKNOWN,
-        }
+        self.shape().map_or(ValueId::UNKNOWN, |shape| shape.result)
     }
 
     pub(in crate::analysis) fn provenance(&self) -> Option<&SymbolCallProvenance> {
-        match self.call_fact() {
-            Some(FactPayload::Call {
-                call_provenance, ..
-            }) => Some(call_provenance),
-            _ => None,
-        }
+        self.shape().map(|shape| shape.provenance)
     }
 
     pub(in crate::analysis) fn global_name(&self) -> Option<&SmolStr> {
-        match self.provenance()? {
-            SymbolCallProvenance::Global { name } => Some(name),
-            _ => None,
-        }
-    }
-
-    pub(in crate::analysis) fn matches_target(
-        &self,
-        target: &crate::api::rule::query::lifecycle::LifecycleCallTarget,
-        names: &NameTable,
-    ) -> bool {
-        FlowMatchView::new(names, self.stream.values()).target_matches(
-            target,
-            self.global_name().map(SmolStr::as_str),
-            self.chain(),
-            self.rooted(),
-        )
+        self.shape().and_then(|shape| shape.global_name)
     }
 
     pub(in crate::analysis) fn target(&self) -> Option<FunctionId> {
-        match self.call_fact() {
-            Some(FactPayload::Call {
-                target_function, ..
-            }) => *target_function,
-            _ => None,
-        }
+        self.shape().and_then(|shape| shape.target)
     }
 
     pub(in crate::analysis) fn effective_args(&self) -> Option<&[CallArgInfo]> {
-        match self.call_fact()? {
-            FactPayload::Call { args, unwrap, .. } => Some(
-                unwrap
-                    .as_deref()
-                    .map_or(args.as_slice(), |u| u.effective_args.as_slice()),
-            ),
-            _ => None,
-        }
-    }
-
-    pub(in crate::analysis) fn matches_source(
-        &self,
-        flow: &crate::api::compiler::CompiledObjectFlow,
-        names: &glass_lint_datastructures::NameTable,
-    ) -> bool {
-        let Some(args) = self.effective_args() else {
-            return false;
-        };
-        let flow_matcher = FlowMatchView::new(names, self.stream.values());
-        flow.sources().any(|source| {
-            flow_matcher.target_matches(
-                source.target(),
-                self.global_name().map(SmolStr::as_str),
-                self.chain(),
-                self.rooted(),
-            ) && source
-                .matches_arguments(|constraint| flow_matcher.argument_matches(constraint, args))
-        })
+        self.shape().map(|shape| shape.arguments)
     }
 }
 
