@@ -21,11 +21,89 @@ pub(crate) enum RequirementMode {
     AnyRequired,
 }
 
+impl RequirementMode {
+    #[cfg(test)]
+    pub(crate) fn select_matches<T>(self, matches: Vec<Vec<T>>) -> Option<Vec<Vec<T>>> {
+        match self {
+            Self::AllRequired => {
+                if matches.iter().any(Vec::is_empty) {
+                    None
+                } else {
+                    Some(vec![
+                        matches
+                            .into_iter()
+                            .filter_map(|matches| matches.into_iter().next())
+                            .collect(),
+                    ])
+                }
+            }
+            Self::AnyRequired => Some(
+                matches
+                    .into_iter()
+                    .flatten()
+                    .map(|item| vec![item])
+                    .collect(),
+            ),
+        }
+    }
+
+    fn ready(self, indices: impl IntoIterator<Item = usize>, count: usize) -> bool {
+        let mut seen = vec![false; count];
+        for index in indices {
+            let Some(slot) = seen.get_mut(index) else {
+                return false;
+            };
+            *slot = true;
+        }
+        match self {
+            Self::AllRequired => seen.iter().all(|present| *present),
+            Self::AnyRequired => seen.iter().any(|present| *present),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum CompletionMode {
     Configuration,
     AnySink,
     AllSinks,
+}
+
+impl CompletionMode {
+    #[cfg(test)]
+    pub(crate) fn select_matches<T>(self, matches: Vec<Vec<T>>) -> Vec<Vec<T>> {
+        match self {
+            Self::Configuration => vec![Vec::new()],
+            Self::AnySink => matches
+                .into_iter()
+                .flatten()
+                .map(|item| vec![item])
+                .collect(),
+            Self::AllSinks => matches
+                .into_iter()
+                .map(|matches| matches.into_iter().next())
+                .collect::<Option<Vec<_>>>()
+                .into_iter()
+                .collect(),
+        }
+    }
+
+    fn ready(self, indices: impl IntoIterator<Item = usize>, count: usize) -> bool {
+        if self == Self::Configuration {
+            return true;
+        }
+        let mut seen = vec![false; count];
+        for index in indices {
+            let Some(slot) = seen.get_mut(index) else {
+                return false;
+            };
+            *slot = true;
+        }
+        match self {
+            Self::AllSinks => seen.iter().all(|present| *present),
+            Self::AnySink | Self::Configuration => true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -43,11 +121,13 @@ impl CompiledObjectFlow {
         &self.symbol
     }
 
-    pub fn requirements_ready(&self, completed: usize) -> bool {
-        match self.requirement_mode {
-            RequirementMode::AllRequired => completed == self.requirement_count(),
-            RequirementMode::AnyRequired => completed != 0,
-        }
+    pub(crate) fn requirements_ready(&self, indices: impl IntoIterator<Item = usize>) -> bool {
+        self.requirement_mode
+            .ready(indices, self.requirement_count())
+    }
+
+    pub(crate) fn sinks_ready(&self, indices: impl IntoIterator<Item = usize>) -> bool {
+        self.completion_mode.ready(indices, self.sink_count())
     }
 
     pub(crate) fn sources(&self) -> impl Iterator<Item = &CompiledObjectSource> {

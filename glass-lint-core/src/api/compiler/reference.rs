@@ -245,29 +245,7 @@ impl LifecycleReferencePlan {
             })
             .collect();
 
-        if self.requirement_mode == RequirementMode::AllRequired
-            && requirement_matches.iter().any(Vec::is_empty)
-        {
-            return None;
-        }
-        let condition_sets = if self.requirements.is_empty() {
-            vec![Vec::new()]
-        } else if self.requirement_mode == RequirementMode::AllRequired {
-            vec![
-                requirement_matches
-                    .iter()
-                    .filter_map(|matches| matches.first().copied())
-                    .collect(),
-            ]
-        } else {
-            requirement_matches
-                .into_iter()
-                .flatten()
-                .map(|row| vec![row])
-                .collect()
-        };
-
-        Some(condition_sets)
+        self.requirement_mode.select_matches(requirement_matches)
     }
 
     fn completion_candidates<'a>(
@@ -275,34 +253,18 @@ impl LifecycleReferencePlan {
         path_rows: &[&'a ReferenceRow],
         condition_end: u32,
     ) -> Vec<Vec<&'a ReferenceRow>> {
-        match self.completion_mode {
-            CompletionMode::Configuration => vec![Vec::new()],
-            CompletionMode::AnySink => self
-                .sinks
-                .iter()
-                .flat_map(|sink| {
-                    path_rows
-                        .iter()
-                        .copied()
-                        .filter(move |row| row.event > condition_end && matches_sink(sink, row))
-                        .map(|row| vec![row])
-                        .collect::<Vec<_>>()
-                })
-                .collect(),
-            CompletionMode::AllSinks => {
-                let selected: Option<Vec<&ReferenceRow>> = self
-                    .sinks
+        let sink_matches = self
+            .sinks
+            .iter()
+            .map(|sink| {
+                path_rows
                     .iter()
-                    .map(|sink| {
-                        path_rows
-                            .iter()
-                            .copied()
-                            .find(|row| row.event > condition_end && matches_sink(sink, row))
-                    })
-                    .collect();
-                selected.into_iter().collect()
-            }
-        }
+                    .copied()
+                    .filter(|row| row.event > condition_end && matches_sink(sink, row))
+                    .collect()
+            })
+            .collect();
+        self.completion_mode.select_matches(sink_matches)
     }
 
     fn witness(

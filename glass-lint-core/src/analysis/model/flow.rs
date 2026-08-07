@@ -334,6 +334,7 @@ impl<K: Clone + Ord, I: EvidenceIndex> IndexedEvidence<K, I> {
         }
     }
 
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.mask.count_ones() as usize
     }
@@ -416,7 +417,11 @@ impl<E: Clone + Ord> LifecycleEvidence<E> {
     }
 
     pub(in crate::analysis) fn requirements_ready(&self, flow: &CompiledObjectFlow) -> bool {
-        flow.requirements_ready(self.requirements.len())
+        flow.requirements_ready(
+            self.requirements
+                .iter_by_key()
+                .map(|(index, _)| index.get()),
+        )
     }
 
     pub(in crate::analysis) fn record_sink(&mut self, index: SinkIndex, event: E) -> bool {
@@ -428,8 +433,7 @@ impl<E: Clone + Ord> LifecycleEvidence<E> {
     }
 
     pub(in crate::analysis) fn sinks_ready(&self, flow: &CompiledObjectFlow) -> bool {
-        flow.completion_mode() != crate::api::compiler::object_flow::CompletionMode::AllSinks
-            || self.sinks.len() == flow.sink_count()
+        flow.sinks_ready(self.sinks.iter_by_key().map(|(index, _)| index.get()))
     }
 
     pub(in crate::analysis) fn requirement_entries(

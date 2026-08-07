@@ -195,7 +195,7 @@ state rather than a generic invariant string.
 
 **Fix Applied:** Same-event normalization now initializes required event/identity details at the merger boundary, removes duplicate event-variable parameters, carries member-subject links until the completed phase, and lowers only from a typed complete merger state.
 
-#### [ ] READ-085 — Give lifecycle modes one semantic owner across execution and reference evaluation
+#### [x] READ-085 — Give lifecycle modes one semantic owner across execution and reference evaluation
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -231,7 +231,11 @@ the execution boundary. Preserve any/all/configuration behavior, path-local
 evidence, duplicate-event handling, reference-test independence where it
 detects semantic drift, and all lifecycle limits.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Centralized any/all/configuration selection and validated readiness on
+compiled lifecycle modes; runtime now passes actual recorded indices, while the
+reference evaluator uses the same generic selectors and retains independent event
+matching. Preserved the `AnySink` production readiness contract and strict all-sink
+completion. Verified `make fmt && make ci`.
 
 ## Systemic Themes
 
