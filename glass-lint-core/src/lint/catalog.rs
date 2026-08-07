@@ -59,10 +59,7 @@ impl RuleCatalog {
             .into_iter()
             .map(|rule| {
                 let rule_id = RuleId::parse(format!("{provider}:{}", rule.id()))?;
-                let validated = rule.require_queries().map_err(|error| {
-                    ProviderCatalogError::InvalidRule(rule_id.clone(), error.to_string())
-                })?;
-                Ok((rule_id, validated))
+                Ok((rule_id, rule))
             })
             .collect::<Result<Vec<_>, _>>()?;
 

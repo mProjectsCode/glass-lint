@@ -228,6 +228,9 @@ impl RuleBuilder {
         if let Some(err) = self.first_query_error {
             return Err(RuleBuildError::InvalidQuery(err));
         }
+        if self.queries.is_empty() {
+            return Err(RuleBuildError::MissingQuery);
+        }
         if self.queries.len() > query::limits::MAX_QUERY_ROOTS_PER_RULE {
             return Err(RuleBuildError::TooManyQueries(self.queries.len()));
         }
@@ -250,15 +253,6 @@ impl RuleBuilder {
             confidence,
             queries: self.queries,
         })
-    }
-}
-
-impl Rule {
-    pub(crate) fn require_queries(self) -> Result<Self, MatcherBuildError> {
-        if self.queries.is_empty() {
-            return Err(MatcherBuildError::MissingRequired);
-        }
-        Ok(self)
     }
 }
 
@@ -368,8 +362,6 @@ mod tests {
 
     #[test]
     fn rejects_empty_and_incomplete_matchers() {
-        // Empty declarations list (no queries) passes build but fails
-        // require_queries
         assert!(
             Rule::builder("test.test")
                 .description("desc")
@@ -377,7 +369,7 @@ mod tests {
                 .severity(Severity::Warning)
                 .confidence(Confidence::Medium)
                 .build()
-                .is_ok()
+                .is_err_and(|error| error == RuleBuildError::MissingQuery)
         );
     }
 

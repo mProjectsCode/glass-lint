@@ -56,7 +56,7 @@ of provider names/categories from core semantics.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-087 — Seal the nonempty-query invariant at rule construction
+#### [x] READ-087 — Seal the nonempty-query invariant at rule construction
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -85,7 +85,10 @@ bound, deferred construction-error ordering where intentionally supported,
 catalog duplicate-ID validation, and the rule that no empty matcher reaches
 compiler planning.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `RuleBuildError::MissingQuery`, enforced the nonempty
+query invariant in `RuleBuilder::build`, and removed the delayed catalog
+preflight plus obsolete `require_queries`/`MissingRequired` path. Verified
+with `make fmt && make ci`.
 
 ### Query declaration surface
 

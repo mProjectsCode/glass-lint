@@ -17,6 +17,8 @@ pub enum RuleBuildError {
     MissingSeverity,
     /// Confidence was not supplied.
     MissingConfidence,
+    /// At least one query declaration is required.
+    MissingQuery,
     /// A required metadata field was supplied more than once.
     DuplicateField(&'static str),
     /// Category failed taxonomy validation.
@@ -32,8 +34,6 @@ pub enum MatcherBuildError {
     InvalidModuleSpecifier(String),
     EmptyChain,
     InvalidArgumentIndex(usize),
-    /// A required field is missing (identity, event, or declaration).
-    MissingRequired,
     ConflictingProvenance,
     /// Argument constraints require a call-bearing event.
     ConstraintsOnNonCallEvent,
@@ -84,6 +84,7 @@ impl fmt::Display for RuleBuildError {
             Self::MissingDescription => formatter.write_str("rule label is required"),
             Self::MissingSeverity => formatter.write_str("rule severity is required"),
             Self::MissingConfidence => formatter.write_str("rule confidence is required"),
+            Self::MissingQuery => formatter.write_str("rule requires at least one query"),
             Self::DuplicateField(field) => {
                 write!(formatter, "rule {field} was supplied more than once")
             }
@@ -111,7 +112,6 @@ impl fmt::Display for MatcherBuildError {
             Self::InvalidArgumentIndex(index) => {
                 write!(formatter, "argument index {index} exceeds maximum")
             }
-            Self::MissingRequired => formatter.write_str("required field is missing"),
             Self::ConflictingProvenance => formatter.write_str("conflicting provenance modes"),
             Self::ConstraintsOnNonCallEvent => {
                 formatter.write_str("argument constraints require a call event")
