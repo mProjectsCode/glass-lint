@@ -117,7 +117,7 @@ READ-004/005, and Chunk 12 READ-004/006.
 
 ### Public phase boundaries
 
-#### [ ] CROSS-003 — Audit the root public facade against internal phase ownership
+#### [x] CROSS-003 — Audit the root public facade against internal phase ownership
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -154,6 +154,13 @@ adding compatibility wrappers around obsolete constructors.
 
 **Related local findings:** Chunk 8 READ-004, Chunk 9 READ-004/005, Chunk 11
 READ-003, and Chunk 12 READ-003.
+
+**Fix Applied:** The root facade now keeps `ReportAssembly` private, exposes
+`ProjectAnalysis` through private report/timing fields and a named consuming
+`into_parts` boundary, and keeps linker-only `ModuleId` and
+`LinkedModuleTarget` crate-private. Validated authoring types and serialized
+report DTOs remain public. Covered by the existing `make fmt && make ci`
+verification for the boundary changes.
 
 ### Validation and derivation ownership
 
