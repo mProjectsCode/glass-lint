@@ -89,6 +89,7 @@ mod tests {
                 .unwrap();
         let selected = [RuleIndex::new(0)];
         let fetch_rule = CompiledRuleRecord {
+            rule_id: crate::RuleId::parse("test:fetch").unwrap(),
             description: "fetch".into(),
             query_explanations: Vec::new(),
             severity: Severity::Warning,
@@ -106,6 +107,7 @@ mod tests {
         .into_query()])
         .unwrap();
         let member_rule = CompiledRuleRecord {
+            rule_id: crate::RuleId::parse("test:member").unwrap(),
             description: "member".into(),
             query_explanations: Vec::new(),
             severity: Severity::Warning,
@@ -156,6 +158,7 @@ mod tests {
                 .unwrap();
         let rule_index = RuleIndex::new(0);
         let records = [CompiledRuleRecord {
+            rule_id: crate::RuleId::parse("test:fetch").unwrap(),
             description: "fetch".into(),
             query_explanations: Vec::new(),
             severity: Severity::Warning,

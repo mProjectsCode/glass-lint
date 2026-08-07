@@ -205,9 +205,8 @@ impl RuleSelection {
         let mut matched = vec![false; self.overrides.len()];
         let mut enabled = Vec::new();
 
-        for (index, (rule_id, record)) in
-            catalog.rule_ids().iter().zip(&catalog.records).enumerate()
-        {
+        for (index, record) in catalog.compiled().iter().enumerate() {
+            let rule_id = &record.rule_id;
             let baseline = match self.baseline {
                 RuleBaseline::All => true,
                 RuleBaseline::None => false,

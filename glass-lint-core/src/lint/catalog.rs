@@ -42,8 +42,7 @@ impl Error for ProviderCatalogError {}
 /// Provider rules, namespaced IDs, and compiled plans.
 pub struct RuleCatalog {
     /// Compiled rule records (no source declaration trees retained).
-    pub(crate) records: Vec<CompiledRuleRecord>,
-    rule_ids: Vec<RuleId>,
+    records: Vec<CompiledRuleRecord>,
     rule_indices: BTreeMap<RuleId, RuleIndex>,
 }
 
@@ -63,19 +62,17 @@ impl RuleCatalog {
                 let validated = rule.require_queries().map_err(|error| {
                     ProviderCatalogError::InvalidRule(rule_id.clone(), error.to_string())
                 })?;
-                Ok((validated, rule_id))
+                Ok((rule_id, validated))
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let (rules, rule_ids): (Vec<_>, Vec<_>) = rules_and_ids.into_iter().unzip();
-
         // Compile once into immutable records (no declarations retained).
-        let records = compile_records(&rules).map_err(|error| match error {
+        let records = compile_records(&rules_and_ids).map_err(|error| match error {
             CompiledCatalogError::InvalidMatcher { rule_id, message }
             | CompiledCatalogError::CompilerInvariant { rule_id, message }
             | CompiledCatalogError::InvalidPhysicalPlan { rule_id, message } => {
                 ProviderCatalogError::InvalidRule(
-                    RuleId::parse(format!("{provider}:{rule_id}")).expect("valid rule ID"),
+                    RuleId::parse(rule_id).expect("compiler preserves validated rule ID"),
                     message,
                 )
             }
@@ -83,20 +80,18 @@ impl RuleCatalog {
                 rule_id,
                 diagnostic,
             } => ProviderCatalogError::InvalidRule(
-                RuleId::parse(format!("{provider}:{rule_id}")).expect("valid rule ID"),
+                RuleId::parse(rule_id).expect("compiler preserves validated rule ID"),
                 diagnostic.to_string(),
             ),
         })?;
 
-        let rule_indices = rule_ids
+        let rule_indices = records
             .iter()
-            .cloned()
             .enumerate()
-            .map(|(index, id)| (id, RuleIndex::new(index)))
+            .map(|(index, record)| (record.rule_id.clone(), RuleIndex::new(index)))
             .collect();
         Ok(Self {
             records,
-            rule_ids,
             rule_indices,
         })
     }
@@ -112,30 +107,25 @@ impl RuleCatalog {
     /// destination.
     pub fn combine(catalogs: impl IntoIterator<Item = Self>) -> Result<Self, ProviderCatalogError> {
         let mut records = Vec::new();
-        let mut rule_ids = Vec::new();
         let mut seen = BTreeSet::new();
 
         // Validate all FQIDs before moving any record.
         for catalog in catalogs {
-            for (record, rule_id) in catalog.records.into_iter().zip(catalog.rule_ids) {
-                if !seen.insert(rule_id.clone()) {
-                    return Err(ProviderCatalogError::DuplicateRule(rule_id));
+            for record in catalog.records {
+                if !seen.insert(record.rule_id.clone()) {
+                    return Err(ProviderCatalogError::DuplicateRule(record.rule_id));
                 }
-                // Stage the record and ID for insertion.
                 records.push(record);
-                rule_ids.push(rule_id);
             }
         }
 
-        let rule_indices = rule_ids
+        let rule_indices = records
             .iter()
-            .cloned()
             .enumerate()
-            .map(|(index, id)| (id, RuleIndex::new(index)))
+            .map(|(index, record)| (record.rule_id.clone(), RuleIndex::new(index)))
             .collect();
         Ok(Self {
             records,
-            rule_ids,
             rule_indices,
         })
     }
@@ -145,9 +135,8 @@ impl RuleCatalog {
     pub fn metadata(&self) -> Vec<RuleMetadata> {
         self.records
             .iter()
-            .zip(&self.rule_ids)
-            .map(|(record, id)| RuleMetadata {
-                id: id.clone(),
+            .map(|record| RuleMetadata {
+                id: record.rule_id.clone(),
                 description: record.description.clone(),
                 query_explanations: record.query_explanations.clone(),
                 default_severity: record.severity,
@@ -155,16 +144,21 @@ impl RuleCatalog {
             .collect()
     }
 
-    #[must_use]
     /// Borrow fully-qualified rule IDs in catalog order.
-    pub fn rule_ids(&self) -> &[RuleId] {
-        &self.rule_ids
+    pub fn rule_ids(&self) -> impl Iterator<Item = &RuleId> {
+        self.records.iter().map(|record| &record.rule_id)
+    }
+
+    /// Return the number of compiled rules in catalog order.
+    #[must_use]
+    pub fn rule_count(&self) -> usize {
+        self.records.len()
     }
 
     #[must_use]
     /// Borrow the ID at a stable catalog index.
     pub fn rule_id(&self, index: RuleIndex) -> Option<&RuleId> {
-        self.rule_ids.get(index.get())
+        self.records.get(index.get()).map(|record| &record.rule_id)
     }
 
     /// Borrow compiled matcher plans.
@@ -208,9 +202,15 @@ mod tests {
     #[test]
     fn combined_catalog_moves_records_without_recompiling() {
         let combined = RuleCatalog::combine([make_catalog("a"), make_catalog("b")]).unwrap();
-        assert_eq!(combined.rule_ids.len(), 2);
+        assert_eq!(combined.rule_ids().count(), 2);
         assert_eq!(combined.records.len(), 2);
-        assert_eq!(combined.rule_ids[0].as_str(), "a:request");
-        assert_eq!(combined.rule_ids[1].as_str(), "b:request");
+        assert_eq!(
+            combined.rule_id(RuleIndex::new(0)).unwrap().as_str(),
+            "a:request"
+        );
+        assert_eq!(
+            combined.rule_id(RuleIndex::new(1)).unwrap().as_str(),
+            "b:request"
+        );
     }
 }

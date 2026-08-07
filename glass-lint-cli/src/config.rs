@@ -361,7 +361,7 @@ pub fn selected_linter(config: &Config) -> Result<Linter> {
     .map_err(|error| anyhow::anyhow!(error))?;
     tracing::debug!(
         target: "glass_lint::cli",
-        rules = linter.catalog().rule_ids().len(),
+        rules = linter.catalog().rule_count(),
         "linter built"
     );
     Ok(linter)
@@ -400,11 +400,13 @@ mod tests {
     #[test]
     fn obsidian_profile_combines_generic_and_provider_rules() {
         let linter = base_linter(Provider::Obsidian, RuleSelectionProfile::Heuristic);
-        let ids = linter.catalog().rule_ids();
+        let mut ids = linter.catalog().rule_ids();
 
-        assert!(ids.iter().any(|id| id.as_str() == "js:dynamic-code.eval"));
+        assert!(ids.any(|id| id.as_str() == "js:dynamic-code.eval"));
         assert!(
-            ids.iter()
+            linter
+                .catalog()
+                .rule_ids()
                 .any(|id| id.as_str() == "obsidian:markdown.code-block-processor")
         );
     }

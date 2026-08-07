@@ -4,7 +4,7 @@ pub(crate) use super::{
     lower_event, lower_identity,
 };
 use crate::{
-    Severity,
+    RuleId, Severity,
     api::{
         classification::{RuleEvidenceCapacity, RuleIndex},
         rule::{Confidence, MatcherBuildError},
@@ -79,6 +79,7 @@ impl<'a> CompiledRuleSelection<'a> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct CompiledRuleRecord {
+    pub(crate) rule_id: RuleId,
     pub(crate) description: String,
     pub(crate) query_explanations: Vec<String>,
     pub(crate) severity: Severity,
@@ -87,9 +88,13 @@ pub(crate) struct CompiledRuleRecord {
 }
 
 impl CompiledRuleRecord {
-    pub(crate) fn new(rule: &crate::api::rule::Rule) -> Result<Self, MatcherBuildError> {
+    pub(crate) fn new(
+        rule_id: RuleId,
+        rule: &crate::api::rule::Rule,
+    ) -> Result<Self, MatcherBuildError> {
         let plan = CompiledMatcherPlan::compile(rule.queries())?;
         Ok(Self {
+            rule_id,
             description: rule.description().to_owned(),
             query_explanations: rule
                 .queries()
@@ -113,6 +118,7 @@ mod tests {
             CompiledMatcherPlan::compile(&[EventQuery::call_global("fetch").unwrap().into_query()])
                 .unwrap();
         CompiledRuleRecord {
+            rule_id: RuleId::parse("test:rule").unwrap(),
             description: "test".into(),
             query_explanations: Vec::new(),
             severity: Severity::Warning,

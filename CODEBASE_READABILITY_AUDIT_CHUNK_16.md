@@ -22,7 +22,7 @@ identity-storage findings from Chunks 4, 8, 11, and 14 were not repeated.
 
 ### Catalog and selection ownership
 
-#### [ ] READ-074 — Store catalog identity and compiled records under one index owner
+#### [x] READ-074 — Store catalog identity and compiled records under one index owner
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -53,7 +53,12 @@ Preserve stable index order across `combine`, duplicate fully qualified ID
 rejection, confidence-based selection, compiled-plan immutability, and the
 absence of source query declarations after compilation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made each compiled catalog record own its fully qualified
+`RuleId`, so `RuleCatalog` now stores one stable ordered record domain plus
+its lookup map rather than parallel records and ID vectors. Selection,
+metadata, combination, and provider callers use catalog-owned accessors while
+preserving index order, duplicate rejection, and compiled-plan immutability.
+Verified with `make fmt && make ci`.
 
 ### Local execution and batch lifecycle
 

@@ -310,25 +310,21 @@ mod tests {
         assert!(
             js_catalog()
                 .rule_ids()
-                .iter()
                 .all(|rule| rule.as_str().starts_with("js:"))
         );
         assert!(
             browser_catalog()
                 .rule_ids()
-                .iter()
                 .all(|rule| rule.as_str().starts_with("browser:"))
         );
         assert!(
             electron_catalog()
                 .rule_ids()
-                .iter()
                 .all(|rule| rule.as_str().starts_with("electron:"))
         );
         assert!(
             node_catalog()
                 .rule_ids()
-                .iter()
                 .all(|rule| rule.as_str().starts_with("node:"))
         );
         let environment = electron_environment();
