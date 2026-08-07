@@ -277,13 +277,14 @@ pub(crate) struct PhysicalPlan {
 
 impl PhysicalPlan {
     fn from_roots(roots: Box<[PhysicalRoot]>) -> Result<Self, PhysicalPlanValidationError> {
+        for root in &roots {
+            root.validate()?;
+        }
         let requirements = requirements_for_roots(&roots);
-        let plan = Self {
+        Ok(Self {
             roots,
             requirements,
-        };
-        validate_physical_plan(&plan)?;
-        Ok(plan)
+        })
     }
 
     pub(crate) fn try_new(
@@ -537,6 +538,7 @@ fn plan_lifecycle(
 
 // ── Validation ──────────────────────────────────────────────────────────
 
+#[cfg(test)]
 pub(crate) fn validate_physical_plan(
     plan: &PhysicalPlan,
 ) -> Result<(), PhysicalPlanValidationError> {

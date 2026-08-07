@@ -221,18 +221,22 @@ impl RuleEvidenceTable {
         self.values.get(rule.get()).map(Vec::as_slice)
     }
 
+    fn items_mut(
+        &mut self,
+        rule: RuleIndex,
+    ) -> Result<&mut Vec<ClassificationEvidence>, RuleEvidenceError> {
+        let capacity = self.values.len();
+        self.values
+            .get_mut(rule.get())
+            .ok_or(RuleEvidenceError::RuleOutOfRange { rule, capacity })
+    }
+
     pub(crate) fn record(
         &mut self,
         rule: RuleIndex,
         evidence: ClassificationEvidence,
     ) -> Result<(), RuleEvidenceError> {
-        let Some(items) = self.values.get_mut(rule.get()) else {
-            return Err(RuleEvidenceError::RuleOutOfRange {
-                rule,
-                capacity: self.values.len(),
-            });
-        };
-        items.push(evidence);
+        self.items_mut(rule)?.push(evidence);
         Ok(())
     }
 
@@ -241,13 +245,7 @@ impl RuleEvidenceTable {
         rule: RuleIndex,
         evidence: impl IntoIterator<Item = ClassificationEvidence>,
     ) -> Result<(), RuleEvidenceError> {
-        let Some(items) = self.values.get_mut(rule.get()) else {
-            return Err(RuleEvidenceError::RuleOutOfRange {
-                rule,
-                capacity: self.values.len(),
-            });
-        };
-        items.extend(evidence);
+        self.items_mut(rule)?.extend(evidence);
         Ok(())
     }
 
@@ -279,12 +277,7 @@ impl RuleEvidenceTable {
         rule: RuleIndex,
         event: u32,
     ) -> Result<(), RuleEvidenceError> {
-        let Some(items) = self.values.get_mut(rule.get()) else {
-            return Err(RuleEvidenceError::RuleOutOfRange {
-                rule,
-                capacity: self.values.len(),
-            });
-        };
+        let items = self.items_mut(rule)?;
         for evidence in items {
             if evidence
                 .occurrences()
@@ -302,13 +295,7 @@ impl RuleEvidenceTable {
         rule: RuleIndex,
         evidence: Vec<ClassificationEvidence>,
     ) -> Result<(), RuleEvidenceError> {
-        let Some(items) = self.values.get_mut(rule.get()) else {
-            return Err(RuleEvidenceError::RuleOutOfRange {
-                rule,
-                capacity: self.values.len(),
-            });
-        };
-        *items = evidence;
+        *self.items_mut(rule)? = evidence;
         Ok(())
     }
 

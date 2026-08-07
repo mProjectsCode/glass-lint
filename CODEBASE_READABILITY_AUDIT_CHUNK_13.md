@@ -179,7 +179,7 @@ verification for the boundary changes.
 
 ### Validation and derivation ownership
 
-#### [ ] CROSS-004 — Assign each phase invariant one sealing transition
+#### [x] CROSS-004 — Assign each phase invariant one sealing transition
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -217,6 +217,13 @@ phase boundary.
 
 **Related local findings:** Chunk 4 READ-004, Chunk 5 READ-001/003, Chunk 6
 READ-005, Chunk 8 READ-006/007, Chunk 9 READ-003/006, and Chunk 12 READ-002.
+
+**Fix Applied:** `PhysicalPlan::from_roots` is now the production sealer that
+validates roots and derives requirements once; the broader plan validator is
+retained only for malformed-state tests. `RuleEvidenceTable` centralizes
+rule-capacity admission in one private mutation primitive. The earlier atomic
+per-path artifact outcome and derived-capability transitions complete the same
+ownership pattern. Verified with `make fmt && make ci`.
 
 ### Identity ownership
 
