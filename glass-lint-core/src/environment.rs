@@ -22,13 +22,13 @@ pub struct Environment {
     inner: Arc<EnvironmentInner>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct EnvironmentInner {
     global_bindings: BTreeSet<SmolStr>,
     global_objects: BTreeMap<SmolStr, GlobalObjectMembers>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 /// Membership policy for a global object's promoted identities.
 enum GlobalObjectMembers {
     /// This object promotes all currently configured globals as callable
@@ -38,6 +38,40 @@ enum GlobalObjectMembers {
     /// Only the listed names are promoted from this foreign-realm object.
     /// Used for window-like objects from another security context.
     Restricted(BTreeSet<SmolStr>),
+}
+
+impl GlobalObjectMembers {
+    fn write_fingerprint_bytes(&self, fp: &mut Fingerprint) {
+        match self {
+            Self::ConfiguredGlobals => fp.write(&[0u8]),
+            Self::Restricted(member_set) => {
+                fp.write(&[1u8]);
+                fp.write(&(member_set.len() as u64).to_le_bytes());
+                for member in member_set {
+                    fp.write(member.as_bytes());
+                    fp.write(&[0u8]);
+                }
+            }
+        }
+    }
+}
+
+impl EnvironmentInner {
+    /// Write the canonical identity used by equality and artifact caching.
+    /// BTree iteration keeps the representation deterministic.
+    fn write_fingerprint_bytes(&self, fp: &mut Fingerprint) {
+        fp.write(&(self.global_bindings.len() as u64).to_le_bytes());
+        for name in &self.global_bindings {
+            fp.write(name.as_bytes());
+            fp.write(&[0u8]);
+        }
+        fp.write(&(self.global_objects.len() as u64).to_le_bytes());
+        for (name, members) in &self.global_objects {
+            fp.write(name.as_bytes());
+            fp.write(&[0u8]);
+            members.write_fingerprint_bytes(fp);
+        }
+    }
 }
 
 impl Clone for Environment {
@@ -384,32 +418,7 @@ impl Environment {
     /// directly into the running fingerprint. Iteration order follows
     /// BTreeSet/BTreeMap keys, which is stable.
     pub(crate) fn write_fingerprint_bytes(&self, fp: &mut Fingerprint) {
-        let inner = self.inner();
-        // Global bindings (sorted).
-        fp.write(&(inner.global_bindings.len() as u64).to_le_bytes());
-        for name in &inner.global_bindings {
-            fp.write(name.as_bytes());
-            fp.write(&[0u8]);
-        }
-        // Global objects (sorted by name).
-        fp.write(&(inner.global_objects.len() as u64).to_le_bytes());
-        for (name, members) in &inner.global_objects {
-            fp.write(name.as_bytes());
-            fp.write(&[0u8]);
-            match members {
-                GlobalObjectMembers::ConfiguredGlobals => {
-                    fp.write(&[0u8]);
-                }
-                GlobalObjectMembers::Restricted(member_set) => {
-                    fp.write(&[1u8]);
-                    fp.write(&(member_set.len() as u64).to_le_bytes());
-                    for member in member_set {
-                        fp.write(member.as_bytes());
-                        fp.write(&[0u8]);
-                    }
-                }
-            }
-        }
+        self.inner().write_fingerprint_bytes(fp);
     }
 }
 

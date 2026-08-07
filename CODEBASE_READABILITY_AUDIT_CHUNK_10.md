@@ -21,7 +21,7 @@ API silently chooses default limits.
 
 ### Configuration and environment identity
 
-#### [ ] READ-001 — Environment equality and cache fingerprinting encode the same state independently
+#### [x] READ-001 — Environment equality and cache fingerprinting encode the same state independently
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -46,7 +46,12 @@ and all fields that affect semantic resolution in the identity. Preserve the
 existing collision-safe `ArtifactCacheKey` equality behavior and cache
 versioning.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The canonical fingerprint encoding now belongs to private
+`EnvironmentInner` and its `GlobalObjectMembers` policy, alongside derived
+structural equality; `Environment` delegates cache-key encoding to that owner.
+Deterministic ordering, configured versus restricted object identity, and
+collision-safe cache-key equality are unchanged. Verified with `make fmt &&
+make ci`.
 
 #### [ ] READ-002 — Global-object path matching duplicates one semantic relation across two path types
 
