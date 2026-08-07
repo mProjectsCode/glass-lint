@@ -240,5 +240,5 @@ fn write_adapter_details(tool: &str, result: &ToolResult, out: &mut String) {
 }
 
 pub fn serialize_analysis_report(report: &AnalysisReport) -> Result<String> {
-    Ok(serde_json::to_string_pretty(report)?)
+    Ok(report.to_json_pretty()?)
 }

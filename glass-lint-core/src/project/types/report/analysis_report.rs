@@ -84,6 +84,13 @@ impl AnalysisReport {
         self.completion
     }
 
+    /// Serialize this finalized report using the stable machine-readable
+    /// schema owned by core.
+    #[cfg(feature = "serde")]
+    pub fn to_json_pretty(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(self)
+    }
+
     /// Append one validated report's contents losslessly. Callers validate
     /// schema and tool identity before merging.
     pub(crate) fn merge(mut self, other: Self) -> Self {

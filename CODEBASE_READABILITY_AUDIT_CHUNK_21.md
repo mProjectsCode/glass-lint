@@ -126,7 +126,7 @@ This closes the duplicate identity path identified by the finding.
 
 ### Machine report boundary
 
-#### [ ] READ-105 — Give finalized machine reports one serialization boundary
+#### [x] READ-105 — Give finalized machine reports one serialization boundary
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -146,7 +146,15 @@ crate, format selection in the CLI, and profile envelopes/digests in the
 harness; keep schema/version checks and deterministic ordering in the core
 contract.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the core-owned `AnalysisReport::to_json_pretty` machine
+serialization entry point behind the existing `serde` feature. CLI JSON
+output and harness report serialization now use that boundary; pretty output,
+profile envelopes, and field-specific evidence digests remain local to their
+own crates.
+
+**Verified:** `make fmt && make ci` (workspace check, clippy with warnings as
+errors, 811 core tests, doctests, E2E/rule harnesses, rules documentation
+check, and examples).
 
 ### Metrics ownership
 

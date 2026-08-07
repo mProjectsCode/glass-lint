@@ -10,6 +10,7 @@ hashbrown.workspace = true
 petgraph.workspace = true
 rayon.workspace = true
 serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
 tracing.workspace = true
 swc_common.workspace = true
 swc_ecma_ast.workspace = true
@@ -23,7 +24,12 @@ smol_str.workspace = true
 
 [features]
 default = []
-serde = ["dep:serde", "smol_str/serde", "glass-lint-datastructures/serde"]
+serde = [
+    "dep:serde",
+    "dep:serde_json",
+    "smol_str/serde",
+    "glass-lint-datastructures/serde",
+]
 telemetry = []
 
 [dev-dependencies]

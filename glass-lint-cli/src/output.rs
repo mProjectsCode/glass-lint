@@ -211,7 +211,7 @@ fn write_report_to<W: Write>(config: &Config, files: &[FileOutput], out: &mut W)
 }
 
 fn write_json<W: Write>(report: &AnalysisReport, out: &mut W) -> Result<()> {
-    serde_json::to_writer_pretty(&mut *out, &report)?;
+    out.write_all(report.to_json_pretty()?.as_bytes())?;
     writeln!(out)?;
     Ok(())
 }
@@ -260,7 +260,7 @@ fn write_project_report_to<W: Write>(
     let summary = report.summary();
     match config.cli.output {
         OutputFormat::Json => {
-            serde_json::to_writer_pretty(&mut *out, report)?;
+            out.write_all(report.to_json_pretty()?.as_bytes())?;
             writeln!(out)?;
         }
         OutputFormat::Pretty => write_project_pretty(config, report, summary, sources, out)?,
