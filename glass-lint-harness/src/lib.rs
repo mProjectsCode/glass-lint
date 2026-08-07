@@ -16,10 +16,11 @@ mod types;
 pub use adapters::{Adapter, ExternalAdapter, GlassLintAdapter};
 pub use cases::load_cases;
 pub use profile::{
-    ProfileCatalogProvider, ProfileConfig, ProfileConfigBuilder, ProfileCorpusIdentity,
-    ProfileOperationCounts, ProfilePhaseTimings, ProfileRepetitionSummary, ProfileSummary,
-    ProfileWorkload, ProfileWorkloadIdentity, ProfileWorkloadSummary, RuleSelectionProfile,
-    discover_profile_files, ensure_profile_correctness_match, run_profile,
+    ProfileAnalysisLimits, ProfileCatalogProvider, ProfileConfig, ProfileConfigBuilder,
+    ProfileCorpusIdentity, ProfileExecutionIdentity, ProfileOperationCounts, ProfilePhaseTimings,
+    ProfileProjectLoadIdentity, ProfileRepetitionSummary, ProfileSummary, ProfileWorkload,
+    ProfileWorkloadIdentity, ProfileWorkloadSummary, RuleSelectionProfile, discover_profile_files,
+    ensure_profile_correctness_match, run_profile,
 };
 pub use profile_manifest::{
     ProfileManifest, ProfileManifestEntry, VerifiedProfileManifest, create_profile_manifest,

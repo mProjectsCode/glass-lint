@@ -41,6 +41,7 @@ pub(super) fn file_profile(
                 ProfileCorpusIdentity::Unverified,
                 ProfileCorpusIdentity::Verified,
             ),
+            execution: config.execution_identity(),
         },
         setup_duration: corpus.setup_duration,
         measured_elapsed: lint_elapsed,

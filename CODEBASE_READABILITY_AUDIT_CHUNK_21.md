@@ -69,7 +69,7 @@ policy must not move into core.
 
 ### Profile configuration and identity
 
-#### [ ] READ-103 — Make limits, run configuration, and profiling identity one contract
+#### [x] READ-103 — Make limits, run configuration, and profiling identity one contract
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -90,7 +90,12 @@ identity digest. Let core and project continue to validate and charge their own
 budgets, and keep semantic and filesystem counters distinct rather than
 introducing a shared mutable budget implementation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `ProfileExecutionIdentity`, assembled once from the
+validated profile configuration, with provider/rule selection, worker and
+error policy, sampling controls, effective core analysis limits, and effective
+project-load defaults. All file, loader-project, and admitted-project profile
+summaries now carry the same explicit execution contract. Verified with
+`make fmt && make ci`.
 
 ### Source admission boundary
 

@@ -10,8 +10,9 @@ mod runner;
 mod types;
 
 pub use config::{
-    ProfileCatalogProvider, ProfileConfig, ProfileConfigBuilder, ProfileCorpusIdentity,
-    ProfileWorkload, ProfileWorkloadIdentity, RuleSelectionProfile,
+    ProfileAnalysisLimits, ProfileCatalogProvider, ProfileConfig, ProfileConfigBuilder,
+    ProfileCorpusIdentity, ProfileExecutionIdentity, ProfileProjectLoadIdentity, ProfileWorkload,
+    ProfileWorkloadIdentity, RuleSelectionProfile,
 };
 pub use corpus::{discover_profile_files, sample_paths};
 pub use runner::run_profile;
@@ -386,6 +387,36 @@ mod tests {
         let root = temp_root();
         let config = admitted_config(&root, 1);
         assert_eq!(config.workload, ProfileWorkload::AdmittedProject);
+    }
+
+    #[test]
+    fn execution_identity_records_effective_limits_and_run_policy() {
+        let root = temp_root();
+        let config = ProfileConfig::builder([root.to_owned()])
+            .provider(ProfileCatalogProvider::Both)
+            .mode(RuleSelectionProfile::Heuristic)
+            .rules(["js:network.request".into()])
+            .workers(NonZeroUsize::new(2).unwrap())
+            .sample(Some(3))
+            .seed(17)
+            .build()
+            .unwrap();
+
+        let identity = config.execution_identity();
+        assert_eq!(identity.provider, ProfileCatalogProvider::Both);
+        assert_eq!(identity.mode, RuleSelectionProfile::Heuristic);
+        assert_eq!(identity.rules, vec!["js:network.request"]);
+        assert_eq!(identity.workers, 2);
+        assert_eq!(identity.sample, Some(3));
+        assert_eq!(identity.seed, 17);
+        assert_eq!(
+            identity.analysis_limits.semantic_operations,
+            glass_lint_core::AnalysisLimits::default().semantic_operations()
+        );
+        assert_eq!(
+            identity.project_load.max_files,
+            glass_lint_project::ValidatedProjectLoadOptions::default().max_files()
+        );
     }
 
     #[test]

@@ -1,6 +1,8 @@
 use std::{num::NonZeroUsize, path::PathBuf};
 
 use anyhow::{Result, bail};
+use glass_lint_core::AnalysisLimits;
+use glass_lint_project::ValidatedProjectLoadOptions;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProfileCatalogProvider {
@@ -32,6 +34,46 @@ pub enum ProfileCorpusIdentity {
 pub struct ProfileWorkloadIdentity {
     pub mode: ProfileWorkload,
     pub corpus: ProfileCorpusIdentity,
+    pub execution: ProfileExecutionIdentity,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProfileExecutionIdentity {
+    pub provider: ProfileCatalogProvider,
+    pub mode: RuleSelectionProfile,
+    pub rules: Vec<String>,
+    pub workers: usize,
+    pub continue_on_error: bool,
+    pub sample: Option<usize>,
+    pub seed: u64,
+    pub analysis_limits: ProfileAnalysisLimits,
+    pub project_load: ProfileProjectLoadIdentity,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProfileAnalysisLimits {
+    pub syntax_depth: usize,
+    pub semantic_operations: usize,
+    pub effect_operations: usize,
+    pub evidence_items: usize,
+    pub link_operations: usize,
+    pub flow_operations: usize,
+    pub trace_nodes: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProfileProjectLoadIdentity {
+    pub max_files: usize,
+    pub max_requests: usize,
+    pub max_source_bytes: u64,
+    pub max_project_source_bytes: u64,
+    pub max_visited_entries: usize,
+    pub max_timeout_ms: u64,
+    pub max_config_count: usize,
+    pub max_config_depth: usize,
+    pub extensions: Vec<String>,
+    pub extension_aliases: Vec<(String, Vec<String>)>,
+    pub follow_symlinks: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -77,6 +119,47 @@ impl ProfileConfig {
                 rules: Vec::new(),
                 workload: ProfileWorkload::Files,
                 manifest: None,
+            },
+        }
+    }
+
+    pub(crate) fn execution_identity(&self) -> ProfileExecutionIdentity {
+        let limits = AnalysisLimits::default();
+        let load = ValidatedProjectLoadOptions::default();
+        let mut rules = self.rules.clone();
+        rules.sort();
+        ProfileExecutionIdentity {
+            provider: self.provider,
+            mode: self.mode,
+            rules,
+            workers: self.workers.get(),
+            continue_on_error: self.continue_on_error,
+            sample: self.sample,
+            seed: self.seed,
+            analysis_limits: ProfileAnalysisLimits {
+                syntax_depth: limits.syntax_depth(),
+                semantic_operations: limits.semantic_operations(),
+                effect_operations: limits.effect_operations(),
+                evidence_items: limits.evidence_items(),
+                link_operations: limits.link_operations(),
+                flow_operations: limits.flow_operations(),
+                trace_nodes: limits.trace_nodes(),
+            },
+            project_load: ProfileProjectLoadIdentity {
+                max_files: load.max_files(),
+                max_requests: load.max_requests(),
+                max_source_bytes: load.max_source_bytes(),
+                max_project_source_bytes: load.max_project_source_bytes(),
+                max_visited_entries: load.max_visited_entries(),
+                max_timeout_ms: load.max_timeout_ms(),
+                max_config_count: load.max_config_count(),
+                max_config_depth: load.max_config_depth(),
+                extensions: load.extensions().map(str::to_owned).collect(),
+                extension_aliases: load
+                    .extension_aliases()
+                    .map(|(extension, aliases)| (extension.to_owned(), aliases.to_vec()))
+                    .collect(),
+                follow_symlinks: load.follow_symlinks(),
             },
         }
     }

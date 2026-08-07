@@ -70,6 +70,7 @@ pub(super) fn run(config: &ProfileConfig) -> Result<ProfileSummary> {
                 ProfileCorpusIdentity::Unverified,
                 ProfileCorpusIdentity::Verified,
             ),
+            execution: config.execution_identity(),
         },
         inputs: prepared.len(),
         bytes,

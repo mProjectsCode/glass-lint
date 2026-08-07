@@ -39,6 +39,7 @@ pub(super) fn run(config: &ProfileConfig) -> Result<ProfileSummary> {
                 ProfileCorpusIdentity::Unverified,
                 ProfileCorpusIdentity::Verified,
             ),
+            execution: config.execution_identity(),
         },
         setup_duration: phases.discovery() + phases.reads(),
         measured_elapsed: phases.parse_and_local_analysis()
