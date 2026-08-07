@@ -111,7 +111,7 @@ fail-closed behavior when restoration or the operation budget fails.
 
 ### Semantic path admission
 
-#### [ ] READ-039 — Share semantic-path admission between joins and loops
+#### [x] READ-039 — Share semantic-path admission between joins and loops
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -138,7 +138,10 @@ join semantics, alternative limits, deterministic collection order, semantic
 object-ID normalization, and the rule that failed or exhausted alternatives
 cannot establish a definite witness.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `ObjectFlowProjector::admit_path` as the shared owner
+of operation charging, environment restoration, semantic snapshot admission,
+and incomplete transitions. Joins retain source-order vectors while loops
+retain replay and exit sets; both now consume the same typed admission result.
 
 ### Local flow evidence sink
 

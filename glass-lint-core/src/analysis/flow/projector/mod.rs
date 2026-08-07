@@ -21,8 +21,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use glass_lint_datastructures::{Budget, NameTable};
 use loops::LoopFixedPoint;
 use state::{
-    AbruptExit, ControlFrame, ControlStack, FlowEnvironment, FlowEvidence, FlowStateTable,
-    PropertyWriteUpdate,
+    AbruptExit, ControlFrame, ControlStack, FlowEnvironment, FlowEvidence, FlowSemanticSnapshot,
+    FlowStateTable, PropertyWriteUpdate,
 };
 
 use crate::{
@@ -49,6 +49,15 @@ use crate::{
 enum EmissionMode {
     Emit,
     Replay,
+}
+
+/// Result of admitting one environment into a semantic-path set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PathAdmission {
+    Admitted,
+    Duplicate,
+    RestoreFailed,
+    Exhausted,
 }
 
 /// Exhaustion state and bounded counters returned by local flow projection.
@@ -614,7 +623,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             return;
         }
 
-        let outcome = fixed_point.collect_exits(&mut self.flow_state, &mut self.run);
+        let outcome = fixed_point.collect_exits(self);
         if !outcome.complete {
             self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
         }
@@ -694,30 +703,48 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         self.flow_state.object_for_any(&aliases)
     }
 
+    /// Charge, restore, canonicalize, and deduplicate one environment.
+    ///
+    /// Restoration failure marks the run incomplete, and neither failure mode
+    /// can establish a complete witness. The caller retains ownership of the
+    /// admitted environment so joins and loop frontiers can preserve their
+    /// distinct collection policies.
+    pub(super) fn admit_path(
+        &mut self,
+        seen: &mut BTreeSet<FlowSemanticSnapshot>,
+        environment: FlowEnvironment,
+    ) -> PathAdmission {
+        if !self.run.charge_operation() {
+            return PathAdmission::Exhausted;
+        }
+        if !self.flow_state.restore(environment) {
+            self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
+            return PathAdmission::RestoreFailed;
+        }
+        if seen.insert(self.flow_state.semantic_snapshot()) {
+            PathAdmission::Admitted
+        } else {
+            PathAdmission::Duplicate
+        }
+    }
+
     pub(super) fn join_paths(&mut self, mut paths: Vec<FlowEnvironment>) {
         self.observe_alternatives(paths.len());
         paths.retain(FlowEnvironment::is_reachable);
         let mut unique = Vec::with_capacity(paths.len());
-        let mut seen_snapshots = Vec::with_capacity(paths.len());
-        let mut first = true;
+        let mut seen_snapshots = BTreeSet::new();
         for path in paths {
-            if !self.run.charge_operation() {
-                break;
+            match self.admit_path(&mut seen_snapshots, path) {
+                PathAdmission::Exhausted => break,
+                PathAdmission::RestoreFailed | PathAdmission::Duplicate => {}
+                PathAdmission::Admitted => {
+                    if seen_snapshots.len() > 1 {
+                        self.run.coalescing_comparisons =
+                            self.run.coalescing_comparisons.saturating_add(1);
+                    }
+                    unique.push(path);
+                }
             }
-            if !self.flow_state.restore(path) {
-                self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
-                continue;
-            }
-            let snapshot = self.flow_state.semantic_snapshot();
-            if seen_snapshots.iter().any(|seen| seen == &snapshot) {
-                continue;
-            }
-            if !first {
-                self.run.coalescing_comparisons = self.run.coalescing_comparisons.saturating_add(1);
-            }
-            first = false;
-            seen_snapshots.push(snapshot);
-            unique.push(path);
         }
         paths = unique;
         if paths.len() > self.run.limits.alternative_limit() {

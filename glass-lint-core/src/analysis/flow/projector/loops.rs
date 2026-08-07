@@ -10,23 +10,10 @@ use std::collections::BTreeSet;
 use crate::analysis::{
     facts::FactId,
     flow::projector::{
-        AlternativeCompleteness, FlowEnvironment, FlowStateTable, ObjectFlowProjector,
-        ProjectionRunState, state::FlowSemanticSnapshot,
+        AlternativeCompleteness, FlowEnvironment, ObjectFlowProjector, PathAdmission,
+        state::FlowSemanticSnapshot,
     },
 };
-
-/// Whether a loop environment was admitted to the next replay or exit set.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LoopAdmission {
-    /// The semantic shape was new and the environment was admitted.
-    Admitted,
-    /// The shape was already seen; nothing to admit.
-    Duplicate,
-    /// The environment could not be restored; the fixed point is incomplete.
-    RestoreFailed,
-    /// The operation budget is exhausted; admission must stop.
-    Exhausted,
-}
 
 /// Outcome of a bounded loop fixed-point computation.
 #[derive(Debug)]
@@ -86,26 +73,10 @@ impl LoopFixedPoint {
         }
     }
 
-    fn admit_into(
-        shapes: &mut BTreeSet<FlowSemanticSnapshot>,
-        flow_state: &mut FlowStateTable,
-        run: &mut ProjectionRunState,
-        environment: FlowEnvironment,
-        complete: &mut bool,
-    ) -> LoopAdmission {
-        let admission = if !run.charge_operation() {
-            LoopAdmission::Exhausted
-        } else if !flow_state.restore(environment) {
-            run.alternatives_complete = AlternativeCompleteness::Incomplete;
-            LoopAdmission::RestoreFailed
-        } else if shapes.insert(flow_state.semantic_snapshot()) {
-            LoopAdmission::Admitted
-        } else {
-            LoopAdmission::Duplicate
-        };
+    fn incomplete(admission: PathAdmission, complete: &mut bool) -> PathAdmission {
         if matches!(
             admission,
-            LoopAdmission::Exhausted | LoopAdmission::RestoreFailed
+            PathAdmission::Exhausted | PathAdmission::RestoreFailed
         ) {
             *complete = false;
         }
@@ -116,33 +87,21 @@ impl LoopFixedPoint {
     /// been seen before.
     fn admit_replay(
         &mut self,
-        flow_state: &mut FlowStateTable,
-        run: &mut ProjectionRunState,
+        projector: &mut ObjectFlowProjector<'_, '_, '_>,
         environment: FlowEnvironment,
-    ) -> LoopAdmission {
-        Self::admit_into(
-            &mut self.seen,
-            flow_state,
-            run,
-            environment,
-            &mut self.complete,
-        )
+    ) -> PathAdmission {
+        let admission = projector.admit_path(&mut self.seen, environment);
+        Self::incomplete(admission, &mut self.complete)
     }
 
     /// Admit one exit environment to the final exit set.
     fn admit_exit(
         &mut self,
-        flow_state: &mut FlowStateTable,
-        run: &mut ProjectionRunState,
+        projector: &mut ObjectFlowProjector<'_, '_, '_>,
         environment: FlowEnvironment,
-    ) -> LoopAdmission {
-        Self::admit_into(
-            &mut self.exit_shapes,
-            flow_state,
-            run,
-            environment,
-            &mut self.complete,
-        )
+    ) -> PathAdmission {
+        let admission = projector.admit_path(&mut self.exit_shapes, environment);
+        Self::incomplete(admission, &mut self.complete)
     }
 
     /// Drive the fixed point until the replay frontier converges or the bounds
@@ -155,9 +114,7 @@ impl LoopFixedPoint {
     ) {
         let entrance = std::mem::take(&mut self.frontier);
         for environment in &entrance {
-            if self.admit_replay(&mut projector.flow_state, &mut projector.run, *environment)
-                == LoopAdmission::Exhausted
-            {
+            if self.admit_replay(projector, *environment) == PathAdmission::Exhausted {
                 break;
             }
         }
@@ -190,11 +147,10 @@ impl LoopFixedPoint {
 
             let mut next_frontier = Vec::new();
             for environment in candidate {
-                match self.admit_replay(&mut projector.flow_state, &mut projector.run, environment)
-                {
-                    LoopAdmission::Admitted => next_frontier.push(environment),
-                    LoopAdmission::Exhausted => break,
-                    LoopAdmission::Duplicate | LoopAdmission::RestoreFailed => {}
+                match self.admit_replay(projector, environment) {
+                    PathAdmission::Admitted => next_frontier.push(environment),
+                    PathAdmission::Exhausted => break,
+                    PathAdmission::Duplicate | PathAdmission::RestoreFailed => {}
                 }
             }
             self.frontier = next_frontier;
@@ -205,16 +161,15 @@ impl LoopFixedPoint {
     /// loop outcome.
     pub(super) fn collect_exits(
         &mut self,
-        flow_state: &mut FlowStateTable,
-        run: &mut ProjectionRunState,
+        projector: &mut ObjectFlowProjector<'_, '_, '_>,
     ) -> LoopFixedPointOutcome {
         let mut unique_exits = Vec::with_capacity(self.exits.len());
         let exits = std::mem::take(&mut self.exits);
         for environment in exits {
-            match self.admit_exit(flow_state, run, environment) {
-                LoopAdmission::Admitted => unique_exits.push(environment),
-                LoopAdmission::Exhausted => break,
-                LoopAdmission::Duplicate | LoopAdmission::RestoreFailed => {}
+            match self.admit_exit(projector, environment) {
+                PathAdmission::Admitted => unique_exits.push(environment),
+                PathAdmission::Exhausted => break,
+                PathAdmission::Duplicate | PathAdmission::RestoreFailed => {}
             }
         }
         LoopFixedPointOutcome {
