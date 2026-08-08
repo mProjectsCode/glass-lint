@@ -193,7 +193,7 @@ deliberate literal identities through `EventQuery::import_exact`; package and
 exact matching are no longer presented as one incomplete abstraction.
 Verified with `make fmt && make ci`.
 
-#### [ ] READ-006 — Argument-index validity is checked in several builders and reconstructed as a primitive
+#### [x] READ-006 — Argument-index validity is checked in several builders and reconstructed as a primitive
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -222,7 +222,11 @@ Delete the repeated casts and `expect` after the conversion is centralized.
 Preserve the maximum index and per-group/per-predicate budgets, canonical
 ordering, public `get`/`index` behavior, and the existing error variant.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ArgumentIndex::try_from_usize` is now the single checked
+conversion from public positions. `ArgumentConstraint` stores the validated
+newtype directly, and event, lifecycle, and grouped-constraint builders pass
+that type through without repeated bound checks, primitive storage, or cast
+back-construction. Verified with `make fmt && make ci`.
 
 #### [ ] READ-007 — `Any` composition and compilation duplicate evidence-projection validation
 

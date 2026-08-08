@@ -463,14 +463,10 @@ impl EventRequirement {
         index: usize,
         matcher: impl Into<ArgumentMatcher>,
     ) -> Result<Self, QueryBuildError> {
-        if index > limits::MAX_ARGUMENT_INDEX {
-            return Err(QueryBuildError::InvalidArgumentIndex(index));
-        }
-        #[allow(clippy::cast_possible_truncation)]
-        let idx = index as u8;
+        let idx = ArgumentIndex::try_from_usize(index)?;
         Ok(Self {
             kind: EventRequirementKind::Argument {
-                index: ArgumentIndex::new_unchecked(idx),
+                index: idx,
                 matcher: matcher.into(),
             },
         })

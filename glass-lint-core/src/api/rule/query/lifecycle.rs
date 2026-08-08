@@ -103,9 +103,7 @@ impl LifecycleEventBuilder {
         index: usize,
         matcher: impl Into<ArgumentMatcher>,
     ) -> Result<Self, QueryBuildError> {
-        if index > limits::MAX_ARGUMENT_INDEX {
-            return Err(QueryBuildError::InvalidArgumentIndex(index));
-        }
+        let index = super::value::ArgumentIndex::try_from_usize(index)?;
         if let LifecycleEventKind::MemberCall { arguments, .. } = &mut self.event {
             let mut builder = ArgumentConstraintsBuilder::from_constraints(arguments)?;
             builder.push(index, matcher)?;

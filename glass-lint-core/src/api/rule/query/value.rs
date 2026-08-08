@@ -14,6 +14,15 @@ impl ArgumentIndex {
         Self(index)
     }
 
+    pub(crate) fn try_from_usize(index: usize) -> Result<Self, QueryBuildError> {
+        if index > limits::MAX_ARGUMENT_INDEX {
+            return Err(QueryBuildError::InvalidArgumentIndex(index));
+        }
+        let index =
+            u8::try_from(index).map_err(|_| QueryBuildError::InvalidArgumentIndex(index))?;
+        Ok(Self::new_unchecked(index))
+    }
+
     pub fn get(self) -> usize {
         self.0 as usize
     }
@@ -262,25 +271,24 @@ impl From<ValueMatcher> for ArgumentMatcher {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ArgumentConstraint {
-    index: usize,
+    index: ArgumentIndex,
     matcher: ArgumentMatcher,
 }
 
 impl ArgumentConstraint {
     pub fn new(index: ArgumentIndex, matcher: impl Into<ArgumentMatcher>) -> Self {
         Self {
-            index: index.get(),
+            index,
             matcher: matcher.into(),
         }
     }
 
     pub fn index(&self) -> usize {
-        self.index
+        self.index.get()
     }
 
-    #[allow(clippy::cast_possible_truncation)]
     pub fn arg_index(&self) -> ArgumentIndex {
-        ArgumentIndex::new_unchecked(self.index as u8)
+        self.index
     }
 
     pub fn predicate(&self) -> &ArgumentMatcher {
@@ -292,7 +300,7 @@ impl ArgumentConstraint {
 #[derive(Debug, Default)]
 pub(crate) struct ArgumentConstraintsBuilder {
     constraints: Vec<ArgumentConstraint>,
-    counts: BTreeMap<usize, usize>,
+    counts: BTreeMap<ArgumentIndex, usize>,
 }
 
 impl ArgumentConstraintsBuilder {
@@ -301,23 +309,20 @@ impl ArgumentConstraintsBuilder {
     ) -> Result<Self, QueryBuildError> {
         let mut builder = Self::default();
         for constraint in constraints {
-            builder.push(constraint.arg_index().get(), constraint.predicate().clone())?;
+            builder.push(constraint.arg_index(), constraint.predicate().clone())?;
         }
         Ok(builder)
     }
 
     pub(crate) fn push(
         &mut self,
-        index: usize,
+        index: ArgumentIndex,
         matcher: impl Into<ArgumentMatcher>,
     ) -> Result<(), QueryBuildError> {
-        if index > limits::MAX_ARGUMENT_INDEX {
-            return Err(QueryBuildError::InvalidArgumentIndex(index));
-        }
         let existing_count = self.counts.get(&index).copied().unwrap_or(0);
         if existing_count >= limits::MAX_PREDICATES_PER_ARGUMENT {
             return Err(QueryBuildError::ExcessivePredicates {
-                index,
+                index: index.get(),
                 count: existing_count.saturating_add(1),
             });
         }
@@ -327,12 +332,8 @@ impl ArgumentConstraintsBuilder {
             ));
         }
         *self.counts.entry(index).or_insert(0) += 1;
-        self.constraints.push(ArgumentConstraint::new(
-            ArgumentIndex::new_unchecked(
-                u8::try_from(index).expect("argument index was validated against the public limit"),
-            ),
-            matcher,
-        ));
+        self.constraints
+            .push(ArgumentConstraint::new(index, matcher));
         Ok(())
     }
 

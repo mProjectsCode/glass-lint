@@ -3,15 +3,11 @@
 use super::{
     ArgumentConstraintsBuilder, ArgumentIndex, ArgumentMatcher, EventQuery, EventSpec,
     IdentitySpec, ModuleSpecifierPattern, PRIVATE_NETWORK_LITERAL, QueryBuildError, QueryDecl,
-    ValueMatcher, checked_chain, checked_module_export, checked_module_name, checked_name, limits,
+    ValueMatcher, checked_chain, checked_module_export, checked_module_name, checked_name,
 };
 
 fn checked_argument_index(index: usize) -> Result<ArgumentIndex, QueryBuildError> {
-    if index > limits::MAX_ARGUMENT_INDEX {
-        return Err(QueryBuildError::InvalidArgumentIndex(index));
-    }
-    let index = u8::try_from(index).map_err(|_| QueryBuildError::InvalidArgumentIndex(index))?;
-    Ok(ArgumentIndex::new_unchecked(index))
+    ArgumentIndex::try_from_usize(index)
 }
 
 #[allow(clippy::cast_possible_truncation)]
@@ -283,7 +279,7 @@ impl EventQuery {
         matcher: impl Into<ArgumentMatcher>,
     ) -> Result<Self, QueryBuildError> {
         let mut builder = ArgumentConstraintsBuilder::from_constraints(&self.constraints)?;
-        builder.push(arg_idx.get(), matcher)?;
+        builder.push(arg_idx, matcher)?;
         self.constraints = builder.finish();
         Ok(self)
     }
