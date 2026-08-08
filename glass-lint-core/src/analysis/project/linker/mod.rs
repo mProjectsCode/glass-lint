@@ -24,6 +24,18 @@ use crate::{
     project::AnalysisDiagnostic,
 };
 
+enum SccPartitionState {
+    Pending,
+    Ready(SccPartition),
+    Rejected,
+}
+
+impl SccPartitionState {
+    fn is_ready(&self) -> bool {
+        matches!(self, Self::Ready(_))
+    }
+}
+
 // ---------------------------------------------------------------------------
 // ProjectLinker
 // ---------------------------------------------------------------------------
@@ -35,7 +47,7 @@ pub(super) struct ProjectLinker {
     modules: BTreeMap<ModuleId, ProjectModule>,
     resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
     graph: Option<NormalizedModuleGraph>,
-    scc_partition: SccPartition,
+    scc_partition: SccPartitionState,
     exports: ExportTable,
     lookup_session: LinkingSession,
     link_budget: BudgetTracker,
@@ -68,7 +80,7 @@ impl ProjectLinker {
             modules,
             resolutions,
             graph: None,
-            scc_partition: SccPartition::default(),
+            scc_partition: SccPartitionState::Pending,
             exports: ExportTable::default(),
             lookup_session: LinkingSession::new(link_limit),
             link_cycle_rounds: 0,
@@ -119,15 +131,20 @@ impl ProjectLinker {
             self.link_budget.mark_exhausted();
         }
         self.graph = Some(result.graph);
-        self.scc_partition = result.scc_partition;
+        self.scc_partition = match result.scc_partition {
+            Ok(partition) => SccPartitionState::Ready(partition),
+            Err(_error) => SccPartitionState::Rejected,
+        };
     }
 
     /// Build edges, resolve exports via SCC-DAG topological walk, validate
     /// imports, and canonicalize diagnostics.
     pub(super) fn build_graph_and_exports(&mut self) {
         self.collect_graph_edges();
-        self.resolve_export_table();
-        self.validate_imported_exports();
+        if self.scc_partition.is_ready() {
+            self.resolve_export_table();
+            self.validate_imported_exports();
+        }
         self.diagnostics
             .sort_by(|left, right| left.ordering_key().cmp(&right.ordering_key()));
         self.diagnostics.dedup();

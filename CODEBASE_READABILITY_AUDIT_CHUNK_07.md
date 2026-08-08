@@ -16,7 +16,7 @@ resolver also carries an unnecessary single-implementation trait boundary.
 
 ### Graph construction and linker completion
 
-#### [ ] READ-025 — Preserve graph-limit completion in the linker state
+#### [x] READ-025 — Preserve graph-limit completion in the linker state
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -42,7 +42,12 @@ incomplete state. Preserve deterministic SCC order, bounded fail-closed
 identities, and the existing project-level linking diagnostic for both budget
 causes.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced default SCC fallback with a typed `GraphBuildError`
+and an explicit linker partition state that distinguishes pending, ready, and
+rejected graph phases. Oversized SCCs now record the project linking-budget
+status before export resolution, retain normalized graph metadata, and skip
+unproved export resolution and import validation. A 4,097-module cycle
+regression covers the typed rejection and stable project diagnostic.
 
 ### Project matcher query error surface
 

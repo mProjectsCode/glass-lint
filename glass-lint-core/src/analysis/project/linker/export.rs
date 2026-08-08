@@ -3,6 +3,7 @@
 
 use smol_str::{SmolStr, ToSmolStr};
 
+use super::SccPartitionState;
 use crate::{
     analysis::{
         LinkedModuleTarget, ModuleId,
@@ -26,7 +27,11 @@ impl ProjectLinker {
     /// to earlier SCCs and are already settled. Multi-node SCCs use a
     /// local fixed-point bounded per cycle.
     pub(super) fn resolve_export_table(&mut self) {
-        let partition = std::mem::take(&mut self.scc_partition);
+        let SccPartitionState::Ready(partition) =
+            std::mem::replace(&mut self.scc_partition, SccPartitionState::Pending)
+        else {
+            return;
+        };
         let mut total_cycle_rounds = 0usize;
 
         for scc in partition.ordered_components() {
@@ -39,7 +44,7 @@ impl ProjectLinker {
 
         self.link_cycle_rounds = total_cycle_rounds;
         let has_components = !partition.is_empty();
-        self.scc_partition = partition;
+        self.scc_partition = SccPartitionState::Ready(partition);
 
         if has_components && self.link_budget.is_exhausted() {
             self.status.record(

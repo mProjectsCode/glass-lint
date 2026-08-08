@@ -7,7 +7,9 @@ use glass_lint_datastructures::Budget;
 use crate::{
     analysis::{
         LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId,
-        lowering::status::{AnalysisStatus, IncompleteReason, ResolutionKind, StatusScope},
+        lowering::status::{
+            AnalysisComponent, AnalysisStatus, IncompleteReason, ResolutionKind, StatusScope,
+        },
         project::{
             model::MAX_SCC_SIZE,
             state::{ModuleGraph, NormalizedModuleGraph, SccPartition},
@@ -18,9 +20,14 @@ use crate::{
 
 pub(super) struct GraphBuild {
     pub(super) graph: NormalizedModuleGraph,
-    pub(super) scc_partition: SccPartition,
+    pub(super) scc_partition: Result<SccPartition, GraphBuildError>,
     pub(super) status: AnalysisStatus,
     pub(super) exhausted: bool,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(super) enum GraphBuildError {
+    SccTooLarge { limit: usize },
 }
 
 impl GraphBuild {
@@ -84,9 +91,19 @@ impl GraphBuild {
 
         let mut exhausted = edge_budget.exhausted();
         let graph = graph.normalize();
-        let scc_partition = graph.scc_partition(MAX_SCC_SIZE).unwrap_or_else(|| {
+        let scc_partition = graph.scc_partition(MAX_SCC_SIZE).ok_or_else(|| {
             exhausted = true;
-            SccPartition::default()
+            status.record(
+                StatusScope::Project,
+                IncompleteReason::BudgetExhausted {
+                    component: AnalysisComponent::Linking,
+                    limit: link_limit,
+                    observed: None,
+                },
+            );
+            GraphBuildError::SccTooLarge {
+                limit: MAX_SCC_SIZE,
+            }
         });
         Self {
             graph,
@@ -94,5 +111,65 @@ impl GraphBuild {
             status,
             exhausted,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::BTreeMap, sync::Arc};
+
+    use super::*;
+    use crate::{
+        AnalysisLimits, Environment,
+        analysis::{LoweredSource, Lowerer, local::LocatedSourceContext, lowering::SpanNormalizer},
+        project::{SourceFile, SourceText},
+    };
+
+    fn imported_module() -> ProjectModule {
+        let text = "import value from './dep.js';";
+        let source = SourceFile::new("module.js", text).unwrap();
+        let parsed = crate::parse_test_source(text, "module.js").unwrap();
+        let coordinates = SpanNormalizer::new(parsed.source_start, &SourceText::from(text));
+        let semantic = Lowerer::new(&Environment::default(), &AnalysisLimits::default())
+            .lower_program(&parsed.program, &coordinates);
+        ProjectModule::new(
+            ModuleId::new(0),
+            crate::analysis::LocalArtifact::from_lowered(LoweredSource::new(
+                LocatedSourceContext::new(&source),
+                Arc::new(semantic),
+            )),
+        )
+    }
+
+    #[test]
+    fn oversized_scc_is_rejected_with_linking_status() {
+        let template = imported_module();
+        let request = template.local().interface().requests().next().unwrap();
+        let count = MAX_SCC_SIZE + 1;
+        let mut modules = BTreeMap::new();
+        let mut resolutions = BTreeMap::new();
+
+        for index in 0..count {
+            let id = ModuleId::new(u32::try_from(index).unwrap());
+            let next = ModuleId::new(u32::try_from((index + 1) % count).unwrap());
+            modules.insert(id, ProjectModule::new(id, template.local().clone()));
+            resolutions.insert(
+                QualifiedRequestId::new(id, request.id()),
+                LinkedModuleTarget::Internal { id: next },
+            );
+        }
+
+        let result = GraphBuild::build(&modules, &resolutions, count);
+
+        assert!(matches!(
+            result.scc_partition,
+            Err(GraphBuildError::SccTooLarge {
+                limit: MAX_SCC_SIZE
+            })
+        ));
+        assert!(result.exhausted);
+        let (_, project) = result.status.diagnostics().into_parts();
+        assert_eq!(project.len(), 1);
+        assert_eq!(project[0].code().as_str(), "graph_link_budget_exhausted");
     }
 }
