@@ -55,7 +55,7 @@ and unwrap payload once. The call, path, and special-case index writers share
 that view without changing their separate indexing behavior. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-002 — Overlay remapping uses a boolean mode beside a parallel source tuple
+#### [x] READ-002 — Overlay remapping uses a boolean mode beside a parallel source tuple
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -85,7 +85,11 @@ delete the parallel mode argument. Preserve masking for every resolved source,
 fail-closed handling of ambiguous/unknown identities, the existing global-call
 promotion restriction, and the bounded operation count.
 
-**Fix Applied:** None so far.
+**Fix Applied:** A private borrowed `ModuleOverlaySource` now owns each source
+index, overlay bucket, and explicit `GlobalPromotion` policy. `remap` consumes
+that descriptor, removing the parallel tuple and bare boolean while preserving
+identity masking, fail-closed resolution, global-call promotion, and operation
+counts. Verified with `cargo test -p glass-lint-core` and `make fmt && make ci`.
 
 #### [ ] READ-003 — `EventIndexView` redispatches capabilities across many matches
 

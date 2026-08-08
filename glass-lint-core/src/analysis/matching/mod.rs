@@ -52,6 +52,19 @@ pub(in crate::analysis) enum ModuleOverlayKind {
     Constructor,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum GlobalPromotion {
+    Allowed,
+    Disabled,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ModuleOverlaySource<'a> {
+    occurrences: &'a ModuleOccurrences,
+    kind: ModuleOverlayKind,
+    global_promotion: GlobalPromotion,
+}
+
 #[derive(Clone, Debug, Default)]
 struct ModuleOccurrenceOverlay<'a> {
     masked: std::collections::BTreeSet<ModuleExportKey>,
@@ -67,14 +80,12 @@ pub(in crate::analysis) struct LinkedOccurrenceView<'a> {
 impl<'a> ModuleOccurrenceOverlay<'a> {
     fn remap(
         &mut self,
-        source: &'a ModuleOccurrences,
-        kind: ModuleOverlayKind,
-        promote_globals: bool,
+        source: ModuleOverlaySource<'a>,
         identities: &ModuleIdentityMap,
     ) -> (usize, Vec<(SmolStr, &'a [Occurrence])>) {
         let mut operations = 0usize;
         let mut globals = Vec::new();
-        source.for_each_bucket(|key, occurrences| {
+        source.occurrences.for_each_bucket(|key, occurrences| {
             operations = operations.saturating_add(1);
             let Some(identity) = LinkedOccurrenceView::identity_for(identities, key) else {
                 return;
@@ -82,12 +93,14 @@ impl<'a> ModuleOccurrenceOverlay<'a> {
             self.masked.insert(key.clone());
             match identity {
                 ExportResolution::External { module, export } => {
-                    self.buckets_mut(kind)
+                    self.buckets_mut(source.kind)
                         .entry(ModuleExportKey::new(module, export))
                         .or_default()
                         .push(occurrences);
                 }
-                ExportResolution::Global { name } if promote_globals => {
+                ExportResolution::Global { name }
+                    if source.global_promotion == GlobalPromotion::Allowed =>
+                {
                     globals.push((name, occurrences));
                 }
                 ExportResolution::Global { .. }
@@ -156,34 +169,34 @@ impl<'a> LinkedOccurrenceView<'a> {
     ) -> (Self, usize) {
         let mut view = Self::default();
         let mut operations = 0usize;
-        for (source, kind, promote_globals) in [
-            (
-                indexes.call_indexes.module_calls(),
-                ModuleOverlayKind::Call,
-                true,
-            ),
-            (
-                indexes.members.module_calls(),
-                ModuleOverlayKind::MemberCall,
-                false,
-            ),
-            (
-                indexes.members.module_reads(),
-                ModuleOverlayKind::MemberRead,
-                false,
-            ),
-            (
-                indexes.constructions.module_classes(),
-                ModuleOverlayKind::Class,
-                false,
-            ),
-            (
-                indexes.constructions.module_constructors(),
-                ModuleOverlayKind::Constructor,
-                false,
-            ),
+        for source in [
+            ModuleOverlaySource {
+                occurrences: indexes.call_indexes.module_calls(),
+                kind: ModuleOverlayKind::Call,
+                global_promotion: GlobalPromotion::Allowed,
+            },
+            ModuleOverlaySource {
+                occurrences: indexes.members.module_calls(),
+                kind: ModuleOverlayKind::MemberCall,
+                global_promotion: GlobalPromotion::Disabled,
+            },
+            ModuleOverlaySource {
+                occurrences: indexes.members.module_reads(),
+                kind: ModuleOverlayKind::MemberRead,
+                global_promotion: GlobalPromotion::Disabled,
+            },
+            ModuleOverlaySource {
+                occurrences: indexes.constructions.module_classes(),
+                kind: ModuleOverlayKind::Class,
+                global_promotion: GlobalPromotion::Disabled,
+            },
+            ModuleOverlaySource {
+                occurrences: indexes.constructions.module_constructors(),
+                kind: ModuleOverlayKind::Constructor,
+                global_promotion: GlobalPromotion::Disabled,
+            },
         ] {
-            let (count, globals) = view.module.remap(source, kind, promote_globals, identities);
+            let (count, globals) = view.module.remap(source, identities);
             operations += count;
             for (name, occurrences) in globals {
                 view.global_calls.entry(name).or_default().push(occurrences);
