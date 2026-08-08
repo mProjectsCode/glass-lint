@@ -14,7 +14,7 @@ states into valid empty states.
 
 ### Provenance state and fact-builder collaborators
 
-#### [ ] READ-001 — Keep provenance transitions behind one semantic owner
+#### [x] READ-001 — Keep provenance transitions behind one semantic owner
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -42,7 +42,12 @@ there as well, then remove direct map accesses from `callee.rs` and
 `visitor.rs`; retain separate instance and class channels, bounded snapshots,
 and the rule that unknown or exhausted alternatives never become witnesses.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `FactProvenanceState` now owns semantic provenance lookup and
+recording for instance/class origins, instance callables, and static-string
+origins. Fact visitor and callee code no longer reach into the backing maps;
+correlated replacement and branch checkpoint behavior remains centralized.
+Verified with `cargo test -p glass-lint-core analysis::facts` and
+`make fmt && make ci`.
 
 ### Traversal lifecycle state
 

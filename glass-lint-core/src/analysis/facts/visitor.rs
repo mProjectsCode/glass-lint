@@ -276,8 +276,7 @@ impl Visit for FactBuilder<'_, '_> {
             && let Ok(span) = self.resolver.normalize_span(value.span())
         {
             self.provenance
-                .static_string_origins
-                .insert(terminal_id, span);
+                .record_static_string_origin(terminal_id, span);
         }
     }
 
@@ -518,9 +517,7 @@ impl FactBuilder<'_, '_> {
         let result = self.resolver.fresh_object_value_at(new_expr.span).id;
         if let Some(instance_class) = self.instance_origin_for_constructor(&new_expr.callee) {
             self.provenance
-                .origins
-                .instances
-                .insert(result, instance_class, self.resolver.budget);
+                .record_instance_origin(result, instance_class, self.resolver.budget);
         }
         let effective_callee = effective_callee_expr(&new_expr.callee);
         let resolved = self.resolver.resolve_expr(effective_callee);

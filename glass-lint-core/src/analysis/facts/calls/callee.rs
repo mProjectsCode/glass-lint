@@ -168,24 +168,18 @@ impl FactBuilder<'_, '_> {
         match expr {
             Expr::New(new_expr) => {
                 let value = self.resolver.resolve_expr_id(expr);
-                if let Some(origin) = self.provenance.origins.instances.get(value).cloned() {
+                if let Some(origin) = self.provenance.instance_origin(value) {
                     return Some(origin);
                 }
                 let origin = self.instance_origin_for_constructor(&new_expr.callee)?;
-                self.provenance.origins.instances.insert(
-                    value,
-                    origin.clone(),
-                    self.resolver.budget,
-                );
+                self.provenance
+                    .record_instance_origin(value, origin.clone(), self.resolver.budget);
                 Some(origin)
             }
             Expr::Ident(ident) => {
                 let value = self.resolver.resolve_ident_id(ident);
                 self.provenance
-                    .origins
-                    .instances
-                    .get(value)
-                    .cloned()
+                    .instance_origin(value)
                     .or_else(|| self.resolver.constructed_instance_provenance(ident))
             }
             Expr::Paren(paren) => self.instance_origin_for_expr(&paren.expr),
@@ -215,10 +209,7 @@ impl FactBuilder<'_, '_> {
         self.resolver.class_provenance(constructor).or_else(|| {
             let value = self.resolver.resolve_expr_id(constructor);
             self.provenance
-                .origins
-                .classes
-                .get(value)
-                .cloned()
+                .class_origin(value)
                 .or_else(|| match constructor {
                     Expr::Class(class_expr) => class_expr
                         .class
@@ -277,7 +268,7 @@ impl FactBuilder<'_, '_> {
         &self,
         value: ValueId,
     ) -> Option<InstanceCallable> {
-        self.provenance.instance_callables.get(&value).cloned()
+        self.provenance.instance_callable(value)
     }
 
     pub(in crate::analysis::facts) fn visit_callee_children(&mut self, callee: &Expr) {

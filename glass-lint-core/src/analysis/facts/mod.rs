@@ -178,6 +178,30 @@ impl FactProvenanceState {
         self.origins.finish_branch_without_else(checkpoint);
     }
 
+    fn instance_origin(&self, value: ValueId) -> Option<Origin> {
+        self.origins.instances.get(value).cloned()
+    }
+
+    fn record_instance_origin(&mut self, value: ValueId, origin: Origin, budget: &SemanticBudget) {
+        self.origins.instances.insert(value, origin, budget);
+    }
+
+    fn class_origin(&self, value: ValueId) -> Option<Origin> {
+        self.origins.classes.get(value).cloned()
+    }
+
+    fn instance_callable(&self, value: ValueId) -> Option<InstanceCallable> {
+        self.instance_callables.get(&value).cloned()
+    }
+
+    fn static_string_origin(&self, value: ValueId) -> Option<ByteRange> {
+        self.static_string_origins.get(&value).copied()
+    }
+
+    fn record_static_string_origin(&mut self, value: ValueId, origin: ByteRange) {
+        self.static_string_origins.insert(value, origin);
+    }
+
     fn replace_targets(
         &mut self,
         targets: &[ValueId],
@@ -316,20 +340,11 @@ pub(in crate::analysis) struct FactBuilder<'builder, 'resolver> {
 
 impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
     pub(super) fn static_string_origin(&self, value: ValueId) -> Option<ByteRange> {
-        self.provenance
-            .static_string_origins
-            .get(&value)
-            .copied()
-            .or_else(|| {
-                self.resolver
-                    .static_string_terminal_id(value)
-                    .and_then(|terminal| {
-                        self.provenance
-                            .static_string_origins
-                            .get(&terminal)
-                            .copied()
-                    })
-            })
+        self.provenance.static_string_origin(value).or_else(|| {
+            self.resolver
+                .static_string_terminal_id(value)
+                .and_then(|terminal| self.provenance.static_string_origin(terminal))
+        })
     }
 
     fn target_provenance(&mut self, expression: &Expr, source: ValueId) -> TargetProvenance {
