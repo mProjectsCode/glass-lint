@@ -49,7 +49,7 @@ and focused lowering tests cover both disabled and complete derivations.
 
 ### Semantic budget ownership
 
-#### [ ] READ-018 — Charge each semantic operation at one owner
+#### [x] READ-018 — Charge each semantic operation at one owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -74,7 +74,11 @@ the shared total semantic limit and sticky fail-closed exhaustion behavior, but
 make repeated names, property-path names, and direct resolver calls consume a
 documented and consistent unit of budget.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `Resolver::intern_name` the sole semantic-budget owner
+for fact-level name interning. The fact builder no longer precharges the same
+operation, and exhausted budget/name-table admission is explicit and fail
+closed. Updated the semantic-budget transition test for the new accounting.
+Verified with `make fmt && make ci`.
 
 ### Local status and phase boundaries
 

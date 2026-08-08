@@ -415,13 +415,11 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
 
     fn intern_name(&mut self, name: Option<&str>) -> Option<glass_lint_datastructures::NameId> {
         name.and_then(|name| {
-            self.resolver.budget.try_charge();
-            if let Ok(id) = self.resolver.intern_name(name) {
-                Some(id)
-            } else {
+            let id = self.resolver.intern_name(name);
+            if id.is_none() && self.resolver.name_table_exhausted() {
                 self.stream.mark_name_exhausted();
-                None
             }
+            id
         })
     }
 
