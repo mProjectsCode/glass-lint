@@ -18,7 +18,7 @@ use crate::analysis::{
         module::{ImportedBinding, ModuleInterface},
         value::{ValueId, ValueTable},
     },
-    module_request::{ModuleRequestKind, ModuleRequestPolicy, recognize_module_call},
+    module_request::{ModuleRequestPolicy, recognize_module_call},
 };
 
 mod arguments;
@@ -531,16 +531,7 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
     pub(super) fn observe_module_call(&mut self, call: &CallExpr) -> Option<ModuleCallObservation> {
         let request = recognize_module_call(call, self.resolver, ModuleRequestPolicy::interface())?;
         let span = self.byte_range(request.specifier_span())?;
-        let module = request.module().to_owned();
-        match request.kind() {
-            ModuleRequestKind::DynamicImport => {
-                self.interface.record_import_request(span, &module);
-            }
-            ModuleRequestKind::Require => {
-                self.interface.record_require_request(span, &module);
-            }
-            ModuleRequestKind::WrappedRequire => return None,
-        }
+        let module = self.interface.record_module_request(span, &request)?;
         Some(ModuleCallObservation { module })
     }
 

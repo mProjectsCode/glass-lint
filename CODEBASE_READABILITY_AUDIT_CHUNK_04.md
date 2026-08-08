@@ -48,7 +48,7 @@ constructors for imports, re-exports, star exports, dynamic imports, and
 requires, keeping kind/role pairs valid by construction. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-013 — Centralize the three module-request vocabularies
+#### [x] READ-013 — Centralize the three module-request vocabularies
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -78,7 +78,10 @@ correct boundary for externally supplied resolution keys, not duplicate
 retained-module policy. Preserve static imports, dynamic imports, requires,
 re-exports, interop aliases, shadowing, and static-specifier checks.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved recognized module-kind lowering into
+`ModuleInterfaceBuilder`, leaving `WrappedRequire` as an explicit rejected
+intermediate and removing caller-side kind/role dispatch. Verified with
+`make fmt && make ci`.
 
 #### [x] READ-015 — Name provisional and finalized value IDs distinctly
 

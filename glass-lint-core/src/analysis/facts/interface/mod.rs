@@ -5,6 +5,7 @@ use swc_ecma_ast::ImportDecl;
 
 use crate::analysis::{
     model::module::{ImportedBinding, ModuleRequestId},
+    module_request::{ModuleRequestKind, RecognizedModuleRequest},
     syntax::collect_pat_bindings,
 };
 
@@ -105,19 +106,21 @@ impl ModuleInterfaceBuilder {
         }
     }
 
-    pub(in crate::analysis::facts) fn record_import_request(
+    pub(in crate::analysis::facts) fn record_module_request(
         &mut self,
         span: glass_lint_datastructures::ByteRange,
-        specifier: &str,
-    ) {
-        self.interface.add_dynamic_import_request(span, specifier);
-    }
-
-    pub(in crate::analysis::facts) fn record_require_request(
-        &mut self,
-        span: glass_lint_datastructures::ByteRange,
-        specifier: &str,
-    ) {
-        self.interface.add_require_request(span, specifier);
+        request: &RecognizedModuleRequest,
+    ) -> Option<String> {
+        let module = request.module().to_owned();
+        match request.kind() {
+            ModuleRequestKind::DynamicImport => {
+                self.interface.add_dynamic_import_request(span, &module);
+            }
+            ModuleRequestKind::Require => {
+                self.interface.add_require_request(span, &module);
+            }
+            ModuleRequestKind::WrappedRequire => return None,
+        }
+        Some(module)
     }
 }
