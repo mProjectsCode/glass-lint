@@ -60,16 +60,20 @@ semantics.
 - Determinism is preserved by ordered maps and explicit sorting, so any
   aggregate consolidation should retain those existing order boundaries.
 
-## Open Questions
+## Decisions
 
-- Should report summaries be stored as serialized fields, or retained only
-  internally and exposed through the existing accessor while serialization
-  continues to emit the current schema?
-- Is `AnalysisOperationCounts` intended to be a public snapshot independent
-  of report summary counts, or should both be projections of one aggregate?
-- Should `AnalysisReport::with_project_diagnostics` remain a public
-  post-finalization transformation, or should all report mutations happen in
-  the internal assembly state before one final aggregate is sealed?
+- Retain the finalized summary aggregate internally and expose it through the
+  existing accessor, but do not add serialized summary fields. The report
+  schema remains stable and summary is derived report metadata rather than a
+  second wire-format contract.
+- Keep `AnalysisOperationCounts` as an independent public performance snapshot.
+  It measures analysis phases, while summary counts measure files/findings/
+  diagnostics; one retained internal aggregate may own both projections, but
+  the public meanings must stay separate.
+- Keep `with_project_diagnostics` and `into_partial` as public consuming
+  transformations because callers use them after assembly. They must refresh
+  the retained aggregate exactly once after adding diagnostics and before
+  returning the finalized report.
 
 ## Coverage
 

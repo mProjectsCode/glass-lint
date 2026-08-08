@@ -63,13 +63,14 @@ making the lifecycle violation explicit. The duplicated enter/leave plumbing
 also leaves the current-function restoration as a separate operation from the
 depth restoration.
 
-**Recommendation:** Introduce a scoped traversal-context guard owned by
-`TraversalState` (or one guard per context kind) that records the previous
-function and class/depth state and restores it on drop, with explicit commit
-points for the existing function boundary facts. Replace the manual pairs in
-the three visitor paths and delete the saturating leave API, while preserving
-the precise order of enter/body/exit facts, static-method visibility during
-the body, nested class provenance, and deterministic region allocation.
+**Recommendation:** Give `TraversalState` closure-based `with_function_*` and
+`with_class_*` operations that save the previous context, run the body, and
+restore it through one owner. Keep the function-boundary fact emission outside
+or at explicit points in that closure so the exit fact is emitted while the
+required context is still active. Replace the manual pairs and saturating
+leave API without requiring a `Drop` guard that would make the builder borrow
+awkwardly; preserve enter/body/exit order, static-method visibility, nested
+class provenance, and deterministic region allocation.
 
 **Fix Applied:** None so far.
 
@@ -143,14 +144,17 @@ and wrapped require.
   lookup APIs should preserve the same distinction between unsupported input,
   invalid identity, and a valid empty result.
 
-## Open Questions
+## Decisions
 
-- Whether the function-boundary facts intentionally require the static-method
-  flag to remain active while the exit fact is emitted should be confirmed
-  before introducing a guard; the guard must preserve the current ordering.
-- Whether static imports and dynamic/require observations are deliberately
-  allowed to use different request spans should be confirmed when consolidating
-  the builder API; this audit does not recommend changing their semantics.
+- The static-method context must remain active through the `FunctionBoundary::Exit`
+  fact. The current sequence leaves function depth, emits the exit fact, then
+  leaves static-method depth and restores the enclosing function; any scoped
+  guard must encode that ordering rather than restore all state immediately
+  after the body callback.
+- Different request spans are intentional: static imports and re-exports use
+  the source literal span, while dynamic imports and `require` use the
+  recognized specifier span. READ-004 should consolidate recording ownership
+  only; it must not normalize these spans.
 
 ## Coverage
 

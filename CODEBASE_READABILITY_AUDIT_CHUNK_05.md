@@ -33,15 +33,13 @@ source has no matches/effects” and “the phase was deliberately not computed.
 The artifact status is stored separately, so every caller must remember to
 consult both unrelated APIs to interpret an empty result safely.
 
-**Recommendation:** Make each derived-phase owner return an explicit outcome
-that carries availability/completeness alongside its data, or retain the
-availability state inside `SemanticFacts` and `FunctionEffects` with narrow
-queries such as `is_available`/`completion`. Do not use a successful default
-empty collection for a disabled phase; preserve deterministic empty results
-for genuinely analyzed sources and keep incomplete phases from establishing
-findings or being mistaken for complete absence. Consolidate the capability
-decision at the lowering/artifact boundary so fact indexes, export origins,
-and effects use one typed policy.
+**Recommendation:** Keep the existing artifact-level
+`DerivedPhaseCapabilities` as the policy owner, but attach the selected
+availability/completeness to each derived value that can otherwise look like a
+valid empty result. Do not turn this normal fail-closed state into a `Result`:
+empty data is still useful for analyzed sources, while disabled data must be
+queryably unavailable. Preserve deterministic empty results for genuinely
+analyzed sources and keep incomplete phases from establishing findings.
 
 **Fix Applied:** None so far.
 
@@ -146,18 +144,23 @@ consume the same local-artifact contract.
   separation; the remaining simplification is to centralize reattachment,
   not to collapse cache and project lifetimes.
 
-## Open Questions
+## Decisions
 
-- Should an unavailable derived phase be represented as a fallible
-  `Result`/typed outcome or as an available collection carrying explicit
-  completeness? The public matching contract must continue distinguishing
-  unavailable work from a proven empty result.
-- Which semantic operations are intended to consume the shared budget when a
-  name is already present in the scope snapshot? The answer should be encoded
-  by the budget-owning API and tested independently of call-stack shape.
-- Should local lowering receive the source path directly so file-scoped status
-  can be recorded at creation time, or should a local-status wrapper remain
-  path-independent until project admission?
+- Use status-bearing derived values, not `Result`, for disabled indexes and
+  effects. Disabled-by-incomplete-analysis is an expected bounded outcome, not
+  an API failure; the value must still distinguish it from an analyzed empty
+  collection. Keep the capability decision at the artifact boundary and make
+  the derived owners expose the distinction directly.
+- Charge a semantic operation when its owning domain performs the bounded
+  action: resolver name interning once per interning request, path storage once
+  per path append, and fact emission once per fact admission. A lookup that
+  reuses an existing name is not a second insertion charge. Remove wrapper
+  precharges and make the owner’s failed admission visible to the caller that
+  must mark the result incomplete.
+- Keep lowering path-independent so cached semantic artifacts remain reusable.
+  Convert local status to `StatusScope::File` exactly once when attaching the
+  artifact to its current `LocalArtifact`; reserve project scope for genuine
+  project/linking status and remove the broad rewrite convention.
 
 ## Coverage
 

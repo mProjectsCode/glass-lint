@@ -121,15 +121,20 @@ operation.
   domains. A shared partial adapter should centralize their supported overlap
   without collapsing provider-neutral provenance forms into syntax constants.
 
-## Open Questions
+## Decisions
 
-- Which consumers need a complete witness versus certainty coverage should be
-  confirmed before selecting the exact resolution-result shape; the result
-  must support both without exposing `FrozenAssignmentIndex` storage.
-- The static-value adapter should preserve the current asymmetry where scope
-  provenance can represent object values but `const_provenance` accepts only
-  the static object shapes it can prove from syntax; this audit does not
-  recommend widening that semantic set.
+- The query result must serve two existing consumers: rooted/chain queries need
+  complete witnesses, while certainty queries need to know whether discarded
+  alternatives made coverage incomplete. Use one scope-owned result with a
+  borrowed witness collection, an explicit completeness/blocked-fallback
+  state, and no `FrozenAssignmentIndex` storage exposure. Keep `binding_at` as
+  a narrow complete-witness convenience only if its name and documentation
+  make that loss of certainty explicit.
+- Keep the static-value conversion deliberately partial and asymmetric. The
+  shared adapter may accept interning/resolution callbacks, but it must not
+  turn runtime provenance or unsupported nested values into constants, and it
+  must retain the current distinction between supported static object shapes
+  and object-valued scope provenance.
 
 ## Coverage
 

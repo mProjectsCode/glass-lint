@@ -102,13 +102,14 @@ The same gap also means `PhysicalPlan` can be constructed from an empty root
 set when the lower-level compiler entry point is called directly, even though
 a validated rule is expected to contain executable query roots.
 
-**Recommendation:** Define an aggregate query/plan budget owned by the
-compiler limits module, count nodes and expanded alternatives during
-validation or normalization, and propagate a typed `UnboundedQuery` or
-physical-plan diagnostic when it is exceeded. Have the planning accumulator
-charge/retain that bound as it expands `Any` branches, and reject an empty
-physical plan at its sealing boundary. Keep per-node depth/child checks as
-early diagnostics and preserve deterministic flattening and deduplication.
+**Recommendation:** Define one aggregate physical-root budget owned by the
+compiler limits module and charge it as normalization/planning expands
+alternatives. Existing per-node child and depth checks already bound authored
+expression shape; the aggregate bound should cover the actual executable roots
+without adding a speculative second logical-node budget. Propagate a typed
+`UnboundedQuery`/plan diagnostic when the bound is exceeded, reject an empty
+physical plan at sealing, and preserve deterministic flattening and
+deduplication.
 
 **Fix Applied:** None so far.
 
@@ -162,15 +163,20 @@ analysis projection, and retain deterministic rule/root traversal.
   should own their representation and consumers should merge/query that
   representation rather than reconstructing parallel boolean vocabularies.
 
-## Open Questions
+## Decisions
 
-- Should the aggregate alternative budget be charged against authored logical
-  nodes, normalized roots, or both, so diagnostics identify the phase that
-  actually exhausts the bounded resource?
-- Is `IdentityStrength` planned as an independent confidence policy, or is the
-  strict/heuristic identity variant already the complete semantic model?
-- Should classification results remain mutable during internal projection but
-  be frozen into a separate report-facing type before leaving `analysis`?
+- Charge the aggregate bound against executable physical roots, because that
+  is the resource consumed by planning and projection. Keep the existing
+  authored-node depth/child limits as early validation diagnostics rather than
+  inventing a second aggregate logical-node budget.
+- `IdentityStrength` is not an independent policy in the current compiler:
+  `Global` is strict and `Any` is heuristic, and consumers ignore the payload.
+  Remove the redundant field and enum; do not preserve an extension point for
+  an unimplemented confidence policy.
+- `ClassificationResult` is an internal assembly value in the current crate
+  graph. Keep mutation private to classification assembly and expose only its
+  read-only slice accessor; a separate report-facing type would duplicate the
+  same data without a current boundary to justify it.
 
 ## Coverage
 

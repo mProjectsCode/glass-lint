@@ -111,13 +111,14 @@ syntax. The parser and detector each have a private list of supported syntax,
 so enabling a parser option does not force the report vocabulary or tests to
 be updated with it.
 
-**Recommendation:** Define a core syntax-feature registry used by both
-`SourceLanguage::syntax` and `FeatureDetector`, or explicitly reject parser
-options that have no report representation. Add `EcmaFeature` variants for
-accepted non-standard/proposal syntax (with `None` minimum versions) and
-visitor coverage for the corresponding AST fields/variants. Add focused
-report tests for every enabled parser extension, while preserving the
-deterministic feature ordering and standard-version calculation.
+**Recommendation:** Keep the parser's explicit syntax configuration, but make
+the accepted-language list and the detector's `EcmaFeature` list agree. Add
+feature variants with `None` minimum versions and visitor coverage for each
+currently enabled proposal extension, including import attributes, default
+export-from, function-bind syntax, and auto-accessors. Add focused report
+tests for every enabled extension; do not reject syntax merely because the
+current report vocabulary is incomplete, and preserve deterministic feature
+ordering and standard-version calculation.
 
 **Fix Applied:** None so far.
 
@@ -134,15 +135,19 @@ deterministic feature ordering and standard-version calculation.
   accepted-language boundary must be auditable against the feature report so
   bounded parsing does not silently under-report compatibility requirements.
 
-## Open Questions
+## Decisions
 
-- Should `RuleMetadata` remain the public serialized type, or should the
-  catalog expose a read-only view and let CLI JSON use a separate DTO?
-- Should parse-failure status text be part of the typed failure contract, or
-  remain a report-layer rendering concern after code ownership is unified?
-- Are proposal syntaxes intentionally accepted for semantic linting, or
-  should the JavaScript parser accept only syntax represented by
-  `EcmaFeature`?
+- Keep `RuleMetadata` as the public serialized catalog type. Make its fields
+  private and add read-only accessors while preserving the current serde
+  field names and JSON shape; a second CLI DTO would duplicate the contract.
+- Let `ParseFailureKind` own the stable code and completeness classification,
+  but keep generic status text in the status/report layer. Parser diagnostics
+  need richer source-specific messages, while incomplete-status rendering is a
+  separate report concern; both must project from the same failure kind.
+- Proposal syntax is intentionally accepted for semantic linting. Extend the
+  feature vocabulary and detector coverage to match the parser configuration;
+  do not silently under-report accepted syntax and do not narrow the parser to
+  the current incomplete report list.
 
 ## Coverage
 

@@ -59,13 +59,13 @@ is repeated in production construction and several test builders, and an
 intermediate index can be borrowed by a matcher without any type-level or API
 state distinguishing it from a normalized index.
 
-**Recommendation:** Put fact projection and normalization behind one
-constructor or consuming `finish` operation that returns the queryable index;
-make the raw recording phase private to that construction path. Preserve the
-empty disabled-phase index and the existing event/span ordering, but expose
-only the sealed form to `SemanticFacts::matcher_index` and overlay builders.
-Delete the repeated `build_from_stream`/`normalize_occurrences` call protocol
-from production and test callers.
+**Recommendation:** Keep the already-centralized production path in
+`SemanticFacts::from_lowering`, and seal the remaining crate-internal/test
+construction behind one `OccurrenceIndexes::from_stream`/`finish` operation.
+Make raw recording private to that path where practical. Preserve the empty
+disabled-phase index and existing event/span ordering, and expose only the
+sealed form to `SemanticFacts::matcher_index` and overlay builders; do not
+claim that production still has multiple independent construction paths.
 
 **Fix Applied:** None so far.
 
@@ -141,17 +141,22 @@ paths.
   construction and typed propagation would make the invariants easier to
   preserve during future matcher additions.
 
-## Open Questions
+## Decisions
 
-- Should a compiled physical plan expose typed root partitions, or should each
-  matching owner receive a dedicated plan view that cannot contain roots it
-  does not execute?
-- Should an incomplete matcher projection be represented as a result error or
-  as a status-bearing evidence table, given that empty evidence is a valid
-  analyzed outcome elsewhere?
-- Can the shared module identity map be retained by both indexed remapping and
-  constrained evaluation without cloning, while still making the optional
-  overlay policy explicit in the matcher-input type?
+- Give each execution owner a dedicated crate-private plan view or iterator
+  (`indexed`, `constrained`, and lifecycle roots) rather than introducing a
+  general partition object that every consumer must understand. A complete
+  physical plan may still be retained by the compiler; its consumers should
+  receive only the roots they own.
+- Represent expected bounded matcher incompleteness in a status-bearing
+  projection outcome/evidence table, not as `Result`: no evidence is a valid
+  complete result and incomplete evidence must remain distinguishable from it.
+  Reserve `Result` for structural publication failures such as evidence
+  capacity mismatch, as required by READ-024.
+- Retain one borrowed `ModuleIdentityMap` in a typed matcher-input value and
+  pass that same reference to indexed remapping and constrained evaluation.
+  Keep result identities separate because they resolve a different value
+  domain, and keep `None` distinct from an incomplete identity map.
 
 ## Coverage
 

@@ -42,12 +42,12 @@ also makes error recovery depend on the position of the failing item rather
 than on an explicit transaction or a returned remainder.
 
 **Recommendation:** Stage the entire incoming iterator in a temporary
-validated table, checking both duplicates against the existing collection
-and duplicates within the batch, then merge the staged table only after all
-inputs pass. Alternatively expose an explicit fallible batch-insert
-operation whose documentation and result model partial admission. Preserve
-normalized path ordering and the existing single-source duplicate behavior;
-make the public multi-source method’s atomicity explicit.
+validated table, checking both duplicates against the existing collection and
+duplicates within the batch, then merge the staged table only after all inputs
+pass. Choose atomic admission rather than adding an admitted-prefix/remainder
+result: the current session transition has no useful partial-success contract.
+Preserve normalized path ordering and existing single-source duplicate
+behavior, and document the batch atomicity.
 
 **Fix Applied:** None so far.
 
@@ -75,14 +75,12 @@ path represents one file with combined evidence or two independent files.
 Sorting makes the output deterministic but does not restore the uniqueness
 invariant owned by the project session.
 
-**Recommendation:** Make report combination validate a path set before any
-files are moved and add a typed duplicate-path error, preserving the
-transactional no-partial-result behavior of schema/tool validation. If
-combining same-path reports is a required use case, give `FileReport` an
-explicit merge operation with defined finding/diagnostic deduplication and
-make that merged representation the only path through `AnalysisReport::merge`.
-Keep normal project assembly’s one-file-per-normalized-path contract and
-deterministic final ordering.
+**Recommendation:** Reject duplicate paths universally at the report-combine
+boundary and add a typed duplicate-path error. Validate schema, tool identity,
+and the complete path set before moving any report contents, preserving the
+transactional no-partial-result behavior. Do not add an analysis identity or
+same-file merge policy without a current use case; keep normal project
+assembly's one-file-per-normalized-path contract and deterministic ordering.
 
 **Fix Applied:** None so far.
 
@@ -99,15 +97,17 @@ deterministic final ordering.
   for uniqueness or atomicity. Those invariants should be enforced at the
   owning collection boundaries.
 
-## Open Questions
+## Decisions
 
-- Should a failed multi-source admission leave the collection unchanged, or
-  should the API return an explicit admitted-prefix/remainder result?
-- Should same-path report combination be rejected universally, or should
-  reports carry an analysis identity that permits explicit same-file merges?
-- If report combination gains a duplicate-path error, should it validate all
-  paths before checking or moving any report contents, matching the existing
-  schema/tool validation behavior?
+- A failed multi-source admission leaves the collection unchanged. An
+  admitted-prefix/remainder result would create a second session state model
+  without a current caller that can use it safely.
+- Reject same-path report combination universally. Reports currently carry no
+  analysis identity or merge semantics, so duplicate paths cannot be combined
+  losslessly or deterministically at the finding/diagnostic level.
+- Validate the complete path set before moving report contents, after the
+  existing schema and tool-version checks. This keeps duplicate-path errors
+  transactional and makes the one-file-per-path invariant explicit.
 
 ## Coverage
 

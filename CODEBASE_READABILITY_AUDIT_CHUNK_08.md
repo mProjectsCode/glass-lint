@@ -44,10 +44,10 @@ disagree about where the same semantic rule is enforced.
 **Recommendation:** Give the event declaration layer one `supports_arguments`
 predicate owned by `EventSpec`, and use it from both `with_arg` and the
 same-event composition path. Return a query-construction error for unsupported
-event kinds before building the constraint-bearing declaration; keep physical
-validation as a defensive invariant check. Preserve support for the event
-kinds that the physical plan intentionally accepts, including member calls,
-and retain the existing argument/group bounds.
+event kinds before building the constraint-bearing declaration; constructors
+are intentionally rejected because the physical planner has no constructor
+argument operator. Keep physical validation as a defensive invariant check,
+preserve call/member-call support, and retain existing argument/group bounds.
 
 **Fix Applied:** None so far.
 
@@ -75,12 +75,11 @@ Fixing or adding a metadata rule now requires checking both public surfaces,
 and the two paths do not report failures at the same construction boundary.
 
 **Recommendation:** Keep one owner for rule metadata, query storage, limits,
-and final validation. Implement deferred catalog authoring as a thin named
-adapter over that owner (or use one builder with an explicit error-collection
-policy), rather than a second builder API that delegates field by field. Make
-the error precedence and first-error policy explicit and shared, while
-preserving deterministic query order and the existing catalog convenience for
-`Result`-returning constructors.
+and final validation. Retain `CatalogRuleBuilder` because provider catalogs
+and public catalog helpers use deferred `Result` handling, but reduce it to a
+thin named adapter over shared state/error policy rather than a second
+independently validated builder. Make error precedence and first-error policy
+explicit and shared, while preserving deterministic query order.
 
 **Fix Applied:** None so far.
 
@@ -114,8 +113,8 @@ deferred setter, which records a typed error.
 `IntoLifecycleCondition`, centralize stage assignment and duplicate detection
 in the lifecycle builder owner, and let the deferred adapter only record
 fallible errors. Keep the immediate `try_*` methods for call-site propagation,
-but make the non-fallible setters share the same duplicate-stage semantics so
-all lifecycle construction paths describe the same state machine.
+and make both non-fallible setters reject duplicate stages consistently rather
+than silently ignoring one path.
 
 **Fix Applied:** None so far.
 
@@ -145,13 +144,13 @@ callers a stable semantic view. It also makes `QueryDecl::expression()` a
 misleading public accessor, since consumers cannot meaningfully traverse the
 returned declaration.
 
-**Recommendation:** Either make compiler-facing expression and predicate
-carriers crate-private and remove the public accessors/re-exports, or provide
-a deliberately small immutable public view (for example, branch iterators and
-validated predicate accessors) that is owned by the declaration API rather
-than leaking internal enums. Keep constructors centralized and preserve the
-private physical-plan representation; do not expose compiler slots or mutable
-collections merely to make the current types usable.
+**Recommendation:** Keep `QueryExpr` as the small read-only diagnostic view
+already used by the public composition API, but remove the unused public
+`AnyExpr`/`AllExpr` re-exports and do not expose `QueryExprKind`, branch
+storage, compiler slots, or mutable collections. For value predicates, expose
+only semantic accessors that callers can use today; otherwise keep the
+compiler-facing predicate kind private. Preserve centralized constructors and
+the private physical-plan representation.
 
 **Fix Applied:** None so far.
 
@@ -180,12 +179,12 @@ path. It also makes helper functions and public signatures harder to express:
 the facade does not provide a stable named type for either builder even though
 both are public authoring concepts.
 
-**Recommendation:** After consolidating the builder implementation, expose
-the canonical builder type under its semantic name through `rules`, and keep a
-separately named catalog/deferred adapter only if it remains necessary. Make
-`Rule::builder` and the facade point at those same named types, preserving the
-provider catalog ergonomics while removing the generic alias and hidden return
-type boundary.
+**Recommendation:** Re-export `RuleBuilder` and `CatalogRuleBuilder` under
+their actual semantic names from `rules`; remove the generic `Builder` alias.
+Keep the two names because immediate and deferred error timing are real
+policies, but share their state/validation owner as in READ-030. Make
+`Rule::builder` and `Rule::catalog_builder` return those named types without
+changing provider catalog ergonomics.
 
 **Fix Applied:** None so far.
 
@@ -202,18 +201,17 @@ type boundary.
   implementation details. Opaque public structs and generic facade aliases
   make the API larger without making extensions or inspection safer.
 
-## Open Questions
+## Decisions
 
-- Should argument constraints be accepted on constructors as well as calls and
-  member calls? The current physical validator accepts only call/member-call
-  predicates, so the declaration contract should state that policy in one
-  place.
-- Is deferred catalog construction required outside provider catalog modules?
-  If not, the public surface may only need one ordinary builder plus a
-  crate-owned catalog adapter; if it is required, both policies should still
-  share one typed builder state.
-- Should query explanation/diagnostic output be the only supported external
-  inspection, or do integrations need a stable read-only logical query view?
+- Argument constraints are supported only for calls and member calls. The
+  declaration layer should reject constructor arguments, matching the current
+  physical access path, and retain the later validator as a defensive check.
+- Deferred catalog construction is an active API used by provider catalogs,
+  examples, tests, and downstream integrations. Keep it as a named adapter,
+  but do not duplicate rule-builder state or validation policy.
+- Keep the small read-only `QueryExpr::diagnostic_name` inspection used by the
+  public composition surface. Do not add a general logical-tree view without
+  a current consumer; explanations remain the supported detailed inspection.
 
 ## Coverage
 

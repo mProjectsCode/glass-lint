@@ -94,14 +94,14 @@ site. Both are flow-specific sinks that merge certainty and traces, but their
 limits, keys, and duplicate policies can evolve independently, so local and
 cross findings do not share one bounded output contract.
 
-**Recommendation:** Put the common certainty merge, trace deduplication,
-bounded admission, and truncation policy in one flow evidence accumulator.
-Use small adapters for the local object identity and cross qualified-module
-identity rather than duplicating the entire rule/evidence store; retain
-nonmatching alternatives as possible evidence and keep the local object key
-and cross-module fact key distinct where their semantics require it. Delete
-the parallel `RuleEvidence` recording path after both projectors use the
-shared owner, preserving catalog-capacity errors and deterministic ordering.
+**Recommendation:** Share only the flow-owned primitives that are actually
+identical: certainty promotion, trace deduplication, and bounded admission.
+Keep local object keys and cross qualified-module keys, nonmatching
+alternative tracking, and their evidence stores separate where their
+semantics differ; small adapters may feed the shared primitives. Do not
+delete either recording path until the two stores have the same admission and
+incomplete-alternative contract, and preserve catalog-capacity errors and
+deterministic ordering throughout.
 
 **Fix Applied:** None so far.
 
@@ -146,17 +146,19 @@ trace-arena exhaustion without returning partial chains.
   a definite finding, and an independent complete witness must remain usable
   as a possible finding. Output ownership should encode both guarantees.
 
-## Open Questions
+## Decisions
 
-- Whether the compiler will ever permit multiple top-level lifecycle physical
-  roots for one selected matcher should be confirmed when introducing the
-  canonical flow-index type; the current validation rejects lifecycle roots
-  nested inside `Any`, but the flow API should not rely on that incidental
-  restriction for identity correctness.
-- The intended report role for a prior sink should be confirmed against the
-  public evidence schema before consolidating trace assembly; the cross-flow
-  test and `prior_sinks` naming currently support `Sink`, while the local
-  builder uses `Requirement`.
+- Keep one `FlowIndex` per lifecycle root even though current validation emits
+  lifecycle roots only at the top level. The identity should be assigned at
+  the physical-plan boundary and carried into both local and cross-call flow;
+  it should not depend on whether a future normalization shape happens to
+  preserve that restriction.
+- Prior sinks are not one universal evidence role today. The public schema
+  supports both `Requirement` and `Sink`, and the existing cross-flow contract
+  deliberately reports prior sinks as `Sink` while local flow reports them as
+  `Requirement`. READ-011 should centralize chain ordering and arena admission
+  while accepting the role as typed input; it must not force the two policies
+  into one role.
 
 ## Coverage
 

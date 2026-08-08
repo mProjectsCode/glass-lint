@@ -35,11 +35,12 @@ allows a linker with no graph phase to resemble a valid empty graph.
 **Recommendation:** Return a typed graph-build outcome that distinguishes a
 valid empty partition, edge-budget exhaustion, and SCC-size rejection, and
 carry that outcome into `ProjectLinker`/`AnalysisStatus` before export
-resolution. Replace the optional graph plus default partition sentinel with a
-consuming phase transition or an explicit completion field, and make `finish`
-unable to silently construct a complete model from an unbuilt or rejected
-graph. Preserve deterministic SCC order, bounded fail-closed identities, and
-the existing project-level linking diagnostic for both budget causes.
+resolution. Retain the normalized graph for edge-count/diagnostic metadata,
+but do not manufacture a default `SccPartition` when it is rejected; make the
+export phase require a successful partition and make `finish` preserve the
+incomplete state. Preserve deterministic SCC order, bounded fail-closed
+identities, and the existing project-level linking diagnostic for both budget
+causes.
 
 **Fix Applied:** None so far.
 
@@ -63,12 +64,12 @@ no-match results, while invalid selections can panic rather than reaching the
 caller’s error boundary.
 
 **Recommendation:** Make the checked `Result` path the canonical project
-query API and propagate a project/projection error through classification;
-provide an explicitly named lossy convenience only at a report assembly
-boundary that intentionally treats invalid requested records as absent. Keep
-the owner-token protection for foreign models and the sorted/validated
-selection invariant, but do not erase those distinctions inside the linked
-model itself.
+query API and propagate a crate-private projection error through classification;
+do not add a public error type while the analysis module remains private.
+If a report assembler needs a lossy convenience, name it at that boundary and
+document the intentional omission. Keep owner-token protection for foreign
+models and the sorted/validated selection invariant; do not erase those
+distinctions inside the linked model.
 
 **Fix Applied:** None so far.
 
@@ -142,17 +143,18 @@ bounded cycle/depth behavior.
   value arenas with project identities or collapse transient and final model
   lifetimes.
 
-## Open Questions
+## Decisions
 
-- Should an oversized SCC retain its normalized graph for diagnostics and
-  partial metadata, or should the graph-build outcome reject the entire link
-  phase while preserving only the explicit incomplete status?
-- Should project matcher APIs expose a public error type even though the
-  analysis module is crate-private today, so future re-exporting cannot
-  accidentally restore the empty-on-error contract?
-- Is `ProjectionMetrics::operations` intended as a total projection count or
-  as the flow budget’s observed count? The two meanings should not share one
-  field.
+- Retain the normalized graph for stable edge-count and diagnostic metadata,
+  but reject the SCC partition as an executable linking phase when the bound
+  is exceeded. The linker must carry an explicit rejected/incomplete outcome;
+  an empty partition is not a valid substitute.
+- Keep matcher query errors crate-private while the owning analysis module is
+  private. The checked path is still canonical internally, and a future public
+  re-export can choose a public error type when an actual public API exists.
+- `ProjectionMetrics::operations` is a total projection/profile count.
+  `ProjectionStatus::flow_observed` is the separate flow-budget observation;
+  it must be accumulated only from local and cross-flow owners.
 
 ## Coverage
 
