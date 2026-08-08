@@ -146,13 +146,19 @@ pub(in crate::analysis) struct MatcherArtifact<'a> {
 impl<'a> MatcherArtifact<'a> {
     pub(in crate::analysis) fn from_facts(
         facts: &'a SemanticFacts,
-        identities: Option<&'_ ModuleIdentityMap>,
+        inputs: MatcherProjectInputs<'_>,
+        overlay_policy: MatcherOverlayPolicy,
     ) -> (Self, usize) {
-        let (overlay, operations) = identities.map_or((None, 0), |identities| {
-            let (overlay, operations) =
-                LinkedOccurrenceView::build(facts.matcher_index(), identities);
-            (Some(overlay), operations)
-        });
+        let (overlay, operations) = match overlay_policy {
+            MatcherOverlayPolicy::Disabled => (None, 0),
+            MatcherOverlayPolicy::Enabled => {
+                inputs.module_identities().map_or((None, 0), |identities| {
+                    let (overlay, operations) =
+                        LinkedOccurrenceView::build(facts.matcher_index(), identities);
+                    (Some(overlay), operations)
+                })
+            }
+        };
         (
             Self {
                 stream: facts.stream(),
@@ -194,6 +200,38 @@ impl<'a> MatcherArtifact<'a> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(in crate::analysis) struct MatcherProjectInputs<'a> {
+    module_identities: Option<&'a ModuleIdentityMap>,
+    call_result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
+}
+
+impl<'a> MatcherProjectInputs<'a> {
+    pub(in crate::analysis) const fn new(
+        module_identities: Option<&'a ModuleIdentityMap>,
+        call_result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
+    ) -> Self {
+        Self {
+            module_identities,
+            call_result_identities,
+        }
+    }
+
+    fn module_identities(self) -> Option<&'a ModuleIdentityMap> {
+        self.module_identities
+    }
+
+    fn call_result_identities(self) -> Option<&'a BTreeMap<ValueId, ExportResolution>> {
+        self.call_result_identities
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(in crate::analysis) enum MatcherOverlayPolicy {
+    Disabled,
+    Enabled,
+}
+
 /// Project-level identities and occurrence remapping for one local module.
 #[derive(Debug, Clone, Copy)]
 pub(in crate::analysis) struct MatcherProjectOverlay<'a> {
@@ -213,17 +251,16 @@ pub(in crate::analysis) struct MatcherProjectContext<'facts, 'project> {
 }
 
 impl<'facts, 'project> MatcherProjectContext<'facts, 'project> {
-    pub(in crate::analysis) fn from_facts<'overlay>(
+    pub(in crate::analysis) fn from_facts(
         facts: &'facts SemanticFacts,
-        overlay_identities: Option<&'overlay ModuleIdentityMap>,
-        identities: Option<&'project ModuleIdentityMap>,
-        result_identities: Option<&'project BTreeMap<ValueId, ExportResolution>>,
+        inputs: MatcherProjectInputs<'project>,
+        overlay_policy: MatcherOverlayPolicy,
     ) -> (Self, usize) {
-        let (artifact, operations) = MatcherArtifact::from_facts(facts, overlay_identities);
+        let (artifact, operations) = MatcherArtifact::from_facts(facts, inputs, overlay_policy);
         (
             Self {
                 artifact,
-                project: MatcherProjectOverlay::from_identities(identities, result_identities),
+                project: MatcherProjectOverlay::from_inputs(inputs),
             },
             operations,
         )
@@ -243,13 +280,10 @@ impl<'facts, 'project> MatcherProjectContext<'facts, 'project> {
 }
 
 impl<'a> MatcherProjectOverlay<'a> {
-    pub(in crate::analysis) fn from_identities(
-        identities: Option<&'a ModuleIdentityMap>,
-        result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
-    ) -> Self {
+    pub(in crate::analysis) fn from_inputs(inputs: MatcherProjectInputs<'a>) -> Self {
         Self {
-            identities,
-            result_identities,
+            identities: inputs.module_identities(),
+            result_identities: inputs.call_result_identities(),
         }
     }
 

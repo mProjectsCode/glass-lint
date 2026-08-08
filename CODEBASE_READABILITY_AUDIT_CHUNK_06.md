@@ -15,7 +15,7 @@ API issues rather than local implementation style.
 
 ### Matcher identity and overlay ownership
 
-#### [ ] READ-021 — Build matcher context from one coherent identity source
+#### [x] READ-021 — Build matcher context from one coherent identity source
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -40,7 +40,13 @@ identity references, and the context should retain the invariant stated in
 its documentation. Preserve the distinction between “no overlay requested”
 and an incomplete/unknown identity map: either must continue to fail closed.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a shared `MatcherProjectInputs` value containing the
+module identity view and separately named call-result identity view. Artifact
+overlay construction and constrained evaluation now receive that same input
+bundle, while `MatcherOverlayPolicy` explicitly controls whether the module
+identity view is applied to occurrence remapping. The production projection
+can no longer pass divergent module-identity maps through the context
+constructor; focused argument matching and the full gate remain green.
 
 ### Occurrence-index lifecycle
 
