@@ -109,7 +109,7 @@ explicit without changing provenance or cache behavior. Verified with
 
 ### Module interface ownership
 
-#### [ ] READ-016 — Remove duplicated imported-local state
+#### [x] READ-016 — Remove duplicated imported-local state
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -131,7 +131,9 @@ and make its constructor carry only imported-name and namespace semantics.
 Update the builder and linker together, preserving namespace imports,
 default/named imports, deterministic binding order, and local-export handling.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the unused local spelling from `ImportedBinding`; the
+interface-wide local set remains the single owner while imported-name and
+namespace semantics stay unchanged. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

@@ -28,7 +28,6 @@ pub enum ModuleRequestRole {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ImportedBinding {
     imported: Option<SmolStr>,
-    local: SmolStr,
     namespace: bool,
 }
 
@@ -175,10 +174,9 @@ impl ModuleRequestId {
 }
 
 impl ImportedBinding {
-    pub fn new(imported: Option<SmolStr>, local: SmolStr, namespace: bool) -> Self {
+    pub fn new(imported: Option<SmolStr>, namespace: bool) -> Self {
         Self {
             imported,
-            local,
             namespace,
         }
     }
@@ -506,11 +504,7 @@ mod tests {
         interface.add_import_request(
             span,
             "imported",
-            vec![ImportedBinding::new(
-                Some("default".into()),
-                "local".into(),
-                false,
-            )],
+            vec![ImportedBinding::new(Some("default".into()), false)],
         );
         interface.add_reexport_request(span, "reexported");
         interface.add_star_export_request(span, "starred");

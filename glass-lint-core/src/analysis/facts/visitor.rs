@@ -225,17 +225,12 @@ impl Visit for FactBuilder<'_, '_> {
                         || named.local.sym.to_smolstr(),
                         |name| crate::analysis::syntax::module_export_name(name).to_smolstr(),
                     )),
-                    named.local.sym.to_smolstr(),
                     false,
                 ),
-                swc_ecma_ast::ImportSpecifier::Default(default) => ImportedBinding::new(
-                    Some("default".into()),
-                    default.local.sym.to_smolstr(),
-                    false,
-                ),
-                swc_ecma_ast::ImportSpecifier::Namespace(namespace) => {
-                    ImportedBinding::new(None, namespace.local.sym.to_smolstr(), true)
+                swc_ecma_ast::ImportSpecifier::Default(_) => {
+                    ImportedBinding::new(Some("default".into()), false)
                 }
+                swc_ecma_ast::ImportSpecifier::Namespace(_) => ImportedBinding::new(None, true),
             })
             .collect();
         self.record_local_imports(import);
