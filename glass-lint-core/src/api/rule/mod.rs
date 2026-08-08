@@ -10,7 +10,10 @@ mod module;
 pub mod query;
 mod taxonomy;
 
-pub use error::{CompiledCatalogError, MatcherBuildError, RuleBuildError};
+pub use error::{
+    CompiledCatalogError, CompilerInvariantDiagnostic, MatcherBuildError, PhysicalPlanDiagnostic,
+    RuleBuildError,
+};
 pub use module::ModuleSpecifierPattern;
 pub(crate) use query::value::{ArgumentMatcherKind, StaticStringPredicateKind};
 pub use query::{

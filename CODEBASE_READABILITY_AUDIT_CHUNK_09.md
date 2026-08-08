@@ -162,7 +162,7 @@ rewriting on the normalized tree, and no longer returns its unused map.
 Added regression coverage for dense returned-object slots. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-005 — Compiler error structure is flattened before the catalog boundary
+#### [x] READ-005 — Compiler error structure is flattened before the catalog boundary
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -191,7 +191,12 @@ that need codes/messages. Preserve existing display wording, rule-ID context,
 deterministic error selection, and the distinction between invalid input and
 compiler bugs.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `MatcherBuildError` and `CompiledCatalogError` now retain
+typed `CompilerInvariantDiagnostic` and `PhysicalPlanDiagnostic` values through
+compiler and catalog layers. Authored query failures remain structured
+`QueryDiagnostic` values, while provider catalog conversion performs the final
+string projection at the external boundary; existing display wording and
+rule-ID context are preserved. Verified with `make fmt && make ci`.
 
 #### [ ] READ-006 — `RuleEvidenceTable` repeats its rule-index boundary in every mutation method
 

@@ -55,7 +55,7 @@ use crate::api::{
         normalized::NormalizedQuery, physical::PhysicalPlan, validate::validate_query_decl,
     },
     rule::{
-        MatcherBuildError, ModuleSpecifierPattern, QueryDiagnostic,
+        CompilerInvariantDiagnostic, MatcherBuildError, ModuleSpecifierPattern, QueryDiagnostic,
         query::{EventSpec, IdentitySpec, QueryDecl},
     },
 };
@@ -221,7 +221,7 @@ impl QueryPlanAccumulator {
 
     fn finish(self) -> Result<PhysicalPlan, MatcherBuildError> {
         PhysicalPlan::from_roots(physical::optimize_roots(self.roots))
-            .map_err(|error| MatcherBuildError::InvalidPhysicalPlan(error.to_string()))
+            .map_err(|error| MatcherBuildError::InvalidPhysicalPlan(error.into()))
     }
 }
 
@@ -234,7 +234,7 @@ fn compile_query(query: &QueryDecl) -> Result<Vec<physical::PhysicalRoot>, Match
         normalize::normalize_query_decl(query).map_err(map_query_compile_error)?;
 
     physical::plan_normalized_roots(&normalized)
-        .map_err(|error| MatcherBuildError::InvalidPhysicalPlan(error.to_string()))
+        .map_err(|error| MatcherBuildError::InvalidPhysicalPlan(error.into()))
 }
 
 /// Compile query declarations into one deterministic, aggregate physical plan.
@@ -251,10 +251,12 @@ fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildEr
 fn map_query_compile_error(error: validate::QueryCompileError) -> MatcherBuildError {
     match error {
         validate::QueryCompileError::IncompleteSameEvent { missing } => {
-            MatcherBuildError::CompilerInvariant(format!("same-event merge missing {missing}"))
+            MatcherBuildError::CompilerInvariant(CompilerInvariantDiagnostic::IncompleteSameEvent {
+                missing: missing.to_owned(),
+            })
         }
         validate::QueryCompileError::InternalInvariant { detail } => {
-            MatcherBuildError::CompilerInvariant(detail)
+            MatcherBuildError::CompilerInvariant(CompilerInvariantDiagnostic::Internal { detail })
         }
         error => MatcherBuildError::QueryCompileError(QueryDiagnostic::new(
             error.diagnostic_name(),

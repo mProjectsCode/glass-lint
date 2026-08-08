@@ -16,8 +16,9 @@ fn compiler_invariants_do_not_become_authored_query_diagnostics() {
     };
     assert!(matches!(
         super::map_query_compile_error(internal),
-        super::MatcherBuildError::CompilerInvariant(message)
-            if message == "normalized slots are not dense"
+        super::MatcherBuildError::CompilerInvariant(
+            crate::api::rule::CompilerInvariantDiagnostic::Internal { detail },
+        ) if detail == "normalized slots are not dense"
     ));
 
     let authored = super::validate::QueryCompileError::MissingBinding {
@@ -26,6 +27,6 @@ fn compiler_invariants_do_not_become_authored_query_diagnostics() {
     assert!(matches!(
         super::map_query_compile_error(authored),
         super::MatcherBuildError::QueryCompileError(diagnostic)
-            if diagnostic.code == "missing_binding"
+            if diagnostic.code() == "missing_binding"
     ));
 }

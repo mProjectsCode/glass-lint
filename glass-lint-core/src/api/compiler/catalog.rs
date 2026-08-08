@@ -25,13 +25,13 @@ pub(crate) fn compile_records(
                 MatcherBuildError::CompilerInvariant(message) => {
                     CompiledCatalogError::CompilerInvariant {
                         rule_id: rule_id.to_string(),
-                        message,
+                        diagnostic: message,
                     }
                 }
                 MatcherBuildError::InvalidPhysicalPlan(message) => {
                     CompiledCatalogError::InvalidPhysicalPlan {
                         rule_id: rule_id.to_string(),
-                        message,
+                        diagnostic: message,
                     }
                 }
                 MatcherBuildError::InvalidModuleSpecifier(message) => {

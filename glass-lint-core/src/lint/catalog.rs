@@ -60,14 +60,26 @@ impl RuleCatalog {
 
         // Compile once into immutable records (no declarations retained).
         let records = compile_records(&rules_and_ids).map_err(|error| match error {
-            CompiledCatalogError::InvalidMatcher { rule_id, message }
-            | CompiledCatalogError::CompilerInvariant { rule_id, message }
-            | CompiledCatalogError::InvalidPhysicalPlan { rule_id, message } => {
+            CompiledCatalogError::InvalidMatcher { rule_id, message } => {
                 ProviderCatalogError::InvalidRule(
                     RuleId::parse(rule_id).expect("compiler preserves validated rule ID"),
                     message,
                 )
             }
+            CompiledCatalogError::CompilerInvariant {
+                rule_id,
+                diagnostic,
+            } => ProviderCatalogError::InvalidRule(
+                RuleId::parse(rule_id).expect("compiler preserves validated rule ID"),
+                diagnostic.to_string(),
+            ),
+            CompiledCatalogError::InvalidPhysicalPlan {
+                rule_id,
+                diagnostic,
+            } => ProviderCatalogError::InvalidRule(
+                RuleId::parse(rule_id).expect("compiler preserves validated rule ID"),
+                diagnostic.to_string(),
+            ),
             CompiledCatalogError::InvalidQuery {
                 rule_id,
                 diagnostic,

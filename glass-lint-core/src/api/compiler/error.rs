@@ -1,6 +1,4 @@
-use std::fmt;
-
-use crate::api::rule::query::limits;
+use crate::api::rule::PhysicalPlanDiagnostic;
 
 /// Validation failure for an executable physical plan.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -24,47 +22,43 @@ pub(crate) enum PhysicalPlanValidationError {
     ExcessiveAlternatives(usize),
 }
 
-impl fmt::Display for PhysicalPlanValidationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::ImpossibleDimensions => {
-                f.write_str("identity/event/subject dimensions cannot select a semantic fact")
+impl From<PhysicalPlanValidationError> for PhysicalPlanDiagnostic {
+    fn from(error: PhysicalPlanValidationError) -> Self {
+        match error {
+            PhysicalPlanValidationError::ImpossibleDimensions => Self::ImpossibleDimensions,
+            PhysicalPlanValidationError::ConstraintsRequireCallEvent => {
+                Self::ConstraintsRequireCallEvent
             }
-            Self::ConstraintsRequireCallEvent => {
-                f.write_str("argument constraints require a call-bearing event")
+            PhysicalPlanValidationError::NonCanonicalConstraints => Self::NonCanonicalConstraints,
+            PhysicalPlanValidationError::UnavailablePrimaryEvidence => {
+                Self::UnavailablePrimaryEvidence
             }
-            Self::NonCanonicalConstraints => {
-                f.write_str("constraints are not in canonical grouped order")
+            PhysicalPlanValidationError::InvalidLifecycleRoot => Self::InvalidLifecycleRoot,
+            PhysicalPlanValidationError::InvalidLifecycleSource { detail } => {
+                Self::InvalidLifecycleSource {
+                    detail: detail.to_owned(),
+                }
             }
-            Self::UnavailablePrimaryEvidence => f.write_str("primary evidence symbol is empty"),
-            Self::InvalidLifecycleRoot => f.write_str("lifecycle root is malformed"),
-            Self::InvalidLifecycleSource { detail } => f.write_str(detail),
-            Self::ExcessiveLifecycleEvidence {
+            PhysicalPlanValidationError::ExcessiveLifecycleEvidence {
                 requirements,
                 sinks,
-            } => write!(
-                f,
-                "lifecycle evidence has {requirements} requirements and {sinks} sinks, exceeding the indexed bound"
-            ),
+            } => Self::ExcessiveLifecycleEvidence {
+                requirements,
+                sinks,
+            },
             #[cfg(test)]
-            Self::RequirementsMismatch => {
-                f.write_str("physical roots and executable requirements disagree")
+            PhysicalPlanValidationError::RequirementsMismatch => {
+                unreachable!("test-only malformed plan error has no public diagnostic")
             }
-            Self::ExcessiveArgumentGroups(count) => write!(
-                f,
-                "argument group count {count} exceeds limit {}",
-                limits::MAX_ARGUMENT_GROUPS
-            ),
-            Self::ExcessivePredicateCount(count) => write!(
-                f,
-                "predicate count {count} exceeds limit {}",
-                limits::MAX_PREDICATES_PER_ARGUMENT
-            ),
-            Self::ExcessiveAlternatives(count) => write!(
-                f,
-                "static alternative count {count} exceeds limit {}",
-                limits::MAX_STATIC_ALTERNATIVES
-            ),
+            PhysicalPlanValidationError::ExcessiveArgumentGroups(count) => {
+                Self::ExcessiveArgumentGroups(count)
+            }
+            PhysicalPlanValidationError::ExcessivePredicateCount(count) => {
+                Self::ExcessivePredicateCount(count)
+            }
+            PhysicalPlanValidationError::ExcessiveAlternatives(count) => {
+                Self::ExcessiveAlternatives(count)
+            }
         }
     }
 }
