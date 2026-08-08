@@ -38,7 +38,7 @@ pub use error::{
     RuleBuildError,
 };
 pub use module::ModuleSpecifierPattern;
-pub(crate) use query::value::{ArgumentMatcherKind, StaticStringPredicateKind};
+pub(crate) use query::value::{ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcherKind};
 pub use query::{
     EventQuery, EventRequirement, IntoQueryDecl, LifecycleQuery, QueryBuildError, QueryDecl,
     QueryDiagnostic,
@@ -46,7 +46,7 @@ pub use query::{
         IntoLifecycleCondition, IntoLifecycleSource, LifecycleCompletion, LifecycleCondition,
         LifecycleEvent, LifecycleSink,
     },
-    value::{ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ValueMatcher, ValueMatcherKind},
+    value::{ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ValueMatcher},
 };
 pub use taxonomy::Confidence;
 

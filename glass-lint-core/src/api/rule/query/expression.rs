@@ -245,7 +245,7 @@ impl LogicalBranches {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct AnyExpr {
+pub(crate) struct AnyExpr {
     branches: LogicalBranches,
 }
 
@@ -274,7 +274,7 @@ impl AnyExpr {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct AllExpr {
+pub(crate) struct AllExpr {
     branches: LogicalBranches,
 }
 

@@ -35,13 +35,13 @@ pub struct ValueMatcher {
 }
 
 impl ValueMatcher {
-    pub fn kind(&self) -> &ValueMatcherKind {
+    pub(crate) fn kind(&self) -> &ValueMatcherKind {
         &self.kind
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum ValueMatcherKind {
+pub(crate) enum ValueMatcherKind {
     Any,
     StaticString(StaticStringPredicate),
 }
@@ -56,7 +56,7 @@ pub(crate) enum StaticStringPredicateKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct StaticStringPredicate {
+pub(crate) struct StaticStringPredicate {
     kind: StaticStringPredicateKind,
 }
 

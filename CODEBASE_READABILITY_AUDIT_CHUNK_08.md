@@ -132,7 +132,7 @@ non-fallible immediate setters retain duplicate errors for `build()`.
 
 ### Public declaration surface
 
-#### [ ] READ-032 — Remove or complete opaque public logical-value types
+#### [x] READ-032 — Remove or complete opaque public logical-value types
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -164,7 +164,10 @@ only semantic accessors that callers can use today; otherwise keep the
 compiler-facing predicate kind private. Preserve centralized constructors and
 the private physical-plan representation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Kept `QueryExpr` as the public diagnostic view and made
+`AnyExpr`, `AllExpr`, `ValueMatcherKind`, and static-string predicate storage
+crate-visible. The public declaration API no longer leaks compiler-owned
+branch or predicate representation.
 
 ### Top-level facade
 
