@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
 
 use glass_lint_datastructures::ByteRange;
 use smol_str::SmolStr;
@@ -64,47 +64,94 @@ struct ExportEntry {
     static_value: Option<String>,
 }
 
-impl ExportEntry {
-    fn with_resolution(resolution: ModuleExport) -> Self {
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct ExportObservation {
+    resolution: Option<ModuleExport>,
+    function_id: Option<FunctionId>,
+    static_value: Option<String>,
+}
+
+impl ExportObservation {
+    fn resolution(resolution: ModuleExport) -> Self {
         Self {
             resolution: Some(resolution),
-            function_id: None,
-            static_value: None,
+            ..Self::default()
         }
     }
 
-    fn with_function(function: FunctionId) -> Self {
+    fn function(function_id: FunctionId) -> Self {
         Self {
-            resolution: None,
-            function_id: Some(function),
-            static_value: None,
+            function_id: Some(function_id),
+            ..Self::default()
         }
     }
 
-    fn with_static_string(value: String) -> Self {
+    fn static_string(static_value: String) -> Self {
         Self {
-            resolution: None,
-            function_id: None,
-            static_value: Some(value),
+            static_value: Some(static_value),
+            ..Self::default()
         }
     }
+}
 
-    fn set_resolution(&mut self, resolution: ModuleExport) {
-        self.resolution = Some(resolution);
-    }
+enum ExportMerge {
+    Unchanged,
+    Updated,
+    Contradiction,
+}
 
-    fn clear_function(&mut self) {
-        self.function_id = None;
-    }
-
-    fn set_static_string(&mut self, value: String) {
-        self.static_value = Some(value);
+impl ExportEntry {
+    fn from_observation(observation: ExportObservation) -> Self {
+        Self {
+            resolution: observation.resolution,
+            function_id: observation.function_id,
+            static_value: observation.static_value,
+        }
     }
 
     fn mark_unknown(&mut self) {
         self.resolution = Some(ModuleExport::Unknown);
         self.function_id = None;
         self.static_value = None;
+    }
+
+    fn merge(&mut self, observation: ExportObservation) -> ExportMerge {
+        if self.resolution == Some(ModuleExport::Unknown) {
+            return ExportMerge::Unchanged;
+        }
+        if matches!(observation.resolution, Some(ModuleExport::Unknown))
+            || Self::conflicts(self.resolution.as_ref(), observation.resolution.as_ref())
+            || Self::conflicts(self.function_id.as_ref(), observation.function_id.as_ref())
+            || Self::conflicts(
+                self.static_value.as_ref(),
+                observation.static_value.as_ref(),
+            )
+        {
+            self.mark_unknown();
+            return ExportMerge::Contradiction;
+        }
+
+        let resolution_updated = self.resolution.is_none() && observation.resolution.is_some();
+        if resolution_updated {
+            self.resolution = observation.resolution;
+        }
+        let function_updated = self.function_id.is_none() && observation.function_id.is_some();
+        if function_updated {
+            self.function_id = observation.function_id;
+        }
+        let static_updated = self.static_value.is_none() && observation.static_value.is_some();
+        if static_updated {
+            self.static_value = observation.static_value;
+        }
+        if resolution_updated || function_updated || static_updated {
+            ExportMerge::Updated
+        } else {
+            ExportMerge::Unchanged
+        }
+    }
+
+    fn conflicts<T: PartialEq>(current: Option<&T>, observation: Option<&T>) -> bool {
+        matches!((current, observation), (Some(current), Some(observation)) if current != observation)
     }
 }
 
@@ -195,62 +242,27 @@ impl ModuleInterface {
     }
 
     pub fn add_export(&mut self, name: impl Into<SmolStr>, export: ModuleExport) {
-        if self.unknown_exports {
-            return;
-        }
-        let name = name.into();
-        match self.exports.get(&name) {
-            None => {
-                self.exports
-                    .insert(name, ExportEntry::with_resolution(export));
-            }
-            Some(existing)
-                if existing.resolution.is_none() || existing.resolution == Some(export.clone()) =>
-            {
-                if let Some(entry) = self.exports.get_mut(&name) {
-                    entry.set_resolution(export);
-                }
-            }
-            Some(_) => {
-                if let Some(entry) = self.exports.get_mut(&name) {
-                    entry.mark_unknown();
-                }
-            }
-        }
+        self.observe_export(name.into(), ExportObservation::resolution(export));
     }
 
     pub fn add_function_export(&mut self, name: impl Into<SmolStr>, function: FunctionId) {
-        if self.unknown_exports {
-            return;
-        }
-        let name = name.into();
-        match self.exports.get(&name) {
-            None => {
-                self.exports
-                    .insert(name, ExportEntry::with_function(function));
-            }
-            Some(existing) if existing.function_id == Some(function) => {}
-            Some(_) => {
-                if let Some(entry) = self.exports.get_mut(&name) {
-                    entry.clear_function();
-                }
-            }
-        }
+        self.observe_export(name.into(), ExportObservation::function(function));
     }
 
     pub fn add_static_string(&mut self, name: impl Into<SmolStr>, value: impl Into<String>) {
+        self.observe_export(name.into(), ExportObservation::static_string(value.into()));
+    }
+
+    fn observe_export(&mut self, name: SmolStr, observation: ExportObservation) {
         if self.unknown_exports {
             return;
         }
-        let name = name.into();
-        let value = value.into();
-        match self.exports.get_mut(&name) {
-            Some(entry) => {
-                entry.set_static_string(value);
+        match self.exports.entry(name) {
+            Entry::Vacant(entry) => {
+                entry.insert(ExportEntry::from_observation(observation));
             }
-            None => {
-                self.exports
-                    .insert(name, ExportEntry::with_static_string(value));
+            Entry::Occupied(mut entry) => {
+                let _ = entry.get_mut().merge(observation);
             }
         }
     }
@@ -370,5 +382,58 @@ mod tests {
         assert_eq!(interface.static_string("text"), None);
         assert_eq!(interface.function_export("late-function"), None);
         assert_eq!(interface.static_string("late-text"), None);
+    }
+
+    #[test]
+    fn compatible_export_observations_merge_independently_of_order() {
+        let function = FunctionId::from_test(1);
+        let resolution = ModuleExport::Local {
+            name: "value".into(),
+        };
+
+        let mut first = ModuleInterface::default();
+        first.add_function_export("value", function);
+        first.add_static_string("value", "text");
+        first.add_export("value", resolution.clone());
+
+        let mut second = ModuleInterface::default();
+        second.add_export("value", resolution);
+        second.add_static_string("value", "text");
+        second.add_function_export("value", function);
+
+        assert_eq!(first, second);
+        assert_eq!(first.function_export("value"), Some(function));
+        assert_eq!(first.static_string("value"), Some("text"));
+    }
+
+    #[test]
+    fn conflicting_export_observations_clear_all_metadata() {
+        let mut interface = ModuleInterface::default();
+        interface.add_export("value", ModuleExport::Value);
+        interface.add_function_export("value", FunctionId::from_test(1));
+        interface.add_static_string("value", "text");
+        interface.add_function_export("value", FunctionId::from_test(2));
+
+        let Some((name, export)) = interface.exports().next() else {
+            panic!("conflict should retain an unknown export entry");
+        };
+        assert_eq!(name.as_str(), "value");
+        assert_eq!(export, &ModuleExport::Unknown);
+        assert_eq!(interface.function_export("value"), None);
+        assert_eq!(interface.static_string("value"), None);
+    }
+
+    #[test]
+    fn conflicting_static_strings_clear_the_export_entry() {
+        let mut interface = ModuleInterface::default();
+        interface.add_static_string("value", "first");
+        interface.add_static_string("value", "second");
+
+        assert_eq!(interface.static_string("value"), None);
+        let Some((name, export)) = interface.exports().next() else {
+            panic!("conflict should retain an unknown export entry");
+        };
+        assert_eq!(name.as_str(), "value");
+        assert_eq!(export, &ModuleExport::Unknown);
     }
 }

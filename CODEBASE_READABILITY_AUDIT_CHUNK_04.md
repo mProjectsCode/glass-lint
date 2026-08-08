@@ -125,7 +125,7 @@ definite witness.
 
 **Fix Applied:** `ValueTable` now exposes one production `intern_construction` operation over a private `ValueConstruction` specification. Resolver call, constant, and expression paths use that boundary for binding wrapping, terminal identity, static-object name validation, and exhaustion handling; test-only raw helpers remain local to model tests. Verified with `make fmt && make ci`.
 
-#### [ ] READ-004 — Module export metadata has implicit and inconsistent merge rules
+#### [x] READ-004 — Module export metadata has implicit and inconsistent merge rules
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -165,7 +165,7 @@ unknown barrier. Add focused tests for compatible mixed metadata, conflicting
 function IDs, conflicting resolutions, and order independence where the
 semantic observation is equivalent.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Per-name export observations now pass through one `ExportEntry::merge` transition. Compatible resolution, function, and static-string metadata composes independently of observation order; contradictions clear all metadata and retain an explicit unknown entry. Added focused conflict/order tests while preserving the module-wide unknown barrier. Verified with `make fmt && make ci`.
 
 #### [ ] READ-005 — The frozen table bundle is dismantled into an order-dependent tuple
 
