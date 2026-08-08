@@ -24,6 +24,7 @@ mod parse;
 pub mod project;
 mod rule_id;
 
+pub(crate) use analysis::StatusDiagnostics;
 pub use api::rule::{Rule, RuleBuildError};
 pub use config::CoreConfig;
 pub use diagnostic::{RuleMetadata, Severity, SourceLineIndex};

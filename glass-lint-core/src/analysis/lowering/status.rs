@@ -85,6 +85,22 @@ pub struct AnalysisStatus {
     entries: BTreeSet<StatusEntry>,
 }
 
+pub struct StatusDiagnostics {
+    files: Vec<(ProjectRelativePath, AnalysisDiagnostic)>,
+    project: Vec<AnalysisDiagnostic>,
+}
+
+impl StatusDiagnostics {
+    pub fn into_parts(
+        self,
+    ) -> (
+        Vec<(ProjectRelativePath, AnalysisDiagnostic)>,
+        Vec<AnalysisDiagnostic>,
+    ) {
+        (self.files, self.project)
+    }
+}
+
 impl AnalysisStatus {
     pub fn record(&mut self, scope: StatusScope, reason: IncompleteReason) {
         self.entries.insert(StatusEntry { scope, reason });
@@ -114,12 +130,7 @@ impl AnalysisStatus {
         }
     }
 
-    pub fn diagnostics(
-        &self,
-    ) -> (
-        Vec<(ProjectRelativePath, AnalysisDiagnostic)>,
-        Vec<AnalysisDiagnostic>,
-    ) {
+    pub(crate) fn diagnostics(&self) -> StatusDiagnostics {
         let mut files = Vec::new();
         let mut project = Vec::new();
         for entry in &self.entries {
@@ -132,13 +143,13 @@ impl AnalysisStatus {
             if matches!(entry.reason, IncompleteReason::ParseFailure { .. }) {
                 continue;
             }
-            let diagnostic = entry.reason.diagnostic(&entry.scope);
+            let diagnostic = entry.reason.diagnostic();
             match &entry.scope {
                 StatusScope::File(path) => files.push((path.clone(), diagnostic)),
                 StatusScope::Project => project.push(diagnostic),
             }
         }
-        (files, project)
+        StatusDiagnostics { files, project }
     }
 }
 
@@ -182,7 +193,7 @@ impl AnalysisComponent {
 }
 
 impl IncompleteReason {
-    fn diagnostic(&self, scope: &StatusScope) -> AnalysisDiagnostic {
+    fn diagnostic(&self) -> AnalysisDiagnostic {
         // Single match over all status variants: each arm pairs a diagnostic
         // kind with a message template. Keeping them together ensures every
         // variant maps to exactly one (code, message) pair without drift.
@@ -256,10 +267,7 @@ impl IncompleteReason {
                 format!("scope collection encountered {count} structural issue(s)"),
             ),
         };
-        let location = match scope {
-            StatusScope::File(_) | StatusScope::Project => None,
-        };
-        AnalysisDiagnostic::new(code.into(), message, location)
+        AnalysisDiagnostic::new(code.into(), message, None)
     }
 }
 
@@ -281,7 +289,7 @@ mod tests {
         };
         status.record(StatusScope::File(file()), reason.clone());
         status.record(StatusScope::File(file()), reason);
-        let (files, project) = status.diagnostics();
+        let (files, project) = status.diagnostics().into_parts();
         assert_eq!(files.len(), 1);
         assert!(project.is_empty());
         assert_eq!(files[0].1.code().as_str(), "semantic_budget_exhausted");
@@ -309,7 +317,7 @@ mod tests {
         status.record(StatusScope::File(file()), reason);
 
         let converted = status.for_local_file(&ProjectRelativePath::new("other.js").unwrap());
-        let (files, project) = converted.diagnostics();
+        let (files, project) = converted.diagnostics().into_parts();
 
         assert!(project.is_empty());
         assert_eq!(files.len(), 2);

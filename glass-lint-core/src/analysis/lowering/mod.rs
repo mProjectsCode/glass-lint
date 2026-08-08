@@ -464,7 +464,7 @@ mod tests {
         assert!(!artifact.facts().stream().is_valid());
         assert!(artifact.facts().matcher_index().is_empty());
         assert!(artifact.effects().iter_effects().next().is_none());
-        let (_, project_diagnostics) = artifact.status().diagnostics();
+        let (_, project_diagnostics) = artifact.status().diagnostics().into_parts();
         assert_eq!(project_diagnostics.len(), 1);
         assert_eq!(
             project_diagnostics[0].code().as_str(),
@@ -556,7 +556,7 @@ mod tests {
         .lower_program(&parsed.program, &invalid);
         assert!(!artifact.status().is_complete());
         assert!(artifact.facts().stream().facts().is_empty());
-        let (files, project) = artifact.status().diagnostics();
+        let (files, project) = artifact.status().diagnostics().into_parts();
         assert!(files.is_empty());
         assert_eq!(project.len(), 1);
         assert_eq!(project[0].code().as_str(), "invalid_parser_span");

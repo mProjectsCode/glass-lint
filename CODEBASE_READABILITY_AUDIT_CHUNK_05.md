@@ -171,7 +171,7 @@ fingerprint-plus-full-key collision check used by both cache lookup and
 replacement. Source, language, normalization, environment, and engine-version
 identity dimensions remain unchanged. Verified with `make fmt && make ci`.
 
-#### [ ] READ-005 — Status diagnostics expose a positional split and a redundant scope argument
+#### [x] READ-005 — Status diagnostics expose a positional split and a redundant scope argument
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -202,7 +202,7 @@ give it an explicit location-bearing owner if locations become part of the
 diagnostic contract. Preserve BTreeSet ordering, parse-failure de-duplication,
 project-to-file propagation, and stable output ordering.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Status conversion now returns a crate-internal `StatusDiagnostics` aggregate with an explicit consuming `into_parts` boundary, and `IncompleteReason::diagnostic` no longer accepts the unused scope. File/project partitioning, parse-failure de-duplication, deterministic ordering, and report propagation remain unchanged. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 
