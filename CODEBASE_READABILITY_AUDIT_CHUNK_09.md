@@ -229,7 +229,7 @@ which added the private `items_mut` slot operation and routed all mutating
 methods through it. The finding predates that fix and is stale in this audit
 chunk; no duplicate source change is needed.
 
-#### [ ] READ-007 — Query validation carries scope, type, correlation, and mode state through raw collections
+#### [x] READ-007 — Query validation carries scope, type, correlation, and mode state through raw collections
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -260,7 +260,12 @@ availability. Preserve independent `Any` branch scopes, same-event
 correlation, type-compatibility rules, bounded work, and the existing
 diagnostic precedence.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Scope/type validation now owns bindings, inferred types,
+primary validation, and `Any` branch joins in a private `ScopeTypes` context.
+Correlation/evidence traversal uses the named `EvidenceScope` state instead of
+a behavior-changing boolean. Existing branch isolation, compatible type
+refinement, correlation checks, diagnostic precedence, and bounded traversal
+are preserved. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

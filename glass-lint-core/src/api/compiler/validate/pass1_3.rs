@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 
 use super::error::{QueryCompileError, is_identity_empty, is_valid_identity_event_pair};
 use crate::api::rule::query::{
@@ -62,133 +62,79 @@ fn is_more_specific(candidate: VarType, existing: VarType) -> bool {
 /// traversal, combining the work of the former `pass_variable_collection`
 /// and `pass_type_checking` passes.
 pub(crate) fn pass_scope_types(decl: &QueryDecl) -> Result<(), QueryCompileError> {
-    let mut seen: Vec<VarId> = Vec::new();
-    let mut var_types: HashMap<VarId, VarType> = HashMap::new();
-    collect_scope_and_types(decl.expression(), &mut seen, &mut var_types)?;
-
-    // Verify the emission primary variable is event-typed.
-    let primary = decl.emission().primary_var();
-    var_types.get(&primary).map_or(
-        Err(QueryCompileError::MissingBinding {
-            primary_var: primary,
-        }),
-        |ty| match ty {
-            VarType::Event | VarType::CallEvent | VarType::MemberEvent => Ok(()),
-            VarType::Object => Err(QueryCompileError::UnavailablePrimaryLocation { var: primary }),
-        },
-    )
+    let mut context = ScopeTypes::default();
+    context.collect(decl.expression())?;
+    context.validate_primary(decl.emission().primary_var())
 }
 
-fn collect_scope_and_types(
-    expr: &QueryExpr,
-    seen: &mut Vec<VarId>,
-    types: &mut HashMap<VarId, VarType>,
-) -> Result<(), QueryCompileError> {
-    match expr.kind() {
-        QueryExprKind::Event(eq) => {
-            if seen.contains(&eq.var()) {
-                return Err(QueryCompileError::DuplicateBinding { var: eq.var() });
-            }
-            seen.push(eq.var());
-            let ty = eq.event().variable_type();
-            set_type_internal(eq.var(), ty, types)?;
-        }
-        QueryExprKind::SelectEvent(s) => {
-            if seen.contains(&s.bind) {
-                return Err(QueryCompileError::DuplicateBinding { var: s.bind });
-            }
-            seen.push(s.bind);
-            set_type_internal(s.bind, VarType::Event, types)?;
-        }
-        QueryExprKind::Require(p) => collect_require_scope(p, seen, types)?,
-        QueryExprKind::Any(any) => collect_any_scope(any, types)?,
-        QueryExprKind::All(all) => {
-            for branch in all.iter() {
-                collect_scope_and_types(branch, seen, types)?;
-            }
-        }
-        QueryExprKind::Lifecycle(lc) => {
-            for src in lc.sources() {
-                let mut src_seen = Vec::new();
-                if src_seen.contains(&src.var()) {
-                    return Err(QueryCompileError::DuplicateBinding { var: src.var() });
+#[derive(Default)]
+struct ScopeTypes {
+    bindings: Vec<VarId>,
+    types: HashMap<VarId, VarType>,
+}
+
+impl ScopeTypes {
+    fn collect(&mut self, expr: &QueryExpr) -> Result<(), QueryCompileError> {
+        match expr.kind() {
+            QueryExprKind::Event(eq) => self.bind(eq.var(), eq.event().variable_type()),
+            QueryExprKind::SelectEvent(s) => self.bind(s.bind, VarType::Event),
+            QueryExprKind::Require(predicate) => self.collect_require(predicate),
+            QueryExprKind::Any(any) => self.collect_any(any),
+            QueryExprKind::All(all) => {
+                for branch in all.iter() {
+                    self.collect(branch)?;
                 }
-                src_seen.push(src.var());
-                let ty = src.event().variable_type();
-                set_type_internal(src.var(), ty, types)?;
+                Ok(())
+            }
+            QueryExprKind::Lifecycle(lc) => {
+                for src in lc.sources() {
+                    self.set_type(src.var(), src.event().variable_type())?;
+                }
+                Ok(())
             }
         }
     }
-    Ok(())
-}
 
-fn collect_require_scope(
-    pred: &QueryPredicate,
-    seen: &mut Vec<VarId>,
-    types: &mut HashMap<VarId, VarType>,
-) -> Result<(), QueryCompileError> {
-    match pred {
-        QueryPredicate::ReturnedObject { bind, .. }
-        | QueryPredicate::ConstructedObject { bind, .. } => {
-            if seen.contains(bind) {
-                return Err(QueryCompileError::DuplicateBinding { var: *bind });
+    fn collect_require(&mut self, predicate: &QueryPredicate) -> Result<(), QueryCompileError> {
+        match predicate {
+            QueryPredicate::ReturnedObject { bind, .. }
+            | QueryPredicate::ConstructedObject { bind, .. } => self.bind(*bind, VarType::Object),
+            QueryPredicate::EventKind { event, expected } => {
+                self.require_binding(*event)?;
+                self.check_type(*event, expected.variable_type())
             }
-            seen.push(*bind);
-            set_type_internal(*bind, VarType::Object, types)?;
-        }
-        QueryPredicate::EventKind { event, expected } => {
-            if !seen.contains(event) {
-                return Err(QueryCompileError::MissingBinding {
-                    primary_var: *event,
-                });
+            QueryPredicate::EventIdentity { event, .. } => {
+                self.require_binding(*event)?;
+                self.check_type(*event, VarType::Event)
             }
-            let implied = expected.variable_type();
-            check_type_internal(*event, implied, types)?;
-        }
-        QueryPredicate::EventIdentity { event, .. } => {
-            if !seen.contains(event) {
-                return Err(QueryCompileError::MissingBinding {
-                    primary_var: *event,
-                });
+            QueryPredicate::Argument { call, .. } => {
+                self.require_binding(*call)?;
+                self.check_type(*call, VarType::CallEvent)
             }
-            check_type_internal(*event, VarType::Event, types)?;
-        }
-        QueryPredicate::Argument { call, .. } => {
-            if !seen.contains(call) {
-                return Err(QueryCompileError::MissingBinding { primary_var: *call });
+            QueryPredicate::MemberSubject { event, object } => {
+                self.require_binding(*event)?;
+                self.require_binding(*object)?;
+                self.check_type(*event, VarType::MemberEvent)?;
+                self.check_type(*object, VarType::Object)
             }
-            check_type_internal(*call, VarType::CallEvent, types)?;
-        }
-        QueryPredicate::MemberSubject { event, object } => {
-            if !seen.contains(event) {
-                return Err(QueryCompileError::MissingBinding {
-                    primary_var: *event,
-                });
-            }
-            if !seen.contains(object) {
-                return Err(QueryCompileError::MissingBinding {
-                    primary_var: *object,
-                });
-            }
-            check_type_internal(*event, VarType::MemberEvent, types)?;
-            check_type_internal(*object, VarType::Object, types)?;
         }
     }
-    Ok(())
-}
 
-fn collect_any_scope(
-    any: &AnyExpr,
-    types: &mut HashMap<VarId, VarType>,
-) -> Result<(), QueryCompileError> {
-    let mut merged: HashMap<VarId, VarType> = HashMap::new();
-    for branch in any.iter() {
-        let mut branch_seen = Vec::new();
-        let mut branch_types = HashMap::new();
-        collect_scope_and_types(branch, &mut branch_seen, &mut branch_types)?;
-        for (var, ty) in branch_types {
-            match merged.entry(var) {
-                std::collections::hash_map::Entry::Occupied(mut entry) => {
+    fn collect_any(&mut self, any: &AnyExpr) -> Result<(), QueryCompileError> {
+        let mut merged = Self::default();
+        for branch in any.iter() {
+            let mut branch_context = Self::default();
+            branch_context.collect(branch)?;
+            merged.merge_branch(branch_context)?;
+        }
+        self.types.extend(merged.types);
+        Ok(())
+    }
+
+    fn merge_branch(&mut self, branch: Self) -> Result<(), QueryCompileError> {
+        for (var, ty) in branch.types {
+            match self.types.entry(var) {
+                Entry::Occupied(mut entry) => {
                     let existing = *entry.get();
                     if !types_compatible(ty, existing) && !types_compatible(existing, ty) {
                         return Err(QueryCompileError::IncompatibleBranchOutput {
@@ -201,56 +147,75 @@ fn collect_any_scope(
                         *entry.get_mut() = ty;
                     }
                 }
-                std::collections::hash_map::Entry::Vacant(entry) => {
+                Entry::Vacant(entry) => {
                     entry.insert(ty);
                 }
             }
         }
+        Ok(())
     }
-    types.extend(merged);
-    Ok(())
-}
 
-fn set_type_internal(
-    var: VarId,
-    ty: VarType,
-    types: &mut HashMap<VarId, VarType>,
-) -> Result<(), QueryCompileError> {
-    if let Some(existing) = types.get(&var) {
-        if !types_compatible(*existing, ty) {
+    fn bind(&mut self, var: VarId, ty: VarType) -> Result<(), QueryCompileError> {
+        if self.bindings.contains(&var) {
+            return Err(QueryCompileError::DuplicateBinding { var });
+        }
+        self.bindings.push(var);
+        self.set_type(var, ty)
+    }
+
+    fn require_binding(&self, var: VarId) -> Result<(), QueryCompileError> {
+        if self.bindings.contains(&var) {
+            Ok(())
+        } else {
+            Err(QueryCompileError::MissingBinding { primary_var: var })
+        }
+    }
+
+    fn set_type(&mut self, var: VarId, ty: VarType) -> Result<(), QueryCompileError> {
+        let Some(existing) = self.types.get(&var).copied() else {
+            self.types.insert(var, ty);
+            return Ok(());
+        };
+        if !types_compatible(existing, ty) {
             return Err(QueryCompileError::TypeMismatch {
                 var,
                 expected: ty.variant_name(),
                 actual: existing.variant_name(),
             });
         }
-        if is_more_specific(ty, *existing) {
-            types.insert(var, ty);
+        if is_more_specific(ty, existing) {
+            self.types.insert(var, ty);
         }
-        return Ok(());
+        Ok(())
     }
-    types.insert(var, ty);
-    Ok(())
-}
 
-fn check_type_internal(
-    var: VarId,
-    expected: VarType,
-    types: &mut HashMap<VarId, VarType>,
-) -> Result<(), QueryCompileError> {
-    if let Some(actual) = types.get(&var) {
-        if !types_compatible(*actual, expected) {
+    fn check_type(&mut self, var: VarId, expected: VarType) -> Result<(), QueryCompileError> {
+        let Some(actual) = self.types.get(&var).copied() else {
+            self.types.insert(var, expected);
+            return Ok(());
+        };
+        if !types_compatible(actual, expected) {
             return Err(QueryCompileError::TypeMismatch {
                 var,
                 expected: expected.variant_name(),
                 actual: actual.variant_name(),
             });
         }
-        if is_more_specific(expected, *actual) {
-            types.insert(var, expected);
+        if is_more_specific(expected, actual) {
+            self.types.insert(var, expected);
         }
-        return Ok(());
+        Ok(())
     }
-    types.insert(var, expected);
-    Ok(())
+
+    fn validate_primary(&self, primary: VarId) -> Result<(), QueryCompileError> {
+        match self.types.get(&primary) {
+            None => Err(QueryCompileError::MissingBinding {
+                primary_var: primary,
+            }),
+            Some(VarType::Event | VarType::CallEvent | VarType::MemberEvent) => Ok(()),
+            Some(VarType::Object) => {
+                Err(QueryCompileError::UnavailablePrimaryLocation { var: primary })
+            }
+        }
+    }
 }
