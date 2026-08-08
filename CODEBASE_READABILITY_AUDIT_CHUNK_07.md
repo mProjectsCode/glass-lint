@@ -95,7 +95,7 @@ graph-local status. `ProjectLinker` merges that result before continuing with
 export resolution and final diagnostic ordering. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-003 — Recursive export lookup spreads cache, cycle, and uncertainty state across early returns
+#### [x] READ-003 — Recursive export lookup spreads cache, cycle, and uncertainty state across early returns
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -131,7 +131,12 @@ precedence over the cache, default-export behavior, the depth bound,
 star-export ambiguity, unknown masking, and the rule that incomplete branches
 cannot establish a complete export identity.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Recursive export lookup now uses a private
+`ExportLookupContext` to own active-path admission and removal. A single
+wrapper surrounds the recursive body, so default, missing-module,
+unknown-interface, depth, cycle, and recursive exits all clean up uniformly;
+cache and conservative result semantics remain unchanged. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-004 — Project projection coordinates local, cross-file, evidence, and outcome phases in one session
 

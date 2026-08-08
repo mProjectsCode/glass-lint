@@ -67,6 +67,26 @@ pub(super) struct ExportResolver<'a> {
     cache: &'a mut ExportLookupCache,
 }
 
+struct ExportLookupContext {
+    visiting: BTreeSet<QualifiedExportId>,
+}
+
+impl ExportLookupContext {
+    fn new() -> Self {
+        Self {
+            visiting: BTreeSet::new(),
+        }
+    }
+
+    fn enter(&mut self, id: &QualifiedExportId) -> bool {
+        self.visiting.len() < MAX_EXPORT_DEPTH && self.visiting.insert(id.clone())
+    }
+
+    fn leave(&mut self, id: &QualifiedExportId) {
+        self.visiting.remove(id);
+    }
+}
+
 impl<'a> ExportResolver<'a> {
     pub(super) fn new(
         project: &'a dyn ProjectLookup,
@@ -134,14 +154,14 @@ impl<'a> ExportResolver<'a> {
 
     /// Resolve an export through direct and star re-exports with cycle bounds.
     pub(super) fn lookup_export(&mut self, id: &QualifiedExportId) -> Option<ExportResolution> {
-        let mut visiting = BTreeSet::new();
-        self.lookup_export_inner(id, &mut visiting)
+        let mut context = ExportLookupContext::new();
+        self.lookup_export_inner(id, &mut context)
     }
 
     fn lookup_export_inner(
         &mut self,
         id: &QualifiedExportId,
-        visiting: &mut BTreeSet<QualifiedExportId>,
+        context: &mut ExportLookupContext,
     ) -> Option<ExportResolution> {
         if let Some(resolved) = self.exports.resolve(id) {
             return Some(resolved.clone());
@@ -149,11 +169,20 @@ impl<'a> ExportResolver<'a> {
         if let ExportLookupCacheResult::Hit(cached) = self.cache.lookup(id) {
             return cached.cloned();
         }
-        if visiting.len() >= MAX_EXPORT_DEPTH || !visiting.insert(id.clone()) {
+        if !context.enter(id) {
             return None;
         }
+        let result = self.lookup_export_body(id, context);
+        context.leave(id);
+        result
+    }
+
+    fn lookup_export_body(
+        &mut self,
+        id: &QualifiedExportId,
+        context: &mut ExportLookupContext,
+    ) -> Option<ExportResolution> {
         if id.name() == DEFAULT_EXPORT {
-            visiting.remove(id);
             return None;
         }
         let is_unknown = self
@@ -163,8 +192,7 @@ impl<'a> ExportResolver<'a> {
         if is_unknown {
             return Some(ExportResolution::Unknown);
         }
-        let (candidate, saw_unknown) = self.walk_star_exports(id, visiting);
-        visiting.remove(id);
+        let (candidate, saw_unknown) = self.walk_star_exports(id, context);
 
         if let Some(resolved) = self.exports.resolve(id) {
             return Some(resolved.clone());
@@ -177,7 +205,7 @@ impl<'a> ExportResolver<'a> {
     fn walk_star_exports(
         &mut self,
         id: &QualifiedExportId,
-        visiting: &mut BTreeSet<QualifiedExportId>,
+        context: &mut ExportLookupContext,
     ) -> (Option<ExportResolution>, bool) {
         let module = id.module();
         let export_name = id.name().clone();
@@ -207,7 +235,7 @@ impl<'a> ExportResolver<'a> {
             let candidate_export = match self.project.request_target(module, request.id()) {
                 Some(LinkedModuleTarget::Internal { id: target }) => self.lookup_export_inner(
                     &QualifiedExportId::new(*target, export_name.clone()),
-                    visiting,
+                    context,
                 ),
                 Some(target) => Some(linked_target_to_export_resolution(target, &export_name)),
                 None => None,
