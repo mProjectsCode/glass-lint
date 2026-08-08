@@ -91,7 +91,7 @@ fn alpha_equivalent_variable_ids_normalize_equally() {
             let mut slots: Vec<u32> = branches
                 .iter()
                 .map(|b| match b {
-                    NormalizedRoot::Event(ev) => ev.slot,
+                    NormalizedRoot::Event(ev) => ev.slot.get(),
                     _ => u32::MAX,
                 })
                 .collect();
@@ -108,7 +108,7 @@ fn alpha_equivalent_single_event_normalizes_equally() {
     let b = decl(event(99, "fetch"), 99, "fetch");
     assert_eq!(normalize_ok(&a), normalize_ok(&b));
     match normalize_ok(&a).root() {
-        NormalizedRoot::Event(ev) => assert_eq!(ev.slot, 0, "slot should be 0 after alpha"),
+        NormalizedRoot::Event(ev) => assert_eq!(ev.slot.get(), 0, "slot should be 0 after alpha"),
         other => panic!("expected Event, got {other:?}"),
     }
 }
@@ -283,7 +283,7 @@ fn normalized_root_slots_are_dense_after_alpha_renumber() {
     let nq = normalize_ok(&d);
     match nq.root() {
         NormalizedRoot::Event(ev) => {
-            assert_eq!(ev.slot, 0, "slot should be renumbered to 0");
+            assert_eq!(ev.slot.get(), 0, "slot should be renumbered to 0");
         }
         other => panic!("expected Event, got {other:?}"),
     }
@@ -299,7 +299,7 @@ fn normalized_any_branches_have_dense_slots() {
             let mut slots: Vec<u32> = roots
                 .iter()
                 .map(|r| match r {
-                    NormalizedRoot::Event(ev) => ev.slot,
+                    NormalizedRoot::Event(ev) => ev.slot.get(),
                     _ => u32::MAX,
                 })
                 .collect();
@@ -307,5 +307,29 @@ fn normalized_any_branches_have_dense_slots() {
             assert_eq!(slots, vec![0, 1, 2], "slots should be dense 0..2");
         }
         other => panic!("expected Any, got {other:?}"),
+    }
+}
+
+#[test]
+fn normalized_object_slots_share_the_dense_alpha_namespace() {
+    let query = QueryDecl::member_call_returned("create", "send").unwrap();
+    let normalized = normalize_ok(&query);
+
+    match normalized.root() {
+        NormalizedRoot::Event(event) => {
+            assert_eq!(event.slot.get(), 0);
+            match &event.subject {
+                crate::api::compiler::normalized::NormalizedSubject::Returned {
+                    object_slot,
+                    ..
+                } => assert_eq!(object_slot.get(), 1),
+                other => panic!("expected returned subject, got {other:?}"),
+            }
+            assert_eq!(
+                normalize::collect_normalized_slots(normalized.root()),
+                vec![0, 1]
+            );
+        }
+        other => panic!("expected Event after normalization, got {other:?}"),
     }
 }

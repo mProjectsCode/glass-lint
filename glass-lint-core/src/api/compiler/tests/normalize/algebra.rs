@@ -98,7 +98,7 @@ trait SlotAccess {
 impl SlotAccess for NormalizedRoot {
     fn slot_or_zero(&self) -> u32 {
         match self {
-            Self::Event(ev) => ev.slot,
+            Self::Event(ev) => ev.slot.get(),
             _ => 0,
         }
     }

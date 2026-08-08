@@ -5,7 +5,8 @@ use crate::api::{
     compiler::{
         contradiction::detect_event_contradictions,
         normalized::{
-            CanonicalArgumentConstraints, NormalizedEvent, NormalizedRoot, NormalizedSubject,
+            CanonicalArgumentConstraints, EventSlot, NormalizedEvent, NormalizedRoot,
+            NormalizedSubject, ObjectSlot,
         },
         validate::{ContradictionKind, QueryCompileError},
     },
@@ -131,10 +132,6 @@ fn merge_same_event(all: &AllExpr, event_var: VarId) -> Result<NormalizedRoot, Q
     merge.finish().into_root()
 }
 
-fn var_to_slot(var: VarId) -> u32 {
-    var.get()
-}
-
 struct SameEventMerge {
     event_var: VarId,
     event: EventSpec,
@@ -190,13 +187,13 @@ impl SameEventMerge {
             QueryPredicate::ReturnedObject { bind, identity } => {
                 self.merge_subject(NormalizedSubject::Returned {
                     producer: identity.clone(),
-                    object_slot: var_to_slot(*bind),
+                    object_slot: ObjectSlot::from_var(*bind),
                 })?;
             }
             QueryPredicate::ConstructedObject { bind, identity } => {
                 self.merge_subject(NormalizedSubject::Instance {
                     constructor: identity.clone(),
-                    object_slot: var_to_slot(*bind),
+                    object_slot: ObjectSlot::from_var(*bind),
                 })?;
             }
             QueryPredicate::MemberSubject { event, object } => {
@@ -319,14 +316,14 @@ impl CompleteSameEventMerge {
             match &subject {
                 NormalizedSubject::Returned { object_slot, .. }
                 | NormalizedSubject::Instance { object_slot, .. }
-                    if *object_slot == var_to_slot(object) => {}
+                    if *object_slot == ObjectSlot::from_var(object) => {}
                 _ => return Err(QueryCompileError::UncorrelatedConjunction),
             }
         }
         detect_event_contradictions(event_var, &event, &identity, &subject, &constraints)?;
 
         Ok(NormalizedRoot::Event(NormalizedEvent {
-            slot: var_to_slot(event_var),
+            slot: EventSlot::from_var(event_var),
             event,
             subject,
             arguments,

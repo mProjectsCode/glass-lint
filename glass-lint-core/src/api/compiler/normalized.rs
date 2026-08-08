@@ -4,7 +4,7 @@ use crate::api::{
     classification::MatchKind,
     rule::{
         ArgumentConstraint, ArgumentIndex, ArgumentMatcher,
-        query::{EventSpec, IdentitySpec},
+        query::{EventSpec, IdentitySpec, VarId},
     },
 };
 
@@ -158,10 +158,46 @@ impl ArgumentConstraintGroup {
     }
 }
 
+/// Dense slot identifying the event variable bound by a normalized event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct EventSlot(u32);
+
+impl EventSlot {
+    pub(crate) fn from_var(var: VarId) -> Self {
+        Self(var.get())
+    }
+
+    pub(crate) const fn from_raw(value: u32) -> Self {
+        Self(value)
+    }
+
+    pub(crate) const fn get(self) -> u32 {
+        self.0
+    }
+}
+
+/// Dense slot identifying an object produced or constructed by an event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct ObjectSlot(u32);
+
+impl ObjectSlot {
+    pub(crate) fn from_var(var: VarId) -> Self {
+        Self(var.get())
+    }
+
+    pub(crate) const fn from_raw(value: u32) -> Self {
+        Self(value)
+    }
+
+    pub(crate) const fn get(self) -> u32 {
+        self.0
+    }
+}
+
 /// A single normalized event node with merged subject and arguments.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NormalizedEvent {
-    pub(crate) slot: u32,
+    pub(crate) slot: EventSlot,
     pub(crate) event: EventSpec,
     pub(crate) subject: NormalizedSubject,
     pub(crate) arguments: CanonicalArgumentConstraints,
@@ -197,11 +233,11 @@ pub(crate) enum NormalizedSubject {
     },
     Returned {
         producer: IdentitySpec,
-        object_slot: u32,
+        object_slot: ObjectSlot,
     },
     Instance {
         constructor: IdentitySpec,
-        object_slot: u32,
+        object_slot: ObjectSlot,
     },
 }
 

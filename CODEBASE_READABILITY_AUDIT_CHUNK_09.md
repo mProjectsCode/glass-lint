@@ -126,7 +126,7 @@ caller-supplied requirement comparison remains test-only for malformed-plan
 coverage, and object-slot admission remains validated at construction.
 Verified with `make fmt && make ci`.
 
-#### [ ] READ-004 — Normalized and physical IR pass raw slot integers through an unused remapping API
+#### [x] READ-004 — Normalized and physical IR pass raw slot integers through an unused remapping API
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -155,7 +155,12 @@ consumer, and centralize slot rewriting on the normalized tree owner. Preserve
 dense deterministic slots, branch correlation, physical object identity, and
 the prohibition on exposing artifact-local IDs.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Normalized IR now uses distinct private `EventSlot` and
+`ObjectSlot` types, and physical lowering performs an explicit object-slot
+conversion. Alpha-renumbering includes both slot domains, centralizes the
+rewriting on the normalized tree, and no longer returns its unused map.
+Added regression coverage for dense returned-object slots. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-005 — Compiler error structure is flattened before the catalog boundary
 

@@ -6,8 +6,9 @@ use crate::api::{
         error::PhysicalPlanValidationError,
         normalize::normalize_query_decl,
         normalized::{
-            ArgumentConstraintGroup, CanonicalArgumentConstraints, NormalizedEmission,
+            ArgumentConstraintGroup, CanonicalArgumentConstraints, EventSlot, NormalizedEmission,
             NormalizedEvent, NormalizedLifecycle, NormalizedRoot,
+            ObjectSlot as NormalizedObjectSlot,
         },
         object_flow::CompiledObjectFlow,
         physical::{
@@ -335,7 +336,7 @@ fn object_slot_sentinel_is_rejected_by_relation_constructor() {
             IdentityConstraint::Rooted {
                 path: "document.create".into(),
             },
-            u32::MAX,
+            NormalizedObjectSlot::from_raw(u32::MAX),
             SymbolPath::from("send"),
             EventPredicate::MemberCall {
                 member: SymbolPath::from("send"),
@@ -411,7 +412,7 @@ fn malformed_lifecycle_source_is_reported_instead_of_dropped() {
     let query = crate::api::compiler::normalized::NormalizedQuery {
         root: NormalizedRoot::Lifecycle(NormalizedLifecycle {
             sources: vec![NormalizedEvent {
-                slot: 0,
+                slot: EventSlot::from_raw(0),
                 event: crate::api::rule::query::EventSpec::PropertyWrite {
                     property: SymbolPath::from("config.mode"),
                 },

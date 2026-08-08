@@ -8,7 +8,7 @@ use crate::api::{
         error::PhysicalPlanValidationError,
         normalized::{
             CanonicalArgumentConstraints, NormalizedEvent, NormalizedLifecycle, NormalizedQuery,
-            NormalizedRoot,
+            NormalizedRoot, ObjectSlot as NormalizedObjectSlot,
         },
         object_flow::CompiledObjectFlow,
         requirements::PlanRequirements,
@@ -114,14 +114,14 @@ impl PhysicalRoot {
 
     pub(crate) fn returned_subject(
         producer: IdentityConstraint,
-        object_slot: u32,
+        object_slot: NormalizedObjectSlot,
         member: SymbolPath,
         event: EventPredicate,
         evidence: EvidenceDescriptor,
     ) -> Result<Self, PhysicalPlanValidationError> {
         Ok(Self::ReturnedSubject {
             producer,
-            object_slot: ObjectSlot::new(object_slot)?,
+            object_slot: ObjectSlot::new(object_slot.get())?,
             member,
             event,
             evidence,
@@ -130,13 +130,13 @@ impl PhysicalRoot {
 
     fn instance_subject(
         constructor: IdentityConstraint,
-        object_slot: u32,
+        object_slot: NormalizedObjectSlot,
         member: SymbolPath,
         evidence: EvidenceDescriptor,
     ) -> Result<Self, PhysicalPlanValidationError> {
         Ok(Self::InstanceSubject {
             constructor,
-            object_slot: ObjectSlot::new(object_slot)?,
+            object_slot: ObjectSlot::new(object_slot.get())?,
             member,
             evidence,
         })

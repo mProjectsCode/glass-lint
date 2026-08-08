@@ -6,9 +6,9 @@ use crate::api::{
         contradiction::detect_event_contradictions,
         normalize_all::normalize_all_root,
         normalized::{
-            CanonicalArgumentConstraints, NormalizedEvent, NormalizedLifecycle,
+            CanonicalArgumentConstraints, EventSlot, NormalizedEvent, NormalizedLifecycle,
             NormalizedLifecycleCompletion, NormalizedLifecycleCondition, NormalizedLifecycleEvent,
-            NormalizedLifecycleSink, NormalizedRoot, NormalizedSubject,
+            NormalizedLifecycleSink, NormalizedRoot, NormalizedSubject, ObjectSlot,
         },
         validate::{QueryCompileError, classify_lifecycle_source, validate_subject_relation},
     },
@@ -151,7 +151,16 @@ pub(crate) fn collect_normalized_slots(root: &NormalizedRoot) -> Vec<u32> {
 
 fn collect_slots_rec(root: &NormalizedRoot, slots: &mut Vec<u32>) {
     match root {
-        NormalizedRoot::Event(ev) => slots.push(ev.slot),
+        NormalizedRoot::Event(ev) => {
+            slots.push(ev.slot.get());
+            match &ev.subject {
+                NormalizedSubject::Returned { object_slot, .. }
+                | NormalizedSubject::Instance { object_slot, .. } => {
+                    slots.push(object_slot.get());
+                }
+                NormalizedSubject::Direct { .. } => {}
+            }
+        }
         NormalizedRoot::Any(branches) => {
             for b in &**branches {
                 collect_slots_rec(b, slots);
@@ -159,7 +168,7 @@ fn collect_slots_rec(root: &NormalizedRoot, slots: &mut Vec<u32>) {
         }
         NormalizedRoot::Lifecycle(lc) => {
             for src in &lc.sources {
-                slots.push(src.slot);
+                slots.push(src.slot.get());
             }
         }
     }
@@ -170,8 +179,17 @@ fn collect_slots_rec(root: &NormalizedRoot, slots: &mut Vec<u32>) {
 fn apply_slot_map(root: &mut NormalizedRoot, map: &BTreeMap<u32, u32>) {
     match root {
         NormalizedRoot::Event(ev) => {
-            if let Some(&new_slot) = map.get(&ev.slot) {
-                ev.slot = new_slot;
+            if let Some(&new_slot) = map.get(&ev.slot.get()) {
+                ev.slot = EventSlot::from_raw(new_slot);
+            }
+            match &mut ev.subject {
+                NormalizedSubject::Returned { object_slot, .. }
+                | NormalizedSubject::Instance { object_slot, .. } => {
+                    if let Some(&new_slot) = map.get(&object_slot.get()) {
+                        *object_slot = ObjectSlot::from_raw(new_slot);
+                    }
+                }
+                NormalizedSubject::Direct { .. } => {}
             }
         }
         NormalizedRoot::Any(branches) => {
@@ -181,8 +199,8 @@ fn apply_slot_map(root: &mut NormalizedRoot, map: &BTreeMap<u32, u32>) {
         }
         NormalizedRoot::Lifecycle(lc) => {
             for src in &mut lc.sources {
-                if let Some(&new_slot) = map.get(&src.slot) {
-                    src.slot = new_slot;
+                if let Some(&new_slot) = map.get(&src.slot.get()) {
+                    src.slot = EventSlot::from_raw(new_slot);
                 }
             }
         }
@@ -192,17 +210,16 @@ fn apply_slot_map(root: &mut NormalizedRoot, map: &BTreeMap<u32, u32>) {
 /// Alpha-renumber: replace author-assigned slot values with dense 0..n slots
 /// ordered by the original slot values (deterministic).
 #[allow(clippy::cast_possible_truncation)]
-fn alpha_renumber_slots(root: &mut NormalizedRoot) -> BTreeMap<u32, u32> {
+fn alpha_renumber_slots(root: &mut NormalizedRoot) {
     let slots = collect_normalized_slots(root);
     if slots.is_empty() {
-        return BTreeMap::new();
+        return;
     }
     let mut map = BTreeMap::new();
     for (new_idx, &old) in slots.iter().enumerate() {
         map.insert(old, new_idx as u32);
     }
     apply_slot_map(root, &map);
-    map
 }
 
 /// Normalize a [`QueryExpr`] into a [`NormalizedRoot`].
@@ -454,7 +471,7 @@ fn normalize_event_from_query(
     detect_event_contradictions(eq.var(), eq.event(), eq.identity(), &subject, &args)?;
 
     Ok(NormalizedEvent {
-        slot: eq.var().get(),
+        slot: EventSlot::from_var(eq.var()),
         event: eq.event().clone(),
         subject,
         arguments,

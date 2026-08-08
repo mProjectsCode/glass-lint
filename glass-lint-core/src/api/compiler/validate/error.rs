@@ -2,7 +2,7 @@ use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
 use crate::api::{
-    compiler::normalized::NormalizedSubject,
+    compiler::normalized::{NormalizedSubject, ObjectSlot},
     rule::query::{EventSpec, IdentitySpec, VarId},
 };
 
@@ -218,13 +218,13 @@ pub(crate) enum SubjectRelation<'a> {
     },
     Returned {
         producer: &'a IdentitySpec,
-        object_slot: u32,
+        object_slot: ObjectSlot,
         member: &'a SymbolPath,
         event: &'a EventSpec,
     },
     Instance {
         constructor: &'a IdentitySpec,
-        object_slot: u32,
+        object_slot: ObjectSlot,
         member: &'a SymbolPath,
     },
 }
