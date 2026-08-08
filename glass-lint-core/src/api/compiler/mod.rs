@@ -210,28 +210,47 @@ pub(crate) fn lower_event(spec: &EventSpec) -> EventPredicate {
     }
 }
 
-/// Compile query declarations into a physical plan.
-fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildError> {
-    let mut all_roots = Vec::new();
-    let mut merged_requirements = requirements::PlanRequirements::default();
+struct QueryPlanAccumulator {
+    roots: Vec<physical::PhysicalRoot>,
+    requirements: requirements::PlanRequirements,
+}
 
-    for query in queries {
-        validate_query_decl(query).map_err(map_query_compile_error)?;
-
-        let normalized: NormalizedQuery =
-            normalize::normalize_query_decl(query).map_err(map_query_compile_error)?;
-
-        let query_plan = physical::plan_normalized(&normalized)
-            .map_err(|e| MatcherBuildError::InvalidPhysicalPlan(e.to_string()))?;
-        all_roots.extend(query_plan.roots().iter().cloned());
-        merged_requirements.merge_from(query_plan.requirements());
+impl QueryPlanAccumulator {
+    fn add(&mut self, query_plan: &PhysicalPlan) {
+        self.roots.extend(query_plan.roots().iter().cloned());
+        self.requirements.merge_from(query_plan.requirements());
     }
 
-    let physical_plan =
-        PhysicalPlan::try_new(physical::optimize_roots(all_roots), &merged_requirements)
-            .map_err(|e| MatcherBuildError::InvalidPhysicalPlan(e.to_string()))?;
+    fn finish(self) -> Result<PhysicalPlan, MatcherBuildError> {
+        PhysicalPlan::try_new(physical::optimize_roots(self.roots), &self.requirements)
+            .map_err(|error| MatcherBuildError::InvalidPhysicalPlan(error.to_string()))
+    }
+}
 
-    Ok(physical_plan)
+/// Compile one query declaration through validation, normalization, and
+/// physical planning without mutating the aggregate rule plan.
+fn compile_query(query: &QueryDecl) -> Result<PhysicalPlan, MatcherBuildError> {
+    validate_query_decl(query).map_err(map_query_compile_error)?;
+
+    let normalized: NormalizedQuery =
+        normalize::normalize_query_decl(query).map_err(map_query_compile_error)?;
+
+    physical::plan_normalized(&normalized)
+        .map_err(|error| MatcherBuildError::InvalidPhysicalPlan(error.to_string()))
+}
+
+/// Compile query declarations into one deterministic, aggregate physical plan.
+fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildError> {
+    let mut accumulator = QueryPlanAccumulator {
+        roots: Vec::new(),
+        requirements: requirements::PlanRequirements::default(),
+    };
+
+    for query in queries {
+        accumulator.add(&compile_query(query)?);
+    }
+
+    accumulator.finish()
 }
 
 fn map_query_compile_error(error: validate::QueryCompileError) -> MatcherBuildError {

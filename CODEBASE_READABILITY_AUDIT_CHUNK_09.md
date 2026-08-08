@@ -18,7 +18,7 @@ the evidence table repeatedly reimplements its index boundary.
 
 ## Findings
 
-#### [ ] READ-001 — `compile_queries` mixes per-query compilation with catalog aggregation
+#### [x] READ-001 — `compile_queries` mixes per-query compilation with catalog aggregation
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -48,7 +48,10 @@ is available. Preserve declaration order before canonical optimization,
 cross-query root deduplication, exact preparation requirements, deterministic
 plans, and the existing fail-closed errors.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Query-local validation, normalization, and physical planning
+now live in `compile_query`. The private `QueryPlanAccumulator` owns only
+cross-query root merging, requirement aggregation, optimization, and final
+physical-plan sealing. Verified with `make fmt && make ci`.
 
 #### [ ] READ-002 — Flow requirements expose a cross-file state that no physical root can produce
 
