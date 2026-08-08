@@ -202,7 +202,7 @@ translating to unrelated booleans or phase-local enums. Existing counters and
 fail-closed evidence clearing remain phase-specific. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-006 — Frozen and overlay summary paths repeat representation dispatch
+#### [x] READ-006 — Frozen and overlay summary paths repeat representation dispatch
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -232,7 +232,12 @@ path-walk abstraction and expose named domain operations for projection. Make
 allocation versus lookup explicit in the operation names or result type, and
 retain the overlay node bound and fail-closed invalid-path behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a private `SummaryPathWalk` that centralizes
+representation-neutral parent and segment traversal. Prefix checks retain
+exact path identity, while joins, suffix projection, owned-segment helpers,
+and segment visitation consume the shared walk. Overlay allocation remains
+explicit in `join`, and invalid paths still fail closed. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-007 — Flow emitters must panic to use a fallible evidence constructor
 

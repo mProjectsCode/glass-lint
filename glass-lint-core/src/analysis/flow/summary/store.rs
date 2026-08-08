@@ -41,6 +41,45 @@ pub(in crate::analysis::flow) struct SummaryPathStore<'a> {
     overlay: PathStore,
 }
 
+/// Walk one summary path from its leaf back to the empty root.
+///
+/// The frozen/overlay representation boundary is handled by the store's
+/// `parent` and `segment` operations; callers consume one representation-
+/// neutral segment sequence.
+struct SummaryPathWalk<'a> {
+    store: &'a SummaryPathStore<'a>,
+    current: SummaryPathId,
+}
+
+impl<'a> SummaryPathWalk<'a> {
+    fn new(store: &'a SummaryPathStore<'a>, id: SummaryPathId) -> Option<Self> {
+        if !id.is_empty() {
+            store.segment(id)?;
+        }
+        Some(Self { store, current: id })
+    }
+
+    fn segments(mut self) -> Option<Vec<PathSegment>> {
+        let mut segments = Vec::new();
+        while !self.current.is_empty() {
+            segments.push(*self.store.segment(self.current)?);
+            self.current = self.store.parent(self.current)?;
+        }
+        segments.reverse();
+        Some(segments)
+    }
+
+    fn reaches(mut self, prefix: SummaryPathId, distance: u32) -> bool {
+        for _ in 0..distance {
+            let Some(parent) = self.store.parent(self.current) else {
+                return false;
+            };
+            self.current = parent;
+        }
+        self.current == prefix
+    }
+}
+
 impl<'a> SummaryPathStore<'a> {
     pub(super) fn new(frozen: &'a PathStore) -> Self {
         Self {
@@ -89,17 +128,9 @@ impl<'a> SummaryPathStore<'a> {
         let Some(prefix_depth) = self.depth(prefix) else {
             return false;
         };
-        if prefix_depth > path_depth {
-            return false;
-        }
-        let mut current = id;
-        for _ in 0..(path_depth - prefix_depth) {
-            match self.parent(current) {
-                Some(next) => current = next,
-                None => return false,
-            }
-        }
-        current == prefix
+        prefix_depth <= path_depth
+            && SummaryPathWalk::new(self, id)
+                .is_some_and(|walk| walk.reaches(prefix, path_depth - prefix_depth))
     }
 
     pub(in crate::analysis::flow) fn matches_frozen(
@@ -192,14 +223,9 @@ impl<'a> SummaryPathStore<'a> {
         if suffix.is_empty() {
             return Some(prefix);
         }
-        let mut segments = Vec::new();
-        let mut current = suffix;
-        while !current.is_empty() {
-            segments.push(*self.segment(current)?);
-            current = self.parent(current)?;
-        }
+        let segments = SummaryPathWalk::new(self, suffix)?.segments()?;
         let mut result = prefix;
-        for seg in segments.into_iter().rev() {
+        for seg in segments {
             result = self.append(result, seg)?;
         }
         Some(result)
@@ -207,22 +233,10 @@ impl<'a> SummaryPathStore<'a> {
 
     pub(super) fn without_first(&self, id: SummaryPathId) -> Option<SummaryPathId> {
         self.segment(id)?;
-        self.rebuild_without_first(id)
-    }
-
-    fn rebuild_without_first(&self, id: SummaryPathId) -> Option<SummaryPathId> {
-        let mut segments = Vec::new();
-        let mut current = id;
-        loop {
-            let node_parent = self.parent(current)?;
-            if node_parent.is_empty() {
-                break;
-            }
-            segments.push(*self.segment(current)?);
-            current = node_parent;
-        }
+        let mut segments = SummaryPathWalk::new(self, id)?.segments()?;
+        segments.remove(0);
         let mut result = SummaryPathId::EMPTY;
-        for seg in segments.into_iter().rev() {
+        for seg in segments {
             result = self.find_edge(result, seg)?;
         }
         Some(result)
@@ -230,15 +244,7 @@ impl<'a> SummaryPathStore<'a> {
 
     #[cfg(test)]
     pub(super) fn owned_segments(&self, id: SummaryPathId) -> Option<Vec<PathSegment>> {
-        let depth = self.depth(id)?;
-        let mut segments = Vec::with_capacity(depth as usize);
-        let mut current = id;
-        while !current.is_empty() {
-            segments.push(*self.segment(current)?);
-            current = self.parent(current)?;
-        }
-        segments.reverse();
-        Some(segments)
+        SummaryPathWalk::new(self, id)?.segments()
     }
 
     pub(super) fn visit_segments(
@@ -249,13 +255,8 @@ impl<'a> SummaryPathStore<'a> {
         if id.is_empty() {
             return Some(());
         }
-        let mut segments = Vec::new();
-        let mut current = id;
-        while !current.is_empty() {
-            segments.push(*self.segment(current)?);
-            current = self.parent(current)?;
-        }
-        for seg in segments.into_iter().rev() {
+        let segments = SummaryPathWalk::new(self, id)?.segments()?;
+        for seg in segments {
             visit(&seg);
         }
         Some(())
