@@ -212,7 +212,8 @@ impl ProjectSemanticModel {
 
         // Insert resolved export-table entries (authoritative direct/named
         // exports) after star exports so they always win.
-        self.exports
+        self.linked
+            .exports
             .copy_identities_into(module, prefix, identities);
 
         // Merge star-exported entries, preserving direct exports.

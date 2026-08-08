@@ -225,19 +225,7 @@ fn resolve_record(
 /// identities remain owned by their module; the overlay stores qualified
 /// resolution results rather than merging lexical arenas.
 pub struct ProjectSemanticModel {
-    /// Locally analyzed modules keyed by stable module ID.
-    modules: BTreeMap<ModuleId, ProjectModule>,
-    /// Authored request resolutions keyed by importer/span/kind.
-    resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
-    /// Fixed-point export identities for linked modules.
-    pub(super) exports: ExportTable,
-    /// Number of unique internal edges between modules.
-    pub(super) edge_count: usize,
-    /// Sum of cycle-local fixed-point rounds (0 for acyclic graphs).
-    pub(super) link_cycle_rounds: usize,
-    /// Project diagnostics accumulated during linking and budgets.
-    pub(super) diagnostics: Vec<AnalysisDiagnostic>,
-    pub(super) status: AnalysisStatus,
+    pub(super) linked: LinkedProjectState,
     pub(super) flow_limit: usize,
     pub(super) effect_limit: usize,
     pub(super) trace_limit: usize,
@@ -256,13 +244,7 @@ pub(super) struct LinkedProjectState {
 impl ProjectSemanticModel {
     pub(super) fn from_linker(state: LinkedProjectState, limits: &crate::AnalysisLimits) -> Self {
         Self {
-            modules: state.modules,
-            resolutions: state.resolutions,
-            exports: state.exports,
-            edge_count: state.edge_count,
-            link_cycle_rounds: state.link_cycle_rounds,
-            diagnostics: state.diagnostics,
-            status: state.status,
+            linked: state,
             flow_limit: limits.flow_operations(),
             effect_limit: limits.effect_operations(),
             trace_limit: limits.trace_nodes(),
@@ -288,17 +270,19 @@ impl ProjectSemanticModel {
     ) -> Self {
         let status = local.status().clone();
         Self {
-            modules: std::iter::once((
-                ModuleId::new(0),
-                ProjectModule::new(ModuleId::new(0), local),
-            ))
-            .collect(),
-            resolutions: BTreeMap::new(),
-            exports: ExportTable::default(),
-            edge_count: 0,
-            link_cycle_rounds: 0,
-            diagnostics: Vec::new(),
-            status,
+            linked: LinkedProjectState {
+                modules: std::iter::once((
+                    ModuleId::new(0),
+                    ProjectModule::new(ModuleId::new(0), local),
+                ))
+                .collect(),
+                resolutions: BTreeMap::new(),
+                exports: ExportTable::default(),
+                edge_count: 0,
+                link_cycle_rounds: 0,
+                diagnostics: Vec::new(),
+                status,
+            },
             flow_limit: limits.flow_operations(),
             effect_limit: limits.effect_operations(),
             trace_limit: limits.trace_nodes(),
@@ -320,11 +304,11 @@ impl ProjectSemanticModel {
     }
 
     pub fn modules(&self) -> impl Iterator<Item = &ProjectModule> {
-        self.modules.values()
+        self.linked.modules.values()
     }
 
     pub(in crate::analysis) fn module(&self, module: ModuleId) -> Option<&ProjectModule> {
-        self.modules.get(&module)
+        self.linked.modules.get(&module)
     }
 
     fn local_artifact(&self, module: ModuleId) -> Option<&LocalArtifact> {
@@ -335,7 +319,7 @@ impl ProjectSemanticModel {
         &self,
         key: &QualifiedRequestId,
     ) -> Option<&LinkedModuleTarget> {
-        self.resolutions.get(key)
+        self.linked.resolutions.get(key)
     }
 
     pub(in crate::analysis) fn resolve_imported_identity(
@@ -345,8 +329,8 @@ impl ProjectSemanticModel {
         authored_export: &SmolStr,
         session: &mut LinkingSession,
     ) -> ExportResolution {
-        let lookup = ProjectLookupView::new(&self.modules, &self.resolutions);
-        ExportResolver::new(&lookup, &self.exports, &mut session.lookup_cache)
+        let lookup = ProjectLookupView::new(&self.linked.modules, &self.linked.resolutions);
+        ExportResolver::new(&lookup, &self.linked.exports, &mut session.lookup_cache)
             .resolve_imported_identity(importer, authored_module, authored_export)
     }
 
@@ -421,6 +405,7 @@ impl ProjectSemanticModel {
             return None;
         };
         let function = self
+            .linked
             .modules
             .get(&target)
             .and_then(|module| module.local().interface().function_export(&target_export));
@@ -430,11 +415,11 @@ impl ProjectSemanticModel {
 
     /// Borrow diagnostics produced during project linking and analysis.
     pub fn diagnostics(&self) -> &[AnalysisDiagnostic] {
-        &self.diagnostics
+        &self.linked.diagnostics
     }
 
     pub(crate) fn status_snapshot(&self) -> AnalysisStatus {
-        self.status.clone()
+        self.linked.status.clone()
     }
 
     pub(crate) fn flow_limit(&self) -> usize {
@@ -453,16 +438,17 @@ impl ProjectSemanticModel {
     /// Return deterministic phase and evidence operation counts.
     pub(crate) fn operation_counts(&self) -> crate::project::types::AnalysisOperationCountsBuilder {
         let mut counts = crate::project::types::AnalysisOperationCountsBuilder::default();
-        counts.record_files(self.modules.len());
+        counts.record_files(self.linked.modules.len());
         counts.record_requests(
-            self.modules
+            self.linked
+                .modules
                 .values()
                 .map(|module| module.local().interface().requests().count())
                 .sum(),
         );
-        counts.record_edges(self.edge_count);
-        counts.record_exports(self.exports.len());
-        counts.record_scc_rounds(self.link_cycle_rounds);
+        counts.record_edges(self.linked.edge_count);
+        counts.record_exports(self.linked.exports.len());
+        counts.record_scc_rounds(self.linked.link_cycle_rounds);
         counts
     }
 

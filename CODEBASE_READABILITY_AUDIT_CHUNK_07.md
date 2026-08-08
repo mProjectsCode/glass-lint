@@ -17,7 +17,7 @@ two internal APIs make important ownership or merge policies implicit.
 
 ## Findings
 
-#### [ ] READ-001 — Transient and final linked state duplicate the same project payload
+#### [x] READ-001 — Transient and final linked state duplicate the same project payload
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -48,7 +48,11 @@ ownership without exposing linker internals. Preserve deterministic maps and
 diagnostics, fixed-point export state, status propagation, and the final
 model’s independent flow/effect/trace limits.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ProjectSemanticModel` now owns one `LinkedProjectState`
+aggregate for modules, resolutions, exports, link metrics, diagnostics, and
+status. `ProjectLinker::finish` still consumes the linker at the same boundary,
+while projection limits remain model-owned fields. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-002 — `ProjectLinker` combines graph construction, export resolution, and reporting state
 
