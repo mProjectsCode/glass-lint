@@ -53,7 +53,7 @@ now live in `compile_query`. The private `QueryPlanAccumulator` owns only
 cross-query root merging, requirement aggregation, optimization, and final
 physical-plan sealing. Verified with `make fmt && make ci`.
 
-#### [ ] READ-002 — Flow requirements expose a cross-file state that no physical root can produce
+#### [x] READ-002 — Flow requirements expose a cross-file state that no physical root can produce
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -83,7 +83,11 @@ three-boolean constructor; use named requirement transitions or a typed
 capability set. Preserve lazy projection, shared flow limits, cross-call
 semantics, and deterministic operation accounting.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the unproducible `cross_file` flow capability and
+its raw three-flag constructor. Cross-file projection remains owned by the
+existing cross-call collector, and projection now consumes only the local and
+cross-call requirements that physical roots can produce. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-003 — Physical roots are validated and their requirements recomputed at multiple boundaries
 

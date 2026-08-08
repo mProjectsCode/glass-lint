@@ -369,11 +369,10 @@ impl PhysicalPlan {
             lines.push(format!("root[{index}] {}", explain_root(root)));
         }
         lines.push(format!(
-            "requirements value_resolution={:?} flow={{local={}, cross_call={}, cross_file={}}} project={:?}",
+            "requirements value_resolution={:?} flow={{local={}, cross_call={}}} project={:?}",
             self.requirements.value_resolution(),
             self.requirements.flow().local(),
             self.requirements.flow().cross_call(),
-            self.requirements.flow().cross_file(),
             self.requirements.project_requirements(),
         ));
         lines.join("\n")

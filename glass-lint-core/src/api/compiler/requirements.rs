@@ -12,21 +12,16 @@ pub(crate) enum ValueResolutionRequirement {
     CallResultIdentities,
 }
 
-/// Whether local, cross-call, or cross-file flow projection is required.
+/// Whether local or cross-call flow projection is required.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct FlowRequirements {
     local: bool,
     cross_call: bool,
-    cross_file: bool,
 }
 
 impl FlowRequirements {
-    pub(crate) fn new(local: bool, cross_call: bool, cross_file: bool) -> Self {
-        Self {
-            local,
-            cross_call,
-            cross_file,
-        }
+    pub(crate) fn new(local: bool, cross_call: bool) -> Self {
+        Self { local, cross_call }
     }
 
     pub(crate) fn local(&self) -> bool {
@@ -35,10 +30,6 @@ impl FlowRequirements {
 
     pub(crate) fn cross_call(&self) -> bool {
         self.cross_call
-    }
-
-    pub(crate) fn cross_file(&self) -> bool {
-        self.cross_file
     }
 }
 
@@ -187,7 +178,6 @@ impl PlanRequirements {
             .extend(other.value_resolution.iter().cloned());
         self.flow.local |= other.flow.local;
         self.flow.cross_call |= other.flow.cross_call;
-        self.flow.cross_file |= other.flow.cross_file;
         self.project.extend(other.project.iter().cloned());
     }
 }

@@ -179,7 +179,6 @@ impl<'a> ProjectionPlan<'a> {
         let mut needs_overall_result_ids = false;
         let mut flow_local = false;
         let mut flow_cross_call = false;
-        let mut flow_cross_file = false;
         for (rule_index, matcher) in selection.selected_matchers() {
             for root in matcher.physical_roots() {
                 if matches!(
@@ -203,7 +202,6 @@ impl<'a> ProjectionPlan<'a> {
             let fr = matcher.flow_requirements();
             flow_local = flow_local || fr.local();
             flow_cross_call = flow_cross_call || fr.cross_call();
-            flow_cross_file = flow_cross_file || fr.cross_file();
         }
         Self {
             constrained_roots,
@@ -212,7 +210,7 @@ impl<'a> ProjectionPlan<'a> {
             needs_module_identities: needs_overall_module_ids,
             needs_call_result_identities: needs_overall_result_ids,
             needs_overlay: needs_overall_overlay,
-            flow_requirements: FlowRequirements::new(flow_local, flow_cross_call, flow_cross_file),
+            flow_requirements: FlowRequirements::new(flow_local, flow_cross_call),
         }
     }
 }
@@ -537,9 +535,7 @@ impl ProjectSemanticModel {
         let flow_limits = FlowLimits::from_flow_operations(self.flow_limit());
         let mut session = LinkingSession::new(self.flow_limit());
 
-        let has_flow = plan.flow_requirements().local()
-            || plan.flow_requirements().cross_call()
-            || plan.flow_requirements().cross_file();
+        let has_flow = plan.flow_requirements().local() || plan.flow_requirements().cross_call();
         let (projections, mut outcome) =
             self.project_modules(&plan, flow_limits, arena, &mut session);
 
