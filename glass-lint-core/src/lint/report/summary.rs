@@ -33,7 +33,7 @@ pub(super) fn assemble_project_report(
         rendered_traces: aggregate.rendered_traces(),
     });
 
-    AnalysisReport::new(
+    AnalysisReport::new_with_aggregate(
         REPORT_VERSION,
         env!("CARGO_PKG_VERSION").into(),
         files,
@@ -44,5 +44,6 @@ pub(super) fn assemble_project_report(
         } else {
             ReportCompletion::Partial
         },
+        aggregate,
     )
 }

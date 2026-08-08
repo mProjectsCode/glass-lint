@@ -16,7 +16,7 @@ values rather than one retained finalized aggregate.
 
 ### Finalized report aggregate ownership
 
-#### [ ] READ-041 — Retain finalized report summary data instead of recomputing it
+#### [x] READ-041 — Retain finalized report summary data instead of recomputing it
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -47,7 +47,10 @@ once before finalization. Expose the retained summary by value while keeping
 the current deterministic file/diagnostic ordering and operation-count
 semantics.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Retained `FinalizedReportAggregate` inside `AnalysisReport`
+as non-serialized finalized state. Assembly passes its existing aggregate into
+the report, `summary()` returns the retained value, and finalization refreshes
+it after deterministic report mutations and merges.
 
 ## Systemic Themes
 

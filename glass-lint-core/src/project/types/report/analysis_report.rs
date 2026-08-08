@@ -39,9 +39,12 @@ pub struct AnalysisReport {
     diagnostics: Vec<Diagnostic>,
     operations: AnalysisOperationCounts,
     completion: ReportCompletion,
+    #[cfg_attr(feature = "serde", serde(skip))]
+    aggregate: FinalizedReportAggregate,
 }
 
 impl AnalysisReport {
+    #[cfg(test)]
     pub(crate) fn new(
         schema_version: u32,
         tool_version: String,
@@ -50,6 +53,27 @@ impl AnalysisReport {
         operations: AnalysisOperationCounts,
         completion: ReportCompletion,
     ) -> Self {
+        let aggregate = Self::aggregate(&files, &diagnostics);
+        Self::new_with_aggregate(
+            schema_version,
+            tool_version,
+            files,
+            diagnostics,
+            operations,
+            completion,
+            aggregate,
+        )
+    }
+
+    pub(crate) fn new_with_aggregate(
+        schema_version: u32,
+        tool_version: String,
+        files: Vec<FileReport>,
+        diagnostics: Vec<Diagnostic>,
+        operations: AnalysisOperationCounts,
+        completion: ReportCompletion,
+        aggregate: FinalizedReportAggregate,
+    ) -> Self {
         Self {
             schema_version,
             tool_version,
@@ -57,6 +81,7 @@ impl AnalysisReport {
             diagnostics,
             operations,
             completion,
+            aggregate,
         }
     }
 
@@ -106,6 +131,7 @@ impl AnalysisReport {
             .sort_by(|left, right| left.ordering_key().cmp(right.ordering_key()));
         self.diagnostics
             .sort_by(|left, right| left.ordering_key().cmp(&right.ordering_key()));
+        self.aggregate = Self::aggregate(&self.files, &self.diagnostics);
         self
     }
 
@@ -252,6 +278,6 @@ impl AnalysisReportSummary {
 
 impl AnalysisReport {
     pub fn summary(&self) -> AnalysisReportSummary {
-        Self::aggregate(&self.files, &self.diagnostics).summary()
+        self.aggregate.summary()
     }
 }
