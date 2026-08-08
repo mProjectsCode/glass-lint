@@ -84,7 +84,7 @@ classification; the report boundary records invalid selections as a
 
 ### Projection budgets and metrics
 
-#### [ ] READ-027 — Account flow-budget observations separately from projection work
+#### [x] READ-027 — Account flow-budget observations separately from projection work
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -107,7 +107,11 @@ for profiling/report totals. Set `flow_observed` from the flow accumulator at
 the same completion boundary that marks flow incomplete, while preserving
 effect-specific accounting, bounded execution, and deterministic output.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a flow-specific operation accumulator to projection
+status and feed it only from local and cross-flow outcomes. Aggregate
+projection operations remain available for profiling, while incomplete flow
+diagnostics now report only flow-owned work; a regression covers the
+separation.
 
 ### Export lookup boundary
 

@@ -489,6 +489,8 @@ struct ProjectionStatus {
     flow: ProjectionCompletion,
     /// Operation count when exhaustion was reached, if applicable.
     flow_observed: Option<usize>,
+    /// Flow-owned operations, excluding matcher overlay construction.
+    flow_operations: usize,
     effects: ProjectionCompletion,
     /// Effect operations consumed when the effect budget was exhausted.
     effect_observed: Option<usize>,
@@ -592,6 +594,7 @@ impl ProjectionOutcome {
         if local.is_exhausted() {
             self.status.flow.mark_incomplete();
         }
+        self.status.flow_operations = self.status.flow_operations.saturating_add(local.operations);
         self.metrics.max_live_alternatives = self
             .metrics
             .max_live_alternatives
@@ -612,6 +615,7 @@ impl ProjectionOutcome {
         if cross.completion.is_incomplete() {
             self.status.flow.mark_incomplete();
         }
+        self.status.flow_operations = self.status.flow_operations.saturating_add(cross.operations);
         self.metrics.effect_projections = cross.projections;
         self.metrics.trace_heads = self.metrics.trace_heads.saturating_add(cross.trace_heads);
         self.metrics.operations = self.metrics.operations.saturating_add(cross.operations);
@@ -622,7 +626,7 @@ impl ProjectionOutcome {
             .status
             .flow
             .is_incomplete()
-            .then_some(self.metrics.operations);
+            .then_some(self.status.flow_operations);
         self
     }
 }
@@ -765,5 +769,29 @@ impl ProjectMatcherModel<'_, '_> {
 
         crate::analysis::matching::evidence::normalize_evidence(&mut evidence, evidence_limit);
         Ok(evidence)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn flow_observed_excludes_non_flow_projection_work() {
+        let mut outcome = ProjectionOutcome::default();
+        let mut local = LocalFlowProjectionOutcome::default();
+        local.operations = 7;
+        outcome.record_local(&local);
+        let cross = flow::cross::CrossProjectionOutcome {
+            operations: 5,
+            ..flow::cross::CrossProjectionOutcome::default()
+        };
+        outcome.record_cross(&cross);
+        outcome.status.flow.mark_incomplete();
+        outcome.metrics.operations = 100;
+
+        let finished = outcome.finish();
+
+        assert_eq!(finished.status.flow_observed, Some(12));
     }
 }
