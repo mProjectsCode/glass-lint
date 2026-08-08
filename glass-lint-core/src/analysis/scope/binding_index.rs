@@ -22,13 +22,19 @@ impl ParameterAliasKey {
     }
 }
 
-/// Collector-side binding inputs consumed by the freeze transition.
+/// Stable IDs allocated from the collector's lexical scopes.
 #[derive(Debug)]
-pub(super) struct BindingIndexInput {
-    pub(super) assignments: Vec<AliasAssignment>,
+pub(super) struct BindingAllocation {
     pub(super) binding_ids: HashMap<ScopedName, BindingId>,
     pub(super) function_ids: HashMap<ScopeId, FunctionId>,
     pub(super) function_spans: HashMap<FunctionId, Span>,
+}
+
+/// Collector-side facts consumed by the binding-index freeze transition.
+#[derive(Debug)]
+pub(super) struct BindingFreezeInput {
+    pub(super) assignments: Vec<AliasAssignment>,
+    pub(super) allocation: BindingAllocation,
     pub(super) function_bindings: HashMap<ScopedName, ScopeId>,
     pub(super) function_aliases: HashMap<ScopedName, ScopeId>,
     pub(super) parameter_aliases: HashMap<ScopedName, BindingProvenance>,
@@ -50,38 +56,23 @@ pub(super) struct BindingIndex {
     parameter_aliases: HashMap<ParameterAliasKey, BindingProvenance>,
 }
 
-impl TryFrom<BindingIndexInput> for BindingIndex {
-    type Error = BindingIndexError;
-
-    fn try_from(input: BindingIndexInput) -> Result<Self, Self::Error> {
-        let BindingIndexInput {
+impl BindingIndex {
+    pub(super) fn from_freeze_input(input: BindingFreezeInput) -> Result<Self, BindingIndexError> {
+        let BindingFreezeInput {
             assignments,
-            binding_ids,
-            function_ids,
-            function_spans,
+            allocation:
+                BindingAllocation {
+                    binding_ids,
+                    function_ids,
+                    function_spans,
+                },
             function_bindings,
             function_aliases,
             parameter_aliases,
         } = input;
-        let function_bindings = function_bindings
-            .into_iter()
-            .map(|(binding, scope)| {
-                function_for_scope(&function_ids, scope).map(|function| (binding, function))
-            })
-            .collect::<Result<HashMap<_, _>, _>>()?;
-        let function_aliases = function_aliases
-            .into_iter()
-            .map(|(name, scope)| {
-                function_for_scope(&function_ids, scope).map(|function| (name, function))
-            })
-            .collect::<Result<HashMap<_, _>, _>>()?;
-        let parameter_aliases = parameter_aliases
-            .into_iter()
-            .map(|(name, provenance)| {
-                function_for_scope(&function_ids, name.scope())
-                    .map(|function| (ParameterAliasKey::new(function, name.name()), provenance))
-            })
-            .collect::<Result<HashMap<_, _>, _>>()?;
+        let function_bindings = resolve_function_targets(function_bindings, &function_ids)?;
+        let function_aliases = resolve_function_targets(function_aliases, &function_ids)?;
+        let parameter_aliases = resolve_parameter_aliases(parameter_aliases, &function_ids)?;
         Ok(Self {
             assignments: FrozenAssignmentIndex::from_assignments(assignments),
             binding_ids,
@@ -92,6 +83,31 @@ impl TryFrom<BindingIndexInput> for BindingIndex {
             parameter_aliases,
         })
     }
+}
+
+fn resolve_function_targets(
+    entries: HashMap<ScopedName, ScopeId>,
+    function_ids: &HashMap<ScopeId, FunctionId>,
+) -> Result<HashMap<ScopedName, FunctionId>, BindingIndexError> {
+    entries
+        .into_iter()
+        .map(|(name, scope)| {
+            function_for_scope(function_ids, scope).map(|function| (name, function))
+        })
+        .collect()
+}
+
+fn resolve_parameter_aliases(
+    entries: HashMap<ScopedName, BindingProvenance>,
+    function_ids: &HashMap<ScopeId, FunctionId>,
+) -> Result<HashMap<ParameterAliasKey, BindingProvenance>, BindingIndexError> {
+    entries
+        .into_iter()
+        .map(|(name, provenance)| {
+            function_for_scope(function_ids, name.scope())
+                .map(|function| (ParameterAliasKey::new(function, name.name()), provenance))
+        })
+        .collect()
 }
 
 fn function_for_scope(
@@ -106,13 +122,7 @@ fn function_for_scope(
 
 impl BindingIndex {
     /// Allocate stable binding and function IDs over the lexical scopes.
-    pub(super) fn allocate_ids(
-        scopes: &LexicalScopes,
-    ) -> (
-        HashMap<ScopedName, BindingId>,
-        HashMap<ScopeId, FunctionId>,
-        HashMap<FunctionId, Span>,
-    ) {
+    pub(super) fn allocate_ids(scopes: &LexicalScopes) -> BindingAllocation {
         let mut binding_ids = HashMap::new();
         let mut next_binding = 0u32;
         for scope in scopes.ids() {
@@ -143,7 +153,11 @@ impl BindingIndex {
             }
         }
 
-        (binding_ids, function_ids, function_spans)
+        BindingAllocation {
+            binding_ids,
+            function_ids,
+            function_spans,
+        }
     }
 
     pub(super) fn empty() -> Self {

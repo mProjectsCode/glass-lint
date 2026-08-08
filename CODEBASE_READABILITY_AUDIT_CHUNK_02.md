@@ -173,7 +173,7 @@ and direct-call capture into named `ScopeCollector` helpers. Existing helper
 ordering, budget charges, artifact emission, and fail-closed paths are
 preserved. Verified with `make fmt && make ci`.
 
-#### [ ] READ-005 — Binding-index freeze input and allocation use positional/raw internal APIs
+#### [x] READ-005 — Binding-index freeze input and allocation use positional/raw internal APIs
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -203,7 +203,12 @@ the scope-to-function conversion and retain an explicit error for missing
 function scopes; preserve the current `InvalidBindingIndex` fail-closed fallback
 and deterministic ID allocation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the named `BindingAllocation` record returned by ID
+allocation and replaced the raw `TryFrom` boundary with the explicit
+`BindingIndex::from_freeze_input` constructor. Scope-targeted function maps
+now share one resolver, parameter aliases use a named conversion path, and
+missing function scopes still return `InvalidBindingIndex` through the same
+fail-closed fallback. Verified with `make fmt && make ci`.
 
 #### [ ] READ-006 — Freeze artifacts lose domain names through tuple decomposition
 

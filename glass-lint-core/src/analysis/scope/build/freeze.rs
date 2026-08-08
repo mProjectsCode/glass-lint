@@ -1,6 +1,6 @@
 use crate::analysis::scope::{
     ScopeGraph,
-    binding_index::{BindingIndex, BindingIndexInput},
+    binding_index::{BindingFreezeInput, BindingIndex},
     build::{
         FrozenScopeCollectionArtifacts, ScopeCollector,
         program::{ScopeCollectionIssue, ScopedProgram},
@@ -27,13 +27,10 @@ impl ScopeCollector<'_> {
             .into_iter()
             .map(|(binding, function)| (binding, function.scope))
             .collect();
-        let (binding_ids, function_ids, function_spans) =
-            BindingIndex::allocate_ids(&self.lexical.scopes);
-        let bindings = BindingIndex::try_from(BindingIndexInput {
+        let allocation = BindingIndex::allocate_ids(&self.lexical.scopes);
+        let bindings = BindingIndex::from_freeze_input(BindingFreezeInput {
             assignments: std::mem::take(&mut self.assignment.assignments),
-            binding_ids,
-            function_ids,
-            function_spans,
+            allocation,
             function_bindings,
             function_aliases: self.functions.function_aliases,
             parameter_aliases,
