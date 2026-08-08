@@ -246,13 +246,12 @@ pub(super) fn emit(
     values.record(
         rule_idx,
         &key,
-        ClassificationEvidence::from_occurrences(
+        ClassificationEvidence::from_occurrence(
             MatchKind::CallArgument,
             flow.evidence_symbol().as_str().to_owned(),
-            vec![occurrence],
+            occurrence,
             certainty,
-        )
-        .expect("flow evidence always has one occurrence"),
+        ),
     );
     if trace_head.is_some() {
         values.trace_heads = values.trace_heads.saturating_add(1);

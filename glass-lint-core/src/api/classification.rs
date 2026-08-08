@@ -140,6 +140,22 @@ impl ClassificationEvidence {
         })
     }
 
+    pub(crate) fn from_occurrence(
+        kind: MatchKind,
+        symbol: String,
+        occurrence: ClassificationEvidenceOccurrence,
+        certainty: MatchCertainty,
+    ) -> Self {
+        Self {
+            kind,
+            symbol,
+            count: 1,
+            truncated: false,
+            certainty,
+            occurrences: vec![occurrence],
+        }
+    }
+
     pub(crate) fn with_total_count(
         kind: MatchKind,
         symbol: String,
@@ -396,6 +412,15 @@ mod test_evidence_capacity {
         evidence.mark_truncated();
         assert_eq!(evidence.count(), 1);
         assert!(evidence.is_truncated());
+
+        let direct = ClassificationEvidence::from_occurrence(
+            MatchKind::Call,
+            "fetch".into(),
+            occurrence,
+            MatchCertainty::Possible,
+        );
+        assert_eq!(direct.count(), 1);
+        assert_eq!(direct.occurrences(), &[occurrence]);
     }
 }
 

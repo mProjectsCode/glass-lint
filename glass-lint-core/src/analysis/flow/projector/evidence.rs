@@ -243,17 +243,12 @@ impl ObjectFlowProjector<'_, '_, '_> {
             return;
         };
 
-        let evidence = ClassificationEvidence::from_occurrences(
+        let evidence = ClassificationEvidence::from_occurrence(
             MatchKind::CallArgument,
             flow_symbol,
-            vec![ClassificationEvidenceOccurrence::new(
-                span,
-                Some(anchor.raw()),
-                Some(trace_head),
-            )],
+            ClassificationEvidenceOccurrence::new(span, Some(anchor.raw()), Some(trace_head)),
             certainty,
-        )
-        .expect("flow evidence always has one occurrence");
+        );
         if !self.flow_evidence.record_if_admitted(
             key,
             self.run.limits.emission_limit(),

@@ -239,7 +239,7 @@ and segment visitation consume the shared walk. Overlay allocation remains
 explicit in `join`, and invalid paths still fail closed. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-007 — Flow emitters must panic to use a fallible evidence constructor
+#### [x] READ-007 — Flow emitters must panic to use a fallible evidence constructor
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -261,7 +261,12 @@ panic. Keep the general multi-occurrence constructor fallible and preserve
 invalid rule-index handling, bounded evidence admission, and trace-arena
 exhaustion behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `ClassificationEvidence::from_occurrence`, which
+encodes the one-occurrence invariant directly while leaving the general
+multi-occurrence constructor fallible. Local and cross-flow emitters now use
+the named constructor and no longer panic at the evidence boundary. Existing
+bounded admission, invalid-index handling, and trace exhaustion behavior are
+unchanged. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 
