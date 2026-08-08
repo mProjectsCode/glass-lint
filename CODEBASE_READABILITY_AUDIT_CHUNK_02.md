@@ -51,7 +51,7 @@ documented first-witness convenience. Verified with
 
 ### Static-value conversion boundary
 
-#### [ ] READ-006 — Centralize partial constant/provenance conversion
+#### [x] READ-006 — Centralize partial constant/provenance conversion
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -79,7 +79,10 @@ unsupported nested values. Replace the two hand-maintained match families
 with that adapter and delete the duplicate conversion logic after callers are
 updated.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a scope static-value adapter that owns both bounded
+constant/provenance conversion directions, while callers supply name
+interning or resolution callbacks and preserve unknown unsupported values.
+Verified with `make fmt && make ci`.
 
 ### Scope collection mutation authority
 

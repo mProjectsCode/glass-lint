@@ -17,13 +17,12 @@
 //! possible without rebuilding the AST for each lookup.
 
 use build::{ScopeCollector, plan::ScopePlanner, traversal::ScopeTraversal};
-use glass_lint_datastructures::{NameId, NameTable};
-use smol_str::SmolStr;
+use glass_lint_datastructures::NameTable;
 use swc_common::Spanned;
 use swc_ecma_ast::Program;
 use swc_ecma_visit::VisitWith;
 
-use crate::analysis::{SemanticBudget, syntax::constant::ConstValue};
+use crate::analysis::SemanticBudget;
 
 mod binding_index;
 mod build;
@@ -34,36 +33,18 @@ mod mutation_index;
 mod name_env;
 mod query;
 mod scope_index;
+mod static_value;
 
 pub(in crate::analysis) use build::program::{ScopeCollectionIssue, ScopedProgram};
 pub(in crate::analysis) use expression::{ScopeExpression, normalize_scope_expression};
 pub(in crate::analysis) use graph::{FrozenScopeGraph, ScopeGraph};
+pub(in crate::analysis) use static_value::{const_value_to_provenance, provenance_to_const_value};
 
 pub(in crate::analysis) use crate::analysis::model::scope::{
     AliasAssignment, BindingProvenance, BoundArgument, IdentValueSeed, LexicalScope, LexicalScopes,
     MemberValueSeed, ProvenanceAlternatives, ProvenanceJoin, ScopeEffect, ScopeId, ScopeKind,
     ScopedName,
 };
-
-pub(in crate::analysis) fn provenance_to_const_value(
-    provenance: &BindingProvenance,
-    resolve_name: &impl Fn(NameId) -> Option<SmolStr>,
-) -> ConstValue {
-    match provenance {
-        BindingProvenance::StaticString(value) => ConstValue::String(value.clone()),
-        BindingProvenance::StaticNumber(value) => ConstValue::NonNegativeInteger(*value),
-        BindingProvenance::StaticStringArray(values) => {
-            ConstValue::array(values.iter().cloned().map(ConstValue::String).collect()).bounded()
-        }
-        BindingProvenance::StaticObjectKeys(values) => values
-            .to_const_object(resolve_name)
-            .map_or(ConstValue::Unknown, ConstValue::bounded),
-        BindingProvenance::StaticObjectValues(values) => values
-            .to_const_object(resolve_name)
-            .map_or(ConstValue::Unknown, ConstValue::bounded),
-        _ => ConstValue::Unknown,
-    }
-}
 
 impl ScopeGraph {
     #[cfg(test)]

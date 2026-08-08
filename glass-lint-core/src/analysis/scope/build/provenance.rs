@@ -15,13 +15,10 @@ use crate::analysis::{
     scope::{
         BoundArgument, ScopeExpression,
         build::{BindingProvenance, ScopeCollector},
-        normalize_scope_expression,
+        const_value_to_provenance, normalize_scope_expression,
         query::rooted::RootedExprContext,
     },
-    syntax::{
-        constant::{self, ConstValue},
-        literal_member_property_name, literal_property_name,
-    },
+    syntax::{constant, literal_member_property_name, literal_property_name},
 };
 
 impl ScopeCollector<'_> {
@@ -114,27 +111,8 @@ impl ScopeCollector<'_> {
 
     /// Convert a bounded constant result into collector provenance.
     pub(super) fn const_provenance(&mut self, init: &Expr) -> Option<BindingProvenance> {
-        match constant::evaluate(init, self) {
-            ConstValue::String(value) => Some(BindingProvenance::StaticString(value)),
-            ConstValue::NonNegativeInteger(value) => Some(BindingProvenance::StaticNumber(value)),
-            ConstValue::Array(values) => Some(BindingProvenance::StaticStringArray(
-                values
-                    .into_iter()
-                    .map(|value| value.string().map(str::to_owned))
-                    .collect::<Option<Vec<_>>>()?,
-            )),
-            ConstValue::Object(values) => {
-                let mut keys = StaticProperties::new();
-                for key in values.keys() {
-                    let name = self.lookup_or_intern_name(key)?;
-                    if !keys.insert(name, ()) {
-                        return None;
-                    }
-                }
-                Some(BindingProvenance::StaticObjectKeys(keys))
-            }
-            ConstValue::Unknown => None,
-        }
+        let value = constant::evaluate(init, self);
+        const_value_to_provenance(value, &mut |name| self.lookup_or_intern_name(name))
     }
 
     /// Resolve the strict provenance forms accepted for a call argument.
