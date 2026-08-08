@@ -94,7 +94,7 @@ first-error policy and metadata adapter behavior.
 
 ### Lifecycle authoring adapters
 
-#### [ ] READ-031 — Make deferred lifecycle stages accept the same typed inputs
+#### [x] READ-031 — Make deferred lifecycle stages accept the same typed inputs
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -125,7 +125,10 @@ fallible errors. Keep the immediate `try_*` methods for call-site propagation,
 and make both non-fallible setters reject duplicate stages consistently rather
 than silently ignoring one path.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Centralized condition and completion insertion and duplicate
+stage detection in `LifecycleQueryBuilder`. The catalog condition adapter now
+accepts both `IntoLifecycleCondition` values and fallible results, while
+non-fallible immediate setters retain duplicate errors for `build()`.
 
 ### Public declaration surface
 

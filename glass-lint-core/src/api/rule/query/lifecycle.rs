@@ -489,6 +489,7 @@ pub struct LifecycleQueryBuilder {
     sources: Vec<EventQuery>,
     condition: Option<LifecycleCondition>,
     completion: Option<LifecycleCompletion>,
+    invalid_operation: FirstError<QueryBuildError>,
 }
 
 impl LifecycleQueryBuilder {
@@ -507,8 +508,8 @@ impl LifecycleQueryBuilder {
     }
 
     pub fn condition(mut self, condition: LifecycleCondition) -> Self {
-        if self.condition.is_none() {
-            self.condition = Some(condition);
+        if let Err(error) = self.try_set_condition(condition) {
+            self.invalid_operation.record(error);
         }
         self
     }
@@ -518,16 +519,24 @@ impl LifecycleQueryBuilder {
         mut self,
         condition: impl IntoLifecycleCondition,
     ) -> Result<Self, QueryBuildError> {
+        self.try_set_condition(condition)?;
+        Ok(self)
+    }
+
+    fn try_set_condition(
+        &mut self,
+        condition: impl IntoLifecycleCondition,
+    ) -> Result<(), QueryBuildError> {
         if self.condition.is_some() {
             return Err(QueryBuildError::DuplicateLifecycleStage("condition"));
         }
         self.condition = Some(condition.into_lifecycle_condition()?);
-        Ok(self)
+        Ok(())
     }
 
     pub fn completion(mut self, completion: LifecycleCompletion) -> Self {
-        if self.completion.is_none() {
-            self.completion = Some(completion);
+        if let Err(error) = self.try_set_completion(completion) {
+            self.invalid_operation.record(error);
         }
         self
     }
@@ -537,14 +546,25 @@ impl LifecycleQueryBuilder {
         mut self,
         completion: C,
     ) -> Result<Self, QueryBuildError> {
+        self.try_set_completion(completion)?;
+        Ok(self)
+    }
+
+    fn try_set_completion<C: IntoLifecycleCompletion>(
+        &mut self,
+        completion: C,
+    ) -> Result<(), QueryBuildError> {
         if self.completion.is_some() {
             return Err(QueryBuildError::DuplicateLifecycleStage("completion"));
         }
         self.completion = Some(completion.into_lifecycle_completion()?);
-        Ok(self)
+        Ok(())
     }
 
     pub fn build(self) -> Result<LifecycleQuery, QueryBuildError> {
+        if let Some(error) = self.invalid_operation.take() {
+            return Err(error);
+        }
         if self.symbol.trim().is_empty() {
             return Err(QueryBuildError::EmptyEvidenceSymbol);
         }
@@ -617,13 +637,9 @@ impl CatalogLifecycleQueryBuilder {
         self
     }
 
-    pub fn condition(mut self, condition: Result<LifecycleCondition, QueryBuildError>) -> Self {
-        match condition {
-            Ok(condition) if self.inner.condition.is_none() => {
-                self.inner = self.inner.condition(condition);
-            }
-            Ok(_) => self.record_error(QueryBuildError::DuplicateLifecycleStage("condition")),
-            Err(error) => self.record_error(error),
+    pub fn condition<C: IntoLifecycleCondition>(mut self, condition: C) -> Self {
+        if let Err(error) = self.inner.try_set_condition(condition) {
+            self.record_error(error);
         }
         self
     }
@@ -654,6 +670,7 @@ impl LifecycleQuery {
             sources: Vec::new(),
             condition: None,
             completion: None,
+            invalid_operation: FirstError::default(),
         }
     }
 
@@ -707,6 +724,40 @@ mod tests {
             .build()
             .expect_err("duplicate condition should be retained");
         assert_eq!(error, QueryBuildError::DuplicateLifecycleStage("condition"));
+    }
+
+    #[test]
+    fn immediate_builder_reports_duplicate_stages_at_build() {
+        let condition = LifecycleCondition::event(LifecycleEvent::property_write(
+            "value",
+            ValueMatcher::any_value(),
+        ))
+        .unwrap();
+        let error = LifecycleQuery::builder("input")
+            .try_source(source())
+            .unwrap()
+            .condition(condition.clone())
+            .condition(condition)
+            .completion(LifecycleCompletion::configuration())
+            .build()
+            .expect_err("duplicate condition should be retained");
+        assert_eq!(error, QueryBuildError::DuplicateLifecycleStage("condition"));
+    }
+
+    #[test]
+    fn deferred_condition_accepts_a_prebuilt_value() {
+        let condition = LifecycleCondition::event(LifecycleEvent::property_write(
+            "type",
+            ValueMatcher::any_value(),
+        ))
+        .unwrap();
+        let lifecycle = LifecycleQuery::catalog_builder("input")
+            .source(source())
+            .condition(condition)
+            .completion(LifecycleCompletion::configuration())
+            .build()
+            .unwrap();
+        assert!(lifecycle.condition.is_some());
     }
 
     #[test]
