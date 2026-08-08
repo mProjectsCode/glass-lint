@@ -267,6 +267,10 @@ impl AnyExpr {
     pub(crate) fn len(&self) -> usize {
         self.branches.len()
     }
+
+    pub(crate) fn all_branches_contain(&self, target: VarId) -> bool {
+        self.iter().all(|branch| branch.contains_var(target))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

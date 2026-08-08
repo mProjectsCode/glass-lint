@@ -200,20 +200,16 @@ fn check_correlation_evidence(
             Ok(())
         }
         QueryExprKind::Any(any) => {
-            let branch_facts: Vec<QueryShapeFacts> =
-                any.iter().map(QueryExpr::shape_facts).collect();
             for b in any.iter() {
                 check_correlation_evidence(b, primary, EvidenceScope::nested())?;
             }
             if scope.checks_primary() {
                 // Every branch must contain the primary variable, but nested
                 // branches are checked by their containing Any expression.
-                for facts in &branch_facts {
-                    if !facts.contains(primary) {
-                        return Err(QueryCompileError::MissingBinding {
-                            primary_var: primary,
-                        });
-                    }
+                if !any.all_branches_contain(primary) {
+                    return Err(QueryCompileError::MissingBinding {
+                        primary_var: primary,
+                    });
                 }
             }
             Ok(())

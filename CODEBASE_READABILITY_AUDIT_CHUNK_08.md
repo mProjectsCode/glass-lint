@@ -228,7 +228,7 @@ newtype directly, and event, lifecycle, and grouped-constraint builders pass
 that type through without repeated bound checks, primitive storage, or cast
 back-construction. Verified with `make fmt && make ci`.
 
-#### [ ] READ-007 — `Any` composition and compilation duplicate evidence-projection validation
+#### [x] READ-007 — `Any` composition and compilation duplicate evidence-projection validation
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -257,7 +257,11 @@ early `QueryBuildError` feedback, compiler-side defensive validation, explicit
 aggregate symbols, branch-local variable scope, and the rule that incomplete
 branches cannot emit unsupported evidence.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `EmissionDecl::is_compatible_with` now owns branch emission
+compatibility, while `AnyExpr::all_branches_contain` owns the shared primary
+projection check used by both `QueryDecl::any_impl` and compiler validation.
+The compiler retains its recursive defensive traversal and translates the
+shared predicate into its own diagnostic. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

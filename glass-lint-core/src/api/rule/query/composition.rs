@@ -149,12 +149,7 @@ impl QueryDecl {
         for branch in branches {
             let decl = branch?;
             if let Some(first) = &first_emission {
-                let primary_present = decl.expression.contains_var(first.primary_var);
-                if !primary_present
-                    || decl.emission.primary_var != first.primary_var
-                    || decl.emission.kind != first.kind
-                    || (explicit_symbol.is_none() && decl.emission.symbol != first.symbol)
-                {
+                if !first.is_compatible_with(&decl.emission, explicit_symbol.is_some()) {
                     return Err(QueryBuildError::EvidenceProjection);
                 }
             } else {
@@ -165,12 +160,16 @@ impl QueryDecl {
         if exprs.is_empty() {
             return Err(QueryBuildError::EmptyAlternatives);
         }
+        let any = AnyExpr::new(exprs)?;
         let mut first = first_emission.unwrap_or_else(Self::default_emission);
+        if !any.all_branches_contain(first.primary_var) {
+            return Err(QueryBuildError::EvidenceProjection);
+        }
         if let Some(symbol) = explicit_symbol {
             first.symbol = symbol;
         }
         Ok(Self {
-            expression: QueryExpr::any(AnyExpr::new(exprs)?),
+            expression: QueryExpr::any(any),
             emission: first,
         })
     }
