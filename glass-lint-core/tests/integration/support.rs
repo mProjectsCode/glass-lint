@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use glass_lint_core::{
     Environment, Linter, LinterConfig, MatchCertainty, RuleCatalog,
     project::{AnalysisReport, SourceFile},
-    rules::{Builder, Confidence, Rule, Severity},
+    rules::{CatalogRuleBuilder, Confidence, Rule, Severity},
 };
 
 /// The stable facts most matcher tests need from an analysis report.
@@ -21,7 +21,7 @@ impl Classification {
 }
 
 /// Build a standard test rule with the given id.
-pub fn rule(id: &str) -> Builder {
+pub fn rule(id: &str) -> CatalogRuleBuilder {
     Rule::catalog_builder(id)
         .description(id)
         .severity(Severity::Info)

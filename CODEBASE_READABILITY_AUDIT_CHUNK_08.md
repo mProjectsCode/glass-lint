@@ -171,7 +171,7 @@ branch or predicate representation.
 
 ### Top-level facade
 
-#### [ ] READ-033 — Give rule builders one stable public name and path
+#### [x] READ-033 — Give rule builders one stable public name and path
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -201,7 +201,10 @@ policies, but share their state/validation owner as in READ-030. Make
 `Rule::builder` and `Rule::catalog_builder` return those named types without
 changing provider catalog ergonomics.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Re-exported `RuleBuilder` and `CatalogRuleBuilder` under
+their semantic names from `glass_lint_core::rules` and removed the generic
+`rules::Builder` alias. The two construction policies now have stable public
+names without changing their builder methods or catalog call sites.
 
 ## Systemic Themes
 

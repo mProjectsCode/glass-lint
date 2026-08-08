@@ -71,10 +71,10 @@ pub mod rules {
     pub use crate::api::{
         classification::MatchKind,
         rule::{
-            ArgumentMatcher, CatalogRuleBuilder as Builder, Confidence, EventQuery,
-            EventRequirement, IntoLifecycleCondition, IntoLifecycleSource, IntoQueryDecl,
-            LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleQuery, LifecycleSink,
-            QueryBuildError, QueryDecl, Rule, RuleBuildError, Severity, ValueMatcher,
+            ArgumentMatcher, CatalogRuleBuilder, Confidence, EventQuery, EventRequirement,
+            IntoLifecycleCondition, IntoLifecycleSource, IntoQueryDecl, LifecycleCompletion,
+            LifecycleCondition, LifecycleEvent, LifecycleQuery, LifecycleSink, QueryBuildError,
+            QueryDecl, Rule, RuleBuildError, RuleBuilder, Severity, ValueMatcher,
         },
     };
 }
