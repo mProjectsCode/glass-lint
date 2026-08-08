@@ -13,7 +13,7 @@ authority more broadly than their owners can safely support.
 
 ### Scope query uncertainty boundary
 
-#### [ ] READ-005 — Return binding witnesses with completeness state
+#### [x] READ-005 — Return binding witnesses with completeness state
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -41,7 +41,13 @@ emptiness. Preserve the existing rules: unknown or exhausted alternatives
 cannot establish a witness, an independent complete witness remains usable,
 and a lexical declaration or dynamic lookup must prevent global fallback.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the borrowed `BindingResolution` query result with
+explicit absent, complete, joined, and incomplete status. Rooted, chain, and
+global fallback queries now use status rather than witness-count emptiness,
+while retained complete witnesses remain available alongside incomplete
+alternatives. The old vector projection was removed; `binding_at` remains a
+documented first-witness convenience. Verified with
+`cargo test -p glass-lint-core analysis::scope` and `make fmt && make ci`.
 
 ### Static-value conversion boundary
 

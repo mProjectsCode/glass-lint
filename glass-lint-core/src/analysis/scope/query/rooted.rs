@@ -7,7 +7,9 @@
 use glass_lint_datastructures::SymbolPath;
 use swc_ecma_ast::{Expr, Ident, MemberExpr, OptChainBase};
 
-use crate::analysis::scope::{BindingProvenance, FrozenScopeGraph};
+use crate::analysis::scope::{
+    BindingProvenance, FrozenScopeGraph, frozen_assignments::BindingResolutionStatus,
+};
 
 pub(in crate::analysis) trait RootedExprContext {
     /// Resolve an identifier to a rooted chain at its use position.
@@ -21,8 +23,9 @@ impl RootedExprContext for FrozenScopeGraph {
         if self.has_dynamic_lookup_at(ident.span) {
             return None;
         }
-        let alternatives = self.binding_alternatives_at(ident.sym.as_ref(), ident.span);
-        for provenance in &alternatives {
+        let resolution = self.binding_resolution_at(ident.sym.as_ref(), ident.span);
+        let mut rooted = None;
+        resolution.for_each_witness(|provenance| {
             let path = match provenance {
                 BindingProvenance::ValueAlias { target }
                 | BindingProvenance::BoundCallable { target, .. } => target,
@@ -37,13 +40,18 @@ impl RootedExprContext for FrozenScopeGraph {
                 | BindingProvenance::StaticNumber(_)
                 | BindingProvenance::StaticStringArray(_)
                 | BindingProvenance::StaticObjectKeys(_)
-                | BindingProvenance::StaticObjectValues(_) => continue,
+                | BindingProvenance::StaticObjectValues(_) => return,
             };
             if let Some(path) = self.symbol_path(path) {
-                return Some(path);
+                rooted = Some(path);
             }
+        });
+        if rooted.is_some() {
+            return rooted;
         }
-        if alternatives.is_empty() && self.is_global(ident.sym.as_ref()) {
+        if resolution.status() == BindingResolutionStatus::Absent
+            && self.is_global(ident.sym.as_ref())
+        {
             Some(ident.sym.as_ref().into())
         } else {
             None

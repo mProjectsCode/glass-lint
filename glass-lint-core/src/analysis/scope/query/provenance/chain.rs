@@ -1,7 +1,11 @@
 use glass_lint_datastructures::{PathView, SymbolPath};
 
 use crate::analysis::{
-    scope::query::{BindingKey, BindingProvenance, FrozenScopeGraph, MemberExpr, Span, contains},
+    scope::{
+        FrozenScopeGraph,
+        frozen_assignments::{BindingResolution, BindingResolutionStatus},
+        query::{BindingKey, BindingProvenance, MemberExpr, Span, contains},
+    },
     syntax::{expression_name, member_root_identifier},
 };
 
@@ -93,12 +97,12 @@ impl FrozenScopeGraph {
         }
 
         let suffix = syntactic_chain.suffix(1).unwrap_or_default();
-        let alternatives = self.binding_alternatives_at(root.sym.as_ref(), root.span);
-        self.resolve_provenance_alternatives(&alternatives, &suffix)
+        let resolution = self.binding_resolution_at(root.sym.as_ref(), root.span);
+        self.resolve_provenance_alternatives(resolution, &suffix)
             .or_else(|| {
                 self.resolve_global_fallback(
                     root.sym.as_ref(),
-                    &alternatives,
+                    resolution,
                     syntactic_chain,
                     member.span,
                 )
@@ -135,10 +139,11 @@ impl FrozenScopeGraph {
 
     fn resolve_provenance_alternatives(
         &self,
-        alternatives: &[&BindingProvenance],
+        resolution: BindingResolution<'_>,
         suffix: &SymbolPath,
     ) -> Option<SymbolPath> {
-        for provenance in alternatives {
+        let mut resolved = None;
+        resolution.for_each_witness(|provenance| {
             let target = match provenance {
                 BindingProvenance::ValueAlias { target }
                 | BindingProvenance::BoundCallable { target, .. } => target,
@@ -153,25 +158,26 @@ impl FrozenScopeGraph {
                 | BindingProvenance::StaticNumber(_)
                 | BindingProvenance::StaticStringArray(_)
                 | BindingProvenance::StaticObjectKeys(_)
-                | BindingProvenance::StaticObjectValues(_) => continue,
+                | BindingProvenance::StaticObjectValues(_) => return,
             };
-            if self.rooted_path_available(target)
+            if resolved.is_none()
+                && self.rooted_path_available(target)
                 && let Some(path) = self.symbol_path(target)
             {
-                return Some(path.append_path(suffix));
+                resolved = Some(path.append_path(suffix));
             }
-        }
-        None
+        });
+        resolved
     }
 
     fn resolve_global_fallback(
         &self,
         root: &str,
-        alternatives: &[&BindingProvenance],
+        resolution: BindingResolution<'_>,
         syntactic_chain: &SymbolPath,
         span: Span,
     ) -> Option<SymbolPath> {
-        if !alternatives.is_empty() || !self.is_global(root) {
+        if resolution.status() != BindingResolutionStatus::Absent || !self.is_global(root) {
             return None;
         }
         self.rooted_chain_available_at(syntactic_chain, span)

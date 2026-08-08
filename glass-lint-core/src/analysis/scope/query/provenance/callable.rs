@@ -2,9 +2,12 @@ use glass_lint_datastructures::SymbolPath;
 use smol_str::{SmolStr, ToSmolStr};
 
 use crate::analysis::{
-    scope::query::{
-        BindingKey, BindingProvenance, FrozenScopeGraph, Ident, IdentValueSeed, Lookup, MemberExpr,
-        Span, SymbolCallProvenance, SymbolMemberProvenance, constant,
+    scope::{
+        frozen_assignments::BindingResolutionStatus,
+        query::{
+            BindingKey, BindingProvenance, FrozenScopeGraph, Ident, IdentValueSeed, Lookup,
+            MemberExpr, Span, SymbolCallProvenance, SymbolMemberProvenance, constant,
+        },
     },
     syntax::{expression_name, member_root_identifier},
 };
@@ -37,7 +40,8 @@ impl FrozenScopeGraph {
         if self.has_dynamic_lookup_at(span) {
             return SymbolCallProvenance::Local;
         }
-        match self.binding_at(name, span) {
+        let resolution = self.binding_resolution_at(name, span);
+        match resolution.preferred_witness() {
             Some(BindingProvenance::ModuleExport { module, export }) => {
                 SymbolCallProvenance::ModuleExport {
                     module: module.clone(),
@@ -80,9 +84,14 @@ impl FrozenScopeGraph {
                 | BindingProvenance::StaticObjectKeys(_)
                 | BindingProvenance::StaticObjectValues(_),
             ) => SymbolCallProvenance::Local,
-            None if self.is_global(name) => SymbolCallProvenance::Global {
-                name: name.to_smolstr(),
-            },
+            None if resolution.status()
+                == BindingResolutionStatus::Absent
+                && self.is_global(name) =>
+            {
+                SymbolCallProvenance::Global {
+                    name: name.to_smolstr(),
+                }
+            }
             None => SymbolCallProvenance::Local,
         }
     }

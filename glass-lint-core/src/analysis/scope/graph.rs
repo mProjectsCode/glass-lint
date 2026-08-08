@@ -371,7 +371,8 @@ impl ScopeGraph {
         let (scope, declaration) = self.binding_with_scope_at(name, span)?;
         let parameter = self.parameter_alias_for(scope, name);
         self.assignment_at(scope, name, span)
-            .preferred_witness(parameter, declaration)
+            .resolve(parameter, declaration)
+            .preferred_witness()
     }
 
     /// Find the nearest lexical declaration and its owning scope.

@@ -475,6 +475,10 @@ impl ProvenanceAlternatives {
         !self.provenances.is_empty()
     }
 
+    fn is_incomplete(&self) -> bool {
+        self.unknown || self.exhausted
+    }
+
     /// The preferred strict witness at a use position: the single retained
     /// provenance for a precise write, or the first non-local alternative
     /// retained after a control-flow join. `None` when no complete witness is
@@ -592,6 +596,11 @@ impl AliasAssignment {
 
     pub fn is_joined(&self) -> bool {
         self.alternatives.is_joined()
+    }
+
+    /// Whether this assignment retained an unknown or exhausted alternative.
+    pub fn is_incomplete(&self) -> bool {
+        self.alternatives.is_incomplete()
     }
 
     pub fn preferred_witness(&self) -> Option<&BindingProvenance> {

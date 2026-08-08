@@ -1,7 +1,7 @@
 //! Lexical binding, scope, assignment-version, and shadowing queries.
 
 use crate::analysis::scope::{
-    frozen_assignments::AssignmentAt,
+    frozen_assignments::{BindingResolution, BindingResolutionStatus},
     query::{
         BindingKey, BindingProvenance, BindingVersion, BoundArgument, Expr, FrozenScopeGraph,
         Ident, ScopeId, ScopeKind, Span,
@@ -30,47 +30,32 @@ impl FrozenScopeGraph {
 
     /// Resolve one strict binding provenance visible at a use position.
     ///
-    /// For a synthetic join, returns the first non-local witness. Callers
-    /// whose identity check can distinguish alternatives should use
-    /// `binding_alternatives_at` instead.
+    /// This is a convenience projection that intentionally discards joined
+    /// and incomplete status. Callers making fallback or certainty decisions
+    /// must use [`Self::binding_resolution_at`] instead.
     pub(in crate::analysis) fn binding_at(
         &self,
         name: &str,
         span: Span,
     ) -> Option<&BindingProvenance> {
-        let (scope, declaration) = self.binding_with_scope_at(name, span)?;
-        let name_id = self.name_id(name)?;
-        let parameter = self.parameter_alias_for_scope(scope, name_id);
-        self.assignment_at(scope, name_id, span)
-            .preferred_witness(parameter, declaration)
+        self.binding_resolution_at(name, span).preferred_witness()
     }
 
-    /// Return all strict provenance alternatives visible at a use position.
-    ///
-    /// A synthetic join can also retain the declaration as the value on a
-    /// path that did not write the binding. Unknown alternatives are not
-    /// returned: callers may use the returned values as complete witnesses,
-    /// while the presence of an unknown alternative remains available on the
-    /// assignment record for certainty accounting.
-    pub(in crate::analysis) fn binding_alternatives_at(
+    /// Resolve a binding while retaining completeness and fallback status.
+    pub(in crate::analysis) fn binding_resolution_at(
         &self,
         name: &str,
         span: Span,
-    ) -> Vec<&BindingProvenance> {
+    ) -> BindingResolution<'_> {
         let Some((scope, declaration)) = self.binding_with_scope_at(name, span) else {
-            return Vec::new();
+            return BindingResolution::absent();
         };
         let Some(name_id) = self.name_id(name) else {
-            return Vec::new();
+            return BindingResolution::absent();
         };
-        match self.assignment_at(scope, name_id, span) {
-            AssignmentAt::Known(assignment) | AssignmentAt::Ambiguous(assignment) => {
-                assignment.complete_witnesses().collect()
-            }
-            AssignmentAt::Absent => self
-                .parameter_alias_for_scope(scope, name_id)
-                .map_or_else(|| vec![declaration], |parameter| vec![parameter]),
-        }
+        let parameter = self.parameter_alias_for_scope(scope, name_id);
+        self.assignment_at(scope, name_id, span)
+            .resolve(parameter, declaration)
     }
 
     /// Resolve an expression to a stable lexical identity.  Semantic clients
@@ -107,9 +92,10 @@ impl FrozenScopeGraph {
     fn identifier_key(&self, ident: &Ident, mode: RootMode) -> Option<BindingKey> {
         match mode {
             RootMode::Lexical => self.lexical_identifier_key(ident),
-            RootMode::Global => self
-                .binding_at(ident.sym.as_ref(), ident.span)
-                .is_none()
+            RootMode::Global => (self
+                .binding_resolution_at(ident.sym.as_ref(), ident.span)
+                .status()
+                == BindingResolutionStatus::Absent)
                 .then(|| BindingKey::global(ident.sym.to_string())),
             RootMode::LexicalOrGlobal => self
                 .lexical_identifier_key(ident)
@@ -212,11 +198,12 @@ impl FrozenScopeGraph {
     pub(in crate::analysis) fn unshadowed_global_at(&self, name: &str, span: Span) -> bool {
         self.is_global(name)
             && !self.has_dynamic_lookup_at(span)
-            && self.binding_at(name, span).is_none()
+            && self.binding_resolution_at(name, span).status() == BindingResolutionStatus::Absent
     }
 
     /// Require an identifier to have no lexical or dynamic binding.
     pub(in crate::analysis) fn unshadowed_unbound_at(&self, name: &str, span: Span) -> bool {
-        !self.has_dynamic_lookup_at(span) && self.binding_at(name, span).is_none()
+        !self.has_dynamic_lookup_at(span)
+            && self.binding_resolution_at(name, span).status() == BindingResolutionStatus::Absent
     }
 }
