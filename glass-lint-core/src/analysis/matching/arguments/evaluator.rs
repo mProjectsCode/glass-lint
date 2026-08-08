@@ -43,9 +43,7 @@ impl PreparedClausePaths {
             _ => None,
         };
         let any_name = match identity {
-            IdentityConstraint::Any { name, .. } => {
-                names.lookup_path(&SymbolPath::from(name.as_str()))
-            }
+            IdentityConstraint::Any { name } => names.lookup_path(&SymbolPath::from(name.as_str())),
             _ => None,
         };
         Self {

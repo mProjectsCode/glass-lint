@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 pub(crate) use super::{
-    CompiledMatcherPlan, EventPredicate, EvidenceDescriptor, IdentityConstraint, IdentityStrength,
-    lower_event, lower_identity,
+    CompiledMatcherPlan, EventPredicate, EvidenceDescriptor, IdentityConstraint, lower_event,
+    lower_identity,
 };
 use crate::{
     RuleId, Severity,

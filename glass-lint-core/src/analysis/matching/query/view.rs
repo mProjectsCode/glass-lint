@@ -108,8 +108,8 @@ impl<'a> EventIndexView<'a> {
     ) -> Option<OccurrenceSelection<'a>> {
         let capabilities = self.capabilities();
         match identity {
-            IdentityConstraint::Any { name, .. } => capabilities.resolve_any(name, names),
-            IdentityConstraint::Global { name, .. } => capabilities.resolve_global(name, overlay),
+            IdentityConstraint::Any { name } => capabilities.resolve_any(name, names),
+            IdentityConstraint::Global { name } => capabilities.resolve_global(name, overlay),
             IdentityConstraint::ModuleExport { module, export } => {
                 capabilities.resolve_module_export(module, export, overlay)
             }

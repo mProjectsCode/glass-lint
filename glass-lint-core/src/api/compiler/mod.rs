@@ -67,20 +67,12 @@ pub(crate) struct CompiledMatcherPlan {
     physical_plan: PhysicalPlan,
 }
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub(crate) enum IdentityStrength {
-    Strict,
-    Heuristic,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub(crate) enum IdentityConstraint {
     Any {
         name: SmolStr,
-        strength: IdentityStrength,
     },
     Global {
         name: SmolStr,
-        strength: IdentityStrength,
     },
     ModuleExport {
         module: SmolStr,
@@ -146,14 +138,8 @@ pub(crate) struct EvidenceDescriptor {
 
 pub(crate) fn lower_identity(spec: &IdentitySpec) -> IdentityConstraint {
     match spec {
-        IdentitySpec::Global { name } => IdentityConstraint::Global {
-            name: name.clone(),
-            strength: IdentityStrength::Strict,
-        },
-        IdentitySpec::Heuristic { name } => IdentityConstraint::Any {
-            name: name.clone(),
-            strength: IdentityStrength::Heuristic,
-        },
+        IdentitySpec::Global { name } => IdentityConstraint::Global { name: name.clone() },
+        IdentitySpec::Heuristic { name } => IdentityConstraint::Any { name: name.clone() },
         IdentitySpec::ModuleExport { module, export } => IdentityConstraint::ModuleExport {
             module: module.clone(),
             export: export.clone(),

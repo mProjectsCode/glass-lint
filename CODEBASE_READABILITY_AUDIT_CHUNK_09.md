@@ -51,7 +51,7 @@ slice accessor.
 
 ### Compiler identity representation
 
-#### [ ] READ-035 — Remove redundant identity-strength state from compiler IR
+#### [x] READ-035 — Remove redundant identity-strength state from compiler IR
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -79,7 +79,9 @@ policy later, give it an owner and make each matcher consume it explicitly;
 otherwise preserve the current strict-versus-heuristic behavior in the
 variant shape and delete the unused field and enum.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed `IdentityStrength` and the redundant `strength` fields
+from compiler `Any` and `Global` identity constraints. Lowering and matching
+now represent strict-versus-heuristic identity solely through the variant.
 
 ### Logical expression and physical-plan bounds
 

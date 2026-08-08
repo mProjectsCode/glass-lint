@@ -372,10 +372,7 @@ fn plan_summary_shows_no_project_overlay_for_global_queries() {
 #[test]
 fn empty_identity_fails_validation() {
     let roots = Box::new([PhysicalRoot::IndexedScan {
-        identity: IdentityConstraint::Global {
-            name: "".into(),
-            strength: crate::api::compiler::rule::IdentityStrength::Strict,
-        },
+        identity: IdentityConstraint::Global { name: "".into() },
         event: EventPredicate::Call,
         evidence: EvidenceDescriptor {
             kind: MatchKind::Call,
@@ -419,7 +416,6 @@ fn valid_roots_pass_validation() {
     let roots = Box::new([PhysicalRoot::IndexedScan {
         identity: IdentityConstraint::Global {
             name: "fetch".into(),
-            strength: crate::api::compiler::rule::IdentityStrength::Strict,
         },
         event: EventPredicate::Call,
         evidence: EvidenceDescriptor {
@@ -436,7 +432,6 @@ fn requirements_must_match_executable_roots() {
     let roots = Box::new([PhysicalRoot::IndexedScan {
         identity: IdentityConstraint::Global {
             name: "fetch".into(),
-            strength: crate::api::compiler::rule::IdentityStrength::Strict,
         },
         event: EventPredicate::Call,
         evidence: EvidenceDescriptor {
@@ -577,7 +572,6 @@ fn excessive_groups_fails_validation() {
         Box::new([PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Global {
                 name: "fetch".into(),
-                strength: crate::api::compiler::rule::IdentityStrength::Strict,
             },
             event: EventPredicate::Call,
             constraints,
@@ -612,7 +606,6 @@ fn excessive_predicate_count_fails_validation() {
         Box::new([PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Global {
                 name: "fetch".into(),
-                strength: crate::api::compiler::rule::IdentityStrength::Strict,
             },
             event: EventPredicate::Call,
             constraints,

@@ -505,7 +505,6 @@ mod tests {
                 physical::{PhysicalRoot, compile_argument_constraints},
                 rule::{
                     CompiledMatcherPlan, EventPredicate, EvidenceDescriptor, IdentityConstraint,
-                    IdentityStrength,
                 },
             },
             rule::{ArgumentConstraint, ArgumentMatcher, EventQuery, ValueMatcher},
@@ -536,7 +535,6 @@ mod tests {
         let root = constrained_root(
             IdentityConstraint::Any {
                 name: "fetch".into(),
-                strength: IdentityStrength::Heuristic,
             },
             EventPredicate::Call,
             "fetch",
@@ -588,7 +586,6 @@ mod tests {
         let call = constrained_root(
             IdentityConstraint::Any {
                 name: "fetch".into(),
-                strength: IdentityStrength::Heuristic,
             },
             EventPredicate::Call,
             "fetch",
@@ -596,7 +593,6 @@ mod tests {
         let member = constrained_root(
             IdentityConstraint::Any {
                 name: "client.open".into(),
-                strength: IdentityStrength::Heuristic,
             },
             EventPredicate::MemberCall {
                 member: "client.open".into(),
@@ -670,7 +666,6 @@ mod tests {
         let _root = constrained_root(
             IdentityConstraint::Any {
                 name: "fetch".into(),
-                strength: IdentityStrength::Heuristic,
             },
             EventPredicate::Call,
             "fetch",
@@ -679,7 +674,6 @@ mod tests {
         let patched = PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
-                strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
@@ -711,7 +705,6 @@ mod tests {
         let root = constrained_root(
             IdentityConstraint::Any {
                 name: "fetch".into(),
-                strength: IdentityStrength::Heuristic,
             },
             EventPredicate::Call,
             "fetch",
@@ -737,7 +730,6 @@ mod tests {
         let root = PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
-                strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
             constraints: compile_argument_constraints(&[
@@ -773,7 +765,6 @@ mod tests {
         let root_a = PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
-                strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
             constraints: compile_argument_constraints(&[
@@ -794,7 +785,6 @@ mod tests {
         let root_b = PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
-                strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
             constraints: compile_argument_constraints(&[
@@ -837,7 +827,6 @@ mod tests {
         let root = PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
-                strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
@@ -868,7 +857,6 @@ mod tests {
         let root = PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
-                strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
@@ -902,7 +890,6 @@ mod tests {
         let root = PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
-                strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
@@ -939,7 +926,6 @@ mod tests {
         let root = PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
-                strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
@@ -976,7 +962,6 @@ mod tests {
         let root = PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
-                strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
@@ -1008,7 +993,6 @@ mod tests {
         let root = PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
-                strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
@@ -1118,7 +1102,6 @@ mod tests {
         let root = PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
-                strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
             constraints,
@@ -1162,7 +1145,6 @@ mod tests {
         let root = PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
-                strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
             constraints,
@@ -1201,7 +1183,6 @@ mod tests {
         let root = PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
-                strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
             constraints,
@@ -1259,7 +1240,6 @@ mod tests {
         let root = PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
-                strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
             constraints,
@@ -1298,7 +1278,6 @@ mod tests {
         let root = PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
-                strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
             constraints,
@@ -1330,7 +1309,6 @@ mod tests {
         let root = PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
-                strength: IdentityStrength::Heuristic,
             },
             event: EventPredicate::Call,
             constraints,

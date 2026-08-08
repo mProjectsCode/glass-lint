@@ -17,13 +17,13 @@ pub(super) fn call_identity_matches(
     any_name_path: Option<&NamePath>,
 ) -> bool {
     match identity {
-        IdentityConstraint::Any { name, .. } => {
+        IdentityConstraint::Any { name } => {
             callee_name.is_some_and(|found| *found == *name)
                 || any_name_path
                     .zip(syntactic_path)
                     .is_some_and(|(name_path, chain)| name_path == chain)
         }
-        IdentityConstraint::Global { name, .. } => {
+        IdentityConstraint::Global { name } => {
             matches!(call_provenance, SymbolCallProvenance::Global { name: found } if found == name)
         }
         IdentityConstraint::ModuleExport { module, export } => {

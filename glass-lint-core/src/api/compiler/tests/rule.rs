@@ -4,7 +4,7 @@ use crate::api::{
     classification::MatchKind,
     compiler::{
         physical,
-        rule::{CompiledMatcherPlan, EventPredicate, IdentityConstraint, IdentityStrength},
+        rule::{CompiledMatcherPlan, EventPredicate, IdentityConstraint},
     },
     rule::{EventQuery, QueryDecl, ValueMatcher},
 };
@@ -102,7 +102,7 @@ fn query_plan_compiles_declarations_into_physical_roots() {
     assert!(roots.iter().any(|root| matches!(
         root,
         physical::PhysicalRoot::IndexedScan {
-            identity: IdentityConstraint::Global { name, strength: IdentityStrength::Strict },
+            identity: IdentityConstraint::Global { name },
             event: EventPredicate::Call, ..
         } if name == "fetch"
     )));
