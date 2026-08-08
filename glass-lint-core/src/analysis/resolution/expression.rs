@@ -15,7 +15,7 @@ use crate::analysis::{
 };
 
 struct ResolutionSeed {
-    id: ValueId,
+    provisional_id: ValueId,
     provenance: ResolutionProvenance,
 }
 
@@ -42,7 +42,7 @@ impl ResolutionGuard {
 impl ResolutionSeed {
     fn into_resolved(
         self,
-        id: ValueId,
+        final_id: ValueId,
         call: SymbolCallProvenance,
         module_member: Option<SymbolMemberProvenance>,
     ) -> ResolvedValue {
@@ -55,7 +55,7 @@ impl ResolutionSeed {
             ..
         } = provenance;
         ResolvedValue::with_provenance(
-            id,
+            final_id,
             ResolutionProvenance {
                 rooted_chain,
                 call,
@@ -130,7 +130,7 @@ impl Resolver<'_> {
                 value => resolver.intern_const_value(value, seed.binding),
             };
             ResolutionSeed {
-                id,
+                provisional_id: id,
                 provenance: ResolutionProvenance {
                     rooted_chain,
                     call: seed.call,
@@ -207,7 +207,7 @@ impl Resolver<'_> {
                 ))
             });
             ResolutionSeed {
-                id,
+                provisional_id: id,
                 provenance: ResolutionProvenance {
                     rooted_chain,
                     call: scoped_call,
@@ -300,7 +300,7 @@ impl Resolver<'_> {
     }
 
     fn finalize_seed(&mut self, seed: ResolutionSeed, span: swc_common::Span) -> ResolvedValue {
-        let call = if seed.id == ValueId::UNKNOWN
+        let call = if seed.provisional_id == ValueId::UNKNOWN
             && !matches!(seed.provenance.call, SymbolCallProvenance::Unknown(_))
             && self.value_arena_exhausted()
         {
@@ -310,13 +310,17 @@ impl Resolver<'_> {
                 observed: None,
             })
         } else {
-            self.call_provenance_at(seed.id, seed.provenance.rooted_chain.as_ref(), span)
+            self.call_provenance_at(
+                seed.provisional_id,
+                seed.provenance.rooted_chain.as_ref(),
+                span,
+            )
         };
-        let id = match &call {
+        let final_id = match &call {
             SymbolCallProvenance::Global { name } => self
                 .values
                 .intern_construction(ValueConstruction::Global(name.clone()), None),
-            _ => seed.id,
+            _ => seed.provisional_id,
         };
         let module_member = seed
             .provenance
@@ -335,7 +339,7 @@ impl Resolver<'_> {
             self.values
                 .intern_construction(ValueConstruction::ModuleNamespace(module.clone()), None);
         }
-        seed.into_resolved(id, call, module_member)
+        seed.into_resolved(final_id, call, module_member)
     }
 
     pub(in crate::analysis) fn static_string_array_expr(&self, expr: &Expr) -> Option<Vec<String>> {

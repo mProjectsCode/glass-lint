@@ -80,7 +80,7 @@ re-exports, interop aliases, shadowing, and static-specifier checks.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-015 — Name provisional and finalized value IDs distinctly
+#### [x] READ-015 — Name provisional and finalized value IDs distinctly
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -102,7 +102,10 @@ authoritative after finalization. Keep the call/member provenance merge in
 one helper and retain the distinction between cached identity-only queries and
 full provenance queries.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Renamed resolution-seed identities to `provisional_id` and
+`final_id` at the finalization boundary, making canonical global replacement
+explicit without changing provenance or cache behavior. Verified with
+`make fmt && make ci`.
 
 ### Module interface ownership
 
