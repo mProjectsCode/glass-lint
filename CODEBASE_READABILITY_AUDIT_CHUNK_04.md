@@ -88,7 +88,7 @@ budget exhaustion and unsupported resolution.
 
 **Fix Applied:** Resolution now has named cache-entry states, a `ResolutionGuard` that owns active-key commit/removal, and a separate seed-finalization phase for exhaustion, canonicalization, and module-member enrichment. Position-sensitive caching, uncached cycles, and fail-closed outcomes remain unchanged. Verified with `make fmt && make ci`.
 
-#### [ ] READ-003 — Value construction policy leaks through a broad arena API
+#### [x] READ-003 — Value construction policy leaks through a broad arena API
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -123,7 +123,7 @@ IDs, deterministic deduplication, static-object name validation, and the rule
 that exhausted or invalid values return `ValueId::UNKNOWN` without creating a
 definite witness.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ValueTable` now exposes one production `intern_construction` operation over a private `ValueConstruction` specification. Resolver call, constant, and expression paths use that boundary for binding wrapping, terminal identity, static-object name validation, and exhaustion handling; test-only raw helpers remain local to model tests. Verified with `make fmt && make ci`.
 
 #### [ ] READ-004 — Module export metadata has implicit and inconsistent merge rules
 

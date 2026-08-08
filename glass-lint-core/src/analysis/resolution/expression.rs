@@ -7,8 +7,8 @@ use crate::analysis::{
     model::{scope::FunctionId, value::MAX_VALUES},
     resolution::{
         Callee, ConstValue, Expr, Ident, Lit, MemberExpr, ResolutionKey, ResolutionProvenance,
-        ResolvedValue, Resolver, SymbolCallProvenance, SymbolMemberProvenance, ValueId,
-        syntax_constant,
+        ResolvedValue, Resolver, SymbolCallProvenance, SymbolMemberProvenance, ValueConstruction,
+        ValueId, syntax_constant,
     },
     scope::ScopeId,
     syntax::{BudgetComponent, UnknownReason},
@@ -313,7 +313,9 @@ impl Resolver<'_> {
             self.call_provenance_at(seed.id, seed.provenance.rooted_chain.as_ref(), span)
         };
         let id = match &call {
-            SymbolCallProvenance::Global { name } => self.values.intern_global(name.clone(), None),
+            SymbolCallProvenance::Global { name } => self
+                .values
+                .intern_construction(ValueConstruction::Global(name.clone()), None),
             _ => seed.id,
         };
         let module_member = seed
@@ -330,7 +332,8 @@ impl Resolver<'_> {
                 _ => None,
             });
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, .. }) = &module_member {
-            self.values.intern_module_namespace(module.clone());
+            self.values
+                .intern_construction(ValueConstruction::ModuleNamespace(module.clone()), None);
         }
         seed.into_resolved(id, call, module_member)
     }
@@ -433,17 +436,23 @@ impl Resolver<'_> {
     }
 
     pub(in crate::analysis) fn static_string(&mut self, value: String) -> ResolvedValue {
-        let id = self.values.intern_static_string(value, None);
+        let id = self
+            .values
+            .intern_construction(ValueConstruction::StaticString(value), None);
         self.interned_value(id, false)
     }
 
     pub(in crate::analysis) fn static_number(&mut self, value: usize) -> ResolvedValue {
-        let id = self.values.intern_static_number(value, None);
+        let id = self
+            .values
+            .intern_construction(ValueConstruction::StaticNumber(value), None);
         self.interned_value(id, false)
     }
 
     pub(in crate::analysis) fn static_array(&mut self, values: Vec<ValueId>) -> ResolvedValue {
-        let id = self.values.intern_static_array(values, None);
+        let id = self
+            .values
+            .intern_construction(ValueConstruction::StaticArray(values), None);
         self.interned_value(id, false)
     }
 
@@ -451,7 +460,9 @@ impl Resolver<'_> {
         &mut self,
         object: crate::analysis::model::value::StaticObject,
     ) -> ResolvedValue {
-        let id = self.values.intern_static_object_shape(object, None);
+        let id = self
+            .values
+            .intern_construction(ValueConstruction::StaticObjectShape(object), None);
         self.interned_value(id, false)
     }
 
@@ -459,12 +470,16 @@ impl Resolver<'_> {
         &mut self,
         object: crate::analysis::model::value::ObjectId,
     ) -> ResolvedValue {
-        let id = self.values.intern_object(object, None);
+        let id = self
+            .values
+            .intern_construction(ValueConstruction::Object(object), None);
         self.interned_value(id, false)
     }
 
     pub(in crate::analysis) fn rooted_member(&mut self, path: NamePath) -> ResolvedValue {
-        let id = self.values.intern_rooted_member(path, None);
+        let id = self
+            .values
+            .intern_construction(ValueConstruction::RootedMember(path), None);
         self.interned_value(id, false)
     }
 

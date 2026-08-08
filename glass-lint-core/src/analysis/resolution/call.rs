@@ -11,7 +11,7 @@ use crate::analysis::{
     module_request::ModuleRequestContext,
     resolution::{
         Callee, Expr, ResolutionProvenance, ResolvedValue, Resolver, SymbolCallProvenance, Value,
-        ValueId,
+        ValueConstruction, ValueId,
     },
     syntax::{BudgetComponent, UnknownReason},
 };
@@ -90,7 +90,9 @@ impl Resolver<'_> {
             return self.fresh_object_value_at(call.span);
         }
         let target = self.resolve_expr_id(&member.obj);
-        let id = self.values.intern_callable(target, None);
+        let id = self
+            .values
+            .intern_construction(ValueConstruction::Callable(target), None);
         self.interned_value(id, false)
     }
 
@@ -102,23 +104,25 @@ impl Resolver<'_> {
         rooted: Option<&glass_lint_datastructures::SymbolPath>,
         binding: Option<crate::analysis::model::scope::BindingKey>,
     ) -> ValueId {
-        let id = match call {
-            SymbolCallProvenance::Global { name } => {
-                self.values.intern_global(name.clone(), binding)
+        let construction = match call {
+            SymbolCallProvenance::Global { name } => ValueConstruction::Global(name.clone()),
+            SymbolCallProvenance::ModuleExport { module, export } => {
+                ValueConstruction::ModuleExport {
+                    module: module.clone(),
+                    export: export.clone(),
+                }
             }
-            SymbolCallProvenance::ModuleExport { module, export } => self
-                .values
-                .intern_module_export(module.clone(), export.clone(), binding),
-            SymbolCallProvenance::Local => match rooted {
-                Some(path) => match self.rooted_value(path) {
-                    Value::RootedMember { path } => self.values.intern_rooted_member(path, binding),
-                    Value::Local => self.values.intern_local(binding),
-                    _ => self.values.intern_unknown(binding),
+            SymbolCallProvenance::Local => rooted.map_or_else(
+                || ValueConstruction::Local,
+                |path| match self.rooted_value(path) {
+                    Value::RootedMember { path } => ValueConstruction::RootedMember(path),
+                    Value::Local => ValueConstruction::Local,
+                    _ => ValueConstruction::Unknown,
                 },
-                None => self.values.intern_local(binding),
-            },
-            SymbolCallProvenance::Unknown(_) => self.values.intern_unknown(binding),
+            ),
+            SymbolCallProvenance::Unknown(_) => ValueConstruction::Unknown,
         };
+        let id = self.values.intern_construction(construction, binding);
         debug_assert!(self.values.get(id).is_some());
         id
     }

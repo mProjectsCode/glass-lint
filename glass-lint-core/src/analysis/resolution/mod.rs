@@ -34,7 +34,7 @@ use crate::analysis::{
     lowering::{InvalidParserSpan, ParserSpanKey, SpanNormalizer},
     model::{
         scope::BindingKey,
-        value::{Value, ValueId, ValueTable},
+        value::{Value, ValueConstruction, ValueId, ValueTable},
     },
     scope::{BoundArgument, FrozenScopeGraph},
     syntax::{

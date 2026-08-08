@@ -8,7 +8,9 @@ use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
 
-use crate::analysis::resolution::{BindingKey, ConstValue, Resolver, Value, ValueId};
+use crate::analysis::resolution::{
+    BindingKey, ConstValue, Resolver, Value, ValueConstruction, ValueId,
+};
 
 const MAX_CONST_DEPTH: usize = 32;
 
@@ -78,15 +80,22 @@ impl Resolver<'_> {
                     .map(|(key, value)| (key, self.intern_const_value(value, None)))
                     .collect::<Vec<_>>();
                 let arena = &mut self.values;
-                return arena.intern_static_object_with_binding(values, &self.names, binding);
+                return arena.intern_construction(
+                    ValueConstruction::StaticObject {
+                        values,
+                        names: &self.names,
+                    },
+                    binding,
+                );
             }
         };
-        match value {
-            Value::Unknown => self.values.intern_unknown(binding),
-            Value::StaticString(value) => self.values.intern_static_string(value, binding),
-            Value::StaticNumber(value) => self.values.intern_static_number(value, binding),
-            Value::StaticArray(values) => self.values.intern_static_array(values, binding),
+        let construction = match value {
+            Value::Unknown => ValueConstruction::Unknown,
+            Value::StaticString(value) => ValueConstruction::StaticString(value),
+            Value::StaticNumber(value) => ValueConstruction::StaticNumber(value),
+            Value::StaticArray(values) => ValueConstruction::StaticArray(values),
             _ => unreachable!("constant conversion produced a non-constant value"),
-        }
+        };
+        self.values.intern_construction(construction, binding)
     }
 }

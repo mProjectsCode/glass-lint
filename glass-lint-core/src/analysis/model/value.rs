@@ -134,6 +134,28 @@ impl CallableValue {
 
 pub const MAX_VALUES: usize = 65_536;
 
+pub(in crate::analysis) enum ValueConstruction<'a> {
+    Unknown,
+    Local,
+    Global(SmolStr),
+    ModuleNamespace(SmolStr),
+    ModuleExport {
+        module: SmolStr,
+        export: SmolStr,
+    },
+    RootedMember(NamePath),
+    Callable(ValueId),
+    Object(ObjectId),
+    StaticString(String),
+    StaticNumber(usize),
+    StaticArray(Vec<ValueId>),
+    StaticObjectShape(StaticObject),
+    StaticObject {
+        values: Vec<(SmolStr, ValueId)>,
+        names: &'a NameTable,
+    },
+}
+
 #[derive(Debug, Clone)]
 pub struct ValueTable {
     values: FastIndexSet<Value>,
@@ -196,14 +218,56 @@ impl ValueTable {
         ValueId::new(index)
     }
 
+    fn intern_value_with_binding(&mut self, value: Value, binding: Option<BindingKey>) -> ValueId {
+        let target = self.intern_value(value);
+        binding.map_or(target, |key| {
+            self.intern_value(Value::Binding { key, target })
+        })
+    }
+
+    pub(in crate::analysis) fn intern_construction(
+        &mut self,
+        construction: ValueConstruction<'_>,
+        binding: Option<BindingKey>,
+    ) -> ValueId {
+        let (value, binding) = match construction {
+            ValueConstruction::Unknown => (Value::Unknown, binding),
+            ValueConstruction::Local => (Value::Local, binding),
+            ValueConstruction::Global(name) => (Value::Global(name), binding),
+            ValueConstruction::ModuleNamespace(module) => (Value::ModuleNamespace(module), None),
+            ValueConstruction::ModuleExport { module, export } => {
+                (Value::ModuleExport { module, export }, binding)
+            }
+            ValueConstruction::RootedMember(path) => (Value::RootedMember { path }, binding),
+            ValueConstruction::Callable(target) => {
+                (Value::Callable(CallableValue::new(target)), binding)
+            }
+            ValueConstruction::Object(object) => (Value::Object(object), binding),
+            ValueConstruction::StaticString(value) => (Value::StaticString(value), binding),
+            ValueConstruction::StaticNumber(value) => (Value::StaticNumber(value), binding),
+            ValueConstruction::StaticArray(values) => (Value::StaticArray(values), binding),
+            ValueConstruction::StaticObjectShape(object) => (Value::StaticObject(object), binding),
+            ValueConstruction::StaticObject { values, names } => {
+                let mut canonical = Vec::new();
+                for (name, value) in values {
+                    let Some(id) = names.lookup(name.as_str()) else {
+                        self.exhausted = true;
+                        return ValueId::UNKNOWN;
+                    };
+                    canonical.push((id, value));
+                }
+                let Some(object) = StaticObject::new(canonical) else {
+                    return ValueId::UNKNOWN;
+                };
+                (Value::StaticObject(object), binding)
+            }
+        };
+        self.intern_value_with_binding(value, binding)
+    }
+
     #[cfg(test)]
     pub(in crate::analysis) fn intern(&mut self, value: Value) -> ValueId {
         self.intern_value(value)
-    }
-
-    #[cfg(not(test))]
-    fn intern_with_binding(&mut self, value: Value, binding: Option<BindingKey>) -> ValueId {
-        self.intern_value_with_binding(value, binding)
     }
 
     #[cfg(test)]
@@ -215,125 +279,19 @@ impl ValueTable {
         self.intern_value_with_binding(value, binding)
     }
 
-    fn intern_value_with_binding(&mut self, value: Value, binding: Option<BindingKey>) -> ValueId {
-        let target = self.intern_value(value);
-        binding.map_or(target, |key| {
-            self.intern_value(Value::Binding { key, target })
-        })
-    }
-
-    pub(in crate::analysis) fn intern_static_string(
-        &mut self,
-        value: String,
-        binding: Option<BindingKey>,
-    ) -> ValueId {
-        self.intern_with_binding(Value::StaticString(value), binding)
-    }
-
-    pub(in crate::analysis) fn intern_static_number(
-        &mut self,
-        value: usize,
-        binding: Option<BindingKey>,
-    ) -> ValueId {
-        self.intern_with_binding(Value::StaticNumber(value), binding)
-    }
-
-    pub(in crate::analysis) fn intern_static_array(
-        &mut self,
-        values: Vec<ValueId>,
-        binding: Option<BindingKey>,
-    ) -> ValueId {
-        self.intern_with_binding(Value::StaticArray(values), binding)
-    }
-
-    pub(in crate::analysis) fn intern_object(
-        &mut self,
-        object: ObjectId,
-        binding: Option<BindingKey>,
-    ) -> ValueId {
-        self.intern_with_binding(Value::Object(object), binding)
-    }
-
-    pub(in crate::analysis) fn intern_global(
-        &mut self,
-        name: SmolStr,
-        binding: Option<BindingKey>,
-    ) -> ValueId {
-        self.intern_with_binding(Value::Global(name), binding)
-    }
-
-    pub(in crate::analysis) fn intern_module_export(
-        &mut self,
-        module: SmolStr,
-        export: SmolStr,
-        binding: Option<BindingKey>,
-    ) -> ValueId {
-        self.intern_with_binding(Value::ModuleExport { module, export }, binding)
-    }
-
-    pub(in crate::analysis) fn intern_module_namespace(&mut self, module: SmolStr) -> ValueId {
-        self.intern_value(Value::ModuleNamespace(module))
-    }
-
-    pub(in crate::analysis) fn intern_rooted_member(
-        &mut self,
-        path: NamePath,
-        binding: Option<BindingKey>,
-    ) -> ValueId {
-        self.intern_with_binding(Value::RootedMember { path }, binding)
-    }
-
-    pub(in crate::analysis) fn intern_callable(
-        &mut self,
-        target: ValueId,
-        binding: Option<BindingKey>,
-    ) -> ValueId {
-        self.intern_with_binding(Value::Callable(CallableValue::new(target)), binding)
-    }
-
-    pub(in crate::analysis) fn intern_unknown(&mut self, binding: Option<BindingKey>) -> ValueId {
-        self.intern_with_binding(Value::Unknown, binding)
-    }
-
-    pub(in crate::analysis) fn intern_local(&mut self, binding: Option<BindingKey>) -> ValueId {
-        self.intern_with_binding(Value::Local, binding)
-    }
-
     #[cfg(test)]
     pub(in crate::analysis) fn intern_static_object(
         &mut self,
         values: impl IntoIterator<Item = (SmolStr, ValueId)>,
         names: &NameTable,
     ) -> ValueId {
-        self.intern_static_object_with_binding(values, names, None)
-    }
-
-    pub(in crate::analysis) fn intern_static_object_with_binding(
-        &mut self,
-        values: impl IntoIterator<Item = (SmolStr, ValueId)>,
-        names: &NameTable,
-        binding: Option<BindingKey>,
-    ) -> ValueId {
-        let mut canonical = Vec::new();
-        for (name, value) in values {
-            let Some(id) = names.lookup(name.as_str()) else {
-                self.exhausted = true;
-                return ValueId::UNKNOWN;
-            };
-            canonical.push((id, value));
-        }
-        let Some(object) = StaticObject::new(canonical) else {
-            return ValueId::UNKNOWN;
-        };
-        self.intern_with_binding(Value::StaticObject(object), binding)
-    }
-
-    pub(in crate::analysis) fn intern_static_object_shape(
-        &mut self,
-        object: StaticObject,
-        binding: Option<BindingKey>,
-    ) -> ValueId {
-        self.intern_with_binding(Value::StaticObject(object), binding)
+        self.intern_construction(
+            ValueConstruction::StaticObject {
+                values: values.into_iter().collect(),
+                names,
+            },
+            None,
+        )
     }
 
     pub fn allocate_object_id(&mut self) -> Option<ObjectId> {
