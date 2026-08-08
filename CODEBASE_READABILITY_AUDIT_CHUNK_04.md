@@ -51,7 +51,7 @@ and unknown/exhaustion behavior.
 
 **Fix Applied:** A private `ResolutionProvenance` value now owns the shared identity fields, while `ResolutionSeed` carries it and `ResolvedValue` finalizes it with the canonical ID, call provenance, and module-member override. Local defaults remain centralized and cache, position sensitivity, and exhaustion behavior are unchanged. Verified with `make fmt && make ci`.
 
-#### [ ] READ-002 — `resolve_seed` mixes the entire resolution finalization protocol
+#### [x] READ-002 — `resolve_seed` mixes the entire resolution finalization protocol
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -86,7 +86,7 @@ rules explicit. Keep cycle results uncached if that is the current policy,
 retain position-sensitive cache keys, and preserve fail-closed outcomes for
 budget exhaustion and unsupported resolution.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Resolution now has named cache-entry states, a `ResolutionGuard` that owns active-key commit/removal, and a separate seed-finalization phase for exhaustion, canonicalization, and module-member enrichment. Position-sensitive caching, uncached cycles, and fail-closed outcomes remain unchanged. Verified with `make fmt && make ci`.
 
 #### [ ] READ-003 — Value construction policy leaks through a broad arena API
 

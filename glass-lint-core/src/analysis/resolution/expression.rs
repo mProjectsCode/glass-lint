@@ -19,6 +19,26 @@ struct ResolutionSeed {
     provenance: ResolutionProvenance,
 }
 
+enum ResolutionStart {
+    Cached(ResolvedValue),
+    Cycle,
+    Active(ResolutionGuard),
+}
+
+struct ResolutionGuard {
+    key: ResolutionKey,
+}
+
+impl ResolutionGuard {
+    fn commit(self, cache: &mut super::ResolverCache, value: ResolvedValue) -> ResolvedValue {
+        cache
+            .resolved_values
+            .insert(self.key.clone(), value.clone());
+        cache.resolving.remove(&self.key);
+        value
+    }
+}
+
 impl ResolutionSeed {
     fn into_resolved(
         self,
@@ -256,13 +276,30 @@ impl Resolver<'_> {
     where
         F: FnOnce(&mut Self) -> ResolutionSeed,
     {
+        let start = self.start_resolution(key);
+        let ResolutionStart::Active(guard) = start else {
+            return match start {
+                ResolutionStart::Cached(value) => value,
+                ResolutionStart::Cycle => Self::archive_unknown_with_reason(UnknownReason::Cycle),
+                ResolutionStart::Active(_) => unreachable!("active resolution handled above"),
+            };
+        };
+        let seed = build(self);
+        let resolved = self.finalize_seed(seed, span);
+        guard.commit(&mut self.cache, resolved)
+    }
+
+    fn start_resolution(&mut self, key: &ResolutionKey) -> ResolutionStart {
         if let Some(value) = self.cache.resolved_values.get(key) {
-            return value.clone();
+            return ResolutionStart::Cached(value.clone());
         }
         if !self.cache.resolving.insert(key.clone()) {
-            return Self::archive_unknown_with_reason(UnknownReason::Cycle);
+            return ResolutionStart::Cycle;
         }
-        let seed = build(self);
+        ResolutionStart::Active(ResolutionGuard { key: key.clone() })
+    }
+
+    fn finalize_seed(&mut self, seed: ResolutionSeed, span: swc_common::Span) -> ResolvedValue {
         let call = if seed.id == ValueId::UNKNOWN
             && !matches!(seed.provenance.call, SymbolCallProvenance::Unknown(_))
             && self.value_arena_exhausted()
@@ -295,14 +332,7 @@ impl Resolver<'_> {
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, .. }) = &module_member {
             self.values.intern_module_namespace(module.clone());
         }
-        let resolved = seed.into_resolved(id, call, module_member);
-        self.cache_resolution(key, resolved.clone());
-        resolved
-    }
-
-    fn cache_resolution(&mut self, key: &ResolutionKey, value: ResolvedValue) {
-        self.cache.resolved_values.insert(key.clone(), value);
-        self.cache.resolving.remove(key);
+        seed.into_resolved(id, call, module_member)
     }
 
     pub(in crate::analysis) fn static_string_array_expr(&self, expr: &Expr) -> Option<Vec<String>> {
