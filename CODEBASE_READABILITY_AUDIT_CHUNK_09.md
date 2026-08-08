@@ -198,7 +198,7 @@ compiler and catalog layers. Authored query failures remain structured
 string projection at the external boundary; existing display wording and
 rule-ID context are preserved. Verified with `make fmt && make ci`.
 
-#### [ ] READ-006 — `RuleEvidenceTable` repeats its rule-index boundary in every mutation method
+#### [x] READ-006 — `RuleEvidenceTable` repeats its rule-index boundary in every mutation method
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -224,7 +224,10 @@ bucket to focused mutation methods. Keep `RuleIndex` opaque, preserve
 capacity-mismatch errors when merging tables, retain deterministic rule order,
 and keep empty evidence distinct from an invalid rule index.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Already addressed by `55c49d3 fix read cross-004 chunk 13`,
+which added the private `items_mut` slot operation and routed all mutating
+methods through it. The finding predates that fix and is stale in this audit
+chunk; no duplicate source change is needed.
 
 #### [ ] READ-007 — Query validation carries scope, type, correlation, and mode state through raw collections
 
