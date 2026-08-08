@@ -58,7 +58,7 @@ validation no longer uses a placeholder ID. Namespaced uniqueness, stable
 ordering, and no-recompilation catalog combination are preserved. Verified
 with `make fmt && make ci`.
 
-#### [ ] READ-002 — `RuleCatalog` stores a derived index beside its source records
+#### [x] READ-002 — `RuleCatalog` stores a derived index beside its source records
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -85,7 +85,10 @@ the duplicate-ID check where catalogs are combined. Preserve stable index
 ordering, logarithmic ID lookup, no recompilation, and the existing
 all-or-nothing error behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Already addressed by `878c42c fix read cross-005 chunk 13`,
+which removed the derived `rule_indices` map and kept catalog identity in the
+ordered compiled records. The finding predates that fix and is stale in this
+audit chunk; no duplicate source change is needed.
 
 #### [ ] READ-003 — Deferred rule and lifecycle builders duplicate an error-policy state machine
 
