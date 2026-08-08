@@ -28,6 +28,7 @@ mod build;
 mod query;
 use evidence::EvidenceGroup;
 pub use evidence::display_span;
+pub(in crate::analysis) use query::IndexedRootIter;
 
 #[derive(Debug, Default)]
 pub struct OccurrenceIndexes {

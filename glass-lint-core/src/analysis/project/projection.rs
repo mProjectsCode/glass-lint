@@ -436,11 +436,14 @@ impl ProjectModuleProjection<'_> {
         matcher: &CompiledMatcherPlan,
         rule_index: RuleIndex,
     ) -> Vec<ClassificationEvidence> {
-        let mut evidence = self.matcher_artifact.indexes().evidence_for_with_overlay(
-            matcher,
-            self.matcher_artifact.overlay(),
-            self.module.local().facts().names(),
-        );
+        let mut evidence = self
+            .matcher_artifact
+            .indexes()
+            .evidence_for_indexed_with_overlay(
+                crate::analysis::matching::IndexedRootIter::from_plan(matcher),
+                self.matcher_artifact.overlay(),
+                self.module.local().facts().names(),
+            );
 
         if let Some(projected) = self.projected.for_rule(rule_index) {
             evidence.extend_from_slice(projected);

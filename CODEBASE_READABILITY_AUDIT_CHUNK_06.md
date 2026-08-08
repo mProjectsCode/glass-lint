@@ -77,7 +77,7 @@ claim that production still has multiple independent construction paths.
 
 ### Physical-plan and query-facing boundaries
 
-#### [ ] READ-023 — Do not silently discard unsupported physical roots
+#### [x] READ-023 — Do not silently discard unsupported physical roots
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -102,7 +102,12 @@ lifecycles, but make partial evaluation visible in the type or result instead
 of relying on the comment and a silent no-op match arm. Remove the broad
 complete-plan entry point once the caller uses the typed partition.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `IndexedRootIter`, a typed iterator that exposes only
+indexed, returned-subject, and instance-subject roots from a compiled plan.
+Occurrence-index execution now accepts that partition instead of a complete
+physical plan; constrained scans and lifecycle roots remain owned by their
+fact-stream and flow projectors, with a guarded internal invariant at the
+executor boundary. The focused matching suite and full gate pass.
 
 ### Evidence capacity and failure propagation
 

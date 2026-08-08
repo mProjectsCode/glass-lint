@@ -21,6 +21,33 @@ mod view;
 use view::EventIndexView;
 pub(super) use view::private_network_match;
 
+pub(in crate::analysis) struct IndexedRootIter<'a> {
+    roots: std::slice::Iter<'a, PhysicalRoot>,
+}
+
+impl<'a> IndexedRootIter<'a> {
+    pub(in crate::analysis) fn from_plan(plan: &'a CompiledMatcherPlan) -> Self {
+        Self {
+            roots: plan.physical_roots().iter(),
+        }
+    }
+}
+
+impl<'a> Iterator for IndexedRootIter<'a> {
+    type Item = &'a PhysicalRoot;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.roots.find(|root| {
+            matches!(
+                root,
+                PhysicalRoot::IndexedScan { .. }
+                    | PhysicalRoot::ReturnedSubject { .. }
+                    | PhysicalRoot::InstanceSubject { .. }
+            )
+        })
+    }
+}
+
 #[cfg(test)]
 use crate::analysis::matching::occurrence::Occurrence;
 
@@ -30,12 +57,16 @@ impl OccurrenceIndexes {
         &self,
         plan: &CompiledMatcherPlan,
     ) -> Vec<ClassificationEvidence> {
-        self.evidence_for_with_overlay(plan, None, &self.test_names)
+        self.evidence_for_indexed_with_overlay(
+            IndexedRootIter::from_plan(plan),
+            None,
+            &self.test_names,
+        )
     }
 
-    pub(in crate::analysis) fn evidence_for_with_overlay<'a>(
+    pub(in crate::analysis) fn evidence_for_indexed_with_overlay<'a>(
         &'a self,
-        plan: &CompiledMatcherPlan,
+        roots: IndexedRootIter<'a>,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
         names: &NameTable,
     ) -> Vec<ClassificationEvidence> {
@@ -43,7 +74,7 @@ impl OccurrenceIndexes {
         // project evidence is merged here and normalized exactly once by the
         // report-facing projection model.
         let mut evidence = Vec::new();
-        for root in plan.physical_roots() {
+        for root in roots {
             match root {
                 PhysicalRoot::IndexedScan {
                     identity,
@@ -81,9 +112,9 @@ impl OccurrenceIndexes {
                         push_owned_evidence(&mut evidence, ev.kind, ev.symbol.clone(), occurrences);
                     }
                 }
-                // Constrained scans are handled by the fact-stream projection path.
-                // Lifecycle roots are handled by the flow projection path.
-                PhysicalRoot::ConstrainedScan { .. } | PhysicalRoot::Lifecycle { .. } => {}
+                PhysicalRoot::ConstrainedScan { .. } | PhysicalRoot::Lifecycle { .. } => {
+                    unreachable!("indexed root iterator yielded a non-indexed root")
+                }
             }
         }
         evidence
