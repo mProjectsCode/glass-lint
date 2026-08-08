@@ -23,6 +23,86 @@ use crate::{
     api::classification::{ClassificationEvidence, RuleEvidenceTable, RuleIndex},
 };
 
+impl InverseDelta {
+    fn apply(
+        &self,
+        direction: HistoryTransition,
+        aliases: &mut AliasTable,
+        states: &mut BTreeMap<FlowStateKey, FlowState>,
+    ) {
+        let undo = matches!(direction, HistoryTransition::Undo);
+        match self {
+            Self::AliasInsert(value, object) => {
+                if undo {
+                    aliases.remove(*value);
+                } else {
+                    aliases.set(*value, *object);
+                }
+            }
+            Self::AliasUpdate(value, old, new) => {
+                aliases.set(*value, if undo { *old } else { *new });
+            }
+            Self::AliasRemove(value, object) => {
+                if undo {
+                    aliases.set(*value, *object);
+                } else {
+                    aliases.remove(*value);
+                }
+            }
+            Self::StateInsert(key, state) => {
+                if undo {
+                    states.remove(key);
+                } else {
+                    states.insert(*key, (**state).clone());
+                }
+            }
+            Self::StateUpdate(key, old, new) => {
+                states.insert(
+                    *key,
+                    if undo {
+                        (**old).clone()
+                    } else {
+                        (**new).clone()
+                    },
+                );
+            }
+            Self::StateRemove(key, state) => {
+                if undo {
+                    states.insert(*key, (**state).clone());
+                } else {
+                    states.remove(key);
+                }
+            }
+            Self::RequirementInsert(key, index, event) => {
+                if let Some(state) = states.get_mut(key) {
+                    if undo {
+                        state.remove_requirement_event(*index, *event);
+                    } else {
+                        state.record_requirement(*index, *event);
+                    }
+                }
+            }
+            Self::RequirementRemove(key, index, events) => {
+                if let Some(state) = states.get_mut(key) {
+                    if !undo {
+                        state.clear_requirement(*index);
+                    }
+                    state.restore_requirement(*index, events);
+                }
+            }
+            Self::SinkInsert(key, index, event) => {
+                if let Some(state) = states.get_mut(key) {
+                    if undo {
+                        state.remove_sink_event(*index, *event);
+                    } else {
+                        state.record_sink(*index, *event);
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// O(1) snapshot of the live tables and reachability at a control boundary.
 pub(super) struct FlowEnvironment {
@@ -547,98 +627,12 @@ impl FlowStateTable {
             log,
             ..
         } = self;
-        if log.transition(environment.checkpoint, |direction, delta| match direction {
-            HistoryTransition::Undo => Self::apply_inverse(delta, aliases, states),
-            HistoryTransition::Redo => Self::apply_forward(delta, aliases, states),
+        if log.transition(environment.checkpoint, |direction, delta| {
+            delta.apply(direction, aliases, states);
         }) {
             environment.reachable
         } else {
             false
-        }
-    }
-
-    fn apply_inverse(
-        delta: &InverseDelta,
-        aliases: &mut AliasTable,
-        states: &mut BTreeMap<FlowStateKey, FlowState>,
-    ) {
-        match delta {
-            InverseDelta::AliasInsert(value, _) => {
-                aliases.remove(*value);
-            }
-            InverseDelta::AliasUpdate(value, old, _) => {
-                aliases.set(*value, *old);
-            }
-            InverseDelta::AliasRemove(value, object) => {
-                aliases.set(*value, *object);
-            }
-            InverseDelta::StateInsert(key, _) => {
-                states.remove(key);
-            }
-            InverseDelta::StateUpdate(key, old, _) => {
-                states.insert(*key, (**old).clone());
-            }
-            InverseDelta::StateRemove(key, state) => {
-                states.insert(*key, (**state).clone());
-            }
-            InverseDelta::RequirementInsert(key, index, event) => {
-                if let Some(state) = states.get_mut(key) {
-                    state.remove_requirement_event(*index, *event);
-                }
-            }
-            InverseDelta::RequirementRemove(key, index, events) => {
-                if let Some(state) = states.get_mut(key) {
-                    state.restore_requirement(*index, events);
-                }
-            }
-            InverseDelta::SinkInsert(key, index, event) => {
-                if let Some(state) = states.get_mut(key) {
-                    state.remove_sink_event(*index, *event);
-                }
-            }
-        }
-    }
-
-    fn apply_forward(
-        delta: &InverseDelta,
-        aliases: &mut AliasTable,
-        states: &mut BTreeMap<FlowStateKey, FlowState>,
-    ) {
-        match delta {
-            InverseDelta::AliasInsert(value, object) => {
-                aliases.set(*value, *object);
-            }
-            InverseDelta::AliasUpdate(value, _old, new) => {
-                aliases.set(*value, *new);
-            }
-            InverseDelta::AliasRemove(value, _object) => {
-                aliases.remove(*value);
-            }
-            InverseDelta::StateInsert(key, state) => {
-                states.insert(*key, (**state).clone());
-            }
-            InverseDelta::StateUpdate(key, _, new) => {
-                states.insert(*key, (**new).clone());
-            }
-            InverseDelta::StateRemove(key, _) => {
-                states.remove(key);
-            }
-            InverseDelta::RequirementInsert(key, index, event) => {
-                if let Some(state) = states.get_mut(key) {
-                    state.record_requirement(*index, *event);
-                }
-            }
-            InverseDelta::RequirementRemove(key, index, events) => {
-                if let Some(state) = states.get_mut(key) {
-                    state.clear_requirement(*index);
-                    state.restore_requirement(*index, events);
-                }
-            }
-            InverseDelta::SinkInsert(key, index, event) => {
-                if let Some(state) = states.get_mut(key) {
-                    state.record_sink(*index, *event);
-                }
-            }
         }
     }
 }

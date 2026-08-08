@@ -51,7 +51,7 @@ one derivation.
 
 **Fix Applied:** `CallEffectRef::shape` is now the sole materialization boundary, and flow/linking consumers retain one `CallShape` while reading chain, rootedness, result, provenance, target, and effective arguments. Repeated ref-building accessors were removed while fail-closed fact lookup and chain fallback behavior remain unchanged. Verified with `make fmt && make ci`.
 
-#### [ ] READ-002 — Reversible flow mutations duplicate the entire delta algebra
+#### [x] READ-002 — Reversible flow mutations duplicate the entire delta algebra
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -80,7 +80,7 @@ the bounded `MutationLog`, explicit transition failure, and deterministic
 checkpoint semantics; do not replace correlated rollback with independently
 joined maps.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `InverseDelta::apply` now owns both undo and redo semantics in one directional transition, and `FlowStateTable::restore` delegates to it. Alias, state, requirement, and sink mutations retain their bounded log behavior and deterministic checkpoint semantics. Verified with `make fmt && make ci`.
 
 #### [x] READ-003 — Control-stack mismatch operations consume or hide frames
 
