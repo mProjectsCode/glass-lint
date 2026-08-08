@@ -117,7 +117,7 @@ deterministic ordering throughout.
 
 ### Evidence trace construction
 
-#### [ ] READ-011 — Centralize lifecycle trace-chain assembly
+#### [x] READ-011 — Centralize lifecycle trace-chain assembly
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -141,7 +141,10 @@ builders. Preserve source-to-sink order, the intended prior-sink role,
 cross-module qualification, deterministic requirement order, and `None` on
 trace-arena exhaustion without returning partial chains.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Centralized lifecycle source/requirement/prior-sink/terminal
+chain assembly in `TraceArena` while preserving the distinct local
+`Requirement` and cross-module `Sink` prior-sink roles. Verified with
+`make fmt && make ci`.
 
 ## Systemic Themes
 

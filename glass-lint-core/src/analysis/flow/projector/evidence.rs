@@ -22,7 +22,7 @@ use crate::{
             flow::{FlowId, FlowStateKey},
             scope::FunctionId,
         },
-        trace::{QualifiedEvent, TraceNodeId},
+        trace::{QualifiedEvent, TraceNodeId, intern_lifecycle_trace},
     },
     api::{
         classification::ClassificationEvidenceOccurrence, compiler::object_flow::CompletionMode,
@@ -268,28 +268,18 @@ impl ObjectFlowProjector<'_, '_, '_> {
         let requirements = state
             .requirement_entries()
             .filter_map(|(_index, values)| values.into_iter().next())
-            .map(|fact| {
-                (
-                    QualifiedEvent::new(self.inputs.module_id, fact),
-                    EvidenceRole::Requirement,
-                )
-            });
-        let prior_sinks = state.prior_sinks(sink_fact).into_iter().map(|fact| {
-            (
-                QualifiedEvent::new(self.inputs.module_id, fact),
-                EvidenceRole::Requirement,
-            )
-        });
-        let steps = std::iter::once((
+            .map(|fact| QualifiedEvent::new(self.inputs.module_id, fact));
+        let prior_sinks = state
+            .prior_sinks(sink_fact)
+            .into_iter()
+            .map(|fact| QualifiedEvent::new(self.inputs.module_id, fact));
+        intern_lifecycle_trace(
+            self.trace_arena,
             QualifiedEvent::new(self.inputs.module_id, state.source_event()),
-            EvidenceRole::Source,
-        ))
-        .chain(requirements)
-        .chain(prior_sinks)
-        .chain(std::iter::once((
+            requirements,
+            prior_sinks,
             QualifiedEvent::new(self.inputs.module_id, sink_fact),
-            EvidenceRole::Sink,
-        )));
-        self.trace_arena.intern_chain(steps)
+            EvidenceRole::Requirement,
+        )
     }
 }

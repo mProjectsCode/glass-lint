@@ -7,7 +7,7 @@ use crate::{
         ProjectSemanticModel, facts::FactId, flow::{
             cross::state::{CallContext, CrossFlowState},
             effect::{EffectUse, FunctionEffect},
-        }, model::flow::FlowId, trace::{QualifiedEvent, TraceArena, TraceNodeId},
+        }, model::flow::FlowId, trace::{QualifiedEvent, TraceArena, TraceNodeId, intern_lifecycle_trace},
     }, api::{
         classification::{ClassificationEvidence, MatchKind, RuleEvidenceTable, RuleIndex},
         compiler::CompiledObjectFlow,
@@ -180,22 +180,16 @@ fn assemble_trace(
     event: FactId,
 ) -> Option<TraceNodeId> {
     let source = state.source().copied()?;
-    let requirements = state
-        .requirement_events()
-        .copied()
-        .map(|event| (event, EvidenceRole::Requirement));
-    let prior_sinks = state
-        .prior_sinks(module, event)
-        .into_iter()
-        .map(|event| (event, EvidenceRole::Sink));
-    let steps = std::iter::once((source, EvidenceRole::Source))
-        .chain(requirements)
-        .chain(prior_sinks)
-        .chain(std::iter::once((
-            QualifiedEvent::new(module, event),
-            EvidenceRole::Sink,
-        )));
-    arena.intern_chain(steps)
+    let requirements = state.requirement_events().copied();
+    let prior_sinks = state.prior_sinks(module, event).into_iter();
+    intern_lifecycle_trace(
+        arena,
+        source,
+        requirements,
+        prior_sinks,
+        QualifiedEvent::new(module, event),
+        EvidenceRole::Sink,
+    )
 }
 
 pub(super) fn emit(
