@@ -6,6 +6,7 @@ use crate::api::{
     classification::MatchKind,
     compiler::{
         error::PhysicalPlanValidationError,
+        limits as compiler_limits,
         normalized::{
             CanonicalArgumentConstraints, NormalizedEvent, NormalizedLifecycle, NormalizedQuery,
             NormalizedRoot, ObjectSlot as NormalizedObjectSlot,
@@ -270,10 +271,35 @@ pub(crate) struct PhysicalPlan {
     requirements: PlanRequirements,
 }
 
+#[derive(Debug, Default)]
+pub(crate) struct RootBudget {
+    used: usize,
+}
+
+impl RootBudget {
+    pub(crate) const fn new() -> Self {
+        Self { used: 0 }
+    }
+
+    pub(crate) fn reserve(&mut self) -> Result<(), PhysicalPlanValidationError> {
+        if self.used >= compiler_limits::MAX_PHYSICAL_ROOTS_PER_RULE {
+            return Err(PhysicalPlanValidationError::TooManyRoots(self.used + 1));
+        }
+        self.used += 1;
+        Ok(())
+    }
+}
+
 impl PhysicalPlan {
     pub(crate) fn from_roots(
         roots: Box<[PhysicalRoot]>,
     ) -> Result<Self, PhysicalPlanValidationError> {
+        if roots.is_empty() {
+            return Err(PhysicalPlanValidationError::EmptyRoots);
+        }
+        if roots.len() > compiler_limits::MAX_PHYSICAL_ROOTS_PER_RULE {
+            return Err(PhysicalPlanValidationError::TooManyRoots(roots.len()));
+        }
         for root in &roots {
             root.validate()?;
         }
@@ -442,34 +468,45 @@ fn explain_root(root: &PhysicalRoot) -> String {
 pub(crate) fn plan_normalized(
     nq: &NormalizedQuery,
 ) -> Result<PhysicalPlan, PhysicalPlanValidationError> {
-    let roots = plan_normalized_roots(nq)?;
+    let mut budget = RootBudget::new();
+    let roots = plan_normalized_roots(nq, &mut budget)?;
     PhysicalPlan::from_roots(roots.into_boxed_slice())
 }
 
 pub(crate) fn plan_normalized_roots(
     nq: &NormalizedQuery,
+    budget: &mut RootBudget,
 ) -> Result<Vec<PhysicalRoot>, PhysicalPlanValidationError> {
     let emission = nq.emission();
     let kind = emission.kind();
     let symbol = emission.symbol();
-    plan_root(nq.root(), kind, symbol)
+    plan_root(nq.root(), kind, symbol, budget)
 }
 
 fn plan_root(
     root: &NormalizedRoot,
     kind: MatchKind,
     symbol: &str,
+    budget: &mut RootBudget,
 ) -> Result<Vec<PhysicalRoot>, PhysicalPlanValidationError> {
     match root {
-        NormalizedRoot::Event(ev) => plan_event(ev, kind, symbol),
+        NormalizedRoot::Event(ev) => {
+            let planned = plan_event(ev, kind, symbol)?;
+            budget.reserve()?;
+            Ok(planned)
+        }
         NormalizedRoot::Any(branches) => {
             let mut roots = Vec::new();
             for b in branches {
-                roots.extend(plan_root(b, kind, symbol)?);
+                roots.extend(plan_root(b, kind, symbol, budget)?);
             }
             Ok(roots)
         }
-        NormalizedRoot::Lifecycle(lc) => Ok(vec![plan_lifecycle(lc, symbol)?]),
+        NormalizedRoot::Lifecycle(lc) => {
+            let planned = plan_lifecycle(lc, symbol)?;
+            budget.reserve()?;
+            Ok(vec![planned])
+        }
     }
 }
 

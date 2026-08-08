@@ -12,7 +12,8 @@ use crate::api::{
         },
         object_flow::CompiledObjectFlow,
         physical::{
-            PhysicalPlan, PhysicalRoot, optimize_roots, plan_normalized, validate_physical_plan,
+            PhysicalPlan, PhysicalRoot, RootBudget, optimize_roots, plan_normalized,
+            validate_physical_plan,
         },
         requirements::PlanRequirements,
         rule::{EventPredicate, EvidenceDescriptor, IdentityConstraint},
@@ -223,6 +224,69 @@ fn alternatives_from_any_produce_multiple_roots() {
             "expected IndexedScan for each alternative"
         );
     }
+}
+
+#[test]
+fn nested_alternatives_respect_the_aggregate_root_budget() {
+    use crate::api::rule::query::{AnyExpr, EventQuery, EventSpec, IdentitySpec, QueryExpr};
+
+    fn expression(depth: usize, next: &mut u32) -> QueryExpr {
+        if depth == 0 {
+            let index = *next;
+            *next += 1;
+            return QueryExpr::event(EventQuery::from_parts_for_test(
+                VarId::new(index),
+                EventSpec::Call,
+                IdentitySpec::Global {
+                    name: format!("root{index}").into(),
+                },
+                vec![],
+            ));
+        }
+        QueryExpr::any(
+            AnyExpr::new(vec![
+                expression(depth - 1, next),
+                expression(depth - 1, next),
+            ])
+            .unwrap(),
+        )
+    }
+
+    let mut next = 0;
+    let expression = expression(9, &mut next);
+    let query = QueryDecl::from_parts_for_test(
+        expression,
+        crate::api::rule::query::EmissionDecl {
+            primary_var: VarId::new(0),
+            kind: MatchKind::Call,
+            symbol: "request".into(),
+        },
+    );
+
+    assert!(matches!(
+        normalize_query_decl(&query),
+        Err(crate::api::compiler::validate::QueryCompileError::UnboundedQuery { .. })
+    ));
+}
+
+#[test]
+fn root_budget_rejects_the_first_root_over_the_limit() {
+    let mut budget = RootBudget::new();
+    for _ in 0..crate::api::compiler::limits::MAX_PHYSICAL_ROOTS_PER_RULE {
+        budget.reserve().unwrap();
+    }
+    assert!(matches!(
+        budget.reserve(),
+        Err(PhysicalPlanValidationError::TooManyRoots(_))
+    ));
+}
+
+#[test]
+fn physical_plan_rejects_empty_roots() {
+    assert!(matches!(
+        PhysicalPlan::from_roots(Box::new([])),
+        Err(PhysicalPlanValidationError::EmptyRoots)
+    ));
 }
 
 #[test]

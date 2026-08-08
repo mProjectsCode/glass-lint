@@ -29,6 +29,7 @@
 pub(crate) mod catalog;
 pub(crate) mod contradiction;
 pub(crate) mod error;
+pub(crate) mod limits;
 pub(crate) mod normalize;
 pub(crate) mod normalize_all;
 pub(crate) mod normalized;
@@ -202,6 +203,7 @@ pub(crate) fn lower_event(spec: &EventSpec) -> EventPredicate {
 
 struct QueryPlanAccumulator {
     roots: Vec<physical::PhysicalRoot>,
+    budget: physical::RootBudget,
 }
 
 impl QueryPlanAccumulator {
@@ -217,22 +219,29 @@ impl QueryPlanAccumulator {
 
 /// Compile one query declaration through validation, normalization, and
 /// physical planning without mutating the aggregate rule plan.
-fn compile_query(query: &QueryDecl) -> Result<Vec<physical::PhysicalRoot>, MatcherBuildError> {
+fn compile_query(
+    query: &QueryDecl,
+    budget: &mut physical::RootBudget,
+) -> Result<Vec<physical::PhysicalRoot>, MatcherBuildError> {
     validate_query_decl(query).map_err(map_query_compile_error)?;
 
     let normalized: NormalizedQuery =
         normalize::normalize_query_decl(query).map_err(map_query_compile_error)?;
 
-    physical::plan_normalized_roots(&normalized)
+    physical::plan_normalized_roots(&normalized, budget)
         .map_err(|error| MatcherBuildError::InvalidPhysicalPlan(error.into()))
 }
 
 /// Compile query declarations into one deterministic, aggregate physical plan.
 fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildError> {
-    let mut accumulator = QueryPlanAccumulator { roots: Vec::new() };
+    let mut accumulator = QueryPlanAccumulator {
+        roots: Vec::new(),
+        budget: physical::RootBudget::new(),
+    };
 
     for query in queries {
-        accumulator.add(compile_query(query)?);
+        let roots = compile_query(query, &mut accumulator.budget)?;
+        accumulator.add(roots);
     }
 
     accumulator.finish()

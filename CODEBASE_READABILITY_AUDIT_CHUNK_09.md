@@ -80,7 +80,7 @@ variant shape and delete the unused field and enum.
 
 ### Logical expression and physical-plan bounds
 
-#### [ ] READ-036 — Enforce one aggregate bound on alternative expansion
+#### [x] READ-036 — Enforce one aggregate bound on alternative expansion
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -111,7 +111,13 @@ without adding a speculative second logical-node budget. Propagate a typed
 physical plan at sealing, and preserve deterministic flattening and
 deduplication.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a compiler-owned `MAX_PHYSICAL_ROOTS_PER_RULE` budget
+that is shared across all queries in a rule and charged as normalized
+alternatives become physical roots. Normalization stops flattening when the
+same bound would be exceeded, and physical-plan sealing rejects both empty
+and oversized root sets with typed diagnostics. Nested-alternative and
+empty-plan tests cover the bounded expansion and sealing boundaries while
+preserving deterministic optimization and deduplication.
 
 ### Compiler requirements consumed by projection
 

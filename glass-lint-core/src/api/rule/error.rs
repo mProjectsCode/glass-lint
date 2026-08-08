@@ -3,7 +3,7 @@
 use std::{error::Error, fmt};
 
 use super::query::{QueryDiagnostic, limits};
-use crate::RuleId;
+use crate::{RuleId, api::compiler::limits as compiler_limits};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Construction-time rule metadata or matcher validation failure.
@@ -51,6 +51,10 @@ impl fmt::Display for CompilerInvariantDiagnostic {
 /// Structured validation failure for an executable physical matcher plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PhysicalPlanDiagnostic {
+    /// The physical plan has no executable roots.
+    EmptyRoots,
+    /// The physical plan exceeded the aggregate executable-root bound.
+    TooManyRoots(usize),
     /// No supported identity/event/subject combination can be selected.
     ImpossibleDimensions,
     /// Argument constraints were attached to a non-call event.
@@ -76,6 +80,12 @@ pub enum PhysicalPlanDiagnostic {
 impl fmt::Display for PhysicalPlanDiagnostic {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::EmptyRoots => formatter.write_str("physical plan must contain a root"),
+            Self::TooManyRoots(count) => write!(
+                formatter,
+                "physical root count {count} exceeds compiler limit {}",
+                compiler_limits::MAX_PHYSICAL_ROOTS_PER_RULE
+            ),
             Self::ImpossibleDimensions => formatter
                 .write_str("identity/event/subject dimensions cannot select a semantic fact"),
             Self::ConstraintsRequireCallEvent => {

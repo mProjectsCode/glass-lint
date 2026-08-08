@@ -3,6 +3,8 @@ use crate::api::rule::PhysicalPlanDiagnostic;
 /// Validation failure for an executable physical plan.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) enum PhysicalPlanValidationError {
+    EmptyRoots,
+    TooManyRoots(usize),
     ImpossibleDimensions,
     ConstraintsRequireCallEvent,
     NonCanonicalConstraints,
@@ -25,6 +27,8 @@ pub(crate) enum PhysicalPlanValidationError {
 impl From<PhysicalPlanValidationError> for PhysicalPlanDiagnostic {
     fn from(error: PhysicalPlanValidationError) -> Self {
         match error {
+            PhysicalPlanValidationError::EmptyRoots => Self::EmptyRoots,
+            PhysicalPlanValidationError::TooManyRoots(count) => Self::TooManyRoots(count),
             PhysicalPlanValidationError::ImpossibleDimensions => Self::ImpossibleDimensions,
             PhysicalPlanValidationError::ConstraintsRequireCallEvent => {
                 Self::ConstraintsRequireCallEvent
