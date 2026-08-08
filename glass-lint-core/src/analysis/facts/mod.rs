@@ -622,7 +622,7 @@ impl SemanticFacts {
         environment: &crate::Environment,
         availability: DerivedPhaseAvailability,
     ) -> OccurrenceIndexes {
-        let mut index = OccurrenceIndexes::with_environment(environment);
+        let mut index = OccurrenceIndexes::with_environment(environment, availability);
         if availability.is_enabled() {
             index.build_from_stream(stream);
             index.normalize_occurrences();

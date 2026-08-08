@@ -481,6 +481,7 @@ pub(in crate::analysis) struct FunctionEffects {
     by_id: FunctionTable<FunctionEffect>,
     completion: FlowCompletion,
     operation_count: usize,
+    availability: DerivedPhaseAvailability,
 }
 
 impl Default for FunctionEffects {
@@ -489,6 +490,7 @@ impl Default for FunctionEffects {
             by_id: FunctionTable::new(0),
             completion: FlowCompletion::default(),
             operation_count: 0,
+            availability: DerivedPhaseAvailability::Enabled,
         }
     }
 }
@@ -508,6 +510,10 @@ impl FunctionEffects {
 
     pub(in crate::analysis) fn operation_count(&self) -> usize {
         self.operation_count
+    }
+
+    pub(in crate::analysis) fn is_available(&self) -> bool {
+        self.availability.is_enabled()
     }
 
     #[cfg(test)]
@@ -654,7 +660,12 @@ impl<'stream> FunctionEffectsBuilder<'stream> {
 
     pub(in crate::analysis) fn finish(self) -> FunctionEffects {
         if !self.availability.is_enabled() {
-            return FunctionEffects::default();
+            return FunctionEffects {
+                by_id: FunctionTable::new(0),
+                completion: FlowCompletion::default(),
+                operation_count: 0,
+                availability: self.availability,
+            };
         }
         FunctionEffects {
             by_id: self.by_id,
@@ -664,6 +675,7 @@ impl<'stream> FunctionEffectsBuilder<'stream> {
                 FlowCompletion::default()
             },
             operation_count: self.budget.used(),
+            availability: self.availability,
         }
     }
 }

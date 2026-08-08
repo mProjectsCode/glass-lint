@@ -165,6 +165,7 @@ impl<'project, 'plan, 'roots, 'arena> ProjectionSession<'project, 'plan, 'roots,
                 outcome.metrics.operations = outcome.metrics.operations.saturating_add(overlay_ops);
                 let effects = self.plan.needs_flow().then(|| module.local().effects());
                 if let Some(effects) = effects
+                    && effects.is_available()
                     && effects.completion().is_incomplete()
                 {
                     outcome.record_effects(module.id(), effects);
@@ -361,6 +362,9 @@ fn project_facts(
     let Some(effects) = effects else {
         return (projected_evidence, LocalFlowProjectionOutcome::default());
     };
+    if !effects.is_available() {
+        return (projected_evidence, LocalFlowProjectionOutcome::default());
+    }
     let flow_matchers = plan
         .flow_matchers
         .iter()

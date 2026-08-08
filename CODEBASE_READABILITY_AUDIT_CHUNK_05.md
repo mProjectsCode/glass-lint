@@ -15,7 +15,7 @@ phase-contract problems rather than storage or formatting concerns.
 
 ### Derived-phase availability and incomplete outputs
 
-#### [ ] READ-017 — Preserve disabled derived phases as incomplete outcomes
+#### [x] READ-017 — Preserve disabled derived phases as incomplete outcomes
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -41,7 +41,11 @@ empty data is still useful for analyzed sources, while disabled data must be
 queryably unavailable. Preserve deterministic empty results for genuinely
 analyzed sources and keep incomplete phases from establishing findings.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Attached `DerivedPhaseAvailability` to occurrence indexes
+and function effects so disabled derived phases remain empty and fail closed
+without being indistinguishable from genuinely analyzed empty results.
+Production matcher and flow projection now consult the availability state,
+and focused lowering tests cover both disabled and complete derivations.
 
 ### Semantic budget ownership
 

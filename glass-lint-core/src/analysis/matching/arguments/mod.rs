@@ -152,11 +152,15 @@ impl<'a> MatcherArtifact<'a> {
         let (overlay, operations) = match overlay_policy {
             MatcherOverlayPolicy::Disabled => (None, 0),
             MatcherOverlayPolicy::Enabled => {
-                inputs.module_identities().map_or((None, 0), |identities| {
-                    let (overlay, operations) =
-                        LinkedOccurrenceView::build(facts.matcher_index(), identities);
-                    (Some(overlay), operations)
-                })
+                if facts.matcher_index().is_available() {
+                    inputs.module_identities().map_or((None, 0), |identities| {
+                        let (overlay, operations) =
+                            LinkedOccurrenceView::build(facts.matcher_index(), identities);
+                        (Some(overlay), operations)
+                    })
+                } else {
+                    (None, 0)
+                }
             }
         };
         (

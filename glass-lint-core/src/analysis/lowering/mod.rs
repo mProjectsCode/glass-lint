@@ -463,7 +463,9 @@ mod tests {
 
         assert!(!artifact.facts().stream().is_valid());
         assert!(artifact.facts().matcher_index().is_empty());
+        assert!(!artifact.facts().matcher_index().is_available());
         assert!(artifact.effects().iter_effects().next().is_none());
+        assert!(!artifact.effects().is_available());
         let (_, project_diagnostics) = artifact.status().diagnostics().into_parts();
         assert_eq!(project_diagnostics.len(), 1);
         assert_eq!(
@@ -507,6 +509,7 @@ mod tests {
 
         assert!(!artifact.status().is_complete());
         assert!(artifact.effects().iter_effects().next().is_none());
+        assert!(!artifact.effects().is_available());
         // With budget of 10, the fact stream has very few facts
         assert!(artifact.facts().stream().facts().len() < 5);
         // Export origin lookups return nothing since the phase was skipped
@@ -536,6 +539,8 @@ mod tests {
         assert!(artifact.status().is_complete());
         assert!(artifact.facts().stream().facts().len() > 10);
         assert!(artifact.effects().iter_effects().next().is_some());
+        assert!(artifact.facts().matcher_index().is_available());
+        assert!(artifact.effects().is_available());
         // Export origins should be present since the phase ran
         assert!(artifact.export_origin("result").is_some());
         assert!(artifact.export_origin("identity").is_some());

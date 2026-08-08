@@ -5,7 +5,7 @@ use glass_lint_datastructures::NamePath;
 use smol_str::SmolStr;
 
 use crate::{
-    analysis::project::model::ExportResolution,
+    analysis::{DerivedPhaseAvailability, project::model::ExportResolution},
     api::classification::{ClassificationEvidence, MatchKind},
 };
 
@@ -31,6 +31,7 @@ pub use evidence::display_span;
 
 #[derive(Debug, Default)]
 pub struct OccurrenceIndexes {
+    availability: DerivedPhaseAvailability,
     environment: crate::Environment,
     call_indexes: indexes::CallIndexes,
     members: indexes::MemberIndexes,
@@ -263,11 +264,19 @@ impl<'a> LinkedOccurrenceView<'a> {
 }
 
 impl OccurrenceIndexes {
-    pub(in crate::analysis) fn with_environment(environment: &crate::Environment) -> Self {
+    pub(in crate::analysis) fn with_environment(
+        environment: &crate::Environment,
+        availability: DerivedPhaseAvailability,
+    ) -> Self {
         Self {
+            availability,
             environment: environment.clone(),
             ..Self::default()
         }
+    }
+
+    pub(in crate::analysis) fn is_available(&self) -> bool {
+        self.availability.is_enabled()
     }
 
     #[cfg(test)]
