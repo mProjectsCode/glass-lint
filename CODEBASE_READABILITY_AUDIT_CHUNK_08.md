@@ -59,7 +59,7 @@ tests cover both public construction paths.
 
 ### Rule builder ownership
 
-#### [ ] READ-030 — Centralize immediate and deferred rule-builder state
+#### [x] READ-030 — Centralize immediate and deferred rule-builder state
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -87,7 +87,10 @@ thin named adapter over shared state/error policy rather than a second
 independently validated builder. Make error precedence and first-error policy
 explicit and shared, while preserving deterministic query order.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added one shared `RuleBuilder::try_add_query` operation for
+query conversion and storage. Immediate and deferred builder APIs now use the
+same insertion path, while `CatalogRuleBuilder` retains only its deferred
+first-error policy and metadata adapter behavior.
 
 ### Lifecycle authoring adapters
 

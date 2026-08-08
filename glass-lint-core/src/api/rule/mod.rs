@@ -153,10 +153,14 @@ impl RuleBuilder {
     /// declarative catalogs and reports the first fallible-input error from
     /// `build()`.
     pub fn try_query(self, query: impl IntoQueryDecl) -> Result<Self, QueryBuildError> {
-        let query = query.into_query_decl()?;
         let mut builder = self;
-        builder.queries.push(query);
+        builder.try_add_query(query)?;
         Ok(builder)
+    }
+
+    fn try_add_query(&mut self, query: impl IntoQueryDecl) -> Result<(), QueryBuildError> {
+        self.queries.push(query.into_query_decl()?);
+        Ok(())
     }
 
     #[must_use]
@@ -260,9 +264,8 @@ pub struct CatalogRuleBuilder {
 impl CatalogRuleBuilder {
     #[must_use]
     pub fn query(mut self, query: impl IntoQueryDecl) -> Self {
-        match query.into_query_decl() {
-            Ok(query) => self.inner = self.inner.query(query),
-            Err(error) => self.first_query_error.record(error),
+        if let Err(error) = self.inner.try_add_query(query) {
+            self.first_query_error.record(error);
         }
         self
     }
