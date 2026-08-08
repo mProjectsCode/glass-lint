@@ -95,6 +95,106 @@ pub(in crate::analysis) struct ProjectionPlan<'a> {
     flow_requirements: FlowRequirements,
 }
 
+struct ProjectionSession<'project, 'plan, 'roots, 'arena> {
+    project: &'project ProjectSemanticModel,
+    plan: &'plan ProjectionPlan<'roots>,
+    flow_limits: FlowLimits,
+    arena: &'arena mut TraceArena,
+    linking: LinkingSession,
+}
+
+impl<'project, 'plan, 'roots, 'arena> ProjectionSession<'project, 'plan, 'roots, 'arena> {
+    fn new(
+        project: &'project ProjectSemanticModel,
+        plan: &'plan ProjectionPlan<'roots>,
+        flow_limits: FlowLimits,
+        arena: &'arena mut TraceArena,
+    ) -> Self {
+        Self {
+            project,
+            plan,
+            flow_limits,
+            arena,
+            linking: LinkingSession::new(project.flow_limit()),
+        }
+    }
+
+    fn collect_cross(
+        &mut self,
+        matchers: &CompiledRuleSelection<'_>,
+    ) -> (
+        BTreeMap<ModuleId, RuleEvidenceTable>,
+        flow::cross::CrossProjectionOutcome,
+    ) {
+        flow::cross::collect(self.project, matchers, &mut self.linking, self.arena)
+    }
+
+    fn project_modules<'module>(
+        &'module mut self,
+    ) -> (
+        BTreeMap<ModuleId, ProjectModuleProjection<'project>>,
+        ProjectionOutcome,
+    ) {
+        let need_module_ids = self.plan.needs_module_identities() || self.plan.needs_overlay();
+        let need_result_ids = self.plan.needs_call_result_identities();
+        let mut outcome = ProjectionOutcome::default();
+        let projections = self
+            .project
+            .modules()
+            .map(|module| {
+                let identities = need_module_ids.then(|| {
+                    self.project
+                        .module_identities(module.id(), &mut self.linking)
+                });
+                let result_identities = need_result_ids.then(|| {
+                    self.project
+                        .call_result_identities(module.id(), &mut self.linking)
+                });
+                let overlay_identities = self
+                    .plan
+                    .needs_overlay()
+                    .then_some(identities.as_ref())
+                    .flatten();
+                let (matcher_context, overlay_ops) = MatcherProjectContext::from_facts(
+                    module.local().facts(),
+                    overlay_identities,
+                    identities.as_ref(),
+                    result_identities.as_ref(),
+                );
+                outcome.metrics.operations = outcome.metrics.operations.saturating_add(overlay_ops);
+                let effects = self.plan.needs_flow().then(|| module.local().effects());
+                if let Some(effects) = effects
+                    && effects.budget_exhausted()
+                {
+                    outcome.record_effects(module.id(), effects);
+                }
+                let (projected, local) = project_facts(
+                    ProjectionInputs {
+                        facts: module.local().facts(),
+                        effects,
+                        plan: self.plan,
+                        flow_limits: self.flow_limits,
+                        module_id: module.id(),
+                        trace_arena: self.arena,
+                    },
+                    &matcher_context,
+                );
+                outcome.record_local(&local);
+                let matcher_artifact = matcher_context.into_artifact();
+                (
+                    module.id(),
+                    ProjectModuleProjection {
+                        module,
+                        matcher_artifact,
+                        projected,
+                    },
+                )
+            })
+            .collect();
+        (projections, outcome)
+    }
+}
+
 #[derive(Clone, Copy)]
 struct PlannedConstrainedRoot<'a> {
     rule_index: RuleIndex,
@@ -533,14 +633,12 @@ impl ProjectSemanticModel {
     ) -> (ProjectMatcherModel<'project, 'matchers>, ProjectionOutcome) {
         let plan = ProjectionPlan::from_selection(&matchers);
         let flow_limits = FlowLimits::from_flow_operations(self.flow_limit());
-        let mut session = LinkingSession::new(self.flow_limit());
-
         let has_flow = plan.flow_requirements().local() || plan.flow_requirements().cross_call();
-        let (projections, mut outcome) =
-            self.project_modules(&plan, flow_limits, arena, &mut session);
+        let mut session = ProjectionSession::new(self, &plan, flow_limits, arena);
+        let (projections, mut outcome) = session.project_modules();
 
         let (cross, cross_outcome) = if has_flow {
-            flow::cross::collect(self, &matchers, &mut session, arena)
+            session.collect_cross(&matchers)
         } else {
             Default::default()
         };
@@ -565,69 +663,6 @@ impl ProjectSemanticModel {
             },
             outcome,
         )
-    }
-
-    fn project_modules<'project>(
-        &'project self,
-        plan: &ProjectionPlan<'_>,
-        flow_limits: FlowLimits,
-        arena: &mut TraceArena,
-        session: &mut LinkingSession,
-    ) -> (
-        BTreeMap<ModuleId, ProjectModuleProjection<'project>>,
-        ProjectionOutcome,
-    ) {
-        let need_module_ids = plan.needs_module_identities() || plan.needs_overlay();
-        let need_result_ids = plan.needs_call_result_identities();
-        let mut outcome = ProjectionOutcome::default();
-        let projections = self
-            .modules()
-            .map(|module| {
-                let identities =
-                    need_module_ids.then(|| self.module_identities(module.id(), session));
-                let result_identities =
-                    need_result_ids.then(|| self.call_result_identities(module.id(), session));
-                let overlay_identities = plan
-                    .needs_overlay()
-                    .then_some(identities.as_ref())
-                    .flatten();
-                let (matcher_context, overlay_ops) = MatcherProjectContext::from_facts(
-                    module.local().facts(),
-                    overlay_identities,
-                    identities.as_ref(),
-                    result_identities.as_ref(),
-                );
-                outcome.metrics.operations = outcome.metrics.operations.saturating_add(overlay_ops);
-                let effects = plan.needs_flow().then(|| module.local().effects());
-                if let Some(effects) = effects
-                    && effects.budget_exhausted()
-                {
-                    outcome.record_effects(module.id(), effects);
-                }
-                let (projected, local) = project_facts(
-                    ProjectionInputs {
-                        facts: module.local().facts(),
-                        effects,
-                        plan,
-                        flow_limits,
-                        module_id: module.id(),
-                        trace_arena: arena,
-                    },
-                    &matcher_context,
-                );
-                outcome.record_local(&local);
-                let matcher_artifact = matcher_context.into_artifact();
-                (
-                    module.id(),
-                    ProjectModuleProjection {
-                        module,
-                        matcher_artifact,
-                        projected,
-                    },
-                )
-            })
-            .collect();
-        (projections, outcome)
     }
 }
 

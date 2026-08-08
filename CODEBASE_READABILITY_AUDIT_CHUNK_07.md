@@ -138,7 +138,7 @@ unknown-interface, depth, cycle, and recursive exits all clean up uniformly;
 cache and conservative result semantics remain unchanged. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-004 — Project projection coordinates local, cross-file, evidence, and outcome phases in one session
+#### [x] READ-004 — Project projection coordinates local, cross-file, evidence, and outcome phases in one session
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -172,7 +172,11 @@ lookup-cache lifetimes, lazy identity/effect construction, evidence capacity
 checks, deterministic module ordering, and the existing budget outcome
 semantics.
 
-**Fix Applied:** None so far.
+**Fix Applied:** A private `ProjectionSession` now owns the linking cache,
+flow limits, projection plan, and trace arena across the local-module and
+cross-file phases. `project_with_arena` retains final evidence merging and
+outcome/model assembly while the shared-session lifecycle is explicit.
+Verified with `make fmt && make ci`.
 
 #### [ ] READ-005 — Foreign or invalid module handles silently look like empty evidence
 
