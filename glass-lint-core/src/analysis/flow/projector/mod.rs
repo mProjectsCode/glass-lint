@@ -249,15 +249,10 @@ pub(super) fn collect_with_limits(
 
 #[derive(Debug)]
 struct ObjectFlowProjector<'rules, 'stream, 'arena> {
-    /// The canonical facts are the projector's only input. In particular, it
-    /// must never inspect the AST or reconstruct resolution decisions.
-    stream: &'stream FactStream<Frozen>,
-    names: &'stream NameTable,
-    plan: BoundFlowPlan<'rules>,
-    helpers: FunctionSummaries<'stream>,
-    /// Call results are indexed once so later assignments can start a flow
-    /// without rescanning the fact stream.
-    calls_by_result: BTreeMap<ValueId, FactId>,
+    /// Immutable canonical inputs remain separate from state mutated while a
+    /// file is projected. In particular, the projector must never inspect
+    /// the AST or reconstruct resolution decisions.
+    inputs: ProjectionInputs<'rules, 'stream>,
     /// Evidence is grouped and deduplicated by the flow-specific evidence
     /// owner.
     flow_evidence: FlowEvidence<'stream>,
@@ -265,6 +260,15 @@ struct ObjectFlowProjector<'rules, 'stream, 'arena> {
     flow_state: FlowStateTable,
     /// Bounded lifecycle, allocation, emission, and outcome state for one run.
     run: ProjectionRunState,
+    /// Path alternatives, control frames, pending certainty, and lexical
+    /// binding representatives move together through one private machine.
+    paths: ProjectionPathMachine,
+    /// Shared trace arena for interning evidence trace nodes.
+    trace_arena: &'arena mut TraceArena,
+}
+
+#[derive(Debug)]
+struct ProjectionPathMachine {
     /// Nested branch/function frames used to restore environments at joins.
     control: ControlStack,
     /// Correlated checkpoint-backed alternatives and fact-local replay cursor.
@@ -275,10 +279,57 @@ struct ObjectFlowProjector<'rules, 'stream, 'arena> {
     /// Stable representative value for each lexical binding slot. Binding
     /// versions differ at joins, but the slot remains the same variable.
     binding_slots: BTreeMap<BindingSlot, ValueId>,
-    /// Shared trace arena for interning evidence trace nodes.
-    trace_arena: &'arena mut TraceArena,
+}
+
+impl ProjectionPathMachine {
+    fn initial() -> Self {
+        Self {
+            control: ControlStack::default(),
+            frontier: PathFrontier::initial(),
+            pending: PendingFlowStates::default(),
+            binding_slots: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ProjectionInputs<'rules, 'stream> {
+    stream: &'stream FactStream<Frozen>,
+    names: &'stream NameTable,
+    plan: BoundFlowPlan<'rules>,
+    helpers: FunctionSummaries<'stream>,
+    /// Call results are indexed once so later assignments can start a flow
+    /// without rescanning the fact stream.
+    calls_by_result: BTreeMap<ValueId, FactId>,
     /// Module being projected, used to qualify trace events.
     module_id: ModuleId,
+}
+
+impl<'rules, 'stream> ProjectionInputs<'rules, 'stream> {
+    fn new(
+        stream: &'stream FactStream<Frozen>,
+        names: &'stream NameTable,
+        plan: BoundFlowPlan<'rules>,
+        helpers: FunctionSummaries<'stream>,
+        module_id: ModuleId,
+    ) -> Self {
+        let calls_by_result = stream
+            .facts()
+            .iter()
+            .filter_map(|fact| match &fact.payload {
+                FactPayload::Call { result, .. } => Some((*result, fact.id)),
+                _ => None,
+            })
+            .collect();
+        Self {
+            stream,
+            names,
+            plan,
+            helpers,
+            calls_by_result,
+            module_id,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -537,28 +588,12 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             module_id,
             trace_arena,
         } = input;
-        let calls_by_result = stream
-            .facts()
-            .iter()
-            .filter_map(|fact| match &fact.payload {
-                FactPayload::Call { result, .. } => Some((*result, fact.id)),
-                _ => None,
-            })
-            .collect();
         Self {
-            stream,
-            names,
-            plan,
-            helpers,
-            calls_by_result,
+            inputs: ProjectionInputs::new(stream, names, plan, helpers, module_id),
             flow_evidence: FlowEvidence::new(evidence),
             flow_state: FlowStateTable::new(limits.state_limit(), limits.mutation_limit()),
             run: ProjectionRunState::new(limits, summary_exhausted),
-            control: ControlStack::default(),
-            frontier: PathFrontier::initial(),
-            pending: PendingFlowStates::default(),
-            binding_slots: BTreeMap::new(),
-            module_id,
+            paths: ProjectionPathMachine::initial(),
             trace_arena,
         }
     }
@@ -585,11 +620,11 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     }
 
     fn transfer_paths(&mut self, fact: &crate::analysis::facts::SemanticFact) {
-        let incoming = self.frontier.take_paths();
+        let incoming = self.paths.frontier.take_paths();
         if incoming.is_empty() {
             return;
         }
-        self.frontier.begin_batch(incoming.len());
+        self.paths.frontier.begin_batch(incoming.len());
         let mut outgoing = Vec::with_capacity(incoming.len());
         for (path_index, environment) in incoming.into_iter().enumerate() {
             match self.restore_path(environment) {
@@ -597,18 +632,18 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 PathRestoration::Failed => continue,
                 PathRestoration::Ready => {}
             }
-            self.frontier.select_path(path_index);
+            self.paths.frontier.select_path(path_index);
             self.transfer_fact(fact);
             if self.run.reachable {
                 outgoing.push(self.environment());
             }
         }
-        self.frontier.replace_paths(outgoing);
-        self.observe_alternatives(self.frontier.path_count());
+        self.paths.frontier.replace_paths(outgoing);
+        self.observe_alternatives(self.paths.frontier.path_count());
         self.finalize_pending();
-        let paths = self.frontier.take_paths();
+        let paths = self.paths.frontier.take_paths();
         self.join_paths(paths);
-        self.frontier.end_batch();
+        self.paths.frontier.end_batch();
     }
 
     fn transfer_fact(&mut self, fact: &crate::analysis::facts::SemanticFact) {
@@ -632,10 +667,10 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 rooted_chain: _,
                 value_is_precise,
             } => {
-                let static_string = self.stream.values().static_string(*value);
+                let static_string = self.inputs.stream.values().static_string(*value);
                 self.record_property_write(
                     *receiver,
-                    property.and_then(|id| self.stream.resolve_name(id)),
+                    property.and_then(|id| self.inputs.stream.resolve_name(id)),
                     static_string,
                     *value_is_precise,
                     fact.id,
@@ -659,20 +694,20 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
             return Vec::new();
         };
-        if start >= end || end > self.stream.facts().len() {
+        if start >= end || end > self.inputs.stream.facts().len() {
             self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
             return Vec::new();
         }
-        let stream = self.stream;
+        let stream = self.inputs.stream;
         let previous_mode = self.run.emission_mode;
         self.run.emission_mode = EmissionMode::Replay;
-        self.frontier.replace_paths(input);
+        self.paths.frontier.replace_paths(input);
         for i in start..end {
             let fact = &stream.facts()[i];
             self.transfer(fact);
         }
         self.run.emission_mode = previous_mode;
-        self.frontier.take_paths()
+        self.paths.frontier.take_paths()
     }
 
     /// Compute the bounded loop back-edge closure.  A semantic state is
@@ -688,10 +723,10 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         breaks: Vec<FlowEnvironment>,
         mut continues: Vec<FlowEnvironment>,
     ) {
-        let mut entrance = self.frontier.take_paths();
+        let mut entrance = self.paths.frontier.take_paths();
         entrance.append(&mut continues);
         self.join_paths(entrance.clone());
-        let entrance = self.frontier.take_paths();
+        let entrance = self.paths.frontier.take_paths();
 
         let mut fixed_point = LoopFixedPoint::start(
             entrance,
@@ -702,7 +737,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         );
         fixed_point.converge(&mut *self, body_start, body_end);
 
-        if self.control.pop_loop(body_start).is_err() {
+        if self.paths.control.pop_loop(body_start).is_err() {
             self.mark_control_stack_incomplete();
             return;
         }
@@ -717,22 +752,22 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     fn transfer_function(&mut self, boundary: FunctionBoundary) {
         match boundary {
             FunctionBoundary::Enter => {
-                let caller = self.frontier.snapshot_paths();
-                self.control.push(ControlFrame::Function { caller });
+                let caller = self.paths.frontier.snapshot_paths();
+                self.paths.control.push(ControlFrame::Function { caller });
                 self.transfer_paths_without_finalization(|projector| {
                     projector.flow_state.clear();
                     projector.run.reachable = true;
                 });
             }
-            FunctionBoundary::Exit => match self.control.pop_function() {
-                Ok(caller) => self.frontier.replace_paths(caller),
+            FunctionBoundary::Exit => match self.paths.control.pop_function() {
+                Ok(caller) => self.paths.frontier.replace_paths(caller),
                 Err(_) => self.mark_control_stack_incomplete(),
             },
         }
     }
 
     fn transfer_paths_without_finalization(&mut self, transfer: impl Fn(&mut Self)) {
-        let incoming = self.frontier.take_paths();
+        let incoming = self.paths.frontier.take_paths();
         let mut outgoing = Vec::with_capacity(incoming.len());
         for environment in incoming {
             match self.restore_path(environment) {
@@ -745,8 +780,8 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                 outgoing.push(self.environment());
             }
         }
-        self.frontier.replace_paths(outgoing);
-        let paths = self.frontier.take_paths();
+        self.paths.frontier.replace_paths(outgoing);
+        let paths = self.paths.frontier.take_paths();
         self.join_paths(paths);
     }
 
@@ -775,7 +810,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         else {
             return;
         };
-        let cref = self.stream.call_effect(fact.id);
+        let cref = self.inputs.stream.call_effect(fact.id);
         let Some(shape) = cref.shape() else {
             if let Some(function) = target_function {
                 self.record_helper_sink(*function, args, fact.id);
@@ -783,7 +818,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             return;
         };
         let effective_args = shape.effective_args();
-        if let Some(chain) = shape.chain_owned(self.stream, self.names) {
+        if let Some(chain) = shape.chain_owned(self.inputs.stream, self.inputs.names) {
             self.record_configuration(*receiver, &chain, effective_args, fact.id);
         }
         self.record_sinks(&shape, effective_args, fact.id);
@@ -849,16 +884,17 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             paths.truncate(self.run.limits.alternative_limit());
             self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
         }
-        self.frontier.replace_paths(paths);
-        self.observe_alternatives(self.frontier.path_count());
-        self.run.reachable = self.frontier.has_paths();
+        self.paths.frontier.replace_paths(paths);
+        self.observe_alternatives(self.paths.frontier.path_count());
+        self.run.reachable = self.paths.frontier.has_paths();
     }
 
     fn finalize_pending(&mut self) {
-        let Some(active_paths) = self.frontier.active_paths() else {
+        let Some(active_paths) = self.paths.frontier.active_paths() else {
             return;
         };
         let finalized = self
+            .paths
             .pending
             .finalize(active_paths, self.run.alternatives_complete);
         for record in finalized {
@@ -869,10 +905,11 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     }
 
     pub(super) fn queue_state(&mut self, state: FlowState, event: FactId) {
-        let Some(path) = self.frontier.active_path() else {
+        let Some(path) = self.paths.frontier.active_path() else {
             return;
         };
-        self.pending
+        self.paths
+            .pending
             .entry(PendingFlowKey {
                 flow: state.flow_id(),
                 event,
@@ -894,7 +931,8 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         let updated = self
             .flow_state
             .apply_property_write(object, event, |flow_id| {
-                self.plan
+                self.inputs
+                    .plan
                     .matching_property_requirements(flow_id, property, value, value_is_precise)
                     .into_iter()
                     .map(|match_result| {
@@ -919,13 +957,13 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
 
     fn value_aliases(&mut self, value: ValueId) -> Vec<ValueId> {
         let mut values = vec![value];
-        if let Some(resolved) = self.stream.values().resolve_id(value)
+        if let Some(resolved) = self.inputs.stream.values().resolve_id(value)
             && resolved != value
         {
             values.push(resolved);
         }
-        if let Some(slot) = self.stream.values().binding_slot(value) {
-            let representative = *self.binding_slots.entry(slot).or_insert(value);
+        if let Some(slot) = self.inputs.stream.values().binding_slot(value) {
+            let representative = *self.paths.binding_slots.entry(slot).or_insert(value);
             if !values.contains(&representative) {
                 values.push(representative);
             }

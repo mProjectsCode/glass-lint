@@ -24,8 +24,8 @@ impl ObjectFlowProjector<'_, '_, '_> {
         if target == ValueId::UNKNOWN {
             return;
         }
-        if let Some(fact_id) = self.calls_by_result.get(&source).copied() {
-            let cref = self.stream.call_effect(fact_id);
+        if let Some(fact_id) = self.inputs.calls_by_result.get(&source).copied() {
+            let cref = self.inputs.stream.call_effect(fact_id);
             if let Some(shape) = cref.shape()
                 && let Some((object, states)) =
                     self.match_source(&shape, shape.effective_args(), fact_id)
@@ -58,15 +58,15 @@ impl ObjectFlowProjector<'_, '_, '_> {
         args: &[CallArgInfo],
         source_fact: FactId,
     ) -> Option<(ObjectId, Vec<FlowState>)> {
-        let matcher = FlowMatchView::new(self.names, self.stream.values());
+        let matcher = FlowMatchView::new(self.inputs.names, self.inputs.stream.values());
         let candidates = call
             .global_name()
-            .and_then(|name| self.plan.global_source_candidates(name))
+            .and_then(|name| self.inputs.plan.global_source_candidates(name))
             .or_else(|| {
                 call.rooted()
                     .then(|| call.chain())
                     .flatten()
-                    .and_then(|chain| self.plan.source_candidates(chain))
+                    .and_then(|chain| self.inputs.plan.source_candidates(chain))
             })?;
         let matching: SmallVec<[FlowId; 8]> = candidates
             .iter()

@@ -133,7 +133,7 @@ impl LoopFixedPoint {
             self.iterations += 1;
             projector.run.fixed_point_iterations =
                 projector.run.fixed_point_iterations.saturating_add(1);
-            let Ok(break_count) = projector.control.loop_break_count() else {
+            let Ok(break_count) = projector.paths.control.loop_break_count() else {
                 self.complete = false;
                 projector.mark_control_stack_incomplete();
                 break;
@@ -141,17 +141,17 @@ impl LoopFixedPoint {
             let inputs = std::mem::take(&mut self.frontier);
             let outputs = projector.replay_loop_body(body_start, body_end, inputs);
             let mut next = outputs;
-            let Ok(mut continues) = projector.control.take_loop_continues() else {
+            let Ok(mut continues) = projector.paths.control.take_loop_continues() else {
                 self.complete = false;
                 projector.mark_control_stack_incomplete();
                 break;
             };
             next.append(&mut continues);
             projector.join_paths(next);
-            let candidate = projector.frontier.take_paths();
+            let candidate = projector.paths.frontier.take_paths();
             self.exits.extend(candidate.iter().copied());
 
-            let Ok(new_breaks) = projector.control.new_loop_breaks_since(break_count) else {
+            let Ok(new_breaks) = projector.paths.control.new_loop_breaks_since(break_count) else {
                 self.complete = false;
                 projector.mark_control_stack_incomplete();
                 break;

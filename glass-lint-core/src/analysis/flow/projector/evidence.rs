@@ -39,7 +39,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
         args: &[CallArgInfo],
         event: FactId,
     ) {
-        let matcher = FlowMatchView::new(self.names, self.stream.values());
+        let matcher = FlowMatchView::new(self.inputs.names, self.inputs.stream.values());
         let objects: SmallVec<[ObjectId; 4]> = match receiver {
             Some(value) => self.object_for(value).into_iter().collect(),
             None => self.flow_state.objects().collect(),
@@ -51,7 +51,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 .map(|(key, _)| key)
                 .collect();
             for key in keys {
-                for index in self.plan.matching_member_requirement_indices(
+                for index in self.inputs.plan.matching_member_requirement_indices(
                     key.flow(),
                     Some(chain),
                     args,
@@ -72,11 +72,14 @@ impl ObjectFlowProjector<'_, '_, '_> {
         args: &[CallArgInfo],
         sink_fact: FactId,
     ) {
-        let matcher = FlowMatchView::new(self.names, self.stream.values());
+        let matcher = FlowMatchView::new(self.inputs.names, self.inputs.stream.values());
         let flow_ids = call
             .global_name()
-            .and_then(|name| self.plan.global_sink_ids(name))
-            .or_else(|| call.chain().and_then(|chain| self.plan.sink_ids(chain)));
+            .and_then(|name| self.inputs.plan.global_sink_ids(name))
+            .or_else(|| {
+                call.chain()
+                    .and_then(|chain| self.inputs.plan.sink_ids(chain))
+            });
         let Some(flow_ids) = flow_ids else {
             return;
         };
@@ -93,7 +96,8 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 .collect();
             for (key, flow_id) in pairs {
                 let matching_sinks =
-                    self.plan
+                    self.inputs
+                        .plan
                         .matching_sink_indices(flow_id, argument_index, |target| {
                             matcher.target_matches(
                                 target,
@@ -120,26 +124,30 @@ impl ObjectFlowProjector<'_, '_, '_> {
         args: &[CallArgInfo],
         sink_fact: FactId,
     ) {
-        let Some(summary_ref) = self.helpers.get(function) else {
+        let Some(summary_ref) = self.inputs.helpers.get(function) else {
             return;
         };
-        if !summary_ref.is_invocation_compatible(self.stream, args, self.helpers.path_interner()) {
+        if !summary_ref.is_invocation_compatible(
+            self.inputs.stream,
+            args,
+            self.inputs.helpers.path_interner(),
+        ) {
             return;
         }
         let summary = summary_ref.clone();
-        let parameters = summary.parameter_bindings(self.stream).to_vec();
+        let parameters = summary.parameter_bindings(self.inputs.stream).to_vec();
         #[allow(clippy::needless_collect)]
         let values: Vec<(FlowId, ValueId)> = summary
             .sinks()
             .into_iter()
             .filter_map(|sink| {
                 let value = {
-                    let paths = self.helpers.path_interner();
+                    let paths = self.inputs.helpers.path_interner();
                     let parameter = parameters.iter().find(|parameter| {
                         parameter.parameter_index() == sink.parameter_index()
                             && parameter.matches_sink_path(sink.path(), paths)
                     })?;
-                    parameter.project_argument_at(self.stream, args, paths, sink.path())?
+                    parameter.project_argument_at(self.inputs.stream, args, paths, sink.path())?
                 };
                 Some((sink.flow(), value))
             })
@@ -149,7 +157,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             .filter_map(|(flow_id, value)| {
                 let object = self.object_for(value)?;
                 let state = self.flow_state.state(object, flow_id)?;
-                let flow = self.plan.get(flow_id)?;
+                let flow = self.inputs.plan.get(flow_id)?;
                 state.is_ready(flow).then_some((object, flow_id))
             })
             .collect();
@@ -164,6 +172,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             return;
         };
         let ready = self
+            .inputs
             .plan
             .get(flow)
             .is_some_and(|flow| state.is_ready(flow) && state.sinks_ready(flow));
@@ -178,7 +187,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
         let Some(state) = state else {
             return;
         };
-        let ready = self.plan.get(flow).is_some_and(|f| {
+        let ready = self.inputs.plan.get(flow).is_some_and(|f| {
             f.completion_mode() == CompletionMode::Configuration && state.is_ready(f)
         });
         if !ready {
@@ -213,6 +222,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
 
         // Extract the flow symbol before the mutable borrow of self.
         let flow_symbol: String = self
+            .inputs
             .plan
             .get(state.flow_id())
             .map(|f| f.evidence_symbol().as_str())
@@ -221,6 +231,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
 
         let anchor = match_fact;
         let span = self
+            .inputs
             .stream
             .fact(anchor)
             .map_or(glass_lint_datastructures::ByteRange::empty(), |fact| {
@@ -264,24 +275,24 @@ impl ObjectFlowProjector<'_, '_, '_> {
             .filter_map(|(_index, values)| values.into_iter().next())
             .map(|fact| {
                 (
-                    QualifiedEvent::new(self.module_id, fact),
+                    QualifiedEvent::new(self.inputs.module_id, fact),
                     EvidenceRole::Requirement,
                 )
             });
         let prior_sinks = state.prior_sinks(sink_fact).into_iter().map(|fact| {
             (
-                QualifiedEvent::new(self.module_id, fact),
+                QualifiedEvent::new(self.inputs.module_id, fact),
                 EvidenceRole::Requirement,
             )
         });
         let steps = std::iter::once((
-            QualifiedEvent::new(self.module_id, state.source_event()),
+            QualifiedEvent::new(self.inputs.module_id, state.source_event()),
             EvidenceRole::Source,
         ))
         .chain(requirements)
         .chain(prior_sinks)
         .chain(std::iter::once((
-            QualifiedEvent::new(self.module_id, sink_fact),
+            QualifiedEvent::new(self.inputs.module_id, sink_fact),
             EvidenceRole::Sink,
         )));
         self.trace_arena.intern_chain(steps)

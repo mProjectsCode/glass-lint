@@ -121,7 +121,7 @@ The projector marks malformed control transitions incomplete instead of
 silently dropping frames or treating missing loop state as an empty result.
 Verified with `make fmt && make ci`.
 
-#### [ ] READ-004 — ObjectFlowProjector owns too many mutable flow concerns
+#### [x] READ-004 — ObjectFlowProjector owns too many mutable flow concerns
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -154,7 +154,14 @@ per-run mutable state where practical. Preserve one canonical traversal, loop
 replay, path correlation, and the current bounded outcome accounting; this is
 not a recommendation to introduce another semantic model or AST walk.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ProjectionInputs` now owns the immutable fact stream, names,
+bound plan, summaries, call-result index, and module identity separately from
+per-run projector state. `ProjectionPathMachine` likewise owns the frontier,
+control stack, pending certainty groups, and binding-slot representatives, so
+path transitions no longer reach those domains through unrelated projector
+fields. The projector remains the single canonical fact-stream orchestrator;
+loop replay and bounded outcome accounting are unchanged. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-005 — Flow completion and exhaustion status has no single internal contract
 
