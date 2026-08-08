@@ -95,7 +95,7 @@ the program root, records root-pop and invalid-stack transitions as
 issue. Traversal skips callbacks when no valid scope exists. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-003 — Mutable and frozen graph query adapters repeat the same delegation surface
+#### [x] READ-003 — Mutable and frozen graph query adapters repeat the same delegation surface
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -125,7 +125,12 @@ and for the mutable/frozen mutation index. Keep `ScopeGraph` and
 the freeze transition, and avoid exposing `ScopeData` or its storage. The goal
 is to centralize shared query semantics, not to erase the phase boundary.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a private `ScopeReadView<'_, M>` over shared
+`ScopeData<M>` for lexical, binding, assignment, and function queries,
+including the common shape-validity gate. Both `ScopeGraph` and
+`FrozenScopeGraph` construct the view while retaining distinct phase types,
+string/name conversion, and mutation-index ownership. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-004 — Collector visitor hooks mix unrelated source-order responsibilities
 

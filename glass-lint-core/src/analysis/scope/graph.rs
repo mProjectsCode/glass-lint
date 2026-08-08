@@ -69,6 +69,92 @@ impl<M> ScopeData<M> {
     }
 }
 
+/// Read-only query surface shared by the mutable collection graph and the
+/// frozen graph. Phase wrappers retain ownership of their storage and expose
+/// only the conversions or mutation operations specific to that phase.
+struct ScopeReadView<'a, M> {
+    data: &'a ScopeData<M>,
+    scope_shape_valid: bool,
+}
+
+impl<'a, M> ScopeReadView<'a, M> {
+    fn scope_parent(&self, scope: ScopeId) -> Option<ScopeId> {
+        self.data.scopes.scope_parent(scope)
+    }
+
+    fn scope_kind(&self, scope: ScopeId) -> Option<ScopeKind> {
+        self.data.scopes.scope_kind(scope)
+    }
+
+    fn scope_span(&self, scope: ScopeId) -> Option<Span> {
+        self.data.scopes.scope_span(scope)
+    }
+
+    fn scope_at(&self, span: Span) -> Option<ScopeId> {
+        self.data.scopes.scope_at(span, self.scope_shape_valid)
+    }
+
+    fn enclosing_function_at(&self, scope: ScopeId) -> FunctionId {
+        self.data.enclosing_function_at(scope)
+    }
+
+    fn nearest_binding_at(
+        &self,
+        name: NameId,
+        span: Span,
+    ) -> Option<(ScopeId, &'a BindingProvenance)> {
+        self.data.binding_with_scope_at(name, self.scope_at(span)?)
+    }
+
+    fn parameter_alias_for_scope(
+        &self,
+        scope: ScopeId,
+        name: NameId,
+    ) -> Option<&'a BindingProvenance> {
+        self.data.parameter_alias_for_scope(scope, name)
+    }
+
+    fn assignment_at(&self, scope: ScopeId, name: NameId, span: Span) -> AssignmentAt<'a> {
+        self.data.bindings.assignment_at(scope, name, span)
+    }
+
+    fn binding_id_at(&self, scope: ScopeId, name: NameId) -> Option<BindingId> {
+        self.data.bindings.binding_id_at(scope, name)
+    }
+
+    fn binding_version(&self, scope: ScopeId, name: NameId, span: Span) -> BindingVersion {
+        self.data.bindings.binding_version(scope, name, span)
+    }
+
+    fn reassigned_between(
+        &self,
+        scope: ScopeId,
+        name: NameId,
+        start: BytePos,
+        end: BytePos,
+    ) -> bool {
+        self.data
+            .bindings
+            .reassigned_between(scope, name, start, end)
+    }
+
+    fn function_span(&self, function: FunctionId) -> Option<Span> {
+        self.data.bindings.function_span(function)
+    }
+
+    fn function_containing(&self, span: Span) -> Option<FunctionId> {
+        self.data.bindings.function_containing(span)
+    }
+
+    fn function_binding(&self, scope: ScopeId, name: NameId) -> Option<FunctionId> {
+        self.data.bindings.function_binding(scope, name)
+    }
+
+    fn function_alias(&self, scope: ScopeId, name: NameId) -> Option<FunctionId> {
+        self.data.bindings.function_alias(scope, name)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // ScopeGraph — mutable collection-phase struct
 // ---------------------------------------------------------------------------
@@ -107,6 +193,13 @@ pub(super) struct ScopeGraphInput {
 }
 
 impl ScopeGraph {
+    fn read_view(&self) -> ScopeReadView<'_, MutationIndexBuilder> {
+        ScopeReadView {
+            data: &self.data,
+            scope_shape_valid: self.scope_shape_valid,
+        }
+    }
+
     /// Create a minimally-initialized scope graph for test use.
     #[cfg(test)]
     pub(in crate::analysis) fn create_for_test(names: NameTable) -> Self {
@@ -174,7 +267,7 @@ impl ScopeGraph {
     // -- Lexical-scope helpers on ScopeGraph --
 
     pub(in crate::analysis) fn scope_at(&self, span: Span) -> Option<ScopeId> {
-        self.data.scopes.scope_at(span, self.scope_shape_valid)
+        self.read_view().scope_at(span)
     }
 
     // -- Binding helpers on ScopeGraph --
@@ -183,12 +276,12 @@ impl ScopeGraph {
         let Some(name) = self.name_id(name) else {
             return AssignmentAt::Absent;
         };
-        self.data.bindings.assignment_at(scope, name, span)
+        self.read_view().assignment_at(scope, name, span)
     }
 
     pub(super) fn binding_id_at(&self, scope: ScopeId, name: &str) -> Option<BindingId> {
         let name = self.name_id(name)?;
-        self.data.bindings.binding_id_at(scope, name)
+        self.read_view().binding_id_at(scope, name)
     }
 
     pub(super) fn parameter_alias_for(
@@ -197,14 +290,15 @@ impl ScopeGraph {
         name: &str,
     ) -> Option<&BindingProvenance> {
         let name = self.name_id(name)?;
-        self.data.parameter_alias_for_scope(scope, name)
+        let view = self.read_view();
+        view.parameter_alias_for_scope(scope, name)
     }
 
     pub(super) fn binding_version(&self, scope: ScopeId, name: &str, span: Span) -> BindingVersion {
         let Some(name) = self.name_id(name) else {
             return BindingVersion::new(0);
         };
-        self.data.bindings.binding_version(scope, name, span)
+        self.read_view().binding_version(scope, name, span)
     }
 
     /// Convert collector-side property events into sorted query indexes.
@@ -273,8 +367,9 @@ impl ScopeGraph {
         span: Span,
     ) -> Option<(ScopeId, &BindingProvenance)> {
         let name_id = self.name_id(name)?;
-        self.data
-            .binding_with_scope_at(name_id, self.scope_at(span)?)
+        let scope = self.scope_at(span)?;
+        let view = self.read_view();
+        view.data.binding_with_scope_at(name_id, scope)
     }
 
     /// Build a stable key for a name, using a global root when unbound.
@@ -294,7 +389,7 @@ impl ScopeGraph {
     }
 
     fn function_scope_at(&self, scope: ScopeId) -> FunctionId {
-        self.data.enclosing_function_at(scope)
+        self.read_view().enclosing_function_at(scope)
     }
 }
 
@@ -303,6 +398,13 @@ impl ScopeGraph {
 // ---------------------------------------------------------------------------
 
 impl FrozenScopeGraph {
+    fn read_view(&self) -> ScopeReadView<'_, MutationIndex> {
+        ScopeReadView {
+            data: &self.data,
+            scope_shape_valid: self.scope_shape_valid,
+        }
+    }
+
     // -- Name-environment delegation --
 
     pub(in crate::analysis) fn name_snapshot(&self) -> NameTable {
@@ -340,23 +442,23 @@ impl FrozenScopeGraph {
     // -- Lexical-scope-index delegation --
 
     pub(in crate::analysis) fn scope_parent(&self, scope: ScopeId) -> Option<ScopeId> {
-        self.data.scopes.scope_parent(scope)
+        self.read_view().scope_parent(scope)
     }
 
     pub(in crate::analysis) fn scope_kind(&self, scope: ScopeId) -> Option<ScopeKind> {
-        self.data.scopes.scope_kind(scope)
+        self.read_view().scope_kind(scope)
     }
 
     pub(in crate::analysis) fn scope_span(&self, scope: ScopeId) -> Option<Span> {
-        self.data.scopes.scope_span(scope)
+        self.read_view().scope_span(scope)
     }
 
     pub(in crate::analysis) fn scope_at(&self, span: Span) -> Option<ScopeId> {
-        self.data.scopes.scope_at(span, self.scope_shape_valid)
+        self.read_view().scope_at(span)
     }
 
     pub(in crate::analysis) fn enclosing_function_at(&self, scope: ScopeId) -> FunctionId {
-        self.data.enclosing_function_at(scope)
+        self.read_view().enclosing_function_at(scope)
     }
 
     pub(in crate::analysis) fn nearest_binding_at(
@@ -364,7 +466,8 @@ impl FrozenScopeGraph {
         name: NameId,
         span: Span,
     ) -> Option<(ScopeId, &BindingProvenance)> {
-        self.data.binding_with_scope_at(name, self.scope_at(span)?)
+        let view = self.read_view();
+        view.nearest_binding_at(name, span)
     }
 
     pub(in crate::analysis) fn parameter_alias_for_scope(
@@ -372,7 +475,8 @@ impl FrozenScopeGraph {
         scope: ScopeId,
         name: NameId,
     ) -> Option<&BindingProvenance> {
-        self.data.parameter_alias_for_scope(scope, name)
+        let view = self.read_view();
+        view.parameter_alias_for_scope(scope, name)
     }
 
     // -- Binding-index delegation --
@@ -383,7 +487,7 @@ impl FrozenScopeGraph {
         name: NameId,
         span: Span,
     ) -> AssignmentAt<'_> {
-        self.data.bindings.assignment_at(scope, name, span)
+        self.read_view().assignment_at(scope, name, span)
     }
 
     pub(in crate::analysis) fn binding_id_at(
@@ -391,7 +495,7 @@ impl FrozenScopeGraph {
         scope: ScopeId,
         name: NameId,
     ) -> Option<BindingId> {
-        self.data.bindings.binding_id_at(scope, name)
+        self.read_view().binding_id_at(scope, name)
     }
 
     pub(in crate::analysis) fn reassigned_between(
@@ -401,9 +505,7 @@ impl FrozenScopeGraph {
         start: BytePos,
         end: BytePos,
     ) -> bool {
-        self.data
-            .bindings
-            .reassigned_between(scope, name, start, end)
+        self.read_view().reassigned_between(scope, name, start, end)
     }
 
     pub(in crate::analysis) fn binding_version(
@@ -412,15 +514,15 @@ impl FrozenScopeGraph {
         name: NameId,
         span: Span,
     ) -> BindingVersion {
-        self.data.bindings.binding_version(scope, name, span)
+        self.read_view().binding_version(scope, name, span)
     }
 
     pub(in crate::analysis) fn function_span(&self, function: FunctionId) -> Option<Span> {
-        self.data.bindings.function_span(function)
+        self.read_view().function_span(function)
     }
 
     pub(in crate::analysis) fn function_containing(&self, span: Span) -> Option<FunctionId> {
-        self.data.bindings.function_containing(span)
+        self.read_view().function_containing(span)
     }
 
     pub(in crate::analysis) fn function_binding(
@@ -428,7 +530,7 @@ impl FrozenScopeGraph {
         scope: ScopeId,
         name: NameId,
     ) -> Option<FunctionId> {
-        self.data.bindings.function_binding(scope, name)
+        self.read_view().function_binding(scope, name)
     }
 
     pub(in crate::analysis) fn function_alias(
@@ -436,7 +538,7 @@ impl FrozenScopeGraph {
         scope: ScopeId,
         name: NameId,
     ) -> Option<FunctionId> {
-        self.data.bindings.function_alias(scope, name)
+        self.read_view().function_alias(scope, name)
     }
 
     // -- Mutation-index delegation --
