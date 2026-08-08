@@ -90,7 +90,7 @@ which removed the derived `rule_indices` map and kept catalog identity in the
 ordered compiled records. The finding predates that fix and is stale in this
 audit chunk; no duplicate source change is needed.
 
-#### [ ] READ-003 — Deferred rule and lifecycle builders duplicate an error-policy state machine
+#### [x] READ-003 — Deferred rule and lifecycle builders duplicate an error-policy state machine
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -121,7 +121,11 @@ returned now or retained for `build`. Preserve ergonomic catalog chains,
 first-error determinism, immediate `try_*` propagation, bounded collections,
 and the distinct lifecycle relationship checks.
 
-**Fix Applied:** None so far.
+**Fix Applied:** A private generic `FirstError` accumulator now owns
+first-error retention for rule metadata, deferred rule queries, and deferred
+lifecycle operations. The immediate and deferred builders keep their existing
+first-error precedence and validation behavior while sharing the state-policy
+implementation. Verified with `make fmt && make ci`.
 
 #### [ ] READ-004 — Raw compiler variable slots leak through the public rule API
 

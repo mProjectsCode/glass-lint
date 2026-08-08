@@ -1,9 +1,12 @@
 use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
-use crate::api::rule::query::{
-    EventQuery, MemberChain, QueryBuildError, checked_chain, limits,
-    value::{ArgumentConstraint, ArgumentConstraintsBuilder, ArgumentMatcher, ValueMatcher},
+use crate::api::rule::{
+    FirstError,
+    query::{
+        EventQuery, MemberChain, QueryBuildError, checked_chain, limits,
+        value::{ArgumentConstraint, ArgumentConstraintsBuilder, ArgumentMatcher, ValueMatcher},
+    },
 };
 
 /// The identity kind of a lifecycle call endpoint. This is parsed when the
@@ -600,14 +603,12 @@ impl IntoLifecycleCondition for Result<LifecycleCondition, QueryBuildError> {
 #[derive(Debug, Clone)]
 pub struct CatalogLifecycleQueryBuilder {
     inner: LifecycleQueryBuilder,
-    invalid_operation: Option<QueryBuildError>,
+    invalid_operation: FirstError<QueryBuildError>,
 }
 
 impl CatalogLifecycleQueryBuilder {
     fn record_error(&mut self, error: QueryBuildError) {
-        if self.invalid_operation.is_none() {
-            self.invalid_operation = Some(error);
-        }
+        self.invalid_operation.record(error);
     }
 
     pub fn source<S: IntoLifecycleSource>(mut self, source: S) -> Self {
@@ -641,7 +642,7 @@ impl CatalogLifecycleQueryBuilder {
     }
 
     pub fn build(self) -> Result<LifecycleQuery, QueryBuildError> {
-        if let Some(error) = self.invalid_operation {
+        if let Some(error) = self.invalid_operation.take() {
             return Err(error);
         }
         self.inner.build()
@@ -661,7 +662,7 @@ impl LifecycleQuery {
     pub fn catalog_builder(symbol: impl Into<String>) -> CatalogLifecycleQueryBuilder {
         CatalogLifecycleQueryBuilder {
             inner: Self::builder(symbol),
-            invalid_operation: None,
+            invalid_operation: FirstError::default(),
         }
     }
 }

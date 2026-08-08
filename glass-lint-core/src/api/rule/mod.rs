@@ -10,6 +10,29 @@ mod module;
 pub mod query;
 mod taxonomy;
 
+#[derive(Debug, Clone)]
+struct FirstError<E> {
+    value: Option<E>,
+}
+
+impl<E> Default for FirstError<E> {
+    fn default() -> Self {
+        Self { value: None }
+    }
+}
+
+impl<E> FirstError<E> {
+    fn record(&mut self, error: E) {
+        if self.value.is_none() {
+            self.value = Some(error);
+        }
+    }
+
+    fn take(self) -> Option<E> {
+        self.value
+    }
+}
+
 pub use error::{
     CompiledCatalogError, CompilerInvariantDiagnostic, MatcherBuildError, PhysicalPlanDiagnostic,
     RuleBuildError,
@@ -61,7 +84,7 @@ impl Rule {
             severity: None,
             confidence: None,
             queries: Vec::new(),
-            duplicate_field: None,
+            duplicate_field: FirstError::default(),
         }
     }
 
@@ -69,7 +92,7 @@ impl Rule {
     pub fn catalog_builder(id: impl Into<String>) -> CatalogRuleBuilder {
         CatalogRuleBuilder {
             inner: Self::builder(id),
-            first_query_error: None,
+            first_query_error: FirstError::default(),
         }
     }
 
@@ -112,7 +135,7 @@ pub struct RuleBuilder {
     severity: Option<Severity>,
     confidence: Option<Confidence>,
     queries: Vec<QueryDecl>,
-    duplicate_field: Option<&'static str>,
+    duplicate_field: FirstError<&'static str>,
 }
 
 impl RuleBuilder {
@@ -192,14 +215,12 @@ impl RuleBuilder {
     }
 
     fn record_duplicate(&mut self, field: &'static str) {
-        if self.duplicate_field.is_none() {
-            self.duplicate_field = Some(field);
-        }
+        self.duplicate_field.record(field);
     }
 
     /// Validate metadata and construct the rule.
     pub fn build(self) -> Result<Rule, RuleBuildError> {
-        if let Some(field) = self.duplicate_field {
+        if let Some(field) = self.duplicate_field.take() {
             return Err(RuleBuildError::DuplicateField(field));
         }
         if self.queries.is_empty() {
@@ -233,7 +254,7 @@ impl RuleBuilder {
 /// Deferred-error builder reserved for declarative provider catalogs.
 pub struct CatalogRuleBuilder {
     inner: RuleBuilder,
-    first_query_error: Option<QueryBuildError>,
+    first_query_error: FirstError<QueryBuildError>,
 }
 
 impl CatalogRuleBuilder {
@@ -241,11 +262,7 @@ impl CatalogRuleBuilder {
     pub fn query(mut self, query: impl IntoQueryDecl) -> Self {
         match query.into_query_decl() {
             Ok(query) => self.inner = self.inner.query(query),
-            Err(error) => {
-                if self.first_query_error.is_none() {
-                    self.first_query_error = Some(error);
-                }
-            }
+            Err(error) => self.first_query_error.record(error),
         }
         self
     }
@@ -281,7 +298,7 @@ impl CatalogRuleBuilder {
     }
 
     pub fn build(self) -> Result<Rule, RuleBuildError> {
-        if let Some(error) = self.first_query_error {
+        if let Some(error) = self.first_query_error.take() {
             return Err(RuleBuildError::InvalidQuery(error));
         }
         self.inner.build()
