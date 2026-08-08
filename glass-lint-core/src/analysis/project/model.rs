@@ -17,7 +17,7 @@ use crate::{
         project::{
             linker::ProjectLinker,
             projection::ProjectionOutcome,
-            resolver::{ExportResolver, ProjectLookupView},
+            resolver::ExportResolver,
             state::{ExportTable, LinkingSession},
         },
         syntax::SymbolCallProvenance,
@@ -329,9 +329,13 @@ impl ProjectSemanticModel {
         authored_export: &SmolStr,
         session: &mut LinkingSession,
     ) -> ExportResolution {
-        let lookup = ProjectLookupView::new(&self.linked.modules, &self.linked.resolutions);
-        ExportResolver::new(&lookup, &self.linked.exports, &mut session.lookup_cache)
-            .resolve_imported_identity(importer, authored_module, authored_export)
+        ExportResolver::from_maps(
+            &self.linked.modules,
+            &self.linked.resolutions,
+            &self.linked.exports,
+            &mut session.lookup_cache,
+        )
+        .resolve_imported_identity(importer, authored_module, authored_export)
     }
 
     pub(in crate::analysis) fn effect(

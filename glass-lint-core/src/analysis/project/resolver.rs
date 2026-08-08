@@ -7,7 +7,7 @@ use smol_str::{SmolStr, ToSmolStr};
 use crate::{
     analysis::{
         ExportResolution, LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId,
-        model::module::{DEFAULT_EXPORT, ModuleRequestId, ModuleRequestRole},
+        model::module::{DEFAULT_EXPORT, ModuleRequest, ModuleRequestId, ModuleRequestRole},
         project::{
             model::MAX_EXPORT_DEPTH,
             state::{ExportLookupCache, ExportLookupCacheResult, ExportTable, QualifiedExportId},
@@ -15,17 +15,6 @@ use crate::{
     },
     project::is_internal_module_request as is_internal_request,
 };
-
-/// Shared direct/star export resolver used by both linking phases.
-pub(super) trait ProjectLookup {
-    fn module(&self, module: ModuleId) -> Option<&ProjectModule>;
-
-    fn request_target(
-        &self,
-        module: ModuleId,
-        request: ModuleRequestId,
-    ) -> Option<&LinkedModuleTarget>;
-}
 
 /// Borrowed lookup view shared by transient linking and the final model.
 pub(super) struct ProjectLookupView<'a> {
@@ -45,7 +34,7 @@ impl<'a> ProjectLookupView<'a> {
     }
 }
 
-impl ProjectLookup for ProjectLookupView<'_> {
+impl ProjectLookupView<'_> {
     fn module(&self, module: ModuleId) -> Option<&ProjectModule> {
         self.modules.get(&module)
     }
@@ -62,7 +51,7 @@ impl ProjectLookup for ProjectLookupView<'_> {
 }
 
 pub(super) struct ExportResolver<'a> {
-    project: &'a dyn ProjectLookup,
+    project: ProjectLookupView<'a>,
     exports: &'a ExportTable,
     cache: &'a mut ExportLookupCache,
 }
@@ -88,13 +77,14 @@ impl ExportLookupContext {
 }
 
 impl<'a> ExportResolver<'a> {
-    pub(super) fn new(
-        project: &'a dyn ProjectLookup,
+    pub(super) fn from_maps(
+        modules: &'a std::collections::BTreeMap<ModuleId, ProjectModule>,
+        resolutions: &'a std::collections::BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
         exports: &'a ExportTable,
         cache: &'a mut ExportLookupCache,
     ) -> Self {
         Self {
-            project,
+            project: ProjectLookupView::new(modules, resolutions),
             exports,
             cache,
         }
@@ -125,6 +115,7 @@ impl<'a> ExportResolver<'a> {
                     ModuleRequestRole::Import { .. } | ModuleRequestRole::Require
                 )
             })
+            .map(ModuleRequest::id)
             .collect::<Vec<_>>();
         if requests.is_empty() {
             return ExportResolution::External {
@@ -135,7 +126,7 @@ impl<'a> ExportResolver<'a> {
 
         let mut resolved = None;
         for request in requests {
-            let candidate = match self.project.request_target(importer, request.id()) {
+            let candidate = match self.project.request_target(importer, request) {
                 Some(LinkedModuleTarget::Internal { id }) => self
                     .lookup_export(&QualifiedExportId::new(*id, authored_export.clone()))
                     .unwrap_or(ExportResolution::Unknown),

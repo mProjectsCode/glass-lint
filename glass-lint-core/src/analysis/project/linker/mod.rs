@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 
 use glass_lint_datastructures::BudgetTracker;
 
-use super::resolver::{ExportResolver, ProjectLookupView};
+use super::resolver::ExportResolver;
 use crate::{
     analysis::{
         LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId,
@@ -62,9 +62,9 @@ impl ProjectLinker {
         &mut self,
         operation: impl FnOnce(&mut ExportResolver<'_>) -> T,
     ) -> T {
-        let lookup = ProjectLookupView::new(&self.modules, &self.resolutions);
-        operation(&mut ExportResolver::new(
-            &lookup,
+        operation(&mut ExportResolver::from_maps(
+            &self.modules,
+            &self.resolutions,
             &self.exports,
             &mut self.lookup_session.lookup_cache,
         ))

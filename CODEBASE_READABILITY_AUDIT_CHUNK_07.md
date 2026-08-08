@@ -115,7 +115,7 @@ separation.
 
 ### Export lookup boundary
 
-#### [ ] READ-028 — Remove the unused dynamic lookup abstraction
+#### [x] READ-028 — Remove the unused dynamic lookup abstraction
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -139,7 +139,11 @@ independent of `ProjectLinker` and `ProjectSemanticModel`, preserve the
 module-existence check in `request_target`, and retain the shared cache and
 bounded cycle/depth behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the single-implementation `ProjectLookup` trait
+object. `ExportResolver` now owns the concrete borrowed `ProjectLookupView`,
+and one `from_maps` constructor centralizes view creation for transient and
+post-link resolution while preserving bounded lookup and request-target
+validation.
 
 ## Systemic Themes
 
