@@ -11,7 +11,7 @@ use smol_str::SmolStr;
 use crate::analysis::{
     ExportResolution, LinkedModuleTarget, ModuleId, ProjectSemanticModel, QualifiedRequestId,
     flow::effect::CallEffectRef,
-    matching::{ModuleExportKey, ModuleIdentityMap},
+    matching::{ModuleExportKey, ModuleIdentityContributions, ModuleIdentityMap},
     model::module::{ImportedBinding, ModuleRequest, ModuleRequestRole},
     project::{
         model::MAX_EXPORT_DEPTH, resolver::target_to_export_resolution, state::LinkingSession,
@@ -194,7 +194,7 @@ impl ProjectSemanticModel {
         // Collect star-exported entries first into a temp map with
         // star-vs-star conflict detection, so that conflicting star-derived
         // names are marked Ambiguous before direct exports are considered.
-        let mut star_entries = ModuleIdentityMap::new();
+        let mut contributions = ModuleIdentityContributions::new();
         if let Some(project_module) = self.module(module) {
             for request_index in project_module.local().interface().star_exports() {
                 let Some(request) = project_module.local().interface().request(*request_index)
@@ -205,19 +205,21 @@ impl ProjectSemanticModel {
                 if let Some(LinkedModuleTarget::Internal { id }) = self.resolution_for(&key) {
                     let mut child_entries = ModuleIdentityMap::new();
                     self.collect_exported_identities(*id, prefix, visiting, &mut child_entries);
-                    star_entries.merge_star_from(child_entries);
+                    contributions.add_star(child_entries);
                 }
             }
         }
 
         // Insert resolved export-table entries (authoritative direct/named
         // exports) after star exports so they always win.
+        let mut direct_entries = ModuleIdentityMap::new();
         self.linked
             .exports
-            .copy_identities_into(module, prefix, identities);
+            .copy_identities_into(module, prefix, &mut direct_entries);
 
-        // Merge star-exported entries, preserving direct exports.
-        identities.merge_missing_from(star_entries);
+        // Commit direct and star contributions through their precedence owner.
+        contributions.add_direct(direct_entries);
+        contributions.finish_into(identities);
 
         visiting.remove(&module);
     }

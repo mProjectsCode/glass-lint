@@ -215,7 +215,7 @@ before normalizing valid evidence. The public infallible adapter intentionally
 maps those internal errors to empty output for classification compatibility.
 Verified with `make fmt && make ci`.
 
-#### [ ] READ-006 — Identity-map merge semantics are encoded by caller-selected methods
+#### [x] READ-006 — Identity-map merge semantics are encoded by caller-selected methods
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -246,7 +246,11 @@ private to the collector where possible. Preserve star-vs-star ambiguity,
 direct-export authority, unknown wildcard masking, bounded recursive walks,
 and deterministic key ordering.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ModuleIdentityContributions` now owns direct-versus-star
+collection and commits direct identities before star identities with
+missing-only precedence. The project identity walker supplies separate
+contributions and no longer sequences the merge methods itself. Verified with
+`make fmt && make ci`.
 
 ## Systemic Themes
 

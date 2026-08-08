@@ -48,6 +48,31 @@ impl ModuleIdentityMap {
     }
 }
 
+#[derive(Default)]
+pub(in crate::analysis) struct ModuleIdentityContributions {
+    direct: ModuleIdentityMap,
+    stars: ModuleIdentityMap,
+}
+
+impl ModuleIdentityContributions {
+    pub(in crate::analysis) fn new() -> Self {
+        Self::default()
+    }
+
+    pub(in crate::analysis) fn add_direct(&mut self, entries: ModuleIdentityMap) {
+        self.direct.entries.extend(entries.entries);
+    }
+
+    pub(in crate::analysis) fn add_star(&mut self, entries: ModuleIdentityMap) {
+        self.stars.merge_star_from(entries);
+    }
+
+    pub(in crate::analysis) fn finish_into(self, identities: &mut ModuleIdentityMap) {
+        identities.entries.extend(self.direct.entries);
+        identities.merge_missing_from(self.stars);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

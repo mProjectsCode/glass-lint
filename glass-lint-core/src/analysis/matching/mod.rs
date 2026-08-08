@@ -18,7 +18,7 @@ use occurrence::{
 };
 mod identity_map;
 mod indexes;
-pub(in crate::analysis) use identity_map::ModuleIdentityMap;
+pub(in crate::analysis) use identity_map::{ModuleIdentityContributions, ModuleIdentityMap};
 mod arguments;
 pub(in crate::analysis) use arguments::{
     MatcherArtifact, MatcherProjectContext, compute_constrained_evidence,
