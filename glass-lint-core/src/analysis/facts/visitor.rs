@@ -13,19 +13,16 @@ use smol_str::{SmolStr, ToSmolStr};
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::ExportDefaultExpr;
 
-use crate::{
-    analysis::{
-        facts::{
-            ArrowExpr, AssignExpr, BinExpr, CallExpr, CondExpr, ControlKind, ControlRegionId,
-            DoWhileStmt, ExportDecl, Expr, FactBuilder, FactPayload, FnDecl, ForInStmt, ForOfStmt,
-            ForStmt, Function, Ident, IfStmt, ImportDecl, MemberExpr, NewExpr, OptChainBase,
-            OptChainExpr, Pat, Str, SwitchStmt, SymbolCallProvenance, SymbolMemberProvenance,
-            TargetProvenance, Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr, ValueId, VarDeclarator,
-            Visit, VisitWith, WhileStmt, effective_callee_expr, literal_member_property_name,
-        },
-        model::module::{ImportedBinding, ModuleRequestRole},
+use crate::analysis::{
+    facts::{
+        ArrowExpr, AssignExpr, BinExpr, CallExpr, CondExpr, ControlKind, ControlRegionId,
+        DoWhileStmt, ExportDecl, Expr, FactBuilder, FactPayload, FnDecl, ForInStmt, ForOfStmt,
+        ForStmt, Function, Ident, IfStmt, ImportDecl, MemberExpr, NewExpr, OptChainBase,
+        OptChainExpr, Pat, Str, SwitchStmt, SymbolCallProvenance, SymbolMemberProvenance,
+        TargetProvenance, Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr, ValueId, VarDeclarator,
+        Visit, VisitWith, WhileStmt, effective_callee_expr, literal_member_property_name,
     },
-    project::ResolutionRequestKind,
+    model::module::ImportedBinding,
 };
 
 struct ConstructionMetadata {
@@ -245,12 +242,8 @@ impl Visit for FactBuilder<'_, '_> {
         let Some(span) = self.byte_range(import.src.span) else {
             return;
         };
-        self.interface.add_request(
-            span,
-            ResolutionRequestKind::StaticImport,
-            module.clone(),
-            ModuleRequestRole::Import { bindings },
-        );
+        self.interface
+            .add_import_request(span, module.clone(), bindings);
         self.emit(import.src.span, FactPayload::Import { module });
         // Do not visit children: the source string is already captured in the
         // Import fact, and visiting it would emit a duplicate static reference.

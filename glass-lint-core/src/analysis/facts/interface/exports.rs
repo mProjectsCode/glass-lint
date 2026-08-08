@@ -5,14 +5,9 @@ use swc_ecma_ast::{
     NamedExport,
 };
 
-use crate::{
-    analysis::{
-        facts::interface::ModuleInterfaceBuilder,
-        model::module::{ModuleExport, ModuleRequestRole},
-        resolution::Resolver,
-        syntax::module_export_name,
-    },
-    project::ResolutionRequestKind,
+use crate::analysis::{
+    facts::interface::ModuleInterfaceBuilder, model::module::ModuleExport, resolution::Resolver,
+    syntax::module_export_name,
 };
 
 impl ModuleInterfaceBuilder {
@@ -110,12 +105,7 @@ impl ModuleInterfaceBuilder {
             return;
         }
         let span = source_span;
-        let request = self.add_request(
-            span,
-            ResolutionRequestKind::StaticImport,
-            source.value.to_string_lossy(),
-            ModuleRequestRole::ReExport,
-        );
+        let request = self.add_reexport_request(span, source.value.to_string_lossy());
         for specifier in specifiers {
             match specifier {
                 ExportSpecifier::Named(named) => {
@@ -155,11 +145,7 @@ impl ModuleInterfaceBuilder {
         if export.type_only {
             return;
         }
-        self.add_star_export_request(
-            source_span,
-            ResolutionRequestKind::StaticImport,
-            export.src.value.to_string_lossy(),
-        );
+        self.add_star_export_request(source_span, export.src.value.to_string_lossy());
     }
 
     pub(in crate::analysis::facts) fn record_default_expr(

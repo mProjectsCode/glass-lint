@@ -219,7 +219,7 @@ impl ModuleInterface {
         self.locals.insert(name.into());
     }
 
-    pub fn add_request(
+    fn add_request(
         &mut self,
         span: ByteRange,
         kind: ResolutionRequestKind,
@@ -239,6 +239,59 @@ impl ModuleInterface {
             .or_default()
             .push(index);
         index
+    }
+
+    pub fn add_import_request(
+        &mut self,
+        span: ByteRange,
+        specifier: impl Into<SmolStr>,
+        bindings: Vec<ImportedBinding>,
+    ) -> ModuleRequestId {
+        self.add_request(
+            span,
+            ResolutionRequestKind::StaticImport,
+            specifier,
+            ModuleRequestRole::Import { bindings },
+        )
+    }
+
+    pub fn add_reexport_request(
+        &mut self,
+        span: ByteRange,
+        specifier: impl Into<SmolStr>,
+    ) -> ModuleRequestId {
+        self.add_request(
+            span,
+            ResolutionRequestKind::StaticImport,
+            specifier,
+            ModuleRequestRole::ReExport,
+        )
+    }
+
+    pub fn add_dynamic_import_request(
+        &mut self,
+        span: ByteRange,
+        specifier: impl Into<SmolStr>,
+    ) -> ModuleRequestId {
+        self.add_request(
+            span,
+            ResolutionRequestKind::DynamicImport,
+            specifier,
+            ModuleRequestRole::DynamicImport,
+        )
+    }
+
+    pub fn add_require_request(
+        &mut self,
+        span: ByteRange,
+        specifier: impl Into<SmolStr>,
+    ) -> ModuleRequestId {
+        self.add_request(
+            span,
+            ResolutionRequestKind::Require,
+            specifier,
+            ModuleRequestRole::Require,
+        )
     }
 
     pub fn add_export(&mut self, name: impl Into<SmolStr>, export: ModuleExport) {
@@ -270,13 +323,22 @@ impl ModuleInterface {
     pub fn add_star_export_request(
         &mut self,
         span: ByteRange,
-        kind: ResolutionRequestKind,
         specifier: impl Into<SmolStr>,
     ) -> ModuleRequestId {
         if self.unknown_exports {
-            self.add_request(span, kind, specifier, ModuleRequestRole::StarExport)
+            self.add_request(
+                span,
+                ResolutionRequestKind::StaticImport,
+                specifier,
+                ModuleRequestRole::StarExport,
+            )
         } else {
-            let request = self.add_request(span, kind, specifier, ModuleRequestRole::StarExport);
+            let request = self.add_request(
+                span,
+                ResolutionRequestKind::StaticImport,
+                specifier,
+                ModuleRequestRole::StarExport,
+            );
             self.star_exports.push(request);
             request
         }
@@ -435,5 +497,40 @@ mod tests {
         };
         assert_eq!(name.as_str(), "value");
         assert_eq!(export, &ModuleExport::Unknown);
+    }
+
+    #[test]
+    fn request_constructors_retain_their_valid_kind_and_role_pair() {
+        let span = ByteRange::new(0, 1).unwrap();
+        let mut interface = ModuleInterface::default();
+        interface.add_import_request(
+            span,
+            "imported",
+            vec![ImportedBinding::new(
+                Some("default".into()),
+                "local".into(),
+                false,
+            )],
+        );
+        interface.add_reexport_request(span, "reexported");
+        interface.add_star_export_request(span, "starred");
+        interface.add_dynamic_import_request(span, "dynamic");
+        interface.add_require_request(span, "required");
+
+        let requests = interface.requests().collect::<Vec<_>>();
+        assert_eq!(requests.len(), 5);
+        assert_eq!(requests[0].kind(), ResolutionRequestKind::StaticImport);
+        assert!(matches!(
+            requests[0].role(),
+            ModuleRequestRole::Import { .. }
+        ));
+        assert_eq!(requests[1].kind(), ResolutionRequestKind::StaticImport);
+        assert_eq!(requests[1].role(), &ModuleRequestRole::ReExport);
+        assert_eq!(requests[2].kind(), ResolutionRequestKind::StaticImport);
+        assert_eq!(requests[2].role(), &ModuleRequestRole::StarExport);
+        assert_eq!(requests[3].kind(), ResolutionRequestKind::DynamicImport);
+        assert_eq!(requests[3].role(), &ModuleRequestRole::DynamicImport);
+        assert_eq!(requests[4].kind(), ResolutionRequestKind::Require);
+        assert_eq!(requests[4].role(), &ModuleRequestRole::Require);
     }
 }

@@ -17,7 +17,7 @@ identity interpretation depend on caller conventions.
 
 ### Module request model and classification
 
-#### [ ] READ-012 — Couple module request kind with its valid role
+#### [x] READ-012 — Couple module request kind with its valid role
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -43,7 +43,10 @@ new public sum type. Preserve request IDs, source spans, specifier indexing,
 and deterministic request order while ensuring every retained request is
 valid by construction.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the generic module-request insertion path with typed
+constructors for imports, re-exports, star exports, dynamic imports, and
+requires, keeping kind/role pairs valid by construction. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-013 — Centralize the three module-request vocabularies
 

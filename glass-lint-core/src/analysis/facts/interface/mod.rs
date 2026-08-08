@@ -3,12 +3,9 @@ use std::collections::BTreeSet;
 use smol_str::SmolStr;
 use swc_ecma_ast::ImportDecl;
 
-use crate::{
-    analysis::{
-        model::module::{ModuleRequestId, ModuleRequestRole},
-        syntax::collect_pat_bindings,
-    },
-    project::ResolutionRequestKind,
+use crate::analysis::{
+    model::module::{ImportedBinding, ModuleRequestId},
+    syntax::collect_pat_bindings,
 };
 
 mod commonjs;
@@ -47,14 +44,21 @@ impl ModuleInterfaceBuilder {
         names
     }
 
-    pub(in crate::analysis::facts) fn add_request(
+    pub(in crate::analysis::facts) fn add_import_request(
         &mut self,
         span: glass_lint_datastructures::ByteRange,
-        kind: ResolutionRequestKind,
         specifier: impl Into<SmolStr>,
-        role: ModuleRequestRole,
+        bindings: Vec<ImportedBinding>,
     ) -> ModuleRequestId {
-        self.interface.add_request(span, kind, specifier, role)
+        self.interface.add_import_request(span, specifier, bindings)
+    }
+
+    pub(in crate::analysis::facts) fn add_reexport_request(
+        &mut self,
+        span: glass_lint_datastructures::ByteRange,
+        specifier: impl Into<SmolStr>,
+    ) -> ModuleRequestId {
+        self.interface.add_reexport_request(span, specifier)
     }
 
     pub(in crate::analysis::facts) fn mark_unknown_exports(&mut self) {
@@ -88,11 +92,9 @@ impl ModuleInterfaceBuilder {
     fn add_star_export_request(
         &mut self,
         span: glass_lint_datastructures::ByteRange,
-        kind: ResolutionRequestKind,
         specifier: impl Into<smol_str::SmolStr>,
     ) -> ModuleRequestId {
-        self.interface
-            .add_star_export_request(span, kind, specifier)
+        self.interface.add_star_export_request(span, specifier)
     }
 
     pub(in crate::analysis::facts) fn record_local_imports(&mut self, import: &ImportDecl) {
@@ -108,12 +110,7 @@ impl ModuleInterfaceBuilder {
         span: glass_lint_datastructures::ByteRange,
         specifier: &str,
     ) {
-        self.interface.add_request(
-            span,
-            ResolutionRequestKind::DynamicImport,
-            specifier,
-            ModuleRequestRole::DynamicImport,
-        );
+        self.interface.add_dynamic_import_request(span, specifier);
     }
 
     pub(in crate::analysis::facts) fn record_require_request(
@@ -121,11 +118,6 @@ impl ModuleInterfaceBuilder {
         span: glass_lint_datastructures::ByteRange,
         specifier: &str,
     ) {
-        self.interface.add_request(
-            span,
-            ResolutionRequestKind::Require,
-            specifier,
-            ModuleRequestRole::Require,
-        );
+        self.interface.add_require_request(span, specifier);
     }
 }
