@@ -30,13 +30,13 @@ use crate::{
                 worklist::ContextWorklist,
             },
             effect::FunctionEffect,
-            planning::BoundFlowPlan,
+            planning::{BoundFlowPlan, BoundLifecycleRoot},
         },
         model::flow::{FlowId, FlowLimits},
         project::state::LinkingSession,
         trace::TraceArena,
     },
-    api::compiler::{CompiledObjectFlow, CompiledRuleSelection},
+    api::{classification::RuleEvidenceCapacity, compiler::CompiledObjectFlow},
     project::ModuleId,
 };
 
@@ -243,15 +243,18 @@ impl CrossWorklist<'_, '_> {
 
 pub(in crate::analysis) fn collect(
     project: &ProjectSemanticModel,
-    matchers: &CompiledRuleSelection<'_>,
+    roots: &[BoundLifecycleRoot<'_>],
+    capacity: RuleEvidenceCapacity,
     session: &mut LinkingSession,
     arena: &mut TraceArena,
 ) -> (
     BTreeMap<ModuleId, crate::api::classification::RuleEvidenceTable>,
     CrossProjectionOutcome,
 ) {
-    let flows = collect_flows(matchers);
-    let capacity = matchers.evidence_capacity();
+    let flows = roots
+        .iter()
+        .map(|root| (root.flow_id(), root.flow()))
+        .collect::<HashMap<_, _>>();
     let evidence = project
         .modules()
         .map(|module| (module.id(), ModuleEvidence::new(capacity)))
@@ -284,22 +287,6 @@ pub(in crate::analysis) fn collect(
     };
     let completion = collector.run();
     collector.finish(completion, source_completion)
-}
-
-fn collect_flows<'a>(
-    matchers: &'a CompiledRuleSelection<'a>,
-) -> HashMap<FlowId, &'a CompiledObjectFlow> {
-    let mut flows = HashMap::new();
-    for (rule_index, matcher) in matchers.selected_matchers() {
-        let mut flow_index = 0usize;
-        for root in matcher.physical_roots() {
-            if let crate::api::compiler::physical::PhysicalRoot::Lifecycle { flow } = root {
-                flows.insert(FlowId::new(rule_index, flow_index), flow);
-                flow_index += 1;
-            }
-        }
-    }
-    flows
 }
 
 #[cfg(test)]

@@ -14,7 +14,7 @@ contract.
 
 ### Flow identity and plan binding
 
-#### [ ] READ-008 — Give lifecycle roots one canonical flow identity
+#### [x] READ-008 — Give lifecycle roots one canonical flow identity
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -42,7 +42,10 @@ conversion. Preserve deterministic root sorting/deduplication, the rule
 index, and the top-level lifecycle invariant, while keeping raw physical-root
 indices private to the compiler plan.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `BoundLifecycleRoot` at the physical-plan boundary and
+passed the same typed root collection to local and cross-module projection.
+Removed cross-call re-enumeration and positional tuple binding so both paths
+share one `FlowId` assignment. Verified with `make fmt && make ci`.
 
 ### Completion and incomplete-evidence contract
 

@@ -15,7 +15,8 @@ use crate::{
         facts::SemanticFacts,
         flow::{
             self,
-            projector::{self as object_flow, FlowProjectionRule, LocalFlowProjectionOutcome},
+            planning::BoundLifecycleRoot,
+            projector::{self as object_flow, LocalFlowProjectionOutcome},
         },
         lowering::status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
         matching::{MatcherOverlayPolicy, MatcherProjectContext, MatcherProjectInputs},
@@ -29,8 +30,7 @@ use crate::{
             RuleEvidenceError, RuleEvidenceTable, RuleIndex,
         },
         compiler::{
-            CompiledMatcherPlan, CompiledRuleRecord, CompiledRuleSelection,
-            object_flow::CompiledObjectFlow, physical::PhysicalRoot,
+            CompiledMatcherPlan, CompiledRuleRecord, CompiledRuleSelection, physical::PhysicalRoot,
             requirements::PlanRequirements,
         },
     },
@@ -88,7 +88,7 @@ pub fn assemble_classification_results(
 /// to the immutable facts artifact.
 pub(in crate::analysis) struct ProjectionPlan<'a> {
     constrained_roots: Vec<PlannedConstrainedRoot<'a>>,
-    flow_matchers: Vec<PlannedFlow<'a>>,
+    flow_matchers: Vec<BoundLifecycleRoot<'a>>,
     rule_capacity: RuleEvidenceCapacity,
     requirements: PlanRequirements,
 }
@@ -119,12 +119,13 @@ impl<'project, 'plan, 'roots, 'arena> ProjectionSession<'project, 'plan, 'roots,
 
     fn collect_cross(
         &mut self,
-        matchers: &CompiledRuleSelection<'_>,
+        roots: &[BoundLifecycleRoot<'roots>],
+        capacity: RuleEvidenceCapacity,
     ) -> (
         BTreeMap<ModuleId, RuleEvidenceTable>,
         flow::cross::CrossProjectionOutcome,
     ) {
-        flow::cross::collect(self.project, matchers, &mut self.linking, self.arena)
+        flow::cross::collect(self.project, roots, capacity, &mut self.linking, self.arena)
     }
 
     fn project_modules<'module>(
@@ -206,52 +207,9 @@ struct PlannedConstrainedRoot<'a> {
     root: &'a PhysicalRoot,
 }
 
-#[derive(Clone, Copy)]
-struct PlannedFlow<'a> {
-    rule_index: RuleIndex,
-    root: PlannedLifecycleRoot<'a>,
-}
-
-#[derive(Clone, Copy)]
-struct PhysicalRootIndex(usize);
-
-impl PhysicalRootIndex {
-    fn new(index: usize) -> Self {
-        Self(index)
-    }
-
-    fn get(self) -> usize {
-        self.0
-    }
-}
-
-#[derive(Clone, Copy)]
-struct PlannedLifecycleRoot<'a> {
-    index: PhysicalRootIndex,
-    flow: &'a CompiledObjectFlow,
-}
-
-impl<'a> PlannedLifecycleRoot<'a> {
-    fn from_physical(index: usize, root: &'a PhysicalRoot) -> Option<Self> {
-        let PhysicalRoot::Lifecycle { flow } = root else {
-            return None;
-        };
-        Some(Self {
-            index: PhysicalRootIndex::new(index),
-            flow,
-        })
-    }
-}
-
 impl<'a> PlannedConstrainedRoot<'a> {
     fn matcher_input(self) -> (usize, &'a PhysicalRoot) {
         (self.rule_index.get(), self.root)
-    }
-}
-
-impl<'a> PlannedFlow<'a> {
-    fn flow_input(self) -> FlowProjectionRule<'a> {
-        FlowProjectionRule::new(self.rule_index, self.root.index.get(), self.root.flow)
     }
 }
 
@@ -275,8 +233,8 @@ impl<'a> ProjectionPlan<'a> {
                 }
             }
             for (flow_index, root) in matcher.physical_roots().iter().enumerate() {
-                if let Some(root) = PlannedLifecycleRoot::from_physical(flow_index, root) {
-                    flow_matchers.push(PlannedFlow { rule_index, root });
+                if let PhysicalRoot::Lifecycle { flow } = root {
+                    flow_matchers.push(BoundLifecycleRoot::new(rule_index, flow_index, flow));
                 }
             }
             requirements.merge_from(matcher.requirements());
@@ -338,16 +296,10 @@ fn project_facts(
     if !effects.is_available() {
         return Ok((projected_evidence, LocalFlowProjectionOutcome::default()));
     }
-    let flow_matchers = plan
-        .flow_matchers
-        .iter()
-        .copied()
-        .map(PlannedFlow::flow_input)
-        .collect::<Vec<_>>();
     let outcome = object_flow::collect_into(
         facts.stream(),
         effects,
-        &flow_matchers,
+        &plan.flow_matchers,
         &mut projected_evidence,
         flow_limits,
         module_id,
@@ -655,7 +607,7 @@ impl ProjectSemanticModel {
         };
 
         let (cross, cross_outcome) = if has_flow {
-            session.collect_cross(&matchers)
+            session.collect_cross(&plan.flow_matchers, plan.rule_capacity)
         } else {
             Default::default()
         };
