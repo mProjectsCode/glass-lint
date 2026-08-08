@@ -164,7 +164,7 @@ impl<'project, 'plan, 'roots, 'arena> ProjectionSession<'project, 'plan, 'roots,
                 outcome.metrics.operations = outcome.metrics.operations.saturating_add(overlay_ops);
                 let effects = self.plan.needs_flow().then(|| module.local().effects());
                 if let Some(effects) = effects
-                    && effects.budget_exhausted()
+                    && effects.completion().is_incomplete()
                 {
                     outcome.record_effects(module.id(), effects);
                 }
@@ -546,7 +546,7 @@ impl ProjectionOutcome {
         module: ModuleId,
         effects: &crate::analysis::flow::effect::FunctionEffects,
     ) {
-        if !effects.budget_exhausted() {
+        if !effects.completion().is_incomplete() {
             return;
         }
         self.status.effects.mark_incomplete();
@@ -580,7 +580,7 @@ impl ProjectionOutcome {
     }
 
     fn record_cross(&mut self, cross: &flow::cross::CrossProjectionOutcome) {
-        if cross.exhausted {
+        if cross.completion.is_incomplete() {
             self.status.flow.mark_incomplete();
         }
         self.metrics.effect_projections = cross.projections;

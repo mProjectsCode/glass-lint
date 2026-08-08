@@ -5,6 +5,7 @@ use glass_lint_datastructures::Budget;
 use crate::analysis::{
     facts::{CallArgInfo, FactId, FactPayload, FactStream, Frozen, ParameterBinding},
     flow::{
+        FlowCompletion, FlowCompletionReason,
         effect::{EffectCall, FunctionEffects},
         planning::BoundFlowPlan,
         summary::{
@@ -20,21 +21,8 @@ pub(in crate::analysis::flow) struct FunctionSummaries<'a> {
     stream: &'a FactStream<Frozen>,
     by_id: FunctionTable<FunctionSummary>,
     paths: SummaryPathStore<'a>,
-    completion: SummaryCompletion,
+    completion: FlowCompletion,
     sink_budget: SummarySinkBudget,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum SummaryExhaustion {
-    Budget,
-    SinkCapacity,
-    WorklistCapacity,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum SummaryCompletion {
-    Complete,
-    Exhausted(SummaryExhaustion),
 }
 
 #[derive(Debug, Default)]
@@ -43,20 +31,22 @@ struct SummarySinkBudget {
 }
 
 impl SummarySinkBudget {
-    fn admit(&mut self, budget: &mut Budget, inserted: usize) -> Result<(), SummaryCompletion> {
+    fn admit(&mut self, budget: &mut Budget, inserted: usize) -> Result<(), FlowCompletion> {
         for _ in 0..inserted {
             if !budget.try_push() {
-                return Err(SummaryCompletion::Exhausted(SummaryExhaustion::Budget));
+                return Err(FlowCompletion::incomplete(
+                    FlowCompletionReason::SummaryBudget,
+                ));
             }
         }
         let Some(retained) = self.retained.checked_add(inserted) else {
-            return Err(SummaryCompletion::Exhausted(
-                SummaryExhaustion::SinkCapacity,
+            return Err(FlowCompletion::incomplete(
+                FlowCompletionReason::SummarySinkCapacity,
             ));
         };
         if retained > MAX_SUMMARY_SINKS {
-            return Err(SummaryCompletion::Exhausted(
-                SummaryExhaustion::SinkCapacity,
+            return Err(FlowCompletion::incomplete(
+                FlowCompletionReason::SummarySinkCapacity,
             ));
         }
         self.retained = retained;
@@ -64,16 +54,13 @@ impl SummarySinkBudget {
     }
 }
 
-impl SummaryCompletion {
-    fn is_exhausted(self) -> bool {
-        matches!(self, Self::Exhausted(_))
-    }
-
+impl FlowCompletion {
     fn finalize(self, summaries: &mut FunctionSummaries<'_>) {
         for (_, summary) in summaries.by_id.iter_mut() {
-            match self {
-                Self::Complete => summary.sort_sinks(),
-                Self::Exhausted(_) => summary.clear_sinks(),
+            if self.is_complete() {
+                summary.sort_sinks();
+            } else {
+                summary.clear_sinks();
             }
         }
     }
@@ -102,14 +89,14 @@ impl<'a> FunctionSummaries<'a> {
             stream,
             by_id: FunctionTable::new(stream.function_count()),
             paths: SummaryPathStore::new(stream.paths()),
-            completion: SummaryCompletion::Complete,
+            completion: FlowCompletion::default(),
             sink_budget: SummarySinkBudget::default(),
         };
         summaries.collect_facts(effects, budget);
-        if !summaries.completion.is_exhausted() {
+        if summaries.completion.is_complete() {
             summaries.collect_direct_sinks(stream, plan, budget);
         }
-        if !summaries.completion.is_exhausted() {
+        if summaries.completion.is_complete() {
             summaries.completion =
                 SummaryPropagation::new(stream, &summaries.by_id).run(&mut summaries, budget);
         }
@@ -118,8 +105,8 @@ impl<'a> FunctionSummaries<'a> {
         summaries
     }
 
-    fn exhaust(&mut self, reason: SummaryExhaustion) {
-        self.completion = SummaryCompletion::Exhausted(reason);
+    fn exhaust(&mut self, reason: FlowCompletionReason) {
+        self.completion.mark(reason);
     }
 
     fn collect_facts(&mut self, effects: &FunctionEffects, budget: &mut Budget) {
@@ -129,7 +116,7 @@ impl<'a> FunctionSummaries<'a> {
             }
             if self.get(effect.id()).is_none() {
                 if !budget.try_push() {
-                    self.exhaust(SummaryExhaustion::Budget);
+                    self.exhaust(FlowCompletionReason::SummaryBudget);
                     return;
                 }
                 let params = effect.parameters(self.stream);
@@ -154,14 +141,14 @@ impl<'a> FunctionSummaries<'a> {
             .map(|(id, summary)| (id, summary.calls().len()))
             .collect();
         for (id, count) in entries {
-            if self.completion.is_exhausted() {
+            if self.completion.is_incomplete() {
                 return;
             }
             let Some(summary) = self.by_id.get_mut(id) else {
                 continue;
             };
             for idx in 0..count {
-                if self.completion.is_exhausted() {
+                if self.completion.is_incomplete() {
                     return;
                 }
                 if let Some(call_id) = summary.calls().get(idx).copied() {
@@ -183,7 +170,7 @@ impl<'a> FunctionSummaries<'a> {
         caller: FunctionId,
         stream: &FactStream<Frozen>,
         budget: &mut Budget,
-    ) -> Result<bool, SummaryCompletion> {
+    ) -> Result<bool, FlowCompletion> {
         let Some((target, args)) = resolve_call_target(call_id, stream) else {
             return Ok(false);
         };
@@ -260,10 +247,10 @@ impl<'a> SummaryPropagation<'a> {
         &mut self,
         summaries: &mut FunctionSummaries<'a>,
         budget: &mut Budget,
-    ) -> SummaryCompletion {
+    ) -> FlowCompletion {
         while !self.worklist.is_empty() {
             if !budget.try_push() {
-                return SummaryCompletion::Exhausted(SummaryExhaustion::Budget);
+                return FlowCompletion::incomplete(FlowCompletionReason::SummaryBudget);
             }
             let current_round: Vec<FunctionId> = self.worklist.iter().copied().collect();
             self.worklist.clear();
@@ -300,8 +287,8 @@ impl<'a> SummaryPropagation<'a> {
                 if let Some(callers) = self.reverse_calls.get(&changed_id) {
                     for &caller in callers {
                         if self.worklist.len() >= MAX_SUMMARY_WORKLIST {
-                            return SummaryCompletion::Exhausted(
-                                SummaryExhaustion::WorklistCapacity,
+                            return FlowCompletion::incomplete(
+                                FlowCompletionReason::SummaryWorklistCapacity,
                             );
                         }
                         self.worklist.insert(caller);
@@ -309,7 +296,7 @@ impl<'a> SummaryPropagation<'a> {
                 }
             }
         }
-        SummaryCompletion::Complete
+        FlowCompletion::default()
     }
 }
 

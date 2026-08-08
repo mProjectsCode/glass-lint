@@ -195,7 +195,7 @@ fn call_argument_returns_none_for_missing_index() {
 fn effects_budget_exhausted_with_limited_budget() {
     let (_stream, effects) =
         collect_effects_with_limit("function a() { return 1; } function b() { return a(); }", 2);
-    assert!(effects.budget_exhausted());
+    assert!(effects.completion().is_incomplete());
 }
 
 #[test]
@@ -208,7 +208,7 @@ fn effects_operation_count_scales_with_program_size() {
 #[test]
 fn effects_budget_exhausted_false_with_unlimited_budget() {
     let (_stream, effects) = collect_effects("const x = 1;");
-    assert!(!effects.budget_exhausted());
+    assert!(!effects.completion().is_incomplete());
 }
 
 #[test]

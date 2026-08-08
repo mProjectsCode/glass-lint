@@ -20,6 +20,7 @@ use crate::analysis::{
         CallArgInfo, ControlKind, FactId, FactPayload, FactStream, Frozen, FunctionBoundary,
         ParameterBinding, SemanticFact,
     },
+    flow::{FlowCompletion, FlowCompletionReason},
     model::{flow::FunctionTable, scope::FunctionId, value::ValueId},
     syntax::SymbolCallProvenance,
 };
@@ -478,7 +479,7 @@ impl FunctionEffect {
 #[derive(Clone, Debug)]
 pub(in crate::analysis) struct FunctionEffects {
     by_id: FunctionTable<FunctionEffect>,
-    budget_exhausted: bool,
+    completion: FlowCompletion,
     operation_count: usize,
 }
 
@@ -486,7 +487,7 @@ impl Default for FunctionEffects {
     fn default() -> Self {
         Self {
             by_id: FunctionTable::new(0),
-            budget_exhausted: false,
+            completion: FlowCompletion::default(),
             operation_count: 0,
         }
     }
@@ -501,8 +502,8 @@ impl FunctionEffects {
         self.by_id.values()
     }
 
-    pub(in crate::analysis) fn budget_exhausted(&self) -> bool {
-        self.budget_exhausted
+    pub(in crate::analysis) fn completion(&self) -> FlowCompletion {
+        self.completion
     }
 
     pub(in crate::analysis) fn operation_count(&self) -> usize {
@@ -657,7 +658,11 @@ impl<'stream> FunctionEffectsBuilder<'stream> {
         }
         FunctionEffects {
             by_id: self.by_id,
-            budget_exhausted: self.budget.exhausted(),
+            completion: if self.budget.exhausted() {
+                FlowCompletion::incomplete(FlowCompletionReason::EffectBudget)
+            } else {
+                FlowCompletion::default()
+            },
             operation_count: self.budget.used(),
         }
     }

@@ -21,6 +21,7 @@ use crate::{
         ProjectSemanticModel,
         facts::FactId,
         flow::{
+            FlowCompletion, FlowCompletionReason,
             cross::{
                 evidence::ModuleEvidence,
                 graph::QualifiedCallGraph,
@@ -50,7 +51,7 @@ struct FlowPlanKey {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub(in crate::analysis) struct CrossProjectionOutcome {
-    pub(in crate::analysis) exhausted: bool,
+    pub(in crate::analysis) completion: FlowCompletion,
     pub(in crate::analysis) projections: usize,
     pub(in crate::analysis) operations: usize,
     pub(in crate::analysis) trace_heads: usize,
@@ -129,12 +130,6 @@ impl<'a, 'session> ContextProjection<'a, 'session> {
     }
 }
 
-enum WorklistStop {
-    Drained,
-    StepBudgetExhausted,
-    ContextLimit,
-}
-
 struct CrossWorklist<'a, 'arena> {
     project: &'a ProjectSemanticModel,
     flows: HashMap<FlowId, &'a CompiledObjectFlow>,
@@ -148,21 +143,21 @@ struct CrossWorklist<'a, 'arena> {
 }
 
 impl CrossWorklist<'_, '_> {
-    fn run(&mut self) -> WorklistStop {
+    fn run(&mut self) -> FlowCompletion {
         if self.worklist.is_exhausted() {
-            return WorklistStop::ContextLimit;
+            return FlowCompletion::incomplete(FlowCompletionReason::CrossContextLimit);
         }
         while let Some(context) = self.worklist.pop_front() {
             self.projections = self.projections.saturating_add(1);
             if !self.step_budget.try_push() {
-                return WorklistStop::StepBudgetExhausted;
+                return FlowCompletion::incomplete(FlowCompletionReason::CrossStepBudget);
             }
             self.project_context(&context);
             if self.worklist.is_exhausted() {
-                return WorklistStop::ContextLimit;
+                return FlowCompletion::incomplete(FlowCompletionReason::CrossContextLimit);
             }
         }
-        WorklistStop::Drained
+        FlowCompletion::default()
     }
 
     fn project_context(&mut self, context: &CallContext) {
@@ -212,14 +207,14 @@ impl CrossWorklist<'_, '_> {
 
     fn finish(
         mut self,
-        stop: &WorklistStop,
-        return_budget_exhausted: bool,
+        mut completion: FlowCompletion,
+        source_completion: FlowCompletion,
     ) -> (
         BTreeMap<ModuleId, crate::api::classification::RuleEvidenceTable>,
         CrossProjectionOutcome,
     ) {
-        let exhausted = return_budget_exhausted || !matches!(stop, WorklistStop::Drained);
-        if exhausted {
+        completion.merge(source_completion);
+        if completion.is_incomplete() {
             for module_evidence in self.evidence.values_mut() {
                 module_evidence.clear();
             }
@@ -237,7 +232,7 @@ impl CrossWorklist<'_, '_> {
         (
             output,
             CrossProjectionOutcome {
-                exhausted,
+                completion,
                 projections: self.projections,
                 operations: self.step_budget.used(),
                 trace_heads,
@@ -272,7 +267,7 @@ pub(in crate::analysis) fn collect(
     let call_graph = QualifiedCallGraph::build(project, session);
     let operation_limit = FlowLimits::from_flow_operations(project.flow_limit()).operation_limit();
     let mut source_budget = Budget::new(operation_limit);
-    let (sources, return_budget_exhausted) =
+    let (sources, source_completion) =
         FlowSources::collect(project, &flows, &call_graph, &mut source_budget);
     let worklist = ContextWorklist::seed(project, &sources, &call_graph);
     let step_budget = Budget::new(operation_limit);
@@ -287,8 +282,8 @@ pub(in crate::analysis) fn collect(
         arena,
         projections: 0,
     };
-    let stop = collector.run();
-    collector.finish(&stop, return_budget_exhausted)
+    let completion = collector.run();
+    collector.finish(completion, source_completion)
 }
 
 fn collect_flows<'a>(
@@ -349,7 +344,7 @@ mod tests {
         sources.add_candidate(from, candidate(0, 0, 20));
         sources.add_edge(from, to);
 
-        assert!(!sources.propagate(&mut budget));
+        assert!(sources.propagate(&mut budget).is_complete());
 
         assert_eq!(sources.candidate_count(&to), 2);
         assert!(sources.contains_candidate(&to, candidate(0, 0, 10)));
@@ -366,12 +361,12 @@ mod tests {
         sources.add_candidate(from, candidate(0, 0, 10));
         sources.add_edge(from, to);
 
-        assert!(!sources.propagate(&mut budget));
+        assert!(sources.propagate(&mut budget).is_complete());
         assert_eq!(sources.candidate_count(&to), 1);
 
         // Second propagation is a no-op because candidates are already at the
         // destination.
-        assert!(!sources.propagate(&mut budget));
+        assert!(sources.propagate(&mut budget).is_complete());
         assert_eq!(sources.candidate_count(&to), 1);
     }
 
@@ -387,10 +382,10 @@ mod tests {
         sources.add_candidate(to, candidate(0, 0, 10));
         sources.add_edge(from, to);
 
-        assert!(!sources.propagate(&mut budget));
+        assert!(sources.propagate(&mut budget).is_complete());
         assert_eq!(sources.candidate_count(&to), 2);
 
-        assert!(!sources.propagate(&mut budget));
+        assert!(sources.propagate(&mut budget).is_complete());
     }
 
     #[test]
@@ -402,7 +397,7 @@ mod tests {
 
         sources.add_edge(from, to);
 
-        assert!(!sources.propagate(&mut budget));
+        assert!(sources.propagate(&mut budget).is_complete());
         assert!(!sources.has_candidates(&to));
         assert!(!sources.has_candidates(&from));
     }
@@ -415,7 +410,7 @@ mod tests {
         sources.add_candidate(k, candidate(0, 0, 10));
         sources.add_edge(k, k);
 
-        assert!(!sources.propagate(&mut budget));
+        assert!(sources.propagate(&mut budget).is_complete());
         assert_eq!(sources.candidate_count(&k), 1);
     }
 
@@ -431,7 +426,7 @@ mod tests {
         sources.add_edge(a, b);
         sources.add_edge(b, c);
 
-        assert!(!sources.propagate(&mut budget));
+        assert!(sources.propagate(&mut budget).is_complete());
 
         assert_eq!(sources.candidate_count(&b), 1);
         assert!(sources.contains_candidate(&b, candidate(0, 0, 10)));
@@ -450,8 +445,8 @@ mod tests {
         sources.add_edge(a, b);
         sources.add_edge(b, a);
 
-        let exhausted = sources.propagate(&mut budget);
-        assert!(!exhausted);
+        let completion = sources.propagate(&mut budget);
+        assert!(completion.is_complete());
         assert!(sources.contains_candidate(&b, candidate(0, 0, 10)));
     }
 
@@ -488,7 +483,7 @@ mod tests {
         // filling the pending queue past the safety limit.
         sources.add_edge(a, b);
 
-        assert!(sources.propagate(&mut budget));
+        assert!(sources.propagate(&mut budget).is_incomplete());
     }
 
     #[test]

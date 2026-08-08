@@ -8,6 +8,7 @@ use crate::{
         ProjectSemanticModel,
         facts::FactId,
         flow::{
+            FlowCompletion, FlowCompletionReason,
             cross::{
                 MAX_PENDING, QualifiedCallGraph,
                 worklist::{BoundedFifo, FifoAdmission},
@@ -220,12 +221,12 @@ impl FlowSources {
         flows: &HashMap<FlowId, &CompiledObjectFlow>,
         call_graph: &QualifiedCallGraph,
         budget: &mut Budget,
-    ) -> (Self, bool) {
+    ) -> (Self, FlowCompletion) {
         let mut sources = Self::default();
         sources.collect_candidates(project, flows);
         sources.build_adjacency(project, call_graph);
-        let budget_exhausted = sources.propagate(budget);
-        (sources, budget_exhausted)
+        let completion = sources.propagate(budget);
+        (sources, completion)
     }
 
     fn collect_candidates(
@@ -299,13 +300,13 @@ impl FlowSources {
     /// Both the pending frontier and the total unique seen-set are bounded so
     /// that a long, narrow propagation graph cannot retain unbounded state
     /// without tripping the frontier limit.
-    pub(super) fn propagate(&mut self, budget: &mut Budget) -> bool {
+    pub(super) fn propagate(&mut self, budget: &mut Budget) -> FlowCompletion {
         let mut pending = BoundedFifo::<PropagationItem>::new(MAX_PENDING);
 
         for (key, candidate) in self.propagation_entries() {
             let entry = PropagationItem { key, candidate };
             if matches!(pending.push(entry), FifoAdmission::Full) {
-                return true;
+                return FlowCompletion::incomplete(FlowCompletionReason::SourcePropagation);
             }
         }
 
@@ -320,20 +321,28 @@ impl FlowSources {
                     }
                     if self.add_candidate(to_key, item.candidate) {
                         if !budget.try_push() {
-                            return true;
+                            return FlowCompletion::incomplete(
+                                FlowCompletionReason::SourcePropagation,
+                            );
                         }
                         let entry = PropagationItem {
                             key: to_key,
                             candidate: item.candidate,
                         };
                         if matches!(pending.push(entry), FifoAdmission::Full) {
-                            return true;
+                            return FlowCompletion::incomplete(
+                                FlowCompletionReason::SourcePropagation,
+                            );
                         }
                     }
                 }
             }
         }
 
-        budget.exhausted()
+        if budget.exhausted() {
+            FlowCompletion::incomplete(FlowCompletionReason::SourcePropagation)
+        } else {
+            FlowCompletion::default()
+        }
     }
 }

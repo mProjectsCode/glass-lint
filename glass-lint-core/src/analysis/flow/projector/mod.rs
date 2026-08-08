@@ -30,7 +30,10 @@ use crate::{
         facts::{
             CallArgInfo, ControlKind, FactId, FactPayload, FactStream, Frozen, FunctionBoundary,
         },
-        flow::{effect::FunctionEffects, planning::BoundFlowPlan, summary::FunctionSummaries},
+        flow::{
+            FlowCompletion, FlowCompletionReason, effect::FunctionEffects, planning::BoundFlowPlan,
+            summary::FunctionSummaries,
+        },
         model::{
             flow::{FlowId, FlowLimits, FlowState},
             scope::BindingSlot,
@@ -67,22 +70,7 @@ enum PathRestoration {
     Exhausted,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-enum LocalProjectionExhaustion {
-    Summary,
-    ObjectLimit,
-    StateLimit,
-    EvidenceLimit,
-    MutationLog,
-    Alternatives,
-    TraceArena,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct LocalProjectionCompletion(u8);
-
-impl LocalProjectionCompletion {
+impl FlowCompletion {
     fn from_sources(
         run: &ProjectionRunState,
         flow_state: &FlowStateTable,
@@ -90,49 +78,39 @@ impl LocalProjectionCompletion {
         trace_arena: &TraceArena,
     ) -> Self {
         let mut completion = Self::default();
-        completion.mark_if(LocalProjectionExhaustion::Summary, run.summary_exhausted);
+        completion.mark_if(FlowCompletionReason::Summary, run.summary_exhausted);
+        completion.mark_if(FlowCompletionReason::ObjectLimit, run.object_limit_rejected);
         completion.mark_if(
-            LocalProjectionExhaustion::ObjectLimit,
-            run.object_limit_rejected,
-        );
-        completion.mark_if(
-            LocalProjectionExhaustion::StateLimit,
+            FlowCompletionReason::StateLimit,
             flow_state.state_limit_rejected(),
         );
         completion.mark_if(
-            LocalProjectionExhaustion::EvidenceLimit,
+            FlowCompletionReason::EvidenceLimit,
             flow_evidence.limit_rejected(),
         );
         completion.mark_if(
-            LocalProjectionExhaustion::MutationLog,
+            FlowCompletionReason::MutationLog,
             flow_state.mutation_exhausted(),
         );
         completion.mark_if(
-            LocalProjectionExhaustion::Alternatives,
+            FlowCompletionReason::Alternatives,
             !run.alternatives_complete.is_complete(),
         );
-        completion.mark_if(
-            LocalProjectionExhaustion::TraceArena,
-            trace_arena.is_exhausted(),
-        );
+        completion.mark_if(FlowCompletionReason::TraceArena, trace_arena.is_exhausted());
         completion
     }
 
-    fn mark_if(&mut self, reason: LocalProjectionExhaustion, exhausted: bool) {
+    fn mark_if(&mut self, reason: FlowCompletionReason, exhausted: bool) {
         if exhausted {
-            self.0 |= 1 << reason as u8;
+            self.mark(reason);
         }
-    }
-
-    fn is_exhausted(self) -> bool {
-        self.0 != 0
     }
 }
 
 /// Exhaustion state and bounded counters returned by local flow projection.
 #[derive(Debug, Clone, Copy, Default)]
 pub(in crate::analysis) struct LocalFlowProjectionOutcome {
-    completion: LocalProjectionCompletion,
+    completion: FlowCompletion,
     /// Charged local flow operations.
     pub operations: usize,
     /// Maximum number of correlated alternatives retained at one point.
@@ -148,7 +126,7 @@ pub(in crate::analysis) struct LocalFlowProjectionOutcome {
 impl LocalFlowProjectionOutcome {
     /// Whether any local projection resource was exhausted.
     pub(in crate::analysis) fn is_exhausted(&self) -> bool {
-        self.completion.is_exhausted()
+        self.completion.is_incomplete()
     }
 }
 
@@ -990,7 +968,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
     fn into_outcome(self) -> LocalFlowProjectionOutcome {
         let mut flow_evidence = self.flow_evidence;
         flow_evidence.mark_truncated();
-        let completion = LocalProjectionCompletion::from_sources(
+        let completion = FlowCompletion::from_sources(
             &self.run,
             &self.flow_state,
             &flow_evidence,

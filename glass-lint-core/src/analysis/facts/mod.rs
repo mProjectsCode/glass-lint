@@ -856,8 +856,8 @@ mod stream_tests {
             standalone_effects.operation_count()
         );
         assert_eq!(
-            combined_effects.budget_exhausted(),
-            standalone_effects.budget_exhausted()
+            combined_effects.completion().is_incomplete(),
+            standalone_effects.completion().is_incomplete()
         );
         assert!(
             !artifact.facts().matcher_index().is_empty(),

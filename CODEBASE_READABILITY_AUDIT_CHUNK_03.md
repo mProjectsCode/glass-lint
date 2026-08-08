@@ -163,7 +163,7 @@ fields. The projector remains the single canonical fact-stream orchestrator;
 loop replay and bounded outcome accounting are unchanged. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-005 — Flow completion and exhaustion status has no single internal contract
+#### [x] READ-005 — Flow completion and exhaustion status has no single internal contract
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -194,7 +194,13 @@ profiling. Preserve the existing possible-versus-definite policy and the
 cross-pass behavior that clears evidence when the required complete analysis
 did not finish.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added crate-internal `FlowCompletion` with named bounded
+reason bits, explicit complete/incomplete queries, and merge semantics. Local
+projection, function effects, summaries, source propagation, and the
+cross-worklist now carry that value across phase boundaries instead of
+translating to unrelated booleans or phase-local enums. Existing counters and
+fail-closed evidence clearing remain phase-specific. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-006 — Frozen and overlay summary paths repeat representation dispatch
 
