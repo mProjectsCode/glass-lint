@@ -223,7 +223,7 @@ mod tests {
     use crate::{
         AnalysisLimits, Environment,
         analysis::Lowerer,
-        project::{DiagnosticCode, ResolutionRequestKind, SourceFile},
+        project::{ResolutionRequestKind, SourceFile},
     };
 
     fn lower(path: &str, source: &str) -> (ProjectRelativePath, LoweredSource) {
@@ -235,13 +235,12 @@ mod tests {
     }
 
     fn parse_failure(path: &str) -> ParseDiagnostic {
-        ParseDiagnostic {
-            code: DiagnosticCode::new("syntax_error").unwrap(),
-            message: "invalid syntax".into(),
-            filename: path.into(),
-            range: None,
-            failure: crate::parse::ParseFailureKind::Syntax,
-        }
+        ParseDiagnostic::new(
+            crate::parse::ParseFailureKind::Syntax,
+            "invalid syntax",
+            path,
+            None,
+        )
     }
 
     #[test]

@@ -160,22 +160,6 @@ impl AnalysisStatus {
     }
 }
 
-impl ParseFailureKind {
-    fn diagnostic(self) -> (DiagnosticKind, &'static str) {
-        match self {
-            Self::Syntax => (DiagnosticKind::SyntaxError, "source could not be parsed"),
-            Self::SourceTooLarge => (
-                DiagnosticKind::SourceTooLarge,
-                "source exceeds the analysis limit",
-            ),
-            Self::SyntaxDepth => (
-                DiagnosticKind::SyntaxDepthExceeded,
-                "source exceeds the nesting-depth analysis limit",
-            ),
-        }
-    }
-}
-
 impl AnalysisComponent {
     fn budget_diagnostic(self) -> (DiagnosticKind, &'static str) {
         match self {

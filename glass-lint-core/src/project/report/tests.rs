@@ -181,13 +181,12 @@ fn combine_reports_preserves_report_and_file_diagnostics() {
         Vec::new(),
         vec![Diagnostic::parse(
             ProjectRelativePath::new("broken.js").unwrap(),
-            crate::ParseDiagnostic {
-                code: crate::project::types::DiagnosticKind::SyntaxError.into(),
-                message: "invalid syntax".into(),
-                filename: "stale-parser-name.js".into(),
-                range: None,
-                failure: crate::parse::ParseFailureKind::Syntax,
-            },
+            crate::ParseDiagnostic::new(
+                crate::parse::ParseFailureKind::Syntax,
+                "invalid syntax",
+                "stale-parser-name.js",
+                None,
+            ),
         )],
     );
     let partial = AnalysisReport::new(

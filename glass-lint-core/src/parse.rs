@@ -13,7 +13,7 @@ use swc_ecma_transforms_typescript::strip;
 
 use crate::{
     MAX_SOURCE_BYTES, SourceLineIndex,
-    project::{DiagnosticCode, SourceFile},
+    project::{DiagnosticCode, SourceFile, types::DiagnosticKind},
 };
 
 /// Maximum syntactic nesting accepted before invoking recursive parser and
@@ -37,11 +37,44 @@ pub struct ParseDiagnostic {
     pub(crate) failure: ParseFailureKind,
 }
 
+impl ParseDiagnostic {
+    pub(crate) fn new(
+        failure: ParseFailureKind,
+        message: impl Into<String>,
+        filename: impl Into<String>,
+        range: Option<SourceRange>,
+    ) -> Self {
+        Self {
+            code: failure.diagnostic().0.into(),
+            message: message.into(),
+            filename: filename.into(),
+            range,
+            failure,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum ParseFailureKind {
     Syntax,
     SourceTooLarge,
     SyntaxDepth,
+}
+
+impl ParseFailureKind {
+    pub(crate) fn diagnostic(self) -> (DiagnosticKind, &'static str) {
+        match self {
+            Self::Syntax => (DiagnosticKind::SyntaxError, "source could not be parsed"),
+            Self::SourceTooLarge => (
+                DiagnosticKind::SourceTooLarge,
+                "source exceeds the analysis limit",
+            ),
+            Self::SyntaxDepth => (
+                DiagnosticKind::SyntaxDepthExceeded,
+                "source exceeds the nesting-depth analysis limit",
+            ),
+        }
+    }
 }
 
 /// Source languages accepted by the core parser.
@@ -131,13 +164,12 @@ impl SourceParser {
         if source.source().len() <= MAX_SOURCE_BYTES {
             return Ok(());
         }
-        Err(ParseDiagnostic {
-            code: crate::project::types::DiagnosticKind::SourceTooLarge.into(),
-            message: format!("source exceeds the {MAX_SOURCE_BYTES} byte analysis limit"),
-            filename: source.path().to_string(),
-            range: None,
-            failure: ParseFailureKind::SourceTooLarge,
-        })
+        Err(ParseDiagnostic::new(
+            ParseFailureKind::SourceTooLarge,
+            format!("source exceeds the {MAX_SOURCE_BYTES} byte analysis limit"),
+            source.path().to_string(),
+            None,
+        ))
     }
 
     pub(crate) fn parse(self) -> Result<ParsedSource, ParseDiagnostic> {
@@ -195,23 +227,22 @@ impl SourceParser {
     }
 
     fn syntax_depth_diagnostic(&self) -> ParseDiagnostic {
-        ParseDiagnostic {
-            code: crate::project::types::DiagnosticKind::SyntaxDepthExceeded.into(),
-            message: format!(
+        ParseDiagnostic::new(
+            ParseFailureKind::SyntaxDepth,
+            format!(
                 "source exceeds the {} nesting-depth analysis limit",
                 self.depth_guard.max_depth()
             ),
-            filename: self.source.path().to_string(),
-            range: None,
-            failure: ParseFailureKind::SyntaxDepth,
-        }
+            self.source.path().to_string(),
+            None,
+        )
     }
 
     fn parser_diagnostic(&self, error: &swc_ecma_parser::error::Error) -> ParseDiagnostic {
         let range = self.parser_range(error.span());
-        ParseDiagnostic {
-            code: crate::project::types::DiagnosticKind::SyntaxError.into(),
-            message: format!(
+        ParseDiagnostic::new(
+            ParseFailureKind::Syntax,
+            format!(
                 "{} parse error: {}",
                 match self.source.language() {
                     SourceLanguage::JavaScript => "JavaScript",
@@ -219,10 +250,9 @@ impl SourceParser {
                 },
                 error.kind().msg()
             ),
-            filename: self.source.path().to_string(),
+            self.source.path().to_string(),
             range,
-            failure: ParseFailureKind::Syntax,
-        }
+        )
     }
 
     fn parser_range(&self, span: swc_common::Span) -> Option<SourceRange> {

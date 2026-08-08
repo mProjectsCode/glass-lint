@@ -51,7 +51,7 @@ serialized field names and catalog order through the accessors.
 
 ### Parse failure classification
 
-#### [ ] READ-039 — Make one type own parse-failure classification and codes
+#### [x] READ-039 — Make one type own parse-failure classification and codes
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -83,7 +83,10 @@ once; have status assembly call the same projection instead of maintaining a
 second match table. Retain the stable external diagnostic codes and the
 internal distinction needed to suppress or classify later analysis.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved failure-kind diagnostic projection into `parse.rs` and
+added a typed `ParseDiagnostic::new` constructor that derives the stable code
+from the failure kind. Parser, status assembly, and test fixtures now share
+that single classification owner.
 
 ### Parser and syntax-report vocabulary
 
