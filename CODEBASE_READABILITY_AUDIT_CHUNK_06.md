@@ -130,7 +130,7 @@ methods consume that object, eliminating repeated event redispatch while
 preserving borrowed selections, unsupported combinations, package matching,
 rooted-global matching, and overlay behavior. Verified with `make fmt && make ci`.
 
-#### [ ] READ-004 — Constrained matching coordinates preparation and two execution modes in one state protocol
+#### [x] READ-004 — Constrained matching coordinates preparation and two execution modes in one state protocol
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -164,7 +164,12 @@ capacity handling. Preserve bounded fallback work, operation counters,
 duplicate-constraint sharing, dynamic-value rejection, and the current
 fail-closed behavior for missing effective arguments.
 
-**Fix Applied:** None so far.
+**Fix Applied:** A private `ConstrainedEvaluation` now owns constrained-root
+preparation and the indexed-then-fallback execution phases. Each prepared root
+uses an explicit `Indexed`, `Fallback`, or `Published` state, with centralized
+fallback collection and evidence publication. This preserves preparation
+sharing, bounded fallback scanning, operation accounting, and fail-closed
+unsupported argument behavior. Verified with `make fmt && make ci`.
 
 #### [ ] READ-005 — Normal and constrained matchers duplicate evidence-group construction
 

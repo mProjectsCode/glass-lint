@@ -1,5 +1,7 @@
 use std::{borrow::Borrow, collections::BTreeMap};
 
+use glass_lint_datastructures::NameTable;
+
 use crate::{
     analysis::{
         facts::{FactStream, Frozen, SemanticFacts},
@@ -33,11 +35,101 @@ struct ConstrainedRoot<'a> {
     evidence: &'a EvidenceDescriptor,
 }
 
+enum ConstrainedState {
+    Indexed,
+    Fallback(Vec<Occurrence>),
+    Published,
+}
+
 struct PreparedConstrainedRoot<'a> {
     root: ConstrainedRoot<'a>,
     paths: PreparedClausePaths,
-    fallback: bool,
-    occurrences: Vec<Occurrence>,
+    state: ConstrainedState,
+}
+
+impl<'a> PreparedConstrainedRoot<'a> {
+    fn new(root: &ConstrainedRoot<'a>, names: &NameTable) -> Self {
+        Self {
+            root: ConstrainedRoot {
+                rule: root.rule,
+                identity: root.identity,
+                event: root.event,
+                constraints: root.constraints,
+                evidence: root.evidence,
+            },
+            paths: PreparedClausePaths::new(root.identity, root.event, names),
+            state: ConstrainedState::Indexed,
+        }
+    }
+
+    fn mark_fallback(&mut self) {
+        self.state = ConstrainedState::Fallback(Vec::new());
+    }
+
+    fn is_fallback(&self) -> bool {
+        matches!(self.state, ConstrainedState::Fallback(_))
+    }
+
+    fn record_fallback(&mut self, occurrence: Occurrence) {
+        if let ConstrainedState::Fallback(occurrences) = &mut self.state {
+            occurrences.push(occurrence);
+        }
+    }
+
+    fn publish(&mut self, evidence: &mut RuleEvidenceTable, occurrences: Vec<Occurrence>) {
+        if !occurrences.is_empty() {
+            push_owned_rule_evidence(
+                evidence,
+                self.root.rule,
+                self.root.evidence.kind,
+                self.root.evidence.symbol.clone(),
+                occurrences,
+            );
+        }
+        self.state = ConstrainedState::Published;
+    }
+
+    fn publish_fallback(&mut self, evidence: &mut RuleEvidenceTable) {
+        match std::mem::replace(&mut self.state, ConstrainedState::Published) {
+            ConstrainedState::Fallback(occurrences) => self.publish(evidence, occurrences),
+            state => {
+                self.state = state;
+            }
+        }
+    }
+}
+
+struct ConstrainedEvaluation<'a> {
+    roots: Vec<PreparedConstrainedRoot<'a>>,
+}
+
+impl<'a> ConstrainedEvaluation<'a> {
+    fn prepare(roots: &[(usize, &'a PhysicalRoot)], names: &NameTable) -> Self {
+        let constrained: Vec<ConstrainedRoot<'_>> = roots
+            .iter()
+            .filter_map(|(rule_index, root)| match root {
+                PhysicalRoot::ConstrainedScan {
+                    identity,
+                    event,
+                    constraints,
+                    evidence,
+                } => Some(ConstrainedRoot {
+                    rule: RuleIndex::new(*rule_index),
+                    identity,
+                    event,
+                    constraints,
+                    evidence,
+                }),
+                _ => None,
+            })
+            .collect();
+        Self {
+            roots: constrained
+                .iter()
+                .map(|root| PreparedConstrainedRoot::new(root, names))
+                .collect(),
+        }
+    }
 }
 
 /// The matcher artifact borrowed from one immutable semantic artifact.
@@ -234,45 +326,8 @@ fn compute_constrained_inner(
     let values = stream.values();
     let evaluator = MatcherEvaluator::new(names, values, identities, result_identities);
 
-    // Extract only ConstrainedScan roots (the constrained path only handles
-    // these; other root types are handled by the physical plan executor).
-    let constrained: Vec<ConstrainedRoot<'_>> = roots
-        .iter()
-        .filter_map(|(rule_index, root)| match root {
-            PhysicalRoot::ConstrainedScan {
-                identity,
-                event,
-                constraints,
-                evidence,
-            } => Some(ConstrainedRoot {
-                rule: RuleIndex::new(*rule_index),
-                identity,
-                event,
-                constraints,
-                evidence,
-            }),
-            _ => None,
-        })
-        .collect();
-
-    let mut prepared: Vec<PreparedConstrainedRoot<'_>> = constrained
-        .iter()
-        .map(|root| PreparedConstrainedRoot {
-            paths: PreparedClausePaths::new(root.identity, root.event, names),
-            root: ConstrainedRoot {
-                rule: root.rule,
-                identity: root.identity,
-                event: root.event,
-                constraints: root.constraints,
-                evidence: root.evidence,
-            },
-            fallback: false,
-            occurrences: Vec::new(),
-        })
-        .collect();
-
-    evaluate_indexed_roots(
-        &mut prepared,
+    let mut evaluation = ConstrainedEvaluation::prepare(roots, names);
+    evaluation.evaluate_indexed_roots(
         stream,
         indexes,
         artifact.overlay(),
@@ -280,97 +335,79 @@ fn compute_constrained_inner(
         operations,
         evidence,
     );
-    evaluate_fallback_roots(&mut prepared, stream, &evaluator, operations, evidence);
+    evaluation.evaluate_fallback_roots(stream, &evaluator, operations, evidence);
 }
 
 /// Evaluate roots whose identity can use the occurrence index, marking the
 /// remaining roots for the bounded linear fallback pass.
-fn evaluate_indexed_roots(
-    prepared: &mut [PreparedConstrainedRoot<'_>],
-    stream: &FactStream<Frozen>,
-    indexes: &OccurrenceIndexes,
-    overlay: Option<&LinkedOccurrenceView<'_>>,
-    evaluator: &MatcherEvaluator<'_>,
-    operations: &mut EvaluationOperations,
-    evidence: &mut RuleEvidenceTable,
-) {
-    for prepared_root in prepared {
-        let root = &prepared_root.root;
-        let Some(candidates) =
-            indexes.occurrences_for_indexed(root.identity, root.event, overlay, stream.names())
-        else {
-            prepared_root.fallback = true;
-            continue;
-        };
-        let matched: Vec<_> = candidates
-            .into_iter()
-            .filter_map(|occurrence| {
-                stream
-                    .fact(occurrence.event())
-                    .filter(|fact| {
-                        evaluator.fact_matches_clause(
-                            fact,
-                            root.identity,
-                            root.event,
-                            root.constraints,
-                            &prepared_root.paths,
-                            operations,
-                        )
-                    })
-                    .map(|_| occurrence)
-            })
-            .collect();
-        if !matched.is_empty() {
-            push_owned_rule_evidence(
-                evidence,
-                root.rule,
-                root.evidence.kind,
-                root.evidence.symbol.clone(),
-                matched,
-            );
+impl ConstrainedEvaluation<'_> {
+    fn evaluate_indexed_roots(
+        &mut self,
+        stream: &FactStream<Frozen>,
+        indexes: &OccurrenceIndexes,
+        overlay: Option<&LinkedOccurrenceView<'_>>,
+        evaluator: &MatcherEvaluator<'_>,
+        operations: &mut EvaluationOperations,
+        evidence: &mut RuleEvidenceTable,
+    ) {
+        for prepared_root in &mut self.roots {
+            let root = &prepared_root.root;
+            let Some(candidates) =
+                indexes.occurrences_for_indexed(root.identity, root.event, overlay, stream.names())
+            else {
+                prepared_root.mark_fallback();
+                continue;
+            };
+            let matched: Vec<_> = candidates
+                .into_iter()
+                .filter_map(|occurrence| {
+                    stream
+                        .fact(occurrence.event())
+                        .filter(|fact| {
+                            evaluator.fact_matches_clause(
+                                fact,
+                                root.identity,
+                                root.event,
+                                root.constraints,
+                                &prepared_root.paths,
+                                operations,
+                            )
+                        })
+                        .map(|_| occurrence)
+                })
+                .collect();
+            prepared_root.publish(evidence, matched);
         }
     }
-}
 
-/// Scan roots that could not use an index, then publish their evidence.
-fn evaluate_fallback_roots(
-    prepared: &mut [PreparedConstrainedRoot<'_>],
-    stream: &FactStream<Frozen>,
-    evaluator: &MatcherEvaluator<'_>,
-    operations: &mut EvaluationOperations,
-    evidence: &mut RuleEvidenceTable,
-) {
-    if !prepared.iter().any(|root| root.fallback) {
-        return;
-    }
-    for fact in stream.facts() {
-        for prepared_root in prepared.iter_mut().filter(|root| root.fallback) {
-            let root = &prepared_root.root;
-            if evaluator.fact_matches_clause(
-                fact,
-                root.identity,
-                root.event,
-                root.constraints,
-                &prepared_root.paths,
-                operations,
-            ) {
-                prepared_root
-                    .occurrences
-                    .push(Occurrence::new(fact.id, fact.span));
+    /// Scan roots that could not use an index, then publish their evidence.
+    fn evaluate_fallback_roots(
+        &mut self,
+        stream: &FactStream<Frozen>,
+        evaluator: &MatcherEvaluator<'_>,
+        operations: &mut EvaluationOperations,
+        evidence: &mut RuleEvidenceTable,
+    ) {
+        if !self.roots.iter().any(PreparedConstrainedRoot::is_fallback) {
+            return;
+        }
+        for fact in stream.facts() {
+            for prepared_root in self.roots.iter_mut().filter(|root| root.is_fallback()) {
+                let root = &prepared_root.root;
+                if evaluator.fact_matches_clause(
+                    fact,
+                    root.identity,
+                    root.event,
+                    root.constraints,
+                    &prepared_root.paths,
+                    operations,
+                ) {
+                    prepared_root.record_fallback(Occurrence::new(fact.id, fact.span));
+                }
             }
         }
-    }
-    for prepared_root in prepared.iter_mut().filter(|root| root.fallback) {
-        let root = &prepared_root.root;
-        let occurrences = std::mem::take(&mut prepared_root.occurrences);
-        if !occurrences.is_empty() {
-            push_owned_rule_evidence(
-                evidence,
-                root.rule,
-                root.evidence.kind,
-                root.evidence.symbol.clone(),
-                occurrences,
-            );
+        for prepared_root in self.roots.iter_mut().filter(|root| root.is_fallback()) {
+            prepared_root.publish_fallback(evidence);
         }
     }
 }
