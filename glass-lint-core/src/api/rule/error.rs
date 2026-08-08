@@ -3,6 +3,7 @@
 use std::{error::Error, fmt};
 
 use super::query::{QueryDiagnostic, limits};
+use crate::RuleId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Construction-time rule metadata or matcher validation failure.
@@ -130,20 +131,20 @@ pub enum MatcherBuildError {
 /// Catalog-level rule identity failure.
 pub enum CompiledCatalogError {
     /// A rule declaration could not be lowered into a semantic query.
-    InvalidMatcher { rule_id: String, message: String },
+    InvalidMatcher { rule_id: RuleId, message: String },
     /// A rule query failed compilation with a structured diagnostic.
     InvalidQuery {
-        rule_id: String,
+        rule_id: RuleId,
         diagnostic: QueryDiagnostic,
     },
     /// A compiler invariant failed while compiling a rule.
     CompilerInvariant {
-        rule_id: String,
+        rule_id: RuleId,
         diagnostic: CompilerInvariantDiagnostic,
     },
     /// A normalized query could not form a valid physical plan.
     InvalidPhysicalPlan {
-        rule_id: String,
+        rule_id: RuleId,
         diagnostic: PhysicalPlanDiagnostic,
     },
 }

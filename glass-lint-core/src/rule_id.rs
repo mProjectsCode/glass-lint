@@ -20,6 +20,25 @@ impl RuleId {
         Self::valid_part(value, true)
     }
 
+    /// Validate the provider namespace portion of a rule ID.
+    pub fn valid_provider(value: &str) -> bool {
+        Self::valid_part(value, false)
+    }
+
+    /// Construct a namespaced rule ID from validated provider and local name
+    /// parts.
+    pub fn from_provider_and_name(
+        provider: &str,
+        name: &str,
+    ) -> Result<Self, crate::ProviderCatalogError> {
+        if !Self::valid_provider(provider) || !Self::valid_name(name) {
+            return Err(crate::ProviderCatalogError::InvalidRuleId(format!(
+                "{provider}:{name}"
+            )));
+        }
+        Ok(Self(format!("{provider}:{name}")))
+    }
+
     /// Parse and validate a namespaced rule ID.
     pub fn parse(value: impl Into<String>) -> Result<Self, crate::ProviderCatalogError> {
         let value = value.into();

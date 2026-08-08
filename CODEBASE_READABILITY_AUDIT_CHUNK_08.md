@@ -18,7 +18,7 @@ module-pattern type also promises a broader contract than it implements.
 
 ## Findings
 
-#### [ ] READ-001 — Catalog identity is lost and rebuilt through sentinel strings
+#### [x] READ-001 — Catalog identity is lost and rebuilt through sentinel strings
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -50,7 +50,13 @@ and `expect` arms. Keep namespaced uniqueness, deterministic declaration
 order, provider-local IDs, and the no-recompilation guarantee of catalog
 combination.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `RuleId` now validates provider namespaces and constructs
+fully-qualified IDs from provider/local parts. `CompiledCatalogError` retains
+the validated `RuleId` through compilation, so `RuleCatalog::new` maps
+compiler failures directly without string reparsing or `expect`; provider
+validation no longer uses a placeholder ID. Namespaced uniqueness, stable
+ordering, and no-recompilation catalog combination are preserved. Verified
+with `make fmt && make ci`.
 
 #### [ ] READ-002 — `RuleCatalog` stores a derived index beside its source records
 

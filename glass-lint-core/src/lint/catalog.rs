@@ -48,12 +48,14 @@ impl RuleCatalog {
         rules: Vec<Rule>,
     ) -> Result<Self, ProviderCatalogError> {
         let provider = provider.into();
-        RuleId::parse(format!("{provider}:placeholder"))?;
+        if !RuleId::valid_provider(&provider) {
+            return Err(ProviderCatalogError::InvalidRuleId(provider));
+        }
 
         let rules_and_ids = rules
             .into_iter()
             .map(|rule| {
-                let rule_id = RuleId::parse(format!("{provider}:{}", rule.id()))?;
+                let rule_id = RuleId::from_provider_and_name(&provider, rule.id())?;
                 Ok((rule_id, rule))
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -61,32 +63,20 @@ impl RuleCatalog {
         // Compile once into immutable records (no declarations retained).
         let records = compile_records(&rules_and_ids).map_err(|error| match error {
             CompiledCatalogError::InvalidMatcher { rule_id, message } => {
-                ProviderCatalogError::InvalidRule(
-                    RuleId::parse(rule_id).expect("compiler preserves validated rule ID"),
-                    message,
-                )
+                ProviderCatalogError::InvalidRule(rule_id, message)
             }
             CompiledCatalogError::CompilerInvariant {
                 rule_id,
                 diagnostic,
-            } => ProviderCatalogError::InvalidRule(
-                RuleId::parse(rule_id).expect("compiler preserves validated rule ID"),
-                diagnostic.to_string(),
-            ),
+            } => ProviderCatalogError::InvalidRule(rule_id, diagnostic.to_string()),
             CompiledCatalogError::InvalidPhysicalPlan {
                 rule_id,
                 diagnostic,
-            } => ProviderCatalogError::InvalidRule(
-                RuleId::parse(rule_id).expect("compiler preserves validated rule ID"),
-                diagnostic.to_string(),
-            ),
+            } => ProviderCatalogError::InvalidRule(rule_id, diagnostic.to_string()),
             CompiledCatalogError::InvalidQuery {
                 rule_id,
                 diagnostic,
-            } => ProviderCatalogError::InvalidRule(
-                RuleId::parse(rule_id).expect("compiler preserves validated rule ID"),
-                diagnostic.to_string(),
-            ),
+            } => ProviderCatalogError::InvalidRule(rule_id, diagnostic.to_string()),
         })?;
 
         Ok(Self { records })
