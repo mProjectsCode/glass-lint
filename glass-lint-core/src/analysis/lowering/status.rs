@@ -67,6 +67,9 @@ pub enum IncompleteReason {
         expected: usize,
         actual: usize,
     },
+    RuleSelectionInvalid {
+        reason: String,
+    },
     ScopeShapeMismatch {
         count: usize,
     },
@@ -269,6 +272,10 @@ impl IncompleteReason {
             Self::EvidenceCapacityMismatch { expected, actual } => (
                 DiagnosticKind::EvidenceCapacityMismatch,
                 format!("matcher evidence capacity mismatch; expected={expected}, actual={actual}"),
+            ),
+            Self::RuleSelectionInvalid { reason } => (
+                DiagnosticKind::RuleSelectionInvalid,
+                format!("compiled rule selection is invalid: {reason}"),
             ),
             Self::ScopeShapeMismatch { count } => (
                 DiagnosticKind::ScopeShapeMismatch,

@@ -51,7 +51,7 @@ regression covers the typed rejection and stable project diagnostic.
 
 ### Project matcher query error surface
 
-#### [ ] READ-026 — Keep invalid project matcher queries fallible
+#### [x] READ-026 — Keep invalid project matcher queries fallible
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -76,7 +76,11 @@ document the intentional omission. Keep owner-token protection for foreign
 models and the sorted/validated selection invariant; do not erase those
 distinctions inside the linked model.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made the checked project evidence query the canonical
+crate-internal API and retained an explicitly named lossy adapter only in
+report assembly. Rule selection validation now returns its typed error from
+classification; the report boundary records invalid selections as a
+`rule_selection_invalid` diagnostic instead of panicking.
 
 ### Projection budgets and metrics
 

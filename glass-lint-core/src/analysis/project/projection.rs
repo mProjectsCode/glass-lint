@@ -65,7 +65,8 @@ pub fn assemble_classification_results(
                 let Some(record) = records.get(index) else {
                     continue;
                 };
-                let evidence = matcher_catalog.evidence_for(module, *rule_index, evidence_limit);
+                let evidence =
+                    matcher_catalog.evidence_for_lossy(module, *rule_index, evidence_limit);
                 if evidence.is_empty() {
                     continue;
                 }
@@ -406,7 +407,7 @@ impl ProjectMatcherIdentity {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum EvidenceQueryError {
+pub(in crate::analysis) enum EvidenceQueryError {
     ForeignModel,
     UnselectedRule,
     UnknownRule,
@@ -721,13 +722,24 @@ impl ProjectMatcherModel<'_, '_> {
     }
 
     /// Return deterministic, deduplicated evidence for a selected rule.
-    pub fn evidence_for(
+    pub(in crate::analysis) fn evidence_for(
+        &self,
+        module: ProjectModuleHandle<'_>,
+        rule_index: RuleIndex,
+        evidence_limit: usize,
+    ) -> Result<Vec<ClassificationEvidence>, EvidenceQueryError> {
+        self.evidence_for_checked(module, rule_index, evidence_limit)
+    }
+
+    /// Report assembly intentionally treats invalid handles as omitted
+    /// evidence after it has completed the checked query at this boundary.
+    fn evidence_for_lossy(
         &self,
         module: ProjectModuleHandle<'_>,
         rule_index: RuleIndex,
         evidence_limit: usize,
     ) -> Vec<ClassificationEvidence> {
-        self.evidence_for_checked(module, rule_index, evidence_limit)
+        self.evidence_for(module, rule_index, evidence_limit)
             .unwrap_or_default()
     }
 

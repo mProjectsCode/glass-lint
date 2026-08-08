@@ -25,7 +25,7 @@ use crate::{
     },
     api::{
         classification::{ClassificationResult, RuleIndex},
-        compiler::{CompiledRuleRecord, CompiledRuleSelection},
+        compiler::{CompiledRuleRecord, CompiledRuleSelection, rule::RuleSelectionError},
     },
     project::{
         AnalysisDiagnostic, LinkedModuleTarget, ModuleId, ProjectPhaseError, ProjectRelativePath,
@@ -457,24 +457,24 @@ impl ProjectSemanticModel {
         records: &[CompiledRuleRecord],
         selected: &[RuleIndex],
         evidence_limit: usize,
-    ) -> (
-        BTreeMap<ModuleId, ClassificationResult>,
-        ProjectionOutcome,
-        crate::analysis::trace::TraceArena,
-    ) {
+    ) -> Result<
+        (
+            BTreeMap<ModuleId, ClassificationResult>,
+            ProjectionOutcome,
+            crate::analysis::trace::TraceArena,
+        ),
+        RuleSelectionError,
+    > {
+        let selection = CompiledRuleSelection::new(records, selected)?;
         let (matcher_catalog, outcome, arena) =
-            crate::analysis::project::projection::project_for_classification(
-                self,
-                CompiledRuleSelection::new(records, selected)
-                    .expect("linter supplies a validated rule selection"),
-            );
+            crate::analysis::project::projection::project_for_classification(self, selection);
         let results = crate::analysis::project::projection::assemble_classification_results(
             &matcher_catalog,
             records,
             selected,
             evidence_limit,
         );
-        (results, outcome, arena)
+        Ok((results, outcome, arena))
     }
 }
 

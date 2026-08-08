@@ -225,12 +225,13 @@ mod tests {
         assert!(
             !matcher
                 .evidence_for(first_module, rule_index, usize::MAX)
+                .unwrap()
                 .is_empty()
         );
         assert!(
             matcher
                 .evidence_for(second_module, rule_index, usize::MAX)
-                .is_empty()
+                .is_err()
         );
     }
 }

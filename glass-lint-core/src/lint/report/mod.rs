@@ -179,12 +179,27 @@ impl LinkedReport {
             linking,
         } = self;
         let matching_start = Instant::now();
-        let (classifications, projection_outcome, trace_arena) = project
+        let (classifications, projection_outcome, trace_arena) = match project
             .classify_with_evidence_limit(
                 assembly.catalog.compiled(),
                 assembly.enabled,
                 assembly.evidence_limit,
-            );
+            ) {
+            Ok(result) => result,
+            Err(error) => {
+                session.status.record(
+                    StatusScope::Project,
+                    IncompleteReason::RuleSelectionInvalid {
+                        reason: format!("{error:?}"),
+                    },
+                );
+                (
+                    BTreeMap::new(),
+                    ProjectionOutcome::default(),
+                    TraceArena::new(0),
+                )
+            }
+        };
         session.set_trace_arena(trace_arena);
         session.record_projection_status(&project, &projection_outcome);
         let matching = matching_start.elapsed();
