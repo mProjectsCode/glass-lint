@@ -71,7 +71,7 @@ pub fn assemble_classification_results(
                     continue;
                 }
 
-                result.capabilities.push(MatchedCapability::new(
+                result.push_capability(MatchedCapability::new(
                     *rule_index,
                     record.description.clone(),
                     record.severity,

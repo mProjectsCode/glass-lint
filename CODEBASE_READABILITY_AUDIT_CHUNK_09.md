@@ -17,7 +17,7 @@ than matcher-policy changes.
 
 ### Classification result ownership
 
-#### [ ] READ-034 — Keep classification result storage behind its collection API
+#### [x] READ-034 — Keep classification result storage behind its collection API
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -44,7 +44,10 @@ owned by classification assembly, and keep catalog-order and evidence
 invariants there. Preserve `Default` for internal accumulation if needed, but
 do not expose the backing `Vec` as the external construction API.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `ClassificationResult` capability storage private and
+added the crate-visible `push_capability` assembly method. Project projection
+now appends through that owner while public consumers retain the read-only
+slice accessor.
 
 ### Compiler identity representation
 
