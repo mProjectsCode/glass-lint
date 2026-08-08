@@ -325,6 +325,19 @@ fn combine_reports_rejects_tool_version_mismatch() {
 }
 
 #[test]
+fn combine_reports_rejects_duplicate_file_paths_transactionally() {
+    let first = report("same.js", ReportCompletion::Complete);
+    let second = report("same.js", ReportCompletion::Complete);
+
+    assert_eq!(
+        AnalysisReport::combine([first, second]),
+        Err(ReportCombineError::DuplicateFilePath {
+            path: ProjectRelativePath::new("same.js").unwrap(),
+        })
+    );
+}
+
+#[test]
 fn public_report_transformations_preserve_diagnostic_order() {
     let later_code = DiagnosticCode::new("z_project_diagnostic").unwrap();
     let earlier_code = DiagnosticCode::new("a_project_diagnostic").unwrap();

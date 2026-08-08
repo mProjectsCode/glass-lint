@@ -1,5 +1,7 @@
 //! Project finding assembly and deterministic evidence ownership.
 
+use std::collections::BTreeSet;
+
 use crate::project::AnalysisReport;
 
 /// Why independently produced reports could not be combined losslessly.
@@ -11,6 +13,10 @@ pub enum ReportCombineError {
     SchemaMismatch { expected: u32, actual: u32 },
     /// Reports from different tool versions are not silently mixed.
     ToolVersionMismatch { expected: String, actual: String },
+    /// Two input reports contain the same normalized file path.
+    DuplicateFilePath {
+        path: crate::project::ProjectRelativePath,
+    },
 }
 
 impl std::fmt::Display for ReportCombineError {
@@ -25,6 +31,9 @@ impl std::fmt::Display for ReportCombineError {
                 formatter,
                 "report tool version mismatch: expected {expected}, found {actual}"
             ),
+            Self::DuplicateFilePath { path } => {
+                write!(formatter, "duplicate report file path: {path}")
+            }
         }
     }
 }
@@ -47,23 +56,38 @@ impl AnalysisReport {
     /// assert_eq!(combined.files().len(), 2);
     /// ```
     pub fn combine(reports: impl IntoIterator<Item = Self>) -> Result<Self, ReportCombineError> {
+        let reports: Vec<Self> = reports.into_iter().collect();
+        let Some(first) = reports.first() else {
+            return Err(ReportCombineError::Empty);
+        };
+        let mut paths = BTreeSet::new();
+        for report in &reports {
+            if report.schema_version() != first.schema_version() {
+                return Err(ReportCombineError::SchemaMismatch {
+                    expected: first.schema_version(),
+                    actual: report.schema_version(),
+                });
+            }
+            if report.tool_version() != first.tool_version() {
+                return Err(ReportCombineError::ToolVersionMismatch {
+                    expected: first.tool_version().into(),
+                    actual: report.tool_version().into(),
+                });
+            }
+            for file in report.files() {
+                if !paths.insert(file.path().clone()) {
+                    return Err(ReportCombineError::DuplicateFilePath {
+                        path: file.path().clone(),
+                    });
+                }
+            }
+        }
+
         let mut reports = reports.into_iter();
         let Some(mut combined) = reports.next() else {
             return Err(ReportCombineError::Empty);
         };
         for report in reports {
-            if report.schema_version() != combined.schema_version() {
-                return Err(ReportCombineError::SchemaMismatch {
-                    expected: combined.schema_version(),
-                    actual: report.schema_version(),
-                });
-            }
-            if report.tool_version() != combined.tool_version() {
-                return Err(ReportCombineError::ToolVersionMismatch {
-                    expected: combined.tool_version().into(),
-                    actual: report.tool_version().into(),
-                });
-            }
             combined = combined.merge(report);
         }
         Ok(combined.finalize())

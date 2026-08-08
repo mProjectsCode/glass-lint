@@ -53,7 +53,7 @@ behavior, and document the batch atomicity.
 
 ### Combined report identity
 
-#### [ ] READ-043 — Reject or explicitly merge duplicate file paths when combining reports
+#### [x] READ-043 — Reject or explicitly merge duplicate file paths when combining reports
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -82,7 +82,11 @@ transactional no-partial-result behavior. Do not add an analysis identity or
 same-file merge policy without a current use case; keep normal project
 assembly's one-file-per-normalized-path contract and deterministic ordering.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `AnalysisReport::combine` now stages all input reports,
+validates schema and tool identity, and rejects duplicate normalized file paths
+with a typed `DuplicateFilePath` error before merging any report contents.
+Added a transactional duplicate-path regression. Verified with
+`cargo test -p glass-lint-core project::report` and `make fmt && make ci`.
 
 ## Systemic Themes
 
