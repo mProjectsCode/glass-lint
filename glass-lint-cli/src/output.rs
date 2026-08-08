@@ -103,12 +103,12 @@ fn write_rules_to<W: Write>(config: &Config, metadata: &[RuleMetadata], out: &mu
         ]);
         for rule in metadata {
             table.push(Row::new([
-                rule.id.to_string(),
-                severity_style(rule.default_severity)
+                rule.id().to_string(),
+                severity_style(rule.default_severity())
                     .force_styling(color)
-                    .apply_to(rule.default_severity)
+                    .apply_to(rule.default_severity())
                     .to_string(),
-                rule.description.clone(),
+                rule.description().to_owned(),
             ]))?;
         }
         table.write(out)?;

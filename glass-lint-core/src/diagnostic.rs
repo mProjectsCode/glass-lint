@@ -244,13 +244,45 @@ impl SourceLineIndex {
 /// Provider rule metadata exposed to front ends and integrations.
 pub struct RuleMetadata {
     /// Stable namespaced rule identifier.
-    pub id: RuleId,
+    id: RuleId,
     /// Provider-facing description of what the rule detects.
-    pub description: String,
+    description: String,
     /// Generated explanations of the validated query declarations.
-    pub query_explanations: Vec<String>,
+    query_explanations: Vec<String>,
     /// Default severity assigned when the rule reports a finding.
-    pub default_severity: Severity,
+    default_severity: Severity,
+}
+
+impl RuleMetadata {
+    pub(crate) fn from_catalog(
+        id: RuleId,
+        description: String,
+        query_explanations: Vec<String>,
+        default_severity: Severity,
+    ) -> Self {
+        Self {
+            id,
+            description,
+            query_explanations,
+            default_severity,
+        }
+    }
+
+    pub fn id(&self) -> &RuleId {
+        &self.id
+    }
+
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+
+    pub fn query_explanations(&self) -> &[String] {
+        &self.query_explanations
+    }
+
+    pub fn default_severity(&self) -> Severity {
+        self.default_severity
+    }
 }
 
 #[cfg(test)]

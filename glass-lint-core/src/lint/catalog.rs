@@ -113,11 +113,13 @@ impl RuleCatalog {
     pub fn metadata(&self) -> Vec<RuleMetadata> {
         self.records
             .iter()
-            .map(|record| RuleMetadata {
-                id: record.rule_id.clone(),
-                description: record.description.clone(),
-                query_explanations: record.query_explanations.clone(),
-                default_severity: record.severity,
+            .map(|record| {
+                RuleMetadata::from_catalog(
+                    record.rule_id.clone(),
+                    record.description.clone(),
+                    record.query_explanations.clone(),
+                    record.severity,
+                )
             })
             .collect()
     }

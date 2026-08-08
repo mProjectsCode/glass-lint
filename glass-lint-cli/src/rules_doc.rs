@@ -43,9 +43,10 @@ pub fn markdown() -> String {
             let _ = writeln!(
                 document,
                 "#### `{}`\n\nDefault severity: `{}`\n\nQueries:\n",
-                rule.id, rule.default_severity
+                rule.id(),
+                rule.default_severity()
             );
-            for explanation in rule.query_explanations {
+            for explanation in rule.query_explanations() {
                 let _ = writeln!(document, "- {explanation}");
             }
             document.push('\n');

@@ -132,7 +132,7 @@ mod tests {
         assert!(
             catalog
                 .iter()
-                .all(|rule| rule.id.as_str().starts_with("obsidian:"))
+                .all(|rule| rule.id().as_str().starts_with("obsidian:"))
         );
         let environment = obsidian_environment();
         assert!(environment.global_bindings().any(|name| name == "app"));
@@ -155,17 +155,17 @@ mod tests {
         assert!(
             catalog
                 .iter()
-                .any(|rule| rule.id.as_str() == "obsidian:plugins.access")
+                .any(|rule| rule.id().as_str() == "obsidian:plugins.access")
         );
         assert!(
             catalog
                 .iter()
-                .any(|rule| rule.id.as_str() == "obsidian:plugins.enable-disable")
+                .any(|rule| rule.id().as_str() == "obsidian:plugins.enable-disable")
         );
         assert!(
             catalog
                 .iter()
-                .any(|rule| rule.id.as_str() == "obsidian:plugins.load-unload")
+                .any(|rule| rule.id().as_str() == "obsidian:plugins.load-unload")
         );
         assert_eq!(
             PLUGIN_API_SOURCE,

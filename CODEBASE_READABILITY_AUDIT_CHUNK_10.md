@@ -16,7 +16,7 @@ ECMAScript feature report cannot represent.
 
 ### Report metadata ownership
 
-#### [ ] READ-038 — Keep rule metadata storage behind its report API
+#### [x] READ-038 — Keep rule metadata storage behind its report API
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -44,7 +44,10 @@ private fields, and provide a catalog-owned constructor (or a crate-private
 conversion) so only validated compiled records can create metadata. Preserve
 the current catalog order and JSON shape.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `RuleMetadata` fields private, added read-only accessors,
+and introduced a crate-private catalog constructor. Catalog compilation now
+owns metadata creation while CLI and provider consumers preserve the existing
+serialized field names and catalog order through the accessors.
 
 ### Parse failure classification
 
