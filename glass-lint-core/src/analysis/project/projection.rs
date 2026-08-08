@@ -397,6 +397,14 @@ impl ProjectMatcherIdentity {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum EvidenceQueryError {
+    ForeignModel,
+    UnselectedRule,
+    UnknownRule,
+    UnknownModule,
+}
+
 /// An opaque reference to a module retained by one projection model.
 #[derive(Clone, Copy, Debug)]
 pub struct ProjectModuleHandle<'project> {
@@ -684,21 +692,31 @@ impl ProjectMatcherModel<'_, '_> {
         rule_index: RuleIndex,
         evidence_limit: usize,
     ) -> Vec<ClassificationEvidence> {
+        self.evidence_for_checked(module, rule_index, evidence_limit)
+            .unwrap_or_default()
+    }
+
+    fn evidence_for_checked(
+        &self,
+        module: ProjectModuleHandle<'_>,
+        rule_index: RuleIndex,
+        evidence_limit: usize,
+    ) -> Result<Vec<ClassificationEvidence>, EvidenceQueryError> {
         if !self.matchers.is_selected(rule_index) {
-            return Vec::new();
+            return Err(EvidenceQueryError::UnselectedRule);
         }
         if module.owner != self.identity {
-            return Vec::new();
+            return Err(EvidenceQueryError::ForeignModel);
         }
         let Some(matcher) = self.matchers.get(rule_index) else {
-            return Vec::new();
+            return Err(EvidenceQueryError::UnknownRule);
         };
         let Some(projection) = self.projections.get(&module.id()) else {
-            return Vec::new();
+            return Err(EvidenceQueryError::UnknownModule);
         };
         let mut evidence = projection.evidence_for(matcher, rule_index);
 
         crate::analysis::matching::evidence::normalize_evidence(&mut evidence, evidence_limit);
-        evidence
+        Ok(evidence)
     }
 }

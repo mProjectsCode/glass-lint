@@ -178,7 +178,7 @@ cross-file phases. `project_with_arena` retains final evidence merging and
 outcome/model assembly while the shared-session lifecycle is explicit.
 Verified with `make fmt && make ci`.
 
-#### [ ] READ-005 — Foreign or invalid module handles silently look like empty evidence
+#### [x] READ-005 — Foreign or invalid module handles silently look like empty evidence
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -209,7 +209,11 @@ have the public adapter intentionally lower invalid queries to empty. Preserve
 borrowed handles, cross-model isolation, selected-rule filtering, evidence
 normalization, and deterministic output.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ProjectMatcherModel::evidence_for_checked` now classifies
+foreign-model handles, unselected rules, unknown rules, and unknown modules
+before normalizing valid evidence. The public infallible adapter intentionally
+maps those internal errors to empty output for classification compatibility.
+Verified with `make fmt && make ci`.
 
 #### [ ] READ-006 — Identity-map merge semantics are encoded by caller-selected methods
 
