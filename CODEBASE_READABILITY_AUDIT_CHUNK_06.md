@@ -91,7 +91,7 @@ that descriptor, removing the parallel tuple and bare boolean while preserving
 identity masking, fail-closed resolution, global-call promotion, and operation
 counts. Verified with `cargo test -p glass-lint-core` and `make fmt && make ci`.
 
-#### [ ] READ-003 — `EventIndexView` redispatches capabilities across many matches
+#### [x] READ-003 — `EventIndexView` redispatches capabilities across many matches
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -123,7 +123,12 @@ combinations explicit in that object rather than rediscovering them in several
 helpers. Preserve borrowed lifetimes, package-pattern behavior, rooted global
 object matching, and `None` for unsupported or unavailable identity paths.
 
-**Fix Applied:** None so far.
+**Fix Applied:** A private `EventIndexCapabilities` preparation object now
+collects each event view's applicable any-identity, member, global, rooted,
+literal, and module-overlay capabilities in one variant match. Resolution
+methods consume that object, eliminating repeated event redispatch while
+preserving borrowed selections, unsupported combinations, package matching,
+rooted-global matching, and overlay behavior. Verified with `make fmt && make ci`.
 
 #### [ ] READ-004 — Constrained matching coordinates preparation and two execution modes in one state protocol
 
