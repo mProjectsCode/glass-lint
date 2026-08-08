@@ -20,10 +20,6 @@ pub(crate) struct FlowRequirements {
 }
 
 impl FlowRequirements {
-    pub(crate) fn new(local: bool, cross_call: bool) -> Self {
-        Self { local, cross_call }
-    }
-
     pub(crate) fn local(&self) -> bool {
         self.local
     }

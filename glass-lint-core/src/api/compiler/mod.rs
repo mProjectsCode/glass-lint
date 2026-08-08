@@ -261,22 +261,8 @@ impl CompiledMatcherPlan {
         self.physical_plan.explain()
     }
 
-    pub(crate) fn needs_project_overlay(&self) -> bool {
-        self.physical_plan.requirements().needs_project_overlay()
-    }
-
-    pub(crate) fn needs_module_identities(&self) -> bool {
-        self.physical_plan.requirements().needs_module_identities()
-    }
-
-    pub(crate) fn needs_call_result_identities(&self) -> bool {
-        self.physical_plan
-            .requirements()
-            .needs_call_result_identities()
-    }
-
-    pub(crate) fn flow_requirements(&self) -> &requirements::FlowRequirements {
-        self.physical_plan.requirements().flow()
+    pub(crate) fn requirements(&self) -> &requirements::PlanRequirements {
+        self.physical_plan.requirements()
     }
 
     pub(crate) fn compile(queries: &[QueryDecl]) -> Result<Self, MatcherBuildError> {

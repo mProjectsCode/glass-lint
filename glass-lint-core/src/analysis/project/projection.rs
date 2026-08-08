@@ -31,7 +31,7 @@ use crate::{
         compiler::{
             CompiledMatcherPlan, CompiledRuleRecord, CompiledRuleSelection,
             object_flow::CompiledObjectFlow, physical::PhysicalRoot,
-            requirements::FlowRequirements,
+            requirements::PlanRequirements,
         },
     },
 };
@@ -90,10 +90,7 @@ pub(in crate::analysis) struct ProjectionPlan<'a> {
     constrained_roots: Vec<PlannedConstrainedRoot<'a>>,
     flow_matchers: Vec<PlannedFlow<'a>>,
     rule_capacity: RuleEvidenceCapacity,
-    needs_module_identities: bool,
-    needs_call_result_identities: bool,
-    needs_overlay: bool,
-    flow_requirements: FlowRequirements,
+    requirements: PlanRequirements,
 }
 
 struct ProjectionSession<'project, 'plan, 'roots, 'arena> {
@@ -139,8 +136,10 @@ impl<'project, 'plan, 'roots, 'arena> ProjectionSession<'project, 'plan, 'roots,
         ),
         RuleEvidenceError,
     > {
-        let need_module_ids = self.plan.needs_module_identities() || self.plan.needs_overlay();
-        let need_result_ids = self.plan.needs_call_result_identities();
+        let requirements = &self.plan.requirements;
+        let need_module_ids =
+            requirements.needs_module_identities() || requirements.needs_project_overlay();
+        let need_result_ids = requirements.needs_call_result_identities();
         let mut outcome = ProjectionOutcome::default();
         let projections = self
             .project
@@ -154,7 +153,7 @@ impl<'project, 'plan, 'roots, 'arena> ProjectionSession<'project, 'plan, 'roots,
                     self.project
                         .call_result_identities(module.id(), &mut self.linking)
                 });
-                let overlay_policy = if self.plan.needs_overlay() {
+                let overlay_policy = if requirements.needs_project_overlay() {
                     MatcherOverlayPolicy::Enabled
                 } else {
                     MatcherOverlayPolicy::Disabled
@@ -257,22 +256,6 @@ impl<'a> PlannedFlow<'a> {
 }
 
 impl<'a> ProjectionPlan<'a> {
-    pub(in crate::analysis) fn needs_overlay(&self) -> bool {
-        self.needs_overlay
-    }
-
-    pub(in crate::analysis) fn needs_module_identities(&self) -> bool {
-        self.needs_module_identities
-    }
-
-    pub(in crate::analysis) fn needs_call_result_identities(&self) -> bool {
-        self.needs_call_result_identities
-    }
-
-    pub(in crate::analysis) fn flow_requirements(&self) -> &FlowRequirements {
-        &self.flow_requirements
-    }
-
     pub(in crate::analysis) fn needs_flow(&self) -> bool {
         !self.flow_matchers.is_empty()
     }
@@ -280,11 +263,7 @@ impl<'a> ProjectionPlan<'a> {
     pub(in crate::analysis) fn from_selection(selection: &'a CompiledRuleSelection<'a>) -> Self {
         let mut constrained_roots = Vec::new();
         let mut flow_matchers = Vec::new();
-        let mut needs_overall_overlay = false;
-        let mut needs_overall_module_ids = false;
-        let mut needs_overall_result_ids = false;
-        let mut flow_local = false;
-        let mut flow_cross_call = false;
+        let mut requirements = PlanRequirements::default();
         for (rule_index, matcher) in selection.selected_matchers() {
             for root in matcher.physical_roots() {
                 if matches!(
@@ -300,23 +279,13 @@ impl<'a> ProjectionPlan<'a> {
                     flow_matchers.push(PlannedFlow { rule_index, root });
                 }
             }
-            needs_overall_overlay = needs_overall_overlay || matcher.needs_project_overlay();
-            needs_overall_module_ids =
-                needs_overall_module_ids || matcher.needs_module_identities();
-            needs_overall_result_ids =
-                needs_overall_result_ids || matcher.needs_call_result_identities();
-            let fr = matcher.flow_requirements();
-            flow_local = flow_local || fr.local();
-            flow_cross_call = flow_cross_call || fr.cross_call();
+            requirements.merge_from(matcher.requirements());
         }
         Self {
             constrained_roots,
             flow_matchers,
             rule_capacity: selection.evidence_capacity(),
-            needs_module_identities: needs_overall_module_ids,
-            needs_call_result_identities: needs_overall_result_ids,
-            needs_overlay: needs_overall_overlay,
-            flow_requirements: FlowRequirements::new(flow_local, flow_cross_call),
+            requirements,
         }
     }
 }
@@ -674,7 +643,7 @@ impl ProjectSemanticModel {
     ) -> (ProjectMatcherModel<'project, 'matchers>, ProjectionOutcome) {
         let plan = ProjectionPlan::from_selection(&matchers);
         let flow_limits = FlowLimits::from_flow_operations(self.flow_limit());
-        let has_flow = plan.flow_requirements().local() || plan.flow_requirements().cross_call();
+        let has_flow = plan.requirements.flow().local() || plan.requirements.flow().cross_call();
         let mut session = ProjectionSession::new(self, &plan, flow_limits, arena);
         let (projections, mut outcome) = match session.project_modules() {
             Ok(result) => result,

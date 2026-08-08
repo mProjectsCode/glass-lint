@@ -126,7 +126,7 @@ preserving deterministic optimization and deduplication.
 
 ### Compiler requirements consumed by projection
 
-#### [ ] READ-037 — Keep compiled-plan requirements as one consumer-facing value
+#### [x] READ-037 — Keep compiled-plan requirements as one consumer-facing value
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -159,7 +159,10 @@ module identities, and result identities) from that one value at the final
 consumer boundary. Preserve the current separation between compiler IR and
 analysis projection, and retain deterministic rule/root traversal.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Exposed one immutable `PlanRequirements` view from
+`CompiledMatcherPlan` and made `ProjectionPlan` retain and merge that value
+directly. Projection no longer reconstructs requirement booleans or flow
+flags through parallel state.
 
 ## Systemic Themes
 
