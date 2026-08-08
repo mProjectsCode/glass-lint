@@ -112,6 +112,16 @@ impl ProjectLinker {
     // Graph construction and SCC-DAG export resolution
     // -----------------------------------------------------------------------
 
+    pub(super) fn collect_graph_edges(&mut self) {
+        let result = graph::GraphBuild::build(&self.modules, &self.resolutions, self.link_limit);
+        self.status.extend(&result.status);
+        if result.exhausted {
+            self.link_budget.mark_exhausted();
+        }
+        self.graph = Some(result.graph);
+        self.scc_partition = result.scc_partition;
+    }
+
     /// Build edges, resolve exports via SCC-DAG topological walk, validate
     /// imports, and canonicalize diagnostics.
     pub(super) fn build_graph_and_exports(&mut self) {

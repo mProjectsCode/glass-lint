@@ -54,7 +54,7 @@ status. `ProjectLinker::finish` still consumes the linker at the same boundary,
 while projection limits remain model-owned fields. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-002 — `ProjectLinker` combines graph construction, export resolution, and reporting state
+#### [x] READ-002 — `ProjectLinker` combines graph construction, export resolution, and reporting state
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -89,7 +89,11 @@ and perform final diagnostic ordering. Preserve the current phase ordering,
 SCC cycle bound, link budget, missing-resolution diagnostics, fail-closed
 status propagation, and deterministic sorting/deduplication.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Graph construction now runs through a private `GraphBuild`
+result that owns normalized graph/SCC creation, edge-budget accounting, and
+graph-local status. `ProjectLinker` merges that result before continuing with
+export resolution and final diagnostic ordering. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-003 — Recursive export lookup spreads cache, cycle, and uncertainty state across early returns
 
