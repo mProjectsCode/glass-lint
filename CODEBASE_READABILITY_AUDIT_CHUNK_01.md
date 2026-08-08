@@ -109,7 +109,7 @@ into definite flow matches.
 
 ### Module-interface recording boundary
 
-#### [ ] READ-004 — Route static import recording through the builder’s domain API
+#### [x] READ-004 — Route static import recording through the builder’s domain API
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -134,7 +134,9 @@ the source-literal span, imported-binding provenance, the no-child-traversal
 rule, and the distinction between static imports, dynamic imports, require,
 and wrapped require.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved static-import request construction, local recording,
+span normalization, and import-fact emission into one `FactBuilder` operation;
+the AST visitor now delegates to it. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

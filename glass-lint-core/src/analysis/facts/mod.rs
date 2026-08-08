@@ -15,7 +15,7 @@ use crate::analysis::{
     DerivedPhaseAvailability, DerivedPhaseCapabilities,
     matching::OccurrenceIndexes,
     model::{
-        module::ModuleInterface,
+        module::{ImportedBinding, ModuleInterface},
         value::{ValueId, ValueTable},
     },
     module_request::{ModuleRequestKind, ModuleRequestPolicy, recognize_module_call},
@@ -39,7 +39,7 @@ mod visitor;
 use glass_lint_datastructures::{ByteRange, NamePath, PathId, PathSegmentInput, SymbolPath};
 pub(in crate::analysis) use model::*;
 pub(in crate::analysis) use origin_map::{OriginCheckpoint, OriginMap, OriginSnapshot};
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 pub(in crate::analysis) use stream::FactStream;
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
@@ -489,6 +489,38 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
 
     pub(super) fn record_local_imports(&mut self, import: &ImportDecl) {
         self.interface.record_local_imports(import);
+    }
+
+    pub(super) fn record_static_import(&mut self, import: &ImportDecl) {
+        if import.type_only {
+            return;
+        }
+        let module = import.src.value.to_string_lossy().to_string();
+        let bindings = import
+            .specifiers
+            .iter()
+            .filter(|specifier| !specifier.is_type_only())
+            .map(|specifier| match specifier {
+                swc_ecma_ast::ImportSpecifier::Named(named) => ImportedBinding::new(
+                    Some(named.imported.as_ref().map_or_else(
+                        || named.local.sym.to_smolstr(),
+                        |name| crate::analysis::syntax::module_export_name(name).to_smolstr(),
+                    )),
+                    false,
+                ),
+                swc_ecma_ast::ImportSpecifier::Default(_) => {
+                    ImportedBinding::new(Some("default".into()), false)
+                }
+                swc_ecma_ast::ImportSpecifier::Namespace(_) => ImportedBinding::new(None, true),
+            })
+            .collect();
+        self.record_local_imports(import);
+        let Some(span) = self.byte_range(import.src.span) else {
+            return;
+        };
+        self.interface
+            .add_import_request(span, module.clone(), bindings);
+        self.emit(import.src.span, FactPayload::Import { module });
     }
 
     pub(super) fn record_export_decl(&mut self, declaration: &swc_ecma_ast::Decl) {

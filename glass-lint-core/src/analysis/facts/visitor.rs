@@ -13,16 +13,13 @@ use smol_str::{SmolStr, ToSmolStr};
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::ExportDefaultExpr;
 
-use crate::analysis::{
-    facts::{
-        ArrowExpr, AssignExpr, BinExpr, CallExpr, CondExpr, ControlKind, ControlRegionId,
-        DoWhileStmt, ExportDecl, Expr, FactBuilder, FactPayload, FnDecl, ForInStmt, ForOfStmt,
-        ForStmt, Function, Ident, IfStmt, ImportDecl, MemberExpr, NewExpr, OptChainBase,
-        OptChainExpr, Pat, Str, SwitchStmt, SymbolCallProvenance, SymbolMemberProvenance,
-        TargetProvenance, Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr, ValueId, VarDeclarator,
-        Visit, VisitWith, WhileStmt, effective_callee_expr, literal_member_property_name,
-    },
-    model::module::ImportedBinding,
+use crate::analysis::facts::{
+    ArrowExpr, AssignExpr, BinExpr, CallExpr, CondExpr, ControlKind, ControlRegionId, DoWhileStmt,
+    ExportDecl, Expr, FactBuilder, FactPayload, FnDecl, ForInStmt, ForOfStmt, ForStmt, Function,
+    Ident, IfStmt, ImportDecl, MemberExpr, NewExpr, OptChainBase, OptChainExpr, Pat, Str,
+    SwitchStmt, SymbolCallProvenance, SymbolMemberProvenance, TargetProvenance, Tpl, TryStmt,
+    UnaryExpr, UnaryOp, UpdateExpr, ValueId, VarDeclarator, Visit, VisitWith, WhileStmt,
+    effective_callee_expr, literal_member_property_name,
 };
 
 struct ConstructionMetadata {
@@ -211,35 +208,7 @@ impl Visit for FactBuilder<'_, '_> {
         if self.resolver.budget.exhausted() {
             return;
         }
-        let module = import.src.value.to_string_lossy().to_string();
-        if import.type_only {
-            return;
-        }
-        let bindings = import
-            .specifiers
-            .iter()
-            .filter(|specifier| !specifier.is_type_only())
-            .map(|specifier| match specifier {
-                swc_ecma_ast::ImportSpecifier::Named(named) => ImportedBinding::new(
-                    Some(named.imported.as_ref().map_or_else(
-                        || named.local.sym.to_smolstr(),
-                        |name| crate::analysis::syntax::module_export_name(name).to_smolstr(),
-                    )),
-                    false,
-                ),
-                swc_ecma_ast::ImportSpecifier::Default(_) => {
-                    ImportedBinding::new(Some("default".into()), false)
-                }
-                swc_ecma_ast::ImportSpecifier::Namespace(_) => ImportedBinding::new(None, true),
-            })
-            .collect();
-        self.record_local_imports(import);
-        let Some(span) = self.byte_range(import.src.span) else {
-            return;
-        };
-        self.interface
-            .add_import_request(span, module.clone(), bindings);
-        self.emit(import.src.span, FactPayload::Import { module });
+        self.record_static_import(import);
         // Do not visit children: the source string is already captured in the
         // Import fact, and visiting it would emit a duplicate static reference.
     }
