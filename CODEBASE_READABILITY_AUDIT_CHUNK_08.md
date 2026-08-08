@@ -160,7 +160,7 @@ longer expose compiler slot vocabulary. Internal compiler/test construction
 and alpha-renumbering remain intact, with the test-only variable collection
 helper retained under `cfg(test)`. Verified with `make fmt && make ci`.
 
-#### [ ] READ-005 — `ModuleSpecifierPattern` promises exact matching but implements only package roots
+#### [x] READ-005 — `ModuleSpecifierPattern` promises exact matching but implements only package roots
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -187,7 +187,11 @@ make exact/package variants deliberate. Keep exact identity matching distinct
 from boundary-aware package-subpath matching, preserve package-root boundary
 checks, and keep provider policy out of Core.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Narrowed the public contract to the implemented package-root
+pattern with boundary-aware subpath matching. Exact module imports remain
+deliberate literal identities through `EventQuery::import_exact`; package and
+exact matching are no longer presented as one incomplete abstraction.
+Verified with `make fmt && make ci`.
 
 #### [ ] READ-006 — Argument-index validity is checked in several builders and reconstructed as a primitive
 

@@ -5,7 +5,7 @@ use std::fmt;
 use crate::{api::rule::error::MatcherBuildError, project::PackageSpecifier};
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-/// An exact module specifier or a package root with boundary-aware subpaths.
+/// A package root with boundary-aware subpath matching.
 pub struct ModuleSpecifierPattern {
     value: PatternValue,
 }
