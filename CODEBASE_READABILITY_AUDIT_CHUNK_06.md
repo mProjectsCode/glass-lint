@@ -115,7 +115,7 @@ executor boundary. The focused matching suite and full gate pass.
 
 ### Evidence capacity and failure propagation
 
-#### [ ] READ-024 — Preserve typed evidence-capacity errors at the matcher boundary
+#### [x] READ-024 — Preserve typed evidence-capacity errors at the matcher boundary
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -139,7 +139,11 @@ type or rely on a hidden catalog-capacity invariant at the final write.
 Preserve bounded evidence behavior and deterministic ordering on successful
 paths.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Constrained publication now returns `RuleEvidenceError` through
+the matcher and local projection layers instead of panicking on a stale rule
+index. Project projection records the structural failure in its status and
+maps it to an `evidence_capacity_mismatch` diagnostic; successful bounded
+matching and flow evidence behavior remain unchanged.
 
 ## Systemic Themes
 

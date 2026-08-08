@@ -63,6 +63,10 @@ pub enum IncompleteReason {
     AmbiguousStarExport {
         request: String,
     },
+    EvidenceCapacityMismatch {
+        expected: usize,
+        actual: usize,
+    },
     ScopeShapeMismatch {
         count: usize,
     },
@@ -262,6 +266,10 @@ impl IncompleteReason {
                 DiagnosticKind::AmbiguousStarExport,
                 format!("module interface for `{request}` is ambiguous"),
             ),
+            Self::EvidenceCapacityMismatch { expected, actual } => (
+                DiagnosticKind::EvidenceCapacityMismatch,
+                format!("matcher evidence capacity mismatch; expected={expected}, actual={actual}"),
+            ),
             Self::ScopeShapeMismatch { count } => (
                 DiagnosticKind::ScopeShapeMismatch,
                 format!("scope collection encountered {count} structural issue(s)"),
@@ -307,6 +315,24 @@ mod tests {
             },
         );
         assert!(!status.is_complete());
+    }
+
+    #[test]
+    fn evidence_capacity_mismatch_has_a_project_diagnostic() {
+        let mut status = AnalysisStatus::default();
+        status.record(
+            StatusScope::Project,
+            IncompleteReason::EvidenceCapacityMismatch {
+                expected: 2,
+                actual: 3,
+            },
+        );
+
+        let (files, project) = status.diagnostics().into_parts();
+        assert!(files.is_empty());
+        assert_eq!(project.len(), 1);
+        assert_eq!(project[0].code().as_str(), "evidence_capacity_mismatch");
+        assert!(project[0].message().contains("expected=2, actual=3"));
     }
 
     #[test]

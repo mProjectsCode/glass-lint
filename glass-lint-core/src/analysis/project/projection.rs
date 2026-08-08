@@ -26,7 +26,7 @@ use crate::{
     api::{
         classification::{
             ClassificationEvidence, ClassificationResult, MatchedCapability, RuleEvidenceCapacity,
-            RuleEvidenceTable, RuleIndex,
+            RuleEvidenceError, RuleEvidenceTable, RuleIndex,
         },
         compiler::{
             CompiledMatcherPlan, CompiledRuleRecord, CompiledRuleSelection,
@@ -131,17 +131,20 @@ impl<'project, 'plan, 'roots, 'arena> ProjectionSession<'project, 'plan, 'roots,
 
     fn project_modules<'module>(
         &'module mut self,
-    ) -> (
-        BTreeMap<ModuleId, ProjectModuleProjection<'project>>,
-        ProjectionOutcome,
-    ) {
+    ) -> Result<
+        (
+            BTreeMap<ModuleId, ProjectModuleProjection<'project>>,
+            ProjectionOutcome,
+        ),
+        RuleEvidenceError,
+    > {
         let need_module_ids = self.plan.needs_module_identities() || self.plan.needs_overlay();
         let need_result_ids = self.plan.needs_call_result_identities();
         let mut outcome = ProjectionOutcome::default();
         let projections = self
             .project
             .modules()
-            .map(|module| {
+            .map(|module| -> Result<_, RuleEvidenceError> {
                 let identities = need_module_ids.then(|| {
                     self.project
                         .module_identities(module.id(), &mut self.linking)
@@ -180,20 +183,20 @@ impl<'project, 'plan, 'roots, 'arena> ProjectionSession<'project, 'plan, 'roots,
                         trace_arena: self.arena,
                     },
                     &matcher_context,
-                );
+                )?;
                 outcome.record_local(&local);
                 let matcher_artifact = matcher_context.into_artifact();
-                (
+                Ok((
                     module.id(),
                     ProjectModuleProjection {
                         module,
                         matcher_artifact,
                         projected,
                     },
-                )
+                ))
             })
-            .collect();
-        (projections, outcome)
+            .collect::<Result<BTreeMap<_, _>, _>>()?;
+        Ok((projections, outcome))
     }
 }
 
@@ -331,7 +334,7 @@ struct ProjectionInputs<'a> {
 fn project_facts(
     inputs: ProjectionInputs<'_>,
     matcher_context: &MatcherProjectContext<'_, '_>,
-) -> (RuleEvidenceTable, LocalFlowProjectionOutcome) {
+) -> Result<(RuleEvidenceTable, LocalFlowProjectionOutcome), RuleEvidenceError> {
     let ProjectionInputs {
         facts,
         effects,
@@ -342,7 +345,7 @@ fn project_facts(
     } = inputs;
     let mut projected_evidence = RuleEvidenceTable::new(plan.rule_capacity);
     if !facts.stream().is_valid() || facts.values().get(ValueId::UNKNOWN).is_none() {
-        return (projected_evidence, LocalFlowProjectionOutcome::default());
+        return Ok((projected_evidence, LocalFlowProjectionOutcome::default()));
     }
     let constrained_roots = plan
         .constrained_roots
@@ -350,20 +353,20 @@ fn project_facts(
         .copied()
         .map(PlannedConstrainedRoot::matcher_input)
         .collect::<Vec<_>>();
-    crate::analysis::matching::compute_constrained_evidence(
+    crate::analysis::matching::try_compute_constrained_evidence(
         matcher_context.artifact(),
         &constrained_roots,
         &mut projected_evidence,
         matcher_context.project(),
-    );
+    )?;
     if plan.flow_matchers.is_empty() {
-        return (projected_evidence, LocalFlowProjectionOutcome::default());
+        return Ok((projected_evidence, LocalFlowProjectionOutcome::default()));
     }
     let Some(effects) = effects else {
-        return (projected_evidence, LocalFlowProjectionOutcome::default());
+        return Ok((projected_evidence, LocalFlowProjectionOutcome::default()));
     };
     if !effects.is_available() {
-        return (projected_evidence, LocalFlowProjectionOutcome::default());
+        return Ok((projected_evidence, LocalFlowProjectionOutcome::default()));
     }
     let flow_matchers = plan
         .flow_matchers
@@ -380,7 +383,7 @@ fn project_facts(
         module_id,
         trace_arena,
     );
-    (projected_evidence, outcome)
+    Ok((projected_evidence, outcome))
 }
 
 #[derive(Debug)]
@@ -490,6 +493,7 @@ struct ProjectionStatus {
     effect_observed: Option<usize>,
     /// Modules whose effect extraction was incomplete.
     effect_exhausted_modules: Vec<ModuleId>,
+    evidence_error: Option<RuleEvidenceError>,
 }
 
 impl ProjectionStatus {
@@ -516,6 +520,18 @@ impl ProjectionStatus {
                     limit: project.flow_limit(),
                     observed: self.flow_observed,
                 },
+            );
+        }
+        if let Some(error) = self.evidence_error {
+            let (expected, actual) = match error {
+                RuleEvidenceError::CapacityMismatch { expected, actual } => (expected, actual),
+                RuleEvidenceError::RuleOutOfRange { rule, capacity } => {
+                    (capacity, rule.get().saturating_add(1))
+                }
+            };
+            status.record(
+                StatusScope::Project,
+                IncompleteReason::EvidenceCapacityMismatch { expected, actual },
             );
         }
     }
@@ -565,6 +581,10 @@ impl ProjectionOutcome {
                 .unwrap_or_default()
                 .saturating_add(effects.operation_count()),
         );
+    }
+
+    fn record_evidence_error(&mut self, error: RuleEvidenceError) {
+        self.status.evidence_error.get_or_insert(error);
     }
 
     fn record_local(&mut self, local: &LocalFlowProjectionOutcome) {
@@ -651,7 +671,14 @@ impl ProjectSemanticModel {
         let flow_limits = FlowLimits::from_flow_operations(self.flow_limit());
         let has_flow = plan.flow_requirements().local() || plan.flow_requirements().cross_call();
         let mut session = ProjectionSession::new(self, &plan, flow_limits, arena);
-        let (projections, mut outcome) = session.project_modules();
+        let (projections, mut outcome) = match session.project_modules() {
+            Ok(result) => result,
+            Err(error) => {
+                let mut outcome = ProjectionOutcome::default();
+                outcome.record_evidence_error(error);
+                (BTreeMap::new(), outcome)
+            }
+        };
 
         let (cross, cross_outcome) = if has_flow {
             session.collect_cross(&matchers)

@@ -13,7 +13,7 @@ use crate::{
         project::model::ExportResolution,
     },
     api::{
-        classification::{MatchKind, RuleEvidenceTable, RuleIndex},
+        classification::{MatchKind, RuleEvidenceError, RuleEvidenceTable, RuleIndex},
         compiler::{
             normalized::CanonicalArgumentConstraints,
             physical::PhysicalRoot,
@@ -76,7 +76,11 @@ impl<'a> PreparedConstrainedRoot<'a> {
         }
     }
 
-    fn publish(&mut self, evidence: &mut RuleEvidenceTable, occurrences: Vec<Occurrence>) {
+    fn publish(
+        &mut self,
+        evidence: &mut RuleEvidenceTable,
+        occurrences: Vec<Occurrence>,
+    ) -> Result<(), RuleEvidenceError> {
         if !occurrences.is_empty() {
             push_owned_rule_evidence(
                 evidence,
@@ -84,16 +88,27 @@ impl<'a> PreparedConstrainedRoot<'a> {
                 self.root.evidence.kind,
                 self.root.evidence.symbol.clone(),
                 occurrences,
-            );
+            )?;
         }
         self.state = ConstrainedState::Published;
+        Ok(())
     }
 
-    fn publish_fallback(&mut self, evidence: &mut RuleEvidenceTable) {
+    fn publish_fallback(
+        &mut self,
+        evidence: &mut RuleEvidenceTable,
+    ) -> Result<(), RuleEvidenceError> {
         match std::mem::replace(&mut self.state, ConstrainedState::Published) {
-            ConstrainedState::Fallback(occurrences) => self.publish(evidence, occurrences),
+            ConstrainedState::Fallback(occurrences) => {
+                if let Err(error) = self.publish(evidence, occurrences.clone()) {
+                    self.state = ConstrainedState::Fallback(occurrences);
+                    return Err(error);
+                }
+                Ok(())
+            }
             state => {
                 self.state = state;
+                Ok(())
             }
         }
     }
@@ -319,25 +334,24 @@ fn push_owned_rule_evidence(
     kind: MatchKind,
     symbol: String,
     occurrences: impl IntoIterator<Item = Occurrence>,
-) {
+) -> Result<(), RuleEvidenceError> {
     if let Some(group) = EvidenceGroup::from_occurrences(
         kind,
         symbol,
         crate::project::MatchCertainty::Definite,
         occurrences,
     ) {
-        evidence
-            .record(rule, group.into_classification())
-            .expect("constrained evidence uses its catalog capacity");
+        evidence.record(rule, group.into_classification())?;
     }
+    Ok(())
 }
 
-pub(in crate::analysis) fn compute_constrained_evidence<'artifact>(
+pub(in crate::analysis) fn try_compute_constrained_evidence<'artifact>(
     artifact: impl Borrow<MatcherArtifact<'artifact>>,
     roots: &[(usize, &PhysicalRoot)],
     evidence: &mut RuleEvidenceTable,
     project: MatcherProjectOverlay<'_>,
-) {
+) -> Result<(), RuleEvidenceError> {
     let mut ops = EvaluationOperations::default();
     compute_constrained_inner(
         MatcherEvaluationContext {
@@ -347,7 +361,18 @@ pub(in crate::analysis) fn compute_constrained_evidence<'artifact>(
         },
         roots,
         evidence,
-    );
+    )
+}
+
+#[cfg(test)]
+fn compute_constrained_evidence<'artifact>(
+    artifact: impl Borrow<MatcherArtifact<'artifact>>,
+    roots: &[(usize, &PhysicalRoot)],
+    evidence: &mut RuleEvidenceTable,
+    project: MatcherProjectOverlay<'_>,
+) {
+    try_compute_constrained_evidence(artifact, roots, evidence, project)
+        .expect("test evidence uses its catalog capacity");
 }
 
 /// Inner implementation that also tracks evaluation operations.
@@ -355,7 +380,7 @@ fn compute_constrained_inner(
     context: MatcherEvaluationContext<'_, '_>,
     roots: &[(usize, &PhysicalRoot)],
     evidence: &mut RuleEvidenceTable,
-) {
+) -> Result<(), RuleEvidenceError> {
     let MatcherEvaluationContext {
         artifact,
         project,
@@ -379,8 +404,8 @@ fn compute_constrained_inner(
         &evaluator,
         operations,
         evidence,
-    );
-    evaluation.evaluate_fallback_roots(stream, &evaluator, operations, evidence);
+    )?;
+    evaluation.evaluate_fallback_roots(stream, &evaluator, operations, evidence)
 }
 
 /// Evaluate roots whose identity can use the occurrence index, marking the
@@ -394,7 +419,7 @@ impl ConstrainedEvaluation<'_> {
         evaluator: &MatcherEvaluator<'_>,
         operations: &mut EvaluationOperations,
         evidence: &mut RuleEvidenceTable,
-    ) {
+    ) -> Result<(), RuleEvidenceError> {
         for prepared_root in &mut self.roots {
             let root = &prepared_root.root;
             let Some(candidates) =
@@ -421,8 +446,9 @@ impl ConstrainedEvaluation<'_> {
                         .map(|_| occurrence)
                 })
                 .collect();
-            prepared_root.publish(evidence, matched);
+            prepared_root.publish(evidence, matched)?;
         }
+        Ok(())
     }
 
     /// Scan roots that could not use an index, then publish their evidence.
@@ -432,9 +458,9 @@ impl ConstrainedEvaluation<'_> {
         evaluator: &MatcherEvaluator<'_>,
         operations: &mut EvaluationOperations,
         evidence: &mut RuleEvidenceTable,
-    ) {
+    ) -> Result<(), RuleEvidenceError> {
         if !self.roots.iter().any(PreparedConstrainedRoot::is_fallback) {
-            return;
+            return Ok(());
         }
         for fact in stream.facts() {
             for prepared_root in self.roots.iter_mut().filter(|root| root.is_fallback()) {
@@ -452,8 +478,9 @@ impl ConstrainedEvaluation<'_> {
             }
         }
         for prepared_root in self.roots.iter_mut().filter(|root| root.is_fallback()) {
-            prepared_root.publish_fallback(evidence);
+            prepared_root.publish_fallback(evidence)?;
         }
+        Ok(())
     }
 }
 
@@ -500,6 +527,37 @@ mod tests {
             &Environment::default(),
             crate::analysis::DerivedPhaseAvailability::Enabled,
         )
+    }
+
+    #[test]
+    fn constrained_publication_returns_capacity_error() {
+        let stream = stream("fetch('/api');", &Environment::default());
+        let index = build_index(&stream);
+        let root = constrained_root(
+            IdentityConstraint::Any {
+                name: "fetch".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            EventPredicate::Call,
+            "fetch",
+        );
+        let mut evidence = RuleEvidenceTable::new_for_test(0);
+
+        let error = try_compute_constrained_evidence(
+            MatcherLocalInput::from_parts(&stream, &index),
+            &[(0, &root)],
+            &mut evidence,
+            MatcherProjectOverlay::new(None, None, None),
+        )
+        .expect_err("a stale rule index must remain a typed publication error");
+
+        assert_eq!(
+            error,
+            RuleEvidenceError::RuleOutOfRange {
+                rule: RuleIndex::new(0),
+                capacity: 0,
+            }
+        );
     }
 
     fn constrained_root(
@@ -1031,7 +1089,8 @@ mod tests {
             },
             roots,
             &mut evidence,
-        );
+        )
+        .expect("test evidence uses its catalog capacity");
         ops
     }
 

@@ -8,6 +8,7 @@ const MAX_DIAGNOSTIC_CODE_LEN: usize = 64;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DiagnosticKind {
     AmbiguousStarExport,
+    EvidenceCapacityMismatch,
     EffectsBudgetExhausted,
     FactCapacityExhausted,
     FlowBudgetExhausted,
@@ -33,6 +34,7 @@ impl DiagnosticKind {
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::AmbiguousStarExport => "ambiguous_star_export",
+            Self::EvidenceCapacityMismatch => "evidence_capacity_mismatch",
             Self::EffectsBudgetExhausted => "effect_size_budget_exhausted",
             Self::FactCapacityExhausted => "semantic_fact_capacity_exhausted",
             Self::FlowBudgetExhausted => "flow_link_budget_exhausted",
