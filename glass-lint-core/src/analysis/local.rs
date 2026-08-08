@@ -238,11 +238,14 @@ impl SharedSemanticArtifact {
         }
     }
 
-    fn lowered_for(&self, source: &SourceFile) -> crate::analysis::lowering::LoweredSource {
-        crate::analysis::lowering::LoweredSource::new(
-            LocatedSourceContext::with_index(source.path().clone(), Arc::clone(&self.source_index)),
-            Arc::clone(&self.semantic),
-        )
+    fn local_for(&self, source: &SourceFile) -> LocalArtifact {
+        LocalArtifact {
+            source: LocatedSourceContext::with_index(
+                source.path().clone(),
+                Arc::clone(&self.source_index),
+            ),
+            semantic: Arc::clone(&self.semantic),
+        }
     }
 }
 
@@ -289,13 +292,13 @@ impl ArtifactCacheHandle {
         cache.insert(key, artifact)
     }
 
-    /// Reconstruct a cache hit with the current source's path and line index.
-    pub(crate) fn get_lowered(
+    /// Attach a cache hit to the current source path and line index.
+    pub(crate) fn get_local(
         &self,
         source: &SourceFile,
         key: &ArtifactCacheKey,
-    ) -> Option<crate::analysis::lowering::LoweredSource> {
-        self.get(key).map(|cached| cached.lowered_for(source))
+    ) -> Option<crate::analysis::LocalArtifact> {
+        self.get(key).map(|cached| cached.local_for(source))
     }
 
     /// Cache a lowered artifact while retaining only its reusable semantic

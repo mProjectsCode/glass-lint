@@ -132,7 +132,14 @@ impl AnalysisArtifacts {
         path: &ProjectRelativePath,
         lowered: LoweredSource,
     ) -> Vec<ResolutionRequest> {
-        let local = LocalArtifact::from_lowered(lowered);
+        self.record_local(path, LocalArtifact::from_lowered(lowered))
+    }
+
+    pub(super) fn record_local(
+        &mut self,
+        path: &ProjectRelativePath,
+        local: LocalArtifact,
+    ) -> Vec<ResolutionRequest> {
         let with_ids = local
             .interface()
             .requests_with_ids(path, local.source_context().lines());

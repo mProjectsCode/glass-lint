@@ -114,7 +114,7 @@ tests cover the conversion. Verified with `make fmt && make ci`.
 
 ### Artifact cache and attachment lifecycle
 
-#### [ ] READ-020 — Attach cache hits directly to the local artifact boundary
+#### [x] READ-020 — Attach cache hits directly to the local artifact boundary
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -140,7 +140,10 @@ fresh-lowering `LoweredSource` boundary for parse/lowering errors and observer
 events. Delete the cache-hit-only `LoweredSource` reconstruction once callers
 consume the same local-artifact contract.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added a direct cache-hit attachment API returning
+`LocalArtifact`; session admission records that artifact without rebuilding a
+transient `LoweredSource`. Fresh lowering retains its existing error boundary,
+and cache path-attachment tests pass. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

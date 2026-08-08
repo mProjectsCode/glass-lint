@@ -133,14 +133,10 @@ impl LocalAnalysisTransition<'_, '_> {
 
     fn prepare_cached(&mut self, candidate: LocalJobCandidate) -> Option<LocalJob> {
         let key = self.state.artifact_fingerprint(&candidate.source);
-        if let Some(lowered) = self
-            .state
-            .artifact_cache
-            .get_lowered(&candidate.source, &key)
-        {
+        if let Some(local) = self.state.artifact_cache.get_local(&candidate.source, &key) {
             self.observer.observe(ExecutionEvent::CacheHit);
             self.requests
-                .extend(self.artifacts.record_lowered(&candidate.path, lowered));
+                .extend(self.artifacts.record_local(&candidate.path, local));
             None
         } else {
             self.observer.observe(ExecutionEvent::CacheMiss);
