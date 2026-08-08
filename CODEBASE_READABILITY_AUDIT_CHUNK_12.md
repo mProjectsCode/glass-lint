@@ -17,7 +17,7 @@ one-file-per-path identity established by normal project assembly.
 
 ### Project input admission
 
-#### [ ] READ-042 — Make multi-source admission atomic before local analysis
+#### [x] READ-042 — Make multi-source admission atomic before local analysis
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -49,7 +49,10 @@ result: the current session transition has no useful partial-success contract.
 Preserve normalized path ordering and existing single-source duplicate
 behavior, and document the batch atomicity.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added atomic `SourceTable::insert_all` staging for batch
+source admission. Existing-table and within-batch duplicates are validated
+before merging, and a regression verifies that a rejected batch retains no
+prefix of its inputs. Verified with `make fmt && make ci`.
 
 ### Combined report identity
 

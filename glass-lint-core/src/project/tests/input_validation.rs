@@ -33,6 +33,33 @@ fn staged_session_rejects_duplicate_sources() {
 }
 
 #[test]
+fn batch_source_admission_is_atomic_on_duplicate() {
+    let linter = test_linter();
+    let mut collection = linter.begin_project();
+    collection
+        .analyze_source(source_file("existing.js", ""))
+        .unwrap();
+
+    let result = collection.analyze_sources(
+        [
+            source_file("staged.js", ""),
+            source_file("./existing.js", ""),
+        ],
+        std::num::NonZeroUsize::MIN,
+    );
+    assert!(matches!(
+        result,
+        Err(ProjectError::Input(ProjectInputError::DuplicateSource(_)))
+    ));
+
+    collection
+        .analyze_source(source_file("staged.js", ""))
+        .unwrap();
+    let report = finish_collection(collection);
+    assert_eq!(report.files().len(), 2);
+}
+
+#[test]
 fn staged_session_rejects_unknown_resolution_importers() {
     let linter = test_linter();
     let mut collection = linter.begin_project();

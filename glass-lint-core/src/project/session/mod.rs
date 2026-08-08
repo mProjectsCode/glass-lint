@@ -239,9 +239,7 @@ impl<'a> ProjectCollection<'a> {
         &mut self,
         sources: impl IntoIterator<Item = SourceFile>,
     ) -> Result<(), ProjectInputError> {
-        sources
-            .into_iter()
-            .try_for_each(|source| self.admit_normalized_source(source))
+        self.sources.insert_all(sources)
     }
 
     /// Analyze one owned source and return its authored requests.

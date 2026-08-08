@@ -25,6 +25,24 @@ impl SourceTable {
         Ok(())
     }
 
+    /// Insert a batch atomically, rejecting duplicates against this table and
+    /// within the incoming batch before changing either table.
+    pub fn insert_all(
+        &mut self,
+        sources: impl IntoIterator<Item = SourceFile>,
+    ) -> Result<(), ProjectInputError> {
+        let mut staged = Self::default();
+        for source in sources {
+            let path = source.path().clone();
+            if self.0.contains_key(&path) {
+                return Err(ProjectInputError::DuplicateSource(path.to_string()));
+            }
+            staged.insert(source)?;
+        }
+        self.0.append(&mut staged.0);
+        Ok(())
+    }
+
     pub fn get(&self, path: &ProjectRelativePath) -> Option<&SourceFile> {
         self.0.get(path)
     }
