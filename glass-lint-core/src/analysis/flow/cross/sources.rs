@@ -161,7 +161,10 @@ impl FlowSources {
                         continue;
                     };
 
-                    let to = SourceKey::new(module.id(), effect.id(), cref.result());
+                    let result = cref
+                        .shape()
+                        .map_or(ValueId::UNKNOWN, |shape| shape.result());
+                    let to = SourceKey::new(module.id(), effect.id(), result);
 
                     for returned in target_effect
                         .returns()
@@ -243,17 +246,18 @@ impl FlowSources {
                 }
                 for call in effect.calls() {
                     let cref = stream.call_effect(call.event());
-                    let Some(args) = cref.effective_args() else {
+                    let Some(shape) = cref.shape() else {
                         continue;
                     };
+                    let args = shape.effective_args();
                     let matcher = FlowMatchView::new(names, stream.values());
-                    let candidates = cref
+                    let candidates = shape
                         .global_name()
                         .and_then(|name| {
                             source_index.get(&BoundLifecycleCallTarget::Global(name.clone()))
                         })
                         .or_else(|| {
-                            cref.chain().and_then(|chain| {
+                            shape.chain().and_then(|chain| {
                                 source_index.get(&BoundLifecycleCallTarget::Member(chain.clone()))
                             })
                         });
@@ -267,15 +271,15 @@ impl FlowSources {
                         if flow.sources().any(|source| {
                             matcher.target_matches(
                                 source.target(),
-                                cref.global_name().map(smol_str::SmolStr::as_str),
-                                cref.chain(),
-                                cref.rooted(),
+                                shape.global_name().map(smol_str::SmolStr::as_str),
+                                shape.chain(),
+                                shape.rooted(),
                             ) && source.matches_arguments(|index, predicate| {
                                 matcher.argument_matches_predicate(index, predicate, args)
                             })
                         }) {
                             self.add_candidate(
-                                SourceKey::new(module.id(), effect.id(), cref.result()),
+                                SourceKey::new(module.id(), effect.id(), shape.result()),
                                 SourceCandidate::new(*flow_id, call.event()),
                             );
                         }

@@ -776,11 +776,17 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             return;
         };
         let cref = self.stream.call_effect(fact.id);
-        let effective_args = cref.effective_args().unwrap_or(&[]);
-        if let Some(chain) = cref.chain_owned(self.names) {
+        let Some(shape) = cref.shape() else {
+            if let Some(function) = target_function {
+                self.record_helper_sink(*function, args, fact.id);
+            }
+            return;
+        };
+        let effective_args = shape.effective_args();
+        if let Some(chain) = shape.chain_owned(self.stream, self.names) {
             self.record_configuration(*receiver, &chain, effective_args, fact.id);
         }
-        self.record_sinks(&cref, effective_args, fact.id);
+        self.record_sinks(&shape, effective_args, fact.id);
         if let Some(function) = target_function {
             self.record_helper_sink(*function, args, fact.id);
         }

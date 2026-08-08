@@ -230,14 +230,15 @@ impl FunctionSummary {
         call_id: FactId,
     ) -> InsertOutcome {
         let cref = stream.call_effect(call_id);
-        let Some(args) = cref.effective_args() else {
+        let Some(shape) = cref.shape() else {
             return InsertOutcome::default();
         };
+        let args = shape.effective_args();
         let matcher = FlowMatchView::new(stream.names(), stream.values());
-        let flow_ids = cref
+        let flow_ids = shape
             .global_name()
             .and_then(|name| plan.global_sink_ids(name))
-            .or_else(|| cref.chain().and_then(|chain| plan.sink_ids(chain)));
+            .or_else(|| shape.chain().and_then(|chain| plan.sink_ids(chain)));
         let mut candidates = Vec::new();
         for flow_id in flow_ids.into_iter().flatten() {
             let Some(flow) = plan.get(*flow_id) else {
@@ -246,9 +247,9 @@ impl FunctionSummary {
             for sink in flow.sinks() {
                 if !matcher.target_matches(
                     sink.target(),
-                    cref.global_name().map(smol_str::SmolStr::as_str),
-                    cref.chain(),
-                    cref.rooted(),
+                    shape.global_name().map(smol_str::SmolStr::as_str),
+                    shape.chain(),
+                    shape.rooted(),
                 ) {
                     continue;
                 }

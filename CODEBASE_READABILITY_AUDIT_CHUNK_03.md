@@ -19,7 +19,7 @@ multiple representations.
 
 ## Findings
 
-#### [ ] READ-001 — Call-effect accessors repeatedly rebuild one call shape
+#### [x] READ-001 — Call-effect accessors repeatedly rebuild one call shape
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -49,7 +49,7 @@ fail-closed lookup boundary and do not reconstruct syntax or resolution, but
 centralize chain selection, rootedness, effective arguments, and provenance in
 one derivation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `CallEffectRef::shape` is now the sole materialization boundary, and flow/linking consumers retain one `CallShape` while reading chain, rootedness, result, provenance, target, and effective arguments. Repeated ref-building accessors were removed while fail-closed fact lookup and chain fallback behavior remain unchanged. Verified with `make fmt && make ci`.
 
 #### [ ] READ-002 — Reversible flow mutations duplicate the entire delta algebra
 

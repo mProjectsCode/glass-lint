@@ -8,7 +8,7 @@ use smallvec::SmallVec;
 
 use crate::analysis::{
     flow::{
-        effect::CallEffectRef,
+        effect::CallShape,
         planning::FlowMatchView,
         projector::{
             CallArgInfo, FactId, FlowState, ObjectFlowProjector, ObjectId, ValueId,
@@ -26,8 +26,9 @@ impl ObjectFlowProjector<'_, '_, '_> {
         }
         if let Some(fact_id) = self.calls_by_result.get(&source).copied() {
             let cref = self.stream.call_effect(fact_id);
-            if let Some(args) = cref.effective_args()
-                && let Some((object, states)) = self.match_source(&cref, args, fact_id)
+            if let Some(shape) = cref.shape()
+                && let Some((object, states)) =
+                    self.match_source(&shape, shape.effective_args(), fact_id)
             {
                 let aliases = self.value_aliases(target);
                 if matches!(
@@ -53,7 +54,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
     /// relationship without duplicating the source event.
     fn match_source(
         &mut self,
-        call: &CallEffectRef<'_>,
+        call: &CallShape<'_>,
         args: &[CallArgInfo],
         source_fact: FactId,
     ) -> Option<(ObjectId, Vec<FlowState>)> {

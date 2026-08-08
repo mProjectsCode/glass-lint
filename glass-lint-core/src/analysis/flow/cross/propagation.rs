@@ -125,11 +125,12 @@ impl UsageProjector<'_, '_> {
             return;
         };
         let cref = stream.call_effect(event);
-        let Some(call_args) = cref.effective_args() else {
+        let Some(shape) = cref.shape() else {
             return;
         };
+        let call_args = shape.effective_args();
 
-        let chain = cref.chain();
+        let chain = shape.chain();
         let matcher = FlowMatchView::new(self.session.names, stream.values());
         let mut next = self.state.clone();
         let mut transition = next.requirement_transition(self.flow);
@@ -158,6 +159,9 @@ impl UsageProjector<'_, '_> {
             return;
         };
         let cref = stream.call_effect(event);
+        let Some(shape) = cref.shape() else {
+            return;
+        };
         let matcher = FlowMatchView::new(self.session.names, stream.values());
         let matching_sinks = self.flow_plan.matching_sink_indices(
             self.context.state().flow_id(),
@@ -165,9 +169,9 @@ impl UsageProjector<'_, '_> {
             |target| {
                 matcher.target_matches(
                     target,
-                    cref.global_name().map(SmolStr::as_str),
-                    cref.chain(),
-                    cref.rooted(),
+                    shape.global_name().map(SmolStr::as_str),
+                    shape.chain(),
+                    shape.rooted(),
                 )
             },
         );

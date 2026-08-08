@@ -20,9 +20,10 @@ fn chain_owned_resolves_direct_call_with_rooted_or_syntactic_chain() {
         .find(|f| matches!(&f.payload, FactPayload::Call { .. }))
         .expect("call fact should exist");
     let cref = stream.call_effect(fact.id);
+    let shape = cref.shape().expect("call fact should have a shape");
     let names = stream.names();
-    let chain = cref
-        .chain_owned(names)
+    let chain = shape
+        .chain_owned(&stream, names)
         .expect("direct call should have a chain");
     let chain: &NamePath = &chain;
     assert!(
@@ -34,8 +35,8 @@ fn chain_owned_resolves_direct_call_with_rooted_or_syntactic_chain() {
             .resolve_path(chain)
             .map_or_else(|| "(unresolvable)".to_string(), |s| s.to_string())
     );
-    assert!(cref.chain().is_some(), "borrowed chain should exist");
-    assert!(cref.rooted(), "global member call should be rooted");
+    assert!(shape.chain().is_some(), "borrowed chain should exist");
+    assert!(shape.rooted(), "global member call should be rooted");
 }
 
 #[test]
@@ -51,8 +52,9 @@ fn chain_owned_falls_back_to_callee_name_for_alias_call() {
     assert!(!call_facts.is_empty(), "expected at least 1 call fact");
     let alias_call = call_facts[0];
     let cref = stream.call_effect(alias_call.id);
-    let chain = cref
-        .chain_owned(names)
+    let shape = cref.shape().expect("call fact should have a shape");
+    let chain = shape
+        .chain_owned(&stream, names)
         .expect("alias call should have a chain via callee_name fallback");
     let chain: &NamePath = &chain;
     assert!(
@@ -75,7 +77,8 @@ fn rooted_is_false_for_non_global_call() {
     assert!(!call_facts.is_empty(), "expected at least 1 call fact");
     let call_fact = call_facts[0];
     let cref = stream.call_effect(call_fact.id);
-    assert!(!cref.rooted(), "local function call should not be rooted");
+    let shape = cref.shape().expect("call fact should have a shape");
+    assert!(!shape.rooted(), "local function call should not be rooted");
 }
 
 #[test]
@@ -90,9 +93,8 @@ fn effective_args_unwraps_call_invocation() {
     assert!(!call_facts.is_empty(), "expected at least 1 call fact");
     let call_fact = call_facts[0];
     let cref = stream.call_effect(call_fact.id);
-    let effective = cref
-        .effective_args()
-        .expect(".call() should have effective args");
+    let shape = cref.shape().expect("call fact should have a shape");
+    let effective = shape.effective_args();
     assert_eq!(
         effective.len(),
         1,
@@ -119,9 +121,8 @@ fn effective_args_unwraps_apply_invocation() {
     assert!(!call_facts.is_empty(), "expected at least 1 call fact");
     let call_fact = call_facts[0];
     let cref = stream.call_effect(call_fact.id);
-    let effective = cref
-        .effective_args()
-        .expect(".apply() should have effective args");
+    let shape = cref.shape().expect("call fact should have a shape");
+    let effective = shape.effective_args();
     assert_eq!(
         effective.len(),
         1,
@@ -142,14 +143,7 @@ fn call_fact_returns_none_for_unknown_id() {
     let unknown = FactId::from_test(u32::MAX);
     let cref = stream.call_effect(unknown);
     assert!(cref.call_fact().is_none());
-    assert!(cref.chain().is_none());
-    assert!(!cref.rooted());
-    assert_eq!(cref.result(), ValueId::UNKNOWN);
-    assert!(cref.provenance().is_none());
-    assert!(cref.target().is_none());
-    assert!(cref.effective_args().is_none());
-    let names = stream.names();
-    assert!(cref.chain_owned(names).is_none());
+    assert!(cref.shape().is_none());
 }
 
 #[test]
@@ -162,8 +156,9 @@ fn chain_returns_borrowed_without_callee_name_fallback() {
         .expect("call fact should exist");
     let cref = stream.call_effect(fact.id);
     let names = stream.names();
-    let owned = cref.chain_owned(names).unwrap();
-    let borrowed = cref.chain().unwrap();
+    let shape = cref.shape().expect("call fact should have a shape");
+    let owned = shape.chain_owned(&stream, names).unwrap();
+    let borrowed = shape.chain().unwrap();
     assert_eq!(&*owned, borrowed, "owned chain should match borrowed");
 }
 

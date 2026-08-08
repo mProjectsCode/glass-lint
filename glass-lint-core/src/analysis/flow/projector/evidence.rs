@@ -11,7 +11,7 @@ use smol_str::SmolStr;
 use crate::{
     analysis::{
         flow::{
-            effect::CallEffectRef,
+            effect::CallShape,
             planning::FlowMatchView,
             projector::{
                 CallArgInfo, ClassificationEvidence, FactId, FlowState, MatchKind,
@@ -68,7 +68,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
     /// Check sink arguments against live states and emit completed flows.
     pub(super) fn record_sinks(
         &mut self,
-        call: &CallEffectRef<'_>,
+        call: &CallShape<'_>,
         args: &[CallArgInfo],
         sink_fact: FactId,
     ) {

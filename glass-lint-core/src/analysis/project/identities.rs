@@ -10,7 +10,7 @@ use smol_str::SmolStr;
 
 use crate::analysis::{
     ExportResolution, LinkedModuleTarget, ModuleId, ProjectSemanticModel, QualifiedRequestId,
-    flow::effect::CallEffectRef,
+    flow::effect::CallShape,
     matching::{ModuleExportKey, ModuleIdentityContributions, ModuleIdentityMap},
     model::module::{ImportedBinding, ModuleRequest, ModuleRequestRole},
     project::{
@@ -35,14 +35,13 @@ impl ProjectSemanticModel {
         for effect in module.local().effects().iter_effects() {
             for call in effect.calls() {
                 let cref = stream.call_effect(call.event());
-                let Some(provenance) = cref.provenance() else {
+                let Some(shape) = cref.shape() else {
                     continue;
                 };
-                let Some(identity) = self.call_result_identity(importer, cref, provenance, session)
-                else {
+                let Some(identity) = self.call_result_identity(importer, &shape, session) else {
                     continue;
                 };
-                identities.insert(cref.result(), identity);
+                identities.insert(shape.result(), identity);
             }
         }
         identities
@@ -51,12 +50,11 @@ impl ProjectSemanticModel {
     fn call_result_identity(
         &self,
         importer: ModuleId,
-        call: CallEffectRef<'_>,
-        provenance: &SymbolCallProvenance,
+        call: &CallShape<'_>,
         session: &mut LinkingSession,
     ) -> Option<ExportResolution> {
         let target =
-            self.qualified_function_target(importer, call.target(), provenance, session)?;
+            self.qualified_function_target(importer, call.target(), call.provenance(), session)?;
         self.target_return_identity(target, session)
     }
 

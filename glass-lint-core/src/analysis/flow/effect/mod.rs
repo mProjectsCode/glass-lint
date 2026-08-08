@@ -200,44 +200,48 @@ impl CallEffectRef<'_> {
             callee_name: *callee_name,
         })
     }
+}
 
-    pub(in crate::analysis) fn chain(&self) -> Option<&NamePath> {
-        self.shape()?.chain
+impl<'a> CallShape<'a> {
+    pub(in crate::analysis) fn chain(&self) -> Option<&'a NamePath> {
+        self.chain
     }
 
-    pub(in crate::analysis) fn chain_owned(&self, names: &NameTable) -> Option<Cow<'_, NamePath>> {
-        let shape = self.shape()?;
-        shape.chain.map(Cow::Borrowed).or_else(|| {
-            shape
-                .callee_name
-                .and_then(|id| self.stream.resolve_name(id))
+    pub(in crate::analysis) fn chain_owned(
+        &self,
+        stream: &FactStream<Frozen>,
+        names: &NameTable,
+    ) -> Option<Cow<'a, NamePath>> {
+        self.chain.map(Cow::Borrowed).or_else(|| {
+            self.callee_name
+                .and_then(|id| stream.resolve_name(id))
                 .and_then(|name| names.lookup_path(&SymbolPath::from(name)))
                 .map(Cow::Owned)
         })
     }
 
     pub(in crate::analysis) fn rooted(&self) -> bool {
-        self.shape().is_some_and(|shape| shape.rooted)
+        self.rooted
     }
 
     pub(in crate::analysis) fn result(&self) -> ValueId {
-        self.shape().map_or(ValueId::UNKNOWN, |shape| shape.result)
+        self.result
     }
 
-    pub(in crate::analysis) fn provenance(&self) -> Option<&SymbolCallProvenance> {
-        self.shape().map(|shape| shape.provenance)
+    pub(in crate::analysis) fn provenance(&self) -> &SymbolCallProvenance {
+        self.provenance
     }
 
     pub(in crate::analysis) fn global_name(&self) -> Option<&SmolStr> {
-        self.shape().and_then(|shape| shape.global_name)
+        self.global_name
     }
 
     pub(in crate::analysis) fn target(&self) -> Option<FunctionId> {
-        self.shape().and_then(|shape| shape.target)
+        self.target
     }
 
-    pub(in crate::analysis) fn effective_args(&self) -> Option<&[CallArgInfo]> {
-        self.shape().map(|shape| shape.arguments)
+    pub(in crate::analysis) fn effective_args(&self) -> &[CallArgInfo] {
+        self.arguments
     }
 }
 

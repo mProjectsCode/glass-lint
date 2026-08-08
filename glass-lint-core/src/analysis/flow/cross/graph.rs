@@ -28,12 +28,13 @@ impl QualifiedCallGraph {
                 }
                 for call in effect.calls() {
                     let cref = stream.call_effect(call.event());
-                    let Some(provenance) = cref.provenance() else {
+                    let Some(shape) = cref.shape() else {
                         continue;
                     };
+                    let provenance = shape.provenance();
                     if let Some(target) = project.qualified_function_target(
                         module_id,
-                        cref.target(),
+                        shape.target(),
                         provenance,
                         session,
                     ) {
