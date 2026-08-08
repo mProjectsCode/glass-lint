@@ -171,7 +171,7 @@ fallback collection and evidence publication. This preserves preparation
 sharing, bounded fallback scanning, operation accounting, and fail-closed
 unsupported argument behavior. Verified with `make fmt && make ci`.
 
-#### [ ] READ-005 — Normal and constrained matchers duplicate evidence-group construction
+#### [x] READ-005 — Normal and constrained matchers duplicate evidence-group construction
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -205,7 +205,12 @@ retaining per-rule capacity errors, definite-versus-possible certainty,
 physical duplicate counts, and the single final normalization and truncation
 boundary.
 
-**Fix Applied:** None so far.
+**Fix Applied:** A private `EvidenceGroup` in `analysis::matching::evidence`
+now owns occurrence conversion and the non-empty classification-group
+invariant. Direct matching and constrained matching both consume it, while the
+duplicated `RuleEvidenceTable::record_grouped` constructor path is removed.
+Per-rule capacity handling and final normalization remain unchanged. Verified
+with `make fmt && make ci`.
 
 ## Systemic Themes
 

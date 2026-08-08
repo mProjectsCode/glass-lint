@@ -249,29 +249,6 @@ impl RuleEvidenceTable {
         Ok(())
     }
 
-    pub(crate) fn record_grouped(
-        &mut self,
-        rule: RuleIndex,
-        kind: MatchKind,
-        symbol: String,
-        occurrences: impl IntoIterator<Item = ClassificationEvidenceOccurrence>,
-    ) -> Result<(), RuleEvidenceError> {
-        let occurrences: Vec<_> = occurrences.into_iter().collect();
-        if occurrences.is_empty() {
-            return Ok(());
-        }
-        self.record(
-            rule,
-            ClassificationEvidence::from_occurrences(
-                kind,
-                symbol,
-                occurrences,
-                MatchCertainty::Definite,
-            )
-            .expect("non-empty evidence occurrences were checked above"),
-        )
-    }
-
     pub(crate) fn mark_event_truncated(
         &mut self,
         rule: RuleIndex,

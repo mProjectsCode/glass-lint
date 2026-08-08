@@ -7,9 +7,39 @@ use glass_lint_datastructures::ByteRange;
 #[cfg(test)]
 use crate::api::rule::Rule;
 use crate::{
-    api::classification::{ClassificationEvidence, MatchKind},
+    analysis::matching::occurrence::Occurrence,
+    api::classification::{ClassificationEvidence, ClassificationEvidenceOccurrence, MatchKind},
     diagnostic::SourceLineIndex,
+    project::MatchCertainty,
 };
+
+/// A validated evidence group shared by the direct and constrained sinks.
+pub(super) struct EvidenceGroup(ClassificationEvidence);
+
+impl EvidenceGroup {
+    pub(super) fn from_occurrences(
+        kind: MatchKind,
+        symbol: String,
+        certainty: MatchCertainty,
+        occurrences: impl IntoIterator<Item = Occurrence>,
+    ) -> Option<Self> {
+        let occurrences = occurrences
+            .into_iter()
+            .map(|occurrence| {
+                ClassificationEvidenceOccurrence::new(
+                    occurrence.span(),
+                    Some(occurrence.event().raw()),
+                    None,
+                )
+            })
+            .collect();
+        ClassificationEvidence::from_occurrences(kind, symbol, occurrences, certainty).map(Self)
+    }
+
+    pub(super) fn into_classification(self) -> ClassificationEvidence {
+        self.0
+    }
+}
 
 /// Internal key that owns its data once and is used across all accumulators,
 /// avoiding string clones for separate count and occurrence maps.

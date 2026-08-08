@@ -7,7 +7,7 @@ use crate::{
         facts::{FactStream, Frozen, SemanticFacts},
         matching::{
             LinkedOccurrenceView, ModuleIdentityMap, Occurrence, OccurrenceIndexes,
-            owned_occurrences,
+            evidence::EvidenceGroup,
         },
         model::value::ValueId,
         project::model::ExportResolution,
@@ -282,9 +282,16 @@ fn push_owned_rule_evidence(
     symbol: String,
     occurrences: impl IntoIterator<Item = Occurrence>,
 ) {
-    evidence
-        .record_grouped(rule, kind, symbol, owned_occurrences(occurrences))
-        .expect("constrained evidence uses its catalog capacity");
+    if let Some(group) = EvidenceGroup::from_occurrences(
+        kind,
+        symbol,
+        crate::project::MatchCertainty::Definite,
+        occurrences,
+    ) {
+        evidence
+            .record(rule, group.into_classification())
+            .expect("constrained evidence uses its catalog capacity");
+    }
 }
 
 pub(in crate::analysis) fn compute_constrained_evidence<'artifact>(

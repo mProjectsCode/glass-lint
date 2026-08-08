@@ -25,6 +25,7 @@ pub(in crate::analysis) use arguments::{
 };
 mod build;
 mod query;
+use evidence::EvidenceGroup;
 pub use evidence::display_span;
 
 #[derive(Debug, Default)]
@@ -346,40 +347,20 @@ impl OccurrenceIndexes {
     }
 }
 
-pub(super) fn owned_occurrences(
-    occurrences: impl IntoIterator<Item = Occurrence>,
-) -> Vec<crate::api::classification::ClassificationEvidenceOccurrence> {
-    occurrences
-        .into_iter()
-        .map(|occurrence| {
-            crate::api::classification::ClassificationEvidenceOccurrence::new(
-                occurrence.span(),
-                Some(occurrence.event().raw()),
-                None,
-            )
-        })
-        .collect()
-}
-
 pub(super) fn push_owned_evidence(
     evidence: &mut Vec<ClassificationEvidence>,
     kind: MatchKind,
     symbol: String,
     occurrences: OccurrenceSelection<'_>,
 ) {
-    let occurrences = owned_occurrences(occurrences.into_ordered());
-    if occurrences.is_empty() {
-        return;
+    if let Some(group) = EvidenceGroup::from_occurrences(
+        kind,
+        symbol,
+        crate::project::MatchCertainty::Definite,
+        occurrences.into_ordered(),
+    ) {
+        evidence.push(group.into_classification());
     }
-    evidence.push(
-        ClassificationEvidence::from_occurrences(
-            kind,
-            symbol,
-            occurrences,
-            crate::project::MatchCertainty::Definite,
-        )
-        .expect("non-empty evidence occurrences were checked above"),
-    );
 }
 
 #[cfg(test)]
