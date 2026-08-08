@@ -135,7 +135,10 @@ impl ObjectFlowProjector<'_, '_, '_> {
             return;
         }
         let summary = summary_ref.clone();
-        let parameters = summary.parameter_bindings(self.inputs.stream).to_vec();
+        let Some(parameters) = summary.parameter_bindings(self.inputs.stream) else {
+            return;
+        };
+        let parameters = parameters.to_vec();
         #[allow(clippy::needless_collect)]
         let values: Vec<(FlowId, ValueId)> = summary
             .sinks()

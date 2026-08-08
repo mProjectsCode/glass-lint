@@ -140,8 +140,10 @@ impl ContextWorklist {
         let Some(fact_stream) = project.module_fact_stream(module) else {
             return;
         };
-        for parameter in effect
-            .parameters(fact_stream)
+        let Some(parameters) = effect.parameters(fact_stream) else {
+            return;
+        };
+        for parameter in parameters
             .iter()
             .filter(|parameter| parameter.is_root_for(argument_index))
         {

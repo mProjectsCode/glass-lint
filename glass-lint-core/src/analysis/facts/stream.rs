@@ -169,16 +169,20 @@ impl<T: FactPhase> FactStream<T> {
         &self.paths
     }
 
-    /// Look up the canonical parameter bindings for a function. Returns an
-    /// empty slice when the function has no registered parameters (e.g. the
-    /// program-level slot or an exit fact).
-    pub(in crate::analysis) fn function_parameters(&self, id: FunctionId) -> &[ParameterBinding] {
+    /// Look up the canonical parameter bindings for a function. `Some(&[])`
+    /// represents a registered zero-parameter function or the program-level
+    /// slot; `None` means the identity is not registered.
+    pub(in crate::analysis) fn function_parameters(
+        &self,
+        id: FunctionId,
+    ) -> Option<&[ParameterBinding]> {
         let Ok(index) = usize::try_from(id.raw()) else {
-            return &[];
+            return None;
         };
-        self.function_parameters
-            .get(index)
-            .map_or(&[], |params| params.as_slice())
+        if index == 0 {
+            return Some(&[]);
+        }
+        self.function_parameters.get(index).map(Vec::as_slice)
     }
 
     #[cfg(test)]

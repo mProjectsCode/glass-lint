@@ -161,7 +161,7 @@ impl FunctionSummary {
     pub(in crate::analysis::flow) fn parameter_bindings<'s>(
         &self,
         stream: &'s FactStream<Frozen>,
-    ) -> &'s [ParameterBinding] {
+    ) -> Option<&'s [ParameterBinding]> {
         stream.function_parameters(self.id)
     }
 
@@ -206,10 +206,11 @@ impl FunctionSummary {
         paths: &SummaryPathStore<'_>,
     ) -> bool {
         self.signature.accepts_call_shape(args)
-            && self
-                .parameter_bindings(stream)
-                .iter()
-                .all(|parameter| parameter.accepts_invocation_projection(stream, args, paths))
+            && self.parameter_bindings(stream).is_some_and(|parameters| {
+                parameters
+                    .iter()
+                    .all(|parameter| parameter.accepts_invocation_projection(stream, args, paths))
+            })
     }
 }
 
@@ -249,12 +250,12 @@ impl FunctionSummary {
                     let Some(argument) = args.get(argument_index) else {
                         continue;
                     };
-                    let Some(parameter) =
-                        self.parameter_bindings(stream).iter().find(|parameter| {
+                    let Some(parameter) = self.parameter_bindings(stream).and_then(|parameters| {
+                        parameters.iter().find(|parameter| {
                             parameter.value() != ValueId::UNKNOWN
                                 && parameter.value() == argument.base_value
                         })
-                    else {
+                    }) else {
                         continue;
                     };
                     let Some(prefix_id) = paths.intern_frozen(parameter.path()) else {

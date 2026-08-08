@@ -81,7 +81,7 @@ class provenance, and deterministic region allocation.
 
 ### Function parameter lookup contract
 
-#### [ ] READ-003 — Distinguish an unknown function from a function with no parameters
+#### [x] READ-003 — Distinguish an unknown function from a function with no parameters
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -105,7 +105,10 @@ owners to handle `None` as incomplete and keep the existing valid behavior for
 program-level and zero-parameter functions; do not turn malformed identities
 into definite flow matches.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Changed parameter lookup to return `Option`, preserving
+`Some(&[])` for the program-level and registered zero-parameter slots while
+propagating missing identities as fail-closed effect/summary/worklist paths.
+Verified with `make fmt && make ci`.
 
 ### Module-interface recording boundary
 

@@ -114,7 +114,10 @@ impl<'a> FunctionSummaries<'a> {
                     self.exhaust(FlowCompletionReason::SummaryBudget);
                     return;
                 }
-                let params = effect.parameters(self.stream);
+                let Some(params) = effect.parameters(self.stream) else {
+                    self.exhaust(FlowCompletionReason::Summary);
+                    continue;
+                };
                 self.insert(FunctionSummary::new(
                     effect.id(),
                     FunctionSignature::from_bindings(params),
@@ -184,8 +187,12 @@ impl<'a> FunctionSummaries<'a> {
         };
         let mut projections = Vec::new();
         {
-            let target_params = stream.function_parameters(target);
-            let caller_params = stream.function_parameters(caller);
+            let Some(target_params) = stream.function_parameters(target) else {
+                return Ok(false);
+            };
+            let Some(caller_params) = stream.function_parameters(caller) else {
+                return Ok(false);
+            };
             for sink in target_summary.sinks() {
                 if let Some(proj) = try_project_sink(
                     target_params,

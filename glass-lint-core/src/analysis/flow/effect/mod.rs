@@ -310,7 +310,7 @@ impl FunctionEffect {
     pub(in crate::analysis) fn parameters<'s>(
         &self,
         stream: &'s FactStream<Frozen>,
-    ) -> &'s [ParameterBinding] {
+    ) -> Option<&'s [ParameterBinding]> {
         stream.function_parameters(self.id)
     }
 
@@ -591,7 +591,21 @@ impl<'stream> FunctionEffectsBuilder<'stream> {
             if !self.by_id.contains(*id) && !self.budget.try_push() {
                 return;
             }
-            let params = self.stream.function_parameters(*id);
+            let Some(params) = self.stream.function_parameters(*id) else {
+                let _ = self.by_id.insert(
+                    *id,
+                    FunctionEffect {
+                        id: *id,
+                        calls: Vec::new(),
+                        uses: Vec::new(),
+                        returns: Vec::new(),
+                        invalid: true,
+                        value_roots: HashMap::new(),
+                        parameter_index: HashMap::new(),
+                    },
+                );
+                return;
+            };
             let _ = self.by_id.insert(
                 *id,
                 FunctionEffect {
