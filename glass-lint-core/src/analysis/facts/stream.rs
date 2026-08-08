@@ -76,6 +76,12 @@ pub(in crate::analysis) struct FrozenStorage {
     values: ValueTable,
 }
 
+impl FrozenStorage {
+    pub(in crate::analysis) fn from_tables(names: NameTable, values: ValueTable) -> Self {
+        Self { names, values }
+    }
+}
+
 pub(in crate::analysis) trait FactPhase {
     type Storage: std::fmt::Debug;
 }
@@ -310,12 +316,11 @@ impl FactStream<Building> {
     /// Consume the building stream and return a frozen stream with the
     /// resolver-owned name/value tables permanently attached.
     pub(in crate::analysis) fn freeze(self, tables: FrozenFactTables) -> FactStream<Frozen> {
-        let (names, values) = tables.into_parts();
         FactStream {
             facts: self.facts,
             max_facts: self.max_facts,
             paths: self.paths,
-            storage: FrozenStorage { names, values },
+            storage: tables.into_storage(),
             function_parameters: self.function_parameters,
             valid: self.valid,
             issues: self.issues,

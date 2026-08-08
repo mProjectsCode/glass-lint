@@ -30,7 +30,7 @@ use crate::Environment;
 use crate::analysis::scope::{ScopeGraph, ScopedProgram};
 use crate::analysis::{
     SemanticBudget,
-    facts::{Building, FactStream, Frozen},
+    facts::{Building, FactStream, Frozen, stream::FrozenStorage},
     lowering::{InvalidParserSpan, ParserSpanKey, SpanNormalizer},
     model::{
         scope::BindingKey,
@@ -174,8 +174,8 @@ impl FrozenFactTables {
         Self { names, values }
     }
 
-    pub(in crate::analysis) fn into_parts(self) -> (NameTable, ValueTable) {
-        (self.names, self.values)
+    pub(in crate::analysis) fn into_storage(self) -> FrozenStorage {
+        FrozenStorage::from_tables(self.names, self.values)
     }
 
     #[cfg(test)]

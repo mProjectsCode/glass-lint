@@ -167,7 +167,7 @@ semantic observation is equivalent.
 
 **Fix Applied:** Per-name export observations now pass through one `ExportEntry::merge` transition. Compatible resolution, function, and static-string metadata composes independently of observation order; contradictions clear all metadata and retain an explicit unknown entry. Added focused conflict/order tests while preserving the module-wide unknown barrier. Verified with `make fmt && make ci`.
 
-#### [ ] READ-005 — The frozen table bundle is dismantled into an order-dependent tuple
+#### [x] READ-005 — The frozen table bundle is dismantled into an order-dependent tuple
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -195,7 +195,7 @@ named table aggregate rather than a positional tuple. Keep the transition
 consuming, keep names and values artifact-local, and retain the existing
 single-freeze ownership semantics.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `FrozenFactTables` now owns the consuming `into_storage` transition into `FrozenStorage`, and `FactStream::freeze` installs that named storage directly without positional destructuring. Names and values remain artifact-local and cross the phase boundary together. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 
