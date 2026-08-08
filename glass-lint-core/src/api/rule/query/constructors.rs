@@ -6,9 +6,7 @@ use super::{
     ValueMatcher, checked_chain, checked_module_export, checked_module_name, checked_name,
 };
 
-fn checked_argument_index(index: usize) -> Result<ArgumentIndex, QueryBuildError> {
-    ArgumentIndex::try_from_usize(index)
-}
+
 
 #[allow(clippy::cast_possible_truncation)]
 impl EventQuery {
@@ -269,7 +267,7 @@ impl EventQuery {
         index: usize,
         matcher: impl Into<ArgumentMatcher>,
     ) -> Result<Self, QueryBuildError> {
-        let arg_idx = checked_argument_index(index)?;
+        let arg_idx = ArgumentIndex::try_from_usize(index)?;
         self.with_arg_index(arg_idx, matcher)
     }
 
@@ -286,7 +284,7 @@ impl EventQuery {
 
     /// Add a static-string argument constraint.
     pub fn with_arg_static_string(self, index: usize) -> Result<Self, QueryBuildError> {
-        let arg_idx = checked_argument_index(index)?;
+        let arg_idx = ArgumentIndex::try_from_usize(index)?;
         self.with_arg_index(arg_idx, ValueMatcher::static_string())
     }
 
@@ -300,7 +298,7 @@ impl EventQuery {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        let arg_idx = checked_argument_index(index)?;
+        let arg_idx = ArgumentIndex::try_from_usize(index)?;
         self.with_arg_index(arg_idx, ValueMatcher::static_string().equals_any(values)?)
     }
 
@@ -314,7 +312,7 @@ impl EventQuery {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        let arg_idx = checked_argument_index(index)?;
+        let arg_idx = ArgumentIndex::try_from_usize(index)?;
         self.with_arg_index(arg_idx, ValueMatcher::static_string().contains_any(values)?)
     }
 
@@ -325,7 +323,7 @@ impl EventQuery {
         property: impl Into<String>,
         value: ValueMatcher,
     ) -> Result<Self, QueryBuildError> {
-        let arg_idx = checked_argument_index(index)?;
+        let arg_idx = ArgumentIndex::try_from_usize(index)?;
         self.with_arg_index(
             arg_idx,
             ArgumentMatcher::object_property_value(property, value)?,
@@ -338,7 +336,7 @@ impl EventQuery {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        let arg_idx = checked_argument_index(index)?;
+        let arg_idx = ArgumentIndex::try_from_usize(index)?;
         self.with_arg_index(arg_idx, ArgumentMatcher::object_keys(keys)?)
     }
 

@@ -4,19 +4,14 @@ use hashbrown::HashMap;
 
 use crate::{
     analysis::{
-        ProjectSemanticModel,
-        facts::FactId,
-        flow::{
+        ProjectSemanticModel, facts::FactId, flow::{
             cross::state::{CallContext, CrossFlowState},
             effect::{EffectUse, FunctionEffect},
-        },
-        trace::{QualifiedEvent, TraceArena, TraceNodeId},
-    },
-    api::{
+        }, model::flow::FlowId, trace::{QualifiedEvent, TraceArena, TraceNodeId},
+    }, api::{
         classification::{ClassificationEvidence, MatchKind, RuleEvidenceTable, RuleIndex},
         compiler::CompiledObjectFlow,
-    },
-    project::{EvidenceRole, ModuleId},
+    }, project::{EvidenceRole, ModuleId},
 };
 
 pub(super) fn usage_matches_context(
@@ -152,7 +147,7 @@ impl ModuleEvidence {
 pub(super) fn mark_nonmatching(
     evidence: &mut HashMap<ModuleId, ModuleEvidence>,
     module: ModuleId,
-    flow_id: crate::analysis::model::flow::FlowId,
+    flow_id: FlowId,
     event: FactId,
     flow: &CompiledObjectFlow,
 ) {
@@ -204,7 +199,7 @@ fn assemble_trace(
 pub(super) fn emit(
     context: EmissionContext<'_>,
     module: ModuleId,
-    flow_id: crate::analysis::model::flow::FlowId,
+    flow_id: FlowId,
     state: &CrossFlowState,
     event: FactId,
     flow: &CompiledObjectFlow,

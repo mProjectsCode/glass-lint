@@ -5,8 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use glass_lint_datastructures::{Fingerprint, NamePath, NameTable, SymbolPath};
-use smallvec::SmallVec;
+use glass_lint_datastructures::{Fingerprint, NameId, NamePath, NameTable, PathView};
 use smol_str::SmolStr;
 use swc_ecma_ast::EsReserved;
 
@@ -127,59 +126,6 @@ fn is_js_identifier_continue(c: char) -> bool {
         return true;
     }
     swc_ecma_ast::Ident::is_valid_continue(c)
-}
-
-// TODO: what is the difference between this and a SymbolPath??? Why do we need
-// this similar extra type? Can we unify them?
-struct GlobalObjectPath<'a> {
-    segments: SmallVec<[&'a str; 4]>,
-}
-
-impl<'a> GlobalObjectPath<'a> {
-    fn from_symbols(path: &'a SymbolPath) -> Self {
-        Self {
-            segments: path.segments().iter().map(SmolStr::as_str).collect(),
-        }
-    }
-
-    fn from_names(path: &'a NamePath, names: &'a NameTable) -> Option<Self> {
-        Some(Self {
-            segments: path
-                .segments()
-                .iter()
-                .map(|id| names.resolve(*id))
-                .collect::<Option<_>>()?,
-        })
-    }
-
-    fn matches(&self, environment: &Environment, other: &Self) -> bool {
-        if self.segments == other.segments {
-            return true;
-        }
-
-        if let (Some(left_root), Some(right_root)) = (self.segments.first(), other.segments.first())
-            && environment.global_object_aliases_match(left_root, right_root)
-        {
-            return self.segments[1..] == other.segments[1..];
-        }
-
-        if self.is_promoted_member(environment) && &self.segments[1..] == other.segments.as_slice()
-        {
-            return true;
-        }
-        if other.is_promoted_member(environment) && &other.segments[1..] == self.segments.as_slice()
-        {
-            return true;
-        }
-        false
-    }
-
-    fn is_promoted_member(&self, environment: &Environment) -> bool {
-        self.segments
-            .split_first()
-            .and_then(|(root, tail)| tail.first().map(|member| (root, member)))
-            .is_some_and(|(root, member)| environment.is_promoted_global_member(root, member))
-    }
 }
 
 impl Environment {
@@ -370,13 +316,6 @@ impl Environment {
         )
     }
 
-    pub(crate) fn global_object_paths_match(&self, left: &SymbolPath, right: &SymbolPath) -> bool {
-        if left == right {
-            return true;
-        }
-        GlobalObjectPath::from_symbols(left).matches(self, &GlobalObjectPath::from_symbols(right))
-    }
-
     pub(crate) fn global_object_name_paths_match(
         &self,
         left: &NamePath,
@@ -386,13 +325,47 @@ impl Environment {
         if left == right {
             return true;
         }
-        let Some(left) = GlobalObjectPath::from_names(left, names) else {
+        let left = left.as_view();
+        let right = right.as_view();
+
+        if let (Some(left_root), Some(right_root)) = (left.first_segment(), right.first_segment())
+            && names
+                .resolve(*left_root)
+                .zip(names.resolve(*right_root))
+                .is_some_and(|(left_root, right_root)| {
+                    self.global_object_aliases_match(left_root, right_root)
+                })
+        {
+            return left.tail_after(1) == right.tail_after(1);
+        }
+
+        if self.is_promoted_global_member_path(left, names) && left.tail_after(1) == Some(right) {
+            return true;
+        }
+        if self.is_promoted_global_member_path(right, names) && right.tail_after(1) == Some(left) {
+            return true;
+        }
+        false
+    }
+
+    fn is_promoted_global_member_path(
+        &self,
+        path: PathView<'_, NameId>,
+        names: &NameTable,
+    ) -> bool {
+        let Some(root) = path.first_segment() else {
             return false;
         };
-        let Some(right) = GlobalObjectPath::from_names(right, names) else {
+        let Some(member) = path.tail_after(1).and_then(|tail| tail.first_segment()) else {
             return false;
         };
-        left.matches(self, &right)
+        let Some(root) = names.resolve(*root) else {
+            return false;
+        };
+        let Some(member) = names.resolve(*member) else {
+            return false;
+        };
+        self.is_promoted_global_member(root, member)
     }
 
     fn is_global_object(&self, name: &str) -> bool {
@@ -470,6 +443,8 @@ const ECMASCRIPT_GLOBALS: &[&str] = &[
 
 #[cfg(test)]
 mod tests {
+    use glass_lint_datastructures::SymbolPath;
+
     use super::*;
 
     #[test]
@@ -563,23 +538,12 @@ mod tests {
     }
 
     #[test]
-    fn global_object_paths_match_aliases() {
+    fn global_object_name_paths_match_aliases_and_promoted_members() {
         let mut env = Environment::default();
         env.add_global("fetch").unwrap();
         env.add_global_object("window").unwrap();
         env.add_global_object("self").unwrap();
 
-        let window_fetch = SymbolPath::from_chain("window.fetch");
-        let self_fetch = SymbolPath::from_chain("self.fetch");
-        assert!(env.global_object_paths_match(&window_fetch, &self_fetch));
-    }
-
-    #[test]
-    fn global_object_name_paths_use_the_same_relation() {
-        let mut env = Environment::default();
-        env.add_global("fetch").unwrap();
-        env.add_global_object("window").unwrap();
-        env.add_global_object("self").unwrap();
         let mut names = NameTable::default();
         for name in ["window", "self", "fetch"] {
             names.intern(name).unwrap();
@@ -597,18 +561,23 @@ mod tests {
     }
 
     #[test]
-    fn global_object_paths_match_identical_paths() {
+    fn global_object_name_paths_match_identical_paths() {
         let env = Environment::default();
-        let path = SymbolPath::from_chain("Math");
-        assert!(env.global_object_paths_match(&path, &path));
+        let mut names = NameTable::default();
+        names.intern("Math").unwrap();
+        let path = names.lookup_path(&SymbolPath::from_chain("Math")).unwrap();
+        assert!(env.global_object_name_paths_match(&path, &path, &names));
     }
 
     #[test]
-    fn global_object_paths_match_rejects_different_paths() {
+    fn global_object_name_paths_match_rejects_different_paths() {
         let env = Environment::default();
-        let left = SymbolPath::from_chain("Math");
-        let right = SymbolPath::from_chain("JSON");
-        assert!(!env.global_object_paths_match(&left, &right));
+        let mut names = NameTable::default();
+        names.intern("Math").unwrap();
+        names.intern("JSON").unwrap();
+        let left = names.lookup_path(&SymbolPath::from_chain("Math")).unwrap();
+        let right = names.lookup_path(&SymbolPath::from_chain("JSON")).unwrap();
+        assert!(!env.global_object_name_paths_match(&left, &right, &names));
     }
 
     #[test]

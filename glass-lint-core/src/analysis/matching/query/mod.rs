@@ -64,7 +64,7 @@ impl OccurrenceIndexes {
                     ..
                 } => {
                     if let Some(occurrences) =
-                        self.occurrences_for_returned(producer, member, event, overlay, names)
+                        self.occurrences_for_returned(producer, member, event, names)
                     {
                         push_owned_evidence(&mut evidence, ev.kind, ev.symbol.clone(), occurrences);
                     }
@@ -107,15 +107,21 @@ impl OccurrenceIndexes {
         identity: &'a IdentityConstraint,
         member: &SymbolPath,
         event: &EventPredicate,
-        _overlay: Option<&'a LinkedOccurrenceView<'a>>,
         names: &'a NameTable,
     ) -> Option<OccurrenceSelection<'a>> {
+        let rooted_path = match identity {
+            IdentityConstraint::Rooted { path } => names.lookup_path(path)?,
+            _ => return None,
+        };
+        let member_path = names.lookup_path(member)?;
         let predicate = |key: &ReturnedMemberKey| {
-            names.resolve_path(key.source()).is_some_and(|source| {
-                identity.root_or_descendant_matches(&source, &self.environment)
-            }) && names
-                .lookup_path(member)
-                .is_some_and(|m| m == *key.member())
+            (self
+                .environment
+                .global_object_name_paths_match(&rooted_path, key.source(), names)
+                || key
+                    .source()
+                    .is_equal_or_descendant_of(&rooted_path))
+                && member_path == *key.member()
         };
         match event {
             EventPredicate::MemberCall { .. } => self.members.returned_calls().matching(predicate),

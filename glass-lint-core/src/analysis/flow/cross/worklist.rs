@@ -2,16 +2,13 @@ use std::collections::{BTreeSet, VecDeque};
 
 use crate::{
     analysis::{
-        ProjectSemanticModel, QualifiedFunctionId,
-        flow::cross::{
+        ProjectSemanticModel, QualifiedFunctionId, flow::cross::{
             MAX_CONTEXTS,
             graph::QualifiedCallGraph,
             sources::{FlowSources, SourceKey},
             state::{CallContext, CrossFlowState, QualifiedEvent},
-        },
-        model::scope::FunctionId,
-    },
-    project::ModuleId,
+        }, model::{flow::FlowId, scope::FunctionId},
+    }, project::ModuleId,
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -201,7 +198,7 @@ impl ContextWorklist {
         project: &ProjectSemanticModel,
         sources: &FlowSources,
         call_graph: &QualifiedCallGraph,
-        source_flows: &BTreeSet<crate::analysis::model::flow::FlowId>,
+        source_flows: &BTreeSet<FlowId>,
     ) {
         for module in project.modules() {
             if self.is_exhausted() {

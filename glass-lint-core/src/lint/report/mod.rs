@@ -4,22 +4,16 @@ use std::{
 };
 
 use crate::{
-    AnalysisLimits, ParseDiagnostic, StatusDiagnostics,
-    analysis::{
+    AnalysisLimits, ParseDiagnostic, StatusDiagnostics, analysis::{
         AnalysisStatus, IncompleteReason, ProjectSemanticModel, ResolvedLinkInput, StatusScope,
         project::projection::ProjectionOutcome,
         trace::{TraceArena, TraceNodeId, TraceStep},
-    },
-    api::classification::{ClassificationResult, RuleIndex},
-    lint::catalog::RuleCatalog,
-    project::{AnalysisReport, FileReport, ModuleId, ProjectRelativePath, SourceTable},
+    }, api::classification::{ClassificationResult, RuleIndex}, lint::catalog::RuleCatalog, project::{AnalysisReport, Diagnostic, FileReport, ModuleId, ProjectRelativePath, SourceTable},
 };
 
 mod diagnostics;
 mod evidence;
 mod summary;
-
-// TODO: use mod.rs convention
 
 /// Result of linking and matching a resolved project, including phase timings.
 pub struct ProjectAnalysis {
@@ -115,9 +109,6 @@ pub(super) struct ReportAssembly<'a> {
     evidence_limit: usize,
 }
 
-// TODO: So these following three structs just exist to be assembled and then
-// immediately consumed again. That seems like pointless overcomplication.
-
 struct LinkedReport {
     project: ProjectSemanticModel,
     session: ProjectReportSession,
@@ -139,7 +130,7 @@ struct RenderedReport {
     project: ProjectSemanticModel,
     session: ProjectReportSession,
     files: BTreeMap<ProjectRelativePath, FileReport>,
-    diagnostics: Vec<crate::project::Diagnostic>,
+    diagnostics: Vec<Diagnostic>,
     projection_outcome: ProjectionOutcome,
     linking: Duration,
     matching: Duration,

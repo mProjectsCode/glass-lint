@@ -65,7 +65,6 @@ use crate::api::{
 pub(crate) struct CompiledMatcherPlan {
     physical_plan: PhysicalPlan,
 }
-
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub(crate) enum IdentityStrength {
     Strict,
@@ -121,15 +120,6 @@ impl IdentityConstraint {
             Self::LiteralString { predicate } => predicate.is_empty(),
             Self::PackageSpecifier { pattern } => pattern.as_str().is_empty(),
         }
-    }
-
-    pub(crate) fn root_or_descendant_matches(
-        &self,
-        source: &SymbolPath,
-        environment: &crate::Environment,
-    ) -> bool {
-        matches!(self, Self::Rooted { path } if environment.global_object_paths_match(path, source)
-            || source.is_equal_or_descendant_of(path))
     }
 }
 
