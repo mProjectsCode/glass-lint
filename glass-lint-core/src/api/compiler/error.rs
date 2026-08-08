@@ -10,8 +10,14 @@ pub(crate) enum PhysicalPlanValidationError {
     NonCanonicalConstraints,
     UnavailablePrimaryEvidence,
     InvalidLifecycleRoot,
-    InvalidLifecycleSource { detail: &'static str },
-    ExcessiveLifecycleEvidence { requirements: usize, sinks: usize },
+    InvalidLifecycleSource {
+        detail: &'static str,
+    },
+    ExcessiveLifecycleEvidence {
+        requirements: usize,
+        sinks: usize,
+    },
+    #[cfg(test)]
     RequirementsMismatch,
     ExcessiveArgumentGroups(usize),
     ExcessivePredicateCount(usize),
@@ -40,6 +46,7 @@ impl fmt::Display for PhysicalPlanValidationError {
                 f,
                 "lifecycle evidence has {requirements} requirements and {sinks} sinks, exceeding the indexed bound"
             ),
+            #[cfg(test)]
             Self::RequirementsMismatch => {
                 f.write_str("physical roots and executable requirements disagree")
             }

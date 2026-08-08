@@ -212,42 +212,37 @@ pub(crate) fn lower_event(spec: &EventSpec) -> EventPredicate {
 
 struct QueryPlanAccumulator {
     roots: Vec<physical::PhysicalRoot>,
-    requirements: requirements::PlanRequirements,
 }
 
 impl QueryPlanAccumulator {
-    fn add(&mut self, query_plan: &PhysicalPlan) {
-        self.roots.extend(query_plan.roots().iter().cloned());
-        self.requirements.merge_from(query_plan.requirements());
+    fn add(&mut self, roots: impl IntoIterator<Item = physical::PhysicalRoot>) {
+        self.roots.extend(roots);
     }
 
     fn finish(self) -> Result<PhysicalPlan, MatcherBuildError> {
-        PhysicalPlan::try_new(physical::optimize_roots(self.roots), &self.requirements)
+        PhysicalPlan::from_roots(physical::optimize_roots(self.roots))
             .map_err(|error| MatcherBuildError::InvalidPhysicalPlan(error.to_string()))
     }
 }
 
 /// Compile one query declaration through validation, normalization, and
 /// physical planning without mutating the aggregate rule plan.
-fn compile_query(query: &QueryDecl) -> Result<PhysicalPlan, MatcherBuildError> {
+fn compile_query(query: &QueryDecl) -> Result<Vec<physical::PhysicalRoot>, MatcherBuildError> {
     validate_query_decl(query).map_err(map_query_compile_error)?;
 
     let normalized: NormalizedQuery =
         normalize::normalize_query_decl(query).map_err(map_query_compile_error)?;
 
-    physical::plan_normalized(&normalized)
+    physical::plan_normalized_roots(&normalized)
         .map_err(|error| MatcherBuildError::InvalidPhysicalPlan(error.to_string()))
 }
 
 /// Compile query declarations into one deterministic, aggregate physical plan.
 fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildError> {
-    let mut accumulator = QueryPlanAccumulator {
-        roots: Vec::new(),
-        requirements: requirements::PlanRequirements::default(),
-    };
+    let mut accumulator = QueryPlanAccumulator { roots: Vec::new() };
 
     for query in queries {
-        accumulator.add(&compile_query(query)?);
+        accumulator.add(compile_query(query)?);
     }
 
     accumulator.finish()

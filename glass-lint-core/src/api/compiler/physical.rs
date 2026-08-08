@@ -90,12 +90,12 @@ impl PhysicalRoot {
         identity: IdentityConstraint,
         event: EventPredicate,
         evidence: EvidenceDescriptor,
-    ) -> Result<Self, PhysicalPlanValidationError> {
-        Self::validated(Self::IndexedScan {
+    ) -> Self {
+        Self::IndexedScan {
             identity,
             event,
             evidence,
-        })
+        }
     }
 
     fn constrained_scan(
@@ -103,13 +103,13 @@ impl PhysicalRoot {
         event: EventPredicate,
         constraints: CanonicalArgumentConstraints,
         evidence: EvidenceDescriptor,
-    ) -> Result<Self, PhysicalPlanValidationError> {
-        Self::validated(Self::ConstrainedScan {
+    ) -> Self {
+        Self::ConstrainedScan {
             identity,
             event,
             constraints,
             evidence,
-        })
+        }
     }
 
     pub(crate) fn returned_subject(
@@ -119,7 +119,7 @@ impl PhysicalRoot {
         event: EventPredicate,
         evidence: EvidenceDescriptor,
     ) -> Result<Self, PhysicalPlanValidationError> {
-        Self::validated(Self::ReturnedSubject {
+        Ok(Self::ReturnedSubject {
             producer,
             object_slot: ObjectSlot::new(object_slot)?,
             member,
@@ -134,17 +134,12 @@ impl PhysicalRoot {
         member: SymbolPath,
         evidence: EvidenceDescriptor,
     ) -> Result<Self, PhysicalPlanValidationError> {
-        Self::validated(Self::InstanceSubject {
+        Ok(Self::InstanceSubject {
             constructor,
             object_slot: ObjectSlot::new(object_slot)?,
             member,
             evidence,
         })
-    }
-
-    fn validated(root: Self) -> Result<Self, PhysicalPlanValidationError> {
-        root.validate()?;
-        Ok(root)
     }
 
     /// Describe the preparation capabilities owned by this executable root.
@@ -276,7 +271,9 @@ pub(crate) struct PhysicalPlan {
 }
 
 impl PhysicalPlan {
-    fn from_roots(roots: Box<[PhysicalRoot]>) -> Result<Self, PhysicalPlanValidationError> {
+    pub(crate) fn from_roots(
+        roots: Box<[PhysicalRoot]>,
+    ) -> Result<Self, PhysicalPlanValidationError> {
         for root in &roots {
             root.validate()?;
         }
@@ -287,6 +284,7 @@ impl PhysicalPlan {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn try_new(
         roots: Box<[PhysicalRoot]>,
         requirements: &PlanRequirements,
@@ -440,14 +438,21 @@ fn explain_root(root: &PhysicalRoot) -> String {
 // ── Planner ─────────────────────────────────────────────────────────────
 
 /// Plan a normalized query into a [`PhysicalPlan`].
+#[cfg(test)]
 pub(crate) fn plan_normalized(
     nq: &NormalizedQuery,
 ) -> Result<PhysicalPlan, PhysicalPlanValidationError> {
+    let roots = plan_normalized_roots(nq)?;
+    PhysicalPlan::from_roots(roots.into_boxed_slice())
+}
+
+pub(crate) fn plan_normalized_roots(
+    nq: &NormalizedQuery,
+) -> Result<Vec<PhysicalRoot>, PhysicalPlanValidationError> {
     let emission = nq.emission();
     let kind = emission.kind();
     let symbol = emission.symbol();
-    let roots = plan_root(nq.root(), kind, symbol)?;
-    PhysicalPlan::from_roots(roots.into_boxed_slice())
+    plan_root(nq.root(), kind, symbol)
 }
 
 fn plan_root(
@@ -487,14 +492,14 @@ fn plan_event(
                     lower_identity(identity),
                     lower_event(ev.event()),
                     evidence,
-                )?])
+                )])
             } else {
                 Ok(vec![PhysicalRoot::constrained_scan(
                     lower_identity(identity),
                     lower_event(ev.event()),
                     ev.arguments().clone(),
                     evidence,
-                )?])
+                )])
             }
         }
         SubjectRelation::Returned {

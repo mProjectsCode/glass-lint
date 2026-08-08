@@ -89,7 +89,7 @@ existing cross-call collector, and projection now consumes only the local and
 cross-call requirements that physical roots can produce. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-003 — Physical roots are validated and their requirements recomputed at multiple boundaries
+#### [x] READ-003 — Physical roots are validated and their requirements recomputed at multiple boundaries
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -119,7 +119,12 @@ double validation and caller-supplied duplicate requirement object. Preserve
 root-specific dimension checks, canonical constraints, requirement mismatch
 detection, and bounded fail-closed plan construction.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Query compilation now returns roots without constructing a
+per-query `PhysicalPlan`; `PhysicalPlan::from_roots` is the sole production
+sealer that validates the optimized aggregate and derives requirements. The
+caller-supplied requirement comparison remains test-only for malformed-plan
+coverage, and object-slot admission remains validated at construction.
+Verified with `make fmt && make ci`.
 
 #### [ ] READ-004 — Normalized and physical IR pass raw slot integers through an unused remapping API
 
