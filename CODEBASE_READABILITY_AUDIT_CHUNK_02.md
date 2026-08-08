@@ -210,7 +210,7 @@ now share one resolver, parameter aliases use a named conversion path, and
 missing function scopes still return `InvalidBindingIndex` through the same
 fail-closed fallback. Verified with `make fmt && make ci`.
 
-#### [ ] READ-006 — Freeze artifacts lose domain names through tuple decomposition
+#### [x] READ-006 — Freeze artifacts lose domain names through tuple decomposition
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -238,7 +238,12 @@ path normalization, dynamic-eval filtering, and mutation-index finalization in
 one clearly named boundary, and preserve the current sorted/frozen indexes and
 unsupported-artifact behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the three positional `into_parts` contracts with
+named `PropertyAliasAssignmentData`, `RootedPropertyMutationData`, and
+`ScopedDynamicEvalData` conversion records. The graph's freeze boundary now
+destructures named fields while preserving receiver resolution, path
+normalization, dynamic-eval filtering, and sorted mutation finalization.
+Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

@@ -26,6 +26,14 @@ pub struct PropertyAliasAssignment {
     target: Option<SymbolPath>,
 }
 
+pub(in crate::analysis) struct PropertyAliasAssignmentData {
+    pub(in crate::analysis) span: Span,
+    pub(in crate::analysis) scope: ScopeId,
+    pub(in crate::analysis) property: SymbolPath,
+    pub(in crate::analysis) receiver: swc_ecma_ast::Ident,
+    pub(in crate::analysis) target: Option<SymbolPath>,
+}
+
 impl PropertyAliasAssignment {
     pub(super) fn new(
         span: Span,
@@ -43,22 +51,14 @@ impl PropertyAliasAssignment {
         }
     }
 
-    pub(in crate::analysis) fn into_parts(
-        self,
-    ) -> (
-        Span,
-        ScopeId,
-        SymbolPath,
-        swc_ecma_ast::Ident,
-        Option<SymbolPath>,
-    ) {
-        (
-            self.span,
-            self.scope,
-            self.property,
-            self.receiver,
-            self.target,
-        )
+    pub(in crate::analysis) fn into_data(self) -> PropertyAliasAssignmentData {
+        PropertyAliasAssignmentData {
+            span: self.span,
+            scope: self.scope,
+            property: self.property,
+            receiver: self.receiver,
+            target: self.target,
+        }
     }
 }
 
@@ -68,6 +68,13 @@ pub struct RootedPropertyMutation {
     scope: ScopeId,
     receiver: NamePath,
     property: Option<NameId>,
+}
+
+pub(in crate::analysis) struct RootedPropertyMutationData {
+    pub(in crate::analysis) span: Span,
+    pub(in crate::analysis) scope: ScopeId,
+    pub(in crate::analysis) receiver: NamePath,
+    pub(in crate::analysis) property: Option<NameId>,
 }
 
 impl RootedPropertyMutation {
@@ -85,7 +92,12 @@ impl RootedPropertyMutation {
         }
     }
 
-    pub(in crate::analysis) fn into_parts(self) -> (Span, ScopeId, NamePath, Option<NameId>) {
-        (self.span, self.scope, self.receiver, self.property)
+    pub(in crate::analysis) fn into_data(self) -> RootedPropertyMutationData {
+        RootedPropertyMutationData {
+            span: self.span,
+            scope: self.scope,
+            receiver: self.receiver,
+            property: self.property,
+        }
     }
 }

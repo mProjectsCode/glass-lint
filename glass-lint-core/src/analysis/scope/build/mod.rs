@@ -115,13 +115,21 @@ pub(in crate::analysis) struct ScopedDynamicEval {
     effect: ScopeEffect,
 }
 
+pub(in crate::analysis) struct ScopedDynamicEvalData {
+    pub(in crate::analysis) scope: ScopeId,
+    pub(in crate::analysis) effect: ScopeEffect,
+}
+
 impl ScopedDynamicEval {
     pub(super) fn new(scope: ScopeId, effect: ScopeEffect) -> Self {
         Self { scope, effect }
     }
 
-    pub(in crate::analysis) fn into_parts(self) -> (ScopeId, ScopeEffect) {
-        (self.scope, self.effect)
+    pub(in crate::analysis) fn into_data(self) -> ScopedDynamicEvalData {
+        ScopedDynamicEvalData {
+            scope: self.scope,
+            effect: self.effect,
+        }
     }
 }
 
