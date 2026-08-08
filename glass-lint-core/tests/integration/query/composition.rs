@@ -91,6 +91,26 @@ fn same_event_all_compiles_through_rule_catalog() {
     );
 }
 
+#[test]
+fn argument_constraints_are_rejected_for_non_call_events_at_construction() {
+    let error = EventQuery::import_exact("mod")
+        .unwrap()
+        .with_arg(0, ValueMatcher::static_string())
+        .unwrap_err();
+    assert_eq!(error, QueryBuildError::ArgumentsRequireCallEvent);
+
+    let error = QueryDecl::all(
+        EventQuery::import_exact("mod"),
+        [Ok(EventRequirement::argument(
+            0,
+            ValueMatcher::static_string(),
+        )
+        .unwrap())],
+    )
+    .unwrap_err();
+    assert_eq!(error, QueryBuildError::ArgumentsRequireCallEvent);
+}
+
 // ── Test 4: Empty same-event All compiles through the catalog ────────────
 //
 // Selecting unrelated events without a keyed relation must produce an

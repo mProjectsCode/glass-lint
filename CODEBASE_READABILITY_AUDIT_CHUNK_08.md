@@ -17,7 +17,7 @@ without improving the underlying semantic model.
 
 ### Event and value declaration boundary
 
-#### [ ] READ-029 — Reject argument constraints at the event declaration boundary
+#### [x] READ-029 — Reject argument constraints at the event declaration boundary
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -48,6 +48,12 @@ event kinds before building the constraint-bearing declaration; constructors
 are intentionally rejected because the physical planner has no constructor
 argument operator. Keep physical validation as a defensive invariant check,
 preserve call/member-call support, and retain existing argument/group bounds.
+
+**Fix Applied:** `EventSpec::supports_arguments` now owns the call/member-call
+predicate. Both `EventQuery::with_arg` and `QueryDecl::all` reject unsupported
+event kinds with `QueryBuildError::ArgumentsRequireCallEvent`, while compiler
+validation delegates to the same predicate as a defensive check. Integration
+tests cover both public construction paths.
 
 **Fix Applied:** None so far.
 

@@ -200,6 +200,9 @@ impl QueryDecl {
 
         for req_result in requirements {
             let req = req_result?;
+            if !selection.event.event().supports_arguments() {
+                return Err(QueryBuildError::ArgumentsRequireCallEvent);
+            }
             match req.kind {
                 EventRequirementKind::Argument { index, matcher } => {
                     branches.push(QueryExpr::require(QueryPredicate::Argument {

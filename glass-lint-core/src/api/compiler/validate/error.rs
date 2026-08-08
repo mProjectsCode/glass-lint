@@ -398,5 +398,5 @@ pub(crate) fn is_identity_empty(identity: &IdentitySpec) -> bool {
 
 /// Check whether constraints are on a call-bearing event.
 pub(crate) fn event_supports_constraints(event: &EventSpec) -> bool {
-    matches!(event, EventSpec::Call | EventSpec::MemberCall { .. })
+    event.supports_arguments()
 }

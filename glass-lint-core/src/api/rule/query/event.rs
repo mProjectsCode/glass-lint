@@ -81,6 +81,11 @@ pub(crate) enum EventSpec {
 }
 
 impl EventSpec {
+    /// Return whether this event can carry argument constraints.
+    pub(crate) const fn supports_arguments(&self) -> bool {
+        matches!(self, Self::Call | Self::MemberCall { .. })
+    }
+
     /// Return the compiler variable type represented by this event kind.
     pub(crate) fn variable_type(&self) -> super::VarType {
         match self {

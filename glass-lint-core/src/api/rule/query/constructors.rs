@@ -276,6 +276,9 @@ impl EventQuery {
         arg_idx: ArgumentIndex,
         matcher: impl Into<ArgumentMatcher>,
     ) -> Result<Self, QueryBuildError> {
+        if !self.event.supports_arguments() {
+            return Err(QueryBuildError::ArgumentsRequireCallEvent);
+        }
         let mut builder = ArgumentConstraintsBuilder::from_constraints(&self.constraints)?;
         builder.push(arg_idx, matcher)?;
         self.constraints = builder.finish();
