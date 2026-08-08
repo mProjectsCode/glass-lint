@@ -132,7 +132,7 @@ including the common shape-validity gate. Both `ScopeGraph` and
 string/name conversion, and mutation-index ownership. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-004 — Collector visitor hooks mix unrelated source-order responsibilities
+#### [x] READ-004 — Collector visitor hooks mix unrelated source-order responsibilities
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -166,7 +166,12 @@ and fail-closed early returns. Preserve all existing checkpoint timing,
 artifact ordering, budget charges, and the rule that unsupported/dynamic values
 cannot create a witness.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Kept the visitor hooks as source-order coordinators while
+moving declaration metadata, declaration provenance, identifier assignment,
+member mutation, destructuring alias collection, dynamic-evaluation recording,
+and direct-call capture into named `ScopeCollector` helpers. Existing helper
+ordering, budget charges, artifact emission, and fail-closed paths are
+preserved. Verified with `make fmt && make ci`.
 
 #### [ ] READ-005 — Binding-index freeze input and allocation use positional/raw internal APIs
 
