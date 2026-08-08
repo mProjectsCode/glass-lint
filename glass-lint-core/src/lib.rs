@@ -1,8 +1,8 @@
 //! Generic, provenance-aware JavaScript linting.
 //!
 //! Identity policy is intentionally split by ownership. Public rule values
-//! such as [`rules::VarId`] and [`rules::ArgumentIndex`] describe authored
-//! semantics and remain stable across compilation. Compiler, classification,
+//! such as [`rules::ArgumentIndex`] describe authored semantics and remain
+//! stable across compilation. Compiler, classification,
 //! cache, and linker IDs are phase-local and crate-private; they must not be
 //! compared across artifacts. [`project::ProjectRelativePath`] is the
 //! validated project boundary identity, while parser diagnostics retain their
@@ -73,7 +73,7 @@ pub mod rules {
             ArgumentMatcher, CatalogRuleBuilder as Builder, Confidence, EventQuery,
             EventRequirement, IntoLifecycleCondition, IntoLifecycleSource, IntoQueryDecl,
             LifecycleCompletion, LifecycleCondition, LifecycleEvent, LifecycleQuery, LifecycleSink,
-            QueryBuildError, QueryDecl, Rule, RuleBuildError, Severity, ValueMatcher, VarId,
+            QueryBuildError, QueryDecl, Rule, RuleBuildError, Severity, ValueMatcher,
         },
     };
 }

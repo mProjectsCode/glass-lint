@@ -127,7 +127,7 @@ lifecycle operations. The immediate and deferred builders keep their existing
 first-error precedence and validation behavior while sharing the state-policy
 implementation. Verified with `make fmt && make ci`.
 
-#### [ ] READ-004 — Raw compiler variable slots leak through the public rule API
+#### [x] READ-004 — Raw compiler variable slots leak through the public rule API
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -154,7 +154,11 @@ multi-event variables become part of the supported API. Remove the raw public
 constructor/accessor from the provider-facing re-export while retaining
 internal IDs, alpha-renumbering, diagnostics, and test-only construction.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `VarId`, its raw constructor/accessor, and variable
+inspection methods are now crate-private; provider-facing rule exports no
+longer expose compiler slot vocabulary. Internal compiler/test construction
+and alpha-renumbering remain intact, with the test-only variable collection
+helper retained under `cfg(test)`. Verified with `make fmt && make ci`.
 
 #### [ ] READ-005 — `ModuleSpecifierPattern` promises exact matching but implements only package roots
 

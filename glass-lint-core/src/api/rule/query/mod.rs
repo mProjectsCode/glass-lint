@@ -54,16 +54,16 @@ pub use error::{QueryBuildError, QueryDiagnostic};
 /// that bind or constrain it. This ID belongs to the rule declaration and is
 /// distinct from the private dense slots used by physical plans.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct VarId(u32);
+pub(crate) struct VarId(u32);
 
 impl VarId {
     /// Create a variable ID from a raw index.
-    pub const fn new(id: u32) -> Self {
+    pub(crate) const fn new(id: u32) -> Self {
         Self(id)
     }
 
     /// Return the raw index.
-    pub fn get(self) -> u32 {
+    pub(crate) fn get(self) -> u32 {
         self.0
     }
 }
@@ -157,7 +157,7 @@ pub struct EventQuery {
 }
 
 impl EventQuery {
-    pub fn var(&self) -> VarId {
+    pub(crate) fn var(&self) -> VarId {
         self.var
     }
 
@@ -420,7 +420,7 @@ pub struct EmissionDecl {
 }
 
 impl EmissionDecl {
-    pub fn primary_var(&self) -> VarId {
+    pub(crate) fn primary_var(&self) -> VarId {
         self.primary_var
     }
 

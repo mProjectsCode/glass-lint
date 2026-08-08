@@ -527,7 +527,7 @@ fn lifecycle_reference_matches_logical_and_physical_plans() {
     let decl = QueryDecl::from_parts_for_test(
         QueryExpr::lifecycle(lifecycle),
         EmissionDecl {
-            primary_var: crate::api::rule::VarId::new(0),
+            primary_var: crate::api::rule::query::VarId::new(0),
             kind: MatchKind::Call,
             symbol: "resource".into(),
         },

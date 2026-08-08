@@ -137,7 +137,8 @@ impl QueryExpr {
         }
     }
 
-    pub fn vars(&self) -> Vec<VarId> {
+    #[cfg(test)]
+    pub(crate) fn vars(&self) -> Vec<VarId> {
         self.shape_facts().variables
     }
 
