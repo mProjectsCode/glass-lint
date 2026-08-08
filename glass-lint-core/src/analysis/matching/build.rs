@@ -8,13 +8,62 @@ use glass_lint_datastructures::{NamePath, NameTable};
 use smol_str::SmolStr;
 
 use crate::analysis::{
-    facts::{ClassFactRole, FactPayload, FactStream, Frozen, SemanticFact},
+    facts::{CallUnwrap, ClassFactRole, FactId, FactPayload, FactStream, Frozen, SemanticFact},
     matching::{
         OccurrenceIndexes,
         occurrence::{InstanceMemberKey, ModuleExportKey, Occurrence, ReturnedMemberKey},
     },
     syntax::{SymbolCallProvenance, SymbolMemberProvenance},
 };
+
+struct CallProjection<'a> {
+    id: FactId,
+    callee_span: glass_lint_datastructures::ByteRange,
+    callee_name: Option<glass_lint_datastructures::NameId>,
+    call_provenance: &'a SymbolCallProvenance,
+    syntactic_path: Option<&'a NamePath>,
+    rooted_chain: Option<&'a NamePath>,
+    module_member: Option<&'a SymbolMemberProvenance>,
+    returned_member: Option<&'a (NamePath, NamePath)>,
+    instance_class: Option<&'a (SmolStr, SmolStr)>,
+    unwrap: Option<&'a CallUnwrap>,
+}
+
+impl<'a> CallProjection<'a> {
+    fn from_fact(fact: &'a SemanticFact) -> Option<Self> {
+        let FactPayload::Call {
+            callee_name,
+            callee_span,
+            call_provenance,
+            syntactic_path,
+            rooted_chain,
+            module_member,
+            returned_member,
+            instance_class,
+            unwrap,
+            ..
+        } = &fact.payload
+        else {
+            return None;
+        };
+        Some(Self {
+            id: fact.id,
+            callee_span: *callee_span,
+            callee_name: *callee_name,
+            call_provenance,
+            syntactic_path: syntactic_path.as_ref(),
+            rooted_chain: rooted_chain.as_ref(),
+            module_member: module_member.as_ref(),
+            returned_member: returned_member.as_ref(),
+            instance_class: instance_class.as_ref(),
+            unwrap: unwrap.as_deref(),
+        })
+    }
+
+    fn occurrence(&self) -> Occurrence {
+        Occurrence::new(self.id, self.callee_span)
+    }
+}
 
 impl OccurrenceIndexes {
     fn record_module_call(&mut self, key: ModuleExportKey, occurrence: Occurrence) {
@@ -120,98 +169,70 @@ impl OccurrenceIndexes {
     }
 
     fn record_call_fact(&mut self, fact: &SemanticFact, names: &NameTable) {
-        let FactPayload::Call {
-            callee_name,
-            callee_span,
-            call_provenance,
-            ..
-        } = &fact.payload
-        else {
+        let Some(call) = CallProjection::from_fact(fact) else {
             return;
         };
-        if let Some(name) = callee_name {
-            self.call_indexes
-                .record_call(*name, Occurrence::new(fact.id, *callee_span));
+        if let Some(name) = call.callee_name {
+            self.call_indexes.record_call(name, call.occurrence());
         }
-        match call_provenance {
+        match call.call_provenance {
             SymbolCallProvenance::Global { name } => {
                 self.call_indexes
-                    .record_global_call(name.clone(), Occurrence::new(fact.id, *callee_span));
+                    .record_global_call(name.clone(), call.occurrence());
             }
             SymbolCallProvenance::ModuleExport { module, export } => {
                 self.record_module_call(
                     ModuleExportKey::new(module.clone(), export.clone()),
-                    Occurrence::new(fact.id, *callee_span),
+                    call.occurrence(),
                 );
             }
             SymbolCallProvenance::Local | SymbolCallProvenance::Unknown(_) => {}
         }
-        self.record_call_paths(fact, names);
-        self.record_call_special_cases(fact);
+        self.record_call_paths(&call, names);
+        self.record_call_special_cases(&call);
     }
 
-    fn record_call_paths(&mut self, fact: &SemanticFact, names: &NameTable) {
-        let FactPayload::Call {
-            syntactic_path,
-            rooted_chain,
-            module_member,
-            returned_member,
-            instance_class,
-            callee_span,
-            ..
-        } = &fact.payload
-        else {
-            return;
-        };
-        let span = *callee_span;
-        if let Some(chain) = syntactic_path {
-            self.members
-                .record_call(chain.clone(), Occurrence::new(fact.id, span));
+    fn record_call_paths(&mut self, call: &CallProjection<'_>, names: &NameTable) {
+        if let Some(chain) = call.syntactic_path {
+            self.members.record_call(chain.clone(), call.occurrence());
         }
-        if let Some(chain) = rooted_chain {
+        if let Some(chain) = call.rooted_chain {
             self.members
-                .record_rooted_call(chain.clone(), Occurrence::new(fact.id, span));
+                .record_rooted_call(chain.clone(), call.occurrence());
         }
-        if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = module_member {
+        if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = call.module_member
+        {
             self.record_module_call(
                 ModuleExportKey::new(module.clone(), member.clone()),
-                Occurrence::new(fact.id, span),
+                call.occurrence(),
             );
         }
-        if let Some((source, member)) = returned_member {
+        if let Some((source, member)) = call.returned_member {
             self.members.record_returned_call(
                 ReturnedMemberKey::new(source.clone(), member.clone()),
-                Occurrence::new(fact.id, span),
+                call.occurrence(),
             );
         }
-        if let Some((module, export)) = instance_class
-            && let Some(member_name) = syntactic_path
-                .as_ref()
+        if let Some((module, export)) = call.instance_class
+            && let Some(member_name) = call
+                .syntactic_path
                 .and_then(NamePath::last_segment)
                 .copied()
                 .and_then(|id| names.resolve(id))
         {
             self.members.record_instance_call(
                 InstanceMemberKey::new(module.clone(), export.clone(), SmolStr::new(member_name)),
-                Occurrence::new(fact.id, span),
+                call.occurrence(),
             );
         }
     }
 
-    fn record_call_special_cases(&mut self, fact: &SemanticFact) {
-        let FactPayload::Call {
-            unwrap,
-            callee_span,
-            ..
-        } = &fact.payload
-        else {
-            return;
-        };
-        if let Some(unwrap) = unwrap
+    fn record_call_special_cases(&mut self, call: &CallProjection<'_>) {
+        if let Some(unwrap) = call.unwrap
             && let Some(chain) = &unwrap.chain_path
             && chain.first_segment().is_some()
         {
-            let occurrence = Occurrence::new(fact.id, *callee_span);
+            let occurrence = call.occurrence();
             self.members.record_call(chain.clone(), occurrence);
             self.members.record_rooted_call(chain.clone(), occurrence);
         }

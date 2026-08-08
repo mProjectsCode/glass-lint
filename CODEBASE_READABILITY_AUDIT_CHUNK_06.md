@@ -18,7 +18,7 @@ constrained paths duplicate evidence-group construction.
 
 ## Findings
 
-#### [ ] READ-001 — Call-fact projection repeatedly reconstructs one payload shape
+#### [x] READ-001 — Call-fact projection repeatedly reconstructs one payload shape
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -49,7 +49,11 @@ index-specific writes. Preserve separate syntactic, rooted, module, returned,
 instance, unwrap, global, and local/unknown behaviors, including the current
 fact/span identity and deterministic normalization.
 
-**Fix Applied:** None so far.
+**Fix Applied:** A private borrowed `CallProjection` now extracts the call
+fact identity, canonical callee span, provenance, paths, instance metadata,
+and unwrap payload once. The call, path, and special-case index writers share
+that view without changing their separate indexing behavior. Verified with
+`make fmt && make ci`.
 
 #### [ ] READ-002 — Overlay remapping uses a boolean mode beside a parallel source tuple
 
