@@ -77,6 +77,8 @@ pub enum IncompleteReason {
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum StatusScope {
+    /// A failure produced while lowering one reusable local artifact.
+    Local,
     File(ProjectRelativePath),
     Project,
 }
@@ -121,15 +123,17 @@ impl AnalysisStatus {
         self.entries.is_empty()
     }
 
-    pub(in crate::analysis) fn for_local_file(&self, path: &ProjectRelativePath) -> Self {
+    /// Attach local-artifact failures to the path that requested the artifact.
+    pub(in crate::analysis) fn materialize_local_file(&self, path: &ProjectRelativePath) -> Self {
         Self {
             entries: self
                 .entries
                 .iter()
                 .map(|entry| StatusEntry {
                     scope: match &entry.scope {
-                        StatusScope::Project => StatusScope::File(path.clone()),
+                        StatusScope::Local => StatusScope::File(path.clone()),
                         StatusScope::File(existing) => StatusScope::File(existing.clone()),
+                        StatusScope::Project => StatusScope::Project,
                     },
                     reason: entry.reason.clone(),
                 })
@@ -152,8 +156,12 @@ impl AnalysisStatus {
             }
             let diagnostic = entry.reason.diagnostic();
             match &entry.scope {
+                // Local status is an internal pre-materialization state. The
+                // linker attaches its path before production diagnostics are
+                // assembled; retaining it in the project bucket keeps this
+                // diagnostic view total for lowering tests and callers.
                 StatusScope::File(path) => files.push((path.clone(), diagnostic)),
-                StatusScope::Project => project.push(diagnostic),
+                StatusScope::Local | StatusScope::Project => project.push(diagnostic),
             }
         }
         StatusDiagnostics { files, project }
@@ -327,13 +335,14 @@ mod tests {
     }
 
     #[test]
-    fn local_file_conversion_preserves_existing_file_scope() {
+    fn local_file_materialization_preserves_other_scopes() {
         let mut status = AnalysisStatus::default();
         let reason = IncompleteReason::PathCapacityExhausted;
-        status.record(StatusScope::Project, reason.clone());
+        status.record(StatusScope::Local, reason.clone());
         status.record(StatusScope::File(file()), reason);
 
-        let converted = status.for_local_file(&ProjectRelativePath::new("other.js").unwrap());
+        let converted =
+            status.materialize_local_file(&ProjectRelativePath::new("other.js").unwrap());
         let (files, project) = converted.diagnostics().into_parts();
 
         assert!(project.is_empty());

@@ -243,14 +243,14 @@ impl LoweringCompletion {
 
     fn record_scope_issue(&mut self, issue_count: usize) {
         self.status.record(
-            StatusScope::Project,
+            StatusScope::Local,
             IncompleteReason::ScopeShapeMismatch { count: issue_count },
         );
     }
 
     fn record_fact_failure(&mut self, reason: Option<IncompleteReason>) {
         if let Some(reason) = reason {
-            self.status.record(StatusScope::Project, reason);
+            self.status.record(StatusScope::Local, reason);
             self.capabilities.disable_derived_phases();
         }
     }
@@ -428,6 +428,7 @@ mod tests {
     use swc_common::{BytePos, Span};
 
     use super::*;
+    use crate::project::ProjectRelativePath;
 
     #[test]
     fn swc_span_is_normalized_to_zero_based_byte_range_once() {
@@ -466,14 +467,19 @@ mod tests {
         assert!(!artifact.facts().matcher_index().is_available());
         assert!(artifact.effects().iter_effects().next().is_none());
         assert!(!artifact.effects().is_available());
-        let (_, project_diagnostics) = artifact.status().diagnostics().into_parts();
-        assert_eq!(project_diagnostics.len(), 1);
+        let (file_diagnostics, project_diagnostics) = artifact
+            .status()
+            .materialize_local_file(&ProjectRelativePath::new("name-exhaustion.js").unwrap())
+            .diagnostics()
+            .into_parts();
+        assert!(project_diagnostics.is_empty());
+        assert_eq!(file_diagnostics.len(), 1);
         assert_eq!(
-            project_diagnostics[0].code().as_str(),
+            file_diagnostics[0].1.code().as_str(),
             "semantic_name_budget_exhausted"
         );
-        assert!(project_diagnostics[0].message().contains("limit=2"));
-        assert!(project_diagnostics[0].message().contains("attempted=3"));
+        assert!(file_diagnostics[0].1.message().contains("limit=2"));
+        assert!(file_diagnostics[0].1.message().contains("attempted=3"));
 
         let repeated = Lowerer::new(
             &crate::Environment::default(),
@@ -561,10 +567,14 @@ mod tests {
         .lower_program(&parsed.program, &invalid);
         assert!(!artifact.status().is_complete());
         assert!(artifact.facts().stream().facts().is_empty());
-        let (files, project) = artifact.status().diagnostics().into_parts();
-        assert!(files.is_empty());
-        assert_eq!(project.len(), 1);
-        assert_eq!(project[0].code().as_str(), "invalid_parser_span");
-        assert!(project[0].location().is_none());
+        let (files, project) = artifact
+            .status()
+            .materialize_local_file(&ProjectRelativePath::new("main.js").unwrap())
+            .diagnostics()
+            .into_parts();
+        assert_eq!(files.len(), 1);
+        assert!(project.is_empty());
+        assert_eq!(files[0].1.code().as_str(), "invalid_parser_span");
+        assert!(files[0].1.location().is_none());
     }
 }

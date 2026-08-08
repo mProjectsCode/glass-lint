@@ -82,7 +82,7 @@ Verified with `make fmt && make ci`.
 
 ### Local status and phase boundaries
 
-#### [ ] READ-019 — Give local lowering failures an artifact/file scope
+#### [x] READ-019 — Give local lowering failures an artifact/file scope
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -107,7 +107,10 @@ conversion that can only promote local status, preserving deterministic
 diagnostic ordering and the existing file/project report split. Keep parse
 failures and genuinely project-wide link/flow failures on their current owners.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added an explicit `Local` status scope for reusable lowering
+artifacts. The linker now materializes only local entries to the current file
+path, while true project-scoped entries remain project-scoped; focused status
+tests cover the conversion. Verified with `make fmt && make ci`.
 
 ### Artifact cache and attachment lifecycle
 
