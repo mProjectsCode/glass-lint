@@ -50,7 +50,7 @@ constructor; focused argument matching and the full gate remain green.
 
 ### Occurrence-index lifecycle
 
-#### [ ] READ-022 — Seal occurrence indexes after normalization
+#### [x] READ-022 — Seal occurrence indexes after normalization
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -73,7 +73,11 @@ disabled-phase index and existing event/span ordering, and expose only the
 sealed form to `SemanticFacts::matcher_index` and overlay builders; do not
 claim that production still has multiple independent construction paths.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `OccurrenceIndexes::from_stream`, which owns stream
+recording and normalization as one construction operation. Production
+lowering and stream-based matcher/facts test builders now consume the sealed
+constructor, while direct mutation remains only in focused tests that
+exercise individual index-recording behavior.
 
 ### Physical-plan and query-facing boundaries
 

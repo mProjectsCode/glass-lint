@@ -76,14 +76,14 @@ impl OccurrenceIndexes {
     /// Entries are already in monotonically increasing `(event, span)` order
     /// because `build_from_stream` iterates facts in FactId order.
     /// Queries rely on this normalization for deterministic output.
-    pub(in crate::analysis) fn normalize_occurrences(&mut self) {
+    pub(super) fn normalize_occurrences(&mut self) {
         self.call_indexes.normalize();
         self.members.normalize();
         self.constructions.normalize();
         self.literals.normalize();
     }
 
-    pub(in crate::analysis) fn build_from_stream(&mut self, stream: &FactStream<Frozen>) {
+    pub(super) fn build_from_stream(&mut self, stream: &FactStream<Frozen>) {
         #[cfg(test)]
         {
             self.test_names = stream.names().clone();
@@ -94,7 +94,7 @@ impl OccurrenceIndexes {
         }
     }
 
-    pub(in crate::analysis) fn record_fact(
+    fn record_fact(
         &mut self,
         fact: &SemanticFact,
         names: &NameTable,

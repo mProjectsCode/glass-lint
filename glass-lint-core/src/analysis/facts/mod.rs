@@ -622,12 +622,7 @@ impl SemanticFacts {
         environment: &crate::Environment,
         availability: DerivedPhaseAvailability,
     ) -> OccurrenceIndexes {
-        let mut index = OccurrenceIndexes::with_environment(environment, availability);
-        if availability.is_enabled() {
-            index.build_from_stream(stream);
-            index.normalize_occurrences();
-        }
-        index
+        OccurrenceIndexes::from_stream(stream, environment, availability)
     }
 
     /// Borrow the canonical facts in deterministic source traversal order.
@@ -904,9 +899,11 @@ mod stream_tests {
         let mut builder = FactBuilder::new(&mut resolver);
         swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
         let stream = builder.into_stream();
-        let mut index = OccurrenceIndexes::default();
-        index.build_from_stream(&stream);
-        index.normalize_occurrences();
+        let index = OccurrenceIndexes::from_stream(
+            &stream,
+            &crate::Environment::default(),
+            DerivedPhaseAvailability::Enabled,
+        );
 
         assert!(index.has_import("mod"), "should have 'mod' import");
         assert!(
@@ -949,9 +946,11 @@ mod stream_tests {
         let mut builder = FactBuilder::new(&mut resolver);
         swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
         let stream = builder.into_stream();
-        let mut index = OccurrenceIndexes::default();
-        index.build_from_stream(&stream);
-        index.normalize_occurrences();
+        let index = OccurrenceIndexes::from_stream(
+            &stream,
+            &crate::Environment::default(),
+            DerivedPhaseAvailability::Enabled,
+        );
 
         // The unwrap should record 'fetch' as a member call.
         assert!(

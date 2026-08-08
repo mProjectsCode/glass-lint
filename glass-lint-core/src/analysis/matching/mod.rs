@@ -265,6 +265,23 @@ impl<'a> LinkedOccurrenceView<'a> {
 }
 
 impl OccurrenceIndexes {
+    /// Build a normalized occurrence index from one validated fact stream.
+    ///
+    /// Keeping collection and normalization together prevents callers from
+    /// observing the mutable projection between those phases.
+    pub(in crate::analysis) fn from_stream(
+        stream: &crate::analysis::facts::FactStream<crate::analysis::facts::Frozen>,
+        environment: &crate::Environment,
+        availability: DerivedPhaseAvailability,
+    ) -> Self {
+        let mut indexes = Self::with_environment(environment, availability);
+        if availability.is_enabled() && stream.is_valid() {
+            indexes.build_from_stream(stream);
+            indexes.normalize_occurrences();
+        }
+        indexes
+    }
+
     pub(in crate::analysis) fn with_environment(
         environment: &crate::Environment,
         availability: DerivedPhaseAvailability,
@@ -501,9 +518,11 @@ mod tests {
         );
         let stream = build_test_stream(&parsed.program, &mut resolver);
 
-        let mut index = OccurrenceIndexes::default();
-        index.build_from_stream(&stream);
-        index.normalize_occurrences();
+        let index = OccurrenceIndexes::from_stream(
+            &stream,
+            &environment,
+            DerivedPhaseAvailability::Enabled,
+        );
 
         assert!(
             index.literals.imports().get("mod").is_some(),

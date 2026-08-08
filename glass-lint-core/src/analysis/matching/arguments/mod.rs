@@ -495,12 +495,11 @@ mod tests {
     }
 
     fn build_index(stream: &FactStream<Frozen>) -> OccurrenceIndexes {
-        let mut index = OccurrenceIndexes::default();
-        if stream.is_valid() {
-            index.build_from_stream(stream);
-            index.normalize_occurrences();
-        }
-        index
+        OccurrenceIndexes::from_stream(
+            stream,
+            &Environment::default(),
+            crate::analysis::DerivedPhaseAvailability::Enabled,
+        )
     }
 
     fn constrained_root(
