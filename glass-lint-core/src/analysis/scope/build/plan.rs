@@ -17,7 +17,7 @@ use crate::analysis::{
         build::{
             ScopeShape, ScopeShapeTable,
             bindings::{for_each_import_binding, for_each_pat_binding, var_binding_scope},
-            traversal::ScopePass,
+            traversal::{ScopeEntry, ScopePass},
         },
     },
 };
@@ -158,13 +158,16 @@ impl ScopePlanner<'_> {
 }
 
 impl ScopePass for ScopePlanner<'_> {
-    fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) -> bool {
+    fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) -> ScopeEntry {
         self.push_scope(span, kind);
-        true
+        self.current_scope()
+            .map_or(ScopeEntry::Rejected, ScopeEntry::Entered)
     }
 
-    fn pop_scope(&mut self, _entered: bool) {
-        self.pop_scope();
+    fn pop_scope(&mut self, entry: ScopeEntry) {
+        if matches!(entry, ScopeEntry::Entered(_)) {
+            self.pop_scope();
+        }
     }
 
     fn current_scope(&self) -> Option<ScopeId> {

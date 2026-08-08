@@ -207,9 +207,15 @@ fn frozen_scope_queries_fail_closed_after_shape_mismatch() {
     let span = parsed.program.span();
     let mut collector = planned_scopes(span, &[ScopeKind::Block]);
 
-    assert!(collector.push_scope(span, ScopeKind::Block));
+    assert!(matches!(
+        collector.push_scope(span, ScopeKind::Block),
+        traversal::ScopeEntry::Entered(_)
+    ));
     collector.pop_scope();
-    assert!(!collector.push_scope(span, ScopeKind::Block));
+    assert!(matches!(
+        collector.push_scope(span, ScopeKind::Block),
+        traversal::ScopeEntry::Rejected
+    ));
 
     let scoped = collector.freeze(&crate::Environment::default());
     assert!(scoped.issues.contains(&ScopeCollectionIssue::ShapeMismatch));

@@ -20,7 +20,7 @@ use crate::analysis::{
                 DeclarationClassification, assignment_provenance, classify_declaration,
                 expression_is_mutable_static_object,
             },
-            traversal::ScopePass,
+            traversal::{ScopeEntry, ScopePass},
         },
     },
     syntax::{
@@ -30,12 +30,12 @@ use crate::analysis::{
 };
 
 impl ScopePass for ScopeCollector<'_> {
-    fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) -> bool {
+    fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) -> ScopeEntry {
         self.push_scope(span, kind)
     }
 
-    fn pop_scope(&mut self, entered: bool) {
-        if entered {
+    fn pop_scope(&mut self, entry: ScopeEntry) {
+        if matches!(entry, ScopeEntry::Entered(_)) {
             self.pop_scope();
         }
     }

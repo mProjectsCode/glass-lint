@@ -9,6 +9,12 @@ use swc_ecma_visit::{Visit, VisitWith};
 
 use crate::analysis::scope::{ScopeId, ScopeKind};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::analysis::scope) enum ScopeEntry {
+    Entered(ScopeId),
+    Rejected,
+}
+
 /// Phase-specific policy for scope traversal.
 ///
 /// Each phase owns its own scope stack, `push_scope`/`pop_scope` logic, and
@@ -18,8 +24,8 @@ pub(in crate::analysis::scope) trait ScopePass {
     /// Enter one predeclared scope. `false` means the planned shape was not
     /// available, so the traversal must skip that subtree and keep the stack
     /// balanced without inventing a fallback scope.
-    fn push_scope(&mut self, span: Span, kind: ScopeKind) -> bool;
-    fn pop_scope(&mut self, entered: bool);
+    fn push_scope(&mut self, span: Span, kind: ScopeKind) -> ScopeEntry;
+    fn pop_scope(&mut self, entry: ScopeEntry);
     fn current_scope(&self) -> Option<ScopeId>;
 
     /// Returns `true` when the semantic budget is exhausted.
@@ -101,14 +107,14 @@ impl<P: ScopePass> ScopeTraversal<P> {
         before_body: impl FnOnce(&mut P, ScopeId),
         body: impl FnOnce(&mut Self),
     ) {
-        let entered = self.pass.push_scope(span, kind);
-        if entered && let Some(scope) = self.pass.current_scope() {
+        let entry = self.pass.push_scope(span, kind);
+        if let ScopeEntry::Entered(scope) = entry {
             before_body(&mut self.pass, scope);
             if !self.pass.is_budget_exhausted() {
                 body(self);
             }
         }
-        self.pass.pop_scope(entered);
+        self.pass.pop_scope(entry);
     }
 
     fn visit_function_body(
@@ -117,8 +123,8 @@ impl<P: ScopePass> ScopeTraversal<P> {
         before_body: impl FnOnce(&mut P, ScopeId),
         body: impl FnOnce(&mut Self),
     ) {
-        let entered = self.pass.push_scope(span, ScopeKind::Function);
-        if entered && let Some(scope) = self.pass.current_scope() {
+        let entry = self.pass.push_scope(span, ScopeKind::Function);
+        if let ScopeEntry::Entered(scope) = entry {
             self.pass.enter_function();
             before_body(&mut self.pass, scope);
             if !self.pass.is_budget_exhausted() {
@@ -126,7 +132,7 @@ impl<P: ScopePass> ScopeTraversal<P> {
             }
             self.pass.exit_function();
         }
-        self.pass.pop_scope(entered);
+        self.pass.pop_scope(entry);
     }
 
     fn visit_loop_body(&mut self, guaranteed: bool, span: Span, body: impl FnOnce(&mut Self)) {
@@ -143,12 +149,12 @@ impl<P: ScopePass> ScopeTraversal<P> {
         header: impl FnOnce(&mut Self),
         body: impl FnOnce(&mut Self),
     ) {
-        let entered = self.pass.push_scope(span, ScopeKind::Block);
-        if entered {
+        let entry = self.pass.push_scope(span, ScopeKind::Block);
+        if matches!(entry, ScopeEntry::Entered(_)) {
             header(self);
             self.visit_loop_body(false, span, body);
         }
-        self.pass.pop_scope(entered);
+        self.pass.pop_scope(entry);
     }
 }
 
@@ -268,8 +274,8 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
 
     fn visit_switch_stmt(&mut self, stmt: &SwitchStmt) {
         stmt.discriminant.visit_with(self);
-        let entered = self.pass.push_scope(stmt.span, ScopeKind::Block);
-        if entered {
+        let entry = self.pass.push_scope(stmt.span, ScopeKind::Block);
+        if matches!(entry, ScopeEntry::Entered(_)) {
             self.pass.enter_switch();
             if !self.pass.is_budget_exhausted() {
                 for case in &stmt.cases {
@@ -278,7 +284,7 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
             }
             self.pass.exit_switch(stmt.span);
         }
-        self.pass.pop_scope(entered);
+        self.pass.pop_scope(entry);
     }
 
     fn visit_switch_case(&mut self, case: &SwitchCase) {
@@ -292,16 +298,16 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
 
     fn visit_with_stmt(&mut self, stmt: &WithStmt) {
         stmt.obj.visit_with(self);
-        let entered = self.pass.push_scope(stmt.body.span(), ScopeKind::Dynamic);
-        if entered && !self.pass.is_budget_exhausted() {
+        let entry = self.pass.push_scope(stmt.body.span(), ScopeKind::Dynamic);
+        if matches!(entry, ScopeEntry::Entered(_)) && !self.pass.is_budget_exhausted() {
             stmt.body.visit_with(self);
         }
-        self.pass.pop_scope(entered);
+        self.pass.pop_scope(entry);
     }
 
     fn visit_catch_clause(&mut self, clause: &CatchClause) {
-        let entered = self.pass.push_scope(clause.span, ScopeKind::Block);
-        if entered {
+        let entry = self.pass.push_scope(clause.span, ScopeKind::Block);
+        if matches!(entry, ScopeEntry::Entered(_)) {
             if let Some(param) = &clause.param {
                 self.pass.visit_catch_param(param);
             }
@@ -309,7 +315,7 @@ impl<P: ScopePass> Visit for ScopeTraversal<P> {
                 clause.body.stmts.visit_with(self);
             }
         }
-        self.pass.pop_scope(entered);
+        self.pass.pop_scope(entry);
     }
 
     fn visit_try_stmt(&mut self, stmt: &TryStmt) {

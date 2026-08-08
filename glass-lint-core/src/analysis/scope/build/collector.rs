@@ -12,6 +12,7 @@ use crate::analysis::{
             compact_pat::{CompactPat, compact_pat},
             plan::ScopePlan,
             program::ScopeCollectionIssue,
+            traversal::ScopeEntry,
         },
         query::rooted::RootedExprContext,
     },
@@ -160,11 +161,11 @@ impl ScopeCollector<'_> {
         for_each_pat_binding(pat, |binding| self.insert_local(scope, binding));
     }
 
-    pub(super) fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) -> bool {
+    pub(super) fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) -> ScopeEntry {
         let Some(parent) = self.current_scope() else {
             self.artifacts
                 .record_issue(ScopeCollectionIssue::ScopeStackUnderflow);
-            return false;
+            return ScopeEntry::Rejected;
         };
         if let Some(scope_id) = self
             .lexical
@@ -176,11 +177,11 @@ impl ScopeCollector<'_> {
             {
                 self.scope_lookups += 1;
             }
-            true
+            ScopeEntry::Entered(scope_id)
         } else {
             self.artifacts
                 .record_issue(ScopeCollectionIssue::ShapeMismatch);
-            false
+            ScopeEntry::Rejected
         }
     }
 

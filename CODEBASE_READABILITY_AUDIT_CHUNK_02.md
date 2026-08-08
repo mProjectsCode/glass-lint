@@ -17,7 +17,7 @@ source-order and fail-closed behavior are difficult to audit locally.
 
 ## Findings
 
-#### [ ] READ-001 — Scope traversal lifecycle is an implicit callback protocol
+#### [x] READ-001 — Scope traversal lifecycle is an implicit callback protocol
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -49,7 +49,13 @@ shape/control-frame mismatches. Preserve the single shared traversal, planner /
 collector parity, finalizer ordering, bounded joins, and deterministic source
 order; this is not a recommendation to add another AST walk.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the private `ScopeEntry` lifecycle type, carrying
+either the entered scope ID or an explicit rejected transition. Planner and
+collector scope passes return that entry, and traversal passes it back to the
+matching pop operation instead of transporting a bare boolean and performing
+a separate current-scope lookup. The shared traversal, phase parity,
+deterministic order, and fail-closed mismatch behavior are preserved. Verified
+with `make fmt && make ci`.
 
 #### [x] READ-002 — Empty scope stacks become the default scope
 
