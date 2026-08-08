@@ -18,7 +18,7 @@ together but is immediately returned as an order-dependent tuple.
 
 ## Findings
 
-#### [ ] READ-001 — Resolution seeds duplicate the retained result shape
+#### [x] READ-001 — Resolution seeds duplicate the retained result shape
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -49,7 +49,7 @@ an equivalent default constructor) as the single owner of absent/local
 defaults. Preserve the current cache identity, independent provenance fields,
 and unknown/exhaustion behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** A private `ResolutionProvenance` value now owns the shared identity fields, while `ResolutionSeed` carries it and `ResolvedValue` finalizes it with the canonical ID, call provenance, and module-member override. Local defaults remain centralized and cache, position sensitivity, and exhaustion behavior are unchanged. Verified with `make fmt && make ci`.
 
 #### [ ] READ-002 — `resolve_seed` mixes the entire resolution finalization protocol
 

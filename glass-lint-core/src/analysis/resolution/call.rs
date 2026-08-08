@@ -9,7 +9,10 @@ use smol_str::ToSmolStr;
 use crate::analysis::{
     model::value::MAX_VALUES,
     module_request::ModuleRequestContext,
-    resolution::{Callee, Expr, ResolvedValue, Resolver, SymbolCallProvenance, Value, ValueId},
+    resolution::{
+        Callee, Expr, ResolutionProvenance, ResolvedValue, Resolver, SymbolCallProvenance, Value,
+        ValueId,
+    },
     syntax::{BudgetComponent, UnknownReason},
 };
 
@@ -63,15 +66,17 @@ impl Resolver<'_> {
                 None,
                 None,
             );
-            return ResolvedValue {
+            return ResolvedValue::with_provenance(
                 id,
-                rooted_chain: None,
-                call: self.call_provenance_for_value(id),
-                module_member: None,
-                returned_member: None,
-                bound_arguments: None,
-                syntactic_chain: None,
-            };
+                ResolutionProvenance {
+                    rooted_chain: None,
+                    call: self.call_provenance_for_value(id),
+                    module_member: None,
+                    returned_member: None,
+                    bound_arguments: None,
+                    syntactic_chain: None,
+                },
+            );
         }
         let Callee::Expr(callee) = &call.callee else {
             return Self::unknown();

@@ -41,7 +41,7 @@ impl FactBuilder<'_, '_> {
                     result,
                     callee_span,
                     callee_name: None,
-                    call_provenance: resolved.call,
+                    call_provenance: resolved.provenance.call,
                     syntactic_path: None,
                     rooted_chain: None,
                     module_member: None,

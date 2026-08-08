@@ -13,6 +13,8 @@ mod call;
 mod constant;
 mod expression;
 
+use std::ops::Deref;
+
 use glass_lint_datastructures::{
     ByteRange, NameExhausted, NameId, NamePath, NameTable, SymbolPath,
 };
@@ -42,16 +44,7 @@ use crate::analysis::{
 };
 
 #[derive(Debug, Clone)]
-/// The complete result of resolving one expression.
-///
-/// A resolved value carries the interned abstract value ID, all available
-/// provenances (callable, member, returned-member, bound-arguments), and
-/// both the syntactic and rooted chain spellings. Fields default to absent
-/// or local so a new resolution path cannot accidentally inherit provenance.
-pub(super) struct ResolvedValue {
-    /// The interned abstract value. `UNKNOWN` is reserved for expressions the
-    /// resolver cannot describe precisely enough to match.
-    pub(super) id: ValueId,
+pub(super) struct ResolutionProvenance {
     /// Canonical rooted spelling, when the value can be followed safely.
     pub(super) rooted_chain: Option<SymbolPath>,
     /// Callable provenance used by global and module-export call matchers.
@@ -67,15 +60,9 @@ pub(super) struct ResolvedValue {
     pub(super) syntactic_chain: Option<SymbolPath>,
 }
 
-impl ResolvedValue {
-    /// Build a value with no callable or member provenance.
-    ///
-    /// Unknown, static, and freshly allocated object values all use this
-    /// representation. Keeping the default fields here prevents a new
-    /// resolution path from accidentally inheriting provenance.
-    pub(super) fn local(id: ValueId) -> Self {
+impl ResolutionProvenance {
+    fn local() -> Self {
         Self {
-            id,
             rooted_chain: None,
             call: SymbolCallProvenance::Local,
             module_member: None,
@@ -83,6 +70,43 @@ impl ResolvedValue {
             bound_arguments: None,
             syntactic_chain: None,
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+/// The complete result of resolving one expression.
+///
+/// A resolved value carries the interned abstract value ID, all available
+/// provenances (callable, member, returned-member, bound-arguments), and
+/// both the syntactic and rooted chain spellings. Fields default to absent
+/// or local so a new resolution path cannot accidentally inherit provenance.
+pub(super) struct ResolvedValue {
+    /// The interned abstract value. `UNKNOWN` is reserved for expressions the
+    /// resolver cannot describe precisely enough to match.
+    pub(super) id: ValueId,
+    pub(super) provenance: ResolutionProvenance,
+}
+
+impl ResolvedValue {
+    fn with_provenance(id: ValueId, provenance: ResolutionProvenance) -> Self {
+        Self { id, provenance }
+    }
+
+    /// Build a value with no callable or member provenance.
+    ///
+    /// Unknown, static, and freshly allocated object values all use this
+    /// representation. Keeping the default fields here prevents a new
+    /// resolution path from accidentally inheriting provenance.
+    pub(super) fn local(id: ValueId) -> Self {
+        Self::with_provenance(id, ResolutionProvenance::local())
+    }
+}
+
+impl Deref for ResolvedValue {
+    type Target = ResolutionProvenance;
+
+    fn deref(&self) -> &Self::Target {
+        &self.provenance
     }
 }
 

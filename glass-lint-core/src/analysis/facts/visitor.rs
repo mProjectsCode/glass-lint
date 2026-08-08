@@ -534,7 +534,7 @@ impl FactBuilder<'_, '_> {
         // like `new globalThis.URL(...)` or `new mod.Foo(...)`.
         let (callee_name, provenance) = match effective_callee {
             Expr::Ident(ident) => {
-                let p = resolved.call;
+                let p = resolved.provenance.call;
                 (Some(ident.sym.to_smolstr()), p)
             }
             Expr::Member(member) => {
@@ -552,10 +552,13 @@ impl FactBuilder<'_, '_> {
                         },
                     )
                 } else {
-                    (literal_member_property_name(&member.prop), resolved.call)
+                    (
+                        literal_member_property_name(&member.prop),
+                        resolved.provenance.call,
+                    )
                 }
             }
-            _ => (None, resolved.call),
+            _ => (None, resolved.provenance.call),
         };
 
         ConstructionMetadata {

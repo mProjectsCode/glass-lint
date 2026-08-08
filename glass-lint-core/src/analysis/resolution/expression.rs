@@ -6,21 +6,17 @@ use smol_str::{SmolStr, ToSmolStr};
 use crate::analysis::{
     model::{scope::FunctionId, value::MAX_VALUES},
     resolution::{
-        Callee, ConstValue, Expr, Ident, Lit, MemberExpr, ResolutionKey, ResolvedValue, Resolver,
-        SymbolCallProvenance, SymbolMemberProvenance, ValueId, syntax_constant,
+        Callee, ConstValue, Expr, Ident, Lit, MemberExpr, ResolutionKey, ResolutionProvenance,
+        ResolvedValue, Resolver, SymbolCallProvenance, SymbolMemberProvenance, ValueId,
+        syntax_constant,
     },
-    scope::{BoundArgument, ScopeId},
+    scope::ScopeId,
     syntax::{BudgetComponent, UnknownReason},
 };
 
 struct ResolutionSeed {
     id: ValueId,
-    rooted_chain: Option<SymbolPath>,
-    call: SymbolCallProvenance,
-    module_member: Option<SymbolMemberProvenance>,
-    returned_member: Option<(SymbolPath, SymbolPath)>,
-    bound_arguments: Option<Vec<Option<BoundArgument>>>,
-    syntactic_chain: Option<SymbolPath>,
+    provenance: ResolutionProvenance,
 }
 
 impl ResolutionSeed {
@@ -30,15 +26,25 @@ impl ResolutionSeed {
         call: SymbolCallProvenance,
         module_member: Option<SymbolMemberProvenance>,
     ) -> ResolvedValue {
-        ResolvedValue {
+        let Self { provenance, .. } = self;
+        let ResolutionProvenance {
+            rooted_chain,
+            returned_member,
+            bound_arguments,
+            syntactic_chain,
+            ..
+        } = provenance;
+        ResolvedValue::with_provenance(
             id,
-            rooted_chain: self.rooted_chain,
-            call,
-            module_member,
-            returned_member: self.returned_member,
-            bound_arguments: self.bound_arguments,
-            syntactic_chain: self.syntactic_chain,
-        }
+            ResolutionProvenance {
+                rooted_chain,
+                call,
+                module_member,
+                returned_member,
+                bound_arguments,
+                syntactic_chain,
+            },
+        )
     }
 }
 
@@ -105,12 +111,14 @@ impl Resolver<'_> {
             };
             ResolutionSeed {
                 id,
-                rooted_chain,
-                call: seed.call,
-                module_member: None,
-                returned_member: None,
-                bound_arguments: seed.bound_arguments,
-                syntactic_chain: None,
+                provenance: ResolutionProvenance {
+                    rooted_chain,
+                    call: seed.call,
+                    module_member: None,
+                    returned_member: None,
+                    bound_arguments: seed.bound_arguments,
+                    syntactic_chain: None,
+                },
             }
         })
     }
@@ -180,12 +188,14 @@ impl Resolver<'_> {
             });
             ResolutionSeed {
                 id,
-                rooted_chain,
-                call: scoped_call,
-                module_member,
-                returned_member,
-                bound_arguments: None,
-                syntactic_chain,
+                provenance: ResolutionProvenance {
+                    rooted_chain,
+                    call: scoped_call,
+                    module_member,
+                    returned_member,
+                    bound_arguments: None,
+                    syntactic_chain,
+                },
             }
         })
     }
@@ -254,7 +264,7 @@ impl Resolver<'_> {
         }
         let seed = build(self);
         let call = if seed.id == ValueId::UNKNOWN
-            && !matches!(seed.call, SymbolCallProvenance::Unknown(_))
+            && !matches!(seed.provenance.call, SymbolCallProvenance::Unknown(_))
             && self.value_arena_exhausted()
         {
             SymbolCallProvenance::Unknown(UnknownReason::BudgetExhausted {
@@ -263,21 +273,25 @@ impl Resolver<'_> {
                 observed: None,
             })
         } else {
-            self.call_provenance_at(seed.id, seed.rooted_chain.as_ref(), span)
+            self.call_provenance_at(seed.id, seed.provenance.rooted_chain.as_ref(), span)
         };
         let id = match &call {
             SymbolCallProvenance::Global { name } => self.values.intern_global(name.clone(), None),
             _ => seed.id,
         };
-        let module_member = seed.module_member.clone().or_else(|| match &call {
-            SymbolCallProvenance::ModuleExport { module, export } => {
-                Some(SymbolMemberProvenance::ModuleNamespace {
-                    module: module.clone(),
-                    member: export.clone(),
-                })
-            }
-            _ => None,
-        });
+        let module_member = seed
+            .provenance
+            .module_member
+            .clone()
+            .or_else(|| match &call {
+                SymbolCallProvenance::ModuleExport { module, export } => {
+                    Some(SymbolMemberProvenance::ModuleNamespace {
+                        module: module.clone(),
+                        member: export.clone(),
+                    })
+                }
+                _ => None,
+            });
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, .. }) = &module_member {
             self.values.intern_module_namespace(module.clone());
         }
@@ -303,20 +317,24 @@ impl Resolver<'_> {
 
     pub(in crate::analysis) fn rooted_expr_chain(&mut self, expr: &Expr) -> Option<SymbolPath> {
         match expr {
-            Expr::Ident(ident) => self.resolve_ident(ident).rooted_chain.or_else(|| {
-                ident
-                    .span
-                    .is_dummy()
-                    .then(|| SymbolPath::from(ident.sym.as_ref()))
-            }),
-            Expr::Member(member) => self.resolve_member(member).rooted_chain,
+            Expr::Ident(ident) => self
+                .resolve_ident(ident)
+                .provenance
+                .rooted_chain
+                .or_else(|| {
+                    ident
+                        .span
+                        .is_dummy()
+                        .then(|| SymbolPath::from(ident.sym.as_ref()))
+                }),
+            Expr::Member(member) => self.resolve_member(member).provenance.rooted_chain,
             Expr::Call(call) => match &call.callee {
                 Callee::Expr(callee) => self.rooted_expr_chain(callee),
                 Callee::Super(_) | Callee::Import(_) => None,
             },
             Expr::OptChain(chain) => match &*chain.base {
                 swc_ecma_ast::OptChainBase::Member(member) => {
-                    self.resolve_member(member).rooted_chain
+                    self.resolve_member(member).provenance.rooted_chain
                 }
                 swc_ecma_ast::OptChainBase::Call(call) => self.rooted_expr_chain(&call.callee),
             },
@@ -365,7 +383,7 @@ impl Resolver<'_> {
 
     fn archive_unknown_with_reason(reason: UnknownReason) -> ResolvedValue {
         let mut value = ResolvedValue::local(ValueId::UNKNOWN);
-        value.call = SymbolCallProvenance::Unknown(reason);
+        value.provenance.call = SymbolCallProvenance::Unknown(reason);
         value
     }
 

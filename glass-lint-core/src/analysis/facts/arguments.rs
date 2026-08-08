@@ -36,7 +36,7 @@ impl FactBuilder<'_, '_> {
                     base_value,
                     base_path,
                     spread: false,
-                    provenance: resolved.call,
+                    provenance: resolved.provenance.call,
                 }
             }
             Expr::Object(_) | Expr::Array(_) => {
@@ -63,7 +63,7 @@ impl FactBuilder<'_, '_> {
                     base_value: value,
                     base_path: PathId::EMPTY,
                     spread: false,
-                    provenance: resolved.call,
+                    provenance: resolved.provenance.call,
                 }
             }
         }
@@ -252,9 +252,10 @@ impl FactBuilder<'_, '_> {
             Expr::Ident(ident) => self
                 .resolver
                 .resolve_ident(ident)
+                .provenance
                 .rooted_chain
                 .or_else(|| Some(SymbolPath::from(ident.sym.as_ref()))),
-            Expr::Member(member) => self.resolver.resolve_member(member).rooted_chain,
+            Expr::Member(member) => self.resolver.resolve_member(member).provenance.rooted_chain,
             _ => self.resolver.rooted_expr_chain(effective),
         }
     }
