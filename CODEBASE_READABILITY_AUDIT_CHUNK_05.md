@@ -63,7 +63,7 @@ effect collection consume its phase-specific decisions instead of rereading
 fact-stream validity or storing a separate effect boolean. Verified with
 `make fmt && make ci`.
 
-#### [ ] READ-002 — `ResolvedProgram::freeze` coordinates too many phase transitions
+#### [x] READ-002 — `ResolvedProgram::freeze` coordinates too many phase transitions
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -95,7 +95,7 @@ consumption instead of exposing a sequence of individual locals. Preserve
 single traversal, resolver-before-stream sealing, capability-dependent export
 origins/effects, deterministic output, and the current consuming lifecycle.
 
-**Fix Applied:** None so far.
+**Fix Applied:** A private `SealedLowering` value now owns the post-resolver-consumption facts, export origins, derived capabilities, and status. `ResolvedProgram::freeze` is reduced to completion assessment, typed sealing, and final artifact assembly while preserving resolver-before-stream sealing and all capability-dependent behavior. Verified with `make fmt && make ci`.
 
 #### [x] READ-003 — Completion policy and completion result duplicate their entire state
 

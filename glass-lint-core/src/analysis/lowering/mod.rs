@@ -278,6 +278,25 @@ impl LoweringCompletion {
     }
 }
 
+struct SealedLowering {
+    facts: SemanticFacts,
+    export_origins: BTreeMap<SmolStr, SymbolCallProvenance>,
+    capabilities: DerivedPhaseCapabilities,
+    status: AnalysisStatus,
+}
+
+impl SealedLowering {
+    fn into_artifact(self, effect_limit: usize) -> SemanticArtifact {
+        SemanticArtifact::from_lowering(
+            self.facts,
+            self.export_origins,
+            effect_limit,
+            self.capabilities,
+            self.status,
+        )
+    }
+}
+
 /// The resolved local-analysis phase. The scope-frozen resolver, the
 /// scope-collection issues, and the built (unfrozen) fact stream travel
 /// together until the single consuming `freeze` transition seals the name and
@@ -347,6 +366,31 @@ impl<'a> ResolvedProgram<'a> {
         stream
     }
 
+    fn seal(
+        self,
+        environment: &Environment,
+        completion: LoweringCompletion,
+        program_span: Span,
+    ) -> SealedLowering {
+        let export_origins =
+            self.derive_export_origins(&self.built.interface, &completion, program_span);
+        let name_table_exhausted = self.resolver.name_table_exhausted();
+        let Self {
+            resolver, built, ..
+        } = self;
+        let stream = Self::annotate_name_exhaustion(built.stream, name_table_exhausted);
+        let interface = built.interface;
+        let stream = resolver.freeze_into(stream);
+        let capabilities = completion.capabilities;
+        let facts = SemanticFacts::from_lowering(stream, interface, environment, capabilities);
+        SealedLowering {
+            facts,
+            export_origins,
+            capabilities,
+            status: completion.status,
+        }
+    }
+
     /// One consuming transition from the resolved phase to the immutable
     /// artifact. The name and value tables are extracted from the resolver
     /// inside this transition and sealed into the frozen stream.
@@ -357,25 +401,8 @@ impl<'a> ResolvedProgram<'a> {
         program_span: Span,
     ) -> SemanticArtifact {
         let completion = self.assess_completion(limits);
-        let export_origins =
-            self.derive_export_origins(&self.built.interface, &completion, program_span);
-        let name_table_exhausted = self.resolver.name_table_exhausted();
-        let Self {
-            resolver, built, ..
-        } = self;
-        let stream = Self::annotate_name_exhaustion(built.stream, name_table_exhausted);
-        let interface = built.interface;
-
-        let stream = resolver.freeze_into(stream);
-        let facts =
-            SemanticFacts::from_lowering(stream, interface, environment, completion.capabilities);
-        SemanticArtifact::from_lowering(
-            facts,
-            export_origins,
-            limits.effect_operations(),
-            completion.capabilities,
-            completion.status,
-        )
+        self.seal(environment, completion, program_span)
+            .into_artifact(limits.effect_operations())
     }
 }
 
