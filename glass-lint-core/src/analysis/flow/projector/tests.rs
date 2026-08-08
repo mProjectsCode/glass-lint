@@ -711,8 +711,7 @@ fn requirement_only_evidence_is_anchored_at_the_configuration_event() {
 #[test]
 fn object_limit_exhaustion_returns_exhausted_outcome() {
     let query = script_flow();
-    let source =
-        "const a = document.createElement('script'); const b = document.createElement('script');";
+    let source = "const a = document.createElement('script'); a.src = url; document.head.appendChild(a); const b = document.createElement('script');";
     let stream = crate::analysis::facts::build_test_facts(source, "obj-limit.js");
     let effects = FunctionEffects::collect(&stream, usize::MAX);
     let flow = compile_flow(&query);
@@ -725,9 +724,10 @@ fn object_limit_exhaustion_returns_exhausted_outcome() {
         limits,
     );
     assert!(outcome.is_exhausted(), "object limit should be exhausted");
-    assert!(
-        evidence[0].is_empty(),
-        "no flow can complete without a second object"
+    assert_eq!(evidence[0].len(), 1);
+    assert_eq!(
+        evidence[0][0].certainty(),
+        crate::project::MatchCertainty::Possible
     );
 }
 

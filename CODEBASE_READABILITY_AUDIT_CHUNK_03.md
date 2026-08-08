@@ -46,7 +46,7 @@ indices private to the compiler plan.
 
 ### Completion and incomplete-evidence contract
 
-#### [ ] READ-009 — Preserve independent possible witnesses when flow is incomplete
+#### [x] READ-009 — Preserve independent possible witnesses when flow is incomplete
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -73,7 +73,14 @@ incomplete alternative establish definite coverage. Keep deterministic reason
 aggregation and explicit distinctions between effect, summary, local-path,
 cross-context, evidence, and trace exhaustion.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Flow summaries now retain sorted sinks after incomplete
+propagation, and local/cross evidence sinks retain emitted witnesses instead
+of clearing them when a bounded phase is incomplete. The flow output boundary
+downgrades retained evidence to `Possible` whenever completion carries an
+exhaustion reason, preserving independent witnesses without allowing
+incomplete work to establish `Definite`. Added local object-limit and cross
+evidence regressions. Verified with `cargo test -p glass-lint-core
+analysis::flow` and `make fmt && make ci`.
 
 ### Flow evidence aggregation
 

@@ -121,9 +121,11 @@ impl ModuleEvidence {
             .is_some_and(|rule| rule.nonmatching.contains(key))
     }
 
-    pub(super) fn clear(&mut self) {
+    pub(super) fn mark_all_possible(&mut self) {
         for rule in &mut self.rules {
-            rule.items.clear();
+            for item in rule.items.values_mut() {
+                item.mark_possible();
+            }
         }
     }
 
@@ -262,7 +264,7 @@ mod tests {
             flow::cross::state::QualifiedEvent,
             model::flow::{FlowId, RequirementIndex, SinkIndex},
         },
-        api::classification::RuleIndex,
+        api::classification::{ClassificationEvidenceOccurrence, RuleEvidenceCapacity, RuleIndex},
     };
 
     #[test]
@@ -296,6 +298,39 @@ mod tests {
                 EvidenceRole::Sink,
                 EvidenceRole::Sink,
             ]
+        );
+    }
+
+    #[test]
+    fn incomplete_projection_keeps_cross_evidence_as_possible() {
+        let rule = RuleIndex::new(0);
+        let key = EvidenceKey {
+            kind: MatchKind::CallArgument,
+            symbol: "fetch".to_owned(),
+            fact: FactId::from_test(1),
+        };
+        let mut evidence = ModuleEvidence::new(RuleEvidenceCapacity::from_catalog_len(1));
+        evidence.record(
+            rule,
+            &key,
+            ClassificationEvidence::from_occurrence(
+                MatchKind::CallArgument,
+                "fetch".to_owned(),
+                ClassificationEvidenceOccurrence::new(
+                    glass_lint_datastructures::ByteRange::empty(),
+                    Some(1),
+                    None,
+                ),
+                crate::project::MatchCertainty::Definite,
+            ),
+        );
+
+        evidence.mark_all_possible();
+
+        let items = evidence.into_evidence();
+        assert_eq!(
+            items.for_rule(rule).unwrap()[0].certainty(),
+            crate::project::MatchCertainty::Possible
         );
     }
 }

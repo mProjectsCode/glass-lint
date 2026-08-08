@@ -974,6 +974,9 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             &flow_evidence,
             self.trace_arena,
         );
+        if completion.is_incomplete() {
+            flow_evidence.mark_all_possible();
+        }
         LocalFlowProjectionOutcome {
             completion,
             operations: self.run.operation_budget.used(),

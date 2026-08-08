@@ -216,7 +216,7 @@ impl CrossWorklist<'_, '_> {
         completion.merge(source_completion);
         if completion.is_incomplete() {
             for module_evidence in self.evidence.values_mut() {
-                module_evidence.clear();
+                module_evidence.mark_all_possible();
             }
         }
         let trace_heads = self

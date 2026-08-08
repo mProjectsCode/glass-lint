@@ -304,6 +304,14 @@ impl RuleEvidenceTable {
         }
         Ok(())
     }
+
+    pub(crate) fn mark_all_possible(&mut self) {
+        for items in &mut self.values {
+            for evidence in items {
+                evidence.mark_possible();
+            }
+        }
+    }
 }
 
 #[cfg(test)]

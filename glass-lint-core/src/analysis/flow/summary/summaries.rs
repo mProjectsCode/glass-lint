@@ -55,13 +55,9 @@ impl SummarySinkBudget {
 }
 
 impl FlowCompletion {
-    fn finalize(self, summaries: &mut FunctionSummaries<'_>) {
+    fn finalize(summaries: &mut FunctionSummaries<'_>) {
         for (_, summary) in summaries.by_id.iter_mut() {
-            if self.is_complete() {
-                summary.sort_sinks();
-            } else {
-                summary.clear_sinks();
-            }
+            summary.sort_sinks();
         }
     }
 }
@@ -100,8 +96,7 @@ impl<'a> FunctionSummaries<'a> {
             summaries.completion =
                 SummaryPropagation::new(stream, &summaries.by_id).run(&mut summaries, budget);
         }
-        let completion = summaries.completion;
-        completion.finalize(&mut summaries);
+        FlowCompletion::finalize(&mut summaries);
         summaries
     }
 

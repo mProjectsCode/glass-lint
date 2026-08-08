@@ -730,6 +730,10 @@ impl<'a> FlowEvidence<'a> {
     pub(super) fn limit_rejected(&self) -> bool {
         self.limit_rejected
     }
+
+    pub(super) fn mark_all_possible(&mut self) {
+        self.items.mark_all_possible();
+    }
 }
 
 #[derive(Debug, Clone)]
