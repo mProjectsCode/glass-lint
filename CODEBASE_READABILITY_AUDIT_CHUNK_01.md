@@ -51,7 +51,7 @@ Verified with `cargo test -p glass-lint-core analysis::facts` and
 
 ### Traversal lifecycle state
 
-#### [ ] READ-002 — Make function and class traversal context scoped
+#### [x] READ-002 — Make function and class traversal context scoped
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -77,7 +77,10 @@ leave API without requiring a `Drop` guard that would make the builder borrow
 awkwardly; preserve enter/body/exit order, static-method visibility, nested
 class provenance, and deterministic region allocation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Centralized function, static-method, class, and current-
+function restoration in closure-scoped `FactBuilder` helpers, preserving
+boundary fact order and nested provenance behavior. Verified with
+`make fmt && make ci`.
 
 ### Function parameter lookup contract
 

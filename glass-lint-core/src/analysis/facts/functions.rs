@@ -35,6 +35,34 @@ impl FunctionBodyKind {
 }
 
 impl FactBuilder<'_, '_> {
+    fn with_function_context(&mut self, kind: FunctionBodyKind, visit: impl FnOnce(&mut Self)) {
+        let enclosing = self.traversal.current_function();
+        if kind.tracks_function_depth() {
+            self.traversal.push_function();
+        }
+        if kind.is_static_method() {
+            self.traversal.push_static_method();
+        }
+        visit(self);
+        if kind.is_static_method() {
+            self.traversal.pop_static_method();
+        }
+        if kind.tracks_function_depth() {
+            self.traversal.pop_function();
+        }
+        self.traversal.set_function(enclosing);
+    }
+
+    fn with_class_context(
+        &mut self,
+        provenance: Option<(SmolStr, SmolStr)>,
+        visit: impl FnOnce(&mut Self),
+    ) {
+        self.traversal.push_class(provenance);
+        visit(self);
+        self.traversal.pop_class();
+    }
+
     /// Return the proven class provenance for the current non-static method.
     pub(super) fn current_class(&self) -> Option<(SmolStr, SmolStr)> {
         self.traversal.current_class()
@@ -75,9 +103,9 @@ impl FactBuilder<'_, '_> {
 
     pub(super) fn record_function_decl(&mut self, function: &FnDecl) {
         self.record_local(function.ident.sym.to_string());
-        self.traversal.enter_function();
-        function.visit_children_with(self);
-        self.traversal.leave_function();
+        self.with_function_context(FunctionBodyKind::Function, |builder| {
+            function.visit_children_with(builder);
+        });
     }
 
     pub(super) fn record_function(&mut self, function: &Function) {
@@ -104,27 +132,15 @@ impl FactBuilder<'_, '_> {
         kind: FunctionBodyKind,
         visit_body: impl FnOnce(&mut Self),
     ) {
-        let enclosing = self.traversal.current_function();
         self.emit_function_fact(span, parameters, FunctionBoundary::Enter);
-        if kind.tracks_function_depth() {
-            self.traversal.enter_function();
-        }
-        if kind.is_static_method() {
-            self.traversal.enter_static_method();
-        }
-        visit_body(self);
-        if kind.tracks_function_depth() {
-            self.traversal.leave_function();
-        }
-        self.emit_function_fact(
-            span,
-            std::iter::empty::<(usize, Pat)>(),
-            FunctionBoundary::Exit,
-        );
-        if kind.is_static_method() {
-            self.traversal.leave_static_method();
-        }
-        self.traversal.set_function(enclosing);
+        self.with_function_context(kind, |builder| {
+            visit_body(builder);
+            builder.emit_function_fact(
+                span,
+                std::iter::empty::<(usize, Pat)>(),
+                FunctionBoundary::Exit,
+            );
+        });
     }
 
     pub(super) fn record_arrow(&mut self, arrow: &ArrowExpr) {
@@ -187,9 +203,9 @@ impl FactBuilder<'_, '_> {
             },
         );
         self.record_class_operand(class_decl.class.super_class.as_deref());
-        self.traversal.enter_class(provenance);
-        class_decl.visit_children_with(self);
-        self.traversal.leave_class();
+        self.with_class_context(provenance, |builder| {
+            class_decl.visit_children_with(builder);
+        });
     }
 
     pub(super) fn record_class_expr(&mut self, class_expr: &ClassExpr) {
@@ -209,9 +225,9 @@ impl FactBuilder<'_, '_> {
             );
         }
         self.record_class_operand(class_expr.class.super_class.as_deref());
-        self.traversal.enter_class(provenance);
-        class_expr.visit_children_with(self);
-        self.traversal.leave_class();
+        self.with_class_context(provenance, |builder| {
+            class_expr.visit_children_with(builder);
+        });
     }
 
     pub(super) fn record_instanceof(&mut self, binary: &BinExpr) {

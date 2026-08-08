@@ -47,11 +47,11 @@ impl TraversalState {
         region
     }
 
-    pub(super) fn enter_class(&mut self, provenance: Option<(SmolStr, SmolStr)>) {
+    pub(super) fn push_class(&mut self, provenance: Option<(SmolStr, SmolStr)>) {
         self.class_stack.push(provenance);
     }
 
-    pub(super) fn leave_class(&mut self) {
+    pub(super) fn pop_class(&mut self) {
         self.class_stack.pop();
     }
 
@@ -59,19 +59,19 @@ impl TraversalState {
         self.class_stack.last().cloned().flatten()
     }
 
-    pub(super) fn enter_function(&mut self) {
+    pub(super) fn push_function(&mut self) {
         self.function_depth = self.function_depth.saturating_add(1);
     }
 
-    pub(super) fn leave_function(&mut self) {
+    pub(super) fn pop_function(&mut self) {
         self.function_depth = self.function_depth.saturating_sub(1);
     }
 
-    pub(super) fn enter_static_method(&mut self) {
+    pub(super) fn push_static_method(&mut self) {
         self.static_method_depth = self.static_method_depth.saturating_add(1);
     }
 
-    pub(super) fn leave_static_method(&mut self) {
+    pub(super) fn pop_static_method(&mut self) {
         self.static_method_depth = self.static_method_depth.saturating_sub(1);
     }
 
