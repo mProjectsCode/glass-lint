@@ -84,7 +84,7 @@ internal distinction needed to suppress or classify later analysis.
 
 ### Parser and syntax-report vocabulary
 
-#### [ ] READ-040 — Keep enabled parser syntax and ECMAScript feature reporting in one vocabulary
+#### [x] READ-040 — Keep enabled parser syntax and ECMAScript feature reporting in one vocabulary
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -120,7 +120,15 @@ tests for every enabled extension; do not reject syntax merely because the
 current report vocabulary is incomplete, and preserve deterministic feature
 ordering and standard-version calculation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `EcmaFeature` now includes the unversioned vocabulary for
+function-bind, default export-from, import attributes, and auto-accessors.
+`FeatureDetector` records import attributes on static, re-export, export-all,
+and dynamic imports, default-export specifiers, and auto-accessors. Focused
+tests verify that each representable proposal reports `minimum_version() ==
+None`; the parser's explicit syntax configuration remains unchanged. The
+installed SWC parser exposes no function-bind token or AST node, so its
+feature is reserved in the public vocabulary without inventing a heuristic
+that could misclassify ordinary syntax.
 
 ## Systemic Themes
 

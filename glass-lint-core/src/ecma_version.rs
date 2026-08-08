@@ -116,6 +116,16 @@ pub enum EcmaFeature {
     Jsx,
     /// Decorators, which are not assigned an ECMAScript edition here.
     Decorators,
+    /// Function bind syntax, which is not assigned an ECMAScript edition
+    /// here.
+    FunctionBind,
+    /// Default export-from syntax, which is not assigned an ECMAScript
+    /// edition here.
+    ExportDefaultFrom,
+    /// Import attributes, which are not assigned an ECMAScript edition here.
+    ImportAttributes,
+    /// Auto-accessors, which are not assigned an ECMAScript edition here.
+    AutoAccessors,
     /// Explicit resource management syntax, which is not assigned an
     /// ECMAScript edition here.
     ExplicitResourceManagement,
@@ -146,7 +156,13 @@ impl EcmaFeature {
             Self::OptionalChaining | Self::NullishCoalescing | Self::BigInt => Version::Es2020,
             Self::LogicalAssignment => Version::Es2021,
             Self::ClassFields | Self::PrivateClassFields | Self::StaticBlocks => Version::Es2022,
-            Self::Jsx | Self::Decorators | Self::ExplicitResourceManagement => {
+            Self::Jsx
+            | Self::Decorators
+            | Self::FunctionBind
+            | Self::ExportDefaultFrom
+            | Self::ImportAttributes
+            | Self::AutoAccessors
+            | Self::ExplicitResourceManagement => {
                 return None;
             }
         })
@@ -314,12 +330,18 @@ impl Visit for FeatureDetector {
         if !declaration.type_only {
             self.record(EcmaFeature::Modules);
         }
+        if declaration.with.is_some() {
+            self.record(EcmaFeature::ImportAttributes);
+        }
         declaration.visit_children_with(self);
     }
 
     fn visit_named_export(&mut self, export: &swc_ecma_ast::NamedExport) {
         if !export.type_only {
             self.record(EcmaFeature::Modules);
+        }
+        if export.with.is_some() {
+            self.record(EcmaFeature::ImportAttributes);
         }
         export.visit_children_with(self);
     }
@@ -328,7 +350,15 @@ impl Visit for FeatureDetector {
         if !export.type_only {
             self.record(EcmaFeature::Modules);
         }
+        if export.with.is_some() {
+            self.record(EcmaFeature::ImportAttributes);
+        }
         export.visit_children_with(self);
+    }
+
+    fn visit_export_default_specifier(&mut self, specifier: &swc_ecma_ast::ExportDefaultSpecifier) {
+        self.record(EcmaFeature::ExportDefaultFrom);
+        specifier.visit_children_with(self);
     }
 
     fn visit_export_decl(&mut self, export: &swc_ecma_ast::ExportDecl) {
@@ -351,6 +381,13 @@ impl Visit for FeatureDetector {
             self.record(EcmaFeature::BigInt);
         }
         literal.visit_children_with(self);
+    }
+
+    fn visit_call_expr(&mut self, call: &swc_ecma_ast::CallExpr) {
+        if matches!(call.callee, swc_ecma_ast::Callee::Import(_)) && call.args.len() > 1 {
+            self.record(EcmaFeature::ImportAttributes);
+        }
+        call.visit_children_with(self);
     }
 
     fn visit_opt_chain_expr(&mut self, chain: &swc_ecma_ast::OptChainExpr) {
@@ -444,6 +481,11 @@ impl Visit for FeatureDetector {
         declaration.visit_children_with(self);
     }
 
+    fn visit_auto_accessor(&mut self, accessor: &swc_ecma_ast::AutoAccessor) {
+        self.record(EcmaFeature::AutoAccessors);
+        accessor.visit_children_with(self);
+    }
+
     fn visit_object_lit(&mut self, object: &swc_ecma_ast::ObjectLit) {
         if object
             .props
@@ -531,6 +573,32 @@ mod tests {
         assert!(report.features().contains(&EcmaFeature::OptionalChaining));
         assert!(report.features().contains(&EcmaFeature::NullishCoalescing));
         assert!(report.features().contains(&EcmaFeature::BigInt));
+    }
+
+    #[test]
+    fn reports_import_attributes_on_static_and_dynamic_imports() {
+        let report = analyze(
+            "import value from 'mod' with { type: 'json' }; \
+             export { value } from 'mod' with { type: 'json' }; \
+             export * from 'mod' with { type: 'json' }; \
+             import('mod', { with: { type: 'json' } });",
+        );
+        assert_eq!(report.minimum_version(), None);
+        assert!(report.features().contains(&EcmaFeature::ImportAttributes));
+    }
+
+    #[test]
+    fn reports_default_export_from_syntax() {
+        let report = analyze("export value from 'mod';");
+        assert_eq!(report.minimum_version(), None);
+        assert!(report.features().contains(&EcmaFeature::ExportDefaultFrom));
+    }
+
+    #[test]
+    fn reports_auto_accessors() {
+        let report = analyze("class Example { accessor value; }");
+        assert_eq!(report.minimum_version(), None);
+        assert!(report.features().contains(&EcmaFeature::AutoAccessors));
     }
 
     #[test]
