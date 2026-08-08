@@ -87,7 +87,7 @@ analysis::flow` and `make fmt && make ci`.
 
 ### Flow evidence aggregation
 
-#### [ ] READ-010 — Share one bounded flow-evidence accumulator
+#### [x] READ-010 — Share one bounded flow-evidence accumulator
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -104,16 +104,17 @@ site. Both are flow-specific sinks that merge certainty and traces, but their
 limits, keys, and duplicate policies can evolve independently, so local and
 cross findings do not share one bounded output contract.
 
-**Recommendation:** Share only the flow-owned primitives that are actually
-identical: certainty promotion, trace deduplication, and bounded admission.
-Keep local object keys and cross qualified-module keys, nonmatching
-alternative tracking, and their evidence stores separate where their
-semantics differ; small adapters may feed the shared primitives. Do not
-delete either recording path until the two stores have the same admission and
-incomplete-alternative contract, and preserve catalog-capacity errors and
-deterministic ordering throughout.
+**Disposition:** Revalidated after the evidence-chain and classification
+boundaries were centralized. Certainty promotion is already owned by
+`ClassificationEvidence`, and trace-node interning is shared by `TraceArena`.
+Local bounded admission and cross-module nonmatching/occurrence policies are
+not identical: combining them would change per-key limits, incomplete
+alternative handling, or deterministic output. The two evidence stores are
+therefore intentionally retained as separate owners; no actionable
+deduplication remains for this finding.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Closed as non-actionable after revalidation; no source change
+was appropriate. The latest source gate remains `make fmt && make ci`.
 
 ### Evidence trace construction
 
