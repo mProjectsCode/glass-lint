@@ -21,7 +21,7 @@ impl ScopeCollector<'_> {
     /// a helper. Conflicting call sites are discarded rather than merged:
     /// retaining an ambiguous alias would leak one caller's provenance into
     /// another.
-    pub fn parameter_aliases(&self) -> HashMap<ScopedName, BindingProvenance> {
+    pub(super) fn parameter_aliases(&self) -> HashMap<ScopedName, BindingProvenance> {
         let mut aliases = BTreeMap::<ScopedName, Option<BindingProvenance>>::new();
         for call in &self.functions.calls {
             let Some(function) = self.function_for_call(call.caller_scope, call.callee_name) else {

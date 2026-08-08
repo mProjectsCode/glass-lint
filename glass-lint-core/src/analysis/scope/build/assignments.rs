@@ -78,7 +78,7 @@ impl super::PathCollectionState {
 }
 
 impl ScopeCollector<'_> {
-    pub fn record_assignment(
+    pub(super) fn record_assignment(
         &mut self,
         span: swc_common::Span,
         scope: ScopeId,

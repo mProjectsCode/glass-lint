@@ -83,7 +83,7 @@ updated.
 
 ### Scope collection mutation authority
 
-#### [ ] READ-007 — Narrow generic collector mutation entry points
+#### [x] READ-007 — Narrow generic collector mutation entry points
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -113,7 +113,10 @@ After callers are migrated, remove the crate-wide visibility so new analysis
 modules cannot write collection state without choosing an owner-approved
 operation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Restricted generic insertion, assignment recording, and
+parameter-alias projection to the scope-build module boundary with
+`pub(super)`, preserving all collection and freeze behavior. Verified with
+`make fmt && make ci`.
 
 ## Systemic Themes
 

@@ -68,7 +68,7 @@ impl ScopeCollector<'_> {
         var_binding_scope(&self.lexical.stack, &self.lexical.scopes)
     }
 
-    pub fn insert(
+    pub(super) fn insert(
         &mut self,
         scope: ScopeId,
         name: impl Into<SmolStr>,
