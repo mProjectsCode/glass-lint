@@ -3,14 +3,21 @@ use smol_str::{SmolStr, ToSmolStr};
 
 use crate::analysis::{
     scope::{
-        frozen_assignments::BindingResolutionStatus,
+        frozen_assignments::{BindingResolution, BindingResolutionStatus},
+        provenance_to_const_value,
         query::{
-            BindingKey, BindingProvenance, FrozenScopeGraph, Ident, IdentValueSeed, Lookup,
-            MemberExpr, Span, SymbolCallProvenance, SymbolMemberProvenance, constant,
+            BindingKey, BindingProvenance, FrozenScopeGraph, Ident, IdentValueSeed, MemberExpr,
+            Span, SymbolCallProvenance, SymbolMemberProvenance, constant,
         },
     },
     syntax::{expression_name, member_root_identifier},
 };
+
+struct ResolvedIdentBinding<'a> {
+    dynamic_lookup: bool,
+    resolution: BindingResolution<'a>,
+    binding: Option<BindingKey>,
+}
 
 impl FrozenScopeGraph {
     fn symbol_path_provenance(
@@ -41,6 +48,15 @@ impl FrozenScopeGraph {
             return SymbolCallProvenance::Local;
         }
         let resolution = self.binding_resolution_at(name, span);
+        self.call_provenance_from_resolution(name, span, resolution)
+    }
+
+    fn call_provenance_from_resolution(
+        &self,
+        name: &str,
+        span: Span,
+        resolution: BindingResolution<'_>,
+    ) -> SymbolCallProvenance {
         match resolution.preferred_witness() {
             Some(BindingProvenance::ModuleExport { module, export }) => {
                 SymbolCallProvenance::ModuleExport {
@@ -84,8 +100,7 @@ impl FrozenScopeGraph {
                 | BindingProvenance::StaticObjectKeys(_)
                 | BindingProvenance::StaticObjectValues(_),
             ) => SymbolCallProvenance::Local,
-            None if resolution.status()
-                == BindingResolutionStatus::Absent
+            None if resolution.status() == BindingResolutionStatus::Absent
                 && self.is_global(name) =>
             {
                 SymbolCallProvenance::Global {
@@ -97,26 +112,93 @@ impl FrozenScopeGraph {
     }
 
     pub(in crate::analysis) fn ident_value_seed(&self, ident: &Ident) -> IdentValueSeed {
-        let binding = self
-            .binding_with_scope_at(ident.sym.as_ref(), ident.span)
-            .and_then(|(scope, _)| {
-                Some(BindingKey::lexical(
-                    self.function_scope_at(scope),
-                    self.binding_id_at(scope, self.name_id(ident.sym.as_ref())?)?,
-                    self.binding_version_at(scope, ident.sym.as_ref(), ident.span),
-                ))
-            });
-        let constant = if self.has_dynamic_lookup_at(ident.span) {
+        let ResolvedIdentBinding {
+            dynamic_lookup,
+            resolution,
+            binding,
+        } = self.ident_binding_seed(ident);
+        let constant = if dynamic_lookup {
             constant::ConstValue::Unknown
         } else {
-            self.ident(ident, &mut constant::EvalState::default())
+            let resolve = |key| self.resolve_name_id(key).map(SmolStr::new);
+            resolution
+                .preferred_witness()
+                .map_or(constant::ConstValue::Unknown, |provenance| {
+                    provenance_to_const_value(provenance, &resolve)
+                })
         };
+        // PERF: Identifier resolution is the hottest operation on minified
+        // bundles. Keep every projection on the same joined-binding result;
+        // calling the public convenience queries here would repeat scope,
+        // assignment, and dynamic-lookup searches for each projection.
         IdentValueSeed {
-            call: self.call_provenance(ident.sym.as_ref(), ident.span),
-            rooted_chain: self.callable_member_chain(ident),
+            call: if dynamic_lookup {
+                SymbolCallProvenance::Local
+            } else {
+                self.call_provenance_from_resolution(ident.sym.as_ref(), ident.span, resolution)
+            },
+            rooted_chain: if dynamic_lookup {
+                None
+            } else {
+                self.callable_member_chain_from_resolution(resolution)
+            },
             binding,
             constant,
-            bound_arguments: self.bound_arguments(ident),
+            bound_arguments: resolution.preferred_witness().and_then(
+                |provenance| match provenance {
+                    BindingProvenance::BoundCallable {
+                        bound_arguments, ..
+                    }
+                    | BindingProvenance::BoundModuleCallable {
+                        bound_arguments, ..
+                    } => Some(bound_arguments.clone()),
+                    _ => None,
+                },
+            ),
+        }
+    }
+
+    fn ident_binding_seed(&self, ident: &Ident) -> ResolvedIdentBinding<'_> {
+        let Some(use_scope) = self.scope_at(ident.span) else {
+            return ResolvedIdentBinding {
+                dynamic_lookup: true,
+                resolution: BindingResolution::absent(),
+                binding: None,
+            };
+        };
+        let dynamic_lookup = self
+            .scope_or_ancestor_has_kind(use_scope, crate::analysis::scope::ScopeKind::Dynamic)
+            || self.has_prior_eval(use_scope, ident.span);
+        let Some(name) = self.name_id(ident.sym.as_ref()) else {
+            return ResolvedIdentBinding {
+                dynamic_lookup,
+                resolution: BindingResolution::absent(),
+                binding: None,
+            };
+        };
+        let Some((binding_scope, declaration)) = self.nearest_binding_from_scope(name, use_scope)
+        else {
+            return ResolvedIdentBinding {
+                dynamic_lookup,
+                resolution: BindingResolution::absent(),
+                binding: None,
+            };
+        };
+        let parameter = self.parameter_alias_for_scope(binding_scope, name);
+        let resolution = self
+            .assignment_at(binding_scope, name, ident.span)
+            .resolve(parameter, declaration);
+        let binding = self.binding_id_at(binding_scope, name).map(|binding| {
+            BindingKey::lexical(
+                self.function_scope_at(binding_scope),
+                binding,
+                self.binding_version(binding_scope, name, ident.span),
+            )
+        });
+        ResolvedIdentBinding {
+            dynamic_lookup,
+            resolution,
+            binding,
         }
     }
 
@@ -135,11 +217,11 @@ impl FrozenScopeGraph {
         Some(object.append_chain(&self.contextual_member_property_name(member)?))
     }
 
-    pub(in crate::analysis) fn callable_member_chain(&self, ident: &Ident) -> Option<SymbolPath> {
-        if self.has_dynamic_lookup_at(ident.span) {
-            return None;
-        }
-        match self.binding_at(ident.sym.as_ref(), ident.span)? {
+    fn callable_member_chain_from_resolution(
+        &self,
+        resolution: BindingResolution<'_>,
+    ) -> Option<SymbolPath> {
+        match resolution.preferred_witness()? {
             BindingProvenance::ValueAlias { target } if self.rooted_path_available(target) => self
                 .symbol_path(target)
                 .and_then(|path| path.without_bind_suffix().or(Some(path))),

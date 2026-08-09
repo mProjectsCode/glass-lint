@@ -149,9 +149,7 @@ impl OccurrenceIndexes {
             (self
                 .environment
                 .global_object_name_paths_match(&rooted_path, key.source(), names)
-                || key
-                    .source()
-                    .is_equal_or_descendant_of(&rooted_path))
+                || key.source().is_equal_or_descendant_of(&rooted_path))
                 && member_path == *key.member()
         };
         match event {

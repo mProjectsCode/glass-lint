@@ -4,14 +4,20 @@ use hashbrown::HashMap;
 
 use crate::{
     analysis::{
-        ProjectSemanticModel, facts::FactId, flow::{
+        ProjectSemanticModel,
+        facts::FactId,
+        flow::{
             cross::state::{CallContext, CrossFlowState},
             effect::{EffectUse, FunctionEffect},
-        }, model::flow::FlowId, trace::{QualifiedEvent, TraceArena, TraceNodeId, intern_lifecycle_trace},
-    }, api::{
+        },
+        model::flow::FlowId,
+        trace::{QualifiedEvent, TraceArena, TraceNodeId, intern_lifecycle_trace},
+    },
+    api::{
         classification::{ClassificationEvidence, MatchKind, RuleEvidenceTable, RuleIndex},
         compiler::CompiledObjectFlow,
-    }, project::{EvidenceRole, ModuleId},
+    },
+    project::{EvidenceRole, ModuleId},
 };
 
 pub(super) fn usage_matches_context(

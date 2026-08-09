@@ -3,8 +3,8 @@
 use crate::analysis::scope::{
     frozen_assignments::{BindingResolution, BindingResolutionStatus},
     query::{
-        BindingKey, BindingProvenance, BindingVersion, BoundArgument, Expr, FrozenScopeGraph,
-        Ident, ScopeId, ScopeKind, Span,
+        BindingKey, BindingProvenance, BindingVersion, Expr, FrozenScopeGraph, Ident, ScopeId,
+        ScopeKind, Span,
     },
 };
 
@@ -175,22 +175,6 @@ impl FrozenScopeGraph {
                 return false;
             };
             scope = parent;
-        }
-    }
-
-    /// Return static arguments captured by a supported bound callable.
-    pub(in crate::analysis) fn bound_arguments(
-        &self,
-        ident: &Ident,
-    ) -> Option<Vec<Option<BoundArgument>>> {
-        match self.binding_at(ident.sym.as_ref(), ident.span)? {
-            BindingProvenance::BoundCallable {
-                bound_arguments, ..
-            }
-            | BindingProvenance::BoundModuleCallable {
-                bound_arguments, ..
-            } => Some(bound_arguments.clone()),
-            _ => None,
         }
     }
 

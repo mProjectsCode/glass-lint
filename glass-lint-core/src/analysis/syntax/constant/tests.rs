@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use swc_ecma_ast::{Expr, ExprStmt, MemberExpr, Program, Stmt};
 
 use crate::analysis::syntax::constant::{
-    ConstValue, EvalState, Lookup, evaluate,
+    ConstValue, EvalState, Lookup, evaluate, evaluate_binary,
     types::{MAX_ARRAY_ITEMS, MAX_STRING_BYTES},
 };
 
@@ -77,6 +77,22 @@ fn preserves_typed_addition_and_uses_cooked_templates() {
         ConstValue::String("line\n3".into())
     );
     assert_eq!(eval("-1"), ConstValue::Unknown);
+}
+
+#[test]
+fn borrowed_binary_evaluation_matches_expression_evaluation() {
+    let expression = expression("'prefix-' + (1 + 2)");
+    let Expr::Paren(parenthesized) = &expression else {
+        panic!("test helper did not preserve its expression wrapper");
+    };
+    let Expr::Bin(binary) = &*parenthesized.expr else {
+        panic!("test input did not parse as a binary expression");
+    };
+    let lookup = TestLookup::default();
+    assert_eq!(
+        evaluate_binary(binary, &lookup),
+        evaluate(&expression, &lookup)
+    );
 }
 
 #[test]

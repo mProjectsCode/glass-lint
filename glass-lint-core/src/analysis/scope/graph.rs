@@ -485,6 +485,14 @@ impl FrozenScopeGraph {
         view.nearest_binding_at(name, span)
     }
 
+    pub(in crate::analysis) fn nearest_binding_from_scope(
+        &self,
+        name: NameId,
+        scope: ScopeId,
+    ) -> Option<(ScopeId, &BindingProvenance)> {
+        self.data.binding_with_scope_at(name, scope)
+    }
+
     pub(in crate::analysis) fn parameter_alias_for_scope(
         &self,
         scope: ScopeId,

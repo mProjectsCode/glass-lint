@@ -80,6 +80,13 @@ pub(in crate::analysis) fn evaluate(expr: &Expr, lookup: &impl Lookup) -> ConstV
     state.evaluate(expr, lookup)
 }
 
+/// Evaluate one borrowed binary expression under the same fresh bounds as an
+/// [`Expr::Bin`] passed to [`evaluate`].
+pub(in crate::analysis) fn evaluate_binary(binary: &BinExpr, lookup: &impl Lookup) -> ConstValue {
+    let mut state = EvalState::default();
+    state.evaluate_binary(binary, lookup)
+}
+
 /// Evaluate a member property with a fresh bounded state.
 pub(in crate::analysis) fn contextual_member_property_name(
     prop: &MemberProp,
@@ -122,6 +129,21 @@ impl EvalState {
         self.nodes += 1;
         self.depth += 1;
         let value = self.evaluate_inner(expr, lookup);
+        self.depth -= 1;
+        value
+    }
+
+    fn evaluate_binary(&mut self, binary: &BinExpr, lookup: &impl Lookup) -> ConstValue {
+        if self.depth >= MAX_DEPTH || self.nodes >= MAX_NODES {
+            return ConstValue::Unknown;
+        }
+        self.nodes += 1;
+        self.depth += 1;
+        let value = if binary.op == swc_ecma_ast::BinaryOp::Add {
+            self.evaluate_add(binary, lookup)
+        } else {
+            ConstValue::Unknown
+        };
         self.depth -= 1;
         value
     }

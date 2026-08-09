@@ -4,7 +4,7 @@ mod tests;
 mod types;
 
 pub(in crate::analysis) use eval::{
-    EvalState, Lookup, NoLookup, contextual_member_property_name, evaluate,
+    EvalState, Lookup, NoLookup, contextual_member_property_name, evaluate, evaluate_binary,
 };
 #[cfg(test)]
 pub(in crate::analysis) use types::MAX_ARRAY_ITEMS;

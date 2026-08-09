@@ -290,7 +290,10 @@ impl Visit for FactBuilder<'_, '_> {
             return;
         }
         if binary.op != swc_ecma_ast::BinaryOp::InstanceOf {
-            let complete = self.resolver.resolve_expr(&Expr::Bin(binary.clone())).id;
+            // PERF: Bundled expressions can be deeply nested. Evaluate the
+            // borrowed binary node so checking a parent never clones and then
+            // recursively drops its complete expression subtree.
+            let complete = self.resolver.resolve_binary(binary).id;
             if self.resolver.static_string_value(complete).is_some() {
                 self.emit(
                     binary.span(),

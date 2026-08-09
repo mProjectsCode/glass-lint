@@ -72,7 +72,10 @@ impl Resolver<'_> {
     fn ident_key(ident: &Ident) -> ResolutionKey {
         ResolutionKey::Ident {
             range: ident.span.into(),
-            symbol: ident.sym.to_smolstr(),
+            // PERF: Authored spans uniquely identify tokens. Retain spelling
+            // only for synthetic identifiers, whose dummy spans can collide;
+            // allocating a SmolStr for every cache probe dominated hot bundles.
+            synthetic_symbol: ident.span.is_dummy().then(|| ident.sym.to_smolstr()),
         }
     }
 
@@ -265,6 +268,15 @@ impl Resolver<'_> {
             Expr::New(new_expr) => self.fresh_object_value_at(new_expr.span),
             _ => Self::unknown(),
         }
+    }
+
+    pub(in crate::analysis) fn resolve_binary(
+        &mut self,
+        binary: &swc_ecma_ast::BinExpr,
+    ) -> ResolvedValue {
+        let value = syntax_constant::evaluate_binary(binary, self);
+        let id = self.intern_const_value(value, None);
+        Self::archive_local(id)
     }
 
     fn resolve_seed<F>(

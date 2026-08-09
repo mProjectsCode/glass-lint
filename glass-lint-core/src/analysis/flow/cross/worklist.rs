@@ -2,13 +2,16 @@ use std::collections::{BTreeSet, VecDeque};
 
 use crate::{
     analysis::{
-        ProjectSemanticModel, QualifiedFunctionId, flow::cross::{
+        ProjectSemanticModel, QualifiedFunctionId,
+        flow::cross::{
             MAX_CONTEXTS,
             graph::QualifiedCallGraph,
             sources::{FlowSources, SourceKey},
             state::{CallContext, CrossFlowState, QualifiedEvent},
-        }, model::{flow::FlowId, scope::FunctionId},
-    }, project::ModuleId,
+        },
+        model::{flow::FlowId, scope::FunctionId},
+    },
+    project::ModuleId,
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]

@@ -4,11 +4,15 @@ use std::{
 };
 
 use crate::{
-    AnalysisLimits, ParseDiagnostic, StatusDiagnostics, analysis::{
+    AnalysisLimits, ParseDiagnostic, StatusDiagnostics,
+    analysis::{
         AnalysisStatus, IncompleteReason, ProjectSemanticModel, ResolvedLinkInput, StatusScope,
         project::projection::ProjectionOutcome,
         trace::{TraceArena, TraceNodeId, TraceStep},
-    }, api::classification::{ClassificationResult, RuleIndex}, lint::catalog::RuleCatalog, project::{AnalysisReport, Diagnostic, FileReport, ModuleId, ProjectRelativePath, SourceTable},
+    },
+    api::classification::{ClassificationResult, RuleIndex},
+    lint::catalog::RuleCatalog,
+    project::{AnalysisReport, Diagnostic, FileReport, ModuleId, ProjectRelativePath, SourceTable},
 };
 
 mod diagnostics;

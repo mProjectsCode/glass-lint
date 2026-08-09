@@ -112,10 +112,11 @@ impl Deref for ResolvedValue {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum ResolutionKey {
-    /// Identifier lookup keyed by a checked source range and spelling.
+    /// Identifier lookup keyed by a checked source range, plus spelling when
+    /// a synthetic dummy span cannot provide a unique authored position.
     Ident {
         range: ParserSpanKey,
-        symbol: SmolStr,
+        synthetic_symbol: Option<SmolStr>,
     },
     /// Member lookup keyed by its checked source range.
     Member { range: ParserSpanKey },
@@ -132,6 +133,16 @@ struct ResolverCache {
     resolved_values: HashMap<ResolutionKey, ResolvedValue>,
     /// Active lookups used to break recursive resolution cycles.
     resolving: HashSet<ResolutionKey>,
+}
+
+impl ResolverCache {
+    fn with_resolution_capacity(capacity: usize) -> Self {
+        Self {
+            fresh_values: HashMap::new(),
+            resolved_values: HashMap::with_capacity(capacity),
+            resolving: HashSet::new(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -288,12 +299,16 @@ impl Resolver<'_> {
         budget: &SemanticBudget,
     ) -> Resolver<'_> {
         let names = scopes.name_snapshot();
+        // PERF: Every authored identifier can enter the resolution cache, so
+        // the already-collected unique-name count is a conservative lower
+        // bound that avoids repeated growth without guessing from file bytes.
+        let resolution_capacity = names.len();
         Resolver {
             scopes,
             names,
             coordinates,
             values: ValueTable::default(),
-            cache: ResolverCache::default(),
+            cache: ResolverCache::with_resolution_capacity(resolution_capacity),
             budget,
         }
     }

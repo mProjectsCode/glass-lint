@@ -6,8 +6,6 @@ use super::{
     ValueMatcher, checked_chain, checked_module_export, checked_module_name, checked_name,
 };
 
-
-
 #[allow(clippy::cast_possible_truncation)]
 impl EventQuery {
     /// Global call, e.g. `fetch(...)`.
