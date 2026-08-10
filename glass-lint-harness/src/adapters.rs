@@ -108,6 +108,15 @@ fn configured_linter(expectation: &ToolExpectation) -> Result<Linter> {
     builtins::linter_for_rules(BuiltinProvider::Obsidian, enabled)
 }
 
+pub fn lint_generated_source(
+    filename: &str,
+    source: &str,
+    expectation: &ToolExpectation,
+) -> Result<Vec<Finding>> {
+    let source = SourceFile::with_language(filename, source, SourceLanguage::JavaScript)?;
+    Ok(project_report_to_run(&configured_linter(expectation)?.lint_source(source)?)?.findings)
+}
+
 fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<AdapterRun> {
     // Filesystem projects use the project loader; virtual projects use the
     // session API, but both paths converge on the same report conversion.

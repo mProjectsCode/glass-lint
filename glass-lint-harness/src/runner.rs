@@ -14,23 +14,37 @@ use glass_lint_core::project::Finding;
 use tracing::info;
 
 use crate::{
-    adapters::Adapter,
+    adapters::{Adapter, lint_generated_source},
+    bundler::{Bundler, MAX_GENERATED_BYTES, ProcessBundler, request_for_case},
     cases::load_cases,
     types::{
-        CaseResult, ExpectedCount, FindingExpectation, SuiteReport, ToolExpectation, ToolResult,
+        BundleKey, BundleResult, BundleTarget, BundleTransformer, CaseResult, ExpectedCount,
+        FindingExpectation, SuiteReport, ToolExpectation, ToolResult,
     },
 };
 
 pub type AdapterTimings = BTreeMap<String, Duration>;
+pub type BundleTimings = BTreeMap<BundleKey, Duration>;
 
 /// Execute every configured adapter against every discovered case.
 pub fn run_suite(
     root: &Path,
     adapters: &[Box<dyn Adapter>],
 ) -> Result<(SuiteReport, Vec<AdapterTimings>)> {
+    let bundler = ProcessBundler::default();
+    let (report, timings, _) = run_suite_with_bundler(root, adapters, &bundler)?;
+    Ok((report, timings))
+}
+
+pub fn run_suite_with_bundler(
+    root: &Path,
+    adapters: &[Box<dyn Adapter>],
+    bundler: &dyn Bundler,
+) -> Result<(SuiteReport, Vec<AdapterTimings>, Vec<BundleTimings>)> {
     let cases = load_cases(root)?;
     let mut results = Vec::new();
     let mut all_timings = Vec::new();
+    let mut all_bundle_timings = Vec::new();
     for case in &cases {
         let mut tools = BTreeMap::new();
         let mut timings = BTreeMap::new();
@@ -78,6 +92,7 @@ pub fn run_suite(
                 },
             );
         }
+        let (bundle_results, bundle_timings) = run_bundles(case, &tools, bundler);
         let total: Duration = timings.values().sum();
         let details = timings
             .iter()
@@ -91,15 +106,199 @@ pub fn run_suite(
             description: case.description.clone(),
             source: case.source.clone(),
             adapters: tools,
+            bundles: bundle_results,
         });
+        all_bundle_timings.push(bundle_timings);
     }
     Ok((
         SuiteReport {
-            schema_version: 1,
+            schema_version: 2,
             cases: results,
         },
         all_timings,
+        all_bundle_timings,
     ))
+}
+
+fn run_bundles(
+    case: &crate::types::Case,
+    tools: &BTreeMap<String, ToolResult>,
+    bundler: &dyn Bundler,
+) -> (Vec<BundleResult>, BundleTimings) {
+    if case.bundles().is_empty() {
+        return (Vec::new(), BTreeMap::new());
+    }
+    let Some(expectation) = case.adapters.get("glass-lint") else {
+        return (
+            vec![BundleResult {
+                key: BundleKey {
+                    profile: case.bundles()[0],
+                    transformer: BundleTransformer::Vite,
+                    minified: false,
+                    target: BundleTarget::Es5,
+                },
+                transformer_version: None,
+                passed: false,
+                authored_counts: BTreeMap::new(),
+                transformed_counts: BTreeMap::new(),
+                mismatches: Vec::new(),
+                operational_errors: vec!["bundled case has no glass-lint expectation".into()],
+                generated_source_bytes: 0,
+                generated_source_digest: None,
+                generated_source: None,
+            }],
+            BTreeMap::new(),
+        );
+    };
+    let Some(authored) = tools.get("glass-lint") else {
+        return (
+            vec![bundle_operational_result(
+                &BundleKey {
+                    profile: case.bundles()[0],
+                    transformer: BundleTransformer::Vite,
+                    minified: false,
+                    target: BundleTarget::Es5,
+                },
+                "glass-lint adapter was not configured for this run",
+            )],
+            BTreeMap::new(),
+        );
+    };
+    if authored.skipped || !authored.operational_errors.is_empty() {
+        return (Vec::new(), BTreeMap::new());
+    }
+    let authored_counts = rule_counts(&authored.findings);
+    let mut results = Vec::new();
+    let mut timings = BTreeMap::new();
+    for &profile in case.bundles() {
+        for transformer in BundleTransformer::all() {
+            for minified in [false, true] {
+                for target in BundleTarget::all() {
+                    let key = BundleKey {
+                        profile,
+                        transformer,
+                        minified,
+                        target,
+                    };
+                    let start = Instant::now();
+                    let result =
+                        execute_bundle(case, expectation, &authored_counts, key.clone(), bundler);
+                    timings.insert(key, start.elapsed());
+                    results.push(result);
+                }
+            }
+        }
+    }
+    (results, timings)
+}
+
+fn execute_bundle(
+    case: &crate::types::Case,
+    expectation: &ToolExpectation,
+    authored_counts: &BTreeMap<String, usize>,
+    key: BundleKey,
+    bundler: &dyn Bundler,
+) -> BundleResult {
+    let request = request_for_case(case, key.profile, key.transformer, key.minified, key.target);
+    let output = match bundler.bundle(&request) {
+        Ok(output) => output,
+        Err(error) => {
+            return bundle_operational_result_with_counts(&key, authored_counts, error.to_string());
+        }
+    };
+    let transformed = match lint_generated_source(&request.entry, &output.source, expectation) {
+        Ok(findings) => findings,
+        Err(error) => {
+            return BundleResult {
+                key,
+                transformer_version: Some(output.transformer_version),
+                passed: false,
+                authored_counts: authored_counts.clone(),
+                transformed_counts: BTreeMap::new(),
+                mismatches: Vec::new(),
+                operational_errors: vec![format!("generated source analysis failed: {error}")],
+                generated_source_bytes: output.bytes,
+                generated_source_digest: Some(output.digest),
+                generated_source: Some(output.source),
+            };
+        }
+    };
+    let transformed_counts = rule_counts(&transformed);
+    let mismatches = compare_rule_counts(authored_counts, &transformed_counts, &key);
+    let passed = mismatches.is_empty();
+    BundleResult {
+        key,
+        transformer_version: Some(output.transformer_version),
+        passed,
+        authored_counts: authored_counts.clone(),
+        transformed_counts,
+        mismatches,
+        operational_errors: Vec::new(),
+        generated_source_bytes: output.bytes,
+        generated_source_digest: Some(output.digest),
+        generated_source: if passed || output.source.len() > MAX_GENERATED_BYTES {
+            None
+        } else {
+            Some(output.source)
+        },
+    }
+}
+
+fn bundle_operational_result(key: &BundleKey, error: impl Into<String>) -> BundleResult {
+    bundle_operational_result_with_counts(key, &BTreeMap::new(), error)
+}
+
+fn bundle_operational_result_with_counts(
+    key: &BundleKey,
+    authored_counts: &BTreeMap<String, usize>,
+    error: impl Into<String>,
+) -> BundleResult {
+    BundleResult {
+        key: key.clone(),
+        transformer_version: None,
+        passed: false,
+        authored_counts: authored_counts.clone(),
+        transformed_counts: BTreeMap::new(),
+        mismatches: Vec::new(),
+        operational_errors: vec![error.into()],
+        generated_source_bytes: 0,
+        generated_source_digest: None,
+        generated_source: None,
+    }
+}
+
+fn rule_counts(findings: &[Finding]) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for finding in findings {
+        *counts.entry(finding.rule_id().to_string()).or_default() += 1;
+    }
+    counts
+}
+
+pub fn compare_rule_counts(
+    authored: &BTreeMap<String, usize>,
+    transformed: &BTreeMap<String, usize>,
+    key: &BundleKey,
+) -> Vec<String> {
+    authored
+        .keys()
+        .chain(transformed.keys())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .filter_map(|rule| {
+            let before = authored.get(rule).copied().unwrap_or_default();
+            let after = transformed.get(rule).copied().unwrap_or_default();
+            (before != after).then(|| {
+                format!(
+                    "{} rule {}: before={}, after={}",
+                    key.label(),
+                    rule,
+                    before,
+                    after
+                )
+            })
+        })
+        .collect()
 }
 
 impl FindingExpectation {
@@ -181,9 +380,28 @@ fn matching_count(findings: &[Finding], expected: &FindingExpectation) -> usize 
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use glass_lint_core::Severity;
 
     use super::*;
+
+    struct FakeBundler(AtomicUsize);
+
+    impl Bundler for FakeBundler {
+        fn bundle(
+            &self,
+            _request: &crate::bundler::BundleRequest,
+        ) -> anyhow::Result<crate::bundler::BundleOutput> {
+            self.0.fetch_add(1, Ordering::Relaxed);
+            Ok(crate::bundler::BundleOutput {
+                transformer_version: "fake-1".into(),
+                source: "var value = 1; globalThis.value = value;".into(),
+                bytes: 42,
+                digest: "fake-digest".into(),
+            })
+        }
+    }
 
     fn finding() -> Finding {
         let location = glass_lint_core::project::SourceLocation::new(
@@ -240,5 +458,61 @@ mod tests {
             certainty: None,
         });
         assert_eq!(compare(&[finding()], &expected).len(), 1);
+    }
+
+    #[test]
+    fn count_comparison_treats_missing_and_new_rules_as_zero_and_mismatch() {
+        let key = BundleKey {
+            profile: crate::types::BundleProfile::Web,
+            transformer: BundleTransformer::Esbuild,
+            minified: true,
+            target: BundleTarget::Es2022,
+        };
+        let authored = BTreeMap::from([(String::from("js:old"), 1usize)]);
+        let transformed = BTreeMap::from([(String::from("js:new"), 2usize)]);
+        let mismatches = compare_rule_counts(&authored, &transformed, &key);
+        assert_eq!(mismatches.len(), 2);
+        assert!(mismatches[0].contains("before=0") || mismatches[1].contains("before=0"));
+        assert!(mismatches[0].contains("after=0") || mismatches[1].contains("after=0"));
+    }
+
+    #[test]
+    fn fake_bundler_runs_the_complete_selected_matrix() {
+        let mut case = crate::types::Case::new(
+            "bundled",
+            "bundled",
+            "javascript",
+            "main.js",
+            "var value = 1;",
+        )
+        .unwrap()
+        .with_tool(
+            "glass-lint",
+            ToolExpectation::new(None, vec!["obsidian:network.request".into()]).unwrap(),
+        )
+        .unwrap();
+        case.set_bundles(vec![
+            crate::types::BundleProfile::Web,
+            crate::types::BundleProfile::Obsidian,
+        ]);
+        let mut tools = BTreeMap::new();
+        tools.insert(
+            "glass-lint".into(),
+            ToolResult {
+                version: "test".into(),
+                skipped: false,
+                skip_reason: None,
+                passed: false,
+                findings: Vec::new(),
+                mismatches: vec!["ordinary expectation failure".into()],
+                operational_errors: Vec::new(),
+            },
+        );
+        let bundler = FakeBundler(AtomicUsize::new(0));
+        let (results, timings) = run_bundles(&case, &tools, &bundler);
+        assert_eq!(results.len(), 40);
+        assert_eq!(timings.len(), 40);
+        assert!(results.iter().all(|result| result.passed));
+        assert_eq!(bundler.0.load(Ordering::Relaxed), 40);
     }
 }

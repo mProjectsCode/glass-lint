@@ -107,3 +107,123 @@ fn rejects_legacy_competing_resolution_fields() {
     .unwrap_err();
     assert!(error.to_string().contains("outcome"));
 }
+
+#[test]
+fn parses_and_normalizes_bundle_profiles() {
+    let source = "\
+// @bundle obsidian,web
+// @tool glass-lint rules=js:network.request
+fetch('/remote');
+";
+    let case = parse_case(
+        Path::new("fixtures"),
+        Path::new("fixtures/network/bundled.js"),
+        source.into(),
+    )
+    .unwrap();
+    assert_eq!(
+        case.bundles(),
+        &[
+            crate::types::BundleProfile::Web,
+            crate::types::BundleProfile::Obsidian
+        ]
+    );
+}
+
+#[test]
+fn rejects_invalid_bundle_directives() {
+    for (directive, expected) in [
+        ("", "at least one profile"),
+        ("web,web", "duplicate bundle profile"),
+        ("unknown", "unknown bundle profile"),
+    ] {
+        let source = format!(
+            "// @bundle {directive}\n// @tool glass-lint rules=js:network.request\nfetch('/');\n"
+        );
+        let error = parse_case(
+            Path::new("fixtures"),
+            Path::new("fixtures/network/bundled.js"),
+            source,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains(expected), "{error}");
+    }
+}
+
+#[test]
+fn rejects_late_and_duplicate_bundle_directives() {
+    let late = "// @tool glass-lint rules=js:network.request\nfetch('/');\n// @bundle web\n";
+    let error = parse_case(
+        Path::new("fixtures"),
+        Path::new("fixtures/network/late.js"),
+        late.into(),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("leading comment block"));
+
+    let duplicate = "// @bundle web\n// @bundle obsidian\n// @tool glass-lint rules=js:network.request\nfetch('/');\n";
+    let error = parse_case(
+        Path::new("fixtures"),
+        Path::new("fixtures/network/duplicate.js"),
+        duplicate.into(),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("only one @bundle"));
+
+    let string_literal = "const text = \"// @bundle web\";\n// @tool glass-lint rules=js:network.request\nfetch('/');\n";
+    assert!(
+        parse_case(
+            Path::new("fixtures"),
+            Path::new("fixtures/network/string.js"),
+            string_literal.into(),
+        )
+        .is_ok()
+    );
+}
+
+#[test]
+fn bundled_cases_require_the_canonical_tool() {
+    let error = parse_case(
+        Path::new("fixtures"),
+        Path::new("fixtures/network/missing-tool.js"),
+        "// @bundle web\nfetch('/');\n".into(),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("must configure"));
+}
+
+#[test]
+fn bundled_projects_require_one_declared_entry() {
+    let root = crate::test_support::TempDir::new();
+    let project = root.path().join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(
+        project.join("case.toml"),
+        "[tool.\"glass-lint\"]\nrules = [\"obsidian:network.request\"]\n",
+    )
+    .unwrap();
+    std::fs::write(project.join("main.js"), "// @bundle web\nvar value = 1;\n").unwrap();
+    std::fs::write(project.join("other.js"), "var other = 1;\n").unwrap();
+    let error = load_cases(root.path()).unwrap_err().to_string();
+    assert!(error.contains("explicitly declare exactly one entry"));
+}
+
+#[test]
+fn bundled_projects_reject_multiple_entries_and_non_entry_metadata() {
+    let root = crate::test_support::TempDir::new();
+    let project = root.path().join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(
+        project.join("case.toml"),
+        "[case]\nentries = [\"main.js\", \"other.js\"]\n[tool.\"glass-lint\"]\nrules = [\"obsidian:network.request\"]\n",
+    )
+    .unwrap();
+    std::fs::write(project.join("main.js"), "var value = 1;\n").unwrap();
+    std::fs::write(project.join("other.js"), "// @bundle web\nvar other = 1;\n").unwrap();
+    let error = load_cases(root.path()).unwrap_err().to_string();
+    assert!(error.contains("exactly one entry"));
+}

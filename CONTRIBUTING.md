@@ -12,7 +12,7 @@ Read [TESTING.md](TESTING.md) before changing query or rule behavior.
 
 - A recent Rust toolchain with Cargo, rustfmt, and Clippy
 - GNU Make for repository shortcuts
-- Bun only for the external ESLint adapter
+- Bun 1.3.14 for the external ESLint adapter and bundle matrix
 - Samply only for profiling traces
 
 ## Workflow
@@ -48,6 +48,10 @@ default.
 | `make ci` | Run the complete validation gate |
 | `make profile` | Build and record a Samply profile |
 | `make compare` | Regenerate `reports/COMPARISON.md` |
+
+The bundle-specific gate is make test-bundles. It verifies Bun 1.3.14,
+the frozen tools/bundlers lockfile, the compatibility probe, and the
+bundle-enabled fixture suite.
 
 Override Make variables when needed:
 

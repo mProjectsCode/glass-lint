@@ -140,6 +140,27 @@ External adapters use `--adapter NAME=COMMAND`. The harness starts a fresh
 process per case, writes one versioned JSON request to stdin, and reads one
 JSON response from stdout.
 
+Bundled cases add a leading @bundle web,obsidian directive. Profiles are
+normalized to canonical order and each selected profile runs Vite and esbuild
+with both minification modes and targets ES5, ES6, ES2017, ES2022, and ESNEXT.
+The harness compares only per-rule finding counts with the authored run.
+Bundled cases must configure glass-lint, and @bundle directives outside the
+leading comment block are rejected.
+
+Run the locked bundle matrix with:
+
+~~~sh
+make test-bundles
+~~~
+
+For one fixture, use:
+
+~~~sh
+cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- verify tests/e2e/bundles/basic.js
+~~~
+
+The full locked matrix is the make test-bundles command above.
+
 Before finishing a behavior change, run:
 
 ```sh

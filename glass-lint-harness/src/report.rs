@@ -8,7 +8,7 @@ use std::fmt::Write;
 use anyhow::Result;
 use glass_lint_core::project::AnalysisReport;
 
-use crate::types::{SuiteReport, ToolResult};
+use crate::types::{BundleResult, SuiteReport, ToolResult};
 
 #[must_use]
 pub fn render_suite_summary(report: &SuiteReport) -> String {
@@ -38,9 +38,20 @@ pub fn render_suite_summary(report: &SuiteReport) -> String {
         .map(|tool| tool.findings.len())
         .sum::<usize>();
     let passed = tool_runs.saturating_sub(failed);
+    let bundle_runs = report
+        .cases
+        .iter()
+        .map(|case| case.bundles.len())
+        .sum::<usize>();
+    let bundle_failed = report
+        .cases
+        .iter()
+        .flat_map(|case| case.bundles.iter())
+        .filter(|bundle| !bundle.passed)
+        .count();
 
     format!(
-        "Harness: {cases} case(s), {tool_runs} run(s), {passed} passed, {failed} failed, {skipped} skipped, {findings} finding(s)"
+        "Harness: {cases} case(s), {tool_runs} adapter run(s), {passed} passed, {failed} failed, {skipped} skipped, {findings} finding(s), {bundle_runs} bundle check(s), {bundle_failed} bundle failure(s)"
     )
 }
 
@@ -79,6 +90,21 @@ pub fn render_suite_failures(report: &SuiteReport) -> String {
                 );
             }
         }
+        for bundle in &case.bundles {
+            if bundle.passed {
+                continue;
+            }
+            writeln!(
+                out,
+                "\n{} [{}] failed bundle invariant with {} mismatch(es) and {} operational error(s)",
+                case.id,
+                bundle.key.label(),
+                bundle.mismatches.len(),
+                bundle.operational_errors.len()
+            )
+            .expect("writing to a String cannot fail");
+            write_bundle_details(bundle, &mut out);
+        }
     }
     out
 }
@@ -106,12 +132,21 @@ pub fn render_suite_markdown(report: &SuiteReport) -> String {
                 result.findings.len()
             );
         }
+        for bundle in &case.bundles {
+            let _ = writeln!(
+                out,
+                "| {} | bundle {} | {} | {} |",
+                case.id,
+                bundle.key.label(),
+                if bundle.passed { "pass" } else { "fail" },
+                bundle.transformed_counts.values().sum::<usize>()
+            );
+        }
     }
-    for case in report
-        .cases
-        .iter()
-        .filter(|case| case.adapters.values().any(|tool| !tool.passed))
-    {
+    for case in report.cases.iter().filter(|case| {
+        case.adapters.values().any(|tool| !tool.passed)
+            || case.bundles.iter().any(|bundle| !bundle.passed)
+    }) {
         let _ = writeln!(out, "\n## {}\n\n```js\n{}\n```", case.id, case.source);
         for (tool, result) in &case.adapters {
             if let Some(reason) = &result.skip_reason {
@@ -124,8 +159,34 @@ pub fn render_suite_markdown(report: &SuiteReport) -> String {
                 let _ = writeln!(out, "- `{tool}` operational error: {error}");
             }
         }
+        for bundle in &case.bundles {
+            if !bundle.passed {
+                write_bundle_details(bundle, &mut out);
+            }
+        }
     }
     out
+}
+
+fn write_bundle_details(bundle: &BundleResult, out: &mut String) {
+    for mismatch in &bundle.mismatches {
+        let _ = writeln!(out, "  bundle count mismatch: {mismatch}");
+    }
+    for error in &bundle.operational_errors {
+        let _ = writeln!(out, "  bundle operational error: {error}");
+    }
+    let _ = writeln!(
+        out,
+        "  generated source: {} bytes{}",
+        bundle.generated_source_bytes,
+        bundle
+            .generated_source_digest
+            .as_deref()
+            .map_or(String::new(), |digest| format!(", sha256={digest}"))
+    );
+    if let Some(source) = &bundle.generated_source {
+        let _ = writeln!(out, "  generated source (bounded):\n{source}");
+    }
 }
 
 #[must_use]

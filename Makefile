@@ -1,6 +1,7 @@
-.PHONY: all build check clippy fmt fmt-check test-all profile ci clean generate-rules check-rules
+.PHONY: all build check clippy fmt fmt-check test-all test-bundles profile ci clean generate-rules check-rules
 
 CARGO ?= cargo
+BUN ?= bun
 HARNESS ?= $(CARGO) run -p glass-lint-harness-cli --bin glass-lint-harness --quiet --
 HARNESS_SUITE ?= tests/e2e
 SAMPLY ?= samply
@@ -35,6 +36,12 @@ test-all:
 test-e2e:
 	$(HARNESS) verify $(HARNESS_SUITE)
 
+test-bundles:
+	@test "$$($(BUN) --version)" = "1.3.14"
+	cd tools/bundlers && $(BUN) install --frozen-lockfile && $(BUN) run compatibility-probe.ts
+	cd tools/bundlers && $(BUN) run tool-tests.ts
+	$(HARNESS) verify tests/e2e/bundles
+
 test-projects:
 	$(HARNESS) verify tests/projects
 
@@ -55,7 +62,7 @@ profile:
 compare:
 	$(HARNESS) --adapter eslint-obsidianmd=adapters/eslint-obsidianmd/adapter.ts compare $(HARNESS_SUITE)
 
-ci: check clippy test-all check-rules
+ci: check clippy test-all test-bundles check-rules
 	$(CARGO) check -p glass-lint-core --examples
 
 clean:

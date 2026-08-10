@@ -4,9 +4,24 @@ use anyhow::{Context, Result, bail};
 use glass_lint_core::Severity;
 
 use super::{default_filename, language_for_path};
-use crate::types::{Case, ExpectedCount, FindingExpectation, ToolExpectation};
+use crate::types::{
+    Case, CaseError, ExpectedCount, FindingExpectation, ToolExpectation, normalize_bundle_profiles,
+};
 
 pub(super) fn parse_case(root: &Path, path: &Path, source: String) -> Result<Case> {
+    parse_case_inner(root, path, source, true)
+}
+
+pub(super) fn parse_project_file_case(root: &Path, path: &Path, source: String) -> Result<Case> {
+    parse_case_inner(root, path, source, false)
+}
+
+fn parse_case_inner(
+    root: &Path,
+    path: &Path,
+    source: String,
+    validate_bundle_tool: bool,
+) -> Result<Case> {
     // Directives are read only from leading comments, while expectation lines
     // may be attached to code and therefore use their preceding line rules.
     let relative = path.strip_prefix(root).unwrap_or(path);
@@ -22,12 +37,17 @@ pub(super) fn parse_case(root: &Path, path: &Path, source: String) -> Result<Cas
         .map_err(|error| anyhow::anyhow!(error))?;
 
     let lines: Vec<_> = case.source.lines().map(str::to_owned).collect();
-    for line in &lines {
+    let mut leading_block = true;
+    let mut bundle_seen = false;
+    let mut leading_end = lines.len();
+    for (index, line) in lines.iter().enumerate() {
         let trimmed = line.trim_start();
         if trimmed.is_empty() {
             continue;
         }
         let Some(comment) = trimmed.strip_prefix("//") else {
+            leading_block = false;
+            leading_end = index;
             break;
         };
         let directive = comment.trim();
@@ -35,7 +55,35 @@ pub(super) fn parse_case(root: &Path, path: &Path, source: String) -> Result<Cas
             parse_case_directive(&mut case, rest)?;
         } else if let Some(rest) = directive.strip_prefix("@tool ") {
             parse_tool_directive(&mut case, rest)?;
+        } else if directive == "@bundle" || directive.starts_with("@bundle ") {
+            if bundle_seen {
+                return Err(anyhow::anyhow!(CaseError::DuplicateBundleDirective));
+            }
+            bundle_seen = true;
+            let value = directive.strip_prefix("@bundle").unwrap().trim();
+            let profiles = normalize_bundle_profiles(value.split(','))
+                .map_err(|error| anyhow::anyhow!(error))?;
+            case.set_bundles(profiles);
         }
+    }
+
+    // A bundle directive has case-wide meaning. Once the header block ends,
+    // treating a later-looking comment as ordinary source would make a typo
+    // silently disable the invariant.
+    if !leading_block {
+        for (index, line) in lines.iter().enumerate().skip(leading_end) {
+            if contains_bundle_comment(line) {
+                bail!(
+                    "{}:{}: @bundle must appear in the leading comment block",
+                    case.id,
+                    index + 1
+                );
+            }
+        }
+    }
+    if validate_bundle_tool {
+        case.validate_bundle_tool()
+            .map_err(|error| anyhow::anyhow!(error))?;
     }
 
     for (index, line) in lines.iter().enumerate() {
@@ -58,6 +106,41 @@ pub(super) fn parse_case(root: &Path, path: &Path, source: String) -> Result<Cas
     }
 
     Ok(case)
+}
+
+fn contains_bundle_comment(line: &str) -> bool {
+    let mut quote = None;
+    let mut escaped = false;
+    let characters: Vec<_> = line.chars().collect();
+    let mut index = 0;
+    while index < characters.len() {
+        let character = characters[index];
+        if let Some(delimiter) = quote {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == delimiter {
+                quote = None;
+            }
+            index += 1;
+            continue;
+        }
+        if character == '\'' || character == '"' || character == char::from(96) {
+            quote = Some(character);
+            index += 1;
+            continue;
+        }
+        if character == '/'
+            && characters.get(index + 1) == Some(&'/')
+            && characters.get(index + 2) == Some(&' ')
+            && characters.get(index + 3..index + 10) == Some(&['@', 'b', 'u', 'n', 'd', 'l', 'e'])
+        {
+            return true;
+        }
+        index += 1;
+    }
+    false
 }
 
 fn expectation_directive(directive: &str) -> Option<(&str, bool, bool)> {

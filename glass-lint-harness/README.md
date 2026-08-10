@@ -14,6 +14,12 @@ process for each case and exchanges one `AdapterRequest` and
 `AdapterResponse` using `ADAPTER_PROTOCOL_VERSION`. Snippet-only adapters are
 skipped deterministically for project cases.
 
+Cases may opt into bundling with a leading @bundle web,obsidian directive.
+The harness sends each selected profile through the locked Vite and esbuild
+matrix and asserts authored/transformed per-rule count invariance. Bundle
+timings are returned separately from adapter timings; bundle findings are not
+included in adapter comparison reports.
+
 Report helpers provide verification summaries, failure details, Markdown,
 JSON, and side-by-side comparison output.
 

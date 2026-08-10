@@ -7,7 +7,7 @@ use std::{
 use anyhow::{Context, Result, bail};
 use glass_lint_datastructures::{Position, SourceRange};
 
-use super::{language_for_path, snippet::parse_case};
+use super::{language_for_path, snippet::parse_project_file_case};
 use crate::types::{
     AdapterFile, AdapterResolution, AdapterResolutionKind, AdapterResolutionResult, Case,
     ProjectCase, ToolExpectation,
@@ -125,6 +125,7 @@ fn build_resolutions(
         .collect()
 }
 
+#[allow(clippy::too_many_lines)]
 pub(super) fn load_project_case(root: &Path, directory: &Path) -> Result<Case> {
     let (manifest, metadata) = parse_project_manifest(directory)?;
     let relative_directory = directory.strip_prefix(root).unwrap_or(directory);
@@ -149,14 +150,63 @@ pub(super) fn load_project_case(root: &Path, directory: &Path) -> Result<Case> {
             directory.display()
         );
     }
-    let entries = if metadata.entries.is_empty() {
+    let declared_entries = metadata.entries.clone();
+    let entries = if declared_entries.is_empty() {
         vec![files[0].path.clone()]
     } else {
-        metadata.entries.clone()
+        declared_entries.clone()
+    };
+
+    let parsed_files = files
+        .iter()
+        .map(|file| {
+            parse_project_file_case(directory, &directory.join(&file.path), file.source.clone())
+                .with_context(|| format!("parse project source {}", file.path))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let bundled_files: Vec<_> = parsed_files
+        .iter()
+        .filter(|case| !case.bundles.is_empty())
+        .collect();
+    let bundles = if bundled_files.is_empty() {
+        Vec::new()
+    } else {
+        if declared_entries.is_empty() {
+            bail!(
+                "bundled project {} must explicitly declare exactly one entry in case.toml",
+                directory.display()
+            );
+        }
+        if declared_entries.len() != 1 {
+            bail!(
+                "bundled project {} must declare exactly one entry; found {}",
+                directory.display(),
+                declared_entries.len()
+            );
+        }
+        let entry = &declared_entries[0];
+        let entry_case = files
+            .iter()
+            .zip(&parsed_files)
+            .find(|(file, _)| file.path == *entry)
+            .map(|(_, case)| case)
+            .ok_or_else(|| anyhow::anyhow!("bundled project entry `{entry}` does not exist"))?;
+        for file in &bundled_files {
+            if file.filename != *entry {
+                bail!(
+                    "@bundle is allowed only in the declared project entry `{entry}`; found it in `{}`",
+                    file.filename
+                );
+            }
+        }
+        entry_case.bundles.clone()
     };
 
     let resolutions = build_resolutions(manifest.resolution)?;
-    let tools = load_project_tools(directory, &manifest.tool, &files)?;
+    let tools = load_project_tools(&manifest.tool, &files, parsed_files)?;
+    if !bundles.is_empty() && !tools.contains_key("glass-lint") {
+        bail!("bundled projects must configure a `glass-lint` tool");
+    }
     let entry_source = entries
         .first()
         .and_then(|entry| files.iter().find(|file| &file.path == entry))
@@ -180,6 +230,7 @@ pub(super) fn load_project_case(root: &Path, directory: &Path) -> Result<Case> {
             filesystem: metadata.filesystem,
         }),
         adapters: tools,
+        bundles,
     })
 }
 
@@ -203,9 +254,9 @@ fn load_project_files(directory: &Path, paths: Vec<PathBuf>) -> Result<Vec<Adapt
 }
 
 fn load_project_tools(
-    directory: &Path,
     manifests: &BTreeMap<String, ProjectToolManifest>,
     files: &[AdapterFile],
+    parsed_files: Vec<Case>,
 ) -> Result<BTreeMap<String, ToolExpectation>> {
     let mut tools = BTreeMap::new();
     for (name, tool) in manifests {
@@ -218,8 +269,7 @@ fn load_project_tools(
                 .map_err(|error| anyhow::anyhow!("project tool `{name}`: {error}"))?,
         );
     }
-    for file in files {
-        let parsed = parse_case(directory, &directory.join(&file.path), file.source.clone())?;
+    for (file, parsed) in files.iter().zip(parsed_files) {
         for (name, expectation) in parsed.adapters {
             let expectation = expectation.qualify_for_file(&file.path)?;
             if let Some(entry) = tools.get_mut(&name) {
