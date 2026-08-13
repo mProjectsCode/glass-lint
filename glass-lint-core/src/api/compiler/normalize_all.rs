@@ -90,7 +90,7 @@ fn find_common_event_var(
     // Collect binding vars from the first branch.
     for var in branch_facts[0].bindings() {
         if branches.iter().enumerate().skip(1).all(|(index, b)| {
-            branch_facts[index].contains(*var)
+            branch_facts[index].variables().contains(var)
                 || matches!(
                     b.kind(),
                     QueryExprKind::Require(

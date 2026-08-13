@@ -49,7 +49,7 @@ compiler code and unwrap only at genuine raw-index boundaries.
 
 ### Query-shape membership
 
-#### [ ] READ-068 — Make variable-membership checks short-circuit without shape allocations
+#### [x] READ-068 — Make variable-membership checks short-circuit without shape allocations
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -72,7 +72,10 @@ role traversal, branch-scope validation, deterministic diagnostics, expression
 depth/child bounds, and the full `shape_facts` result used by compiler passes
 that genuinely need all variables and bindings.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `QueryExpr::contains_var` now uses the existing short-circuit
+variable walk, while full shape facts remain for collection consumers and
+validation uses their variable slice directly. Verified with `make fmt && make
+ci`.
 
 **Audit disposition (2026-08-13):** Confirmed. Use the existing early-stop
 visitor for the boolean query and retain full shape construction only where

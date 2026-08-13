@@ -143,7 +143,7 @@ impl QueryExpr {
     }
 
     pub(crate) fn contains_var(&self, target: VarId) -> bool {
-        self.shape_facts().contains(target)
+        self.walk_vars_until(&mut |id, _| id == target)
     }
 }
 
@@ -154,10 +154,6 @@ pub(crate) struct QueryShapeFacts {
 }
 
 impl QueryShapeFacts {
-    pub(crate) fn contains(&self, target: VarId) -> bool {
-        self.variables.contains(&target)
-    }
-
     pub(crate) fn variables(&self) -> &[VarId] {
         &self.variables
     }

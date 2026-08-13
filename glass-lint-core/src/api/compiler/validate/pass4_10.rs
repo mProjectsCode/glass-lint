@@ -192,7 +192,11 @@ fn check_correlation_evidence(
             for branch in all.iter() {
                 check_correlation_evidence(branch, primary, scope)?;
             }
-            if scope.checks_primary() && !branch_facts.iter().any(|facts| facts.contains(primary)) {
+            if scope.checks_primary()
+                && !branch_facts
+                    .iter()
+                    .any(|facts| facts.variables().contains(&primary))
+            {
                 return Err(QueryCompileError::MissingBinding {
                     primary_var: primary,
                 });
