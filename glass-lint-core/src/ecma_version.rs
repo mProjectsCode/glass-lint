@@ -227,19 +227,17 @@ impl FeatureDetector {
     }
 
     fn finish(self) -> EcmaVersionReport {
-        let has_unversioned = self
-            .features
-            .iter()
-            .any(|feature| feature.minimum_version().is_none());
-        let minimum_version = (!has_unversioned).then(|| {
-            self.features
-                .iter()
-                .filter_map(|feature| feature.minimum_version())
-                .max()
-                .unwrap_or(EcmaVersion::Es5)
-        });
+        let (has_unversioned, minimum_version) = self.features.iter().fold(
+            (false, EcmaVersion::Es5),
+            |(has_unversioned, minimum_version), feature| {
+                let Some(version) = feature.minimum_version() else {
+                    return (true, minimum_version);
+                };
+                (has_unversioned, minimum_version.max(version))
+            },
+        );
         EcmaVersionReport {
-            minimum_version,
+            minimum_version: (!has_unversioned).then_some(minimum_version),
             features: self.features.into_iter().collect(),
         }
     }

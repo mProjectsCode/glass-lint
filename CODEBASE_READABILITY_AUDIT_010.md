@@ -77,7 +77,7 @@ validation remain independently owned. Verified with `make fmt && make ci`.
 
 ### ECMAScript feature reduction
 
-#### [ ] READ-046 — Feature-version reduction traverses the detected feature set twice
+#### [x] READ-046 — Feature-version reduction traverses the detected feature set twice
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -101,7 +101,10 @@ set default of `Es5`, the fail-closed `None` result for JSX/decorators and
 other unversioned syntax, deterministic feature ordering, and the public
 `EcmaVersionReport` shape.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Feature detection now folds the ordered feature set once,
+tracking unversioned syntax and the maximum standard edition together. Empty
+sets still report ES5, unsupported syntax remains fail-closed, and feature
+ordering/public report shape are unchanged. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 
