@@ -85,7 +85,7 @@ the receiver lookup, dynamic-eval shadow check, sorted mutation indexes, and
 
 ### Scope queries
 
-#### [ ] READ-008 — Rooted member resolution repeats its own chain builder as a dead fallback
+#### [x] READ-008 — Rooted member resolution repeats its own chain builder as a dead fallback
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -106,7 +106,10 @@ the fallback closure. Keep `resolve_member_chain` as the semantic boundary so
 dynamic properties, binding reassignment, mutation invalidation, and
 unsupported roots continue to fail closed.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Rooted member resolution now uses the shared
+`member_expression_chain` helper directly; the duplicate fallback closure and
+its unused syntax import were removed. Semantic chain resolution and fail-closed
+mutation/provenance behavior are unchanged. Verified with `make fmt && make ci`.
 
 ### Bounded constant values
 

@@ -6,7 +6,7 @@ use crate::analysis::{
         frozen_assignments::{BindingResolution, BindingResolutionStatus},
         query::{BindingKey, BindingProvenance, MemberExpr, Span, contains},
     },
-    syntax::{expression_name, member_root_identifier},
+    syntax::member_root_identifier,
 };
 
 impl FrozenScopeGraph {
@@ -42,11 +42,7 @@ impl FrozenScopeGraph {
         &self,
         member: &MemberExpr,
     ) -> Option<SymbolPath> {
-        let syntactic_chain = self.member_expression_chain(member).or_else(|| {
-            let object = expression_name(&member.obj)?;
-            let property = self.contextual_member_property_name(member)?;
-            Some(object.append_chain(&property))
-        })?;
+        let syntactic_chain = self.member_expression_chain(member)?;
         self.resolve_member_chain(member, &syntactic_chain)
     }
 
