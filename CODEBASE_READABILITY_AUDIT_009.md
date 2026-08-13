@@ -97,7 +97,7 @@ unbounded evidence collection.
 
 ### Classification representation boundary
 
-#### [ ] READ-042 — Classification evidence exposes an artifact-local fact ID through a public accessor
+#### [x] READ-042 — Classification evidence exposes an artifact-local fact ID through a public accessor
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -119,7 +119,9 @@ correlation, introduce a deliberately documented semantic value rather than
 exposing the artifact index; preserve public spans, symbols, certainty, and
 serialized evidence behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The artifact-local fact accessor is now crate-private, keeping
+fact-stream identity behind the matcher/evidence boundary while retaining the
+public span and occurrence representation. Verified with `make fmt && make ci`.
 
 ### Evidence table merge boundary
 

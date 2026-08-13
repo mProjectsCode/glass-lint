@@ -111,7 +111,7 @@ impl ClassificationEvidenceOccurrence {
         self.span
     }
 
-    pub fn fact(&self) -> Option<u32> {
+    pub(crate) fn fact(&self) -> Option<u32> {
         self.fact
     }
 
