@@ -16,7 +16,7 @@ feature set.
 
 ### Parser and semantic coordinate ownership
 
-#### [ ] READ-044 — Successful parsing builds and then discards a duplicate source-line index
+#### [x] READ-044 — Successful parsing builds and then discards a duplicate source-line index
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -42,7 +42,12 @@ diagnostics, preserve the source start, path, UTF-8 validation, and context
 ownership, and remove only the second index construction. Standalone parser
 errors and the public source-coordinate behavior must remain unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ParsedSource` now carries the parser-owned
+`SourceLineIndex`, and semantic analysis transfers it into `SpanNormalizer`
+and the located source context instead of rebuilding it from source text.
+Parser diagnostics still use the index before transfer, and source starts,
+UTF-8 validation, and coordinate behavior are unchanged. Verified with
+`make fmt && make ci`.
 
 ### Source-size policy ownership
 

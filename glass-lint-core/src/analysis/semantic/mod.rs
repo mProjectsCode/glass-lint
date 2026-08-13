@@ -67,6 +67,16 @@ impl SpanNormalizer {
         }
     }
 
+    pub(in crate::analysis) fn with_index(
+        source_start: swc_common::BytePos,
+        lines: SourceLineIndex,
+    ) -> Self {
+        Self {
+            start: source_start.0,
+            lines: Arc::new(lines),
+        }
+    }
+
     #[cfg(test)]
     pub(in crate::analysis) fn for_program(program: &Program, source: &str) -> Self {
         Self::new(program.span().lo, &SourceText::from(source))
@@ -184,7 +194,7 @@ impl<'a> SemanticAnalyzer<'a> {
     pub fn analyze_source(&self, source: &SourceFile) -> Result<AnalyzedSource, ParseDiagnostic> {
         let parsed =
             SourceParser::with_syntax_depth(source, self.limits.syntax_depth())?.parse()?;
-        let coordinates = SpanNormalizer::new(parsed.source_start, source.source());
+        let coordinates = SpanNormalizer::with_index(parsed.source_start, parsed.lines);
         let semantic = self.analyze_program(&parsed.program, &coordinates);
 
         Ok(AnalyzedSource::new(

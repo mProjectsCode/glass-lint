@@ -149,6 +149,8 @@ pub struct ParsedSource {
     pub(crate) program: Program,
     /// Absolute SWC position assigned to authored byte offset zero.
     pub(crate) source_start: swc_common::BytePos,
+    /// Source-coordinate index built while parser diagnostics are available.
+    pub(crate) lines: SourceLineIndex,
 }
 
 /// Owns the source, parser mode, bounded-depth policy, and diagnostics needed
@@ -210,6 +212,7 @@ impl SourceParser {
         Ok(ParsedSource {
             program: self.lower_program(program),
             source_start: self.file.start_pos,
+            lines: self.lines,
         })
     }
 
