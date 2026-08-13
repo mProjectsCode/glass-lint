@@ -13,10 +13,7 @@ use crate::{
         },
         scope::{
             binding_index::BindingIndex,
-            build::{
-                FrozenPropertyArtifacts, ScopedDynamicEvalData,
-                program::{PropertyAliasAssignmentData, RootedPropertyMutationData},
-            },
+            build::FrozenPropertyArtifacts,
             frozen_assignments::AssignmentAt,
             mutation_index::{MutationIndex, MutationIndexBuilder},
             name_env::NameEnvironment,
@@ -315,13 +312,7 @@ impl ScopeGraph {
             dynamic_evals,
         } = property_artifacts;
         for assignment in property_assignments {
-            let PropertyAliasAssignmentData {
-                span,
-                scope,
-                property,
-                receiver,
-                target,
-            } = assignment.into_data();
+            let (span, scope, property, receiver, target) = assignment.into_parts();
             let Some(receiver_key) =
                 self.binding_key_for_name(receiver.sym.as_ref(), receiver.span)
             else {
@@ -338,12 +329,7 @@ impl ScopeGraph {
             );
         }
         for mutation in rooted_mutations {
-            let RootedPropertyMutationData {
-                span,
-                scope,
-                receiver,
-                property,
-            } = mutation.into_data();
+            let (span, scope, receiver, property) = mutation.into_parts();
             self.data.mutations.record_rooted_mutation(
                 receiver,
                 RootedPropertyMutationFact::new(span, scope, property),
@@ -352,7 +338,7 @@ impl ScopeGraph {
         let evals: Vec<(ScopeId, ScopeEffect)> = dynamic_evals
             .into_iter()
             .filter_map(|eval| {
-                let ScopedDynamicEvalData { scope, effect } = eval.into_data();
+                let (scope, effect) = eval.into_parts();
                 self.binding_at("eval", effect.span())
                     .is_none()
                     .then_some((scope, effect))

@@ -54,7 +54,7 @@ insertions and their budget charges. Added a redeclaration regression test and
 updated the semantic-budget boundary from 24 to 22 operations to reflect the
 removed duplicate work. Verified with `make fmt && make ci`.
 
-#### [ ] READ-007 — Collector records are converted into immediately consumed duplicate data wrappers
+#### [x] READ-007 — Collector records are converted into immediately consumed duplicate data wrappers
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -77,7 +77,11 @@ dynamic-eval shadowing check, sorted mutation-index construction, and the
 existing `FrozenPropertyArtifacts` phase boundary; the recommendation is only
 to eliminate the immediately consumed field-for-field wrappers.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the field-for-field `*Data` wrappers. Collector records
+now expose consuming `into_parts` decompositions directly to graph freezing;
+the receiver lookup, dynamic-eval shadow check, sorted mutation indexes, and
+`FrozenPropertyArtifacts` phase boundary are unchanged. Verified with
+`make fmt && make ci`.
 
 ### Scope queries
 
