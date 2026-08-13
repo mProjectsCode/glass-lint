@@ -306,9 +306,7 @@ impl<'a> ProjectLoadState<'a> {
         let workers = std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
 
         loop {
-            if let Err(e) = self.deadline.check() {
-                return Err(e);
-            }
+            self.deadline.check()?;
 
             let mut wave: Vec<AcceptedSourcePath> = Vec::with_capacity(WAVE_SIZE);
             while wave.len() < WAVE_SIZE {
@@ -322,9 +320,7 @@ impl<'a> ProjectLoadState<'a> {
                 return Ok(());
             }
 
-            if let Err(e) = self.process_wave(&wave, workers, metrics) {
-                return Err(e);
-            }
+            self.process_wave(&wave, workers, metrics)?;
         }
     }
 
