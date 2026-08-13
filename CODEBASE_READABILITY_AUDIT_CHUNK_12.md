@@ -116,7 +116,7 @@ do not alter normalization or error-original preservation.
 
 ### Source-file constructors
 
-#### [ ] READ-086 — Centralize `SourceFile` construction after path validation
+#### [x] READ-086 — Centralize `SourceFile` construction after path validation
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -141,7 +141,10 @@ selection, extension-independent language semantics, source allocation reuse,
 and the distinction between fallible raw-path and infallible validated-path
 constructors.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added private `SourceFile::from_parts`; raw-path
+constructors still validate first, validated-path constructors delegate, and
+defaults/language/source ownership are unchanged. Verified with `make fmt &&
+make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed. A private parts constructor
 removes repeated field assembly without merging the validated and raw-path

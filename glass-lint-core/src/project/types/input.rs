@@ -246,13 +246,7 @@ impl SourceFile {
         path: impl Into<String>,
         source: impl Into<SourceText>,
     ) -> Result<Self, ProjectInputError> {
-        let path = path.into();
-        let path = ProjectRelativePath::new(&path)?;
-        Ok(Self {
-            language: SourceLanguage::JavaScript,
-            path,
-            source: source.into(),
-        })
+        Self::with_language(path, source, SourceLanguage::JavaScript)
     }
 
     /// Construct a virtual source with an explicit parser language.
@@ -261,23 +255,14 @@ impl SourceFile {
         source: impl Into<SourceText>,
         language: SourceLanguage,
     ) -> Result<Self, ProjectInputError> {
-        let path = path.into();
-        let path = ProjectRelativePath::new(&path)?;
-        Ok(Self {
-            language,
-            path,
-            source: source.into(),
-        })
+        let path = ProjectRelativePath::new(path.into())?;
+        Ok(Self::from_parts(path, source.into(), language))
     }
 
     /// Construct a virtual source from a validated path using JavaScript
     /// parser semantics. Filesystem acceptance supplies an explicit language.
     pub fn from_relative(path: ProjectRelativePath, source: impl Into<SourceText>) -> Self {
-        Self {
-            path,
-            language: SourceLanguage::JavaScript,
-            source: source.into(),
-        }
+        Self::from_relative_with_language(path, source, SourceLanguage::JavaScript)
     }
 
     /// Construct from a validated project-relative path with an explicit
@@ -287,10 +272,14 @@ impl SourceFile {
         source: impl Into<SourceText>,
         language: SourceLanguage,
     ) -> Self {
+        Self::from_parts(path, source.into(), language)
+    }
+
+    fn from_parts(path: ProjectRelativePath, source: SourceText, language: SourceLanguage) -> Self {
         Self {
             path,
             language,
-            source: source.into(),
+            source,
         }
     }
 
