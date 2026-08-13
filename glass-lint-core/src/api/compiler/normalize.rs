@@ -471,12 +471,11 @@ fn normalize_event_from_query(
     _emission: &EmissionDecl,
 ) -> Result<NormalizedEvent, QueryCompileError> {
     let arguments = CanonicalArgumentConstraints::from_constraints(eq.constraints());
-    let args = arguments.to_flat_vec();
 
     let subject = NormalizedSubject::Direct {
         identity: eq.identity().clone(),
     };
-    detect_event_contradictions(eq.var(), eq.event(), eq.identity(), &subject, &args)?;
+    detect_event_contradictions(eq.var(), eq.event(), eq.identity(), &subject, &arguments)?;
 
     Ok(NormalizedEvent {
         slot: EventSlot::from_var(eq.var()),

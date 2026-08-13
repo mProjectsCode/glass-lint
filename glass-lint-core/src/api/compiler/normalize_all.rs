@@ -261,7 +261,6 @@ impl SameEventMerge {
         } = self;
 
         let arguments = CanonicalArgumentConstraints::from_constraints(&constraints);
-        let constraints = arguments.to_flat_vec();
 
         let subject = subject.unwrap_or_else(|| NormalizedSubject::Direct {
             identity: identity.clone(),
@@ -274,7 +273,7 @@ impl SameEventMerge {
                 _ => return Err(QueryCompileError::UncorrelatedConjunction),
             }
         }
-        detect_event_contradictions(event_var, &event, &identity, &subject, &constraints)?;
+        detect_event_contradictions(event_var, &event, &identity, &subject, &arguments)?;
 
         Ok(NormalizedRoot::Event(NormalizedEvent {
             slot: EventSlot::from_var(event_var),

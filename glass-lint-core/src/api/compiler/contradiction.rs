@@ -1,12 +1,7 @@
-use std::collections::BTreeMap;
-
 use super::validate::{ContradictionKind, QueryCompileError, is_valid_identity_event_pair};
 use crate::api::{
-    compiler::normalized::NormalizedSubject,
-    rule::{
-        ArgumentConstraint,
-        query::{EventSpec, IdentitySpec, VarId},
-    },
+    compiler::normalized::{CanonicalArgumentConstraints, NormalizedSubject},
+    rule::query::{EventSpec, IdentitySpec, VarId},
 };
 
 pub(crate) fn detect_event_contradictions(
@@ -14,7 +9,7 @@ pub(crate) fn detect_event_contradictions(
     event: &EventSpec,
     identity: &IdentitySpec,
     subject: &NormalizedSubject,
-    constraints: &[ArgumentConstraint],
+    constraints: &CanonicalArgumentConstraints,
 ) -> Result<(), QueryCompileError> {
     check_dimension_contradictions(var, event, identity, subject)?;
     check_argument_contradictions(var, constraints)
@@ -40,23 +35,18 @@ fn check_dimension_contradictions(
 
 fn check_argument_contradictions(
     var: VarId,
-    constraints: &[ArgumentConstraint],
+    constraints: &CanonicalArgumentConstraints,
 ) -> Result<(), QueryCompileError> {
-    let mut by_index: BTreeMap<usize, Vec<&crate::api::rule::ArgumentMatcher>> = BTreeMap::new();
-    for c in constraints {
-        by_index.entry(c.index()).or_default().push(c.predicate());
-    }
-
-    for matchers in by_index.values() {
-        check_empty_accepted_sets(var, matchers)?;
-        check_static_intersection(var, matchers)?;
+    for group in constraints.groups() {
+        check_empty_accepted_sets(var, group.predicates())?;
+        check_static_intersection(var, group.predicates())?;
     }
     Ok(())
 }
 
 fn check_empty_accepted_sets(
     var: VarId,
-    matchers: &[&crate::api::rule::ArgumentMatcher],
+    matchers: &[crate::api::rule::ArgumentMatcher],
 ) -> Result<(), QueryCompileError> {
     use crate::api::rule::{ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcherKind};
     for m in matchers {
@@ -84,7 +74,7 @@ fn check_empty_accepted_sets(
 
 fn check_static_intersection(
     var: VarId,
-    matchers: &[&crate::api::rule::ArgumentMatcher],
+    matchers: &[crate::api::rule::ArgumentMatcher],
 ) -> Result<(), QueryCompileError> {
     use crate::api::rule::{ArgumentMatcherKind, StaticStringPredicateKind, ValueMatcherKind};
     let predicates: Vec<&StaticStringPredicateKind> = matchers

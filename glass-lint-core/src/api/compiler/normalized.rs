@@ -136,12 +136,14 @@ impl CanonicalArgumentConstraints {
         }
     }
 
-    /// Flatten canonical groups back into a constraint vector.
+    /// Flatten canonical groups for consumers that expose declaration-shaped
+    /// constraints in the reference representation and test assertions.
+    #[cfg(test)]
     pub(crate) fn to_flat_vec(&self) -> Vec<ArgumentConstraint> {
         let mut v = Vec::new();
         for group in &self.groups {
-            for m in &group.predicates {
-                v.push(ArgumentConstraint::new(group.index, m.clone()));
+            for matcher in &group.predicates {
+                v.push(ArgumentConstraint::new(group.index, matcher.clone()));
             }
         }
         v

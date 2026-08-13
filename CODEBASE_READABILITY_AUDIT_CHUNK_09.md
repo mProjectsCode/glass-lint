@@ -15,7 +15,7 @@ deduplicates.
 
 ### Query normalization and physical-plan preparation
 
-#### [ ] READ-072 — Let contradiction checking consume canonical argument groups
+#### [x] READ-072 — Let contradiction checking consume canonical argument groups
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -39,7 +39,11 @@ exact/prefix intersection, boundedness, and fail-closed contradiction results;
 `to_flat_vec` should remain only for consumers that genuinely need the public
 declaration-shaped representation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Contradiction detection now consumes
+`CanonicalArgumentConstraints` and each existing argument group directly.
+Normalization no longer flattens constraints for contradiction checking;
+`to_flat_vec` remains only for the test-only declaration-shaped reference
+consumers. Verified with `make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed. Contradiction checking should
 consume canonical groups directly; flattening remains only for consumers that
