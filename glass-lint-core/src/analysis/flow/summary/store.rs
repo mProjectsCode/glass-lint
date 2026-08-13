@@ -59,14 +59,26 @@ impl<'a> SummaryPathWalk<'a> {
         Some(Self { store, current: id })
     }
 
-    fn segments(mut self) -> Option<Vec<PathSegment>> {
+    #[cfg(test)]
+    fn segments(self) -> Option<Vec<PathSegment>> {
         let mut segments = Vec::new();
-        while !self.current.is_empty() {
-            segments.push(*self.store.segment(self.current)?);
-            self.current = self.store.parent(self.current)?;
-        }
-        segments.reverse();
+        self.visit(&mut |segment| segments.push(*segment))?;
         Some(segments)
+    }
+
+    fn visit(self, visit: &mut impl FnMut(&PathSegment)) -> Option<()> {
+        if self.current.is_empty() {
+            return Some(());
+        }
+        let segment = *self.store.segment(self.current)?;
+        let parent = self.store.parent(self.current)?;
+        Self {
+            store: self.store,
+            current: parent,
+        }
+        .visit(visit)?;
+        visit(&segment);
+        Some(())
     }
 
     fn reaches(mut self, prefix: SummaryPathId, distance: u32) -> bool {
@@ -223,23 +235,13 @@ impl<'a> SummaryPathStore<'a> {
         if suffix.is_empty() {
             return Some(prefix);
         }
-        let segments = SummaryPathWalk::new(self, suffix)?.segments()?;
-        let mut result = prefix;
-        for seg in segments {
-            result = self.append(result, seg)?;
-        }
-        Some(result)
+        self.join_suffix(prefix, suffix)
     }
 
     pub(super) fn without_first(&self, id: SummaryPathId) -> Option<SummaryPathId> {
         self.segment(id)?;
-        let mut segments = SummaryPathWalk::new(self, id)?.segments()?;
-        segments.remove(0);
-        let mut result = SummaryPathId::EMPTY;
-        for seg in segments {
-            result = self.find_edge(result, seg)?;
-        }
-        Some(result)
+        let depth = self.depth(id)?;
+        self.without_first_from(id, depth)
     }
 
     #[cfg(test)]
@@ -255,11 +257,33 @@ impl<'a> SummaryPathStore<'a> {
         if id.is_empty() {
             return Some(());
         }
-        let segments = SummaryPathWalk::new(self, id)?.segments()?;
-        for seg in segments {
-            visit(&seg);
+        SummaryPathWalk::new(self, id)?.visit(visit)
+    }
+
+    fn join_suffix(
+        &mut self,
+        prefix: SummaryPathId,
+        suffix: SummaryPathId,
+    ) -> Option<SummaryPathId> {
+        if suffix.is_empty() {
+            return Some(prefix);
         }
-        Some(())
+        let parent = self.parent(suffix)?;
+        let prefix = self.join_suffix(prefix, parent)?;
+        let segment = *self.segment(suffix)?;
+        self.append(prefix, segment)
+    }
+
+    fn without_first_from(&self, current: SummaryPathId, depth: u32) -> Option<SummaryPathId> {
+        if current.is_empty() {
+            return Some(SummaryPathId::EMPTY);
+        }
+        let parent = self.parent(current)?;
+        let result = self.without_first_from(parent, depth.saturating_sub(1))?;
+        if depth == 1 {
+            return Some(result);
+        }
+        self.find_edge(result, *self.segment(current)?)
     }
 
     #[cfg(test)]

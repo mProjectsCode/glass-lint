@@ -78,7 +78,7 @@ rejection behavior, and state-limit handling are unchanged. Verified with
 
 ### Summary path representation
 
-#### [ ] READ-012 — Summary path operations repeatedly materialize and rebuild segment vectors
+#### [x] READ-012 — Summary path operations repeatedly materialize and rebuild segment vectors
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -101,7 +101,11 @@ callers that truly need owned segments. Preserve frozen-versus-overlay ID
 validation, linked-parent transitions, deterministic segment order, and
 overlay-node exhaustion returning `None`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added streaming parent-link traversal for segment visitors,
+direct recursive suffix joining, and edge-based `without_first` rebuilding.
+Owned segment materialization is now test-only; frozen/overlay validation,
+ordering, and bounded overlay failures are unchanged. Verified with
+`make fmt && make ci`.
 
 ### Cross-flow source propagation
 
