@@ -63,7 +63,16 @@ impl Resolver<'_> {
         value: ConstValue,
         binding: Option<BindingKey>,
     ) -> ValueId {
-        let value = value.bounded();
+        self.intern_bounded_const_value(value.bounded(), binding)
+    }
+
+    /// Intern a tree after the public conversion boundary has admitted all of
+    /// its depth, node, container, and string bounds.
+    fn intern_bounded_const_value(
+        &mut self,
+        value: ConstValue,
+        binding: Option<BindingKey>,
+    ) -> ValueId {
         let value = match value {
             ConstValue::Unknown => Value::Unknown,
             ConstValue::String(value) => Value::StaticString(value),
@@ -71,13 +80,13 @@ impl Resolver<'_> {
             ConstValue::Array(values) => Value::StaticArray(
                 values
                     .into_iter()
-                    .map(|value| self.intern_const_value(value, None))
+                    .map(|value| self.intern_bounded_const_value(value, None))
                     .collect(),
             ),
             ConstValue::Object(values) => {
                 let values = values
                     .into_iter()
-                    .map(|(key, value)| (key, self.intern_const_value(value, None)))
+                    .map(|(key, value)| (key, self.intern_bounded_const_value(value, None)))
                     .collect::<Vec<_>>();
                 let arena = &mut self.values;
                 return arena.intern_construction(

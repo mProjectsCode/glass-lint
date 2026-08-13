@@ -110,7 +110,7 @@ unsupported roots continue to fail closed.
 
 ### Bounded constant values
 
-#### [ ] READ-009 — Constant interning re-bounds every already admitted subtree
+#### [x] READ-009 — Constant interning re-bounds every already admitted subtree
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -134,7 +134,11 @@ interning operation. Preserve unknown results for oversized or malformed
 arena values, the array/object limits, and the resolver's stable value-arena
 identity. The internal path must remain unreachable from unvalidated callers.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Split constant interning into an externally bounded entry
+point and a private `intern_bounded_const_value` recursion. Nested values now
+reuse the root admission result while preserving fail-closed unknown values,
+container limits, and stable arena identities. Verified with
+`make fmt && make ci`.
 
 ## Systemic Themes
 

@@ -96,6 +96,25 @@ fn const_value_materializes_static_arrays_with_nested_bindings() {
 }
 
 #[test]
+fn intern_const_value_preserves_an_admitted_nested_shape() {
+    let mut names = NameTable::default();
+    names.intern("items").unwrap();
+    let scopes = ScopeGraph::create_for_test(names).freeze();
+    let budget = SemanticBudget::default();
+    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default(), &budget);
+
+    let mut nested = BTreeMap::new();
+    nested.insert(
+        "items".into(),
+        ConstValue::array(vec![ConstValue::String("open".into())]),
+    );
+    let value = ConstValue::object(nested);
+    let id = resolver.intern_const_value(value.clone(), None);
+
+    assert_eq!(resolver.const_value(id), value);
+}
+
+#[test]
 fn const_value_returns_unknown_for_uninterned_id() {
     let names = NameTable::default();
     let scopes = ScopeGraph::create_for_test(names).freeze();
