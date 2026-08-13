@@ -44,7 +44,7 @@ with a cursor, and the evidence boundary sorts that buffer in place before
 consuming it. Event/span ordering, duplicates, lazy variants, and empty-match
 behavior are unchanged. Verified with `make fmt && make ci`.
 
-#### [ ] READ-025 — Constrained-root preparation forwards a temporary root bundle
+#### [x] READ-025 — Constrained-root preparation forwards a temporary root bundle
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -65,7 +65,10 @@ matched `PhysicalRoot` fields and `input.rule_index`, or give it a
 Retain the prepared path cache, indexed/fallback/published state, and the
 same physical-root filtering; remove only the field-forwarding temporary.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added direct `PreparedConstrainedRoot::from_input`
+construction from constrained physical-root fields, removing the temporary
+`ConstrainedRoot` forwarding value while preserving path preparation, state,
+and physical-root filtering. Verified with `make fmt && make ci`.
 
 ### Query-view layering
 

@@ -59,18 +59,27 @@ struct PreparedConstrainedRoot<'a> {
 }
 
 impl<'a> PreparedConstrainedRoot<'a> {
-    fn new(root: &ConstrainedRoot<'a>, names: &NameTable) -> Self {
-        Self {
+    fn from_input(input: &ConstrainedRootInput<'a>, names: &NameTable) -> Option<Self> {
+        let PhysicalRoot::ConstrainedScan {
+            identity,
+            event,
+            constraints,
+            evidence,
+        } = input.root
+        else {
+            return None;
+        };
+        Some(Self {
             root: ConstrainedRoot {
-                rule: root.rule,
-                identity: root.identity,
-                event: root.event,
-                constraints: root.constraints,
-                evidence: root.evidence,
+                rule: input.rule_index,
+                identity,
+                event,
+                constraints,
+                evidence,
             },
-            paths: PreparedClausePaths::new(root.identity, root.event, names),
+            paths: PreparedClausePaths::new(identity, event, names),
             state: ConstrainedState::Indexed,
-        }
+        })
     }
 
     fn mark_fallback(&mut self) {
@@ -133,22 +142,7 @@ impl<'a> ConstrainedEvaluation<'a> {
     fn prepare(roots: &[ConstrainedRootInput<'a>], names: &NameTable) -> Self {
         let roots = roots
             .iter()
-            .filter_map(|input| match input.root {
-                PhysicalRoot::ConstrainedScan {
-                    identity,
-                    event,
-                    constraints,
-                    evidence,
-                } => Some(ConstrainedRoot {
-                    rule: input.rule_index,
-                    identity,
-                    event,
-                    constraints,
-                    evidence,
-                }),
-                _ => None,
-            })
-            .map(|root| PreparedConstrainedRoot::new(&root, names))
+            .filter_map(|input| PreparedConstrainedRoot::from_input(input, names))
             .collect();
         Self { roots }
     }
