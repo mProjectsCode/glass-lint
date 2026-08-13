@@ -137,7 +137,7 @@ completion behavior are unchanged. Verified with `make fmt && make ci`.
 
 ### Fact-driven effect queries
 
-#### [ ] READ-014 — Call-shape construction looks up the same fact twice
+#### [x] READ-014 — Call-shape construction looks up the same fact twice
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -156,7 +156,10 @@ shape fields and effective arguments from that borrowed payload. Preserve the
 unknown-fact `None` result, non-call rejection, unwrap-chain precedence, and
 the existing borrowed lifetimes of `CallShape`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `CallEffectRef::shape` now binds the call payload once and
+derives both its shape fields and effective arguments from that borrow. Unknown
+fact and non-call handling remain fail-closed, with unwrap precedence and
+borrowed lifetimes unchanged. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

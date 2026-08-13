@@ -167,6 +167,7 @@ impl CallEffectRef<'_> {
     }
 
     pub(in crate::analysis) fn shape(&self) -> Option<CallShape<'_>> {
+        let fact = self.call_fact()?;
         let FactPayload::Call {
             result,
             callee_name,
@@ -176,7 +177,7 @@ impl CallEffectRef<'_> {
             target_function,
             unwrap,
             ..
-        } = self.call_fact()?
+        } = fact
         else {
             return None;
         };
@@ -185,7 +186,7 @@ impl CallEffectRef<'_> {
             .and_then(|call| call.chain_path.as_ref())
             .or(rooted_chain.as_ref())
             .or(syntactic_path.as_ref());
-        let arguments = self.call_fact()?.effective_call_args()?;
+        let arguments = fact.effective_call_args()?;
         let global_name = match call_provenance {
             SymbolCallProvenance::Global { name } => Some(name),
             _ => None,
