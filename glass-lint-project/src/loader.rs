@@ -123,7 +123,7 @@ impl ProjectLoader {
         let total_start = Instant::now();
         let mut outcome = self.load_project_with_outcome(linter, selection, &mut metrics)?;
         metrics.record_total(total_start.elapsed());
-        outcome.metrics = metrics.snapshot();
+        outcome.metrics = metrics;
         Ok(outcome)
     }
 

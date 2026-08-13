@@ -62,7 +62,7 @@ retain deterministic request order and the existing deadline checks.
 and passed the internal-target vector directly to the applying method. Verified
 with `cargo test -p glass-lint-project`.
 
-#### [ ] READ-003 — Transfer load metrics without a clone-only snapshot
+#### [x] READ-003 — Transfer load metrics without a clone-only snapshot
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -81,7 +81,9 @@ total, or otherwise make the ownership transfer explicit, and delete
 need actual copies; the public values and budget accounting should remain
 unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Transferred the completed metrics value directly into
+`ProjectLoadOutcome` and removed the clone-only `snapshot` method and test
+terminology. Verified with `cargo test -p glass-lint-project`.
 
 ### Profiling boundary
 

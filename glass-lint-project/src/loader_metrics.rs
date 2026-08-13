@@ -119,10 +119,6 @@ impl ProjectLoadMetrics {
         self.bytes
     }
 
-    pub(crate) fn snapshot(&self) -> Self {
-        self.clone()
-    }
-
     pub(crate) fn record_discovery(&mut self, duration: Duration) {
         self.timings.record_discovery(duration);
     }
@@ -199,18 +195,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn accounting_owns_bounded_counters_and_snapshot_values() {
+    fn accounting_owns_bounded_counters() {
         let mut metrics = ProjectLoadMetrics::default();
         metrics.record_files(3);
         metrics.record_edge();
         metrics.admit_requests(2, 2).unwrap();
         metrics.admit_source_bytes(11, 11).unwrap();
 
-        let snapshot = metrics.snapshot();
-        assert_eq!(snapshot.files(), 3);
-        assert_eq!(snapshot.edges(), 1);
-        assert_eq!(snapshot.requests(), 2);
-        assert_eq!(snapshot.bytes(), 11);
+        assert_eq!(metrics.files(), 3);
+        assert_eq!(metrics.edges(), 1);
+        assert_eq!(metrics.requests(), 2);
+        assert_eq!(metrics.bytes(), 11);
     }
 
     #[test]
