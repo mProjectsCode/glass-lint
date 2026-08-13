@@ -10,6 +10,27 @@ pub(in crate::analysis) const MAX_ARRAY_ITEMS: usize = 256;
 /// Maximum number of distinct keys retained in a static object shape.
 pub(in crate::analysis) const MAX_OBJECT_KEYS: usize = 256;
 
+enum ScalarPropertyText<'a> {
+    String(&'a str),
+    NonNegativeInteger(usize),
+}
+
+impl ScalarPropertyText<'_> {
+    fn into_smolstr(self) -> SmolStr {
+        match self {
+            Self::String(value) => value.to_smolstr(),
+            Self::NonNegativeInteger(value) => value.to_smolstr(),
+        }
+    }
+
+    fn into_string(self) -> String {
+        match self {
+            Self::String(value) => value.to_owned(),
+            Self::NonNegativeInteger(value) => value.to_string(),
+        }
+    }
+}
+
 /// Convert a finite, integral, non-negative number into a bounded index type.
 #[allow(
     clippy::cast_possible_truncation,
@@ -122,11 +143,8 @@ impl ConstValue {
 
     /// Convert string/integer constants into static property keys.
     pub(in crate::analysis) fn property_key(&self) -> Option<SmolStr> {
-        match self {
-            Self::String(value) => Some(value.to_smolstr()),
-            Self::NonNegativeInteger(value) => Some(value.to_smolstr()),
-            _ => None,
-        }
+        self.scalar_property_text()
+            .map(ScalarPropertyText::into_smolstr)
     }
 
     /// Return deterministic keys when this is a static object.
@@ -139,9 +157,14 @@ impl ConstValue {
     }
 
     pub(super) fn to_property_string(&self) -> Option<String> {
+        self.scalar_property_text()
+            .map(ScalarPropertyText::into_string)
+    }
+
+    fn scalar_property_text(&self) -> Option<ScalarPropertyText<'_>> {
         match self {
-            Self::String(value) => Some(value.clone()),
-            Self::NonNegativeInteger(value) => Some(value.to_string()),
+            Self::String(value) => Some(ScalarPropertyText::String(value)),
+            Self::NonNegativeInteger(value) => Some(ScalarPropertyText::NonNegativeInteger(*value)),
             _ => None,
         }
     }

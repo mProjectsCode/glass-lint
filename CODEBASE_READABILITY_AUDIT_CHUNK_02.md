@@ -120,7 +120,7 @@ boundary canonical.
 
 ### Constant property-key conversion
 
-#### [ ] READ-049 — Share scalar property-text conversion
+#### [x] READ-049 — Share scalar property-text conversion
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -147,6 +147,12 @@ existing APIs so callers do not gain a new general-purpose conversion surface.
 **Audit disposition (2026-08-13):** Confirmed. Centralize only the accepted
 scalar domain; keep the two existing result types and allocation boundaries
 separate so no general conversion API is introduced.
+
+**Fix Applied:** Added a private borrowed `ScalarPropertyText` conversion
+that owns the accepted string/non-negative-integer domain. `property_key` and
+`to_property_string` now select their existing output types from that shared
+primitive; rejection and allocation boundaries are unchanged. Verified with
+`make fmt && make ci`.
 
 ## Systemic Themes
 
