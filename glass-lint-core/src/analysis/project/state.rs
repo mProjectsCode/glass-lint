@@ -257,15 +257,16 @@ impl ExportTable {
     /// the linker.
     pub(in crate::analysis) fn set_resolution(
         &mut self,
-        id: &QualifiedExportId,
+        id: QualifiedExportId,
         value: ExportResolution,
     ) -> ExportUpdate {
-        let entry = self.exports.entry(id.module).or_default();
+        let QualifiedExportId { module, name } = id;
+        let entry = self.exports.entry(module).or_default();
 
-        if entry.get(&id.name) == Some(&value) {
+        if entry.get(&name) == Some(&value) {
             return ExportUpdate::Unchanged;
         }
-        let update = entry.insert(id.name.clone(), value);
+        let update = entry.insert(name, value);
         if update == ExportUpdate::Inserted {
             self.total_entries = self.total_entries.saturating_add(1);
         }
@@ -458,17 +459,17 @@ mod tests {
         let id = QualifiedExportId::new(module(0), "value");
 
         assert_eq!(
-            table.set_resolution(&id, ExportResolution::Unknown),
+            table.set_resolution(id.clone(), ExportResolution::Unknown),
             ExportUpdate::Inserted
         );
         assert_eq!(table.len(), 1);
         assert_eq!(
-            table.set_resolution(&id, ExportResolution::Unknown),
+            table.set_resolution(id.clone(), ExportResolution::Unknown),
             ExportUpdate::Unchanged
         );
         assert_eq!(
             table.set_resolution(
-                &id,
+                id.clone(),
                 ExportResolution::Global {
                     name: "fetch".into(),
                 },

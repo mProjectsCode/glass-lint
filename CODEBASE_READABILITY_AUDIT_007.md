@@ -129,7 +129,7 @@ the graph implementation instead of wrapping it in an unused
 `GraphBuildError`; the linker maps `Some` to ready and `None` to rejected while
 status and exhaustion reporting remain unchanged. Verified with `make fmt && make ci`.
 
-#### [ ] READ-033 — Export-table updates clone a qualified name whose owner is already consuming it
+#### [x] READ-033 — Export-table updates clone a qualified name whose owner is already consuming it
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -151,7 +151,9 @@ move the name after the unchanged comparison. Preserve `Unchanged`,
 lookup API used by recursive resolution; only the update-time name clone
 should disappear.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `ExportTable::set_resolution` consume the qualified ID,
+so update paths move its owned name into the module map while borrowed lookup
+APIs remain unchanged. Verified with `make fmt && make ci`.
 
 #### [ ] READ-034 — Inserting a graph edge performs two map-entry lookups
 

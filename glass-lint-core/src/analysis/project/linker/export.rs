@@ -115,7 +115,7 @@ impl ProjectLinker {
                 for (name, _) in exports {
                     let id = QualifiedExportId::new(*module, name.clone());
                     if self.exports.resolve(&id).is_some() {
-                        self.exports.set_resolution(&id, ExportResolution::Unknown);
+                        self.exports.set_resolution(id, ExportResolution::Unknown);
                     }
                 }
             }
@@ -139,7 +139,7 @@ impl ProjectLinker {
             return false;
         }
         !matches!(
-            self.exports.set_resolution(&id, resolved),
+            self.exports.set_resolution(id, resolved),
             ExportUpdate::Unchanged
         )
     }
