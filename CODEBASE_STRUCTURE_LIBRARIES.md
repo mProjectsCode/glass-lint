@@ -43,7 +43,9 @@ provider-neutral engine.
 - `name::NameExhausted` — Describes failure to allocate another interned name.
 - `name::NameId` — Identifies an entry in one artifact-local name table.
 - `name::NameTable` — Maps source names to deterministic bounded identifiers.
+- `path::name_path::NamePath` — Owns a path of interned name identifiers.
 - `path::name_path::Path` — Owns a sequence of property-name segments.
+- `path::name_path::SymbolPath` — Owns a path of source-level symbol names.
 - `path::view::PathView` — Borrows a property path without copying its segments.
 - `path_trie::store::ParentRef` — Identifies the parent relationship of a trie node.
 - `path_trie::store::PathLink` — Connects a path segment to a stored child node.
@@ -101,6 +103,7 @@ module-resolution outcomes for core.
 - `loader::LoadDeadline` — Tracks the deadline imposed on one project load.
 - `loader::ProjectLoadOutcome` — Returns the loaded core project together with partial status and metrics.
 - `loader::ProjectLoadState` — Holds mutable state for the multi-phase loading loop.
+- `loader::ProjectLoadStatus` — Classifies whether a project load completed or was partial.
 - `loader::ProjectLoader` — Coordinates the complete filesystem-to-core loading workflow.
 - `loader::ProjectPaths` — Groups the canonical paths relevant to one load.
 - `loader::ReadWaveOutcome` — Summarizes one bounded wave of source reads.
@@ -120,6 +123,8 @@ module-resolution outcomes for core.
 - `tsconfig::ParsedField` — Records the parsed state of a configuration field.
 - `tsconfig::ParsedTsconfig` — Holds the supported fields from one parsed configuration.
 - `tsconfig::ReferenceEntry` — Describes one referenced configuration path.
+- `tsconfig::StringArrayField` — Represents a parsed string-array configuration field.
+- `tsconfig::StringField` — Represents a parsed string configuration field.
 - `tsconfig::TsconfigDiagnostic` — Reports a non-fatal configuration parsing issue.
 - `tsconfig::TsconfigTraversal` — Tracks visited configurations and traversal limits.
 - `tsconfig::selection::CompiledTsconfigSelection` — Represents compiled include and exclude matching rules.
@@ -271,6 +276,7 @@ This crate renders core reports as deterministic terminal-oriented output.
 
 - `glass_lint_output::report` — Owns reusable report presentation.
 - `report::render` — Converts report data into rendered terminal structures.
+- `report::render::RuleGroupEntry` — Associates a pretty file with one finding during grouping.
 - `report::types` — Defines pretty-report values and source-line caching.
 
 ### Structs and enums
@@ -291,6 +297,7 @@ normalized adapter and report boundaries.
 
 - `glass_lint_harness::adapters` — Connects built-in and external analysis tools to the harness protocol.
 - `glass_lint_harness::builtins` — Selects built-in providers and profiling profiles.
+- `glass_lint_harness::bundler` — Defines the bounded process boundary for generated bundle assets.
 - `glass_lint_harness::cases` — Parses snippet directives and project manifests.
 - `cases::project` — Parses multi-file project case manifests.
 - `cases::snippet` — Parses single-file fixture directives.
@@ -320,15 +327,22 @@ normalized adapter and report boundaries.
 - `adapters::GlassLintAdapter` — Adapts the built-in Glass Lint engine to the harness protocol.
 - `builtins::BuiltinProfile` — Selects a built-in profiling configuration.
 - `builtins::BuiltinProvider` — Selects a built-in provider catalog and environment.
+- `bundler::BundleOutput` — Stores generated bundle source and transformation metadata.
+- `bundler::BundleRequest` — Carries a validated bundle transformation request.
+- `bundler::BundleResponse` — Carries the normalized response from a bundle transformer.
+- `bundler::ProcessBundler` — Runs the external bundle transformer process.
 - `cases::project::ManifestResolutionOutcome` — Records how a project manifest resolution entry was interpreted.
 - `cases::project::ProjectManifest` — Holds the normalized project case manifest.
 - `cases::project::ProjectMetadata` — Stores project-case metadata used by adapters.
 - `cases::project::ProjectResolutionManifest` — Stores expected project resolution records.
 - `cases::project::ProjectToolManifest` — Stores the tool configuration for a project case.
+- `profile::config::ProfileAnalysisLimits` — Records analysis limits used by a profile.
 - `profile::config::ProfileCatalogProvider` — Selects the provider catalog used for profiling.
 - `profile::config::ProfileConfig` — Holds validated profiling settings.
 - `profile::config::ProfileConfigBuilder` — Builds profiling settings from caller options.
 - `profile::config::ProfileCorpusIdentity` — Identifies the corpus used by a profile.
+- `profile::config::ProfileExecutionIdentity` — Identifies the execution settings of a profile.
+- `profile::config::ProfileProjectLoadIdentity` — Identifies project-loading settings used by a profile.
 - `profile::config::ProfileWorkload` — Selects file or project profiling work.
 - `profile::config::ProfileWorkloadIdentity` — Identifies the exact workload configuration.
 - `profile::config::RuleSelectionProfile` — Selects the rule set used in a profile.
@@ -350,6 +364,12 @@ normalized adapter and report boundaries.
 - `profile_manifest::ProfileManifestEntry` — Describes one manifest corpus entry.
 - `profile_manifest::VerifiedProfileManifest` — Represents a manifest after verification succeeds.
 - `runner::AdapterTimings` — Records time spent by an adapter.
+- `runner::BundleTimings` — Records time spent generating each bundle variant.
+- `types::case::BundleKey` — Identifies one bundle profile, transformer, minification, and target combination.
+- `types::case::BundleProfile` — Selects the host profile for bundle verification.
+- `types::case::BundleProfileError` — Reports invalid bundle-profile directives.
+- `types::case::BundleTarget` — Selects the JavaScript target for bundle transformation.
+- `types::case::BundleTransformer` — Selects the bundle transformation tool.
 - `types::case::Case` — Represents one normalized fixture case.
 - `types::case::CaseError` — Reports invalid fixture-case input.
 - `types::case::ExpectationError` — Reports invalid expectation syntax.
@@ -375,6 +395,7 @@ normalized adapter and report boundaries.
 - `types::protocol::AdapterStepDto` — Carries one evidence step over the wire.
 - `types::protocol::AdapterTraceDto` — Carries one evidence trace over the wire.
 - `types::report::AdapterRun` — Records one adapter's result for a case.
+- `types::report::BundleResult` — Records verification results for one generated bundle.
 - `types::report::CaseResult` — Records verification results for one case.
 - `types::report::SuiteReport` — Aggregates all case results in a suite.
 - `types::report::ToolResult` — Records one tool's findings and timing for a case.

@@ -142,12 +142,16 @@ deterministic findings.
 - `scope::expression::ScopeExpression` — Represents normalized syntax expression shapes for provenance.
 - `analysis::scope::frozen_assignments` — Exposes frozen assignment state for analysis queries.
 - `scope::frozen_assignments::AssignmentAt` — Selects assignment state at a source position.
+- `scope::frozen_assignments::BindingResolution` — Stores binding provenance together with its certainty status.
+- `scope::frozen_assignments::BindingResolutionSource` — Identifies the source of a binding resolution.
+- `scope::frozen_assignments::BindingResolutionStatus` — Classifies whether binding resolution is absent, complete, or incomplete.
 - `scope::frozen_assignments::FrozenAssignmentIndex` — Indexes finalized path-local assignments.
 - `analysis::scope::graph` — Stores lexical scope parent and child relationships.
 - `scope::graph::FrozenScopeGraph` — Provides an immutable lexical scope graph.
 - `scope::graph::ScopeData` — Stores data for one lexical scope node.
 - `scope::graph::ScopeGraph` — Builds and owns the lexical scope graph.
 - `scope::graph::ScopeGraphInput` — Supplies inputs for building a scope graph.
+- `scope::graph::ScopeReadView` — Provides a read-only view over scope graph data.
 - `analysis::scope::mutation_index` — Indexes writes that can change identity.
 - `scope::mutation_index::MutationIndex` — Indexes identity-changing mutations.
 - `scope::mutation_index::MutationIndexBuilder` — Builds the mutation index from collected writes.
@@ -160,12 +164,14 @@ deterministic findings.
 - `analysis::scope::query::functions` — Queries function identity and boundaries.
 - `analysis::scope::query::provenance` — Queries symbol and member provenance.
 - `analysis::scope::query::provenance::callable` — Resolves callable provenance chains.
+- `scope::query::provenance::callable::ResolvedIdentBinding` — Stores an identifier's resolved binding and lookup state.
 - `analysis::scope::query::provenance::chain` — Follows provenance through aliases and members.
 - `analysis::scope::query::provenance::object` — Resolves object provenance.
 - `analysis::scope::query::rooted` — Resolves rooted property identities.
 - `scope::query::rooted::RootedExprContext` — Supplies context for rooted-expression identity queries.
 - `analysis::scope::scope_index` — Indexes lexical scopes by source position.
 - `scope::scope_index::LexicalScopeIndex` — Finds lexical scopes by source position.
+- `analysis::scope::static_value` — Resolves static values from lexical scope state.
 - `analysis::syntax` — Provides syntax-level names, constants, and provenance helpers.
 - `analysis::syntax::constant` — Handles syntax-level constant evaluation.
 - `analysis::syntax::constant::eval` — Evaluates constant expressions with bounded lookup.
@@ -243,6 +249,7 @@ deterministic findings.
 - `analysis::flow::planning` — Binds declared flow plans to analyzed artifacts.
 - `flow::planning::BoundFlowPlan` — Stores a flow plan bound to an artifact.
 - `flow::planning::BoundLifecycleCallTarget` — Stores a lifecycle call target after binding.
+- `flow::planning::BoundLifecycleRoot` — Stores a lifecycle root after binding its physical identity.
 - `flow::planning::BoundSource` — Stores a flow source after binding.
 - `flow::planning::BoundTargetIndex` — Indexes bound flow targets.
 - `flow::planning::FlowMatchView` — Provides the planned flow data used during matching.
@@ -251,7 +258,6 @@ deterministic findings.
 - `flow::projector::ActivePaths` — Tracks complete and incomplete paths during projection.
 - `flow::projector::AlternativeCompleteness` — Classifies whether a path alternative is complete.
 - `flow::projector::EmissionMode` — Selects how projected findings are emitted.
-- `flow::projector::FlowProjectionRule` — Identifies the rule and root used by a flow projection.
 - `flow::projector::LocalFlowProjectionOutcome` — Reports local flow projection results.
 - `flow::projector::ObjectFlowProjector` — Projects object values through statements and branches.
 - `flow::projector::ObjectFlowProjectorInput` — Supplies inputs to object-flow projection.
@@ -263,6 +269,7 @@ deterministic findings.
 - `flow::projector::PendingFlowStateFinal` — Stores finalized pending flow state.
 - `flow::projector::PendingFlowStates` — Collects pending flow states for later resolution.
 - `flow::projector::PendingState` — Represents one pending projection state.
+- `flow::projector::ProjectionInputs` — Supplies frozen facts and a bound plan to local flow projection.
 - `flow::projector::ProjectionRunState` — Stores mutable state for one projection run.
 - `flow::projector::ProjectionPathMachine` — Groups path, control, and pending-state projection machinery.
 - `analysis::flow::projector::control` — Applies control-flow transitions during projection.
@@ -343,6 +350,8 @@ deterministic findings.
 - `model::flow::SinkIndex` — Indexes sinks by flow identity.
 - `analysis::model::module` — Defines module interfaces, imports, exports, and requests.
 - `model::module::ExportEntry` — Stores one internal module export record.
+- `model::module::ExportMerge` — Classifies how an export observation changes module state.
+- `model::module::ExportObservation` — Collects resolved values observed for one module export.
 - `model::module::ImportedBinding` — Represents a binding imported from another module.
 - `model::module::ModuleExport` — Describes an exported module value.
 - `model::module::ModuleInterface` — Represents a module's resolved export surface.
@@ -397,7 +406,9 @@ deterministic findings.
 - `analysis::resolution::call` — Resolves values returned from recognized calls.
 - `analysis::resolution::constant` — Resolves constant expressions.
 - `analysis::resolution::expression` — Resolves general expression values and identities.
+- `resolution::expression::ResolutionGuard` — Guards one active value-resolution query.
 - `resolution::expression::ResolutionSeed` — Seeds expression resolution from a known identity or value.
+- `resolution::expression::ResolutionStart` — Classifies the starting state of expression resolution.
 
 #### Chunk 5: Local artifacts and lowering
 
@@ -420,6 +431,7 @@ deterministic findings.
 - `lowering::LoweringCompletion` — Classifies completion of local lowering.
 - `lowering::ParserSpanKey` — Keys normalized parser spans.
 - `lowering::ResolvedProgram` — Stores the resolved syntax program used by lowering.
+- `lowering::SealedLowering` — Stores finalized facts, export origins, and derived capabilities.
 - `lowering::SpanNormalizer` — Converts parser spans into validated core ranges.
 - `analysis::lowering::budget` — Tracks semantic-analysis resource limits.
 - `lowering::budget::SemanticBudget` — Bounds semantic lowering work.
@@ -436,17 +448,23 @@ deterministic findings.
 #### Chunk 6: Matching
 
 - `analysis::matching` — Indexes semantic occurrences and executes local matches.
+- `matching::GlobalPromotion` — Controls whether global occurrence promotion is allowed.
 - `matching::BorrowedGlobalBuckets` — Groups borrowed global occurrence buckets.
 - `matching::BorrowedModuleBuckets` — Groups borrowed module occurrence buckets.
 - `matching::LinkedOccurrenceView` — Presents occurrences after project identity linking.
 - `matching::ModuleOccurrenceOverlay` — Stores linked occurrences over a local module index.
 - `matching::ModuleOverlayKind` — Classifies a module occurrence overlay.
+- `matching::ModuleOverlaySource` — Supplies module occurrences and overlay policy for matching.
 - `matching::OccurrenceIndexes` — Owns the physical occurrence indexes used by matching.
 - `analysis::matching::arguments` — Evaluates argument-constrained matcher roots.
+- `matching::arguments::ConstrainedEvaluation` — Stores prepared constrained roots for evaluation.
 - `matching::arguments::ConstrainedRoot` — Describes an argument-constrained physical root.
+- `matching::arguments::ConstrainedState` — Tracks constrained-root evaluation state.
 - `matching::arguments::MatcherArtifact` — Provides the artifact view used by argument matching.
 - `matching::arguments::MatcherEvaluationContext` — Supplies artifact context during matcher evaluation.
+- `matching::arguments::MatcherOverlayPolicy` — Selects whether project overlays participate in matching.
 - `matching::arguments::MatcherProjectContext` — Combines matcher facts with project identity overlays.
+- `matching::arguments::MatcherProjectInputs` — Supplies linked identity and call-result overlays to argument matching.
 - `matching::arguments::MatcherProjectOverlay` — Provides project-linked data to argument matching.
 - `matching::arguments::PreparedConstrainedRoot` — Stores a constrained root after preparation.
 - `analysis::matching::arguments::evaluator` — Executes prepared argument matcher clauses.
@@ -456,6 +474,7 @@ deterministic findings.
 - `matching::arguments::evaluator::PreparedClausePaths` — Stores prepared paths for argument clauses.
 - `analysis::matching::arguments::identity` — Resolves identity constraints for argument matching.
 - `analysis::matching::build` — Builds occurrence indexes from semantic facts.
+- `matching::build::CallProjection` — Stores call data projected into occurrence indexes.
 - `analysis::matching::evidence` — Accumulates deterministic match evidence.
 - `matching::evidence::EvidenceAccumulator` — Accumulates matching evidence before presentation.
 - `matching::evidence::EvidenceGroup` — Groups matching evidence for one semantic occurrence.
@@ -488,8 +507,14 @@ deterministic findings.
 - `matching::occurrence::PackageOverlay` — Adds linked package occurrences to local indexes.
 - `matching::occurrence::ReturnedMemberKey` — Keys a member of a returned object.
 - `analysis::matching::query` — Provides query-facing occurrence access.
+- `matching::query::IndexedRootIter` — Iterates indexed physical roots.
 - `analysis::matching::query::view` — Selects the event-index view used by a query.
+- `matching::query::view::AnyIndex` — Selects an occurrence index for a query view.
+- `matching::query::view::EventIndexCapabilities` — Describes indexes available for an event.
 - `matching::query::view::EventIndexView` — Selects the event index exposed to a query.
+- `matching::query::view::LiteralIndex` — Selects a literal occurrence index.
+- `matching::query::view::ModuleIndex` — Selects a module occurrence index.
+- `matching::query::view::RootedIndex` — Selects a rooted occurrence index.
 
 #### Chunk 7: Project linking
 
@@ -497,8 +522,10 @@ deterministic findings.
 - `analysis::project::identities` — Resolves project-wide module and export identities.
 - `analysis::project::linker` — Coordinates export and module graph linking.
 - `project::linker::ProjectLinker` — Coordinates construction of the linked project model.
+- `project::linker::SccPartitionState` — Tracks the state of strongly connected-component partitioning.
 - `analysis::project::linker::export` — Links export declarations across modules.
 - `analysis::project::linker::graph` — Builds the project module graph.
+- `project::linker::graph::GraphBuildError` — Reports a bounded project-graph construction failure.
 - `analysis::project::model` — Stores linked project semantic state.
 - `project::model::ExportResolution` — Classifies a linked export resolution.
 - `project::model::LinkedProjectState` — Stores mutable linked-project state.
@@ -508,10 +535,8 @@ deterministic findings.
 - `project::model::ResolvedLinkInput` — Supplies validated inputs to project linking.
 - `project::linker::graph::GraphBuild` — Holds the graph, SCC partition, and status from graph construction.
 - `analysis::project::projection` — Projects linked modules into matcher-ready views.
-- `project::projection::PhysicalRootIndex` — Indexes physical matcher roots for a project.
+- `project::projection::EvidenceQueryError` — Reports an invalid project evidence query.
 - `project::projection::PlannedConstrainedRoot` — Stores a project-bound constrained root plan.
-- `project::projection::PlannedFlow` — Stores a project-bound flow plan.
-- `project::projection::PlannedLifecycleRoot` — Stores a project-bound lifecycle root plan.
 - `project::projection::ProjectMatcherIdentity` — Identifies a project matcher model.
 - `project::projection::ProjectMatcherModel` — Represents the linked project view used by matching.
 - `project::projection::ProjectModuleHandle` — Provides access to one projected project module.
@@ -520,10 +545,12 @@ deterministic findings.
 - `project::projection::ProjectionMetrics` — Records project projection work.
 - `project::projection::ProjectionOutcome` — Returns the project matcher model and completion state.
 - `project::projection::ProjectionPlan` — Stores the normalized project projection plan.
+- `project::projection::ProjectionCompletion` — Classifies completion of project projection.
+- `project::projection::ProjectionSession` — Coordinates one project projection run.
 - `project::projection::ProjectionStatus` — Describes project projection completeness.
 - `analysis::project::resolver` — Resolves linked export chains and re-exports.
+- `project::resolver::ExportLookupContext` — Tracks export identities visited during lookup.
 - `project::resolver::ExportResolver` — Resolves export chains in a linked project.
-- `project::resolver::ProjectLookup` — Abstracts module and request-target lookup during export resolution.
 - `project::resolver::ProjectLookupView` — Provides resolver lookups over linked project state.
 - `analysis::project::state` — Holds caches and mutable linking-session state.
 - `project::state::ExportLookupCache` — Caches linked export lookups.
@@ -646,11 +673,12 @@ deterministic findings.
 - `api::compiler::EventPredicate` — Represents a normalized event predicate.
 - `api::compiler::EvidenceDescriptor` — Describes evidence emitted by a plan.
 - `api::compiler::IdentityConstraint` — Constrains a query to a semantic identity.
-- `api::compiler::IdentityStrength` — Classifies how strongly an identity is proven.
+- `api::compiler::QueryPlanAccumulator` — Accumulates physical roots while compiling a query plan.
 - `api::compiler::catalog` — Compiles provider rule catalogs.
 - `api::compiler::contradiction` — Detects contradictory query branches.
 - `api::compiler::error` — Defines physical-plan validation errors.
 - `api::compiler::error::PhysicalPlanValidationError` — Reports an invalid physical query plan.
+- `api::compiler::limits` — Defines compiler query limits.
 - `api::compiler::normalize` — Normalizes query expressions into canonical form.
 - `api::compiler::normalize::BranchVarType` — Classifies a normalized branch variable.
 - `api::compiler::normalize_all` — Merges and normalizes all query branches.
@@ -684,6 +712,7 @@ deterministic findings.
 - `api::compiler::physical::ObjectSlot` — Identifies an object slot in a physical plan.
 - `api::compiler::physical::PhysicalPlan` — Stores selected roots and operators for execution.
 - `api::compiler::physical::PhysicalRoot` — Selects the initial occurrence access path.
+- `api::compiler::physical::RootBudget` — Bounds physical root selection.
 - `api::compiler::requirements` — Computes exact preparation requirements.
 - `api::compiler::requirements::FlowRequirements` — Lists flow data required before execution.
 - `api::compiler::requirements::PlanRequirements` — Lists all artifact preparation requirements.
@@ -701,7 +730,9 @@ deterministic findings.
 - `api::compiler::validate::error::SubjectRelation` — Describes the relation between subject and event identities.
 - `api::compiler::validate::error::SubjectRelationError` — Reports an invalid subject relation.
 - `api::compiler::validate::pass1_3` — Implements early query validation passes.
+- `api::compiler::validate::pass1_3::ScopeTypes` — Collects variable bindings and inferred query variable types.
 - `api::compiler::validate::pass4_10` — Implements later query validation passes.
+- `api::compiler::validate::pass4_10::EvidenceScope` — Tracks evidence projection scope during validation.
 
 ### Runtime, linting, and project API
 
@@ -775,6 +806,7 @@ deterministic findings.
 - `lint::report::evidence::EvidenceRangeEntry` — Stores one evidence range for ordering.
 - `lint::report::evidence::FindingRangeBuilder` — Groups evidence ranges into finding ranges.
 - `lint::report::evidence::FindingGroup` — Groups evidence belonging to one finding.
+- `lint::report::evidence::ResolvedEvidenceOccurrence` — Pairs classification evidence with its semantic occurrence.
 - `lint::report::summary` — Aggregates report summary counts.
 - `lint::selection` — Applies rule baselines, overrides, and selectors.
 - `lint::selection::LintConfigError` — Reports invalid lint-selection configuration.
