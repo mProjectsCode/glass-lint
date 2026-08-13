@@ -408,7 +408,7 @@ impl ProjectionStatus {
     fn record_analysis_status(&self, project: &ProjectSemanticModel, status: &mut AnalysisStatus) {
         if self.effects.is_incomplete() {
             for module_id in &self.effect_exhausted_modules {
-                if let Some(module) = project.modules().find(|module| module.id() == *module_id) {
+                if let Some(module) = project.module(*module_id) {
                     status.record(
                         StatusScope::File(module.path().clone()),
                         IncompleteReason::BudgetExhausted {

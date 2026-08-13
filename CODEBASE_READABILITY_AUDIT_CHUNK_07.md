@@ -83,7 +83,7 @@ capacity, and lifecycle roots are unchanged. Verified with `make fmt && make ci`
 
 ### Projection status lookup
 
-#### [ ] READ-064 — Use the project’s keyed module lookup for exhausted effects
+#### [x] READ-064 — Use the project’s keyed module lookup for exhausted effects
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -107,6 +107,11 @@ stale module ID rather than turning status reporting into a panic.
 
 **Audit disposition (2026-08-13):** Confirmed. Keep the stale-ID `Option`
 guard; the optimization is only the lookup path.
+
+**Fix Applied:** Effect exhaustion status now resolves modules through
+`ProjectSemanticModel::module`, preserving the stale-ID guard and all status
+fields while avoiding an iterator scan for each exhausted module. Verified
+with `make fmt && make ci`.
 
 ### Invalid local projection work
 
