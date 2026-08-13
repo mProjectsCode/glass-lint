@@ -71,15 +71,10 @@ impl ObjectFlowProjector<'_, '_, '_> {
         args: &[CallArgInfo],
         sink_fact: FactId,
     ) {
-        let candidates = call
-            .global_name()
-            .and_then(|name| self.inputs.plan.global_sink_candidates(name))
-            .or_else(|| {
-                call.rooted().then_some(()).and_then(|()| {
-                    call.chain()
-                        .and_then(|chain| self.inputs.plan.sink_candidates(chain))
-                })
-            })
+        let candidates = self
+            .inputs
+            .plan
+            .sink_candidates_for_call(call)
             .map(<[_]>::to_vec)
             .unwrap_or_default();
         if candidates.is_empty() {

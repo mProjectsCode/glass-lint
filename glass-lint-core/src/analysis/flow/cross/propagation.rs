@@ -164,16 +164,7 @@ impl UsageProjector<'_, '_> {
         let Some(shape) = cref.shape() else {
             return;
         };
-        let candidates = shape
-            .global_name()
-            .and_then(|name| self.flow_plan.global_sink_candidates(name))
-            .or_else(|| {
-                shape.rooted().then_some(()).and_then(|()| {
-                    shape
-                        .chain()
-                        .and_then(|chain| self.flow_plan.sink_candidates(chain))
-                })
-            });
+        let candidates = self.flow_plan.sink_candidates_for_call(&shape);
         let matching_sinks: Vec<_> = candidates
             .into_iter()
             .flatten()

@@ -15,6 +15,7 @@ use smol_str::SmolStr;
 use crate::{
     analysis::{
         facts::CallArgInfo,
+        flow::effect::CallShape,
         model::{
             flow::{FlowId, RequirementIndex, SinkIndex},
             value::ValueTable,
@@ -109,6 +110,17 @@ impl<T> BoundTargetIndex<T> {
 
     pub(super) fn get(&self, target: &BoundLifecycleCallTarget) -> Option<&[T]> {
         self.entries.get(target).map(Vec::as_slice)
+    }
+
+    pub(super) fn candidates_for_call(&self, call: &CallShape<'_>) -> Option<&[T]> {
+        call.global_name()
+            .and_then(|name| self.get(&BoundLifecycleCallTarget::global(name.clone())))
+            .or_else(|| {
+                call.rooted()
+                    .then(|| call.chain())
+                    .flatten()
+                    .and_then(|chain| self.get(&BoundLifecycleCallTarget::member(chain.clone())))
+            })
     }
 }
 
@@ -328,24 +340,19 @@ impl<'rules> BoundFlowPlan<'rules> {
         self.flows.get(&id).copied()
     }
 
-    /// Look up executable source candidates by their bound member chain.
-    pub(super) fn source_candidates(&self, member_call: &NamePath) -> Option<&[BoundSource]> {
-        self.sources
-            .get(&BoundLifecycleCallTarget::member(member_call.clone()))
+    /// Select executable source candidates using the canonical call-target
+    /// precedence: a global target first, then a rooted member target.
+    pub(super) fn source_candidates_for_call(
+        &self,
+        call: &CallShape<'_>,
+    ) -> Option<&[BoundSource]> {
+        self.sources.candidates_for_call(call)
     }
 
-    pub(super) fn global_source_candidates(&self, name: &str) -> Option<&[BoundSource]> {
-        self.sources.get(&BoundLifecycleCallTarget::global(name))
-    }
-
-    /// Look up flows whose sink chain matches `member_call`.
-    pub(super) fn sink_candidates(&self, member_call: &NamePath) -> Option<&[BoundSink]> {
-        self.sinks
-            .get(&BoundLifecycleCallTarget::member(member_call.clone()))
-    }
-
-    pub(super) fn global_sink_candidates(&self, name: &str) -> Option<&[BoundSink]> {
-        self.sinks.get(&BoundLifecycleCallTarget::global(name))
+    /// Select sink candidates using the same global-before-rooted policy as
+    /// source selection.
+    pub(super) fn sink_candidates_for_call(&self, call: &CallShape<'_>) -> Option<&[BoundSink]> {
+        self.sinks.candidates_for_call(call)
     }
 
     pub(super) fn matching_member_requirement_indices(

@@ -14,7 +14,7 @@ use crate::{
                 worklist::{BoundedFifo, FifoAdmission},
             },
             planning::{
-                BoundLifecycleCallTarget, BoundSource, BoundTargetIndex, FlowMatchView,
+                BoundSource, BoundTargetIndex, FlowMatchView,
                 build_source_index as build_bound_source_index,
             },
         },
@@ -250,22 +250,7 @@ impl FlowSources {
                     };
                     let args = shape.effective_args();
                     let matcher = FlowMatchView::new(names, stream.values());
-                    let candidates = shape
-                        .global_name()
-                        .and_then(|name| {
-                            source_index.get(&BoundLifecycleCallTarget::Global(name.clone()))
-                        })
-                        .or_else(|| {
-                            shape
-                                .rooted()
-                                .then(|| {
-                                    shape.chain().and_then(|chain| {
-                                        source_index
-                                            .get(&BoundLifecycleCallTarget::Member(chain.clone()))
-                                    })
-                                })
-                                .flatten()
-                        });
+                    let candidates = source_index.candidates_for_call(&shape);
                     let Some(candidates) = candidates else {
                         continue;
                     };

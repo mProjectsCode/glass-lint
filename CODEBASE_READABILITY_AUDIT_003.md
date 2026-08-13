@@ -14,7 +14,7 @@ alternatives, incomplete-versus-complete status, and fail-closed matching.
 
 ### Flow-plan and lifecycle target selection
 
-#### [ ] READ-010 — Local, summary, and cross flow duplicate lifecycle target selection
+#### [x] READ-010 — Local, summary, and cross flow duplicate lifecycle target selection
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -39,7 +39,12 @@ distinct state transitions, summary projection, or evidence behavior. Preserve
 global-before-rooted precedence, the rooted-chain gate, argument predicates,
 and the distinction between local completion and crossed evidence.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Centralized global-before-rooted call-target selection on the
+bound target index and exposed source/sink selection through `BoundFlowPlan`.
+Local projection, summary construction, cross-flow propagation, and cross-flow
+source discovery now share the same selector while retaining their existing
+argument predicates, state transitions, and evidence behavior. Verified with
+`make fmt && make ci`.
 
 ### Local projector state ownership
 

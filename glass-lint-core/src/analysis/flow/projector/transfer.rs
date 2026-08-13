@@ -59,15 +59,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
         source_fact: FactId,
     ) -> Option<(ObjectId, Vec<FlowState>)> {
         let matcher = FlowMatchView::new(self.inputs.names, self.inputs.stream.values());
-        let candidates = call
-            .global_name()
-            .and_then(|name| self.inputs.plan.global_source_candidates(name))
-            .or_else(|| {
-                call.rooted()
-                    .then(|| call.chain())
-                    .flatten()
-                    .and_then(|chain| self.inputs.plan.source_candidates(chain))
-            })?;
+        let candidates = self.inputs.plan.source_candidates_for_call(call)?;
         let matching: SmallVec<[FlowId; 8]> = candidates
             .iter()
             .filter(|candidate| candidate.matches_call(&matcher, args))

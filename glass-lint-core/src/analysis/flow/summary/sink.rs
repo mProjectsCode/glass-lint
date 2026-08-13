@@ -227,15 +227,7 @@ impl FunctionSummary {
             return InsertOutcome::default();
         };
         let args = shape.effective_args();
-        let sinks = shape
-            .global_name()
-            .and_then(|name| plan.global_sink_candidates(name))
-            .or_else(|| {
-                shape
-                    .rooted()
-                    .then_some(())
-                    .and_then(|()| shape.chain().and_then(|chain| plan.sink_candidates(chain)))
-            });
+        let sinks = plan.sink_candidates_for_call(&shape);
         let mut candidates = Vec::new();
         for sink in sinks.into_iter().flatten() {
             for argument_index in sink.present_indices(args.len()) {
