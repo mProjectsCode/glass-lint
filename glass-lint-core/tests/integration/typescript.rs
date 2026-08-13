@@ -222,15 +222,14 @@ fn malformed_typescript_reports_original_location() {
         report.files()[0].diagnostics()[0]
             .parse_diagnostic()
             .unwrap()
-            .filename,
+            .filename(),
         "broken.ts"
     );
     assert_eq!(
         report.files()[0].diagnostics()[0]
             .parse_diagnostic()
             .unwrap()
-            .range
-            .as_ref()
+            .range()
             .unwrap()
             .start()
             .line(),

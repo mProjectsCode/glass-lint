@@ -76,10 +76,10 @@ impl Diagnostic {
     ) {
         match self {
             Self::Parse { path, diagnostic } => (
-                diagnostic.code.as_str(),
-                &diagnostic.message,
+                diagnostic.code().as_str(),
+                diagnostic.message(),
                 Some(path),
-                diagnostic.range.as_ref(),
+                diagnostic.range(),
             ),
             Self::Project(d) => (
                 d.code.as_str(),

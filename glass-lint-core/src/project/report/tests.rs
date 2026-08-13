@@ -218,7 +218,7 @@ fn combine_reports_preserves_report_and_file_diagnostics() {
         combined.files()[0].diagnostics()[0]
             .parse_diagnostic()
             .unwrap()
-            .filename,
+            .filename(),
         "stale-parser-name.js"
     );
     assert_eq!(

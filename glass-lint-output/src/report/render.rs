@@ -422,7 +422,7 @@ impl PrettyReports<'_> {
         diagnostics.sort_by_key(|(file, diagnostic)| {
             (
                 file.filename,
-                diagnostic.range.as_ref().map(|range| {
+                diagnostic.range().map(|range| {
                     (
                         range.start().line(),
                         range.start().column(),
@@ -430,7 +430,7 @@ impl PrettyReports<'_> {
                         range.end().column(),
                     )
                 }),
-                diagnostic.code.as_str(),
+                diagnostic.code().as_str(),
             )
         });
         if !diagnostics.is_empty() {
@@ -440,7 +440,7 @@ impl PrettyReports<'_> {
             writeln!(f, "parse diagnostics")?;
         }
         for (file, diagnostic) in diagnostics {
-            if let Some(range) = &diagnostic.range {
+            if let Some(range) = diagnostic.range() {
                 writeln!(
                     f,
                     "  {}:{}:{}: {}[{}]: {}",
@@ -448,8 +448,8 @@ impl PrettyReports<'_> {
                     range.start().line(),
                     range.start().column(),
                     PrettyReport::style(self.options.color, Style::new().red(), "parse"),
-                    diagnostic.code,
-                    visible_text(&diagnostic.message)
+                    diagnostic.code(),
+                    visible_text(diagnostic.message())
                 )?;
             } else {
                 writeln!(
@@ -457,8 +457,8 @@ impl PrettyReports<'_> {
                     "  {}: {}[{}]: {}",
                     visible_text(file.filename),
                     PrettyReport::style(self.options.color, Style::new().red(), "parse"),
-                    diagnostic.code,
-                    visible_text(&diagnostic.message)
+                    diagnostic.code(),
+                    visible_text(diagnostic.message())
                 )?;
             }
         }

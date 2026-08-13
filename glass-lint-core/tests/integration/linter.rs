@@ -7,7 +7,10 @@
 use glass_lint_core::{
     Environment, LintConfigError, Linter, LinterConfig, RuleBaseline, RuleCatalog, RuleId,
     RuleOverride, RuleSelection, RuleState,
-    project::{SourceFile, types::DiagnosticKind},
+    project::{
+        SourceFile,
+        types::{DiagnosticCode, DiagnosticKind},
+    },
     rules::{Confidence, EventQuery, Rule, Severity},
 };
 
@@ -253,25 +256,26 @@ fn reports_structured_diagnostic_for_oversized_source() {
     );
     assert!(report.files()[0].findings().is_empty());
     assert_eq!(report.files()[0].parse_diagnostic_count(), 1);
+    let expected_code: DiagnosticCode = DiagnosticKind::SourceTooLarge.into();
     assert_eq!(
         report.files()[0].diagnostics()[0]
             .parse_diagnostic()
             .unwrap()
-            .code,
-        DiagnosticKind::SourceTooLarge.into()
+            .code(),
+        &expected_code
     );
     assert_eq!(
         report.files()[0].diagnostics()[0]
             .parse_diagnostic()
             .unwrap()
-            .filename,
+            .filename(),
         "large.js"
     );
     assert!(
         report.files()[0].diagnostics()[0]
             .parse_diagnostic()
             .unwrap()
-            .range
+            .range()
             .is_none()
     );
 }
@@ -283,10 +287,11 @@ fn parse_diagnostics_carry_stable_location_context() {
     let diagnostic = &report.files()[0].diagnostics()[0]
         .parse_diagnostic()
         .unwrap();
-    assert_eq!(diagnostic.code, DiagnosticKind::SyntaxError.into());
-    assert_eq!(diagnostic.filename, "broken.js");
-    assert!(diagnostic.message.starts_with("JavaScript parse error:"));
-    assert!(diagnostic.range.is_some());
+    let expected_code: DiagnosticCode = DiagnosticKind::SyntaxError.into();
+    assert_eq!(diagnostic.code(), &expected_code);
+    assert_eq!(diagnostic.filename(), "broken.js");
+    assert!(diagnostic.message().starts_with("JavaScript parse error:"));
+    assert!(diagnostic.range().is_some());
 }
 
 #[test]

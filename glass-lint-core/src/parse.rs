@@ -27,12 +27,12 @@ const MAX_SYNTAX_DEPTH: usize = 512;
 /// Structured parser failure with an optional source range.
 pub struct ParseDiagnostic {
     /// Stable diagnostic code.
-    pub code: DiagnosticCode,
+    code: DiagnosticCode,
     /// Human-readable parser message.
-    pub message: String,
+    message: String,
     /// Authored filename.
-    pub filename: String,
-    pub range: Option<SourceRange>,
+    filename: String,
+    range: Option<SourceRange>,
     #[cfg_attr(feature = "serde", serde(skip))]
     pub(crate) failure: ParseFailureKind,
 }
@@ -52,7 +52,40 @@ impl ParseDiagnostic {
             failure,
         }
     }
+
+    #[must_use]
+    pub fn code(&self) -> &DiagnosticCode {
+        &self.code
+    }
+
+    #[must_use]
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    #[must_use]
+    pub fn filename(&self) -> &str {
+        &self.filename
+    }
+
+    #[must_use]
+    pub fn range(&self) -> Option<&SourceRange> {
+        self.range.as_ref()
+    }
+
+    #[must_use]
+    pub fn failure_kind(&self) -> ParseFailureKind {
+        self.failure
+    }
 }
+
+impl std::fmt::Display for ParseDiagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}] {}", self.code(), self.message())
+    }
+}
+
+impl std::error::Error for ParseDiagnostic {}
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum ParseFailureKind {
@@ -595,6 +628,26 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_accessors_preserve_failure_identity_and_display() {
+        let diagnostic = ParseDiagnostic::new(
+            ParseFailureKind::SyntaxDepth,
+            "depth limit reached",
+            "nested.js",
+            None,
+        );
+
+        assert_eq!(diagnostic.code().as_str(), "syntax_depth_exceeded");
+        assert_eq!(diagnostic.message(), "depth limit reached");
+        assert_eq!(diagnostic.filename(), "nested.js");
+        assert!(diagnostic.range().is_none());
+        assert_eq!(diagnostic.failure_kind(), ParseFailureKind::SyntaxDepth);
+        assert_eq!(
+            diagnostic.to_string(),
+            "[syntax_depth_exceeded] depth limit reached"
+        );
+    }
+
+    #[test]
     fn rejects_excessive_nesting_before_ast_construction() {
         let mut source = "(".repeat(MAX_SYNTAX_DEPTH + 1);
         source.push('0');
@@ -602,7 +655,7 @@ mod tests {
         let Err(error) = parse(&source, "deep.js") else {
             panic!("deep input unexpectedly parsed")
         };
-        assert_eq!(error.code.as_str(), "syntax_depth_exceeded");
+        assert_eq!(error.code().as_str(), "syntax_depth_exceeded");
     }
 
     #[test]
@@ -615,7 +668,7 @@ mod tests {
         let Err(error) = parse(&source, "postfix-division.js") else {
             panic!("deep input unexpectedly parsed")
         };
-        assert_eq!(error.code.as_str(), "syntax_depth_exceeded");
+        assert_eq!(error.code().as_str(), "syntax_depth_exceeded");
     }
 
     #[test]
@@ -805,7 +858,7 @@ mod tests {
         let Err(error) = parse(&source, "deep.js") else {
             panic!("deep input unexpectedly parsed")
         };
-        assert_eq!(error.code.as_str(), "syntax_depth_exceeded");
+        assert_eq!(error.code().as_str(), "syntax_depth_exceeded");
     }
 
     #[test]

@@ -40,7 +40,7 @@ pub use lint::{
     ProviderCatalogError, RuleBaseline, RuleCatalog, RuleCompilationError, RuleOverride,
     RuleSelection, RuleState,
 };
-pub use parse::{ParseDiagnostic, SourceLanguage};
+pub use parse::{ParseDiagnostic, ParseFailureKind, SourceLanguage};
 pub use project::MatchCertainty;
 pub use rule_id::RuleId;
 

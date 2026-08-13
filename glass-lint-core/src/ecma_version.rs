@@ -617,6 +617,6 @@ mod tests {
         let source = SourceFile::new("deep.js", "(((value)))").unwrap();
         let limits = AnalysisLimits::default().with_syntax_depth(1).unwrap();
         let error = analyze_ecma_version_with_limits(&source, &limits).unwrap_err();
-        assert_eq!(error.code.as_str(), "syntax_depth_exceeded");
+        assert_eq!(error.code().as_str(), "syntax_depth_exceeded");
     }
 }

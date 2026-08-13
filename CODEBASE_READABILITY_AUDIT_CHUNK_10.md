@@ -13,7 +13,7 @@ and two small APIs repeat conversion/allocation work at their owning types.
 
 ### Parsing and public diagnostics
 
-#### [ ] READ-076 — Make `ParseDiagnostic` an encapsulated, usable error
+#### [x] READ-076 — Make `ParseDiagnostic` an encapsulated, usable error
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -39,7 +39,11 @@ serialized shape, stable diagnostic codes, authored filename, optional source
 range, and the distinction between syntax, source-size, and syntax-depth
 failures.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ParseDiagnostic` fields are now private with read-only code,
+message, filename, range, and failure-kind accessors. It implements
+`Display`/`Error`, while retaining the serialized field shape and distinct
+failure classification. Updated parser, report, output, and integration
+callers. Verified with `make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed. Encapsulation must preserve the
 serialized field names and give parser callers read-only access to the same
