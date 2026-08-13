@@ -235,10 +235,9 @@ pub struct SharedSemanticArtifact {
 
 impl SharedSemanticArtifact {
     pub(crate) fn from_analyzed(analyzed: &AnalyzedSource) -> Self {
-        let (source, semantic) = analyzed.clone().into_parts();
         Self {
-            semantic,
-            source_index: source.clone_lines(),
+            semantic: analyzed.semantic_handle(),
+            source_index: analyzed.source_index(),
         }
     }
 

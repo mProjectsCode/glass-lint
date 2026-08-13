@@ -111,6 +111,14 @@ impl AnalyzedSource {
     pub(crate) fn into_parts(self) -> (LocatedSourceContext, Arc<SemanticArtifact>) {
         (self.source, self.semantic)
     }
+
+    pub(crate) fn semantic_handle(&self) -> Arc<SemanticArtifact> {
+        Arc::clone(&self.semantic)
+    }
+
+    pub(crate) fn source_index(&self) -> Arc<SourceLineIndex> {
+        self.source.clone_lines()
+    }
 }
 
 /// Per-file semantic-analysis stage. Owns the environment and limits that the

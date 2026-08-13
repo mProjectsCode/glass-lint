@@ -41,7 +41,7 @@ constructs the final `SemanticArtifact` directly and receives the effect limit
 at that boundary. Export-origin ordering, frozen tables, capabilities, and
 status retention are unchanged. Verified with `make fmt && make ci`.
 
-#### [ ] READ-021 — Cache adaptation clones an entire analysis wrapper to extract two fields
+#### [x] READ-021 — Cache adaptation clones an entire analysis wrapper to extract two fields
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -63,7 +63,10 @@ the cache owner, such as a semantic handle plus line-index access, and have
 retain `LocalArtifact`'s consuming conversion for the session path, and do not
 expose the internal semantic artifact or source-index storage directly.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added narrow borrowed projections on `AnalyzedSource` for its
+semantic handle and source-line index. Cache adaptation now clones only those
+Arcs, while consuming `LocalArtifact` conversion remains path-attached. Verified
+with `make fmt && make ci`.
 
 ### Bounded local analysis
 
