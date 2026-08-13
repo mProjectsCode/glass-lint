@@ -41,7 +41,7 @@ impl AnalysisDiagnostic {
         (
             self.code.as_str(),
             self.location.as_ref().map(SourceLocation::path),
-            self.location.as_ref().map(SourceLocation::range_ref),
+            self.location.as_ref().map(SourceLocation::range),
         )
     }
 }
@@ -85,7 +85,7 @@ impl Diagnostic {
                 d.code.as_str(),
                 &d.message,
                 d.location.as_ref().map(SourceLocation::path),
-                d.location.as_ref().map(SourceLocation::range_ref),
+                d.location.as_ref().map(SourceLocation::range),
             ),
         }
     }

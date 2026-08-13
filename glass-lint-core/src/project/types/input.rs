@@ -345,7 +345,11 @@ impl ResolutionRequestKey {
         self.kind
     }
 
-    pub fn range(&self) -> glass_lint_datastructures::SourceRange {
+    pub fn range(&self) -> &glass_lint_datastructures::SourceRange {
+        &self.range
+    }
+
+    pub fn range_owned(&self) -> glass_lint_datastructures::SourceRange {
         self.range.clone()
     }
 }
@@ -370,8 +374,12 @@ impl ResolutionRequest {
         self.key.kind()
     }
 
-    pub fn range(&self) -> glass_lint_datastructures::SourceRange {
+    pub fn range(&self) -> &glass_lint_datastructures::SourceRange {
         self.key.range()
+    }
+
+    pub fn range_owned(&self) -> glass_lint_datastructures::SourceRange {
+        self.key.range_owned()
     }
 
     pub fn specifier(&self) -> &SmolStr {

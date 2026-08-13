@@ -90,7 +90,7 @@ fn consuming_resolution_rejects_unknown_and_duplicate_outcomes() {
     unknown = crate::project::ResolutionRequestKey::new(
         unknown.importer().clone(),
         crate::project::ResolutionRequestKind::Require,
-        unknown.range(),
+        unknown.range_owned(),
     );
     let Err(error) = collection.finish([(unknown, crate::project::ResolverOutcome::Missing)])
     else {

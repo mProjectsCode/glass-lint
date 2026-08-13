@@ -348,7 +348,7 @@ mod tests {
         unknown = ResolutionRequestKey::new(
             unknown.importer().clone(),
             ResolutionRequestKind::Require,
-            unknown.range(),
+            unknown.range_owned(),
         );
         let error = artifacts.into_link_input(&sources, [(unknown, ResolverOutcome::Missing)]);
         assert!(matches!(error, Err(ProjectPhaseError::UnknownRequest(_))));

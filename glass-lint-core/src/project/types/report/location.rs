@@ -18,11 +18,11 @@ impl SourceLocation {
         &self.path
     }
 
-    pub fn range(&self) -> SourceRange {
-        self.range.clone()
+    pub fn range(&self) -> &SourceRange {
+        &self.range
     }
 
-    pub(crate) fn range_ref(&self) -> &SourceRange {
-        &self.range
+    pub fn range_owned(&self) -> SourceRange {
+        self.range.clone()
     }
 }

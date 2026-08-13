@@ -196,7 +196,7 @@ impl From<&SourceLocation> for AdapterSourceLocation {
     fn from(location: &SourceLocation) -> Self {
         Self {
             path: location.path().as_str().to_owned(),
-            range: location.range(),
+            range: location.range_owned(),
         }
     }
 }

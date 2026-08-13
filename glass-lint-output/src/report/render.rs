@@ -266,7 +266,7 @@ impl PrettyReports<'_> {
             .flat_map(project::EvidenceTrace::steps)
             .find(|step| {
                 step.location().path() == finding.location().path()
-                    && step.location().range() == *range
+                    && step.location().range() == range
             })
             .or_else(|| {
                 traces
@@ -304,7 +304,7 @@ impl PrettyReports<'_> {
                 &step_file.line_starts,
                 &step_file.line_cache,
             )
-            .excerpt(&range, 8, f)?;
+            .excerpt(range, 8, f)?;
         }
         Ok(())
     }
@@ -343,7 +343,7 @@ impl PrettyReports<'_> {
                 visible_text(file.filename),
                 range.start().line(),
                 range.start().column(),
-                visible_text(Self::primary_evidence_message(finding, &range))
+                visible_text(Self::primary_evidence_message(finding, range))
             );
             writeln!(
                 f,
@@ -375,7 +375,7 @@ impl PrettyReports<'_> {
                     &file.line_starts,
                     &file.line_cache,
                 )
-                .excerpt(&range, 4, f)?;
+                .excerpt(range, 4, f)?;
             }
             if has_detailed_traces {
                 for (trace_index, trace) in traces.traces().iter().enumerate() {

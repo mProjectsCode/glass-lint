@@ -153,7 +153,7 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
                 .find(|(candidate, importer)| {
                     importer == &resolution.importer
                         && candidate.kind() == kind
-                        && candidate.range() == resolution.range
+                        && candidate.range() == &resolution.range
                         && candidate.specifier() == &resolution.request
                 })
                 .map(|(request, _)| request.key().clone())

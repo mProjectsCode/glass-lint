@@ -187,7 +187,7 @@ fn collapses_contained_ranges_for_same_rule() {
             report.files()[0].findings()[0]
                 .location()
                 .range()
-                .contains(&step.location().range())
+                .contains(step.location().range())
         }));
     }
 }

@@ -81,7 +81,7 @@ the retained evidence is no longer cloned. Verified with `make fmt && make ci`.
 
 ### Borrowed versus owned range APIs
 
-#### [ ] READ-052 — Public range accessors clone values where neighboring path accessors borrow
+#### [x] READ-052 — Public range accessors clone values where neighboring path accessors borrow
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -106,7 +106,10 @@ on those borrowed views, preserving the half-open range value, serialization,
 equality, and callers that intentionally need ownership; remove repeated
 small `SourceRange` clones from sorting and resolution matching.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Public request and source-location `range` accessors now
+borrow their stored ranges, with `range_owned` providing explicit cloning for
+retention and serialization. Session sorting and diagnostic ordering use the
+borrowed form. Verified with `make fmt && make ci`.
 
 ### Direct project-session resource boundary
 

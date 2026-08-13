@@ -356,13 +356,13 @@ impl<'a> ProjectSession<'a> {
             (
                 left.importer().as_str(),
                 left.kind(),
-                &left.range(),
+                left.range(),
                 left.specifier().as_str(),
             )
                 .cmp(&(
                     right.importer().as_str(),
                     right.kind(),
-                    &right.range(),
+                    right.range(),
                     right.specifier().as_str(),
                 ))
         });
