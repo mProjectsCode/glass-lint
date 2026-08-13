@@ -16,7 +16,7 @@ phase.
 
 ### Prepared linter configuration
 
-#### [ ] READ-047 — Prepared linter construction retains a complete fallback configuration that it discards
+#### [x] READ-047 — Prepared linter construction retains a complete fallback configuration that it discards
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -44,7 +44,11 @@ effective selection, keep `PreparedRuleSelection` catalog/index alignment
 authoritative, and retain the existing unprepared path's catalog combination
 and error mapping.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Linter rule inputs now use an explicit private unprepared or
+prepared mode. Installing prepared rules discards fallback catalogs and the
+selection accessor reads the prepared selection directly; the unprepared path
+still combines catalogs and resolves overrides with the same errors. Verified
+with `make fmt && make ci`.
 
 ### Finding assembly
 

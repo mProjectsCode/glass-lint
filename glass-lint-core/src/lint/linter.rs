@@ -18,44 +18,57 @@ use crate::{
 /// [`Linter::new`].
 #[derive(Clone, Debug)]
 pub struct LinterConfig {
-    /// Provider rule catalogs to combine into the unified analysis catalog.
-    catalogs: Vec<RuleCatalog>,
+    rules: LinterRuleInputs,
     /// Host environment for global and global-object lookups.
     environment: Environment,
-    /// Baseline and per-rule overrides for the combined catalog.
-    selection: RuleSelection,
-    /// Optional catalog-bound selection prepared during an earlier validation.
-    prepared_selection: Option<PreparedRuleSelection>,
     /// Parser and semantic operation bounds.
     limits: AnalysisLimits,
+}
+
+#[derive(Clone, Debug)]
+enum LinterRuleInputs {
+    Unprepared {
+        /// Provider catalogs combined during linter construction.
+        catalogs: Vec<RuleCatalog>,
+        /// Baseline and per-rule overrides for the combined catalog.
+        selection: RuleSelection,
+    },
+    Prepared(PreparedRuleSelection),
 }
 
 impl LinterConfig {
     pub fn new(catalogs: Vec<RuleCatalog>, environment: Environment) -> Self {
         Self {
-            catalogs,
+            rules: LinterRuleInputs::Unprepared {
+                catalogs,
+                selection: RuleSelection::default(),
+            },
             environment,
-            selection: RuleSelection::default(),
-            prepared_selection: None,
             limits: AnalysisLimits::default(),
         }
     }
 
     #[must_use]
     pub fn with_rules(mut self, selection: RuleSelection) -> Self {
-        self.selection = selection;
-        self.prepared_selection = None;
+        let catalogs = match self.rules {
+            LinterRuleInputs::Unprepared { catalogs, .. } => catalogs,
+            LinterRuleInputs::Prepared(prepared) => {
+                let (catalog, _) = prepared.into_parts();
+                vec![catalog]
+            }
+        };
+        self.rules = LinterRuleInputs::Unprepared {
+            catalogs,
+            selection,
+        };
         self
     }
 
     /// Use a catalog-bound selection prepared by [`RuleSelection::prepare`].
-    /// The prepared catalog and indexes become authoritative; the catalogs
-    /// supplied to [`LinterConfig::new`] are retained only for the unprepared
-    /// construction path.
+    /// The prepared catalog and indexes become the sole rule configuration.
     #[must_use]
     pub fn with_prepared_rules(mut self, selection: PreparedRuleSelection) -> Self {
-        self.selection = selection.selection().clone();
-        self.prepared_selection = Some(selection);
+        self.rules = LinterRuleInputs::Prepared(selection);
         self
     }
 
@@ -66,7 +79,10 @@ impl LinterConfig {
     }
 
     pub fn selection(&self) -> &RuleSelection {
-        &self.selection
+        match &self.rules {
+            LinterRuleInputs::Unprepared { selection, .. } => selection,
+            LinterRuleInputs::Prepared(selection) => selection.selection(),
+        }
     }
 }
 
@@ -124,18 +140,22 @@ impl Linter {
     /// unified catalog (rejecting duplicate fully-qualified IDs), rule
     /// overrides are applied in declaration order, and limits are validated.
     pub fn new(config: LinterConfig) -> Result<Self, LintConfigError> {
-        let (catalog, enabled) = if let Some(prepared) = config.prepared_selection {
-            prepared.into_parts()
-        } else {
-            let catalog = RuleCatalog::combine(config.catalogs).map_err(|error| match error {
-                ProviderCatalogError::InvalidRule(id, diagnostic) => {
-                    LintConfigError::InvalidRule(id, diagnostic)
-                }
-                ProviderCatalogError::DuplicateRule(id) => LintConfigError::DuplicateRule(id),
-                ProviderCatalogError::InvalidRuleId(id) => LintConfigError::InvalidSelector(id),
-            })?;
-            let enabled = config.selection.resolve(&catalog)?;
-            (catalog, enabled)
+        let (catalog, enabled) = match config.rules {
+            LinterRuleInputs::Prepared(prepared) => prepared.into_parts(),
+            LinterRuleInputs::Unprepared {
+                catalogs,
+                selection,
+            } => {
+                let catalog = RuleCatalog::combine(catalogs).map_err(|error| match error {
+                    ProviderCatalogError::InvalidRule(id, diagnostic) => {
+                        LintConfigError::InvalidRule(id, diagnostic)
+                    }
+                    ProviderCatalogError::DuplicateRule(id) => LintConfigError::DuplicateRule(id),
+                    ProviderCatalogError::InvalidRuleId(id) => LintConfigError::InvalidSelector(id),
+                })?;
+                let enabled = selection.resolve(&catalog)?;
+                (catalog, enabled)
+            }
         };
 
         // Limits are guaranteed valid by construction through
