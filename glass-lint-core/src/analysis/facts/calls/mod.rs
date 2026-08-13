@@ -25,13 +25,8 @@ impl FactBuilder<'_, '_> {
                 self.call_result(call.span())
             };
             let args = self.args_info(&call.args);
-            if let Some(observation) = module_call {
-                self.emit(
-                    call.span(),
-                    FactPayload::Import {
-                        module: observation.into_module(),
-                    },
-                );
+            if let Some(module) = module_call {
+                self.emit(call.span(), FactPayload::Import { module });
             }
             self.emit(
                 call.span(),
@@ -73,13 +68,8 @@ impl FactBuilder<'_, '_> {
         self.visit_callee_children(callee_expr);
         call.args.visit_with(self);
         self.emit_call(call.span, resolved, &call.args, None);
-        if let Some(observation) = module_call {
-            self.emit(
-                call.span,
-                FactPayload::Import {
-                    module: observation.into_module(),
-                },
-            );
+        if let Some(module) = module_call {
+            self.emit(call.span, FactPayload::Import { module });
         }
     }
 

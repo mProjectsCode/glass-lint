@@ -47,7 +47,7 @@ the provenance owner remains responsible for budget and branch semantics.
 
 ### Module-call observation boundary
 
-#### [ ] READ-045 — Remove the non-semantic `ModuleCallObservation` wrapper
+#### [x] READ-045 — Remove the non-semantic `ModuleCallObservation` wrapper
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -73,6 +73,11 @@ current deterministic import-fact emission order for each call shape.
 **Audit disposition (2026-08-13):** Confirmed. Returning the existing optional
 module name removes representation-only plumbing while retaining the request
 side effect and call-shape distinction.
+
+**Fix Applied:** `observe_module_call` now returns the existing `Option<String>`
+from `record_module_request`; call emission consumes that value directly.
+`ModuleCallObservation` and `into_module` were removed, with wrapped `require`
+and import-fact ordering unchanged. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

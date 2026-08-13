@@ -80,16 +80,6 @@ struct FactProvenanceState {
     static_string_origins: HashMap<ValueId, ByteRange>,
 }
 
-pub(super) struct ModuleCallObservation {
-    module: String,
-}
-
-impl ModuleCallObservation {
-    fn into_module(self) -> String {
-        self.module
-    }
-}
-
 struct ProvenanceCheckpoint {
     instance: OriginCheckpoint,
     class: OriginCheckpoint,
@@ -528,11 +518,10 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
             .record_export_decl(declaration, self.resolver);
     }
 
-    pub(super) fn observe_module_call(&mut self, call: &CallExpr) -> Option<ModuleCallObservation> {
+    pub(super) fn observe_module_call(&mut self, call: &CallExpr) -> Option<String> {
         let request = recognize_module_call(call, self.resolver, ModuleRequestPolicy::interface())?;
         let span = self.byte_range(request.specifier_span())?;
-        let module = self.interface.record_module_request(span, &request)?;
-        Some(ModuleCallObservation { module })
+        self.interface.record_module_request(span, &request)
     }
 
     pub(super) fn record_named_export(&mut self, export: &NamedExport) {
