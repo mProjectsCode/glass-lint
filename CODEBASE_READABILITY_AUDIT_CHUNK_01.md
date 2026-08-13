@@ -14,7 +14,7 @@ and one module-call result wrapper adds no domain contract.
 
 ### Provenance state and fact-builder collaborators
 
-#### [ ] READ-044 — Route class-origin writes through `FactProvenanceState`
+#### [x] READ-044 — Route class-origin writes through `FactProvenanceState`
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -44,6 +44,10 @@ was marked applied, but the current raw write was reintroduced by the later
 **Audit disposition (2026-08-13):** Confirmed. The recommendation targets the
 single raw class-origin mutation and does not require exposing `OriginChannels`;
 the provenance owner remains responsible for budget and branch semantics.
+
+**Fix Applied:** Added `FactProvenanceState::record_class_origin` and routed
+class declaration writes through it, keeping origin maps private to the owner
+and preserving budgeted branch behavior. Verified with `make fmt && make ci`.
 
 ### Module-call observation boundary
 

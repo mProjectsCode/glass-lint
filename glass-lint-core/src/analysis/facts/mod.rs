@@ -176,6 +176,10 @@ impl FactProvenanceState {
         self.origins.instances.insert(value, origin, budget);
     }
 
+    fn record_class_origin(&mut self, value: ValueId, origin: Origin, budget: &SemanticBudget) {
+        self.origins.classes.insert(value, origin, budget);
+    }
+
     fn class_origin(&self, value: ValueId) -> Option<Origin> {
         self.origins.classes.get(value).cloned()
     }
