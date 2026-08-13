@@ -90,7 +90,7 @@ Verified with `make fmt && make ci`.
 
 ### Retained flow readiness boundary
 
-#### [ ] READ-055 — Decouple retained flow state from compiler IR
+#### [x] READ-055 — Decouple retained flow state from compiler IR
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -119,7 +119,10 @@ the `Configuration`, `AnySink`, and `AllSinks` semantics, invalid-index
 fail-closed behavior, 64-index bounds, deterministic evidence ordering, and
 the distinction between retained state and compiled matcher declarations.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added model-owned `FlowReadiness` with bounded requirement
+and sink completion modes/counts; compiler flows lower into that descriptor at
+the analysis boundary, and local/cross evidence no longer accepts compiler IR.
+Verified with `make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed with a minimality constraint.
 Introduce only the smallest model-owned readiness descriptor needed at the

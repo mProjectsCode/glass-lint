@@ -97,7 +97,8 @@ impl UsageProjector<'_, '_> {
                 stream.values().static_string(value)
             });
         let mut next = self.state.clone();
-        let mut transition = next.requirement_transition(self.flow);
+        let readiness = self.flow.readiness();
+        let mut transition = next.requirement_transition(readiness);
         for match_result in self.flow_plan.matching_property_requirements(
             self.context.state().flow_id(),
             property.map(SmolStr::as_str),
@@ -108,7 +109,7 @@ impl UsageProjector<'_, '_> {
                 transition = transition.merge(next.advance_requirement(
                     match_result.index(),
                     QualifiedEvent::new(self.context.module(), event),
-                    self.flow,
+                    readiness,
                 ));
             }
         }
@@ -133,7 +134,8 @@ impl UsageProjector<'_, '_> {
         let chain = shape.chain();
         let matcher = FlowMatchView::new(self.session.names, stream.values());
         let mut next = self.state.clone();
-        let mut transition = next.requirement_transition(self.flow);
+        let readiness = self.flow.readiness();
+        let mut transition = next.requirement_transition(readiness);
         for index in self.flow_plan.matching_member_requirement_indices(
             self.context.state().flow_id(),
             chain,
@@ -143,7 +145,7 @@ impl UsageProjector<'_, '_> {
             transition = transition.merge(next.advance_requirement(
                 index,
                 QualifiedEvent::new(self.context.module(), event),
-                self.flow,
+                readiness,
             ));
         }
         self.emit_requirements(&next, event, transition);
@@ -176,12 +178,13 @@ impl UsageProjector<'_, '_> {
             },
         );
         if !matching_sinks.is_empty() && self.context.is_crossed() {
-            let mut transition = self.state.sink_transition(self.flow);
+            let readiness = self.flow.readiness();
+            let mut transition = self.state.sink_transition(readiness);
             for index in matching_sinks {
                 transition = transition.merge(self.state.advance_sink(
                     index,
                     QualifiedEvent::new(self.context.module(), event),
-                    self.flow,
+                    readiness,
                 ));
             }
             if transition.is_ready() {

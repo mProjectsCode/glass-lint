@@ -4,7 +4,7 @@ use smallvec::SmallVec;
 
 use crate::{
     analysis::model::{fact::FactId, scope::FunctionId, value::ObjectId},
-    api::{classification::RuleIndex, compiler::CompiledObjectFlow},
+    api::classification::RuleIndex,
 };
 
 pub type FunctionTable<T> = glass_lint_datastructures::IndexTable<FunctionId, T>;
@@ -242,6 +242,75 @@ impl From<SinkIndex> for usize {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
+pub enum RequirementReadiness {
+    Any,
+    All,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
+pub enum SinkReadiness {
+    Configuration,
+    Any,
+    All,
+}
+
+/// Compiler-independent lifecycle completion policy lowered at the analysis
+/// boundary from matcher declarations.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
+pub struct FlowReadiness {
+    requirement_mode: RequirementReadiness,
+    requirement_count: usize,
+    sink_mode: SinkReadiness,
+    sink_count: usize,
+}
+
+impl FlowReadiness {
+    pub(crate) const fn new(
+        requirement_mode: RequirementReadiness,
+        requirement_count: usize,
+        sink_mode: SinkReadiness,
+        sink_count: usize,
+    ) -> Self {
+        Self {
+            requirement_mode,
+            requirement_count,
+            sink_mode,
+            sink_count,
+        }
+    }
+
+    fn requirements_ready(self, indices: impl IntoIterator<Item = usize>) -> bool {
+        Self::ready(
+            indices,
+            self.requirement_count,
+            self.requirement_mode == RequirementReadiness::All,
+        )
+    }
+
+    fn sinks_ready(self, indices: impl IntoIterator<Item = usize>) -> bool {
+        match self.sink_mode {
+            SinkReadiness::Configuration | SinkReadiness::Any => true,
+            SinkReadiness::All => Self::ready(indices, self.sink_count, true),
+        }
+    }
+
+    fn ready(indices: impl IntoIterator<Item = usize>, count: usize, all: bool) -> bool {
+        let mut seen = vec![false; count];
+        for index in indices {
+            let Some(slot) = seen.get_mut(index) else {
+                return false;
+            };
+            *slot = true;
+        }
+        if all {
+            seen.iter().all(|present| *present)
+        } else {
+            seen.iter().any(|present| *present)
+        }
+    }
+}
+
 trait EvidenceIndex: Copy + Ord + Hash + Into<usize> {}
 
 impl EvidenceIndex for RequirementIndex {}
@@ -416,8 +485,8 @@ impl<E: Clone + Ord> LifecycleEvidence<E> {
         self.requirements.restore(index, &events.0);
     }
 
-    pub(in crate::analysis) fn requirements_ready(&self, flow: &CompiledObjectFlow) -> bool {
-        flow.requirements_ready(
+    pub(in crate::analysis) fn requirements_ready(&self, readiness: FlowReadiness) -> bool {
+        readiness.requirements_ready(
             self.requirements
                 .iter_by_key()
                 .map(|(index, _)| index.get()),
@@ -432,8 +501,8 @@ impl<E: Clone + Ord> LifecycleEvidence<E> {
         self.sinks.remove_value(index, event)
     }
 
-    pub(in crate::analysis) fn sinks_ready(&self, flow: &CompiledObjectFlow) -> bool {
-        flow.sinks_ready(self.sinks.iter_by_key().map(|(index, _)| index.get()))
+    pub(in crate::analysis) fn sinks_ready(&self, readiness: FlowReadiness) -> bool {
+        readiness.sinks_ready(self.sinks.iter_by_key().map(|(index, _)| index.get()))
     }
 
     pub(in crate::analysis) fn requirement_entries(
@@ -556,8 +625,8 @@ impl FlowState {
         self.evidence.restore_requirement(index, events);
     }
 
-    pub fn is_ready(&self, flow: &CompiledObjectFlow) -> bool {
-        self.evidence.requirements_ready(flow)
+    pub(in crate::analysis) fn is_ready(&self, readiness: FlowReadiness) -> bool {
+        self.evidence.requirements_ready(readiness)
     }
 
     pub fn record_sink(&mut self, index: SinkIndex, event: FactId) -> bool {
@@ -568,8 +637,8 @@ impl FlowState {
         self.evidence.remove_sink_event(index, &event)
     }
 
-    pub fn sinks_ready(&self, flow: &CompiledObjectFlow) -> bool {
-        self.evidence.sinks_ready(flow)
+    pub(in crate::analysis) fn sinks_ready(&self, readiness: FlowReadiness) -> bool {
+        self.evidence.sinks_ready(readiness)
     }
 
     pub(crate) fn requirement_entries(

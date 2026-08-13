@@ -161,7 +161,9 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 let object = self.object_for(value)?;
                 let state = self.flow_state.state(object, flow_id)?;
                 let flow = self.inputs.plan.get(flow_id)?;
-                state.is_ready(flow).then_some((object, flow_id))
+                state
+                    .is_ready(flow.readiness())
+                    .then_some((object, flow_id))
             })
             .collect();
         for (object, flow_id) in ready {
@@ -174,11 +176,10 @@ impl ObjectFlowProjector<'_, '_, '_> {
         let Some(state) = state else {
             return;
         };
-        let ready = self
-            .inputs
-            .plan
-            .get(flow)
-            .is_some_and(|flow| state.is_ready(flow) && state.sinks_ready(flow));
+        let ready = self.inputs.plan.get(flow).is_some_and(|flow| {
+            let readiness = flow.readiness();
+            state.is_ready(readiness) && state.sinks_ready(readiness)
+        });
         if ready {
             self.emit_state(&state, sink_fact);
         }
@@ -191,7 +192,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             return;
         };
         let ready = self.inputs.plan.get(flow).is_some_and(|f| {
-            f.completion_mode() == CompletionMode::Configuration && state.is_ready(f)
+            f.completion_mode() == CompletionMode::Configuration && state.is_ready(f.readiness())
         });
         if !ready {
             return;

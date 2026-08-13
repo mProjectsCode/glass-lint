@@ -3,16 +3,21 @@ use std::{ops::Range, slice::Iter};
 use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
-use crate::api::{
-    compiler::{
-        normalized::{
-            CanonicalArgumentConstraints, NormalizedEvent, NormalizedLifecycle,
-            NormalizedLifecycleCompletion, NormalizedLifecycleCondition, NormalizedLifecycleEvent,
-            NormalizedLifecycleSink,
+use crate::{
+    analysis::model::flow::{FlowReadiness, RequirementReadiness, SinkReadiness},
+    api::{
+        compiler::{
+            normalized::{
+                CanonicalArgumentConstraints, NormalizedEvent, NormalizedLifecycle,
+                NormalizedLifecycleCompletion, NormalizedLifecycleCondition,
+                NormalizedLifecycleEvent, NormalizedLifecycleSink,
+            },
+            validate::{LifecycleSource, SubjectRelationError, classify_lifecycle_source},
         },
-        validate::{LifecycleSource, SubjectRelationError, classify_lifecycle_source},
+        rule::{
+            ArgumentIndex, ArgumentMatcher, ValueMatcher, query::lifecycle::LifecycleCallTarget,
+        },
     },
-    rule::{ArgumentIndex, ArgumentMatcher, ValueMatcher, query::lifecycle::LifecycleCallTarget},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -46,20 +51,6 @@ impl RequirementMode {
             ),
         }
     }
-
-    fn ready(self, indices: impl IntoIterator<Item = usize>, count: usize) -> bool {
-        let mut seen = vec![false; count];
-        for index in indices {
-            let Some(slot) = seen.get_mut(index) else {
-                return false;
-            };
-            *slot = true;
-        }
-        match self {
-            Self::AllRequired => seen.iter().all(|present| *present),
-            Self::AnyRequired => seen.iter().any(|present| *present),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -87,23 +78,6 @@ impl CompletionMode {
                 .collect(),
         }
     }
-
-    fn ready(self, indices: impl IntoIterator<Item = usize>, count: usize) -> bool {
-        if self == Self::Configuration {
-            return true;
-        }
-        let mut seen = vec![false; count];
-        for index in indices {
-            let Some(slot) = seen.get_mut(index) else {
-                return false;
-            };
-            *slot = true;
-        }
-        match self {
-            Self::AllSinks => seen.iter().all(|present| *present),
-            Self::AnySink | Self::Configuration => true,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -117,17 +91,24 @@ pub(crate) struct CompiledObjectFlow {
 }
 
 impl CompiledObjectFlow {
+    pub(crate) fn readiness(&self) -> FlowReadiness {
+        FlowReadiness::new(
+            match self.requirement_mode {
+                RequirementMode::AllRequired => RequirementReadiness::All,
+                RequirementMode::AnyRequired => RequirementReadiness::Any,
+            },
+            self.requirement_count(),
+            match self.completion_mode {
+                CompletionMode::Configuration => SinkReadiness::Configuration,
+                CompletionMode::AnySink => SinkReadiness::Any,
+                CompletionMode::AllSinks => SinkReadiness::All,
+            },
+            self.sink_count(),
+        )
+    }
+
     pub fn evidence_symbol(&self) -> &SmolStr {
         &self.symbol
-    }
-
-    pub(crate) fn requirements_ready(&self, indices: impl IntoIterator<Item = usize>) -> bool {
-        self.requirement_mode
-            .ready(indices, self.requirement_count())
-    }
-
-    pub(crate) fn sinks_ready(&self, indices: impl IntoIterator<Item = usize>) -> bool {
-        self.completion_mode.ready(indices, self.sink_count())
     }
 
     pub(crate) fn sources(&self) -> impl Iterator<Item = &CompiledObjectSource> {

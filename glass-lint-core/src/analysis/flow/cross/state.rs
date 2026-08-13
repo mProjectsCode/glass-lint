@@ -9,12 +9,11 @@ use crate::{
         facts::FactId,
         flow::effect::{EffectArgument, FunctionEffect, ParameterRef},
         model::{
-            flow::{FlowId, LifecycleEvidence, RequirementIndex, SinkIndex},
+            flow::{FlowId, FlowReadiness, LifecycleEvidence, RequirementIndex, SinkIndex},
             scope::FunctionId,
             value::ValueId,
         },
     },
-    api::compiler::CompiledObjectFlow,
     project::ModuleId,
 };
 
@@ -110,32 +109,28 @@ impl CrossFlowState {
         &mut self,
         index: RequirementIndex,
         event: QualifiedEvent,
-        flow: &CompiledObjectFlow,
+        readiness: FlowReadiness,
     ) -> EvidenceTransition {
         let recorded = self.evidence.record_requirement(index, event);
-        self.classify_requirement(recorded, flow)
+        self.classify_requirement(recorded, readiness)
     }
 
     pub(super) fn advance_sink(
         &mut self,
         index: SinkIndex,
         event: QualifiedEvent,
-        flow: &CompiledObjectFlow,
+        readiness: FlowReadiness,
     ) -> EvidenceTransition {
         let recorded = self.evidence.record_sink(index, event);
-        self.classify_sink(recorded, flow)
+        self.classify_sink(recorded, readiness)
     }
 
-    pub(super) fn requirement_transition(&self, flow: &CompiledObjectFlow) -> EvidenceTransition {
-        self.classify_requirement(false, flow)
+    pub(super) fn requirement_transition(&self, readiness: FlowReadiness) -> EvidenceTransition {
+        self.classify_requirement(false, readiness)
     }
 
-    fn classify_requirement(
-        &self,
-        recorded: bool,
-        flow: &CompiledObjectFlow,
-    ) -> EvidenceTransition {
-        if self.evidence.requirements_ready(flow) {
+    fn classify_requirement(&self, recorded: bool, readiness: FlowReadiness) -> EvidenceTransition {
+        if self.evidence.requirements_ready(readiness) {
             EvidenceTransition::Ready
         } else if recorded {
             EvidenceTransition::Advanced
@@ -144,8 +139,8 @@ impl CrossFlowState {
         }
     }
 
-    pub(super) fn sink_transition(&self, flow: &CompiledObjectFlow) -> EvidenceTransition {
-        self.classify_sink(false, flow)
+    pub(super) fn sink_transition(&self, readiness: FlowReadiness) -> EvidenceTransition {
+        self.classify_sink(false, readiness)
     }
 
     #[cfg(test)]
@@ -162,10 +157,10 @@ impl CrossFlowState {
         self.evidence.record_sink(index, event);
     }
 
-    fn classify_sink(&self, recorded: bool, flow: &CompiledObjectFlow) -> EvidenceTransition {
+    fn classify_sink(&self, recorded: bool, readiness: FlowReadiness) -> EvidenceTransition {
         if self.source.is_some()
-            && self.evidence.requirements_ready(flow)
-            && self.evidence.sinks_ready(flow)
+            && self.evidence.requirements_ready(readiness)
+            && self.evidence.sinks_ready(readiness)
         {
             EvidenceTransition::Ready
         } else if recorded {
