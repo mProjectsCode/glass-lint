@@ -73,11 +73,11 @@ impl Resolver<'_> {
         value: ConstValue,
         binding: Option<BindingKey>,
     ) -> ValueId {
-        let value = match value {
-            ConstValue::Unknown => Value::Unknown,
-            ConstValue::String(value) => Value::StaticString(value),
-            ConstValue::NonNegativeInteger(value) => Value::StaticNumber(value),
-            ConstValue::Array(values) => Value::StaticArray(
+        let construction = match value {
+            ConstValue::Unknown => ValueConstruction::Unknown,
+            ConstValue::String(value) => ValueConstruction::StaticString(value),
+            ConstValue::NonNegativeInteger(value) => ValueConstruction::StaticNumber(value),
+            ConstValue::Array(values) => ValueConstruction::StaticArray(
                 values
                     .into_iter()
                     .map(|value| self.intern_bounded_const_value(value, None))
@@ -97,13 +97,6 @@ impl Resolver<'_> {
                     binding,
                 );
             }
-        };
-        let construction = match value {
-            Value::Unknown => ValueConstruction::Unknown,
-            Value::StaticString(value) => ValueConstruction::StaticString(value),
-            Value::StaticNumber(value) => ValueConstruction::StaticNumber(value),
-            Value::StaticArray(values) => ValueConstruction::StaticArray(values),
-            _ => unreachable!("constant conversion produced a non-constant value"),
         };
         self.values.intern_construction(construction, binding)
     }

@@ -105,7 +105,7 @@ position-sensitive keys are unchanged. Verified with `make fmt && make ci`.
 
 ### Value-arena construction
 
-#### [ ] READ-019 — Constant interning constructs a `Value` only to convert it back
+#### [x] READ-019 — Constant interning constructs a `Value` only to convert it back
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -127,7 +127,10 @@ shared construction mapping behind the value-table owner. Preserve bounded
 constant conversion, recursive child interning, optional binding identity, and
 unknown/exhausted results.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Mapped admitted constants directly to `ValueConstruction`,
+removing the temporary `Value` round trip while retaining the dedicated
+static-object/name-table branch and arena interning behavior. Verified with
+`make fmt && make ci`.
 
 ## Systemic Themes
 
