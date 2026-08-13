@@ -864,7 +864,7 @@ mod tests {
             .with_arg(0, ValueMatcher::static_string().try_equals("val").unwrap());
         let s = s.unwrap();
         assert_eq!(s.constraints().len(), 1);
-        assert_eq!(s.constraints()[0].index(), 0);
+        assert_eq!(s.constraints()[0].arg_index().get(), 0);
     }
 
     #[test]

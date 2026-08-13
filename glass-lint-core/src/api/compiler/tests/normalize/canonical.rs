@@ -40,8 +40,8 @@ fn reversed_argument_orders_normalize_equally() {
         NormalizedRoot::Event(ev) => {
             let flat = ev.arguments.to_flat_vec();
             assert_eq!(flat.len(), 2);
-            assert_eq!(flat[0].index(), 0);
-            assert_eq!(flat[1].index(), 1);
+            assert_eq!(flat[0].arg_index().get(), 0);
+            assert_eq!(flat[1].arg_index().get(), 1);
         }
         other => panic!("expected Event, got {other:?}"),
     }

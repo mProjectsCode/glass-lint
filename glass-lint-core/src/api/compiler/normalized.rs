@@ -97,8 +97,8 @@ impl CanonicalArgumentConstraints {
     pub(crate) fn from_constraints(raw: &[ArgumentConstraint]) -> Self {
         let mut raw = raw.to_vec();
         raw.sort_by(|a, b| {
-            a.index()
-                .cmp(&b.index())
+            a.arg_index()
+                .cmp(&b.arg_index())
                 .then_with(|| a.predicate().cmp(b.predicate()))
         });
         raw.dedup();

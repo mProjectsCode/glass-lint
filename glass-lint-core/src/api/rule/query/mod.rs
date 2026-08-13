@@ -639,7 +639,7 @@ fn append_constraints(mut description: String, constraints: &[ArgumentConstraint
             .map(|constraint| {
                 format!(
                     "argument {} matches {}",
-                    constraint.index(),
+                    constraint.arg_index().get(),
                     explain_argument_matcher(constraint.predicate())
                 )
             })

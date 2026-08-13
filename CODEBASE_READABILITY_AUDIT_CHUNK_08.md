@@ -17,7 +17,7 @@ property names bypass the API’s normal canonicalization.
 
 ### Argument-index API
 
-#### [ ] READ-067 — Keep `ArgumentConstraint` argument positions semantic
+#### [x] READ-067 — Keep `ArgumentConstraint` argument positions semantic
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -39,7 +39,10 @@ the duplicate primitive method, updating display/sorting/grouping code to call
 through `usize`-accepting query methods, and all compiler normalization and
 reference behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the duplicate primitive `ArgumentConstraint::index`
+accessor. Callers now retain `ArgumentIndex` and call `.get()` only when
+rendering or crossing a raw-index boundary. Verified with `make fmt && make
+ci`.
 
 **Audit disposition (2026-08-13):** Confirmed. Keep `ArgumentIndex` through
 compiler code and unwrap only at genuine raw-index boundaries.

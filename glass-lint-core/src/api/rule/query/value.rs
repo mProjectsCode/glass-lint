@@ -283,10 +283,6 @@ impl ArgumentConstraint {
         }
     }
 
-    pub fn index(&self) -> usize {
-        self.index.get()
-    }
-
     pub fn arg_index(&self) -> ArgumentIndex {
         self.index
     }
@@ -486,7 +482,7 @@ mod tests {
     fn argument_constraint_new_holds_index_and_matcher() {
         let m = ArgumentMatcher::object_keys(["k"]).unwrap();
         let c = ArgumentConstraint::new(ArgumentIndex::new_unchecked(2), m);
-        assert_eq!(c.index(), 2);
+        assert_eq!(c.arg_index().get(), 2);
         assert!(matches!(
             c.predicate().kind(),
             ArgumentMatcherKind::ObjectKeys(_)
