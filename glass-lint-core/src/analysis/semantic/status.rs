@@ -26,6 +26,21 @@ pub enum ResolutionKind {
     OutsideProject,
 }
 
+impl ResolutionKind {
+    fn diagnostic(self) -> (DiagnosticKind, &'static str) {
+        match self {
+            Self::Unsupported => (
+                DiagnosticKind::UnsupportedProjectTarget,
+                "is not an analyzable project target",
+            ),
+            Self::OutsideProject => (
+                DiagnosticKind::OutsideProjectTarget,
+                "resolves outside the project",
+            ),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum IncompleteReason {
     InvalidParserSpan,
@@ -243,14 +258,7 @@ impl IncompleteReason {
                 "CommonJS export shape is dynamic or ambiguous".into(),
             ),
             Self::UnsupportedResolution { request, kind } => {
-                let text = match kind {
-                    ResolutionKind::Unsupported => "is not an analyzable project target",
-                    ResolutionKind::OutsideProject => "resolves outside the project",
-                };
-                let code = match kind {
-                    ResolutionKind::Unsupported => DiagnosticKind::UnsupportedProjectTarget,
-                    ResolutionKind::OutsideProject => DiagnosticKind::OutsideProjectTarget,
-                };
+                let (code, text) = kind.diagnostic();
                 (code, format!("module request `{request}` {text}"))
             }
             Self::MissingInternalResolution { request } => (

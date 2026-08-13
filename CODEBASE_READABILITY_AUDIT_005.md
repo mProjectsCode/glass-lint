@@ -101,7 +101,7 @@ operation budgets. Verified with `make fmt && make ci`.
 
 ### Scoped completeness diagnostics
 
-#### [ ] READ-023 — Resolution diagnostics match the same enum twice
+#### [x] READ-023 — Resolution diagnostics match the same enum twice
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -122,7 +122,9 @@ helpers already demonstrate the single-owner mapping pattern.
 the distinct unsupported-versus-outside-project codes and the deterministic
 diagnostic message.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the owner-level `ResolutionKind::diagnostic` mapping
+and used it for both diagnostic code and message text, removing duplicate
+dispatch in status formatting. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 
