@@ -80,7 +80,7 @@ the later fallback lifecycle.
 
 ### Argument value resolution
 
-#### [ ] READ-061 — Reuse one resolved value during constrained argument matching
+#### [x] READ-061 — Reuse one resolved value during constrained argument matching
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -108,6 +108,11 @@ operation charge per prepared argument group. Avoid cloning values or exposing
 
 **Audit disposition (2026-08-13):** Confirmed. Reuse must stay inside the
 matcher/value-table boundary; do not clone values or broaden the table API.
+
+**Fix Applied:** `argument_with_overlay` now retains the single terminal
+`Value` lookup and passes it to local static-string fallback. Result-identity,
+module-identity, local-value precedence, object/rooted projections, and
+operation charging are unchanged. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

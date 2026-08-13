@@ -142,11 +142,14 @@ impl<'a> EffectiveIdentityResolver<'a> {
         &'b self,
         value: ValueId,
         provenance: &SymbolCallProvenance,
-        values: &'b ValueTable,
+        local_value: Option<&'b Value>,
     ) -> Option<&'b str> {
         self.effective_identity(value, provenance)
             .and_then(ExportResolution::static_string_value)
-            .or_else(|| values.static_string(value))
+            .or_else(|| match local_value? {
+                Value::StaticString(value) => Some(value.as_str()),
+                _ => None,
+            })
     }
 
     fn call_provenance(&self, raw: &SymbolCallProvenance, callee: ValueId) -> SymbolCallProvenance {
@@ -234,7 +237,8 @@ impl<'a> MatcherEvaluator<'a> {
         argument: &'b CallArgInfo,
     ) -> ArgumentView<'b> {
         let mut view = ArgumentView::new(argument);
-        let (object, rooted_chain) = match self.values.resolve(argument.value) {
+        let value = self.values.resolve(argument.value);
+        let (object, rooted_chain) = match value {
             Some(Value::StaticObject(object)) => (Some(object), None),
             Some(Value::RootedMember { path }) => (None, Some(path)),
             _ => (None, None),
@@ -244,7 +248,7 @@ impl<'a> MatcherEvaluator<'a> {
             .with_rooted_chain(rooted_chain);
         if let Some(value) =
             self.identity
-                .static_string(argument.value, &argument.provenance, self.values)
+                .static_string(argument.value, &argument.provenance, value)
         {
             view = view.with_static_string(value);
         }
