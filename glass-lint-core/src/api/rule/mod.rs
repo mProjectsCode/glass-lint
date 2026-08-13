@@ -33,6 +33,12 @@ impl<E> FirstError<E> {
     }
 }
 
+fn record_first_error<E>(slot: &mut FirstError<E>, result: Result<(), E>) {
+    if let Err(error) = result {
+        slot.record(error);
+    }
+}
+
 pub use error::{
     CompiledCatalogError, CompilerInvariantDiagnostic, MatcherBuildError, PhysicalPlanDiagnostic,
     RuleBuildError,
@@ -265,9 +271,7 @@ pub struct CatalogRuleBuilder {
 impl CatalogRuleBuilder {
     #[must_use]
     pub fn query(mut self, query: impl IntoQueryDecl) -> Self {
-        if let Err(error) = self.inner.try_add_query(query) {
-            self.first_query_error.record(error);
-        }
+        record_first_error(&mut self.first_query_error, self.inner.try_add_query(query));
         self
     }
 

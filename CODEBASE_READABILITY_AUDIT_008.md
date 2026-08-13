@@ -84,7 +84,7 @@ Verified with `make fmt && make ci`.
 
 ### Immediate and deferred builder APIs
 
-#### [ ] READ-037 — Immediate and deferred rule/lifecycle builders duplicate the same mutation state machine
+#### [x] READ-037 — Immediate and deferred rule/lifecycle builders duplicate the same mutation state machine
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -112,7 +112,11 @@ duplicate-metadata diagnostics, and the existing provider-facing method names;
 remove duplicated forwarding/state-machine logic rather than introducing a
 second compatibility layer.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deferred rule and lifecycle adapters now share small
+first-error operation recorders around the same validated mutation methods.
+Immediate builders continue to return errors, while catalog builders retain
+the first error; mutation and validation state remain owned by the underlying
+builder. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

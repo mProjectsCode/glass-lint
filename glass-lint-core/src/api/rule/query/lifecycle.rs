@@ -708,24 +708,27 @@ impl CatalogLifecycleQueryBuilder {
         self.invalid_operation.record(error);
     }
 
-    pub fn source<S: IntoLifecycleSource>(mut self, source: S) -> Self {
-        if let Err(error) = self.stages.try_source(source) {
+    fn record_operation(&mut self, result: Result<(), QueryBuildError>) {
+        if let Err(error) = result {
             self.record_error(error);
         }
+    }
+
+    pub fn source<S: IntoLifecycleSource>(mut self, source: S) -> Self {
+        let result = self.stages.try_source(source);
+        self.record_operation(result);
         self
     }
 
     pub fn condition<C: IntoLifecycleCondition>(mut self, condition: C) -> Self {
-        if let Err(error) = self.stages.try_condition(condition) {
-            self.record_error(error);
-        }
+        let result = self.stages.try_condition(condition);
+        self.record_operation(result);
         self
     }
 
     pub fn completion<C: IntoLifecycleCompletion>(mut self, completion: C) -> Self {
-        if let Err(error) = self.stages.try_completion(completion) {
-            self.record_error(error);
-        }
+        let result = self.stages.try_completion(completion);
+        self.record_operation(result);
         self
     }
 
