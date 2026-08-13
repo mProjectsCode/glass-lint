@@ -151,7 +151,7 @@ predicate. Verified with `make fmt && make ci`.
 
 ### Single-module test API
 
-#### [ ] READ-066 — Remove unused source arguments from the single-project fixture
+#### [x] READ-066 — Remove unused source arguments from the single-project fixture
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -175,6 +175,11 @@ single-module owner-token tests, and leave production linking APIs unchanged.
 
 **Audit disposition (2026-08-13):** Confirmed. This removes discarded test
 setup only and leaves production linking boundaries untouched.
+
+**Fix Applied:** The test-only single-module constructor now accepts only the
+`LocalArtifact` (plus limits in its internal helper); both callers retain the
+source context solely inside the artifact they pass. Production linking APIs
+are unchanged. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

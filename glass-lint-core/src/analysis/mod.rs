@@ -114,14 +114,9 @@ mod tests {
             "fetch('/remote'); document.createElement('div');",
         )
         .unwrap();
-        let project = ProjectSemanticModel::single(
-            "projection-invariant.js",
-            LocatedSourceContext::new(&source),
-            LocalArtifact::from_analyzed(AnalyzedSource::new(
-                LocatedSourceContext::new(&source),
-                Arc::new(local),
-            )),
-        );
+        let project = ProjectSemanticModel::single(LocalArtifact::from_analyzed(
+            AnalyzedSource::new(LocatedSourceContext::new(&source), Arc::new(local)),
+        ));
         let before = format!(
             "{:?}",
             project
@@ -189,14 +184,10 @@ mod tests {
             environment.add_global("fetch").unwrap();
             let local = SemanticAnalyzer::new(&environment, &AnalysisLimits::default())
                 .analyze_program(&parsed.program, &coordinates);
-            ProjectSemanticModel::single(
-                path,
+            ProjectSemanticModel::single(LocalArtifact::from_analyzed(AnalyzedSource::new(
                 LocatedSourceContext::new(&source),
-                LocalArtifact::from_analyzed(AnalyzedSource::new(
-                    LocatedSourceContext::new(&source),
-                    Arc::new(local),
-                )),
-            )
+                Arc::new(local),
+            )))
         }
 
         let first = project("fetch('/first');", "first.js");

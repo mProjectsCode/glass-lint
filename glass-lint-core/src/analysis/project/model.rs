@@ -253,21 +253,12 @@ impl ProjectSemanticModel {
 
     /// Create a project model for one already analyzed source without linking.
     #[cfg(test)]
-    pub fn single(
-        path: impl Into<String>,
-        source: crate::analysis::LocatedSourceContext,
-        local: LocalArtifact,
-    ) -> Self {
-        Self::single_with_limits(path, source, local, &crate::AnalysisLimits::default())
+    pub fn single(local: LocalArtifact) -> Self {
+        Self::single_with_limits(local, &crate::AnalysisLimits::default())
     }
 
     #[cfg(test)]
-    fn single_with_limits(
-        _path: impl Into<String>,
-        _source: crate::analysis::LocatedSourceContext,
-        local: LocalArtifact,
-        limits: &crate::AnalysisLimits,
-    ) -> Self {
+    fn single_with_limits(local: LocalArtifact, limits: &crate::AnalysisLimits) -> Self {
         let status = local.status().clone();
         Self {
             linked: LinkedProjectState {
