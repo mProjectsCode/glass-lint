@@ -82,6 +82,13 @@ impl SpanNormalizer {
             .byte_range_from_offsets(offset, end)
             .map_err(|_| InvalidParserSpan)
     }
+
+    fn into_source_context(
+        self,
+        path: crate::project::ProjectRelativePath,
+    ) -> LocatedSourceContext {
+        LocatedSourceContext::with_index(path, self.lines)
+    }
 }
 
 impl Default for SpanNormalizer {
@@ -173,7 +180,7 @@ impl<'a> SemanticAnalyzer<'a> {
         let semantic = self.analyze_program(&parsed.program, &coordinates);
 
         Ok(AnalyzedSource::new(
-            LocatedSourceContext::new(source),
+            coordinates.into_source_context(source.path().clone()),
             Arc::new(semantic),
         ))
     }

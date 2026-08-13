@@ -99,6 +99,7 @@ pub struct LocatedSourceContext {
 }
 
 impl LocatedSourceContext {
+    #[cfg(test)]
     pub(crate) fn new(source: &SourceFile) -> Self {
         Self {
             path: source.path().clone(),

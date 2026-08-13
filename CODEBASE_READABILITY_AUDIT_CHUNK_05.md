@@ -15,7 +15,7 @@ other failures, and local cache tests repeat the same raw artifact fixture.
 
 ### Source-coordinate ownership
 
-#### [ ] READ-056 — Reuse the span normalizer’s source-line index
+#### [x] READ-056 — Reuse the span normalizer’s source-line index
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -46,6 +46,11 @@ line-index sharing across cached artifacts, and deterministic locations.
 **Audit disposition (2026-08-13):** Confirmed. Reuse the normalizer-owned
 index through a narrow conversion boundary; do not expose parser internals or
 change cache reattachment ownership.
+
+**Fix Applied:** `SpanNormalizer` now transfers its existing line-index `Arc`
+through a private source-context conversion, and `analyze_source` uses the
+source path with that index. The standalone constructor is test-only; cache
+reattachment remains unchanged. Verified with `make fmt && make ci`.
 
 ### Semantic completion policy
 
