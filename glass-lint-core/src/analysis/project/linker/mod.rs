@@ -95,24 +95,19 @@ impl ProjectLinker {
     // -----------------------------------------------------------------------
 
     pub(super) fn propagate_local_status(&mut self) {
-        let ids: Vec<ModuleId> = self.modules.keys().copied().collect();
-        for id in ids {
-            let (file_status, path, unknown) = {
-                let Some(module) = self.modules.get(&id) else {
-                    continue;
-                };
-                (
-                    module
-                        .local()
-                        .status()
-                        .materialize_local_file(module.path()),
-                    module.path().clone(),
-                    module.local().interface().is_unknown(),
-                )
-            };
-            self.status.extend(&file_status);
+        let Self {
+            modules, status, ..
+        } = self;
+        for module in modules.values() {
+            let file_status = module
+                .local()
+                .status()
+                .materialize_local_file(module.path());
+            let path = module.path().clone();
+            let unknown = module.local().interface().is_unknown();
+            status.extend(&file_status);
             if unknown {
-                self.status.record(
+                status.record(
                     crate::analysis::semantic::status::StatusScope::File(path),
                     crate::analysis::semantic::status::IncompleteReason::UnsupportedModuleInterface {
                         kind: crate::analysis::semantic::status::ModuleInterfaceKind::CommonJsExports,

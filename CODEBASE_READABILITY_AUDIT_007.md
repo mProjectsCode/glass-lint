@@ -14,7 +14,7 @@ boundaries, and duplicated state representations at graph/result boundaries.
 
 ### Project-linking state and resource ownership
 
-#### [ ] READ-029 — Status propagation materializes module IDs only to reacquire the modules
+#### [x] READ-029 — Status propagation materializes module IDs only to reacquire the modules
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -36,7 +36,10 @@ walk. Preserve deterministic `BTreeMap` order, per-file materialized status,
 and the separate unsupported-interface diagnostic for unknown CommonJS
 interfaces; only the ID vector and re-lookup should disappear.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Propagation now walks linker module values directly with
+disjoint module/status borrows, removing the intermediate ID vector and
+re-lookup pass while preserving deterministic order and diagnostics. Verified
+with `make fmt && make ci`.
 
 #### [ ] READ-030 — Export lookup-cache capacity is supplied by unrelated phase limits
 
