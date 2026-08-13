@@ -113,7 +113,8 @@ fn fact_builder_reuses_names_collected_by_scope_pass() {
         new Constructor({ option: result });
     ";
     let parsed = crate::parse_test_source(source, "name-reuse.js").expect("source should parse");
-    let mut resolver = Resolver::collect(&parsed.program, source);
+    let budget = crate::analysis::SemanticBudget::default();
+    let mut resolver = Resolver::collect(&parsed.program, source, &budget);
     let before = resolver
         .name_snapshot()
         .iter()
@@ -295,7 +296,8 @@ fn import_fact_is_emitted() {
 fn string_literal_fact_is_emitted() {
     let src = r#"const x = "hello";"#;
     let parsed = crate::parse_test_source(src, "str.js").expect("source should parse");
-    let mut resolver = Resolver::collect(&parsed.program, src);
+    let budget = crate::analysis::SemanticBudget::default();
+    let mut resolver = Resolver::collect(&parsed.program, src, &budget);
     let mut builder = FactBuilder::new(&mut resolver);
     parsed.program.visit_with(&mut builder);
     let stream = builder.into_stream();

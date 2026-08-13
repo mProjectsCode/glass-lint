@@ -481,8 +481,9 @@ mod tests {
     fn stream(source: &str, environment: &Environment) -> FactStream<Frozen> {
         let parsed = crate::parse_test_source(source, "constrained.js").unwrap();
         let coordinates = SpanNormalizer::new(parsed.source_start, &SourceText::from(source));
+        let budget = crate::analysis::SemanticBudget::default();
         let mut resolver =
-            Resolver::collect_with_environment(&parsed.program, environment, coordinates);
+            Resolver::collect_with_environment(&parsed.program, environment, coordinates, &budget);
         build_test_stream(&parsed.program, &mut resolver)
     }
 

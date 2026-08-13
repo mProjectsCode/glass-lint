@@ -255,41 +255,43 @@ impl Resolver<'_> {
     }
 
     #[cfg(test)]
-    pub(in crate::analysis) fn collect(program: &Program, source: &str) -> Resolver<'static> {
+    pub(in crate::analysis) fn collect<'a>(
+        program: &Program,
+        source: &str,
+        budget: &'a SemanticBudget,
+    ) -> Resolver<'a> {
         Self::collect_with_environment(
             program,
             &test_environment(),
             SpanNormalizer::for_program(program, source),
+            budget,
         )
     }
 
     #[cfg(test)]
-    pub(in crate::analysis) fn collect_with_environment(
+    pub(in crate::analysis) fn collect_with_environment<'a>(
         program: &Program,
         environment: &Environment,
         coordinates: SpanNormalizer,
-    ) -> Resolver<'static> {
+        budget: &'a SemanticBudget,
+    ) -> Resolver<'a> {
         use crate::analysis::syntax::name::MAX_NAMES;
 
-        Self::collect_with_name_limit(program, environment, coordinates, MAX_NAMES)
+        Self::collect_with_name_limit(program, environment, coordinates, MAX_NAMES, budget)
     }
 
     #[cfg(test)]
-    pub(in crate::analysis) fn collect_with_name_limit(
+    pub(in crate::analysis) fn collect_with_name_limit<'a>(
         program: &Program,
         environment: &Environment,
         coordinates: SpanNormalizer,
         name_limit: usize,
-    ) -> Resolver<'static> {
-        let budget = SemanticBudget::default();
+        budget: &'a SemanticBudget,
+    ) -> Resolver<'a> {
         let names = NameTable::with_max_entries(name_limit);
-        let scoped = ScopeGraph::collect_scoped_program(program, environment, names, &budget);
+        let scoped = ScopeGraph::collect_scoped_program(program, environment, names, budget);
         let ScopedProgram { graph, .. } = scoped;
-        Self::new(
-            graph,
-            coordinates,
-            Box::leak(Box::new(SemanticBudget::default())),
-        )
+        Self::new(graph, coordinates, budget)
     }
 
     /// Build a resolver with an externally-owned name table.
@@ -393,12 +395,9 @@ impl Resolver<'_> {
     pub(super) fn new_for_test(
         scopes: FrozenScopeGraph,
         coordinates: SpanNormalizer,
-    ) -> Resolver<'static> {
-        Self::new(
-            scopes,
-            coordinates,
-            Box::leak(Box::new(SemanticBudget::default())),
-        )
+        budget: &SemanticBudget,
+    ) -> Resolver<'_> {
+        Self::new(scopes, coordinates, budget)
     }
 }
 

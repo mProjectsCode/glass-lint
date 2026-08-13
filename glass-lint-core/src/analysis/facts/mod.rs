@@ -588,7 +588,8 @@ pub fn build_test_stream<'a>(
 #[cfg(test)]
 pub fn build_test_facts(source: &str, filename: &str) -> FactStream<Frozen> {
     let parsed = crate::parse_test_source(source, filename).expect("source should parse");
-    let mut resolver = Resolver::collect(&parsed.program, source);
+    let budget = crate::analysis::SemanticBudget::default();
+    let mut resolver = Resolver::collect(&parsed.program, source, &budget);
     build_test_stream(&parsed.program, &mut resolver)
 }
 
@@ -915,7 +916,8 @@ mod stream_tests {
             a.push(3);
         "#;
         let parsed = crate::parse_test_source(src, "char-index.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program, src);
+        let budget = crate::analysis::SemanticBudget::default();
+        let mut resolver = Resolver::collect(&parsed.program, src, &budget);
 
         let mut builder = FactBuilder::new(&mut resolver);
         swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
@@ -962,7 +964,8 @@ mod stream_tests {
             fetch.apply(null, ['/api']);
         ";
         let parsed = crate::parse_test_source(src, "unwrap.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program, src);
+        let budget = crate::analysis::SemanticBudget::default();
+        let mut resolver = Resolver::collect(&parsed.program, src, &budget);
 
         let mut builder = FactBuilder::new(&mut resolver);
         swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);

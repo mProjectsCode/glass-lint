@@ -15,7 +15,8 @@ use crate::analysis::{
 fn unknown_value_keeps_unsupported_and_exhausted_distinct() {
     let names = NameTable::default();
     let scopes = ScopeGraph::create_for_test(names).freeze();
-    let resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
+    let budget = SemanticBudget::default();
+    let resolver = Resolver::new_for_test(scopes, SpanNormalizer::default(), &budget);
     assert_eq!(
         resolver.call_provenance_for_value(ValueId::UNKNOWN),
         SymbolCallProvenance::Unknown(UnknownReason::Unsupported)
@@ -52,7 +53,8 @@ fn unknown_value_keeps_unsupported_and_exhausted_distinct() {
 fn const_value_follows_binding_chain_to_static_values() {
     let names = NameTable::default();
     let scopes = ScopeGraph::create_for_test(names).freeze();
-    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
+    let budget = SemanticBudget::default();
+    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default(), &budget);
 
     let inner = resolver.values.intern(Value::StaticString("hello".into()));
     let key = crate::analysis::model::scope::BindingKey::new(
@@ -70,7 +72,8 @@ fn const_value_follows_binding_chain_to_static_values() {
 fn const_value_materializes_static_arrays_with_nested_bindings() {
     let names = NameTable::default();
     let scopes = ScopeGraph::create_for_test(names).freeze();
-    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
+    let budget = SemanticBudget::default();
+    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default(), &budget);
 
     let one = resolver.values.intern(Value::StaticNumber(1));
     let key = crate::analysis::model::scope::BindingKey::new(
@@ -96,7 +99,8 @@ fn const_value_materializes_static_arrays_with_nested_bindings() {
 fn const_value_returns_unknown_for_uninterned_id() {
     let names = NameTable::default();
     let scopes = ScopeGraph::create_for_test(names).freeze();
-    let resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
+    let budget = SemanticBudget::default();
+    let resolver = Resolver::new_for_test(scopes, SpanNormalizer::default(), &budget);
 
     let result = resolver.const_value(ValueId::from_test(u32::MAX));
     assert_eq!(result, ConstValue::Unknown);
@@ -109,7 +113,8 @@ fn const_value_materializes_static_object_with_mixed_values() {
     let key_str = names.intern("str").unwrap();
     let key_arr = names.intern("arr").unwrap();
     let scopes = ScopeGraph::create_for_test(names).freeze();
-    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
+    let budget = SemanticBudget::default();
+    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default(), &budget);
 
     let num_id = resolver.values.intern(Value::StaticNumber(42));
     let str_id = resolver.values.intern(Value::StaticString("val".into()));
@@ -144,7 +149,8 @@ fn const_value_returns_unknown_for_unknown_name_in_object() {
     let key = names_with.intern("key").unwrap();
     let names_empty = NameTable::default();
     let scopes = ScopeGraph::create_for_test(names_empty).freeze();
-    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
+    let budget = SemanticBudget::default();
+    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default(), &budget);
 
     let val_id = resolver.values.intern(Value::StaticString("v".into()));
     let obj_id = resolver.values.intern(Value::StaticObject(
@@ -159,7 +165,8 @@ fn const_value_returns_unknown_for_unknown_name_in_object() {
 fn const_value_returns_unknown_for_deeply_nested_structure() {
     let names = NameTable::default();
     let scopes = ScopeGraph::create_for_test(names).freeze();
-    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
+    let budget = SemanticBudget::default();
+    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default(), &budget);
 
     let leaf = resolver.values.intern(Value::StaticNumber(0));
     let mut current = leaf;
@@ -188,7 +195,8 @@ fn const_value_returns_unknown_for_deeply_nested_structure() {
 fn const_value_materializes_large_flat_array() {
     let names = NameTable::default();
     let scopes = ScopeGraph::create_for_test(names).freeze();
-    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
+    let budget = SemanticBudget::default();
+    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default(), &budget);
 
     let ids: Vec<_> = (0..100)
         .map(|i| resolver.values.intern(Value::StaticNumber(i)))
@@ -210,7 +218,8 @@ fn const_value_materializes_large_flat_array() {
 fn const_value_applies_the_shared_container_bound() {
     let names = NameTable::default();
     let scopes = ScopeGraph::create_for_test(names).freeze();
-    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
+    let budget = SemanticBudget::default();
+    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default(), &budget);
 
     let ids: Vec<_> = (0..=MAX_ARRAY_ITEMS)
         .map(|i| resolver.values.intern(Value::StaticNumber(i)))
@@ -224,7 +233,8 @@ fn const_value_applies_the_shared_container_bound() {
 fn const_value_follows_binding_chain_through_reassignment() {
     let names = NameTable::default();
     let scopes = ScopeGraph::create_for_test(names).freeze();
-    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
+    let budget = SemanticBudget::default();
+    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default(), &budget);
 
     let inner = resolver.values.intern(Value::StaticString("first".into()));
     let key1 = crate::analysis::model::scope::BindingKey::new(
@@ -257,7 +267,8 @@ fn const_value_follows_binding_chain_through_reassignment() {
 fn call_provenance_follows_binding_to_global() {
     let names = NameTable::default();
     let scopes = ScopeGraph::create_for_test(names).freeze();
-    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
+    let budget = SemanticBudget::default();
+    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default(), &budget);
 
     let inner = resolver.values.intern(Value::Global("fetch".into()));
     let key = crate::analysis::model::scope::BindingKey::new(
@@ -279,7 +290,8 @@ fn call_provenance_follows_binding_to_global() {
 fn call_provenance_follows_multi_level_binding_chain() {
     let names = NameTable::default();
     let scopes = ScopeGraph::create_for_test(names).freeze();
-    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
+    let budget = SemanticBudget::default();
+    let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default(), &budget);
 
     let inner = resolver.values.intern(Value::ModuleExport {
         module: "mod".into(),
@@ -313,7 +325,8 @@ fn call_provenance_follows_multi_level_binding_chain() {
 fn value_exhaustion_distinguishes_unsupported_from_budget() {
     let names = NameTable::default();
     let scopes = ScopeGraph::create_for_test(names).freeze();
-    let resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
+    let budget = SemanticBudget::default();
+    let resolver = Resolver::new_for_test(scopes, SpanNormalizer::default(), &budget);
     assert!(!resolver.value_arena_exhausted());
 
     let mut values = ValueTable::default();

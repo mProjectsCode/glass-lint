@@ -511,10 +511,12 @@ mod tests {
         environment
             .add_globals(["URL", "require"])
             .expect("test globals");
+        let budget = crate::analysis::SemanticBudget::default();
         let mut resolver = Resolver::collect_with_environment(
             &parsed.program,
             &environment,
             crate::analysis::semantic::SpanNormalizer::for_program(&parsed.program, src),
+            &budget,
         );
         let stream = build_test_stream(&parsed.program, &mut resolver);
 

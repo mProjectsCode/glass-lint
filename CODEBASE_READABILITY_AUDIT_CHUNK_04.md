@@ -15,7 +15,7 @@ IR for a readiness decision.
 
 ### Resolver test construction
 
-#### [ ] READ-053 — Remove the leaked budget from resolver test fixtures
+#### [x] READ-053 — Remove the leaked budget from resolver test fixtures
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -41,7 +41,10 @@ the default limits, name-limit behavior, resolver cache/value snapshots, and
 the distinction between unsupported and budget-exhausted values. Do not make
 the fixture's budget unbounded merely to avoid borrow-checker work.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Resolver test constructors now borrow caller-owned bounded
+budgets; collection uses that same budget for scope collection and resolution,
+and all resolver test callers retain the budget for the resolver lifetime.
+Verified with `make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed. Prefer an owned test fixture or
 closure that keeps one bounded budget alive through scope and resolution; do
