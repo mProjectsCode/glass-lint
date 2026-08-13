@@ -82,7 +82,7 @@ the public session API whose calls may request different worker limits.
 
 ### Validated project-input boundary
 
-#### [ ] READ-085 — Keep path normalization behind validated path types
+#### [x] READ-085 — Keep path normalization behind validated path types
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -108,7 +108,10 @@ normalization, relative `..` rejection, outside-target parent resolution,
 absolute/UNC and drive-prefix handling, NUL/empty rejection, and the exact
 original value retained in validation errors.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made raw normalization helpers crate-private and routed the
+test-only session utility through `ProjectRelativePath::new`; validated path
+types remain the public construction boundary and normalization behavior is
+unchanged. Verified with `make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed. Keep validated path newtypes as
 the public construction boundary and make raw normalization helpers internal;

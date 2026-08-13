@@ -253,7 +253,7 @@ impl<'a> ProjectSession<'a> {
         path: impl AsRef<str>,
         observer: &dyn ExecutionObserver,
     ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
-        let path = crate::project::input::normalize_relative(path.as_ref())?;
+        let path = ProjectRelativePath::new(path.as_ref())?;
         self.analyze_source_at_path_with_observer(&path, observer)
     }
 

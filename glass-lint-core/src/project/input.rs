@@ -24,7 +24,9 @@ fn is_drive_prefix(s: &str) -> bool {
 }
 
 /// Normalize a project-relative path and reject escapes/absolute paths.
-pub fn normalize_relative(path: impl AsRef<str>) -> Result<ProjectRelativePath, ProjectInputError> {
+pub(crate) fn normalize_relative(
+    path: impl AsRef<str>,
+) -> Result<ProjectRelativePath, ProjectInputError> {
     let original = path.as_ref().to_string();
     let path = path.as_ref().replace('\\', "/");
     if path.is_empty()
@@ -46,7 +48,7 @@ pub fn normalize_relative(path: impl AsRef<str>) -> Result<ProjectRelativePath, 
 }
 
 /// Normalize an explicitly outside-project target without losing absoluteness.
-pub fn normalize_outside_target(path: &str) -> Result<String, ProjectInputError> {
+pub(crate) fn normalize_outside_target(path: &str) -> Result<String, ProjectInputError> {
     let original = path.to_string();
     let path = path.replace('\\', "/");
     if path.is_empty() || path.contains('\0') {
