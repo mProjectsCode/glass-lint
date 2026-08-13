@@ -46,7 +46,7 @@ errors and the public source-coordinate behavior must remain unchanged.
 
 ### Source-size policy ownership
 
-#### [ ] READ-045 — The project loader copies the core source-byte default while treating the core constant as authority
+#### [x] READ-045 — The project loader copies the core source-byte default while treating the core constant as authority
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -71,7 +71,9 @@ core parser’s own direct-use limit as defense in depth. The simplification is
 only to remove the unintentional copied default, not to collapse the
 project-loading and parser ownership boundaries.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The project loader's default per-file source budget now derives
+from `glass_lint_core::MAX_SOURCE_BYTES`, while project aggregate budgets and
+validation remain independently owned. Verified with `make fmt && make ci`.
 
 ### ECMAScript feature reduction
 

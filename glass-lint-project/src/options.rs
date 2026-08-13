@@ -9,7 +9,7 @@ use crate::{ProjectLoadError, error::ProjectOptionError};
 
 const DEFAULT_MAX_FILES: usize = 10_000;
 const DEFAULT_MAX_REQUESTS: usize = 50_000;
-const DEFAULT_MAX_SOURCE_BYTES: u64 = 8 * 1024 * 1024;
+const DEFAULT_MAX_SOURCE_BYTES: u64 = glass_lint_core::MAX_SOURCE_BYTES as u64;
 const DEFAULT_MAX_PROJECT_SOURCE_BYTES: u64 = 512 * 1024 * 1024;
 const DEFAULT_MAX_VISITED_ENTRIES: usize = 250_000;
 const DEFAULT_MAX_TIMEOUT_MS: u64 = 5 * 60 * 1000;
