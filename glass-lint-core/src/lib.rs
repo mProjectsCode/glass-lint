@@ -73,9 +73,10 @@ pub mod rules {
         classification::MatchKind,
         rule::{
             ArgumentMatcher, CatalogRuleBuilder, Confidence, EventQuery, EventRequirement,
-            IntoLifecycleCondition, IntoLifecycleSource, IntoQueryDecl, LifecycleCompletion,
-            LifecycleCondition, LifecycleEvent, LifecycleQuery, LifecycleSink, QueryBuildError,
-            QueryDecl, Rule, RuleBuildError, RuleBuilder, Severity, ValueMatcher,
+            IntoLifecycleCompletion, IntoLifecycleCondition, IntoLifecycleEvent, IntoLifecycleSink,
+            IntoLifecycleSource, IntoQueryDecl, LifecycleCompletion, LifecycleCondition,
+            LifecycleEvent, LifecycleQuery, LifecycleSink, QueryBuildError, QueryDecl, Rule,
+            RuleBuildError, RuleBuilder, Severity, ValueMatcher,
         },
     };
 }

@@ -83,7 +83,7 @@ the compiler needs its complete result.
 
 ### Lifecycle adapter boundary
 
-#### [ ] READ-069 — Make lifecycle conversion traits consistently sealed and public
+#### [x] READ-069 — Make lifecycle conversion traits consistently sealed and public
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -108,7 +108,9 @@ allowing external implementations to inject unvalidated lifecycle state. Do
 not introduce a second concrete-input API merely to work around the visibility
 inconsistency.
 
-**Fix Applied:** None so far.
+**Fix Applied:** All lifecycle adapter traits are now sealed to the validated
+built-in input types, and all five adapters are re-exported through the public
+`rules` API. Verified with `make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed with the policy chosen: adapters
 are convenience conversions, not an extension point, so they should all be

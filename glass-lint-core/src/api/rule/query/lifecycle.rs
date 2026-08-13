@@ -118,7 +118,7 @@ impl LifecycleEventBuilder {
 }
 
 /// Fallible event input accepted by lifecycle condition constructors.
-pub trait IntoLifecycleEvent {
+pub trait IntoLifecycleEvent: private::Sealed {
     fn into_lifecycle_event(self) -> Result<LifecycleEvent, QueryBuildError>;
 }
 
@@ -323,7 +323,7 @@ impl LifecycleCompletion {
 
 macro_rules! define_lifecycle_adapter {
     ($trait_name:ident, $method:ident, $value:ty) => {
-        pub trait $trait_name {
+        pub trait $trait_name: private::Sealed {
             fn $method(self) -> Result<$value, QueryBuildError>;
         }
 
@@ -333,11 +333,15 @@ macro_rules! define_lifecycle_adapter {
             }
         }
 
+        impl private::Sealed for $value {}
+
         impl $trait_name for Result<$value, QueryBuildError> {
             fn $method(self) -> Result<$value, QueryBuildError> {
                 self
             }
         }
+
+        impl private::Sealed for Result<$value, QueryBuildError> {}
     };
 }
 
@@ -475,6 +479,9 @@ impl IntoLifecycleSource for Result<EventQuery, QueryBuildError> {
 mod private {
     pub trait Sealed {}
 
+    impl Sealed for super::LifecycleEvent {}
+    impl Sealed for Result<super::LifecycleEvent, super::QueryBuildError> {}
+    impl Sealed for super::LifecycleEventBuilder {}
     impl Sealed for super::EventQuery {}
     impl Sealed for Result<super::EventQuery, super::QueryBuildError> {}
 }
@@ -602,7 +609,7 @@ impl LifecycleQueryBuilder {
     }
 }
 
-pub trait IntoLifecycleCondition {
+pub trait IntoLifecycleCondition: private::Sealed {
     fn into_lifecycle_condition(self) -> Result<LifecycleCondition, QueryBuildError>;
 }
 
@@ -612,11 +619,15 @@ impl IntoLifecycleCondition for LifecycleCondition {
     }
 }
 
+impl private::Sealed for LifecycleCondition {}
+
 impl IntoLifecycleCondition for Result<LifecycleCondition, QueryBuildError> {
     fn into_lifecycle_condition(self) -> Result<LifecycleCondition, QueryBuildError> {
         self
     }
 }
+
+impl private::Sealed for Result<LifecycleCondition, QueryBuildError> {}
 
 #[derive(Debug, Clone)]
 pub struct CatalogLifecycleQueryBuilder {
