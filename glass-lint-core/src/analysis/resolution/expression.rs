@@ -274,7 +274,7 @@ impl Resolver<'_> {
         &mut self,
         binary: &swc_ecma_ast::BinExpr,
     ) -> ResolvedValue {
-        let value = syntax_constant::evaluate_binary(binary, self);
+        let value = syntax_constant::evaluate(binary, self);
         let id = self.intern_const_value(value, None);
         Self::archive_local(id)
     }

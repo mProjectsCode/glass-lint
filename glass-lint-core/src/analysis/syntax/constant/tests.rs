@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use swc_ecma_ast::{Expr, ExprStmt, MemberExpr, Program, Stmt};
 
 use crate::analysis::syntax::constant::{
-    ConstValue, EvalState, Lookup, evaluate, evaluate_binary,
+    ConstValue, EvalState, Lookup, evaluate,
     types::{MAX_ARRAY_ITEMS, MAX_STRING_BYTES},
 };
 
@@ -36,7 +36,7 @@ struct RecursiveLookup {
 
 impl Lookup for RecursiveLookup {
     fn ident(&self, _ident: &swc_ecma_ast::Ident, state: &mut EvalState) -> ConstValue {
-        state.evaluate(&self.expression, self)
+        state.evaluate(self.expression.as_ref(), self)
     }
 
     fn member(&self, _member: &MemberExpr, _state: &mut EvalState) -> ConstValue {
@@ -89,10 +89,7 @@ fn borrowed_binary_evaluation_matches_expression_evaluation() {
         panic!("test input did not parse as a binary expression");
     };
     let lookup = TestLookup::default();
-    assert_eq!(
-        evaluate_binary(binary, &lookup),
-        evaluate(&expression, &lookup)
-    );
+    assert_eq!(evaluate(binary, &lookup), evaluate(&expression, &lookup));
 }
 
 #[test]

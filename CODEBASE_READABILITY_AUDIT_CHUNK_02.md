@@ -83,7 +83,7 @@ test-only and must not replace the production shape queue or its validation.
 
 ### Bounded constant evaluation
 
-#### [ ] READ-048 — Make one evaluator accept borrowed expression nodes
+#### [x] READ-048 — Make one evaluator accept borrowed expression nodes
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -118,7 +118,10 @@ operands on the same state, retain the current `+` and deterministic
 string-size semantics, and leave identifier/member lookup ownership with
 `Lookup`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the separate binary evaluator entry point with one
+borrowed `EvalNode` input view accepted by the shared evaluator state; binary
+callers no longer clone nested expression trees, and admission/depth/node
+bounds remain centralized. Verified with `make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Superseded by this root-cause review. A
 private admission helper alone would remove duplicated bookkeeping but leave

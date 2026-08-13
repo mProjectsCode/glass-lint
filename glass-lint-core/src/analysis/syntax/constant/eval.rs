@@ -29,7 +29,7 @@ pub(in crate::analysis) trait Lookup {
         else {
             return ConstValue::Unknown;
         };
-        match state.evaluate(&member.obj, self) {
+        match state.evaluate(member.obj.as_ref(), self) {
             ConstValue::Array(values) => property
                 .parse::<usize>()
                 .ok()
@@ -75,16 +75,12 @@ impl Lookup for NoLookup {
 }
 
 /// Evaluate one expression under the evaluator's fresh bounded state.
-pub(in crate::analysis) fn evaluate(expr: &Expr, lookup: &impl Lookup) -> ConstValue {
+pub(in crate::analysis) fn evaluate<'a>(
+    node: impl Into<EvalNode<'a>>,
+    lookup: &impl Lookup,
+) -> ConstValue {
     let mut state = EvalState::default();
-    state.evaluate(expr, lookup)
-}
-
-/// Evaluate one borrowed binary expression under the same fresh bounds as an
-/// [`Expr::Bin`] passed to [`evaluate`].
-pub(in crate::analysis) fn evaluate_binary(binary: &BinExpr, lookup: &impl Lookup) -> ConstValue {
-    let mut state = EvalState::default();
-    state.evaluate_binary(binary, lookup)
+    state.evaluate(node, lookup)
 }
 
 /// Evaluate a member property with a fresh bounded state.
@@ -116,11 +112,29 @@ pub(in crate::analysis) struct EvalState {
     lookups: usize,
 }
 
+/// Borrowed syntax input accepted by the bounded evaluator.
+pub(in crate::analysis) enum EvalNode<'a> {
+    Expr(&'a Expr),
+    Binary(&'a BinExpr),
+}
+
+impl<'a> From<&'a Expr> for EvalNode<'a> {
+    fn from(expr: &'a Expr) -> Self {
+        Self::Expr(expr)
+    }
+}
+
+impl<'a> From<&'a BinExpr> for EvalNode<'a> {
+    fn from(binary: &'a BinExpr) -> Self {
+        Self::Binary(binary)
+    }
+}
+
 impl EvalState {
     /// Evaluate one expression, failing closed when any bound is exhausted.
-    pub(in crate::analysis) fn evaluate(
+    pub(in crate::analysis) fn evaluate<'a>(
         &mut self,
-        expr: &Expr,
+        node: impl Into<EvalNode<'a>>,
         lookup: &impl Lookup,
     ) -> ConstValue {
         if self.depth >= MAX_DEPTH || self.nodes >= MAX_NODES {
@@ -128,31 +142,27 @@ impl EvalState {
         }
         self.nodes += 1;
         self.depth += 1;
-        let value = self.evaluate_inner(expr, lookup);
-        self.depth -= 1;
-        value
-    }
-
-    fn evaluate_binary(&mut self, binary: &BinExpr, lookup: &impl Lookup) -> ConstValue {
-        if self.depth >= MAX_DEPTH || self.nodes >= MAX_NODES {
-            return ConstValue::Unknown;
-        }
-        self.nodes += 1;
-        self.depth += 1;
-        let value = if binary.op == swc_ecma_ast::BinaryOp::Add {
-            self.evaluate_add(binary, lookup)
-        } else {
-            ConstValue::Unknown
-        };
+        let node = node.into();
+        let value = self.evaluate_inner(&node, lookup);
         self.depth -= 1;
         value
     }
 
     // Kept as a single dispatch match: each arm delegates to a focused helper
     // or returns directly. Splitting the match would scatter related Expr cases.
-    fn evaluate_inner(&mut self, expr: &Expr, lookup: &impl Lookup) -> ConstValue {
+    fn evaluate_inner(&mut self, node: &EvalNode<'_>, lookup: &impl Lookup) -> ConstValue {
         // Single match over every Expr variant: each arm is self-contained and
         // extracting them would add boilerplate without improving clarity.
+        let EvalNode::Expr(expr) = node else {
+            let EvalNode::Binary(binary) = node else {
+                unreachable!("node pattern was checked above")
+            };
+            return if binary.op == swc_ecma_ast::BinaryOp::Add {
+                self.evaluate_add(binary, lookup)
+            } else {
+                ConstValue::Unknown
+            };
+        };
         match expr {
             Expr::Lit(Lit::Str(value)) => {
                 ConstValue::bounded_string(value.value.to_string_lossy().to_string())
@@ -161,12 +171,11 @@ impl EvalState {
                 .map_or(ConstValue::Unknown, ConstValue::NonNegativeInteger),
             Expr::Ident(ident) => self.lookup_ident(lookup, ident),
             Expr::Member(member) => self.lookup_member(lookup, member),
-            Expr::Paren(paren) => self.evaluate(&paren.expr, lookup),
-            Expr::Seq(sequence) => sequence
-                .exprs
-                .last()
-                .map_or(ConstValue::Unknown, |expr| self.evaluate(expr, lookup)),
-            Expr::Assign(assign) => self.evaluate(&assign.right, lookup),
+            Expr::Paren(paren) => self.evaluate(paren.expr.as_ref(), lookup),
+            Expr::Seq(sequence) => sequence.exprs.last().map_or(ConstValue::Unknown, |expr| {
+                self.evaluate(expr.as_ref(), lookup)
+            }),
+            Expr::Assign(assign) => self.evaluate(assign.right.as_ref(), lookup),
             Expr::Bin(binary) if binary.op == swc_ecma_ast::BinaryOp::Add => {
                 self.evaluate_add(binary, lookup)
             }
@@ -181,7 +190,9 @@ impl EvalState {
                         return ConstValue::Unknown;
                     }
                     if let Some(expression) = template.exprs.get(index) {
-                        let Some(value) = self.evaluate(expression, lookup).to_property_string()
+                        let Some(value) = self
+                            .evaluate(expression.as_ref(), lookup)
+                            .to_property_string()
                         else {
                             return ConstValue::Unknown;
                         };
@@ -198,23 +209,23 @@ impl EvalState {
                     let Some(element) = element else {
                         return ConstValue::Unknown;
                     };
-                    values.push(self.evaluate(&element.expr, lookup));
+                    values.push(self.evaluate(element.expr.as_ref(), lookup));
                 }
                 ConstValue::array(values)
             }
             Expr::Object(object) => self.evaluate_object(object, lookup),
             Expr::Call(call) => self.evaluate_object_assign(call, lookup),
-            Expr::TsAs(value) => self.evaluate(&value.expr, lookup),
-            Expr::TsNonNull(value) => self.evaluate(&value.expr, lookup),
-            Expr::TsSatisfies(value) => self.evaluate(&value.expr, lookup),
-            Expr::TsTypeAssertion(value) => self.evaluate(&value.expr, lookup),
+            Expr::TsAs(value) => self.evaluate(value.expr.as_ref(), lookup),
+            Expr::TsNonNull(value) => self.evaluate(value.expr.as_ref(), lookup),
+            Expr::TsSatisfies(value) => self.evaluate(value.expr.as_ref(), lookup),
+            Expr::TsTypeAssertion(value) => self.evaluate(value.expr.as_ref(), lookup),
             _ => ConstValue::Unknown,
         }
     }
 
     fn evaluate_add(&mut self, binary: &BinExpr, lookup: &impl Lookup) -> ConstValue {
-        let left = self.evaluate(&binary.left, lookup);
-        let right = self.evaluate(&binary.right, lookup);
+        let left = self.evaluate(binary.left.as_ref(), lookup);
+        let right = self.evaluate(binary.right.as_ref(), lookup);
         match (&left, &right) {
             (ConstValue::NonNegativeInteger(left), ConstValue::NonNegativeInteger(right)) => left
                 .checked_add(*right)
@@ -264,7 +275,7 @@ impl EvalState {
                             else {
                                 return ConstValue::Unknown;
                             };
-                            (key, self.evaluate(&property.value, lookup))
+                            (key, self.evaluate(property.value.as_ref(), lookup))
                         }
                         _ => return ConstValue::Unknown,
                     };
@@ -296,7 +307,8 @@ impl EvalState {
         }
         let mut values = BTreeMap::new();
         for argument in &call.args {
-            let ConstValue::Object(argument_values) = self.evaluate(&argument.expr, lookup) else {
+            let ConstValue::Object(argument_values) = self.evaluate(argument.expr.as_ref(), lookup)
+            else {
                 return ConstValue::Unknown;
             };
             if values.len().saturating_add(argument_values.len()) > MAX_OBJECT_KEYS {
@@ -346,7 +358,9 @@ impl EvalState {
                 types::non_negative_integer(value.value).map(|value| value.to_smolstr())
             }
             PropName::BigInt(_) => None,
-            PropName::Computed(computed) => self.evaluate(&computed.expr, lookup).property_key(),
+            PropName::Computed(computed) => {
+                self.evaluate(computed.expr.as_ref(), lookup).property_key()
+            }
         }
     }
 
@@ -358,7 +372,9 @@ impl EvalState {
         match prop {
             MemberProp::Ident(ident) => Some(ident.sym.to_smolstr()),
             MemberProp::PrivateName(name) => Some(format!("#{}", name.name).to_smolstr()),
-            MemberProp::Computed(computed) => self.evaluate(&computed.expr, lookup).property_key(),
+            MemberProp::Computed(computed) => {
+                self.evaluate(computed.expr.as_ref(), lookup).property_key()
+            }
         }
     }
 
