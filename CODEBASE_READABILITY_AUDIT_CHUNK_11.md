@@ -42,6 +42,10 @@ messages/evidence are present.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed. The merge helper can own the
+single sort because merged findings retain the first finding’s ordering fields;
+the caller-side sort is redundant.
+
 ### Rule-selection evaluation and construction boundary
 
 #### [ ] READ-081 — Collapse selection modes and avoid repeated catalog scans
@@ -75,6 +79,11 @@ classification, and the CLI’s desired timing for reporting invalid rules.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed with the timing decision below:
+keep invalid-selection errors during CLI config loading and retain a validated
+catalog-bound selection/preparation for linter construction, rather than moving
+the user-visible failure to first lint execution.
+
 ### Selector implementation visibility
 
 #### [ ] READ-082 — Keep `RuleSelector` private to rule selection
@@ -104,6 +113,9 @@ focused on the private parser/matcher.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed. Keep the parsed selector private
+and preserve the existing `RuleOverride` string/state API and serde shape.
+
 ## Systemic Themes
 
 - The batch state machine has a clear bounded, lazy, input-ordered contract;
@@ -119,10 +131,10 @@ focused on the private parser/matcher.
 
 ## Open Questions
 
-- READ-081 needs a deliberate product choice about whether invalid rule
-  selections must fail during CLI config loading or only when the executable
-  linter is constructed. The implementation should preserve whichever timing
-  contract is selected rather than silently moving the user-visible error.
+- None remain. For READ-081, invalid selections continue to fail during CLI
+  config loading; the eventual refactor must reuse a validated catalog-bound
+  selection/preparation rather than validate once and rebuild the same catalog
+  work later.
 - No prior finding was duplicated: Chunk 09’s READ-075 covers structured
   catalog error information being collapsed at the catalog/linter error
   boundary, while READ-081 concerns repeated selection evaluation and
@@ -138,8 +150,8 @@ focused on the private parser/matcher.
   passed), `cargo test -p glass-lint-core --test integration linter` (16
   passed), `cargo test -p glass-lint-core selection --lib` (22 passed), and
   `cargo test -p glass-lint-cli config --lib` (6 passed).
-- No source, test, configuration, dependency, or existing audit artifact was
-  modified. This chunk artifact is the only new file for this review turn.
+- No source, test, configuration, or dependency file was modified. This chunk
+  artifact was updated with review dispositions only.
 - Historical audit chain: Chunk 10 ended at READ-079. The next chunk is Chunk
   12, “Project sessions, inputs, and reports,” which should continue with
   READ-083.

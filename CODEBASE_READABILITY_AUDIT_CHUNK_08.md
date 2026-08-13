@@ -41,6 +41,9 @@ reference behavior.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed. Keep `ArgumentIndex` through
+compiler code and unwrap only at genuine raw-index boundaries.
+
 ### Query-shape membership
 
 #### [ ] READ-068 — Make variable-membership checks short-circuit without shape allocations
@@ -68,6 +71,10 @@ that genuinely need all variables and bindings.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed. Use the existing early-stop
+visitor for the boolean query and retain full shape construction only where
+the compiler needs its complete result.
+
 ### Lifecycle adapter boundary
 
 #### [ ] READ-069 — Make lifecycle conversion traits consistently sealed and public
@@ -87,14 +94,19 @@ extension surface and makes it unclear whether custom conversions are a
 supported API or an accidental escape from validated built-in declarations.
 
 **Recommendation:** Establish one public lifecycle-adapter policy at the
-`rules` boundary: seal every adapter and re-export the traits required by
-public signatures, or deliberately replace the generic bounds with concrete
-validated inputs. The existing validated `LifecycleEvent`, `LifecycleCondition`,
+`rules` boundary: seal every adapter and re-export every trait appearing in a
+public bound. The existing validated `LifecycleEvent`, `LifecycleCondition`,
 `LifecycleCompletion`, `LifecycleSink`, `EventQuery`, and `Result` adapters must
 remain ergonomic; preserve the provider-neutral construction limits and avoid
-allowing external implementations to inject unvalidated lifecycle state.
+allowing external implementations to inject unvalidated lifecycle state. Do
+not introduce a second concrete-input API merely to work around the visibility
+inconsistency.
 
 **Fix Applied:** None so far.
+
+**Audit disposition (2026-08-13):** Confirmed with the policy chosen: adapters
+are convenience conversions, not an extension point, so they should all be
+sealed and all public bounds should be nameable from the public rules API.
 
 ### Deferred lifecycle builder state
 
@@ -125,6 +137,11 @@ behavior.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed with a minimality constraint.
+Use one shared lifecycle-stage state owner plus one error-retention field per
+builder mode; do not replace the current duplication with another forwarding
+wrapper.
+
 ### Lifecycle property-name validation
 
 #### [ ] READ-071 — Canonicalize lifecycle property names at construction
@@ -142,14 +159,18 @@ storing. A caller passing `" type "` therefore receives a successful lifecycle
 declaration whose property cannot equal the authored source property `type`,
 despite the surrounding API treating whitespace as presentation noise.
 
-**Recommendation:** Route lifecycle property validation through the shared
-identifier canonicalization owner and delete the local emptiness-only check.
-Preserve non-empty property semantics, exact case-sensitive matching, lifecycle
-collection ordering/deduplication, and the distinction between identifier names
-and literal string predicates; add a focused whitespace-normalization test at
-the public query boundary.
+**Recommendation:** Withdraw this recommendation. A lifecycle property write
+uses a JavaScript property key, not an identifier-like binding name. Trimming or
+passing it through identifier canonicalization would change valid literal keys
+such as `" type "`, and could reject punctuation or numeric keys that the
+matcher can represent. Retain the current non-empty check unless a separate
+property-key grammar is specified and verified against the source matcher.
 
 **Fix Applied:** None so far.
+
+**Audit disposition (2026-08-13):** Withdrawn as unsound. The apparent
+whitespace inconsistency is not a bug without an explicit canonicalization
+contract; no implementation work should be derived from READ-071.
 
 ## Systemic Themes
 
@@ -171,9 +192,9 @@ the public query boundary.
 
 ## Open Questions
 
-- None blocking these findings. READ-069 should settle the intended extension
-  policy before changing any adapter visibility, because sealing and
-  re-exporting are mutually exclusive public-contract choices.
+- None remain. READ-069 is resolved in favor of sealed adapters re-exported
+  wherever they occur in public bounds. READ-071 is withdrawn because property
+  keys are literal strings rather than identifier names.
 
 ## Coverage
 
@@ -189,6 +210,7 @@ tests passed: `cargo test -p glass-lint-core api::rule --lib` (103 passed),
 `cargo test -p glass-lint-core --test integration public_surface` (3 passed),
 and `cargo test -p glass-lint-core --test integration query::composition` (30
 passed). No source, test, configuration, dependency, or other documentation
-files were changed; this chunk audit file is the only new artifact. The next
+files were changed; this chunk audit file was updated only with review
+dispositions. The next
 chunk is Chunk 9, “Query classification and compilation,” which should continue
 finding IDs at READ-072.

@@ -40,6 +40,9 @@ cached `None` resolution and a miss; preserve deterministic qualified keys and
 the shared session lifetime. Retain the cache behind `LinkingSession` rather
 than exposing its storage to resolver callers.
 
+**Audit disposition (2026-08-13):** Confirmed. `entries.len()` is the existing
+capacity invariant; no eviction or cached-`None` behavior changes are implied.
+
 ### Projection plan boundary
 
 #### [ ] READ-063 — Store constrained roots in the matcher-ready form
@@ -64,6 +67,10 @@ typed rule-index form and pass the plan’s borrowed slice directly. Delete
 preserving selected-rule indices, matcher root order, empty-constraint
 filtering, evidence capacity, and the independent lifecycle flow roots.
 
+**Audit disposition (2026-08-13):** Confirmed with a type-boundary refinement:
+prefer a matcher-ready private slice/type over exposing a raw tuple as a new
+public surface.
+
 ### Projection status lookup
 
 #### [ ] READ-064 — Use the project’s keyed module lookup for exhausted effects
@@ -87,6 +94,9 @@ accessor and delete the iterator scan. Keep the existing per-file diagnostic
 scope, effect limit, observed-operation value, and deterministic order of
 `effect_exhausted_modules`; retain the `Option` guard for an impossible or
 stale module ID rather than turning status reporting into a panic.
+
+**Audit disposition (2026-08-13):** Confirmed. Keep the stale-ID `Option`
+guard; the optimization is only the lookup path.
 
 ### Invalid local projection work
 
@@ -115,6 +125,9 @@ flow-required plans, and preserve fail-closed behavior, local diagnostics,
 cross-module identity isolation, and the distinction between invalid analysis
 and a successful empty match.
 
+**Audit disposition (2026-08-13):** Confirmed. The early gate must still emit
+an empty per-module projection and preserve separate effect-status reporting.
+
 ### Single-module test API
 
 #### [ ] READ-066 — Remove unused source arguments from the single-project fixture
@@ -138,6 +151,9 @@ and limits needed to build the one-module model, deleting the ignored
 parameters and the callers’ discarded context construction. Keep the real
 artifact’s path/source context as the sole location owner, preserve the
 single-module owner-token tests, and leave production linking APIs unchanged.
+
+**Audit disposition (2026-08-13):** Confirmed. This removes discarded test
+setup only and leaves production linking boundaries untouched.
 
 ## Systemic Themes
 
@@ -175,6 +191,6 @@ invalid-fact capability tests, cache tests, and project-flow integration tests
 were inspected. Focused tests passed: `cargo test -p glass-lint-core
 analysis::project --lib` (10 passed) and `cargo test -p glass-lint-core
 project::tests --lib` (49 passed). No source, test, configuration, dependency,
-or other documentation files were changed; this chunk audit file is the only
-new artifact. The next chunk is Chunk 8, “Rule authoring and catalog
+or other documentation files were changed; this chunk audit file was updated
+only with review dispositions. The next chunk is Chunk 8, “Rule authoring and catalog
 integration,” which should continue finding IDs at READ-067.

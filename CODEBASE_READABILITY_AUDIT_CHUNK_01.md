@@ -41,6 +41,10 @@ was marked applied, but the current raw write was reintroduced by the later
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed. The recommendation targets the
+single raw class-origin mutation and does not require exposing `OriginChannels`;
+the provenance owner remains responsible for budget and branch semantics.
+
 ### Module-call observation boundary
 
 #### [ ] READ-045 — Remove the non-semantic `ModuleCallObservation` wrapper
@@ -65,6 +69,10 @@ side effect and the dynamic-import/require distinction, and preserve the
 current deterministic import-fact emission order for each call shape.
 
 **Fix Applied:** None so far.
+
+**Audit disposition (2026-08-13):** Confirmed. Returning the existing optional
+module name removes representation-only plumbing while retaining the request
+side effect and call-shape distinction.
 
 ## Systemic Themes
 
@@ -93,6 +101,6 @@ maps, traversal state and function/control visitors, call/argument lowering,
 module-interface recording, and the fact-construction tests. Historical audit
 files and their applying commits were inspected to avoid re-reporting
 completed findings. No source, test, configuration, dependency, or other
-documentation files were changed; this chunk audit file is the only new
-artifact. The next chunk is Chunk 2, “Scope, syntax, and evidence frontend,”
+documentation files were changed; this chunk audit file was updated only with
+review dispositions. The next chunk is Chunk 2, “Scope, syntax, and evidence frontend,”
 which should continue finding IDs at READ-046.

@@ -43,6 +43,10 @@ line-index sharing across cached artifacts, and deterministic locations.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed. Reuse the normalizer-owned
+index through a narrow conversion boundary; do not expose parser internals or
+change cache reattachment ownership.
+
 ### Semantic completion policy
 
 #### [ ] READ-057 — Centralize capability invalidation for structural failures
@@ -76,6 +80,10 @@ phase.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed. Scope-shape failure is a
+structural failure and must invalidate derived capabilities while retaining
+raw facts and diagnostics.
+
 ### Local cache test fixtures
 
 #### [ ] READ-058 — Centralize the repeated empty cached-artifact fixture
@@ -103,6 +111,10 @@ Arc/send-sync and FIFO/replacement behavior under test, and do not hide the
 cache’s collision-key or eviction assertions behind a higher-level mock.
 
 **Fix Applied:** None so far.
+
+**Audit disposition (2026-08-13):** Confirmed. The helper belongs in test code
+and should construct the real bounded artifact, not a mock or an unbounded
+substitute.
 
 ## Systemic Themes
 
@@ -138,6 +150,6 @@ architecture documents, testing/contribution guidance, current audit chain,
 and relevant project-session callers were inspected. The focused semantic
 test suite passed: `cargo test -p glass-lint-core analysis::semantic --lib`
 (9 passed). No source, test, configuration, dependency, or other
-documentation files were changed; this chunk audit file is the only new
-artifact. The next chunk is Chunk 6, “Matching,” which should continue finding
+documentation files were changed; this chunk audit file was updated only with
+review dispositions. The next chunk is Chunk 6, “Matching,” which should continue finding
 IDs at READ-059.

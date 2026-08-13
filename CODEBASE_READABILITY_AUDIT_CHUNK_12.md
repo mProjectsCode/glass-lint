@@ -41,6 +41,10 @@ joining, final file/diagnostic ordering, and refreshed aggregate metrics.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed. Owned reports can be validated
+and merged transactionally in one consuming pass because failure drops the
+partial accumulator; preserve all current error ordering and finalization.
+
 ### Project local-execution lifecycle
 
 #### [ ] READ-084 — Reuse the local-analysis executor across project waves
@@ -72,6 +76,10 @@ state across independent sessions.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed with the ownership decision
+below: reuse belongs in the filesystem loader’s private wave context, not in
+the public session API whose calls may request different worker limits.
+
 ### Validated project-input boundary
 
 #### [ ] READ-085 — Keep path normalization behind validated path types
@@ -102,6 +110,10 @@ original value retained in validation errors.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed. Keep validated path newtypes as
+the public construction boundary and make raw normalization helpers internal;
+do not alter normalization or error-original preservation.
+
 ### Source-file constructors
 
 #### [ ] READ-086 — Centralize `SourceFile` construction after path validation
@@ -131,6 +143,10 @@ constructors.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed. A private parts constructor
+removes repeated field assembly without merging the validated and raw-path
+contracts.
+
 ## Systemic Themes
 
 - The consuming session phases are valuable ownership boundaries: local
@@ -152,10 +168,10 @@ constructors.
 
 ## Open Questions
 
-- READ-084 should choose whether executor reuse belongs in `ProjectSession` or
-  in the filesystem loader’s private wave context. The public session API
-  accepts per-call worker limits, so reuse must not accidentally couple
-  independent sessions or silently ignore a changed limit.
+- None remain. READ-084 belongs in the filesystem loader’s private wave
+  context: its repeated waves use one normalized worker limit, while the
+  public `ProjectSession` API must remain free to honor different limits on
+  independent calls without sharing executor state.
 - No prior finding was duplicated: READ-059 covered duplicate matcher project
   identity wrappers, while READ-085 covers public path-normalization ownership
   and READ-086 covers `SourceFile` constructor assembly.
@@ -171,8 +187,8 @@ constructors.
   `cargo test -p glass-lint-core --test integration public_surface` (3
   passed), `cargo test -p glass-lint-core --test integration typescript` (9
   passed), and `cargo test -p glass-lint-project` (65 passed).
-- No source, test, configuration, dependency, or existing audit artifact was
-  modified. This chunk artifact is the only new file for this review turn.
+- No source, test, configuration, or dependency file was modified. This chunk
+  artifact was updated with review dispositions only.
 - Historical audit chain: Chunk 11 ended at READ-082. This final Chunk 12
   artifact continues with READ-083 through READ-086; all 12 structure chunks
   now have corresponding audit files.

@@ -41,6 +41,10 @@ budget accidentally unlimited or alter scope identity allocation.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed. This is a test-fixture lifetime
+change only; the production planner and collector should continue borrowing the
+shared bounded budget.
+
 ### Scope-shape diagnostics
 
 #### [ ] READ-047 — Compile the scope-shape count only for tests
@@ -66,33 +70,53 @@ planner/collector shape-mismatch or unconsumed-shape checks.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed. The instrumentation is
+test-only and must not replace the production shape queue or its validation.
+
 ### Bounded constant evaluation
 
-#### [ ] READ-048 — Centralize the `EvalState` node-entry transition
+#### [ ] READ-048 — Make one evaluator accept borrowed expression nodes
 
-- **Severity:** Low
-- **Fix Complexity:** Low
-- **Theme:** DEDUPLICATE
-- **Category:** Correctness
-- **Location:** `glass-lint-core/src/analysis/syntax/constant/eval.rs:119-149`
+- **Severity:** Medium
+- **Fix Complexity:** Medium
+- **Theme:** SIMPLIFY
+- **Category:** API / Performance
+- **Location:** `glass-lint-core/src/analysis/syntax/constant/eval.rs:78-149`; borrowed
+  binary caller in `glass-lint-core/src/analysis/facts/visitor.rs:290-296`
 
-`EvalState::evaluate` and `EvalState::evaluate_binary` independently implement
-the same depth/node admission check, increment both counters, run a nested
-operation, and decrement depth. The binary path is currently limited to `+`,
-but its duplicated transition means a future change to depth accounting,
-overflow handling, or an additional binary operator can update one path and
-silently change the evaluator's boundedness. The surrounding evaluator already
-uses the shared state specifically to make nested computed keys consume the
-same budget.
+The duplicate `EvalState::evaluate`/`evaluate_binary` entry points are not the
+root problem. `evaluate_binary` was added because the fact visitor has a
+borrowed `&BinExpr` and wrapping it in `Expr::Bin(binary.clone())` clones the
+entire nested expression subtree on hot bundled inputs. The current split now
+duplicates the evaluator boundary and forces callers and tests to choose
+between two ways of evaluating the same semantic node. The shared evaluator
+already owns the recursion, node, lookup, and string/container bounds; those
+bounds should not be represented by separate APIs merely to preserve the
+borrowed fast path.
 
-**Recommendation:** Add one private node-evaluation helper that owns the
-admission check and balanced depth transition, then pass the operation body
-for ordinary expressions and binary expressions through it. Preserve
-fail-closed `Unknown` on either bound, count one node for a binary expression,
-keep nested operands on the same state, and retain the current `+` semantics
-and deterministic string-size checks.
+**Recommendation:** Replace the two entry points with one borrowed-node
+`evaluate` operation that accepts either `&Expr` or `&BinExpr` through one
+private evaluator-input abstraction (for example, an `EvalNode<'a>` enum with
+conversions for both borrowed node types). Have `EvalState::evaluate` perform
+the depth/node admission and balanced unwind exactly once, then dispatch the
+already-borrowed node to the existing expression or binary semantics without
+wrapping or cloning a subtree. Remove the standalone `evaluate_binary` helper
+and update the resolver, fact visitor, and tests to call the single operation.
+
+The abstraction must be an input view, not an owned AST conversion or a second
+expression model. Preserve fail-closed `Unknown` on either bound, count one
+node for a binary expression (including an unsupported operator), keep nested
+operands on the same state, retain the current `+` and deterministic
+string-size semantics, and leave identifier/member lookup ownership with
+`Lookup`.
 
 **Fix Applied:** None so far.
+
+**Audit disposition (2026-08-13):** Superseded by this root-cause review. A
+private admission helper alone would remove duplicated bookkeeping but leave
+the unnecessary two-node API in place. The accepted fix is one borrowed-node
+evaluator that removes the cloning workaround and makes the shared budget
+boundary canonical.
 
 ### Constant property-key conversion
 
@@ -120,14 +144,18 @@ existing APIs so callers do not gain a new general-purpose conversion surface.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed. Centralize only the accepted
+scalar domain; keep the two existing result types and allocation boundaries
+separate so no general conversion API is introduced.
+
 ## Systemic Themes
 
 - The scope frontend has a sound typed phase progression, but test helpers
   currently force production lifetimes into `'static` rather than expressing
   fixture ownership directly.
-- Bounded analysis is centralized conceptually in `EvalState`; small duplicated
-  transitions and conversion rules should be routed through that owner so
-  fail-closed semantics remain consistent.
+- Bounded analysis is centralized conceptually in `EvalState`; the evaluator
+  should expose one borrowed-node entry point so performance exceptions do not
+  create parallel semantic paths or duplicate budget policy.
 - Test observability should not add production fields or per-scope operations
   when the underlying semantic index already supplies the required invariant.
 - The planner/collector two-pass design, frozen graph boundary, validity
@@ -147,6 +175,6 @@ Reviewed only Chunk 2, “Scope, syntax, and evidence frontend,” from
 freeze, binding/assignment resolution, provenance queries, constant values and
 evaluation, syntax names, and the trace arena/evidence handles, including
 their focused tests and callers. No source, test, configuration, dependency,
-or other documentation files were changed; this chunk audit file is the only
-new artifact. The next chunk is Chunk 3, “Flow analysis,” which should continue
+or other documentation files were changed; this chunk audit file was updated
+only with review dispositions. The next chunk is Chunk 3, “Flow analysis,” which should continue
 finding IDs at READ-050.

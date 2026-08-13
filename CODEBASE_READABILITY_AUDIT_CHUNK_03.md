@@ -46,6 +46,10 @@ flow declaration type merely to remove the loops.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed. The index should retain the
+already-bound matcher state, but source and sink declarations remain distinct
+because they complete different flow phases.
+
 ### Function-summary completion boundary
 
 #### [ ] READ-051 — Carry full summary completion into local flow outcomes
@@ -79,6 +83,10 @@ keep the existing bounded summary storage.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed and prioritized. This is the root
+completion-boundary issue: all summary completion reasons must reach certainty
+classification before evidence is emitted.
+
 ### Summary-path and effect-facing APIs
 
 #### [ ] READ-052 — Remove the summary finalization operation from `FlowCompletion`
@@ -97,13 +105,18 @@ the summary's deterministic ordering invariant is established. The misplaced
 method also contributed to the completion boundary being easy to overlook in
 `FunctionSummaries::collect`.
 
-**Recommendation:** Move the operation to a private
+**Recommendation:** Treat this as part of READ-051, not as a separate refactor.
+When the summary outcome is consumed, move the operation to a private
 `FunctionSummaries::finalize`/`finish` transition and call it from collection;
 delete the `impl FlowCompletion` block for this behavior. Keep sorting after
 all direct and propagated sink insertion, preserve the existing flow/sink/path
 ordering, and keep completion reason merging separate from summary mutation.
 
 **Fix Applied:** None so far.
+
+**Audit disposition (2026-08-13):** Subsumed by READ-051. Implementing this as
+an independent change would split one completion-boundary fix and add needless
+churn; it remains a concrete acceptance criterion for READ-051.
 
 ## Systemic Themes
 
@@ -138,6 +151,6 @@ and context worklists, cross evidence, completion outcomes, and local/cross
 trace emission. Current callers, focused flow tests, architecture guidance,
 and the historical Chunk 3 audit and applying commits were inspected. No
 source, test, configuration, dependency, or other documentation files were
-changed; this chunk audit file is the only new artifact. The next chunk is
+changed; this chunk audit file was updated only with review dispositions. The next chunk is
 Chunk 4, “Retained models/resolution,” which should continue finding IDs at
 READ-053.

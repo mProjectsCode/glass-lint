@@ -41,6 +41,10 @@ declaration-shaped representation.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed. Contradiction checking should
+consume canonical groups directly; flattening remains only for consumers that
+need declaration-shaped constraints.
+
 #### [ ] READ-073 — Make normalized-root ordering total over semantic state
 
 - **Severity:** High
@@ -70,6 +74,10 @@ stable.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed and prioritized. The comparator
+must distinguish every state used by normalized equality, especially subject
+relations, without deduplicating distinct roots.
+
 #### [ ] READ-074 — Remove the duplicate same-event merge state type
 
 - **Severity:** Medium
@@ -93,6 +101,10 @@ between incomplete, uncorrelated, contradictory, and successfully merged
 queries.
 
 **Fix Applied:** None so far.
+
+**Audit disposition (2026-08-13):** Confirmed. The merge accumulator can own
+its final validation and root construction without introducing a second
+same-event storage type.
 
 ### Catalog and public error boundary
 
@@ -122,6 +134,10 @@ rule IDs and display text.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed with a narrow public boundary:
+preserve provider-facing categories and stable display text, but do not leak
+compiler-internal implementation types merely to retain structure.
+
 ## Systemic Themes
 
 - Canonical representations are generally well-owned, but a few callers still
@@ -149,8 +165,8 @@ rule IDs and display text.
   `cargo test -p glass-lint-core --test integration public_surface` — 3 passed;
   `cargo test -p glass-lint-core --test integration query::composition` — 30
   passed.
-- No source, test, configuration, dependency, or existing audit artifact was
-  modified. This chunk artifact is the only new file for this review turn.
+- No source, test, configuration, or dependency file was modified. This chunk
+  artifact was updated with review dispositions only.
 - Historical audit chain: Chunk 8 ended at READ-071. The next chunk is Chunk
   10, “Configuration, parsing, and runtime environment,” which should continue
   with READ-076.

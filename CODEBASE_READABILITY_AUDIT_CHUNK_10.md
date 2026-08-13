@@ -41,6 +41,10 @@ failures.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed. Encapsulation must preserve the
+serialized field names and give parser callers read-only access to the same
+authored values and failure classification.
+
 ### ECMAScript feature detection
 
 #### [ ] READ-077 — Record parameter and spread features during the normal AST visit
@@ -68,6 +72,10 @@ not, and preserve the separate `RestAndSpread` versus `ObjectRestSpread`
 feature flags and deterministic feature ordering.
 
 **Fix Applied:** None so far.
+
+**Audit disposition (2026-08-13):** Confirmed. The normal visitor may carry
+only the context needed to distinguish parameter defaults from ordinary
+destructuring; it should not add a second whole-tree walk.
 
 ### Host-environment input APIs
 
@@ -97,6 +105,10 @@ restricted global-object behavior.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed. Prefer direct `SmolStr`
+conversion or borrowed validation with one canonical owner; retain atomic bulk
+validation and do not change identifier semantics.
+
 ### Source-coordinate conversion
 
 #### [ ] READ-079 — Centralize offset-to-validated-range conversion
@@ -122,6 +134,10 @@ outputs; preserve UTF-8 boundary checks, out-of-bounds errors, EOF handling,
 and parser-versus-semantic caller behavior.
 
 **Fix Applied:** None so far.
+
+**Audit disposition (2026-08-13):** Confirmed. Centralize raw-offset admission
+and validation while leaving byte-range and display-range outputs as separate
+operations.
 
 ## Systemic Themes
 
@@ -150,7 +166,7 @@ and parser-versus-semantic caller behavior.
   environment (13), ECMAScript version detection (9), diagnostics (32), and
   public surface (3). With the `serde` feature, limits (14), parsing (37),
   and public surface (4) also passed.
-- No source, test, configuration, dependency, or existing audit artifact was
-  modified. This chunk artifact is the only new file for this review turn.
+- No source, test, configuration, or dependency file was modified. This chunk
+  artifact was updated with review dispositions only.
 - Historical audit chain: Chunk 9 ended at READ-075. The next chunk is Chunk
   11, “Lint execution and reporting,” which should continue with READ-080.

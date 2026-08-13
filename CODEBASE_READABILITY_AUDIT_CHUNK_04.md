@@ -43,6 +43,10 @@ the fixture's budget unbounded merely to avoid borrow-checker work.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed. Prefer an owned test fixture or
+closure that keeps one bounded budget alive through scope and resolution; do
+not change the production resolver lifetime contract.
+
 ### Resolver value admission
 
 #### [ ] READ-054 — Remove ignored module-namespace value interning
@@ -73,6 +77,10 @@ value exhaustion behavior, and strict unknown handling; do not replace this
 with a second namespace identity representation.
 
 **Fix Applied:** None so far.
+
+**Audit disposition (2026-08-13):** Confirmed. The discarded namespace value
+has no retained consumer; the provenance identity must remain the sole
+namespace-matching representation.
 
 ### Retained flow readiness boundary
 
@@ -107,6 +115,11 @@ the distinction between retained state and compiled matcher declarations.
 
 **Fix Applied:** None so far.
 
+**Audit disposition (2026-08-13):** Confirmed with a minimality constraint.
+Introduce only the smallest model-owned readiness descriptor needed at the
+compiler/analysis boundary; do not duplicate matcher declarations or create a
+second flow model.
+
 ## Systemic Themes
 
 - Retained domain types should own artifact identity and bounded evidence while
@@ -139,6 +152,6 @@ The root and core architecture documents, current callers, and the historical
 Chunk 4 audit were inspected. The focused resolution test suite passed:
 `cargo test -p glass-lint-core analysis::resolution --lib` (13 passed). No
 source, test, configuration, dependency, or other documentation files were
-changed; this chunk audit file is the only new artifact. The next chunk is
+changed; this chunk audit file was updated only with review dispositions. The next chunk is
 Chunk 5, “Analysis artifact assembly and module aggregation,” which should
 continue finding IDs at READ-056.

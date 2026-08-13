@@ -44,6 +44,10 @@ identical identity-only wrappers. Preserve call-result-over-module identity
 precedence, overlay enablement, and all unknown/ambiguous fail-closed behavior;
 update tests to construct only the remaining semantic input.
 
+**Audit disposition (2026-08-13):** Confirmed. The remaining context type is
+the useful pairing boundary; only the identical identity-only input/view
+wrappers should be collapsed.
+
 ### Constrained-root preparation
 
 #### [ ] READ-060 — Prepare constrained roots without temporary borrow storage
@@ -69,6 +73,10 @@ root order, one prepared entry per constrained root, fallback state, prepared
 path semantics, and the existing bounded evaluation accounting. Do not merge
 this with the later fallback scan: preparation and evidence publication remain
 separate lifecycle operations.
+
+**Audit disposition (2026-08-13):** Confirmed. The direct pipeline removes a
+borrow-only intermediate without changing root order, preparation state, or
+the later fallback lifecycle.
 
 ### Argument value resolution
 
@@ -98,6 +106,9 @@ binding-terminal behavior; dynamic/unknown fail-closed matching; and one
 operation charge per prepared argument group. Avoid cloning values or exposing
 `ValueTable` internals to the matcher.
 
+**Audit disposition (2026-08-13):** Confirmed. Reuse must stay inside the
+matcher/value-table boundary; do not clone values or broaden the table API.
+
 ## Systemic Themes
 
 - A matcher-facing API should represent one semantic project input once. The
@@ -116,7 +127,8 @@ operation charge per prepared argument group. Avoid cloning values or exposing
 
 ## Open Questions
 
-- None blocking these findings. No source or test changes were made; the
+- None blocking these findings. No source or test changes were made; this
+  audit file was updated only with review dispositions. The
   existing operation-count assertions should be revisited if READ-061 is
   implemented so they document both the intended abstraction and its actual
   bounded work.
@@ -133,5 +145,5 @@ chain, project projection caller, value-table resolution behavior, and focused
 operation-count tests were inspected. The focused matching test suite passed:
 `cargo test -p glass-lint-core analysis::matching --lib` (44 passed). No
 source, test, configuration, dependency, or other documentation files were
-changed; this chunk audit file is the only new artifact. The next chunk is
+changed; this chunk audit file was updated only with review dispositions. The next chunk is
 Chunk 7, “Project linking,” which should continue finding IDs at READ-062.
