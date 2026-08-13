@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use smol_str::{SmolStr, ToSmolStr};
 use swc_common::Spanned;
 use swc_ecma_ast::{
-    BinExpr, Expr, Ident, Lit, MemberExpr, MemberProp, ObjectLit, Prop, PropName, PropOrSpread,
+    BinExpr, Expr, Ident, Lit, MemberExpr, MemberProp, ObjectLit, Prop, PropName, PropOrSpread, Tpl,
 };
 
 use crate::analysis::syntax::constant::types::{
@@ -116,6 +116,7 @@ pub(in crate::analysis) struct EvalState {
 pub(in crate::analysis) enum EvalNode<'a> {
     Expr(&'a Expr),
     Binary(&'a BinExpr),
+    Template(&'a Tpl),
 }
 
 impl<'a> From<&'a Expr> for EvalNode<'a> {
@@ -127,6 +128,12 @@ impl<'a> From<&'a Expr> for EvalNode<'a> {
 impl<'a> From<&'a BinExpr> for EvalNode<'a> {
     fn from(binary: &'a BinExpr) -> Self {
         Self::Binary(binary)
+    }
+}
+
+impl<'a> From<&'a Tpl> for EvalNode<'a> {
+    fn from(template: &'a Tpl) -> Self {
+        Self::Template(template)
     }
 }
 
@@ -153,15 +160,16 @@ impl EvalState {
     fn evaluate_inner(&mut self, node: &EvalNode<'_>, lookup: &impl Lookup) -> ConstValue {
         // Single match over every Expr variant: each arm is self-contained and
         // extracting them would add boilerplate without improving clarity.
-        let EvalNode::Expr(expr) = node else {
-            let EvalNode::Binary(binary) = node else {
-                unreachable!("node pattern was checked above")
-            };
-            return if binary.op == swc_ecma_ast::BinaryOp::Add {
-                self.evaluate_add(binary, lookup)
-            } else {
-                ConstValue::Unknown
-            };
+        let expr = match node {
+            EvalNode::Expr(expr) => *expr,
+            EvalNode::Binary(binary) => {
+                return if binary.op == swc_ecma_ast::BinaryOp::Add {
+                    self.evaluate_add(binary, lookup)
+                } else {
+                    ConstValue::Unknown
+                };
+            }
+            EvalNode::Template(template) => return self.evaluate_template(template, lookup),
         };
         match expr {
             Expr::Lit(Lit::Str(value)) => {
@@ -179,30 +187,7 @@ impl EvalState {
             Expr::Bin(binary) if binary.op == swc_ecma_ast::BinaryOp::Add => {
                 self.evaluate_add(binary, lookup)
             }
-            Expr::Tpl(template) => {
-                let mut output = String::new();
-                for (index, quasi) in template.quasis.iter().enumerate() {
-                    let cooked = quasi.cooked.as_ref().map_or_else(
-                        || quasi.raw.to_string(),
-                        |value| value.to_string_lossy().to_string(),
-                    );
-                    if !Self::append_bounded(&mut output, &cooked) {
-                        return ConstValue::Unknown;
-                    }
-                    if let Some(expression) = template.exprs.get(index) {
-                        let Some(value) = self
-                            .evaluate(expression.as_ref(), lookup)
-                            .to_property_string()
-                        else {
-                            return ConstValue::Unknown;
-                        };
-                        if !Self::append_bounded(&mut output, &value) {
-                            return ConstValue::Unknown;
-                        }
-                    }
-                }
-                ConstValue::String(output)
-            }
+            Expr::Tpl(template) => self.evaluate_template(template, lookup),
             Expr::Array(array) if array.elems.len() <= MAX_ARRAY_ITEMS => {
                 let mut values = Vec::with_capacity(array.elems.len());
                 for element in &array.elems {
@@ -221,6 +206,31 @@ impl EvalState {
             Expr::TsTypeAssertion(value) => self.evaluate(value.expr.as_ref(), lookup),
             _ => ConstValue::Unknown,
         }
+    }
+
+    fn evaluate_template(&mut self, template: &Tpl, lookup: &impl Lookup) -> ConstValue {
+        let mut output = String::new();
+        for (index, quasi) in template.quasis.iter().enumerate() {
+            let cooked = quasi.cooked.as_ref().map_or_else(
+                || quasi.raw.to_string(),
+                |value| value.to_string_lossy().to_string(),
+            );
+            if !Self::append_bounded(&mut output, &cooked) {
+                return ConstValue::Unknown;
+            }
+            if let Some(expression) = template.exprs.get(index) {
+                let Some(value) = self
+                    .evaluate(expression.as_ref(), lookup)
+                    .to_property_string()
+                else {
+                    return ConstValue::Unknown;
+                };
+                if !Self::append_bounded(&mut output, &value) {
+                    return ConstValue::Unknown;
+                }
+            }
+        }
+        ConstValue::String(output)
     }
 
     fn evaluate_add(&mut self, binary: &BinExpr, lookup: &impl Lookup) -> ConstValue {

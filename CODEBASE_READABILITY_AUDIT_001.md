@@ -122,7 +122,7 @@ behavior unchanged.
 
 ### Literal resolution boundary
 
-#### [ ] READ-005 — Literal visitors clone AST nodes for immediate resolution
+#### [x] READ-005 — Literal visitors clone AST nodes for immediate resolution
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -143,7 +143,11 @@ that performs the existing branches without constructing an `Expr`. Preserve
 the value-arena identity, static-string origin location, quasi fallback, and
 the existing behavior for dynamic interpolations.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added borrowed string-literal and template resolver entry
+points, and extended bounded constant evaluation to accept borrowed templates.
+The fact visitor no longer clones literal AST nodes; value identities,
+template fallback references, and static-string origins remain unchanged.
+Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

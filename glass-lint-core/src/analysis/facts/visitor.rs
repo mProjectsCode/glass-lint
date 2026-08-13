@@ -217,10 +217,7 @@ impl Visit for FactBuilder<'_, '_> {
         if self.resolver.budget.exhausted() {
             return;
         }
-        let id = self
-            .resolver
-            .resolve_expr(&Expr::Lit(swc_ecma_ast::Lit::Str(value.clone())))
-            .id;
+        let id = self.resolver.resolve_string_literal(value).id;
         self.emit(
             value.span(),
             FactPayload::Reference {
@@ -241,7 +238,7 @@ impl Visit for FactBuilder<'_, '_> {
         if self.resolver.budget.exhausted() {
             return;
         }
-        let complete = self.resolver.resolve_expr(&Expr::Tpl(template.clone())).id;
+        let complete = self.resolver.resolve_template(template).id;
         if self.resolver.static_string_value(complete).is_none() {
             for quasi in &template.quasis {
                 let literal = quasi.cooked.as_ref().map_or_else(

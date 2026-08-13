@@ -71,6 +71,21 @@ impl ResolutionSeed {
 }
 
 impl Resolver<'_> {
+    pub(in crate::analysis) fn resolve_string_literal(
+        &mut self,
+        value: &swc_ecma_ast::Str,
+    ) -> ResolvedValue {
+        self.static_string(value.value.to_string_lossy().to_string())
+    }
+
+    pub(in crate::analysis) fn resolve_template(
+        &mut self,
+        template: &swc_ecma_ast::Tpl,
+    ) -> ResolvedValue {
+        let id = self.intern_const_value(syntax_constant::evaluate(template, self), None);
+        Self::archive_local(id)
+    }
+
     fn ident_key(ident: &Ident) -> ResolutionKey {
         ResolutionKey::Ident {
             range: ident.span.into(),
@@ -241,9 +256,7 @@ impl Resolver<'_> {
                 .exprs
                 .last()
                 .map_or_else(Self::unknown, |last| self.resolve_expr(last)),
-            Expr::Lit(Lit::Str(value)) => {
-                self.static_string(value.value.to_string_lossy().to_string())
-            }
+            Expr::Lit(Lit::Str(value)) => self.resolve_string_literal(value),
             Expr::Lit(Lit::Num(value)) => syntax_constant::non_negative_integer(value.value)
                 .map_or_else(Self::unknown, |value| self.static_number(value)),
             Expr::Array(array) => {
@@ -258,7 +271,7 @@ impl Resolver<'_> {
                     .collect();
                 self.static_array(values)
             }
-            Expr::Object(_) | Expr::Bin(_) | Expr::Tpl(_) => {
+            Expr::Object(_) | Expr::Bin(_) => {
                 let id = self.intern_const_value(syntax_constant::evaluate(expr, self), None);
                 Self::archive_local(id)
             }
