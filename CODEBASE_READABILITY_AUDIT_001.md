@@ -13,7 +13,7 @@ path-local certainty, or fail-closed behavior.
 
 ### Fact traversal and module-interface bookkeeping
 
-#### [ ] READ-001 — Export declaration collection registers locals twice
+#### [x] READ-001 — Export declaration collection registers locals twice
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -36,7 +36,12 @@ the named default-declaration path, which is not revisited by the normal
 visitor. Preserve export entries, function IDs, static-string metadata, and
 the current behavior for anonymous default declarations.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made ordinary declaration traversal the sole owner of local
+registration for exported variables, classes, and functions. Export
+collection now uses a side-effect-free pattern-name collector only to build
+export entries; named default declarations retain their explicit local path.
+Export entries, function IDs, static-string metadata, and anonymous defaults
+remain unchanged. Verified with `make fmt && make ci`.
 
 #### [x] READ-002 — CommonJS uncertainty is split between two owners
 

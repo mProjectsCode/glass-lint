@@ -37,11 +37,18 @@ impl ModuleInterfaceBuilder {
         &mut self,
         pattern: &swc_ecma_ast::Pat,
     ) -> BTreeSet<SmolStr> {
-        let mut names = BTreeSet::new();
-        collect_pat_bindings(pattern, &mut names);
+        let names = Self::collect_pattern_locals(pattern);
         for name in &names {
             self.interface.add_local(name.clone());
         }
+        names
+    }
+
+    pub(in crate::analysis::facts) fn collect_pattern_locals(
+        pattern: &swc_ecma_ast::Pat,
+    ) -> BTreeSet<SmolStr> {
+        let mut names = BTreeSet::new();
+        collect_pat_bindings(pattern, &mut names);
         names
     }
 

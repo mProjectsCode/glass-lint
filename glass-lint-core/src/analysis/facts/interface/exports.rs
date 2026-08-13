@@ -18,7 +18,6 @@ impl ModuleInterfaceBuilder {
     ) {
         match declaration {
             swc_ecma_ast::Decl::Class(class) => {
-                self.record_local(class.ident.sym.to_string());
                 self.add_export(
                     class.ident.sym.to_string(),
                     ModuleExport::Local {
@@ -27,7 +26,6 @@ impl ModuleInterfaceBuilder {
                 );
             }
             swc_ecma_ast::Decl::Fn(function) => {
-                self.record_local(function.ident.sym.to_string());
                 if let Some(id) =
                     resolver.function_id_for_expr(&Expr::Ident(function.ident.clone()))
                 {
@@ -42,7 +40,7 @@ impl ModuleInterfaceBuilder {
             }
             swc_ecma_ast::Decl::Var(variable) => {
                 for declarator in &variable.decls {
-                    let names = self.record_pattern_locals(&declarator.name);
+                    let names = Self::collect_pattern_locals(&declarator.name);
                     for name in names {
                         if let swc_ecma_ast::Pat::Ident(binding) = &declarator.name
                             && let Some(id) =
