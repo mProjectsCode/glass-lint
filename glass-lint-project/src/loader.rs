@@ -155,18 +155,19 @@ impl ProjectLoader {
             deadline,
         )?;
         build.add_initial_paths(paths.initial_paths);
-        let (expansion_result, closed) = build.close_frontier(metrics);
-        match expansion_result {
+        let partial_reason = match build.close_frontier(metrics) {
             Ok(()) => {
-                let (report, sources) = closed.finish(FinishMode::Complete, metrics)?;
-                Ok(ProjectLoadOutcome::complete(report, sources))
+                build.deadline.check()?;
+                None
             }
-            Err(ProjectLoadError::Timeout) => Err(ProjectLoadError::Timeout),
-            Err(error) => {
-                let (report, sources) = closed.finish(FinishMode::Partial, metrics)?;
-                Ok(ProjectLoadOutcome::partial(report, sources, error))
-            }
-        }
+            Err(ProjectLoadError::Timeout) => return Err(ProjectLoadError::Timeout),
+            Err(error) => Some(error),
+        };
+        let (report, sources) = build.finish(metrics)?;
+        Ok(match partial_reason {
+            Some(reason) => ProjectLoadOutcome::partial(report, sources, reason),
+            None => ProjectLoadOutcome::complete(report, sources),
+        })
     }
 }
 
@@ -304,21 +305,16 @@ impl<'a> ProjectLoadState<'a> {
         self.queue.extend(paths);
     }
 
-    /// Drain the work queue in bounded parallel waves and close the frontier,
-    /// returning a typed [`ClosedFrontier`] that can only be used for linking
-    /// and matching.  Frontier expansion and report generation are now visibly
-    /// separate phases. The result signals whether the frontier was fully
-    /// drained or stopped by a recoverable error; the `ClosedFrontier` is
-    /// always produced so callers can still assemble a partial report.
-    fn close_frontier(
-        mut self,
-        metrics: &mut ProjectLoadMetrics,
-    ) -> (Result<(), ProjectLoadError>, ClosedFrontier<'a>) {
+    /// Drain the work queue in bounded parallel waves and close the frontier.
+    /// The result signals whether the frontier was fully drained or stopped by
+    /// a recoverable error; successfully accepted and analyzed sources remain
+    /// available on this state for partial report assembly.
+    fn close_frontier(&mut self, metrics: &mut ProjectLoadMetrics) -> Result<(), ProjectLoadError> {
         let workers = std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
 
-        let result = loop {
+        loop {
             if let Err(e) = self.deadline.check() {
-                break Err(e);
+                return Err(e);
             }
 
             let mut wave: Vec<AcceptedSourcePath> = Vec::with_capacity(WAVE_SIZE);
@@ -330,21 +326,13 @@ impl<'a> ProjectLoadState<'a> {
             }
 
             if wave.is_empty() {
-                break Ok(());
+                return Ok(());
             }
 
             if let Err(e) = self.process_wave(&wave, workers, metrics) {
-                break Err(e);
+                return Err(e);
             }
-        };
-        let frontier = ClosedFrontier {
-            session: self.session,
-            resolved: self.resolved,
-            diagnostics: self.diagnostics,
-            sources: self.sources,
-            deadline: self.deadline,
-        };
-        (result, frontier)
+        }
     }
 
     /// Admit, read, and locally analyze one bounded wave of source files in
@@ -500,38 +488,8 @@ impl<'a> ProjectLoadState<'a> {
         }
         Ok(())
     }
-}
 
-/// The closed project frontier after the work queue has been fully drained.
-/// Frontier expansion (file reading, local analysis, resolution) is complete;
-/// the only remaining transition is linking and matching.
-struct ClosedFrontier<'a> {
-    session: glass_lint_core::project::ProjectSession<'a>,
-    resolved: ResolutionCache,
-    diagnostics: Vec<crate::tsconfig::TsconfigDiagnostic>,
-    sources: BTreeMap<ProjectRelativePath, SourceText>,
-    deadline: LoadDeadline,
-}
-
-#[derive(Clone, Copy)]
-enum FinishMode {
-    Complete,
-    Partial,
-}
-
-impl ClosedFrontier<'_> {
     fn finish(
-        self,
-        mode: FinishMode,
-        metrics: &mut ProjectLoadMetrics,
-    ) -> Result<(AnalysisReport, BTreeMap<ProjectRelativePath, SourceText>), ProjectLoadError> {
-        if matches!(mode, FinishMode::Complete) {
-            self.deadline.check()?;
-        }
-        self.finish_inner(metrics)
-    }
-
-    fn finish_inner(
         self,
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<(AnalysisReport, BTreeMap<ProjectRelativePath, SourceText>), ProjectLoadError> {
