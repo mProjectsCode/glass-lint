@@ -47,7 +47,7 @@ authored values and failure classification.
 
 ### ECMAScript feature detection
 
-#### [ ] READ-077 — Record parameter and spread features during the normal AST visit
+#### [x] READ-077 — Record parameter and spread features during the normal AST visit
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -71,7 +71,10 @@ parameter is `DefaultParameters`, while ordinary destructuring defaults are
 not, and preserve the separate `RestAndSpread` versus `ObjectRestSpread`
 feature flags and deterministic feature ordering.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `FeatureDetector` now records parameter defaults and pattern /
+object spread features from visitor callbacks during one normal traversal;
+the recursive default helper and property pre-scans were removed. Verified
+with `make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed. The normal visitor may carry
 only the context needed to distinguish parameter defaults from ordinary

@@ -218,6 +218,7 @@ pub fn analyze_ecma_version_with_limits(
 #[derive(Default)]
 struct FeatureDetector {
     features: BTreeSet<EcmaFeature>,
+    in_parameter_pattern: bool,
 }
 
 impl FeatureDetector {
@@ -250,10 +251,14 @@ impl Visit for FeatureDetector {
         if arrow.is_async {
             self.record(EcmaFeature::AsyncFunctions);
         }
-        if arrow.params.iter().any(contains_default) {
-            self.record(EcmaFeature::DefaultParameters);
-        }
-        arrow.visit_children_with(self);
+        arrow.type_params.visit_with(self);
+        arrow.return_type.visit_with(self);
+        let was_in_parameter_pattern = self.in_parameter_pattern;
+        self.in_parameter_pattern = true;
+        arrow.params.visit_with(self);
+        self.in_parameter_pattern = false;
+        arrow.body.visit_with(self);
+        self.in_parameter_pattern = was_in_parameter_pattern;
     }
 
     fn visit_assign_expr(&mut self, assignment: &AssignExpr) {
@@ -307,14 +312,15 @@ impl Visit for FeatureDetector {
         if function.is_generator {
             self.record(EcmaFeature::Generators);
         }
-        if function
-            .params
-            .iter()
-            .any(|param| contains_default(&param.pat))
-        {
-            self.record(EcmaFeature::DefaultParameters);
-        }
-        function.visit_children_with(self);
+        function.decorators.visit_with(self);
+        function.type_params.visit_with(self);
+        function.return_type.visit_with(self);
+        let was_in_parameter_pattern = self.in_parameter_pattern;
+        self.in_parameter_pattern = true;
+        function.params.visit_with(self);
+        self.in_parameter_pattern = false;
+        function.body.visit_with(self);
+        self.in_parameter_pattern = was_in_parameter_pattern;
     }
 
     fn visit_for_of_stmt(&mut self, statement: &swc_ecma_ast::ForOfStmt) {
@@ -434,12 +440,19 @@ impl Visit for FeatureDetector {
 
     fn visit_object_pat(&mut self, pattern: &swc_ecma_ast::ObjectPat) {
         self.record(EcmaFeature::Destructuring);
-        if pattern
-            .props
-            .iter()
-            .any(|property| matches!(property, swc_ecma_ast::ObjectPatProp::Rest(_)))
-        {
+        pattern.visit_children_with(self);
+    }
+
+    fn visit_object_pat_prop(&mut self, property: &swc_ecma_ast::ObjectPatProp) {
+        if matches!(property, swc_ecma_ast::ObjectPatProp::Rest(_)) {
             self.record(EcmaFeature::ObjectRestSpread);
+        }
+        property.visit_children_with(self);
+    }
+
+    fn visit_assign_pat(&mut self, pattern: &swc_ecma_ast::AssignPat) {
+        if self.in_parameter_pattern {
+            self.record(EcmaFeature::DefaultParameters);
         }
         pattern.visit_children_with(self);
     }
@@ -487,30 +500,14 @@ impl Visit for FeatureDetector {
     }
 
     fn visit_object_lit(&mut self, object: &swc_ecma_ast::ObjectLit) {
-        if object
-            .props
-            .iter()
-            .any(|property| matches!(property, swc_ecma_ast::PropOrSpread::Spread(_)))
-        {
-            self.record(EcmaFeature::ObjectRestSpread);
-        }
         object.visit_children_with(self);
     }
-}
 
-fn contains_default(pattern: &swc_ecma_ast::Pat) -> bool {
-    match pattern {
-        swc_ecma_ast::Pat::Array(array) => array.elems.iter().flatten().any(contains_default),
-        swc_ecma_ast::Pat::Assign(_) => true,
-        swc_ecma_ast::Pat::Object(object) => object.props.iter().any(|property| match property {
-            swc_ecma_ast::ObjectPatProp::Assign(property) => property.value.is_some(),
-            swc_ecma_ast::ObjectPatProp::KeyValue(property) => contains_default(&property.value),
-            swc_ecma_ast::ObjectPatProp::Rest(property) => contains_default(&property.arg),
-        }),
-        swc_ecma_ast::Pat::Rest(rest) => contains_default(&rest.arg),
-        swc_ecma_ast::Pat::Expr(_)
-        | swc_ecma_ast::Pat::Ident(_)
-        | swc_ecma_ast::Pat::Invalid(_) => false,
+    fn visit_prop_or_spread(&mut self, property: &swc_ecma_ast::PropOrSpread) {
+        if matches!(property, swc_ecma_ast::PropOrSpread::Spread(_)) {
+            self.record(EcmaFeature::ObjectRestSpread);
+        }
+        property.visit_children_with(self);
     }
 }
 
@@ -538,6 +535,20 @@ mod tests {
              const rest = ({ value = 1, ...other }) => value + other.value;",
         );
         assert!(report.features().contains(&EcmaFeature::DefaultParameters));
+    }
+
+    #[test]
+    fn pattern_and_object_features_are_recorded_without_confusing_defaults() {
+        let report = analyze(
+            "const { value = 1, ...rest } = source; \
+             const values = [...items]; \
+             const copy = { ...source }; \
+             const outer = () => { const factory = () => { const { nested = 1 } = value; }; return factory; };",
+        );
+        assert!(!report.features().contains(&EcmaFeature::DefaultParameters));
+        assert!(report.features().contains(&EcmaFeature::Destructuring));
+        assert!(report.features().contains(&EcmaFeature::RestAndSpread));
+        assert!(report.features().contains(&EcmaFeature::ObjectRestSpread));
     }
 
     #[test]
