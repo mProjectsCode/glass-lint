@@ -144,16 +144,20 @@ impl EvidenceTraces {
     /// Merge alternative traces while preserving a canonical, deterministic
     /// order. Trace step order is left untouched because it represents the
     /// order of events in the witness.
-    pub(crate) fn merge(&self, other: &Self) -> Self {
-        let mut traces = self
-            .traces
-            .iter()
-            .chain(other.traces.iter())
-            .cloned()
-            .collect::<Vec<_>>();
+    pub(crate) fn merge(self, other: Self) -> Self {
+        let Self {
+            traces: mut left,
+            truncated: left_truncated,
+        } = self;
+        let Self {
+            traces: right,
+            truncated: right_truncated,
+        } = other;
+        left.extend(right);
+        let mut traces = left;
         traces.sort();
         traces.dedup();
-        Self::from_state(if self.truncated || other.truncated {
+        Self::from_state(if left_truncated || right_truncated {
             EvidenceTraceState::Truncated(traces)
         } else {
             EvidenceTraceState::Complete(traces)

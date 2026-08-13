@@ -423,7 +423,7 @@ fn duplicate_findings_merge_traces_and_keep_definite_certainty() {
         MatchCertainty::Possible,
     );
 
-    let merged = first.merge_duplicate(&second);
+    let merged = first.merge_duplicate(second);
     assert_eq!(merged.certainty(), MatchCertainty::Definite);
     assert!(merged.evidence().truncated());
     assert_eq!(merged.evidence().traces().len(), 2);

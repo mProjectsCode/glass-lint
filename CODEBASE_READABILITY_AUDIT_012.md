@@ -50,7 +50,7 @@ unchanged. Verified with `make fmt && make ci`.
 
 ### Finding duplicate merge ownership
 
-#### [ ] READ-051 — Finding deduplication clones evidence from a finding that it already owns
+#### [x] READ-051 — Finding deduplication clones evidence from a finding that it already owns
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -74,7 +74,10 @@ ordering, duplicate removal, truncation propagation, certainty promotion,
 message/severity selection, and the test-only construction semantics; remove
 only the avoidable clone of owned evidence at this consuming boundary.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Duplicate finding merges now consume both owned findings and
+their evidence collections. Trace sorting/deduplication, truncation and
+certainty propagation, and finding identity selection remain unchanged while
+the retained evidence is no longer cloned. Verified with `make fmt && make ci`.
 
 ### Borrowed versus owned range APIs
 

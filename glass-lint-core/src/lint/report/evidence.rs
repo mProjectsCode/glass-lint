@@ -138,7 +138,7 @@ fn merge_duplicate_findings(mut findings: Vec<Finding>) -> Vec<Finding> {
     for finding in findings {
         match merged.pop() {
             Some(previous) if previous.has_primary(&finding) => {
-                merged.push(previous.merge_duplicate(&finding));
+                merged.push(previous.merge_duplicate(finding));
             }
             Some(previous) => {
                 merged.push(previous);

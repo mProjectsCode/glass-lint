@@ -85,14 +85,14 @@ impl Finding {
         self.rule_id == other.rule_id && self.location == other.location
     }
 
-    pub(crate) fn merge_duplicate(self, other: &Self) -> Self {
-        debug_assert!(self.has_primary(other));
+    pub(crate) fn merge_duplicate(self, other: Self) -> Self {
+        debug_assert!(self.has_primary(&other));
         Self {
             rule_id: self.rule_id,
             message: self.message,
             severity: self.severity,
             location: self.location,
-            evidence: self.evidence.merge(&other.evidence),
+            evidence: self.evidence.merge(other.evidence),
             certainty: self.certainty.merge(other.certainty),
         }
     }
