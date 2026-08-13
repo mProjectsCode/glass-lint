@@ -52,7 +52,7 @@ because they complete different flow phases.
 
 ### Function-summary completion boundary
 
-#### [ ] READ-051 — Carry full summary completion into local flow outcomes
+#### [x] READ-051 — Carry full summary completion into local flow outcomes
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -81,7 +81,13 @@ complete witnesses as `Possible`, prevent incomplete alternatives from
 establishing `Definite`, retain every completion reason deterministically, and
 keep the existing bounded summary storage.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `FunctionSummaries` now exposes its typed completion to the
+local projector, which merges every summary completion reason into the final
+flow outcome instead of transporting only a summary-budget boolean. Summary
+sink sorting now belongs to `FunctionSummaries::finalize`, and propagation
+completion is merged without discarding existing reasons. Added a focused
+regression test for preserving `SummaryBudget`. Verified with `make fmt && make
+ci`.
 
 **Audit disposition (2026-08-13):** Confirmed and prioritized. This is the root
 completion-boundary issue: all summary completion reasons must reach certainty
@@ -89,7 +95,7 @@ classification before evidence is emitted.
 
 ### Summary-path and effect-facing APIs
 
-#### [ ] READ-052 — Remove the summary finalization operation from `FlowCompletion`
+#### [x] READ-052 — Remove the summary finalization operation from `FlowCompletion`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -112,7 +118,8 @@ delete the `impl FlowCompletion` block for this behavior. Keep sorting after
 all direct and propagated sink insertion, preserve the existing flow/sink/path
 ordering, and keep completion reason merging separate from summary mutation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Covered by READ-051: summary sorting moved to the private
+`FunctionSummaries::finalize` transition. Verified with `make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Subsumed by READ-051. Implementing this as
 an independent change would split one completion-boundary fix and add needless

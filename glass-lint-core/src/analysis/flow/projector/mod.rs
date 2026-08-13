@@ -79,7 +79,7 @@ impl FlowCompletion {
         trace_arena: &TraceArena,
     ) -> Self {
         let mut completion = Self::default();
-        completion.mark_if(FlowCompletionReason::Summary, run.summary_exhausted);
+        completion.merge(run.completion);
         completion.mark_if(FlowCompletionReason::ObjectLimit, run.object_limit_rejected);
         completion.mark_if(
             FlowCompletionReason::StateLimit,
@@ -150,6 +150,7 @@ pub(in crate::analysis) fn collect_into(
     let plan = BoundFlowPlan::new(rules, names);
     let mut summary_budget = Budget::new(limits.emission_limit());
     let helpers = FunctionSummaries::collect(stream, effects, &plan, &mut summary_budget);
+    let completion = helpers.completion();
     let mut projector = ObjectFlowProjector::new(ObjectFlowProjectorInput {
         stream,
         names,
@@ -157,7 +158,7 @@ pub(in crate::analysis) fn collect_into(
         helpers,
         evidence,
         limits,
-        summary_exhausted: summary_budget.exhausted(),
+        completion,
         module_id,
         trace_arena,
     });
@@ -288,7 +289,7 @@ struct ProjectionRunState {
     object_limit_rejected: bool,
     alternatives_complete: AlternativeCompleteness,
     reachable: bool,
-    summary_exhausted: bool,
+    completion: FlowCompletion,
     /// Suppress findings while replaying a loop body to compute its fixed
     /// point; replay only propagates semantic state.
     emission_mode: EmissionMode,
@@ -485,14 +486,14 @@ impl AlternativeCompleteness {
 }
 
 impl ProjectionRunState {
-    fn new(limits: FlowLimits, summary_exhausted: bool) -> Self {
+    fn new(limits: FlowLimits, completion: FlowCompletion) -> Self {
         Self {
             limits,
             next_object_id: 0,
             object_limit_rejected: false,
             alternatives_complete: AlternativeCompleteness::Complete,
             reachable: true,
-            summary_exhausted,
+            completion,
             emission_mode: EmissionMode::Emit,
             operation_budget: Budget::new(limits.operation_limit()),
             max_live_alternatives: 1,
@@ -519,7 +520,7 @@ struct ObjectFlowProjectorInput<'rules, 'stream, 'arena> {
     helpers: FunctionSummaries<'stream>,
     evidence: &'stream mut RuleEvidenceTable,
     limits: FlowLimits,
-    summary_exhausted: bool,
+    completion: FlowCompletion,
     module_id: ModuleId,
     trace_arena: &'arena mut TraceArena,
 }
@@ -533,7 +534,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             helpers,
             evidence,
             limits,
-            summary_exhausted,
+            completion,
             module_id,
             trace_arena,
         } = input;
@@ -541,7 +542,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             inputs: ProjectionInputs::new(stream, names, plan, helpers, module_id),
             flow_evidence: FlowEvidence::new(evidence),
             flow_state: FlowStateTable::new(limits.state_limit(), limits.mutation_limit()),
-            run: ProjectionRunState::new(limits, summary_exhausted),
+            run: ProjectionRunState::new(limits, completion),
             paths: ProjectionPathMachine::initial(),
             trace_arena,
         }

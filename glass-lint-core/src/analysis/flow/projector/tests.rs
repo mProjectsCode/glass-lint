@@ -209,6 +209,20 @@ fn exhausted_flow_operation_budget_is_reported_as_incomplete() {
 }
 
 #[test]
+fn summary_completion_reason_reaches_local_outcome() {
+    let outcome = collect_source_with_outcome(
+        "function helper(value) { document.head.appendChild(value); } const script = document.createElement('script'); script.src = url; helper(script);",
+        &script_flow(),
+        FlowLimits::test_new(65_536, 262_144, 1, 4096),
+    );
+
+    assert_eq!(
+        outcome.completion,
+        FlowCompletion::incomplete(FlowCompletionReason::SummaryBudget)
+    );
+}
+
+#[test]
 fn member_call_configuration_stays_with_its_receiver() {
     let flow = LifecycleQuery::catalog_builder("configured script")
         .source(

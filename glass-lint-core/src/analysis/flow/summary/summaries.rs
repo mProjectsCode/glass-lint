@@ -54,15 +54,17 @@ impl SummarySinkBudget {
     }
 }
 
-impl FlowCompletion {
-    fn finalize(summaries: &mut FunctionSummaries<'_>) {
-        for (_, summary) in summaries.by_id.iter_mut() {
+impl<'a> FunctionSummaries<'a> {
+    fn finalize(&mut self) {
+        for (_, summary) in self.by_id.iter_mut() {
             summary.sort_sinks();
         }
     }
-}
 
-impl<'a> FunctionSummaries<'a> {
+    pub(in crate::analysis::flow) fn completion(&self) -> FlowCompletion {
+        self.completion
+    }
+
     pub(in crate::analysis::flow) fn get(&self, id: FunctionId) -> Option<&FunctionSummary> {
         self.by_id.get(id)
     }
@@ -93,10 +95,11 @@ impl<'a> FunctionSummaries<'a> {
             summaries.collect_direct_sinks(stream, plan, budget);
         }
         if summaries.completion.is_complete() {
-            summaries.completion =
-                SummaryPropagation::new(stream, &summaries.by_id).run(&mut summaries, budget);
+            let mut propagation = SummaryPropagation::new(stream, &summaries.by_id);
+            let completion = propagation.run(&mut summaries, budget);
+            summaries.completion.merge(completion);
         }
-        FlowCompletion::finalize(&mut summaries);
+        summaries.finalize();
         summaries
     }
 
