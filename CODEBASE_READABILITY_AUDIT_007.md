@@ -72,7 +72,7 @@ Verified with `make fmt && make ci`.
 
 ### Projection planning
 
-#### [ ] READ-031 — Projection planning scans every physical-root list twice
+#### [x] READ-031 — Projection planning scans every physical-root list twice
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -94,7 +94,9 @@ the physical-root index used by `BoundLifecycleRoot`, the exclusion of empty
 argument groups, rule ordering, and requirement aggregation; only the second
 root traversal should be removed.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Combined constrained-root and lifecycle-root collection into one
+enumerated physical-root pass per matcher, preserving empty-group filtering and
+the original lifecycle root indices. Verified with `make fmt && make ci`.
 
 ### Graph and fixed-point result boundaries
 

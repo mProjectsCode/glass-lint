@@ -213,18 +213,17 @@ impl<'a> ProjectionPlan<'a> {
         let mut flow_matchers = Vec::new();
         let mut requirements = PlanRequirements::default();
         for (rule_index, matcher) in selection.selected_matchers() {
-            for root in matcher.physical_roots() {
-                if matches!(
-                    root,
+            for (root_index, root) in matcher.physical_roots().iter().enumerate() {
+                match root {
                     PhysicalRoot::ConstrainedScan { constraints, .. }
-                        if !constraints.groups().is_empty()
-                ) {
-                    constrained_roots.push(ConstrainedRootInput::new(rule_index, root));
-                }
-            }
-            for (flow_index, root) in matcher.physical_roots().iter().enumerate() {
-                if let PhysicalRoot::Lifecycle { flow } = root {
-                    flow_matchers.push(BoundLifecycleRoot::new(rule_index, flow_index, flow));
+                        if !constraints.groups().is_empty() =>
+                    {
+                        constrained_roots.push(ConstrainedRootInput::new(rule_index, root));
+                    }
+                    PhysicalRoot::Lifecycle { flow } => {
+                        flow_matchers.push(BoundLifecycleRoot::new(rule_index, root_index, flow));
+                    }
+                    _ => {}
                 }
             }
             requirements.merge_from(matcher.requirements());
