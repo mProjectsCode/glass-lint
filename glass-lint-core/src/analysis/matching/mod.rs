@@ -22,7 +22,7 @@ pub(in crate::analysis) use identity_map::{ModuleIdentityContributions, ModuleId
 mod arguments;
 pub(in crate::analysis) use arguments::{
     ConstrainedRootInput, MatcherArtifact, MatcherOverlayPolicy, MatcherProjectContext,
-    MatcherProjectInputs, try_compute_constrained_evidence,
+    MatcherProjectOverlay, try_compute_constrained_evidence,
 };
 mod build;
 mod query;

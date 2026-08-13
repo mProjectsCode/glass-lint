@@ -19,7 +19,8 @@ use crate::{
             projector::{self as object_flow, LocalFlowProjectionOutcome},
         },
         matching::{
-            ConstrainedRootInput, MatcherOverlayPolicy, MatcherProjectContext, MatcherProjectInputs,
+            ConstrainedRootInput, MatcherOverlayPolicy, MatcherProjectContext,
+            MatcherProjectOverlay,
         },
         model::flow::FlowLimits,
         project::state::LinkingSession,
@@ -163,10 +164,10 @@ impl<'project, 'plan, 'roots, 'arena> ProjectionSession<'project, 'plan, 'roots,
                 } else {
                     MatcherOverlayPolicy::Disabled
                 };
-                let project_inputs =
-                    MatcherProjectInputs::new(identities.as_ref(), result_identities.as_ref());
+                let project_overlay =
+                    MatcherProjectOverlay::new(identities.as_ref(), result_identities.as_ref());
                 let (matcher_context, overlay_ops) =
-                    MatcherProjectContext::from_facts(facts, project_inputs, overlay_policy);
+                    MatcherProjectContext::from_facts(facts, project_overlay, overlay_policy);
                 outcome.metrics.operations = outcome.metrics.operations.saturating_add(overlay_ops);
                 let effects = self.plan.needs_flow().then(|| module.local().effects());
                 if let Some(effects) = effects

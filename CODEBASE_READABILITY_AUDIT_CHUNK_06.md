@@ -15,7 +15,7 @@ a value-table lookup that its operation budget reports only once.
 
 ### Project overlay API
 
-#### [ ] READ-059 — Collapse duplicate project identity input/view wrappers
+#### [x] READ-059 — Collapse duplicate project identity input/view wrappers
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -47,6 +47,11 @@ update tests to construct only the remaining semantic input.
 **Audit disposition (2026-08-13):** Confirmed. The remaining context type is
 the useful pairing boundary; only the identical identity-only input/view
 wrappers should be collapsed.
+
+**Fix Applied:** `MatcherProjectOverlay` is now the single borrowed identity
+view used for artifact construction and evaluation context storage. Removed
+`MatcherProjectInputs`, its conversion/accessors, and the unused test-only
+occurrence parameter. Verified with `make fmt && make ci`.
 
 ### Constrained-root preparation
 

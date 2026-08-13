@@ -168,14 +168,14 @@ pub(in crate::analysis) struct MatcherArtifact<'a> {
 impl<'a> MatcherArtifact<'a> {
     pub(in crate::analysis) fn from_facts(
         facts: &'a SemanticFacts,
-        inputs: MatcherProjectInputs<'_>,
+        project: MatcherProjectOverlay<'_>,
         overlay_policy: MatcherOverlayPolicy,
     ) -> (Self, usize) {
         let (overlay, operations) = match overlay_policy {
             MatcherOverlayPolicy::Disabled => (None, 0),
             MatcherOverlayPolicy::Enabled => {
                 if facts.matcher_index().is_available() {
-                    inputs.module_identities().map_or((None, 0), |identities| {
+                    project.identities.map_or((None, 0), |identities| {
                         let (overlay, operations) =
                             LinkedOccurrenceView::build(facts.matcher_index(), identities);
                         (Some(overlay), operations)
@@ -226,32 +226,6 @@ impl<'a> MatcherArtifact<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(in crate::analysis) struct MatcherProjectInputs<'a> {
-    module_identities: Option<&'a ModuleIdentityMap>,
-    call_result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
-}
-
-impl<'a> MatcherProjectInputs<'a> {
-    pub(in crate::analysis) const fn new(
-        module_identities: Option<&'a ModuleIdentityMap>,
-        call_result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
-    ) -> Self {
-        Self {
-            module_identities,
-            call_result_identities,
-        }
-    }
-
-    fn module_identities(self) -> Option<&'a ModuleIdentityMap> {
-        self.module_identities
-    }
-
-    fn call_result_identities(self) -> Option<&'a BTreeMap<ValueId, ExportResolution>> {
-        self.call_result_identities
-    }
-}
-
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(in crate::analysis) enum MatcherOverlayPolicy {
     Disabled,
@@ -279,17 +253,11 @@ pub(in crate::analysis) struct MatcherProjectContext<'facts, 'project> {
 impl<'facts, 'project> MatcherProjectContext<'facts, 'project> {
     pub(in crate::analysis) fn from_facts(
         facts: &'facts SemanticFacts,
-        inputs: MatcherProjectInputs<'project>,
+        project: MatcherProjectOverlay<'project>,
         overlay_policy: MatcherOverlayPolicy,
     ) -> (Self, usize) {
-        let (artifact, operations) = MatcherArtifact::from_facts(facts, inputs, overlay_policy);
-        (
-            Self {
-                artifact,
-                project: MatcherProjectOverlay::from_inputs(inputs),
-            },
-            operations,
-        )
+        let (artifact, operations) = MatcherArtifact::from_facts(facts, project, overlay_policy);
+        (Self { artifact, project }, operations)
     }
 
     pub(in crate::analysis) fn artifact(&self) -> &MatcherArtifact<'facts> {
@@ -306,16 +274,7 @@ impl<'facts, 'project> MatcherProjectContext<'facts, 'project> {
 }
 
 impl<'a> MatcherProjectOverlay<'a> {
-    pub(in crate::analysis) fn from_inputs(inputs: MatcherProjectInputs<'a>) -> Self {
-        Self {
-            identities: inputs.module_identities(),
-            result_identities: inputs.call_result_identities(),
-        }
-    }
-
-    #[cfg(test)]
-    fn new(
-        _occurrence: Option<&'a LinkedOccurrenceView<'a>>,
+    pub(in crate::analysis) const fn new(
         identities: Option<&'a ModuleIdentityMap>,
         result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
     ) -> Self {
@@ -552,7 +511,7 @@ mod tests {
             MatcherLocalInput::from_parts(&stream, &index),
             &[root_input(&root)],
             &mut evidence,
-            MatcherProjectOverlay::new(None, None, None),
+            MatcherProjectOverlay::new(None, None),
         )
         .expect_err("a stale rule index must remain a typed publication error");
 
@@ -612,7 +571,7 @@ mod tests {
             MatcherLocalInput::from_parts(&stream, &index),
             &[root_input(&call), root_input(&member)],
             &mut evidence,
-            MatcherProjectOverlay::new(None, None, None),
+            MatcherProjectOverlay::new(None, None),
         );
         assert_eq!(evidence[0].len(), 2);
         assert!(evidence[0].iter().all(|item| item.count() == 1));
@@ -645,7 +604,7 @@ mod tests {
             MatcherLocalInput::from_parts(&stream, &index),
             &[root_input(&roots[0])],
             &mut evidence,
-            MatcherProjectOverlay::new(None, None, None),
+            MatcherProjectOverlay::new(None, None),
         );
         assert_eq!(evidence[0].len(), 1);
         assert_eq!(evidence[0][0].occurrences().len(), 2);
@@ -698,7 +657,7 @@ mod tests {
             MatcherLocalInput::from_parts(&stream, &index),
             &[root_input(&patched)],
             &mut evidence,
-            MatcherProjectOverlay::new(None, None, None),
+            MatcherProjectOverlay::new(None, None),
         );
         assert!(
             evidence[0].is_empty(),
@@ -722,7 +681,7 @@ mod tests {
             MatcherLocalInput::from_parts(&stream, &index),
             &[root_input(&root)],
             &mut evidence,
-            MatcherProjectOverlay::new(None, None, None),
+            MatcherProjectOverlay::new(None, None),
         );
         // Dynamic values should not match a static string predicate.
         assert!(
@@ -760,7 +719,7 @@ mod tests {
             MatcherLocalInput::from_parts(&stream, &index),
             &[root_input(&root)],
             &mut evidence,
-            MatcherProjectOverlay::new(None, None, None),
+            MatcherProjectOverlay::new(None, None),
         );
         assert!(!evidence[0].is_empty(), "sparse arguments should match");
         assert_eq!(evidence[0][0].occurrences().len(), 1);
@@ -816,13 +775,13 @@ mod tests {
             MatcherLocalInput::from_parts(&stream, &index),
             &[root_input(&root_a)],
             &mut ev_a,
-            MatcherProjectOverlay::new(None, None, None),
+            MatcherProjectOverlay::new(None, None),
         );
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
             &[root_input(&root_b)],
             &mut ev_b,
-            MatcherProjectOverlay::new(None, None, None),
+            MatcherProjectOverlay::new(None, None),
         );
         assert_eq!(ev_a[0].len(), ev_b[0].len());
         assert_eq!(ev_a[0][0].count(), ev_b[0][0].count());
@@ -853,7 +812,7 @@ mod tests {
             MatcherLocalInput::from_parts(&stream, &index),
             &[root_input(&root)],
             &mut evidence,
-            MatcherProjectOverlay::new(None, None, None),
+            MatcherProjectOverlay::new(None, None),
         );
         assert!(!evidence[0].is_empty(), "equals_any should match /api");
     }
@@ -883,7 +842,7 @@ mod tests {
             MatcherLocalInput::from_parts(&stream, &index),
             &[root_input(&root)],
             &mut evidence,
-            MatcherProjectOverlay::new(None, None, None),
+            MatcherProjectOverlay::new(None, None),
         );
         assert!(
             evidence[0].is_empty(),
@@ -916,7 +875,7 @@ mod tests {
             MatcherLocalInput::from_parts(&stream, &index),
             &[root_input(&root)],
             &mut evidence,
-            MatcherProjectOverlay::new(None, None, None),
+            MatcherProjectOverlay::new(None, None),
         );
         assert!(
             !evidence[0].is_empty(),
@@ -952,7 +911,7 @@ mod tests {
             MatcherLocalInput::from_parts(&stream, &index),
             &[root_input(&root)],
             &mut evidence,
-            MatcherProjectOverlay::new(None, None, None),
+            MatcherProjectOverlay::new(None, None),
         );
         assert!(
             !evidence[0].is_empty(),
@@ -986,7 +945,7 @@ mod tests {
             MatcherLocalInput::from_parts(&stream, &index),
             &[root_input(&root)],
             &mut evidence,
-            MatcherProjectOverlay::new(None, None, None),
+            MatcherProjectOverlay::new(None, None),
         );
         assert!(!evidence[0].is_empty(), "object keys should match");
     }
@@ -1021,7 +980,7 @@ mod tests {
             MatcherLocalInput::from_parts(&stream, &index),
             &[root_input(&root)],
             &mut evidence,
-            MatcherProjectOverlay::new(None, None, None),
+            MatcherProjectOverlay::new(None, None),
         );
         assert!(
             !evidence[0].is_empty(),
@@ -1075,7 +1034,7 @@ mod tests {
         compute_constrained_inner(
             MatcherEvaluationContext {
                 artifact: &MatcherArtifact::from_parts_with_overlay(stream, index, overlay),
-                project: MatcherProjectOverlay::new(overlay, None, None),
+                project: MatcherProjectOverlay::new(None, None),
                 operations: &mut ops,
             },
             roots,
