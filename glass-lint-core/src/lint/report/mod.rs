@@ -62,14 +62,14 @@ impl ProjectAnalysisTimings {
 
 pub(super) struct ProjectReportSession {
     status: AnalysisStatus,
-    trace_arena: TraceArena,
+    trace_arena: Option<TraceArena>,
 }
 
 impl ProjectReportSession {
-    fn new(project: &ProjectSemanticModel, trace_limit: usize) -> Self {
+    fn new(project: &ProjectSemanticModel) -> Self {
         Self {
             status: project.status_snapshot(),
-            trace_arena: TraceArena::new(trace_limit),
+            trace_arena: None,
         }
     }
 
@@ -92,10 +92,6 @@ impl ProjectReportSession {
         outcome.record_analysis_status(project, &mut self.status);
     }
 
-    fn set_trace_arena(&mut self, trace_arena: TraceArena) {
-        self.trace_arena = trace_arena;
-    }
-
     pub(super) fn status_diagnostics(&self) -> StatusDiagnostics {
         self.status.diagnostics()
     }
@@ -105,11 +101,13 @@ impl ProjectReportSession {
     }
 
     pub(super) fn reconstruct_trace(&self, head: TraceNodeId) -> Option<Vec<TraceStep>> {
-        self.trace_arena.reconstruct_trace(head)
+        self.trace_arena
+            .as_ref()
+            .and_then(|arena| arena.reconstruct_trace(head))
     }
 
     pub(super) fn trace_node_count(&self) -> usize {
-        self.trace_arena.node_count()
+        self.trace_arena.as_ref().map_or(0, TraceArena::node_count)
     }
 }
 
@@ -151,7 +149,7 @@ impl LinkedReport {
             diagnostics::initialize_project_files(sources, parse_diagnostics);
         let linking_start = Instant::now();
         let project = ProjectSemanticModel::link_with_limits(link_input, limits);
-        let mut session = ProjectReportSession::new(&project, limits.trace_nodes());
+        let mut session = ProjectReportSession::new(&project);
         for (path, failure) in parse_failures {
             session.record_parse_failure(path, failure);
         }
@@ -206,7 +204,7 @@ impl LinkedReport {
                 )
             }
         };
-        session.set_trace_arena(trace_arena);
+        session.trace_arena = Some(trace_arena);
         session.record_projection_status(&project, &projection_outcome);
         let matching = matching_start.elapsed();
 

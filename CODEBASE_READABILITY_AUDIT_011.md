@@ -83,7 +83,7 @@ Verified with `make fmt && make ci`.
 
 ### Report-session lifecycle
 
-#### [ ] READ-049 — Project report sessions allocate an unused trace arena before matching supplies the real one
+#### [x] READ-049 — Project report sessions allocate an unused trace arena before matching supplies the real one
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -108,7 +108,11 @@ foreign trace-handle rejection, zero-arena behavior on a rule-selection
 failure, status recording, and final trace-node metrics; remove only the
 synthetic pre-match arena and replacement setter.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Report sessions now retain no trace arena until matching
+produces one; the arena transfers directly into the matched session. Trace
+reconstruction/counting still handle the zero-arena selection-failure path,
+foreign handles, status recording, and final metrics unchanged. Verified with
+`make fmt && make ci`.
 
 ## Systemic Themes
 
