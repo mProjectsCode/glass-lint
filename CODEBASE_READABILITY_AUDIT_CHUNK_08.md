@@ -155,7 +155,7 @@ wrapper.
 
 ### Lifecycle property-name validation
 
-#### [ ] READ-071 — Canonicalize lifecycle property names at construction
+#### [x] READ-071 — Canonicalize lifecycle property names at construction
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -182,6 +182,9 @@ property-key grammar is specified and verified against the source matcher.
 **Audit disposition (2026-08-13):** Withdrawn as unsound. The apparent
 whitespace inconsistency is not a bug without an explicit canonicalization
 contract; no implementation work should be derived from READ-071.
+
+**Resolution:** Closed as withdrawn. The audit inventory now records that no
+code change is appropriate for this finding.
 
 ## Systemic Themes
 
