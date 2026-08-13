@@ -14,7 +14,7 @@ expose or repeat lower-level normalization/construction mechanics.
 
 ### Report combination
 
-#### [ ] READ-083 — Combine owned reports in one validating accumulator pass
+#### [x] READ-083 — Combine owned reports in one validating accumulator pass
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -39,7 +39,10 @@ pass, while preserving empty-input behavior, first-report error expectations,
 duplicate-path rejection, saturating operation-count addition, completion
 joining, final file/diagnostic ordering, and refreshed aggregate metrics.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `AnalysisReport::combine` now validates each owned report and
+merges it immediately into one accumulator, retaining duplicate-path and
+contract error ordering before a single finalization pass. Verified with
+`make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed. Owned reports can be validated
 and merged transactionally in one consuming pass because failure drops the

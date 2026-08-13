@@ -56,21 +56,30 @@ impl AnalysisReport {
     /// assert_eq!(combined.files().len(), 2);
     /// ```
     pub fn combine(reports: impl IntoIterator<Item = Self>) -> Result<Self, ReportCombineError> {
-        let reports: Vec<Self> = reports.into_iter().collect();
-        let Some(first) = reports.first() else {
+        let mut reports = reports.into_iter();
+        let Some(mut combined) = reports.next() else {
             return Err(ReportCombineError::Empty);
         };
+        let expected_schema = combined.schema_version();
+        let expected_tool = combined.tool_version().to_owned();
         let mut paths = BTreeSet::new();
-        for report in &reports {
-            if report.schema_version() != first.schema_version() {
+        for file in combined.files() {
+            if !paths.insert(file.path().clone()) {
+                return Err(ReportCombineError::DuplicateFilePath {
+                    path: file.path().clone(),
+                });
+            }
+        }
+        for report in reports {
+            if report.schema_version() != expected_schema {
                 return Err(ReportCombineError::SchemaMismatch {
-                    expected: first.schema_version(),
+                    expected: expected_schema,
                     actual: report.schema_version(),
                 });
             }
-            if report.tool_version() != first.tool_version() {
+            if report.tool_version() != expected_tool {
                 return Err(ReportCombineError::ToolVersionMismatch {
-                    expected: first.tool_version().into(),
+                    expected: expected_tool,
                     actual: report.tool_version().into(),
                 });
             }
@@ -81,13 +90,6 @@ impl AnalysisReport {
                     });
                 }
             }
-        }
-
-        let mut reports = reports.into_iter();
-        let Some(mut combined) = reports.next() else {
-            return Err(ReportCombineError::Empty);
-        };
-        for report in reports {
             combined = combined.merge(report);
         }
         Ok(combined.finalize())
