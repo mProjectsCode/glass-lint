@@ -1,5 +1,9 @@
 use super::*;
-use crate::api::rule::{EventQuery, QueryDecl};
+use crate::{
+    AnalysisLimits, Environment, Linter, LinterConfig, RuleCatalog, RuleSelection,
+    api::rule::{EventQuery, QueryDecl},
+    project::ProjectSession,
+};
 
 pub fn source_file(path: impl Into<String>, source: impl Into<SourceText>) -> SourceFile {
     let path = path.into();
@@ -18,7 +22,7 @@ pub fn project_path(path: &str) -> ProjectRelativePath {
     ProjectRelativePath::new(path).unwrap()
 }
 
-pub fn finish_collection(collection: crate::project::ProjectCollection<'_>) -> AnalysisReport {
+pub fn finish_session(collection: ProjectSession<'_>) -> AnalysisReport {
     collection
         .finish_local()
         .unwrap()
@@ -29,7 +33,7 @@ pub fn finish_collection(collection: crate::project::ProjectCollection<'_>) -> A
 }
 
 pub fn finish_collection_with(
-    collection: crate::project::ProjectCollection<'_>,
+    collection: ProjectSession<'_>,
     outcomes: impl IntoIterator<Item = (ResolutionRequestKey, ResolverOutcome)>,
 ) -> AnalysisReport {
     collection
@@ -41,13 +45,13 @@ pub fn finish_collection_with(
         .unwrap()
 }
 
-pub fn test_linter() -> crate::Linter {
-    let mut environment = crate::Environment::default();
+pub fn test_linter() -> Linter {
+    let mut environment = Environment::default();
     environment.add_global("fetch").unwrap();
     test_linter_with_environment(environment)
 }
 
-pub fn test_linter_with_environment(environment: crate::Environment) -> crate::Linter {
+pub fn test_linter_with_environment(environment: Environment) -> Linter {
     let rule = Rule::catalog_builder("network.fetch")
         .description("Uses fetch")
         .severity(Severity::Warning)
@@ -55,15 +59,15 @@ pub fn test_linter_with_environment(environment: crate::Environment) -> crate::L
         .query(EventQuery::call_global("fetch"))
         .build()
         .unwrap();
-    crate::Linter::new(crate::LinterConfig::new(
-        vec![crate::RuleCatalog::new("test", vec![rule]).unwrap()],
+    Linter::new(LinterConfig::new(
+        vec![RuleCatalog::new("test", vec![rule]).unwrap()],
         environment,
     ))
     .unwrap()
 }
 
-pub fn test_linter_with_limits(limits: crate::AnalysisLimits) -> crate::Linter {
-    let mut environment = crate::Environment::default();
+pub fn test_linter_with_limits(limits: AnalysisLimits) -> Linter {
+    let mut environment = Environment::default();
     environment.add_global("fetch").unwrap();
     let rule = Rule::catalog_builder("network.fetch")
         .description("Uses fetch")
@@ -72,9 +76,9 @@ pub fn test_linter_with_limits(limits: crate::AnalysisLimits) -> crate::Linter {
         .query(EventQuery::call_global("fetch"))
         .build()
         .unwrap();
-    crate::Linter::new(
-        crate::LinterConfig::new(
-            vec![crate::RuleCatalog::new("test", vec![rule]).unwrap()],
+    Linter::new(
+        LinterConfig::new(
+            vec![RuleCatalog::new("test", vec![rule]).unwrap()],
             environment,
         )
         .with_limits(limits),
@@ -82,11 +86,8 @@ pub fn test_linter_with_limits(limits: crate::AnalysisLimits) -> crate::Linter {
     .unwrap()
 }
 
-pub fn test_linter_with_selection(
-    selection: crate::RuleSelection,
-    limits: crate::AnalysisLimits,
-) -> crate::Linter {
-    let mut environment = crate::Environment::default();
+pub fn test_linter_with_selection(selection: RuleSelection, limits: AnalysisLimits) -> Linter {
+    let mut environment = Environment::default();
     environment.add_global("fetch").unwrap();
     let rule = Rule::catalog_builder("network.fetch")
         .description("Uses fetch")
@@ -95,9 +96,9 @@ pub fn test_linter_with_selection(
         .query(EventQuery::call_global("fetch"))
         .build()
         .unwrap();
-    crate::Linter::new(
-        crate::LinterConfig::new(
-            vec![crate::RuleCatalog::new("test", vec![rule]).unwrap()],
+    Linter::new(
+        LinterConfig::new(
+            vec![RuleCatalog::new("test", vec![rule]).unwrap()],
             environment,
         )
         .with_rules(selection)
@@ -106,7 +107,7 @@ pub fn test_linter_with_selection(
     .unwrap()
 }
 
-pub fn flow_linter() -> crate::Linter {
+pub fn flow_linter() -> Linter {
     let rule = Rule::catalog_builder("flow.append")
         .description("Appends a configured script")
         .severity(Severity::Warning)
@@ -132,12 +133,12 @@ pub fn flow_linter() -> crate::Linter {
         ))
         .build()
         .unwrap();
-    let mut environment = crate::Environment::default();
+    let mut environment = Environment::default();
     environment
         .add_globals(["document", "url"])
         .expect("test environment globals");
-    crate::Linter::new(crate::LinterConfig::new(
-        vec![crate::RuleCatalog::new("test", vec![rule]).unwrap()],
+    Linter::new(LinterConfig::new(
+        vec![RuleCatalog::new("test", vec![rule]).unwrap()],
         environment,
     ))
     .unwrap()
@@ -152,12 +153,12 @@ pub fn key(importer: &str) -> ResolutionRequestKey {
 }
 
 pub struct ProjectFixture<'a> {
-    session: crate::project::ProjectCollection<'a>,
+    session: ProjectSession<'a>,
     outcomes: Vec<(ResolutionRequestKey, ResolverOutcome)>,
 }
 
 impl<'a> ProjectFixture<'a> {
-    pub fn new(linter: &'a crate::Linter) -> Self {
+    pub fn new(linter: &'a Linter) -> Self {
         Self {
             session: linter.begin_project(),
             outcomes: Vec::new(),

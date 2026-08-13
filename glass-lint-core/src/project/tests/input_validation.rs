@@ -13,7 +13,7 @@ fn staged_session_normalizes_and_sorts_sources() {
         .analyze_source(source_file("./z.js", ""))
         .unwrap();
     collection.analyze_source(source_file("a.js", "")).unwrap();
-    let report = finish_collection(collection);
+    let report = finish_session(collection);
     assert_eq!(report.files().len(), 2);
     assert_eq!(report.files()[0].path().as_str(), "a.js");
     assert_eq!(report.files()[1].path().as_str(), "z.js");
@@ -55,7 +55,7 @@ fn batch_source_admission_is_atomic_on_duplicate() {
     collection
         .analyze_source(source_file("staged.js", ""))
         .unwrap();
-    let report = finish_collection(collection);
+    let report = finish_session(collection);
     assert_eq!(report.files().len(), 2);
 }
 

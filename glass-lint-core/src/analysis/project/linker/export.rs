@@ -7,7 +7,6 @@ use super::SccPartitionState;
 use crate::{
     analysis::{
         LinkedModuleTarget, ModuleId,
-        lowering::status::{AnalysisComponent, IncompleteReason, StatusScope},
         model::module::{self, ModuleRequestRole, NAMESPACE_EXPORT},
         project::{
             linker::ProjectLinker,
@@ -15,6 +14,7 @@ use crate::{
             resolver::linked_target_to_export_resolution,
             state::{ExportUpdate, QualifiedExportId},
         },
+        semantic::status::{AnalysisComponent, IncompleteReason, StatusScope},
         syntax::SymbolCallProvenance,
     },
     project::{AnalysisDiagnostic, ProjectRelativePath},

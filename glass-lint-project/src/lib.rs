@@ -8,9 +8,8 @@
 //! Discovery and resolution are bounded before the project session is linked,
 //! keeping filesystem policy out of the provider-neutral core engine.
 
-mod admission;
+mod boundary;
 mod budget;
-mod corpus;
 mod discovery;
 mod error;
 mod loader;
@@ -18,16 +17,17 @@ mod loader_metrics;
 mod loader_phases;
 mod options;
 mod resolver;
+mod source_collection;
 mod tsconfig;
 mod walk;
 
 pub use budget::ProjectResourceBudget;
-pub use corpus::{CorpusFile, SourceCorpus};
 pub use error::{ProjectLoadError, ProjectOptionError};
 pub use loader::{
     ProjectLoadMetrics, ProjectLoadOutcome, ProjectLoadStatus, ProjectLoader, ProjectPhaseTimings,
 };
 pub use options::{ProjectLoadOptionsBuilder, ProjectSelection, ValidatedProjectLoadOptions};
+pub use source_collection::{LoadedSource, SourceCollection};
 
 #[cfg(test)]
 mod tests;

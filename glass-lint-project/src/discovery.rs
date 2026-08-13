@@ -7,7 +7,9 @@ use std::{
 };
 
 use crate::{
-    admission::{AdmissionSet, AdmittedSourcePath, CanonicalProjectPath, SourceAdmission},
+    boundary::{
+        AcceptedPaths, AcceptedSourcePath, CanonicalProjectPath, PathClassification, SourceBoundary,
+    },
     budget::ProjectResourceBudget,
     error::ProjectLoadError,
     options::ProjectSelection,
@@ -17,20 +19,20 @@ use crate::{
 
 /// Discovers the bounded set of source files that belongs to a selection.
 ///
-/// Every discovered file passes through a single shared [`AdmissionSet`] so
+/// Every discovered file passes through a single shared [`AcceptedPaths`] so
 /// that the file-count budget is enforced across roots, tsconfig references,
 /// and directory walks. Duplicate or overlapping entries do not consume the
 /// budget twice.
-pub struct ProjectDiscovery<'adm, 'opt, 'budget> {
-    admission: &'adm SourceAdmission<'opt>,
+pub struct ProjectDiscovery<'boundary, 'opt, 'budget> {
+    boundary: &'boundary SourceBoundary<'opt>,
     deadline: Option<Instant>,
-    admitted: AdmissionSet,
+    accepted: AcceptedPaths,
     config_budget: tsconfig::ConfigTraversalBudget,
     project_budget: &'budget mut ProjectResourceBudget,
 }
 
 pub struct DiscoveryResult {
-    pub paths: Vec<AdmittedSourcePath>,
+    pub paths: Vec<AcceptedSourcePath>,
     pub diagnostics: Vec<TsconfigDiagnostic>,
 }
 
@@ -147,7 +149,7 @@ impl<'budget> TsconfigGraphWalker<'budget> {
                             target = target.join("tsconfig.json");
                         }
                         if target.exists() {
-                            let canonical_target = SourceAdmission::canonicalize(&target)?;
+                            let canonical_target = SourceBoundary::canonicalize(&target)?;
                             let child_base = Path::new(canonical_target.as_ref())
                                 .parent()
                                 .map_or_else(|| work.base.clone(), Path::to_path_buf);
@@ -175,19 +177,19 @@ impl<'budget> TsconfigGraphWalker<'budget> {
     }
 }
 
-impl<'adm, 'opt, 'budget> ProjectDiscovery<'adm, 'opt, 'budget> {
-    /// Create a discovery view over a validated admission boundary.
+impl<'boundary, 'opt, 'budget> ProjectDiscovery<'boundary, 'opt, 'budget> {
+    /// Create a discovery view over a validated source boundary.
     pub fn with_deadline(
-        admission: &'adm SourceAdmission<'opt>,
+        boundary: &'boundary SourceBoundary<'opt>,
         deadline: Instant,
         max_files: usize,
         config_budget: tsconfig::ConfigTraversalBudget,
         project_budget: &'budget mut ProjectResourceBudget,
     ) -> Self {
         Self {
-            admission,
+            boundary,
             deadline: Some(deadline),
-            admitted: AdmissionSet::new(max_files),
+            accepted: AcceptedPaths::new(max_files),
             config_budget,
             project_budget,
         }
@@ -218,12 +220,12 @@ impl<'adm, 'opt, 'budget> ProjectDiscovery<'adm, 'opt, 'budget> {
                     config,
                     selection_path
                         .parent()
-                        .unwrap_or_else(|| self.admission.canonical_root()),
+                        .unwrap_or_else(|| self.boundary.canonical_root()),
                 )?
             }
         };
 
-        let paths = self.admitted.into_admitted_paths();
+        let paths = self.accepted.into_accepted_paths();
         Ok(DiscoveryResult { paths, diagnostics })
     }
 
@@ -231,34 +233,31 @@ impl<'adm, 'opt, 'budget> ProjectDiscovery<'adm, 'opt, 'budget> {
         if !path.is_file() {
             return Err(ProjectLoadError::SelectionNotFile(path.to_path_buf()));
         }
-        match self.admission.classify(path)? {
-            crate::admission::PathAdmission::Admitted(admitted) => {
-                self.admitted.admit(&admitted)?;
+        match self.boundary.classify(path)? {
+            PathClassification::Accepted(accepted) => {
+                self.accepted.accept(&accepted)?;
                 Ok(())
             }
-            crate::admission::PathAdmission::Outside(path) => {
-                Err(ProjectLoadError::SelectionOutsideRoot {
-                    selection: path.into_path_buf(),
-                    root: self.admission.canonical_root().to_path_buf(),
-                })
-            }
-            crate::admission::PathAdmission::Excluded(path)
-            | crate::admission::PathAdmission::Unsupported(path) => {
+            PathClassification::Outside(path) => Err(ProjectLoadError::SelectionOutsideRoot {
+                selection: path.into_path_buf(),
+                root: self.boundary.canonical_root().to_path_buf(),
+            }),
+            PathClassification::Excluded(path) | PathClassification::Unsupported(path) => {
                 Err(ProjectLoadError::UnsupportedSource(path.into_path_buf()))
             }
         }
     }
 
     fn discover(&mut self, directory: &Path) -> Result<(), ProjectLoadError> {
-        let Some(_metadata) = walk::resolve_root(self.admission.options(), directory)? else {
+        let Some(_metadata) = walk::resolve_root(self.boundary.options(), directory)? else {
             return Ok(());
         };
         walk::collect_files(
-            self.admission,
+            self.boundary,
             directory,
             self.deadline,
             &mut |_| true,
-            &mut self.admitted,
+            &mut self.accepted,
             self.project_budget,
         )
     }
@@ -268,7 +267,7 @@ impl<'adm, 'opt, 'budget> ProjectDiscovery<'adm, 'opt, 'budget> {
         config: &Path,
         directory: &Path,
     ) -> Result<Vec<TsconfigDiagnostic>, ProjectLoadError> {
-        let canonical_config = SourceAdmission::canonicalize(config)?;
+        let canonical_config = SourceBoundary::canonicalize(config)?;
         let (expansions, mut cycle_diagnostics) =
             TsconfigGraphWalker::new(self.deadline, self.config_budget, self.project_budget)
                 .walk(&canonical_config, directory)?;
@@ -294,10 +293,9 @@ impl<'adm, 'opt, 'budget> ProjectDiscovery<'adm, 'opt, 'budget> {
             for file in files {
                 let path = base.join(file);
                 if path.exists()
-                    && let crate::admission::PathAdmission::Admitted(admitted) =
-                        self.admission.classify(&path)?
+                    && let PathClassification::Accepted(accepted) = self.boundary.classify(&path)?
                 {
-                    self.admitted.admit(&admitted)?;
+                    self.accepted.accept(&accepted)?;
                 }
             }
         } else {
@@ -308,11 +306,11 @@ impl<'adm, 'opt, 'budget> ProjectDiscovery<'adm, 'opt, 'budget> {
                 config.includes(relative)
             };
             walk::collect_files(
-                self.admission,
+                self.boundary,
                 base,
                 self.deadline,
                 &mut include,
-                &mut self.admitted,
+                &mut self.accepted,
                 self.project_budget,
             )?;
         }

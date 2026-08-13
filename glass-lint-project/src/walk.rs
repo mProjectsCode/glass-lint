@@ -9,7 +9,11 @@ use std::{fs, path::Path, time::Instant};
 
 use walkdir::WalkDir;
 
-use crate::{admission::SourceAdmission, budget::ProjectResourceBudget, error::ProjectLoadError};
+use crate::{
+    boundary::{AcceptedPaths, PathClassification, SourceBoundary},
+    budget::ProjectResourceBudget,
+    error::ProjectLoadError,
+};
 
 /// Resolve root metadata respecting the symlink-follow policy.
 ///
@@ -50,18 +54,18 @@ pub fn resolve_root(
 /// Each admissible file is passed through `admitted_set` which enforces the
 /// shared file-count budget and deduplicates across calls and roots.
 pub fn collect_files(
-    admission: &SourceAdmission<'_>,
+    boundary: &SourceBoundary<'_>,
     root: &Path,
     deadline: Option<Instant>,
     include: &mut dyn FnMut(&Path) -> bool,
-    admitted_set: &mut crate::admission::AdmissionSet,
+    accepted_paths: &mut AcceptedPaths,
     budget: &mut ProjectResourceBudget,
 ) -> Result<(), ProjectLoadError> {
     let walker = WalkDir::new(root)
-        .follow_links(admission.options().follow_symlinks())
+        .follow_links(boundary.options().follow_symlinks())
         .sort_by_file_name()
         .into_iter()
-        .filter_entry(|entry| !entry.file_type().is_dir() || !admission.is_excluded(entry.path()));
+        .filter_entry(|entry| !entry.file_type().is_dir() || !boundary.is_excluded(entry.path()));
     for entry in walker {
         if let Some(deadline) = deadline
             && Instant::now() >= deadline
@@ -79,10 +83,9 @@ pub fn collect_files(
         })?;
         if entry.file_type().is_file()
             && include(entry.path())
-            && let crate::admission::PathAdmission::Admitted(admitted) =
-                admission.classify(entry.path())?
+            && let PathClassification::Accepted(accepted) = boundary.classify(entry.path())?
         {
-            admitted_set.admit(&admitted)?;
+            accepted_paths.accept(&accepted)?;
         }
     }
     Ok(())

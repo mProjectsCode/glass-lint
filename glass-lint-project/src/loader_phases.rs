@@ -5,26 +5,26 @@ use glass_lint_core::project::{
     ResolverOutcome,
 };
 
-use crate::{admission::AdmittedSourcePath, error::ProjectLoadError, resolver::ProjectResolver};
+use crate::{boundary::AcceptedSourcePath, error::ProjectLoadError, resolver::ProjectResolver};
 
 #[derive(Default)]
 pub struct PathWorkQueue {
-    queue: VecDeque<AdmittedSourcePath>,
-    seen: BTreeSet<AdmittedSourcePath>,
+    queue: VecDeque<AcceptedSourcePath>,
+    seen: BTreeSet<AcceptedSourcePath>,
 }
 
 impl PathWorkQueue {
-    pub(super) fn extend(&mut self, paths: impl IntoIterator<Item = AdmittedSourcePath>) {
+    pub(super) fn extend(&mut self, paths: impl IntoIterator<Item = AcceptedSourcePath>) {
         for path in paths {
             self.push(path);
         }
     }
 
-    pub(super) fn pop_front(&mut self) -> Option<AdmittedSourcePath> {
+    pub(super) fn pop_front(&mut self) -> Option<AcceptedSourcePath> {
         self.queue.pop_front()
     }
 
-    pub(super) fn push(&mut self, path: AdmittedSourcePath) {
+    pub(super) fn push(&mut self, path: AcceptedSourcePath) {
         if self.seen.insert(path.clone()) {
             self.queue.push_back(path);
         }

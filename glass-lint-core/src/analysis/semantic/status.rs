@@ -77,7 +77,7 @@ pub enum IncompleteReason {
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum StatusScope {
-    /// A failure produced while lowering one reusable local artifact.
+    /// A failure produced while analyzing one reusable local artifact.
     Local,
     File(ProjectRelativePath),
     Project,
@@ -159,7 +159,7 @@ impl AnalysisStatus {
                 // Local status is an internal pre-materialization state. The
                 // linker attaches its path before production diagnostics are
                 // assembled; retaining it in the project bucket keeps this
-                // diagnostic view total for lowering tests and callers.
+                // diagnostic view total for analysis tests and callers.
                 StatusScope::File(path) => files.push((path.clone(), diagnostic)),
                 StatusScope::Local | StatusScope::Project => project.push(diagnostic),
             }

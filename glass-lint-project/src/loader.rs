@@ -17,7 +17,9 @@ use glass_lint_core::{
 
 pub use crate::loader_metrics::{ProjectLoadMetrics, ProjectPhaseTimings};
 use crate::{
-    admission::{AdmissionSet, AdmittedSourcePath, SourceAdmission, absolute_path},
+    boundary::{
+        AcceptedPaths, AcceptedSourcePath, PathClassification, SourceBoundary, absolute_path,
+    },
     budget::ProjectResourceBudget,
     discovery::{DiscoveryResult, ProjectDiscovery},
     error::ProjectLoadError,
@@ -39,7 +41,7 @@ pub struct ProjectLoadOutcome {
     /// Completed or partial report. Timeout outcomes are returned as `Err` and
     /// never contain one.
     pub report: AnalysisReport,
-    /// Source text retained from the admitted files for presentation layers.
+    /// Source text retained from the accepted files for presentation layers.
     /// The report itself remains source-free and serializable.
     pub sources: BTreeMap<ProjectRelativePath, SourceText>,
     /// Typed completion status for the filesystem loading phase. Fatal errors,
@@ -147,7 +149,7 @@ impl ProjectLoader {
 
         let mut build = ProjectLoadState::new(
             linter,
-            paths.admission,
+            paths.boundary,
             paths.diagnostics,
             selection,
             deadline,
@@ -189,8 +191,8 @@ impl LoadDeadline {
 
 /// Canonical absolute paths established before the load loop starts.
 struct ProjectPaths<'a> {
-    admission: SourceAdmission<'a>,
-    initial_paths: VecDeque<AdmittedSourcePath>,
+    boundary: SourceBoundary<'a>,
+    initial_paths: VecDeque<AcceptedSourcePath>,
     diagnostics: Vec<crate::tsconfig::TsconfigDiagnostic>,
 }
 
@@ -206,16 +208,16 @@ impl<'a> ProjectPaths<'a> {
             return Err(ProjectLoadError::SelectionNotFound(selection_path));
         }
         let root = project_root(options, selection, &selection_path)?;
-        let admission = SourceAdmission::new(&root, options)?;
-        let canonical_selection = SourceAdmission::canonicalize(&selection_path)?;
-        if !admission.is_inside_root(canonical_selection.as_ref()) {
+        let boundary = SourceBoundary::new(&root, options)?;
+        let canonical_selection = SourceBoundary::canonicalize(&selection_path)?;
+        if !boundary.is_inside_root(canonical_selection.as_ref()) {
             return Err(ProjectLoadError::SelectionOutsideRoot {
                 selection: canonical_selection.into_path_buf(),
                 root,
             });
         }
         let discover = ProjectDiscovery::with_deadline(
-            &admission,
+            &boundary,
             deadline,
             options.max_files(),
             tsconfig::ConfigTraversalBudget::new(
@@ -227,7 +229,7 @@ impl<'a> ProjectPaths<'a> {
         let DiscoveryResult { paths, diagnostics } =
             discover.initial_paths(selection, canonical_selection.as_ref())?;
         Ok(Self {
-            admission,
+            boundary,
             initial_paths: paths.into(),
             diagnostics,
         })
@@ -257,17 +259,17 @@ const WAVE_SIZE: usize = 50;
 /// Mutable state for one project construction. Keeping the queue, cache, and
 /// counters together makes the main loading phases explicit and auditable.
 struct ProjectLoadState<'a> {
-    session: glass_lint_core::project::ProjectCollection<'a>,
+    session: glass_lint_core::project::ProjectSession<'a>,
     resolver: ProjectResolver<'a>,
-    admission: SourceAdmission<'a>,
+    boundary: SourceBoundary<'a>,
     diagnostics: Vec<crate::tsconfig::TsconfigDiagnostic>,
     queue: PathWorkQueue,
-    admitted: AdmissionSet,
+    accepted: AcceptedPaths,
     resolved: ResolutionCache,
-    /// Cache mapping already-admitted internal target paths to their
-    /// AdmittedSourcePath, avoiding redundant exists/classify calls when
+    /// Cache mapping already-accepted internal target paths to their
+    /// `AcceptedSourcePath`, avoiding redundant exists/classify calls when
     /// multiple importers reference the same target.
-    admitted_target_cache: BTreeMap<ProjectRelativePath, AdmittedSourcePath>,
+    accepted_target_cache: BTreeMap<ProjectRelativePath, AcceptedSourcePath>,
     /// Source text retained for presentation after the core report is built.
     sources: BTreeMap<ProjectRelativePath, SourceText>,
     deadline: LoadDeadline,
@@ -276,29 +278,29 @@ struct ProjectLoadState<'a> {
 impl<'a> ProjectLoadState<'a> {
     fn new(
         linter: &'a Linter,
-        admission: SourceAdmission<'a>,
+        boundary: SourceBoundary<'a>,
         diagnostics: Vec<crate::tsconfig::TsconfigDiagnostic>,
         selection: &ProjectSelection,
         deadline: LoadDeadline,
     ) -> Result<Self, ProjectLoadError> {
         let session = linter.begin_project();
-        let resolver = ProjectResolver::new(admission.clone(), selection)?;
-        let max_files = admission.options().max_files();
+        let resolver = ProjectResolver::new(boundary.clone(), selection)?;
+        let max_files = boundary.options().max_files();
         Ok(Self {
             session,
             resolver,
-            admission,
+            boundary,
             diagnostics,
             queue: PathWorkQueue::default(),
-            admitted: AdmissionSet::new(max_files),
+            accepted: AcceptedPaths::new(max_files),
             resolved: ResolutionCache::default(),
-            admitted_target_cache: BTreeMap::new(),
+            accepted_target_cache: BTreeMap::new(),
             sources: BTreeMap::new(),
             deadline,
         })
     }
 
-    fn add_initial_paths(&mut self, paths: VecDeque<AdmittedSourcePath>) {
+    fn add_initial_paths(&mut self, paths: VecDeque<AcceptedSourcePath>) {
         self.queue.extend(paths);
     }
 
@@ -319,7 +321,7 @@ impl<'a> ProjectLoadState<'a> {
                 break Err(e);
             }
 
-            let mut wave: Vec<AdmittedSourcePath> = Vec::with_capacity(WAVE_SIZE);
+            let mut wave: Vec<AcceptedSourcePath> = Vec::with_capacity(WAVE_SIZE);
             while wave.len() < WAVE_SIZE {
                 match self.queue.pop_front() {
                     Some(path) => wave.push(path),
@@ -350,11 +352,11 @@ impl<'a> ProjectLoadState<'a> {
     /// targets for the next wave.
     ///
     /// When a budget check fails mid-wave (e.g. the project source-byte limit
-    /// is hit), files that were successfully admitted and read are still
+    /// is hit), files that were successfully accepted and read are still
     /// submitted for parallel analysis so partial output is preserved.
     fn process_wave(
         &mut self,
-        wave: &[AdmittedSourcePath],
+        wave: &[AcceptedSourcePath],
         workers: NonZeroUsize,
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<(), ProjectLoadError> {
@@ -373,9 +375,9 @@ impl<'a> ProjectLoadState<'a> {
             let parse_start = Instant::now();
             let requests = self.analyze_wave(read.sources, workers)?;
             metrics.record_analyze_source(parse_start.elapsed());
-            metrics.record_files(self.admitted.len());
+            metrics.record_files(self.accepted.len());
 
-            metrics.admit_requests(requests.len(), self.admission.options().max_requests())?;
+            metrics.admit_requests(requests.len(), self.boundary.options().max_requests())?;
 
             let resolution = self.resolve_requests(requests)?;
             metrics.record_resolution(resolution.elapsed);
@@ -393,14 +395,14 @@ impl<'a> ProjectLoadState<'a> {
 
     fn read_wave(
         &mut self,
-        wave: &[AdmittedSourcePath],
+        wave: &[AcceptedSourcePath],
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<ReadWaveOutcome, ProjectLoadError> {
-        let source_limit = self.admission.options().max_project_source_bytes();
+        let source_limit = self.boundary.options().max_project_source_bytes();
         let mut sources = Vec::with_capacity(wave.len());
         let mut deferred_error = None;
-        for admitted in wave {
-            if !self.admitted.admit(admitted)? {
+        for accepted in wave {
+            if !self.accepted.accept(accepted)? {
                 continue;
             }
 
@@ -408,8 +410,8 @@ impl<'a> ProjectLoadState<'a> {
             // before reading, so a file at the boundary is rejected without
             // wasting I/O.
             let md =
-                std::fs::metadata(admitted.as_ref()).map_err(|source| ProjectLoadError::Io {
-                    path: admitted.as_ref().to_path_buf(),
+                std::fs::metadata(accepted.as_ref()).map_err(|source| ProjectLoadError::Io {
+                    path: accepted.as_ref().to_path_buf(),
                     source,
                 })?;
             if metrics.source_bytes().saturating_add(md.len()) > source_limit {
@@ -420,7 +422,7 @@ impl<'a> ProjectLoadState<'a> {
                 break;
             }
 
-            let source = self.admission.load_admitted_source_file(admitted)?;
+            let source = self.boundary.load_accepted_source_file(accepted)?;
             let source_bytes = u64::try_from(source.source().len())
                 .unwrap_or_else(|_| source_limit.saturating_add(1));
             if let Err(error) = metrics.admit_source_bytes(source_bytes, source_limit) {
@@ -485,17 +487,16 @@ impl<'a> ProjectLoadState<'a> {
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<(), ProjectLoadError> {
         metrics.record_edge();
-        if let Some(admitted) = self.admitted_target_cache.get(&path) {
-            self.queue.push(admitted.clone());
+        if let Some(accepted) = self.accepted_target_cache.get(&path) {
+            self.queue.push(accepted.clone());
             return Ok(());
         }
-        let target = self.admission.canonical_root().join(&path);
+        let target = self.boundary.canonical_root().join(&path);
         if target.exists()
-            && let crate::admission::PathAdmission::Admitted(admitted) =
-                self.admission.classify(&target)?
+            && let PathClassification::Accepted(accepted) = self.boundary.classify(&target)?
         {
-            self.admitted_target_cache.insert(path, admitted.clone());
-            self.queue.push(admitted);
+            self.accepted_target_cache.insert(path, accepted.clone());
+            self.queue.push(accepted);
         }
         Ok(())
     }
@@ -505,7 +506,7 @@ impl<'a> ProjectLoadState<'a> {
 /// Frontier expansion (file reading, local analysis, resolution) is complete;
 /// the only remaining transition is linking and matching.
 struct ClosedFrontier<'a> {
-    session: glass_lint_core::project::ProjectCollection<'a>,
+    session: glass_lint_core::project::ProjectSession<'a>,
     resolved: ResolutionCache,
     diagnostics: Vec<crate::tsconfig::TsconfigDiagnostic>,
     sources: BTreeMap<ProjectRelativePath, SourceText>,

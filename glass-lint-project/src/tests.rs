@@ -13,7 +13,7 @@ use glass_lint_core::{
 };
 
 use crate::{
-    ProjectLoadError, ProjectLoader, ProjectSelection, SourceCorpus,
+    ProjectLoadError, ProjectLoader, ProjectSelection, SourceCollection,
     options::{ProjectLoadOptions, ValidatedProjectLoadOptions},
 };
 
@@ -339,7 +339,7 @@ fn tsconfig_membership_inherits_extends_and_collects_references() {
 
 #[test]
 fn invalid_configured_root_returns_error_not_fallback() {
-    let result = SourceCorpus::from_validated(
+    let result = SourceCollection::from_validated(
         &ValidatedProjectLoadOptions::builder()
             .root("/glass-lint-test-nonexistent-root-does-not-exist")
             .build()

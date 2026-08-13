@@ -623,8 +623,9 @@ pub(in crate::analysis) struct SemanticFacts {
 }
 
 impl SemanticFacts {
-    /// Assemble immutable indexes from the stream produced by lowering.
-    pub(in crate::analysis) fn from_lowering(
+    /// Assemble immutable indexes from the stream produced by semantic
+    /// analysis.
+    pub(in crate::analysis) fn from_analysis(
         stream: FactStream<Frozen>,
         interface: ModuleInterface,
         environment: &crate::Environment,
@@ -689,8 +690,8 @@ mod stream_tests {
     use super::*;
     use crate::{
         analysis::{
-            facts::stream::FactStreamToken, lowering::ResolvedProgram, model::scope::FunctionId,
-            resolution::Resolver, syntax::SymbolCallProvenance,
+            facts::stream::FactStreamToken, model::scope::FunctionId, resolution::Resolver,
+            semantic::ResolvedProgram, syntax::SymbolCallProvenance,
         },
         api::{compiler::rule::CompiledMatcherPlan, rule::EventQuery},
     };

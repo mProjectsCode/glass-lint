@@ -11,7 +11,7 @@ use crate::{
         catalog::RuleCatalog,
         selection::{LintConfigError, RuleSelection},
     },
-    project::{AnalysisReport, ProjectCollection, ProjectError, SessionState},
+    project::{AnalysisReport, ProjectError, ProjectSession, SessionState},
 };
 
 /// Caller-supplied input to linter construction. Validation occurs in
@@ -77,7 +77,7 @@ struct LinterSharedConfig {
 pub struct Linter {
     /// Arc-backed immutable configuration shared between clones.
     shared: Arc<LinterSharedConfig>,
-    /// Shared bounded cache of successfully lowered artifacts.
+    /// Shared bounded cache of successfully analyzed artifacts.
     artifact_cache: ArtifactCacheHandle,
 }
 
@@ -92,7 +92,7 @@ impl Clone for Linter {
 
 impl Linter {
     /// Starts a deterministic project collection session.
-    pub fn begin_project(&self) -> ProjectCollection<'_> {
+    pub fn begin_project(&self) -> ProjectSession<'_> {
         let state = SessionState::new(
             self.analysis_environment(),
             self.analysis_limits(),
@@ -101,7 +101,7 @@ impl Linter {
             &self.shared.enabled,
             self.shared.limits.evidence_items(),
         );
-        ProjectCollection::new(state)
+        ProjectSession::new(state)
     }
 
     /// Construct a linter from validated catalogs, environment, rule

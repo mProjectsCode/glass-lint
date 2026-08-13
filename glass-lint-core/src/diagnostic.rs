@@ -125,7 +125,7 @@ impl SourceLineIndex {
         Self::from_source(source.into())
     }
 
-    /// Build an index while retaining the source allocation admitted by the
+    /// Build an index while retaining the source allocation accepted by the
     /// project boundary.
     #[must_use]
     pub fn from_text(source: SourceText) -> Self {

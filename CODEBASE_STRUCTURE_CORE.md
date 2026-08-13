@@ -410,7 +410,7 @@ deterministic findings.
 - `resolution::expression::ResolutionSeed` — Seeds expression resolution from a known identity or value.
 - `resolution::expression::ResolutionStart` — Classifies the starting state of expression resolution.
 
-#### Chunk 5: Local artifacts and lowering
+#### Chunk 5: Local artifacts and semantic analysis
 
 - `analysis::local` — Owns local semantic artifacts and their bounded cache.
 - `local::ArtifactCache` — Caches bounded semantic artifacts by content and configuration identity.
@@ -419,31 +419,31 @@ deterministic findings.
 - `local::ArtifactFingerprint` — Captures the content identity used by the cache.
 - `local::CacheEntry` — Stores one internal cached artifact.
 - `local::LocalArtifact` — Represents all retained analysis for one source file.
-- `local::LocalLoweringConfig` — Holds internal lowering configuration.
+- `local::LocalAnalysisConfig` — Holds internal semantic-analysis configuration.
 - `local::LocatedSourceContext` — Associates source text with reporting locations.
 - `local::ProjectModule` — Represents one locally analyzed project module.
 - `local::SemanticArtifact` — Stores the immutable semantic model for one file.
 - `local::SharedSemanticArtifact` — Shares a semantic artifact across consumers.
-- `analysis::lowering` — Converts parsed syntax into core semantic artifacts.
-- `lowering::InvalidParserSpan` — Reports a parser span that cannot be normalized.
-- `lowering::LoweredSource` — Holds the normalized source and local analysis products.
-- `lowering::Lowerer` — Lowers parsed source into semantic artifacts.
-- `lowering::LoweringCompletion` — Classifies completion of local lowering.
-- `lowering::ParserSpanKey` — Keys normalized parser spans.
-- `lowering::ResolvedProgram` — Stores the resolved syntax program used by lowering.
-- `lowering::SealedLowering` — Stores finalized facts, export origins, and derived capabilities.
-- `lowering::SpanNormalizer` — Converts parser spans into validated core ranges.
-- `analysis::lowering::budget` — Tracks semantic-analysis resource limits.
-- `lowering::budget::SemanticBudget` — Bounds semantic lowering work.
-- `analysis::lowering::status` — Records incomplete analysis components and reasons.
-- `lowering::status::AnalysisComponent` — Identifies a subsystem that may be incomplete.
-- `lowering::status::AnalysisStatus` — Aggregates analysis completeness information.
-- `lowering::status::IncompleteReason` — Explains why analysis is incomplete.
-- `lowering::status::ModuleInterfaceKind` — Classifies a module interface outcome.
-- `lowering::status::ResolutionKind` — Classifies a resolution outcome.
-- `lowering::status::StatusDiagnostics` — Stores file-scoped and project-scoped analysis diagnostics.
-- `lowering::status::StatusEntry` — Records one scoped analysis status.
-- `lowering::status::StatusScope` — Identifies the artifact scope of a status.
+- `analysis::semantic` — Converts parsed syntax into core semantic artifacts.
+- `semantic::InvalidParserSpan` — Reports a parser span that cannot be normalized.
+- `semantic::AnalyzedSource` — Holds the normalized source and local analysis products.
+- `semantic::SemanticAnalyzer` — Analyzes parsed source into semantic artifacts.
+- `semantic::AnalysisCompletion` — Classifies completion of local semantic analysis.
+- `semantic::ParserSpanKey` — Keys normalized parser spans.
+- `semantic::ResolvedProgram` — Stores the resolved syntax program used by semantic analysis.
+- `semantic::SealedAnalysis` — Stores finalized facts, export origins, and derived capabilities.
+- `semantic::SpanNormalizer` — Converts parser spans into validated core ranges.
+- `analysis::semantic::budget` — Tracks semantic-analysis resource limits.
+- `semantic::budget::SemanticBudget` — Bounds semantic-analysis work.
+- `analysis::semantic::status` — Records incomplete analysis components and reasons.
+- `semantic::status::AnalysisComponent` — Identifies a subsystem that may be incomplete.
+- `semantic::status::AnalysisStatus` — Aggregates analysis completeness information.
+- `semantic::status::IncompleteReason` — Explains why analysis is incomplete.
+- `semantic::status::ModuleInterfaceKind` — Classifies a module interface outcome.
+- `semantic::status::ResolutionKind` — Classifies a resolution outcome.
+- `semantic::status::StatusDiagnostics` — Stores file-scoped and project-scoped analysis diagnostics.
+- `semantic::status::StatusEntry` — Records one scoped analysis status.
+- `semantic::status::StatusScope` — Identifies the artifact scope of a status.
 
 #### Chunk 6: Matching
 
@@ -830,7 +830,7 @@ deterministic findings.
 - `project::session` — Coordinates local analysis and linked project transitions.
 - `project::session::LocalAnalysisTransition` — Coordinates preparation and completion of local analysis jobs.
 - `project::session::LocallyAnalyzedProject` — Represents a project after local analysis and before linking.
-- `project::session::ProjectCollection` — Admits sources and coordinates local project analysis.
+- `project::session::ProjectSession` — Accepts sources and coordinates local project analysis.
 - `project::session::ResolvedProject` — Represents a project after authored resolutions are applied.
 - `project::session::SessionState` — Stores internal project-session state.
 - `project::session::artifacts` — Stores local analysis artifacts and request tables.

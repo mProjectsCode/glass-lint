@@ -7,12 +7,12 @@ use glass_lint_datastructures::Budget;
 use crate::{
     analysis::{
         LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId,
-        lowering::status::{
-            AnalysisComponent, AnalysisStatus, IncompleteReason, ResolutionKind, StatusScope,
-        },
         project::{
             model::MAX_SCC_SIZE,
             state::{ModuleGraph, NormalizedModuleGraph, SccPartition},
+        },
+        semantic::status::{
+            AnalysisComponent, AnalysisStatus, IncompleteReason, ResolutionKind, StatusScope,
         },
     },
     project::is_internal_module_request,
@@ -121,7 +121,9 @@ mod tests {
     use super::*;
     use crate::{
         AnalysisLimits, Environment,
-        analysis::{LoweredSource, Lowerer, local::LocatedSourceContext, lowering::SpanNormalizer},
+        analysis::{
+            AnalyzedSource, SemanticAnalyzer, local::LocatedSourceContext, semantic::SpanNormalizer,
+        },
         project::{SourceFile, SourceText},
     };
 
@@ -130,11 +132,11 @@ mod tests {
         let source = SourceFile::new("module.js", text).unwrap();
         let parsed = crate::parse_test_source(text, "module.js").unwrap();
         let coordinates = SpanNormalizer::new(parsed.source_start, &SourceText::from(text));
-        let semantic = Lowerer::new(&Environment::default(), &AnalysisLimits::default())
-            .lower_program(&parsed.program, &coordinates);
+        let semantic = SemanticAnalyzer::new(&Environment::default(), &AnalysisLimits::default())
+            .analyze_program(&parsed.program, &coordinates);
         ProjectModule::new(
             ModuleId::new(0),
-            crate::analysis::LocalArtifact::from_lowered(LoweredSource::new(
+            crate::analysis::LocalArtifact::from_analyzed(AnalyzedSource::new(
                 LocatedSourceContext::new(&source),
                 Arc::new(semantic),
             )),

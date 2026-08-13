@@ -55,7 +55,7 @@ impl ProjectSelection {
 pub struct ProjectLoadOptions {
     /// Project boundary. If omitted, the selection's directory is used.
     pub(crate) root: Option<PathBuf>,
-    /// Maximum number of admitted source files.
+    /// Maximum number of accepted source files.
     pub(crate) max_files: usize,
     /// Maximum number of resolver requests.
     pub(crate) max_requests: usize,
@@ -422,7 +422,7 @@ impl ValidatedProjectLoadOptions {
         self.extensions.supports(path)
     }
 
-    /// Return the parser language for an admitted source path.
+    /// Return the parser language for an accepted source path.
     pub fn source_language(&self, path: &Path) -> Option<SourceLanguage> {
         self.extensions.language(path)
     }

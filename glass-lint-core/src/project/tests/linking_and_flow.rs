@@ -386,7 +386,7 @@ fn unresolved_internal_imports_do_not_become_external_provenance() {
             "import { request } from './helper'; request();",
         ))
         .unwrap();
-    let report = finish_collection(session);
+    let report = finish_session(session);
 
     assert!(report.files().iter().all(|file| file.findings().is_empty()));
     assert!(

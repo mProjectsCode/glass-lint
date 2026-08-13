@@ -12,7 +12,7 @@ mod tables;
 pub mod types;
 pub use report::ReportCombineError;
 pub(crate) use session::SessionState;
-pub use session::{AuthoredRequests, LocallyAnalyzedProject, ProjectCollection, ResolvedProject};
+pub use session::{AuthoredRequests, LocallyAnalyzedProject, ProjectSession, ResolvedProject};
 pub(crate) use tables::{ResolutionTable, SourceTable};
 pub use types::{
     AnalysisDiagnostic, AnalysisOperationCounts, AnalysisReport, AnalysisReportSummary,

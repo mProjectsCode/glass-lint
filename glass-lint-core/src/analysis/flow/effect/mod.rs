@@ -536,10 +536,10 @@ impl FunctionEffects {
 
 /// Mutable construction state for function effects.
 ///
-/// Lowering can feed this builder while it projects the same frozen fact tape
-/// into occurrence indexes. Keeping construction separate from the immutable
-/// `FunctionEffects` value makes the shared derived pass explicit without
-/// exposing either consumer's storage.
+/// Semantic analysis can feed this builder while it projects the same frozen
+/// fact tape into occurrence indexes. Keeping construction separate from the
+/// immutable `FunctionEffects` value makes the shared derived pass explicit
+/// without exposing either consumer's storage.
 pub(in crate::analysis) struct FunctionEffectsBuilder<'stream> {
     stream: &'stream FactStream<Frozen>,
     by_id: FunctionTable<FunctionEffect>,

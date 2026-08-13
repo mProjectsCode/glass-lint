@@ -12,7 +12,7 @@ use crate::{
     builtins::{self, BuiltinProfile},
     profile::{
         config::{ProfileCatalogProvider, ProfileConfig, RuleSelectionProfile},
-        corpus::{discover_profile_files, sample_paths},
+        source_files::{discover_profile_files, sample_paths},
         types::PreparedFile,
     },
     profile_manifest::verify_profile_manifest,

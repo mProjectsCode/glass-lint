@@ -16,7 +16,7 @@ cargo run -p glass-lint-cli --bin glass-lint -- snippet path/to/source.js
 - `rules` lists metadata for the selected provider and profile.
 - `generate-rules` writes or verifies the complete repository-wide [`RULES.md`](../RULES.md) reference.
 - `check` analyzes an entry file, directory, or explicit `tsconfig.json` as one
-  bounded project, including admitted internal imports.
+  bounded project, including accepted internal imports.
 - `snippet` analyzes exactly one source file without cross-file linking.
 
 ## Configuration

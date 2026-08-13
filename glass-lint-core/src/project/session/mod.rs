@@ -1,6 +1,6 @@
-//! Deterministic project admission, local analysis, and staging.
+//! Deterministic project input, local analysis, and staging.
 //!
-//! Phase-state types (`SessionState`, `ProjectCollection`,
+//! Phase-state types (`SessionState`, `ProjectSession`,
 //! `LocallyAnalyzedProject`, `ResolvedProject`) live here. The execution
 //! runtime and artifact-management helpers are in sibling submodules.
 
@@ -23,7 +23,9 @@ use execution::{
 
 use crate::{
     AnalysisLimits, Environment, RuleCatalog,
-    analysis::{ArtifactCacheHandle, ArtifactCacheKey, LoweredSource, Lowerer, ResolvedLinkInput},
+    analysis::{
+        AnalyzedSource, ArtifactCacheHandle, ArtifactCacheKey, ResolvedLinkInput, SemanticAnalyzer,
+    },
     api::classification::RuleIndex,
     project::{
         AnalysisReport, ProjectError, ProjectExecutionError, ProjectInputError,
@@ -33,9 +35,9 @@ use crate::{
 };
 
 /// Borrowed session state that replaces direct `&Linter` references in the
-/// collection, analysis, and resolution chain.
+/// project session, analysis, and resolution chain.
 pub struct SessionState<'a> {
-    pub(super) lowerer: Lowerer<'a>,
+    pub(super) analyzer: SemanticAnalyzer<'a>,
     pub(super) artifact_cache: ArtifactCacheHandle,
     catalog: &'a RuleCatalog,
     enabled: &'a [RuleIndex],
@@ -56,7 +58,7 @@ impl<'a> SessionState<'a> {
         evidence_limit: usize,
     ) -> Self {
         Self {
-            lowerer: Lowerer::new(environment, limits),
+            analyzer: SemanticAnalyzer::new(environment, limits),
             artifact_cache,
             catalog,
             enabled,
@@ -75,24 +77,24 @@ impl<'a> SessionState<'a> {
         {
             return ArtifactCacheKey::new(
                 source,
-                self.lowerer.environment(),
-                self.lowerer.limits(),
+                self.analyzer.environment(),
+                self.analyzer.limits(),
             );
         }
         self.fingerprint_normalization.map_or_else(
             || {
                 ArtifactCacheKey::for_engine_version(
                     source,
-                    self.lowerer.environment(),
-                    self.lowerer.limits(),
+                    self.analyzer.environment(),
+                    self.analyzer.limits(),
                     self.fingerprint_engine_version,
                 )
             },
             |normalization| {
                 ArtifactCacheKey::for_test_inputs(
                     source,
-                    self.lowerer.environment(),
-                    self.lowerer.limits(),
+                    self.analyzer.environment(),
+                    self.analyzer.limits(),
                     normalization,
                     self.fingerprint_engine_version,
                 )
@@ -102,11 +104,11 @@ impl<'a> SessionState<'a> {
 
     #[cfg(not(test))]
     fn artifact_fingerprint(&self, source: &SourceFile) -> ArtifactCacheKey {
-        ArtifactCacheKey::new(source, self.lowerer.environment(), self.lowerer.limits())
+        ArtifactCacheKey::new(source, self.analyzer.environment(), self.analyzer.limits())
     }
 }
 
-pub struct ProjectCollection<'a> {
+pub struct ProjectSession<'a> {
     pub(super) state: SessionState<'a>,
     pub(super) sources: SourceTable,
     artifacts: AnalysisArtifacts,
@@ -152,7 +154,7 @@ impl LocalAnalysisTransition<'_, '_> {
         let Some(job) = self.prepare_requested(candidate) else {
             return;
         };
-        let result = self.lower(&job.source);
+        let result = self.analyze(&job.source);
         self.complete(LocalJobResult {
             path: job.path,
             key: job.key,
@@ -162,15 +164,15 @@ impl LocalAnalysisTransition<'_, '_> {
 
     fn complete(&mut self, result: LocalJobResult) {
         match result.result {
-            Ok(lowered) => {
+            Ok(analyzed) => {
                 artifacts::insert_and_notify(
                     &self.state.artifact_cache,
                     result.key,
-                    &lowered,
+                    &analyzed,
                     self.observer,
                 );
                 self.requests
-                    .extend(self.artifacts.record_lowered(&result.path, lowered));
+                    .extend(self.artifacts.record_analyzed(&result.path, analyzed));
             }
             Err(error) => {
                 self.artifacts.record_parse_failure(result.path, error);
@@ -178,10 +180,10 @@ impl LocalAnalysisTransition<'_, '_> {
         }
     }
 
-    fn lower(&self, source: &SourceFile) -> Result<LoweredSource, crate::ParseDiagnostic> {
+    fn analyze(&self, source: &SourceFile) -> Result<AnalyzedSource, crate::ParseDiagnostic> {
         self.observer.observe(ExecutionEvent::ParseAttempted);
-        self.observer.observe(ExecutionEvent::LowerAttempted);
-        self.state.lowerer.lower_source(source)
+        self.observer.observe(ExecutionEvent::AnalysisAttempted);
+        self.state.analyzer.analyze_source(source)
     }
 }
 
@@ -200,7 +202,7 @@ impl LocalJobCallbacks for LocalAnalysisTransition<'_, '_> {
     }
 }
 
-/// Project state after every admitted source has completed local analysis.
+/// Project state after every accepted source has completed local analysis.
 /// The consuming transition prevents adding sources after this point.
 pub struct LocallyAnalyzedProject<'a> {
     state: SessionState<'a>,
@@ -217,7 +219,7 @@ pub struct ResolvedProject<'a> {
     parse_diagnostics: BTreeMap<ProjectRelativePath, crate::ParseDiagnostic>,
 }
 
-impl<'a> ProjectCollection<'a> {
+impl<'a> ProjectSession<'a> {
     /// Start an empty parse-once project session under a canonical root.
     pub(crate) fn new(state: SessionState<'a>) -> Self {
         Self {
@@ -227,11 +229,11 @@ impl<'a> ProjectCollection<'a> {
         }
     }
 
-    fn admit_normalized_source(&mut self, source: SourceFile) -> Result<(), ProjectInputError> {
+    fn accept_normalized_source(&mut self, source: SourceFile) -> Result<(), ProjectInputError> {
         self.sources.insert(source)
     }
 
-    fn admit_sources(
+    fn accept_sources(
         &mut self,
         sources: impl IntoIterator<Item = SourceFile>,
     ) -> Result<(), ProjectInputError> {
@@ -241,7 +243,7 @@ impl<'a> ProjectCollection<'a> {
     /// Analyze one owned source and return its authored requests.
     pub fn analyze_source(&mut self, source: SourceFile) -> Result<AuthoredRequests, ProjectError> {
         let path = source.path().clone();
-        self.admit_normalized_source(source)?;
+        self.accept_normalized_source(source)?;
         Ok(AuthoredRequests::new(self.analyze_source_at_path(&path)?))
     }
 
@@ -297,14 +299,14 @@ impl<'a> ProjectCollection<'a> {
     }
 
     #[cfg(test)]
-    pub(super) fn admit_test_source(
+    pub(super) fn accept_test_source(
         &mut self,
         source: SourceFile,
     ) -> Result<(), ProjectInputError> {
-        self.admit_normalized_source(source)
+        self.accept_normalized_source(source)
     }
 
-    /// Analyze all admitted sources using a bounded worker count. Canonical
+    /// Analyze all accepted sources using a bounded worker count. Canonical
     /// maps and final request sorting make results independent of worker count
     /// and task completion order.
     fn analyze_pending_sources(
@@ -321,7 +323,7 @@ impl<'a> ProjectCollection<'a> {
         sources: impl IntoIterator<Item = SourceFile>,
         workers: NonZeroUsize,
     ) -> Result<AuthoredRequests, ProjectError> {
-        self.admit_sources(sources)?;
+        self.accept_sources(sources)?;
         Ok(AuthoredRequests::new(
             self.analyze_pending_sources(workers.get())?,
         ))
@@ -353,7 +355,7 @@ impl<'a> ProjectCollection<'a> {
                 .execute(
                     &mut candidates,
                     worker_count,
-                    &self.state.lowerer,
+                    &self.state.analyzer,
                     observer,
                     &mut callbacks,
                 )
@@ -384,7 +386,7 @@ impl<'a> ProjectCollection<'a> {
         worker_count: usize,
         order: ControlledReleaseOrder,
     ) -> Result<Vec<ResolutionRequest>, ProjectError> {
-        self.admit_sources(sources)?;
+        self.accept_sources(sources)?;
         let observer = NoopExecutionObserver;
         self.analyze_pending_sources_with(
             worker_count,
@@ -400,7 +402,7 @@ impl<'a> ProjectCollection<'a> {
         worker_count: usize,
         observer: &CountingExecutionObserver,
     ) -> Result<Vec<ResolutionRequest>, ProjectError> {
-        self.admit_sources(sources)?;
+        self.accept_sources(sources)?;
         self.analyze_pending_sources_with(worker_count, &ThreadLocalJobExecutor, observer)
     }
 
@@ -466,7 +468,7 @@ impl ResolvedProject<'_> {
             &self.sources,
             self.link_input,
             self.parse_diagnostics,
-            self.state.lowerer.limits(),
+            self.state.analyzer.limits(),
         ))
     }
 }

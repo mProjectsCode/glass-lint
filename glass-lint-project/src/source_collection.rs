@@ -1,4 +1,4 @@
-//! Bounded source corpus discovery and loading without project linking.
+//! Bounded source collection and loading without project linking.
 
 use std::{
     fs,
@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    admission::{AdmissionSet, PathAdmission, SourceAdmission, realpath},
+    boundary::{AcceptedPaths, PathClassification, SourceBoundary, realpath},
     budget::ProjectResourceBudget,
     error::ProjectLoadError,
     options::ValidatedProjectLoadOptions,
@@ -15,7 +15,7 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
-pub struct CorpusFile {
+pub struct LoadedSource {
     /// Filesystem path retained for diagnostics and profiling.
     pub path: PathBuf,
     /// Byte length measured before decoding.
@@ -24,14 +24,11 @@ pub struct CorpusFile {
     pub source: String,
 }
 
-/// Read raw source bytes from a trusted path with a byte budget.
+/// Read source text from a trusted path with a byte budget.
 ///
 /// This is the lowest-level read operation; callers must validate
 /// extension support and containment before calling this function.
-pub fn read_source_bytes(
-    path: &Path,
-    max_source_bytes: u64,
-) -> Result<CorpusFile, ProjectLoadError> {
+pub fn read_source(path: &Path, max_source_bytes: u64) -> Result<LoadedSource, ProjectLoadError> {
     let file = fs::File::open(path).map_err(|source| ProjectLoadError::Io {
         path: path.to_path_buf(),
         source,
@@ -65,30 +62,31 @@ pub fn read_source_bytes(
         path: path.to_path_buf(),
         source: std::io::Error::new(std::io::ErrorKind::InvalidData, error),
     })?;
-    Ok(CorpusFile {
+    Ok(LoadedSource {
         path: path.to_path_buf(),
         bytes: source.len() as u64,
         source,
     })
 }
 
-/// A bounded source corpus with one canonical project root.
+/// A bounded source collection with one canonical project root.
 ///
-/// Construction establishes one canonical source-admission boundary from either
-/// the configured policy root or the first discovery root. That same admission
-/// is reused for every discovery and load operation within the corpus, so the
-/// containment boundary, exclusion rules, and extension policy are applied
-/// consistently across all files.
-pub struct SourceCorpus {
+/// Construction establishes one canonical source-acceptance boundary from
+/// either the configured policy root or the first discovery root. That same
+/// boundary is reused for every discovery and load operation within the
+/// collection, so the containment boundary, exclusion rules, and extension
+/// policy are applied consistently across all files.
+pub struct SourceCollection {
     options: ValidatedProjectLoadOptions,
     canonical_root: Option<PathBuf>,
 }
 
-impl SourceCorpus {
-    /// Create a corpus from a policy already checked at the loader boundary.
+impl SourceCollection {
+    /// Create a source collection from a policy already checked at the loader
+    /// boundary.
     ///
     /// If the policy contains a configured root, it is canonicalized once and
-    /// stored as the single project boundary for this corpus. Without a
+    /// stored as the single project boundary for this collection. Without a
     /// configured root, the boundary is derived from each caller-supplied
     /// discovery root.
     pub fn from_validated(options: &ValidatedProjectLoadOptions) -> Result<Self, ProjectLoadError> {
@@ -102,7 +100,7 @@ impl SourceCorpus {
         })
     }
 
-    /// Create a corpus with an explicit canonical project root.
+    /// Create a source collection with an explicit canonical project root.
     ///
     /// The root is canonicalized immediately; discovery roots passed to
     /// [`Self::discover_filtered`] must be inside this root or equal to it.
@@ -117,14 +115,14 @@ impl SourceCorpus {
         })
     }
 
-    /// Build or borrow the source admission for this corpus.
+    /// Build or borrow the source boundary for this collection.
     ///
     /// When a canonical root was established at construction, uses it for every
     /// call. Otherwise derives the authority from `fallback_root` (backward
     /// compatible with callers that provide a per-call root).
-    fn admission(&self, fallback_root: &Path) -> Result<SourceAdmission<'_>, ProjectLoadError> {
+    fn boundary(&self, fallback_root: &Path) -> Result<SourceBoundary<'_>, ProjectLoadError> {
         let root = self.canonical_root.as_deref().unwrap_or(fallback_root);
-        SourceAdmission::new(root, &self.options)
+        SourceBoundary::new(root, &self.options)
     }
 
     /// The canonical project root if one was established at construction.
@@ -146,7 +144,7 @@ impl SourceCorpus {
         roots: &[PathBuf],
         mut include: impl FnMut(&Path) -> bool,
     ) -> Result<Vec<PathBuf>, ProjectLoadError> {
-        let mut admitted = AdmissionSet::new(self.options.max_files());
+        let mut accepted = AcceptedPaths::new(self.options.max_files());
         let mut budget = ProjectResourceBudget::new(
             self.options.max_visited_entries(),
             self.options.max_project_source_bytes(),
@@ -164,51 +162,51 @@ impl SourceCorpus {
             let Some(metadata) = walk::resolve_root(&self.options, root)? else {
                 continue;
             };
-            let admission = self.admission(root)?;
+            let boundary = self.boundary(root)?;
             if metadata.is_file() {
                 if include(root)
-                    && let PathAdmission::Admitted(path) = admission.classify(root)?
+                    && let PathClassification::Accepted(path) = boundary.classify(root)?
                 {
-                    admitted.admit(&path)?;
+                    accepted.accept(&path)?;
                 }
                 continue;
             }
             if !metadata.is_dir() {
-                return Err(ProjectLoadError::CorpusRootNotFileOrDir(root.clone()));
+                return Err(ProjectLoadError::SourceRootNotFileOrDir(root.clone()));
             }
             walk::collect_files(
-                &admission,
+                &boundary,
                 root,
                 None,
                 &mut include,
-                &mut admitted,
+                &mut accepted,
                 &mut budget,
             )?;
         }
-        if admitted.len() > self.options.max_files() {
+        if accepted.len() > self.options.max_files() {
             return Err(ProjectLoadError::TooManyFiles(self.options.max_files()));
         }
-        Ok(admitted.into_path_bufs())
+        Ok(accepted.into_path_bufs())
     }
 
     /// Read one supported source file after enforcing the byte budget.
     ///
     /// Uses the canonical root established at construction when available;
     /// otherwise derives the project boundary from the file's parent directory.
-    pub fn load(&self, path: &Path) -> Result<CorpusFile, ProjectLoadError> {
+    pub fn load(&self, path: &Path) -> Result<LoadedSource, ProjectLoadError> {
         let root = self
             .canonical_root
             .as_deref()
             .or_else(|| self.options.root())
             .unwrap_or_else(|| path.parent().unwrap_or_else(|| Path::new(".")));
-        let admission = self.admission(root)?;
-        match admission.classify(path)? {
-            PathAdmission::Admitted(admitted) => {
-                read_source_bytes(admitted.as_ref(), self.options.max_source_bytes())
+        let boundary = self.boundary(root)?;
+        match boundary.classify(path)? {
+            PathClassification::Accepted(accepted) => {
+                read_source(accepted.as_ref(), self.options.max_source_bytes())
             }
-            PathAdmission::Outside(path)
-            | PathAdmission::Excluded(path)
-            | PathAdmission::Unsupported(path) => {
+            PathClassification::Outside(path)
+            | PathClassification::Excluded(path)
+            | PathClassification::Unsupported(path) => {
                 Err(ProjectLoadError::UnsupportedSource(path.into_path_buf()))
             }
         }

@@ -18,10 +18,10 @@ use crate::{
             planning::BoundLifecycleRoot,
             projector::{self as object_flow, LocalFlowProjectionOutcome},
         },
-        lowering::status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
         matching::{MatcherOverlayPolicy, MatcherProjectContext, MatcherProjectInputs},
         model::{flow::FlowLimits, value::ValueId},
         project::state::LinkingSession,
+        semantic::status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
         trace::TraceArena,
     },
     api::{

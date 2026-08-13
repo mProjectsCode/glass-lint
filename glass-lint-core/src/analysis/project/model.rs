@@ -12,7 +12,6 @@ use crate::{
         facts::{FactStream, Frozen, SemanticFact},
         flow::effect::FunctionEffect,
         local::{LocalArtifact, ProjectModule},
-        lowering::status::AnalysisStatus,
         model::{module::ModuleRequestId, scope::FunctionId, value::ValueId},
         project::{
             linker::ProjectLinker,
@@ -20,6 +19,7 @@ use crate::{
             resolver::ExportResolver,
             state::{ExportTable, LinkingSession},
         },
+        semantic::status::AnalysisStatus,
         syntax::SymbolCallProvenance,
         trace::QualifiedEvent,
     },

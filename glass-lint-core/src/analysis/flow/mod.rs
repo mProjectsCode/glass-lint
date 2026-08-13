@@ -1,9 +1,9 @@
 //! Bounded semantic flow projection over the immutable fact stream.
 //!
-//! Local effects and indexes are built once from facts during lowering;
-//! matcher-specific projection follows only proven identities and bounded
-//! state. The cross-module overlay composes per-function summaries without
-//! re-traversing syntax or retaining caller state.
+//! Local effects and indexes are built once from facts during semantic
+//! analysis; matcher-specific projection follows only proven identities and
+//! bounded state. The cross-module overlay composes per-function summaries
+//! without re-traversing syntax or retaining caller state.
 //!
 //! Projection is bounded by `AnalysisLimits::flow_operations` and records
 //! exhaustion as an `IncompleteReason::BudgetExhausted` status entry rather

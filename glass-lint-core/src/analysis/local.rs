@@ -17,23 +17,26 @@ use syntax::SymbolCallProvenance;
 use crate::{
     AnalysisLimits, Environment, SourceLanguage, SourceLineIndex,
     analysis::{
-        DerivedPhaseCapabilities, facts, flow::effect::FunctionEffects,
-        lowering::status::AnalysisStatus, model::module::ModuleInterface, syntax,
+        DerivedPhaseCapabilities, facts,
+        flow::effect::FunctionEffects,
+        model::module::ModuleInterface,
+        semantic::{AnalyzedSource, status::AnalysisStatus},
+        syntax,
     },
     project::{ModuleId, ProjectRelativePath, SourceFile, SourceText},
 };
 
-/// Inputs from `AnalysisLimits` that affect local semantic lowering.
+/// Inputs from `AnalysisLimits` that affect local semantic analysis.
 /// Evidence, link, and flow budgets are intentionally excluded because
 /// they only affect downstream matching and linking.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub(super) struct LocalLoweringConfig {
+pub(super) struct LocalAnalysisConfig {
     syntax_depth: usize,
     semantic_operations: usize,
     effect_operations: usize,
 }
 
-impl From<&AnalysisLimits> for LocalLoweringConfig {
+impl From<&AnalysisLimits> for LocalAnalysisConfig {
     fn from(limits: &AnalysisLimits) -> Self {
         Self {
             syntax_depth: limits.syntax_depth(),
@@ -43,7 +46,7 @@ impl From<&AnalysisLimits> for LocalLoweringConfig {
     }
 }
 
-impl LocalLoweringConfig {
+impl LocalAnalysisConfig {
     fn write_fingerprint(self, fingerprint: &mut Fingerprint) {
         fingerprint.write(&self.syntax_depth.to_le_bytes());
         fingerprint.write(&self.semantic_operations.to_le_bytes());
@@ -70,7 +73,7 @@ impl ArtifactFingerprint {
         language: SourceLanguage,
         normalization_mode: &str,
         environment: &Environment,
-        limits: &LocalLoweringConfig,
+        limits: &LocalAnalysisConfig,
         engine_version: &str,
     ) -> Self {
         let mut fp = Fingerprint::init();
@@ -124,17 +127,17 @@ impl LocatedSourceContext {
     }
 }
 
-/// Private identity of all inputs that can affect local semantic lowering.
+/// Private identity of all inputs that can affect local semantic analysis.
 /// Rule selection is intentionally absent: artifacts are matcher-independent.
 /// Only local-affecting limits (syntax depth, semantic ops, effect ops) are
-/// stored; evidence, link, and flow budgets have no impact on lowering.
+/// stored; evidence, link, and flow budgets have no impact on local analysis.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArtifactCacheKey {
     source: SourceText,
     language: SourceLanguage,
     normalization_mode: &'static str,
     environment: Environment,
-    limits: LocalLoweringConfig,
+    limits: LocalAnalysisConfig,
     engine_version: &'static str,
     fingerprint: ArtifactFingerprint,
 }
@@ -170,7 +173,7 @@ impl ArtifactCacheKey {
         normalization_mode: &'static str,
         engine_version: &'static str,
     ) -> Self {
-        let config = LocalLoweringConfig::from(limits);
+        let config = LocalAnalysisConfig::from(limits);
         let fingerprint = ArtifactFingerprint::compute(
             source.source(),
             source.language(),
@@ -230,8 +233,8 @@ pub struct SharedSemanticArtifact {
 }
 
 impl SharedSemanticArtifact {
-    pub(crate) fn from_lowered(lowered: &crate::analysis::lowering::LoweredSource) -> Self {
-        let (source, semantic) = lowered.clone().into_parts();
+    pub(crate) fn from_analyzed(analyzed: &AnalyzedSource) -> Self {
+        let (source, semantic) = analyzed.clone().into_parts();
         Self {
             semantic,
             source_index: source.clone_lines(),
@@ -301,14 +304,10 @@ impl ArtifactCacheHandle {
         self.get(key).map(|cached| cached.local_for(source))
     }
 
-    /// Cache a lowered artifact while retaining only its reusable semantic
+    /// Cache an analyzed artifact while retaining only its reusable semantic
     /// state and source-independent line-index data.
-    pub(crate) fn insert_lowered(
-        &self,
-        key: ArtifactCacheKey,
-        lowered: &crate::analysis::lowering::LoweredSource,
-    ) -> bool {
-        self.insert(key, SharedSemanticArtifact::from_lowered(lowered))
+    pub(crate) fn insert_analyzed(&self, key: ArtifactCacheKey, analyzed: &AnalyzedSource) -> bool {
+        self.insert(key, SharedSemanticArtifact::from_analyzed(analyzed))
     }
 
     #[cfg(test)]
@@ -349,7 +348,7 @@ impl ArtifactCache {
     }
 }
 
-/// The immutable lowered semantic result of analyzing one source.
+/// The immutable semantic result of analyzing one source.
 #[derive(Debug)]
 pub struct SemanticArtifact {
     /// Canonical facts, occurrence indexes, and module interface.
@@ -364,7 +363,7 @@ pub struct SemanticArtifact {
 }
 
 impl SemanticArtifact {
-    pub(in crate::analysis) fn from_lowering(
+    pub(in crate::analysis) fn from_analysis(
         facts: SemanticFacts,
         export_origins: BTreeMap<SmolStr, SymbolCallProvenance>,
         effect_limit: usize,
@@ -414,7 +413,7 @@ impl SemanticArtifact {
     }
 }
 
-/// Path-specific report attachment paired with reusable lowered semantic state.
+/// Path-specific report attachment paired with reusable semantic state.
 #[derive(Debug, Clone)]
 pub struct LocalArtifact {
     source: LocatedSourceContext,
@@ -422,8 +421,8 @@ pub struct LocalArtifact {
 }
 
 impl LocalArtifact {
-    pub(crate) fn from_lowered(lowered: crate::analysis::lowering::LoweredSource) -> Self {
-        let (source, semantic) = lowered.into_parts();
+    pub(crate) fn from_analyzed(analyzed: AnalyzedSource) -> Self {
+        let (source, semantic) = analyzed.into_parts();
         Self { source, semantic }
     }
 
@@ -452,7 +451,7 @@ impl LocalArtifact {
     }
 }
 
-/// A linked project module containing one lowered local artifact and its
+/// A linked project module containing one analyzed local artifact and its
 /// report-local source attachment.
 #[derive(Debug)]
 pub struct ProjectModule {
@@ -513,12 +512,12 @@ mod tests {
 
     #[test]
     fn function_effects_are_derived_only_when_requested() {
-        let artifact = SemanticArtifact::from_lowering(
+        let artifact = SemanticArtifact::from_analysis(
             crate::analysis::facts::SemanticFacts::default(),
             BTreeMap::new(),
             usize::MAX,
             DerivedPhaseCapabilities::enabled(),
-            crate::analysis::lowering::status::AnalysisStatus::default(),
+            crate::analysis::semantic::status::AnalysisStatus::default(),
         );
         assert!(!artifact.effects_initialized());
         let _ = artifact.effects();
@@ -539,12 +538,12 @@ mod tests {
         let mut cache = ArtifactCache::default();
         let key = test_key("x = 1;", "1.0.0");
         let artifact = SharedSemanticArtifact {
-            semantic: Arc::new(SemanticArtifact::from_lowering(
+            semantic: Arc::new(SemanticArtifact::from_analysis(
                 crate::analysis::facts::SemanticFacts::default(),
                 BTreeMap::new(),
                 usize::MAX,
                 DerivedPhaseCapabilities::enabled(),
-                crate::analysis::lowering::status::AnalysisStatus::default(),
+                crate::analysis::semantic::status::AnalysisStatus::default(),
             )),
             source_index: Arc::new(SourceLineIndex::new("")),
         };
@@ -562,12 +561,12 @@ mod tests {
             let text = format!("x = {i};");
             let key = test_key(&text, "1.0.0");
             let artifact = SharedSemanticArtifact {
-                semantic: Arc::new(SemanticArtifact::from_lowering(
+                semantic: Arc::new(SemanticArtifact::from_analysis(
                     crate::analysis::facts::SemanticFacts::default(),
                     BTreeMap::new(),
                     usize::MAX,
                     DerivedPhaseCapabilities::enabled(),
-                    crate::analysis::lowering::status::AnalysisStatus::default(),
+                    crate::analysis::semantic::status::AnalysisStatus::default(),
                 )),
                 source_index: Arc::new(SourceLineIndex::new("")),
             };
@@ -594,22 +593,22 @@ mod tests {
         let mut cache = ArtifactCache::default();
         let key = test_key("x = 1;", "1.0.0");
         let artifact_a = SharedSemanticArtifact {
-            semantic: Arc::new(SemanticArtifact::from_lowering(
+            semantic: Arc::new(SemanticArtifact::from_analysis(
                 crate::analysis::facts::SemanticFacts::default(),
                 BTreeMap::new(),
                 usize::MAX,
                 DerivedPhaseCapabilities::enabled(),
-                crate::analysis::lowering::status::AnalysisStatus::default(),
+                crate::analysis::semantic::status::AnalysisStatus::default(),
             )),
             source_index: Arc::new(SourceLineIndex::new("")),
         };
         let artifact_b = SharedSemanticArtifact {
-            semantic: Arc::new(SemanticArtifact::from_lowering(
+            semantic: Arc::new(SemanticArtifact::from_analysis(
                 crate::analysis::facts::SemanticFacts::default(),
                 BTreeMap::new(),
                 usize::MAX,
                 DerivedPhaseCapabilities::enabled(),
-                crate::analysis::lowering::status::AnalysisStatus::default(),
+                crate::analysis::semantic::status::AnalysisStatus::default(),
             )),
             source_index: Arc::new(SourceLineIndex::new("")),
         };
@@ -624,12 +623,12 @@ mod tests {
         let key_a = test_key("x = 1;", "1.0.0");
         let key_b = test_key("y = 2;", "1.0.0");
         let artifact = SharedSemanticArtifact {
-            semantic: Arc::new(SemanticArtifact::from_lowering(
+            semantic: Arc::new(SemanticArtifact::from_analysis(
                 crate::analysis::facts::SemanticFacts::default(),
                 BTreeMap::new(),
                 usize::MAX,
                 DerivedPhaseCapabilities::enabled(),
-                crate::analysis::lowering::status::AnalysisStatus::default(),
+                crate::analysis::semantic::status::AnalysisStatus::default(),
             )),
             source_index: Arc::new(SourceLineIndex::new("")),
         };

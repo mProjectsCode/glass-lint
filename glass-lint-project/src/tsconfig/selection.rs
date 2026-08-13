@@ -351,7 +351,7 @@ impl CompiledTsconfigSelection {
 /// allocation-free borrowed matching against canonical project-relative paths.
 ///
 /// When a membership-controlling field was invalid in the parsed config, the
-/// entire pattern set is treated as empty so that no source is admitted until
+/// entire pattern set is treated as empty so that no source is accepted until
 /// the config is corrected.
 #[derive(Clone, Debug)]
 pub struct TsconfigPatternSet {

@@ -26,6 +26,8 @@ profile roots / manifest
 - `builtins` connects provider linters and the project loader.
 - `runner` executes cases and verifies expectations.
 - `report` renders suite and comparison output.
+- `profile/source_files` owns deterministic profiling source-file discovery,
+  filtering, and sampling.
 - `profile` owns corpus execution and metrics.
 - `profile_manifest` owns immutable corpus selection and verification.
 

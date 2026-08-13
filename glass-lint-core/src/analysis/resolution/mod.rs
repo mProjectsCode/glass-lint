@@ -31,12 +31,12 @@ use crate::analysis::scope::{ScopeGraph, ScopedProgram};
 use crate::analysis::{
     SemanticBudget,
     facts::{Building, FactStream, Frozen, stream::FrozenStorage},
-    lowering::{InvalidParserSpan, ParserSpanKey, SpanNormalizer},
     model::{
         scope::BindingKey,
         value::{Value, ValueConstruction, ValueId, ValueTable},
     },
     scope::{BoundArgument, FrozenScopeGraph},
+    semantic::{InvalidParserSpan, ParserSpanKey, SpanNormalizer},
     syntax::{
         SymbolCallProvenance, SymbolMemberProvenance,
         constant::{self as syntax_constant, ConstValue, EvalState, Lookup},

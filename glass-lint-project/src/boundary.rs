@@ -1,6 +1,6 @@
-//! Canonical project-root and filesystem admission boundary.
+//! Canonical project-root and filesystem acceptance boundary.
 //!
-//! Every accepted path must pass through one [`SourceAdmission`]; containment,
+//! Every accepted path must pass through one [`SourceBoundary`]; containment,
 //! exclusion, extension-support, and canonicalization all have one
 //! authoritative implementation here.
 
@@ -14,12 +14,12 @@ use std::{
 use glass_lint_core::project::{ProjectRelativePath, SourceFile};
 
 use crate::{
-    corpus::read_source_bytes, error::ProjectLoadError, options::ValidatedProjectLoadOptions,
+    error::ProjectLoadError, options::ValidatedProjectLoadOptions, source_collection::read_source,
 };
 
-/// File-count budget with an authoritative admit gate.
+/// File-count budget with an authoritative acceptance gate.
 ///
-/// Ensures every file admission path checks the same limit arithmetic.
+/// Ensures every file acceptance path checks the same limit arithmetic.
 #[derive(Clone, Debug)]
 pub struct FileBudget {
     limit: usize,
@@ -31,7 +31,7 @@ impl FileBudget {
         Self { limit, count: 0 }
     }
 
-    pub fn try_admit(&mut self) -> Result<(), ProjectLoadError> {
+    pub fn try_add(&mut self) -> Result<(), ProjectLoadError> {
         let next = self.count.saturating_add(1);
         if next > self.limit {
             return Err(ProjectLoadError::TooManyFiles(self.limit));
@@ -41,19 +41,19 @@ impl FileBudget {
     }
 }
 
-/// A set of admitted source paths with a shared file-count budget.
+/// A set of accepted source paths with a shared file-count budget.
 ///
-/// Duplicate admit attempts do not consume the budget; only unique files are
+/// Duplicate additions do not consume the budget; only unique files are
 /// counted toward the configured limit. Returns
 /// [`ProjectLoadError::TooManyFiles`] when the set reaches its capacity, which
 /// stops the caller's traversal.
 #[derive(Clone, Debug)]
-pub struct AdmissionSet {
-    paths: BTreeSet<AdmittedSourcePath>,
+pub struct AcceptedPaths {
+    paths: BTreeSet<AcceptedSourcePath>,
     budget: FileBudget,
 }
 
-impl AdmissionSet {
+impl AcceptedPaths {
     pub fn new(limit: usize) -> Self {
         Self {
             paths: BTreeSet::new(),
@@ -61,11 +61,11 @@ impl AdmissionSet {
         }
     }
 
-    pub fn admit(&mut self, path: &AdmittedSourcePath) -> Result<bool, ProjectLoadError> {
+    pub fn accept(&mut self, path: &AcceptedSourcePath) -> Result<bool, ProjectLoadError> {
         if self.paths.contains(path) {
             return Ok(false);
         }
-        self.budget.try_admit()?;
+        self.budget.try_add()?;
         self.paths.insert(path.clone());
         Ok(true)
     }
@@ -77,16 +77,16 @@ impl AdmissionSet {
     pub fn into_path_bufs(self) -> Vec<PathBuf> {
         self.paths
             .into_iter()
-            .map(AdmittedSourcePath::into_path_buf)
+            .map(AcceptedSourcePath::into_path_buf)
             .collect()
     }
 
-    pub fn into_admitted_paths(self) -> Vec<AdmittedSourcePath> {
+    pub fn into_accepted_paths(self) -> Vec<AcceptedSourcePath> {
         self.paths.into_iter().collect()
     }
 }
 
-/// A path proven canonical by the filesystem admission boundary.
+/// A path proven canonical by the filesystem acceptance boundary.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct CanonicalProjectPath(PathBuf);
 
@@ -105,49 +105,49 @@ impl AsRef<Path> for CanonicalProjectPath {
 /// A canonical path proven to be inside the project and supported by policy,
 /// alongside its project-relative identity.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct AdmittedSourcePath {
+pub struct AcceptedSourcePath {
     canonical: CanonicalProjectPath,
     relative: ProjectRelativePath,
 }
 
-impl AsRef<Path> for AdmittedSourcePath {
+impl AsRef<Path> for AcceptedSourcePath {
     fn as_ref(&self) -> &Path {
         self.canonical.as_ref()
     }
 }
 
-impl AdmittedSourcePath {
+impl AcceptedSourcePath {
     pub(crate) fn into_path_buf(self) -> PathBuf {
         self.canonical.into_path_buf()
     }
 
     /// The project-relative, slash-normalized path established during
-    /// admission.
+    /// acceptance.
     pub fn relative(&self) -> &ProjectRelativePath {
         &self.relative
     }
 }
 
-/// Owns the canonical project root and source-file admission policy.
+/// Owns the canonical project root and source-file acceptance policy.
 ///
-/// Construct one [`SourceAdmission`] per project; its canonical root is
+/// Construct one [`SourceBoundary`] per project; its canonical root is
 /// resolved once and shared by discovery, resolution, and loading.
 #[derive(Clone)]
-pub struct SourceAdmission<'a> {
+pub struct SourceBoundary<'a> {
     canonical_root: PathBuf,
     options: &'a ValidatedProjectLoadOptions,
 }
 
 /// Result of applying the canonical project boundary to one filesystem path.
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum PathAdmission {
-    Admitted(AdmittedSourcePath),
+pub enum PathClassification {
+    Accepted(AcceptedSourcePath),
     Outside(CanonicalProjectPath),
     Excluded(CanonicalProjectPath),
     Unsupported(CanonicalProjectPath),
 }
 
-impl<'a> SourceAdmission<'a> {
+impl<'a> SourceBoundary<'a> {
     /// Establish one canonical root before any file I/O.
     pub fn new(
         root: &Path,
@@ -182,19 +182,19 @@ impl<'a> SourceAdmission<'a> {
 
     /// Canonicalize a path and apply containment, exclusion, and extension
     /// policy exactly once.
-    pub(crate) fn classify(&self, path: &Path) -> Result<PathAdmission, ProjectLoadError> {
+    pub(crate) fn classify(&self, path: &Path) -> Result<PathClassification, ProjectLoadError> {
         let canonical = Self::canonicalize(path)?;
         if !self.is_inside_root(canonical.as_ref()) {
-            return Ok(PathAdmission::Outside(canonical));
+            return Ok(PathClassification::Outside(canonical));
         }
         if self.is_excluded(canonical.as_ref()) {
-            return Ok(PathAdmission::Excluded(canonical));
+            return Ok(PathClassification::Excluded(canonical));
         }
         if !self.supports(canonical.as_ref()) {
-            return Ok(PathAdmission::Unsupported(canonical));
+            return Ok(PathClassification::Unsupported(canonical));
         }
         let relative = self.make_relative(canonical.as_ref())?;
-        Ok(PathAdmission::Admitted(AdmittedSourcePath {
+        Ok(PathClassification::Accepted(AcceptedSourcePath {
             canonical,
             relative,
         }))
@@ -226,21 +226,21 @@ impl<'a> SourceAdmission<'a> {
         self.options.excludes_path(&self.canonical_root, path)
     }
 
-    /// Read a path returned by [`Self::admitted_path`] without repeating the
-    /// boundary decision. Does not canonicalize, re-admit, or re-check the
+    /// Read a path returned by [`Self::classify`] as accepted without repeating
+    /// the boundary decision. Does not canonicalize, re-accept, or re-check the
     /// extension.
-    pub(crate) fn load_admitted_source_file(
+    pub(crate) fn load_accepted_source_file(
         &self,
-        admitted: &AdmittedSourcePath,
+        accepted: &AcceptedSourcePath,
     ) -> Result<SourceFile, ProjectLoadError> {
-        let corpus_file = read_source_bytes(admitted.as_ref(), self.options.max_source_bytes())?;
+        let source_file = read_source(accepted.as_ref(), self.options.max_source_bytes())?;
         let language = self
             .options
-            .source_language(admitted.as_ref())
-            .ok_or_else(|| ProjectLoadError::UnsupportedSource(admitted.as_ref().to_path_buf()))?;
+            .source_language(accepted.as_ref())
+            .ok_or_else(|| ProjectLoadError::UnsupportedSource(accepted.as_ref().to_path_buf()))?;
         Ok(SourceFile::from_relative_with_language(
-            admitted.relative().clone(),
-            corpus_file.source,
+            accepted.relative().clone(),
+            source_file.source,
             language,
         ))
     }

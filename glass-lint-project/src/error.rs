@@ -44,8 +44,8 @@ pub enum ProjectLoadError {
     InvalidProjectPhase(ProjectPhaseError),
     /// Core local analysis could not execute.
     Execution(ProjectExecutionError),
-    /// The corpus root is neither a file nor a directory.
-    CorpusRootNotFileOrDir(PathBuf),
+    /// The source root is neither a file nor a directory.
+    SourceRootNotFileOrDir(PathBuf),
     /// Config parse error at the given path.
     ConfigParseError { path: PathBuf, source: String },
     /// The tsconfig traversal budget was exhausted.
@@ -122,10 +122,10 @@ impl fmt::Display for ProjectLoadError {
             Self::InvalidProjectInput(error) => write!(f, "core project error: {error}"),
             Self::InvalidProjectPhase(error) => write!(f, "core project phase error: {error}"),
             Self::Execution(error) => write!(f, "core project execution failed: {error}"),
-            Self::CorpusRootNotFileOrDir(path) => {
+            Self::SourceRootNotFileOrDir(path) => {
                 write!(
                     f,
-                    "corpus root is not a file or directory: {}",
+                    "source root is not a file or directory: {}",
                     path.display()
                 )
             }

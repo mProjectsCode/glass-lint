@@ -17,13 +17,15 @@ source + language + environment + limits
   -> deterministic AnalysisReport
 ```
 
-Parsing and fact construction happen once per admitted source. Rules query the
+Parsing and fact construction happen once per accepted source. Rules query the
 shared artifact; enabling a rule must not add an AST traversal or a separate
 semantic model.
 
 ## Internal ownership
 
 - `parse` and `analysis/syntax` contain the private SWC-backed frontend.
+- `analysis/semantic` owns the parser-to-artifact semantic analysis boundary,
+  bounded analysis budget, and completion status.
 - `analysis/scope` owns bindings, shadowing, reassignment, and provenance.
 - `analysis/facts` owns the query-independent event stream.
 - `analysis/resolution` and `analysis/value` own identity and static-value
@@ -65,8 +67,8 @@ cancels queued work without consuming inputs beyond the submitted window.
 
 ## Project boundary
 
-`ProjectCollection` accepts owned `SourceFile` values and produces a
-`SourceAnalysis` for each completed local lowering. Consuming transitions to
+`ProjectSession` accepts owned `SourceFile` values and produces an
+`AnalyzedSource` for each completed local semantic analysis. Consuming transitions to
 `LocallyAnalyzedProject` and `ResolvedProject` ensure that linking and
 matching can run only after authored resolver outcomes have been validated.
 Core never discovers files or resolves modules.

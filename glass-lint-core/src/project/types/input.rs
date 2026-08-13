@@ -4,7 +4,7 @@ use smol_str::SmolStr;
 
 use crate::{SourceLanguage, project::types::ProjectRelativePath};
 
-/// Shared source text admitted once at the project boundary.
+/// Shared source text accepted once at the project boundary.
 ///
 /// The public project DTO still serializes as a string, but every internal
 /// consumer clones only this cheap handle instead of copying the source.
@@ -240,7 +240,7 @@ pub struct SourceFile {
 
 impl SourceFile {
     /// Construct a virtual source using JavaScript parser semantics.
-    /// Filename extensions do not select a language; filesystem admission
+    /// Filename extensions do not select a language; filesystem acceptance
     /// supplies one explicitly through [`Self::with_language`].
     pub fn new(
         path: impl Into<String>,
@@ -271,7 +271,7 @@ impl SourceFile {
     }
 
     /// Construct a virtual source from a validated path using JavaScript
-    /// parser semantics. Filesystem admission supplies an explicit language.
+    /// parser semantics. Filesystem acceptance supplies an explicit language.
     pub fn from_relative(path: ProjectRelativePath, source: impl Into<SourceText>) -> Self {
         Self {
             path,

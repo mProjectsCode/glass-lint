@@ -9,14 +9,14 @@ use glass_lint_core::project::{
 use oxc_resolver::{ResolveError, ResolveOptions, Resolver};
 
 use crate::{
-    admission::{PathAdmission, SourceAdmission, absolute_path},
+    boundary::{PathClassification, SourceBoundary, absolute_path},
     error::ProjectLoadError,
     options::ProjectSelection,
 };
 
 /// Keeps import and CommonJS resolution policy together for one project.
 pub struct ProjectResolver<'a> {
-    admission: SourceAdmission<'a>,
+    boundary: SourceBoundary<'a>,
     import: Resolver,
     require: Resolver,
 }
@@ -24,10 +24,10 @@ pub struct ProjectResolver<'a> {
 impl<'a> ProjectResolver<'a> {
     /// Build import and CommonJS resolvers under one project root.
     pub fn new(
-        admission: SourceAdmission<'a>,
+        boundary: SourceBoundary<'a>,
         selection: &ProjectSelection,
     ) -> Result<Self, ProjectLoadError> {
-        let options = admission.options();
+        let options = boundary.options();
         let extension_alias = options
             .extension_aliases()
             .map(|(key, value)| (key.to_owned(), value.to_vec()))
@@ -36,7 +36,7 @@ impl<'a> ProjectResolver<'a> {
             extensions: options.extensions().map(str::to_owned).collect(),
             extension_alias,
             symlinks: options.follow_symlinks(),
-            roots: vec![admission.canonical_root().to_path_buf()],
+            roots: vec![boundary.canonical_root().to_path_buf()],
             builtin_modules: true,
             ..ResolveOptions::default()
         };
@@ -57,7 +57,7 @@ impl<'a> ProjectResolver<'a> {
             ..base
         });
         Ok(Self {
-            admission,
+            boundary,
             import,
             require,
         })
@@ -68,10 +68,10 @@ impl<'a> ProjectResolver<'a> {
         &self,
         request: &ResolutionRequest,
     ) -> Result<ResolverOutcome, ProjectLoadError> {
-        let importer = self.admission.canonical_root().join(request.importer());
+        let importer = self.boundary.canonical_root().join(request.importer());
         let directory = importer
             .parent()
-            .unwrap_or_else(|| self.admission.canonical_root());
+            .unwrap_or_else(|| self.boundary.canonical_root());
         let resolver = if request.kind() == ResolutionRequestKind::Require {
             &self.require
         } else {
@@ -101,10 +101,10 @@ impl<'a> ProjectResolver<'a> {
     }
 
     fn classify(&self, request: &str, path: &Path) -> Result<ResolverOutcome, ProjectLoadError> {
-        let admission = self.admission.classify(path)?;
+        let classification = self.boundary.classify(path)?;
         let internal = is_internal_module_request(request);
-        Ok(match admission {
-            PathAdmission::Outside(path) => {
+        Ok(match classification {
+            PathClassification::Outside(path) => {
                 if internal {
                     ResolverOutcome::OutsideProject {
                         path: NormalizedOutsidePath::new(
@@ -115,7 +115,7 @@ impl<'a> ProjectResolver<'a> {
                     external_outcome(request, "")
                 }
             }
-            PathAdmission::Excluded(path) => {
+            PathClassification::Excluded(path) => {
                 if internal {
                     ResolverOutcome::Unsupported {
                         reason: format!("excluded target `{}`", path.as_ref().display()),
@@ -124,11 +124,11 @@ impl<'a> ProjectResolver<'a> {
                     external_outcome(request, "")
                 }
             }
-            PathAdmission::Unsupported(path) => ResolverOutcome::Unsupported {
+            PathClassification::Unsupported(path) => ResolverOutcome::Unsupported {
                 reason: format!("unsupported target `{}`", path.as_ref().display()),
             },
-            PathAdmission::Admitted(admitted) => ResolverOutcome::Internal {
-                path: admitted.relative().clone(),
+            PathClassification::Accepted(accepted) => ResolverOutcome::Internal {
+                path: accepted.relative().clone(),
             },
         })
     }
@@ -186,7 +186,7 @@ mod tests {
     fn with_resolver(f: impl FnOnce(&ProjectResolver)) {
         let options = ProjectLoadOptions::default().validated().unwrap();
         let resolver = ProjectResolver::new(
-            SourceAdmission::new(Path::new("."), &options).unwrap(),
+            SourceBoundary::new(Path::new("."), &options).unwrap(),
             &ProjectSelection::entry("main.js"),
         )
         .unwrap();

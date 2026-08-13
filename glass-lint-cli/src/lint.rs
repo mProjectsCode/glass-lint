@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 use glass_lint_core::{Linter, project::SourceFile};
-use glass_lint_project::{ProjectLoader, ProjectSelection, SourceCorpus};
+use glass_lint_project::{ProjectLoader, ProjectSelection, SourceCollection};
 
 use crate::{
     args::Command,
@@ -29,8 +29,8 @@ pub fn run(config: &Config, command: Command) -> Result<bool> {
             }
             crate::output::write_mode(config, "single file", &path)?;
             let options = config.project_load_options()?;
-            let corpus = SourceCorpus::from_validated(&options)?;
-            let paths = corpus
+            let sources = SourceCollection::from_validated(&options)?;
+            let paths = sources
                 .discover(std::slice::from_ref(&path))
                 .map_err(|error| anyhow::anyhow!(error))?;
             if paths.is_empty() {
@@ -86,12 +86,12 @@ fn project_selection(path: &std::path::Path) -> ProjectSelection {
 
 fn lint_files(config: &Config, linter: &Linter, paths: Vec<PathBuf>) -> Result<bool> {
     let options = config.project_load_options()?;
-    let corpus = SourceCorpus::from_validated(&options)?;
+    let sources = SourceCollection::from_validated(&options)?;
     let mut files = Vec::with_capacity(paths.len());
     let mut failed = false;
 
     for path in paths {
-        let source = corpus
+        let source = sources
             .load(&path)
             .map_err(|error| anyhow::anyhow!(error))?
             .source;
@@ -129,7 +129,7 @@ fn lint_files(config: &Config, linter: &Linter, paths: Vec<PathBuf>) -> Result<b
 mod tests {
     use std::fs;
 
-    use glass_lint_project::{ProjectSelection, SourceCorpus, ValidatedProjectLoadOptions};
+    use glass_lint_project::{ProjectSelection, SourceCollection, ValidatedProjectLoadOptions};
 
     use super::*;
 
@@ -166,7 +166,7 @@ mod tests {
 
         let options = ValidatedProjectLoadOptions::default();
         let paths =
-            SourceCorpus::from_validated(&options)?.discover(std::slice::from_ref(&root))?;
+            SourceCollection::from_validated(&options)?.discover(std::slice::from_ref(&root))?;
         let names: Vec<_> = paths
             .iter()
             .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())

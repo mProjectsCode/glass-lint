@@ -110,7 +110,7 @@ impl SourceLanguage {
     }
 }
 
-/// Parsed program consumed by lowering.
+/// Parsed program consumed by semantic analysis.
 pub struct ParsedSource {
     /// SWC AST consumed by semantic analysis.
     pub(crate) program: Program,
@@ -119,7 +119,7 @@ pub struct ParsedSource {
 }
 
 /// Owns the source, parser mode, bounded-depth policy, and diagnostics needed
-/// to parse one admitted source.
+/// to parse one accepted source.
 pub struct SourceParser {
     source: SourceFile,
     file: Lrc<swc_common::SourceFile>,
@@ -136,13 +136,13 @@ impl SourceParser {
     }
 
     /// Construct a parser with an explicit structural depth limit. The source
-    /// carries its validated path, text, and language; TypeScript is lowered
+    /// carries its validated path, text, and language; TypeScript is normalized
     /// after parsing and JavaScript passes through.
     pub(crate) fn with_syntax_depth(
         source: &SourceFile,
         max_syntax_depth: usize,
     ) -> Result<Self, ParseDiagnostic> {
-        Self::admit_source(source)?;
+        Self::validate_source(source)?;
         let source_map = Lrc::new(SourceMap::default());
         let file = source_map.new_source_file(
             FileName::Custom(source.path().as_str().into()).into(),
@@ -160,7 +160,7 @@ impl SourceParser {
         })
     }
 
-    fn admit_source(source: &SourceFile) -> Result<(), ParseDiagnostic> {
+    fn validate_source(source: &SourceFile) -> Result<(), ParseDiagnostic> {
         if source.source().len() <= MAX_SOURCE_BYTES {
             return Ok(());
         }
@@ -576,7 +576,7 @@ fn syntax_depth_for_test(source: &str) -> usize {
     let source = SourceFile::with_language("test.js", source, SourceLanguage::JavaScript)
         .expect("test parser input should have a valid relative path");
     let depth = SourceParser::new(&source)
-        .expect("test source should be admitted")
+        .expect("test source should be accepted")
         .syntax_depth();
     match depth {
         SyntaxDepthOutcome::WithinLimit(depth) => depth,
@@ -623,7 +623,7 @@ mod tests {
         let source =
             SourceFile::with_language("invalid-span.js", "value", SourceLanguage::JavaScript)
                 .expect("test parser input should have a valid relative path");
-        let parser = SourceParser::new(&source).expect("test source should be admitted");
+        let parser = SourceParser::new(&source).expect("test source should be accepted");
         let start = parser.file.start_pos.0;
 
         assert!(parser.parser_range(swc_common::DUMMY_SP).is_none());

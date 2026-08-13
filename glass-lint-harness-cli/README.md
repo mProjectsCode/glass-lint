@@ -40,7 +40,7 @@ filters, `--rule` for exact rule IDs, and `--warm-up`, `--repeat`, and
 
 The default mode loads sources before timing independent-file lint calls.
 `--project` measures filesystem project loading through matching.
-`--admitted-project` measures the explicit core source-admission path without
+`--admitted-project` measures the explicit core source-acceptance path without
 resolver answers and therefore may report typed partial outcomes.
 
 Freeze a corpus selection for reproducible comparisons:

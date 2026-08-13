@@ -493,10 +493,10 @@ mod tests {
         Environment,
         analysis::{
             facts::{CallArgInfo, FactStream, Frozen, build_test_stream},
-            lowering::SpanNormalizer,
             matching::{ExportResolution, ModuleExportKey, OccurrenceIndexes},
             model::value::ValueId,
             resolution::Resolver,
+            semantic::SpanNormalizer,
             syntax::SymbolCallProvenance,
         },
         api::{

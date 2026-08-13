@@ -21,7 +21,7 @@ use std::{
 
 use serde_json::Value;
 
-use crate::{admission::realpath, budget::ProjectResourceBudget, error::ProjectLoadError};
+use crate::{boundary::realpath, budget::ProjectResourceBudget, error::ProjectLoadError};
 
 /// Budget for tsconfig traversal (extends and project references).
 #[derive(Clone, Copy, Debug)]

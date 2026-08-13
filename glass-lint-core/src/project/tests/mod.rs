@@ -68,7 +68,7 @@ fn finish_local_rejects_admitted_sources_without_analysis_outcomes() {
     let linter = test_linter();
     let mut collection = linter.begin_project();
     collection
-        .admit_test_source(source_file("pending.js", "fetch('/pending');"))
+        .accept_test_source(source_file("pending.js", "fetch('/pending');"))
         .unwrap();
 
     let Err(error) = collection.finish_local() else {

@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use crate::{
     ParseDiagnostic,
     analysis::{
-        ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LoweredSource, QualifiedRequestId,
+        AnalyzedSource, ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, QualifiedRequestId,
         ResolvedLinkInput, model::module::ModuleRequestId,
     },
     project::{
@@ -20,8 +20,8 @@ use crate::{
 };
 
 /// Pre-computed index of authored requests for membership validation and
-/// qualified-ID construction. Built once during lowering and reused during
-/// resolution, avoiding per-module re-traversal of the module interface.
+/// qualified-ID construction. Built once during local analysis and reused
+/// during resolution, avoiding per-module re-traversal of the module interface.
 #[derive(Default)]
 pub struct AuthoredRequestTable {
     /// Key → ModuleRequestId for membership and qualified-ID production.
@@ -127,12 +127,12 @@ impl AnalysisArtifacts {
             .insert(path, LocalAnalysisOutcome::ParseFailed(error));
     }
 
-    pub(super) fn record_lowered(
+    pub(super) fn record_analyzed(
         &mut self,
         path: &ProjectRelativePath,
-        lowered: LoweredSource,
+        analyzed: AnalyzedSource,
     ) -> Vec<ResolutionRequest> {
-        self.record_local(path, LocalArtifact::from_lowered(lowered))
+        self.record_local(path, LocalArtifact::from_analyzed(analyzed))
     }
 
     pub(super) fn record_local(
@@ -214,10 +214,10 @@ impl AnalysisArtifacts {
 pub(super) fn insert_and_notify(
     cache: &ArtifactCacheHandle,
     key: ArtifactCacheKey,
-    lowered: &LoweredSource,
+    analyzed: &AnalyzedSource,
     observer: &dyn ExecutionObserver,
 ) {
-    let evicted = cache.insert_lowered(key, lowered);
+    let evicted = cache.insert_analyzed(key, analyzed);
     observer.observe(ExecutionEvent::CacheInserted);
     if evicted {
         observer.observe(ExecutionEvent::CacheEvicted);
@@ -229,16 +229,16 @@ mod tests {
     use super::*;
     use crate::{
         AnalysisLimits, Environment,
-        analysis::Lowerer,
+        analysis::SemanticAnalyzer,
         project::{ResolutionRequestKind, SourceFile},
     };
 
-    fn lower(path: &str, source: &str) -> (ProjectRelativePath, LoweredSource) {
+    fn lower(path: &str, source: &str) -> (ProjectRelativePath, AnalyzedSource) {
         let source = SourceFile::new(path, source).unwrap();
-        let lowered = Lowerer::new(&Environment::default(), &AnalysisLimits::default())
-            .lower_source(&source)
+        let analyzed = SemanticAnalyzer::new(&Environment::default(), &AnalysisLimits::default())
+            .analyze_source(&source)
             .unwrap();
-        (source.path().clone(), lowered)
+        (source.path().clone(), analyzed)
     }
 
     fn parse_failure(path: &str) -> ParseDiagnostic {
@@ -253,9 +253,9 @@ mod tests {
     #[test]
     fn needs_analysis_tracks_completed_and_failed_sources() {
         let mut artifacts = AnalysisArtifacts::default();
-        let (analyzed_path, lowered) = lower("a.js", "fetch('/x');");
+        let (analyzed_path, analyzed) = lower("a.js", "fetch('/x');");
         assert!(artifacts.needs_analysis(&analyzed_path));
-        artifacts.record_lowered(&analyzed_path, lowered);
+        artifacts.record_analyzed(&analyzed_path, analyzed);
         assert!(!artifacts.needs_analysis(&analyzed_path));
 
         let failed_path = ProjectRelativePath::new("b.js").unwrap();
@@ -271,7 +271,7 @@ mod tests {
         sources.insert(source.clone()).unwrap();
         let mut artifacts = AnalysisArtifacts::default();
         artifacts.record_parse_failure(source.path().clone(), parse_failure("retry.js"));
-        artifacts.record_lowered(
+        artifacts.record_analyzed(
             source.path(),
             lower(source.path().as_str(), "fetch('/x');").1,
         );
@@ -286,7 +286,7 @@ mod tests {
         let mut sources = SourceTable::default();
         sources.insert(source.clone()).unwrap();
         let mut artifacts = AnalysisArtifacts::default();
-        artifacts.record_lowered(
+        artifacts.record_analyzed(
             source.path(),
             lower(source.path().as_str(), "fetch('/x');").1,
         );
@@ -300,10 +300,10 @@ mod tests {
     fn qualified_ids_reject_missing_importer_modules() {
         let source = SourceFile::new("missing.js", "import value from './dep.js';").unwrap();
         let mut artifacts = AnalysisArtifacts::default();
-        artifacts.record_lowered(
+        artifacts.record_analyzed(
             source.path(),
-            Lowerer::new(&Environment::default(), &AnalysisLimits::default())
-                .lower_source(&source)
+            SemanticAnalyzer::new(&Environment::default(), &AnalysisLimits::default())
+                .analyze_source(&source)
                 .unwrap(),
         );
 
@@ -321,10 +321,10 @@ mod tests {
 
         let (link_input, parse_diagnostics) = {
             let mut artifacts = AnalysisArtifacts::default();
-            let requests = artifacts.record_lowered(
+            let requests = artifacts.record_analyzed(
                 source.path(),
-                Lowerer::new(&Environment::default(), &AnalysisLimits::default())
-                    .lower_source(&source)
+                SemanticAnalyzer::new(&Environment::default(), &AnalysisLimits::default())
+                    .analyze_source(&source)
                     .unwrap(),
             );
             let key = requests[0].key().clone();
@@ -336,10 +336,10 @@ mod tests {
         assert_eq!(link_input.resolution_count(), 1);
 
         let mut artifacts = AnalysisArtifacts::default();
-        let requests = artifacts.record_lowered(
+        let requests = artifacts.record_analyzed(
             source.path(),
-            Lowerer::new(&Environment::default(), &AnalysisLimits::default())
-                .lower_source(&source)
+            SemanticAnalyzer::new(&Environment::default(), &AnalysisLimits::default())
+                .analyze_source(&source)
                 .unwrap(),
         );
         let mut unknown = requests[0].key().clone();

@@ -1,4 +1,4 @@
-//! Job execution runtime for parallel local lowering.
+//! Job execution runtime for parallel local analysis.
 //!
 //! Owns the worker-pool dispatch, executor abstraction, and observer hooks.
 //! This module contains no phase-state types.
@@ -14,7 +14,7 @@ use rayon::prelude::*;
 
 use crate::{
     ParseDiagnostic,
-    analysis::{ArtifactCacheKey, LoweredSource, Lowerer},
+    analysis::{AnalyzedSource, ArtifactCacheKey, SemanticAnalyzer},
     project::{LocalExecutionError, ProjectRelativePath, SourceFile},
 };
 
@@ -32,7 +32,7 @@ pub(super) struct LocalJobCandidate {
 pub(super) struct LocalJobResult {
     pub(super) path: ProjectRelativePath,
     pub(super) key: ArtifactCacheKey,
-    pub(super) result: Result<LoweredSource, ParseDiagnostic>,
+    pub(super) result: Result<AnalyzedSource, ParseDiagnostic>,
 }
 
 enum LocalJobOutcome {
@@ -51,7 +51,7 @@ pub(super) trait LocalJobExecutor {
         &self,
         candidates: &mut dyn Iterator<Item = LocalJobCandidate>,
         worker_limit: NonZeroUsize,
-        lowerer: &Lowerer,
+        analyzer: &SemanticAnalyzer,
         observer: &dyn ExecutionObserver,
         callbacks: &mut dyn LocalJobCallbacks,
     ) -> Result<(), LocalExecutionError>;
@@ -64,7 +64,7 @@ pub(super) enum ExecutionEvent {
     Finished,
     Merged,
     ParseAttempted,
-    LowerAttempted,
+    AnalysisAttempted,
     CacheHit,
     CacheMiss,
     CacheInserted,
@@ -87,7 +87,7 @@ pub struct CountingExecutionObserver {
     outstanding: AtomicUsize,
     peak_outstanding: AtomicUsize,
     parse_attempts: AtomicUsize,
-    lower_attempts: AtomicUsize,
+    analysis_attempts: AtomicUsize,
     cache_hits: AtomicUsize,
     cache_misses: AtomicUsize,
     cache_inserts: AtomicUsize,
@@ -103,7 +103,7 @@ impl CountingExecutionObserver {
             outstanding: AtomicUsize::new(0),
             peak_outstanding: AtomicUsize::new(0),
             parse_attempts: AtomicUsize::new(0),
-            lower_attempts: AtomicUsize::new(0),
+            analysis_attempts: AtomicUsize::new(0),
             cache_hits: AtomicUsize::new(0),
             cache_misses: AtomicUsize::new(0),
             cache_inserts: AtomicUsize::new(0),
@@ -121,7 +121,7 @@ impl CountingExecutionObserver {
     pub fn invocations(&self) -> InvocationCounts {
         InvocationCounts {
             parses: self.parse_attempts.load(Ordering::SeqCst),
-            lowers: self.lower_attempts.load(Ordering::SeqCst),
+            analyses: self.analysis_attempts.load(Ordering::SeqCst),
             hits: self.cache_hits.load(Ordering::SeqCst),
             misses: self.cache_misses.load(Ordering::SeqCst),
             inserts: self.cache_inserts.load(Ordering::SeqCst),
@@ -155,8 +155,8 @@ impl ExecutionObserver for CountingExecutionObserver {
             ExecutionEvent::ParseAttempted => {
                 self.parse_attempts.fetch_add(1, Ordering::SeqCst);
             }
-            ExecutionEvent::LowerAttempted => {
-                self.lower_attempts.fetch_add(1, Ordering::SeqCst);
+            ExecutionEvent::AnalysisAttempted => {
+                self.analysis_attempts.fetch_add(1, Ordering::SeqCst);
             }
             ExecutionEvent::CacheHit => {
                 self.cache_hits.fetch_add(1, Ordering::SeqCst);
@@ -178,7 +178,7 @@ impl ExecutionObserver for CountingExecutionObserver {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct InvocationCounts {
     pub parses: usize,
-    pub lowers: usize,
+    pub analyses: usize,
     pub hits: usize,
     pub misses: usize,
     pub inserts: usize,
@@ -192,7 +192,7 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
         &self,
         candidates: &mut dyn Iterator<Item = LocalJobCandidate>,
         worker_limit: NonZeroUsize,
-        lowerer: &Lowerer,
+        analyzer: &SemanticAnalyzer,
         observer: &dyn ExecutionObserver,
         callbacks: &mut dyn LocalJobCallbacks,
     ) -> Result<(), LocalExecutionError> {
@@ -227,9 +227,9 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
                         .map(|job| {
                             observer.observe(ExecutionEvent::Started);
                             observer.observe(ExecutionEvent::ParseAttempted);
-                            observer.observe(ExecutionEvent::LowerAttempted);
+                            observer.observe(ExecutionEvent::AnalysisAttempted);
                             let result = catch_unwind(AssertUnwindSafe(|| {
-                                lowerer.lower_source(&job.source)
+                                analyzer.analyze_source(&job.source)
                             }));
                             observer.observe(ExecutionEvent::Finished);
                             match result {
@@ -283,7 +283,7 @@ impl LocalJobExecutor for ControlledLocalJobExecutor {
         &self,
         candidates: &mut dyn Iterator<Item = LocalJobCandidate>,
         _worker_limit: NonZeroUsize,
-        lowerer: &Lowerer,
+        analyzer: &SemanticAnalyzer,
         observer: &dyn ExecutionObserver,
         callbacks: &mut dyn LocalJobCallbacks,
     ) -> Result<(), LocalExecutionError> {
@@ -305,8 +305,8 @@ impl LocalJobExecutor for ControlledLocalJobExecutor {
             observer.observe(ExecutionEvent::Submitted);
             observer.observe(ExecutionEvent::Started);
             observer.observe(ExecutionEvent::ParseAttempted);
-            observer.observe(ExecutionEvent::LowerAttempted);
-            let result = lowerer.lower_source(&job.source);
+            observer.observe(ExecutionEvent::AnalysisAttempted);
+            let result = analyzer.analyze_source(&job.source);
             observer.observe(ExecutionEvent::Finished);
             callbacks.release(LocalJobResult {
                 path: job.path,

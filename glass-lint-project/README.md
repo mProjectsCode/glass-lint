@@ -21,7 +21,7 @@ let report = outcome.report;
 ```
 
 Use `ProjectSelection::entry` for one entry and reachable internal imports,
-`directory` for all admitted sources below a directory, or `tsconfig` for
+`directory` for all accepted sources below a directory, or `tsconfig` for
 TypeScript configuration membership. Configure limits through the checked
 `ValidatedProjectLoadOptions::builder()` before loading.
 
@@ -31,7 +31,7 @@ The default loader accepts `.js`, `.cjs`, `.mjs`, `.ts`, `.cts`, and `.mts`.
 It excludes declarations, `.git`, `node_modules`, common output directories,
 and symlink traversal.
 
-Limits cover admitted files, bytes per file, aggregate bytes, visited entries,
+Limits cover accepted files, bytes per file, aggregate bytes, visited entries,
 resolver requests, and elapsed load time. Non-timeout resource boundaries
 return deterministic partial output in `ProjectLoadOutcome`; a timeout is an
 operational error.

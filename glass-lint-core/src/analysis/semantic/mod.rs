@@ -1,4 +1,4 @@
-//! Private parser-to-artifact lowering boundary.
+//! Private parser-to-artifact semantic-analysis boundary.
 //!
 //! Parser and AST details stop here. Downstream project analysis receives an
 //! immutable local artifact and its source map, never a parsed program.
@@ -20,10 +20,10 @@ use crate::{
     analysis::{
         DerivedPhaseCapabilities, LocatedSourceContext, SemanticArtifact, SemanticBudget,
         facts::{self, Building, BuiltFacts, FactStream, SemanticFacts},
-        lowering::status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
         model::module,
         resolution::Resolver,
         scope::{ScopeCollectionIssue, ScopeGraph, ScopedProgram},
+        semantic::status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
         syntax::{SymbolCallProvenance, name::MAX_NAMES},
     },
     parse::SourceParser,
@@ -91,12 +91,12 @@ impl Default for SpanNormalizer {
 }
 
 #[derive(Clone)]
-pub struct LoweredSource {
+pub struct AnalyzedSource {
     source: LocatedSourceContext,
     semantic: Arc<SemanticArtifact>,
 }
 
-impl LoweredSource {
+impl AnalyzedSource {
     pub(crate) fn new(source: LocatedSourceContext, semantic: Arc<SemanticArtifact>) -> Self {
         Self { source, semantic }
     }
@@ -106,15 +106,15 @@ impl LoweredSource {
     }
 }
 
-/// Per-file lowering stage. Owns the environment and limits that the
-/// lowering pipeline needs, without coupling to the full `Linter`.
-pub struct Lowerer<'a> {
+/// Per-file semantic-analysis stage. Owns the environment and limits that the
+/// analysis pipeline needs, without coupling to the full `Linter`.
+pub struct SemanticAnalyzer<'a> {
     environment: &'a Environment,
     limits: &'a AnalysisLimits,
     name_limit: usize,
 }
 
-impl<'a> Lowerer<'a> {
+impl<'a> SemanticAnalyzer<'a> {
     pub fn new(environment: &'a Environment, limits: &'a AnalysisLimits) -> Self {
         Self {
             environment,
@@ -131,11 +131,11 @@ impl<'a> Lowerer<'a> {
         self.limits
     }
 
-    /// Lower an already-parsed SWC program into an immutable semantic
+    /// Analyze an already-parsed SWC program into an immutable semantic
     /// artifact. The scope graph, resolver, and fact builder are deliberately
     /// consumed in order so no intermediate analysis state escapes this
     /// boundary.
-    pub(in crate::analysis) fn lower_program(
+    pub(in crate::analysis) fn analyze_program(
         &self,
         program: &Program,
         coordinates: &SpanNormalizer,
@@ -161,18 +161,18 @@ impl<'a> Lowerer<'a> {
         self
     }
 
-    /// Lower one source file into an immutable semantic artifact. The lowering
-    /// runs scope planning, collection against the plan, and fact building
-    /// against the frozen resolver. Matcher indexes and function effects are
-    /// then derived together from the frozen fact tape. The result is ready for
-    /// project linking and matcher projection.
-    pub fn lower_source(&self, source: &SourceFile) -> Result<LoweredSource, ParseDiagnostic> {
+    /// Analyze one source file into an immutable semantic artifact. The
+    /// analysis runs scope planning, collection against the plan, and fact
+    /// building against the frozen resolver. Matcher indexes and function
+    /// effects are then derived together from the frozen fact tape. The
+    /// result is ready for project linking and matcher projection.
+    pub fn analyze_source(&self, source: &SourceFile) -> Result<AnalyzedSource, ParseDiagnostic> {
         let parsed =
             SourceParser::with_syntax_depth(source, self.limits.syntax_depth())?.parse()?;
         let coordinates = SpanNormalizer::new(parsed.source_start, source.source());
-        let semantic = self.lower_program(&parsed.program, &coordinates);
+        let semantic = self.analyze_program(&parsed.program, &coordinates);
 
-        Ok(LoweredSource::new(
+        Ok(AnalyzedSource::new(
             LocatedSourceContext::new(source),
             Arc::new(semantic),
         ))
@@ -228,12 +228,12 @@ fn check_name_exhaustion(resolver: &Resolver) -> Option<IncompleteReason> {
 }
 
 #[derive(Debug)]
-struct LoweringCompletion {
+struct AnalysisCompletion {
     status: AnalysisStatus,
     capabilities: DerivedPhaseCapabilities,
 }
 
-impl LoweringCompletion {
+impl AnalysisCompletion {
     fn new() -> Self {
         Self {
             status: AnalysisStatus::default(),
@@ -278,16 +278,16 @@ impl LoweringCompletion {
     }
 }
 
-struct SealedLowering {
+struct SealedAnalysis {
     facts: SemanticFacts,
     export_origins: BTreeMap<SmolStr, SymbolCallProvenance>,
     capabilities: DerivedPhaseCapabilities,
     status: AnalysisStatus,
 }
 
-impl SealedLowering {
+impl SealedAnalysis {
     fn into_artifact(self, effect_limit: usize) -> SemanticArtifact {
-        SemanticArtifact::from_lowering(
+        SemanticArtifact::from_analysis(
             self.facts,
             self.export_origins,
             effect_limit,
@@ -328,14 +328,14 @@ impl<'a> ResolvedProgram<'a> {
         }
     }
 
-    fn assess_completion(&self, limits: &AnalysisLimits) -> LoweringCompletion {
-        LoweringCompletion::assess(&self.issues, &self.built.stream, &self.resolver, limits)
+    fn assess_completion(&self, limits: &AnalysisLimits) -> AnalysisCompletion {
+        AnalysisCompletion::assess(&self.issues, &self.built.stream, &self.resolver, limits)
     }
 
     fn derive_export_origins(
         &self,
         interface: &module::ModuleInterface,
-        completion: &LoweringCompletion,
+        completion: &AnalysisCompletion,
         program_span: Span,
     ) -> BTreeMap<SmolStr, SymbolCallProvenance> {
         if !completion.capabilities.export_origins().is_enabled() {
@@ -369,9 +369,9 @@ impl<'a> ResolvedProgram<'a> {
     fn seal(
         self,
         environment: &Environment,
-        completion: LoweringCompletion,
+        completion: AnalysisCompletion,
         program_span: Span,
-    ) -> SealedLowering {
+    ) -> SealedAnalysis {
         let export_origins =
             self.derive_export_origins(&self.built.interface, &completion, program_span);
         let name_table_exhausted = self.resolver.name_table_exhausted();
@@ -382,8 +382,8 @@ impl<'a> ResolvedProgram<'a> {
         let interface = built.interface;
         let stream = resolver.freeze_into(stream);
         let capabilities = completion.capabilities;
-        let facts = SemanticFacts::from_lowering(stream, interface, environment, capabilities);
-        SealedLowering {
+        let facts = SemanticFacts::from_analysis(stream, interface, environment, capabilities);
+        SealedAnalysis {
             facts,
             export_origins,
             capabilities,
@@ -455,12 +455,12 @@ mod tests {
         let parsed =
             crate::parse_test_source(source, "name-exhaustion.js").expect("source should parse");
         let coordinates = SpanNormalizer::new(parsed.source_start, &SourceText::from(source));
-        let artifact = Lowerer::new(
+        let artifact = SemanticAnalyzer::new(
             &crate::Environment::default(),
             &crate::AnalysisLimits::default(),
         )
         .with_name_limit(2)
-        .lower_program(&parsed.program, &coordinates);
+        .analyze_program(&parsed.program, &coordinates);
 
         assert!(!artifact.facts().stream().is_valid());
         assert!(artifact.facts().matcher_index().is_empty());
@@ -481,12 +481,12 @@ mod tests {
         assert!(file_diagnostics[0].1.message().contains("limit=2"));
         assert!(file_diagnostics[0].1.message().contains("attempted=3"));
 
-        let repeated = Lowerer::new(
+        let repeated = SemanticAnalyzer::new(
             &crate::Environment::default(),
             &crate::AnalysisLimits::default(),
         )
         .with_name_limit(2)
-        .lower_program(&parsed.program, &coordinates);
+        .analyze_program(&parsed.program, &coordinates);
         assert_eq!(
             format!("{:?}", artifact.facts().stream().facts()),
             format!("{:?}", repeated.facts().stream().facts())
@@ -510,8 +510,8 @@ mod tests {
         let limits = crate::AnalysisLimits::default()
             .with_semantic_operations(10)
             .expect("valid limit");
-        let artifact = Lowerer::new(&crate::Environment::default(), &limits)
-            .lower_program(&parsed.program, &coordinates);
+        let artifact = SemanticAnalyzer::new(&crate::Environment::default(), &limits)
+            .analyze_program(&parsed.program, &coordinates);
 
         assert!(!artifact.status().is_complete());
         assert!(artifact.effects().iter_effects().next().is_none());
@@ -536,11 +536,11 @@ mod tests {
             crate::parse_test_source(source, "budget-sufficient.js").expect("source should parse");
         let coordinates = SpanNormalizer::new(parsed.source_start, &SourceText::from(source));
 
-        let artifact = Lowerer::new(
+        let artifact = SemanticAnalyzer::new(
             &crate::Environment::default(),
             &crate::AnalysisLimits::default(),
         )
-        .lower_program(&parsed.program, &coordinates);
+        .analyze_program(&parsed.program, &coordinates);
 
         assert!(artifact.status().is_complete());
         assert!(artifact.facts().stream().facts().len() > 10);
@@ -560,11 +560,11 @@ mod tests {
             BytePos(parsed.source_start.0 + 100),
             &SourceText::from(source),
         );
-        let artifact = Lowerer::new(
+        let artifact = SemanticAnalyzer::new(
             &crate::Environment::default(),
             &crate::AnalysisLimits::default(),
         )
-        .lower_program(&parsed.program, &invalid);
+        .analyze_program(&parsed.program, &invalid);
         assert!(!artifact.status().is_complete());
         assert!(artifact.facts().stream().facts().is_empty());
         let (files, project) = artifact

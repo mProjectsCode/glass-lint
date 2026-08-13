@@ -17,9 +17,9 @@ use super::resolver::ExportResolver;
 use crate::{
     analysis::{
         LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId,
-        lowering::status::AnalysisStatus,
         model::module,
         project::state::{ExportTable, LinkingSession, NormalizedModuleGraph, SccPartition},
+        semantic::status::AnalysisStatus,
     },
     project::AnalysisDiagnostic,
 };
@@ -114,9 +114,9 @@ impl ProjectLinker {
             self.status.extend(&file_status);
             if unknown {
                 self.status.record(
-                    crate::analysis::lowering::status::StatusScope::File(path),
-                    crate::analysis::lowering::status::IncompleteReason::UnsupportedModuleInterface {
-                        kind: crate::analysis::lowering::status::ModuleInterfaceKind::CommonJsExports,
+                    crate::analysis::semantic::status::StatusScope::File(path),
+                    crate::analysis::semantic::status::IncompleteReason::UnsupportedModuleInterface {
+                        kind: crate::analysis::semantic::status::ModuleInterfaceKind::CommonJsExports,
                     },
                 );
             }

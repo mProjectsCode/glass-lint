@@ -5,9 +5,9 @@ use glass_lint_datastructures::NameTable;
 use super::*;
 use crate::analysis::{
     SemanticBudget,
-    lowering::SpanNormalizer,
     model::value::{MAX_VALUES, StaticObject, Value},
     scope::ScopeGraph,
+    semantic::SpanNormalizer,
     syntax::{BudgetComponent, UnknownReason, constant::MAX_ARRAY_ITEMS},
 };
 

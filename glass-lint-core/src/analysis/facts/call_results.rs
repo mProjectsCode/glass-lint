@@ -3,7 +3,7 @@
 use hashbrown::HashMap;
 use swc_common::Span;
 
-use crate::analysis::{lowering::ParserSpanKey, model::value::ValueId};
+use crate::analysis::{model::value::ValueId, semantic::ParserSpanKey};
 
 #[derive(Debug, Default)]
 /// Deterministic per-pass table connecting call resolution with its emitted

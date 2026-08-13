@@ -65,9 +65,9 @@ module-resolution outcomes for core.
 
 ### Modules
 
-- `glass_lint_project::admission` — Validates and records which filesystem paths may enter a project.
+- `glass_lint_project::boundary` — Validates and records which filesystem paths may enter a project.
 - `glass_lint_project::budget` — Defines aggregate filesystem resource limits.
-- `glass_lint_project::corpus` — Loads deterministic reusable source corpora.
+- `glass_lint_project::source_collection` — Loads deterministic reusable source files.
 - `glass_lint_project::discovery` — Discovers source files and follows bounded `tsconfig` membership.
 - `glass_lint_project::error` — Defines expected project-loading and option failures.
 - `glass_lint_project::loader` — Coordinates discovery, reads, resolution, and core project phases.
@@ -81,15 +81,15 @@ module-resolution outcomes for core.
 
 ### Structs and enums
 
-- `admission::AdmissionSet` — Deduplicates paths admitted to a project.
-- `admission::AdmittedSourcePath` — Records one validated source path accepted for loading.
-- `admission::CanonicalProjectPath` — Represents a path normalized under the canonical project root.
-- `admission::FileBudget` — Tracks per-file admission and read limits.
-- `admission::PathAdmission` — Describes whether a candidate path is accepted, skipped, or rejected.
-- `admission::SourceAdmission` — Combines path validation with source-file admission metadata.
+- `boundary::AcceptedPaths` — Deduplicates paths accepted into a project.
+- `boundary::AcceptedSourcePath` — Records one validated source path accepted for loading.
+- `boundary::CanonicalProjectPath` — Represents a path normalized under the canonical project root.
+- `boundary::FileBudget` — Tracks per-file acceptance and read limits.
+- `boundary::PathClassification` — Describes whether a candidate path is accepted, skipped, or rejected.
+- `boundary::SourceBoundary` — Combines path validation with source-file acceptance metadata.
 - `budget::ProjectResourceBudget` — Bounds discovery, reading, resolution, bytes, and elapsed load work.
-- `corpus::CorpusFile` — Holds one source file selected for corpus processing.
-- `corpus::SourceCorpus` — Provides a deterministic collection of corpus files.
+- `source_collection::LoadedSource` — Holds one source file loaded under the project limits.
+- `source_collection::SourceCollection` — Provides a deterministic collection of source files.
 - `discovery::DiscoveryResult` — Returns discovered paths and partial-discovery status.
 - `discovery::ProjectDiscovery` — Performs bounded project and `tsconfig` discovery.
 - `discovery::RefStackItem` — Stores one pending `tsconfig` reference traversal item.
@@ -303,7 +303,7 @@ normalized adapter and report boundaries.
 - `cases::snippet` — Parses single-file fixture directives.
 - `glass_lint_harness::profile` — Coordinates deterministic corpus profiling.
 - `profile::config` — Defines profiling workload and catalog configuration.
-- `profile::corpus` — Selects and prepares profile corpus inputs.
+- `profile::source_files` — Discovers and prepares profile source-file inputs.
 - `profile::metrics` — Collects profiling phase and operation metrics.
 - `profile::runner` — Executes profiling workloads.
 - `profile::runner::admitted` — Runs profiling over already admitted sources.

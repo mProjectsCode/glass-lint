@@ -10,7 +10,7 @@ fn project_keeps_sorted_parse_failures_separate_from_valid_modules() {
     session
         .analyze_source(source_file("a.js", "fetch('/remote');"))
         .unwrap();
-    let report = finish_collection(session);
+    let report = finish_session(session);
     assert_eq!(
         report
             .files()
@@ -83,7 +83,7 @@ fn rejected_duplicate_source_does_not_replace_the_original() {
         error,
         Err(ProjectError::Input(ProjectInputError::DuplicateSource(_)))
     ));
-    let report = finish_collection(session);
+    let report = finish_session(session);
     assert_eq!(report.files()[0].findings().len(), 1);
 }
 
