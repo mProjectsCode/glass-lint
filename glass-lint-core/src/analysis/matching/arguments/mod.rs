@@ -131,7 +131,7 @@ struct ConstrainedEvaluation<'a> {
 
 impl<'a> ConstrainedEvaluation<'a> {
     fn prepare(roots: &[ConstrainedRootInput<'a>], names: &NameTable) -> Self {
-        let constrained: Vec<ConstrainedRoot<'_>> = roots
+        let roots = roots
             .iter()
             .filter_map(|input| match input.root {
                 PhysicalRoot::ConstrainedScan {
@@ -148,13 +148,9 @@ impl<'a> ConstrainedEvaluation<'a> {
                 }),
                 _ => None,
             })
+            .map(|root| PreparedConstrainedRoot::new(&root, names))
             .collect();
-        Self {
-            roots: constrained
-                .iter()
-                .map(|root| PreparedConstrainedRoot::new(root, names))
-                .collect(),
-        }
+        Self { roots }
     }
 }
 

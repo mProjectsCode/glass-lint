@@ -50,7 +50,7 @@ wrappers should be collapsed.
 
 ### Constrained-root preparation
 
-#### [ ] READ-060 — Prepare constrained roots without temporary borrow storage
+#### [x] READ-060 — Prepare constrained roots without temporary borrow storage
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -77,6 +77,11 @@ separate lifecycle operations.
 **Audit disposition (2026-08-13):** Confirmed. The direct pipeline removes a
 borrow-only intermediate without changing root order, preparation state, or
 the later fallback lifecycle.
+
+**Fix Applied:** Constrained evaluation now filters and prepares roots in one
+iterator pipeline, eliminating the intermediate `Vec<ConstrainedRoot>` while
+preserving root order, fallback state, and separate evidence publication.
+Verified with `make fmt && make ci`.
 
 ### Argument value resolution
 
