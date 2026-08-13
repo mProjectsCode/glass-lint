@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
-    AnalysisLimits, Environment, Linter, LinterConfig, RuleCatalog, RuleSelection,
+    AnalysisLimits, Environment, Linter, LinterConfig, ProjectAdmissionLimits, RuleCatalog,
+    RuleSelection,
     api::rule::{EventQuery, QueryDecl},
     project::ProjectSession,
 };
@@ -70,6 +71,26 @@ pub fn test_linter_with_limits(limits: AnalysisLimits) -> Linter {
             environment,
         )
         .with_limits(limits),
+    )
+    .unwrap()
+}
+
+pub fn test_linter_with_project_limits(limits: ProjectAdmissionLimits) -> Linter {
+    let mut environment = Environment::default();
+    environment.add_global("fetch").unwrap();
+    let rule = Rule::catalog_builder("network.fetch")
+        .description("Uses fetch")
+        .severity(Severity::Warning)
+        .confidence(Confidence::High)
+        .query(EventQuery::call_global("fetch"))
+        .build()
+        .unwrap();
+    Linter::new(
+        LinterConfig::new(
+            vec![RuleCatalog::new("test", vec![rule]).unwrap()],
+            environment,
+        )
+        .with_project_limits(limits),
     )
     .unwrap()
 }

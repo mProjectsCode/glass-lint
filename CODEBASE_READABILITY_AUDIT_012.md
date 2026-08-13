@@ -113,7 +113,7 @@ borrowed form. Verified with `make fmt && make ci`.
 
 ### Direct project-session resource boundary
 
-#### [ ] READ-053 — Direct core sessions have no aggregate source-admission contract
+#### [x] READ-053 — Direct core sessions have no aggregate source-admission contract
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -141,7 +141,12 @@ retaining sources, and preserve parse-failure-as-report behavior, cache reuse,
 worker bounds, deterministic ordering, and the project loader’s stricter
 policies.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Core now exposes validated `ProjectAdmissionLimits`, carries the
+policy through linter configuration into every direct project session, and
+checks source count and aggregate source bytes before atomic table insertion.
+The source table tracks both counters, typed admission errors are reported,
+and existing parse-failure, cache, worker, and ordering behavior is unchanged.
+Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

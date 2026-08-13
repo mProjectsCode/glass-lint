@@ -3,7 +3,7 @@ use std::{num::NonZeroUsize, sync::Arc};
 use rayon::ThreadPoolBuilder;
 
 use crate::{
-    AnalysisLimits, Environment, ProviderCatalogError, RuleId,
+    AnalysisLimits, Environment, ProjectAdmissionLimits, ProviderCatalogError, RuleId,
     analysis::ArtifactCacheHandle,
     api::classification::RuleIndex,
     lint::{
@@ -23,6 +23,8 @@ pub struct LinterConfig {
     environment: Environment,
     /// Parser and semantic operation bounds.
     limits: AnalysisLimits,
+    /// Aggregate source bounds for direct project sessions.
+    project_limits: ProjectAdmissionLimits,
 }
 
 #[derive(Clone, Debug)]
@@ -45,6 +47,7 @@ impl LinterConfig {
             },
             environment,
             limits: AnalysisLimits::default(),
+            project_limits: ProjectAdmissionLimits::default(),
         }
     }
 
@@ -78,6 +81,12 @@ impl LinterConfig {
         self
     }
 
+    #[must_use]
+    pub fn with_project_limits(mut self, limits: ProjectAdmissionLimits) -> Self {
+        self.project_limits = limits;
+        self
+    }
+
     pub fn selection(&self) -> &RuleSelection {
         match &self.rules {
             LinterRuleInputs::Unprepared { selection, .. } => selection,
@@ -97,6 +106,8 @@ struct LinterSharedConfig {
     enabled: Vec<RuleIndex>,
     /// Parser and semantic operation bounds.
     limits: AnalysisLimits,
+    /// Aggregate source bounds for direct project sessions.
+    project_limits: ProjectAdmissionLimits,
 }
 
 /// Immutable catalog plus sorted enabled-rule indexes for lint execution.
@@ -131,6 +142,7 @@ impl Linter {
             &self.shared.catalog,
             &self.shared.enabled,
             self.shared.limits.evidence_items(),
+            self.shared.project_limits,
         );
         ProjectSession::new(state)
     }
@@ -167,6 +179,7 @@ impl Linter {
                 environment: config.environment,
                 enabled,
                 limits: config.limits,
+                project_limits: config.project_limits,
             }),
             artifact_cache: ArtifactCacheHandle::default(),
         })

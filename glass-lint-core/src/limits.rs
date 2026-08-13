@@ -17,6 +17,24 @@ pub enum AnalysisLimitError {
     TraceNodes,
 }
 
+/// Validation failures for the aggregate source-admission policy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProjectAdmissionLimitError {
+    MaxSources,
+    MaxSourceBytes,
+}
+
+impl fmt::Display for ProjectAdmissionLimitError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MaxSources => write!(f, "max_sources must be positive"),
+            Self::MaxSourceBytes => write!(f, "max_source_bytes must be positive"),
+        }
+    }
+}
+
+impl std::error::Error for ProjectAdmissionLimitError {}
+
 impl fmt::Display for AnalysisLimitError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -65,6 +83,60 @@ pub struct AnalysisLimits {
     link_operations: PositiveLimit,
     flow_operations: PositiveLimit,
     trace_nodes: PositiveLimit,
+}
+
+/// Validated aggregate bounds for sources retained by a direct project
+/// session. Filesystem loaders may apply stricter policies before admission.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProjectAdmissionLimits {
+    max_sources: usize,
+    max_source_bytes: usize,
+}
+
+pub const DEFAULT_MAX_PROJECT_SOURCES: usize = 10_000;
+pub const DEFAULT_MAX_PROJECT_SOURCE_BYTES: usize = 512 * 1024 * 1024;
+
+impl Default for ProjectAdmissionLimits {
+    fn default() -> Self {
+        Self {
+            max_sources: DEFAULT_MAX_PROJECT_SOURCES,
+            max_source_bytes: DEFAULT_MAX_PROJECT_SOURCE_BYTES,
+        }
+    }
+}
+
+impl ProjectAdmissionLimits {
+    pub fn new(
+        max_sources: usize,
+        max_source_bytes: usize,
+    ) -> Result<Self, ProjectAdmissionLimitError> {
+        if max_sources == 0 {
+            return Err(ProjectAdmissionLimitError::MaxSources);
+        }
+        if max_source_bytes == 0 {
+            return Err(ProjectAdmissionLimitError::MaxSourceBytes);
+        }
+        Ok(Self {
+            max_sources,
+            max_source_bytes,
+        })
+    }
+
+    pub fn max_sources(&self) -> usize {
+        self.max_sources
+    }
+
+    pub fn max_source_bytes(&self) -> usize {
+        self.max_source_bytes
+    }
+
+    pub fn with_max_sources(self, value: usize) -> Result<Self, ProjectAdmissionLimitError> {
+        Self::new(value, self.max_source_bytes)
+    }
+
+    pub fn with_max_source_bytes(self, value: usize) -> Result<Self, ProjectAdmissionLimitError> {
+        Self::new(self.max_sources, value)
+    }
 }
 
 const fn default_syntax_depth() -> usize {
@@ -322,6 +394,26 @@ mod tests {
         ] {
             assert_eq!(zero_fn(defaults.clone(), 0), Err(variant));
         }
+    }
+
+    #[test]
+    fn project_admission_limits_reject_zero_and_expose_defaults() {
+        assert_eq!(
+            ProjectAdmissionLimits::default().max_sources(),
+            DEFAULT_MAX_PROJECT_SOURCES
+        );
+        assert_eq!(
+            ProjectAdmissionLimits::default().max_source_bytes(),
+            DEFAULT_MAX_PROJECT_SOURCE_BYTES
+        );
+        assert_eq!(
+            ProjectAdmissionLimits::new(0, 1),
+            Err(ProjectAdmissionLimitError::MaxSources)
+        );
+        assert_eq!(
+            ProjectAdmissionLimits::new(1, 0),
+            Err(ProjectAdmissionLimitError::MaxSourceBytes)
+        );
     }
 
     #[test]

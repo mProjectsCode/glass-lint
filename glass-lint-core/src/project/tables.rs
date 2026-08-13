@@ -11,17 +11,26 @@ use crate::project::{
 };
 
 #[derive(Debug, Default)]
-pub struct SourceTable(BTreeMap<ProjectRelativePath, SourceFile>);
+pub struct SourceTable {
+    sources: BTreeMap<ProjectRelativePath, SourceFile>,
+    source_bytes: usize,
+}
 
 impl SourceTable {
     /// Insert one normalized source path, rejecting replacement of an existing
     /// source.
     pub fn insert(&mut self, source: SourceFile) -> Result<(), ProjectInputError> {
         let path = source.path().clone();
-        if self.0.contains_key(&path) {
+        if self.sources.contains_key(&path) {
             return Err(ProjectInputError::DuplicateSource(path.to_string()));
         }
-        self.0.insert(path, source);
+        self.source_bytes = self.source_bytes.checked_add(source.source().len()).ok_or(
+            ProjectInputError::SourceBytesExceeded {
+                limit: usize::MAX,
+                attempted: usize::MAX,
+            },
+        )?;
+        self.sources.insert(path, source);
         Ok(())
     }
 
@@ -34,31 +43,45 @@ impl SourceTable {
         let mut staged = Self::default();
         for source in sources {
             let path = source.path().clone();
-            if self.0.contains_key(&path) {
+            if self.sources.contains_key(&path) {
                 return Err(ProjectInputError::DuplicateSource(path.to_string()));
             }
             staged.insert(source)?;
         }
-        self.0.append(&mut staged.0);
+        self.source_bytes = self.source_bytes.checked_add(staged.source_bytes).ok_or(
+            ProjectInputError::SourceBytesExceeded {
+                limit: usize::MAX,
+                attempted: usize::MAX,
+            },
+        )?;
+        self.sources.append(&mut staged.sources);
         Ok(())
     }
 
+    pub(crate) fn len(&self) -> usize {
+        self.sources.len()
+    }
+
+    pub(crate) fn source_bytes(&self) -> usize {
+        self.source_bytes
+    }
+
     pub fn get(&self, path: &ProjectRelativePath) -> Option<&SourceFile> {
-        self.0.get(path)
+        self.sources.get(path)
     }
 
     /// Iterate sources in normalized project-path order.
     pub(crate) fn in_normalized_path_order(
         &self,
     ) -> impl Iterator<Item = (&ProjectRelativePath, &SourceFile)> {
-        self.0.iter()
+        self.sources.iter()
     }
 
     /// Assign module IDs in normalized project-path order.
     pub(crate) fn module_ids(
         &self,
     ) -> Result<BTreeMap<ProjectRelativePath, ModuleId>, ProjectPhaseError> {
-        self.0
+        self.sources
             .keys()
             .enumerate()
             .map(|(index, path)| {

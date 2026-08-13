@@ -21,7 +21,8 @@ use execution::{
 };
 
 use crate::{
-    AnalysisLimits, Environment, LinkedReport, ParseDiagnostic, RuleCatalog,
+    AnalysisLimits, Environment, LinkedReport, ParseDiagnostic, ProjectAdmissionLimits,
+    RuleCatalog,
     analysis::{AnalyzedSource, ArtifactCacheHandle, ArtifactCacheKey, SemanticAnalyzer},
     api::classification::RuleIndex,
     lint::ProjectAnalysis,
@@ -39,6 +40,7 @@ pub struct SessionState<'a> {
     catalog: &'a RuleCatalog,
     enabled: &'a [RuleIndex],
     evidence_limit: usize,
+    project_limits: ProjectAdmissionLimits,
     #[cfg(test)]
     fingerprint_engine_version: &'static str,
     #[cfg(test)]
@@ -53,6 +55,7 @@ impl<'a> SessionState<'a> {
         catalog: &'a RuleCatalog,
         enabled: &'a [RuleIndex],
         evidence_limit: usize,
+        project_limits: ProjectAdmissionLimits,
     ) -> Self {
         Self {
             analyzer: SemanticAnalyzer::new(environment, limits),
@@ -60,6 +63,7 @@ impl<'a> SessionState<'a> {
             catalog,
             enabled,
             evidence_limit,
+            project_limits,
             #[cfg(test)]
             fingerprint_engine_version: env!("CARGO_PKG_VERSION"),
             #[cfg(test)]
@@ -212,13 +216,51 @@ impl<'a> ProjectSession<'a> {
     }
 
     fn accept_normalized_source(&mut self, source: SourceFile) -> Result<(), ProjectInputError> {
-        self.sources.insert(source)
+        self.accept_sources([source])
     }
 
     fn accept_sources(
         &mut self,
         sources: impl IntoIterator<Item = SourceFile>,
     ) -> Result<(), ProjectInputError> {
+        let sources = sources.into_iter().collect::<Vec<_>>();
+        let incoming_bytes = sources
+            .iter()
+            .try_fold(0usize, |total, source| {
+                total.checked_add(source.source().len()).ok_or(())
+            })
+            .map_err(|()| ProjectInputError::SourceBytesExceeded {
+                limit: self.state.project_limits.max_source_bytes(),
+                attempted: usize::MAX,
+            })?;
+        let attempted_sources = self
+            .sources
+            .len()
+            .checked_add(sources.len())
+            .ok_or_else(|| ProjectInputError::SourceCountExceeded {
+                limit: self.state.project_limits.max_sources(),
+                attempted: usize::MAX,
+            })?;
+        if attempted_sources > self.state.project_limits.max_sources() {
+            return Err(ProjectInputError::SourceCountExceeded {
+                limit: self.state.project_limits.max_sources(),
+                attempted: attempted_sources,
+            });
+        }
+        let attempted_bytes = self
+            .sources
+            .source_bytes()
+            .checked_add(incoming_bytes)
+            .ok_or_else(|| ProjectInputError::SourceBytesExceeded {
+                limit: self.state.project_limits.max_source_bytes(),
+                attempted: usize::MAX,
+            })?;
+        if attempted_bytes > self.state.project_limits.max_source_bytes() {
+            return Err(ProjectInputError::SourceBytesExceeded {
+                limit: self.state.project_limits.max_source_bytes(),
+                attempted: attempted_bytes,
+            });
+        }
         self.sources.insert_all(sources)
     }
 

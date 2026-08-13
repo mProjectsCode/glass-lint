@@ -60,6 +60,40 @@ fn batch_source_admission_is_atomic_on_duplicate() {
 }
 
 #[test]
+fn source_admission_limits_are_atomic_and_report_typed_budget_errors() {
+    let limits = crate::ProjectAdmissionLimits::new(3, 4).unwrap();
+    let linter = test_linter_with_project_limits(limits);
+    let mut collection = linter.begin_project();
+    collection
+        .analyze_source(source_file("first.js", ""))
+        .unwrap();
+
+    let result = collection.analyze_sources(
+        [
+            source_file("second.js", "12"),
+            source_file("third.js", ""),
+            source_file("fourth.js", ""),
+        ],
+        std::num::NonZeroUsize::MIN,
+    );
+    assert!(matches!(
+        result,
+        Err(ProjectError::Input(
+            ProjectInputError::SourceCountExceeded { .. }
+        ))
+    ));
+    collection
+        .analyze_source(source_file("second.js", "12"))
+        .unwrap();
+    assert!(matches!(
+        collection.analyze_source(source_file("too-large.js", "123")),
+        Err(ProjectError::Input(
+            ProjectInputError::SourceBytesExceeded { .. }
+        ))
+    ));
+}
+
+#[test]
 fn staged_session_rejects_unknown_resolution_importers() {
     let linter = test_linter();
     let mut collection = linter.begin_project();

@@ -452,6 +452,8 @@ pub enum ProjectInputError {
     InvalidPath(String),
     DuplicateSource(String),
     InvalidTarget(String),
+    SourceCountExceeded { limit: usize, attempted: usize },
+    SourceBytesExceeded { limit: usize, attempted: usize },
 }
 
 /// Failures raised while advancing a project through its authored-resolution
@@ -505,6 +507,14 @@ impl std::fmt::Display for ProjectInputError {
             Self::InvalidPath(path) => write!(f, "invalid project path `{path}`"),
             Self::DuplicateSource(path) => write!(f, "duplicate project source `{path}`"),
             Self::InvalidTarget(path) => write!(f, "invalid resolution target `{path}`"),
+            Self::SourceCountExceeded { limit, attempted } => write!(
+                f,
+                "project source count {attempted} exceeds admission limit {limit}"
+            ),
+            Self::SourceBytesExceeded { limit, attempted } => write!(
+                f,
+                "project source bytes {attempted} exceed admission limit {limit}"
+            ),
         }
     }
 }
