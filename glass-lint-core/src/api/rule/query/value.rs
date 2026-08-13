@@ -87,21 +87,27 @@ where
     I: IntoIterator<Item = S>,
     F: FnMut(S) -> Result<String, QueryBuildError>,
 {
-    let mut values = values
-        .into_iter()
-        .map(&mut parse)
-        .collect::<Result<Vec<_>, _>>()?;
-    canonicalize_strings(&mut values);
-    if values.is_empty() {
+    let mut parsed: Vec<String> = Vec::new();
+    for value in values {
+        if parsed.len() >= limits::MAX_STATIC_ALTERNATIVES {
+            return Err(QueryBuildError::CollectionTooLarge(
+                empty_label,
+                parsed.len() + 1,
+            ));
+        }
+        parsed.push(parse(value)?);
+    }
+    canonicalize_strings(&mut parsed);
+    if parsed.is_empty() {
         return Err(QueryBuildError::EmptyCollection(empty_label));
     }
-    if values.len() > limits::MAX_STATIC_ALTERNATIVES {
+    if parsed.len() > limits::MAX_STATIC_ALTERNATIVES {
         return Err(QueryBuildError::CollectionTooLarge(
             empty_label,
-            values.len(),
+            parsed.len(),
         ));
     }
-    Ok(values)
+    Ok(parsed)
 }
 
 fn bounded_strings<I, S>(values: I) -> Result<Vec<String>, QueryBuildError>

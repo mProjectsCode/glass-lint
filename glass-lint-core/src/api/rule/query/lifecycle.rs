@@ -183,6 +183,28 @@ impl LifecycleEvents {
     }
 }
 
+fn bounded_lifecycle_items<I, T, F>(
+    items: I,
+    label: &'static str,
+    mut convert: F,
+) -> Result<Vec<T>, QueryBuildError>
+where
+    I: IntoIterator,
+    F: FnMut(I::Item) -> Result<T, QueryBuildError>,
+{
+    let mut converted = Vec::new();
+    for item in items {
+        if converted.len() >= limits::MAX_LIFECYCLE_EVENTS {
+            return Err(QueryBuildError::CollectionTooLarge(
+                label,
+                converted.len() + 1,
+            ));
+        }
+        converted.push(convert(item)?);
+    }
+    Ok(converted)
+}
+
 impl LifecycleCondition {
     pub(crate) fn kind(&self) -> &LifecycleConditionKind {
         &self.kind
@@ -193,10 +215,11 @@ impl LifecycleCondition {
         I: IntoIterator,
         I::Item: IntoLifecycleEvent,
     {
-        let events = events
-            .into_iter()
-            .map(IntoLifecycleEvent::into_lifecycle_event)
-            .collect::<Result<Vec<_>, _>>()?;
+        let events = bounded_lifecycle_items(
+            events,
+            "lifecycle condition events",
+            IntoLifecycleEvent::into_lifecycle_event,
+        )?;
         Ok(Self {
             kind: LifecycleConditionKind::AnyOf(LifecycleEvents::new(events)?),
         })
@@ -213,10 +236,11 @@ impl LifecycleCondition {
         I: IntoIterator,
         I::Item: IntoLifecycleEvent,
     {
-        let events = events
-            .into_iter()
-            .map(IntoLifecycleEvent::into_lifecycle_event)
-            .collect::<Result<Vec<_>, _>>()?;
+        let events = bounded_lifecycle_items(
+            events,
+            "lifecycle condition events",
+            IntoLifecycleEvent::into_lifecycle_event,
+        )?;
         Ok(Self {
             kind: LifecycleConditionKind::AllOf(LifecycleEvents::new(events)?),
         })
@@ -291,10 +315,11 @@ impl LifecycleCompletion {
         I: IntoIterator<Item = S>,
         S: IntoLifecycleSink,
     {
-        let sinks = sinks
-            .into_iter()
-            .map(IntoLifecycleSink::into_lifecycle_sink)
-            .collect::<Result<Vec<_>, _>>()?;
+        let sinks = bounded_lifecycle_items(
+            sinks,
+            "lifecycle completion sinks",
+            IntoLifecycleSink::into_lifecycle_sink,
+        )?;
         Ok(Self {
             kind: LifecycleCompletionKind::AnySink(LifecycleSinks::new(sinks)?),
         })
@@ -311,10 +336,11 @@ impl LifecycleCompletion {
         I: IntoIterator<Item = S>,
         S: IntoLifecycleSink,
     {
-        let sinks = sinks
-            .into_iter()
-            .map(IntoLifecycleSink::into_lifecycle_sink)
-            .collect::<Result<Vec<_>, _>>()?;
+        let sinks = bounded_lifecycle_items(
+            sinks,
+            "lifecycle completion sinks",
+            IntoLifecycleSink::into_lifecycle_sink,
+        )?;
         Ok(Self {
             kind: LifecycleCompletionKind::AllSinks(LifecycleSinks::new(sinks)?),
         })

@@ -3,7 +3,7 @@
 use super::{
     AllExpr, AnyExpr, EmissionDecl, EventQuery, EventRequirement, EventRequirementKind, EventSpec,
     IdentitySpec, LifecycleQuery, MatchKind, QueryBuildError, QueryDecl, QueryExpr, QueryPredicate,
-    VarId, checked_chain, checked_module_export, explain_expression,
+    VarId, checked_chain, checked_module_export, explain_expression, limits,
 };
 
 impl QueryDecl {
@@ -151,6 +151,12 @@ impl QueryDecl {
         let mut exprs = Vec::new();
         let mut first_emission: Option<EmissionDecl> = None;
         for branch in branches {
+            if exprs.len() >= limits::MAX_EXPR_CHILDREN {
+                return Err(QueryBuildError::CollectionTooLarge(
+                    "any expression branches",
+                    exprs.len() + 1,
+                ));
+            }
             let decl = branch?;
             if let Some(first) = &first_emission {
                 if !first.is_compatible_with(&decl.emission, explicit_symbol.is_some()) {
@@ -203,6 +209,12 @@ impl QueryDecl {
         let mut branches = selection.branches();
 
         for req_result in requirements {
+            if branches.len() >= limits::MAX_EXPR_CHILDREN {
+                return Err(QueryBuildError::CollectionTooLarge(
+                    "all expression branches",
+                    branches.len() + 1,
+                ));
+            }
             let req = req_result?;
             if !selection.event.event().supports_arguments() {
                 return Err(QueryBuildError::ArgumentsRequireCallEvent);

@@ -15,7 +15,7 @@ is not treated as a readability finding.
 
 ### Bounded authoring inputs
 
-#### [ ] READ-035 — Generic authoring iterators are fully materialized before limits are enforced
+#### [x] READ-035 — Generic authoring iterators are fully materialized before limits are enforced
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -44,7 +44,11 @@ promise to accept an unbounded stream of duplicates while also guaranteeing
 bounded work. Apply the same boundary to query roots and lifecycle sources,
 preserving empty-collection diagnostics and all existing limit values.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Static alternatives, expression branches, lifecycle event
+collections, and lifecycle sink collections now stop iteration at their
+validated bounds before parsing or retaining another item. Canonical sorting,
+deduplication, and existing error semantics remain unchanged. Verified with
+`make fmt && make ci`.
 
 ### Fluent constraint construction
 
