@@ -116,7 +116,7 @@ impl<'project, 'plan, 'roots, 'arena> ProjectionSession<'project, 'plan, 'roots,
             plan,
             flow_limits,
             arena,
-            linking: LinkingSession::new(project.flow_limit()),
+            linking: LinkingSession::new(project.export_lookup_capacity()),
         }
     }
 

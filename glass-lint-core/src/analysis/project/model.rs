@@ -35,6 +35,7 @@ use crate::{
 
 pub(super) const MAX_EXPORT_DEPTH: usize = 1024;
 pub(super) const MAX_EXPORT_ENTRIES: usize = 1_000_000;
+pub(super) const MAX_EXPORT_LOOKUP_ENTRIES: usize = 1_000_000;
 pub(super) const MAX_SCC_SIZE: usize = 4_096;
 pub(super) const MAX_PROJECT_REQUESTS: usize = 500_000;
 
@@ -188,7 +189,12 @@ impl ResolvedLinkInput {
     }
 
     pub(super) fn into_linker(self, link_limit: usize) -> ProjectLinker {
-        ProjectLinker::new(self.modules, self.resolutions, link_limit)
+        ProjectLinker::new(
+            self.modules,
+            self.resolutions,
+            link_limit,
+            MAX_EXPORT_LOOKUP_ENTRIES,
+        )
     }
 
     #[cfg(test)]
@@ -229,6 +235,7 @@ pub struct ProjectSemanticModel {
     pub(super) flow_limit: usize,
     pub(super) effect_limit: usize,
     pub(super) trace_limit: usize,
+    pub(super) export_lookup_capacity: usize,
 }
 
 pub(super) struct LinkedProjectState {
@@ -248,6 +255,7 @@ impl ProjectSemanticModel {
             flow_limit: limits.flow_operations(),
             effect_limit: limits.effect_operations(),
             trace_limit: limits.trace_nodes(),
+            export_lookup_capacity: MAX_EXPORT_LOOKUP_ENTRIES,
         }
     }
 
@@ -277,6 +285,7 @@ impl ProjectSemanticModel {
             flow_limit: limits.flow_operations(),
             effect_limit: limits.effect_operations(),
             trace_limit: limits.trace_nodes(),
+            export_lookup_capacity: MAX_EXPORT_LOOKUP_ENTRIES,
         }
     }
 
@@ -423,6 +432,10 @@ impl ProjectSemanticModel {
 
     pub(crate) fn effect_limit(&self) -> usize {
         self.effect_limit
+    }
+
+    pub(crate) fn export_lookup_capacity(&self) -> usize {
+        self.export_lookup_capacity
     }
 
     #[allow(dead_code)]

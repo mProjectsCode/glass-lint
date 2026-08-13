@@ -74,6 +74,7 @@ impl ProjectLinker {
         modules: BTreeMap<ModuleId, ProjectModule>,
         resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
         link_limit: usize,
+        export_lookup_capacity: usize,
     ) -> Self {
         Self {
             modules,
@@ -81,7 +82,7 @@ impl ProjectLinker {
             graph: None,
             scc_partition: SccPartitionState::Pending,
             exports: ExportTable::default(),
-            lookup_session: LinkingSession::new(link_limit),
+            lookup_session: LinkingSession::new(export_lookup_capacity),
             link_cycle_rounds: 0,
             diagnostics: Vec::new(),
             status: AnalysisStatus::default(),

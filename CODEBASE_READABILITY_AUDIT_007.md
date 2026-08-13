@@ -41,7 +41,7 @@ disjoint module/status borrows, removing the intermediate ID vector and
 re-lookup pass while preserving deterministic order and diagnostics. Verified
 with `make fmt && make ci`.
 
-#### [ ] READ-030 — Export lookup-cache capacity is supplied by unrelated phase limits
+#### [x] READ-030 — Export lookup-cache capacity is supplied by unrelated phase limits
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -65,7 +65,10 @@ should accept that named policy, not a generic phase limit. Keep cache
 insertion bounded, cached `None` distinct from a miss, recursive export-depth
 checks, and the existing link/flow operation accounting independent.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the named `MAX_EXPORT_LOOKUP_ENTRIES` policy and carried
+its capacity into `ProjectSemanticModel`, linker sessions, and projection-created
+lookup sessions. Link and flow operation limits no longer size this cache.
+Verified with `make fmt && make ci`.
 
 ### Projection planning
 
