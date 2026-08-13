@@ -118,7 +118,7 @@ sealed and all public bounds should be nameable from the public rules API.
 
 ### Deferred lifecycle builder state
 
-#### [ ] READ-070 — Separate lifecycle stage storage from immediate-builder error policy
+#### [x] READ-070 — Separate lifecycle stage storage from immediate-builder error policy
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -143,7 +143,10 @@ error ordering, duplicate-stage diagnostics, deferred catalog construction,
 stage relationship validation, and the immediate builder’s call-site error
 behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Immediate and catalog lifecycle builders now share one private
+stage-state owner and retain only their own `FirstError` policy. The catalog
+path no longer wraps an inner builder or carries unreachable inner error state.
+Verified with `make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed with a minimality constraint.
 Use one shared lifecycle-stage state owner plus one error-retention field per

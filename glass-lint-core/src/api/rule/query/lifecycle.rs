@@ -491,48 +491,35 @@ mod private {
 use crate::api::rule::query::LifecycleQuery;
 
 #[derive(Debug, Clone)]
-pub struct LifecycleQueryBuilder {
+struct LifecycleStages {
     symbol: String,
     sources: Vec<EventQuery>,
     condition: Option<LifecycleCondition>,
     completion: Option<LifecycleCompletion>,
-    invalid_operation: FirstError<QueryBuildError>,
 }
 
-impl LifecycleQueryBuilder {
-    pub fn source(mut self, source: EventQuery) -> Self {
-        self.sources.push(source);
-        self
-    }
-
-    /// Add a lifecycle source and return construction errors immediately.
-    pub fn try_source<S: IntoLifecycleSource>(
-        mut self,
-        source: S,
-    ) -> Result<Self, QueryBuildError> {
-        self.sources.push(source.into_lifecycle_source()?);
-        Ok(self)
-    }
-
-    pub fn condition(mut self, condition: LifecycleCondition) -> Self {
-        if let Err(error) = self.try_set_condition(condition) {
-            self.invalid_operation.record(error);
+impl LifecycleStages {
+    fn new(symbol: impl Into<String>) -> Self {
+        Self {
+            symbol: symbol.into(),
+            sources: Vec::new(),
+            condition: None,
+            completion: None,
         }
-        self
     }
 
-    /// Set the lifecycle condition and return construction errors immediately.
-    pub fn try_condition(
-        mut self,
-        condition: impl IntoLifecycleCondition,
-    ) -> Result<Self, QueryBuildError> {
-        self.try_set_condition(condition)?;
-        Ok(self)
+    fn source(&mut self, source: EventQuery) {
+        self.sources.push(source);
     }
 
-    fn try_set_condition(
+    fn try_source<S: IntoLifecycleSource>(&mut self, source: S) -> Result<(), QueryBuildError> {
+        self.sources.push(source.into_lifecycle_source()?);
+        Ok(())
+    }
+
+    fn try_condition<C: IntoLifecycleCondition>(
         &mut self,
-        condition: impl IntoLifecycleCondition,
+        condition: C,
     ) -> Result<(), QueryBuildError> {
         if self.condition.is_some() {
             return Err(QueryBuildError::DuplicateLifecycleStage("condition"));
@@ -541,23 +528,7 @@ impl LifecycleQueryBuilder {
         Ok(())
     }
 
-    pub fn completion(mut self, completion: LifecycleCompletion) -> Self {
-        if let Err(error) = self.try_set_completion(completion) {
-            self.invalid_operation.record(error);
-        }
-        self
-    }
-
-    /// Set lifecycle completion and return construction errors immediately.
-    pub fn try_completion<C: IntoLifecycleCompletion>(
-        mut self,
-        completion: C,
-    ) -> Result<Self, QueryBuildError> {
-        self.try_set_completion(completion)?;
-        Ok(self)
-    }
-
-    fn try_set_completion<C: IntoLifecycleCompletion>(
+    fn try_completion<C: IntoLifecycleCompletion>(
         &mut self,
         completion: C,
     ) -> Result<(), QueryBuildError> {
@@ -568,30 +539,33 @@ impl LifecycleQueryBuilder {
         Ok(())
     }
 
-    pub fn build(self) -> Result<LifecycleQuery, QueryBuildError> {
-        if let Some(error) = self.invalid_operation.take() {
-            return Err(error);
-        }
-        if self.symbol.trim().is_empty() {
+    fn build(self) -> Result<LifecycleQuery, QueryBuildError> {
+        let Self {
+            symbol,
+            sources,
+            condition,
+            completion,
+        } = self;
+        if symbol.trim().is_empty() {
             return Err(QueryBuildError::EmptyEvidenceSymbol);
         }
-        if self.sources.is_empty() {
+        if sources.is_empty() {
             return Err(QueryBuildError::MissingLifecycleSources);
         }
-        if self.sources.len() > limits::MAX_LIFECYCLE_SOURCES {
+        if sources.len() > limits::MAX_LIFECYCLE_SOURCES {
             return Err(QueryBuildError::CollectionTooLarge(
                 "lifecycle sources",
-                self.sources.len(),
+                sources.len(),
             ));
         }
 
         // Validate only relationships between lifecycle stages. Collection
         // invariants are established by LifecycleEvents and LifecycleSinks.
-        if let Some(ref completion) = self.completion {
+        if let Some(ref completion) = completion {
             match completion.kind() {
                 LifecycleCompletionKind::AnySink(_) | LifecycleCompletionKind::AllSinks(_) => {}
                 LifecycleCompletionKind::Configuration => {
-                    if self.condition.is_none() {
+                    if condition.is_none() {
                         return Err(QueryBuildError::MissingLifecycleCondition);
                     }
                 }
@@ -601,11 +575,72 @@ impl LifecycleQueryBuilder {
         }
 
         Ok(LifecycleQuery {
-            symbol: self.symbol,
-            sources: self.sources,
-            condition: self.condition,
-            completion: self.completion,
+            symbol,
+            sources,
+            condition,
+            completion,
         })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LifecycleQueryBuilder {
+    stages: LifecycleStages,
+    invalid_operation: FirstError<QueryBuildError>,
+}
+
+impl LifecycleQueryBuilder {
+    pub fn source(mut self, source: EventQuery) -> Self {
+        self.stages.source(source);
+        self
+    }
+
+    /// Add a lifecycle source and return construction errors immediately.
+    pub fn try_source<S: IntoLifecycleSource>(
+        mut self,
+        source: S,
+    ) -> Result<Self, QueryBuildError> {
+        self.stages.try_source(source)?;
+        Ok(self)
+    }
+
+    pub fn condition(mut self, condition: LifecycleCondition) -> Self {
+        if let Err(error) = self.stages.try_condition(condition) {
+            self.invalid_operation.record(error);
+        }
+        self
+    }
+
+    /// Set the lifecycle condition and return construction errors immediately.
+    pub fn try_condition(
+        mut self,
+        condition: impl IntoLifecycleCondition,
+    ) -> Result<Self, QueryBuildError> {
+        self.stages.try_condition(condition)?;
+        Ok(self)
+    }
+
+    pub fn completion(mut self, completion: LifecycleCompletion) -> Self {
+        if let Err(error) = self.stages.try_completion(completion) {
+            self.invalid_operation.record(error);
+        }
+        self
+    }
+
+    /// Set lifecycle completion and return construction errors immediately.
+    pub fn try_completion<C: IntoLifecycleCompletion>(
+        mut self,
+        completion: C,
+    ) -> Result<Self, QueryBuildError> {
+        self.stages.try_completion(completion)?;
+        Ok(self)
+    }
+
+    pub fn build(self) -> Result<LifecycleQuery, QueryBuildError> {
+        if let Some(error) = self.invalid_operation.take() {
+            return Err(error);
+        }
+        self.stages.build()
     }
 }
 
@@ -631,7 +666,7 @@ impl private::Sealed for Result<LifecycleCondition, QueryBuildError> {}
 
 #[derive(Debug, Clone)]
 pub struct CatalogLifecycleQueryBuilder {
-    inner: LifecycleQueryBuilder,
+    stages: LifecycleStages,
     invalid_operation: FirstError<QueryBuildError>,
 }
 
@@ -641,27 +676,22 @@ impl CatalogLifecycleQueryBuilder {
     }
 
     pub fn source<S: IntoLifecycleSource>(mut self, source: S) -> Self {
-        match source.into_lifecycle_source() {
-            Ok(source) => self.inner = self.inner.source(source),
-            Err(error) => self.record_error(error),
+        if let Err(error) = self.stages.try_source(source) {
+            self.record_error(error);
         }
         self
     }
 
     pub fn condition<C: IntoLifecycleCondition>(mut self, condition: C) -> Self {
-        if let Err(error) = self.inner.try_set_condition(condition) {
+        if let Err(error) = self.stages.try_condition(condition) {
             self.record_error(error);
         }
         self
     }
 
     pub fn completion<C: IntoLifecycleCompletion>(mut self, completion: C) -> Self {
-        match completion.into_lifecycle_completion() {
-            Ok(completion) if self.inner.completion.is_none() => {
-                self.inner = self.inner.completion(completion);
-            }
-            Ok(_) => self.record_error(QueryBuildError::DuplicateLifecycleStage("completion")),
-            Err(error) => self.record_error(error),
+        if let Err(error) = self.stages.try_completion(completion) {
+            self.record_error(error);
         }
         self
     }
@@ -670,24 +700,21 @@ impl CatalogLifecycleQueryBuilder {
         if let Some(error) = self.invalid_operation.take() {
             return Err(error);
         }
-        self.inner.build()
+        self.stages.build()
     }
 }
 
 impl LifecycleQuery {
     pub fn builder(symbol: impl Into<String>) -> LifecycleQueryBuilder {
         LifecycleQueryBuilder {
-            symbol: symbol.into(),
-            sources: Vec::new(),
-            condition: None,
-            completion: None,
+            stages: LifecycleStages::new(symbol),
             invalid_operation: FirstError::default(),
         }
     }
 
     pub fn catalog_builder(symbol: impl Into<String>) -> CatalogLifecycleQueryBuilder {
         CatalogLifecycleQueryBuilder {
-            inner: Self::builder(symbol),
+            stages: LifecycleStages::new(symbol),
             invalid_operation: FirstError::default(),
         }
     }
