@@ -1,5 +1,7 @@
 //! Position-sensitive identifier, member, and expression resolution.
 
+use std::sync::Arc;
+
 use glass_lint_datastructures::{NamePath, SymbolPath};
 use smol_str::{SmolStr, ToSmolStr};
 
@@ -191,6 +193,7 @@ impl Resolver<'_> {
             // direct global/`this` access available when no local alias is present.
             let rooted_chain = seed
                 .rooted_chain
+                .clone()
                 .and_then(|path| resolver.scopes.symbol_path(&path));
             let module_member = seed.module_member;
             let scoped_call = match &module_member {
@@ -366,20 +369,21 @@ impl Resolver<'_> {
                 .resolve_ident(ident)
                 .provenance
                 .rooted_chain
+                .clone()
                 .or_else(|| {
                     ident
                         .span
                         .is_dummy()
                         .then(|| SymbolPath::from(ident.sym.as_ref()))
                 }),
-            Expr::Member(member) => self.resolve_member(member).provenance.rooted_chain,
+            Expr::Member(member) => self.resolve_member(member).provenance.rooted_chain.clone(),
             Expr::Call(call) => match &call.callee {
                 Callee::Expr(callee) => self.rooted_expr_chain(callee),
                 Callee::Super(_) | Callee::Import(_) => None,
             },
             Expr::OptChain(chain) => match &*chain.base {
                 swc_ecma_ast::OptChainBase::Member(member) => {
-                    self.resolve_member(member).provenance.rooted_chain
+                    self.resolve_member(member).provenance.rooted_chain.clone()
                 }
                 swc_ecma_ast::OptChainBase::Call(call) => self.rooted_expr_chain(&call.callee),
             },
@@ -428,7 +432,7 @@ impl Resolver<'_> {
 
     fn archive_unknown_with_reason(reason: UnknownReason) -> ResolvedValue {
         let mut value = ResolvedValue::local(ValueId::UNKNOWN);
-        value.provenance.call = SymbolCallProvenance::Unknown(reason);
+        Arc::make_mut(&mut value.provenance).call = SymbolCallProvenance::Unknown(reason);
         value
     }
 

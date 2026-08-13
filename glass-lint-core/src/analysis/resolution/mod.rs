@@ -13,7 +13,7 @@ mod call;
 mod constant;
 mod expression;
 
-use std::ops::Deref;
+use std::{ops::Deref, sync::Arc};
 
 use glass_lint_datastructures::{
     ByteRange, NameExhausted, NameId, NamePath, NameTable, SymbolPath,
@@ -84,12 +84,15 @@ pub(super) struct ResolvedValue {
     /// The interned abstract value. `UNKNOWN` is reserved for expressions the
     /// resolver cannot describe precisely enough to match.
     pub(super) id: ValueId,
-    pub(super) provenance: ResolutionProvenance,
+    pub(super) provenance: Arc<ResolutionProvenance>,
 }
 
 impl ResolvedValue {
     fn with_provenance(id: ValueId, provenance: ResolutionProvenance) -> Self {
-        Self { id, provenance }
+        Self {
+            id,
+            provenance: Arc::new(provenance),
+        }
     }
 
     /// Build a value with no callable or member provenance.

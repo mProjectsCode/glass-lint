@@ -74,7 +74,7 @@ out-of-range handling remain unchanged. Verified with `make fmt && make ci`.
 
 ### Position-sensitive resolution
 
-#### [ ] READ-018 — Resolution-cache hits clone the complete provenance record
+#### [x] READ-018 — Resolution-cache hits clone the complete provenance record
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -98,7 +98,10 @@ would not fix this finding. Keep the existing ID-only fast paths, recursive
 cycle guards, and position-sensitive keys. Sharing must not make cached
 provenance mutable or mix results from different source positions.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `ResolvedValue` provenance Arc-backed so cache insertion
+and cache-hit results share the immutable record. Callers now clone only
+provenance fields they explicitly own; ID-only fast paths, cycle guards, and
+position-sensitive keys are unchanged. Verified with `make fmt && make ci`.
 
 ### Value-arena construction
 

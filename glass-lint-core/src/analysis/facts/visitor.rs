@@ -491,7 +491,7 @@ impl FactBuilder<'_, '_> {
         // like `new globalThis.URL(...)` or `new mod.Foo(...)`.
         let (callee_name, provenance) = match effective_callee {
             Expr::Ident(ident) => {
-                let p = resolved.provenance.call;
+                let p = resolved.provenance.call.clone();
                 (Some(ident.sym.to_smolstr()), p)
             }
             Expr::Member(member) => {
@@ -511,11 +511,11 @@ impl FactBuilder<'_, '_> {
                 } else {
                     (
                         literal_member_property_name(&member.prop),
-                        resolved.provenance.call,
+                        resolved.provenance.call.clone(),
                     )
                 }
             }
-            _ => (None, resolved.provenance.call),
+            _ => (None, resolved.provenance.call.clone()),
         };
 
         ConstructionMetadata {
