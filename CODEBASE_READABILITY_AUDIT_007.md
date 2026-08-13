@@ -100,7 +100,7 @@ the original lifecycle root indices. Verified with `make fmt && make ci`.
 
 ### Graph and fixed-point result boundaries
 
-#### [ ] READ-032 — `GraphBuild` carries an error payload that production immediately discards
+#### [x] READ-032 — `GraphBuild` carries an error payload that production immediately discards
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -124,7 +124,10 @@ wrapping it in the production result. Retain the explicit oversized-SCC
 diagnostic, `exhausted` propagation, and fail-closed rejection of export
 resolution.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Kept the existing `Option<SccPartition>` domain boundary from
+the graph implementation instead of wrapping it in an unused
+`GraphBuildError`; the linker maps `Some` to ready and `None` to rejected while
+status and exhaustion reporting remain unchanged. Verified with `make fmt && make ci`.
 
 #### [ ] READ-033 — Export-table updates clone a qualified name whose owner is already consuming it
 

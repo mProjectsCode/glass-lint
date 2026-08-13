@@ -20,14 +20,9 @@ use crate::{
 
 pub(super) struct GraphBuild {
     pub(super) graph: NormalizedModuleGraph,
-    pub(super) scc_partition: Result<SccPartition, GraphBuildError>,
+    pub(super) scc_partition: Option<SccPartition>,
     pub(super) status: AnalysisStatus,
     pub(super) exhausted: bool,
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub(super) enum GraphBuildError {
-    SccTooLarge { limit: usize },
 }
 
 impl GraphBuild {
@@ -91,7 +86,8 @@ impl GraphBuild {
 
         let mut exhausted = edge_budget.exhausted();
         let graph = graph.normalize();
-        let scc_partition = graph.scc_partition(MAX_SCC_SIZE).ok_or_else(|| {
+        let scc_partition = graph.scc_partition(MAX_SCC_SIZE);
+        if scc_partition.is_none() {
             exhausted = true;
             status.record(
                 StatusScope::Project,
@@ -101,10 +97,7 @@ impl GraphBuild {
                     observed: None,
                 },
             );
-            GraphBuildError::SccTooLarge {
-                limit: MAX_SCC_SIZE,
-            }
-        });
+        }
         Self {
             graph,
             scc_partition,
@@ -168,12 +161,7 @@ mod tests {
 
         let result = GraphBuild::build(&modules, &resolutions, count);
 
-        assert!(matches!(
-            result.scc_partition,
-            Err(GraphBuildError::SccTooLarge {
-                limit: MAX_SCC_SIZE
-            })
-        ));
+        assert!(result.scc_partition.is_none());
         assert!(result.exhausted);
         let (_, project) = result.status.diagnostics().into_parts();
         assert_eq!(project.len(), 1);

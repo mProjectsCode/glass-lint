@@ -129,10 +129,9 @@ impl ProjectLinker {
             self.link_budget.mark_exhausted();
         }
         self.graph = Some(result.graph);
-        self.scc_partition = match result.scc_partition {
-            Ok(partition) => SccPartitionState::Ready(partition),
-            Err(_error) => SccPartitionState::Rejected,
-        };
+        self.scc_partition = result
+            .scc_partition
+            .map_or(SccPartitionState::Rejected, SccPartitionState::Ready);
     }
 
     /// Build edges, resolve exports via SCC-DAG topological walk, validate
