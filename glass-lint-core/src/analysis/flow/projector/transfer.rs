@@ -32,7 +32,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
             {
                 let aliases = self.value_aliases(target);
                 if matches!(
-                    self.flow_state.admit_object(&aliases, object, &states),
+                    self.flow_state.admit_object(&aliases, object, states),
                     StateAdmission::Admitted
                 ) {
                     return;

@@ -48,7 +48,7 @@ argument predicates, state transitions, and evidence behavior. Verified with
 
 ### Local projector state ownership
 
-#### [ ] READ-011 — Source admission clones a newly built state batch before storage
+#### [x] READ-011 — Source admission clones a newly built state batch before storage
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -70,7 +70,11 @@ of an over-limit batch, alias binding order, object identity sharing across
 matched flows, and mutation-log exhaustion behavior unchanged; do not make
 the state table's storage public to avoid the copy.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Changed `FlowStateTable::admit_object` to consume the newly
+built state batch after its atomic capacity preflight, retaining only the
+mutation-log/storage clone required for reversible updates. Alias ordering,
+rejection behavior, and state-limit handling are unchanged. Verified with
+`make fmt && make ci`.
 
 ### Summary path representation
 

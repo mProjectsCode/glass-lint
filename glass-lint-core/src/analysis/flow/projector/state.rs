@@ -500,10 +500,10 @@ impl FlowStateTable {
         &mut self,
         aliases: &[ValueId],
         object: ObjectId,
-        states: &[FlowState],
+        states: Vec<FlowState>,
     ) -> StateAdmission {
         let mut new_keys = BTreeSet::new();
-        for state in states {
+        for state in &states {
             let key = state.key();
             if !self.states.contains_key(&key) {
                 new_keys.insert(key);
@@ -515,7 +515,7 @@ impl FlowStateTable {
         }
         self.bind_aliases(aliases, object);
         for state in states {
-            self.insert_state_unchecked(state.clone());
+            self.insert_state_unchecked(state);
         }
         StateAdmission::Admitted
     }
@@ -1182,7 +1182,7 @@ mod tests {
             table.admit_object(
                 &[ValueId::from_test(2)],
                 ObjectId::from_test(2),
-                &[update, new_state]
+                vec![update, new_state]
             ),
             StateAdmission::Admitted
         );
@@ -1218,7 +1218,7 @@ mod tests {
             table.admit_object(
                 &[ValueId::from_test(2)],
                 ObjectId::from_test(2),
-                &[rejected]
+                vec![rejected]
             ),
             StateAdmission::Rejected
         );
