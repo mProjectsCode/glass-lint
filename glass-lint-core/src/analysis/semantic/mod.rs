@@ -249,7 +249,7 @@ impl AnalysisCompletion {
     }
 
     fn record_scope_issue(&mut self, issue_count: usize) {
-        self.status.record(
+        self.record_incomplete(
             StatusScope::Local,
             IncompleteReason::ScopeShapeMismatch { count: issue_count },
         );
@@ -257,9 +257,13 @@ impl AnalysisCompletion {
 
     fn record_fact_failure(&mut self, reason: Option<IncompleteReason>) {
         if let Some(reason) = reason {
-            self.status.record(StatusScope::Local, reason);
-            self.capabilities.disable_derived_phases();
+            self.record_incomplete(StatusScope::Local, reason);
         }
+    }
+
+    fn record_incomplete(&mut self, scope: StatusScope, reason: IncompleteReason) {
+        self.status.record(scope, reason);
+        self.capabilities.disable_derived_phases();
     }
 
     fn assess(
@@ -500,6 +504,17 @@ mod tests {
             format!("{:?}", repeated.facts().stream().facts())
         );
         assert_eq!(artifact.status(), repeated.status());
+    }
+
+    #[test]
+    fn scope_shape_failure_disables_derived_phases() {
+        let mut completion = AnalysisCompletion::new();
+        completion.record_scope_issue(1);
+
+        assert!(!completion.capabilities.fact_index().is_enabled());
+        assert!(!completion.capabilities.effects().is_enabled());
+        assert!(!completion.capabilities.export_origins().is_enabled());
+        assert!(!completion.status.is_complete());
     }
 
     #[test]

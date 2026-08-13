@@ -54,7 +54,7 @@ reattachment remains unchanged. Verified with `make fmt && make ci`.
 
 ### Semantic completion policy
 
-#### [ ] READ-057 — Centralize capability invalidation for structural failures
+#### [x] READ-057 — Centralize capability invalidation for structural failures
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -88,6 +88,11 @@ phase.
 **Audit disposition (2026-08-13):** Confirmed. Scope-shape failure is a
 structural failure and must invalidate derived capabilities while retaining
 raw facts and diagnostics.
+
+**Fix Applied:** Added one `AnalysisCompletion::record_incomplete` transition
+for status recording plus derived-phase invalidation; scope issues and fact,
+parser-span, and name failures all use it. Added a scope-shape capability
+regression. Verified with `make fmt && make ci`.
 
 ### Local cache test fixtures
 
