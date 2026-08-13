@@ -14,7 +14,7 @@ bounded conversion logic.
 
 ### Scope planner and collector test fixtures
 
-#### [ ] READ-046 — Replace leaked test budgets with owned test fixtures
+#### [x] READ-046 — Replace leaked test budgets with owned test fixtures
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -39,7 +39,10 @@ borrowing API, the default budget limits, the two traversal phases, and the
 existing scope-lookup assertions; the fixture must not make an exhausted test
 budget accidentally unlimited or alter scope identity allocation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced leaking `'static` planner/collector constructors
+with closure-based test fixtures that own one bounded budget across both
+traversal phases. Production budget borrowing and scope assertions are
+unchanged. Verified with `make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed. This is a test-fixture lifetime
 change only; the production planner and collector should continue borrowing the

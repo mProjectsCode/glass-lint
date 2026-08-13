@@ -42,18 +42,6 @@ pub(in crate::analysis::scope) struct ScopePlanner<'a> {
 }
 
 impl ScopePlanner<'_> {
-    #[cfg(test)]
-    pub(in crate::analysis::scope) fn new_for_test(
-        program_span: swc_common::Span,
-        names: NameTable,
-    ) -> ScopePlanner<'static> {
-        Self::new(
-            program_span,
-            names,
-            Box::leak(Box::new(SemanticBudget::default())),
-        )
-    }
-
     pub(in crate::analysis::scope) fn new(
         program_span: swc_common::Span,
         names: NameTable,

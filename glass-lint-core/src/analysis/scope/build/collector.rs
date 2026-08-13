@@ -22,11 +22,6 @@ use crate::analysis::{
 };
 
 impl ScopeCollector<'_> {
-    #[cfg(test)]
-    pub(crate) fn from_plan_for_test(plan: ScopePlan) -> ScopeCollector<'static> {
-        Self::from_plan(plan, Box::leak(Box::new(SemanticBudget::default())))
-    }
-
     pub(crate) fn from_plan(plan: ScopePlan, budget: &SemanticBudget) -> ScopeCollector<'_> {
         let ScopePlan {
             program,

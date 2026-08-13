@@ -43,6 +43,12 @@ pub(super) use compact_pat::{CompactPat, compact_pat};
 pub(super) use program::{PropertyAliasAssignment, RootedPropertyMutation, ScopeCollectionIssue};
 pub(super) use shape::{ScopeShape, ScopeShapeTable};
 
+#[cfg(test)]
+pub(super) fn with_test_budget<R>(callback: impl FnOnce(&SemanticBudget) -> R) -> R {
+    let budget = SemanticBudget::default();
+    callback(&budget)
+}
+
 /// Collected outputs that are finalized into the immutable scope artifact.
 #[derive(Default)]
 pub(super) struct ScopeCollectionArtifacts {

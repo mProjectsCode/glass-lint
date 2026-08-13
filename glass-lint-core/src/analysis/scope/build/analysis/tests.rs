@@ -5,20 +5,28 @@ use swc_ecma_visit::VisitWith;
 use super::*;
 use crate::analysis::{
     model::scope::BindingProvenance,
-    scope::build::{ScopeCollector, plan::ScopePlanner, traversal::ScopeTraversal},
+    scope::build::{
+        ScopeCollector, plan::ScopePlanner, traversal::ScopeTraversal, with_test_budget,
+    },
 };
 
-fn run(source: &str) -> ScopeCollector<'static> {
-    let parsed = crate::parse_test_source(source, "facts.js").expect("source should parse");
-    let names = glass_lint_datastructures::NameTable::default();
-    let planner = ScopePlanner::new_for_test(parsed.program.span(), names);
-    let mut plan_traversal = ScopeTraversal::new(planner);
-    parsed.program.visit_children_with(&mut plan_traversal);
-    let plan = plan_traversal.into_pass().finish();
-    let collector = ScopeCollector::from_plan_for_test(plan);
-    let mut collect_traversal = ScopeTraversal::new(collector);
-    parsed.program.visit_children_with(&mut collect_traversal);
-    collect_traversal.into_pass()
+fn with_collector<R>(
+    source: &str,
+    callback: impl for<'a> FnOnce(&mut ScopeCollector<'a>) -> R,
+) -> R {
+    with_test_budget(|budget| {
+        let parsed = crate::parse_test_source(source, "facts.js").expect("source should parse");
+        let names = glass_lint_datastructures::NameTable::default();
+        let planner = ScopePlanner::new(parsed.program.span(), names, budget);
+        let mut plan_traversal = ScopeTraversal::new(planner);
+        parsed.program.visit_children_with(&mut plan_traversal);
+        let plan = plan_traversal.into_pass().finish();
+        let collector = ScopeCollector::from_plan(plan, budget);
+        let mut collect_traversal = ScopeTraversal::new(collector);
+        parsed.program.visit_children_with(&mut collect_traversal);
+        let mut collector = collect_traversal.into_pass();
+        callback(&mut collector)
+    })
 }
 
 fn find_first_declarator(program: &swc_ecma_ast::Program) -> (Pat, Expr, VarDeclKind) {
@@ -81,161 +89,168 @@ fn assign_prov(collector: &mut ScopeCollector, source: &str) -> BindingProvenanc
 #[test]
 fn caches_subresults_so_views_share_one_classification() {
     let source = "var config = { flag: host.value }; use(config);";
-    let mut collector = run(source);
-    let (classification, expr, kind) = declare_classify(&mut collector, source, false);
-    assert!(expression_is_mutable_static_object(
-        &mut collector,
-        &expr,
-        kind
-    ));
-    assert!(
-        matches!(
-            classification,
-            DeclarationClassification::Binding { ref provenance, .. } if matches!(
-                provenance,
-                BindingProvenance::StaticObjectValues(_)
-            )
-        ),
-        "expected StaticObjectValues binding, got {classification:?}",
-    );
+    with_collector(source, |collector| {
+        let (classification, expr, kind) = declare_classify(collector, source, false);
+        assert!(expression_is_mutable_static_object(collector, &expr, kind));
+        assert!(
+            matches!(
+                classification,
+                DeclarationClassification::Binding { ref provenance, .. } if matches!(
+                    provenance,
+                    BindingProvenance::StaticObjectValues(_)
+                )
+            ),
+            "expected StaticObjectValues binding, got {classification:?}",
+        );
+    });
 }
 
 #[test]
 fn classifies_direct_require_as_require_module() {
     let source = "const { send } = require('sdk');";
-    let mut collector = run(source);
-    let (classification, ..) = declare_classify(&mut collector, source, false);
-    assert!(
-        matches!(classification, DeclarationClassification::Require { .. }),
-        "expected Require classification, got {classification:?}",
-    );
+    with_collector(source, |collector| {
+        let (classification, ..) = declare_classify(collector, source, false);
+        assert!(
+            matches!(classification, DeclarationClassification::Require { .. }),
+            "expected Require classification, got {classification:?}",
+        );
+    });
 }
 
 #[test]
 fn root_member_alias_produces_returned_object_binding() {
     let source = "const api = host.files; use(api);";
-    let mut collector = run(source);
-    let (classification, ..) = declare_classify(&mut collector, source, false);
-    assert!(
-        matches!(
-            classification,
-            DeclarationClassification::Binding {
-                provenance: BindingProvenance::ReturnedObject { .. },
-                ..
-            }
-        ),
-        "expected ReturnedObject binding, got {classification:?}",
-    );
+    with_collector(source, |collector| {
+        let (classification, ..) = declare_classify(collector, source, false);
+        assert!(
+            matches!(
+                classification,
+                DeclarationClassification::Binding {
+                    provenance: BindingProvenance::ReturnedObject { .. },
+                    ..
+                }
+            ),
+            "expected ReturnedObject binding, got {classification:?}",
+        );
+    });
 }
 
 #[test]
 fn reassignment_provenance_uses_the_latest_visible_binding() {
     let source = "let api = host.files; api = host.cache; use(api);";
-    let mut collector = run(source);
-    let provenance = assign_prov(&mut collector, source);
-    assert!(
-        matches!(provenance, BindingProvenance::ReturnedObject { .. }),
-        "expected ReturnedObject assignment provenance, got {provenance:?}",
-    );
+    with_collector(source, |collector| {
+        let provenance = assign_prov(collector, source);
+        assert!(
+            matches!(provenance, BindingProvenance::ReturnedObject { .. }),
+            "expected ReturnedObject assignment provenance, got {provenance:?}",
+        );
+    });
 }
 
 #[test]
 fn assignment_provenance_prefers_bound_callable_over_rooted_alias() {
     let source = "let open = null; open = host.open.bind(null, host.file); use(open);";
-    let mut collector = run(source);
-    let provenance = assign_prov(&mut collector, source);
-    assert!(
-        matches!(provenance, BindingProvenance::BoundCallable { .. }),
-        "bound callable must outrank ValueAlias, got {provenance:?}",
-    );
+    with_collector(source, |collector| {
+        let provenance = assign_prov(collector, source);
+        assert!(
+            matches!(provenance, BindingProvenance::BoundCallable { .. }),
+            "bound callable must outrank ValueAlias, got {provenance:?}",
+        );
+    });
 }
 
 #[test]
 fn assignment_provenance_falls_through_to_local_for_dynamic_values() {
     let source = "let value = 0; value = dynamicThing(); use(value);";
-    let mut collector = run(source);
-    let provenance = assign_prov(&mut collector, source);
-    assert!(
-        !matches!(
-            provenance,
-            BindingProvenance::BoundCallable { .. }
-                | BindingProvenance::BoundModuleCallable { .. }
-                | BindingProvenance::ModuleExport { .. }
-                | BindingProvenance::ModuleNamespace { .. }
-                | BindingProvenance::StaticString(_)
-                | BindingProvenance::StaticNumber(_)
-                | BindingProvenance::StaticStringArray(_)
-                | BindingProvenance::StaticObjectKeys(_)
-                | BindingProvenance::StaticObjectValues(_)
-        ),
-        "dynamic call must not produce a strict provenance, got {provenance:?}",
-    );
+    with_collector(source, |collector| {
+        let provenance = assign_prov(collector, source);
+        assert!(
+            !matches!(
+                provenance,
+                BindingProvenance::BoundCallable { .. }
+                    | BindingProvenance::BoundModuleCallable { .. }
+                    | BindingProvenance::ModuleExport { .. }
+                    | BindingProvenance::ModuleNamespace { .. }
+                    | BindingProvenance::StaticString(_)
+                    | BindingProvenance::StaticNumber(_)
+                    | BindingProvenance::StaticStringArray(_)
+                    | BindingProvenance::StaticObjectKeys(_)
+                    | BindingProvenance::StaticObjectValues(_)
+            ),
+            "dynamic call must not produce a strict provenance, got {provenance:?}",
+        );
+    });
 }
 
 #[test]
 fn mutability_requires_var_declaration_kind() {
     let source = "const config = { flag: host.value }; use(config);";
-    let mut collector = run(source);
-    let parsed = crate::parse_test_source(source, "facts.js").expect("source should parse");
-    let (_, expr, _) = find_first_declarator(&parsed.program);
-    assert!(!expression_is_mutable_static_object(
-        &mut collector,
-        &expr,
-        VarDeclKind::Const
-    ));
-    assert!(!expression_is_mutable_static_object(
-        &mut collector,
-        &expr,
-        VarDeclKind::Let
-    ));
+    with_collector(source, |collector| {
+        let parsed = crate::parse_test_source(source, "facts.js").expect("source should parse");
+        let (_, expr, _) = find_first_declarator(&parsed.program);
+        assert!(!expression_is_mutable_static_object(
+            collector,
+            &expr,
+            VarDeclKind::Const
+        ));
+        assert!(!expression_is_mutable_static_object(
+            collector,
+            &expr,
+            VarDeclKind::Let
+        ));
+    });
 }
 
 #[test]
 fn returned_object_chain_does_not_become_a_constant() {
     let source = "const send = host.create().send; use(send);";
-    let mut collector = run(source);
-    let (classification, ..) = declare_classify(&mut collector, source, false);
-    assert!(
-        matches!(
-            classification,
-            DeclarationClassification::Binding {
-                provenance: BindingProvenance::ReturnedObject { .. },
-                ..
-            }
-        ),
-        "returned-object chain should not be mistreated as constant, got {classification:?}",
-    );
+    with_collector(source, |collector| {
+        let (classification, ..) = declare_classify(collector, source, false);
+        assert!(
+            matches!(
+                classification,
+                DeclarationClassification::Binding {
+                    provenance: BindingProvenance::ReturnedObject { .. },
+                    ..
+                }
+            ),
+            "returned-object chain should not be mistreated as constant, got {classification:?}",
+        );
+    });
 }
 
 #[test]
 fn destructuring_pattern_classifies_its_outer_declarator() {
     let source = "const { read } = host.files; use(read);";
-    let mut collector = run(source);
-    let (classification, ..) = declare_classify(&mut collector, source, false);
-    assert!(
-        !matches!(classification, DeclarationClassification::Binding { .. }),
-        "destructuring pattern must not produce a binding provenance, got {classification:?}",
-    );
+    with_collector(source, |collector| {
+        let (classification, ..) = declare_classify(collector, source, false);
+        assert!(
+            !matches!(classification, DeclarationClassification::Binding { .. }),
+            "destructuring pattern must not produce a binding provenance, got {classification:?}",
+        );
+    });
 }
 
 #[test]
 fn destructured_require_records_individual_named_exports() {
     let source = "const { read } = require('sdk'); use(read);";
-    let mut collector = run(source);
-    let (classification, ..) = declare_classify(&mut collector, source, false);
-    assert!(
-        matches!(classification, DeclarationClassification::Require { .. }),
-        "expected Require classification for destructured require, got {classification:?}",
-    );
+    with_collector(source, |collector| {
+        let (classification, ..) = declare_classify(collector, source, false);
+        assert!(
+            matches!(classification, DeclarationClassification::Require { .. }),
+            "expected Require classification for destructured require, got {classification:?}",
+        );
+    });
 }
 
 #[test]
 fn precedence_picks_bound_callable_over_constant_for_aliased_calls() {
     let source = "let open = null; open = host.open.bind(null, 'GET'); use(open);";
-    let mut collector = run(source);
-    let provenance = assign_prov(&mut collector, source);
-    assert!(
-        matches!(provenance, BindingProvenance::BoundCallable { .. }),
-        "bound callable must outrank literal constant, got {provenance:?}",
-    );
+    with_collector(source, |collector| {
+        let provenance = assign_prov(collector, source);
+        assert!(
+            matches!(provenance, BindingProvenance::BoundCallable { .. }),
+            "bound callable must outrank literal constant, got {provenance:?}",
+        );
+    });
 }
