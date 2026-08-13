@@ -6,7 +6,7 @@ use smol_str::{SmolStr, ToSmolStr};
 use super::SccPartitionState;
 use crate::{
     analysis::{
-        LinkedModuleTarget, ModuleId,
+        LinkedModuleTarget, ModuleId, QualifiedRequestId,
         model::module::{self, ModuleRequestRole, NAMESPACE_EXPORT},
         project::{
             linker::ProjectLinker,
@@ -149,10 +149,8 @@ impl ProjectLinker {
     pub(super) fn validate_imported_exports(&mut self) {
         let mut checks = Vec::new();
         for module in self.modules.values() {
-            for request in module.local().interface().requests() {
-                let Some(key) = self.request_id(module.id(), request) else {
-                    continue;
-                };
+            for (request_id, request) in module.local().interface().request_entries() {
+                let key = QualifiedRequestId::new(module.id(), request_id);
                 let Some(LinkedModuleTarget::Internal { id }) = self.resolutions.get(&key) else {
                     continue;
                 };
@@ -163,7 +161,7 @@ impl ProjectLinker {
                     let Some(imported) = binding.imported() else {
                         continue;
                     };
-                    checks.push((module.id(), *id, request.id(), imported.clone()));
+                    checks.push((module.id(), *id, request_id, imported.clone()));
                 }
             }
         }
@@ -281,16 +279,14 @@ impl ProjectLinker {
         module: ModuleId,
         request_index: module::ModuleRequestId,
     ) -> ExportResolution {
-        let Some(request) = self
+        let Some(_request) = self
             .modules
             .get(&module)
             .and_then(|project_module| project_module.local().interface().request(request_index))
         else {
             return ExportResolution::Unknown;
         };
-        let Some(key) = self.request_id(module, request) else {
-            return ExportResolution::Unknown;
-        };
+        let key = QualifiedRequestId::new(module, request_index);
         self.resolutions
             .get(&key)
             .map_or(ExportResolution::Unknown, |target| {
@@ -320,16 +316,14 @@ impl ProjectLinker {
         request_index: module::ModuleRequestId,
         imported: &SmolStr,
     ) -> ExportResolution {
-        let Some(request) = self
+        let Some(_request) = self
             .modules
             .get(&module)
             .and_then(|m| m.local().interface().request(request_index))
         else {
             return ExportResolution::Unknown;
         };
-        let Some(key) = self.request_id(module, request) else {
-            return ExportResolution::Unknown;
-        };
+        let key = QualifiedRequestId::new(module, request_index);
         match self.resolutions.get(&key) {
             Some(LinkedModuleTarget::Internal { id }) => self
                 .lookup_export(&QualifiedExportId::new(*id, imported.clone()))

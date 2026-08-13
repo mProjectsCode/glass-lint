@@ -15,7 +15,7 @@ values.
 
 ### Retained module-interface model
 
-#### [ ] READ-015 — Module requests store their vector identity twice
+#### [x] READ-015 — Module requests store their vector identity twice
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -38,7 +38,10 @@ owner-level operation. Keep the ID-based project/linker APIs and append-order
 stability, while eliminating the possibility of two identities for one
 request.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the embedded request ID from `ModuleRequest` and
+added the owner-level `request_entries()` view, deriving IDs from stable vector
+positions for linker, identity, resolver, and session consumers. Append order
+and ID-based project APIs are unchanged. Verified with `make fmt && make ci`.
 
 ### Bounded flow evidence
 

@@ -43,8 +43,8 @@ impl GraphBuild {
         let mut edge_budget = Budget::new(link_limit);
         for module in modules.values() {
             graph.ensure_node(module.id());
-            for request in module.local().interface().requests() {
-                let request_id = QualifiedRequestId::new(module.id(), request.id());
+            for (request_index, request) in module.local().interface().request_entries() {
+                let request_id = QualifiedRequestId::new(module.id(), request_index);
                 let Some(resolution) = resolutions.get(&request_id) else {
                     if is_internal_module_request(request.specifier()) {
                         status.record(
@@ -146,7 +146,12 @@ mod tests {
     #[test]
     fn oversized_scc_is_rejected_with_linking_status() {
         let template = imported_module();
-        let request = template.local().interface().requests().next().unwrap();
+        let (request_index, _request) = template
+            .local()
+            .interface()
+            .request_entries()
+            .next()
+            .unwrap();
         let count = MAX_SCC_SIZE + 1;
         let mut modules = BTreeMap::new();
         let mut resolutions = BTreeMap::new();
@@ -156,7 +161,7 @@ mod tests {
             let next = ModuleId::new(u32::try_from((index + 1) % count).unwrap());
             modules.insert(id, ProjectModule::new(id, template.local().clone()));
             resolutions.insert(
-                QualifiedRequestId::new(id, request.id()),
+                QualifiedRequestId::new(id, request_index),
                 LinkedModuleTarget::Internal { id: next },
             );
         }

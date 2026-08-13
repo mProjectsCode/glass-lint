@@ -17,7 +17,6 @@ use super::resolver::ExportResolver;
 use crate::{
     analysis::{
         LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId,
-        model::module,
         project::state::{ExportTable, LinkingSession, NormalizedModuleGraph, SccPartition},
         semantic::status::AnalysisStatus,
     },
@@ -174,15 +173,5 @@ impl ProjectLinker {
             },
             limits,
         )
-    }
-
-    /// Return the stable internal identity for one local request.
-    pub(super) fn request_id(
-        &self,
-        module: ModuleId,
-        request: &module::ModuleRequest,
-    ) -> Option<QualifiedRequestId> {
-        self.modules.get(&module)?;
-        Some(QualifiedRequestId::new(module, request.id()))
     }
 }

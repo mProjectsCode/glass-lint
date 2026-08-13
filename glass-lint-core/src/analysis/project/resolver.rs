@@ -7,7 +7,7 @@ use smol_str::{SmolStr, ToSmolStr};
 use crate::{
     analysis::{
         ExportResolution, LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId,
-        model::module::{DEFAULT_EXPORT, ModuleRequest, ModuleRequestId, ModuleRequestRole},
+        model::module::{DEFAULT_EXPORT, ModuleRequestId, ModuleRequestRole},
         project::{
             model::MAX_EXPORT_DEPTH,
             state::{ExportLookupCache, ExportLookupCacheResult, ExportTable, QualifiedExportId},
@@ -108,14 +108,15 @@ impl<'a> ExportResolver<'a> {
         };
         let requests = interface
             .request_ids_for_specifier(authored_module)
-            .filter_map(|request| interface.request(request))
-            .filter(|request| {
-                matches!(
-                    request.role(),
-                    ModuleRequestRole::Import { .. } | ModuleRequestRole::Require
-                )
+            .filter_map(|request_index| {
+                interface.request(request_index).and_then(|request| {
+                    matches!(
+                        request.role(),
+                        ModuleRequestRole::Import { .. } | ModuleRequestRole::Require
+                    )
+                    .then_some(request_index)
+                })
             })
-            .map(ModuleRequest::id)
             .collect::<Vec<_>>();
         if requests.is_empty() {
             return ExportResolution::External {
@@ -215,7 +216,7 @@ impl<'a> ExportResolver<'a> {
         let mut candidate = None;
         let mut saw_unknown = false;
         for request_index in star_exports {
-            let Some(request) = self
+            let Some(_request) = self
                 .project
                 .module(module)
                 .and_then(|module| module.local().interface().request(request_index))
@@ -223,7 +224,7 @@ impl<'a> ExportResolver<'a> {
                 saw_unknown = true;
                 continue;
             };
-            let candidate_export = match self.project.request_target(module, request.id()) {
+            let candidate_export = match self.project.request_target(module, request_index) {
                 Some(LinkedModuleTarget::Internal { id: target }) => self.lookup_export_inner(
                     &QualifiedExportId::new(*target, export_name.clone()),
                     context,

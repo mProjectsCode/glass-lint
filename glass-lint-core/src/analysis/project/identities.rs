@@ -12,7 +12,7 @@ use crate::analysis::{
     ExportResolution, LinkedModuleTarget, ModuleId, ProjectSemanticModel, QualifiedRequestId,
     flow::effect::CallShape,
     matching::{ModuleExportKey, ModuleIdentityContributions, ModuleIdentityMap},
-    model::module::{ImportedBinding, ModuleRequest, ModuleRequestRole},
+    model::module::{ImportedBinding, ModuleRequestId, ModuleRequestRole},
     project::{
         model::MAX_EXPORT_DEPTH, resolver::target_to_export_resolution, state::LinkingSession,
     },
@@ -115,7 +115,7 @@ impl ProjectSemanticModel {
         let Some(project_module) = self.module(module) else {
             return identities;
         };
-        for request in project_module.local().interface().requests() {
+        for (request_index, request) in project_module.local().interface().request_entries() {
             let is_namespace = match request.role() {
                 ModuleRequestRole::Import { bindings } => {
                     for binding in bindings {
@@ -145,7 +145,7 @@ impl ProjectSemanticModel {
                 continue;
             }
             let prefix = request.specifier().to_owned();
-            match self.resolve_namespace(module, request) {
+            match self.resolve_namespace(module, request_index) {
                 ExportResolution::Qualified { module: target, .. } => {
                     self.collect_exported_identities(
                         target,
@@ -195,11 +195,11 @@ impl ProjectSemanticModel {
         let mut contributions = ModuleIdentityContributions::new();
         if let Some(project_module) = self.module(module) {
             for request_index in project_module.local().interface().star_exports() {
-                let Some(request) = project_module.local().interface().request(*request_index)
+                let Some(_request) = project_module.local().interface().request(*request_index)
                 else {
                     continue;
                 };
-                let key = QualifiedRequestId::new(module, request.id());
+                let key = QualifiedRequestId::new(module, *request_index);
                 if let Some(LinkedModuleTarget::Internal { id }) = self.resolution_for(&key) {
                     let mut child_entries = ModuleIdentityMap::new();
                     self.collect_exported_identities(*id, prefix, visiting, &mut child_entries);
@@ -223,8 +223,18 @@ impl ProjectSemanticModel {
     }
 
     /// Resolve a namespace request without guessing at unsupported targets.
-    fn resolve_namespace(&self, module: ModuleId, request: &ModuleRequest) -> ExportResolution {
-        let key = QualifiedRequestId::new(module, request.id());
+    fn resolve_namespace(
+        &self,
+        module: ModuleId,
+        request_index: ModuleRequestId,
+    ) -> ExportResolution {
+        let Some(request) = self
+            .module(module)
+            .and_then(|module| module.local().interface().request(request_index))
+        else {
+            return ExportResolution::Unknown;
+        };
+        let key = QualifiedRequestId::new(module, request_index);
         target_to_export_resolution(self.resolution_for(&key), request.specifier(), "*")
     }
 }

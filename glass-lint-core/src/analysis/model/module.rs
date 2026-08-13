@@ -33,7 +33,6 @@ pub struct ImportedBinding {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ModuleRequest {
-    id: ModuleRequestId,
     span: ByteRange,
     kind: ResolutionRequestKind,
     specifier: SmolStr,
@@ -191,10 +190,6 @@ impl ImportedBinding {
 }
 
 impl ModuleRequest {
-    pub fn id(&self) -> ModuleRequestId {
-        self.id
-    }
-
     pub fn span(&self) -> ByteRange {
         self.span
     }
@@ -226,7 +221,6 @@ impl ModuleInterface {
     ) -> ModuleRequestId {
         let index = ModuleRequestId(self.requests.len());
         self.requests.push(ModuleRequest {
-            id: index,
             span,
             kind,
             specifier: specifier.into(),
@@ -356,6 +350,13 @@ impl ModuleInterface {
         self.requests.iter()
     }
 
+    pub fn request_entries(&self) -> impl Iterator<Item = (ModuleRequestId, &ModuleRequest)> {
+        self.requests
+            .iter()
+            .enumerate()
+            .map(|(index, request)| (ModuleRequestId(index), request))
+    }
+
     pub fn request(&self, index: ModuleRequestId) -> Option<&ModuleRequest> {
         self.requests.get(index.index())
     }
@@ -405,9 +406,10 @@ impl ModuleInterface {
     ) -> Vec<(ModuleRequestId, ResolutionRequest)> {
         self.requests
             .iter()
-            .filter_map(|request| {
+            .enumerate()
+            .filter_map(|(index, request)| {
                 Some((
-                    request.id(),
+                    ModuleRequestId(index),
                     ResolutionRequest::new(
                         ResolutionRequestKey::new(
                             importer.clone(),
