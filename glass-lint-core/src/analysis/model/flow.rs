@@ -279,36 +279,6 @@ impl FlowReadiness {
             sink_count,
         }
     }
-
-    fn requirements_ready(self, indices: impl IntoIterator<Item = usize>) -> bool {
-        Self::ready(
-            indices,
-            self.requirement_count,
-            self.requirement_mode == RequirementReadiness::All,
-        )
-    }
-
-    fn sinks_ready(self, indices: impl IntoIterator<Item = usize>) -> bool {
-        match self.sink_mode {
-            SinkReadiness::Configuration | SinkReadiness::Any => true,
-            SinkReadiness::All => Self::ready(indices, self.sink_count, true),
-        }
-    }
-
-    fn ready(indices: impl IntoIterator<Item = usize>, count: usize, all: bool) -> bool {
-        let mut seen = vec![false; count];
-        for index in indices {
-            let Some(slot) = seen.get_mut(index) else {
-                return false;
-            };
-            *slot = true;
-        }
-        if all {
-            seen.iter().all(|present| *present)
-        } else {
-            seen.iter().any(|present| *present)
-        }
-    }
 }
 
 trait EvidenceIndex: Copy + Ord + Hash + Into<usize> {}
@@ -421,6 +391,29 @@ impl<K: Clone + Ord, I: EvidenceIndex> IndexedEvidence<K, I> {
         self.entries.iter().map(|(index, values)| (*index, values))
     }
 
+    fn ready(&self, count: usize, all: bool) -> bool {
+        if self
+            .entries
+            .iter()
+            .any(|(index, _)| (*index).into() >= count)
+        {
+            return false;
+        }
+        if all {
+            if count > u64::BITS as usize {
+                return false;
+            }
+            let required = if count == u64::BITS as usize {
+                u64::MAX
+            } else {
+                (1u64 << count).saturating_sub(1)
+            };
+            self.mask == required
+        } else {
+            self.mask != 0
+        }
+    }
+
     fn bit(parameter: I) -> u64 {
         1u64 << parameter.into()
     }
@@ -486,10 +479,9 @@ impl<E: Clone + Ord> LifecycleEvidence<E> {
     }
 
     pub(in crate::analysis) fn requirements_ready(&self, readiness: FlowReadiness) -> bool {
-        readiness.requirements_ready(
-            self.requirements
-                .iter_by_key()
-                .map(|(index, _)| index.get()),
+        self.requirements.ready(
+            readiness.requirement_count,
+            readiness.requirement_mode == RequirementReadiness::All,
         )
     }
 
@@ -502,7 +494,10 @@ impl<E: Clone + Ord> LifecycleEvidence<E> {
     }
 
     pub(in crate::analysis) fn sinks_ready(&self, readiness: FlowReadiness) -> bool {
-        readiness.sinks_ready(self.sinks.iter_by_key().map(|(index, _)| index.get()))
+        match readiness.sink_mode {
+            SinkReadiness::Configuration | SinkReadiness::Any => true,
+            SinkReadiness::All => self.sinks.ready(readiness.sink_count, true),
+        }
     }
 
     pub(in crate::analysis) fn requirement_entries(

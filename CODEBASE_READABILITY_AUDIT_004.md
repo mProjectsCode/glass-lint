@@ -45,7 +45,7 @@ and ID-based project APIs are unchanged. Verified with `make fmt && make ci`.
 
 ### Bounded flow evidence
 
-#### [ ] READ-017 — Readiness checks rebuild a boolean vector despite a stored bit mask
+#### [x] READ-017 — Readiness checks rebuild a boolean vector despite a stored bit mask
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -67,7 +67,10 @@ required mask in `FlowReadiness` and compare masks directly. Retain the current
 fail-closed result for an out-of-range index, the special `Configuration` and
 `Any` sink modes, and the empty-set semantics for `All`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved readiness evaluation onto `IndexedEvidence`, comparing
+its bounded presence mask directly and validating indexes against the declared
+count. Configuration/Any sinks, All empty-set behavior, and fail-closed
+out-of-range handling remain unchanged. Verified with `make fmt && make ci`.
 
 ### Position-sensitive resolution
 
