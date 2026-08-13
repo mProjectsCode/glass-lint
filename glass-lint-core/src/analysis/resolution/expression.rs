@@ -347,10 +347,6 @@ impl Resolver<'_> {
                 }
                 _ => None,
             });
-        if let Some(SymbolMemberProvenance::ModuleNamespace { module, .. }) = &module_member {
-            self.values
-                .intern_construction(ValueConstruction::ModuleNamespace(module.clone()), None);
-        }
         seed.into_resolved(final_id, call, module_member)
     }
 

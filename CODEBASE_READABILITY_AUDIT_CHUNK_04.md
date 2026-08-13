@@ -49,7 +49,7 @@ not change the production resolver lifetime contract.
 
 ### Resolver value admission
 
-#### [ ] READ-054 — Remove ignored module-namespace value interning
+#### [x] READ-054 — Remove ignored module-namespace value interning
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -81,6 +81,12 @@ with a second namespace identity representation.
 **Audit disposition (2026-08-13):** Confirmed. The discarded namespace value
 has no retained consumer; the provenance identity must remain the sole
 namespace-matching representation.
+
+**Fix Applied:** Removed the discarded module-namespace interning from
+`finalize_seed` and deleted the now-unused `Value` and `ValueConstruction`
+variants. `SymbolMemberProvenance::ModuleNamespace` remains the namespace
+matching identity and `Value::ModuleExport` remains the callable identity.
+Verified with `make fmt && make ci`.
 
 ### Retained flow readiness boundary
 

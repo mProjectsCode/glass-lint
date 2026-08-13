@@ -106,7 +106,6 @@ pub enum Value {
     Global(SmolStr),
     Local,
     RootedMember { path: NamePath },
-    ModuleNamespace(SmolStr),
     ModuleExport { module: SmolStr, export: SmolStr },
     StaticString(String),
     StaticNumber(usize),
@@ -138,7 +137,6 @@ pub(in crate::analysis) enum ValueConstruction<'a> {
     Unknown,
     Local,
     Global(SmolStr),
-    ModuleNamespace(SmolStr),
     ModuleExport {
         module: SmolStr,
         export: SmolStr,
@@ -234,7 +232,6 @@ impl ValueTable {
             ValueConstruction::Unknown => (Value::Unknown, binding),
             ValueConstruction::Local => (Value::Local, binding),
             ValueConstruction::Global(name) => (Value::Global(name), binding),
-            ValueConstruction::ModuleNamespace(module) => (Value::ModuleNamespace(module), None),
             ValueConstruction::ModuleExport { module, export } => {
                 (Value::ModuleExport { module, export }, binding)
             }
