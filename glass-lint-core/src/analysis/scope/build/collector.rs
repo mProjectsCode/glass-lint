@@ -1,6 +1,6 @@
 use glass_lint_datastructures::{NameId, NamePath, SymbolPath};
 use smol_str::SmolStr;
-use swc_ecma_ast::{ArrowExpr, Expr, Function, ImportDecl, Pat, VarDeclKind};
+use swc_ecma_ast::{ArrowExpr, Expr, Function, Pat, VarDeclKind};
 
 use crate::analysis::{
     SemanticBudget,
@@ -8,7 +8,7 @@ use crate::analysis::{
         BindingProvenance, ScopeId, ScopeKind, ScopedName,
         build::{
             ScopeCollectionArtifacts, ScopeCollector,
-            bindings::{for_each_import_binding, for_each_pat_binding, var_binding_scope},
+            bindings::{for_each_pat_binding, var_binding_scope},
             compact_pat::{CompactPat, compact_pat},
             plan::ScopePlan,
             program::ScopeCollectionIssue,
@@ -63,7 +63,7 @@ impl ScopeCollector<'_> {
         var_binding_scope(&self.lexical.stack, &self.lexical.scopes)
     }
 
-    pub(super) fn insert(
+    pub(super) fn register_binding(
         &mut self,
         scope: ScopeId,
         name: impl Into<SmolStr>,
@@ -78,6 +78,23 @@ impl ScopeCollector<'_> {
         self.intern_provenance_strings(&provenance);
         if let Some(scope_data) = self.lexical.scopes.get_mut(scope) {
             scope_data.insert_binding(name, provenance);
+        }
+    }
+
+    pub(super) fn update_binding(
+        &mut self,
+        scope: ScopeId,
+        name: impl Into<SmolStr>,
+        provenance: BindingProvenance,
+    ) {
+        let name = name.into();
+        self.intern_provenance_strings(&provenance);
+        let Some(name) = self.name_id(name.as_str()) else {
+            self.lexical.name_exhausted = true;
+            return;
+        };
+        if let Some(scope_data) = self.lexical.scopes.get_mut(scope) {
+            scope_data.update_binding(name, provenance);
         }
     }
 
@@ -99,12 +116,6 @@ impl ScopeCollector<'_> {
             }
             _ => {}
         }
-    }
-
-    pub(super) fn insert_import(&mut self, scope: ScopeId, import: &ImportDecl) {
-        for_each_import_binding(import, |name, provenance| {
-            self.insert(scope, name, provenance);
-        });
     }
 
     pub(super) fn name_id(&self, name: &str) -> Option<NameId> {
@@ -148,12 +159,18 @@ impl ScopeCollector<'_> {
             .map(|name| ScopedName::new(scope, name))
     }
 
-    pub(super) fn insert_local(&mut self, scope: ScopeId, name: impl Into<SmolStr>) {
-        self.insert(scope, name, BindingProvenance::Local);
+    pub(super) fn register_local(&mut self, scope: ScopeId, name: impl Into<SmolStr>) {
+        self.register_binding(scope, name, BindingProvenance::Local);
     }
 
-    pub(super) fn insert_pat_locals(&mut self, scope: ScopeId, pat: &Pat) {
-        for_each_pat_binding(pat, |binding| self.insert_local(scope, binding));
+    pub(super) fn register_pat_locals(&mut self, scope: ScopeId, pat: &Pat) {
+        for_each_pat_binding(pat, |binding| self.register_local(scope, binding));
+    }
+
+    pub(super) fn reset_pat_locals(&mut self, scope: ScopeId, pat: &Pat) {
+        for_each_pat_binding(pat, |binding| {
+            self.update_binding(scope, binding, BindingProvenance::Local);
+        });
     }
 
     pub(super) fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) -> ScopeEntry {

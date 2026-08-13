@@ -31,7 +31,11 @@ impl ScopeCollector<'_> {
         match result {
             Ok(bindings) => {
                 for (name, path) in bindings {
-                    self.insert(scope, name, BindingProvenance::ValueAlias { target: path });
+                    self.update_binding(
+                        scope,
+                        name,
+                        BindingProvenance::ValueAlias { target: path },
+                    );
                 }
             }
             Err(ProjectionError::Unsupported) => {}
@@ -75,7 +79,7 @@ impl ScopeCollector<'_> {
     pub(super) fn collect_require_aliases(&mut self, pat: &Pat, module: SmolStr, scope: ScopeId) {
         match pat {
             Pat::Ident(ident) => {
-                self.insert(
+                self.update_binding(
                     scope,
                     ident.id.sym.to_smolstr(),
                     BindingProvenance::ModuleNamespace { module },
@@ -96,7 +100,7 @@ impl ScopeCollector<'_> {
                         }
                         ObjectPatProp::Assign(assign) => {
                             let local = assign.key.sym.to_smolstr();
-                            self.insert(
+                            self.update_binding(
                                 scope,
                                 local.clone(),
                                 BindingProvenance::ModuleExport {
@@ -121,7 +125,7 @@ impl ScopeCollector<'_> {
         scope: ScopeId,
     ) {
         if let Pat::Ident(local) = pat {
-            self.insert(
+            self.update_binding(
                 scope,
                 local.id.sym.to_smolstr(),
                 BindingProvenance::ModuleExport {

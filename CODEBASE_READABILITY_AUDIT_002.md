@@ -14,7 +14,7 @@ fail-closed behavior.
 
 ### Scope planning and collection
 
-#### [ ] READ-006 — Scope collection repeats planner-owned binding registration
+#### [x] READ-006 — Scope collection repeats planner-owned binding registration
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -45,7 +45,14 @@ separate collector-owned table that is merged at freeze. Keep collector-only
 catch bindings, hoisted `var` placement, parameter visibility, provenance
 overwrite rules, and the shared budget's fail-closed behavior unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The planner now owns all ordinary declaration and import slot
+registration. The collector updates those planned slots for declaration
+provenance and redeclaration resets, while retaining catch-parameter
+registration as its collector-only case. Destructuring and CommonJS alias
+collection use the same update operation, eliminating duplicate binding
+insertions and their budget charges. Added a redeclaration regression test and
+updated the semantic-budget boundary from 24 to 22 operations to reflect the
+removed duplicate work. Verified with `make fmt && make ci`.
 
 #### [ ] READ-007 — Collector records are converted into immediately consumed duplicate data wrappers
 

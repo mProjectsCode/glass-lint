@@ -283,6 +283,16 @@ impl LexicalScope {
         self.bindings.0.insert(name, provenance);
     }
 
+    pub(in crate::analysis) fn update_binding(
+        &mut self,
+        name: NameId,
+        provenance: BindingProvenance,
+    ) {
+        if let Some(binding) = self.bindings.0.get_mut(&name) {
+            *binding = provenance;
+        }
+    }
+
     pub(in crate::analysis) fn binding(&self, name: NameId) -> Option<&BindingProvenance> {
         self.bindings.0.get(&name)
     }

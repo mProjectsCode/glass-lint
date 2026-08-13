@@ -5,8 +5,8 @@
 //! unsupported dynamic forms.
 
 use swc_ecma_ast::{
-    ArrowExpr, AssignExpr, AssignTarget, CallExpr, Callee, ClassDecl, Expr, FnDecl, Function,
-    ImportDecl, ObjectPatProp, Pat, SimpleAssignTarget, VarDecl, VarDeclKind,
+    ArrowExpr, AssignExpr, AssignTarget, CallExpr, Callee, Expr, FnDecl, ObjectPatProp, Pat,
+    SimpleAssignTarget, VarDecl, VarDeclKind,
 };
 
 use crate::analysis::{
@@ -116,12 +116,6 @@ impl ScopePass for ScopeCollector<'_> {
         self.continue_exit();
     }
 
-    fn visit_import_decl(&mut self, import: &ImportDecl) {
-        if let Some(scope) = self.current_scope() {
-            self.insert_import(scope, import);
-        }
-    }
-
     fn visit_var_decl(&mut self, var_decl: &VarDecl) {
         let Some(scope) = self.binding_scope(var_decl.kind) else {
             return;
@@ -129,7 +123,7 @@ impl ScopePass for ScopeCollector<'_> {
         for declarator in &var_decl.decls {
             let init = declarator.init.as_deref();
             self.record_declaration_metadata(scope, var_decl.kind, declarator, init);
-            self.insert_pat_locals(scope, &declarator.name);
+            self.reset_pat_locals(scope, &declarator.name);
             let derived_function_pattern =
                 collect_derived_function_pattern(self, &declarator.name, init, scope);
             self.record_declaration_provenance(
@@ -169,20 +163,10 @@ impl ScopePass for ScopeCollector<'_> {
         }
     }
 
-    fn visit_class_decl(&mut self, class_decl: &ClassDecl) {
-        if let Some(scope) = self.current_scope() {
-            self.insert_local(scope, class_decl.ident.sym.to_string());
-        }
-    }
-
     fn visit_catch_param(&mut self, pat: &Pat) {
         if let Some(scope) = self.current_scope() {
-            self.insert_pat_locals(scope, pat);
+            self.register_pat_locals(scope, pat);
         }
-    }
-
-    fn before_fn_decl(&mut self, fn_decl: &FnDecl, parent: ScopeId) {
-        self.insert_local(parent, fn_decl.ident.sym.to_string());
     }
 
     fn after_fn_decl(&mut self, fn_decl: &FnDecl, scope: ScopeId) {
@@ -200,15 +184,9 @@ impl ScopePass for ScopeCollector<'_> {
                 super::FunctionBinding { scope, parameters },
             );
         }
-        for param in &fn_decl.function.params {
-            self.insert_pat_locals(scope, &param.pat);
-        }
     }
 
-    fn after_function(&mut self, function: &Function, scope: ScopeId) {
-        for param in &function.params {
-            self.insert_pat_locals(scope, &param.pat);
-        }
+    fn after_function(&mut self, function: &swc_ecma_ast::Function, scope: ScopeId) {
         if let Some(pending) = self
             .functions
             .pending_function_names
@@ -228,9 +206,6 @@ impl ScopePass for ScopeCollector<'_> {
     }
 
     fn after_arrow(&mut self, arrow: &ArrowExpr, scope: ScopeId) {
-        for param in &arrow.params {
-            self.insert_pat_locals(scope, param);
-        }
         if let Some(pending) = self.functions.pending_function_names.remove(&arrow.span.lo) {
             let parameters = Self::arrow_parameters(arrow);
             self.functions.function_scopes.insert(
@@ -308,7 +283,7 @@ impl ScopeCollector<'_> {
         };
         match classify_declaration(self, init, pattern, derived_function_pattern) {
             DeclarationClassification::Binding { name, provenance } => {
-                self.insert(scope, name, provenance);
+                self.update_binding(scope, name, provenance);
             }
             DeclarationClassification::Require { module } => {
                 self.collect_require_aliases(pattern, module, scope);

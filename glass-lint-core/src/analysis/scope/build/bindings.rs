@@ -18,8 +18,8 @@ use crate::analysis::{
 /// Yield every `(name, provenance)` pair introduced by an import declaration.
 ///
 /// Both the scope planner and the source-order collector use the same
-/// provenance construction for specifiers, then insert through their own
-/// `insert` methods (which may differ in intern behaviour).
+/// provenance construction for specifiers, then insert through the planner's
+/// declaration-registration operation.
 pub(super) fn for_each_import_binding(
     import: &ImportDecl,
     mut f: impl FnMut(SmolStr, BindingProvenance),
@@ -85,8 +85,9 @@ pub(super) fn var_binding_scope(stack: &[ScopeId], scopes: &LexicalScopes) -> Op
 
 /// Invoke `f` with every binding name introduced by a destructuring pattern.
 ///
-/// Both passes mark every pattern-introduced binding as `Local`; this helper
-/// avoids duplicating the collection loop.
+/// The planner registers every pattern-introduced binding as `Local`; the
+/// collector reuses this helper when it must register its catch-only bindings
+/// or reset a redeclaration before classifying its initializer.
 pub(super) fn for_each_pat_binding(pat: &Pat, mut f: impl FnMut(SmolStr)) {
     let mut bindings = BTreeSet::new();
     collect_pat_bindings(pat, &mut bindings);

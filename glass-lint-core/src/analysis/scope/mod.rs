@@ -133,6 +133,24 @@ mod tests {
     }
 
     #[test]
+    fn redeclaration_resets_the_planned_binding_provenance() {
+        let parsed = crate::parse_test_source(
+            "var value = 'known'; var value = left + right; use(value);",
+            "redeclared-binding.js",
+        )
+        .expect("source should parse");
+        let graph = ScopeGraph::collect(&parsed.program);
+        let mut collector = IdentCollector::default();
+        parsed.program.visit_with(&mut collector);
+        collector.values.sort_by_key(|ident| ident.span.lo);
+
+        assert!(matches!(
+            graph.binding_at("value", collector.values[2].span),
+            Some(BindingProvenance::Local)
+        ));
+    }
+
+    #[test]
     fn repeated_scope_queries_preserve_nested_and_cross_scope_results() {
         let parsed = crate::parse_test_source(
             r"
