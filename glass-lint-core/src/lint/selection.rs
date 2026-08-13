@@ -142,7 +142,7 @@ fn valid_pattern_part(part: &str, allow_dot: bool) -> bool {
 /// literal. Keeping the parsed shape here prevents validation and execution
 /// from maintaining separate interpretations of the same selector.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RuleSelector {
+struct RuleSelector {
     /// Original selector text for serialization and display.
     raw: String,
     /// Validated wildcard pattern used for O(n) matching.
@@ -212,11 +212,11 @@ impl RuleSelector {
         })
     }
 
-    pub fn as_str(&self) -> &str {
+    fn as_str(&self) -> &str {
         &self.raw
     }
 
-    pub fn has_wildcard(&self) -> bool {
+    fn has_wildcard(&self) -> bool {
         self.pattern.has_wildcard()
     }
 

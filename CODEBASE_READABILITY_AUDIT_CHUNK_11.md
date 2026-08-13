@@ -86,7 +86,7 @@ the user-visible failure to first lint execution.
 
 ### Selector implementation visibility
 
-#### [ ] READ-082 — Keep `RuleSelector` private to rule selection
+#### [x] READ-082 — Keep `RuleSelector` private to rule selection
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -111,7 +111,10 @@ inside the override implementation, preserve serde’s string representation and
 all wildcard validation/matching behavior, and keep the existing unit tests
 focused on the private parser/matcher.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `RuleSelector` and its parser/matcher implementation methods
+are now private to rule selection. `RuleOverride` retains the validated
+selector/state API and serde representation. Verified with `make fmt && make
+ci`.
 
 **Audit disposition (2026-08-13):** Confirmed. Keep the parsed selector private
 and preserve the existing `RuleOverride` string/state API and serde shape.
