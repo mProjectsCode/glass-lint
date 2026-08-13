@@ -37,7 +37,7 @@ pub use limits::{AnalysisLimitError, AnalysisLimits};
 pub use lint::{
     BatchOptions, BatchResult, BatchResults, BatchStartError, LintConfigError, Linter,
     LinterConfig, ProjectAnalysis, ProjectAnalysisTimings, ProviderCatalogError, RuleBaseline,
-    RuleCatalog, RuleOverride, RuleSelection, RuleState,
+    RuleCatalog, RuleCompilationError, RuleOverride, RuleSelection, RuleState,
 };
 pub use parse::{ParseDiagnostic, SourceLanguage};
 pub use project::MatchCertainty;

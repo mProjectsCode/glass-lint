@@ -117,7 +117,7 @@ same-event storage type.
 
 ### Catalog and public error boundary
 
-#### [ ] READ-075 — Preserve compiler error categories through catalog APIs
+#### [x] READ-075 — Preserve compiler error categories through catalog APIs
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -141,7 +141,12 @@ boundary if necessary, but preserve the distinction between authored-query,
 matcher, physical-plan, and compiler-invariant failures and retain stable
 rule IDs and display text.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added the public provider-facing `RuleCompilationError`
+category and mapped compiler failures once at the catalog boundary. The
+category is retained through `ProviderCatalogError` and `LintConfigError`,
+while compiler-internal diagnostic types remain private to their boundary and
+display text remains stable. Added mapping coverage for all four categories.
+Verified with `make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed with a narrow public boundary:
 preserve provider-facing categories and stable display text, but do not leak

@@ -110,8 +110,8 @@ impl Linter {
     /// overrides are applied in declaration order, and limits are validated.
     pub fn new(config: LinterConfig) -> Result<Self, LintConfigError> {
         let catalog = RuleCatalog::combine(config.catalogs).map_err(|error| match error {
-            ProviderCatalogError::InvalidRule(id, message) => {
-                LintConfigError::InvalidRule(id, message)
+            ProviderCatalogError::InvalidRule(id, diagnostic) => {
+                LintConfigError::InvalidRule(id, diagnostic)
             }
             ProviderCatalogError::DuplicateRule(id) => LintConfigError::DuplicateRule(id),
             ProviderCatalogError::InvalidRuleId(id) => LintConfigError::InvalidSelector(id),

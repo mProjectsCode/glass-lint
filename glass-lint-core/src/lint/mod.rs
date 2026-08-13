@@ -12,7 +12,7 @@ mod report;
 mod selection;
 
 pub use batch::{BatchOptions, BatchResult, BatchResults, BatchStartError};
-pub use catalog::{ProviderCatalogError, RuleCatalog};
+pub use catalog::{ProviderCatalogError, RuleCatalog, RuleCompilationError};
 pub use linter::{Linter, LinterConfig};
 pub use report::{ProjectAnalysis, ProjectAnalysisTimings};
 pub use selection::{LintConfigError, RuleBaseline, RuleOverride, RuleSelection, RuleState};

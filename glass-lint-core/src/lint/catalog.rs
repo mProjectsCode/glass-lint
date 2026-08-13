@@ -17,9 +17,63 @@ pub enum ProviderCatalogError {
     /// Provider prefix or full rule ID is invalid.
     InvalidRuleId(String),
     /// A rule failed validation or matcher/query compilation.
-    InvalidRule(RuleId, String),
+    InvalidRule(RuleId, RuleCompilationError),
     /// A fully-qualified rule ID occurs in more than one catalog.
     DuplicateRule(RuleId),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// Categorized compiler failure for one provider rule.
+pub enum RuleCompilationError {
+    /// The rule used an invalid matcher declaration.
+    InvalidMatcher(String),
+    /// The authored query could not be compiled.
+    InvalidQuery(String),
+    /// The compiler encountered an internal invariant failure.
+    CompilerInvariant(String),
+    /// The normalized query could not form an executable physical plan.
+    InvalidPhysicalPlan(String),
+}
+
+impl fmt::Display for RuleCompilationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidMatcher(message)
+            | Self::InvalidQuery(message)
+            | Self::CompilerInvariant(message)
+            | Self::InvalidPhysicalPlan(message) => f.write_str(message),
+        }
+    }
+}
+
+fn map_compiled_catalog_error(error: CompiledCatalogError) -> ProviderCatalogError {
+    let (rule_id, diagnostic) = match error {
+        CompiledCatalogError::InvalidMatcher { rule_id, message } => {
+            (rule_id, RuleCompilationError::InvalidMatcher(message))
+        }
+        CompiledCatalogError::InvalidQuery {
+            rule_id,
+            diagnostic,
+        } => (
+            rule_id,
+            RuleCompilationError::InvalidQuery(diagnostic.to_string()),
+        ),
+        CompiledCatalogError::CompilerInvariant {
+            rule_id,
+            diagnostic,
+        } => (
+            rule_id,
+            RuleCompilationError::CompilerInvariant(diagnostic.to_string()),
+        ),
+        CompiledCatalogError::InvalidPhysicalPlan {
+            rule_id,
+            diagnostic,
+        } => (
+            rule_id,
+            RuleCompilationError::InvalidPhysicalPlan(diagnostic.to_string()),
+        ),
+    };
+    ProviderCatalogError::InvalidRule(rule_id, diagnostic)
 }
 
 impl fmt::Display for ProviderCatalogError {
@@ -61,23 +115,7 @@ impl RuleCatalog {
             .collect::<Result<Vec<_>, _>>()?;
 
         // Compile once into immutable records (no declarations retained).
-        let records = compile_records(&rules_and_ids).map_err(|error| match error {
-            CompiledCatalogError::InvalidMatcher { rule_id, message } => {
-                ProviderCatalogError::InvalidRule(rule_id, message)
-            }
-            CompiledCatalogError::CompilerInvariant {
-                rule_id,
-                diagnostic,
-            } => ProviderCatalogError::InvalidRule(rule_id, diagnostic.to_string()),
-            CompiledCatalogError::InvalidPhysicalPlan {
-                rule_id,
-                diagnostic,
-            } => ProviderCatalogError::InvalidRule(rule_id, diagnostic.to_string()),
-            CompiledCatalogError::InvalidQuery {
-                rule_id,
-                diagnostic,
-            } => ProviderCatalogError::InvalidRule(rule_id, diagnostic.to_string()),
-        })?;
+        let records = compile_records(&rules_and_ids).map_err(map_compiled_catalog_error)?;
 
         Ok(Self { records })
     }
@@ -150,7 +188,10 @@ impl RuleCatalog {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::rule::{Confidence, EventQuery, Rule, Severity};
+    use crate::api::rule::{
+        CompilerInvariantDiagnostic, Confidence, EventQuery, PhysicalPlanDiagnostic,
+        QueryDiagnostic, Rule, Severity,
+    };
 
     fn make_catalog(provider: &str) -> RuleCatalog {
         let rule = Rule::catalog_builder("request")
@@ -186,5 +227,51 @@ mod tests {
             combined.rule_id(RuleIndex::new(1)).unwrap().as_str(),
             "b:request"
         );
+    }
+
+    #[test]
+    fn catalog_mapping_preserves_compiler_error_categories() {
+        let rule_id = RuleId::parse("test:request").unwrap();
+        let cases = [
+            (
+                CompiledCatalogError::InvalidMatcher {
+                    rule_id: rule_id.clone(),
+                    message: "matcher".into(),
+                },
+                RuleCompilationError::InvalidMatcher("matcher".into()),
+            ),
+            (
+                CompiledCatalogError::InvalidQuery {
+                    rule_id: rule_id.clone(),
+                    diagnostic: QueryDiagnostic::new("query", "query".into()),
+                },
+                RuleCompilationError::InvalidQuery("[query] query".into()),
+            ),
+            (
+                CompiledCatalogError::CompilerInvariant {
+                    rule_id: rule_id.clone(),
+                    diagnostic: CompilerInvariantDiagnostic::Internal {
+                        detail: "invariant".into(),
+                    },
+                },
+                RuleCompilationError::CompilerInvariant("invariant".into()),
+            ),
+            (
+                CompiledCatalogError::InvalidPhysicalPlan {
+                    rule_id: rule_id.clone(),
+                    diagnostic: PhysicalPlanDiagnostic::EmptyRoots,
+                },
+                RuleCompilationError::InvalidPhysicalPlan(
+                    "physical plan must contain a root".into(),
+                ),
+            ),
+        ];
+
+        for (compiled, expected) in cases {
+            assert_eq!(
+                map_compiled_catalog_error(compiled),
+                ProviderCatalogError::InvalidRule(rule_id.clone(), expected)
+            );
+        }
     }
 }

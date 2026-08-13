@@ -4,7 +4,11 @@
 //! that enable or disable rules by pattern. Selectors support `*` wildcards
 //! for matching groups of rules.
 
-use crate::{RuleId, api::classification::RuleIndex, lint::catalog::RuleCatalog};
+use crate::{
+    RuleId,
+    api::classification::RuleIndex,
+    lint::catalog::{RuleCatalog, RuleCompilationError},
+};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -367,7 +371,7 @@ pub enum LintConfigError {
     /// A catalog contains the same fully-qualified rule more than once.
     DuplicateRule(RuleId),
     /// A catalog rule failed validation or matcher/query compilation.
-    InvalidRule(RuleId, String),
+    InvalidRule(RuleId, RuleCompilationError),
 }
 
 impl std::fmt::Display for LintConfigError {
