@@ -47,7 +47,7 @@ partial accumulator; preserve all current error ordering and finalization.
 
 ### Project local-execution lifecycle
 
-#### [ ] READ-084 — Reuse the local-analysis executor across project waves
+#### [x] READ-084 — Reuse the local-analysis executor across project waves
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -74,7 +74,10 @@ conversion, cache callback ordering, deterministic request sorting, and the
 ability for public callers to request different worker limits without sharing
 state across independent sessions.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ProjectSession` now owns a reusable local-analysis
+executor; its Rayon pool is retained across waves and rebuilt only when the
+effective worker count changes. Independent sessions retain independent
+execution state. Verified with `make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed with the ownership decision
 below: reuse belongs in the filesystem loader’s private wave context, not in

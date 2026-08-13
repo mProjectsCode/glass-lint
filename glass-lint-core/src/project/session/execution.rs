@@ -10,7 +10,7 @@ use std::{
     panic::{AssertUnwindSafe, catch_unwind},
 };
 
-use rayon::prelude::*;
+use rayon::{ThreadPool, ThreadPoolBuilder, prelude::*};
 
 use crate::{
     ParseDiagnostic,
@@ -48,7 +48,7 @@ pub(super) trait LocalJobCallbacks {
 
 pub(super) trait LocalJobExecutor {
     fn execute(
-        &self,
+        &mut self,
         candidates: &mut dyn Iterator<Item = LocalJobCandidate>,
         worker_limit: NonZeroUsize,
         analyzer: &SemanticAnalyzer,
@@ -185,23 +185,52 @@ pub struct InvocationCounts {
     pub evictions: usize,
 }
 
-pub(super) struct ThreadLocalJobExecutor;
+pub(super) struct ThreadLocalJobExecutor {
+    pool: Option<WorkerPool>,
+}
+
+struct WorkerPool {
+    worker_count: usize,
+    pool: ThreadPool,
+}
+
+impl ThreadLocalJobExecutor {
+    pub(super) const fn new() -> Self {
+        Self { pool: None }
+    }
+
+    fn pool(&mut self, worker_limit: NonZeroUsize) -> Result<&ThreadPool, LocalExecutionError> {
+        let worker_count = worker_limit.get().max(1);
+        let needs_rebuild = self
+            .pool
+            .as_ref()
+            .is_none_or(|pool| pool.worker_count != worker_count);
+        if needs_rebuild {
+            let pool = ThreadPoolBuilder::new()
+                .num_threads(worker_count)
+                .build()
+                .map_err(|_| LocalExecutionError::WorkerPanic)?;
+            self.pool = Some(WorkerPool { worker_count, pool });
+        }
+        Ok(&self
+            .pool
+            .as_ref()
+            .expect("executor pool is initialized")
+            .pool)
+    }
+}
 
 impl LocalJobExecutor for ThreadLocalJobExecutor {
     fn execute(
-        &self,
+        &mut self,
         candidates: &mut dyn Iterator<Item = LocalJobCandidate>,
         worker_limit: NonZeroUsize,
         analyzer: &SemanticAnalyzer,
         observer: &dyn ExecutionObserver,
         callbacks: &mut dyn LocalJobCallbacks,
     ) -> Result<(), LocalExecutionError> {
-        let worker_count = worker_limit.get().max(1);
         let bound = outstanding_job_bound(worker_limit);
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(worker_count)
-            .build()
-            .map_err(|_| LocalExecutionError::WorkerPanic)?;
+        let pool = self.pool(worker_limit)?;
         let mut exhausted = false;
         while !exhausted {
             let mut batch = Vec::with_capacity(bound);
@@ -280,7 +309,7 @@ pub struct ControlledLocalJobExecutor(pub ControlledReleaseOrder);
 #[cfg_attr(not(feature = "serde"), allow(dead_code))]
 impl LocalJobExecutor for ControlledLocalJobExecutor {
     fn execute(
-        &self,
+        &mut self,
         candidates: &mut dyn Iterator<Item = LocalJobCandidate>,
         _worker_limit: NonZeroUsize,
         analyzer: &SemanticAnalyzer,

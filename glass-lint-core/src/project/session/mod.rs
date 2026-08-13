@@ -112,6 +112,7 @@ pub struct ProjectSession<'a> {
     pub(super) state: SessionState<'a>,
     pub(super) sources: SourceTable,
     artifacts: AnalysisArtifacts,
+    executor: ThreadLocalJobExecutor,
 }
 
 struct LocalAnalysisTransition<'borrow, 'state> {
@@ -226,6 +227,7 @@ impl<'a> ProjectSession<'a> {
             state,
             sources: SourceTable::default(),
             artifacts: AnalysisArtifacts::default(),
+            executor: ThreadLocalJobExecutor::new(),
         }
     }
 
@@ -314,7 +316,14 @@ impl<'a> ProjectSession<'a> {
         worker_count: usize,
     ) -> Result<Vec<ResolutionRequest>, ProjectError> {
         let observer = NoopExecutionObserver;
-        self.analyze_pending_sources_with(worker_count, &ThreadLocalJobExecutor, &observer)
+        Self::analyze_pending_sources_with(
+            &self.state,
+            &self.sources,
+            &mut self.artifacts,
+            &mut self.executor,
+            worker_count,
+            &observer,
+        )
     }
 
     /// Admit and analyze owned sources with bounded local execution.
@@ -330,32 +339,34 @@ impl<'a> ProjectSession<'a> {
     }
 
     fn analyze_pending_sources_with<E: LocalJobExecutor>(
-        &mut self,
+        state: &SessionState<'a>,
+        sources: &SourceTable,
+        artifacts: &mut AnalysisArtifacts,
+        executor: &mut E,
         worker_count: usize,
-        executor: &E,
         observer: &dyn ExecutionObserver,
     ) -> Result<Vec<ResolutionRequest>, ProjectError> {
         let worker_count = normalize_worker_limit(worker_count);
         let mut requests = Vec::new();
         {
             let mut callbacks = LocalAnalysisTransition {
-                state: &self.state,
-                artifacts: &mut self.artifacts,
+                state,
+                artifacts,
                 requests: &mut requests,
                 observer,
             };
-            let mut candidates = self
-                .sources
-                .in_normalized_path_order()
-                .map(|(path, source)| LocalJobCandidate {
-                    path: path.clone(),
-                    source: source.clone(),
-                });
+            let mut candidates =
+                sources
+                    .in_normalized_path_order()
+                    .map(|(path, source)| LocalJobCandidate {
+                        path: path.clone(),
+                        source: source.clone(),
+                    });
             executor
                 .execute(
                     &mut candidates,
                     worker_count,
-                    &self.state.analyzer,
+                    &state.analyzer,
                     observer,
                     &mut callbacks,
                 )
@@ -388,9 +399,12 @@ impl<'a> ProjectSession<'a> {
     ) -> Result<Vec<ResolutionRequest>, ProjectError> {
         self.accept_sources(sources)?;
         let observer = NoopExecutionObserver;
-        self.analyze_pending_sources_with(
+        Self::analyze_pending_sources_with(
+            &self.state,
+            &self.sources,
+            &mut self.artifacts,
+            &mut ControlledLocalJobExecutor(order),
             worker_count,
-            &ControlledLocalJobExecutor(order),
             &observer,
         )
     }
@@ -403,7 +417,14 @@ impl<'a> ProjectSession<'a> {
         observer: &CountingExecutionObserver,
     ) -> Result<Vec<ResolutionRequest>, ProjectError> {
         self.accept_sources(sources)?;
-        self.analyze_pending_sources_with(worker_count, &ThreadLocalJobExecutor, observer)
+        Self::analyze_pending_sources_with(
+            &self.state,
+            &self.sources,
+            &mut self.artifacts,
+            &mut self.executor,
+            worker_count,
+            observer,
+        )
     }
 
     #[cfg(test)]
