@@ -245,13 +245,6 @@ struct ReadWaveOutcome {
     deferred_error: Option<ProjectLoadError>,
 }
 
-/// Resolver output that the coordinator can apply to the frontier in request
-/// order after resolution policy and cache state have been handled.
-struct RequestResolutionOutcome {
-    internal_targets: Vec<ProjectRelativePath>,
-    elapsed: Duration,
-}
-
 /// Maximum number of files processed in one parallel wave. Independent of
 /// the total file limit so that parallelism does not create an unbounded
 /// memory spike.
@@ -367,9 +360,9 @@ impl<'a> ProjectLoadState<'a> {
 
             metrics.admit_requests(requests.len(), self.boundary.options().max_requests())?;
 
-            let resolution = self.resolve_requests(requests)?;
-            metrics.record_resolution(resolution.elapsed);
-            self.apply_request_resolution(resolution, metrics)?;
+            let (internal_targets, elapsed) = self.resolve_requests(requests)?;
+            metrics.record_resolution(elapsed);
+            self.apply_request_resolution(internal_targets, metrics)?;
         }
 
         // Propagate the deferred byte error after analyzed sources and their
@@ -438,7 +431,7 @@ impl<'a> ProjectLoadState<'a> {
     fn resolve_requests(
         &mut self,
         requests: AuthoredRequests,
-    ) -> Result<RequestResolutionOutcome, ProjectLoadError> {
+    ) -> Result<(Vec<ProjectRelativePath>, Duration), ProjectLoadError> {
         let mut internal_targets = Vec::new();
         let mut elapsed = Duration::ZERO;
         for request in requests {
@@ -452,18 +445,15 @@ impl<'a> ProjectLoadState<'a> {
                 internal_targets.push(path.clone());
             }
         }
-        Ok(RequestResolutionOutcome {
-            internal_targets,
-            elapsed,
-        })
+        Ok((internal_targets, elapsed))
     }
 
     fn apply_request_resolution(
         &mut self,
-        resolution: RequestResolutionOutcome,
+        internal_targets: Vec<ProjectRelativePath>,
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<(), ProjectLoadError> {
-        for path in resolution.internal_targets {
+        for path in internal_targets {
             self.enqueue_internal_target(path, metrics)?;
         }
         Ok(())

@@ -39,7 +39,7 @@ still produces a partial report from all successfully analyzed sources.
 `ProjectLoadState`, deleting `ClosedFrontier`, `FinishMode`, and the split
 `finish`/`finish_inner` path. Verified with `cargo test -p glass-lint-project`.
 
-#### [ ] READ-002 — Remove the one-use request-resolution carrier
+#### [x] READ-002 — Remove the one-use request-resolution carrier
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -58,7 +58,9 @@ belong to the same `ProjectLoadState`.
 duration. Keep resolver-cache hits from contributing to resolution timing and
 retain deterministic request order and the existing deadline checks.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced `RequestResolutionOutcome` with a direct tuple return
+and passed the internal-target vector directly to the applying method. Verified
+with `cargo test -p glass-lint-project`.
 
 #### [ ] READ-003 — Transfer load metrics without a clone-only snapshot
 
