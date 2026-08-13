@@ -195,13 +195,22 @@ impl SourceLineIndex {
         })
     }
 
+    fn validated_range_from_offsets(
+        &self,
+        start: u32,
+        end: u32,
+    ) -> Result<(ByteRange, ValidatedByteRange), InvalidSourceBoundary> {
+        let range = ByteRange::new(start, end).map_err(|_| InvalidSourceBoundary::OutOfBounds)?;
+        let validated = self.validate_range(range)?;
+        Ok((range, validated))
+    }
+
     pub(crate) fn byte_range_from_offsets(
         &self,
         start: u32,
         end: u32,
     ) -> Result<ByteRange, InvalidSourceBoundary> {
-        let range = ByteRange::new(start, end).map_err(|_| InvalidSourceBoundary::OutOfBounds)?;
-        self.validate_range(range)?;
+        let (range, _) = self.validated_range_from_offsets(start, end)?;
         Ok(range)
     }
 
@@ -210,8 +219,8 @@ impl SourceLineIndex {
         start: u32,
         end: u32,
     ) -> Result<SourceRange, InvalidSourceBoundary> {
-        let range = ByteRange::new(start, end).map_err(|_| InvalidSourceBoundary::OutOfBounds)?;
-        self.range(self.validate_range(range)?)
+        let (_, validated) = self.validated_range_from_offsets(start, end)?;
+        self.range(validated)
             .ok_or(InvalidSourceBoundary::OutOfBounds)
     }
 

@@ -111,7 +111,7 @@ validation and do not change identifier semantics.
 
 ### Source-coordinate conversion
 
-#### [ ] READ-079 — Centralize offset-to-validated-range conversion
+#### [x] READ-079 — Centralize offset-to-validated-range conversion
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -133,7 +133,9 @@ private coordinates), and have both methods delegate to it. Retain the public
 outputs; preserve UTF-8 boundary checks, out-of-bounds errors, EOF handling,
 and parser-versus-semantic caller behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `SourceLineIndex` now centralizes raw-offset conversion and
+validated boundary admission for both byte-range and display-range callers.
+Verified with `make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed. Centralize raw-offset admission
 and validation while leaving byte-range and display-range outputs as separate
