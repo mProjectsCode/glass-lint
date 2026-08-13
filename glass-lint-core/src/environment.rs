@@ -141,7 +141,8 @@ impl Environment {
     ///
     /// Environment entries represent bindings, not member paths, so dots and
     /// other punctuation are intentionally rejected here.
-    fn validated_identifier(name: &str) -> Result<SmolStr, EnvironmentError> {
+    fn validated_identifier(name: impl AsRef<str>) -> Result<SmolStr, EnvironmentError> {
+        let name = name.as_ref();
         let valid = !name.is_empty()
             && name.chars().enumerate().all(|(index, character)| {
                 if index == 0 {
@@ -185,8 +186,8 @@ impl Environment {
     }
 
     /// Add a global binding supplied by the host environment.
-    pub fn add_global(&mut self, name: impl Into<String>) -> Result<(), EnvironmentError> {
-        let name = Self::validated_identifier(&name.into())?;
+    pub fn add_global(&mut self, name: impl AsRef<str>) -> Result<(), EnvironmentError> {
+        let name = Self::validated_identifier(name)?;
         self.register_global(name, None);
         Ok(())
     }
@@ -195,11 +196,11 @@ impl Environment {
     pub fn add_globals<I, S>(&mut self, names: I) -> Result<(), EnvironmentError>
     where
         I: IntoIterator<Item = S>,
-        S: Into<String>,
+        S: AsRef<str>,
     {
         let names = names
             .into_iter()
-            .map(|name| Self::validated_identifier(&name.into()))
+            .map(Self::validated_identifier)
             .collect::<Result<BTreeSet<_>, _>>()?;
         self.inner_mut().global_bindings.extend(names);
         Ok(())
@@ -209,8 +210,8 @@ impl Environment {
     ///
     /// A global-object alias is also a global binding. Direct properties of
     /// this object can share callable identity with configured global bindings.
-    pub fn add_global_object(&mut self, name: impl Into<String>) -> Result<(), EnvironmentError> {
-        let name = Self::validated_identifier(&name.into())?;
+    pub fn add_global_object(&mut self, name: impl AsRef<str>) -> Result<(), EnvironmentError> {
+        let name = Self::validated_identifier(name)?;
         self.register_global(name, Some(GlobalObjectMembers::ConfiguredGlobals));
         Ok(())
     }
@@ -223,17 +224,17 @@ impl Environment {
     /// current plugin realm.
     pub fn add_global_object_with_members<I, S>(
         &mut self,
-        name: impl Into<String>,
+        name: impl AsRef<str>,
         members: I,
     ) -> Result<(), EnvironmentError>
     where
         I: IntoIterator<Item = S>,
-        S: Into<String>,
+        S: AsRef<str>,
     {
-        let name = Self::validated_identifier(&name.into())?;
+        let name = Self::validated_identifier(name)?;
         let members = members
             .into_iter()
-            .map(|member| Self::validated_identifier(&member.into()))
+            .map(Self::validated_identifier)
             .collect::<Result<BTreeSet<_>, _>>()?;
         self.register_global(name, Some(GlobalObjectMembers::Restricted(members)));
         Ok(())

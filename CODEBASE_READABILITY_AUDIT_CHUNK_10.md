@@ -79,7 +79,7 @@ destructuring; it should not add a second whole-tree walk.
 
 ### Host-environment input APIs
 
-#### [ ] READ-078 — Avoid forced `String` intermediates for global identifiers
+#### [x] READ-078 — Avoid forced `String` intermediates for global identifiers
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -103,7 +103,10 @@ bulk validation atomic. Preserve reserved-word rejection, identifier-only
 semantics, deterministic set ordering, and the current configured-versus-
 restricted global-object behavior.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Environment registration now accepts `AsRef<str>` inputs and
+shares one validated `SmolStr` conversion across single and bulk APIs without
+changing atomic validation or identifier semantics. Verified with `make fmt &&
+make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed. Prefer direct `SmolStr`
 conversion or borrowed validation with one canonical owner; retain atomic bulk
