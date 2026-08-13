@@ -14,7 +14,7 @@ API requires.
 
 ### Finding ordering and duplicate assembly
 
-#### [ ] READ-080 — Make duplicate merging own the single finding sort
+#### [x] READ-080 — Make duplicate merging own the single finding sort
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -40,7 +40,9 @@ certainty merge, and deterministic file insertion behavior. Add or retain a
 focused test proving duplicate reduction remains ordered when duplicate
 messages/evidence are present.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `populate_project_files` now relies on
+`merge_duplicate_findings` for the canonical sort and duplicate reduction,
+removing the redundant caller-side sort. Verified with `make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed. The merge helper can own the
 single sort because merged findings retain the first finding’s ordering fields;

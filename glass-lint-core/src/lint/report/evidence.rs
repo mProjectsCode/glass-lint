@@ -101,8 +101,7 @@ pub(super) fn populate_project_files(
             continue;
         };
         let findings = findings_for_module(assembly, project, session, module, classification);
-        let mut findings = merge_duplicate_findings(findings);
-        findings.sort_by(compare_findings);
+        let findings = merge_duplicate_findings(findings);
         files.insert(
             module.path().clone(),
             FileReport::new(module.path().clone(), findings, Vec::new()),
