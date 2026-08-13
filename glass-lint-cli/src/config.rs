@@ -7,15 +7,15 @@ use clap::ValueEnum;
 #[cfg(test)]
 use glass_lint_core::project::SourceFile;
 use glass_lint_core::{
-    CoreConfig, Linter, LinterConfig, MAX_SOURCE_BYTES, RuleBaseline, RuleCatalog, RuleOverride,
-    RuleSelection, Severity,
+    CoreConfig, Linter, LinterConfig, MAX_SOURCE_BYTES, PreparedRuleSelection, RuleBaseline,
+    RuleCatalog, RuleOverride, RuleSelection, Severity,
 };
 use glass_lint_project::ValidatedProjectLoadOptions;
 use serde::{Deserialize, Serialize};
 
 use crate::args::Args;
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, ValueEnum)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum Provider {
     /// Obsidian rules together with the generic JavaScript catalog.
@@ -26,7 +26,7 @@ pub enum Provider {
     Electron,
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, ValueEnum)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum RuleSelectionProfile {
     /// Only high-confidence rules selected for normal use.
@@ -134,6 +134,16 @@ pub struct Config {
     #[serde(default)]
     /// CLI provider, profile, output, and exit-policy settings.
     pub cli: CliConfig,
+    #[serde(skip)]
+    prepared_selection: Option<PreparedConfig>,
+}
+
+#[derive(Clone, Debug)]
+struct PreparedConfig {
+    provider: Provider,
+    profile: RuleSelectionProfile,
+    core: CoreConfig,
+    selection: PreparedRuleSelection,
 }
 
 impl Default for CliConfig {
@@ -158,6 +168,7 @@ impl Default for Config {
             version: 2,
             core: CoreConfig::default(),
             cli: CliConfig::default(),
+            prepared_selection: None,
         }
     }
 }
@@ -237,6 +248,7 @@ pub fn load(args: &Args) -> Result<Config> {
         version,
         core: raw.core,
         cli: raw.cli,
+        prepared_selection: None,
     }
     .validate()
 }
@@ -268,10 +280,19 @@ impl Config {
             bail!("pretty_max_width must be at least 20")
         }
         let catalog = catalog(self.cli.provider, self.cli.profile);
-        self.rule_selection()
-            .validate(&catalog)
+        let prepared_selection = self
+            .rule_selection()
+            .prepare(&catalog)
             .map_err(|error| anyhow::anyhow!("rule/provider mismatch: {error}"))?;
-        Ok(self)
+        Ok(Self {
+            prepared_selection: Some(PreparedConfig {
+                provider: self.cli.provider,
+                profile: self.cli.profile,
+                core: self.core.clone(),
+                selection: prepared_selection,
+            }),
+            ..self
+        })
     }
 }
 
@@ -355,13 +376,17 @@ pub fn base_linter(provider: Provider, profile: RuleSelectionProfile) -> Linter 
 /// Validation happens after catalog construction so rule selections and core
 /// limits are checked against the exact provider environment that will run.
 pub fn selected_linter(config: &Config) -> Result<Linter> {
-    let selection = config.rule_selection();
-    let linter = Linter::new(
-        provider_config(config.cli.provider)
-            .with_rules(selection)
-            .with_limits(config.core.limits.clone()),
-    )
-    .map_err(|error| anyhow::anyhow!(error))?;
+    let provider_config =
+        provider_config(config.cli.provider).with_limits(config.core.limits.clone());
+    let provider_config = match config.prepared_selection.as_ref().filter(|prepared| {
+        prepared.provider == config.cli.provider
+            && prepared.profile == config.cli.profile
+            && prepared.core == config.core
+    }) {
+        Some(prepared) => provider_config.with_prepared_rules(prepared.selection.clone()),
+        None => provider_config.with_rules(config.rule_selection()),
+    };
+    let linter = Linter::new(provider_config).map_err(|error| anyhow::anyhow!(error))?;
     tracing::debug!(
         target: "glass_lint::cli",
         rules = linter.catalog().rule_count(),
@@ -470,6 +495,29 @@ mod tests {
         let overridden = selected_linter(&override_config).unwrap();
         assert!(
             overridden
+                .enabled_rule_ids()
+                .iter()
+                .any(|id| id.as_str() == "js:dynamic-code.eval")
+        );
+    }
+
+    #[test]
+    fn validated_config_reuses_prepared_rule_selection() {
+        let mut config = Config::default();
+        config.cli.provider = Provider::Js;
+        config.core.overrides = vec![
+            glass_lint_core::RuleOverride::new(
+                "js:dynamic-code.eval",
+                glass_lint_core::RuleState::Enabled,
+            )
+            .unwrap(),
+        ];
+
+        let validated = config.validate().unwrap();
+        let linter = selected_linter(&validated).unwrap();
+
+        assert!(
+            linter
                 .enabled_rule_ids()
                 .iter()
                 .any(|id| id.as_str() == "js:dynamic-code.eval")

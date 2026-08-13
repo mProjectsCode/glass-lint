@@ -15,7 +15,9 @@ pub use batch::{BatchOptions, BatchResult, BatchResults, BatchStartError};
 pub use catalog::{ProviderCatalogError, RuleCatalog, RuleCompilationError};
 pub use linter::{Linter, LinterConfig};
 pub use report::{ProjectAnalysis, ProjectAnalysisTimings};
-pub use selection::{LintConfigError, RuleBaseline, RuleOverride, RuleSelection, RuleState};
+pub use selection::{
+    LintConfigError, PreparedRuleSelection, RuleBaseline, RuleOverride, RuleSelection, RuleState,
+};
 
 // This bridge is visible to the crate root so sibling phase modules can use
 // the private assembler without making the lint module part of the public API.

@@ -252,15 +252,31 @@ pub struct RuleSelection {
     overrides: Vec<RuleOverride>,
 }
 
-#[derive(Clone, Copy)]
-enum SelectionEvaluationMode {
-    Validate,
-    Resolve,
-}
-
 struct SelectionEvaluation {
     matched_overrides: Vec<bool>,
-    enabled: Option<Vec<RuleIndex>>,
+    enabled: Vec<RuleIndex>,
+}
+
+/// A catalog-bound, validated rule selection ready for linter construction.
+///
+/// The prepared value owns the exact combined catalog used during validation,
+/// keeping its enabled indexes aligned with the catalog order without asking
+/// linter construction to evaluate the selection again.
+#[derive(Clone, Debug)]
+pub struct PreparedRuleSelection {
+    catalog: RuleCatalog,
+    enabled: Vec<RuleIndex>,
+    selection: RuleSelection,
+}
+
+impl PreparedRuleSelection {
+    pub(crate) fn selection(&self) -> &RuleSelection {
+        &self.selection
+    }
+
+    pub(crate) fn into_parts(self) -> (RuleCatalog, Vec<RuleIndex>) {
+        (self.catalog, self.enabled)
+    }
 }
 
 impl Default for RuleSelection {
@@ -293,28 +309,30 @@ impl RuleSelection {
 
     /// Validate every override against an assembled catalog.
     pub fn validate(&self, catalog: &RuleCatalog) -> Result<(), LintConfigError> {
-        let evaluation = self.evaluate(catalog, SelectionEvaluationMode::Validate);
+        let evaluation = self.evaluate(catalog);
         self.validate_override_matches(&evaluation.matched_overrides)
     }
 
-    pub(crate) fn resolve(&self, catalog: &RuleCatalog) -> Result<Vec<RuleIndex>, LintConfigError> {
-        let evaluation = self.evaluate(catalog, SelectionEvaluationMode::Resolve);
+    /// Resolve and validate this selection against an assembled catalog.
+    pub fn prepare(&self, catalog: &RuleCatalog) -> Result<PreparedRuleSelection, LintConfigError> {
+        let evaluation = self.evaluate(catalog);
         self.validate_override_matches(&evaluation.matched_overrides)?;
-        Ok(evaluation
-            .enabled
-            .expect("resolve evaluation collects enabled rule indices"))
+        Ok(PreparedRuleSelection {
+            catalog: catalog.clone(),
+            enabled: evaluation.enabled,
+            selection: self.clone(),
+        })
     }
 
-    fn evaluate(
-        &self,
-        catalog: &RuleCatalog,
-        mode: SelectionEvaluationMode,
-    ) -> SelectionEvaluation {
+    pub(crate) fn resolve(&self, catalog: &RuleCatalog) -> Result<Vec<RuleIndex>, LintConfigError> {
+        let evaluation = self.evaluate(catalog);
+        self.validate_override_matches(&evaluation.matched_overrides)?;
+        Ok(evaluation.enabled)
+    }
+
+    fn evaluate(&self, catalog: &RuleCatalog) -> SelectionEvaluation {
         let mut matched_overrides = vec![false; self.overrides.len()];
-        let mut enabled = match mode {
-            SelectionEvaluationMode::Validate => None,
-            SelectionEvaluationMode::Resolve => Some(Vec::new()),
-        };
+        let mut enabled = Vec::new();
 
         for (index, record) in catalog.compiled().iter().enumerate() {
             let rule_id = &record.rule_id;
@@ -330,7 +348,7 @@ impl RuleSelection {
                     state = override_.state() == RuleState::Enabled;
                 }
             }
-            if state && let Some(enabled) = &mut enabled {
+            if state {
                 enabled.push(RuleIndex::new(index));
             }
         }

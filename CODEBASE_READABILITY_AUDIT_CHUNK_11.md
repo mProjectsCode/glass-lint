@@ -50,7 +50,7 @@ the caller-side sort is redundant.
 
 ### Rule-selection evaluation and construction boundary
 
-#### [ ] READ-081 — Collapse selection modes and avoid repeated catalog scans
+#### [x] READ-081 — Collapse selection modes and avoid repeated catalog scans
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -79,7 +79,11 @@ indexes into `LinterConfig`/`Linter::new`. Preserve declaration-order override
 precedence, deterministic catalog-order indexes, exact-versus-wildcard error
 classification, and the CLI’s desired timing for reporting invalid rules.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Selection evaluation now always returns enabled indexes, and
+`PreparedRuleSelection` owns a validated combined catalog plus those indexes.
+CLI config validation retains the prepared value for selected-linter
+construction, while changed provider/profile/core fields invalidate reuse.
+Verified with `make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed with the timing decision below:
 keep invalid-selection errors during CLI config loading and retain a validated

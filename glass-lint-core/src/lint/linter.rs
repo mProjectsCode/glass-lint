@@ -9,7 +9,7 @@ use crate::{
     lint::{
         batch::{BatchOptions, BatchResults, BatchStartError},
         catalog::RuleCatalog,
-        selection::{LintConfigError, RuleSelection},
+        selection::{LintConfigError, PreparedRuleSelection, RuleSelection},
     },
     project::{AnalysisReport, ProjectError, ProjectSession, SessionState},
 };
@@ -24,6 +24,8 @@ pub struct LinterConfig {
     environment: Environment,
     /// Baseline and per-rule overrides for the combined catalog.
     selection: RuleSelection,
+    /// Optional catalog-bound selection prepared during an earlier validation.
+    prepared_selection: Option<PreparedRuleSelection>,
     /// Parser and semantic operation bounds.
     limits: AnalysisLimits,
 }
@@ -34,6 +36,7 @@ impl LinterConfig {
             catalogs,
             environment,
             selection: RuleSelection::default(),
+            prepared_selection: None,
             limits: AnalysisLimits::default(),
         }
     }
@@ -41,6 +44,18 @@ impl LinterConfig {
     #[must_use]
     pub fn with_rules(mut self, selection: RuleSelection) -> Self {
         self.selection = selection;
+        self.prepared_selection = None;
+        self
+    }
+
+    /// Use a catalog-bound selection prepared by [`RuleSelection::prepare`].
+    /// The prepared catalog and indexes become authoritative; the catalogs
+    /// supplied to [`LinterConfig::new`] are retained only for the unprepared
+    /// construction path.
+    #[must_use]
+    pub fn with_prepared_rules(mut self, selection: PreparedRuleSelection) -> Self {
+        self.selection = selection.selection().clone();
+        self.prepared_selection = Some(selection);
         self
     }
 
@@ -109,15 +124,19 @@ impl Linter {
     /// unified catalog (rejecting duplicate fully-qualified IDs), rule
     /// overrides are applied in declaration order, and limits are validated.
     pub fn new(config: LinterConfig) -> Result<Self, LintConfigError> {
-        let catalog = RuleCatalog::combine(config.catalogs).map_err(|error| match error {
-            ProviderCatalogError::InvalidRule(id, diagnostic) => {
-                LintConfigError::InvalidRule(id, diagnostic)
-            }
-            ProviderCatalogError::DuplicateRule(id) => LintConfigError::DuplicateRule(id),
-            ProviderCatalogError::InvalidRuleId(id) => LintConfigError::InvalidSelector(id),
-        })?;
-
-        let enabled = config.selection.resolve(&catalog)?;
+        let (catalog, enabled) = if let Some(prepared) = config.prepared_selection {
+            prepared.into_parts()
+        } else {
+            let catalog = RuleCatalog::combine(config.catalogs).map_err(|error| match error {
+                ProviderCatalogError::InvalidRule(id, diagnostic) => {
+                    LintConfigError::InvalidRule(id, diagnostic)
+                }
+                ProviderCatalogError::DuplicateRule(id) => LintConfigError::DuplicateRule(id),
+                ProviderCatalogError::InvalidRuleId(id) => LintConfigError::InvalidSelector(id),
+            })?;
+            let enabled = config.selection.resolve(&catalog)?;
+            (catalog, enabled)
+        };
 
         // Limits are guaranteed valid by construction through
         // `AnalysisLimits::default` or its named builders; no re-validation
