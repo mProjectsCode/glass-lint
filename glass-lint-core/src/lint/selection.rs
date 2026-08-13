@@ -309,14 +309,12 @@ impl RuleSelection {
 
     /// Validate every override against an assembled catalog.
     pub fn validate(&self, catalog: &RuleCatalog) -> Result<(), LintConfigError> {
-        let evaluation = self.evaluate(catalog);
-        self.validate_override_matches(&evaluation.matched_overrides)
+        self.validated_evaluation(catalog).map(|_| ())
     }
 
     /// Resolve and validate this selection against an assembled catalog.
     pub fn prepare(&self, catalog: &RuleCatalog) -> Result<PreparedRuleSelection, LintConfigError> {
-        let evaluation = self.evaluate(catalog);
-        self.validate_override_matches(&evaluation.matched_overrides)?;
+        let evaluation = self.validated_evaluation(catalog)?;
         Ok(PreparedRuleSelection {
             catalog: catalog.clone(),
             enabled: evaluation.enabled,
@@ -325,9 +323,16 @@ impl RuleSelection {
     }
 
     pub(crate) fn resolve(&self, catalog: &RuleCatalog) -> Result<Vec<RuleIndex>, LintConfigError> {
+        Ok(self.validated_evaluation(catalog)?.enabled)
+    }
+
+    fn validated_evaluation(
+        &self,
+        catalog: &RuleCatalog,
+    ) -> Result<SelectionEvaluation, LintConfigError> {
         let evaluation = self.evaluate(catalog);
         self.validate_override_matches(&evaluation.matched_overrides)?;
-        Ok(evaluation.enabled)
+        Ok(evaluation)
     }
 
     fn evaluate(&self, catalog: &RuleCatalog) -> SelectionEvaluation {

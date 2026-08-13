@@ -114,7 +114,7 @@ Verified with `cargo test -p glass-lint-harness`.
 
 ### Rule selection
 
-#### [ ] READ-005 — Centralize catalog evaluation and override validation
+#### [x] READ-005 — Centralize catalog evaluation and override validation
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -135,7 +135,9 @@ canonical path and derive the other projections from it. Preserve declaration
 order for overrides, unmatched wildcard errors, exact unknown-rule errors, and
 the catalog alignment captured by `PreparedRuleSelection`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added one private `validated_evaluation` path and made
+`validate`, `prepare`, and `resolve` project its result. Verified with
+`cargo test -p glass-lint-core --test integration linter`.
 
 ## Systemic Themes
 
