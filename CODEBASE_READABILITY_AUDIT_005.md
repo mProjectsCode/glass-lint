@@ -14,7 +14,7 @@ less explicit than the surrounding architecture.
 
 ### Semantic phase transitions
 
-#### [ ] READ-020 — `SealedAnalysis` is an immediately consumed forwarding bundle
+#### [x] READ-020 — `SealedAnalysis` is an immediately consumed forwarding bundle
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -36,7 +36,10 @@ derived, resolver tables are frozen, name exhaustion is annotated, and
 capabilities/status are retained; the simplification should delete only the
 single-use bundle and its conversion method.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the single-use `SealedAnalysis` wrapper; `seal` now
+constructs the final `SemanticArtifact` directly and receives the effect limit
+at that boundary. Export-origin ordering, frozen tables, capabilities, and
+status retention are unchanged. Verified with `make fmt && make ci`.
 
 #### [ ] READ-021 — Cache adaptation clones an entire analysis wrapper to extract two fields
 

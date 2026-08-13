@@ -289,25 +289,6 @@ impl AnalysisCompletion {
     }
 }
 
-struct SealedAnalysis {
-    facts: SemanticFacts,
-    export_origins: BTreeMap<SmolStr, SymbolCallProvenance>,
-    capabilities: DerivedPhaseCapabilities,
-    status: AnalysisStatus,
-}
-
-impl SealedAnalysis {
-    fn into_artifact(self, effect_limit: usize) -> SemanticArtifact {
-        SemanticArtifact::from_analysis(
-            self.facts,
-            self.export_origins,
-            effect_limit,
-            self.capabilities,
-            self.status,
-        )
-    }
-}
-
 /// The resolved local-analysis phase. The scope-frozen resolver, the
 /// scope-collection issues, and the built (unfrozen) fact stream travel
 /// together until the single consuming `freeze` transition seals the name and
@@ -382,7 +363,8 @@ impl<'a> ResolvedProgram<'a> {
         environment: &Environment,
         completion: AnalysisCompletion,
         program_span: Span,
-    ) -> SealedAnalysis {
+        effect_limit: usize,
+    ) -> SemanticArtifact {
         let export_origins =
             self.derive_export_origins(&self.built.interface, &completion, program_span);
         let name_table_exhausted = self.resolver.name_table_exhausted();
@@ -394,12 +376,13 @@ impl<'a> ResolvedProgram<'a> {
         let stream = resolver.freeze_into(stream);
         let capabilities = completion.capabilities;
         let facts = SemanticFacts::from_analysis(stream, interface, environment, capabilities);
-        SealedAnalysis {
+        SemanticArtifact::from_analysis(
             facts,
             export_origins,
+            effect_limit,
             capabilities,
-            status: completion.status,
-        }
+            completion.status,
+        )
     }
 
     /// One consuming transition from the resolved phase to the immutable
@@ -412,8 +395,12 @@ impl<'a> ResolvedProgram<'a> {
         program_span: Span,
     ) -> SemanticArtifact {
         let completion = self.assess_completion(limits);
-        self.seal(environment, completion, program_span)
-            .into_artifact(limits.effect_operations())
+        self.seal(
+            environment,
+            completion,
+            program_span,
+            limits.effect_operations(),
+        )
     }
 }
 
