@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use super::*;
 use crate::api::{classification::MatchKind, rule::ValueMatcher};
 
@@ -49,6 +51,7 @@ fn any_expr_accepts_non_empty_branches() {
             name: SmolStr::new("fetch"),
         },
         constraints: vec![],
+        constraint_counts: BTreeMap::new(),
     });
     let any = AnyExpr::new(vec![event.clone(), event]).unwrap();
     assert_eq!(any.len(), 2);
@@ -63,6 +66,7 @@ fn all_expr_accepts_non_empty_branches() {
             name: SmolStr::new("fetch"),
         },
         constraints: vec![],
+        constraint_counts: BTreeMap::new(),
     });
     let all = AllExpr::new(vec![event]).unwrap();
     assert_eq!(all.len(), 1);
@@ -77,6 +81,7 @@ fn expression_depth_is_bounded_before_compilation() {
             name: SmolStr::new("fetch"),
         },
         constraints: vec![],
+        constraint_counts: BTreeMap::new(),
     });
     for _ in 1..limits::MAX_EXPR_DEPTH {
         nested = QueryExpr::any(AnyExpr::new(vec![nested]).unwrap());
@@ -98,6 +103,7 @@ fn expression_child_limit_plus_one_is_rejected_at_authoring() {
             name: SmolStr::new("fetch"),
         },
         constraints: vec![],
+        constraint_counts: BTreeMap::new(),
     });
     let branches = vec![event; limits::MAX_EXPR_CHILDREN + 1];
     assert!(matches!(
@@ -417,6 +423,7 @@ fn query_expr_diagnostic_names_are_stable() {
             name: SmolStr::new("fetch"),
         },
         constraints: vec![],
+        constraint_counts: BTreeMap::new(),
     });
     assert_eq!(event.diagnostic_name(), "event");
 
@@ -501,6 +508,7 @@ fn query_expr_display_shapes_are_compact() {
             name: SmolStr::new("fetch"),
         },
         constraints: vec![],
+        constraint_counts: BTreeMap::new(),
     });
     let text = format!("{event}");
     assert!(text.contains("select"));
@@ -518,6 +526,7 @@ fn any_display_shows_branches() {
             name: SmolStr::new("fetch"),
         },
         constraints: vec![],
+        constraint_counts: BTreeMap::new(),
     });
     let any = QueryExpr::any(AnyExpr::new(vec![event]).unwrap());
     let text = format!("{any}");
@@ -568,6 +577,7 @@ fn event_query_vars_contains_one() {
             name: SmolStr::new("f"),
         },
         constraints: vec![],
+        constraint_counts: BTreeMap::new(),
     });
     assert_eq!(event.vars(), vec![VarId::new(5)]);
 }
@@ -581,6 +591,7 @@ fn any_query_vars_collects_all_branch_vars() {
             name: SmolStr::new("f"),
         },
         constraints: vec![],
+        constraint_counts: BTreeMap::new(),
     });
     let b = QueryExpr::event(EventQuery {
         var: VarId::new(1),
@@ -589,6 +600,7 @@ fn any_query_vars_collects_all_branch_vars() {
             name: SmolStr::new("g"),
         },
         constraints: vec![],
+        constraint_counts: BTreeMap::new(),
     });
     let any = QueryExpr::any(AnyExpr::new(vec![a, b]).unwrap());
     let vars = any.vars();

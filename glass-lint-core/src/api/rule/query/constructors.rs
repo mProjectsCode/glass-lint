@@ -1,9 +1,9 @@
 //! Public event-query constructors and argument adapters.
 
 use super::{
-    ArgumentConstraintsBuilder, ArgumentIndex, ArgumentMatcher, EventQuery, EventSpec,
-    IdentitySpec, ModuleSpecifierPattern, PRIVATE_NETWORK_LITERAL, QueryBuildError, QueryDecl,
-    ValueMatcher, checked_chain, checked_module_export, checked_module_name, checked_name,
+    ArgumentIndex, ArgumentMatcher, EventQuery, EventSpec, IdentitySpec, ModuleSpecifierPattern,
+    PRIVATE_NETWORK_LITERAL, QueryBuildError, QueryDecl, ValueMatcher, checked_chain,
+    checked_module_export, checked_module_name, checked_name,
 };
 
 #[allow(clippy::cast_possible_truncation)]
@@ -277,9 +277,12 @@ impl EventQuery {
         if !self.event.supports_arguments() {
             return Err(QueryBuildError::ArgumentsRequireCallEvent);
         }
-        let mut builder = ArgumentConstraintsBuilder::from_constraints(&self.constraints)?;
-        builder.push(arg_idx, matcher)?;
-        self.constraints = builder.finish();
+        super::value::push_argument_constraint(
+            &mut self.constraints,
+            &mut self.constraint_counts,
+            arg_idx,
+            matcher,
+        )?;
         Ok(self)
     }
 

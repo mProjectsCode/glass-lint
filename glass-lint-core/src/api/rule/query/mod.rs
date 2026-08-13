@@ -12,7 +12,7 @@
 //!
 //! [`EventQuery::call_global`] and the other identity/event combinators replace
 //! the former [`QueryDecl`] builder.
-use std::fmt;
+use std::{collections::BTreeMap, fmt};
 
 use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
@@ -23,10 +23,7 @@ use crate::api::{
         ModuleSpecifierPattern,
         query::{
             lifecycle::{LifecycleCompletion, LifecycleCondition},
-            value::{
-                ArgumentConstraint, ArgumentConstraintsBuilder, ArgumentIndex, ArgumentMatcher,
-                ValueMatcher,
-            },
+            value::{ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ValueMatcher},
         },
     },
 };
@@ -154,6 +151,7 @@ pub struct EventQuery {
     identity: IdentitySpec,
     /// Argument value constraints (empty for non-call events).
     constraints: Vec<ArgumentConstraint>,
+    constraint_counts: BTreeMap<ArgumentIndex, usize>,
 }
 
 impl EventQuery {
@@ -182,6 +180,7 @@ impl EventQuery {
             event,
             identity,
             constraints: Vec::new(),
+            constraint_counts: BTreeMap::new(),
         }
     }
 
@@ -192,11 +191,16 @@ impl EventQuery {
         identity: IdentitySpec,
         constraints: Vec<ArgumentConstraint>,
     ) -> Self {
+        let mut constraint_counts = BTreeMap::new();
+        for constraint in &constraints {
+            *constraint_counts.entry(constraint.arg_index()).or_default() += 1;
+        }
         Self {
             var,
             event,
             identity,
             constraints,
+            constraint_counts,
         }
     }
 }

@@ -52,7 +52,7 @@ deduplication, and existing error semantics remain unchanged. Verified with
 
 ### Fluent constraint construction
 
-#### [ ] READ-036 — Each chained lifecycle or event argument rebuilds all prior constraints
+#### [x] READ-036 — Each chained lifecycle or event argument rebuilds all prior constraints
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -76,7 +76,11 @@ the prefix. Continue producing the same sorted constraints at the final
 boundary and preserve argument-group, predicate-count, index, matcher, and
 error-order validation; remove only the per-call replay and full-prefix sort.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Event and lifecycle argument builders now retain per-index
+counts and append constraints directly into sorted storage. Chained additions
+no longer reconstruct and clone the complete prior constraint prefix before
+each append, while validation and canonical ordering remain unchanged.
+Verified with `make fmt && make ci`.
 
 ### Immediate and deferred builder APIs
 

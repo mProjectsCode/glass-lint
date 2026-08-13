@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
@@ -5,7 +7,7 @@ use crate::api::rule::{
     FirstError,
     query::{
         EventQuery, MemberChain, QueryBuildError, checked_chain, limits,
-        value::{ArgumentConstraint, ArgumentConstraintsBuilder, ArgumentMatcher, ValueMatcher},
+        value::{ArgumentConstraint, ArgumentMatcher, ValueMatcher},
     },
 };
 
@@ -88,6 +90,7 @@ impl LifecycleEvent {
                 member,
                 arguments: Vec::new(),
             },
+            argument_counts: BTreeMap::new(),
         })
     }
 }
@@ -95,6 +98,7 @@ impl LifecycleEvent {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LifecycleEventBuilder {
     event: LifecycleEventKind,
+    argument_counts: BTreeMap<super::value::ArgumentIndex, usize>,
 }
 
 impl LifecycleEventBuilder {
@@ -105,9 +109,12 @@ impl LifecycleEventBuilder {
     ) -> Result<Self, QueryBuildError> {
         let index = super::value::ArgumentIndex::try_from_usize(index)?;
         if let LifecycleEventKind::MemberCall { arguments, .. } = &mut self.event {
-            let mut builder = ArgumentConstraintsBuilder::from_constraints(arguments)?;
-            builder.push(index, matcher)?;
-            *arguments = builder.finish();
+            super::value::push_argument_constraint(
+                arguments,
+                &mut self.argument_counts,
+                index,
+                matcher,
+            )?;
         }
         Ok(self)
     }
