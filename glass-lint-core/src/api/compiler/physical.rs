@@ -467,18 +467,20 @@ pub(crate) fn plan_normalized(
     nq: &NormalizedQuery,
 ) -> Result<PhysicalPlan, PhysicalPlanValidationError> {
     let mut budget = RootBudget::new();
-    let roots = plan_normalized_roots(nq, &mut budget)?;
+    let mut roots = Vec::new();
+    plan_normalized_roots_into(nq, &mut budget, &mut roots)?;
     PhysicalPlan::from_roots(roots.into_boxed_slice())
 }
 
-pub(crate) fn plan_normalized_roots(
+pub(crate) fn plan_normalized_roots_into(
     nq: &NormalizedQuery,
     budget: &mut RootBudget,
-) -> Result<Vec<PhysicalRoot>, PhysicalPlanValidationError> {
+    roots: &mut Vec<PhysicalRoot>,
+) -> Result<(), PhysicalPlanValidationError> {
     let emission = nq.emission();
     let kind = emission.kind();
     let symbol = emission.symbol();
-    plan_root(nq.root(), kind, symbol, budget)
+    plan_root(nq.root(), kind, symbol, budget, roots)
 }
 
 fn plan_root(
@@ -486,24 +488,26 @@ fn plan_root(
     kind: MatchKind,
     symbol: &str,
     budget: &mut RootBudget,
-) -> Result<Vec<PhysicalRoot>, PhysicalPlanValidationError> {
+    roots: &mut Vec<PhysicalRoot>,
+) -> Result<(), PhysicalPlanValidationError> {
     match root {
         NormalizedRoot::Event(ev) => {
             let planned = plan_event(ev, kind, symbol)?;
             budget.reserve()?;
-            Ok(planned)
+            roots.push(planned);
+            Ok(())
         }
         NormalizedRoot::Any(branches) => {
-            let mut roots = Vec::new();
             for b in branches {
-                roots.extend(plan_root(b, kind, symbol, budget)?);
+                plan_root(b, kind, symbol, budget, roots)?;
             }
-            Ok(roots)
+            Ok(())
         }
         NormalizedRoot::Lifecycle(lc) => {
             let planned = plan_lifecycle(lc, symbol)?;
             budget.reserve()?;
-            Ok(vec![planned])
+            roots.push(planned);
+            Ok(())
         }
     }
 }
@@ -512,7 +516,7 @@ fn plan_event(
     ev: &NormalizedEvent,
     kind: MatchKind,
     symbol: &str,
-) -> Result<Vec<PhysicalRoot>, PhysicalPlanValidationError> {
+) -> Result<PhysicalRoot, PhysicalPlanValidationError> {
     let relation = classify_subject_relation(ev.event(), ev.subject())
         .map_err(|_| PhysicalPlanValidationError::ImpossibleDimensions)?;
     let evidence = EvidenceDescriptor {
@@ -523,18 +527,18 @@ fn plan_event(
     match relation {
         SubjectRelation::Direct { identity } => {
             if ev.arguments().is_empty() {
-                Ok(vec![PhysicalRoot::indexed_scan(
+                Ok(PhysicalRoot::indexed_scan(
                     lower_identity(identity),
                     lower_event(ev.event()),
                     evidence,
-                )])
+                ))
             } else {
-                Ok(vec![PhysicalRoot::constrained_scan(
+                Ok(PhysicalRoot::constrained_scan(
                     lower_identity(identity),
                     lower_event(ev.event()),
                     ev.arguments().clone(),
                     evidence,
-                )])
+                ))
             }
         }
         SubjectRelation::Returned {
@@ -542,23 +546,23 @@ fn plan_event(
             object_slot,
             member,
             event,
-        } => Ok(vec![PhysicalRoot::returned_subject(
+        } => Ok(PhysicalRoot::returned_subject(
             lower_identity(producer),
             object_slot,
             member.clone(),
             lower_event(event),
             evidence,
-        )?]),
+        )?),
         SubjectRelation::Instance {
             constructor,
             object_slot,
             member,
-        } => Ok(vec![PhysicalRoot::instance_subject(
+        } => Ok(PhysicalRoot::instance_subject(
             lower_identity(constructor),
             object_slot,
             member.clone(),
             evidence,
-        )?]),
+        )?),
     }
 }
 

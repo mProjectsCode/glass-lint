@@ -15,7 +15,7 @@ selection, and a leaked artifact-local identifier.
 
 ### Physical plan construction
 
-#### [ ] READ-039 — Leaf physical planning allocates vectors that are immediately flattened
+#### [x] READ-039 — Leaf physical planning allocates vectors that are immediately flattened
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -38,7 +38,10 @@ the shared `RootBudget` admission before each retained root, deterministic
 root ordering and deduplication, and the existing error mapping; remove only
 the one-element vectors and forwarding `add` layer.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Physical planning now appends leaf roots directly to a
+caller-owned collector. The compatibility helper still returns a vector for
+isolated callers, while aggregate query compilation no longer allocates and
+flattens one-element vectors at each leaf. Verified with `make fmt && make ci`.
 
 #### [x] READ-040 — Physical requirement aggregation creates a temporary requirement set per root
 

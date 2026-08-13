@@ -193,29 +193,10 @@ struct QueryPlanAccumulator {
 }
 
 impl QueryPlanAccumulator {
-    fn add(&mut self, roots: impl IntoIterator<Item = physical::PhysicalRoot>) {
-        self.roots.extend(roots);
-    }
-
     fn finish(self) -> Result<PhysicalPlan, MatcherBuildError> {
         PhysicalPlan::from_roots(physical::optimize_roots(self.roots))
             .map_err(|error| MatcherBuildError::InvalidPhysicalPlan(error.into()))
     }
-}
-
-/// Compile one query declaration through validation, normalization, and
-/// physical planning without mutating the aggregate rule plan.
-fn compile_query(
-    query: &QueryDecl,
-    budget: &mut physical::RootBudget,
-) -> Result<Vec<physical::PhysicalRoot>, MatcherBuildError> {
-    validate_query_decl(query).map_err(map_query_compile_error)?;
-
-    let normalized: NormalizedQuery =
-        normalize::normalize_query_decl(query).map_err(map_query_compile_error)?;
-
-    physical::plan_normalized_roots(&normalized, budget)
-        .map_err(|error| MatcherBuildError::InvalidPhysicalPlan(error.into()))
 }
 
 /// Compile query declarations into one deterministic, aggregate physical plan.
@@ -226,8 +207,15 @@ fn compile_queries(queries: &[QueryDecl]) -> Result<PhysicalPlan, MatcherBuildEr
     };
 
     for query in queries {
-        let roots = compile_query(query, &mut accumulator.budget)?;
-        accumulator.add(roots);
+        validate_query_decl(query).map_err(map_query_compile_error)?;
+        let normalized: NormalizedQuery =
+            normalize::normalize_query_decl(query).map_err(map_query_compile_error)?;
+        physical::plan_normalized_roots_into(
+            &normalized,
+            &mut accumulator.budget,
+            &mut accumulator.roots,
+        )
+        .map_err(|error| MatcherBuildError::InvalidPhysicalPlan(error.into()))?;
     }
 
     accumulator.finish()
