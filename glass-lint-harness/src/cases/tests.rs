@@ -88,7 +88,7 @@ fn defaults_typescript_cases_from_the_fixture_extension() {
 
 #[test]
 fn rejects_a_language_that_conflicts_with_the_fixture_extension() {
-    let root = crate::test_support::TempDir::new();
+    let root = tempfile::tempdir().unwrap();
     std::fs::write(
         root.path().join("conflict.ts"),
         "// @case language javascript\n// @tool glass-lint rules=js:network.request\nfetch('/remote');\n",
@@ -198,7 +198,7 @@ fn bundled_cases_require_the_canonical_tool() {
 
 #[test]
 fn bundled_projects_require_one_declared_entry() {
-    let root = crate::test_support::TempDir::new();
+    let root = tempfile::tempdir().unwrap();
     let project = root.path().join("project");
     std::fs::create_dir_all(&project).unwrap();
     std::fs::write(
@@ -214,7 +214,7 @@ fn bundled_projects_require_one_declared_entry() {
 
 #[test]
 fn bundled_projects_reject_multiple_entries_and_non_entry_metadata() {
-    let root = crate::test_support::TempDir::new();
+    let root = tempfile::tempdir().unwrap();
     let project = root.path().join("project");
     std::fs::create_dir_all(&project).unwrap();
     std::fs::write(

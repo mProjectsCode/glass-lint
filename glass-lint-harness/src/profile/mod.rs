@@ -36,8 +36,8 @@ mod tests {
     use super::*;
     use crate::profile::types::MeasuredRepetitionAccumulator;
 
-    fn temp_root() -> crate::test_support::TempDir {
-        crate::test_support::TempDir::new()
+    fn temp_root() -> tempfile::TempDir {
+        tempfile::tempdir().unwrap()
     }
 
     fn config(root: &Path) -> ProfileConfig {
@@ -58,27 +58,28 @@ mod tests {
     #[test]
     fn discovers_sorted_unique_filtered_files() {
         let root = temp_root();
-        fs::create_dir_all(root.join("nested")).unwrap();
-        fs::write(root.join("z.js"), "").unwrap();
-        fs::write(root.join("nested/a.js"), "").unwrap();
-        fs::write(root.join("nested/no.txt"), "").unwrap();
+        fs::create_dir_all(root.path().join("nested")).unwrap();
+        fs::write(root.path().join("z.js"), "").unwrap();
+        fs::write(root.path().join("nested/a.js"), "").unwrap();
+        fs::write(root.path().join("nested/no.txt"), "").unwrap();
         let paths = discover_profile_files(
-            &[root.to_owned(), root.join("nested")],
+            &[root.path().to_owned(), root.path().join("nested")],
             &["**/a.js".into()],
             &[],
         )
         .unwrap();
-        assert_eq!(paths, vec![root.join("nested/a.js")]);
+        assert_eq!(paths, vec![root.path().join("nested/a.js")]);
     }
 
     #[test]
     fn discovers_all_runtime_module_extensions_but_not_declarations() {
         let root = temp_root();
         for filename in ["a.js", "b.cjs", "c.mjs", "d.ts", "e.cts", "f.mts", "g.d.ts"] {
-            fs::write(root.join(filename), "").unwrap();
+            fs::write(root.path().join(filename), "").unwrap();
         }
         let paths =
-            discover_profile_files(std::slice::from_ref(&root.to_path_buf()), &[], &[]).unwrap();
+            discover_profile_files(std::slice::from_ref(&root.path().to_path_buf()), &[], &[])
+                .unwrap();
         assert_eq!(paths.len(), 6);
         assert!(!paths.iter().any(|path| path.ends_with("g.d.ts")));
     }
@@ -86,7 +87,7 @@ mod tests {
     #[test]
     fn empty_folder_is_a_valid_profile_corpus() {
         let root = temp_root();
-        let result = run_profile(&config(&root)).unwrap();
+        let result = run_profile(&config(root.path())).unwrap();
         assert_eq!(result.inputs, 0);
         assert_eq!(result.runs, 0);
     }
@@ -94,8 +95,8 @@ mod tests {
     #[test]
     fn malformed_files_are_counted_as_parse_diagnostics() {
         let root = temp_root();
-        fs::write(root.join("broken.js"), "function (").unwrap();
-        let result = run_profile(&config(&root)).unwrap();
+        fs::write(root.path().join("broken.js"), "function (").unwrap();
+        let result = run_profile(&config(root.path())).unwrap();
         assert_eq!(result.inputs, 1);
         assert_eq!(result.diagnostics, 1);
         assert_eq!(result.errors, 0);
@@ -200,9 +201,9 @@ mod tests {
     #[test]
     fn admitted_project_counts_all_diagnostics_and_completion() {
         let root = temp_root();
-        fs::write(root.join("broken.js"), "function (").unwrap();
-        fs::write(root.join("request.js"), "import './missing.js';").unwrap();
-        let result = run_profile(&admitted_config(&root, 1)).unwrap();
+        fs::write(root.path().join("broken.js"), "function (").unwrap();
+        fs::write(root.path().join("request.js"), "import './missing.js';").unwrap();
+        let result = run_profile(&admitted_config(root.path(), 1)).unwrap();
         assert_eq!(result.repetitions.len(), 1);
         assert_eq!(result.diagnostics, result.repetitions[0].diagnostics);
         assert!(result.diagnostics >= 2);
@@ -214,9 +215,17 @@ mod tests {
     #[test]
     fn admitted_project_preserves_full_operation_counts() {
         let root = temp_root();
-        fs::write(root.join("a.js"), "export const value = 1; fetch('/');").unwrap();
-        fs::write(root.join("b.js"), "import { value } from './a.js'; value;").unwrap();
-        let result = run_profile(&admitted_config(&root, 1)).unwrap();
+        fs::write(
+            root.path().join("a.js"),
+            "export const value = 1; fetch('/');",
+        )
+        .unwrap();
+        fs::write(
+            root.path().join("b.js"),
+            "import { value } from './a.js'; value;",
+        )
+        .unwrap();
+        let result = run_profile(&admitted_config(root.path(), 1)).unwrap();
         assert_eq!(
             result.operation_counts,
             result.repetitions[0].operation_counts
@@ -238,11 +247,12 @@ mod tests {
     fn admitted_project_worker_counts_have_identical_correctness() {
         let root = temp_root();
         for index in 0..8 {
-            fs::write(root.join(format!("{index}.js")), "fetch('/');").unwrap();
+            fs::write(root.path().join(format!("{index}.js")), "fetch('/');").unwrap();
         }
-        let manifest = root.join("profile-manifest.json");
-        crate::create_profile_manifest(&root, &[], &[], None, 1, "fixture", &manifest).unwrap();
-        let first = ProfileConfig::builder([root.to_owned()])
+        let manifest = root.path().join("profile-manifest.json");
+        crate::create_profile_manifest(root.path(), &[], &[], None, 1, "fixture", &manifest)
+            .unwrap();
+        let first = ProfileConfig::builder([root.path().to_owned()])
             .seed(1)
             .warm_up(1)
             .workers(NonZeroUsize::new(1).unwrap())
@@ -250,7 +260,7 @@ mod tests {
             .manifest(Some(manifest.clone()))
             .build()
             .unwrap();
-        let second = ProfileConfig::builder([root.to_owned()])
+        let second = ProfileConfig::builder([root.path().to_owned()])
             .seed(1)
             .warm_up(1)
             .workers(NonZeroUsize::new(2).unwrap())
@@ -284,20 +294,21 @@ mod tests {
         let root = temp_root();
         for (index, repetitions) in [200, 1, 100, 2, 50, 3].into_iter().enumerate() {
             fs::write(
-                root.join(format!("{index}.js")),
+                root.path().join(format!("{index}.js")),
                 "fetch('/');\n".repeat(repetitions),
             )
             .unwrap();
         }
-        let manifest = root.join("profile-manifest.json");
-        crate::create_profile_manifest(&root, &[], &[], None, 1, "fixture", &manifest).unwrap();
-        let first = ProfileConfig::builder([root.to_owned()])
+        let manifest = root.path().join("profile-manifest.json");
+        crate::create_profile_manifest(root.path(), &[], &[], None, 1, "fixture", &manifest)
+            .unwrap();
+        let first = ProfileConfig::builder([root.path().to_owned()])
             .seed(1)
             .manifest(Some(manifest.clone()))
             .build()
             .unwrap();
         let one = run_profile(&first).unwrap();
-        let parallel = ProfileConfig::builder([root.to_owned()])
+        let parallel = ProfileConfig::builder([root.path().to_owned()])
             .seed(1)
             .workers(NonZeroUsize::new(4).unwrap())
             .manifest(Some(manifest))
@@ -326,17 +337,18 @@ mod tests {
     #[test]
     fn loader_project_worker_counts_use_verified_repetitions() {
         let root = temp_root();
-        fs::write(root.join("a.js"), "fetch('/');").unwrap();
-        let manifest = root.join("profile-manifest.json");
-        crate::create_profile_manifest(&root, &[], &[], None, 1, "fixture", &manifest).unwrap();
+        fs::write(root.path().join("a.js"), "fetch('/');").unwrap();
+        let manifest = root.path().join("profile-manifest.json");
+        crate::create_profile_manifest(root.path(), &[], &[], None, 1, "fixture", &manifest)
+            .unwrap();
 
-        let one = ProfileConfig::builder([root.to_owned()])
+        let one = ProfileConfig::builder([root.path().to_owned()])
             .seed(1)
             .workload(ProfileWorkload::LoaderProject)
             .manifest(Some(manifest.clone()))
             .build()
             .unwrap();
-        let parallel = ProfileConfig::builder([root.to_owned()])
+        let parallel = ProfileConfig::builder([root.path().to_owned()])
             .seed(1)
             .workers(NonZeroUsize::new(2).unwrap())
             .workload(ProfileWorkload::LoaderProject)
@@ -358,17 +370,17 @@ mod tests {
     #[test]
     fn normal_and_admitted_modes_use_the_same_verified_manifest() {
         let root = temp_root();
-        fs::write(root.join("a.js"), "fetch('/');").unwrap();
-        let manifest_path = root.join("profile-manifest.json");
-        crate::create_profile_manifest(&root, &[], &[], None, 1, "fixture", &manifest_path)
+        fs::write(root.path().join("a.js"), "fetch('/');").unwrap();
+        let manifest_path = root.path().join("profile-manifest.json");
+        crate::create_profile_manifest(root.path(), &[], &[], None, 1, "fixture", &manifest_path)
             .unwrap();
-        let normal_config = ProfileConfig::builder([root.to_owned()])
+        let normal_config = ProfileConfig::builder([root.path().to_owned()])
             .seed(1)
             .manifest(Some(manifest_path.clone()))
             .build()
             .unwrap();
         let normal = run_profile(&normal_config).unwrap();
-        let admitted_config = ProfileConfig::builder([root.to_owned()])
+        let admitted_config = ProfileConfig::builder([root.path().to_owned()])
             .seed(1)
             .warm_up(1)
             .workers(NonZeroUsize::new(1).unwrap())
@@ -385,14 +397,14 @@ mod tests {
     #[test]
     fn workload_mode_is_explicit() {
         let root = temp_root();
-        let config = admitted_config(&root, 1);
+        let config = admitted_config(root.path(), 1);
         assert_eq!(config.workload, ProfileWorkload::AdmittedProject);
     }
 
     #[test]
     fn execution_identity_records_effective_limits_and_run_policy() {
         let root = temp_root();
-        let config = ProfileConfig::builder([root.to_owned()])
+        let config = ProfileConfig::builder([root.path().to_owned()])
             .provider(ProfileCatalogProvider::Both)
             .mode(RuleSelectionProfile::Heuristic)
             .rules(["js:network.request".into()])
@@ -423,7 +435,7 @@ mod tests {
     fn admitted_project_rejects_multiple_or_outside_roots() {
         let root = temp_root();
         let outside = temp_root();
-        let error = ProfileConfig::builder([root.to_owned(), outside.to_path_buf()])
+        let error = ProfileConfig::builder([root.path().to_owned(), outside.path().to_path_buf()])
             .seed(1)
             .warm_up(1)
             .workers(NonZeroUsize::new(1).unwrap())
@@ -434,8 +446,8 @@ mod tests {
             error.to_string(),
             "--admitted-project requires exactly one --path root"
         );
-        fs::write(root.join("outside.js"), "").unwrap();
-        let error = ProfileConfig::builder([root.join("outside.js")])
+        fs::write(root.path().join("outside.js"), "").unwrap();
+        let error = ProfileConfig::builder([root.path().join("outside.js")])
             .seed(1)
             .warm_up(1)
             .workers(NonZeroUsize::new(1).unwrap())
@@ -452,10 +464,11 @@ mod tests {
     #[test]
     fn recursive_discovery_does_not_follow_symlinks() {
         let root = temp_root();
-        fs::write(root.join("real.js"), "").unwrap();
-        std::os::unix::fs::symlink(".", root.join("link")).unwrap();
+        fs::write(root.path().join("real.js"), "").unwrap();
+        std::os::unix::fs::symlink(".", root.path().join("link")).unwrap();
         let paths =
-            discover_profile_files(std::slice::from_ref(&root.to_path_buf()), &[], &[]).unwrap();
-        assert_eq!(paths, vec![root.join("real.js")]);
+            discover_profile_files(std::slice::from_ref(&root.path().to_path_buf()), &[], &[])
+                .unwrap();
+        assert_eq!(paths, vec![root.path().join("real.js")]);
     }
 }

@@ -418,20 +418,24 @@ impl<'a> ResolvedProgram<'a> {
 }
 
 #[cfg(test)]
-impl ResolvedProgram<'static> {
-    pub(in crate::analysis) fn collect_for_test(program: &Program, source: &str) -> Self {
-        let environment = test_environment();
-        let budget = Box::leak(Box::new(SemanticBudget::default()));
-        let names = NameTable::with_max_entries(MAX_NAMES);
-        let scoped = ScopeGraph::collect_scoped_program(program, &environment, names, budget);
-        Self::collect(
-            scoped,
-            program,
-            SpanNormalizer::for_program(program, source),
-            budget,
-            MAX_FACTS,
-        )
-    }
+pub(in crate::analysis) fn with_test_collection<R>(
+    program: &Program,
+    source: &str,
+    callback: impl for<'a> FnOnce(ResolvedProgram<'a>) -> R,
+) -> R {
+    let environment = test_environment();
+    let limits = AnalysisLimits::default();
+    let budget = SemanticBudget::new(limits.semantic_operations());
+    let names = NameTable::with_max_entries(MAX_NAMES);
+    let scoped = ScopeGraph::collect_scoped_program(program, &environment, names, &budget);
+    let resolved = ResolvedProgram::collect(
+        scoped,
+        program,
+        SpanNormalizer::for_program(program, source),
+        &budget,
+        MAX_FACTS,
+    );
+    callback(resolved)
 }
 
 #[cfg(test)]

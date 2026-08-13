@@ -54,6 +54,8 @@ use swc_ecma_visit::{Visit, VisitWith};
 use self::instance::InstanceCallable;
 #[cfg(test)]
 use crate::analysis::resolution::FrozenFactTables;
+#[cfg(test)]
+use crate::analysis::semantic::with_test_collection;
 use crate::analysis::{
     SemanticBudget,
     model::scope::FunctionId,
@@ -691,7 +693,7 @@ mod stream_tests {
     use crate::{
         analysis::{
             facts::stream::FactStreamToken, model::scope::FunctionId, resolution::Resolver,
-            semantic::ResolvedProgram, syntax::SymbolCallProvenance,
+            syntax::SymbolCallProvenance,
         },
         api::{compiler::rule::CompiledMatcherPlan, rule::EventQuery},
     };
@@ -831,12 +833,13 @@ mod stream_tests {
         let build = |matchers: Vec<&crate::api::compiler::rule::CompiledMatcherPlan>,
                      selected: &[usize]| {
             let _ = (matchers, selected);
-            let resolved = ResolvedProgram::collect_for_test(&parsed.program, source);
-            let artifact = resolved.freeze(
-                &crate::Environment::default(),
-                &crate::AnalysisLimits::default(),
-                parsed.program.span(),
-            );
+            let artifact = with_test_collection(&parsed.program, source, |resolved| {
+                resolved.freeze(
+                    &crate::Environment::default(),
+                    &crate::AnalysisLimits::default(),
+                    parsed.program.span(),
+                )
+            });
             format!("{:?}", artifact.facts().matcher_index())
         };
 
@@ -855,12 +858,13 @@ mod stream_tests {
         let limits = crate::AnalysisLimits::default()
             .with_effect_operations(usize::MAX)
             .expect("valid effect limit");
-        let resolved = ResolvedProgram::collect_for_test(&parsed.program, source);
-        let artifact = resolved.freeze(
-            &crate::Environment::default(),
-            &limits,
-            parsed.program.span(),
-        );
+        let artifact = with_test_collection(&parsed.program, source, |resolved| {
+            resolved.freeze(
+                &crate::Environment::default(),
+                &limits,
+                parsed.program.span(),
+            )
+        });
         let combined_effects = artifact.effects();
         let standalone_effects = FunctionEffects::collect(artifact.facts().stream(), usize::MAX);
 

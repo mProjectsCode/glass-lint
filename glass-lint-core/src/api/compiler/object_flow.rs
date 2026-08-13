@@ -24,58 +24,11 @@ pub(crate) enum RequirementMode {
     AnyRequired,
 }
 
-impl RequirementMode {
-    #[cfg(test)]
-    pub(crate) fn select_matches<T>(self, matches: Vec<Vec<T>>) -> Option<Vec<Vec<T>>> {
-        match self {
-            Self::AllRequired => {
-                if matches.iter().any(Vec::is_empty) {
-                    None
-                } else {
-                    Some(vec![
-                        matches
-                            .into_iter()
-                            .filter_map(|matches| matches.into_iter().next())
-                            .collect(),
-                    ])
-                }
-            }
-            Self::AnyRequired => Some(
-                matches
-                    .into_iter()
-                    .flatten()
-                    .map(|item| vec![item])
-                    .collect(),
-            ),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum CompletionMode {
     Configuration,
     AnySink,
     AllSinks,
-}
-
-impl CompletionMode {
-    #[cfg(test)]
-    pub(crate) fn select_matches<T>(self, matches: Vec<Vec<T>>) -> Vec<Vec<T>> {
-        match self {
-            Self::Configuration => vec![Vec::new()],
-            Self::AnySink => matches
-                .into_iter()
-                .flatten()
-                .map(|item| vec![item])
-                .collect(),
-            Self::AllSinks => matches
-                .into_iter()
-                .map(|matches| matches.into_iter().next())
-                .collect::<Option<Vec<_>>>()
-                .into_iter()
-                .collect(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -135,11 +88,6 @@ impl CompiledObjectFlow {
 
     pub(crate) fn completion_mode(&self) -> CompletionMode {
         self.completion_mode
-    }
-
-    #[cfg(test)]
-    pub(crate) fn requirement_mode(&self) -> RequirementMode {
-        self.requirement_mode
     }
 
     #[cfg(test)]

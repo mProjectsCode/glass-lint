@@ -1,10 +1,11 @@
-//! Test-only logical/physical equivalence oracle.
+//! Small test-only logical/physical equivalence oracle.
 //!
-//! Provides a small synthetic relation store and two evaluators
-//! (`evaluate_supported_logical` and `evaluate_supported_physical`) that
-//! produce deterministic witnesses. The oracle compares the sorted witness
-//! lists to verify that the physical planner has the same semantics as the
-//! logical query over the supported event subset.
+//! The oracle intentionally covers only the compiler vocabulary exercised by
+//! this equivalence suite: direct events, constrained arguments, returned
+//! objects, alternatives, and one representative lifecycle shape. Runtime
+//! flow and the remaining physical roots have their own integration and
+//! physical-plan tests; duplicating those interpreters here would make this
+//! test seam another semantic implementation to maintain.
 
 #![cfg(test)]
 
@@ -14,10 +15,10 @@ use crate::api::{
     compiler::{
         normalized::{
             CanonicalArgumentConstraints, NormalizedEvent, NormalizedLifecycle,
-            NormalizedLifecycleCompletion, NormalizedLifecycleCondition, NormalizedLifecycleEvent,
-            NormalizedLifecycleSink, NormalizedQuery, NormalizedRoot, NormalizedSubject,
+            NormalizedLifecycleCondition, NormalizedLifecycleEvent, NormalizedLifecycleSink,
+            NormalizedQuery, NormalizedRoot, NormalizedSubject,
         },
-        object_flow::{CompiledObjectFlow, CompletionMode, RequirementMode},
+        object_flow::CompiledObjectFlow,
         physical::{PhysicalPlan, PhysicalRoot},
         rule::{EventPredicate, IdentityConstraint, lower_event, lower_identity},
     },
@@ -28,27 +29,16 @@ use crate::api::{
     },
 };
 
-// ── Reference row types ─────────────────────────────────────────────────────
-
 /// A single event row in the synthetic relation store.
 #[derive(Debug, Clone)]
 pub(crate) struct ReferenceRow {
-    /// Unique event identifier.
     pub event: u32,
-    /// Kind of event (Call, Construct, MemberCall, etc.).
     pub event_kind: EventSpec,
-    /// Identity (Global, Rooted, ModuleExport, etc.).
     pub identity: IdentitySpec,
-    /// Argument values keyed by positional index.
     pub arguments: BTreeMap<ArgumentIndex, ReferenceValue>,
-    /// Correlated object ID, if applicable.
     pub object: Option<u32>,
-    /// The producer or constructor event that established the object
-    /// correlation, together with its path key.
     pub support: Option<ReferenceSupport>,
-    /// Correlation path key.
     pub path: u32,
-    /// Completeness status.
     pub completeness: ReferenceCompleteness,
 }
 
@@ -62,42 +52,28 @@ pub(crate) struct ReferenceSupport {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum ReferenceSupportKind {
     Producer,
-    Constructor,
 }
 
 /// A value at a specific argument position.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum ReferenceValue {
-    /// Known static string value.
     StaticString(String),
-    /// Unknown or dynamic value.
-    #[allow(dead_code)]
-    Unknown,
 }
 
-/// Completeness of analysis for a reference row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum ReferenceCompleteness {
     Complete,
     Unknown,
 }
 
-// ── Witness types ───────────────────────────────────────────────────────────
-
-/// A witness produced by evaluating a query or plan against reference rows.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct ReferenceWitness {
-    /// Primary event key.
     pub primary_event: u32,
-    /// Supporting event keys (producer, constructor, etc.).
     pub support_events: Vec<u32>,
-    /// Correlation path key.
     pub path_key: u32,
-    /// Witness certainty.
     pub certainty: ReferenceCertainty,
 }
 
-/// Certainty of a witness.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum ReferenceCertainty {
     Definite,
@@ -105,197 +81,89 @@ pub(crate) enum ReferenceCertainty {
 }
 
 #[derive(Clone)]
-enum LifecycleSourceMatcher {
-    Target {
-        target: LifecycleCallTarget,
-        arguments: Vec<ArgumentConstraint>,
-    },
-}
-
-#[derive(Clone)]
-enum LifecycleRequirementMatcher {
-    Property {
-        property: String,
-        value: ValueMatcher,
-    },
-    Member {
-        member: glass_lint_datastructures::SymbolPath,
-        arguments: Vec<ArgumentConstraint>,
-    },
-}
-
-#[derive(Clone)]
-struct LifecycleSinkMatcher {
+struct LifecycleSourceMatcher {
     target: LifecycleCallTarget,
-    argument: Option<usize>,
+    arguments: Vec<ArgumentConstraint>,
 }
 
 struct LifecycleReferencePlan {
-    sources: Vec<LifecycleSourceMatcher>,
-    requirements: Vec<LifecycleRequirementMatcher>,
-    requirement_mode: RequirementMode,
-    sinks: Vec<LifecycleSinkMatcher>,
-    completion_mode: CompletionMode,
+    source: LifecycleSourceMatcher,
+    property: glass_lint_datastructures::SymbolPath,
+    property_value: ValueMatcher,
+    sink: LifecycleSinkMatcher,
 }
 
-fn lifecycle_plan_from_normalized(lifecycle: &NormalizedLifecycle) -> LifecycleReferencePlan {
-    let sources = lifecycle
-        .sources()
-        .iter()
-        .filter_map(|source| {
-            let target = lifecycle_target(source.event(), source.identity())?;
-            Some(LifecycleSourceMatcher::Target {
-                target,
-                arguments: source.arguments().to_flat_vec(),
-            })
-        })
-        .collect();
-    let (requirements, requirement_mode) = lifecycle.condition().map_or_else(
-        || (Vec::new(), RequirementMode::AnyRequired),
-        |condition| match condition {
-            NormalizedLifecycleCondition::AnyOf(events) => (
-                events.iter().map(lifecycle_requirement).collect(),
-                RequirementMode::AnyRequired,
-            ),
-            NormalizedLifecycleCondition::AllOf(events) => (
-                events.iter().map(lifecycle_requirement).collect(),
-                RequirementMode::AllRequired,
-            ),
+struct LifecycleSinkMatcher {
+    target: LifecycleCallTarget,
+    argument: usize,
+}
+
+/// Convert the one lifecycle shape used by the equivalence test into its
+/// deliberately smaller reference representation. Unsupported lifecycle
+/// combinations are covered by the real flow tests, not silently added here.
+fn lifecycle_plan_from_normalized(
+    lifecycle: &NormalizedLifecycle,
+) -> Option<LifecycleReferencePlan> {
+    let source = lifecycle.sources().first()?;
+    let source_target = lifecycle_target(source.event(), source.identity())?;
+    let condition = lifecycle.condition()?;
+    let events = match condition {
+        NormalizedLifecycleCondition::AnyOf(events)
+        | NormalizedLifecycleCondition::AllOf(events) => events,
+    };
+    let [NormalizedLifecycleEvent::PropertyWrite { property, value }] = events.as_ref() else {
+        return None;
+    };
+    let completion = lifecycle.completion()?;
+    let crate::api::compiler::normalized::NormalizedLifecycleCompletion::AnySink(sinks) =
+        completion
+    else {
+        return None;
+    };
+    let [sink] = sinks.as_ref() else {
+        return None;
+    };
+    let NormalizedLifecycleSink::ArgumentOf { target, index } = sink else {
+        return None;
+    };
+    Some(LifecycleReferencePlan {
+        source: LifecycleSourceMatcher {
+            target: source_target,
+            arguments: source.arguments().to_flat_vec(),
         },
-    );
-    let (sinks, completion_mode) = lifecycle.completion().map_or_else(
-        || (Vec::new(), CompletionMode::AnySink),
-        |completion| match completion {
-            NormalizedLifecycleCompletion::Configuration => {
-                (Vec::new(), CompletionMode::Configuration)
-            }
-            NormalizedLifecycleCompletion::AnySink(sinks) => (
-                sinks.iter().map(lifecycle_sink).collect(),
-                CompletionMode::AnySink,
-            ),
-            NormalizedLifecycleCompletion::AllSinks(sinks) => (
-                sinks.iter().map(lifecycle_sink).collect(),
-                CompletionMode::AllSinks,
-            ),
+        property: property.clone().into(),
+        property_value: value.clone(),
+        sink: LifecycleSinkMatcher {
+            target: target.clone(),
+            argument: *index,
         },
-    );
-    LifecycleReferencePlan {
-        sources,
-        requirements,
-        requirement_mode,
-        sinks,
-        completion_mode,
-    }
+    })
 }
 
-fn lifecycle_plan_from_physical(flow: &CompiledObjectFlow) -> LifecycleReferencePlan {
-    LifecycleReferencePlan {
-        sources: flow
-            .sources()
-            .map(|source| LifecycleSourceMatcher::Target {
-                target: source.target().clone(),
-                arguments: source.arguments().to_flat_vec(),
-            })
-            .collect(),
-        requirements: flow
-            .requirements()
-            .map(|requirement| match requirement {
-                requirement if let Some((property, value)) = requirement.property_write() => {
-                    LifecycleRequirementMatcher::Property {
-                        property: property.as_str().to_owned(),
-                        value: value.clone(),
-                    }
-                }
-                requirement => {
-                    let (member, arguments) = requirement.member_call().unwrap();
-                    LifecycleRequirementMatcher::Member {
-                        member: member.clone(),
-                        arguments: arguments.to_flat_vec(),
-                    }
-                }
-            })
-            .collect(),
-        requirement_mode: flow.requirement_mode(),
-        sinks: flow
-            .sinks()
-            .map(|sink| LifecycleSinkMatcher {
-                target: sink.target().clone(),
-                argument: sink.fixed_argument(),
-            })
-            .collect(),
-        completion_mode: flow.completion_mode(),
+fn lifecycle_plan_from_physical(flow: &CompiledObjectFlow) -> Option<LifecycleReferencePlan> {
+    let source = flow.sources().next()?;
+    let requirement = flow.requirements().next()?;
+    let (property, property_value) = requirement.property_write()?;
+    let sink = flow.sinks().next()?;
+    let argument = sink.fixed_argument()?;
+    if flow.sources().nth(1).is_some()
+        || flow.requirements().nth(1).is_some()
+        || flow.sinks().nth(1).is_some()
+    {
+        return None;
     }
-}
-
-impl LifecycleReferencePlan {
-    fn condition_sets<'a>(
-        &self,
-        path_rows: &[&'a ReferenceRow],
-        source_event: u32,
-    ) -> Option<Vec<Vec<&'a ReferenceRow>>> {
-        let requirement_matches: Vec<Vec<&ReferenceRow>> = self
-            .requirements
-            .iter()
-            .map(|matcher| {
-                path_rows
-                    .iter()
-                    .copied()
-                    .filter(|row| row.event > source_event && matches_requirement(matcher, row))
-                    .collect()
-            })
-            .collect();
-
-        self.requirement_mode.select_matches(requirement_matches)
-    }
-
-    fn completion_candidates<'a>(
-        &self,
-        path_rows: &[&'a ReferenceRow],
-        condition_end: u32,
-    ) -> Vec<Vec<&'a ReferenceRow>> {
-        let sink_matches = self
-            .sinks
-            .iter()
-            .map(|sink| {
-                path_rows
-                    .iter()
-                    .copied()
-                    .filter(|row| row.event > condition_end && matches_sink(sink, row))
-                    .collect()
-            })
-            .collect();
-        self.completion_mode.select_matches(sink_matches)
-    }
-
-    fn witness(
-        path: u32,
-        source: &ReferenceRow,
-        condition_set: &[&ReferenceRow],
-        completion_set: &[&ReferenceRow],
-    ) -> ReferenceWitness {
-        let primary_event = completion_set
-            .iter()
-            .map(|row| row.event)
-            .max()
-            .or_else(|| condition_set.iter().map(|row| row.event).max())
-            .unwrap_or(source.event);
-        let possible = source.completeness == ReferenceCompleteness::Unknown
-            || condition_set
-                .iter()
-                .chain(completion_set.iter())
-                .any(|row| row.completeness == ReferenceCompleteness::Unknown);
-
-        ReferenceWitness {
-            primary_event,
-            support_events: vec![source.event],
-            path_key: path,
-            certainty: if possible {
-                ReferenceCertainty::Possible
-            } else {
-                ReferenceCertainty::Definite
-            },
-        }
-    }
+    Some(LifecycleReferencePlan {
+        source: LifecycleSourceMatcher {
+            target: source.target().clone(),
+            arguments: source.arguments().to_flat_vec(),
+        },
+        property: property.clone().into(),
+        property_value: property_value.clone(),
+        sink: LifecycleSinkMatcher {
+            target: sink.target().clone(),
+            argument,
+        },
+    })
 }
 
 fn lifecycle_target(event: &EventSpec, identity: &IdentitySpec) -> Option<LifecycleCallTarget> {
@@ -303,48 +171,11 @@ fn lifecycle_target(event: &EventSpec, identity: &IdentitySpec) -> Option<Lifecy
         (EventSpec::Call, IdentitySpec::Global { name }) => {
             Some(LifecycleCallTarget::Global(name.clone()))
         }
-        (EventSpec::MemberCall { member }, IdentitySpec::Rooted { .. }) => {
-            Some(LifecycleCallTarget::RootedMember(member.clone()))
-        }
         _ => None,
     }
 }
 
-fn lifecycle_requirement(event: &NormalizedLifecycleEvent) -> LifecycleRequirementMatcher {
-    match event {
-        NormalizedLifecycleEvent::PropertyWrite { property, value } => {
-            LifecycleRequirementMatcher::Property {
-                property: property.as_str().to_owned(),
-                value: value.clone(),
-            }
-        }
-        NormalizedLifecycleEvent::MemberCall { member, arguments } => {
-            LifecycleRequirementMatcher::Member {
-                member: member.clone().into(),
-                arguments: arguments.to_flat_vec(),
-            }
-        }
-    }
-}
-
-fn lifecycle_sink(sink: &NormalizedLifecycleSink) -> LifecycleSinkMatcher {
-    match sink {
-        NormalizedLifecycleSink::ArgumentOf { target, index } => LifecycleSinkMatcher {
-            target: target.clone(),
-            argument: Some(*index),
-        },
-        NormalizedLifecycleSink::AnyArgumentOf { target } => LifecycleSinkMatcher {
-            target: target.clone(),
-            argument: None,
-        },
-    }
-}
-
-// ── Logical evaluator ───────────────────────────────────────────────────────
-
-/// Evaluate a logical [`NormalizedQuery`] against a set of reference rows.
-///
-/// Returns sorted witnesses for comparison against physical evaluation.
+/// Evaluate a normalized query over the synthetic rows.
 pub(crate) fn evaluate_supported_logical(
     query: &NormalizedQuery,
     rows: &[ReferenceRow],
@@ -357,72 +188,41 @@ pub(crate) fn evaluate_supported_logical(
 
 fn evaluate_root_logical(root: &NormalizedRoot, rows: &[ReferenceRow]) -> Vec<ReferenceWitness> {
     match root {
-        NormalizedRoot::Event(ev) => evaluate_event_logical(ev, rows),
-        NormalizedRoot::Any(branches) => {
-            let mut witnesses = Vec::new();
-            for b in &**branches {
-                witnesses.extend(evaluate_root_logical(b, rows));
-            }
-            witnesses
-        }
-        NormalizedRoot::Lifecycle(lifecycle) => {
-            evaluate_lifecycle(&lifecycle_plan_from_normalized(lifecycle), rows)
-        }
+        NormalizedRoot::Event(event) => evaluate_event_logical(event, rows),
+        NormalizedRoot::Any(branches) => branches
+            .iter()
+            .flat_map(|branch| evaluate_root_logical(branch, rows))
+            .collect(),
+        NormalizedRoot::Lifecycle(lifecycle) => lifecycle_plan_from_normalized(lifecycle)
+            .map_or_else(Vec::new, |plan| evaluate_lifecycle(&plan, rows)),
     }
 }
 
-fn evaluate_event_logical(ev: &NormalizedEvent, rows: &[ReferenceRow]) -> Vec<ReferenceWitness> {
-    let mut witnesses = Vec::new();
-    for row in rows {
-        if !matches_event_kind_logical(ev.event(), &row.event_kind) {
-            continue;
-        }
-        let identity = match ev.subject() {
-            NormalizedSubject::Returned { producer, .. } => producer,
-            NormalizedSubject::Instance { constructor, .. } => constructor,
-            NormalizedSubject::Direct { identity } => identity,
-        };
-        if !matches_identity_logical(identity, &row.identity) {
-            continue;
-        }
-        if !matches_arguments_logical(ev.arguments(), &row.arguments) {
-            continue;
-        }
-        match ev.subject() {
-            NormalizedSubject::Direct { .. } => {}
-            subject => {
-                let kind = match subject {
-                    NormalizedSubject::Returned { .. } => ReferenceSupportKind::Producer,
-                    NormalizedSubject::Instance { .. } => ReferenceSupportKind::Constructor,
-                    NormalizedSubject::Direct { .. } => unreachable!(),
-                };
-                if !has_correlated_support(row, kind) {
-                    continue;
-                }
-            }
-        }
-
-        let certainty = if row.completeness == ReferenceCompleteness::Unknown {
-            ReferenceCertainty::Possible
-        } else {
-            ReferenceCertainty::Definite
-        };
-
-        let support_events = match ev.subject() {
-            NormalizedSubject::Direct { .. } => Vec::new(),
-            NormalizedSubject::Returned { .. } | NormalizedSubject::Instance { .. } => {
-                vec![row.support.as_ref().expect("checked above").event]
-            }
-        };
-
-        witnesses.push(ReferenceWitness {
+fn evaluate_event_logical(event: &NormalizedEvent, rows: &[ReferenceRow]) -> Vec<ReferenceWitness> {
+    let (identity, requires_producer) = match event.subject() {
+        NormalizedSubject::Direct { identity } => (identity, false),
+        NormalizedSubject::Returned { producer, .. } => (producer, true),
+        NormalizedSubject::Instance { .. } => return Vec::new(),
+    };
+    rows.iter()
+        .filter(|row| {
+            matches_event_kind(event.event(), &row.event_kind)
+                && matches_identity(identity, &row.identity)
+                && matches_arguments(event.arguments(), &row.arguments)
+                && (!requires_producer || has_producer_support(row))
+        })
+        .map(|row| ReferenceWitness {
             primary_event: row.event,
-            support_events,
+            support_events: row
+                .support
+                .as_ref()
+                .filter(|_| requires_producer)
+                .map(|support| vec![support.event])
+                .unwrap_or_default(),
             path_key: row.path,
-            certainty,
-        });
-    }
-    witnesses
+            certainty: certainty(row),
+        })
+        .collect()
 }
 
 fn evaluate_lifecycle(
@@ -433,87 +233,67 @@ fn evaluate_lifecycle(
     for row in rows {
         by_path.entry(row.path).or_default().push(row);
     }
-    for path_rows in by_path.values_mut() {
-        path_rows.sort_by_key(|row| row.event);
-    }
 
     let mut witnesses = Vec::new();
-    for (path, path_rows) in by_path {
-        for source in path_rows.iter().copied().filter(|row| {
-            plan.sources
-                .iter()
-                .any(|matcher| matches_source(matcher, row))
-        }) {
-            let Some(condition_sets) = plan.condition_sets(&path_rows, source.event) else {
+    for (path, mut path_rows) in by_path {
+        path_rows.sort_by_key(|row| row.event);
+        for source in path_rows
+            .iter()
+            .copied()
+            .filter(|row| matches_source(&plan.source, row))
+        {
+            let Some(condition) = path_rows.iter().copied().find(|row| {
+                row.event > source.event
+                    && matches!(&row.event_kind, EventSpec::PropertyWrite { property } if property == &plan.property)
+                    && row
+                        .arguments
+                        .get(&ArgumentIndex::new_unchecked(0))
+                        .is_some_and(|value| matches_value_matcher(&plan.property_value, value))
+            }) else {
                 continue;
             };
-            for condition_set in condition_sets {
-                let condition_end = condition_set
-                    .iter()
-                    .map(|row| row.event)
-                    .max()
-                    .unwrap_or(source.event);
-                let completion_sets = plan.completion_candidates(&path_rows, condition_end);
-                for completion_set in completion_sets {
-                    witnesses.push(LifecycleReferencePlan::witness(
-                        path,
-                        source,
-                        &condition_set,
-                        &completion_set,
-                    ));
-                }
-            }
+            let Some(sink) = path_rows
+                .iter()
+                .copied()
+                .find(|row| row.event > condition.event && matches_sink(&plan.sink, row))
+            else {
+                continue;
+            };
+            witnesses.push(ReferenceWitness {
+                primary_event: sink.event,
+                support_events: vec![source.event],
+                path_key: path,
+                certainty: if [source, condition, sink]
+                    .into_iter()
+                    .any(|row| row.completeness == ReferenceCompleteness::Unknown)
+                {
+                    ReferenceCertainty::Possible
+                } else {
+                    ReferenceCertainty::Definite
+                },
+            });
         }
     }
-    witnesses.sort();
-    witnesses.dedup();
     witnesses
 }
 
 fn matches_source(matcher: &LifecycleSourceMatcher, row: &ReferenceRow) -> bool {
-    match matcher {
-        LifecycleSourceMatcher::Target { target, arguments } => {
-            matches_target(target, row) && matches_flat_arguments(arguments, &row.arguments)
-        }
-    }
-}
-
-fn matches_requirement(matcher: &LifecycleRequirementMatcher, row: &ReferenceRow) -> bool {
-    match matcher {
-        LifecycleRequirementMatcher::Property { property, value } => {
-            matches!(&row.event_kind, EventSpec::PropertyWrite { property: actual } if actual == &glass_lint_datastructures::SymbolPath::from(property.as_str()))
-                && row
-                    .arguments
-                    .get(&ArgumentIndex::new_unchecked(0))
-                    .is_some_and(|actual| matches_value_matcher(value, actual))
-        }
-        LifecycleRequirementMatcher::Member { member, arguments } => {
-            matches!(&row.event_kind, EventSpec::MemberCall { member: actual } if actual == member)
-                && matches_flat_arguments(arguments, &row.arguments)
-        }
-    }
+    matches_target(&matcher.target, row)
+        && matches_flat_arguments(&matcher.arguments, &row.arguments)
 }
 
 fn matches_sink(matcher: &LifecycleSinkMatcher, row: &ReferenceRow) -> bool {
     matches_target(&matcher.target, row)
-        && matcher.argument.is_none_or(|index| {
-            u8::try_from(index).is_ok_and(|index| {
-                row.arguments
-                    .contains_key(&ArgumentIndex::new_unchecked(index))
-            })
+        && u8::try_from(matcher.argument).is_ok_and(|index| {
+            row.arguments
+                .contains_key(&ArgumentIndex::new_unchecked(index))
         })
 }
 
 fn matches_target(target: &LifecycleCallTarget, row: &ReferenceRow) -> bool {
-    match target {
-        LifecycleCallTarget::Global(name) => {
-            matches!(&row.event_kind, EventSpec::Call)
-                && matches!(&row.identity, IdentitySpec::Global { name: actual } if actual == name)
-        }
-        LifecycleCallTarget::RootedMember(member) => {
-            matches!(&row.event_kind, EventSpec::MemberCall { member: actual } if actual == member)
-        }
-    }
+    matches!(target, LifecycleCallTarget::Global(name)
+        if matches!(&row.event_kind, EventSpec::Call)
+            && matches!(&row.identity, IdentitySpec::Global { name: actual } if actual == name))
 }
 
 fn matches_flat_arguments(
@@ -522,7 +302,7 @@ fn matches_flat_arguments(
 ) -> bool {
     constraints.iter().all(|constraint| {
         args.get(&constraint.arg_index())
-            .is_some_and(|value| matches_reference_value(constraint.predicate(), value))
+            .is_some_and(|value| matches_argument_matcher(constraint.predicate(), value))
     })
 }
 
@@ -543,53 +323,59 @@ fn matches_value_matcher(matcher: &ValueMatcher, value: &ReferenceValue) -> bool
                     values.iter().all(|v| actual.contains(v))
                 }
             },
-            ReferenceValue::Unknown => matches!(predicate.kind(), StaticStringPredicateKind::Any),
         },
     }
 }
 
-fn matches_event_kind_logical(expected: &EventSpec, actual: &EventSpec) -> bool {
+fn matches_event_kind(expected: &EventSpec, actual: &EventSpec) -> bool {
     expected == actual
 }
 
-fn matches_identity_logical(expected: &IdentitySpec, actual: &IdentitySpec) -> bool {
+fn matches_identity(expected: &IdentitySpec, actual: &IdentitySpec) -> bool {
     expected == actual
 }
 
-fn matches_arguments_logical(
+fn matches_arguments(
     constraints: &CanonicalArgumentConstraints,
     args: &BTreeMap<ArgumentIndex, ReferenceValue>,
 ) -> bool {
-    for group in constraints.groups() {
-        let idx = group.index();
-        let Some(value) = args.get(&idx) else {
-            return false;
-        };
-        if !group
-            .predicates()
-            .iter()
-            .all(|m| matches_reference_value(m, value))
-        {
-            return false;
-        }
-    }
-    true
+    constraints.groups().iter().all(|group| {
+        args.get(&group.index()).is_some_and(|value| {
+            group
+                .predicates()
+                .iter()
+                .all(|matcher| matches_argument_matcher(matcher, value))
+        })
+    })
 }
 
-// ── Physical evaluator ──────────────────────────────────────────────────────
+fn certainty(row: &ReferenceRow) -> ReferenceCertainty {
+    match row.completeness {
+        ReferenceCompleteness::Complete => ReferenceCertainty::Definite,
+        ReferenceCompleteness::Unknown => ReferenceCertainty::Possible,
+    }
+}
 
-/// Evaluate a [`PhysicalPlan`] against a set of reference rows.
-///
-/// Dispatches only on physical root fields. Returns sorted witnesses
-/// for comparison against logical evaluation.
+fn has_producer_support(row: &ReferenceRow) -> bool {
+    row.object.is_some_and(|_| {
+        row.support.as_ref().is_some_and(|support| {
+            support.path == row.path
+                && support.event != row.event
+                && support.kind == ReferenceSupportKind::Producer
+        })
+    })
+}
+
+/// Evaluate the supported physical roots against the same synthetic rows.
 pub(crate) fn evaluate_supported_physical(
     plan: &PhysicalPlan,
     rows: &[ReferenceRow],
 ) -> Vec<ReferenceWitness> {
-    let mut witnesses = Vec::new();
-    for root in plan.roots() {
-        witnesses.extend(evaluate_physical_root(root, rows));
-    }
+    let mut witnesses = plan
+        .roots()
+        .iter()
+        .flat_map(|root| evaluate_physical_root(root, rows))
+        .collect::<Vec<_>>();
     witnesses.sort();
     witnesses.dedup();
     witnesses
@@ -598,232 +384,63 @@ pub(crate) fn evaluate_supported_physical(
 fn evaluate_physical_root(root: &PhysicalRoot, rows: &[ReferenceRow]) -> Vec<ReferenceWitness> {
     match root {
         PhysicalRoot::IndexedScan {
-            identity,
-            event,
-            evidence: _,
-        } => evaluate_indexed_scan(identity, event, rows),
+            identity, event, ..
+        } => evaluate_scan(identity, event, None, rows),
         PhysicalRoot::ConstrainedScan {
             identity,
             event,
             constraints,
-            evidence: _,
-        } => evaluate_constrained_scan(identity, event, constraints, rows),
+            ..
+        } => evaluate_scan(identity, event, Some(constraints), rows),
         PhysicalRoot::ReturnedSubject {
-            producer,
-            member,
-            event,
-            evidence: _,
-            object_slot: _,
-        } => evaluate_returned_subject(producer, member, event, rows),
-        PhysicalRoot::InstanceSubject {
-            constructor,
-            member,
-            evidence: _,
-            object_slot: _,
-        } => evaluate_instance_subject(constructor, member, rows),
-        PhysicalRoot::Lifecycle { flow } => {
-            evaluate_lifecycle(&lifecycle_plan_from_physical(flow), rows)
-        }
-    }
-}
-
-fn evaluate_indexed_scan(
-    identity: &IdentityConstraint,
-    event: &EventPredicate,
-    rows: &[ReferenceRow],
-) -> Vec<ReferenceWitness> {
-    let mut witnesses = Vec::new();
-    for row in rows {
-        if !matches_event_physical(event, &row.event_kind) {
-            continue;
-        }
-        if !matches_identity_constraint(identity, &row.identity) {
-            continue;
-        }
-
-        let certainty = if row.completeness == ReferenceCompleteness::Unknown {
-            ReferenceCertainty::Possible
-        } else {
-            ReferenceCertainty::Definite
-        };
-
-        witnesses.push(ReferenceWitness {
-            primary_event: row.event,
-            support_events: Vec::new(),
-            path_key: row.path,
-            certainty,
-        });
-    }
-    witnesses
-}
-
-fn evaluate_constrained_scan(
-    identity: &IdentityConstraint,
-    event: &EventPredicate,
-    constraints: &CanonicalArgumentConstraints,
-    rows: &[ReferenceRow],
-) -> Vec<ReferenceWitness> {
-    let mut witnesses = Vec::new();
-    for row in rows {
-        if !matches_event_physical(event, &row.event_kind) {
-            continue;
-        }
-        if !matches_identity_constraint(identity, &row.identity) {
-            continue;
-        }
-        if !matches_arguments_physical(constraints, &row.arguments) {
-            continue;
-        }
-
-        let certainty = if row.completeness == ReferenceCompleteness::Unknown {
-            ReferenceCertainty::Possible
-        } else {
-            ReferenceCertainty::Definite
-        };
-
-        witnesses.push(ReferenceWitness {
-            primary_event: row.event,
-            support_events: Vec::new(),
-            path_key: row.path,
-            certainty,
-        });
-    }
-    witnesses
-}
-
-fn evaluate_returned_subject(
-    identity: &IdentityConstraint,
-    _member: &glass_lint_datastructures::SymbolPath,
-    event: &EventPredicate,
-    rows: &[ReferenceRow],
-) -> Vec<ReferenceWitness> {
-    let mut witnesses = Vec::new();
-    for row in rows {
-        if !has_correlated_support(row, ReferenceSupportKind::Producer) {
-            continue;
-        }
-        if !matches_event_physical(event, &row.event_kind) {
-            continue;
-        }
-        if !matches_identity_constraint(identity, &row.identity) {
-            continue;
-        }
-
-        let certainty = if row.completeness == ReferenceCompleteness::Unknown {
-            ReferenceCertainty::Possible
-        } else {
-            ReferenceCertainty::Definite
-        };
-
-        let support_events = vec![row.support.as_ref().expect("checked above").event];
-        witnesses.push(ReferenceWitness {
-            primary_event: row.event,
-            support_events,
-            path_key: row.path,
-            certainty,
-        });
-    }
-    witnesses
-}
-
-fn evaluate_instance_subject(
-    constructor: &IdentityConstraint,
-    member: &glass_lint_datastructures::SymbolPath,
-    rows: &[ReferenceRow],
-) -> Vec<ReferenceWitness> {
-    let mut witnesses = Vec::new();
-    for row in rows {
-        if !has_correlated_support(row, ReferenceSupportKind::Constructor) {
-            continue;
-        }
-        if !matches!(&row.event_kind, EventSpec::MemberCall { member: actual } if actual == member)
-        {
-            continue;
-        }
-        if !matches_identity_constraint(constructor, &row.identity) {
-            continue;
-        }
-
-        let certainty = if row.completeness == ReferenceCompleteness::Unknown {
-            ReferenceCertainty::Possible
-        } else {
-            ReferenceCertainty::Definite
-        };
-
-        let support_events = vec![row.support.as_ref().expect("checked above").event];
-        witnesses.push(ReferenceWitness {
-            primary_event: row.event,
-            support_events,
-            path_key: row.path,
-            certainty,
-        });
-    }
-    witnesses
-}
-
-fn has_correlated_support(row: &ReferenceRow, kind: ReferenceSupportKind) -> bool {
-    row.object.is_some_and(|_| {
-        row.support.as_ref().is_some_and(|support| {
-            support.path == row.path && support.event != row.event && support.kind == kind
-        })
-    })
-}
-
-// ── Matching helpers ────────────────────────────────────────────────────────
-
-fn matches_event_physical(expected: &EventPredicate, actual: &EventSpec) -> bool {
-    &lower_event(actual) == expected
-}
-
-fn matches_identity_constraint(expected: &IdentityConstraint, actual: &IdentitySpec) -> bool {
-    expected == &lower_identity(actual)
-}
-
-fn matches_arguments_physical(
-    constraints: &CanonicalArgumentConstraints,
-    args: &BTreeMap<ArgumentIndex, ReferenceValue>,
-) -> bool {
-    for group in constraints.groups() {
-        let idx = group.index();
-        let Some(value) = args.get(&idx) else {
-            return false;
-        };
-        if !group
-            .predicates()
-            .iter()
-            .all(|m| matches_reference_value(m, value))
-        {
-            return false;
-        }
-    }
-    true
-}
-
-/// Check whether a matcher accepts a reference value.
-fn matches_reference_value(matcher: &ArgumentMatcher, value: &ReferenceValue) -> bool {
-    match matcher.kind() {
-        ArgumentMatcherKind::Value(vm) => match vm.kind() {
-            ValueMatcherKind::Any => true,
-            ValueMatcherKind::StaticString(sp) => match value {
-                ReferenceValue::StaticString(s) => match sp.kind() {
-                    StaticStringPredicateKind::Any => true,
-                    StaticStringPredicateKind::Exact(values) => values.iter().any(|v| v == s),
-                    StaticStringPredicateKind::Prefix(prefixes) => {
-                        prefixes.iter().any(|p| s.starts_with(p.as_str()))
-                    }
-                    StaticStringPredicateKind::ContainsAny(substrings) => {
-                        substrings.iter().any(|sub| s.contains(sub.as_str()))
-                    }
-                    StaticStringPredicateKind::ContainsAll(substrings) => {
-                        substrings.iter().all(|sub| s.contains(sub.as_str()))
-                    }
-                },
-                ReferenceValue::Unknown => {
-                    // An unknown value cannot satisfy a specific predicate.
-                    matches!(sp.kind(), StaticStringPredicateKind::Any)
+            producer, event, ..
+        } => evaluate_scan(producer, event, None, rows)
+            .into_iter()
+            .filter_map(|mut witness| {
+                let row = rows.iter().find(|row| {
+                    row.event == witness.primary_event && row.path == witness.path_key
+                })?;
+                if !has_producer_support(row) {
+                    return None;
                 }
-            },
+                witness.support_events = vec![row.support.as_ref()?.event];
+                Some(witness)
+            })
+            .collect(),
+        PhysicalRoot::InstanceSubject { .. } | PhysicalRoot::Lifecycle { .. } => match root {
+            PhysicalRoot::Lifecycle { flow } => lifecycle_plan_from_physical(flow)
+                .map_or_else(Vec::new, |plan| evaluate_lifecycle(&plan, rows)),
+            PhysicalRoot::InstanceSubject { .. } => Vec::new(),
+            _ => unreachable!(),
         },
+    }
+}
+
+fn evaluate_scan(
+    identity: &IdentityConstraint,
+    event: &EventPredicate,
+    constraints: Option<&CanonicalArgumentConstraints>,
+    rows: &[ReferenceRow],
+) -> Vec<ReferenceWitness> {
+    rows.iter()
+        .filter(|row| {
+            lower_event(&row.event_kind) == *event
+                && lower_identity(&row.identity) == *identity
+                && constraints
+                    .is_none_or(|constraints| matches_arguments(constraints, &row.arguments))
+        })
+        .map(|row| ReferenceWitness {
+            primary_event: row.event,
+            support_events: Vec::new(),
+            path_key: row.path,
+            certainty: certainty(row),
+        })
+        .collect()
+}
+
+fn matches_argument_matcher(matcher: &ArgumentMatcher, value: &ReferenceValue) -> bool {
+    match matcher.kind() {
+        ArgumentMatcherKind::Value(matcher) => matches_value_matcher(matcher, value),
         ArgumentMatcherKind::ObjectKeys(_)
         | ArgumentMatcherKind::ObjectPropertyValue { .. }
         | ArgumentMatcherKind::RootedExpressions(_) => false,

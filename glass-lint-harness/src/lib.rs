@@ -46,6 +46,3 @@ pub use types::{
     FindingExpectationError, ProjectCase, SuiteReport, ToolExpectation, ToolResult,
     normalize_bundle_profiles,
 };
-
-#[cfg(test)]
-mod test_support;

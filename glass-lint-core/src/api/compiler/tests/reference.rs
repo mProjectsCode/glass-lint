@@ -574,7 +574,10 @@ fn lifecycle_reference_matches_logical_and_physical_plans() {
             sink_args,
         ),
     ];
-    assert!(witnesses_equal(&normalized, &plan, &rows));
+    assert_eq!(
+        logical_witnesses(&normalized, &rows),
+        physical_witnesses(&plan, &rows)
+    );
     assert_eq!(logical_witnesses(&normalized, &rows).len(), 1);
     assert_eq!(logical_witnesses(&normalized, &rows)[0].primary_event, 3);
 }
