@@ -46,6 +46,7 @@ impl ScopeShape {
 
 #[derive(Debug, Default)]
 pub struct ScopeShapeTable {
+    #[cfg(test)]
     recorded: usize,
     children: BTreeMap<ScopeShapeKey, VecDeque<ScopeId>>,
 }
@@ -68,7 +69,10 @@ impl ScopeShapeTable {
             span_lo: shape.span().lo,
             kind: shape.kind(),
         };
-        self.recorded = self.recorded.saturating_add(1);
+        #[cfg(test)]
+        {
+            self.recorded = self.recorded.saturating_add(1);
+        }
         self.children
             .entry(key)
             .or_default()

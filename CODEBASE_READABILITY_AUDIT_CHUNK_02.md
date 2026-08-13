@@ -47,7 +47,7 @@ shared bounded budget.
 
 ### Scope-shape diagnostics
 
-#### [ ] READ-047 — Compile the scope-shape count only for tests
+#### [x] READ-047 — Compile the scope-shape count only for tests
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -72,6 +72,11 @@ planner/collector shape-mismatch or unconsumed-shape checks.
 
 **Audit disposition (2026-08-13):** Confirmed. The instrumentation is
 test-only and must not replace the production shape queue or its validation.
+
+**Fix Applied:** Gated `ScopeShapeTable::recorded` and its increment behind
+`cfg(test)`, leaving the authoritative child queue, `take_child`,
+`is_consumed`, and exact shape-count assertions unchanged. Verified with
+`make fmt && make ci`.
 
 ### Bounded constant evaluation
 
