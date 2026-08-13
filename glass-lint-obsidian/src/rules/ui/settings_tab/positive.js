@@ -8,6 +8,11 @@ this.addSettingTab(tab);
 
 // @expect-error glass-lint rule=obsidian:ui.settings-tab
 this["addSettingTab"](secondTab);
+
+// Proven extracted callables retain the plugin-instance identity.
+const addSettingTab = this.addSettingTab;
+// @expect-error glass-lint rule=obsidian:ui.settings-tab
+addSettingTab(aliasedTab);
   }
 }
 

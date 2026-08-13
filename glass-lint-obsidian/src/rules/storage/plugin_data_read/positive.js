@@ -8,7 +8,7 @@ this.loadData();
 // @expect-error glass-lint rule=obsidian:storage.plugin-data-read
 this['loadData']();
 
-// Receiver provenance is intentionally not established by this heuristic.
+// Receiver provenance is intentionally not established for this same-shaped receiver.
 function unrelatedReceiver() {
     // @expect-no-error glass-lint rule=obsidian:storage.plugin-data-read
     this.loadData();

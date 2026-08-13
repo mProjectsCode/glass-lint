@@ -27,6 +27,11 @@ function shadowed(LocalSettingTab) {
   new LocalSettingTab();
 }
 
+function shadowedExact(PluginSettingTab) {
+  // @expect-no-error glass-lint rule=obsidian:ui.settings-tab
+  new PluginSettingTab();
+}
+
 class LocalSettingTab {}
 import { PluginSettingTab as ImportedSettingTab } from "obsidian";
 let reassigned = ImportedSettingTab;

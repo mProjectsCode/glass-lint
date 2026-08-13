@@ -9,7 +9,7 @@ class TestPlugin extends Plugin {
 plugin.registerView("other", view);
 
 const register = this.registerView;
-// Aliases are intentionally not followed by this heuristic.
+// Proven extracted aliases retain the plugin-instance identity.
 // @expect-error glass-lint rule=obsidian:view.register
 register("alias", view);
 

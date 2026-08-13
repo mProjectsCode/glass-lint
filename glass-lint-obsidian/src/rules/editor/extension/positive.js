@@ -8,8 +8,8 @@ this.registerEditorExtension(ext);
 // @expect-error glass-lint rule=obsidian:editor.extension
 this['registerEditorExtension'](secondExtension);
 
-// The heuristic intentionally reports the same chain without proving the
-// receiver is an Obsidian plugin instance.
+// A same-shaped receiver is correctly excluded without plugin-instance
+// provenance.
 function unrelatedReceiver() {
     // @expect-no-error glass-lint rule=obsidian:editor.extension
     this.registerEditorExtension(unrelatedExtension);

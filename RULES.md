@@ -1395,7 +1395,6 @@ Default severity: `info`
 Queries:
 
 - Emit `obsidian.Plugin` when all of: event $0 is selected; event $0 is a member call to `addSettingTab`; event $0 has identity the `Plugin` export from module `obsidian`; object $1 is constructed by the `Plugin` export from module `obsidian`; event $0 uses object $1 as its member receiver.
-- Emit `PluginSettingTab` when a constructor call to the heuristic name `PluginSettingTab`.
 - Emit `obsidian.PluginSettingTab` when a constructor call to the `PluginSettingTab` export from module `obsidian`.
 - Emit `obsidian.PluginSettingTab` when a class reference to the `PluginSettingTab` export from module `obsidian`.
 

@@ -10,8 +10,8 @@ this.registerView("view", view);
 // @expect-error glass-lint rule=obsidian:view.register
 this["registerView"]("computed", view);
 
-// The heuristic intentionally reports the same chain without proving the
-// receiver is an Obsidian plugin instance.
+// A same-shaped receiver is correctly excluded without plugin-instance
+// provenance.
 function unrelatedReceiver() {
   // @expect-no-error glass-lint rule=obsidian:view.register
   this.registerView("same-shaped", view);

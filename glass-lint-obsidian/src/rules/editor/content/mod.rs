@@ -3,8 +3,8 @@
 use glass_lint_core::rules::{Confidence, QueryDecl, Rule, Severity};
 
 /// Detects content reads and mutations on proven Obsidian `Editor` instances.
-/// Static computed method names are accepted; local lookalikes, dynamic
-/// properties, aliases, and reassigned receivers remain fail-closed.
+/// Static computed method names and proven aliases are accepted; local
+/// lookalikes, dynamic properties, and reassigned receivers remain fail-closed.
 pub fn rule() -> Rule {
     Rule::catalog_builder("editor.content")
         .description("Reads or changes Obsidian editor content")

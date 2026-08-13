@@ -7,7 +7,7 @@ class TestPlugin extends Plugin {
 // @expect-no-error glass-lint rule=obsidian:editor.extension
 plugin.registerEditorExtension(ext);
 
-// Aliases are intentionally not followed by this heuristic.
+// Proven extracted aliases retain the plugin-instance identity.
 const register = this.registerEditorExtension;
 // @expect-error glass-lint rule=obsidian:editor.extension
 register(ext);

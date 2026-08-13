@@ -8,7 +8,7 @@ this.registerMarkdownPostProcessor(fn);
 // @expect-error glass-lint rule=obsidian:markdown.postprocessor
 this['registerMarkdownPostProcessor'](secondProcessor);
 
-// Receiver provenance is intentionally not established by this heuristic.
+// Receiver provenance is intentionally not established for this same-shaped receiver.
 function unrelatedReceiver() {
     // @expect-no-error glass-lint rule=obsidian:markdown.postprocessor
     this.registerMarkdownPostProcessor(unrelatedProcessor);

@@ -7,8 +7,8 @@ use glass_lint_core::rules::{Confidence, QueryDecl, Rule, Severity};
 /// `this.registerObsidianProtocolHandler`. Bases and CLI registration have
 /// dedicated provider rules.
 /// The instance matcher requires a proven Obsidian `Plugin` receiver and
-/// accepts static computed names; aliases, reassignment, dynamic properties,
-/// and near-name methods are excluded.
+/// accepts static computed names and proven aliases; reassignment, dynamic
+/// properties, and near-name methods are excluded.
 pub fn rule() -> Rule {
     Rule::catalog_builder("lifecycle.events")
         .description("Registers Obsidian lifecycle events")

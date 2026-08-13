@@ -3,7 +3,8 @@
 use glass_lint_core::rules::{Confidence, QueryDecl, Rule, Severity};
 
 /// Detects `Plugin.registerBasesView` on a proven Obsidian plugin instance.
-/// Local lookalikes, dynamic members, and callable aliases remain fail-closed.
+/// Proven receiver and callable aliases retain identity; local lookalikes,
+/// dynamic members, and reassigned aliases remain fail-closed.
 pub fn rule() -> Rule {
     Rule::catalog_builder("bases.register")
         .description("Registers an Obsidian Bases view")

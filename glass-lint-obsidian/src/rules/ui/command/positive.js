@@ -15,7 +15,7 @@ const bound = this.addCommand.bind(this);
 // @expect-error glass-lint rule=obsidian:ui.command
 bound({ id: "bound" });
 
-// Receiver provenance is intentionally not established by this heuristic.
+// Receiver provenance is intentionally not established for this same-shaped receiver.
 function unrelatedReceiver() {
     // @expect-no-error glass-lint rule=obsidian:ui.command
     this.addCommand({ id: "unrelated" });

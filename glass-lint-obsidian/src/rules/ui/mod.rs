@@ -1,7 +1,7 @@
 //! Obsidian user-interface rule catalog.
 //!
-//! The catalog combines strict plugin-instance and module provenance rules
-//! with explicitly heuristic menu behavior.
+//! The catalog combines strict plugin-instance and module-provenance rules
+//! with the explicitly broader menu behavior.
 
 mod command;
 mod menu;
@@ -13,7 +13,7 @@ mod status_bar;
 use glass_lint_core::rules::Rule;
 pub fn rules() -> Vec<Rule> {
     // Registration, status, modal, and notice rules precede the broader menu
-    // and settings heuristics in a stable order.
+    // and settings rules in a stable order.
     vec![
         command::rule(),
         ribbon::rule(),

@@ -1,4 +1,4 @@
-// @case description local, dynamic, and alias registrations are excluded
+// @case description local and dynamic registrations are excluded; aliases retain identity
 // @tool glass-lint rules=obsidian:cli.register
 import { Plugin } from "obsidian";
 

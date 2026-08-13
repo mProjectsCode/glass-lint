@@ -10,7 +10,7 @@ this.registerDomEvent(element, 'click', fn);
 // @expect-error glass-lint rule=obsidian:lifecycle.events
 this.registerInterval(setInterval(() => {}, 1000));
 
-// Static computed names are canonicalized by the heuristic matcher.
+// Static computed names are canonicalized by the instance matcher.
 // @expect-error glass-lint rule=obsidian:lifecycle.events
 this['registerEvent'](eventRef);
 // @expect-error glass-lint rule=obsidian:lifecycle.events

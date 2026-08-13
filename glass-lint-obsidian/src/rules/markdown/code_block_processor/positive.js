@@ -8,7 +8,7 @@ this.registerMarkdownCodeBlockProcessor('x',fn);
 // @expect-error glass-lint rule=obsidian:markdown.code-block-processor
 this['registerMarkdownCodeBlockProcessor']("second", secondProcessor);
 
-// The heuristic does not establish that this is an Obsidian plugin instance.
+// The strict matcher does not establish that this is an Obsidian plugin instance.
 function unrelatedReceiver() {
     // @expect-no-error glass-lint rule=obsidian:markdown.code-block-processor
     this.registerMarkdownCodeBlockProcessor('unrelated', processor);

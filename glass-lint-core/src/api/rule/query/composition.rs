@@ -28,6 +28,10 @@ impl QueryDecl {
     }
 
     /// Member call on an instance created by a module export.
+    ///
+    /// The semantic matcher follows proven receiver aliases and extracted
+    /// callable aliases. Shadowing, reassignment, ambiguity, and unsupported
+    /// receiver identities remain fail-closed.
     pub fn member_call_instance(
         module: impl Into<String>,
         export: impl Into<String>,
