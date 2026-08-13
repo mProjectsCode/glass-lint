@@ -504,6 +504,19 @@ mod tests {
         ArtifactCacheKey::for_engine_version(&source, &env, &limits, version)
     }
 
+    fn empty_shared_artifact() -> SharedSemanticArtifact {
+        SharedSemanticArtifact {
+            semantic: Arc::new(SemanticArtifact::from_analysis(
+                crate::analysis::facts::SemanticFacts::default(),
+                BTreeMap::new(),
+                usize::MAX,
+                DerivedPhaseCapabilities::enabled(),
+                crate::analysis::semantic::status::AnalysisStatus::default(),
+            )),
+            source_index: Arc::new(SourceLineIndex::new("")),
+        }
+    }
+
     #[test]
     fn local_artifact_is_send_sync_and_cloneable() {
         assert_send_sync::<LocalArtifact>();
@@ -537,16 +550,7 @@ mod tests {
     fn artifact_cache_insert_then_get_hit() {
         let mut cache = ArtifactCache::default();
         let key = test_key("x = 1;", "1.0.0");
-        let artifact = SharedSemanticArtifact {
-            semantic: Arc::new(SemanticArtifact::from_analysis(
-                crate::analysis::facts::SemanticFacts::default(),
-                BTreeMap::new(),
-                usize::MAX,
-                DerivedPhaseCapabilities::enabled(),
-                crate::analysis::semantic::status::AnalysisStatus::default(),
-            )),
-            source_index: Arc::new(SourceLineIndex::new("")),
-        };
+        let artifact = empty_shared_artifact();
         assert!(cache.get(&key).is_none());
         cache.insert(key.clone(), artifact);
         let retrieved = cache.get(&key);
@@ -560,16 +564,7 @@ mod tests {
         for i in 0..ArtifactCache::MAX_ENTRIES + 5 {
             let text = format!("x = {i};");
             let key = test_key(&text, "1.0.0");
-            let artifact = SharedSemanticArtifact {
-                semantic: Arc::new(SemanticArtifact::from_analysis(
-                    crate::analysis::facts::SemanticFacts::default(),
-                    BTreeMap::new(),
-                    usize::MAX,
-                    DerivedPhaseCapabilities::enabled(),
-                    crate::analysis::semantic::status::AnalysisStatus::default(),
-                )),
-                source_index: Arc::new(SourceLineIndex::new("")),
-            };
+            let artifact = empty_shared_artifact();
             let evicted = cache.insert(key.clone(), artifact);
             keys.push(key);
             if i >= ArtifactCache::MAX_ENTRIES {
@@ -592,26 +587,8 @@ mod tests {
     fn artifact_cache_replacement_does_not_evict() {
         let mut cache = ArtifactCache::default();
         let key = test_key("x = 1;", "1.0.0");
-        let artifact_a = SharedSemanticArtifact {
-            semantic: Arc::new(SemanticArtifact::from_analysis(
-                crate::analysis::facts::SemanticFacts::default(),
-                BTreeMap::new(),
-                usize::MAX,
-                DerivedPhaseCapabilities::enabled(),
-                crate::analysis::semantic::status::AnalysisStatus::default(),
-            )),
-            source_index: Arc::new(SourceLineIndex::new("")),
-        };
-        let artifact_b = SharedSemanticArtifact {
-            semantic: Arc::new(SemanticArtifact::from_analysis(
-                crate::analysis::facts::SemanticFacts::default(),
-                BTreeMap::new(),
-                usize::MAX,
-                DerivedPhaseCapabilities::enabled(),
-                crate::analysis::semantic::status::AnalysisStatus::default(),
-            )),
-            source_index: Arc::new(SourceLineIndex::new("")),
-        };
+        let artifact_a = empty_shared_artifact();
+        let artifact_b = empty_shared_artifact();
         cache.insert(key.clone(), artifact_a);
         let evicted = cache.insert(key, artifact_b);
         assert!(!evicted, "replacing exact key should not evict");
@@ -622,16 +599,7 @@ mod tests {
         let mut cache = ArtifactCache::default();
         let key_a = test_key("x = 1;", "1.0.0");
         let key_b = test_key("y = 2;", "1.0.0");
-        let artifact = SharedSemanticArtifact {
-            semantic: Arc::new(SemanticArtifact::from_analysis(
-                crate::analysis::facts::SemanticFacts::default(),
-                BTreeMap::new(),
-                usize::MAX,
-                DerivedPhaseCapabilities::enabled(),
-                crate::analysis::semantic::status::AnalysisStatus::default(),
-            )),
-            source_index: Arc::new(SourceLineIndex::new("")),
-        };
+        let artifact = empty_shared_artifact();
         cache.insert(key_a, artifact);
         assert!(cache.get(&key_b).is_none(), "different key should not hit");
     }

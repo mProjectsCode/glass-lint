@@ -86,7 +86,7 @@ raw facts and diagnostics.
 
 ### Local cache test fixtures
 
-#### [ ] READ-058 — Centralize the repeated empty cached-artifact fixture
+#### [x] READ-058 — Centralize the repeated empty cached-artifact fixture
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -115,6 +115,10 @@ cache’s collision-key or eviction assertions behind a higher-level mock.
 **Audit disposition (2026-08-13):** Confirmed. The helper belongs in test code
 and should construct the real bounded artifact, not a mock or an unbounded
 substitute.
+
+**Fix Applied:** Added one `empty_shared_artifact()` test helper and reused it
+across cache hit, miss, eviction, and replacement tests. Cache keys and all
+behavioral assertions remain per-test. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 
