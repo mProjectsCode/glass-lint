@@ -464,7 +464,7 @@ deterministic findings.
 - `matching::arguments::MatcherEvaluationContext` — Supplies artifact context during matcher evaluation.
 - `matching::arguments::MatcherOverlayPolicy` — Selects whether project overlays participate in matching.
 - `matching::arguments::MatcherProjectContext` — Combines matcher facts with project identity overlays.
-- `matching::arguments::MatcherProjectInputs` — Supplies linked identity and call-result overlays to argument matching.
+- `matching::arguments::MatcherProjectContext` — Combines matcher facts with linked identity and call-result overlays.
 - `matching::arguments::MatcherProjectOverlay` — Provides project-linked data to argument matching.
 - `matching::arguments::PreparedConstrainedRoot` — Stores a constrained root after preparation.
 - `analysis::matching::arguments::evaluator` — Executes prepared argument matcher clauses.

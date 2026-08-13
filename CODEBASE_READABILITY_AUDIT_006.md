@@ -80,7 +80,7 @@ dispatch policy rather than remove a concrete ownership or maintenance cost.
 
 ### Structure/API inventory
 
-#### [ ] READ-028 — The chunk inventory names a matcher input type that no longer exists
+#### [x] READ-028 — The chunk inventory names a matcher input type that no longer exists
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -104,7 +104,9 @@ confirming that the inventory is intended to be authoritative. Do not add a
 compatibility type solely to satisfy the document; preserve the current
 project-overlay lifetime and artifact-pairing guarantees.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced the stale `MatcherProjectInputs` inventory entry
+with the current `MatcherProjectContext` ownership description. Verified with
+`make fmt && make ci`.
 
 ## Systemic Themes
 
