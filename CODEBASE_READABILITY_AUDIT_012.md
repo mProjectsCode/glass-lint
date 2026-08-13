@@ -16,7 +16,7 @@ resource contract missing from the direct core session API.
 
 ### Authored request handoff
 
-#### [ ] READ-050 — Local request extraction materializes a tuple vector that is immediately split into two collections
+#### [x] READ-050 — Local request extraction materializes a tuple vector that is immediately split into two collections
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -42,7 +42,11 @@ invalid-span filter, the authored-key invariant, and the exact
 `AuthoredRequests` values visible to resolver callers; remove only the
 immediately consumed tuple vector and second transformation pass.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Module request extraction now streams its owned
+`(ModuleRequestId, ResolutionRequest)` pairs to `record_local`, which registers
+authored IDs and builds the single resolver-facing request vector in one pass.
+Interface order, invalid-span filtering, and authored-key identity are
+unchanged. Verified with `make fmt && make ci`.
 
 ### Finding duplicate merge ownership
 

@@ -399,28 +399,24 @@ impl ModuleInterface {
         self.exports.get(name).and_then(|e| e.function_id)
     }
 
-    pub fn requests_with_ids(
+    pub fn for_each_request(
         &self,
         importer: &ProjectRelativePath,
         lines: &crate::SourceLineIndex,
-    ) -> Vec<(ModuleRequestId, ResolutionRequest)> {
-        self.requests
-            .iter()
-            .enumerate()
-            .filter_map(|(index, request)| {
-                Some((
-                    ModuleRequestId(index),
-                    ResolutionRequest::new(
-                        ResolutionRequestKey::new(
-                            importer.clone(),
-                            request.kind(),
-                            lines.try_range(request.span()).ok()?,
-                        ),
-                        request.specifier().clone(),
-                    ),
-                ))
-            })
-            .collect()
+        mut visit: impl FnMut(ModuleRequestId, ResolutionRequest),
+    ) {
+        for (index, request) in self.requests.iter().enumerate() {
+            let Some(range) = lines.try_range(request.span()).ok() else {
+                continue;
+            };
+            visit(
+                ModuleRequestId(index),
+                ResolutionRequest::new(
+                    ResolutionRequestKey::new(importer.clone(), request.kind(), range),
+                    request.specifier().clone(),
+                ),
+            );
+        }
     }
 }
 

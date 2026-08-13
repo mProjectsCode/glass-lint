@@ -140,16 +140,18 @@ impl AnalysisArtifacts {
         path: &ProjectRelativePath,
         local: LocalArtifact,
     ) -> Vec<ResolutionRequest> {
-        let with_ids = local
-            .interface()
-            .requests_with_ids(path, local.source_context().lines());
-        for (req_id, request) in &with_ids {
-            self.authored_requests
-                .insert(request.key().clone(), *req_id);
-        }
+        let mut authored_requests = Vec::new();
+        local.interface().for_each_request(
+            path,
+            local.source_context().lines(),
+            |req_id, request| {
+                self.authored_requests.insert(request.key().clone(), req_id);
+                authored_requests.push(request);
+            },
+        );
         self.outcomes
             .insert(path.clone(), LocalAnalysisOutcome::Analyzed(local));
-        with_ids.into_iter().map(|(_, request)| request).collect()
+        authored_requests
     }
 
     /// Whether a source path still needs local analysis: it has neither a
