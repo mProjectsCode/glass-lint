@@ -8,7 +8,7 @@ use std::{
 use anyhow::{Context, Result, bail};
 use glass_lint_core::{
     Linter,
-    project::{AnalysisReport, ReportCompletion},
+    project::{AnalysisOperationCounts, AnalysisReport, ReportCompletion},
 };
 
 use crate::profile::{
@@ -16,8 +16,8 @@ use crate::profile::{
     metrics::{accumulate_report, combined_digest},
     runner::support,
     types::{
-        MeasuredRepetitionAccumulator, PreparedFile, ProfileOperationCounts, ProfilePhaseTimings,
-        ProfileRepetitionSummary, ProfileSummary,
+        MeasuredRepetitionAccumulator, PreparedFile, ProfilePhaseTimings, ProfileRepetitionSummary,
+        ProfileSummary,
     },
 };
 
@@ -97,7 +97,7 @@ fn measure_repetition(
 ) -> Result<ProfileRepetitionSummary> {
     let mut findings = 0;
     let mut diagnostics = 0;
-    let mut operation_counts = ProfileOperationCounts::default();
+    let mut operation_counts = AnalysisOperationCounts::default();
     let mut completion = ReportCompletion::Complete;
     let mut run_completions = Vec::with_capacity(linters.len());
     let mut evidence_digests = Vec::new();

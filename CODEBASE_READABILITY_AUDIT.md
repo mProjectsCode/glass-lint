@@ -87,7 +87,7 @@ terminology. Verified with `cargo test -p glass-lint-project`.
 
 ### Profiling boundary
 
-#### [ ] READ-004 — Use core operation counts directly in the harness
+#### [x] READ-004 — Use core operation counts directly in the harness
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -107,7 +107,10 @@ wrapper re-export. Preserve the core `AddAssign` semantics, especially the
 maximum aggregation for live alternatives and saturating counters; update the
 harness public API deliberately because this is a breaking type simplification.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Replaced `ProfileOperationCounts` throughout the harness
+profile summaries and accumulators with core `AnalysisOperationCounts`, removed
+the forwarding façade and re-export, and kept core aggregation semantics.
+Verified with `cargo test -p glass-lint-harness`.
 
 ### Rule selection
 

@@ -1,15 +1,15 @@
 use std::{path::Path, sync::Arc, time::Instant};
 
 use anyhow::Result;
-use glass_lint_core::Linter;
+use glass_lint_core::{Linter, project::AnalysisOperationCounts};
 use glass_lint_project::{ProjectLoader, ProjectSelection, ValidatedProjectLoadOptions};
 
 use crate::profile::{
     config::{ProfileConfig, ProfileCorpusIdentity, ProfileWorkload, ProfileWorkloadIdentity},
     runner::support,
     types::{
-        MeasuredRepetitionAccumulator, ProfileOperationCounts, ProfilePhaseTimings,
-        ProfileProjectRun, ProfileProjectRunAccumulator, ProfileSummary, ProfileSummaryAccumulator,
+        MeasuredRepetitionAccumulator, ProfilePhaseTimings, ProfileProjectRun,
+        ProfileProjectRunAccumulator, ProfileSummary, ProfileSummaryAccumulator,
         ProfileSummaryMetadata, project_run_outcome,
     },
 };
@@ -21,7 +21,7 @@ pub(super) fn run(config: &ProfileConfig) -> Result<ProfileSummary> {
     let loader = ProjectLoader::new(ValidatedProjectLoadOptions::default());
     let mut totals = ProfileSummaryAccumulator::default();
     let mut phases = ProfilePhaseTimings::default();
-    let mut counts = ProfileOperationCounts::default();
+    let mut counts = AnalysisOperationCounts::default();
     let mut measured = MeasuredRepetitionAccumulator::with_repetitions(config.repeat.get());
 
     for path in &config.paths {

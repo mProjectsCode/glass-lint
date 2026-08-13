@@ -22,7 +22,7 @@ pub use bundler::{
 pub use cases::load_cases;
 pub use profile::{
     ProfileAnalysisLimits, ProfileCatalogProvider, ProfileConfig, ProfileConfigBuilder,
-    ProfileCorpusIdentity, ProfileExecutionIdentity, ProfileOperationCounts, ProfilePhaseTimings,
+    ProfileCorpusIdentity, ProfileExecutionIdentity, ProfilePhaseTimings,
     ProfileProjectLoadIdentity, ProfileRepetitionSummary, ProfileSummary, ProfileWorkload,
     ProfileWorkloadIdentity, ProfileWorkloadSummary, RuleSelectionProfile, discover_profile_files,
     ensure_profile_correctness_match, run_profile,

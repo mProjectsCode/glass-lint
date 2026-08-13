@@ -25,7 +25,7 @@ pub struct ProfileWorkloadSummary {
     pub measured_elapsed: Duration,
     pub completion: ReportCompletion,
     pub run_completions: Vec<ReportCompletion>,
-    pub operation_counts: ProfileOperationCounts,
+    pub operation_counts: AnalysisOperationCounts,
     pub evidence_order_digest: String,
     pub error: Option<String>,
 }
@@ -40,7 +40,7 @@ impl ProfileWorkloadSummary {
             measured_elapsed: Duration::ZERO,
             completion: ReportCompletion::Complete,
             run_completions: Vec::new(),
-            operation_counts: ProfileOperationCounts::default(),
+            operation_counts: AnalysisOperationCounts::default(),
             evidence_order_digest: String::new(),
             error: None,
         }
@@ -70,7 +70,7 @@ pub struct ProfileRepetitionSummary {
     pub diagnostics: usize,
     pub completion: ReportCompletion,
     pub run_completions: Vec<ReportCompletion>,
-    pub operation_counts: ProfileOperationCounts,
+    pub operation_counts: AnalysisOperationCounts,
     pub evidence_order_digest: String,
 }
 
@@ -82,7 +82,7 @@ impl ProfileRepetitionSummary {
             diagnostics: 0,
             completion: ReportCompletion::Complete,
             run_completions: Vec::new(),
-            operation_counts: ProfileOperationCounts::default(),
+            operation_counts: AnalysisOperationCounts::default(),
             evidence_order_digest: String::new(),
         }
     }
@@ -117,83 +117,14 @@ pub struct ProfileSummary {
     pub median_repetition_duration: Duration,
     pub workload_results: Vec<ProfileWorkloadSummary>,
     pub phase_timings: ProfilePhaseTimings,
-    pub operation_counts: ProfileOperationCounts,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct ProfileOperationCounts(AnalysisOperationCounts);
-
-impl ProfileOperationCounts {
-    pub fn files(self) -> usize {
-        self.0.files()
-    }
-
-    pub fn requests(self) -> usize {
-        self.0.requests()
-    }
-
-    pub fn edges(self) -> usize {
-        self.0.edges()
-    }
-
-    pub fn exports(self) -> usize {
-        self.0.exports()
-    }
-
-    pub fn scc_rounds(self) -> usize {
-        self.0.scc_rounds()
-    }
-
-    pub fn effect_projections(self) -> usize {
-        self.0.effect_projections()
-    }
-
-    pub fn evidence(self) -> usize {
-        self.0.evidence()
-    }
-
-    pub fn max_live_alternatives(self) -> usize {
-        self.0.max_live_alternatives()
-    }
-
-    pub fn trace_nodes(self) -> usize {
-        self.0.trace_nodes()
-    }
-
-    pub fn trace_heads(self) -> usize {
-        self.0.trace_heads()
-    }
-
-    pub fn coalescing_comparisons(self) -> usize {
-        self.0.coalescing_comparisons()
-    }
-
-    pub fn fixed_point_iterations(self) -> usize {
-        self.0.fixed_point_iterations()
-    }
-
-    pub fn rendered_traces(self) -> usize {
-        self.0.rendered_traces()
-    }
-}
-
-impl From<AnalysisOperationCounts> for ProfileOperationCounts {
-    fn from(counts: AnalysisOperationCounts) -> Self {
-        Self(counts)
-    }
-}
-
-impl AddAssign for ProfileOperationCounts {
-    fn add_assign(&mut self, rhs: Self) {
-        self.0 += rhs.0;
-    }
+    pub operation_counts: AnalysisOperationCounts,
 }
 
 pub(super) struct ProfileProjectRun {
     pub result: ProfileWorkloadSummary,
     pub repetitions: Vec<ProfileRepetitionSummary>,
     pub phases: ProfilePhaseTimings,
-    pub counts: ProfileOperationCounts,
+    pub counts: AnalysisOperationCounts,
     pub successful_runs: usize,
 }
 
@@ -201,7 +132,7 @@ pub(super) struct ProfileProjectRunAccumulator {
     result: ProfileWorkloadSummary,
     repetitions: Vec<ProfileRepetitionSummary>,
     phases: ProfilePhaseTimings,
-    counts: ProfileOperationCounts,
+    counts: AnalysisOperationCounts,
     result_evidence_digests: Vec<String>,
     successful_runs: usize,
 }
@@ -212,7 +143,7 @@ impl ProfileProjectRunAccumulator {
             result: ProfileWorkloadSummary::new(path),
             repetitions: vec![ProfileRepetitionSummary::zero(); repetition_count],
             phases: ProfilePhaseTimings::default(),
-            counts: ProfileOperationCounts::default(),
+            counts: AnalysisOperationCounts::default(),
             result_evidence_digests: Vec::new(),
             successful_runs: 0,
         }
@@ -428,7 +359,7 @@ pub fn ensure_profile_correctness_match(
 pub(super) struct RunOutcome {
     pub bytes: u64,
     pub phases: ProfilePhaseTimings,
-    pub counts: ProfileOperationCounts,
+    pub counts: AnalysisOperationCounts,
     pub completion: ReportCompletion,
     pub evidence_order_digest: String,
 }
@@ -438,7 +369,7 @@ impl Default for RunOutcome {
         Self {
             bytes: 0,
             phases: ProfilePhaseTimings::default(),
-            counts: ProfileOperationCounts::default(),
+            counts: AnalysisOperationCounts::default(),
             completion: ReportCompletion::Complete,
             evidence_order_digest: String::new(),
         }
@@ -516,9 +447,9 @@ impl MeasuredRepetitionAccumulator {
             .sum()
     }
 
-    pub(super) fn operation_counts(&self) -> ProfileOperationCounts {
+    pub(super) fn operation_counts(&self) -> AnalysisOperationCounts {
         self.repetitions.iter().fold(
-            ProfileOperationCounts::default(),
+            AnalysisOperationCounts::default(),
             |mut total, repetition| {
                 total += repetition.operation_counts;
                 total
@@ -575,7 +506,7 @@ pub(super) struct ProfileSummaryMetadata {
     pub wall_duration: Duration,
     pub repetitions: Vec<ProfileRepetitionSummary>,
     pub phase_timings: ProfilePhaseTimings,
-    pub operation_counts: ProfileOperationCounts,
+    pub operation_counts: AnalysisOperationCounts,
 }
 
 #[derive(Default)]

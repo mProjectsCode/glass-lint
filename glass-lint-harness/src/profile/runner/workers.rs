@@ -9,12 +9,12 @@ use std::{
 
 use glass_lint_core::{
     Linter,
-    project::{ReportCompletion, SourceFile},
+    project::{AnalysisOperationCounts, ReportCompletion, SourceFile},
 };
 
 use crate::profile::{
     metrics::{accumulate_report, combined_digest},
-    types::{PreparedFile, ProfileOperationCounts, ProfileWorkloadSummary},
+    types::{PreparedFile, ProfileWorkloadSummary},
 };
 
 fn profile_file(
@@ -28,7 +28,7 @@ fn profile_file(
     let mut elapsed = Duration::ZERO;
     let mut completion = ReportCompletion::Complete;
     let mut run_completions = Vec::new();
-    let mut operation_counts = ProfileOperationCounts::default();
+    let mut operation_counts = AnalysisOperationCounts::default();
     let mut evidence_digests = Vec::new();
     for iteration in 0..warm_up + repeat {
         for linter in linters {

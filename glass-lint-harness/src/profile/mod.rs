@@ -17,8 +17,8 @@ pub use config::{
 pub use runner::run_profile;
 pub use source_files::{discover_profile_files, sample_paths};
 pub use types::{
-    ProfileOperationCounts, ProfilePhaseTimings, ProfileRepetitionSummary, ProfileSummary,
-    ProfileWorkloadSummary, ensure_profile_correctness_match,
+    ProfilePhaseTimings, ProfileRepetitionSummary, ProfileSummary, ProfileWorkloadSummary,
+    ensure_profile_correctness_match,
 };
 
 #[cfg(test)]
@@ -31,7 +31,7 @@ mod tests {
         time::Duration,
     };
 
-    use glass_lint_core::project::ReportCompletion;
+    use glass_lint_core::project::{AnalysisOperationCounts, ReportCompletion};
 
     use super::*;
     use crate::profile::types::MeasuredRepetitionAccumulator;
@@ -150,7 +150,7 @@ mod tests {
                 diagnostics: 0,
                 completion: ReportCompletion::Complete,
                 run_completions: vec![ReportCompletion::Complete],
-                operation_counts: ProfileOperationCounts::default(),
+                operation_counts: AnalysisOperationCounts::default(),
                 evidence_order_digest: String::new(),
             });
         }
@@ -177,7 +177,7 @@ mod tests {
                     diagnostics: 0,
                     completion: ReportCompletion::Complete,
                     run_completions: Vec::new(),
-                    operation_counts: ProfileOperationCounts::default(),
+                    operation_counts: AnalysisOperationCounts::default(),
                     evidence_order_digest: String::new(),
                 })
             },

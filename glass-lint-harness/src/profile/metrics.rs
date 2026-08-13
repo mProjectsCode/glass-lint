@@ -2,16 +2,16 @@
 
 use std::time::Duration;
 
-use glass_lint_core::project::{AnalysisReport, ReportCompletion};
+use glass_lint_core::project::{AnalysisOperationCounts, AnalysisReport, ReportCompletion};
 use sha2::{Digest, Sha256};
 
-use crate::{ProfileOperationCounts, ProfileRepetitionSummary, ProfileWorkloadSummary};
+use crate::{ProfileRepetitionSummary, ProfileWorkloadSummary};
 
 pub(super) fn accumulate_report(
     report: &AnalysisReport,
     findings: &mut usize,
     diagnostics: &mut usize,
-    operation_counts: &mut ProfileOperationCounts,
+    operation_counts: &mut AnalysisOperationCounts,
     evidence_digests: &mut Vec<String>,
 ) {
     *findings += report
@@ -33,8 +33,8 @@ pub(super) fn all_diagnostic_count(report: &AnalysisReport) -> usize {
             .sum::<usize>()
 }
 
-pub(super) fn report_operation_counts(report: &AnalysisReport) -> ProfileOperationCounts {
-    report.operations().into()
+pub(super) fn report_operation_counts(report: &AnalysisReport) -> AnalysisOperationCounts {
+    report.operations()
 }
 
 pub(super) fn evidence_order_digest(report: &AnalysisReport) -> String {
@@ -72,7 +72,7 @@ pub(super) fn repetition_from_files(
     files: &[ProfileWorkloadSummary],
 ) -> ProfileRepetitionSummary {
     let mut completion = ReportCompletion::Complete;
-    let mut operation_counts = ProfileOperationCounts::default();
+    let mut operation_counts = AnalysisOperationCounts::default();
     let mut digests = Vec::new();
     let mut run_completions = Vec::new();
     for file in files {
