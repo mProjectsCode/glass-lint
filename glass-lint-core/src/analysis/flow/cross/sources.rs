@@ -134,13 +134,6 @@ impl FlowSources {
         }
     }
 
-    pub(super) fn destinations(&self, key: &SourceKey) -> impl Iterator<Item = &SourceKey> {
-        self.adjacency
-            .get(key)
-            .into_iter()
-            .flat_map(|destinations| destinations.iter())
-    }
-
     /// Build the adjacency index in one pass over all modules, effects, and
     /// calls.  Each edge records that the destination key should receive
     /// candidates from the source key when the source key changes.
@@ -291,12 +284,21 @@ impl FlowSources {
             let round = pending.take_pending();
 
             for item in &round {
-                let destinations: Vec<_> = self.destinations(&item.key).copied().collect();
-                for to_key in destinations {
+                let destinations = self
+                    .adjacency
+                    .get(&item.key)
+                    .map(Vec::as_slice)
+                    .unwrap_or_default();
+                for &to_key in destinations {
                     if to_key == item.key {
                         continue;
                     }
-                    if self.add_candidate(to_key, item.candidate) {
+                    if self
+                        .sources
+                        .entry(to_key)
+                        .or_default()
+                        .insert(item.candidate)
+                    {
                         if !budget.try_push() {
                             return FlowCompletion::incomplete(
                                 FlowCompletionReason::SourcePropagation,

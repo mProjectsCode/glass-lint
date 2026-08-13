@@ -109,7 +109,7 @@ ordering, and bounded overlay failures are unchanged. Verified with
 
 ### Cross-flow source propagation
 
-#### [ ] READ-013 — Source propagation clones adjacency destinations for every pending item
+#### [x] READ-013 — Source propagation clones adjacency destinations for every pending item
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -130,7 +130,10 @@ slice without materializing it. Preserve self-edge suppression, set-based
 candidate deduplication, pending-frontier and total-retained bounds, and the
 budget completion reason when a new candidate cannot be admitted.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Propagation now iterates the stable adjacency slice while
+mutating the disjoint source table directly, removing the per-item destination
+vector. Self-edge suppression, set deduplication, pending/retained bounds, and
+completion behavior are unchanged. Verified with `make fmt && make ci`.
 
 ### Fact-driven effect queries
 
