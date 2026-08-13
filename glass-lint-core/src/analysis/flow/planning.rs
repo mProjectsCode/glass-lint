@@ -23,8 +23,9 @@ use crate::{
     api::{
         classification::RuleIndex,
         compiler::{
-            CompiledObjectFlow, normalized::CanonicalArgumentConstraints,
-            object_flow::CompiledObjectSource,
+            CompiledObjectFlow,
+            normalized::CanonicalArgumentConstraints,
+            object_flow::{CompiledObjectSink, CompiledObjectSinkArguments, CompiledObjectSource},
         },
         rule::{ArgumentIndex, ArgumentMatcher, query::lifecycle::LifecycleCallTarget},
     },
@@ -38,25 +39,6 @@ pub(super) struct FlowMatchView<'a> {
 impl<'a> FlowMatchView<'a> {
     pub(super) fn new(names: &'a NameTable, values: &'a ValueTable) -> Self {
         Self { names, values }
-    }
-
-    pub(super) fn target_matches(
-        &self,
-        target: &LifecycleCallTarget,
-        global_name: Option<&str>,
-        chain: Option<&NamePath>,
-        rooted: bool,
-    ) -> bool {
-        match target {
-            LifecycleCallTarget::Global(name) => global_name == Some(name.as_str()),
-            LifecycleCallTarget::RootedMember(path) => chain.is_some_and(|chain| {
-                rooted
-                    && self
-                        .names
-                        .lookup_path(path)
-                        .is_some_and(|member| member == *chain)
-            }),
-        }
     }
 
     pub(super) fn argument_matches_predicate(
@@ -215,7 +197,7 @@ impl<'rules> BoundLifecycleRoot<'rules> {
 pub(super) struct BoundFlowPlan<'rules> {
     flows: BTreeMap<FlowId, &'rules CompiledObjectFlow>,
     sources: BoundTargetIndex<BoundSource>,
-    sinks: BoundTargetIndex<FlowId>,
+    sinks: BoundTargetIndex<BoundSink>,
     /// Pre-resolved requirement member paths per flow, indexed by
     /// requirement position.  `None` for PropertyWrite requirements
     /// (which have no member-call path).
@@ -226,6 +208,45 @@ pub(super) struct BoundFlowPlan<'rules> {
 pub(super) struct BoundSource {
     flow: FlowId,
     arguments: CanonicalArgumentConstraints,
+}
+
+#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
+pub(super) struct BoundSink {
+    flow: FlowId,
+    index: SinkIndex,
+    arguments: CompiledObjectSinkArguments,
+}
+
+impl BoundSink {
+    fn new(flow: FlowId, index: SinkIndex, sink: &CompiledObjectSink) -> Self {
+        Self {
+            flow,
+            index,
+            arguments: sink.arguments().clone(),
+        }
+    }
+
+    pub(super) fn flow_id(&self) -> FlowId {
+        self.flow
+    }
+
+    pub(super) fn index(&self) -> SinkIndex {
+        self.index
+    }
+
+    pub(super) fn matches_argument(&self, argument: usize) -> bool {
+        match &self.arguments {
+            CompiledObjectSinkArguments::Any => true,
+            CompiledObjectSinkArguments::Indices(indices) => indices.contains(&argument),
+        }
+    }
+
+    pub(super) fn present_indices(
+        &self,
+        argument_count: usize,
+    ) -> impl Iterator<Item = usize> + '_ {
+        self.arguments.present_indices(argument_count)
+    }
 }
 
 impl BoundSource {
@@ -254,10 +275,12 @@ impl<'rules> BoundFlowPlan<'rules> {
             let flow = root.flow();
             flows.insert(id, flow);
 
-            for sink in flow.sinks() {
+            for (sink_index, sink) in flow.sinks().enumerate() {
                 if let Some(target) = BoundLifecycleCallTarget::from_lifecycle(sink.target(), names)
                 {
-                    sinks.insert(target, id);
+                    let index = SinkIndex::new(sink_index)
+                        .expect("validated sink index is within 64 entries");
+                    sinks.insert(target, BoundSink::new(id, index, sink));
                 }
             }
 
@@ -316,12 +339,12 @@ impl<'rules> BoundFlowPlan<'rules> {
     }
 
     /// Look up flows whose sink chain matches `member_call`.
-    pub(super) fn sink_ids(&self, member_call: &NamePath) -> Option<&[FlowId]> {
+    pub(super) fn sink_candidates(&self, member_call: &NamePath) -> Option<&[BoundSink]> {
         self.sinks
             .get(&BoundLifecycleCallTarget::member(member_call.clone()))
     }
 
-    pub(super) fn global_sink_ids(&self, name: &str) -> Option<&[FlowId]> {
+    pub(super) fn global_sink_candidates(&self, name: &str) -> Option<&[BoundSink]> {
         self.sinks.get(&BoundLifecycleCallTarget::global(name))
     }
 
@@ -380,23 +403,5 @@ impl<'rules> BoundFlowPlan<'rules> {
                 )
             })
             .collect()
-    }
-
-    pub(super) fn matching_sink_indices(
-        &self,
-        flow_id: FlowId,
-        argument_index: usize,
-        mut target_matches: impl FnMut(&LifecycleCallTarget) -> bool,
-    ) -> Vec<SinkIndex> {
-        self.get(flow_id).map_or_else(Vec::new, |flow| {
-            flow.sinks()
-                .enumerate()
-                .filter_map(|(index, sink)| {
-                    (target_matches(sink.target()) && sink.matches_argument(argument_index))
-                        .then_some(index)
-                        .and_then(SinkIndex::new)
-                })
-                .collect()
-        })
     }
 }

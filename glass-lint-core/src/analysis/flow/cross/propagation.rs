@@ -164,19 +164,24 @@ impl UsageProjector<'_, '_> {
         let Some(shape) = cref.shape() else {
             return;
         };
-        let matcher = FlowMatchView::new(self.session.names, stream.values());
-        let matching_sinks = self.flow_plan.matching_sink_indices(
-            self.context.state().flow_id(),
-            argument,
-            |target| {
-                matcher.target_matches(
-                    target,
-                    shape.global_name().map(SmolStr::as_str),
-                    shape.chain(),
-                    shape.rooted(),
-                )
-            },
-        );
+        let candidates = shape
+            .global_name()
+            .and_then(|name| self.flow_plan.global_sink_candidates(name))
+            .or_else(|| {
+                shape.rooted().then_some(()).and_then(|()| {
+                    shape
+                        .chain()
+                        .and_then(|chain| self.flow_plan.sink_candidates(chain))
+                })
+            });
+        let matching_sinks: Vec<_> = candidates
+            .into_iter()
+            .flatten()
+            .filter(|sink| {
+                sink.flow_id() == self.context.state().flow_id() && sink.matches_argument(argument)
+            })
+            .map(crate::analysis::flow::planning::BoundSink::index)
+            .collect();
         if !matching_sinks.is_empty() && self.context.is_crossed() {
             let readiness = self.flow.readiness();
             let mut transition = self.state.sink_transition(readiness);

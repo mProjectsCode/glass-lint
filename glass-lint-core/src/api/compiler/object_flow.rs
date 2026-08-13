@@ -14,9 +14,7 @@ use crate::{
             },
             validate::{LifecycleSource, SubjectRelationError, classify_lifecycle_source},
         },
-        rule::{
-            ArgumentIndex, ArgumentMatcher, ValueMatcher, query::lifecycle::LifecycleCallTarget,
-        },
+        rule::{ValueMatcher, query::lifecycle::LifecycleCallTarget},
     },
 };
 
@@ -254,15 +252,6 @@ impl CompiledObjectSource {
         &self.arguments
     }
 
-    pub(crate) fn matches_arguments(
-        &self,
-        mut matches: impl FnMut(ArgumentIndex, &ArgumentMatcher) -> bool,
-    ) -> bool {
-        self.arguments
-            .iter()
-            .all(|(index, matcher)| matches(index, matcher))
-    }
-
     pub(crate) fn argument_constraints(&self) -> &CanonicalArgumentConstraints {
         &self.arguments
     }
@@ -316,7 +305,7 @@ pub(crate) enum CompiledObjectSinkArguments {
 }
 
 impl CompiledObjectSinkArguments {
-    fn present_indices(&self, argument_count: usize) -> PresentIndices<'_> {
+    pub(crate) fn present_indices(&self, argument_count: usize) -> PresentIndices<'_> {
         match self {
             Self::Any => PresentIndices::Any(0..argument_count),
             Self::Indices(indices) => PresentIndices::Indices {
@@ -373,15 +362,8 @@ impl CompiledObjectSink {
         &self.target
     }
 
-    pub(crate) fn matches_argument(&self, argument_index: usize) -> bool {
-        match &self.args {
-            CompiledObjectSinkArguments::Any => true,
-            CompiledObjectSinkArguments::Indices(indices) => indices.contains(&argument_index),
-        }
-    }
-
-    pub(crate) fn present_indices(&self, argument_count: usize) -> PresentIndices<'_> {
-        self.args.present_indices(argument_count)
+    pub(crate) fn arguments(&self) -> &CompiledObjectSinkArguments {
+        &self.args
     }
 
     #[cfg(test)]

@@ -3,7 +3,7 @@ use glass_lint_datastructures::FastIndexSet;
 use crate::analysis::{
     facts::{CallArgInfo, FactId, FactStream, Frozen, ParameterBinding},
     flow::{
-        planning::{BoundFlowPlan, FlowMatchView},
+        planning::BoundFlowPlan,
         summary::{SummaryPathStore, store::SummaryPathId},
     },
     model::{flow::FlowId, scope::FunctionId, value::ValueId},
@@ -227,52 +227,43 @@ impl FunctionSummary {
             return InsertOutcome::default();
         };
         let args = shape.effective_args();
-        let matcher = FlowMatchView::new(stream.names(), stream.values());
-        let flow_ids = shape
+        let sinks = shape
             .global_name()
-            .and_then(|name| plan.global_sink_ids(name))
-            .or_else(|| shape.chain().and_then(|chain| plan.sink_ids(chain)));
+            .and_then(|name| plan.global_sink_candidates(name))
+            .or_else(|| {
+                shape
+                    .rooted()
+                    .then_some(())
+                    .and_then(|()| shape.chain().and_then(|chain| plan.sink_candidates(chain)))
+            });
         let mut candidates = Vec::new();
-        for flow_id in flow_ids.into_iter().flatten() {
-            let Some(flow) = plan.get(*flow_id) else {
-                continue;
-            };
-            for sink in flow.sinks() {
-                if !matcher.target_matches(
-                    sink.target(),
-                    shape.global_name().map(smol_str::SmolStr::as_str),
-                    shape.chain(),
-                    shape.rooted(),
-                ) {
+        for sink in sinks.into_iter().flatten() {
+            for argument_index in sink.present_indices(args.len()) {
+                let Some(argument) = args.get(argument_index) else {
                     continue;
-                }
-                for argument_index in sink.present_indices(args.len()) {
-                    let Some(argument) = args.get(argument_index) else {
-                        continue;
-                    };
-                    let Some(parameter) = self.parameter_bindings(stream).and_then(|parameters| {
-                        parameters.iter().find(|parameter| {
-                            parameter.value() != ValueId::UNKNOWN
-                                && parameter.value() == argument.base_value
-                        })
-                    }) else {
-                        continue;
-                    };
-                    let Some(prefix_id) = paths.intern_frozen(parameter.path()) else {
-                        continue;
-                    };
-                    let Some(suffix_id) = paths.intern_frozen(argument.base_path) else {
-                        continue;
-                    };
-                    let Some(path) = paths.join(prefix_id, suffix_id) else {
-                        continue;
-                    };
-                    candidates.push(FunctionSinkSummary::new(
-                        *flow_id,
-                        parameter.parameter_index(),
-                        path,
-                    ));
-                }
+                };
+                let Some(parameter) = self.parameter_bindings(stream).and_then(|parameters| {
+                    parameters.iter().find(|parameter| {
+                        parameter.value() != ValueId::UNKNOWN
+                            && parameter.value() == argument.base_value
+                    })
+                }) else {
+                    continue;
+                };
+                let Some(prefix_id) = paths.intern_frozen(parameter.path()) else {
+                    continue;
+                };
+                let Some(suffix_id) = paths.intern_frozen(argument.base_path) else {
+                    continue;
+                };
+                let Some(path) = paths.join(prefix_id, suffix_id) else {
+                    continue;
+                };
+                candidates.push(FunctionSinkSummary::new(
+                    sink.flow_id(),
+                    parameter.parameter_index(),
+                    path,
+                ));
             }
         }
         self.add_sinks(candidates)

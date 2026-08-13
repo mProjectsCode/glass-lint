@@ -6,7 +6,6 @@
 
 use glass_lint_datastructures::NamePath;
 use smallvec::SmallVec;
-use smol_str::SmolStr;
 
 use crate::{
     analysis::{
@@ -72,18 +71,20 @@ impl ObjectFlowProjector<'_, '_, '_> {
         args: &[CallArgInfo],
         sink_fact: FactId,
     ) {
-        let matcher = FlowMatchView::new(self.inputs.names, self.inputs.stream.values());
-        let flow_ids = call
+        let candidates = call
             .global_name()
-            .and_then(|name| self.inputs.plan.global_sink_ids(name))
+            .and_then(|name| self.inputs.plan.global_sink_candidates(name))
             .or_else(|| {
-                call.chain()
-                    .and_then(|chain| self.inputs.plan.sink_ids(chain))
-            });
-        let Some(flow_ids) = flow_ids else {
+                call.rooted().then_some(()).and_then(|()| {
+                    call.chain()
+                        .and_then(|chain| self.inputs.plan.sink_candidates(chain))
+                })
+            })
+            .map(<[_]>::to_vec)
+            .unwrap_or_default();
+        if candidates.is_empty() {
             return;
-        };
-        let flow_ids: SmallVec<[FlowId; 8]> = flow_ids.iter().copied().collect();
+        }
         for (argument_index, argument) in args.iter().enumerate() {
             let Some(object) = self.object_for(argument.value) else {
                 continue;
@@ -91,21 +92,21 @@ impl ObjectFlowProjector<'_, '_, '_> {
             let pairs: SmallVec<[(FlowStateKey, FlowId); 8]> = self
                 .flow_state
                 .states_for(object)
-                .filter(|(key, _)| flow_ids.contains(&key.flow()))
+                .filter(|(key, _)| {
+                    candidates.iter().any(|sink| {
+                        sink.flow_id() == key.flow() && sink.matches_argument(argument_index)
+                    })
+                })
                 .map(|(key, _)| (key, key.flow()))
                 .collect();
             for (key, flow_id) in pairs {
-                let matching_sinks =
-                    self.inputs
-                        .plan
-                        .matching_sink_indices(flow_id, argument_index, |target| {
-                            matcher.target_matches(
-                                target,
-                                call.global_name().map(SmolStr::as_str),
-                                call.chain(),
-                                call.rooted(),
-                            )
-                        });
+                let matching_sinks: SmallVec<[_; 4]> = candidates
+                    .iter()
+                    .filter(|sink| {
+                        sink.flow_id() == flow_id && sink.matches_argument(argument_index)
+                    })
+                    .map(crate::analysis::flow::planning::BoundSink::index)
+                    .collect();
                 if !matching_sinks.is_empty() {
                     for index in matching_sinks {
                         self.flow_state

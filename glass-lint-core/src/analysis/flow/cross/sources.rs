@@ -14,7 +14,7 @@ use crate::{
                 worklist::{BoundedFifo, FifoAdmission},
             },
             planning::{
-                BoundLifecycleCallTarget, BoundTargetIndex, FlowMatchView,
+                BoundLifecycleCallTarget, BoundSource, BoundTargetIndex, FlowMatchView,
                 build_source_index as build_bound_source_index,
             },
         },
@@ -201,17 +201,15 @@ impl FlowSources {
     }
 }
 
-type SourceIndex = BoundTargetIndex<FlowId>;
-
-/// Build a per-module source index mapping typed call targets to flow IDs.
+/// Build a per-module source index retaining each source's bound arguments.
 fn build_source_index(
     flows: &HashMap<FlowId, &CompiledObjectFlow>,
     names: &NameTable,
-) -> SourceIndex {
+) -> BoundTargetIndex<BoundSource> {
     build_bound_source_index(
         flows.iter().map(|(id, flow)| (*id, *flow)),
         names,
-        |id, _| id,
+        |id, source| BoundSource::new(id, source.argument_constraints().clone()),
     )
 }
 
@@ -258,30 +256,24 @@ impl FlowSources {
                             source_index.get(&BoundLifecycleCallTarget::Global(name.clone()))
                         })
                         .or_else(|| {
-                            shape.chain().and_then(|chain| {
-                                source_index.get(&BoundLifecycleCallTarget::Member(chain.clone()))
-                            })
+                            shape
+                                .rooted()
+                                .then(|| {
+                                    shape.chain().and_then(|chain| {
+                                        source_index
+                                            .get(&BoundLifecycleCallTarget::Member(chain.clone()))
+                                    })
+                                })
+                                .flatten()
                         });
                     let Some(candidates) = candidates else {
                         continue;
                     };
-                    for flow_id in candidates {
-                        let Some(flow) = flows.get(flow_id) else {
-                            continue;
-                        };
-                        if flow.sources().any(|source| {
-                            matcher.target_matches(
-                                source.target(),
-                                shape.global_name().map(smol_str::SmolStr::as_str),
-                                shape.chain(),
-                                shape.rooted(),
-                            ) && source.matches_arguments(|index, predicate| {
-                                matcher.argument_matches_predicate(index, predicate, args)
-                            })
-                        }) {
+                    for candidate in candidates {
+                        if candidate.matches_call(&matcher, args) {
                             self.add_candidate(
                                 SourceKey::new(module.id(), effect.id(), shape.result()),
-                                SourceCandidate::new(*flow_id, call.event()),
+                                SourceCandidate::new(candidate.flow_id(), call.event()),
                             );
                         }
                     }

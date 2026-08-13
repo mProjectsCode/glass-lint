@@ -16,7 +16,7 @@ state.
 
 ### Bound flow target indexes
 
-#### [ ] READ-050 — Keep matcher-bearing declarations in bound target indexes
+#### [x] READ-050 — Keep matcher-bearing declarations in bound target indexes
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -44,7 +44,11 @@ matcher behavior, deterministic entry ordering, and the distinction between
 source candidates and sink completions; do not merge these into one generic
 flow declaration type merely to remove the loops.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Source indexes now retain `BoundSource` argument constraints, and
+sink indexes retain `BoundSink` flow/index/argument state. Local, cross, and
+summary consumers use bound candidates with rooted/global lookup gating,
+eliminating declaration rescans while preserving matching semantics. Verified
+with `make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed. The index should retain the
 already-bound matcher state, but source and sink declarations remain distinct
