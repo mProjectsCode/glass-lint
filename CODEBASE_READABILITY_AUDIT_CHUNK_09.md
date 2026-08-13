@@ -83,7 +83,7 @@ with `make fmt && make ci`.
 must distinguish every state used by normalized equality, especially subject
 relations, without deduplicating distinct roots.
 
-#### [ ] READ-074 — Remove the duplicate same-event merge state type
+#### [x] READ-074 — Remove the duplicate same-event merge state type
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -105,7 +105,11 @@ and root construction directly, then delete `finish` and
 between incomplete, uncorrelated, contradictory, and successfully merged
 queries.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `SameEventMerge::into_root` now performs final member-subject
+validation, canonical argument construction, contradiction detection, and
+normalized-root construction directly. Removed the duplicate
+`CompleteSameEventMerge` type and its forwarding `finish` step. Verified with
+`make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed. The merge accumulator can own
 its final validation and root construction without introducing a second

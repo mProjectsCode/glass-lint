@@ -129,7 +129,7 @@ fn merge_same_event(all: &AllExpr, event_var: VarId) -> Result<NormalizedRoot, Q
         }
     }
 
-    merge.finish().into_root()
+    merge.into_root()
 }
 
 struct SameEventMerge {
@@ -250,52 +250,6 @@ impl SameEventMerge {
         Ok(())
     }
 
-    fn finish(self) -> CompleteSameEventMerge {
-        CompleteSameEventMerge {
-            event_var: self.event_var,
-            event: self.event,
-            identity: self.identity,
-            subject: self.subject,
-            constraints: self.constraints,
-            member_objects: self.member_objects,
-        }
-    }
-}
-
-fn event_kind_for(branch: &QueryExpr, event_var: VarId) -> Option<EventSpec> {
-    match branch.kind() {
-        QueryExprKind::Event(query) if query.var() == event_var => Some(query.event().clone()),
-        QueryExprKind::Require(QueryPredicate::EventKind { event, expected })
-            if *event == event_var =>
-        {
-            Some(expected.clone())
-        }
-        _ => None,
-    }
-}
-
-fn event_identity_for(branch: &QueryExpr, event_var: VarId) -> Option<IdentitySpec> {
-    match branch.kind() {
-        QueryExprKind::Event(query) if query.var() == event_var => Some(query.identity().clone()),
-        QueryExprKind::Require(QueryPredicate::EventIdentity { event, expected })
-            if *event == event_var =>
-        {
-            Some(expected.clone())
-        }
-        _ => None,
-    }
-}
-
-struct CompleteSameEventMerge {
-    event_var: VarId,
-    event: EventSpec,
-    identity: IdentitySpec,
-    subject: Option<NormalizedSubject>,
-    constraints: Vec<ArgumentConstraint>,
-    member_objects: Vec<VarId>,
-}
-
-impl CompleteSameEventMerge {
     fn into_root(self) -> Result<NormalizedRoot, QueryCompileError> {
         let Self {
             event_var,
@@ -328,5 +282,29 @@ impl CompleteSameEventMerge {
             subject,
             arguments,
         }))
+    }
+}
+
+fn event_kind_for(branch: &QueryExpr, event_var: VarId) -> Option<EventSpec> {
+    match branch.kind() {
+        QueryExprKind::Event(query) if query.var() == event_var => Some(query.event().clone()),
+        QueryExprKind::Require(QueryPredicate::EventKind { event, expected })
+            if *event == event_var =>
+        {
+            Some(expected.clone())
+        }
+        _ => None,
+    }
+}
+
+fn event_identity_for(branch: &QueryExpr, event_var: VarId) -> Option<IdentitySpec> {
+    match branch.kind() {
+        QueryExprKind::Event(query) if query.var() == event_var => Some(query.identity().clone()),
+        QueryExprKind::Require(QueryPredicate::EventIdentity { event, expected })
+            if *event == event_var =>
+        {
+            Some(expected.clone())
+        }
+        _ => None,
     }
 }
