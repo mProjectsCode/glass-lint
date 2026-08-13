@@ -1,13 +1,12 @@
 //! Deterministic project input, local analysis, and staging.
 //!
-//! Phase-state types (`SessionState`, `ProjectSession`,
-//! `LocallyAnalyzedProject`, `ResolvedProject`) live here. The execution
-//! runtime and artifact-management helpers are in sibling submodules.
+//! Session state and project analysis live here. The execution runtime and
+//! artifact-management helpers are in sibling submodules.
 
 mod artifacts;
 pub(super) mod execution;
 
-use std::{collections::BTreeMap, num::NonZeroUsize};
+use std::num::NonZeroUsize;
 
 pub use artifacts::{AnalysisArtifacts, AuthoredRequests};
 #[cfg(test)]
@@ -22,15 +21,13 @@ use execution::{
 };
 
 use crate::{
-    AnalysisLimits, Environment, RuleCatalog,
-    analysis::{
-        AnalyzedSource, ArtifactCacheHandle, ArtifactCacheKey, ResolvedLinkInput, SemanticAnalyzer,
-    },
+    AnalysisLimits, Environment, LinkedReport, ParseDiagnostic, RuleCatalog,
+    analysis::{AnalyzedSource, ArtifactCacheHandle, ArtifactCacheKey, SemanticAnalyzer},
     api::classification::RuleIndex,
+    lint::ProjectAnalysis,
     project::{
-        AnalysisReport, ProjectError, ProjectExecutionError, ProjectInputError,
-        ProjectRelativePath, ResolutionRequest, ResolutionRequestKey, ResolverOutcome, SourceFile,
-        tables::SourceTable,
+        ProjectError, ProjectExecutionError, ProjectInputError, ProjectRelativePath,
+        ResolutionRequest, ResolutionRequestKey, ResolverOutcome, SourceFile, tables::SourceTable,
     },
 };
 
@@ -108,13 +105,6 @@ impl<'a> SessionState<'a> {
     }
 }
 
-pub struct ProjectSession<'a> {
-    pub(super) state: SessionState<'a>,
-    pub(super) sources: SourceTable,
-    artifacts: AnalysisArtifacts,
-    executor: ThreadLocalJobExecutor,
-}
-
 struct LocalAnalysisTransition<'borrow, 'state> {
     state: &'borrow SessionState<'state>,
     artifacts: &'borrow mut AnalysisArtifacts,
@@ -181,7 +171,7 @@ impl LocalAnalysisTransition<'_, '_> {
         }
     }
 
-    fn analyze(&self, source: &SourceFile) -> Result<AnalyzedSource, crate::ParseDiagnostic> {
+    fn analyze(&self, source: &SourceFile) -> Result<AnalyzedSource, ParseDiagnostic> {
         self.observer.observe(ExecutionEvent::ParseAttempted);
         self.observer.observe(ExecutionEvent::AnalysisAttempted);
         self.state.analyzer.analyze_source(source)
@@ -203,21 +193,11 @@ impl LocalJobCallbacks for LocalAnalysisTransition<'_, '_> {
     }
 }
 
-/// Project state after every accepted source has completed local analysis.
-/// The consuming transition prevents adding sources after this point.
-pub struct LocallyAnalyzedProject<'a> {
-    state: SessionState<'a>,
-    sources: SourceTable,
+pub struct ProjectSession<'a> {
+    pub(super) state: SessionState<'a>,
+    pub(super) sources: SourceTable,
     artifacts: AnalysisArtifacts,
-}
-
-/// Project state after the authored resolution table has been validated.
-/// Linking and matching are available only from this phase.
-pub struct ResolvedProject<'a> {
-    state: SessionState<'a>,
-    sources: SourceTable,
-    link_input: ResolvedLinkInput,
-    parse_diagnostics: BTreeMap<ProjectRelativePath, crate::ParseDiagnostic>,
+    executor: ThreadLocalJobExecutor,
 }
 
 impl<'a> ProjectSession<'a> {
@@ -437,59 +417,29 @@ impl<'a> ProjectSession<'a> {
         self.state.fingerprint_normalization = Some(normalization);
     }
 
-    /// Consume the collection after local analysis and freeze its authored
-    /// request set for the resolution phase.
-    pub fn finish_local(self) -> Result<LocallyAnalyzedProject<'a>, ProjectError> {
-        self.artifacts.validate_complete(&self.sources)?;
-        Ok(LocallyAnalyzedProject {
-            state: self.state,
-            sources: self.sources,
-            artifacts: self.artifacts,
-        })
-    }
-}
-
-impl<'a> LocallyAnalyzedProject<'a> {
-    /// Validate resolver outcomes against the frozen authored request table
-    /// and build the qualified-request-identity table that linking consumes.
-    /// One consuming transition into `ResolvedProject`; intermediate module
-    /// and request identity state is private to the artifact transition.
-    pub fn resolve(
+    /// Consume the collection, validate its authored resolution outcomes, and
+    /// link, match, and assemble the project report.
+    pub fn finish(
         self,
         outcomes: impl IntoIterator<Item = (ResolutionRequestKey, ResolverOutcome)>,
-    ) -> Result<ResolvedProject<'a>, ProjectError> {
-        let Self {
-            state,
-            sources,
-            artifacts,
-        } = self;
-        let (link_input, parse_diagnostics) = artifacts.into_link_input(&sources, outcomes)?;
-        Ok(ResolvedProject {
-            state,
-            sources,
+    ) -> Result<ProjectAnalysis, ProjectError> {
+        self.artifacts.validate_complete(&self.sources)?;
+
+        let (link_input, parse_diagnostics) =
+            self.artifacts.into_link_input(&self.sources, outcomes)?;
+
+        Ok(LinkedReport::link(
+            &self.sources,
             link_input,
             parse_diagnostics,
-        })
-    }
-}
-
-impl ResolvedProject<'_> {
-    /// Link, match, and assemble the report. This consuming method cannot be
-    /// called twice because the resolved project is moved into the pipeline.
-    pub fn finish(self) -> Result<AnalysisReport, ProjectError> {
-        let (report, _) = self.finish_with_timings()?.into_parts();
-        Ok(report)
-    }
-
-    pub fn finish_with_timings(self) -> Result<crate::lint::ProjectAnalysis, ProjectError> {
-        Ok(crate::finish_report(
+            self.state.analyzer.limits(),
+        )
+        .match_project(
             self.state.catalog,
             self.state.enabled,
             self.state.evidence_limit,
-            &self.sources,
-            self.link_input,
-            self.parse_diagnostics,
-            self.state.analyzer.limits(),
-        ))
+        )
+        .render(self.state.catalog)
+        .finish())
     }
 }

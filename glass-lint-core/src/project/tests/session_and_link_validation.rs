@@ -61,10 +61,7 @@ fn session_rejects_resolution_for_an_unauthored_request() {
     session
         .analyze_source(source_file("main.js", "fetch('/remote');"))
         .unwrap();
-    let error = session
-        .finish_local()
-        .unwrap()
-        .resolve([(key("main.js"), ResolverOutcome::Missing)]);
+    let error = session.finish([(key("main.js"), ResolverOutcome::Missing)]);
     assert!(matches!(
         error,
         Err(ProjectError::Phase(ProjectPhaseError::UnknownRequest(_)))

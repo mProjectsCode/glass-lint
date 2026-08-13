@@ -166,7 +166,7 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
                 })?;
             outcomes.push((request, result));
         }
-        session.finish_local()?.resolve(outcomes)?.finish()?
+        session.finish(outcomes)?.into_report()
     };
     project_report_to_run(&report)
 }

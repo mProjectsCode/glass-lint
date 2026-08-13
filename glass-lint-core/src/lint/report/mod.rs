@@ -26,6 +26,12 @@ pub struct ProjectAnalysis {
 }
 
 impl ProjectAnalysis {
+    /// Consume the analysis into its report.
+    #[must_use]
+    pub fn into_report(self) -> AnalysisReport {
+        self.report
+    }
+
     /// Consume the result into its report and phase-timing values.
     #[must_use]
     pub fn into_parts(self) -> (AnalysisReport, ProjectAnalysisTimings) {
@@ -107,20 +113,14 @@ impl ProjectReportSession {
     }
 }
 
-pub(super) struct ReportAssembly<'a> {
-    pub(super) catalog: &'a RuleCatalog,
-    enabled: &'a [RuleIndex],
-    evidence_limit: usize,
-}
-
-struct LinkedReport {
+pub struct LinkedReport {
     project: ProjectSemanticModel,
     session: ProjectReportSession,
     files: BTreeMap<ProjectRelativePath, FileReport>,
     linking: Duration,
 }
 
-struct MatchedReport {
+pub struct MatchedReport {
     project: ProjectSemanticModel,
     session: ProjectReportSession,
     files: BTreeMap<ProjectRelativePath, FileReport>,
@@ -130,7 +130,7 @@ struct MatchedReport {
     matching: Duration,
 }
 
-struct RenderedReport {
+pub struct RenderedReport {
     project: ProjectSemanticModel,
     session: ProjectReportSession,
     files: BTreeMap<ProjectRelativePath, FileReport>,
@@ -141,7 +141,7 @@ struct RenderedReport {
 }
 
 impl LinkedReport {
-    fn link(
+    pub fn link(
         sources: &SourceTable,
         link_input: ResolvedLinkInput,
         parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
@@ -175,7 +175,12 @@ impl LinkedReport {
         }
     }
 
-    fn match_project(self, assembly: &ReportAssembly<'_>) -> MatchedReport {
+    pub fn match_project(
+        self,
+        catalog: &RuleCatalog,
+        enabled: &[RuleIndex],
+        evidence_limit: usize,
+    ) -> MatchedReport {
         let Self {
             project,
             mut session,
@@ -184,11 +189,8 @@ impl LinkedReport {
         } = self;
         let matching_start = Instant::now();
         let (classifications, projection_outcome, trace_arena) = match project
-            .classify_with_evidence_limit(
-                assembly.catalog.compiled(),
-                assembly.enabled,
-                assembly.evidence_limit,
-            ) {
+            .classify_with_evidence_limit(catalog.compiled(), enabled, evidence_limit)
+        {
             Ok(result) => result,
             Err(error) => {
                 session.status.record(
@@ -221,7 +223,7 @@ impl LinkedReport {
 }
 
 impl MatchedReport {
-    fn render(self, assembly: &ReportAssembly<'_>) -> RenderedReport {
+    pub fn render(self, catalog: &RuleCatalog) -> RenderedReport {
         let Self {
             project,
             session,
@@ -232,13 +234,7 @@ impl MatchedReport {
             matching,
         } = self;
         let mut files = files;
-        evidence::populate_project_files(
-            assembly,
-            &project,
-            &session,
-            &classifications,
-            &mut files,
-        );
+        evidence::populate_project_files(catalog, &project, &session, &classifications, &mut files);
         let diagnostics = diagnostics::attach_project_diagnostics(&project, &session, &mut files);
 
         RenderedReport {
@@ -254,7 +250,7 @@ impl MatchedReport {
 }
 
 impl RenderedReport {
-    fn finish(self) -> ProjectAnalysis {
+    pub fn finish(self) -> ProjectAnalysis {
         let Self {
             project,
             session,
@@ -287,32 +283,5 @@ impl RenderedReport {
             report,
             timings: ProjectAnalysisTimings { linking, matching },
         }
-    }
-}
-
-impl<'a> ReportAssembly<'a> {
-    pub(super) fn new(
-        catalog: &'a RuleCatalog,
-        enabled: &'a [RuleIndex],
-        evidence_limit: usize,
-    ) -> Self {
-        Self {
-            catalog,
-            enabled,
-            evidence_limit,
-        }
-    }
-
-    pub(super) fn finish(
-        &self,
-        sources: &SourceTable,
-        link_input: ResolvedLinkInput,
-        parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
-        limits: &AnalysisLimits,
-    ) -> ProjectAnalysis {
-        LinkedReport::link(sources, link_input, parse_diagnostics, limits)
-            .match_project(self)
-            .render(self)
-            .finish()
     }
 }

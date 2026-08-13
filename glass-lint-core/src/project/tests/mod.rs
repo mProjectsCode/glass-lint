@@ -31,13 +31,7 @@ fn admitted_sources_have_identical_reports_across_worker_counts() {
                 std::num::NonZeroUsize::new(workers).unwrap_or(std::num::NonZeroUsize::MIN),
             )
             .unwrap();
-        let report = session
-            .finish_local()
-            .unwrap()
-            .resolve([])
-            .unwrap()
-            .finish()
-            .unwrap();
+        let report = session.finish([]).unwrap().into_report();
         reports.push(report);
     }
     assert!(reports.windows(2).all(|pair| pair[0] == pair[1]));
@@ -55,24 +49,23 @@ fn consuming_project_phases_validate_requests_at_the_boundary() {
         .unwrap();
     assert_eq!(analysis.iter().len(), 1);
     let key = analysis.iter().next().unwrap().key().clone();
-    let local = collection.finish_local().unwrap();
-    let resolved = local
-        .resolve([(key, crate::project::ResolverOutcome::Missing)])
-        .unwrap();
-    let report = resolved.finish().unwrap();
+    let report = collection
+        .finish([(key, crate::project::ResolverOutcome::Missing)])
+        .unwrap()
+        .into_report();
     assert_eq!(report.files().len(), 1);
 }
 
 #[test]
-fn finish_local_rejects_admitted_sources_without_analysis_outcomes() {
+fn finish_rejects_admitted_sources_without_analysis_outcomes() {
     let linter = test_linter();
     let mut collection = linter.begin_project();
     collection
         .accept_test_source(source_file("pending.js", "fetch('/pending');"))
         .unwrap();
 
-    let Err(error) = collection.finish_local() else {
-        panic!("local phase must reject sources without an analysis outcome")
+    let Err(error) = collection.finish([]) else {
+        panic!("finish must reject sources without an analysis outcome")
     };
     assert_eq!(
         error,
@@ -99,8 +92,8 @@ fn consuming_resolution_rejects_unknown_and_duplicate_outcomes() {
         crate::project::ResolutionRequestKind::Require,
         unknown.range(),
     );
-    let local = collection.finish_local().unwrap();
-    let Err(error) = local.resolve([(unknown, crate::project::ResolverOutcome::Missing)]) else {
+    let Err(error) = collection.finish([(unknown, crate::project::ResolverOutcome::Missing)])
+    else {
         panic!("unknown requests must be rejected")
     };
     assert!(matches!(
@@ -116,7 +109,7 @@ fn consuming_resolution_rejects_unknown_and_duplicate_outcomes() {
         ))
         .unwrap();
     let key = analysis.iter().next().unwrap().key().clone();
-    let Err(error) = collection.finish_local().unwrap().resolve([
+    let Err(error) = collection.finish([
         (key.clone(), crate::project::ResolverOutcome::Missing),
         (key, crate::project::ResolverOutcome::Missing),
     ]) else {
@@ -155,18 +148,7 @@ fn controlled_release_orders_produce_identical_full_report() {
         session
             .analyze_sources_controlled(sources.iter().cloned(), 2, order)
             .unwrap();
-        reports.push(
-            serde_json::to_value(
-                session
-                    .finish_local()
-                    .unwrap()
-                    .resolve([])
-                    .unwrap()
-                    .finish()
-                    .unwrap(),
-            )
-            .unwrap(),
-        );
+        reports.push(serde_json::to_value(session.finish([]).unwrap().into_report()).unwrap());
     }
     assert!(reports.windows(2).all(|pair| pair[0] == pair[1]));
     let report = &reports[0];
@@ -250,13 +232,7 @@ fn session_uses_project_analysis_and_preserves_single_file_findings() {
 
     let mut session = linter.begin_project();
     session.analyze_source(source_file("a.js", source)).unwrap();
-    let project = session
-        .finish_local()
-        .unwrap()
-        .resolve([])
-        .unwrap()
-        .finish()
-        .unwrap();
+    let project = session.finish([]).unwrap().into_report();
 
     assert_eq!(project.files().len(), 1);
     assert_eq!(project.files()[0].path().as_str(), "a.js");

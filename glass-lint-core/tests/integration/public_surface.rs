@@ -29,13 +29,7 @@ fn supported_public_operations_do_not_require_engine_storage() {
     session
         .analyze_source(SourceFile::new("main.js", "fetch('/remote');").unwrap())
         .unwrap();
-    let report = session
-        .finish_local()
-        .unwrap()
-        .resolve([])
-        .unwrap()
-        .finish()
-        .unwrap();
+    let report = session.finish([]).unwrap().into_report();
     assert_eq!(report.files().len(), 1);
     assert_eq!(report.files()[0].findings().len(), 1);
 }

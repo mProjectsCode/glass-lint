@@ -9,7 +9,7 @@ use crate::{
         MatchedCapability, RuleIndex,
     },
     diagnostic::SourceLineIndex,
-    lint::report::{ProjectReportSession, ReportAssembly},
+    lint::{catalog::RuleCatalog, report::ProjectReportSession},
     project::{
         EvidenceRole, EvidenceStep, EvidenceTrace, EvidenceTraces, FileReport, Finding,
         MatchCertainty, ModuleId, ProjectRelativePath, SourceLocation,
@@ -90,7 +90,7 @@ impl<'a> FindingGroup<'a> {
 }
 
 pub(super) fn populate_project_files(
-    assembly: &ReportAssembly<'_>,
+    catalog: &RuleCatalog,
     project: &ProjectSemanticModel,
     session: &ProjectReportSession,
     classifications: &BTreeMap<ModuleId, ClassificationResult>,
@@ -100,7 +100,7 @@ pub(super) fn populate_project_files(
         let Some(classification) = classifications.get(&module.id()) else {
             continue;
         };
-        let findings = findings_for_module(assembly, project, session, module, classification);
+        let findings = findings_for_module(catalog, project, session, module, classification);
         let findings = merge_duplicate_findings(findings);
         files.insert(
             module.path().clone(),
@@ -151,7 +151,7 @@ fn merge_duplicate_findings(mut findings: Vec<Finding>) -> Vec<Finding> {
 }
 
 fn findings_for_module(
-    assembly: &ReportAssembly<'_>,
+    catalog: &RuleCatalog,
     project: &ProjectSemanticModel,
     session: &ProjectReportSession,
     module: &crate::analysis::ProjectModule,
@@ -165,7 +165,7 @@ fn findings_for_module(
             .entry(capability.rule_index())
             .or_default()
             .extend(findings_for_capability(
-                assembly, project, session, capability, lines, path,
+                catalog, project, session, capability, lines, path,
             ));
     }
     rule_findings.into_values().flatten().collect()
@@ -242,14 +242,14 @@ impl<'a> FindingRangeBuilder<'a> {
 }
 
 fn findings_for_capability(
-    assembly: &ReportAssembly<'_>,
+    catalog: &RuleCatalog,
     project: &ProjectSemanticModel,
     session: &ProjectReportSession,
     capability: &MatchedCapability,
     lines: &SourceLineIndex,
     path: &ProjectRelativePath,
 ) -> Vec<Finding> {
-    let Some(rule_id) = assembly.catalog.rule_id(capability.rule_index()).cloned() else {
+    let Some(rule_id) = catalog.rule_id(capability.rule_index()).cloned() else {
         return Vec::new();
     };
     let evidence_items = capability.evidence();

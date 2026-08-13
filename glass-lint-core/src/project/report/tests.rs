@@ -459,13 +459,7 @@ fn direct_qualification_matches_one_file_project_shape() {
     manual_session
         .analyze_source(source_file("main.js", source))
         .unwrap();
-    let manual = manual_session
-        .finish_local()
-        .unwrap()
-        .resolve([])
-        .unwrap()
-        .finish()
-        .unwrap();
+    let manual = manual_session.finish([]).unwrap().into_report();
     assert_eq!(direct, manual.files()[0].clone());
 }
 
@@ -587,13 +581,7 @@ fn parse_and_valid_sources_each_produce_one_file_report() {
     collection
         .analyze_source(source_file("broken.js", "fetch("))
         .unwrap();
-    let report = collection
-        .finish_local()
-        .unwrap()
-        .resolve([])
-        .unwrap()
-        .finish()
-        .unwrap();
+    let report = collection.finish([]).unwrap().into_report();
 
     assert_eq!(report.files().len(), 2);
     let valid = report

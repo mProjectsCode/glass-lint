@@ -9,9 +9,8 @@ ProjectSelection + validated ProjectLoadOptions
   -> deterministic discovery or tsconfig membership
   -> bounded source reads
   -> core `ProjectSession` source acceptance and local analysis
-  -> `LocallyAnalyzedProject` authored resolution requests
+  -> `ProjectSession` authored resolution requests
   -> Oxc module resolution
-  -> `ResolvedProject` and typed resolver outcomes
   -> core linking and matching
   -> ProjectLoadOutcome
 ```

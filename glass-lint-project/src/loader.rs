@@ -536,10 +536,7 @@ impl ClosedFrontier<'_> {
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<(AnalysisReport, BTreeMap<ProjectRelativePath, SourceText>), ProjectLoadError> {
         let sources = self.sources;
-        let local = self.session.finish_local()?;
-        let resolved = local.resolve(self.resolved.into_iter())?;
-        let result = resolved.finish_with_timings()?;
-        let (report, timings) = result.into_parts();
+        let (report, timings) = self.session.finish(self.resolved.into_iter())?.into_parts();
         metrics.record_linking(timings.linking());
         metrics.record_matching(timings.matching());
         let code = glass_lint_core::project::DiagnosticCode::new("tsconfig")

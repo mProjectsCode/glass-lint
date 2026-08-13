@@ -34,6 +34,7 @@ pub use ecma_version::{
 };
 pub use environment::{Environment, EnvironmentError};
 pub use limits::{AnalysisLimitError, AnalysisLimits};
+pub(crate) use lint::LinkedReport;
 pub use lint::{
     BatchOptions, BatchResult, BatchResults, BatchStartError, LintConfigError, Linter,
     LinterConfig, PreparedRuleSelection, ProjectAnalysis, ProjectAnalysisTimings,
@@ -43,29 +44,6 @@ pub use lint::{
 pub use parse::{ParseDiagnostic, ParseFailureKind, SourceLanguage};
 pub use project::MatchCertainty;
 pub use rule_id::RuleId;
-
-pub(crate) fn finish_report(
-    catalog: &RuleCatalog,
-    enabled: &[crate::api::classification::RuleIndex],
-    evidence_limit: usize,
-    sources: &crate::project::SourceTable,
-    link_input: crate::analysis::ResolvedLinkInput,
-    parse_diagnostics: std::collections::BTreeMap<
-        crate::project::ProjectRelativePath,
-        crate::ParseDiagnostic,
-    >,
-    limits: &crate::AnalysisLimits,
-) -> ProjectAnalysis {
-    lint::finish_report(
-        catalog,
-        enabled,
-        evidence_limit,
-        sources,
-        link_input,
-        parse_diagnostics,
-        limits,
-    )
-}
 
 /// Public rule-authoring and matcher types.
 pub mod rules {

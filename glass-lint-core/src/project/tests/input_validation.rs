@@ -64,7 +64,7 @@ fn staged_session_rejects_unknown_resolution_importers() {
     let linter = test_linter();
     let mut collection = linter.begin_project();
     assert!(collection.analyze_source(source_file("a.js", "")).is_ok());
-    let result = collection.finish_local().unwrap().resolve([(
+    let result = collection.finish([(
         ResolutionRequestKey::new(
             project_path("missing.js"),
             ResolutionRequestKind::StaticImport,

@@ -50,8 +50,8 @@ remain thin. Do not duplicate parsers, semantic models, query paths, project
 loaders, report types, or rule catalogs across these boundaries.
 
 Analysis crosses the crate boundary as validated filesystem acceptance, owned
-`SourceFile`s, `ProjectSession`, `LocallyAnalyzedProject`, and
-`ResolvedProject`; only the final resolved phase links and matches.
+`SourceFile`s, and `ProjectSession`; the session validates authored resolver
+outcomes before linking and matching.
 
 Path-local strict identity is preserved through bounded correlated
 alternatives at control-flow joins. Findings distinguish possible from

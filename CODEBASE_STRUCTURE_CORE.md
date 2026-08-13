@@ -829,9 +829,7 @@ deterministic findings.
 - `project::report::ReportCombineError` — Reports incompatible project report combination.
 - `project::session` — Coordinates local analysis and linked project transitions.
 - `project::session::LocalAnalysisTransition` — Coordinates preparation and completion of local analysis jobs.
-- `project::session::LocallyAnalyzedProject` — Represents a project after local analysis and before linking.
 - `project::session::ProjectSession` — Accepts sources and coordinates local project analysis.
-- `project::session::ResolvedProject` — Represents a project after authored resolutions are applied.
 - `project::session::SessionState` — Stores internal project-session state.
 - `project::session::artifacts` — Stores local analysis artifacts and request tables.
 - `project::session::artifacts::AnalysisArtifacts` — Groups local artifacts for a project session.

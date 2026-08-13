@@ -23,26 +23,14 @@ pub fn project_path(path: &str) -> ProjectRelativePath {
 }
 
 pub fn finish_session(collection: ProjectSession<'_>) -> AnalysisReport {
-    collection
-        .finish_local()
-        .unwrap()
-        .resolve([])
-        .unwrap()
-        .finish()
-        .unwrap()
+    collection.finish([]).unwrap().into_report()
 }
 
 pub fn finish_collection_with(
     collection: ProjectSession<'_>,
     outcomes: impl IntoIterator<Item = (ResolutionRequestKey, ResolverOutcome)>,
 ) -> AnalysisReport {
-    collection
-        .finish_local()
-        .unwrap()
-        .resolve(outcomes)
-        .unwrap()
-        .finish()
-        .unwrap()
+    collection.finish(outcomes).unwrap().into_report()
 }
 
 pub fn test_linter() -> Linter {
@@ -188,12 +176,6 @@ impl<'a> ProjectFixture<'a> {
     }
 
     pub fn finish(self) -> AnalysisReport {
-        self.session
-            .finish_local()
-            .unwrap()
-            .resolve(self.outcomes)
-            .unwrap()
-            .finish()
-            .unwrap()
+        self.session.finish(self.outcomes).unwrap().into_report()
     }
 }

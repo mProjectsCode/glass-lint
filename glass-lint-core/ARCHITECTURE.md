@@ -68,9 +68,8 @@ cancels queued work without consuming inputs beyond the submitted window.
 ## Project boundary
 
 `ProjectSession` accepts owned `SourceFile` values and produces an
-`AnalyzedSource` for each completed local semantic analysis. Consuming transitions to
-`LocallyAnalyzedProject` and `ResolvedProject` ensure that linking and
-matching can run only after authored resolver outcomes have been validated.
+`AnalyzedSource` for each completed local semantic analysis. `ProjectSession::finish`
+validates authored resolver outcomes before linking and matching can run.
 Core never discovers files or resolves modules.
 
 Ambiguous exports, missing resolutions, unsupported module shapes, and
