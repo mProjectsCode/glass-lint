@@ -155,7 +155,7 @@ should disappear.
 so update paths move its owned name into the module map while borrowed lookup
 APIs remain unchanged. Verified with `make fmt && make ci`.
 
-#### [ ] READ-034 — Inserting a graph edge performs two map-entry lookups
+#### [x] READ-034 — Inserting a graph edge performs two map-entry lookups
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -175,7 +175,9 @@ target, while retaining the separate `ensure_node` call for isolated module
 nodes. Preserve duplicate-edge normalization, deterministic neighbor order,
 and the edge-budget admission check; remove only the redundant lookup.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Let `ModuleGraph::insert_edge` append directly through its
+single `BTreeMap::entry` lookup; isolated modules continue to be admitted by
+the separate `ensure_node` call. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 

@@ -24,7 +24,6 @@ impl ModuleGraph {
 
     /// Insert one internal edge. Duplicates are removed by [`normalize`].
     pub(in crate::analysis) fn insert_edge(&mut self, from: ModuleId, to: ModuleId) {
-        self.ensure_node(from);
         let targets = self.forward.entry(from).or_default();
         targets.push(to);
     }
