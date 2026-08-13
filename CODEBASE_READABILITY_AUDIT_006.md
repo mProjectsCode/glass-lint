@@ -15,7 +15,7 @@ entry that should be reconciled.
 
 ### Occurrence selection and evidence
 
-#### [ ] READ-024 — Scanned occurrence selections are recopied at the evidence boundary
+#### [x] READ-024 — Scanned occurrence selections are recopied at the evidence boundary
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -39,7 +39,10 @@ current event/span ordering, duplicate physical events, and `None` result for
 an empty match; only the intermediate `IntoIter` and second collection should
 disappear.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Scanned selections now retain their owned occurrence buffer
+with a cursor, and the evidence boundary sorts that buffer in place before
+consuming it. Event/span ordering, duplicates, lazy variants, and empty-match
+behavior are unchanged. Verified with `make fmt && make ci`.
 
 #### [ ] READ-025 — Constrained-root preparation forwards a temporary root bundle
 
