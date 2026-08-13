@@ -35,6 +35,17 @@ struct ConstrainedRoot<'a> {
     evidence: &'a EvidenceDescriptor,
 }
 
+pub(in crate::analysis) struct ConstrainedRootInput<'a> {
+    rule_index: RuleIndex,
+    root: &'a PhysicalRoot,
+}
+
+impl<'a> ConstrainedRootInput<'a> {
+    pub(in crate::analysis) fn new(rule_index: RuleIndex, root: &'a PhysicalRoot) -> Self {
+        Self { rule_index, root }
+    }
+}
+
 enum ConstrainedState {
     Indexed,
     Fallback(Vec<Occurrence>),
@@ -119,17 +130,17 @@ struct ConstrainedEvaluation<'a> {
 }
 
 impl<'a> ConstrainedEvaluation<'a> {
-    fn prepare(roots: &[(usize, &'a PhysicalRoot)], names: &NameTable) -> Self {
+    fn prepare(roots: &[ConstrainedRootInput<'a>], names: &NameTable) -> Self {
         let constrained: Vec<ConstrainedRoot<'_>> = roots
             .iter()
-            .filter_map(|(rule_index, root)| match root {
+            .filter_map(|input| match input.root {
                 PhysicalRoot::ConstrainedScan {
                     identity,
                     event,
                     constraints,
                     evidence,
                 } => Some(ConstrainedRoot {
-                    rule: RuleIndex::new(*rule_index),
+                    rule: input.rule_index,
                     identity,
                     event,
                     constraints,
@@ -348,7 +359,7 @@ fn push_owned_rule_evidence(
 
 pub(in crate::analysis) fn try_compute_constrained_evidence<'artifact>(
     artifact: impl Borrow<MatcherArtifact<'artifact>>,
-    roots: &[(usize, &PhysicalRoot)],
+    roots: &[ConstrainedRootInput<'_>],
     evidence: &mut RuleEvidenceTable,
     project: MatcherProjectOverlay<'_>,
 ) -> Result<(), RuleEvidenceError> {
@@ -367,7 +378,7 @@ pub(in crate::analysis) fn try_compute_constrained_evidence<'artifact>(
 #[cfg(test)]
 fn compute_constrained_evidence<'artifact>(
     artifact: impl Borrow<MatcherArtifact<'artifact>>,
-    roots: &[(usize, &PhysicalRoot)],
+    roots: &[ConstrainedRootInput<'_>],
     evidence: &mut RuleEvidenceTable,
     project: MatcherProjectOverlay<'_>,
 ) {
@@ -378,7 +389,7 @@ fn compute_constrained_evidence<'artifact>(
 /// Inner implementation that also tracks evaluation operations.
 fn compute_constrained_inner(
     context: MatcherEvaluationContext<'_, '_>,
-    roots: &[(usize, &PhysicalRoot)],
+    roots: &[ConstrainedRootInput<'_>],
     evidence: &mut RuleEvidenceTable,
 ) -> Result<(), RuleEvidenceError> {
     let MatcherEvaluationContext {
@@ -543,7 +554,7 @@ mod tests {
 
         let error = try_compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
-            &[(0, &root)],
+            &[root_input(&root)],
             &mut evidence,
             MatcherProjectOverlay::new(None, None, None),
         )
@@ -603,7 +614,7 @@ mod tests {
         let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
-            &[(0, &call), (0, &member)],
+            &[root_input(&call), root_input(&member)],
             &mut evidence,
             MatcherProjectOverlay::new(None, None, None),
         );
@@ -636,7 +647,7 @@ mod tests {
         let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
-            &[(0, &roots[0])],
+            &[root_input(&roots[0])],
             &mut evidence,
             MatcherProjectOverlay::new(None, None, None),
         );
@@ -689,7 +700,7 @@ mod tests {
         let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
-            &[(0, &patched)],
+            &[root_input(&patched)],
             &mut evidence,
             MatcherProjectOverlay::new(None, None, None),
         );
@@ -713,7 +724,7 @@ mod tests {
         let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
-            &[(0, &root)],
+            &[root_input(&root)],
             &mut evidence,
             MatcherProjectOverlay::new(None, None, None),
         );
@@ -751,7 +762,7 @@ mod tests {
         let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
-            &[(0, &root)],
+            &[root_input(&root)],
             &mut evidence,
             MatcherProjectOverlay::new(None, None, None),
         );
@@ -807,13 +818,13 @@ mod tests {
         let mut ev_b = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
-            &[(0, &root_a)],
+            &[root_input(&root_a)],
             &mut ev_a,
             MatcherProjectOverlay::new(None, None, None),
         );
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
-            &[(0, &root_b)],
+            &[root_input(&root_b)],
             &mut ev_b,
             MatcherProjectOverlay::new(None, None, None),
         );
@@ -844,7 +855,7 @@ mod tests {
         let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
-            &[(0, &root)],
+            &[root_input(&root)],
             &mut evidence,
             MatcherProjectOverlay::new(None, None, None),
         );
@@ -874,7 +885,7 @@ mod tests {
         let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
-            &[(0, &root)],
+            &[root_input(&root)],
             &mut evidence,
             MatcherProjectOverlay::new(None, None, None),
         );
@@ -907,7 +918,7 @@ mod tests {
         let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
-            &[(0, &root)],
+            &[root_input(&root)],
             &mut evidence,
             MatcherProjectOverlay::new(None, None, None),
         );
@@ -943,7 +954,7 @@ mod tests {
         let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
-            &[(0, &root)],
+            &[root_input(&root)],
             &mut evidence,
             MatcherProjectOverlay::new(None, None, None),
         );
@@ -977,7 +988,7 @@ mod tests {
         let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
-            &[(0, &root)],
+            &[root_input(&root)],
             &mut evidence,
             MatcherProjectOverlay::new(None, None, None),
         );
@@ -1012,7 +1023,7 @@ mod tests {
         let mut evidence = RuleEvidenceTable::new_for_test(1);
         compute_constrained_evidence(
             MatcherLocalInput::from_parts(&stream, &index),
-            &[(0, &root)],
+            &[root_input(&root)],
             &mut evidence,
             MatcherProjectOverlay::new(None, None, None),
         );
@@ -1060,7 +1071,7 @@ mod tests {
     fn run_with_ops(
         stream: &FactStream<Frozen>,
         index: &OccurrenceIndexes,
-        roots: &[(usize, &PhysicalRoot)],
+        roots: &[ConstrainedRootInput<'_>],
         overlay: Option<&LinkedOccurrenceView<'_>>,
     ) -> EvaluationOperations {
         let mut evidence = RuleEvidenceTable::new_for_test(roots.len());
@@ -1076,6 +1087,10 @@ mod tests {
         )
         .expect("test evidence uses its catalog capacity");
         ops
+    }
+
+    fn root_input(root: &PhysicalRoot) -> ConstrainedRootInput<'_> {
+        ConstrainedRootInput::new(RuleIndex::new(0), root)
     }
 
     #[test]
@@ -1111,7 +1126,7 @@ mod tests {
             },
         };
 
-        let ops = run_with_ops(&stream, &index, &[(0, &root)], None);
+        let ops = run_with_ops(&stream, &index, &[root_input(&root)], None);
 
         // One candidate, one group → 1 argument preparation, 2 predicates
         assert_eq!(ops.candidates, 1, "one candidate (fetch call)");
@@ -1154,7 +1169,7 @@ mod tests {
             },
         };
 
-        let ops = run_with_ops(&stream, &index, &[(0, &root)], None);
+        let ops = run_with_ops(&stream, &index, &[root_input(&root)], None);
         assert_eq!(ops.candidates, 1);
         assert_eq!(ops.groups, 1);
         assert_eq!(ops.argument_preparations, 1);
@@ -1192,7 +1207,7 @@ mod tests {
             },
         };
 
-        let ops = run_with_ops(&stream, &index, &[(0, &root)], None);
+        let ops = run_with_ops(&stream, &index, &[root_input(&root)], None);
 
         // One candidate, two groups → 2 argument preparations, 2 predicates
         assert_eq!(ops.candidates, 1, "one candidate");
@@ -1249,7 +1264,7 @@ mod tests {
             },
         };
 
-        let ops = run_with_ops(&stream, &index, &[(0, &root)], None);
+        let ops = run_with_ops(&stream, &index, &[root_input(&root)], None);
 
         // One candidate, one group, one predicate — same as the simple case.
         assert_eq!(ops.candidates, 1, "one candidate");
@@ -1287,7 +1302,7 @@ mod tests {
             },
         };
 
-        let ops = run_with_ops(&stream, &index, &[(0, &root)], None);
+        let ops = run_with_ops(&stream, &index, &[root_input(&root)], None);
 
         assert_eq!(ops.candidates, 3, "three candidates (one per call)");
         assert_eq!(ops.groups, 3, "one group per candidate");
@@ -1318,7 +1333,7 @@ mod tests {
             },
         };
 
-        let ops = run_with_ops(&stream, &index, &[(0, &root)], None);
+        let ops = run_with_ops(&stream, &index, &[root_input(&root)], None);
 
         // The alias resolves through the value table: fetch(x) with x='/api'
         // should produce one matching candidate.

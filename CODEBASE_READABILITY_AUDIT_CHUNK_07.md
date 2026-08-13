@@ -49,7 +49,7 @@ capacity invariant; no eviction or cached-`None` behavior changes are implied.
 
 ### Projection plan boundary
 
-#### [ ] READ-063 — Store constrained roots in the matcher-ready form
+#### [x] READ-063 — Store constrained roots in the matcher-ready form
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -74,6 +74,12 @@ filtering, evidence capacity, and the independent lifecycle flow roots.
 **Audit disposition (2026-08-13):** Confirmed with a type-boundary refinement:
 prefer a matcher-ready private slice/type over exposing a raw tuple as a new
 public surface.
+
+**Fix Applied:** `ProjectionPlan` now owns the matcher’s private
+`ConstrainedRootInput` values and passes that slice directly to constrained
+evidence evaluation. Removed the projection-only wrapper and per-module
+conversion allocation; selected-rule indices, root order, filtering, evidence
+capacity, and lifecycle roots are unchanged. Verified with `make fmt && make ci`.
 
 ### Projection status lookup
 

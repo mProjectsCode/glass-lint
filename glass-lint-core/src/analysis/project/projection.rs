@@ -18,7 +18,9 @@ use crate::{
             planning::BoundLifecycleRoot,
             projector::{self as object_flow, LocalFlowProjectionOutcome},
         },
-        matching::{MatcherOverlayPolicy, MatcherProjectContext, MatcherProjectInputs},
+        matching::{
+            ConstrainedRootInput, MatcherOverlayPolicy, MatcherProjectContext, MatcherProjectInputs,
+        },
         model::{flow::FlowLimits, value::ValueId},
         project::state::LinkingSession,
         semantic::status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
@@ -87,7 +89,7 @@ pub fn assemble_classification_results(
 /// linked project. The plan belongs to projection orchestration rather than
 /// to the immutable facts artifact.
 pub(in crate::analysis) struct ProjectionPlan<'a> {
-    constrained_roots: Vec<PlannedConstrainedRoot<'a>>,
+    constrained_roots: Vec<ConstrainedRootInput<'a>>,
     flow_matchers: Vec<BoundLifecycleRoot<'a>>,
     rule_capacity: RuleEvidenceCapacity,
     requirements: PlanRequirements,
@@ -201,18 +203,6 @@ impl<'project, 'plan, 'roots, 'arena> ProjectionSession<'project, 'plan, 'roots,
     }
 }
 
-#[derive(Clone, Copy)]
-struct PlannedConstrainedRoot<'a> {
-    rule_index: RuleIndex,
-    root: &'a PhysicalRoot,
-}
-
-impl<'a> PlannedConstrainedRoot<'a> {
-    fn matcher_input(self) -> (usize, &'a PhysicalRoot) {
-        (self.rule_index.get(), self.root)
-    }
-}
-
 impl<'a> ProjectionPlan<'a> {
     pub(in crate::analysis) fn needs_flow(&self) -> bool {
         !self.flow_matchers.is_empty()
@@ -229,7 +219,7 @@ impl<'a> ProjectionPlan<'a> {
                     PhysicalRoot::ConstrainedScan { constraints, .. }
                         if !constraints.groups().is_empty()
                 ) {
-                    constrained_roots.push(PlannedConstrainedRoot { rule_index, root });
+                    constrained_roots.push(ConstrainedRootInput::new(rule_index, root));
                 }
             }
             for (flow_index, root) in matcher.physical_roots().iter().enumerate() {
@@ -275,15 +265,9 @@ fn project_facts(
     if !facts.stream().is_valid() || facts.values().get(ValueId::UNKNOWN).is_none() {
         return Ok((projected_evidence, LocalFlowProjectionOutcome::default()));
     }
-    let constrained_roots = plan
-        .constrained_roots
-        .iter()
-        .copied()
-        .map(PlannedConstrainedRoot::matcher_input)
-        .collect::<Vec<_>>();
     crate::analysis::matching::try_compute_constrained_evidence(
         matcher_context.artifact(),
-        &constrained_roots,
+        &plan.constrained_roots,
         &mut projected_evidence,
         matcher_context.project(),
     )?;
