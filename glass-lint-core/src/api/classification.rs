@@ -38,7 +38,6 @@ impl RuleEvidenceCapacity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuleEvidenceError {
     RuleOutOfRange { rule: RuleIndex, capacity: usize },
-    CapacityMismatch { expected: usize, actual: usize },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -256,15 +255,6 @@ impl RuleEvidenceTable {
         Ok(())
     }
 
-    pub(crate) fn extend(
-        &mut self,
-        rule: RuleIndex,
-        evidence: impl IntoIterator<Item = ClassificationEvidence>,
-    ) -> Result<(), RuleEvidenceError> {
-        self.items_mut(rule)?.extend(evidence);
-        Ok(())
-    }
-
     pub(crate) fn mark_event_truncated(
         &mut self,
         rule: RuleIndex,
@@ -292,17 +282,11 @@ impl RuleEvidenceTable {
         Ok(())
     }
 
-    pub(crate) fn merge(&mut self, other: Self) -> Result<(), RuleEvidenceError> {
-        if self.values.len() != other.values.len() {
-            return Err(RuleEvidenceError::CapacityMismatch {
-                expected: self.values.len(),
-                actual: other.values.len(),
-            });
+    pub(crate) fn merge_equal_capacity(&mut self, other: Self) {
+        debug_assert_eq!(self.values.len(), other.values.len());
+        for (items, other_items) in self.values.iter_mut().zip(other.values) {
+            items.extend(other_items);
         }
-        for (rule, items) in other.values.into_iter().enumerate() {
-            self.extend(RuleIndex::new(rule), items)?;
-        }
-        Ok(())
     }
 
     pub(crate) fn mark_all_possible(&mut self) {
@@ -368,20 +352,6 @@ mod test_evidence_capacity {
             Err(RuleEvidenceError::RuleOutOfRange {
                 rule: RuleIndex::new(1),
                 capacity: 1,
-            })
-        );
-    }
-
-    #[test]
-    fn rejects_merging_tables_with_different_capacities() {
-        let mut table = RuleEvidenceTable::new_for_test(1);
-        let other = RuleEvidenceTable::new_for_test(2);
-
-        assert_eq!(
-            table.merge(other),
-            Err(RuleEvidenceError::CapacityMismatch {
-                expected: 1,
-                actual: 2,
             })
         );
     }

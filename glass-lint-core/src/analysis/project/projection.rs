@@ -431,7 +431,6 @@ impl ProjectionStatus {
         }
         if let Some(error) = self.evidence_error {
             let (expected, actual) = match error {
-                RuleEvidenceError::CapacityMismatch { expected, actual } => (expected, actual),
                 RuleEvidenceError::RuleOutOfRange { rule, capacity } => {
                     (capacity, rule.get().saturating_add(1))
                 }
@@ -600,10 +599,7 @@ impl ProjectSemanticModel {
         let mut projections = projections;
         for (module, evidence) in cross {
             if let Some(projection) = projections.get_mut(&module) {
-                projection
-                    .projected
-                    .merge(evidence)
-                    .expect("projected evidence uses one catalog capacity");
+                projection.projected.merge_equal_capacity(evidence);
             }
         }
 

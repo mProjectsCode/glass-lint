@@ -125,7 +125,7 @@ public span and occurrence representation. Verified with `make fmt && make ci`.
 
 ### Evidence table merge boundary
 
-#### [ ] READ-043 — Evidence-table merging rechecks an impossible index failure for every rule
+#### [x] READ-043 — Evidence-table merging rechecks an impossible index failure for every rule
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -150,7 +150,11 @@ internal append. Preserve `CapacityMismatch`, per-rule evidence order, and
 fail-closed handling for invalid indices; remove only the per-rule
 `RuleIndex` reconstruction and impossible `Result` branch.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Projected evidence now uses an equal-capacity merge that
+zips owned rule buckets directly after asserting the shared capacity
+invariant. The fallible merge remains available for boundary validation, while
+the production path no longer reconstructs a `RuleIndex` or checks every
+impossible lookup. Verified with `make fmt && make ci`.
 
 ## Systemic Themes
 
