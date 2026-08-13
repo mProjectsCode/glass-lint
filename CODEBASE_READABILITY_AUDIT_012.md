@@ -123,12 +123,13 @@ its public direct API, despite core’s architecture requiring bounded work and
 intermediate state.
 
 **Recommendation:** Put an explicit validated aggregate-admission policy on
-the core session boundary, or make the direct API’s unbounded ownership
-contract explicit and remove the implication that the session itself is
-bounded. If adding core limits, keep them separate from filesystem discovery
-and loader budgets, reject or defer admission atomically before retaining
-sources, and preserve parse-failure-as-report behavior, cache reuse, worker
-bounds, deterministic ordering, and the project loader’s stricter policies.
+the core session boundary. Core’s architecture promises bounded work and
+intermediate state, so documenting an unbounded direct API would leave that
+contract contradictory. Keep the core policy separate from filesystem
+discovery and loader budgets, reject or defer admission atomically before
+retaining sources, and preserve parse-failure-as-report behavior, cache reuse,
+worker bounds, deterministic ordering, and the project loader’s stricter
+policies.
 
 **Fix Applied:** None so far.
 
@@ -154,23 +155,17 @@ bounds, deterministic ordering, and the project loader’s stricter policies.
 
 ## Open Questions
 
-- Confirm whether direct core callers are intentionally trusted to enforce
-  aggregate source count and byte limits. If so, document that contract on
-  `ProjectSession` and make the boundedness claim apply only to the loader
-  path; otherwise define the smallest core admission limits that do not pull
-  filesystem policy into core.
-- Check all downstream users before changing `range()` from owned to borrowed.
-  A compatibility migration may retain an explicitly named `owned_range()`
-  while making the borrowed method the owner-aligned default.
-- Preserve the public postcondition of `AnalysisReport::with_project_diagnostics`
-  and `into_partial`: each currently finalizes sorting and cached aggregates.
-  If repeated chained transformations are measured as hot, introduce one
-  batch edit/finalization boundary rather than silently returning an
-  unfinalized report.
-- Measure request-heavy files and evidence-rich duplicate findings before
-  selecting iterator versus callback APIs. The replacement must remain
-  bounded and deterministic, not merely trade one temporary vector for an
-  unbounded lazy pipeline.
+- The direct core API must own aggregate source admission because the core
+  architecture promises bounded intermediate state; its limits must remain
+  provider- and filesystem-neutral.
+- Add borrowed `range_ref`-style accessors while retaining an explicitly named
+  owned conversion where external callers need ownership; preserve the
+  current serialized and equality behavior during the API migration.
+- `AnalysisReport` finalization postconditions are unrelated to the three
+  retained findings and remain unchanged.
+- Request extraction should build one bounded returned collection while
+  registering authored IDs in the same pass; duplicate-evidence merging should
+  consume owned traces at its existing bounded sort/dedup boundary.
 
 ## Coverage
 

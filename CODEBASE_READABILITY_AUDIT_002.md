@@ -141,13 +141,13 @@ identity. The internal path must remain unreachable from unvalidated callers.
 
 ## Open Questions
 
-- Before changing planner/collector registration, verify whether any caller
-  observes the intermediate planned provenance before declaration analysis
-  completes; if so, move that observation behind an explicit post-collection
-  view rather than restoring duplicate writes.
-- For the record-wrapper simplification, choose whether the graph should own
-  a small consuming method or whether the records should expose narrow
-  borrowed accessors; do not make the entire collector storage public.
+- `ScopePlan` is consumed directly by `ScopeCollector::from_plan`; no caller
+  observes planned provenance between the two passes. Collector-only enriched
+  provenance should therefore be applied through a private update operation,
+  not by restoring duplicate binding insertion.
+- Prefer a consuming graph-application method for the private collector
+  records. Narrow borrowed accessors are acceptable only if a record has more
+  than one legitimate consumer; collector storage must remain private.
 
 ## Coverage
 

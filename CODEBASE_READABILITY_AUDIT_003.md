@@ -158,14 +158,12 @@ the existing borrowed lifetimes of `CallShape`.
 
 ## Open Questions
 
-- Decide whether the plan-owned selector should return borrowed candidate
-  slices or a small iterator of flow IDs; local evidence currently needs to
-  retain candidates across a state-table borrow, while cross-flow consumers do
-  not. The API should solve that borrow boundary without reintroducing
-  per-call vectors.
-- Before consuming state batches, verify the mutation-log redo path and any
-  tests that construct `FlowStateTable` directly; the log must retain enough
-  state to restore both directions after admission.
+- The plan-owned selector should return borrowed candidate slices or an
+  iterator; callers may collect only at the existing state-borrow boundary.
+  It must not create a new per-call vector merely to bridge lifetimes.
+- The state table must consume the temporary batch while its inverse log keeps
+  the existing rollback copies. Direct test insertion remains a separate
+  single-state helper and does not justify keeping the batch borrowed.
 
 ## Coverage
 

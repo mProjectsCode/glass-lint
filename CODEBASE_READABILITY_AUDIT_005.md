@@ -129,13 +129,12 @@ diagnostic message.
 
 ## Open Questions
 
-- Before separating fact capacity from semantic operations, confirm whether
-  operation-count expectations intentionally rely on every admitted fact being
-  charged one unit; if so, retain that accounting while removing only the
-  retention-limit coupling.
-- If `AnalyzedSource` gains a borrowed cache projection, keep its source/path
-  ownership boundary private so callers cannot construct a cache artifact with
-  a mismatched source index.
+- Separate the fact-retention limit from the semantic operation limit while
+  retaining the existing operation charge for every admitted fact. The two
+  status reasons then continue to describe distinct exhausted resources.
+- Keep any `AnalyzedSource` cache projection private and borrow both reusable
+  handles from the same analyzed value so a cache artifact cannot pair a
+  semantic artifact with a mismatched source index.
 
 ## Coverage
 

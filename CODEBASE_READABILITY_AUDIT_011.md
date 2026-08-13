@@ -35,12 +35,12 @@ after it has already prepared an exact combined catalog, so construction also
 holds a second compiled-catalog representation until the builder is consumed.
 
 **Recommendation:** Make the prepared and unprepared construction modes
-explicitly exclusive. Either let `LinterConfig::selection` borrow the
-selection from the prepared value without storing a clone and discard or move
-the fallback catalogs at the mode transition, or provide a dedicated
-prepared-config constructor whose only catalog inputs are the prepared
-catalog and enabled indexes. Preserve the public builder's ability to inspect
-the effective selection, keep `PreparedRuleSelection` catalog/index alignment
+explicitly exclusive. Keep the prepared selection as the sole owner of the
+effective selection in that mode (the accessor can read through
+`prepared_selection`), move/discard the fallback catalogs when the prepared
+artifact is installed, and let `Linter::new` consume only the prepared catalog
+and enabled indexes. Preserve the public builder's ability to inspect the
+effective selection, keep `PreparedRuleSelection` catalog/index alignment
 authoritative, and retain the existing unprepared path's catalog combination
 and error mapping.
 
@@ -121,19 +121,15 @@ synthetic pre-match arena and replacement setter.
 
 ## Open Questions
 
-- Confirm whether callers rely on `LinterConfig::selection()` returning a
-  value immediately after `with_prepared_rules`. If so, make that accessor
-  read the prepared value rather than retaining a second clone; do not remove
-  the observable effective-selection contract.
-- Measure report assembly with modules containing many capabilities and rules
-  before choosing a direct vector capacity strategy. The simplification must
-  keep evidence grouped only where duplicate merging requires it and must not
-  turn bounded output into an unbounded collection.
-- Verify whether any diagnostic or profiling path can inspect a
-  `ProjectReportSession` between linking and matching. Current callers only
-  reconstruct traces after the matched arena is installed; if that boundary
-  changes, make the lifecycle state explicit rather than reintroducing a
-  sentinel arena.
+- `LinterConfig::selection()` remains an effective-selection accessor after
+  `with_prepared_rules`; it should read the prepared value rather than retain
+  a clone.
+- Direct finding accumulation remains bounded by the classification/evidence
+  limits and is followed by the existing sort/merge boundary; no intermediate
+  rule map is required for determinism.
+- No production caller needs a report session between linking and matching.
+  The trace arena should therefore transfer once at the match transition,
+  with the zero-capacity fallback retained only for selection failure.
 
 ## Coverage
 

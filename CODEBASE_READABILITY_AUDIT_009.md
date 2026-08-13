@@ -167,17 +167,17 @@ fail-closed handling for invalid indices; remove only the per-rule
 
 ## Open Questions
 
-- Measure local and cross-file projection with a large catalog and sparse
-  selection before choosing a dense selected-index map versus a sparse
-  `RuleIndex` store; both must preserve deterministic output and bounded
-  evidence growth.
-- Confirm whether `RootBudget` intentionally limits pre-deduplication roots.
-  If so, document that it bounds planning work rather than only retained plan
-  size; otherwise move the budget boundary to the canonical root owner.
-- Audit downstream crate code before changing `fact()` visibility. Current
-  workspace uses are internal sorting/deduplication paths, but public API
-  consumers may have compiled against the raw accessor if the classification
-  module is re-exported in a future surface.
+- The selected-index mapping is the preferred direction for READ-041 only if
+  it can be built once at selection time without making every evidence access
+  sparse and fallible. If that translation would add more state than it
+  removes, retain the bounded catalog-index table and do not pursue this
+  finding as a speculative optimization.
+- `RootBudget` intentionally bounds planning attempts before root
+  optimization/deduplication; retained-plan size remains bounded separately.
+  Keep that work-budget boundary explicit.
+- The workspace has no downstream use of `ClassificationEvidenceOccurrence::fact`
+  beyond internal sorting/deduplication. Restricting it to `pub(crate)` is
+  therefore an API-boundary cleanup, not a compatibility migration.
 
 ## Coverage
 

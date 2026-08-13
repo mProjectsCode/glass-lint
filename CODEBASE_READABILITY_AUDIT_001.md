@@ -28,13 +28,13 @@ is visited normally and the fact visitor records those locals again. The
 walks and spreads the ownership of the local-binding invariant across the
 export prepass and ordinary fact traversal.
 
-**Recommendation:** Make the normal visitor the sole owner of `ModuleInterface`
-local registration. Let export collection use a side-effect-free pattern-name
-collector when it needs names for export entries, and remove its local writes;
-the existing `record_pattern_locals` call in `visit_var_declarator` and the
-function/class visitor paths then remain the single registration points.
-Preserve export entries, function IDs, static-string metadata, and the current
-behavior for anonymous default declarations.
+**Recommendation:** Make the ordinary declaration visitor the sole owner of
+local registration for exported variable, class, and function declarations.
+Let export collection use a side-effect-free pattern-name collector when it
+needs names for export entries, and retain the explicit local registration in
+the named default-declaration path, which is not revisited by the normal
+visitor. Preserve export entries, function IDs, static-string metadata, and
+the current behavior for anonymous default declarations.
 
 **Fix Applied:** None so far.
 
@@ -151,12 +151,10 @@ the existing behavior for dynamic interpolations.
 
 ## Open Questions
 
-- A one-pass argument projection may need a small internal result object to
-  carry both emitted-child state and `CallArgInfo`; verify that this does not
-  expose matcher-specific data to the provider-neutral fact stream.
-- Before changing export local registration, confirm that any declaration
-  kinds not visited by the normal fact visitor still need to populate
-  `ModuleInterface::locals`.
+- The one-pass argument change is an internal fact-builder operation: its
+  result may carry `CallArgInfo`, but it must not become part of the retained
+  fact-stream API. Named default declarations are the known collector-only
+  local-registration case and must remain explicit.
 
 ## Coverage
 

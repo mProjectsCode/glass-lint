@@ -119,19 +119,16 @@ other unversioned syntax, deterministic feature ordering, and the public
 
 ## Open Questions
 
-- Confirm whether `ProjectLoadOptions::default().max_source_bytes` is intended
-  to track the core hard maximum forever. If it is intentionally a project
-  policy that may diverge, retain the separate constant but document the
-  relationship and add a focused policy test rather than importing the core
-  value.
-- Measure parser/semantic analysis with large and highly multiline sources
-  before choosing whether `ParsedSource` should own the index directly or
-  whether a dedicated parser-to-semantic coordinate handoff better preserves
-  phase privacy.
+- The project loader currently validates against the core hard maximum and
+  exposes the same value as its default, so the default should derive from
+  `glass_lint_core::MAX_SOURCE_BYTES`; project aggregate and discovery budgets
+  remain separate policies.
+- Carry the parser-owned line index through `ParsedSource` unless profiling
+  shows the phase boundary requires a dedicated wrapper; either form must
+  transfer one index, not rebuild it.
 - Keep `ParseDiagnostic.code` as the serialized stable identity and
-  `ParseFailureKind` as the internal typed classification unless a custom
-  serialization boundary can derive the code without making callers pay for
-  repeated allocation; the two fields currently serve different consumers.
+  `ParseFailureKind` as the internal typed classification; they serve
+  different consumers and are not duplicate fields.
 
 ## Coverage
 

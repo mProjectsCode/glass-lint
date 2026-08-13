@@ -64,60 +64,13 @@ same physical-root filtering; remove only the field-forwarding temporary.
 
 **Fix Applied:** None so far.
 
-### Constrained evaluation API
-
-#### [ ] READ-026 — `MatcherEvaluationContext` is an immediately destructured parameter object
-
-- **Severity:** Low
-- **Fix Complexity:** Low
-- **Theme:** SIMPLIFY
-- **Category:** Internal API Design
-- **Location:** `glass-lint-core/src/analysis/matching/arguments/mod.rs:291-295,315-375,1026-1044`
-
-`try_compute_constrained_evidence` constructs a private
-`MatcherEvaluationContext` containing three values, and
-`compute_constrained_inner` immediately destructures all three fields before
-doing any work. The test helper constructs the same bundle directly. The
-type has no methods, validation, or ownership transition, and the
-artifact/project association that matters to production is already grouped
-by `MatcherProjectContext` before this call.
-
-**Recommendation:** Pass the artifact, project overlay, and mutable
-operation counter as explicit private parameters, or destructure the bundle
-at the sole construction boundary and call an inner function with those
-values. Keep the lifetime relationships and operation accounting explicit;
-the simplification should remove only this single-use forwarding type.
-
-**Fix Applied:** None so far.
-
 ### Query-view layering
 
-#### [ ] READ-027 — Each event query builds a broad capability facade with unsupported slots
-
-- **Severity:** Low
-- **Fix Complexity:** Medium
-- **Theme:** SIMPLIFY
-- **Category:** Internal API Design
-- **Location:** `glass-lint-core/src/analysis/matching/query/view.rs:23-100,102-245`
-
-`EventIndexView` already stores the exact indexes and event-specific policy
-for each event. Every `resolve` call then constructs a fresh
-`EventIndexCapabilities`, which contains `AnyIndex`, optional global/member/
-module/rooted wrappers, and a `LiteralIndex`; most of those fields are
-`Unsupported` or `None` for the selected event. Resolution is immediately
-delegated through that temporary facade. This creates a second capability
-model, several impossible states, and repeated translation code between the
-event enum and the generic option bag without persisting a reusable object.
-
-**Recommendation:** Move the identity-resolution dispatch onto
-`EventIndexView`, using small private helpers for shared module, rooted, and
-literal operations, or replace the broad facade with a narrower event
-capability trait/object that cannot represent unsupported combinations. Keep
-the existing fail-closed `None` behavior, overlay policy, package matching,
-and explicit event-to-index mapping; the goal is to remove the unused
-capability storage layer rather than merge semantically different indexes.
-
-**Fix Applied:** None so far.
+No finding: `EventIndexCapabilities` is a private, stack-only dispatch view.
+Although its option fields represent unsupported combinations, the type
+centralizes the shared identity operations and does not allocate or leak
+matcher storage. Replacing it with per-event helpers would move the same
+dispatch policy rather than remove a concrete ownership or maintenance cost.
 
 ### Structure/API inventory
 
@@ -153,27 +106,22 @@ project-overlay lifetime and artifact-pairing guarantees.
   path can sort its existing vector, while borrowed overlay paths can retain
   their lazy merge and final ordering boundary.
 - Private matcher bundles are valuable when they enforce artifact identity,
-  phase transitions, or validated state. Single-use structs that only forward
-  fields between adjacent functions should be folded into the owning
-  constructor or call.
-- Query abstractions should encode supported combinations once. A generic
-  option bag with explicit unsupported variants obscures the event-specific
-  contract and increases the surface that must remain synchronized.
+  phase transitions, or validated state. The project context and constrained
+  evaluation inputs meet that bar; no single-use parameter-object finding is
+  retained here.
+- Query abstractions should encode supported combinations once. The current
+  private capability view is an intentional shared dispatch boundary; its
+  unsupported enum variants are internal fail-closed cases, not leaked API
+  states.
 - Structure inventories are part of the internal API story: removed types
   should disappear from them in the same migration that removes their code.
 
 ## Open Questions
 
-- Before changing `OccurrenceSelection`, confirm whether any caller relies on
-  `Scanned` being an iterator rather than an owned collection; the safe
-  migration can keep the enum private and change only its evidence-boundary
-  conversion.
-- If the query view is simplified, retain separate module overlay kinds for
-  calls, member calls, member reads, classes, and constructors. They encode
-  policy, not merely storage shape.
-- If `MatcherEvaluationContext` is removed, keep the project overlay passed
-  by value or otherwise tied to the artifact lifetime so argument evaluation
-  cannot accidentally use identities from another project artifact.
+- `OccurrenceSelection` is crate-private, so the scanned variant can change
+  internally while retaining the same evidence ordering and duplicate-event
+  behavior. Keep the event-specific overlay kinds and the existing project
+  context lifetime; neither is an open design question.
 
 ## Coverage
 

@@ -55,13 +55,12 @@ no indication which resource it is bounding. The lookup remains conservative,
 but projection can repeat bounded export walks or retain a cache sized for an
 unrelated phase.
 
-**Recommendation:** Give the cache a named capacity owned by the project
-linking configuration, and carry that value into the immutable project model
-if projection needs a new lookup session. Alternatively, make the session
-constructor take an explicit export-cache limit rather than a generic integer.
-Keep cache insertion bounded, cached `None` distinct from a miss, recursive
-export depth checks, and the existing link/flow operation accounting
-independent.
+**Recommendation:** Give the cache a named export-lookup capacity owned by
+the project-linking configuration, and carry that value into the immutable
+project model when projection creates a new lookup session. The constructor
+should accept that named policy, not a generic phase limit. Keep cache
+insertion bounded, cached `None` distinct from a miss, recursive export-depth
+checks, and the existing link/flow operation accounting independent.
 
 **Fix Applied:** None so far.
 
@@ -110,11 +109,12 @@ error variant carries no additional production information. The result error
 therefore duplicates the rejected state and is used only by a unit test.
 
 **Recommendation:** Make the graph builder return the partition as an
-`Option`/domain state consumed by the linker, or have the linker preserve and
-use a meaningful typed error rather than discarding it. Retain the explicit
-oversized-SCC diagnostic, `exhausted` propagation, and the fail-closed
-rejection of export resolution; remove only the unconsumed duplicate outcome
-representation.
+`Option`/domain state consumed by the linker; the existing status entry and
+`exhausted` flag already carry the only production-relevant failure data. If a
+typed error is retained for tests, keep it at the builder boundary rather than
+wrapping it in the production result. Retain the explicit oversized-SCC
+diagnostic, `exhausted` propagation, and fail-closed rejection of export
+resolution.
 
 **Fix Applied:** None so far.
 
@@ -183,16 +183,16 @@ and the edge-budget admission check; remove only the redundant lookup.
 
 ## Open Questions
 
-- Before changing cache capacity, determine whether projection intentionally
-  needs a cache with a different bound from the link pass. If so, name that
-  as a separate export-lookup cache limit rather than deriving it from flow
-  operations.
-- If `GraphBuildError` is retained for future diagnostics, make the linker
-  consume it or document why the status object and rejected state are not the
-  canonical failure representation.
-- Confirm that all `ExportTable::set_resolution` callers can transfer the
-  qualified key; test-only callers and the cycle fallback should not require
-  a borrowed update API for an independent reason.
+- No semantic reason is present for projection to derive export-cache size
+  from flow operations; use one named export-cache policy for both linking and
+  projection unless a future measured deployment explicitly needs separate
+  capacities.
+- The status entry plus rejected state are the canonical production failure
+  representation. A typed graph error may remain test-local, but must not be
+  carried and discarded by production linking.
+- All current `ExportTable::set_resolution` callers are internal update paths;
+  the consuming update should preserve the borrowed lookup API and move only
+  the update key.
 
 ## Coverage
 

@@ -40,30 +40,6 @@ request.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-016 — Export observations duplicate the retained export record
-
-- **Severity:** Medium
-- **Fix Complexity:** Medium
-- **Theme:** DEDUPLICATE
-- **Category:** Internal API Design
-- **Location:** `glass-lint-core/src/analysis/model/module.rs:60-109,117-155,295-317`
-
-`ExportEntry` and `ExportObservation` have the same three fields with the same
-types: optional `ModuleExport`, function ID, and static string. Every public
-export mutator constructs an `ExportObservation`; the first observation is
-then copied field-for-field by `ExportEntry::from_observation`, while later
-observations are passed to `ExportEntry::merge`. The separate record types
-therefore add a conversion and a second representation without expressing a
-different shape or ownership rule.
-
-**Recommendation:** Use one private partial-export metadata type for both
-new-entry and merge operations, or make the entry type expose narrowly scoped
-constructors that directly apply an observation. Keep independent
-field-by-field merging, contradiction-to-`Unknown` behavior, and the rule that
-later observations are ignored after `unknown_exports` is set.
-
-**Fix Applied:** None so far.
-
 ### Bounded flow evidence
 
 #### [ ] READ-017 — Readiness checks rebuild a boolean vector despite a stored bit mask
@@ -110,10 +86,11 @@ the full record, which makes the remaining cache-copy cost visible at the
 central boundary.
 
 **Recommendation:** Store cached results behind shared ownership such as an
-`Arc`, or separate the cheap identity cache from the provenance payload so
-identity-only callers never copy rich metadata. Keep recursive-cycle guards,
-position-sensitive keys, and an owned result for callers that need to project
-or archive provenance; sharing must not make mutable provenance possible.
+`Arc<ResolvedValue>` and let full-provenance callers borrow or clone only at
+their explicit ownership boundary; an `Arc` that is immediately deep-cloned
+would not fix this finding. Keep the existing ID-only fast paths, recursive
+cycle guards, and position-sensitive keys. Sharing must not make cached
+provenance mutable or mix results from different source positions.
 
 **Fix Applied:** None so far.
 
@@ -146,7 +123,10 @@ unknown/exhausted results.
 ## Systemic Themes
 
 - Collection-owned identities should have one authoritative storage location;
-  duplicated IDs and parallel partial records make invariants implicit.
+  duplicated IDs make invariants implicit. `ExportObservation` remains a
+  deliberate delta type: it describes one partial observation, while
+  `ExportEntry` owns accumulated contradiction and unknown state, so those
+  types are not a duplicate finding.
 - The model already encodes bounded domains compactly. Readiness and cache APIs
   should consume those representations directly rather than reconstructing
   temporary vectors or cloning rich values.
@@ -156,13 +136,10 @@ unknown/exhausted results.
 
 ## Open Questions
 
-- If the resolver adopts shared cached results, measure whether provenance
-  projections still need owned values at fact-building boundaries; the best
-  split may be an ID cache plus a lazily cloned provenance record rather than a
-  single shared wrapper.
-- If request IDs are derived only at collection boundaries, verify all project
-  linker and identity consumers continue to receive stable append-order IDs
-  without exposing the request vector.
+- Prefer shared ownership for full provenance cache results while retaining
+  the existing ID-only fast paths. Any owned projection should be created only
+  at a caller that actually needs provenance; request IDs remain append-order
+  identities derived by the interface owner and are not exposed as storage.
 
 ## Coverage
 

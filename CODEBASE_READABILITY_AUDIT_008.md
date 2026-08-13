@@ -7,8 +7,9 @@ builders, lifecycle declarations, bounded value and event collections, and the
 public catalog error boundary. The validation model is conservative and the
 immediate/deferred APIs preserve useful authoring ergonomics. The findings
 below target work performed before boundedness is enforced, repeated
-canonicalization state, duplicated builder state machines, and a public error
-boundary that discards structured diagnostics.
+canonicalization state, and duplicated builder state machines. The public
+catalog error boundary intentionally flattens private compiler diagnostics and
+is not treated as a readability finding.
 
 ## Findings
 
@@ -35,13 +36,13 @@ bounded-input error. This weakens the architecture’s bounded-work guarantee at
 the public rule API even though the resulting validated objects are bounded.
 
 **Recommendation:** Put bounded collection/admission operations on the owning
-collection builders. Count and stop at the relevant limit plus one while
-preserving first-error ordering, canonical sorting, and deduplication; where
-deduplication affects the final count, use a bounded canonical admission
-strategy rather than retaining an unbounded input vector. Apply the same
-boundary to query roots and lifecycle sources. Preserve empty-collection
-diagnostics and all existing limit values; only reject excessive input before
-the rest of the iterator is consumed.
+collection builders. Enforce both a raw-iterator admission bound and the
+canonical unique-value bound: stop at the first bound that is exceeded, while
+preserving first-error ordering, canonical sorting, and deduplication. This
+must make the contract explicit for duplicate-heavy iterators; it cannot
+promise to accept an unbounded stream of duplicates while also guaranteeing
+bounded work. Apply the same boundary to query roots and lifecycle sources,
+preserving empty-collection diagnostics and all existing limit values.
 
 **Fix Applied:** None so far.
 
@@ -105,37 +106,6 @@ second compatibility layer.
 
 **Fix Applied:** None so far.
 
-### Catalog diagnostic boundary
-
-#### [ ] READ-038 — Public catalog construction flattens structured compiler diagnostics into strings
-
-- **Severity:** Medium
-- **Fix Complexity:** Medium
-- **Theme:** ENCAPSULATE
-- **Category:** API
-- **Location:** `glass-lint-core/src/api/rule/error.rs:128-160`; `glass-lint-core/src/lint/catalog.rs:14-76`
-
-The compiler-facing `CompiledCatalogError` preserves typed
-`QueryDiagnostic`, `CompilerInvariantDiagnostic`, and
-`PhysicalPlanDiagnostic` values, including their structured codes and fields.
-The public `ProviderCatalogError`/`RuleCompilationError` boundary then maps
-each of those diagnostics through `to_string()` into a `String`. Callers of
-the public `RuleCatalog::new` API therefore receive only a category and
-rendered text, cannot inspect stable diagnostic data, and must parse or
-snapshot display output if they need to classify the failure. Core exposes
-two parallel representations of the same catalog failure: structured errors
-inside the rule/compiler API and an immediately flattened provider catalog
-error.
-
-**Recommendation:** Choose one deliberate public diagnostic boundary. Either
-retain a stable structured diagnostic payload in `RuleCompilationError`, or
-make compiler diagnostics private and define a provider-facing diagnostic type
-with stable codes and fields. Keep the provider-level category and rule ID,
-preserve exact display wording where compatibility requires it, and avoid
-forcing callers to recover semantics from formatted strings.
-
-**Fix Applied:** None so far.
-
 ## Systemic Themes
 
 - Boundedness needs to be enforced while inputs are admitted, not only after
@@ -148,21 +118,20 @@ forcing callers to recover semantics from formatted strings.
 - Immediate and deferred authoring APIs are policy variants of the same
   state machine. Shared mutation and validation should have one owner, with
   error timing selected at the boundary.
-- Catalog errors are an API boundary, not merely display strings. Structured
-  compiler diagnostics should either remain available to callers or be
-  intentionally replaced by a stable provider-facing diagnostic model.
+- Catalog errors intentionally flatten private compiler diagnostics at the
+  provider boundary. That keeps compiler IR out of the public rule API; do not
+  add a second diagnostic model without a concrete public classification need.
 
 ## Open Questions
 
-- For bounded collections whose final size changes after deduplication, decide
-  whether the contract limits raw inputs, unique canonical values, or both;
-  preserve the current error precedence while making that contract explicit.
-- Confirm whether immediate and deferred builder constructors are both part
-  of the intended external API, or whether one should become an internal
-  implementation mode behind the public catalog authoring surface.
-- Decide which diagnostic fields are stable enough for the public catalog
-  API before changing `RuleCompilationError`; callers may currently depend on
-  its broad category variants even though they cannot inspect compiler codes.
+- The bounded-input contract must cover both raw iterator work and final
+  canonical uniqueness; the implementation may choose the smallest compatible
+  raw bound, but it must not consume an unbounded duplicate stream.
+- Both immediate and deferred builders are public API variants and should keep
+  their method names and first-error behavior while sharing mutation state.
+- Provider catalog errors are intentionally categorized strings at the public
+  boundary; compiler-only diagnostic fields remain private implementation
+  details unless a separate public contract is requested.
 
 ## Coverage
 
