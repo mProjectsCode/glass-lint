@@ -312,7 +312,6 @@ impl LinkingSession {
 pub(in crate::analysis) struct ExportLookupCache {
     entries: BTreeMap<QualifiedExportId, Option<ExportResolution>>,
     capacity: usize,
-    count: usize,
 }
 
 pub(in crate::analysis) enum ExportLookupCacheResult<'a> {
@@ -325,7 +324,6 @@ impl ExportLookupCache {
         Self {
             entries: BTreeMap::new(),
             capacity,
-            count: 0,
         }
     }
 
@@ -341,11 +339,8 @@ impl ExportLookupCache {
     }
 
     pub fn insert(&mut self, id: QualifiedExportId, value: Option<ExportResolution>) {
-        if self.count >= self.capacity {
+        if self.entries.len() >= self.capacity {
             return;
-        }
-        if !self.entries.contains_key(&id) {
-            self.count = self.count.saturating_add(1);
         }
         self.entries.insert(id, value);
     }
@@ -436,6 +431,24 @@ mod tests {
         assert!(matches!(
             cache.lookup(&second),
             ExportLookupCacheResult::Hit(None)
+        ));
+    }
+
+    #[test]
+    fn export_lookup_cache_capacity_uses_unique_map_keys() {
+        let mut cache = ExportLookupCache::new(1);
+        let first = QualifiedExportId::new(module(0), "first");
+        let second = QualifiedExportId::new(module(0), "second");
+        cache.insert(first.clone(), None);
+        cache.insert(second.clone(), Some(ExportResolution::Unknown));
+
+        assert!(matches!(
+            cache.lookup(&first),
+            ExportLookupCacheResult::Hit(None)
+        ));
+        assert!(matches!(
+            cache.lookup(&second),
+            ExportLookupCacheResult::Miss
         ));
     }
 

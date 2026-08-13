@@ -17,7 +17,7 @@ requires unused source arguments.
 
 ### Export lookup cache ownership
 
-#### [ ] READ-062 — Remove the redundant export-cache entry counter
+#### [x] READ-062 — Remove the redundant export-cache entry counter
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -39,6 +39,10 @@ cache’s current non-evicting, bounded behavior and its distinction between a
 cached `None` resolution and a miss; preserve deterministic qualified keys and
 the shared session lifetime. Retain the cache behind `LinkingSession` rather
 than exposing its storage to resolver callers.
+
+**Fix Applied:** `ExportLookupCache` now uses `entries.len()` as its sole
+capacity invariant; cached misses and non-evicting behavior are unchanged.
+Added a unique-key capacity regression. Verified with `make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed. `entries.len()` is the existing
 capacity invariant; no eviction or cached-`None` behavior changes are implied.
