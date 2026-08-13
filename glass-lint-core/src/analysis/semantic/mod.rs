@@ -463,6 +463,7 @@ mod tests {
         .analyze_program(&parsed.program, &coordinates);
 
         assert!(!artifact.facts().stream().is_valid());
+        assert!(!artifact.facts().is_projectable());
         assert!(artifact.facts().matcher_index().is_empty());
         assert!(!artifact.facts().matcher_index().is_available());
         assert!(artifact.effects().iter_effects().next().is_none());

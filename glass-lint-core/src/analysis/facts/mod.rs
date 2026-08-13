@@ -660,6 +660,12 @@ impl SemanticFacts {
         &self.index
     }
 
+    /// Whether this artifact has the complete local state required by
+    /// project-level matching and flow projection.
+    pub(in crate::analysis) fn is_projectable(&self) -> bool {
+        self.stream.is_valid() && self.values().get(ValueId::UNKNOWN).is_some()
+    }
+
     /// Borrow the frozen value arena for shape lookups by ValueId.
     pub(in crate::analysis) fn values(&self) -> &ValueTable {
         self.stream.values()

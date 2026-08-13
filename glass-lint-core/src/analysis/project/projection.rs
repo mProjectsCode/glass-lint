@@ -21,7 +21,7 @@ use crate::{
         matching::{
             ConstrainedRootInput, MatcherOverlayPolicy, MatcherProjectContext, MatcherProjectInputs,
         },
-        model::{flow::FlowLimits, value::ValueId},
+        model::flow::FlowLimits,
         project::state::LinkingSession,
         semantic::status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
         trace::TraceArena,
@@ -148,11 +148,13 @@ impl<'project, 'plan, 'roots, 'arena> ProjectionSession<'project, 'plan, 'roots,
             .project
             .modules()
             .map(|module| -> Result<_, RuleEvidenceError> {
-                let identities = need_module_ids.then(|| {
+                let facts = module.local().facts();
+                let projectable = facts.is_projectable();
+                let identities = (projectable && need_module_ids).then(|| {
                     self.project
                         .module_identities(module.id(), &mut self.linking)
                 });
-                let result_identities = need_result_ids.then(|| {
+                let result_identities = (projectable && need_result_ids).then(|| {
                     self.project
                         .call_result_identities(module.id(), &mut self.linking)
                 });
@@ -163,11 +165,8 @@ impl<'project, 'plan, 'roots, 'arena> ProjectionSession<'project, 'plan, 'roots,
                 };
                 let project_inputs =
                     MatcherProjectInputs::new(identities.as_ref(), result_identities.as_ref());
-                let (matcher_context, overlay_ops) = MatcherProjectContext::from_facts(
-                    module.local().facts(),
-                    project_inputs,
-                    overlay_policy,
-                );
+                let (matcher_context, overlay_ops) =
+                    MatcherProjectContext::from_facts(facts, project_inputs, overlay_policy);
                 outcome.metrics.operations = outcome.metrics.operations.saturating_add(overlay_ops);
                 let effects = self.plan.needs_flow().then(|| module.local().effects());
                 if let Some(effects) = effects
@@ -178,7 +177,7 @@ impl<'project, 'plan, 'roots, 'arena> ProjectionSession<'project, 'plan, 'roots,
                 }
                 let (projected, local) = project_facts(
                     ProjectionInputs {
-                        facts: module.local().facts(),
+                        facts,
                         effects,
                         plan: self.plan,
                         flow_limits: self.flow_limits,
@@ -262,7 +261,7 @@ fn project_facts(
         trace_arena,
     } = inputs;
     let mut projected_evidence = RuleEvidenceTable::new(plan.rule_capacity);
-    if !facts.stream().is_valid() || facts.values().get(ValueId::UNKNOWN).is_none() {
+    if !facts.is_projectable() {
         return Ok((projected_evidence, LocalFlowProjectionOutcome::default()));
     }
     crate::analysis::matching::try_compute_constrained_evidence(

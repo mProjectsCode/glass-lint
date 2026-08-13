@@ -115,7 +115,7 @@ with `make fmt && make ci`.
 
 ### Invalid local projection work
 
-#### [ ] READ-065 — Gate project identity construction on local projectability
+#### [x] READ-065 — Gate project identity construction on local projectability
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -142,6 +142,12 @@ and a successful empty match.
 
 **Audit disposition (2026-08-13):** Confirmed. The early gate must still emit
 an empty per-module projection and preserve separate effect-status reporting.
+
+**Fix Applied:** Added `SemanticFacts::is_projectable()` as the shared
+fail-closed predicate. Projection now gates module and call-result identity
+construction with it, while still creating the per-module matcher artifact and
+preserving effect/status handling; the local evidence gate uses the same
+predicate. Verified with `make fmt && make ci`.
 
 ### Single-module test API
 
