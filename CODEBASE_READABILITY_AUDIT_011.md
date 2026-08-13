@@ -52,7 +52,7 @@ with `make fmt && make ci`.
 
 ### Finding assembly
 
-#### [ ] READ-048 — Finding assembly groups by rule in a map that is immediately flattened and globally resorted
+#### [x] READ-048 — Finding assembly groups by rule in a map that is immediately flattened and globally resorted
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -76,7 +76,10 @@ cross-capability duplicate merging, empty-evidence behavior, deterministic
 rule/location ordering, and the catalog lookup used to construct each
 finding; remove only the immediately consumed rule-index map and flattening.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Module finding assembly now accumulates directly into one
+vector. The existing global sort/merge remains the deterministic ordering and
+duplicate boundary, with capability traversal and catalog lookup unchanged.
+Verified with `make fmt && make ci`.
 
 ### Report-session lifecycle
 

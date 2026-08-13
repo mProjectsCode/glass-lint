@@ -6,7 +6,7 @@ use crate::{
     analysis::{ProjectSemanticModel, display_span},
     api::classification::{
         ClassificationEvidence, ClassificationEvidenceOccurrence, ClassificationResult,
-        MatchedCapability, RuleIndex,
+        MatchedCapability,
     },
     diagnostic::SourceLineIndex,
     lint::{catalog::RuleCatalog, report::ProjectReportSession},
@@ -159,16 +159,13 @@ fn findings_for_module(
 ) -> Vec<Finding> {
     let lines = module.source_context().lines();
     let path = module.path();
-    let mut rule_findings: BTreeMap<RuleIndex, Vec<Finding>> = BTreeMap::new();
+    let mut findings = Vec::new();
     for capability in classification.capabilities() {
-        rule_findings
-            .entry(capability.rule_index())
-            .or_default()
-            .extend(findings_for_capability(
-                catalog, project, session, capability, lines, path,
-            ));
+        findings.extend(findings_for_capability(
+            catalog, project, session, capability, lines, path,
+        ));
     }
-    rule_findings.into_values().flatten().collect()
+    findings
 }
 
 #[derive(Debug)]
