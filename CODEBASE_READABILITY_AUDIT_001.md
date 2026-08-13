@@ -72,7 +72,7 @@ and fail-closed interface behavior. Verified with `make fmt && make ci`.
 
 ### Fact argument and call dispatch
 
-#### [ ] READ-003 — Call arguments are traversed once for facts and again for projections
+#### [x] READ-003 — Call arguments are traversed once for facts and again for projections
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -95,7 +95,11 @@ shapes, and dynamic fallback while removing either the separate visitor walk
 or the second `analyze_argument_tree` walk. Do not merge away child fact order
 or the distinction between incomplete static shapes and precise values.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Argument projection now owns the argument expression visit:
+each argument emits nested facts once and then derives its scalar, member, and
+literal-shape projections without a second child traversal. Callable wrappers
+reuse the projection-only path after their normal call emission visits the
+arguments. Verified with `make fmt && make ci`.
 
 #### [x] READ-004 — Ordinary and optional calls duplicate dispatch policy
 

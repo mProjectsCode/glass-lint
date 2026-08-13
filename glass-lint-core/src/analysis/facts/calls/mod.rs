@@ -1,6 +1,5 @@
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{CallExpr, Callee, Expr, ExprOrSpread, OptChainBase};
-use swc_ecma_visit::VisitWith;
 
 use crate::analysis::{
     facts::{CallArgInfo, CallUnwrap, FactBuilder, FactPayload},
@@ -74,7 +73,6 @@ impl FactBuilder<'_, '_> {
     ) {
         if let Some(member) = wrapper {
             self.visit_callee_children(callee_expr);
-            args.visit_with(self);
             self.try_emit_callable_wrapper_common(member, span, args);
             return;
         }
@@ -82,7 +80,6 @@ impl FactBuilder<'_, '_> {
             return;
         };
         self.visit_callee_children(callee_expr);
-        args.visit_with(self);
         self.emit_call(span, resolved, args, None);
     }
 

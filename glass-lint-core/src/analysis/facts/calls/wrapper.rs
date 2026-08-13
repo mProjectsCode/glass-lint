@@ -16,8 +16,10 @@ impl FactBuilder<'_, '_> {
         match property.as_str() {
             "call" if !args.is_empty() => {
                 let chain = self.resolve_target_chain(&member.obj);
-                let effective_args: Vec<_> =
-                    args[1..].iter().map(|a| self.arg_info(&a.expr)).collect();
+                let effective_args: Vec<_> = args[1..]
+                    .iter()
+                    .map(|a| self.arg_info_projection(&a.expr))
+                    .collect();
                 let target = effective_callee_expr(&member.obj);
                 let Some(resolved) = self.resolve_call_callee(target) else {
                     return;
@@ -67,7 +69,7 @@ impl FactBuilder<'_, '_> {
                         .elems
                         .iter()
                         .flatten()
-                        .map(|e| self.arg_info(&e.expr))
+                        .map(|e| self.arg_info_projection(&e.expr))
                         .collect(),
                 )
             }

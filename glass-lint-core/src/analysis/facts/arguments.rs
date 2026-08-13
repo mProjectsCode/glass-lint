@@ -1,6 +1,7 @@
 //! Argument projections used by call facts and interprocedural flow.
 
 use glass_lint_datastructures::SymbolPath;
+use swc_ecma_visit::VisitWith;
 
 use crate::analysis::{
     facts::{
@@ -26,6 +27,11 @@ impl FactBuilder<'_, '_> {
     /// `Unknown`; the direct walk preserves the resolved `ValueId` for every
     /// child expression.
     pub(super) fn arg_info(&mut self, expr: &Expr) -> CallArgInfo {
+        expr.visit_with(self);
+        self.arg_info_projection(expr)
+    }
+
+    pub(super) fn arg_info_projection(&mut self, expr: &Expr) -> CallArgInfo {
         match expr {
             Expr::Member(member) => {
                 let resolved = self.resolver.resolve_member(member);
@@ -50,11 +56,11 @@ impl FactBuilder<'_, '_> {
                     provenance: crate::analysis::syntax::SymbolCallProvenance::Local,
                 }
             }
-            Expr::Paren(paren) => self.arg_info(&paren.expr),
+            Expr::Paren(paren) => self.arg_info_projection(&paren.expr),
             Expr::Seq(sequence) => sequence
                 .exprs
                 .last()
-                .map_or_else(CallArgInfo::unknown, |last| self.arg_info(last)),
+                .map_or_else(CallArgInfo::unknown, |last| self.arg_info_projection(last)),
             _ => {
                 let resolved = self.resolver.resolve_expr(expr);
                 let value = Self::resolve_or_eval(expr, resolved.id, self.resolver);
