@@ -16,21 +16,6 @@ impl FactBuilder<'_, '_> {
     /// assignments, including the module-interface consequences of CommonJS
     /// export writes.
     pub(super) fn record_assignment(&mut self, assignment: &AssignExpr) {
-        // Any direct write through the CommonJS export objects makes the
-        // module interface ambiguous; later project linking must fail closed.
-        if assignment.op == AssignOp::Assign
-            && let swc_ecma_ast::AssignTarget::Simple(swc_ecma_ast::SimpleAssignTarget::Ident(
-                ident,
-            )) = &assignment.left
-            && (self
-                .resolver
-                .is_unshadowed_commonjs_name(&ident.id, "exports")
-                || self
-                    .resolver
-                    .is_unshadowed_commonjs_name(&ident.id, "module"))
-        {
-            self.interface.mark_unknown_exports();
-        }
         self.record_commonjs_export(assignment);
         let source = self.value_for_expr(&assignment.right);
         match &assignment.left {

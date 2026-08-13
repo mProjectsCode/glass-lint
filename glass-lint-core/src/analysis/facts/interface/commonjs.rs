@@ -20,6 +20,14 @@ impl ModuleInterfaceBuilder {
         if assignment.op != AssignOp::Assign {
             return;
         }
+        if let swc_ecma_ast::AssignTarget::Simple(swc_ecma_ast::SimpleAssignTarget::Ident(ident)) =
+            &assignment.left
+            && (resolver.is_unshadowed_commonjs_name(&ident.id, COMMONJS_EXPORTS)
+                || resolver.is_unshadowed_commonjs_name(&ident.id, COMMONJS_MODULE))
+        {
+            self.mark_unknown_exports();
+            return;
+        }
         let swc_ecma_ast::AssignTarget::Simple(swc_ecma_ast::SimpleAssignTarget::Member(member)) =
             &assignment.left
         else {

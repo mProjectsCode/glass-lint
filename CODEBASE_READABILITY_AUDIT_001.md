@@ -38,7 +38,7 @@ the current behavior for anonymous default declarations.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-002 — CommonJS uncertainty is split between two owners
+#### [x] READ-002 — CommonJS uncertainty is split between two owners
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -59,7 +59,11 @@ that operation once. Keep the resolver's unshadowed-name checks, the `Assign`
 operator restriction, and all existing member/property export recognition;
 only the ownership and duplicated dispatch should change.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Moved direct unshadowed `exports = ...` and `module = ...`
+invalidation into `ModuleInterfaceBuilder::record_commonjs_export`, alongside
+member-shaped CommonJS recognition. `FactBuilder` now dispatches the interface
+operation once, preserving the `Assign` restriction, resolver shadow checks,
+and fail-closed interface behavior. Verified with `make fmt && make ci`.
 
 ### Fact argument and call dispatch
 
