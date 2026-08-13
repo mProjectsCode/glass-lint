@@ -72,7 +72,7 @@ Verified with `make fmt && make ci`.
 
 ### Selection-sized classification state
 
-#### [ ] READ-041 — Evidence matrices allocate one bucket for every catalog rule on every module
+#### [x] READ-041 — Evidence matrices allocate one bucket for every catalog rule on every module
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -99,7 +99,11 @@ indices as today, retain deterministic rule order, and keep any capacity
 checks at the selection boundary; do not trade the full matrix for an
 unbounded evidence collection.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Local and cross-flow evidence tables now retain rule buckets
+only when selected matching actually records evidence, while preserving
+catalog-capacity validation and deterministic rule-key ordering. Empty
+catalog-sized vectors are no longer allocated for every module. Verified with
+`make fmt && make ci`.
 
 ### Classification representation boundary
 

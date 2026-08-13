@@ -4,6 +4,8 @@
 //! separate. `rule_index` and event IDs are internal correlation keys and are
 //! intentionally omitted from serialized reports.
 
+use std::collections::BTreeMap;
+
 use glass_lint_datastructures::ByteRange;
 
 use crate::{analysis::trace::TraceNodeId, api::rule::Severity, project::MatchCertainty};
@@ -215,15 +217,17 @@ impl ClassificationEvidence {
 }
 
 /// Bounded evidence grouped by opaque catalog rule index.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuleEvidenceTable {
-    values: Vec<Vec<ClassificationEvidence>>,
+    capacity: RuleEvidenceCapacity,
+    values: BTreeMap<RuleIndex, Vec<ClassificationEvidence>>,
 }
 
 impl RuleEvidenceTable {
     pub(crate) fn new(capacity: RuleEvidenceCapacity) -> Self {
         Self {
-            values: (0..capacity.len()).map(|_| Vec::new()).collect(),
+            capacity,
+            values: BTreeMap::new(),
         }
     }
 
@@ -233,17 +237,18 @@ impl RuleEvidenceTable {
     }
 
     pub(crate) fn for_rule(&self, rule: RuleIndex) -> Option<&[ClassificationEvidence]> {
-        self.values.get(rule.get()).map(Vec::as_slice)
+        self.values.get(&rule).map(Vec::as_slice)
     }
 
     fn items_mut(
         &mut self,
         rule: RuleIndex,
     ) -> Result<&mut Vec<ClassificationEvidence>, RuleEvidenceError> {
-        let capacity = self.values.len();
-        self.values
-            .get_mut(rule.get())
-            .ok_or(RuleEvidenceError::RuleOutOfRange { rule, capacity })
+        let capacity = self.capacity.len();
+        if rule.get() >= capacity {
+            return Err(RuleEvidenceError::RuleOutOfRange { rule, capacity });
+        }
+        Ok(self.values.entry(rule).or_default())
     }
 
     pub(crate) fn record(
@@ -283,14 +288,14 @@ impl RuleEvidenceTable {
     }
 
     pub(crate) fn merge_equal_capacity(&mut self, other: Self) {
-        debug_assert_eq!(self.values.len(), other.values.len());
-        for (items, other_items) in self.values.iter_mut().zip(other.values) {
-            items.extend(other_items);
+        debug_assert_eq!(self.capacity, other.capacity);
+        for (rule, other_items) in other.values {
+            self.values.entry(rule).or_default().extend(other_items);
         }
     }
 
     pub(crate) fn mark_all_possible(&mut self) {
-        for items in &mut self.values {
+        for items in self.values.values_mut() {
             for evidence in items {
                 evidence.mark_possible();
             }
@@ -302,19 +307,22 @@ impl RuleEvidenceTable {
 mod test_indexing {
     use std::ops::{Index, IndexMut};
 
-    use super::{ClassificationEvidence, RuleEvidenceTable};
+    use super::{ClassificationEvidence, RuleEvidenceTable, RuleIndex};
+
+    static EMPTY: Vec<ClassificationEvidence> = Vec::new();
 
     impl Index<usize> for RuleEvidenceTable {
         type Output = Vec<ClassificationEvidence>;
 
         fn index(&self, index: usize) -> &Self::Output {
-            &self.values[index]
+            self.values.get(&RuleIndex::new(index)).unwrap_or(&EMPTY)
         }
     }
 
     impl IndexMut<usize> for RuleEvidenceTable {
         fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-            &mut self.values[index]
+            self.items_mut(RuleIndex::new(index))
+                .expect("test index is in range")
         }
     }
 }

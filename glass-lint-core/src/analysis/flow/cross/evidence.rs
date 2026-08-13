@@ -60,7 +60,7 @@ struct RuleEvidence {
 
 pub(super) struct ModuleEvidence {
     capacity: crate::api::classification::RuleEvidenceCapacity,
-    rules: Vec<RuleEvidence>,
+    rules: BTreeMap<RuleIndex, RuleEvidence>,
     pub(super) trace_heads: usize,
 }
 
@@ -68,19 +68,17 @@ impl ModuleEvidence {
     pub(super) fn new(capacity: crate::api::classification::RuleEvidenceCapacity) -> Self {
         Self {
             capacity,
-            rules: (0..capacity.len())
-                .map(|_| RuleEvidence::default())
-                .collect(),
+            rules: BTreeMap::new(),
             trace_heads: 0,
         }
     }
 
     fn rule_mut(&mut self, rule: RuleIndex) -> Option<&mut RuleEvidence> {
-        self.rules.get_mut(rule.get())
+        (rule.get() < self.capacity.len()).then(|| self.rules.entry(rule).or_default())
     }
 
     fn rule(&self, rule: RuleIndex) -> Option<&RuleEvidence> {
-        self.rules.get(rule.get())
+        self.rules.get(&rule)
     }
 
     fn mark_nonmatching(&mut self, rule_index: RuleIndex, key: &EvidenceKey) {
@@ -128,7 +126,7 @@ impl ModuleEvidence {
     }
 
     pub(super) fn mark_all_possible(&mut self) {
-        for rule in &mut self.rules {
+        for rule in self.rules.values_mut() {
             for item in rule.items.values_mut() {
                 item.mark_possible();
             }
@@ -137,12 +135,9 @@ impl ModuleEvidence {
 
     pub(super) fn into_evidence(self) -> RuleEvidenceTable {
         let mut evidence = RuleEvidenceTable::new(self.capacity);
-        for (rule_index, rule) in self.rules.into_iter().enumerate() {
+        for (rule_index, rule) in self.rules {
             if evidence
-                .replace(
-                    RuleIndex::new(rule_index),
-                    rule.items.into_values().collect(),
-                )
+                .replace(rule_index, rule.items.into_values().collect())
                 .is_err()
             {
                 return evidence;
