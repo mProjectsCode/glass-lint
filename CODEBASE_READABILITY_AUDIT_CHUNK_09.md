@@ -45,7 +45,7 @@ declaration-shaped representation.
 consume canonical groups directly; flattening remains only for consumers that
 need declaration-shaped constraints.
 
-#### [ ] READ-073 — Make normalized-root ordering total over semantic state
+#### [x] READ-073 — Make normalized-root ordering total over semantic state
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -72,7 +72,12 @@ Do not deduplicate roots that differ in subject, slot, evidence, or any other
 state required by physical planning; only make their ordering total and
 stable.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Normalized roots, events, subjects, and lifecycles now derive
+their complete semantic `Ord`, and root normalization uses that same ordering
+for sorting and equality-based deduplication. The partial hand-written
+comparator was removed. Added a reversed direct/returned/constructed-subject
+regression test proving distinct roots remain ordered and retained. Verified
+with `make fmt && make ci`.
 
 **Audit disposition (2026-08-13):** Confirmed and prioritized. The comparator
 must distinguish every state used by normalized equality, especially subject

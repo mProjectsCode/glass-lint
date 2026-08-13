@@ -49,7 +49,7 @@ impl NormalizedEmission {
 }
 
 /// Normalized root expression — no `All` variant.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum NormalizedRoot {
     Event(NormalizedEvent),
     Any(Box<[Self]>),
@@ -195,7 +195,7 @@ impl ObjectSlot {
 }
 
 /// A single normalized event node with merged subject and arguments.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct NormalizedEvent {
     pub(crate) slot: EventSlot,
     pub(crate) event: EventSpec,
@@ -226,7 +226,7 @@ impl NormalizedEvent {
 }
 
 /// Subject relationship in a normalized event.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum NormalizedSubject {
     Direct {
         identity: IdentitySpec,
@@ -278,7 +278,7 @@ pub(crate) enum NormalizedLifecycleCompletion {
 }
 
 /// Normalized lifecycle — compiler-owned sources, conditions, and completion.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct NormalizedLifecycle {
     pub(crate) sources: Vec<NormalizedEvent>,
     pub(crate) condition: Option<NormalizedLifecycleCondition>,

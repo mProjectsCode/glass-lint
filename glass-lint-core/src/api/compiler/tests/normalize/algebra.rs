@@ -1,4 +1,7 @@
 use super::*;
+use crate::api::compiler::normalized::{
+    CanonicalArgumentConstraints, EventSlot, NormalizedEvent, NormalizedSubject, ObjectSlot,
+};
 #[test]
 fn simple_event_normalizes_to_event_root() {
     let d = decl(event(0, "fetch"), 0, "fetch");
@@ -90,6 +93,66 @@ fn branches_are_sorted_canonically() {
         }
         other => panic!("expected Any, got {other:?}"),
     }
+}
+
+#[test]
+fn branches_with_distinct_subjects_have_a_total_order() {
+    let identity = IdentitySpec::Global {
+        name: SmolStr::new("create"),
+    };
+    let event = NormalizedEvent {
+        slot: EventSlot::from_raw(0),
+        event: EventSpec::Call,
+        subject: NormalizedSubject::Direct {
+            identity: identity.clone(),
+        },
+        arguments: CanonicalArgumentConstraints::default(),
+    };
+    let returned = NormalizedEvent {
+        subject: NormalizedSubject::Returned {
+            producer: identity.clone(),
+            object_slot: ObjectSlot::from_raw(1),
+        },
+        ..event.clone()
+    };
+    let constructed = NormalizedEvent {
+        subject: NormalizedSubject::Instance {
+            constructor: identity,
+            object_slot: ObjectSlot::from_raw(1),
+        },
+        ..event.clone()
+    };
+    let mut roots = vec![
+        NormalizedRoot::Event(constructed),
+        NormalizedRoot::Event(returned),
+        NormalizedRoot::Event(event),
+    ];
+
+    roots.sort();
+    roots.dedup();
+
+    assert_eq!(roots.len(), 3);
+    assert!(matches!(
+        &roots[0],
+        NormalizedRoot::Event(NormalizedEvent {
+            subject: NormalizedSubject::Direct { .. },
+            ..
+        })
+    ));
+    assert!(matches!(
+        &roots[1],
+        NormalizedRoot::Event(NormalizedEvent {
+            subject: NormalizedSubject::Returned { .. },
+            ..
+        })
+    ));
+    assert!(matches!(
+        &roots[2],
+        NormalizedRoot::Event(NormalizedEvent {
+            subject: NormalizedSubject::Instance { .. },
+            ..
+        })
+    ));
 }
 
 trait SlotAccess {
