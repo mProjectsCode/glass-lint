@@ -97,7 +97,7 @@ or the distinction between incomplete static shapes and precise values.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-004 — Ordinary and optional calls duplicate dispatch policy
+#### [x] READ-004 — Ordinary and optional calls duplicate dispatch policy
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -118,7 +118,10 @@ otherwise share that routine without introducing a public wrapper type. Keep
 the optional-member fact span, import-fact timing, and unsupported wrapper
 behavior unchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Ordinary and optional call visitors now normalize wrapper
+selection, child traversal, callee resolution, and call emission through one
+private `record_call_like` dispatch routine. Wrapper span and optional-member
+behavior remain unchanged. Verified with `make fmt && make ci`.
 
 ### Literal resolution boundary
 

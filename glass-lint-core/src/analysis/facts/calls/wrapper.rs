@@ -1,14 +1,10 @@
 use crate::analysis::facts::{
-    CallArgInfo, CallExpr, CallUnwrap, Expr, ExprOrSpread, FactBuilder, MemberExpr, Span, Spanned,
+    CallArgInfo, CallUnwrap, Expr, ExprOrSpread, FactBuilder, MemberExpr, Span,
     effective_callee_expr, literal_member_property_name,
 };
 
 impl FactBuilder<'_, '_> {
-    pub(super) fn try_emit_callable_wrapper(&mut self, member: &MemberExpr, call: &CallExpr) {
-        self.try_emit_callable_wrapper_common(member, call.span, &call.args);
-    }
-
-    fn try_emit_callable_wrapper_common(
+    pub(super) fn try_emit_callable_wrapper_common(
         &mut self,
         member: &MemberExpr,
         span: Span,
@@ -54,14 +50,6 @@ impl FactBuilder<'_, '_> {
             }
             _ => {}
         }
-    }
-
-    pub(in crate::analysis::facts) fn try_emit_callable_wrapper_opt(
-        &mut self,
-        member: &MemberExpr,
-        call: &swc_ecma_ast::OptCall,
-    ) {
-        self.try_emit_callable_wrapper_common(member, call.span(), &call.args);
     }
 
     pub(super) fn try_unwrap_apply_args(&mut self, args_expr: &Expr) -> Option<Vec<CallArgInfo>> {

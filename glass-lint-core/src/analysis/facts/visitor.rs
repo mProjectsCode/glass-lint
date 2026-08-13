@@ -165,16 +165,9 @@ impl Visit for FactBuilder<'_, '_> {
                         Some("call" | "apply")
                     )
                 {
-                    self.visit_callee_children(callee_expr);
-                    call.args.visit_with(self);
-                    self.try_emit_callable_wrapper_opt(member, call);
+                    self.record_call_like(chain.span(), callee_expr, &call.args, Some(member));
                 } else {
-                    let Some(resolved) = self.resolve_call_callee(callee_expr) else {
-                        return;
-                    };
-                    self.visit_callee_children(callee_expr);
-                    call.args.visit_with(self);
-                    self.emit_call(chain.span(), resolved, &call.args, None);
+                    self.record_call_like(chain.span(), callee_expr, &call.args, None);
                 }
             }
             OptChainBase::Member(member) => {

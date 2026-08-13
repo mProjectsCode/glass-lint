@@ -50,27 +50,40 @@ impl FactBuilder<'_, '_> {
             return;
         };
 
-        if let Expr::Member(member) = effective_callee_expr(callee_expr)
+        let wrapper = if let Expr::Member(member) = effective_callee_expr(callee_expr)
             && matches!(
                 literal_member_property_name(&member.prop).as_deref(),
                 Some("call" | "apply")
-            )
-        {
+            ) {
+            Some(member)
+        } else {
+            None
+        };
+        self.record_call_like(call.span, callee_expr, &call.args, wrapper);
+        if let Some(module) = module_call {
+            self.emit(call.span, FactPayload::Import { module });
+        }
+    }
+
+    pub(in crate::analysis::facts) fn record_call_like(
+        &mut self,
+        span: Span,
+        callee_expr: &Expr,
+        args: &[ExprOrSpread],
+        wrapper: Option<&swc_ecma_ast::MemberExpr>,
+    ) {
+        if let Some(member) = wrapper {
             self.visit_callee_children(callee_expr);
-            call.args.visit_with(self);
-            self.try_emit_callable_wrapper(member, call);
+            args.visit_with(self);
+            self.try_emit_callable_wrapper_common(member, span, args);
             return;
         }
-
         let Some(resolved) = self.resolve_call_callee(callee_expr) else {
             return;
         };
         self.visit_callee_children(callee_expr);
-        call.args.visit_with(self);
-        self.emit_call(call.span, resolved, &call.args, None);
-        if let Some(module) = module_call {
-            self.emit(call.span, FactPayload::Import { module });
-        }
+        args.visit_with(self);
+        self.emit_call(span, resolved, args, None);
     }
 
     pub(in crate::analysis::facts) fn emit_call(
