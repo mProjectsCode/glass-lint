@@ -206,6 +206,10 @@ impl<T: FactPhase> FactStream<T> {
         &self.facts
     }
 
+    pub(in crate::analysis) fn max_facts(&self) -> usize {
+        self.max_facts
+    }
+
     #[cfg(test)]
     pub(super) fn fingerprint(&self) -> String {
         format!("{:?}", self.facts)
@@ -269,10 +273,6 @@ impl FactStream<Building> {
             return;
         }
         self.facts.push(fact);
-    }
-
-    pub(in crate::analysis) fn max_facts(&self) -> usize {
-        self.max_facts
     }
 
     pub(super) fn mark_budget_exhausted(&mut self) {

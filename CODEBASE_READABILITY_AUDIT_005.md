@@ -70,7 +70,7 @@ with `make fmt && make ci`.
 
 ### Bounded local analysis
 
-#### [ ] READ-022 — Semantic operation budget also acts as fact-retention capacity
+#### [x] READ-022 — Semantic operation budget also acts as fact-retention capacity
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -94,7 +94,10 @@ dedicated validated limit or the canonical `MAX_FACTS` policy), while the
 the semantic phase as distinct inputs and preserve both fail-closed statuses,
 the dense fact-ID invariant, and the existing hard maximum.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The semantic analyzer now passes the canonical `MAX_FACTS`
+retention policy independently of `semantic_operations`; the operation counter
+remains owned by `SemanticBudget`. Added a regression assertion for tiny
+operation budgets. Verified with `make fmt && make ci`.
 
 ### Scoped completeness diagnostics
 

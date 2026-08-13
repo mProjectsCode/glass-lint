@@ -14,12 +14,12 @@ use swc_common::{Span, Spanned};
 use swc_ecma_ast::Program;
 
 #[cfg(test)]
-use crate::analysis::{facts::MAX_FACTS, resolution::test_environment};
+use crate::analysis::resolution::test_environment;
 use crate::{
     AnalysisLimits, Environment, ParseDiagnostic, SourceLineIndex,
     analysis::{
         DerivedPhaseCapabilities, LocatedSourceContext, SemanticArtifact, SemanticBudget,
-        facts::{self, Building, BuiltFacts, FactStream, SemanticFacts},
+        facts::{self, Building, BuiltFacts, FactStream, MAX_FACTS, SemanticFacts},
         model::module,
         resolution::Resolver,
         scope::{ScopeCollectionIssue, ScopeGraph, ScopedProgram},
@@ -165,7 +165,7 @@ impl<'a> SemanticAnalyzer<'a> {
             program,
             coordinates.clone(),
             &budget,
-            self.limits.semantic_operations(),
+            MAX_FACTS,
         )
         .freeze(self.environment, self.limits, program.span())
     }
@@ -540,6 +540,7 @@ mod tests {
         assert!(!artifact.effects().is_available());
         // With budget of 10, the fact stream has very few facts
         assert!(artifact.facts().stream().facts().len() < 5);
+        assert_eq!(artifact.facts().stream().max_facts(), MAX_FACTS);
         // Export origin lookups return nothing since the phase was skipped
         assert!(artifact.export_origin("result").is_none());
         assert!(artifact.export_origin("identity").is_none());
