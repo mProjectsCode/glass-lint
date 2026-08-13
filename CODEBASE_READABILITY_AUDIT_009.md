@@ -40,7 +40,7 @@ the one-element vectors and forwarding `add` layer.
 
 **Fix Applied:** None so far.
 
-#### [ ] READ-040 — Physical requirement aggregation creates a temporary requirement set per root
+#### [x] READ-040 — Physical requirement aggregation creates a temporary requirement set per root
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -62,7 +62,10 @@ roots are admitted. Preserve the exact union semantics, requirement ordering,
 and the `PhysicalPlan::from_roots` invariant check; delete only the per-root
 temporary set and its associated clone/merge pass.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Physical roots now merge their preparation requirements into a
+caller-owned `PlanRequirements` accumulator. This preserves the same ordered
+union semantics while eliminating one temporary requirement set per root.
+Verified with `make fmt && make ci`.
 
 ### Selection-sized classification state
 

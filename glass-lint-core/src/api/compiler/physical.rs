@@ -146,8 +146,7 @@ impl PhysicalRoot {
     /// Describe the preparation capabilities owned by this executable root.
     /// Keeping this mapping on the physical operator makes the executable
     /// plan the single source of truth for runtime requirements.
-    fn requirements(&self) -> PlanRequirements {
-        let mut requirements = PlanRequirements::default();
+    fn merge_requirements_into(&self, requirements: &mut PlanRequirements) {
         match self {
             Self::IndexedScan { identity, .. } => requirements.require_identity(identity),
             Self::ConstrainedScan { identity, .. } => {
@@ -163,7 +162,6 @@ impl PhysicalRoot {
                 requirements.require_cross_call_flow();
             }
         }
-        requirements
     }
 
     fn validate(&self) -> Result<(), PhysicalPlanValidationError> {
@@ -595,7 +593,7 @@ pub(crate) fn validate_physical_plan(
 fn requirements_for_roots(roots: &[PhysicalRoot]) -> PlanRequirements {
     let mut requirements = PlanRequirements::default();
     for root in roots {
-        requirements.merge_from(&root.requirements());
+        root.merge_requirements_into(&mut requirements);
     }
     requirements
 }
