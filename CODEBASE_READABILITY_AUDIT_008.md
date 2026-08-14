@@ -46,7 +46,11 @@ call-site behavior. Add contract tests covering the same invalid operation
 through both policies and verifying that later valid operations cannot erase
 the first error.
 
-**Fix Applied:** None so far.
+**Fix Applied:** A private generic `CanonicalLifecycleItems<T>` now owns
+empty validation, canonical sort/deduplication, bounded storage, and
+iteration. `LifecycleEvents` and `LifecycleSinks` retain their distinct
+semantic wrappers, limits, and error labels. Verified with
+`cargo test -p glass-lint-core api::rule::query::lifecycle --lib`.
 
 ### [api/rule/query/lifecycle.rs]
 

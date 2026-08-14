@@ -162,22 +162,47 @@ pub struct LifecycleCondition {
 
 /// Non-empty, bounded, deterministic lifecycle event collections.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub(crate) struct LifecycleEvents(Box<[LifecycleEvent]>);
+struct CanonicalLifecycleItems<T>(Box<[T]>);
+
+impl<T: Ord> CanonicalLifecycleItems<T> {
+    fn new(
+        mut items: Vec<T>,
+        empty: QueryBuildError,
+        label: &'static str,
+        limit: usize,
+    ) -> Result<Self, QueryBuildError> {
+        if items.is_empty() {
+            return Err(empty);
+        }
+        items.sort();
+        items.dedup();
+        if items.len() > limit {
+            return Err(QueryBuildError::CollectionTooLarge(label, items.len()));
+        }
+        Ok(Self(items.into_boxed_slice()))
+    }
+
+    fn iter(&self) -> std::slice::Iter<'_, T> {
+        self.0.iter()
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct LifecycleEvents(CanonicalLifecycleItems<LifecycleEvent>);
 
 impl LifecycleEvents {
-    fn new(mut events: Vec<LifecycleEvent>) -> Result<Self, QueryBuildError> {
-        if events.is_empty() {
-            return Err(QueryBuildError::EmptyLifecycleCondition);
-        }
-        events.sort();
-        events.dedup();
-        if events.len() > limits::MAX_LIFECYCLE_EVENTS {
-            return Err(QueryBuildError::CollectionTooLarge(
-                "lifecycle condition events",
-                events.len(),
-            ));
-        }
-        Ok(Self(events.into_boxed_slice()))
+    fn new(events: Vec<LifecycleEvent>) -> Result<Self, QueryBuildError> {
+        Ok(Self(CanonicalLifecycleItems::new(
+            events,
+            QueryBuildError::EmptyLifecycleCondition,
+            "lifecycle condition events",
+            limits::MAX_LIFECYCLE_EVENTS,
+        )?))
     }
 
     pub(crate) fn iter(&self) -> std::slice::Iter<'_, LifecycleEvent> {
@@ -278,22 +303,16 @@ pub struct LifecycleCompletion {
 
 /// Non-empty, bounded, deterministic lifecycle sink collections.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub(crate) struct LifecycleSinks(Box<[LifecycleSink]>);
+pub(crate) struct LifecycleSinks(CanonicalLifecycleItems<LifecycleSink>);
 
 impl LifecycleSinks {
-    fn new(mut sinks: Vec<LifecycleSink>) -> Result<Self, QueryBuildError> {
-        if sinks.is_empty() {
-            return Err(QueryBuildError::EmptyLifecycleSinks);
-        }
-        sinks.sort();
-        sinks.dedup();
-        if sinks.len() > limits::MAX_LIFECYCLE_SINKS {
-            return Err(QueryBuildError::CollectionTooLarge(
-                "lifecycle completion sinks",
-                sinks.len(),
-            ));
-        }
-        Ok(Self(sinks.into_boxed_slice()))
+    fn new(sinks: Vec<LifecycleSink>) -> Result<Self, QueryBuildError> {
+        Ok(Self(CanonicalLifecycleItems::new(
+            sinks,
+            QueryBuildError::EmptyLifecycleSinks,
+            "lifecycle completion sinks",
+            limits::MAX_LIFECYCLE_SINKS,
+        )?))
     }
 
     pub(crate) fn iter(&self) -> std::slice::Iter<'_, LifecycleSink> {
