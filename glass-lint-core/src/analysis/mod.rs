@@ -33,7 +33,7 @@ pub use project::model::{ProjectSemanticModel, QualifiedRequestId, ResolvedLinkI
 pub(in crate::analysis) use semantic::budget::SemanticBudget;
 pub use semantic::{
     AnalyzedSource, SemanticAnalyzer,
-    status::{AnalysisStatus, IncompleteReason, StatusDiagnostics, StatusScope},
+    status::{AnalysisStatus, IncompleteReason, StatusScope},
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

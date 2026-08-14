@@ -109,22 +109,6 @@ pub struct AnalysisStatus {
     entries: BTreeSet<StatusEntry>,
 }
 
-pub struct StatusDiagnostics {
-    files: Vec<(ProjectRelativePath, AnalysisDiagnostic)>,
-    project: Vec<AnalysisDiagnostic>,
-}
-
-impl StatusDiagnostics {
-    pub fn into_parts(
-        self,
-    ) -> (
-        Vec<(ProjectRelativePath, AnalysisDiagnostic)>,
-        Vec<AnalysisDiagnostic>,
-    ) {
-        (self.files, self.project)
-    }
-}
-
 impl AnalysisStatus {
     pub fn record(&mut self, scope: StatusScope, reason: IncompleteReason) {
         self.entries.insert(StatusEntry { scope, reason });
@@ -156,7 +140,12 @@ impl AnalysisStatus {
         }
     }
 
-    pub(crate) fn diagnostics(&self) -> StatusDiagnostics {
+    pub(crate) fn diagnostics(
+        &self,
+    ) -> (
+        Vec<(ProjectRelativePath, AnalysisDiagnostic)>,
+        Vec<AnalysisDiagnostic>,
+    ) {
         let mut files = Vec::new();
         let mut project = Vec::new();
         for entry in &self.entries {
@@ -179,7 +168,7 @@ impl AnalysisStatus {
                 StatusScope::Local | StatusScope::Project => project.push(diagnostic),
             }
         }
-        StatusDiagnostics { files, project }
+        (files, project)
     }
 }
 
@@ -304,7 +293,7 @@ mod tests {
         };
         status.record(StatusScope::File(file()), reason.clone());
         status.record(StatusScope::File(file()), reason);
-        let (files, project) = status.diagnostics().into_parts();
+        let (files, project) = status.diagnostics();
         assert_eq!(files.len(), 1);
         assert!(project.is_empty());
         assert_eq!(files[0].1.code().as_str(), "semantic_budget_exhausted");
@@ -335,7 +324,7 @@ mod tests {
             },
         );
 
-        let (files, project) = status.diagnostics().into_parts();
+        let (files, project) = status.diagnostics();
         assert!(files.is_empty());
         assert_eq!(project.len(), 1);
         assert_eq!(project[0].code().as_str(), "evidence_capacity_mismatch");
@@ -351,7 +340,7 @@ mod tests {
 
         let converted =
             status.materialize_local_file(&ProjectRelativePath::new("other.js").unwrap());
-        let (files, project) = converted.diagnostics().into_parts();
+        let (files, project) = converted.diagnostics();
 
         assert!(project.is_empty());
         assert_eq!(files.len(), 2);

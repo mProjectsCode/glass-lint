@@ -49,7 +49,7 @@ pub(super) fn attach_project_diagnostics(
     session: &ProjectReportSession,
     files: &mut BTreeMap<ProjectRelativePath, FileReport>,
 ) -> Vec<Diagnostic> {
-    let (status_files, status_project) = session.status_diagnostics().into_parts();
+    let (status_files, status_project) = session.status_diagnostics();
     for (path, mut diagnostic) in status_files {
         diagnostic.set_location(Some(SourceLocation::new(
             path.clone(),

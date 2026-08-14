@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    AnalysisLimits, ParseDiagnostic, StatusDiagnostics,
+    AnalysisLimits, ParseDiagnostic,
     analysis::{
         AnalysisStatus, IncompleteReason, ProjectSemanticModel, ResolvedLinkInput, StatusScope,
         project::projection::ProjectionOutcome,
@@ -92,7 +92,12 @@ impl ProjectReportSession {
         outcome.record_analysis_status(project, &mut self.status);
     }
 
-    pub(super) fn status_diagnostics(&self) -> StatusDiagnostics {
+    pub(super) fn status_diagnostics(
+        &self,
+    ) -> (
+        Vec<(ProjectRelativePath, crate::project::AnalysisDiagnostic)>,
+        Vec<crate::project::AnalysisDiagnostic>,
+    ) {
         self.status.diagnostics()
     }
 

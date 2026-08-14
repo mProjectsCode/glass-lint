@@ -491,8 +491,7 @@ mod tests {
         let (file_diagnostics, project_diagnostics) = artifact
             .status()
             .materialize_local_file(&ProjectRelativePath::new("name-exhaustion.js").unwrap())
-            .diagnostics()
-            .into_parts();
+            .diagnostics();
         assert!(project_diagnostics.is_empty());
         assert_eq!(file_diagnostics.len(), 1);
         assert_eq!(
@@ -603,8 +602,7 @@ mod tests {
         let (files, project) = artifact
             .status()
             .materialize_local_file(&ProjectRelativePath::new("main.js").unwrap())
-            .diagnostics()
-            .into_parts();
+            .diagnostics();
         assert_eq!(files.len(), 1);
         assert!(project.is_empty());
         assert_eq!(files[0].1.code().as_str(), "invalid_parser_span");

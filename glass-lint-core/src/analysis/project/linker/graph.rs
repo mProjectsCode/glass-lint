@@ -163,7 +163,7 @@ mod tests {
 
         assert!(result.scc_partition.is_none());
         assert!(result.exhausted);
-        let (_, project) = result.status.diagnostics().into_parts();
+        let (_, project) = result.status.diagnostics();
         assert_eq!(project.len(), 1);
         assert_eq!(project[0].code().as_str(), "graph_link_budget_exhausted");
     }

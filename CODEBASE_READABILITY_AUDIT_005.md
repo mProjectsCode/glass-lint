@@ -49,7 +49,7 @@ diagnostic partition.
 
 ### [analysis/semantic/status.rs, lint/report]
 
-#### [ ] READ-015 — Delete the immediately consumed `StatusDiagnostics` wrapper
+#### [x] READ-015 — Delete the immediately consumed `StatusDiagnostics` wrapper
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -74,7 +74,11 @@ entries, the distinction between file and project diagnostics, and the
 location attachment performed by `diagnostics.rs`; do not move presentation
 policy into the status accumulator while removing the wrapper.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Status projections now return their two owned diagnostic
+collections directly; the transport-only `StatusDiagnostics` wrapper,
+`into_parts`, and re-exports were removed. Stable set ordering, parse-failure
+suppression, and file/project partitioning are unchanged. Verified with
+`cargo test -p glass-lint-core status`.
 
 ## Systemic Themes
 
