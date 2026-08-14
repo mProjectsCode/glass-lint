@@ -113,7 +113,13 @@ indexes, duplicate indexes, sender closure, worker panic, and cancellation;
 ensure the destination pending state cannot be silently corrupted in release
 builds.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `FindingRangeBuilder` now retains sorted entry indexes rather
+than cloning every source range into a second collection. The containment
+sweep is owned and tested beside report grouping; the obsolete standalone
+range helper was removed. Grouping still scans the canonical BTree-ordered
+entries, preserving containment, overlap, occurrence, trace, and deterministic
+ordering behavior. Verified with
+`cargo test -p glass-lint-core lint::report --lib`.
 
 ## Systemic Themes
 

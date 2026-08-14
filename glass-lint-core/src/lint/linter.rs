@@ -280,33 +280,11 @@ impl Linter {
 
 #[cfg(test)]
 mod tests {
-    use glass_lint_datastructures::{Position, SourceRange};
-
     use crate::{
         Environment, LintConfigError, Linter, LinterConfig, RuleBaseline, RuleCatalog,
         RuleOverride, RuleSelection, RuleState,
-        lint::ranges::remove_contained_ranges,
         rules::{Confidence, EventQuery, Rule, Severity},
     };
-
-    #[test]
-    fn remove_contained_ranges_keeps_only_largest() {
-        let mut ranges = (1..=5_000)
-            .map(|column| {
-                SourceRange::new(
-                    Position::new(1, column).unwrap(),
-                    Position::new(2, 5_001 - column).unwrap(),
-                )
-                .unwrap()
-            })
-            .collect::<Vec<_>>();
-        ranges.push(ranges[0].clone());
-
-        remove_contained_ranges(&mut ranges);
-
-        assert_eq!(ranges.len(), 1);
-        assert_eq!(ranges[0].start().column(), 1);
-    }
 
     #[test]
     fn findings_are_sorted_by_position() {

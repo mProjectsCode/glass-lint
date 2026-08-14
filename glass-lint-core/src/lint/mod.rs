@@ -7,7 +7,6 @@
 mod batch;
 mod catalog;
 mod linter;
-mod ranges;
 mod report;
 mod selection;
 

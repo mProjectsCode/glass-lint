@@ -202,29 +202,7 @@ impl<'a> FindingRangeBuilder<'a> {
             .into_iter()
             .map(|(range, occurrences)| EvidenceRangeEntry { range, occurrences })
             .collect::<Vec<_>>();
-        let mut retained_indices = (0..entries.len()).collect::<Vec<_>>();
-        retained_indices.sort_by(|left, right| {
-            let left = &entries[*left].range;
-            let right = &entries[*right].range;
-            (left.start().line(), left.start().column())
-                .cmp(&(right.start().line(), right.start().column()))
-                .then_with(|| {
-                    (right.end().line(), right.end().column())
-                        .cmp(&(left.end().line(), left.end().column()))
-                })
-        });
-        let mut enclosing_end = None;
-        retained_indices.retain(|index| {
-            let end = (
-                entries[*index].range.end().line(),
-                entries[*index].range.end().column(),
-            );
-            if enclosing_end.is_some_and(|outer| end <= outer) {
-                return false;
-            }
-            enclosing_end = Some(end);
-            true
-        });
+        let retained_indices = retained_indices(&entries);
         Self {
             entries,
             retained_indices,
@@ -255,6 +233,33 @@ impl<'a> FindingRangeBuilder<'a> {
         }
         groups
     }
+}
+
+fn retained_indices(entries: &[EvidenceRangeEntry<'_>]) -> Vec<usize> {
+    let mut retained_indices = (0..entries.len()).collect::<Vec<_>>();
+    retained_indices.sort_by(|left, right| {
+        let left = &entries[*left].range;
+        let right = &entries[*right].range;
+        (left.start().line(), left.start().column())
+            .cmp(&(right.start().line(), right.start().column()))
+            .then_with(|| {
+                (right.end().line(), right.end().column())
+                    .cmp(&(left.end().line(), left.end().column()))
+            })
+    });
+    let mut enclosing_end = None;
+    retained_indices.retain(|index| {
+        let end = (
+            entries[*index].range.end().line(),
+            entries[*index].range.end().column(),
+        );
+        if enclosing_end.is_some_and(|outer| end <= outer) {
+            return false;
+        }
+        enclosing_end = Some(end);
+        true
+    });
+    retained_indices
 }
 
 fn findings_for_capability(
@@ -325,4 +330,34 @@ fn fallback_trace(
         format!("{} of \"{}\"", ev.kind().as_str(), ev.symbol()),
         SourceLocation::new(path.clone(), range.clone()),
     )]
+}
+
+#[cfg(test)]
+mod tests {
+    use glass_lint_datastructures::{Position, SourceRange};
+
+    use super::*;
+
+    #[test]
+    fn retained_indices_keep_only_the_outermost_range() {
+        let mut ranges = (1..=5_000)
+            .map(|column| {
+                SourceRange::new(
+                    Position::new(1, column).unwrap(),
+                    Position::new(2, 5_001 - column).unwrap(),
+                )
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+        ranges.push(ranges[0].clone());
+        let entries = ranges
+            .into_iter()
+            .map(|range| EvidenceRangeEntry {
+                range,
+                occurrences: Vec::new(),
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(retained_indices(&entries), vec![0]);
+    }
 }
