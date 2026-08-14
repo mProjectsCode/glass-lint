@@ -267,7 +267,9 @@ impl ProjectSemanticModel {
 
     #[cfg(test)]
     fn single_with_limits(local: LocalArtifact, limits: &crate::AnalysisLimits) -> Self {
-        let status = local.status().clone();
+        let status = local
+            .status()
+            .materialize_file(local.source_context().path());
         Self {
             linked: LinkedProjectState {
                 modules: std::iter::once((

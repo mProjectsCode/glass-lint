@@ -100,10 +100,7 @@ impl ProjectLinker {
             modules, status, ..
         } = self;
         for module in modules.values() {
-            let file_status = module
-                .local()
-                .status()
-                .materialize_local_file(module.path());
+            let file_status = module.local().status().materialize_file(module.path());
             let path = module.path().clone();
             let unknown = module.local().interface().is_unknown();
             status.extend(&file_status);

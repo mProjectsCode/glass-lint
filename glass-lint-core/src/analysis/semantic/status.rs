@@ -109,6 +109,32 @@ pub struct AnalysisStatus {
     entries: BTreeSet<StatusEntry>,
 }
 
+/// Completion state owned by one reusable local semantic artifact. Project
+/// and report phases receive an explicit materialized `AnalysisStatus` copy.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct LocalAnalysisStatus(AnalysisStatus);
+
+impl LocalAnalysisStatus {
+    pub(in crate::analysis) fn record(&mut self, reason: IncompleteReason) {
+        self.0.record(StatusScope::Local, reason);
+    }
+
+    pub(in crate::analysis) fn materialize_file(
+        &self,
+        path: &ProjectRelativePath,
+    ) -> AnalysisStatus {
+        self.0.materialize_local_file(path)
+    }
+}
+
+impl std::ops::Deref for LocalAnalysisStatus {
+    type Target = AnalysisStatus;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 impl AnalysisStatus {
     pub fn record(&mut self, scope: StatusScope, reason: IncompleteReason) {
         self.entries.insert(StatusEntry { scope, reason });

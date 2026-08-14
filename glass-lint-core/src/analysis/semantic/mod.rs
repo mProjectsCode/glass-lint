@@ -23,7 +23,7 @@ use crate::{
         model::module,
         resolution::Resolver,
         scope::{ScopeCollectionIssue, ScopeGraph, ScopedProgram},
-        semantic::status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
+        semantic::status::{AnalysisComponent, IncompleteReason, LocalAnalysisStatus, StatusScope},
         syntax::{SymbolCallProvenance, name::MAX_NAMES},
     },
     parse::SourceParser,
@@ -254,14 +254,14 @@ fn check_name_exhaustion(resolver: &Resolver) -> Option<IncompleteReason> {
 
 #[derive(Debug)]
 struct AnalysisCompletion {
-    status: AnalysisStatus,
+    status: LocalAnalysisStatus,
     capabilities: DerivedPhaseCapabilities,
 }
 
 impl AnalysisCompletion {
     fn new() -> Self {
         Self {
-            status: AnalysisStatus::default(),
+            status: LocalAnalysisStatus::default(),
             capabilities: DerivedPhaseCapabilities::enabled(),
         }
     }
@@ -280,7 +280,8 @@ impl AnalysisCompletion {
     }
 
     fn record_incomplete(&mut self, scope: StatusScope, reason: IncompleteReason) {
-        self.status.record(scope, reason);
+        let _ = scope;
+        self.status.record(reason);
         self.capabilities.disable_derived_phases();
     }
 

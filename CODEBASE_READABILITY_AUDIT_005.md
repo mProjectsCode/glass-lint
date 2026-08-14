@@ -14,7 +14,7 @@ only production consumer.
 
 ### [analysis/semantic/status.rs, analysis/project, lint/report]
 
-#### [ ] READ-014 — Separate local completion status from project/report status
+#### [x] READ-014 — Separate local completion status from project/report status
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -45,7 +45,11 @@ deduplication and deterministic `BTreeSet` ordering, local-to-file status
 materialization, parse-diagnostic suppression, and the final file/project
 diagnostic partition.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Reusable semantic artifacts now own a dedicated
+`LocalAnalysisStatus`; project linking explicitly materializes it into the
+project/report `AnalysisStatus` with a file path. Local completion capability
+updates no longer mutate the downstream status accumulator directly. Verified
+with the semantic and cache/session test suites.
 
 ### [analysis/semantic/status.rs, lint/report]
 

@@ -20,7 +20,7 @@ use crate::{
         DerivedPhaseCapabilities, facts,
         flow::effect::FunctionEffects,
         model::module::ModuleInterface,
-        semantic::{AnalyzedSource, status::AnalysisStatus},
+        semantic::{AnalyzedSource, status::LocalAnalysisStatus},
         syntax,
     },
     project::{ModuleId, ProjectRelativePath, SourceFile, SourceText},
@@ -359,7 +359,7 @@ pub struct SemanticArtifact {
     effects: OnceLock<FunctionEffects>,
     effect_limit: usize,
     derived_capabilities: DerivedPhaseCapabilities,
-    status: AnalysisStatus,
+    status: LocalAnalysisStatus,
 }
 
 impl SemanticArtifact {
@@ -368,7 +368,7 @@ impl SemanticArtifact {
         export_origins: BTreeMap<SmolStr, SymbolCallProvenance>,
         effect_limit: usize,
         derived_capabilities: DerivedPhaseCapabilities,
-        status: AnalysisStatus,
+        status: LocalAnalysisStatus,
     ) -> Self {
         Self {
             facts,
@@ -404,7 +404,7 @@ impl SemanticArtifact {
         self.effects.get().is_some()
     }
 
-    pub(in crate::analysis) fn status(&self) -> &AnalysisStatus {
+    pub(in crate::analysis) fn status(&self) -> &LocalAnalysisStatus {
         &self.status
     }
 
@@ -442,7 +442,7 @@ impl LocalArtifact {
         self.semantic.effects()
     }
 
-    pub(in crate::analysis) fn status(&self) -> &AnalysisStatus {
+    pub(in crate::analysis) fn status(&self) -> &LocalAnalysisStatus {
         self.semantic.status()
     }
 
@@ -511,7 +511,7 @@ mod tests {
                 BTreeMap::new(),
                 usize::MAX,
                 DerivedPhaseCapabilities::enabled(),
-                crate::analysis::semantic::status::AnalysisStatus::default(),
+                crate::analysis::semantic::status::LocalAnalysisStatus::default(),
             )),
             source_index: Arc::new(SourceLineIndex::new("")),
         }
@@ -530,7 +530,7 @@ mod tests {
             BTreeMap::new(),
             usize::MAX,
             DerivedPhaseCapabilities::enabled(),
-            crate::analysis::semantic::status::AnalysisStatus::default(),
+            crate::analysis::semantic::status::LocalAnalysisStatus::default(),
         );
         assert!(!artifact.effects_initialized());
         let _ = artifact.effects();
