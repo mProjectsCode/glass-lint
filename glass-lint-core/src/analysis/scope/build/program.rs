@@ -43,22 +43,24 @@ impl PropertyAliasAssignment {
         }
     }
 
-    pub(in crate::analysis) fn into_parts(
-        self,
-    ) -> (
-        Span,
-        ScopeId,
-        SymbolPath,
-        swc_ecma_ast::Ident,
-        Option<SymbolPath>,
-    ) {
-        (
-            self.span,
-            self.scope,
-            self.property,
-            self.receiver,
-            self.target,
-        )
+    pub(in crate::analysis) fn span(&self) -> Span {
+        self.span
+    }
+
+    pub(in crate::analysis) fn scope(&self) -> ScopeId {
+        self.scope
+    }
+
+    pub(in crate::analysis) fn property(&self) -> &SymbolPath {
+        &self.property
+    }
+
+    pub(in crate::analysis) fn receiver(&self) -> &swc_ecma_ast::Ident {
+        &self.receiver
+    }
+
+    pub(in crate::analysis) fn take_target(self) -> Option<SymbolPath> {
+        self.target
     }
 }
 
@@ -85,7 +87,19 @@ impl RootedPropertyMutation {
         }
     }
 
-    pub(in crate::analysis) fn into_parts(self) -> (Span, ScopeId, NamePath, Option<NameId>) {
-        (self.span, self.scope, self.receiver, self.property)
+    pub(in crate::analysis) fn span(&self) -> Span {
+        self.span
+    }
+
+    pub(in crate::analysis) fn scope(&self) -> ScopeId {
+        self.scope
+    }
+
+    pub(in crate::analysis) fn receiver(self) -> NamePath {
+        self.receiver
+    }
+
+    pub(in crate::analysis) fn property(&self) -> Option<NameId> {
+        self.property
     }
 }

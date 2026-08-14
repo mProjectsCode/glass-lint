@@ -20,7 +20,7 @@ while the mutable and frozen graph wrappers provide intentional phase APIs.
 
 ### [analysis/scope/build, analysis/scope/graph.rs]
 
-#### [ ] READ-006 — Freeze artifacts cross the boundary through one-shot tuples
+#### [x] READ-006 — Freeze artifacts cross the boundary through one-shot tuples
 
 - Severity: Medium
 - Fix Complexity: Low
@@ -50,17 +50,14 @@ freeze-handoff wrapper. Preserve the current ordering, receiver-key lookup,
 dynamic-`eval` filter, and deterministic mutation-index insertion with focused
 property-artifact tests.
 
-Fix Applied: Scope lookup now distinguishes the explicitly named
-`preferred_binding_witness_at` compatibility projection from
-`definite_binding_at`, which requires `BindingResolutionStatus::Complete`.
-Module export/member, returned-object, constructed-instance, and constant
-classifiers use the definite query; shadowing checks retain the preferred
-witness query. The mutable collection graph uses the same vocabulary. Verified
-with `cargo test -p glass-lint-core analysis::scope --lib`.
+Fix Applied: Freeze handoff records now expose named accessors and consuming
+field operations instead of positional `into_parts` tuples. ScopeGraph
+lowering retains receiver lookup, dynamic-eval filtering, and deterministic
+insertion. Verified with `cargo test -p glass-lint-core analysis::scope --lib`.
 
 ### [analysis/scope/query/bindings.rs, analysis/scope/query/provenance]
 
-#### [ ] READ-007 — Lossy `binding_at` is too easy to use for definite provenance
+#### [x] READ-007 — Lossy `binding_at` is too easy to use for definite provenance
 
 - Severity: High
 - Fix Complexity: Medium
@@ -99,7 +96,12 @@ cannot be reported as definite. Add adversarial tests for joined assignments,
 reassignment, incomplete paths, dynamic lookup, and independent complete
 witnesses so a cleanup cannot discard valid alternatives.
 
-Fix Applied: None so far.
+Fix Applied: Scope lookup now distinguishes the explicitly named
+`preferred_binding_witness_at` compatibility projection from
+`definite_binding_at`, which requires `BindingResolutionStatus::Complete`.
+Module export/member, returned-object, constructed-instance, and constant
+classifiers use the definite query; shadowing checks retain the preferred
+witness query. Verified with `cargo test -p glass-lint-core analysis::scope --lib`.
 
 ## Systemic Themes
 

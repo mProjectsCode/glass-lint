@@ -126,8 +126,12 @@ impl ScopedDynamicEval {
         Self { scope, effect }
     }
 
-    pub(in crate::analysis) fn into_parts(self) -> (ScopeId, ScopeEffect) {
-        (self.scope, self.effect)
+    pub(in crate::analysis) fn scope(&self) -> ScopeId {
+        self.scope
+    }
+
+    pub(in crate::analysis) fn take_effect(self) -> ScopeEffect {
+        self.effect
     }
 }
 

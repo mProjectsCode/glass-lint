@@ -312,7 +312,10 @@ impl ScopeGraph {
             dynamic_evals,
         } = property_artifacts;
         for assignment in property_assignments {
-            let (span, scope, property, receiver, target) = assignment.into_parts();
+            let span = assignment.span();
+            let scope = assignment.scope();
+            let property = assignment.property();
+            let receiver = assignment.receiver();
             let Some(receiver_key) =
                 self.binding_key_for_name(receiver.sym.as_ref(), receiver.span)
             else {
@@ -322,6 +325,7 @@ impl ScopeGraph {
                 .without_first_segment()
                 .and_then(|path| self.name_path(&path))
                 .unwrap_or_default();
+            let target = assignment.take_target();
             self.data.mutations.record_property_assignment(
                 receiver_key,
                 path,
@@ -329,7 +333,10 @@ impl ScopeGraph {
             );
         }
         for mutation in rooted_mutations {
-            let (span, scope, receiver, property) = mutation.into_parts();
+            let span = mutation.span();
+            let scope = mutation.scope();
+            let property = mutation.property();
+            let receiver = mutation.receiver();
             self.data.mutations.record_rooted_mutation(
                 receiver,
                 RootedPropertyMutationFact::new(span, scope, property),
@@ -338,7 +345,8 @@ impl ScopeGraph {
         let evals: Vec<(ScopeId, ScopeEffect)> = dynamic_evals
             .into_iter()
             .filter_map(|eval| {
-                let (scope, effect) = eval.into_parts();
+                let scope = eval.scope();
+                let effect = eval.take_effect();
                 self.preferred_binding_witness_at("eval", effect.span())
                     .is_none()
                     .then_some((scope, effect))
