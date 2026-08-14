@@ -73,32 +73,50 @@ impl FactBuilder<'_, '_> {
     /// Only `Enter` facts carry resolved parameter bindings; `Exit` facts are
     /// flow markers that the projector uses to restore the calling frame and
     /// never read parameter data.
-    pub(super) fn emit_function_fact(
+    pub(super) fn emit_function_fact<'pat>(
         &mut self,
         span: Span,
-        parameters: impl IntoIterator<Item = (usize, Pat)>,
-        boundary: FunctionBoundary,
+        parameters: impl IntoIterator<Item = (usize, &'pat Pat)>,
     ) {
         let Some(scope) = self.scope_at(span) else {
             return;
         };
         let id = self.resolver.function_scope_at(scope);
         self.traversal.set_function(id);
-        if boundary == FunctionBoundary::Enter {
-            let mut bindings = Vec::new();
-            for (parameter_index, parameter) in parameters {
-                self.parameter_bindings(
-                    &parameter,
-                    parameter_index,
-                    PathId::EMPTY,
-                    None,
-                    false,
-                    &mut bindings,
-                );
-            }
-            self.stream.register_function_parameters(id, bindings);
+        let mut bindings = Vec::new();
+        for (parameter_index, parameter) in parameters {
+            self.parameter_bindings(
+                parameter,
+                parameter_index,
+                PathId::EMPTY,
+                None,
+                false,
+                &mut bindings,
+            );
         }
-        self.emit(span, FactPayload::Function { id, boundary });
+        self.stream.register_function_parameters(id, bindings);
+        self.emit(
+            span,
+            FactPayload::Function {
+                id,
+                boundary: FunctionBoundary::Enter,
+            },
+        );
+    }
+
+    fn emit_function_exit_fact(&mut self, span: Span) {
+        let Some(scope) = self.scope_at(span) else {
+            return;
+        };
+        let id = self.resolver.function_scope_at(scope);
+        self.traversal.set_function(id);
+        self.emit(
+            span,
+            FactPayload::Function {
+                id,
+                boundary: FunctionBoundary::Exit,
+            },
+        );
     }
 
     pub(super) fn record_function_decl(&mut self, function: &FnDecl) {
@@ -113,8 +131,7 @@ impl FactBuilder<'_, '_> {
             .params
             .iter()
             .enumerate()
-            .map(|(index, parameter)| (index, parameter.pat.clone()))
-            .collect();
+            .map(|(index, parameter)| (index, &parameter.pat));
         self.record_function_body(
             function.span(),
             parameters,
@@ -125,26 +142,26 @@ impl FactBuilder<'_, '_> {
         );
     }
 
-    fn record_function_body(
+    fn record_function_body<'pat>(
         &mut self,
         span: Span,
-        parameters: Vec<(usize, Pat)>,
+        parameters: impl IntoIterator<Item = (usize, &'pat Pat)>,
         kind: FunctionBodyKind,
         visit_body: impl FnOnce(&mut Self),
     ) {
-        self.emit_function_fact(span, parameters, FunctionBoundary::Enter);
+        self.emit_function_fact(span, parameters);
         self.with_function_context(kind, |builder| {
             visit_body(builder);
-            builder.emit_function_fact(
-                span,
-                std::iter::empty::<(usize, Pat)>(),
-                FunctionBoundary::Exit,
-            );
+            builder.emit_function_exit_fact(span);
         });
     }
 
     pub(super) fn record_arrow(&mut self, arrow: &ArrowExpr) {
-        let parameters = arrow.params.iter().cloned().enumerate().collect();
+        let parameters = arrow
+            .params
+            .iter()
+            .enumerate()
+            .map(|(index, parameter)| (index, parameter));
         self.record_function_body(
             arrow.span(),
             parameters,
@@ -161,8 +178,7 @@ impl FactBuilder<'_, '_> {
             .params
             .iter()
             .enumerate()
-            .map(|(index, parameter)| (index, parameter.pat.clone()))
-            .collect();
+            .map(|(index, parameter)| (index, &parameter.pat));
         self.record_function_body(
             method.function.span(),
             parameters,

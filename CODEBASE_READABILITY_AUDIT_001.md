@@ -104,7 +104,11 @@ transport, while retaining parameter order, destructuring paths, defaults,
 rest markers, and the distinct `FunctionBodyKind` handling for lexical
 function/class context.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Function fact emission now borrows parameter patterns directly
+from the AST and has a separate exit-marker helper, eliminating the cloned
+`Vec<(usize, Pat)>` transport and empty exit iterator. Parameter order,
+destructuring paths, defaults, rest markers, and function-kind context remain
+unchanged. Verified with `cargo test -p glass-lint-core analysis::facts --lib`.
 
 ### Call fact model and producers
 
