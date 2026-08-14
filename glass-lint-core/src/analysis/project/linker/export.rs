@@ -21,6 +21,20 @@ use crate::{
 };
 
 impl ProjectLinker {
+    fn module_exports(&self, module: ModuleId) -> Vec<(SmolStr, module::ModuleExport)> {
+        self.modules
+            .get(&module)
+            .into_iter()
+            .flat_map(|project_module| {
+                project_module
+                    .local()
+                    .interface()
+                    .exports()
+                    .map(|(name, export)| (name.clone(), export.clone()))
+            })
+            .collect()
+    }
+
     /// Resolve exports via a topological walk of the SCC DAG.
     ///
     /// Single-node SCCs resolve in one pass because all dependencies belong
@@ -61,17 +75,7 @@ impl ProjectLinker {
     /// Resolve all exports for a single-node SCC. Dependencies are already
     /// final in the memo table, so one pass suffices.
     fn resolve_single(&mut self, module: ModuleId) {
-        let exports: Vec<(SmolStr, module::ModuleExport)> = self
-            .modules
-            .get(&module)
-            .into_iter()
-            .flat_map(|m| {
-                m.local()
-                    .interface()
-                    .exports()
-                    .map(|(n, e)| (n.clone(), e.clone()))
-            })
-            .collect();
+        let exports = self.module_exports(module);
         for (name, export) in exports {
             self.try_set_export(module, &name, &export);
         }
@@ -83,16 +87,9 @@ impl ProjectLinker {
         let module_exports: Vec<(ModuleId, Vec<(SmolStr, module::ModuleExport)>)> = scc
             .iter()
             .filter_map(|&module| {
-                self.modules.get(&module).map(|m| {
-                    (
-                        module,
-                        m.local()
-                            .interface()
-                            .exports()
-                            .map(|(n, e)| (n.clone(), e.clone()))
-                            .collect(),
-                    )
-                })
+                self.modules
+                    .get(&module)
+                    .map(|_| (module, self.module_exports(module)))
             })
             .collect();
 

@@ -42,7 +42,11 @@ export-table budget accounting, and all existing export-resolution variants.
 Add a regression test that compares singleton and multi-node SCC outcomes for
 the same export shapes, including re-exports and namespace exports.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Export snapshot construction is centralized in the private
+`ProjectLinker::module_exports` helper, shared by singleton and cyclic SCC
+resolution while preserving owned deterministic vectors and borrow release
+before mutation. Verified with
+`cargo test -p glass-lint-core analysis::project::linker --lib`.
 
 ## Systemic Themes
 
