@@ -53,8 +53,7 @@ impl<'a> FindingGroup<'a> {
 
     fn into_evidence(
         self,
-        project: &ProjectSemanticModel,
-        session: &ProjectReportSession,
+        renderer: &FindingRenderer<'_>,
         path: &ProjectRelativePath,
     ) -> Option<(SourceRange, EvidenceTraces, MatchCertainty)> {
         let Self { range, occurrences } = self;
@@ -67,8 +66,14 @@ impl<'a> FindingGroup<'a> {
                 certainty = MatchCertainty::Definite;
             }
             let steps = resolved.occurrence.trace().map_or_else(
-                || Some(fallback_trace(resolved.evidence, path, &range)),
-                |trace_id| resolve_trace(trace_id, project, session),
+                || {
+                    Some(FindingRenderer::fallback_trace(
+                        resolved.evidence,
+                        path,
+                        &range,
+                    ))
+                },
+                |trace_id| renderer.resolve_trace(trace_id),
             );
             if let Some(steps) = steps
                 && !steps.is_empty()
@@ -92,20 +97,118 @@ impl<'a> FindingGroup<'a> {
     }
 }
 
-pub(super) fn populate_project_files(
-    catalog: &RuleCatalog,
-    project: &ProjectSemanticModel,
-    session: &ProjectReportSession,
-    classifications: &BTreeMap<ModuleId, ClassificationResult>,
-    files: &mut ReportFiles,
-) {
-    for module in project.modules() {
-        let Some(classification) = classifications.get(&module.id()) else {
-            continue;
+pub(super) struct FindingRenderer<'a> {
+    catalog: &'a RuleCatalog,
+    project: &'a ProjectSemanticModel,
+    session: &'a ProjectReportSession,
+}
+
+impl<'a> FindingRenderer<'a> {
+    pub(super) fn new(
+        catalog: &'a RuleCatalog,
+        project: &'a ProjectSemanticModel,
+        session: &'a ProjectReportSession,
+    ) -> Self {
+        Self {
+            catalog,
+            project,
+            session,
+        }
+    }
+
+    pub(super) fn populate_project_files(
+        &self,
+        classifications: &BTreeMap<ModuleId, ClassificationResult>,
+        files: &mut ReportFiles,
+    ) {
+        for module in self.project.modules() {
+            let Some(classification) = classifications.get(&module.id()) else {
+                continue;
+            };
+            let findings = self.findings_for_module(module, classification);
+            files.replace_findings(module.path(), merge_duplicate_findings(findings));
+        }
+    }
+
+    fn findings_for_module(
+        &self,
+        module: &crate::analysis::ProjectModule,
+        classification: &ClassificationResult,
+    ) -> Vec<Finding> {
+        let lines = module.source_context().lines();
+        let path = module.path();
+        let mut findings = Vec::new();
+        for capability in classification.capabilities() {
+            findings.extend(self.findings_for_capability(capability, lines, path));
+        }
+        findings
+    }
+
+    fn findings_for_capability(
+        &self,
+        capability: &MatchedCapability,
+        lines: &SourceLineIndex,
+        path: &ProjectRelativePath,
+    ) -> Vec<Finding> {
+        let Some(rule_id) = self.catalog.rule_id(capability.rule_index()).cloned() else {
+            return Vec::new();
         };
-        let findings = findings_for_module(catalog, project, session, module, classification);
-        let findings = merge_duplicate_findings(findings);
-        files.replace_findings(module.path(), findings);
+        let evidence_items = capability.evidence();
+        if evidence_items.is_empty() {
+            return Vec::new();
+        }
+        let groups = FindingRangeBuilder::new(evidence_items, lines).into_groups();
+        groups
+            .into_iter()
+            .filter_map(|group| {
+                let (range, evidence, certainty) = group.into_evidence(self, path)?;
+                Finding::new(
+                    rule_id.clone(),
+                    capability.label().to_string(),
+                    capability.severity(),
+                    SourceLocation::new(path.clone(), range),
+                    evidence,
+                    certainty,
+                )
+                .into()
+            })
+            .collect()
+    }
+
+    fn resolve_trace(
+        &self,
+        head: crate::analysis::trace::TraceNodeId,
+    ) -> Option<Vec<EvidenceStep>> {
+        let raw = self.session.reconstruct_trace(head)?;
+        if raw.is_empty() {
+            return None;
+        }
+        raw.into_iter()
+            .map(|step| {
+                let event = step.event();
+                let location = self.project.fact_location(event)?;
+                let message = match step.role() {
+                    EvidenceRole::Source => "flow source",
+                    EvidenceRole::Requirement => "flow requirement",
+                    EvidenceRole::Sink => "flow sink",
+                    EvidenceRole::Occurrence => "occurrence",
+                    _ => "evidence",
+                };
+                Some(EvidenceStep::new(step.role(), message.into(), location))
+            })
+            .collect()
+    }
+
+    fn fallback_trace(
+        ev: &ClassificationEvidence,
+        path: &ProjectRelativePath,
+        range: &SourceRange,
+    ) -> Vec<EvidenceStep> {
+        vec![EvidenceStep::new(
+            EvidenceRole::Occurrence,
+            format!("{} of \"{}\"", ev.kind().as_str(), ev.symbol()),
+            SourceLocation::new(path.clone(), range.clone()),
+        )]
     }
 }
 
@@ -148,24 +251,6 @@ fn merge_duplicate_findings(mut findings: Vec<Finding>) -> Vec<Finding> {
         }
     }
     merged
-}
-
-fn findings_for_module(
-    catalog: &RuleCatalog,
-    project: &ProjectSemanticModel,
-    session: &ProjectReportSession,
-    module: &crate::analysis::ProjectModule,
-    classification: &ClassificationResult,
-) -> Vec<Finding> {
-    let lines = module.source_context().lines();
-    let path = module.path();
-    let mut findings = Vec::new();
-    for capability in classification.capabilities() {
-        findings.extend(findings_for_capability(
-            catalog, project, session, capability, lines, path,
-        ));
-    }
-    findings
 }
 
 #[derive(Debug)]
@@ -260,76 +345,6 @@ fn retained_indices(entries: &[EvidenceRangeEntry<'_>]) -> Vec<usize> {
         true
     });
     retained_indices
-}
-
-fn findings_for_capability(
-    catalog: &RuleCatalog,
-    project: &ProjectSemanticModel,
-    session: &ProjectReportSession,
-    capability: &MatchedCapability,
-    lines: &SourceLineIndex,
-    path: &ProjectRelativePath,
-) -> Vec<Finding> {
-    let Some(rule_id) = catalog.rule_id(capability.rule_index()).cloned() else {
-        return Vec::new();
-    };
-    let evidence_items = capability.evidence();
-    if evidence_items.is_empty() {
-        return Vec::new();
-    }
-    let groups = FindingRangeBuilder::new(evidence_items, lines).into_groups();
-    groups
-        .into_iter()
-        .filter_map(|group| {
-            let (range, evidence, certainty) = group.into_evidence(project, session, path)?;
-            Finding::new(
-                rule_id.clone(),
-                capability.label().to_string(),
-                capability.severity(),
-                SourceLocation::new(path.clone(), range),
-                evidence,
-                certainty,
-            )
-            .into()
-        })
-        .collect()
-}
-
-fn resolve_trace(
-    head: crate::analysis::trace::TraceNodeId,
-    project: &ProjectSemanticModel,
-    session: &ProjectReportSession,
-) -> Option<Vec<EvidenceStep>> {
-    let raw = session.reconstruct_trace(head)?;
-    if raw.is_empty() {
-        return None;
-    }
-    raw.into_iter()
-        .map(|step| {
-            let event = step.event();
-            let location = project.fact_location(event)?;
-            let message = match step.role() {
-                EvidenceRole::Source => "flow source",
-                EvidenceRole::Requirement => "flow requirement",
-                EvidenceRole::Sink => "flow sink",
-                EvidenceRole::Occurrence => "occurrence",
-                _ => "evidence",
-            };
-            Some(EvidenceStep::new(step.role(), message.into(), location))
-        })
-        .collect()
-}
-
-fn fallback_trace(
-    ev: &ClassificationEvidence,
-    path: &ProjectRelativePath,
-    range: &SourceRange,
-) -> Vec<EvidenceStep> {
-    vec![EvidenceStep::new(
-        EvidenceRole::Occurrence,
-        format!("{} of \"{}\"", ev.kind().as_str(), ev.symbol()),
-        SourceLocation::new(path.clone(), range.clone()),
-    )]
 }
 
 #[cfg(test)]

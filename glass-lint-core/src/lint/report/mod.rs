@@ -222,13 +222,8 @@ impl ProjectReportAssembler {
         catalog: &RuleCatalog,
         classifications: &BTreeMap<ModuleId, ClassificationResult>,
     ) {
-        evidence::populate_project_files(
-            catalog,
-            &self.project,
-            &self.session,
-            classifications,
-            &mut self.files,
-        );
+        evidence::FindingRenderer::new(catalog, &self.project, &self.session)
+            .populate_project_files(classifications, &mut self.files);
         diagnostics::attach_project_diagnostics(&self.project, &self.session, &mut self.files);
     }
 

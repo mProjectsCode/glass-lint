@@ -49,7 +49,7 @@ requested `make fmt && make ci` gate.
 
 ### Evidence assembly
 
-#### [ ] READ-002 — Give evidence rendering an owner for shared report context
+#### [x] READ-002 — Give evidence rendering an owner for shared report context
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -73,6 +73,12 @@ range/group types only handle range selection and occurrence grouping. Keep
 classification results as inputs rather than moving matching policy into the
 renderer; preserve source-order range retention, duplicate merging, evidence
 truncation, and `Definite`/`Possible` certainty joins.
+
+**Fix Applied:** Added `FindingRenderer` to own catalog, project, and trace
+session context. Capability rendering, module rendering, trace reconstruction,
+and fallback evidence now use renderer methods while range grouping remains
+independent. Verified with focused report/linter tests and the requested
+`make fmt && make ci` gate.
 
 ### File and diagnostic assembly
 
