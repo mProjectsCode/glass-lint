@@ -117,6 +117,12 @@ struct PendingBatch {
     entries: BTreeMap<usize, PendingEntry>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CompletionError {
+    UnknownIndex,
+    DuplicateIndex,
+}
+
 impl PendingBatch {
     fn new(max_in_flight: NonZeroUsize) -> Self {
         Self {
@@ -142,12 +148,12 @@ impl PendingBatch {
         index
     }
 
-    fn complete(&mut self, completed: CompletedBatch) -> Result<(), ()> {
+    fn complete(&mut self, completed: CompletedBatch) -> Result<(), CompletionError> {
         let Some(entry) = self.entries.get_mut(&completed.index) else {
-            return Err(());
+            return Err(CompletionError::UnknownIndex);
         };
         if entry.result.is_some() {
-            return Err(());
+            return Err(CompletionError::DuplicateIndex);
         }
         entry.result = Some(completed.result);
         Ok(())
@@ -217,6 +223,7 @@ where
     cancellation: Arc<AtomicBool>,
     pending: PendingBatch,
     exhausted: bool,
+    aborted: bool,
     finished: bool,
 }
 
@@ -241,12 +248,13 @@ where
             cancellation,
             pending: PendingBatch::new(max_in_flight),
             exhausted: false,
+            aborted: false,
             finished: false,
         }
     }
 
     fn refill(&mut self) {
-        while self.pending.can_submit() && !self.exhausted {
+        while self.pending.can_submit() && !self.exhausted && !self.aborted {
             let Some(source) = self.input.next() else {
                 self.exhausted = true;
                 break;
@@ -284,6 +292,7 @@ where
                 if self.pending.complete(completed).is_err() {
                     self.pending.fail_protocol();
                     self.sender.take();
+                    self.aborted = true;
                 }
             }
             Err(_) => self.pending.synthesize_missing(),
@@ -372,8 +381,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::AtomicUsize;
+
     use super::*;
-    use crate::project::ProjectInputError;
+    use crate::{Environment, Linter, LinterConfig, RuleCatalog, project::ProjectInputError};
 
     fn path(name: &str) -> ProjectRelativePath {
         ProjectRelativePath::new(name).unwrap()
@@ -464,6 +475,54 @@ mod tests {
                 LocalExecutionError::WorkerPanic,
             )))
         ));
+    }
+
+    #[test]
+    fn protocol_failure_stops_submitting_new_inputs() {
+        let linter = Linter::new(LinterConfig::new(
+            vec![RuleCatalog::new("test", vec![]).unwrap()],
+            Environment::default(),
+        ))
+        .unwrap();
+        let submitted = Arc::new(AtomicUsize::new(0));
+        let input_count = Arc::clone(&submitted);
+        let input = std::iter::from_fn(move || {
+            let index = input_count.fetch_add(1, Ordering::Relaxed);
+            Some(
+                crate::project::SourceFile::new(format!("{index}.js"), "")
+                    .expect("generated test paths are valid"),
+            )
+        });
+        let (sender, receiver) = mpsc::channel();
+        sender.send(completed(usize::MAX, "unknown.js")).unwrap();
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build()
+            .unwrap();
+        let cancellation = Arc::new(AtomicBool::new(false));
+        let mut driver = BatchDriver::new(
+            input,
+            linter,
+            pool,
+            (sender, receiver),
+            cancellation,
+            NonZeroUsize::new(2).unwrap(),
+        );
+
+        assert!(matches!(
+            driver.next_result().unwrap().into_result(),
+            Err(ProjectError::Execution(ProjectExecutionError::Local(
+                LocalExecutionError::WorkerPanic,
+            )))
+        ));
+        assert!(matches!(
+            driver.next_result().unwrap().into_result(),
+            Err(ProjectError::Execution(ProjectExecutionError::Local(
+                LocalExecutionError::WorkerPanic,
+            )))
+        ));
+        assert!(driver.next_result().is_none());
+        assert_eq!(submitted.load(Ordering::Relaxed), 2);
     }
 
     #[test]

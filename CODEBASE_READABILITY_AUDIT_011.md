@@ -78,11 +78,12 @@ ranges, overlapping non-contained ranges, disjoint ranges, and evidence with
 invalid/empty source spans before removing either pass.
 
 **Fix Applied:** `PendingBatch::complete` now returns an explicit protocol
-result. Unknown and duplicate completions close the sender and convert every
-pending entry to the existing deterministic `WorkerPanic` execution error,
-preventing ordered iteration from waiting indefinitely. Regression tests cover
-unknown and duplicate indexes. Verified with
-`cargo test -p glass-lint-core lint::batch --lib`.
+result. Unknown and duplicate completions close the sender, stop further input
+submission, and convert every pending entry to the existing deterministic
+`WorkerPanic` execution error, preventing ordered iteration from waiting
+indefinitely or consuming an unbounded input after protocol corruption.
+Regression tests cover unknown and duplicate indexes and the driver shutdown
+state. Verified with `cargo test -p glass-lint-core lint::batch --lib`.
 
 ### [lint/batch.rs]
 
