@@ -14,7 +14,7 @@ implementations that should have one owner.
 
 ### [api/rule/mod.rs and api/rule/query/lifecycle.rs]
 
-#### [ ] READ-019 — Unify immediate and deferred builder state
+#### [x] READ-019 — Unify immediate and deferred builder state
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -46,15 +46,15 @@ call-site behavior. Add contract tests covering the same invalid operation
 through both policies and verifying that later valid operations cannot erase
 the first error.
 
-**Fix Applied:** A private generic `CanonicalLifecycleItems<T>` now owns
-empty validation, canonical sort/deduplication, bounded storage, and
-iteration. `LifecycleEvents` and `LifecycleSinks` retain their distinct
-semantic wrappers, limits, and error labels. Verified with
-`cargo test -p glass-lint-core api::rule::query::lifecycle --lib`.
+**Fix Applied:** Immediate and deferred lifecycle builders now share one
+private `LifecycleBuilderState` for stages and first-error storage. Their
+public APIs retain immediate versus deferred error policy while construction
+and build validation remain shared. Verified with
+`cargo test -p glass-lint-core lifecycle`.
 
 ### [api/rule/query/lifecycle.rs]
 
-#### [ ] READ-020 — Centralize canonical bounded lifecycle collections
+#### [x] READ-020 — Centralize canonical bounded lifecycle collections
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -81,14 +81,15 @@ types. Guard the migration with tests for duplicate elimination, deterministic
 ordering, empty inputs, and the exact event/sink limits, including the
 pre-conversion bound in `bounded_lifecycle_items`.
 
-**Fix Applied:** The sealed adapter macro now generates the identity and
-`Result<_, QueryBuildError>` conversions for event, source, condition, sink,
-and completion inputs. The event-builder special case remains explicit.
-Verified with `cargo test -p glass-lint-core api::rule::query::lifecycle --lib`.
+**Fix Applied:** A private generic `CanonicalLifecycleItems<T>` now owns
+empty validation, canonical sort/deduplication, bounded storage, and
+iteration. `LifecycleEvents` and `LifecycleSinks` retain their distinct
+semantic wrappers, limits, and error labels. Verified with
+`cargo test -p glass-lint-core api::rule::query::lifecycle --lib`.
 
 ### [api/rule/query/lifecycle.rs]
 
-#### [ ] READ-021 — Generate the repeated sealed fallible-input adapters
+#### [x] READ-021 — Generate the repeated sealed fallible-input adapters
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -114,7 +115,10 @@ and all generic constructor signatures. Add compile-level tests for both
 prebuilt and `Result` inputs on each lifecycle stage, plus the event-builder
 conversion path.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The sealed adapter macro now generates the identity and
+`Result<_, QueryBuildError>` conversions for event, source, condition, sink,
+and completion inputs. The event-builder special case remains explicit.
+Verified with `cargo test -p glass-lint-core api::rule::query::lifecycle --lib`.
 
 ## Systemic Themes
 
