@@ -92,6 +92,19 @@ impl ProjectReportSession {
         outcome.record_analysis_status(project, &mut self.status);
     }
 
+    fn record_rule_selection_failure(&mut self, error: impl std::fmt::Debug) {
+        self.status.record(
+            StatusScope::Project,
+            IncompleteReason::RuleSelectionInvalid {
+                reason: format!("{error:?}"),
+            },
+        );
+    }
+
+    fn set_trace_arena(&mut self, trace_arena: TraceArena) {
+        self.trace_arena = Some(trace_arena);
+    }
+
     pub(super) fn status_diagnostics(
         &self,
     ) -> (
@@ -116,34 +129,14 @@ impl ProjectReportSession {
     }
 }
 
-pub struct LinkedReport {
+pub struct ProjectReportAssembler {
     project: ProjectSemanticModel,
     session: ProjectReportSession,
     files: BTreeMap<ProjectRelativePath, FileReport>,
     linking: Duration,
 }
 
-pub struct MatchedReport {
-    project: ProjectSemanticModel,
-    session: ProjectReportSession,
-    files: BTreeMap<ProjectRelativePath, FileReport>,
-    classifications: BTreeMap<ModuleId, ClassificationResult>,
-    projection_outcome: ProjectionOutcome,
-    linking: Duration,
-    matching: Duration,
-}
-
-pub struct RenderedReport {
-    project: ProjectSemanticModel,
-    session: ProjectReportSession,
-    files: BTreeMap<ProjectRelativePath, FileReport>,
-    diagnostics: Vec<Diagnostic>,
-    projection_outcome: ProjectionOutcome,
-    linking: Duration,
-    matching: Duration,
-}
-
-impl LinkedReport {
+impl ProjectReportAssembler {
     pub fn link(
         sources: &SourceTable,
         link_input: ResolvedLinkInput,
@@ -178,30 +171,36 @@ impl LinkedReport {
         }
     }
 
-    pub fn match_project(
-        self,
+    pub fn assemble(
+        mut self,
         catalog: &RuleCatalog,
         enabled: &[RuleIndex],
         evidence_limit: usize,
-    ) -> MatchedReport {
-        let Self {
-            project,
-            mut session,
-            files,
-            linking,
-        } = self;
+    ) -> ProjectAnalysis {
+        let (classifications, projection_outcome, matching) =
+            self.match_project(catalog, enabled, evidence_limit);
+        let diagnostics = self.render_findings(catalog, &classifications);
+        self.finish(diagnostics, &projection_outcome, matching)
+    }
+
+    fn match_project(
+        &mut self,
+        catalog: &RuleCatalog,
+        enabled: &[RuleIndex],
+        evidence_limit: usize,
+    ) -> (
+        BTreeMap<ModuleId, ClassificationResult>,
+        ProjectionOutcome,
+        Duration,
+    ) {
         let matching_start = Instant::now();
-        let (classifications, projection_outcome, trace_arena) = match project
+        let (classifications, projection_outcome, trace_arena) = match self
+            .project
             .classify_with_evidence_limit(catalog.compiled(), enabled, evidence_limit)
         {
             Ok(result) => result,
             Err(error) => {
-                session.status.record(
-                    StatusScope::Project,
-                    IncompleteReason::RuleSelectionInvalid {
-                        reason: format!("{error:?}"),
-                    },
-                );
+                self.session.record_rule_selection_failure(error);
                 (
                     BTreeMap::new(),
                     ProjectionOutcome::default(),
@@ -209,66 +208,47 @@ impl LinkedReport {
                 )
             }
         };
-        session.trace_arena = Some(trace_arena);
-        session.record_projection_status(&project, &projection_outcome);
+        self.session.set_trace_arena(trace_arena);
+        self.session
+            .record_projection_status(&self.project, &projection_outcome);
         let matching = matching_start.elapsed();
-
-        MatchedReport {
-            project,
-            session,
-            files,
-            classifications,
-            projection_outcome,
-            linking,
-            matching,
-        }
+        (classifications, projection_outcome, matching)
     }
-}
 
-impl MatchedReport {
-    pub fn render(self, catalog: &RuleCatalog) -> RenderedReport {
+    fn render_findings(
+        &mut self,
+        catalog: &RuleCatalog,
+        classifications: &BTreeMap<ModuleId, ClassificationResult>,
+    ) -> Vec<Diagnostic> {
+        evidence::populate_project_files(
+            catalog,
+            &self.project,
+            &self.session,
+            classifications,
+            &mut self.files,
+        );
+        diagnostics::attach_project_diagnostics(&self.project, &self.session, &mut self.files)
+    }
+
+    fn finish(
+        self,
+        diagnostics: Vec<Diagnostic>,
+        projection_outcome: &ProjectionOutcome,
+        matching: Duration,
+    ) -> ProjectAnalysis {
         let Self {
             project,
             session,
             files,
-            classifications,
-            projection_outcome,
             linking,
-            matching,
-        } = self;
-        let mut files = files;
-        evidence::populate_project_files(catalog, &project, &session, &classifications, &mut files);
-        let diagnostics = diagnostics::attach_project_diagnostics(&project, &session, &mut files);
-
-        RenderedReport {
-            project,
-            session,
-            files,
-            diagnostics,
-            projection_outcome,
-            linking,
-            matching,
-        }
-    }
-}
-
-impl RenderedReport {
-    pub fn finish(self) -> ProjectAnalysis {
-        let Self {
-            project,
-            session,
-            files,
-            diagnostics,
-            projection_outcome,
-            linking,
-            matching,
+            ..
         } = self;
         let report = summary::assemble_project_report(
             &project,
             &session,
             files,
             diagnostics,
-            &projection_outcome,
+            projection_outcome,
         );
         let report_summary = report.summary();
 

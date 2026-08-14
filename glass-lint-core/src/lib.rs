@@ -35,7 +35,6 @@ pub use environment::{Environment, EnvironmentError};
 pub use limits::{
     AnalysisLimitError, AnalysisLimits, ProjectAdmissionLimitError, ProjectAdmissionLimits,
 };
-pub(crate) use lint::LinkedReport;
 pub use lint::{
     BatchOptions, BatchResult, BatchResults, BatchStartError, LintConfigError, Linter,
     LinterConfig, PreparedRuleSelection, ProjectAnalysis, ProjectAnalysisTimings,

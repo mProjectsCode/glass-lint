@@ -13,7 +13,7 @@ mod selection;
 pub use batch::{BatchOptions, BatchResult, BatchResults, BatchStartError};
 pub use catalog::{ProviderCatalogError, RuleCatalog, RuleCompilationError};
 pub use linter::{Linter, LinterConfig};
-pub use report::{LinkedReport, ProjectAnalysis, ProjectAnalysisTimings};
+pub use report::{ProjectAnalysis, ProjectAnalysisTimings, ProjectReportAssembler};
 pub use selection::{
     LintConfigError, PreparedRuleSelection, RuleBaseline, RuleOverride, RuleSelection, RuleState,
 };

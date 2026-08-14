@@ -21,11 +21,10 @@ use execution::{
 };
 
 use crate::{
-    AnalysisLimits, Environment, LinkedReport, ParseDiagnostic, ProjectAdmissionLimits,
-    RuleCatalog,
+    AnalysisLimits, Environment, ParseDiagnostic, ProjectAdmissionLimits, RuleCatalog,
     analysis::{AnalyzedSource, ArtifactCacheHandle, ArtifactCacheKey, SemanticAnalyzer},
     api::classification::RuleIndex,
-    lint::ProjectAnalysis,
+    lint::{ProjectAnalysis, ProjectReportAssembler},
     project::{
         ProjectError, ProjectExecutionError, ProjectInputError, ProjectRelativePath,
         ResolutionRequest, ResolutionRequestKey, ResolverOutcome, SourceFile, tables::SourceTable,
@@ -436,18 +435,16 @@ impl<'a> ProjectSession<'a> {
         let (link_input, parse_diagnostics) =
             self.artifacts.into_link_input(&self.sources, outcomes)?;
 
-        Ok(LinkedReport::link(
+        Ok(ProjectReportAssembler::link(
             &self.sources,
             link_input,
             parse_diagnostics,
             self.state.analyzer.limits(),
         )
-        .match_project(
+        .assemble(
             self.state.catalog,
             self.state.enabled,
             self.state.evidence_limit,
-        )
-        .render(self.state.catalog)
-        .finish())
+        ))
     }
 }
