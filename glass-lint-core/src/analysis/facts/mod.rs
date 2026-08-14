@@ -542,17 +542,14 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
             .iter()
             .filter(|specifier| !specifier.is_type_only())
             .map(|specifier| match specifier {
-                swc_ecma_ast::ImportSpecifier::Named(named) => ImportedBinding::new(
-                    Some(named.imported.as_ref().map_or_else(
+                swc_ecma_ast::ImportSpecifier::Named(named) => {
+                    ImportedBinding::named(named.imported.as_ref().map_or_else(
                         || named.local.sym.to_smolstr(),
                         |name| crate::analysis::syntax::module_export_name(name).to_smolstr(),
-                    )),
-                    false,
-                ),
-                swc_ecma_ast::ImportSpecifier::Default(_) => {
-                    ImportedBinding::new(Some("default".into()), false)
+                    ))
                 }
-                swc_ecma_ast::ImportSpecifier::Namespace(_) => ImportedBinding::new(None, true),
+                swc_ecma_ast::ImportSpecifier::Default(_) => ImportedBinding::named("default"),
+                swc_ecma_ast::ImportSpecifier::Namespace(_) => ImportedBinding::namespace(),
             })
             .collect();
         self.record_local_imports(import);

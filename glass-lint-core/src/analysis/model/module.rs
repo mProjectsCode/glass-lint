@@ -26,9 +26,9 @@ pub enum ModuleRequestRole {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ImportedBinding {
-    imported: Option<SmolStr>,
-    namespace: bool,
+pub enum ImportedBinding {
+    Named(SmolStr),
+    Namespace,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -173,19 +173,23 @@ impl ModuleRequestId {
 }
 
 impl ImportedBinding {
-    pub fn new(imported: Option<SmolStr>, namespace: bool) -> Self {
-        Self {
-            imported,
-            namespace,
-        }
+    pub fn named(imported: impl Into<SmolStr>) -> Self {
+        Self::Named(imported.into())
     }
 
-    pub fn imported(&self) -> Option<&SmolStr> {
-        self.imported.as_ref()
+    pub const fn namespace() -> Self {
+        Self::Namespace
     }
 
     pub fn is_namespace(&self) -> bool {
-        self.namespace
+        matches!(self, Self::Namespace)
+    }
+
+    pub fn imported(&self) -> Option<&SmolStr> {
+        match self {
+            Self::Named(imported) => Some(imported),
+            Self::Namespace => None,
+        }
     }
 }
 
@@ -499,11 +503,7 @@ mod tests {
     fn request_constructors_retain_their_valid_kind_and_role_pair() {
         let span = ByteRange::new(0, 1).unwrap();
         let mut interface = ModuleInterface::default();
-        interface.add_import_request(
-            span,
-            "imported",
-            vec![ImportedBinding::new(Some("default".into()), false)],
-        );
+        interface.add_import_request(span, "imported", vec![ImportedBinding::named("default")]);
         interface.add_reexport_request(span, "reexported");
         interface.add_star_export_request(span, "starred");
         interface.add_dynamic_import_request(span, "dynamic");

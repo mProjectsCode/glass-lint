@@ -154,7 +154,7 @@ impl ProjectLinker {
                 let ModuleRequestRole::Import { bindings } = request.role() else {
                     continue;
                 };
-                for binding in bindings.iter().filter(|binding| !binding.is_namespace()) {
+                for binding in bindings {
                     let Some(imported) = binding.imported() else {
                         continue;
                     };

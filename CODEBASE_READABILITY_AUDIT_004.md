@@ -41,7 +41,11 @@ identity handling, deterministic binding order, and a test that makes every
 constructed variant exhaustive; do not permit a namespace value to carry a
 discarded imported name.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ImportedBinding` is now an exhaustive `Named`/`Namespace`
+enum with variant-specific constructors; fact construction and linker
+consumers no longer coordinate an optional name with a boolean flag. Existing
+import lookup and namespace identity behavior is covered by the module model
+tests. Verified with `cargo test -p glass-lint-core analysis::model::module --lib`.
 
 ### [analysis/model/value.rs, analysis/resolution, analysis/flow/projector]
 

@@ -119,9 +119,6 @@ impl ProjectSemanticModel {
             let is_namespace = match request.role() {
                 ModuleRequestRole::Import { bindings } => {
                     for binding in bindings {
-                        if binding.is_namespace() {
-                            continue;
-                        }
                         let Some(export) = binding.imported() else {
                             continue;
                         };
