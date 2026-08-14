@@ -34,11 +34,13 @@ impl SourceTable {
         Ok(())
     }
 
-    /// Insert a batch atomically, rejecting duplicates against this table and
-    /// within the incoming batch before changing either table.
-    pub fn insert_all(
+    /// Admit a bounded batch atomically, rejecting duplicates and limit
+    /// violations before changing either table.
+    pub fn admit_all(
         &mut self,
         sources: impl IntoIterator<Item = SourceFile>,
+        max_sources: usize,
+        max_source_bytes: usize,
     ) -> Result<(), ProjectInputError> {
         let mut staged = Self::default();
         for source in sources {
@@ -47,10 +49,34 @@ impl SourceTable {
                 return Err(ProjectInputError::DuplicateSource(path.to_string()));
             }
             staged.insert(source)?;
+            let attempted_sources = self.len().checked_add(staged.len()).ok_or(
+                ProjectInputError::SourceCountExceeded {
+                    limit: max_sources,
+                    attempted: usize::MAX,
+                },
+            )?;
+            if attempted_sources > max_sources {
+                return Err(ProjectInputError::SourceCountExceeded {
+                    limit: max_sources,
+                    attempted: attempted_sources,
+                });
+            }
+            let attempted_bytes = self.source_bytes.checked_add(staged.source_bytes).ok_or(
+                ProjectInputError::SourceBytesExceeded {
+                    limit: max_source_bytes,
+                    attempted: usize::MAX,
+                },
+            )?;
+            if attempted_bytes > max_source_bytes {
+                return Err(ProjectInputError::SourceBytesExceeded {
+                    limit: max_source_bytes,
+                    attempted: attempted_bytes,
+                });
+            }
         }
         self.source_bytes = self.source_bytes.checked_add(staged.source_bytes).ok_or(
             ProjectInputError::SourceBytesExceeded {
-                limit: usize::MAX,
+                limit: max_source_bytes,
                 attempted: usize::MAX,
             },
         )?;
@@ -60,10 +86,6 @@ impl SourceTable {
 
     pub(crate) fn len(&self) -> usize {
         self.sources.len()
-    }
-
-    pub(crate) fn source_bytes(&self) -> usize {
-        self.source_bytes
     }
 
     pub fn get(&self, path: &ProjectRelativePath) -> Option<&SourceFile> {

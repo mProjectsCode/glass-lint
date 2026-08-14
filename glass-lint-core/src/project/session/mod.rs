@@ -223,45 +223,11 @@ impl<'a> ProjectSession<'a> {
         &mut self,
         sources: impl IntoIterator<Item = SourceFile>,
     ) -> Result<(), ProjectInputError> {
-        let sources = sources.into_iter().collect::<Vec<_>>();
-        let incoming_bytes = sources
-            .iter()
-            .try_fold(0usize, |total, source| {
-                total.checked_add(source.source().len()).ok_or(())
-            })
-            .map_err(|()| ProjectInputError::SourceBytesExceeded {
-                limit: self.state.project_limits.max_source_bytes(),
-                attempted: usize::MAX,
-            })?;
-        let attempted_sources = self
-            .sources
-            .len()
-            .checked_add(sources.len())
-            .ok_or_else(|| ProjectInputError::SourceCountExceeded {
-                limit: self.state.project_limits.max_sources(),
-                attempted: usize::MAX,
-            })?;
-        if attempted_sources > self.state.project_limits.max_sources() {
-            return Err(ProjectInputError::SourceCountExceeded {
-                limit: self.state.project_limits.max_sources(),
-                attempted: attempted_sources,
-            });
-        }
-        let attempted_bytes = self
-            .sources
-            .source_bytes()
-            .checked_add(incoming_bytes)
-            .ok_or_else(|| ProjectInputError::SourceBytesExceeded {
-                limit: self.state.project_limits.max_source_bytes(),
-                attempted: usize::MAX,
-            })?;
-        if attempted_bytes > self.state.project_limits.max_source_bytes() {
-            return Err(ProjectInputError::SourceBytesExceeded {
-                limit: self.state.project_limits.max_source_bytes(),
-                attempted: attempted_bytes,
-            });
-        }
-        self.sources.insert_all(sources)
+        self.sources.admit_all(
+            sources,
+            self.state.project_limits.max_sources(),
+            self.state.project_limits.max_source_bytes(),
+        )
     }
 
     /// Analyze one owned source and return its authored requests.

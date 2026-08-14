@@ -14,7 +14,7 @@ Rust’s exhaustive conversion already forces new variants to be handled.
 
 ### Project input admission
 
-#### [ ] READ-031 — Give source admission one owner
+#### [x] READ-031 — Give source admission one owner
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -42,7 +42,11 @@ public `ProjectInputError` values; add tests for duplicate-in-batch,
 duplicate-against-session, count limit, byte limit, overflow, and unchanged
 state after every failed insertion.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `SourceTable::admit_all` now owns bounded, atomic batch
+admission, including duplicate detection, count/byte limits, overflow
+handling, and deterministic staging. `ProjectSession` delegates directly and
+no longer duplicates preflight arithmetic. Verified with the project input
+validation and cache/session tests.
 
 ### Validated scalar wrappers
 
