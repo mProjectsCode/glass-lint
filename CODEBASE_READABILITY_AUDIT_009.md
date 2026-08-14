@@ -15,7 +15,7 @@ and a debug-only capacity check.
 
 ### [api/compiler/mod.rs and api/compiler/physical.rs]
 
-#### [ ] READ-022 — Remove the one-to-one event predicate vocabulary
+#### [x] READ-022 — Remove the one-to-one event predicate vocabulary
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -45,7 +45,11 @@ preserve the distinction between calls, reads, writes, imports, strings,
 constructors, and classes, including deterministic ordering and physical
 root equality.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Physical matcher roots now carry the normalized `EventSpec`
+directly through an alias; the field-for-field `EventPredicate` enum and
+variant-by-variant lowering match were removed. Compiler plan and reference
+matching behavior remain unchanged. Verified with
+`cargo test -p glass-lint-core api::compiler`.
 
 ### [api/compiler/validate, api/compiler/normalize.rs, and api/compiler/physical.rs]
 

@@ -116,17 +116,9 @@ impl IdentityConstraint {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub(crate) enum EventPredicate {
-    Call,
-    Construct,
-    MemberCall { member: SymbolPath },
-    MemberRead { member: SymbolPath },
-    PropertyWrite { property: SymbolPath },
-    ClassReference,
-    Import,
-    StringReference,
-}
+/// Physical matching uses the normalized declaration event directly. The
+/// compiler does not need a second field-for-field event vocabulary.
+pub(crate) use crate::api::rule::query::EventSpec as EventPredicate;
 
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) struct EvidenceDescriptor {
@@ -169,22 +161,7 @@ pub(crate) fn lower_identity(spec: &IdentitySpec) -> IdentityConstraint {
 }
 
 pub(crate) fn lower_event(spec: &EventSpec) -> EventPredicate {
-    match spec {
-        EventSpec::Call => EventPredicate::Call,
-        EventSpec::Construct => EventPredicate::Construct,
-        EventSpec::MemberCall { member } => EventPredicate::MemberCall {
-            member: member.clone(),
-        },
-        EventSpec::MemberRead { member } => EventPredicate::MemberRead {
-            member: member.clone(),
-        },
-        EventSpec::PropertyWrite { property } => EventPredicate::PropertyWrite {
-            property: property.clone(),
-        },
-        EventSpec::ClassReference => EventPredicate::ClassReference,
-        EventSpec::Import => EventPredicate::Import,
-        EventSpec::StringReference => EventPredicate::StringReference,
-    }
+    spec.clone()
 }
 
 struct QueryPlanAccumulator {
