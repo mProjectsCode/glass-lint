@@ -19,7 +19,8 @@ use crate::analysis::facts::FactId;
 /// Selection is intentionally lazy and preserves duplicate physical events.
 /// Call [`Self::into_ordered`] at the evidence boundary to establish one
 /// deterministic order without changing the count represented by the raw
-/// selection.
+/// selection. Normalized indexed and merged selections retain their lazy
+/// iterators; only concatenated selections are materialized and sorted.
 pub(in crate::analysis) enum OccurrenceSelection<'a> {
     Indexed(core::iter::Copied<core::slice::Iter<'a, Occurrence>>),
     Borrowed(BorrowedOccurrenceIter<'a>),
@@ -44,13 +45,27 @@ impl<'a> OccurrenceSelection<'a> {
         })
     }
 
-    /// Materialize candidates in the common evidence order while retaining
+    /// Convert candidates to the common evidence order while retaining
     /// duplicates for the evidence count and later presentation policy.
-    pub(super) fn into_ordered(self) -> Vec<Occurrence> {
-        let mut occurrences = match self {
-            Self::Scanned(scanned) => scanned.values,
-            selection => selection.collect(),
-        };
+    pub(super) fn into_ordered(self) -> OrderedOccurrences<'a> {
+        match self {
+            Self::Indexed(iter) => OrderedOccurrences::Indexed(iter),
+            Self::Borrowed(iter) => OrderedOccurrences::Borrowed(iter),
+            Self::BorrowedPackage(iter) => OrderedOccurrences::sorted(iter),
+            Self::Scanned(scanned) => OrderedOccurrences::sorted(scanned.values),
+        }
+    }
+}
+
+pub(super) enum OrderedOccurrences<'a> {
+    Indexed(core::iter::Copied<core::slice::Iter<'a, Occurrence>>),
+    Borrowed(BorrowedOccurrenceIter<'a>),
+    Sorted(std::vec::IntoIter<Occurrence>),
+}
+
+impl OrderedOccurrences<'_> {
+    fn sorted(occurrences: impl IntoIterator<Item = Occurrence>) -> Self {
+        let mut occurrences = occurrences.into_iter().collect::<Vec<_>>();
         occurrences.sort_unstable_by_key(|occurrence| {
             (
                 occurrence.event,
@@ -58,7 +73,19 @@ impl<'a> OccurrenceSelection<'a> {
                 occurrence.span.end(),
             )
         });
-        occurrences
+        Self::Sorted(occurrences.into_iter())
+    }
+}
+
+impl Iterator for OrderedOccurrences<'_> {
+    type Item = Occurrence;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Indexed(iter) => iter.next(),
+            Self::Borrowed(iter) => iter.next(),
+            Self::Sorted(iter) => iter.next(),
+        }
     }
 }
 
@@ -705,8 +732,9 @@ mod tests {
             occ(2, 20, 21),
         ]);
 
+        let ordered: Vec<_> = selection.into_ordered().collect();
         assert_eq!(
-            selection.into_ordered(),
+            ordered,
             vec![
                 occ(1, 10, 11),
                 occ(1, 10, 11),
@@ -714,6 +742,22 @@ mod tests {
                 occ(3, 30, 31)
             ]
         );
+    }
+
+    #[test]
+    fn ordered_normalized_selections_keep_their_lazy_order() {
+        let values = [occ(1, 10, 11), occ(2, 20, 21)];
+        let indexed: Vec<_> = OccurrenceSelection::indexed(&values)
+            .into_ordered()
+            .collect();
+        assert_eq!(indexed, values);
+
+        let borrowed = OccurrenceSelection::Borrowed(BorrowedOccurrenceIter::new(
+            Some(&values),
+            &[],
+        ));
+        let borrowed: Vec<_> = borrowed.into_ordered().collect();
+        assert_eq!(borrowed, values);
     }
 
     #[test]

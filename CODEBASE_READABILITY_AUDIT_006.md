@@ -14,7 +14,7 @@ view, not a second storage owner or an allocation-heavy representation.
 
 ### [analysis/matching/occurrence.rs, analysis/matching/evidence.rs]
 
-#### [ ] READ-017 — Avoid sorting and copying already ordered occurrence selections
+#### [x] READ-017 — Avoid sorting and copying already ordered occurrence selections
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -45,7 +45,11 @@ masking, empty-span filtering, and the later evidence truncation and group
 sorting policies. Add equivalence tests for direct, linked-overlay, package,
 and scanned selections.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Ordered indexed and k-way-merged selections now retain their
+lazy iterators through evidence construction; only scanned and concatenated
+package selections are materialized and sorted. Duplicate physical events and
+the existing evidence normalization policy are unchanged. Verified with
+`cargo test -p glass-lint-core analysis::matching --lib`.
 
 ## Systemic Themes
 
