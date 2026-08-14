@@ -55,14 +55,15 @@ the same export shapes, including re-exports and namespace exports.
 - Lookup caching, SCC bounds, identity overlays, and projection ownership are
   retained as intentional bounded-phase responsibilities.
 
-## Open Questions
+## Review Resolutions
 
-- Would a small `ModuleExportsSnapshot` domain type make the ownership and
-  deterministic-order contract clearer than a raw vector, or would it add a
-  wrapper without behavior? Prefer the helper alone unless the snapshot gains
-  additional invariants.
-- Should export snapshot size be charged against the link budget separately
-  from retained export-table entries if very large interfaces are expected?
+- Use a private snapshot helper returning the existing owned vector. A named
+  snapshot wrapper would add no invariant until the snapshot gains additional
+  operations or validation.
+- Keep the current link-budget accounting scope. Charge snapshot allocation
+  separately only if profiling or a newly enforced memory limit demonstrates
+  that transient interface copies are material; it is not part of this
+  readability fix.
 
 ## Coverage
 

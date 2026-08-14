@@ -4,45 +4,13 @@
 
 Chunk 06 (`analysis::matching`) has careful identity separation, typed
 occurrence keys, lazy overlay/package iterators, and explicit constrained-match
-fallbacks. The main readability and cost opportunities are in the query
-adapter layers: one event view is immediately translated into a second
-capability representation, and the evidence boundary re-materializes and
-re-sorts selections that are already ordered in common paths.
+fallbacks. The main readability and cost opportunity is in the evidence
+boundary, which re-materializes and re-sorts selections that are already
+ordered in common paths. The `EventIndexCapabilities` projection is retained:
+it is a capability object with identity-resolution behavior for each event
+view, not a second storage owner or an allocation-heavy representation.
 
 ## Findings
-
-### [analysis/matching/query/view.rs]
-
-#### [ ] READ-016 — Let `EventIndexView` resolve identities directly
-
-- **Severity:** Medium
-- **Fix Complexity:** Medium
-- **Theme:** SIMPLIFY
-- **Category:** Complexity/Architecture
-- **Location:** `glass-lint-core/src/analysis/matching/query/view.rs:23-100,102-215,217-390`; `glass-lint-core/src/analysis/matching/query/mod.rs:124-132,195-240`
-
-`OccurrenceIndexes::build_event_view` already constructs a closed enum whose
-variants contain exactly the indexes valid for each `EventPredicate`. Its
-`EventIndexView::resolve` method then immediately calls `capabilities()`, which
-rebuilds the same variant matrix into `EventIndexCapabilities` using
-`AnyIndex`, `LiteralIndex`, `ModuleIndex`, `RootedIndex`, and several `Option`
-fields. Every identity resolution then traverses this second representation,
-including its `Unsupported` arms. Adding or changing an event requires keeping
-the source view, the capability conversion, and the generic resolver methods
-consistent, while the intermediate type adds no ownership or validation beyond
-the original enum.
-
-**Recommendation:** Move the identity-resolution helpers onto
-`EventIndexView` and match directly on its event variants, deleting
-`EventIndexCapabilities` and the storage-shaped helper enums/structs. Keep the
-existing typed event variants so unsupported identity/event combinations still
-return `None`; preserve module overlay kinds, rooted global-object matching,
-package predicates, literal private-network matching, and the exact fallback
-boundary used by constrained roots. Add table-driven tests covering every
-`EventPredicate`/`IdentityConstraint` combination that is currently supported
-or rejected.
-
-**Fix Applied:** None so far.
 
 ### [analysis/matching/occurrence.rs, analysis/matching/evidence.rs]
 
@@ -81,9 +49,9 @@ and scanned selections.
 
 ## Systemic Themes
 
-- The matcher has strong semantic newtypes and owner-local normalization; the
-  main duplication is at adapters that translate an already constrained view
-  into generic option storage.
+- The matcher has strong semantic newtypes and owner-local normalization. The
+  event capability object is an intentional behavior owner; the concrete
+  duplication is at the evidence materialization boundary.
 - Ordering is correctly treated as a semantic output invariant, but the
   current boundaries enforce it more than once. Any simplification must keep
   the distinction between normalized single buckets, merged overlays, and
@@ -92,14 +60,14 @@ and scanned selections.
   findings target representation and transport overhead, not the bounded
   fallback policy or certainty behavior.
 
-## Open Questions
+## Review Resolutions
 
-- Should `OccurrenceSelection` expose an explicit `is_normalized`/ordered
-  contract, or should each constructor return a distinct selection type so
-  future query code cannot accidentally bypass ordering guarantees?
-- Can the evidence API accept a borrowed/streaming occurrence source while
-  preserving its exact total count and truncation markers, or should only the
-  intermediate `Occurrence` vector be removed after a pre-count pass?
+- Keep `OccurrenceSelection` private and make the ordered-versus-unsorted
+  contract explicit in its constructors or one narrow materialization method;
+  a second public selection type would add needless API surface.
+- Remove the intermediate occurrence vector only where the source is already
+  normalized. Keep a materialization path for selections that need sorting or
+  must preserve a separately computed total/truncation count.
 
 ## Coverage
 

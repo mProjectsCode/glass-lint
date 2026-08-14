@@ -145,19 +145,17 @@ modules.
   generic planning operations directly and keep provider-neutral artifact-local
   path identity explicit.
 
-## Open Questions
+## Review Resolutions
 
-- Should summary capacity be global across all functions or enforced per
-  `FunctionSummary` as well? The current `SummarySinkBudget` implies a global
-  limit, while `SinkSet` exposes no local bound.
-- Is `ProjectionPathMachine::binding_slots` intentionally shared across all
-  path alternatives as a canonical lexical-slot representative, or should it
-  be part of the checkpointed environment? Any refactor must preserve the
-  distinction between stable binding identity and path-local value identity.
-- Can the local projector’s coordinated state owner be introduced without
-  increasing the borrow surface for the shared `TraceArena` and external
-  evidence table? If not, retain those external ownership boundaries and move
-  only path/completion coordination.
+- Keep summary sink capacity global: `SummarySinkBudget` is the current owner
+  of that bound, so READ-008 must make its admission atomic without inventing
+  a second per-function limit.
+- Keep `ProjectionPathMachine::binding_slots` outside path checkpoints. It is
+  a stable lexical-slot representative; checkpointing it would conflate stable
+  binding identity with path-local object identity.
+- Do not introduce a broad coordinated projector owner. READ-009 should remove
+  only the demonstrable copies while retaining the existing `TraceArena` and
+  evidence ownership boundaries.
 
 ## Coverage
 

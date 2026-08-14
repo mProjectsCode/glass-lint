@@ -89,16 +89,16 @@ that prevent IDs from the two domains being interchanged.
   resolver and flow projector already have separate lifetimes, budgets, and
   rollback semantics, which supports separate newtypes.
 
-## Open Questions
+## Review Resolutions
 
-- Is `Value::Object` intended to become the canonical source identity for any
-  flow, or are resolver fresh objects and flow-source objects deliberately
-  separate abstractions? If they are intended to converge, the convergence
-  should be represented by an explicit mapping rather than by sharing the raw
-  ID type.
-- Should `ImportedBinding` remain public to project-linking callers, or can
-  module-interface construction own the import-specifier conversion entirely?
-  Either design should keep invalid namespace/name combinations unrepresentable.
+- Resolver fresh objects and flow-source objects are deliberately separate:
+  they have independent allocators, lifetimes, rollback behavior, and limits.
+  READ-013 should use owner-specific IDs; any future relationship must be an
+  explicit phase-owned mapping.
+- Keep `ImportedBinding` at the module-interface boundary used by linking, but
+  replace its invalid boolean/optional pair with named variants. The linker
+  still needs to distinguish named and namespace imports, so moving conversion
+  entirely into fact construction would not remove that ownership requirement.
 
 ## Coverage
 

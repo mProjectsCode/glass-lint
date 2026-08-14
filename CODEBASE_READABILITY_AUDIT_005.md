@@ -87,15 +87,16 @@ policy into the status accumulator while removing the wrapper.
   with one producer, one consumer, and only an `into_parts` projection should
   be removed or moved to the owner that gives it behavior.
 
-## Open Questions
+## Review Resolutions
 
-- Should project linking and matcher projection report into one project status
-  accumulator, or should each phase return a typed outcome that the report
-  session merges? The key invariant is that cached local artifacts remain
-  independent of a particular project/report run.
-- Is the `AnalysisStatus` snapshot intentionally part of cache identity, or is
-  it purely an analysis result? Any status split must preserve cache reuse and
-  avoid carrying project-local diagnostics into reusable artifacts.
+- Keep one report-owned aggregation point for linking, projection, evidence,
+  and rule-selection status, while allowing each phase to report through a
+  narrow typed outcome. Do not create one status type per phase; the root issue
+  is that reusable local status currently owns project/report reasons.
+- `AnalysisStatus` is an analysis result carried by the cached artifact, not a
+  cache-key dimension. A split must leave local completion and capabilities in
+  the artifact while attaching paths and project-only reasons only when a
+  project/report run materializes them.
 
 ## Coverage
 

@@ -119,17 +119,19 @@ builds.
   useful development checks, but release behavior must terminate safely and
   report a stable failure when an internal protocol invariant is broken.
 
-## Open Questions
+## Review Resolutions
 
-- Does single-source linting need the exact same link-input and report assembly
-  semantics as project sessions for all source languages and unresolved
-  imports, or can a private fast path be proven equivalent?
-- Would retaining entry indexes in `FindingRangeBuilder` be clearer than
-  storing ranges twice, or should the builder own a compact range interval
-  structure if overlap grouping grows more complex?
-- Should a protocol failure be exposed as a new `ProjectExecutionError` or
-  remain synthesized as the existing local worker failure to avoid expanding
-  the public error schema?
+- Keep `lint_source` as the canonical single-source semantic path until an
+  equivalence test proves a private local/report fast path for ordinary,
+  malformed, imported, and incomplete sources. READ-028 is an ownership and
+  measured-cost question, not permission to duplicate project semantics.
+- Prefer entry indexes or an in-place retained-entry sweep for READ-029. Do not
+  introduce an interval-tree abstraction unless overlap behavior grows beyond
+  the current deterministic containment pass.
+- Keep protocol failures internal and convert them to the existing deterministic
+  `WorkerPanic` result unless callers need to distinguish protocol corruption
+  from a worker panic. Do not expand the public error schema for this invariant
+  alone.
 
 ## Coverage
 

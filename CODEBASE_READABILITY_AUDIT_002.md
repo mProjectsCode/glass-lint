@@ -8,52 +8,15 @@ shared `ScopePass`/`ScopeTraversal` design is a good example of avoiding
 planner/collector traversal duplication, and the history and trace types own
 their invariants well.
 
-The main opportunities are at the scope-graph phase boundary: the mutable and
-frozen graphs still expose a large duplicated forwarding surface, collector
+The main opportunities are at the scope-graph phase boundary: collector
 artifacts are unpacked through positional tuples, and a deliberately lossy
 binding projection is used by positive provenance classifiers. The latter is
 the most important finding because it makes the API’s uncertainty contract
-dependent on every caller remembering which projection is safe.
+dependent on every caller remembering which projection is safe. The shared
+`ScopeReadView` is retained: it already owns the common read implementations,
+while the mutable and frozen graph wrappers provide intentional phase APIs.
 
 ## Findings
-
-### [analysis/scope/graph.rs]
-
-#### [ ] READ-005 — Scope graph query forwarding is split across three façades
-
-- Severity: Medium
-- Fix Complexity: Medium
-- Theme: ENCAPSULATE
-- Category: API
-- Location: `glass-lint-core/src/analysis/scope/graph.rs:30-155`, `195-302`, `401-551`
-
-`ScopeData<M>` owns the shared names, lexical scopes, bindings, and mutation
-storage, while `ScopeReadView<'a, M>` forwards roughly a dozen read operations
-from that state. `ScopeGraph` then adds collection-phase forwarding methods,
-and `FrozenScopeGraph` repeats most of the same forwarding surface for the
-frozen phase. Representative methods include `scope_parent`, `scope_at`,
-`nearest_binding_at`, `assignment_at`, `binding_id_at`, `binding_version`,
-`function_binding`, and `function_alias`; callers use the mutable graph during
-`ScopeCollector::freeze`/property finalization and the frozen graph throughout
-`scope/query/*`.
-
-The phase distinction is legitimate, but the ownership boundary is diffuse:
-adding or changing a shared query requires deciding whether to update
-`ScopeReadView`, `ScopeGraph`, `FrozenScopeGraph`, or all three. The repeated
-forwarders also obscure which operations truly require the mutable builder
-versus merely read `ScopeData`. The current `ScopeReadView` reduces duplicate
-logic but does not remove the duplicated public-in-crate API surface.
-
-Recommendation: make the shared read operations methods on the owning
-`ScopeData<M>` (passing the shape-valid flag only to operations such as
-`scope_at`), and keep phase wrappers limited to phase-specific conversions,
-mutation recording, and intentionally different name views. Delete the
-`ScopeReadView` wrapper and redundant graph forwarders once callers are moved.
-Preserve the mutable/frozen type distinction and add a compile-time or focused
-parity test for the shared query set so a new query cannot accidentally be
-available in only one phase.
-
-Fix Applied: None so far.
 
 ### [analysis/scope/build, analysis/scope/graph.rs]
 
@@ -124,10 +87,11 @@ status, or rename the lossy method to something such as
 `preferred_binding_witness_at` and introduce a clearly named definite query.
 Migrate `module_export_for_chain`, `member_call_provenance_for_chain`,
 `module_member_for_member`, and returned-object classification to the explicit
-policy. Delete the ambiguous compatibility path if no remaining caller needs
-it. Add adversarial tests for joined assignments, reassignment, incomplete
-paths, dynamic lookup, and independent complete witnesses so a cleanup cannot
-discard valid alternatives.
+policy. Keep a possible-witness path where the matching contract needs an
+independent complete witness, but carry its incomplete/joined status so it
+cannot be reported as definite. Add adversarial tests for joined assignments,
+reassignment, incomplete paths, dynamic lookup, and independent complete
+witnesses so a cleanup cannot discard valid alternatives.
 
 Fix Applied: None so far.
 
@@ -137,21 +101,20 @@ Fix Applied: None so far.
   transport records rather than owners of the conversion into final indexes.
   Keeping conversion policy with the receiving index or a named lowering type
   would reduce positional plumbing.
-- Phase ownership is conceptually clear, but the graph API repeats shared
-  operations around a generic read view. A single owner for shared reads would
-  make the mutable/frozen distinction easier to audit.
+- `ScopeReadView` is already the single owner of shared read logic; the graph
+  wrappers are phase-specific access surfaces, not an independent duplication
+  finding.
 - Uncertainty is modeled explicitly by `BindingResolutionStatus` and
   `BindingResolution`; the remaining risk is API ergonomics that allow callers
   to bypass that model with a similarly named lossy projection.
 
-## Open Questions
+## Review Resolutions
 
-- Is the mutable `ScopeGraph` intended to remain a general query surface after
-  collection, or can its read methods be reduced to the small set required by
-  `ScopeCollector` and property finalization?
-- Are any callers intentionally relying on `binding_at` as a possible-witness
-  query? If so, should that policy be named explicitly rather than sharing the
-  strict-looking binding name?
+- The mutable graph is needed during collection and property finalization;
+  retain its phase-local methods and the shared `ScopeReadView` implementation.
+- `binding_at` is intentionally a possible-witness projection. Positive
+  provenance classifiers must use the resolution status alongside that witness;
+  no caller should infer definiteness from `Option<&BindingProvenance>` alone.
 
 ## Coverage
 

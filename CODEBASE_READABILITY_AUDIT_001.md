@@ -142,14 +142,16 @@ existing fail-closed matching behavior must be preserved.
   domain accessors should own invariants instead of exposing a large optional
   record to every consumer.
 
-## Open Questions
+## Review Resolutions
 
-- READ-001 should be validated with branch, loop, switch, and try/catch cases
-  that rebind an instance callable and a static-string alias, because current
-  control tests visibly cover origin maps but not the two uncheckpointed maps.
-- READ-002 should confirm whether any future consumer intends to use nested
-  member paths inside static object values; current callers discard those
-  returned paths and the retained object shape stores child values instead.
+- READ-001 is a real ownership gap: `instance_callables` and
+  `static_string_origins` are mutated by target replacement and must follow
+  the same branch/loop/switch/exception transaction as the origin maps. The
+  refactor must add those cases to the existing control-flow tests.
+- READ-002 has no current consumer for nested object/array base paths; retain
+  paths only for member-chain arguments. If a future matcher needs nested
+  paths, add that semantic requirement explicitly rather than preserving
+  unused tuple fields today.
 
 ## Coverage
 

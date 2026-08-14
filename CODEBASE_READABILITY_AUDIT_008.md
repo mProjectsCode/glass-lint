@@ -121,15 +121,15 @@ conversion path.
   but its storage and validation ownership should be shared so the two public
   entry points cannot drift.
 
-## Open Questions
+## Review Resolutions
 
-- Can the immediate/deferred policy be represented privately without exposing a
-  generic policy type in the public builder API, or is a single public builder
-  with explicit `try_*` and deferred methods preferable for the next breaking
-  release?
-- Should canonical lifecycle storage use a small private domain collection or
-  a generic helper returning `Box<[T]>`? Prefer the former if iteration and
-  limit metadata grow beyond the current two users.
+- Keep the two public builder policies, but share one private stages/metadata
+  core and put only first-error versus immediate-return behavior in thin
+  adapters. Do not expose a generic policy type or collapse the public APIs.
+- Use a private generic canonical bounded collection helper for the two current
+  lifecycle collections. Keep the event and sink wrappers responsible for
+  their distinct empty-error labels and limits; introduce a richer domain
+  collection only if additional behavior appears.
 
 ## Coverage
 

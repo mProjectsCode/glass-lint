@@ -73,14 +73,15 @@ for every compiled rule.
 **Recommendation:** Define one authoritative semantic validation pass for
 authored declarations, one normalization invariant checker for the normalized
 IR, and one physical-plan sealing validator for callers that can construct
-physical roots independently. Make the production compiler use private
-validated constructors or a validated-root token so it does not re-run the
-same full checks after `RootBudget` and normalization have already established
-them; retain cheap `debug_assert`/test validators where they protect internal
-development paths. Preserve stable diagnostic precedence, malformed internal
-input handling, root and lifecycle bounds, contradiction detection, exact
-requirements derivation, and tests that deliberately inject invalid normalized
-or physical values.
+physical roots independently. Make the production compiler avoid repeating
+the same full semantic checks after normalization has established them, but
+retain physical sealing checks because `PhysicalPlan::from_roots` is an
+independent safety boundary. Use private validated constructors or a token only
+where that removes a real repeated traversal; do not weaken test-facing
+invalid-plan validation. Preserve stable diagnostic precedence, malformed
+internal input handling, root and lifecycle bounds, contradiction detection,
+exact requirements derivation, and tests that inject invalid normalized or
+physical values.
 
 **Fix Applied:** None so far.
 
@@ -161,16 +162,19 @@ destination.
   Those invariants should be represented by constructors and runtime errors,
   not only debug assertions or repeated struct literals.
 
-## Open Questions
+## Review Resolutions
 
-- Does `EventSpec` have any planned authoring-only variants that would make it
-  unsuitable for physical plans, or is the current `EventPredicate` solely a
-  historical phase copy?
-- Which compiler constructors are intentionally test-facing trust boundaries?
-  Marking those explicitly would make it safer to reduce production-path
-  validation without weakening invalid-plan tests.
-- Would a catalog-capacity token be reusable by `RuleIndex`, evidence tables,
-  projections, and cross-flow collection, or would it over-couple those APIs?
+- `EventSpec` and `EventPredicate` are currently one-to-one. READ-022 may remove
+  the mirror only if the physical root can carry the declaration event without
+  exposing authoring concerns; otherwise keep one compiler-owned event type
+  and centralize the conversion rather than adding another mirror.
+- `PhysicalPlan::from_roots` is the production sealing boundary; the
+  test-facing constructors deliberately exercise malformed physical values.
+  READ-023 must remove only redundant production validation, not this boundary
+  check or its tests.
+- Do not introduce a shared catalog-capacity token across unrelated owners.
+  READ-025 needs a runtime equality error (or an equivalent owner-local
+  invariant), not cross-coupled capacity types.
 
 ## Coverage
 
