@@ -42,7 +42,11 @@ public `ProjectInputError` values; add tests for duplicate-in-batch,
 duplicate-against-session, count limit, byte limit, overflow, and unchanged
 state after every failed insertion.
 
-**Fix Applied:** None so far.
+**Fix Applied:** A private local macro now owns the repeated accessor,
+`Deref`, `AsRef<str>`, `Borrow<str>`, formatting, and string-comparison trait
+implementations for the three validated text types. Their distinct
+constructors and the outside-path `AsRef<Path>` policy remain explicit.
+Verified with `cargo test -p glass-lint-core project::types --lib`.
 
 ### Validated scalar wrappers
 

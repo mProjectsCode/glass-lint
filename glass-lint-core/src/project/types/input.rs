@@ -47,6 +47,42 @@ impl From<&str> for SourceText {
     }
 }
 
+macro_rules! impl_validated_text_traits {
+    ($type:ty) => {
+        impl Deref for $type {
+            type Target = str;
+
+            fn deref(&self) -> &Self::Target {
+                self.as_str()
+            }
+        }
+
+        impl AsRef<str> for $type {
+            fn as_ref(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl Borrow<str> for $type {
+            fn borrow(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl std::fmt::Display for $type {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str(self.as_str())
+            }
+        }
+
+        impl PartialEq<&str> for $type {
+            fn eq(&self, other: &&str) -> bool {
+                self.as_str() == *other
+            }
+        }
+    };
+}
+
 /// The canonical validated package-root value (e.g., "lodash",
 /// "@angular/core") shared by project inputs and rule declarations.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -86,38 +122,6 @@ impl PackageSpecifier {
     }
 }
 
-impl Deref for PackageSpecifier {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        self.as_str()
-    }
-}
-
-impl AsRef<str> for PackageSpecifier {
-    fn as_ref(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl Borrow<str> for PackageSpecifier {
-    fn borrow(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for PackageSpecifier {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl PartialEq<&str> for PackageSpecifier {
-    fn eq(&self, other: &&str) -> bool {
-        self.as_str() == *other
-    }
-}
-
 /// A validated builtin module name (e.g., "node:fs", "node:path",
 /// "node:buffer").
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -145,38 +149,6 @@ impl BuiltinModuleName {
     }
 }
 
-impl Deref for BuiltinModuleName {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        self.as_str()
-    }
-}
-
-impl AsRef<str> for BuiltinModuleName {
-    fn as_ref(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl Borrow<str> for BuiltinModuleName {
-    fn borrow(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for BuiltinModuleName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl PartialEq<&str> for BuiltinModuleName {
-    fn eq(&self, other: &&str) -> bool {
-        self.as_str() == *other
-    }
-}
-
 /// A normalized outside-project path.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct NormalizedOutsidePath(SmolStr);
@@ -193,37 +165,9 @@ impl NormalizedOutsidePath {
     }
 }
 
-impl Deref for NormalizedOutsidePath {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        self.as_str()
-    }
-}
-
-impl AsRef<str> for NormalizedOutsidePath {
-    fn as_ref(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl Borrow<str> for NormalizedOutsidePath {
-    fn borrow(&self) -> &str {
-        &self.0
-    }
-}
-
-impl PartialEq<&str> for NormalizedOutsidePath {
-    fn eq(&self, other: &&str) -> bool {
-        self.as_str() == *other
-    }
-}
-
-impl std::fmt::Display for NormalizedOutsidePath {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
+impl_validated_text_traits!(PackageSpecifier);
+impl_validated_text_traits!(BuiltinModuleName);
+impl_validated_text_traits!(NormalizedOutsidePath);
 
 impl AsRef<std::path::Path> for NormalizedOutsidePath {
     fn as_ref(&self) -> &std::path::Path {
