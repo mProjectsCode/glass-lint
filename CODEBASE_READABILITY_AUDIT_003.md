@@ -47,7 +47,12 @@ Add tests that exceed capacity during both direct-sink collection and
 callee-to-caller propagation and assert that retained summaries stay within
 the advertised bound.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `SummarySinkBudget::admit_sinks` now computes novel sink
+entries, checks the global capacity and operation budget, and mutates the
+owning `FunctionSummary` only after admission succeeds. Direct collection and
+callee-to-caller propagation share this operation; the old post-hoc
+`InsertOutcome` split is gone. Verified with
+`cargo test -p glass-lint-core analysis::flow::summary --lib`.
 
 ### [analysis/flow/projector/evidence.rs, analysis/flow/projector]
 

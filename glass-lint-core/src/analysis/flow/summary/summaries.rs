@@ -32,13 +32,6 @@ struct SummarySinkBudget {
 
 impl SummarySinkBudget {
     fn admit(&mut self, budget: &mut Budget, inserted: usize) -> Result<(), FlowCompletion> {
-        for _ in 0..inserted {
-            if !budget.try_push() {
-                return Err(FlowCompletion::incomplete(
-                    FlowCompletionReason::SummaryBudget,
-                ));
-            }
-        }
         let Some(retained) = self.retained.checked_add(inserted) else {
             return Err(FlowCompletion::incomplete(
                 FlowCompletionReason::SummarySinkCapacity,
@@ -49,8 +42,30 @@ impl SummarySinkBudget {
                 FlowCompletionReason::SummarySinkCapacity,
             ));
         }
+        for _ in 0..inserted {
+            if !budget.try_push() {
+                return Err(FlowCompletion::incomplete(
+                    FlowCompletionReason::SummaryBudget,
+                ));
+            }
+        }
         self.retained = retained;
         Ok(())
+    }
+
+    fn admit_sinks(
+        &mut self,
+        summary: &mut FunctionSummary,
+        candidates: Vec<FunctionSinkSummary>,
+        budget: &mut Budget,
+    ) -> Result<bool, FlowCompletion> {
+        let new_count = summary.new_sink_count(&candidates);
+        self.admit(budget, new_count)?;
+        if new_count == 0 {
+            return Ok(false);
+        }
+        summary.add_sinks(candidates);
+        Ok(true)
     }
 }
 
@@ -153,10 +168,11 @@ impl<'a> FunctionSummaries<'a> {
                     return;
                 }
                 if let Some(call_id) = summary.calls().get(idx).copied() {
-                    let added = summary
-                        .collect_sinks_for_call(stream, plan, &mut self.paths, call_id)
-                        .inserted();
-                    if let Err(completion) = self.sink_budget.admit(budget, added) {
+                    let candidates =
+                        summary.collect_sinks_for_call(stream, plan, &mut self.paths, call_id);
+                    if let Err(completion) =
+                        self.sink_budget.admit_sinks(summary, candidates, budget)
+                    {
                         self.completion = completion;
                         return;
                     }
@@ -209,13 +225,8 @@ impl<'a> FunctionSummaries<'a> {
                 }
             }
         }
-        let mut inserted_any = false;
-        for proj in projections {
-            let inserted = caller_summary.add_sink(proj).inserted();
-            inserted_any |= inserted > 0;
-            self.sink_budget.admit(budget, inserted)?;
-        }
-        Ok(inserted_any)
+        self.sink_budget
+            .admit_sinks(caller_summary, projections, budget)
     }
 }
 
@@ -351,7 +362,7 @@ mod tests {
     use super::*;
     use crate::analysis::{
         facts,
-        flow::{effect::FunctionEffects, planning::BoundFlowPlan},
+        flow::{effect::FunctionEffects, planning::BoundFlowPlan, summary::store::SummaryPathId},
     };
 
     fn unlimited_budget() -> Budget {
@@ -376,6 +387,35 @@ mod tests {
                 .count(),
             2
         );
+    }
+
+    #[test]
+    fn rejected_sink_admission_does_not_mutate_the_summary() {
+        let mut summary = FunctionSummary::new(
+            FunctionId::from_test(1),
+            FunctionSignature::new(1, false),
+            vec![],
+        );
+        let candidate = FunctionSinkSummary::new(
+            crate::analysis::model::flow::FlowId::new(
+                crate::api::classification::RuleIndex::new(0),
+                0,
+            ),
+            0,
+            SummaryPathId::from_frozen_path(glass_lint_datastructures::PathId::EMPTY),
+        );
+        let mut sink_budget = SummarySinkBudget {
+            retained: MAX_SUMMARY_SINKS,
+        };
+        let mut budget = unlimited_budget();
+
+        assert!(
+            sink_budget
+                .admit_sinks(&mut summary, vec![candidate], &mut budget)
+                .is_err()
+        );
+        assert!(summary.sinks().into_iter().next().is_none());
+        assert_eq!(sink_budget.retained, MAX_SUMMARY_SINKS);
     }
 
     #[test]

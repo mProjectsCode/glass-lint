@@ -38,40 +38,30 @@ impl FunctionSinkSummary {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(in crate::analysis::flow) struct InsertOutcome {
-    inserted: usize,
-}
-
-impl InsertOutcome {
-    pub(super) fn new(inserted: usize) -> Self {
-        Self { inserted }
-    }
-
-    pub(super) fn inserted(self) -> usize {
-        self.inserted
-    }
-}
-
 #[derive(Debug, Clone, Default)]
 pub(in crate::analysis::flow) struct SinkSet {
     set: FastIndexSet<FunctionSinkSummary>,
 }
 
 impl SinkSet {
-    pub(super) fn push_unique(&mut self, sink: FunctionSinkSummary) -> InsertOutcome {
-        InsertOutcome::new(usize::from(self.set.insert(sink)))
+    pub(super) fn push_unique(&mut self, sink: FunctionSinkSummary) {
+        self.set.insert(sink);
     }
 
-    pub(super) fn extend_unique(
-        &mut self,
-        sinks: impl IntoIterator<Item = FunctionSinkSummary>,
-    ) -> InsertOutcome {
-        let mut inserted = 0;
+    pub(super) fn extend_unique(&mut self, sinks: impl IntoIterator<Item = FunctionSinkSummary>) {
         for sink in sinks {
-            inserted += usize::from(self.set.insert(sink));
+            self.set.insert(sink);
         }
-        InsertOutcome::new(inserted)
+    }
+
+    fn new_count(&self, sinks: &[FunctionSinkSummary]) -> usize {
+        let mut pending = Vec::new();
+        for sink in sinks {
+            if !self.set.contains(sink) && !pending.iter().any(|item| *item == sink) {
+                pending.push(sink);
+            }
+        }
+        pending.len()
     }
 
     pub(super) fn sort_and_dedup(&mut self) {
@@ -182,15 +172,16 @@ impl FunctionSummary {
         self.signature.parameter_count
     }
 
-    pub(super) fn add_sink(&mut self, sink: FunctionSinkSummary) -> InsertOutcome {
+    pub(super) fn add_sink(&mut self, sink: FunctionSinkSummary) {
         self.sinks.push_unique(sink)
     }
 
-    pub(super) fn add_sinks(
-        &mut self,
-        sinks: impl IntoIterator<Item = FunctionSinkSummary>,
-    ) -> InsertOutcome {
+    pub(super) fn add_sinks(&mut self, sinks: impl IntoIterator<Item = FunctionSinkSummary>) {
         self.sinks.extend_unique(sinks)
+    }
+
+    pub(super) fn new_sink_count(&self, sinks: &[FunctionSinkSummary]) -> usize {
+        self.sinks.new_count(sinks)
     }
 
     pub(super) fn sort_sinks(&mut self) {
@@ -221,10 +212,10 @@ impl FunctionSummary {
         plan: &BoundFlowPlan<'_>,
         paths: &mut SummaryPathStore<'_>,
         call_id: FactId,
-    ) -> InsertOutcome {
+    ) -> Vec<FunctionSinkSummary> {
         let cref = stream.call_effect(call_id);
         let Some(shape) = cref.shape() else {
-            return InsertOutcome::default();
+            return Vec::new();
         };
         let args = shape.effective_args();
         let sinks = plan.sink_candidates_for_call(&shape);
@@ -258,7 +249,7 @@ impl FunctionSummary {
                 ));
             }
         }
-        self.add_sinks(candidates)
+        candidates
     }
 }
 
@@ -329,9 +320,9 @@ mod tests {
 
         let s1 = FunctionSinkSummary::new(FlowId::new(ri(0), 0), 0, sp0);
         let s2 = FunctionSinkSummary::new(FlowId::new(ri(0), 0), 1, sp0);
-        assert_eq!(set.push_unique(s1).inserted(), 1);
+        set.push_unique(s1);
         assert_eq!((&set).into_iter().count(), 1);
-        assert_eq!(set.push_unique(s2).inserted(), 1);
+        set.push_unique(s2);
         assert_eq!((&set).into_iter().count(), 2);
     }
 
@@ -340,21 +331,20 @@ mod tests {
         let mut set = SinkSet::default();
         let sp0 = SummaryPathId::from_frozen_path(PathId::EMPTY);
         let s1 = FunctionSinkSummary::new(FlowId::new(ri(0), 0), 0, sp0);
-        assert_eq!(set.push_unique(s1.clone()).inserted(), 1);
-        assert_eq!(set.push_unique(s1).inserted(), 0);
+        set.push_unique(s1.clone());
+        set.push_unique(s1);
         assert_eq!((&set).into_iter().count(), 1);
     }
 
     #[test]
-    fn sink_set_extend_unique_reports_total_inserted_after_dedup() {
+    fn sink_set_extend_unique_deduplicates_candidates() {
         let (_paths, p0, p1, _p2) = test_paths();
         let mut set = SinkSet::default();
         let sp1 = SummaryPathId::from_frozen_path(p0);
         let sp2 = SummaryPathId::from_frozen_path(p1);
         let s1 = FunctionSinkSummary::new(FlowId::new(ri(0), 0), 0, sp1);
         let s2 = FunctionSinkSummary::new(FlowId::new(ri(0), 0), 1, sp2);
-        let outcome = set.extend_unique(vec![s1.clone(), s1, s2]);
-        assert_eq!(outcome.inserted(), 2);
+        set.extend_unique(vec![s1.clone(), s1, s2]);
         assert_eq!((&set).into_iter().count(), 2);
     }
 
