@@ -77,7 +77,11 @@ twice. Preserve static object/array child identities, deterministic path
 limits where paths are genuinely used, and fail-closed handling of spreads,
 computed keys, dynamic values, and unsupported shapes.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Object/array argument-shape analysis now returns only the
+retained value identity; nested path and duplicate base-value tuple plumbing
+was removed. Top-level member arguments continue using the dedicated
+member-chain projection. Verified with `cargo test -p glass-lint-core
+analysis::facts --lib` and the declarative argument integration tests.
 
 ### Function boundary construction
 

@@ -46,12 +46,11 @@ impl FactBuilder<'_, '_> {
                 }
             }
             Expr::Object(_) | Expr::Array(_) => {
-                let (value, base_value, base_path) =
-                    self.analyze_argument_tree(expr, PathId::EMPTY);
+                let value = self.analyze_argument_tree(expr);
                 CallArgInfo {
                     value,
-                    base_value,
-                    base_path,
+                    base_value: value,
+                    base_path: PathId::EMPTY,
                     spread: false,
                     provenance: crate::analysis::syntax::SymbolCallProvenance::Local,
                 }
@@ -133,7 +132,7 @@ impl FactBuilder<'_, '_> {
     /// identity.
     // Kept as a single dispatch match: each Expr arm recurses or delegates,
     // and the object/array arms are the substantive branches.
-    fn analyze_argument_tree(&mut self, expr: &Expr, path: PathId) -> (ValueId, ValueId, PathId) {
+    fn analyze_argument_tree(&mut self, expr: &Expr) -> ValueId {
         // Match over Expr variants; each arm is a self-contained builder step.
         // Extracting per-variant helpers would add dispatch boilerplate without
         // reducing overall complexity.
@@ -142,78 +141,51 @@ impl FactBuilder<'_, '_> {
                 let mut entries = Vec::new();
                 for property in &object.props {
                     let swc_ecma_ast::PropOrSpread::Prop(property) = property else {
-                        let value = self.resolver.resolve_expr_id(expr);
-                        return (value, value, path);
+                        return self.resolver.resolve_expr_id(expr);
                     };
                     let swc_ecma_ast::Prop::KeyValue(property) = &**property else {
-                        let value = self.resolver.resolve_expr_id(expr);
-                        return (value, value, path);
+                        return self.resolver.resolve_expr_id(expr);
                     };
                     let Some(name) = crate::analysis::syntax::literal_property_name(&property.key)
                     else {
-                        let value = self.resolver.resolve_expr_id(expr);
-                        return (value, value, path);
+                        return self.resolver.resolve_expr_id(expr);
                     };
-                    let child_path =
-                        self.append_path(path, PathSegmentInput::Property(name.as_str()));
-                    let (child_value, _, _) =
-                        self.analyze_argument_tree(&property.value, child_path);
+                    let child_value = self.analyze_argument_tree(&property.value);
                     let Some(name) = self.intern_name(Some(name.as_str())) else {
-                        return (ValueId::UNKNOWN, ValueId::UNKNOWN, path);
+                        return ValueId::UNKNOWN;
                     };
                     entries.push((name, child_value));
                 }
                 let Some(object) = StaticObject::new(entries) else {
-                    let value = self.resolver.resolve_expr_id(expr);
-                    return (value, value, path);
+                    return self.resolver.resolve_expr_id(expr);
                 };
-                let value = self.resolver.static_object_shape(object).id;
-                (value, value, path)
+                self.resolver.static_object_shape(object).id
             }
             Expr::Array(array) => {
                 let mut elements = Vec::with_capacity(array.elems.len());
-                for (index, element) in array.elems.iter().enumerate() {
+                for (_index, element) in array.elems.iter().enumerate() {
                     let Some(element) = element else {
                         elements.push(ValueId::UNKNOWN);
                         continue;
                     };
-                    let Ok(index) = u32::try_from(index) else {
-                        return (ValueId::UNKNOWN, ValueId::UNKNOWN, path);
+                    let Ok(_index) = u32::try_from(_index) else {
+                        return ValueId::UNKNOWN;
                     };
-                    let child_path = self.append_path(path, PathSegmentInput::Index(index));
-                    let (child_value, _, _) = self.analyze_argument_tree(&element.expr, child_path);
+                    let child_value = self.analyze_argument_tree(&element.expr);
                     elements.push(child_value);
                 }
-                let value = self.resolver.static_array(elements).id;
-                (value, value, path)
+                self.resolver.static_array(elements).id
             }
-            Expr::Member(member) => {
-                let value = self.resolver.resolve_expr_id(expr);
-                let (base_value, base_path) = self.member_chain_projection(&member.obj);
-                let property = literal_member_property_name(&member.prop);
-                let extended = match property {
-                    Some(p) if let Ok(index) = p.parse::<usize>() => match u32::try_from(index) {
-                        Ok(index) => self.append_path(base_path, PathSegmentInput::Index(index)),
-                        Err(_) => return (value, value, path),
-                    },
-                    Some(p) => self.append_path(base_path, PathSegmentInput::Property(p.as_str())),
-                    None => return (value, value, path),
-                };
-                (value, base_value, extended)
-            }
-            Expr::Paren(paren) => self.analyze_argument_tree(&paren.expr, path),
+            Expr::Member(_) => self.resolver.resolve_expr_id(expr),
+            Expr::Paren(paren) => self.analyze_argument_tree(&paren.expr),
             Expr::Seq(sequence) => {
                 if let Some(last) = sequence.exprs.last() {
-                    self.analyze_argument_tree(last, path)
+                    self.analyze_argument_tree(last)
                 } else {
-                    let value = self.resolver.resolve_expr_id(expr);
-                    (value, value, path)
+                    self.resolver.resolve_expr_id(expr)
                 }
             }
-            _ => {
-                let value = self.resolver.resolve_expr_id(expr);
-                (value, value, path)
-            }
+            _ => self.resolver.resolve_expr_id(expr),
         }
     }
 
