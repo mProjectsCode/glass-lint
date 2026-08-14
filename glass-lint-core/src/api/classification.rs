@@ -40,6 +40,7 @@ impl RuleEvidenceCapacity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuleEvidenceError {
     RuleOutOfRange { rule: RuleIndex, capacity: usize },
+    CapacityMismatch { expected: usize, actual: usize },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -292,11 +293,17 @@ impl RuleEvidenceTable {
         Ok(())
     }
 
-    pub(crate) fn merge_equal_capacity(&mut self, other: Self) {
-        debug_assert_eq!(self.capacity, other.capacity);
+    pub(crate) fn merge_equal_capacity(&mut self, other: Self) -> Result<(), RuleEvidenceError> {
+        if self.capacity != other.capacity {
+            return Err(RuleEvidenceError::CapacityMismatch {
+                expected: self.capacity.len(),
+                actual: other.capacity.len(),
+            });
+        }
         for (rule, other_items) in other.values {
             self.values.entry(rule).or_default().extend(other_items);
         }
+        Ok(())
     }
 
     pub(crate) fn mark_all_possible(&mut self) {
@@ -367,6 +374,22 @@ mod test_evidence_capacity {
                 capacity: 1,
             })
         );
+    }
+
+    #[test]
+    fn rejects_merging_different_capacities_without_mutating_destination() {
+        let mut destination = RuleEvidenceTable::new_for_test(1);
+        let mut other = RuleEvidenceTable::new_for_test(2);
+        other.record(RuleIndex::new(1), evidence()).unwrap();
+
+        assert_eq!(
+            destination.merge_equal_capacity(other),
+            Err(RuleEvidenceError::CapacityMismatch {
+                expected: 1,
+                actual: 2,
+            })
+        );
+        assert!(destination.for_rule(RuleIndex::new(1)).is_none());
     }
 
     #[test]

@@ -434,6 +434,7 @@ impl ProjectionStatus {
                 RuleEvidenceError::RuleOutOfRange { rule, capacity } => {
                     (capacity, rule.get().saturating_add(1))
                 }
+                RuleEvidenceError::CapacityMismatch { expected, actual } => (expected, actual),
             };
             status.record(
                 StatusScope::Project,
@@ -594,14 +595,15 @@ impl ProjectSemanticModel {
             Default::default()
         };
         outcome.record_cross(&cross_outcome);
-        let outcome = outcome.finish();
-
         let mut projections = projections;
         for (module, evidence) in cross {
             if let Some(projection) = projections.get_mut(&module) {
-                projection.projected.merge_equal_capacity(evidence);
+                if let Err(error) = projection.projected.merge_equal_capacity(evidence) {
+                    outcome.record_evidence_error(error);
+                }
             }
         }
+        let outcome = outcome.finish();
 
         (
             ProjectMatcherModel {

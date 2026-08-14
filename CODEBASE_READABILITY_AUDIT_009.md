@@ -87,7 +87,12 @@ internal input handling, root and lifecycle bounds, contradiction detection,
 exact requirements derivation, and tests that inject invalid normalized or
 physical values.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `RuleEvidenceTable::merge_equal_capacity` now returns a
+runtime `CapacityMismatch` error before touching the destination, and the
+projection pipeline records that error in its existing status channel. The
+debug-only assertion was removed. Verified with the release-equivalent unit
+test `rejects_merging_different_capacities_without_mutating_destination` via
+`cargo test -p glass-lint-core api::classification --lib`.
 
 ### [api/classification.rs]
 
