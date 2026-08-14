@@ -40,6 +40,31 @@ impl LifecycleCallEndpoint {
     }
 }
 
+macro_rules! define_lifecycle_adapter {
+    ($trait_name:ident, $method:ident, $value:ty) => {
+        #[doc = "Sealed fallible lifecycle input adapter."]
+        pub trait $trait_name: private::Sealed {
+            fn $method(self) -> Result<$value, QueryBuildError>;
+        }
+
+        impl $trait_name for $value {
+            fn $method(self) -> Result<$value, QueryBuildError> {
+                Ok(self)
+            }
+        }
+
+        impl private::Sealed for $value {}
+
+        impl $trait_name for Result<$value, QueryBuildError> {
+            fn $method(self) -> Result<$value, QueryBuildError> {
+                self
+            }
+        }
+
+        impl private::Sealed for Result<$value, QueryBuildError> {}
+    };
+}
+
 // ── LifecycleEvent ────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -124,22 +149,7 @@ impl LifecycleEventBuilder {
     }
 }
 
-/// Fallible event input accepted by lifecycle condition constructors.
-pub trait IntoLifecycleEvent: private::Sealed {
-    fn into_lifecycle_event(self) -> Result<LifecycleEvent, QueryBuildError>;
-}
-
-impl IntoLifecycleEvent for LifecycleEvent {
-    fn into_lifecycle_event(self) -> Result<LifecycleEvent, QueryBuildError> {
-        Ok(self)
-    }
-}
-
-impl IntoLifecycleEvent for Result<LifecycleEvent, QueryBuildError> {
-    fn into_lifecycle_event(self) -> Result<LifecycleEvent, QueryBuildError> {
-        self
-    }
-}
+define_lifecycle_adapter!(IntoLifecycleEvent, into_lifecycle_event, LifecycleEvent);
 
 impl IntoLifecycleEvent for LifecycleEventBuilder {
     fn into_lifecycle_event(self) -> Result<LifecycleEvent, QueryBuildError> {
@@ -373,30 +383,6 @@ impl LifecycleCompletion {
     }
 }
 
-macro_rules! define_lifecycle_adapter {
-    ($trait_name:ident, $method:ident, $value:ty) => {
-        pub trait $trait_name: private::Sealed {
-            fn $method(self) -> Result<$value, QueryBuildError>;
-        }
-
-        impl $trait_name for $value {
-            fn $method(self) -> Result<$value, QueryBuildError> {
-                Ok(self)
-            }
-        }
-
-        impl private::Sealed for $value {}
-
-        impl $trait_name for Result<$value, QueryBuildError> {
-            fn $method(self) -> Result<$value, QueryBuildError> {
-                self
-            }
-        }
-
-        impl private::Sealed for Result<$value, QueryBuildError> {}
-    };
-}
-
 // Fallible completion input accepted by lifecycle query builders.
 define_lifecycle_adapter!(
     IntoLifecycleCompletion,
@@ -505,37 +491,12 @@ impl LifecycleSink {
 // Fallible sink input accepted by [`LifecycleCompletion::any_sink`].
 define_lifecycle_adapter!(IntoLifecycleSink, into_lifecycle_sink, LifecycleSink);
 
-/// Fallible source input accepted by the lifecycle query builder's `source`
-/// method.
-///
-/// Sources deliberately accept the existing leaf [`EventQuery`] rather than
-/// a full `QueryDecl`. The compiler later restricts the event to a global
-/// call or rooted member call because only those forms produce a tracked
-/// returned object in the flow engine.
-pub trait IntoLifecycleSource: private::Sealed {
-    fn into_lifecycle_source(self) -> Result<EventQuery, QueryBuildError>;
-}
-
-impl IntoLifecycleSource for EventQuery {
-    fn into_lifecycle_source(self) -> Result<EventQuery, QueryBuildError> {
-        Ok(self)
-    }
-}
-
-impl IntoLifecycleSource for Result<EventQuery, QueryBuildError> {
-    fn into_lifecycle_source(self) -> Result<EventQuery, QueryBuildError> {
-        self
-    }
-}
+define_lifecycle_adapter!(IntoLifecycleSource, into_lifecycle_source, EventQuery);
 
 mod private {
     pub trait Sealed {}
 
-    impl Sealed for super::LifecycleEvent {}
-    impl Sealed for Result<super::LifecycleEvent, super::QueryBuildError> {}
     impl Sealed for super::LifecycleEventBuilder {}
-    impl Sealed for super::EventQuery {}
-    impl Sealed for Result<super::EventQuery, super::QueryBuildError> {}
 }
 
 // ── LifecycleQueryBuilder ─────────────────────────────────────────────
@@ -696,25 +657,11 @@ impl LifecycleQueryBuilder {
     }
 }
 
-pub trait IntoLifecycleCondition: private::Sealed {
-    fn into_lifecycle_condition(self) -> Result<LifecycleCondition, QueryBuildError>;
-}
-
-impl IntoLifecycleCondition for LifecycleCondition {
-    fn into_lifecycle_condition(self) -> Result<LifecycleCondition, QueryBuildError> {
-        Ok(self)
-    }
-}
-
-impl private::Sealed for LifecycleCondition {}
-
-impl IntoLifecycleCondition for Result<LifecycleCondition, QueryBuildError> {
-    fn into_lifecycle_condition(self) -> Result<LifecycleCondition, QueryBuildError> {
-        self
-    }
-}
-
-impl private::Sealed for Result<LifecycleCondition, QueryBuildError> {}
+define_lifecycle_adapter!(
+    IntoLifecycleCondition,
+    into_lifecycle_condition,
+    LifecycleCondition
+);
 
 #[derive(Debug, Clone)]
 pub struct CatalogLifecycleQueryBuilder {

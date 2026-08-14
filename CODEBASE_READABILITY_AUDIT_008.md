@@ -81,7 +81,10 @@ types. Guard the migration with tests for duplicate elimination, deterministic
 ordering, empty inputs, and the exact event/sink limits, including the
 pre-conversion bound in `bounded_lifecycle_items`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The sealed adapter macro now generates the identity and
+`Result<_, QueryBuildError>` conversions for event, source, condition, sink,
+and completion inputs. The event-builder special case remains explicit.
+Verified with `cargo test -p glass-lint-core api::rule::query::lifecycle --lib`.
 
 ### [api/rule/query/lifecycle.rs]
 
