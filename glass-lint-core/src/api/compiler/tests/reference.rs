@@ -102,8 +102,8 @@ fn empty_rows_produce_no_witnesses() {
     let nq = normalize_query_decl(&decl).unwrap();
     let plan = plan_normalized(&nq).unwrap();
     assert!(witnesses_equal(&nq, &plan, &[]));
-    assert!(logical_witnesses(&nq, &[]).is_empty());
-    assert!(physical_witnesses(&plan, &[]).is_empty());
+    assert_eq!(logical_witnesses(&nq, &[]).len(), 0);
+    assert_eq!(physical_witnesses(&plan, &[]).len(), 0);
 }
 
 #[test]
@@ -139,7 +139,7 @@ fn non_matching_rows_produce_no_witnesses() {
         0,
     )];
     assert!(witnesses_equal(&nq, &plan, &rows));
-    assert!(logical_witnesses(&nq, &rows).is_empty());
+    assert_eq!(logical_witnesses(&nq, &rows).len(), 0);
 }
 
 #[test]
@@ -375,7 +375,7 @@ fn constrained_scan_matches_arguments() {
         wrong_args,
     )];
     assert!(witnesses_equal(&nq, &plan, &non_matching));
-    assert!(logical_witnesses(&nq, &non_matching).is_empty());
+    assert_eq!(logical_witnesses(&nq, &non_matching).len(), 0);
 }
 
 #[test]
@@ -468,7 +468,7 @@ fn returned_subject_produces_support_evidence() {
 
     let mut incomplete = rows[0].clone();
     incomplete.support = None;
-    assert!(logical_witnesses(&nq, &[incomplete]).is_empty());
+    assert_eq!(logical_witnesses(&nq, &[incomplete]).len(), 0);
 }
 
 #[test]

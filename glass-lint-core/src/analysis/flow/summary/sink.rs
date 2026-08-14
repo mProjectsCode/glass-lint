@@ -53,7 +53,7 @@ impl SinkSet {
     fn new_count(&self, sinks: &[FunctionSinkSummary]) -> usize {
         let mut pending = Vec::new();
         for sink in sinks {
-            if !self.set.contains(sink) && !pending.iter().any(|item| *item == sink) {
+            if !self.set.contains(sink) && !pending.contains(&sink) {
                 pending.push(sink);
             }
         }
@@ -169,7 +169,7 @@ impl FunctionSummary {
     }
 
     pub(super) fn add_sinks(&mut self, sinks: impl IntoIterator<Item = FunctionSinkSummary>) {
-        self.sinks.extend_unique(sinks)
+        self.sinks.extend_unique(sinks);
     }
 
     pub(super) fn new_sink_count(&self, sinks: &[FunctionSinkSummary]) -> usize {
@@ -199,7 +199,7 @@ impl FunctionSummary {
 
 impl FunctionSummary {
     pub(super) fn collect_sinks_for_call(
-        &mut self,
+        &self,
         stream: &FactStream<Frozen>,
         plan: &BoundFlowPlan<'_>,
         paths: &mut SummaryPathStore<'_>,
@@ -383,7 +383,7 @@ mod tests {
         );
         assert_eq!(summary.id(), FunctionId::from_test(5));
         assert_eq!(summary.parameter_count(), 3);
-        assert!(summary.calls().is_empty());
+        assert_eq!(summary.calls().len(), 0);
         assert_eq!(summary.sinks().into_iter().count(), 0);
     }
 

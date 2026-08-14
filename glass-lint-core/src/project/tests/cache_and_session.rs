@@ -177,7 +177,7 @@ fn rule_selection_changes_projection_without_relowering() {
         .unwrap();
     assert_eq!(second_observer.invocations().hits, 1);
     assert_eq!(second_observer.invocations().analyses, 0);
-    assert!(finish_session(second).files()[0].findings().is_empty());
+    assert_eq!(finish_session(second).files()[0].findings().len(), 0);
 }
 
 fn setup_baseline_and_base_cache() -> (crate::Linter, crate::analysis::ArtifactCacheHandle) {

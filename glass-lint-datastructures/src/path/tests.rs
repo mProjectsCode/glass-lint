@@ -7,7 +7,7 @@ use crate::name::NameId;
 fn name_path_empty() {
     let path = NamePath::new();
     assert!(path.is_root());
-    assert!(path.segments().is_empty());
+    assert_eq!(path.segments().len(), 0);
     assert_eq!(path.first_segment(), None);
     assert_eq!(path.last_segment(), None);
 }
@@ -48,7 +48,7 @@ fn name_path_without_first_on_single_returns_empty() {
     path.append(NameId(1));
     let rest = path.without_first_segment().unwrap();
     assert!(rest.is_root());
-    assert!(rest.segments().is_empty());
+    assert_eq!(rest.segments().len(), 0);
 }
 
 #[test]
@@ -313,7 +313,7 @@ fn path_view_is_equal_or_descendant_of() {
 #[test]
 fn path_view_prefix_at() {
     let view = PathView::new(&[1, 2, 3]);
-    assert_eq!(view.prefix_at(0).unwrap().segments(), &[]);
+    assert_eq!(view.prefix_at(0).unwrap().segments().len(), 0);
     assert_eq!(view.prefix_at(2).unwrap().segments(), &[1, 2]);
     assert_eq!(view.prefix_at(3).unwrap().segments(), &[1, 2, 3]);
     assert_eq!(view.prefix_at(4), None);
@@ -322,7 +322,7 @@ fn path_view_prefix_at() {
 #[test]
 fn path_view_prefix_at_empty() {
     let view = PathView::<i32>::new(&[]);
-    assert_eq!(view.prefix_at(0).unwrap().segments(), &[]);
+    assert_eq!(view.prefix_at(0).unwrap().segments().len(), 0);
     assert_eq!(view.prefix_at(1), None);
 }
 
@@ -339,7 +339,7 @@ fn path_view_tail_after_compares_suffixes() {
 #[test]
 fn path_view_tail_after_empty() {
     let view = PathView::<i32>::new(&[]);
-    assert_eq!(view.tail_after(0).unwrap().segments(), &[]);
+    assert_eq!(view.tail_after(0).unwrap().segments().len(), 0);
     assert_eq!(view.tail_after(1), None);
 }
 

@@ -98,7 +98,7 @@ fn type_only_api_lookalikes_do_not_create_findings() {
     ))
     .unwrap();
     assert!(!report.files()[0].has_parse_diagnostics());
-    assert!(report.files()[0].findings().is_empty());
+    assert_eq!(report.files()[0].findings().len(), 0);
 }
 
 #[test]
@@ -136,7 +136,7 @@ fn parameter_properties_and_namespace_names_do_not_create_global_provenance() {
     ))
     .unwrap();
     assert!(!report.files()[0].has_parse_diagnostics());
-    assert!(report.files()[0].findings().is_empty());
+    assert_eq!(report.files()[0].findings().len(), 0);
 }
 
 #[test]

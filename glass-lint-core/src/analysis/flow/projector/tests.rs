@@ -107,7 +107,7 @@ fn empty_flow_catalog_skips_projection_work() {
     );
 
     assert_eq!(outcome.operations, 0);
-    assert!(evidence[0].is_empty());
+    assert_eq!(evidence[0].len(), 0);
 }
 
 fn script_flow() -> LifecycleQuery {
@@ -264,7 +264,7 @@ fn property_invalidation_is_driven_by_assignment_facts() {
         "const script = document.createElement('script'); script.src = url; script.src += suffix; document.head.appendChild(script);",
         &script_flow(),
     );
-    assert!(evidence[0].is_empty());
+    assert_eq!(evidence[0].len(), 0);
 }
 
 #[test]
@@ -558,7 +558,7 @@ fn incompatible_branch_facts_do_not_form_a_flow_witness() {
         "const script = document.createElement('script'); let inserted; if (ready) { script.src = url; inserted = localElement; } else { inserted = script; } document.head.appendChild(inserted);",
         &script_flow(),
     );
-    assert!(evidence[0].is_empty());
+    assert_eq!(evidence[0].len(), 0);
 }
 
 #[test]
@@ -617,7 +617,7 @@ fn finally_return_does_not_reach_code_after_the_try() {
         "function run() { const script = document.createElement('script'); try { return; } finally { script.src = url; } document.head.appendChild(script); }",
         &script_flow(),
     );
-    assert!(evidence[0].is_empty());
+    assert_eq!(evidence[0].len(), 0);
 }
 
 #[test]
@@ -626,7 +626,7 @@ fn destructuring_assignment_invalidates_the_written_alias() {
         "let script = document.createElement('script'); script.src = url; ({ script } = replacement); document.head.appendChild(script);",
         &script_flow(),
     );
-    assert!(evidence[0].is_empty());
+    assert_eq!(evidence[0].len(), 0);
 }
 
 #[test]

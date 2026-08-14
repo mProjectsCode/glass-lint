@@ -363,7 +363,7 @@ mod tests {
             ProfileCorpusIdentity::Verified(_)
         ));
         assert_eq!(one.repetitions.len(), 1);
-        assert!(!one.repetitions[0].run_completions.is_empty());
+        assert_ne!(one.repetitions[0].run_completions.len(), 0);
         ensure_profile_correctness_match(&one, &parallel).unwrap();
     }
 

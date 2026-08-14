@@ -124,13 +124,12 @@ impl<'a> PreparedConstrainedRoot<'a> {
                     self.state = ConstrainedState::Fallback(occurrences);
                     return Err(error);
                 }
-                Ok(())
             }
             state => {
                 self.state = state;
-                Ok(())
             }
         }
+        Ok(())
     }
 }
 

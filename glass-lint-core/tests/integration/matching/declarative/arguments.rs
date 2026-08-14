@@ -153,7 +153,7 @@ fn host_globals_require_explicit_environment_configuration() {
         .build()
         .unwrap();
     let default_catalog = RuleCatalog::new("test", vec![rule.clone()]).unwrap();
-    assert!(
+    assert_eq!(
         Linter::new(LinterConfig::new(
             vec![default_catalog],
             Environment::default(),
@@ -166,7 +166,8 @@ fn host_globals_require_explicit_environment_configuration() {
         .unwrap()
         .files()[0]
             .findings()
-            .is_empty()
+            .len(),
+        0
     );
 
     let mut environment = Environment::default();
@@ -190,7 +191,7 @@ fn rooted_host_globals_also_require_environment_configuration() {
         .build()
         .unwrap();
     let default_catalog = RuleCatalog::new("test", vec![rule.clone()]).unwrap();
-    assert!(
+    assert_eq!(
         Linter::new(LinterConfig::new(
             vec![default_catalog],
             Environment::default(),
@@ -200,7 +201,8 @@ fn rooted_host_globals_also_require_environment_configuration() {
         .unwrap()
         .files()[0]
             .findings()
-            .is_empty()
+            .len(),
+        0
     );
 
     let mut environment = Environment::default();
@@ -227,14 +229,15 @@ fn custom_global_objects_do_not_make_unconfigured_members_global() {
     let mut environment = Environment::default();
     environment.add_global_object("activeWindow").unwrap();
     let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
-    assert!(
+    assert_eq!(
         Linter::new(LinterConfig::new(vec![catalog], environment))
             .unwrap()
             .lint_source(source("matcher.js", "activeWindow.fetch('/unknown')"))
             .unwrap()
             .files()[0]
             .findings()
-            .is_empty()
+            .len(),
+        0
     );
 }
 

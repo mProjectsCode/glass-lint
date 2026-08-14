@@ -95,7 +95,6 @@ fn validate_normalized_root(root: &NormalizedRoot, is_top: bool) -> Result<(), Q
                 }
                 validate_normalized_root(b, false)?;
             }
-            Ok(())
         }
         NormalizedRoot::Event(ev) => {
             // CanonicalArgumentConstraints groups are already in order and
@@ -116,7 +115,6 @@ fn validate_normalized_root(root: &NormalizedRoot, is_top: bool) -> Result<(), Q
                     detail: error.detail().into(),
                 });
             }
-            Ok(())
         }
         NormalizedRoot::Lifecycle(lifecycle) => {
             if !is_top {
@@ -136,9 +134,9 @@ fn validate_normalized_root(root: &NormalizedRoot, is_top: bool) -> Result<(), Q
                     });
                 }
             }
-            Ok(())
         }
     }
+    Ok(())
 }
 
 /// Collect every unique slot value present in the normalised tree.

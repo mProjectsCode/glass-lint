@@ -6,7 +6,7 @@ fn parse_empty_config() {
     assert!(matches!(dto.files, StringArrayField::Absent));
     assert!(matches!(dto.include, StringArrayField::Absent));
     assert!(matches!(dto.exclude, StringArrayField::Absent));
-    assert!(dto.references.is_empty());
+    assert_eq!(dto.references.len(), 0);
 }
 
 #[test]

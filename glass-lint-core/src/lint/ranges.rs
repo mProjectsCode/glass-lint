@@ -1,10 +1,12 @@
 //! Deterministic containment reduction for finding source ranges.
 
+#[cfg(test)]
 use glass_lint_datastructures::SourceRange;
 
 /// Remove ranges that are fully enclosed by an earlier, wider range in
 /// source order. When ranges are equal, only the first survives.
 /// Runs in O(n log n) dominated by the initial sort.
+#[cfg(test)]
 pub fn remove_contained_ranges(ranges: &mut Vec<SourceRange>) {
     ranges.sort_by(|left, right| {
         (left.start().line(), left.start().column())

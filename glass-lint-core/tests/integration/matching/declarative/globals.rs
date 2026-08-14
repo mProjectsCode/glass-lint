@@ -140,7 +140,7 @@ fn rooted_global_object_alias_mutations_invalidate_the_canonical_root() {
              globalThis.navigator.sendBeacon('/alias');",
         ))
         .unwrap();
-    assert!(report.files()[0].findings().is_empty());
+    assert_eq!(report.files()[0].findings().len(), 0);
 }
 
 #[test]

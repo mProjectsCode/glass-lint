@@ -175,8 +175,8 @@ impl CallEffectRef<'_> {
         let chain = call
             .unwrap()
             .and_then(|call| call.chain_path.as_ref())
-            .or(call.rooted_chain())
-            .or(call.syntactic_path());
+            .or_else(|| call.rooted_chain())
+            .or_else(|| call.syntactic_path());
         let global_name = match call.call_provenance() {
             SymbolCallProvenance::Global { name } => Some(name),
             _ => None,

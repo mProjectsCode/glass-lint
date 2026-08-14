@@ -163,20 +163,16 @@ impl FactBuilder<'_, '_> {
             }
             Expr::Array(array) => {
                 let mut elements = Vec::with_capacity(array.elems.len());
-                for (_index, element) in array.elems.iter().enumerate() {
+                for element in &array.elems {
                     let Some(element) = element else {
                         elements.push(ValueId::UNKNOWN);
                         continue;
-                    };
-                    let Ok(_index) = u32::try_from(_index) else {
-                        return ValueId::UNKNOWN;
                     };
                     let child_value = self.analyze_argument_tree(&element.expr);
                     elements.push(child_value);
                 }
                 self.resolver.static_array(elements).id
             }
-            Expr::Member(_) => self.resolver.resolve_expr_id(expr),
             Expr::Paren(paren) => self.analyze_argument_tree(&paren.expr),
             Expr::Seq(sequence) => {
                 if let Some(last) = sequence.exprs.last() {

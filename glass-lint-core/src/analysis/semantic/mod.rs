@@ -23,7 +23,7 @@ use crate::{
         model::module,
         resolution::Resolver,
         scope::{ScopeCollectionIssue, ScopeGraph, ScopedProgram},
-        semantic::status::{AnalysisComponent, IncompleteReason, LocalAnalysisStatus, StatusScope},
+        semantic::status::{AnalysisComponent, IncompleteReason, LocalAnalysisStatus},
         syntax::{SymbolCallProvenance, name::MAX_NAMES},
     },
     parse::SourceParser,
@@ -267,20 +267,16 @@ impl AnalysisCompletion {
     }
 
     fn record_scope_issue(&mut self, issue_count: usize) {
-        self.record_incomplete(
-            StatusScope::Local,
-            IncompleteReason::ScopeShapeMismatch { count: issue_count },
-        );
+        self.record_incomplete(IncompleteReason::ScopeShapeMismatch { count: issue_count });
     }
 
     fn record_fact_failure(&mut self, reason: Option<IncompleteReason>) {
         if let Some(reason) = reason {
-            self.record_incomplete(StatusScope::Local, reason);
+            self.record_incomplete(reason);
         }
     }
 
-    fn record_incomplete(&mut self, scope: StatusScope, reason: IncompleteReason) {
-        let _ = scope;
+    fn record_incomplete(&mut self, reason: IncompleteReason) {
         self.status.record(reason);
         self.capabilities.disable_derived_phases();
     }
@@ -493,7 +489,7 @@ mod tests {
             .status()
             .materialize_local_file(&ProjectRelativePath::new("name-exhaustion.js").unwrap())
             .diagnostics();
-        assert!(project_diagnostics.is_empty());
+        assert_eq!(project_diagnostics.len(), 0);
         assert_eq!(file_diagnostics.len(), 1);
         assert_eq!(
             file_diagnostics[0].1.code().as_str(),
@@ -605,7 +601,7 @@ mod tests {
             .materialize_local_file(&ProjectRelativePath::new("main.js").unwrap())
             .diagnostics();
         assert_eq!(files.len(), 1);
-        assert!(project.is_empty());
+        assert_eq!(project.len(), 0);
         assert_eq!(files[0].1.code().as_str(), "invalid_parser_span");
         assert!(files[0].1.location().is_none());
     }

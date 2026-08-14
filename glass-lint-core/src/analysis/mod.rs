@@ -212,11 +212,12 @@ mod tests {
             second.project(CompiledRuleSelection::new(&records, &selected).unwrap());
         let second_module = second_matcher.modules().next().expect("second module");
 
-        assert!(
-            !matcher
+        assert_ne!(
+            matcher
                 .evidence_for(first_module, rule_index, usize::MAX)
                 .unwrap()
-                .is_empty()
+                .len(),
+            0
         );
         assert!(
             matcher

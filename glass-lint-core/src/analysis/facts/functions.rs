@@ -157,11 +157,7 @@ impl FactBuilder<'_, '_> {
     }
 
     pub(super) fn record_arrow(&mut self, arrow: &ArrowExpr) {
-        let parameters = arrow
-            .params
-            .iter()
-            .enumerate()
-            .map(|(index, parameter)| (index, parameter));
+        let parameters = arrow.params.iter().enumerate();
         self.record_function_body(
             arrow.span(),
             parameters,

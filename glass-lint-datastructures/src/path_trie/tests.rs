@@ -202,7 +202,7 @@ fn concat_with_buffer_reuses_scratch_buffer() {
     let mut buf = vec![property(&mut names, "x")];
     let result = paths.concat_with_buffer(a, bc, &mut buf);
     assert!(result.is_some());
-    assert!(buf.is_empty());
+    assert_eq!(buf.len(), 0);
 }
 
 #[test]
@@ -322,7 +322,7 @@ fn collect_segments_on_root_returns_empty() {
     let paths = PathStore::new();
     let mut buf = vec![PathSegment::Index(99)];
     paths.collect_segments(PathId::EMPTY, &mut buf).unwrap();
-    assert!(buf.is_empty());
+    assert_eq!(buf.len(), 0);
 }
 
 #[test]

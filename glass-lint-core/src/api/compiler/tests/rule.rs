@@ -33,7 +33,7 @@ fn every_declaration_compiles_into_one_plan() {
         QueryDecl::member_call_instance("pkg", "Client", "send").unwrap(),
     ];
     let plan = CompiledMatcherPlan::compile(&queries).unwrap();
-    assert!(!plan.physical_roots().is_empty());
+    assert_ne!(plan.physical_roots().len(), 0);
     assert!(plan.plan_explanation().starts_with("plan roots="));
 }
 
@@ -54,7 +54,7 @@ fn argument_matcher_compiles_to_constrained_scan() {
             evidence,
             ..
         } => {
-            assert!(!constraints.groups().is_empty());
+            assert_ne!(constraints.groups().len(), 0);
             assert_eq!(evidence.kind, MatchKind::CallArgument);
         }
         other => panic!("expected ConstrainedScan, got {other:?}"),

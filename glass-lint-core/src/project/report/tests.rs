@@ -596,8 +596,8 @@ fn parse_and_valid_sources_each_produce_one_file_report() {
         .unwrap();
 
     assert_eq!(valid.findings().len(), 1);
-    assert!(valid.diagnostics().is_empty());
+    assert_eq!(valid.diagnostics().len(), 0);
 
-    assert!(broken.findings().is_empty());
+    assert_eq!(broken.findings().len(), 0);
     assert!(broken.has_parse_diagnostics());
 }

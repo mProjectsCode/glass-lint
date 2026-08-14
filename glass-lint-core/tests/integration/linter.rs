@@ -172,15 +172,17 @@ fn collapses_contained_ranges_for_same_rule() {
         36
     );
     assert_eq!(report.files()[0].findings()[0].evidence().traces().len(), 2);
-    assert!(
-        !report.files()[0].findings()[0].evidence().traces()[0]
+    assert_ne!(
+        report.files()[0].findings()[0].evidence().traces()[0]
             .steps()
-            .is_empty()
+            .len(),
+        0
     );
-    assert!(
-        !report.files()[0].findings()[0].evidence().traces()[1]
+    assert_ne!(
+        report.files()[0].findings()[0].evidence().traces()[1]
             .steps()
-            .is_empty()
+            .len(),
+        0
     );
     for trace in report.files()[0].findings()[0].evidence().traces() {
         assert!(trace.steps().iter().all(|step| {
@@ -254,7 +256,7 @@ fn reports_structured_diagnostic_for_oversized_source() {
         &"x".repeat(glass_lint_core::MAX_SOURCE_BYTES + 1),
         "large.js",
     );
-    assert!(report.files()[0].findings().is_empty());
+    assert_eq!(report.files()[0].findings().len(), 0);
     assert_eq!(report.files()[0].parse_diagnostic_count(), 1);
     let expected_code: DiagnosticCode = DiagnosticKind::SourceTooLarge.into();
     assert_eq!(
@@ -283,7 +285,7 @@ fn reports_structured_diagnostic_for_oversized_source() {
 #[test]
 fn parse_diagnostics_carry_stable_location_context() {
     let report = snippet(&catalog_linter(catalog()), "fetch(", "broken.js");
-    assert!(report.files()[0].findings().is_empty());
+    assert_eq!(report.files()[0].findings().len(), 0);
     let diagnostic = &report.files()[0].diagnostics()[0]
         .parse_diagnostic()
         .unwrap();
@@ -332,7 +334,7 @@ fn source_locations_handle_crlf_and_eof_without_byte_columns() {
     );
 
     let empty = snippet(&catalog_linter(catalog()), "", "empty.js");
-    assert!(empty.files()[0].findings().is_empty());
+    assert_eq!(empty.files()[0].findings().len(), 0);
     assert!(!empty.files()[0].has_parse_diagnostics());
 }
 

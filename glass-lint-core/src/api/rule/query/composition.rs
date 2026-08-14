@@ -254,7 +254,7 @@ impl QueryDecl {
     ) -> Result<Self, QueryBuildError> {
         lc_result.map(|lc| {
             let symbol = lc.symbol.clone();
-            debug_assert!(!symbol.trim().is_empty());
+            debug_assert_ne!(symbol.trim(), "");
             Self {
                 expression: QueryExpr::lifecycle(lc),
                 emission: EmissionDecl {

@@ -321,7 +321,7 @@ mod tests {
         status.record(StatusScope::File(file()), reason);
         let (files, project) = status.diagnostics();
         assert_eq!(files.len(), 1);
-        assert!(project.is_empty());
+        assert_eq!(project.len(), 0);
         assert_eq!(files[0].1.code().as_str(), "semantic_budget_exhausted");
         assert!(files[0].1.message().contains("limit=2"));
     }
@@ -351,7 +351,7 @@ mod tests {
         );
 
         let (files, project) = status.diagnostics();
-        assert!(files.is_empty());
+        assert_eq!(files.len(), 0);
         assert_eq!(project.len(), 1);
         assert_eq!(project[0].code().as_str(), "evidence_capacity_mismatch");
         assert!(project[0].message().contains("expected=2, actual=3"));
@@ -368,7 +368,7 @@ mod tests {
             status.materialize_local_file(&ProjectRelativePath::new("other.js").unwrap());
         let (files, project) = converted.diagnostics();
 
-        assert!(project.is_empty());
+        assert_eq!(project.len(), 0);
         assert_eq!(files.len(), 2);
         assert_eq!(files[0].0.as_str(), "main.js");
         assert_eq!(files[1].0.as_str(), "other.js");

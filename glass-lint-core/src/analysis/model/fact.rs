@@ -534,7 +534,7 @@ impl CallEvent {
 
     pub(in crate::analysis) fn effective_args(&self) -> &[CallArgInfo] {
         self.unwrap()
-            .map_or(self.args(), |call| call.effective_args.as_slice())
+            .map_or_else(|| self.args(), |call| call.effective_args.as_slice())
     }
 }
 

@@ -218,7 +218,7 @@ fn deep_namespace_export_chain_masks_unresolved_members() {
         .iter()
         .find(|file| file.path().as_str() == "main.js")
         .expect("main report");
-    assert!(main.findings().is_empty());
+    assert_eq!(main.findings().len(), 0);
 }
 
 #[test]

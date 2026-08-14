@@ -522,7 +522,7 @@ mod tests {
     fn empty_source_is_es5() {
         let report = analyze("");
         assert_eq!(report.minimum_version(), Some(EcmaVersion::Es5));
-        assert!(report.features().is_empty());
+        assert_eq!(report.features().len(), 0);
     }
 
     #[test]

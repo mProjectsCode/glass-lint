@@ -597,10 +597,10 @@ impl ProjectSemanticModel {
         outcome.record_cross(&cross_outcome);
         let mut projections = projections;
         for (module, evidence) in cross {
-            if let Some(projection) = projections.get_mut(&module) {
-                if let Err(error) = projection.projected.merge_equal_capacity(evidence) {
-                    outcome.record_evidence_error(error);
-                }
+            if let Some(projection) = projections.get_mut(&module)
+                && let Err(error) = projection.projected.merge_equal_capacity(evidence)
+            {
+                outcome.record_evidence_error(error);
             }
         }
         let outcome = outcome.finish();

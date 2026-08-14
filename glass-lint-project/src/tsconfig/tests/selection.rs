@@ -32,7 +32,7 @@ fn merge_selection_explicit_files() {
         config.files(),
         Some(["src/main.ts".to_string(), "src/util.ts".to_string()].as_slice())
     );
-    assert!(config.include().is_empty());
+    assert_eq!(config.include().len(), 0);
 }
 
 #[test]
@@ -56,7 +56,7 @@ fn merge_selection_invalid_include_fails_closed() {
     let child = ParsedTsconfig::parse(r#"{"include":false}"#).unwrap();
     let merged = merge_same(child, None);
     assert!(merged.invalid_controlling_field());
-    assert!(merged.include().is_empty());
+    assert_eq!(merged.include().len(), 0);
 }
 
 #[test]

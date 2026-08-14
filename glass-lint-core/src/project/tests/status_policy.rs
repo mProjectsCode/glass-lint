@@ -149,7 +149,7 @@ fn external_and_builtin_requests_are_complete() {
     ] {
         let report = request_report(result);
         assert_eq!(report.completion(), ReportCompletion::Complete);
-        assert!(diagnostics(&report).is_empty());
+        assert_eq!(diagnostics(&report).len(), 0);
     }
 }
 
@@ -328,7 +328,7 @@ fn partial_status_never_emits_unproved_strict_finding() {
         "import { request } from './dep'; request();",
     );
     assert_eq!(report.completion(), ReportCompletion::Partial);
-    assert!(report.files()[0].findings().is_empty());
+    assert_eq!(report.files()[0].findings().len(), 0);
     assert_eq!(
         diagnostics(&report),
         vec![(Some("main.js"), "unresolved_internal_request")]

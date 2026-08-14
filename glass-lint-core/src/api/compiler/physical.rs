@@ -511,21 +511,19 @@ fn plan_root(
             let planned = plan_event(ev, kind, symbol)?;
             budget.reserve()?;
             roots.push(planned);
-            Ok(())
         }
         NormalizedRoot::Any(branches) => {
             for b in branches {
                 plan_root(b, kind, symbol, budget, roots)?;
             }
-            Ok(())
         }
         NormalizedRoot::Lifecycle(lc) => {
             let planned = plan_lifecycle(lc, symbol)?;
             budget.reserve()?;
             roots.push(planned);
-            Ok(())
         }
     }
+    Ok(())
 }
 
 fn plan_event(
