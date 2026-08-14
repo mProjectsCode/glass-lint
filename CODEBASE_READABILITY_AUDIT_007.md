@@ -14,7 +14,7 @@ fixed-point setter.
 
 ### [analysis/project/linker/export.rs]
 
-#### [ ] READ-018 — Centralize module export snapshot construction
+#### [x] READ-018 — Centralize module export snapshot construction
 
 - **Severity:** Low
 - **Fix Complexity:** Low

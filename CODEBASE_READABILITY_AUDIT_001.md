@@ -15,7 +15,7 @@ boundaries.
 
 ### Fact provenance and control-flow checkpoints
 
-#### [ ] READ-001 — Make all path-local provenance transactional
+#### [x] READ-001 — Make all path-local provenance transactional
 
 - **Severity:** High
 - **Fix Complexity:** High
@@ -51,7 +51,7 @@ that a callable introduced only on one branch cannot escape it. Verified with
 
 ### Call argument projection
 
-#### [ ] READ-002 — Remove discarded path state from argument-shape analysis
+#### [x] READ-002 — Remove discarded path state from argument-shape analysis
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -85,7 +85,7 @@ analysis::facts --lib` and the declarative argument integration tests.
 
 ### Function boundary construction
 
-#### [ ] READ-003 — Borrow parameter patterns instead of cloning an immediate vector
+#### [x] READ-003 — Borrow parameter patterns instead of cloning an immediate vector
 
 - **Severity:** Low
 - **Fix Complexity:** Low

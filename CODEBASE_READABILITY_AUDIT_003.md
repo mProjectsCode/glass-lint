@@ -18,7 +18,7 @@ keep the existing bounded and fail-closed behavior as explicit guardrails.
 
 ### [analysis/flow/summary]
 
-#### [ ] READ-008 — Make summary sink admission atomic with insertion
+#### [x] READ-008 — Make summary sink admission atomic with insertion
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -56,7 +56,7 @@ callee-to-caller propagation share this operation; the old post-hoc
 
 ### [analysis/flow/projector/evidence.rs, analysis/flow/projector]
 
-#### [ ] READ-009 — Remove immutable plan and summary copies from projection hot paths
+#### [x] READ-009 — Remove immutable plan and summary copies from projection hot paths
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -89,7 +89,7 @@ the candidate, summary, and parameter copies. Verified with
 
 ### [analysis/flow/effect]
 
-#### [ ] READ-010 — Centralize repeated `FunctionEffect` construction
+#### [x] READ-010 — Centralize repeated `FunctionEffect` construction
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -121,7 +121,7 @@ their collection storage cannot drift. Verified with
 
 ### [analysis/flow/cross/sources.rs, analysis/flow/planning.rs]
 
-#### [ ] READ-011 — Delete the one-call source-index adapter
+#### [x] READ-011 — Delete the one-call source-index adapter
 
 - **Severity:** Low
 - **Fix Complexity:** Low

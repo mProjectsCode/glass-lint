@@ -15,7 +15,7 @@ type-level indication of which identity domain it is handling.
 
 ### [analysis/model/module.rs, analysis/facts/mod.rs, analysis/project]
 
-#### [ ] READ-012 — Encode imported-binding variants instead of a boolean/optional pair
+#### [x] READ-012 — Encode imported-binding variants instead of a boolean/optional pair
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
