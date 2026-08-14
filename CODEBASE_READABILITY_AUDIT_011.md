@@ -44,7 +44,11 @@ in-flight/input-ordered protocol. Add equivalence tests comparing single and
 batch results for ordinary files, parse failures, imports, and incomplete
 analysis statuses before deleting any duplicated path.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `FindingRangeBuilder` now retains sorted entry indexes rather
+than cloning every source range into a second collection. Grouping still scans
+the canonical BTree-ordered entries, preserving containment, overlap,
+occurrence, trace, and deterministic ordering behavior. Verified with
+`cargo test -p glass-lint-core lint --lib`.
 
 ### [lint/report/evidence.rs and lint/ranges.rs]
 

@@ -171,7 +171,7 @@ fn findings_for_module(
 #[derive(Debug)]
 struct FindingRangeBuilder<'a> {
     entries: Vec<EvidenceRangeEntry<'a>>,
-    retained_ranges: Vec<SourceRange>,
+    retained_indices: Vec<usize>,
 }
 
 impl<'a> FindingRangeBuilder<'a> {
@@ -202,25 +202,44 @@ impl<'a> FindingRangeBuilder<'a> {
             .into_iter()
             .map(|(range, occurrences)| EvidenceRangeEntry { range, occurrences })
             .collect::<Vec<_>>();
-        let mut retained_ranges = entries
-            .iter()
-            .map(|entry| entry.range.clone())
-            .collect::<Vec<_>>();
-        crate::lint::ranges::remove_contained_ranges(&mut retained_ranges);
+        let mut retained_indices = (0..entries.len()).collect::<Vec<_>>();
+        retained_indices.sort_by(|left, right| {
+            let left = &entries[*left].range;
+            let right = &entries[*right].range;
+            (left.start().line(), left.start().column())
+                .cmp(&(right.start().line(), right.start().column()))
+                .then_with(|| {
+                    (right.end().line(), right.end().column())
+                        .cmp(&(left.end().line(), left.end().column()))
+                })
+        });
+        let mut enclosing_end = None;
+        retained_indices.retain(|index| {
+            let end = (
+                entries[*index].range.end().line(),
+                entries[*index].range.end().column(),
+            );
+            if enclosing_end.is_some_and(|outer| end <= outer) {
+                return false;
+            }
+            enclosing_end = Some(end);
+            true
+        });
         Self {
             entries,
-            retained_ranges,
+            retained_indices,
         }
     }
 
     fn into_groups(self) -> Vec<FindingGroup<'a>> {
         let Self {
             entries,
-            retained_ranges,
+            retained_indices,
         } = self;
-        let mut groups = Vec::with_capacity(retained_ranges.len());
+        let mut groups = Vec::with_capacity(retained_indices.len());
         let mut entry_cursor = 0usize;
-        for retained in retained_ranges {
+        for retained_index in retained_indices {
+            let retained = entries[retained_index].range.clone();
             while entry_cursor < entries.len()
                 && entries[entry_cursor].range.end() < retained.start()
             {
