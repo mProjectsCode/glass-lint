@@ -169,6 +169,30 @@ fn extracted_instance_callables_follow_aliases_and_bind_but_not_reassignment() {
 }
 
 #[test]
+fn branch_local_instance_callable_does_not_escape_without_an_else_path() {
+    let rules = [rule("instance")
+        .query(QueryDecl::member_call_instance(
+            "obsidian",
+            "Plugin",
+            "addCommand",
+        ))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "import { Plugin } from 'obsidian';\n\
+         class TestPlugin extends Plugin {\n\
+           run() {\n\
+             let add;\n\
+             if (flag) add = this.addCommand;\n\
+             add({});\n\
+           }\n\
+         }",
+        &rules,
+    );
+    assert_eq!(result.finding_count, 0);
+}
+
+#[test]
 fn package_import_patterns_match_subpaths_without_lookalikes() {
     let rules = [rule("package")
         .query(EventQuery::import_package("@scope/pkg"))

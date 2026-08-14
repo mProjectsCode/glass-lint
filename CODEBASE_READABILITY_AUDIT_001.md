@@ -41,7 +41,13 @@ to the class channel. Preserve the existing conservative intersection rules,
 budget charges, and the rule that an independent complete witness survives an
 incomplete alternative.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `FactProvenanceState` now owns transactional checkpoints for
+instance callables and static-string origins alongside instance/class origin
+maps. Branch, loop, switch, and exception restoration/intersection uses the
+combined state, and the regression test
+`branch_local_instance_callable_does_not_escape_without_an_else_path` verifies
+that a callable introduced only on one branch cannot escape it. Verified with
+`cargo test -p glass-lint-core facts --lib` and the focused integration test.
 
 ### Call argument projection
 

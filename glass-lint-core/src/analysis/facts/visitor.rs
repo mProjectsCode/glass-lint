@@ -223,7 +223,7 @@ impl Visit for FactBuilder<'_, '_> {
             && let Ok(span) = self.resolver.normalize_span(value.span())
         {
             self.provenance
-                .record_static_string_origin(terminal_id, span);
+                .record_static_string_origin(terminal_id, span, self.resolver.budget);
         }
     }
 

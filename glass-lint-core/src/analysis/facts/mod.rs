@@ -7,7 +7,6 @@
 //! project projection layer after that shared state has been built.
 
 use glass_lint_datastructures::NameTable;
-use hashbrown::HashMap;
 
 #[cfg(test)]
 use crate::analysis::flow::effect::FunctionEffects;
@@ -77,19 +76,27 @@ use crate::analysis::{
 type Origin = (SmolStr, SmolStr);
 
 struct FactProvenanceState {
-    instance_callables: HashMap<ValueId, InstanceCallable>,
+    instance_callables: OriginMap<InstanceCallable>,
     origins: OriginChannels,
-    static_string_origins: HashMap<ValueId, ByteRange>,
+    static_string_origins: OriginMap<ByteRange>,
 }
 
 struct ProvenanceCheckpoint {
     instance: OriginCheckpoint,
     class: OriginCheckpoint,
+    callable: OriginCheckpoint,
+    static_string: OriginCheckpoint,
 }
 
 struct BranchProvenance {
-    instances: OriginSnapshot<Origin>,
+    instances: InstanceProvenanceSnapshot,
     classes: OriginSnapshot<Origin>,
+}
+
+struct InstanceProvenanceSnapshot {
+    origins: OriginSnapshot<Origin>,
+    callables: OriginSnapshot<InstanceCallable>,
+    static_strings: OriginSnapshot<ByteRange>,
 }
 
 struct OriginChannels {
@@ -108,52 +115,83 @@ struct TargetProvenance {
 impl FactProvenanceState {
     fn new() -> Self {
         Self {
-            instance_callables: HashMap::new(),
+            instance_callables: OriginMap::new(),
             origins: OriginChannels::new(),
-            static_string_origins: HashMap::new(),
+            static_string_origins: OriginMap::new(),
         }
     }
 
     fn checkpoint(&mut self) -> ProvenanceCheckpoint {
-        self.origins.checkpoint()
+        ProvenanceCheckpoint {
+            instance: self.origins.instances.checkpoint(),
+            class: self.origins.classes.checkpoint(),
+            callable: self.instance_callables.checkpoint(),
+            static_string: self.static_string_origins.checkpoint(),
+        }
     }
 
     fn restore_branch_entry(&mut self, checkpoint: &ProvenanceCheckpoint) {
         self.origins.restore_branch_entry(checkpoint);
+        self.instance_callables.restore(&checkpoint.callable);
+        self.static_string_origins
+            .restore(&checkpoint.static_string);
     }
 
     fn restore_instance_alternative(&mut self, checkpoint: &ProvenanceCheckpoint) {
         self.origins.restore_instance_alternative(checkpoint);
+        self.instance_callables.restore(&checkpoint.callable);
+        self.static_string_origins
+            .restore(&checkpoint.static_string);
     }
 
     /// Complete a control region whose instance origins can flow out of one
     /// modeled alternative, but whose class origins cannot.
     fn finish_control_region(&mut self, checkpoint: &mut ProvenanceCheckpoint) {
         self.origins.finish_control_region(checkpoint);
+        self.instance_callables.commit(&mut checkpoint.callable);
+        self.static_string_origins
+            .commit(&mut checkpoint.static_string);
     }
 
-    fn snapshot_instances(&self, budget: &SemanticBudget) -> OriginSnapshot<Origin> {
-        self.origins.snapshot_instances(budget)
+    fn snapshot_instances(&self, budget: &SemanticBudget) -> InstanceProvenanceSnapshot {
+        InstanceProvenanceSnapshot {
+            origins: self.origins.snapshot_instances(budget),
+            callables: self.instance_callables.snapshot(budget),
+            static_strings: self.static_string_origins.snapshot(budget),
+        }
     }
 
     fn branch_provenance(&self, budget: &SemanticBudget) -> BranchProvenance {
-        self.origins.branch_provenance(budget)
+        BranchProvenance {
+            instances: self.snapshot_instances(budget),
+            classes: self.origins.snapshot_classes(budget),
+        }
     }
 
     fn restore_instance_snapshot(
         &mut self,
-        snapshot: OriginSnapshot<Origin>,
+        snapshot: InstanceProvenanceSnapshot,
         checkpoint: &mut ProvenanceCheckpoint,
     ) {
-        self.origins.restore_instance_snapshot(snapshot, checkpoint);
+        self.origins
+            .restore_instance_snapshot(snapshot.origins, checkpoint);
+        self.instance_callables
+            .restore_snapshot(snapshot.callables, &mut checkpoint.callable);
+        self.static_string_origins
+            .restore_snapshot(snapshot.static_strings, &mut checkpoint.static_string);
     }
 
     fn retain_common_instance(
         &mut self,
-        snapshot: &OriginSnapshot<Origin>,
+        snapshot: &InstanceProvenanceSnapshot,
         budget: &SemanticBudget,
     ) {
-        self.origins.retain_common_instance(snapshot, budget);
+        self.origins
+            .retain_common_instance(&snapshot.origins, budget);
+        self.instance_callables
+            .retain_common(&snapshot.callables, budget);
+        self.static_string_origins
+            .retain_common(&snapshot.static_strings, budget);
     }
 
     fn finish_branch_with_else(
@@ -164,10 +202,20 @@ impl FactProvenanceState {
     ) {
         self.origins
             .finish_branch_with_else(checkpoint, then, budget);
+        self.instance_callables
+            .retain_common(&then.instances.callables, budget);
+        self.static_string_origins
+            .retain_common(&then.instances.static_strings, budget);
+        self.instance_callables.commit(&mut checkpoint.callable);
+        self.static_string_origins
+            .commit(&mut checkpoint.static_string);
     }
 
     fn finish_branch_without_else(&mut self, checkpoint: &mut ProvenanceCheckpoint) {
         self.origins.finish_branch_without_else(checkpoint);
+        self.instance_callables.rollback(&mut checkpoint.callable);
+        self.static_string_origins
+            .rollback(&mut checkpoint.static_string);
     }
 
     fn instance_origin(&self, value: ValueId) -> Option<Origin> {
@@ -187,15 +235,20 @@ impl FactProvenanceState {
     }
 
     fn instance_callable(&self, value: ValueId) -> Option<InstanceCallable> {
-        self.instance_callables.get(&value).cloned()
+        self.instance_callables.get(value).cloned()
     }
 
     fn static_string_origin(&self, value: ValueId) -> Option<ByteRange> {
-        self.static_string_origins.get(&value).copied()
+        self.static_string_origins.get(value).copied()
     }
 
-    fn record_static_string_origin(&mut self, value: ValueId, origin: ByteRange) {
-        self.static_string_origins.insert(value, origin);
+    fn record_static_string_origin(
+        &mut self,
+        value: ValueId,
+        origin: ByteRange,
+        budget: &SemanticBudget,
+    ) {
+        self.static_string_origins.insert(value, origin, budget);
     }
 
     fn replace_targets(
@@ -205,19 +258,20 @@ impl FactProvenanceState {
         budget: &SemanticBudget,
     ) {
         for &target in targets {
-            self.instance_callables.remove(&target);
+            self.instance_callables.remove(target, budget);
             self.origins.replace_target(
                 target,
                 replacement.instance_origin.as_ref(),
                 replacement.class_origin.as_ref(),
                 budget,
             );
-            self.static_string_origins.remove(&target);
+            self.static_string_origins.remove(target, budget);
             if let Some(callable) = &replacement.callable {
-                self.instance_callables.insert(target, callable.clone());
+                self.instance_callables
+                    .insert(target, callable.clone(), budget);
             }
             if let Some(origin) = replacement.static_string_origin {
-                self.static_string_origins.insert(target, origin);
+                self.static_string_origins.insert(target, origin, budget);
             }
         }
     }
@@ -228,13 +282,6 @@ impl OriginChannels {
         Self {
             instances: OriginMap::new(),
             classes: OriginMap::new(),
-        }
-    }
-
-    fn checkpoint(&mut self) -> ProvenanceCheckpoint {
-        ProvenanceCheckpoint {
-            instance: self.instances.checkpoint(),
-            class: self.classes.checkpoint(),
         }
     }
 
@@ -259,11 +306,8 @@ impl OriginChannels {
         self.instances.snapshot(budget)
     }
 
-    fn branch_provenance(&self, budget: &SemanticBudget) -> BranchProvenance {
-        BranchProvenance {
-            instances: self.instances.snapshot(budget),
-            classes: self.classes.snapshot(budget),
-        }
+    fn snapshot_classes(&self, budget: &SemanticBudget) -> OriginSnapshot<Origin> {
+        self.classes.snapshot(budget)
     }
 
     fn restore_instance_snapshot(
@@ -289,7 +333,8 @@ impl OriginChannels {
         then: &BranchProvenance,
         budget: &SemanticBudget,
     ) {
-        self.instances.retain_common(&then.instances, budget);
+        self.instances
+            .retain_common(&then.instances.origins, budget);
         self.classes.retain_common(&then.classes, budget);
         self.instances.commit(&mut checkpoint.instance);
         self.classes.commit(&mut checkpoint.class);
