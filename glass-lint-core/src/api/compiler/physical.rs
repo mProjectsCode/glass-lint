@@ -284,23 +284,31 @@ impl RootBudget {
 }
 
 impl PhysicalPlan {
+    /// Seal roots produced by the normalized-query planner.
+    ///
+    /// The production compiler validates the planned roots at this one
+    /// sealing boundary. `from_roots` remains the independent validation
+    /// boundary for callers that can supply physical roots directly.
+    pub(crate) fn from_planned_roots(
+        roots: Box<[PhysicalRoot]>,
+    ) -> Result<Self, PhysicalPlanValidationError> {
+        validate_root_set(&roots)?;
+        Ok(Self::from_validated_roots(roots))
+    }
+
+    #[cfg(test)]
     pub(crate) fn from_roots(
         roots: Box<[PhysicalRoot]>,
     ) -> Result<Self, PhysicalPlanValidationError> {
-        if roots.is_empty() {
-            return Err(PhysicalPlanValidationError::EmptyRoots);
-        }
-        if roots.len() > compiler_limits::MAX_PHYSICAL_ROOTS_PER_RULE {
-            return Err(PhysicalPlanValidationError::TooManyRoots(roots.len()));
-        }
-        for root in &roots {
-            root.validate()?;
-        }
+        Self::from_planned_roots(roots)
+    }
+
+    fn from_validated_roots(roots: Box<[PhysicalRoot]>) -> Self {
         let requirements = requirements_for_roots(&roots);
-        Ok(Self {
+        Self {
             roots,
             requirements,
-        })
+        }
     }
 
     #[cfg(test)]
@@ -394,6 +402,19 @@ impl PhysicalPlan {
         ));
         lines.join("\n")
     }
+}
+
+fn validate_root_set(roots: &[PhysicalRoot]) -> Result<(), PhysicalPlanValidationError> {
+    if roots.is_empty() {
+        return Err(PhysicalPlanValidationError::EmptyRoots);
+    }
+    if roots.len() > compiler_limits::MAX_PHYSICAL_ROOTS_PER_RULE {
+        return Err(PhysicalPlanValidationError::TooManyRoots(roots.len()));
+    }
+    for root in roots {
+        root.validate()?;
+    }
+    Ok(())
 }
 
 /// Apply deterministic, semantics-preserving physical plan optimizations.

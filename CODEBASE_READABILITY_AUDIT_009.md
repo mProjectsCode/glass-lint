@@ -53,7 +53,7 @@ reference call sites use `EventSpec` directly. Verified with
 
 ### [api/compiler/validate, api/compiler/normalize.rs, and api/compiler/physical.rs]
 
-#### [ ] READ-023 — Assign validation to one authoritative compiler boundary
+#### [x] READ-023 — Assign validation to one authoritative compiler boundary
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -87,7 +87,12 @@ internal input handling, root and lifecycle bounds, contradiction detection,
 exact requirements derivation, and tests that inject invalid normalized or
 physical values.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The production compiler now seals optimized planner output
+through `PhysicalPlan::from_planned_roots`, which performs the physical-root
+validation once at the planner boundary. Authored declaration validation and
+normalized-IR invariant checking remain separate responsibilities, while the
+test-facing `from_roots` path retains independent malformed-physical-plan
+coverage. Verified with `cargo test -p glass-lint-core api::compiler`.
 
 ### [api/classification.rs]
 

@@ -163,7 +163,7 @@ struct QueryPlanAccumulator {
 
 impl QueryPlanAccumulator {
     fn finish(self) -> Result<PhysicalPlan, MatcherBuildError> {
-        PhysicalPlan::from_roots(physical::optimize_roots(self.roots))
+        PhysicalPlan::from_planned_roots(physical::optimize_roots(self.roots))
             .map_err(|error| MatcherBuildError::InvalidPhysicalPlan(error.into()))
     }
 }
