@@ -42,15 +42,11 @@ public `ProjectInputError` values; add tests for duplicate-in-batch,
 duplicate-against-session, count limit, byte limit, overflow, and unchanged
 state after every failed insertion.
 
-**Fix Applied:** A private local macro now owns the repeated accessor,
-`Deref`, `AsRef<str>`, `Borrow<str>`, formatting, and string-comparison trait
-implementations for the three validated text types. Their distinct
-constructors and the outside-path `AsRef<Path>` policy remain explicit.
-Verified with `cargo test -p glass-lint-core project::types --lib`.
+**Fix Applied:** None so far.
 
 ### Validated scalar wrappers
 
-#### [ ] READ-033 — Centralize repeated validated-string wrapper behavior
+#### [x] READ-033 — Centralize repeated validated-string wrapper behavior
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -78,7 +74,11 @@ conversion only where valid, and the existing error payloads; add constructor
 and trait-contract tests for each wrapper, including whitespace, NUL,
 relative/scoped, and outside-path cases.
 
-**Fix Applied:** None so far.
+**Fix Applied:** A private local macro now owns the repeated accessor,
+`Deref`, `AsRef<str>`, `Borrow<str>`, formatting, and string-comparison trait
+implementations for the three validated text types. Their distinct
+constructors and the outside-path `AsRef<Path>` policy remain explicit.
+Verified with `cargo test -p glass-lint-core project::types --lib`.
 
 ## Systemic Themes
 

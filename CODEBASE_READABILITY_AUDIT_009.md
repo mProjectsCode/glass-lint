@@ -45,11 +45,7 @@ preserve the distinction between calls, reads, writes, imports, strings,
 constructors, and classes, including deterministic ordering and physical
 root equality.
 
-**Fix Applied:** `ClassificationEvidence::from_parts` now owns the shared
-total-count, truncation, saturation, and retained-occurrence validation.
-The empty, single-occurrence, and aggregated constructors delegate to it
-without changing their call-site contracts. Verified with
-`cargo test -p glass-lint-core classification --lib`.
+**Fix Applied:** None so far.
 
 ### [api/compiler/validate, api/compiler/normalize.rs, and api/compiler/physical.rs]
 
@@ -87,16 +83,11 @@ internal input handling, root and lifecycle bounds, contradiction detection,
 exact requirements derivation, and tests that inject invalid normalized or
 physical values.
 
-**Fix Applied:** `RuleEvidenceTable::merge_equal_capacity` now returns a
-runtime `CapacityMismatch` error before touching the destination, and the
-projection pipeline records that error in its existing status channel. The
-debug-only assertion was removed. Verified with the release-equivalent unit
-test `rejects_merging_different_capacities_without_mutating_destination` via
-`cargo test -p glass-lint-core api::classification --lib`.
+**Fix Applied:** None so far.
 
 ### [api/classification.rs]
 
-#### [ ] READ-024 — Centralize classification evidence construction
+#### [x] READ-024 — Centralize classification evidence construction
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -124,11 +115,15 @@ contract, saturating `usize`→`u32` conversion, certainty, truncation defaults,
 and all evidence ordering/merge behavior. Add tests for empty groups, a single
 occurrence, aggregated totals, and totals smaller than retained occurrences.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ClassificationEvidence::from_parts` now owns the shared
+total-count, truncation, saturation, and retained-occurrence validation. The
+empty, single-occurrence, and aggregated constructors delegate to it without
+changing their call-site contracts. Verified with
+`cargo test -p glass-lint-core classification --lib`.
 
 ### [api/classification.rs]
 
-#### [ ] READ-025 — Enforce evidence-capacity equality in release builds
+#### [x] READ-025 — Enforce evidence-capacity equality in release builds
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -156,7 +151,12 @@ merging, and the empty-table behavior. Add a release-mode test that attempts a
 different-capacity merge and verifies it is rejected without modifying the
 destination.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `RuleEvidenceTable::merge_equal_capacity` now returns a
+runtime `CapacityMismatch` error before touching the destination, and the
+projection pipeline records that error in its existing status channel. The
+debug-only assertion was removed. Verified with the release-equivalent unit
+test `rejects_merging_different_capacities_without_mutating_destination` via
+`cargo test -p glass-lint-core api::classification --lib`.
 
 ## Systemic Themes
 
