@@ -49,7 +49,7 @@ pub(super) fn member_identity_matches(
     fact: &SemanticFact,
     names: &NameTable,
 ) -> bool {
-    let FactPayload::Call { module_member, .. } = &fact.payload else {
+    let FactPayload::Call(call) = &fact.payload else {
         return false;
     };
     match identity {
@@ -64,13 +64,13 @@ pub(super) fn member_identity_matches(
             rooted_chain.is_some_and(|chain| chain == path && chain == member)
         }
         IdentityConstraint::ModuleNamespace { module } => namespace_member_matches(
-            module_member.as_ref(),
+            call.module_member(),
             member,
             |found_module| found_module == module,
             names,
         ),
         IdentityConstraint::PackageModuleNamespace { module } => namespace_member_matches(
-            module_member.as_ref(),
+            call.module_member(),
             member,
             |found_module| module.matches(found_module),
             names,

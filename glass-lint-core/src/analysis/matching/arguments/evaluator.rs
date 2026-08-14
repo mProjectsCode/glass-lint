@@ -179,20 +179,16 @@ impl<'a> MatcherEvaluator<'a> {
         ops: &mut EvaluationOperations,
     ) -> bool {
         ops.charge_candidate();
-        let FactPayload::Call {
-            callee,
-            syntactic_path,
-            rooted_chain,
-            call_provenance,
-            callee_name,
-            ..
-        } = &fact.payload
-        else {
+        let FactPayload::Call(call) = &fact.payload else {
             return false;
         };
-        let callee_name: Option<SmolStr> =
-            callee_name.and_then(|id| self.names.resolve(id).map(Into::into));
-        let call_provenance = self.identity.call_provenance(call_provenance, *callee);
+        let callee = call.callee();
+        let callee_name: Option<SmolStr> = call
+            .callee_name()
+            .and_then(|id| self.names.resolve(id).map(Into::into));
+        let call_provenance = self
+            .identity
+            .call_provenance(call.call_provenance(), callee);
 
         match event {
             EventSpec::Call => {
@@ -200,7 +196,7 @@ impl<'a> MatcherEvaluator<'a> {
                     identity,
                     &call_provenance,
                     callee_name.as_ref(),
-                    syntactic_path.as_ref(),
+                    call.syntactic_path(),
                     paths.any_name.as_ref(),
                 ) {
                     return false;
@@ -215,8 +211,8 @@ impl<'a> MatcherEvaluator<'a> {
                     identity,
                     member,
                     paths.rooted.as_ref(),
-                    syntactic_path.as_ref(),
-                    rooted_chain.as_ref(),
+                    call.syntactic_path(),
+                    call.rooted_chain(),
                     fact,
                     self.names,
                 ) {

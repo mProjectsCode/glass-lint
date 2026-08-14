@@ -3,7 +3,7 @@ use swc_ecma_ast::{CallExpr, Callee, Expr, ExprOrSpread, OptChainBase};
 
 use crate::analysis::{
     facts::{CallArgInfo, CallUnwrap, FactBuilder, FactPayload},
-    model::value::ValueId,
+    model::{fact::CallEvent, value::ValueId},
     syntax::{effective_callee_expr, literal_member_property_name},
 };
 
@@ -29,22 +29,12 @@ impl FactBuilder<'_, '_> {
             }
             self.emit(
                 call.span(),
-                FactPayload::Call {
-                    callee: ValueId::UNKNOWN,
-                    receiver: None,
+                FactPayload::Call(CallEvent::unknown(
                     result,
                     callee_span,
-                    callee_name: None,
-                    call_provenance: resolved.provenance.call.clone(),
-                    syntactic_path: None,
-                    rooted_chain: None,
-                    module_member: None,
-                    returned_member: None,
-                    instance_class: None,
-                    target_function: None,
+                    resolved.provenance.call.clone(),
                     args,
-                    unwrap: None,
-                },
+                )),
             );
             return;
         };
@@ -95,22 +85,22 @@ impl FactBuilder<'_, '_> {
         let callee_name = self.intern_name(resolved.callee_name.as_deref());
         self.emit(
             span,
-            FactPayload::Call {
-                callee: resolved.value,
-                receiver: resolved.receiver,
+            FactPayload::Call(CallEvent::resolved(
+                resolved.value,
+                resolved.receiver,
                 result,
-                callee_span: resolved.callee_span,
+                resolved.callee_span,
                 callee_name,
-                call_provenance: resolved.call_provenance,
-                syntactic_path: resolved.syntactic_path,
-                rooted_chain: self.rooted_path(resolved.rooted_chain.as_ref()),
-                module_member: resolved.module_member,
-                returned_member: self.returned_path(resolved.returned_member.as_ref()),
-                instance_class: resolved.instance_class,
-                target_function: resolved.target_function,
-                args: effective_args,
+                resolved.call_provenance,
+                resolved.syntactic_path,
+                self.rooted_path(resolved.rooted_chain.as_ref()),
+                resolved.module_member,
+                self.returned_path(resolved.returned_member.as_ref()),
+                resolved.instance_class,
+                resolved.target_function,
+                effective_args,
                 unwrap,
-            },
+            )),
         );
     }
 

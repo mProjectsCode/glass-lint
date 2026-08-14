@@ -7,10 +7,7 @@ fn count_instance_calls(stream: &FactStream<Frozen>) -> usize {
         .filter(|fact| {
             matches!(
                 &fact.payload,
-                FactPayload::Call {
-                    instance_class: Some(_),
-                    ..
-                }
+                FactPayload::Call(call) if call.instance_class().is_some()
             )
         })
         .count()
@@ -23,11 +20,11 @@ fn count_method_instance_calls(stream: &FactStream<Frozen>) -> usize {
         .filter(|fact| {
             matches!(
                 &fact.payload,
-                FactPayload::Call {
-                    callee_name: Some(name),
-                    instance_class: Some(_),
-                    ..
-                } if stream.names().resolve(*name) == Some("method")
+                FactPayload::Call(call)
+                    if call.instance_class().is_some()
+                        && call
+                            .callee_name()
+                            .is_some_and(|name| stream.names().resolve(name) == Some("method"))
             )
         })
         .count()

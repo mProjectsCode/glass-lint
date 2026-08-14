@@ -31,32 +31,20 @@ struct CallProjection<'a> {
 
 impl<'a> CallProjection<'a> {
     fn from_fact(fact: &'a SemanticFact) -> Option<Self> {
-        let FactPayload::Call {
-            callee_name,
-            callee_span,
-            call_provenance,
-            syntactic_path,
-            rooted_chain,
-            module_member,
-            returned_member,
-            instance_class,
-            unwrap,
-            ..
-        } = &fact.payload
-        else {
+        let FactPayload::Call(call) = &fact.payload else {
             return None;
         };
         Some(Self {
             id: fact.id,
-            callee_span: *callee_span,
-            callee_name: *callee_name,
-            call_provenance,
-            syntactic_path: syntactic_path.as_ref(),
-            rooted_chain: rooted_chain.as_ref(),
-            module_member: module_member.as_ref(),
-            returned_member: returned_member.as_ref(),
-            instance_class: instance_class.as_ref(),
-            unwrap: unwrap.as_deref(),
+            callee_span: call.callee_span(),
+            callee_name: call.callee_name(),
+            call_provenance: call.call_provenance(),
+            syntactic_path: call.syntactic_path(),
+            rooted_chain: call.rooted_chain(),
+            module_member: call.module_member(),
+            returned_member: call.returned_member(),
+            instance_class: call.instance_class(),
+            unwrap: call.unwrap(),
         })
     }
 
@@ -103,7 +91,7 @@ impl OccurrenceIndexes {
         // This is the sole projection from semantic facts into shared matcher
         // indexes. Rule selection must happen later, in query code.
         match &fact.payload {
-            FactPayload::Call { .. } => self.record_call_fact(fact, names),
+            FactPayload::Call(_) => self.record_call_fact(fact, names),
 
             FactPayload::MemberRead { .. } => self.record_member_read_fact(fact, names),
 

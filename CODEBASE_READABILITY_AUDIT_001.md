@@ -116,7 +116,7 @@ unchanged. Verified with `cargo test -p glass-lint-core analysis::facts --lib`.
 
 ### Call fact model and producers
 
-#### [ ] READ-004 — Encapsulate the multi-field call event contract
+#### [x] READ-004 — Encapsulate the multi-field call event contract
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -143,7 +143,12 @@ collapse distinct uncertainty states: unknown callee, unsupported provenance,
 missing receiver, and absent wrapper must remain distinguishable and all
 existing fail-closed matching behavior must be preserved.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `FactPayload::Call` now stores a private `CallEvent` domain
+type. Named unknown/resolved constructors own call-event creation, and effect,
+projection, summary, and matcher consumers use narrow accessors instead of
+destructuring the fifteen-field storage record. Wrapper state, provenance
+variants, optional receivers, and all existing fail-closed behavior remain
+explicit. Verified with `cargo test -p glass-lint-core`.
 
 ## Systemic Themes
 

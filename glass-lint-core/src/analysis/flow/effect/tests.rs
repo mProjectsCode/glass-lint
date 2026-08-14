@@ -17,7 +17,7 @@ fn chain_owned_resolves_direct_call_with_rooted_or_syntactic_chain() {
     let fact = stream
         .facts()
         .iter()
-        .find(|f| matches!(&f.payload, FactPayload::Call { .. }))
+        .find(|f| matches!(&f.payload, FactPayload::Call(_)))
         .expect("call fact should exist");
     let cref = stream.call_effect(fact.id);
     let shape = cref.shape().expect("call fact should have a shape");
@@ -47,7 +47,7 @@ fn chain_owned_falls_back_to_callee_name_for_alias_call() {
     let call_facts: Vec<_> = stream
         .facts()
         .iter()
-        .filter(|f| matches!(&f.payload, FactPayload::Call { .. }))
+        .filter(|f| matches!(&f.payload, FactPayload::Call(_)))
         .collect();
     assert!(!call_facts.is_empty(), "expected at least 1 call fact");
     let alias_call = call_facts[0];
@@ -72,7 +72,7 @@ fn rooted_is_false_for_non_global_call() {
     let call_facts: Vec<_> = stream
         .facts()
         .iter()
-        .filter(|f| matches!(&f.payload, FactPayload::Call { .. }))
+        .filter(|f| matches!(&f.payload, FactPayload::Call(_)))
         .collect();
     assert!(!call_facts.is_empty(), "expected at least 1 call fact");
     let call_fact = call_facts[0];
@@ -88,7 +88,7 @@ fn effective_args_unwraps_call_invocation() {
     let call_facts: Vec<_> = stream
         .facts()
         .iter()
-        .filter(|f| matches!(&f.payload, FactPayload::Call { .. }))
+        .filter(|f| matches!(&f.payload, FactPayload::Call(_)))
         .collect();
     assert!(!call_facts.is_empty(), "expected at least 1 call fact");
     let call_fact = call_facts[0];
@@ -116,7 +116,7 @@ fn effective_args_unwraps_apply_invocation() {
     let call_facts: Vec<_> = stream
         .facts()
         .iter()
-        .filter(|f| matches!(&f.payload, FactPayload::Call { .. }))
+        .filter(|f| matches!(&f.payload, FactPayload::Call(_)))
         .collect();
     assert!(!call_facts.is_empty(), "expected at least 1 call fact");
     let call_fact = call_facts[0];
@@ -152,7 +152,7 @@ fn chain_returns_borrowed_without_callee_name_fallback() {
     let fact = stream
         .facts()
         .iter()
-        .find(|f| matches!(&f.payload, FactPayload::Call { .. }))
+        .find(|f| matches!(&f.payload, FactPayload::Call(_)))
         .expect("call fact should exist");
     let cref = stream.call_effect(fact.id);
     let names = stream.names();

@@ -92,22 +92,12 @@ mod test_support {
             id,
             span,
             owner,
-            FactPayload::Call {
-                callee: ValueId::UNKNOWN,
-                receiver: None,
-                result: ValueId::UNKNOWN,
-                callee_span: span,
-                callee_name: None,
-                call_provenance: SymbolCallProvenance::Local,
-                syntactic_path: None,
-                rooted_chain: None,
-                module_member: None,
-                returned_member: None,
-                instance_class: None,
-                target_function: None,
-                args: Vec::new(),
-                unwrap: None,
-            },
+            FactPayload::Call(CallEvent::unknown(
+                ValueId::UNKNOWN,
+                span,
+                SymbolCallProvenance::Local,
+                Vec::new(),
+            )),
         )
     }
 }
@@ -405,19 +395,156 @@ pub(in crate::analysis) struct CallUnwrap {
     pub(in crate::analysis) effective_args: Vec<CallArgInfo>,
 }
 
+/// Fact-model owner for the semantic call-event contract. Producers use the
+/// named constructors and consumers use semantic accessors instead of the
+/// storage shape.
+#[derive(Debug, Clone)]
+pub(in crate::analysis) struct CallEvent {
+    callee: ValueId,
+    receiver: Option<ValueId>,
+    result: ValueId,
+    callee_span: ByteRange,
+    callee_name: Option<NameId>,
+    call_provenance: SymbolCallProvenance,
+    syntactic_path: Option<NamePath>,
+    rooted_chain: Option<NamePath>,
+    module_member: Option<SymbolMemberProvenance>,
+    returned_member: Option<(NamePath, NamePath)>,
+    instance_class: Option<(SmolStr, SmolStr)>,
+    target_function: Option<FunctionId>,
+    args: Vec<CallArgInfo>,
+    unwrap: Option<Box<CallUnwrap>>,
+}
+
+impl CallEvent {
+    pub(in crate::analysis) fn unknown(
+        result: ValueId,
+        callee_span: ByteRange,
+        call_provenance: SymbolCallProvenance,
+        args: Vec<CallArgInfo>,
+    ) -> Self {
+        Self {
+            callee: ValueId::UNKNOWN,
+            receiver: None,
+            result,
+            callee_span,
+            callee_name: None,
+            call_provenance,
+            syntactic_path: None,
+            rooted_chain: None,
+            module_member: None,
+            returned_member: None,
+            instance_class: None,
+            target_function: None,
+            args,
+            unwrap: None,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::analysis) fn resolved(
+        callee: ValueId,
+        receiver: Option<ValueId>,
+        result: ValueId,
+        callee_span: ByteRange,
+        callee_name: Option<NameId>,
+        call_provenance: SymbolCallProvenance,
+        syntactic_path: Option<NamePath>,
+        rooted_chain: Option<NamePath>,
+        module_member: Option<SymbolMemberProvenance>,
+        returned_member: Option<(NamePath, NamePath)>,
+        instance_class: Option<(SmolStr, SmolStr)>,
+        target_function: Option<FunctionId>,
+        args: Vec<CallArgInfo>,
+        unwrap: Option<Box<CallUnwrap>>,
+    ) -> Self {
+        Self {
+            callee,
+            receiver,
+            result,
+            callee_span,
+            callee_name,
+            call_provenance,
+            syntactic_path,
+            rooted_chain,
+            module_member,
+            returned_member,
+            instance_class,
+            target_function,
+            args,
+            unwrap,
+        }
+    }
+
+    pub(in crate::analysis) fn callee(&self) -> ValueId {
+        self.callee
+    }
+
+    pub(in crate::analysis) fn receiver(&self) -> Option<ValueId> {
+        self.receiver
+    }
+
+    pub(in crate::analysis) fn result(&self) -> ValueId {
+        self.result
+    }
+
+    pub(in crate::analysis) fn callee_span(&self) -> ByteRange {
+        self.callee_span
+    }
+
+    pub(in crate::analysis) fn callee_name(&self) -> Option<NameId> {
+        self.callee_name
+    }
+
+    pub(in crate::analysis) fn call_provenance(&self) -> &SymbolCallProvenance {
+        &self.call_provenance
+    }
+
+    pub(in crate::analysis) fn syntactic_path(&self) -> Option<&NamePath> {
+        self.syntactic_path.as_ref()
+    }
+
+    pub(in crate::analysis) fn rooted_chain(&self) -> Option<&NamePath> {
+        self.rooted_chain.as_ref()
+    }
+
+    pub(in crate::analysis) fn module_member(&self) -> Option<&SymbolMemberProvenance> {
+        self.module_member.as_ref()
+    }
+
+    pub(in crate::analysis) fn returned_member(&self) -> Option<&(NamePath, NamePath)> {
+        self.returned_member.as_ref()
+    }
+
+    pub(in crate::analysis) fn instance_class(&self) -> Option<&(SmolStr, SmolStr)> {
+        self.instance_class.as_ref()
+    }
+
+    pub(in crate::analysis) fn target_function(&self) -> Option<FunctionId> {
+        self.target_function
+    }
+
+    pub(in crate::analysis) fn args(&self) -> &[CallArgInfo] {
+        &self.args
+    }
+
+    pub(in crate::analysis) fn unwrap(&self) -> Option<&CallUnwrap> {
+        self.unwrap.as_deref()
+    }
+
+    pub(in crate::analysis) fn effective_args(&self) -> &[CallArgInfo] {
+        self.unwrap()
+            .map_or(self.args(), |call| call.effective_args.as_slice())
+    }
+}
+
 impl FactPayload {
     /// Return the arguments visible to call-effect and constraint consumers.
     /// Wrapper calls replace authored arguments with their bound/effective
     /// projection; ordinary calls retain their authored argument list.
     pub(in crate::analysis) fn effective_call_args(&self) -> Option<&[CallArgInfo]> {
-        let Self::Call { args, unwrap, .. } = self else {
-            return None;
-        };
-        Some(
-            unwrap
-                .as_deref()
-                .map_or(args.as_slice(), |call| call.effective_args.as_slice()),
-        )
+        let Self::Call(call) = self else { return None };
+        Some(call.effective_args())
     }
 }
 
@@ -452,22 +579,7 @@ pub(in crate::analysis) enum FactPayload {
         value: ValueId,
         value_is_precise: bool,
     },
-    Call {
-        callee: ValueId,
-        receiver: Option<ValueId>,
-        result: ValueId,
-        callee_span: ByteRange,
-        callee_name: Option<NameId>,
-        call_provenance: SymbolCallProvenance,
-        syntactic_path: Option<NamePath>,
-        rooted_chain: Option<NamePath>,
-        module_member: Option<SymbolMemberProvenance>,
-        returned_member: Option<(NamePath, NamePath)>,
-        instance_class: Option<(SmolStr, SmolStr)>,
-        target_function: Option<FunctionId>,
-        args: Vec<CallArgInfo>,
-        unwrap: Option<Box<CallUnwrap>>,
-    },
+    Call(CallEvent),
     Function {
         id: FunctionId,
         boundary: FunctionBoundary,

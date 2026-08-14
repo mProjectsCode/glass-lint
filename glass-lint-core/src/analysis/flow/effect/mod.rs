@@ -21,7 +21,7 @@ use crate::analysis::{
         ParameterBinding, SemanticFact,
     },
     flow::{FlowCompletion, FlowCompletionReason},
-    model::{flow::FunctionTable, scope::FunctionId, value::ValueId},
+    model::{fact::CallEvent, flow::FunctionTable, scope::FunctionId, value::ValueId},
     syntax::SymbolCallProvenance,
 };
 
@@ -162,44 +162,34 @@ impl FactStream<Frozen> {
 }
 
 impl CallEffectRef<'_> {
-    pub(super) fn call_fact(&self) -> Option<&FactPayload> {
-        self.stream.fact(self.event).map(|fact| &fact.payload)
+    pub(super) fn call_fact(&self) -> Option<&CallEvent> {
+        let fact = self.stream.fact(self.event)?;
+        let FactPayload::Call(call) = &fact.payload else {
+            return None;
+        };
+        Some(call)
     }
 
     pub(in crate::analysis) fn shape(&self) -> Option<CallShape<'_>> {
-        let fact = self.call_fact()?;
-        let FactPayload::Call {
-            result,
-            callee_name,
-            call_provenance,
-            syntactic_path,
-            rooted_chain,
-            target_function,
-            unwrap,
-            ..
-        } = fact
-        else {
-            return None;
-        };
-        let chain = unwrap
-            .as_deref()
+        let call = self.call_fact()?;
+        let chain = call
+            .unwrap()
             .and_then(|call| call.chain_path.as_ref())
-            .or(rooted_chain.as_ref())
-            .or(syntactic_path.as_ref());
-        let arguments = fact.effective_call_args()?;
-        let global_name = match call_provenance {
+            .or(call.rooted_chain())
+            .or(call.syntactic_path());
+        let global_name = match call.call_provenance() {
             SymbolCallProvenance::Global { name } => Some(name),
             _ => None,
         };
         Some(CallShape {
             chain,
-            rooted: rooted_chain.is_some(),
+            rooted: call.rooted_chain().is_some(),
             global_name,
-            arguments,
-            result: *result,
-            provenance: call_provenance,
-            target: *target_function,
-            callee_name: *callee_name,
+            arguments: call.effective_args(),
+            result: call.result(),
+            provenance: call.call_provenance(),
+            target: call.target_function(),
+            callee_name: call.callee_name(),
         })
     }
 }
@@ -394,16 +384,11 @@ impl FunctionEffect {
     }
 
     fn record_call(&mut self, fact: &SemanticFact, budget: &mut Budget) {
-        let FactPayload::Call {
-            result, receiver, ..
-        } = &fact.payload
-        else {
+        let FactPayload::Call(call) = &fact.payload else {
             return;
         };
 
-        let Some(effective_args) = fact.payload.effective_call_args() else {
-            return;
-        };
+        let effective_args = call.effective_args();
         let arguments = self.build_effect_arguments(effective_args);
         let call_id = EffectCallId::new(self.calls.len());
         for argument in &arguments {
@@ -425,7 +410,7 @@ impl FunctionEffect {
         } else {
             self.invalid = true;
         }
-        if let Some(receiver) = receiver.and_then(|value| self.parameter_for(value)) {
+        if let Some(receiver) = call.receiver().and_then(|value| self.parameter_for(value)) {
             if budget.try_push() {
                 self.uses.push(EffectUse::CallReceiver {
                     event: fact.id,
@@ -435,7 +420,9 @@ impl FunctionEffect {
                 self.invalid = true;
             }
         }
-        self.value_roots.entry(*result).or_insert(*result);
+        self.value_roots
+            .entry(call.result())
+            .or_insert(call.result());
     }
 
     fn build_effect_arguments(&self, call_args: &[CallArgInfo]) -> Vec<EffectArgument> {
@@ -666,7 +653,7 @@ impl<'stream> FunctionEffectsBuilder<'stream> {
                 *value_is_precise,
                 &mut self.budget,
             ),
-            FactPayload::Call { .. } => effect.record_call(fact, &mut self.budget),
+            FactPayload::Call(_) => effect.record_call(fact, &mut self.budget),
             FactPayload::Return { value, .. } => {
                 effect.record_return(*value, &self.value_provenance, &mut self.budget);
             }

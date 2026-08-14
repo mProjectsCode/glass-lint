@@ -473,8 +473,8 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
         };
         let normalized_span = if span.is_dummy() {
             match &payload {
-                FactPayload::Call { callee_span, .. }
-                | FactPayload::Construction { callee_span, .. } => Some(*callee_span),
+                FactPayload::Call(call) => Some(call.callee_span()),
+                FactPayload::Construction { callee_span, .. } => Some(*callee_span),
                 _ => None,
             }
         } else {
@@ -746,22 +746,12 @@ mod stream_tests {
             FactId::from_test(id),
             span,
             FunctionId::from_test(0),
-            FactPayload::Call {
-                callee: ValueId::UNKNOWN,
-                receiver: None,
-                result: ValueId::UNKNOWN,
-                callee_span: span,
-                callee_name: None,
-                call_provenance: SymbolCallProvenance::Local,
-                syntactic_path: None,
-                rooted_chain: None,
-                module_member: None,
-                returned_member: None,
-                instance_class: None,
-                target_function: None,
-                args: Vec::new(),
-                unwrap: None,
-            },
+            FactPayload::Call(crate::analysis::model::fact::CallEvent::unknown(
+                ValueId::UNKNOWN,
+                span,
+                SymbolCallProvenance::Local,
+                Vec::new(),
+            )),
         )
     }
 
@@ -795,7 +785,7 @@ mod stream_tests {
                 .filter(|fact| {
                     fact.span.start() == span.start()
                         && fact.span.end() == span.end()
-                        && matches!(fact.payload, FactPayload::Call { .. })
+                        && matches!(fact.payload, FactPayload::Call(_))
                 })
                 .map(SemanticFact::id)
                 .collect::<Vec<_>>(),
@@ -804,12 +794,12 @@ mod stream_tests {
         assert!(
             stream
                 .fact(FactId::from_test(0))
-                .is_some_and(|fact| { matches!(fact.payload, FactPayload::Call { .. }) })
+                .is_some_and(|fact| { matches!(fact.payload, FactPayload::Call(_)) })
         );
         assert!(
             stream
                 .fact(FactId::from_test(2))
-                .is_some_and(|fact| { matches!(fact.payload, FactPayload::Call { .. }) })
+                .is_some_and(|fact| { matches!(fact.payload, FactPayload::Call(_)) })
         );
         assert!(stream.fact(FactId::from_test(3)).is_none());
     }
@@ -827,7 +817,7 @@ mod stream_tests {
             .filter(|fact| {
                 fact.span.start() == span.start()
                     && fact.span.end() == span.end()
-                    && matches!(fact.payload, FactPayload::Call { .. })
+                    && matches!(fact.payload, FactPayload::Call(_))
             })
             .collect::<Vec<_>>();
         assert_eq!(calls.len(), 10_001);

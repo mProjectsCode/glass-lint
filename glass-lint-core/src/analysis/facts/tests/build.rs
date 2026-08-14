@@ -33,7 +33,7 @@ fn fact_builder_emits_facts_for_diverse_program() {
     assert!(
         facts
             .iter()
-            .any(|fact| matches!(fact.payload, FactPayload::Call { .. }))
+            .any(|fact| matches!(fact.payload, FactPayload::Call(_)))
     );
     assert!(
         facts
@@ -53,7 +53,7 @@ fn facts_record_the_lexical_function_owner() {
     let calls = stream
         .facts()
         .iter()
-        .filter(|fact| matches!(fact.payload, FactPayload::Call { .. }))
+        .filter(|fact| matches!(fact.payload, FactPayload::Call(_)))
         .collect::<Vec<_>>();
     assert_eq!(calls.len(), 2);
     assert_ne!(calls[0].function, calls[1].function);
@@ -142,7 +142,7 @@ fn optional_chain_does_not_double_record_roles() {
     assert_eq!(
         facts
             .iter()
-            .filter(|f| matches!(f.payload, FactPayload::Call { .. }))
+            .filter(|f| matches!(f.payload, FactPayload::Call(_)))
             .count(),
         1,
         "optional call must emit exactly one Call fact"
@@ -165,7 +165,7 @@ fn nested_call_and_member_roles_have_distinct_facts() {
     let calls = stream
         .facts()
         .iter()
-        .filter(|fact| matches!(fact.payload, FactPayload::Call { .. }))
+        .filter(|fact| matches!(fact.payload, FactPayload::Call(_)))
         .collect::<Vec<_>>();
     let members = stream
         .facts()
@@ -209,21 +209,16 @@ fn call_fact_captures_callee_provenance() {
     let call_facts: Vec<_> = stream
         .facts()
         .iter()
-        .filter(|f| matches!(f.payload, FactPayload::Call { .. }))
+        .filter(|f| matches!(f.payload, FactPayload::Call(_)))
         .collect();
     assert_eq!(call_facts.len(), 1);
-    if let FactPayload::Call {
-        call_provenance,
-        callee_name,
-        ..
-    } = &call_facts[0].payload
-    {
+    if let FactPayload::Call(call) = &call_facts[0].payload {
         assert!(
-            matches!(call_provenance, SymbolCallProvenance::Global { name } if name == "fetch"),
+            matches!(call.call_provenance(), SymbolCallProvenance::Global { name } if name == "fetch"),
             "fetch should resolve to global provenance"
         );
         assert_eq!(
-            callee_name.and_then(|id| stream.resolve_name(id)),
+            call.callee_name().and_then(|id| stream.resolve_name(id)),
             Some("fetch")
         );
     } else {
@@ -247,14 +242,14 @@ fn facts_retain_current_value_identities() {
 
     assert!(stream.facts().iter().any(|fact| {
         matches!(
-            fact.payload,
-            FactPayload::Reference { value, .. } if value != ValueId::UNKNOWN
+            &fact.payload,
+            FactPayload::Reference { value, .. } if *value != ValueId::UNKNOWN
         )
     }));
     assert!(stream.facts().iter().any(|fact| {
         matches!(
-            fact.payload,
-            FactPayload::Call { callee, .. } if callee != ValueId::UNKNOWN
+            &fact.payload,
+            FactPayload::Call(call) if call.callee() != ValueId::UNKNOWN
         )
     }));
 }
@@ -352,30 +347,25 @@ fn instance_class_is_captured_for_this_calls() {
     let call_facts: Vec<_> = stream
         .facts()
         .iter()
-        .filter(|f| matches!(f.payload, FactPayload::Call { .. }))
+        .filter(|f| matches!(f.payload, FactPayload::Call(_)))
         .collect();
     let this_call = call_facts
         .iter()
         .find(|f| {
-            if let FactPayload::Call { instance_class, .. } = &f.payload {
-                instance_class.is_some()
+            if let FactPayload::Call(call) = &f.payload {
+                call.instance_class().is_some()
             } else {
                 false
             }
         })
         .expect("should find this.baz() call with instance_class");
-    if let FactPayload::Call {
-        instance_class,
-        syntactic_path,
-        ..
-    } = &this_call.payload
-    {
+    if let FactPayload::Call(call) = &this_call.payload {
         assert!(
-            instance_class.is_some(),
+            call.instance_class().is_some(),
             "this.baz() inside a class with module superclass should capture instance_class"
         );
         assert!(
-            syntactic_path.is_some(),
+            call.syntactic_path().is_some(),
             "should have syntactic path for member call"
         );
     }

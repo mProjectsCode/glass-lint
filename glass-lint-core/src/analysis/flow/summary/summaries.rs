@@ -320,15 +320,10 @@ fn resolve_call_target(
     call_id: FactId,
     stream: &FactStream<Frozen>,
 ) -> Option<(FunctionId, &[CallArgInfo])> {
-    let FactPayload::Call {
-        target_function,
-        args,
-        ..
-    } = &stream.fact(call_id)?.payload
-    else {
+    let FactPayload::Call(call) = &stream.fact(call_id)?.payload else {
         return None;
     };
-    Some(((*target_function)?, args))
+    Some((call.target_function()?, call.args()))
 }
 
 fn try_project_sink(
@@ -474,12 +469,12 @@ mod tests {
         let call_fact = stream
             .facts()
             .iter()
-            .find(|f| matches!(&f.payload, FactPayload::Call { .. }))
+            .find(|f| matches!(&f.payload, FactPayload::Call(_)))
             .expect("call fact should exist");
-        let FactPayload::Call { args, .. } = &call_fact.payload else {
+        let FactPayload::Call(call) = &call_fact.payload else {
             unreachable!()
         };
-        assert!(!f.is_invocation_compatible(&stream, args, &summaries.paths));
+        assert!(!f.is_invocation_compatible(&stream, call.args(), &summaries.paths));
     }
 
     #[test]
@@ -496,11 +491,11 @@ mod tests {
         let call_fact = stream
             .facts()
             .iter()
-            .find(|f| matches!(&f.payload, FactPayload::Call { .. }))
+            .find(|f| matches!(&f.payload, FactPayload::Call(_)))
             .expect("call fact should exist");
-        let FactPayload::Call { args, .. } = &call_fact.payload else {
+        let FactPayload::Call(call) = &call_fact.payload else {
             unreachable!()
         };
-        assert!(!f.is_invocation_compatible(&stream, args, &summaries.paths));
+        assert!(!f.is_invocation_compatible(&stream, call.args(), &summaries.paths));
     }
 }

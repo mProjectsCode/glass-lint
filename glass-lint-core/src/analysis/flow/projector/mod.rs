@@ -267,7 +267,7 @@ impl<'rules, 'stream> ProjectionInputs<'rules, 'stream> {
             .facts()
             .iter()
             .filter_map(|fact| match &fact.payload {
-                FactPayload::Call { result, .. } => Some((*result, fact.id)),
+                FactPayload::Call(call) => Some((call.result(), fact.id)),
                 _ => None,
             })
             .collect();
@@ -626,7 +626,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
                     fact.id,
                 );
             }
-            FactPayload::Call { .. } => self.transfer_call(fact),
+            FactPayload::Call(_) => self.transfer_call(fact),
             _ => {}
         }
     }
@@ -751,29 +751,23 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         if !self.run.reachable {
             return;
         }
-        let FactPayload::Call {
-            receiver,
-            target_function,
-            args,
-            ..
-        } = &fact.payload
-        else {
+        let FactPayload::Call(call) = &fact.payload else {
             return;
         };
         let cref = self.inputs.stream.call_effect(fact.id);
         let Some(shape) = cref.shape() else {
-            if let Some(function) = target_function {
-                self.record_helper_sink(*function, args, fact.id);
+            if let Some(function) = call.target_function() {
+                self.record_helper_sink(function, call.args(), fact.id);
             }
             return;
         };
         let effective_args = shape.effective_args();
         if let Some(chain) = shape.chain_owned(self.inputs.stream, self.inputs.names) {
-            self.record_configuration(*receiver, &chain, effective_args, fact.id);
+            self.record_configuration(call.receiver(), &chain, effective_args, fact.id);
         }
         self.record_sinks(&shape, effective_args, fact.id);
-        if let Some(function) = target_function {
-            self.record_helper_sink(*function, args, fact.id);
+        if let Some(function) = call.target_function() {
+            self.record_helper_sink(function, call.args(), fact.id);
         }
     }
 

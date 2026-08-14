@@ -653,13 +653,13 @@ fn flow_evidence_is_anchored_at_the_sink_event() {
         .facts()
         .iter()
         .find_map(|fact| match &fact.payload {
-            FactPayload::Call {
-                syntactic_path: Some(chain),
-                ..
-            } if stream
-                .names()
-                .resolve_path(chain)
-                .is_some_and(|s| s.eq_chain("document.head.appendChild")) =>
+            FactPayload::Call(call)
+                if call.syntactic_path().is_some_and(|chain| {
+                    stream
+                        .names()
+                        .resolve_path(chain)
+                        .is_some_and(|s| s.eq_chain("document.head.appendChild"))
+                }) =>
             {
                 Some(fact.span)
             }

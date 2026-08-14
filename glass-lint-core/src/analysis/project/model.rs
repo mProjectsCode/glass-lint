@@ -374,7 +374,7 @@ impl ProjectSemanticModel {
         self.module_fact_stream(event.module())
             .and_then(|stream| stream.fact(event.fact()))
             .map_or(ValueId::UNKNOWN, |fact| match &fact.payload {
-                crate::analysis::facts::FactPayload::Call { result, .. } => *result,
+                crate::analysis::facts::FactPayload::Call(call) => call.result(),
                 _ => ValueId::UNKNOWN,
             })
     }

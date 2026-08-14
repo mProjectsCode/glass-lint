@@ -280,17 +280,14 @@ mod tests {
         let fact = stream
             .facts()
             .iter()
-            .find(|f| matches!(&f.payload, FactPayload::Call { .. }))
+            .find(|f| matches!(&f.payload, FactPayload::Call(_)))
             .cloned()
             .expect("call fact should exist");
         let (target, args) = match &fact.payload {
-            FactPayload::Call {
-                args: a,
-                target_function,
-                ..
-            } => (
-                target_function.expect("target function should be resolved"),
-                a.clone(),
+            FactPayload::Call(call) => (
+                call.target_function()
+                    .expect("target function should be resolved"),
+                call.args().to_vec(),
             ),
             _ => unreachable!(),
         };
