@@ -122,42 +122,7 @@ impl ClassificationEvidenceOccurrence {
 }
 
 impl ClassificationEvidence {
-    pub(crate) fn from_occurrences(
-        kind: MatchKind,
-        symbol: String,
-        occurrences: Vec<ClassificationEvidenceOccurrence>,
-        certainty: MatchCertainty,
-    ) -> Option<Self> {
-        if occurrences.is_empty() {
-            return None;
-        }
-        Some(Self {
-            kind,
-            symbol,
-            count: u32::try_from(occurrences.len()).unwrap_or(u32::MAX),
-            truncated: false,
-            certainty,
-            occurrences,
-        })
-    }
-
-    pub(crate) fn from_occurrence(
-        kind: MatchKind,
-        symbol: String,
-        occurrence: ClassificationEvidenceOccurrence,
-        certainty: MatchCertainty,
-    ) -> Self {
-        Self {
-            kind,
-            symbol,
-            count: 1,
-            truncated: false,
-            certainty,
-            occurrences: vec![occurrence],
-        }
-    }
-
-    pub(crate) fn with_total_count(
+    fn from_parts(
         kind: MatchKind,
         symbol: String,
         total_count: usize,
@@ -176,6 +141,46 @@ impl ClassificationEvidence {
             certainty,
             occurrences,
         })
+    }
+
+    pub(crate) fn from_occurrences(
+        kind: MatchKind,
+        symbol: String,
+        occurrences: Vec<ClassificationEvidenceOccurrence>,
+        certainty: MatchCertainty,
+    ) -> Option<Self> {
+        if occurrences.is_empty() {
+            return None;
+        }
+        Self::from_parts(
+            kind,
+            symbol,
+            occurrences.len(),
+            false,
+            certainty,
+            occurrences,
+        )
+    }
+
+    pub(crate) fn from_occurrence(
+        kind: MatchKind,
+        symbol: String,
+        occurrence: ClassificationEvidenceOccurrence,
+        certainty: MatchCertainty,
+    ) -> Self {
+        Self::from_parts(kind, symbol, 1, false, certainty, vec![occurrence])
+            .expect("one retained occurrence must fit its total count")
+    }
+
+    pub(crate) fn with_total_count(
+        kind: MatchKind,
+        symbol: String,
+        total_count: usize,
+        truncated: bool,
+        certainty: MatchCertainty,
+        occurrences: Vec<ClassificationEvidenceOccurrence>,
+    ) -> Option<Self> {
+        Self::from_parts(kind, symbol, total_count, truncated, certainty, occurrences)
     }
 
     pub fn count(&self) -> u32 {

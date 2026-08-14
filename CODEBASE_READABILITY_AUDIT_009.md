@@ -45,7 +45,11 @@ preserve the distinction between calls, reads, writes, imports, strings,
 constructors, and classes, including deterministic ordering and physical
 root equality.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `ClassificationEvidence::from_parts` now owns the shared
+total-count, truncation, saturation, and retained-occurrence validation.
+The empty, single-occurrence, and aggregated constructors delegate to it
+without changing their call-site contracts. Verified with
+`cargo test -p glass-lint-core classification --lib`.
 
 ### [api/compiler/validate, api/compiler/normalize.rs, and api/compiler/physical.rs]
 
