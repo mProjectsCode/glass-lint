@@ -752,10 +752,8 @@ mod tests {
             .collect();
         assert_eq!(indexed, values);
 
-        let borrowed = OccurrenceSelection::Borrowed(BorrowedOccurrenceIter::new(
-            Some(&values),
-            &[],
-        ));
+        let borrowed =
+            OccurrenceSelection::Borrowed(BorrowedOccurrenceIter::new(Some(&values), &[]));
         let borrowed: Vec<_> = borrowed.into_ordered().collect();
         assert_eq!(borrowed, values);
     }
