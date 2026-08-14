@@ -13,8 +13,8 @@ use crate::{
             effect::CallShape,
             planning::FlowMatchView,
             projector::{
-                CallArgInfo, ClassificationEvidence, FactId, FlowState, MatchKind,
-                ObjectFlowProjector, ObjectId, ValueId, history::ReportEvidenceKey,
+                CallArgInfo, ClassificationEvidence, FactId, FlowObjectId, FlowState, MatchKind,
+                ObjectFlowProjector, ValueId, history::ReportEvidenceKey,
             },
         },
         model::{
@@ -39,7 +39,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
         event: FactId,
     ) {
         let matcher = FlowMatchView::new(self.inputs.names, self.inputs.stream.values());
-        let objects: SmallVec<[ObjectId; 4]> = match receiver {
+        let objects: SmallVec<[FlowObjectId; 4]> = match receiver {
             Some(value) => self.object_for(value).into_iter().collect(),
             None => self.flow_state.objects().collect(),
         };
@@ -146,7 +146,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
                 })
                 .collect()
         };
-        let ready: Vec<(ObjectId, FlowId)> = values
+        let ready: Vec<(FlowObjectId, FlowId)> = values
             .into_iter()
             .filter_map(|(flow_id, value)| {
                 let object = self.object_for(value)?;
@@ -162,7 +162,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
         }
     }
 
-    fn emit_completed_sink(&mut self, object: ObjectId, flow: FlowId, sink_fact: FactId) {
+    fn emit_completed_sink(&mut self, object: FlowObjectId, flow: FlowId, sink_fact: FactId) {
         let state = self.flow_state.state(object, flow).cloned();
         let Some(state) = state else {
             return;
@@ -177,7 +177,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
     }
 
     /// Emit a requirement-only match when its state is complete.
-    pub(super) fn emit_if_ready(&mut self, flow: FlowId, object: ObjectId, event: FactId) {
+    pub(super) fn emit_if_ready(&mut self, flow: FlowId, object: FlowObjectId, event: FactId) {
         let state = self.flow_state.state(object, flow).cloned();
         let Some(state) = state else {
             return;

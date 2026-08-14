@@ -41,7 +41,7 @@ use crate::{
         model::{
             flow::{FlowId, FlowLimits, FlowState},
             scope::BindingSlot,
-            value::{ObjectId, ValueId},
+            value::{FlowObjectId, ValueId},
         },
         trace::TraceArena,
     },
@@ -781,7 +781,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         self.flow_state.capture(self.run.reachable)
     }
 
-    pub(super) fn object_for(&mut self, value: ValueId) -> Option<ObjectId> {
+    pub(super) fn object_for(&mut self, value: ValueId) -> Option<FlowObjectId> {
         let aliases = self.value_aliases(value);
         self.flow_state.object_for_any(&aliases)
     }
@@ -900,7 +900,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         self.flow_state.unbind_aliases(&aliases);
     }
 
-    fn bind_value(&mut self, value: ValueId, object: ObjectId) {
+    fn bind_value(&mut self, value: ValueId, object: FlowObjectId) {
         let aliases = self.value_aliases(value);
         self.flow_state.bind_aliases(&aliases, object);
     }
@@ -926,12 +926,12 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         self.flow_state.invalidate_aliases(&aliases);
     }
 
-    fn allocate_object_id(&mut self) -> Option<ObjectId> {
+    fn allocate_object_id(&mut self) -> Option<FlowObjectId> {
         if self.run.next_object_id >= self.run.limits.object_limit() {
             self.run.object_limit_rejected = true;
             return None;
         }
-        let object = ObjectId::new(self.run.next_object_id);
+        let object = FlowObjectId::new(self.run.next_object_id);
         self.run.next_object_id = self.run.next_object_id.checked_add(1)?;
         Some(object)
     }

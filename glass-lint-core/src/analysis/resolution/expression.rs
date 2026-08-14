@@ -497,7 +497,7 @@ impl Resolver<'_> {
 
     fn intern_object_id(
         &mut self,
-        object: crate::analysis::model::value::ObjectId,
+        object: crate::analysis::model::value::ResolvedObjectId,
     ) -> ResolvedValue {
         let id = self
             .values

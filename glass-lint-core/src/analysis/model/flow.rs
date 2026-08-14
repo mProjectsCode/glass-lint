@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 use smallvec::SmallVec;
 
 use crate::{
-    analysis::model::{fact::FactId, scope::FunctionId, value::ObjectId},
+    analysis::model::{fact::FactId, scope::FunctionId, value::FlowObjectId},
     api::classification::RuleIndex,
 };
 
@@ -538,7 +538,7 @@ impl<E: Clone + Ord> LifecycleEvidence<E> {
 pub struct FlowState {
     flow: FlowId,
     source_event: FactId,
-    object_id: ObjectId,
+    object_id: FlowObjectId,
     evidence: LifecycleEvidence<FactId>,
 }
 
@@ -553,16 +553,16 @@ impl Hash for FlowState {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct FlowStateKey {
-    object: ObjectId,
+    object: FlowObjectId,
     flow: FlowId,
 }
 
 impl FlowStateKey {
-    pub fn new(object: ObjectId, flow: FlowId) -> Self {
+    pub fn new(object: FlowObjectId, flow: FlowId) -> Self {
         Self { object, flow }
     }
 
-    pub fn object(self) -> ObjectId {
+    pub fn object(self) -> FlowObjectId {
         self.object
     }
 
@@ -572,7 +572,7 @@ impl FlowStateKey {
 }
 
 impl FlowState {
-    pub fn new(flow: FlowId, source_event: FactId, object_id: ObjectId) -> Self {
+    pub fn new(flow: FlowId, source_event: FactId, object_id: FlowObjectId) -> Self {
         Self {
             flow,
             source_event,
@@ -589,7 +589,7 @@ impl FlowState {
         self.flow
     }
 
-    pub fn object_id(&self) -> ObjectId {
+    pub fn object_id(&self) -> FlowObjectId {
         self.object_id
     }
 
@@ -801,25 +801,25 @@ mod tests {
     #[test]
     fn flow_state_new_creates_unready_state() {
         let flow = FlowId::new(index(0), 0);
-        let state = FlowState::new(flow, FactId::from_test(1), ObjectId::from_test(0));
+        let state = FlowState::new(flow, FactId::from_test(1), FlowObjectId::from_test(0));
         assert_eq!(state.flow_id(), flow);
         assert_eq!(state.source_event(), FactId::from_test(1));
-        assert_eq!(state.object_id(), ObjectId::from_test(0));
+        assert_eq!(state.object_id(), FlowObjectId::from_test(0));
     }
 
     #[test]
     fn flow_state_key_matches_flow_and_object() {
         let flow = FlowId::new(index(1), 2);
-        let state = FlowState::new(flow, FactId::from_test(5), ObjectId::from_test(3));
+        let state = FlowState::new(flow, FactId::from_test(5), FlowObjectId::from_test(3));
         let key = state.key();
-        assert_eq!(key.object(), ObjectId::from_test(3));
+        assert_eq!(key.object(), FlowObjectId::from_test(3));
         assert_eq!(key.flow(), flow);
     }
 
     #[test]
     fn flow_state_records_and_clears_requirements() {
         let flow = FlowId::new(index(0), 0);
-        let mut state = FlowState::new(flow, FactId::from_test(1), ObjectId::from_test(0));
+        let mut state = FlowState::new(flow, FactId::from_test(1), FlowObjectId::from_test(0));
         state.record_requirement(RequirementIndex::new(0).unwrap(), FactId::from_test(10));
         state.record_requirement(RequirementIndex::new(1).unwrap(), FactId::from_test(20));
         assert_eq!(state.requirement_entries().count(), 2);

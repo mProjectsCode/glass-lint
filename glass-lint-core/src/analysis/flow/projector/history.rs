@@ -5,7 +5,7 @@ use crate::{
         facts::FactId,
         model::{
             flow::{FlowState, FlowStateKey, LifecycleRollback, RequirementIndex, SinkIndex},
-            value::{ObjectId, ValueId},
+            value::{FlowObjectId, ValueId},
         },
     },
     api::classification::RuleIndex,
@@ -14,9 +14,9 @@ use crate::{
 /// An inverse delta that can undo one mutation on an alias or state table.
 #[derive(Debug, Clone)]
 pub(super) enum InverseDelta {
-    AliasInsert(ValueId, ObjectId),
-    AliasUpdate(ValueId, ObjectId, ObjectId),
-    AliasRemove(ValueId, ObjectId),
+    AliasInsert(ValueId, FlowObjectId),
+    AliasUpdate(ValueId, FlowObjectId, FlowObjectId),
+    AliasRemove(ValueId, FlowObjectId),
     StateInsert(FlowStateKey, Box<FlowState>),
     StateUpdate(FlowStateKey, Box<FlowState>, Box<FlowState>),
     StateRemove(FlowStateKey, Box<FlowState>),
@@ -91,12 +91,12 @@ impl MutationLog {
 pub(super) struct ReportEvidenceKey {
     pub(super) rule: RuleIndex,
     pub(super) flow: usize,
-    pub(super) object: ObjectId,
+    pub(super) object: FlowObjectId,
     pub(super) event: FactId,
 }
 
 impl ReportEvidenceKey {
-    pub(super) fn new(rule: RuleIndex, flow: usize, object: ObjectId, event: FactId) -> Self {
+    pub(super) fn new(rule: RuleIndex, flow: usize, object: FlowObjectId, event: FactId) -> Self {
         Self {
             rule,
             flow,

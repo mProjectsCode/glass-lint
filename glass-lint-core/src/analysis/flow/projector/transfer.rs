@@ -11,7 +11,7 @@ use crate::analysis::{
         effect::CallShape,
         planning::FlowMatchView,
         projector::{
-            CallArgInfo, FactId, FlowState, ObjectFlowProjector, ObjectId, ValueId,
+            CallArgInfo, FactId, FlowObjectId, FlowState, ObjectFlowProjector, ValueId,
             state::StateAdmission,
         },
     },
@@ -57,7 +57,7 @@ impl ObjectFlowProjector<'_, '_, '_> {
         call: &CallShape<'_>,
         args: &[CallArgInfo],
         source_fact: FactId,
-    ) -> Option<(ObjectId, Vec<FlowState>)> {
+    ) -> Option<(FlowObjectId, Vec<FlowState>)> {
         let matcher = FlowMatchView::new(self.inputs.names, self.inputs.stream.values());
         let candidates = self.inputs.plan.source_candidates_for_call(call)?;
         let matching: SmallVec<[FlowId; 8]> = candidates

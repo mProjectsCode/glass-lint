@@ -17,7 +17,7 @@ use crate::{
         flow::projector::history::{Checkpoint, InverseDelta, MutationLog, ReportEvidenceKey},
         model::{
             flow::{FlowId, FlowState, FlowStateKey, RequirementIndex, SinkIndex},
-            value::{ObjectId, ValueId},
+            value::{FlowObjectId, ValueId},
         },
     },
     api::classification::{ClassificationEvidence, RuleEvidenceTable, RuleIndex},
@@ -193,25 +193,25 @@ impl PropertyWriteUpdate {
 
 #[derive(Debug, Default)]
 pub(super) struct AliasTable {
-    values: BTreeMap<ValueId, ObjectId>,
-    /// Reverse index: how many ValueIds alias each ObjectId.
+    values: BTreeMap<ValueId, FlowObjectId>,
+    /// Reverse index: how many ValueIds alias each FlowObjectId.
     object_refs: ObjectRefCounts,
 }
 
 impl AliasTable {
-    pub(super) fn get(&self, value: ValueId) -> Option<ObjectId> {
+    pub(super) fn get(&self, value: ValueId) -> Option<FlowObjectId> {
         self.values.get(&value).copied()
     }
 
-    fn values(&self) -> impl Iterator<Item = &ObjectId> {
+    fn values(&self) -> impl Iterator<Item = &FlowObjectId> {
         self.values.values()
     }
 
-    fn iter(&self) -> impl Iterator<Item = (&ValueId, &ObjectId)> {
+    fn iter(&self) -> impl Iterator<Item = (&ValueId, &FlowObjectId)> {
         self.values.iter()
     }
 
-    pub(super) fn set(&mut self, value: ValueId, object: ObjectId) -> Option<ObjectId> {
+    pub(super) fn set(&mut self, value: ValueId, object: FlowObjectId) -> Option<FlowObjectId> {
         let previous = self.values.insert(value, object);
         if let Some(previous) = previous {
             self.object_refs.decrement(previous);
@@ -220,39 +220,39 @@ impl AliasTable {
         previous
     }
 
-    pub(super) fn remove(&mut self, value: ValueId) -> Option<ObjectId> {
+    pub(super) fn remove(&mut self, value: ValueId) -> Option<FlowObjectId> {
         let object = self.values.remove(&value)?;
         self.object_refs.decrement(object);
         Some(object)
     }
 
-    fn take(&mut self) -> BTreeMap<ValueId, ObjectId> {
+    fn take(&mut self) -> BTreeMap<ValueId, FlowObjectId> {
         self.object_refs.clear();
         std::mem::take(&mut self.values)
     }
 
-    fn contains_object(&self, object: ObjectId) -> bool {
+    fn contains_object(&self, object: FlowObjectId) -> bool {
         self.object_refs.contains(object)
     }
 
-    fn objects(&self) -> impl Iterator<Item = ObjectId> + '_ {
+    fn objects(&self) -> impl Iterator<Item = FlowObjectId> + '_ {
         self.object_refs.keys()
     }
 }
 
 #[derive(Debug, Default)]
-struct ObjectRefCounts(BTreeMap<ObjectId, usize>);
+struct ObjectRefCounts(BTreeMap<FlowObjectId, usize>);
 
 impl ObjectRefCounts {
     pub(super) fn clear(&mut self) {
         self.0.clear();
     }
 
-    pub(super) fn increment(&mut self, object: ObjectId) {
+    pub(super) fn increment(&mut self, object: FlowObjectId) {
         *self.0.entry(object).or_insert(0) += 1;
     }
 
-    pub(super) fn decrement(&mut self, object: ObjectId) {
+    pub(super) fn decrement(&mut self, object: FlowObjectId) {
         if let Some(count) = self.0.get_mut(&object) {
             *count -= 1;
             if *count == 0 {
@@ -261,11 +261,11 @@ impl ObjectRefCounts {
         }
     }
 
-    pub(super) fn contains(&self, object: ObjectId) -> bool {
+    pub(super) fn contains(&self, object: FlowObjectId) -> bool {
         self.0.contains_key(&object)
     }
 
-    pub(super) fn keys(&self) -> impl Iterator<Item = ObjectId> + '_ {
+    pub(super) fn keys(&self) -> impl Iterator<Item = FlowObjectId> + '_ {
         self.0.keys().copied()
     }
 }
@@ -293,19 +293,19 @@ impl FlowStateTable {
         }
     }
 
-    pub(super) fn object_for(&self, value: ValueId) -> Option<ObjectId> {
+    pub(super) fn object_for(&self, value: ValueId) -> Option<FlowObjectId> {
         self.aliases.get(value)
     }
 
-    pub(super) fn object_for_any(&self, values: &[ValueId]) -> Option<ObjectId> {
+    pub(super) fn object_for_any(&self, values: &[ValueId]) -> Option<FlowObjectId> {
         values.iter().find_map(|value| self.object_for(*value))
     }
 
-    pub(super) fn objects(&self) -> impl Iterator<Item = ObjectId> + '_ {
+    pub(super) fn objects(&self) -> impl Iterator<Item = FlowObjectId> + '_ {
         self.aliases.objects()
     }
 
-    fn bind(&mut self, value: ValueId, object: ObjectId) {
+    fn bind(&mut self, value: ValueId, object: FlowObjectId) {
         if let Some(old) = self.aliases.set(value, object) {
             self.log
                 .record(InverseDelta::AliasUpdate(value, old, object));
@@ -314,18 +314,18 @@ impl FlowStateTable {
         }
     }
 
-    fn unbind(&mut self, value: ValueId) -> Option<ObjectId> {
+    fn unbind(&mut self, value: ValueId) -> Option<FlowObjectId> {
         let old_object = self.aliases.remove(value)?;
         self.log
             .record(InverseDelta::AliasRemove(value, old_object));
         Some(old_object)
     }
 
-    fn has_alias_for(&self, object: ObjectId) -> bool {
+    fn has_alias_for(&self, object: FlowObjectId) -> bool {
         self.aliases.contains_object(object)
     }
 
-    pub(super) fn bind_aliases(&mut self, values: &[ValueId], object: ObjectId) {
+    pub(super) fn bind_aliases(&mut self, values: &[ValueId], object: FlowObjectId) {
         for value in values {
             self.bind(*value, object);
         }
@@ -355,28 +355,28 @@ impl FlowStateTable {
         }
     }
 
-    fn object_range(object: ObjectId) -> RangeInclusive<FlowStateKey> {
+    fn object_range(object: FlowObjectId) -> RangeInclusive<FlowStateKey> {
         FlowStateKey::new(object, FlowId::new(RuleIndex::new(0), 0))
             ..=FlowStateKey::new(object, FlowId::new(RuleIndex::new(usize::MAX), usize::MAX))
     }
 
     pub(super) fn states_for(
         &self,
-        object: ObjectId,
+        object: FlowObjectId,
     ) -> impl Iterator<Item = (FlowStateKey, &FlowState)> + '_ {
         self.states
             .range(Self::object_range(object))
             .map(|(key, state)| (*key, state))
     }
 
-    pub(super) fn state(&self, object: ObjectId, flow: FlowId) -> Option<&FlowState> {
+    pub(super) fn state(&self, object: FlowObjectId, flow: FlowId) -> Option<&FlowState> {
         let key = FlowStateKey::new(object, flow);
         self.states.get(&key)
     }
 
     pub(super) fn record_requirement(
         &mut self,
-        object: ObjectId,
+        object: FlowObjectId,
         flow: FlowId,
         index: RequirementIndex,
         event: crate::analysis::facts::FactId,
@@ -396,7 +396,7 @@ impl FlowStateTable {
 
     pub(super) fn clear_requirement(
         &mut self,
-        object: ObjectId,
+        object: FlowObjectId,
         flow: FlowId,
         index: RequirementIndex,
     ) -> bool {
@@ -419,7 +419,7 @@ impl FlowStateTable {
     /// owned by this table.
     pub(super) fn apply_property_write(
         &mut self,
-        object: ObjectId,
+        object: FlowObjectId,
         event: FactId,
         mut updates_for: impl FnMut(FlowId) -> Vec<PropertyWriteUpdate>,
     ) -> Vec<FlowId> {
@@ -446,7 +446,7 @@ impl FlowStateTable {
 
     pub(super) fn record_sink(
         &mut self,
-        object: ObjectId,
+        object: FlowObjectId,
         flow: FlowId,
         index: SinkIndex,
         event: crate::analysis::facts::FactId,
@@ -499,7 +499,7 @@ impl FlowStateTable {
     pub(super) fn admit_object(
         &mut self,
         aliases: &[ValueId],
-        object: ObjectId,
+        object: FlowObjectId,
         states: Vec<FlowState>,
     ) -> StateAdmission {
         let mut new_keys = BTreeSet::new();
@@ -596,7 +596,7 @@ impl FlowStateTable {
         self.state_limit_rejected
     }
 
-    fn remove_states_for(&mut self, object: ObjectId) {
+    fn remove_states_for(&mut self, object: FlowObjectId) {
         let keys: Vec<FlowStateKey> = self
             .states
             .range(Self::object_range(object))
@@ -1047,48 +1047,48 @@ mod tests {
     #[test]
     fn checkpoints_restore_divergent_mutation_paths() {
         let mut table = FlowStateTable::new(262_144, 4096);
-        table.bind(ValueId::from_test(1), ObjectId::from_test(1));
+        table.bind(ValueId::from_test(1), FlowObjectId::from_test(1));
         let base = table.capture(true);
 
-        table.bind(ValueId::from_test(2), ObjectId::from_test(2));
+        table.bind(ValueId::from_test(2), FlowObjectId::from_test(2));
         let left = table.capture(true);
         assert!(table.restore(base));
         assert_eq!(table.object_for(ValueId::from_test(2)), None);
 
-        table.bind(ValueId::from_test(3), ObjectId::from_test(3));
+        table.bind(ValueId::from_test(3), FlowObjectId::from_test(3));
         assert!(table.restore(left));
         assert_eq!(
             table.object_for(ValueId::from_test(2)),
-            Some(ObjectId::from_test(2))
+            Some(FlowObjectId::from_test(2))
         );
         assert_eq!(table.object_for(ValueId::from_test(3)), None);
         assert!(table.restore(base));
         assert_eq!(
             table.object_for(ValueId::from_test(1)),
-            Some(ObjectId::from_test(1))
+            Some(FlowObjectId::from_test(1))
         );
     }
 
     #[test]
     fn bind_updates_and_unbind_removes_aliases() {
         let mut table = FlowStateTable::new(100, 100);
-        table.bind(ValueId::from_test(1), ObjectId::from_test(10));
+        table.bind(ValueId::from_test(1), FlowObjectId::from_test(10));
         assert_eq!(
             table.object_for(ValueId::from_test(1)),
-            Some(ObjectId::from_test(10))
+            Some(FlowObjectId::from_test(10))
         );
-        assert!(table.has_alias_for(ObjectId::from_test(10)));
+        assert!(table.has_alias_for(FlowObjectId::from_test(10)));
 
-        table.bind(ValueId::from_test(1), ObjectId::from_test(20));
+        table.bind(ValueId::from_test(1), FlowObjectId::from_test(20));
         assert_eq!(
             table.object_for(ValueId::from_test(1)),
-            Some(ObjectId::from_test(20))
+            Some(FlowObjectId::from_test(20))
         );
 
         let removed = table.unbind(ValueId::from_test(1));
-        assert_eq!(removed, Some(ObjectId::from_test(20)));
+        assert_eq!(removed, Some(FlowObjectId::from_test(20)));
         assert_eq!(table.object_for(ValueId::from_test(1)), None);
-        assert!(!table.has_alias_for(ObjectId::from_test(20)));
+        assert!(!table.has_alias_for(FlowObjectId::from_test(20)));
     }
 
     #[test]
@@ -1100,19 +1100,19 @@ mod tests {
     #[test]
     fn has_alias_for_false_when_no_aliases_exist() {
         let table = FlowStateTable::new(100, 100);
-        assert!(!table.has_alias_for(ObjectId::from_test(1)));
+        assert!(!table.has_alias_for(FlowObjectId::from_test(1)));
     }
 
     #[test]
     fn objects_are_unique_for_multiple_aliases() {
         let mut table = FlowStateTable::new(100, 100);
-        table.bind(ValueId::from_test(1), ObjectId::from_test(1));
-        table.bind(ValueId::from_test(2), ObjectId::from_test(1));
-        table.bind(ValueId::from_test(3), ObjectId::from_test(2));
+        table.bind(ValueId::from_test(1), FlowObjectId::from_test(1));
+        table.bind(ValueId::from_test(2), FlowObjectId::from_test(1));
+        table.bind(ValueId::from_test(3), FlowObjectId::from_test(2));
 
         assert_eq!(
             table.objects().collect::<Vec<_>>(),
-            vec![ObjectId::from_test(1), ObjectId::from_test(2)]
+            vec![FlowObjectId::from_test(1), FlowObjectId::from_test(2)]
         );
     }
 
@@ -1120,7 +1120,7 @@ mod tests {
     fn unbind_aliases_cleans_state_only_after_the_last_alias() {
         let mut table = FlowStateTable::new(100, 100);
         let aliases = [ValueId::from_test(1), ValueId::from_test(2)];
-        let object = ObjectId::from_test(1);
+        let object = FlowObjectId::from_test(1);
         table.bind_aliases(&aliases, object);
         table.insert_state(FlowState::new(
             FlowId::new(RuleIndex::new(0), 0),
@@ -1140,17 +1140,17 @@ mod tests {
         let state1 = FlowState::new(
             FlowId::new(RuleIndex::new(0), 0),
             FactId::from_test(1),
-            ObjectId::from_test(1),
+            FlowObjectId::from_test(1),
         );
         let state2 = FlowState::new(
             FlowId::new(RuleIndex::new(0), 1),
             FactId::from_test(2),
-            ObjectId::from_test(2),
+            FlowObjectId::from_test(2),
         );
         let state3 = FlowState::new(
             FlowId::new(RuleIndex::new(0), 2),
             FactId::from_test(3),
-            ObjectId::from_test(3),
+            FlowObjectId::from_test(3),
         );
         assert!(table.insert_state(state1));
         assert!(table.insert_state(state2));
@@ -1164,36 +1164,39 @@ mod tests {
         let existing = FlowState::new(
             FlowId::new(RuleIndex::new(0), 0),
             FactId::from_test(1),
-            ObjectId::from_test(1),
+            FlowObjectId::from_test(1),
         );
         table.insert_state(existing);
         let update = FlowState::new(
             FlowId::new(RuleIndex::new(0), 0),
             FactId::from_test(2),
-            ObjectId::from_test(1),
+            FlowObjectId::from_test(1),
         );
         let new_state = FlowState::new(
             FlowId::new(RuleIndex::new(0), 1),
             FactId::from_test(3),
-            ObjectId::from_test(2),
+            FlowObjectId::from_test(2),
         );
 
         assert_eq!(
             table.admit_object(
                 &[ValueId::from_test(2)],
-                ObjectId::from_test(2),
+                FlowObjectId::from_test(2),
                 vec![update, new_state]
             ),
             StateAdmission::Admitted
         );
         assert_eq!(
             table.object_for(ValueId::from_test(2)),
-            Some(ObjectId::from_test(2))
+            Some(FlowObjectId::from_test(2))
         );
         assert_eq!(table.state_count(), 2);
         assert_eq!(
             table
-                .state(ObjectId::from_test(1), FlowId::new(RuleIndex::new(0), 0))
+                .state(
+                    FlowObjectId::from_test(1),
+                    FlowId::new(RuleIndex::new(0), 0)
+                )
                 .map(FlowState::source_event),
             Some(FactId::from_test(2))
         );
@@ -1205,19 +1208,19 @@ mod tests {
         let existing = FlowState::new(
             FlowId::new(RuleIndex::new(0), 0),
             FactId::from_test(1),
-            ObjectId::from_test(1),
+            FlowObjectId::from_test(1),
         );
         table.insert_state(existing);
         let rejected = FlowState::new(
             FlowId::new(RuleIndex::new(0), 1),
             FactId::from_test(2),
-            ObjectId::from_test(2),
+            FlowObjectId::from_test(2),
         );
 
         assert_eq!(
             table.admit_object(
                 &[ValueId::from_test(2)],
-                ObjectId::from_test(2),
+                FlowObjectId::from_test(2),
                 vec![rejected]
             ),
             StateAdmission::Rejected
@@ -1230,22 +1233,22 @@ mod tests {
     #[test]
     fn remove_states_for_clears_all_object_states() {
         let mut table = FlowStateTable::new(100, 100);
-        table.bind(ValueId::from_test(1), ObjectId::from_test(1));
-        table.bind(ValueId::from_test(2), ObjectId::from_test(1));
+        table.bind(ValueId::from_test(1), FlowObjectId::from_test(1));
+        table.bind(ValueId::from_test(2), FlowObjectId::from_test(1));
         let s1 = FlowState::new(
             FlowId::new(RuleIndex::new(0), 0),
             FactId::from_test(1),
-            ObjectId::from_test(1),
+            FlowObjectId::from_test(1),
         );
         let s2 = FlowState::new(
             FlowId::new(RuleIndex::new(0), 1),
             FactId::from_test(2),
-            ObjectId::from_test(2),
+            FlowObjectId::from_test(2),
         );
         table.insert_state(s1);
         table.insert_state(s2);
-        table.remove_states_for(ObjectId::from_test(1));
-        assert_eq!(table.states_for(ObjectId::from_test(1)).count(), 0);
+        table.remove_states_for(FlowObjectId::from_test(1));
+        assert_eq!(table.states_for(FlowObjectId::from_test(1)).count(), 0);
         assert_eq!(table.state_count(), 1);
     }
 
@@ -1253,9 +1256,9 @@ mod tests {
     fn mutation_count_tracks_mutations() {
         let mut table = FlowStateTable::new(100, 100);
         assert_eq!(table.mutation_count(), 0);
-        table.bind(ValueId::from_test(1), ObjectId::from_test(10));
+        table.bind(ValueId::from_test(1), FlowObjectId::from_test(10));
         assert_eq!(table.mutation_count(), 1);
-        table.bind(ValueId::from_test(2), ObjectId::from_test(20));
+        table.bind(ValueId::from_test(2), FlowObjectId::from_test(20));
         assert_eq!(table.mutation_count(), 2);
         table.unbind(ValueId::from_test(1));
         assert_eq!(table.mutation_count(), 3);
@@ -1264,12 +1267,12 @@ mod tests {
     #[test]
     fn clear_removes_all_aliases_and_states() {
         let mut table = FlowStateTable::new(100, 100);
-        table.bind(ValueId::from_test(1), ObjectId::from_test(10));
-        table.bind(ValueId::from_test(2), ObjectId::from_test(20));
+        table.bind(ValueId::from_test(1), FlowObjectId::from_test(10));
+        table.bind(ValueId::from_test(2), FlowObjectId::from_test(20));
         let s = FlowState::new(
             FlowId::new(RuleIndex::new(0), 0),
             FactId::from_test(1),
-            ObjectId::from_test(10),
+            FlowObjectId::from_test(10),
         );
         table.insert_state(s);
         table.clear();
@@ -1281,10 +1284,10 @@ mod tests {
     #[test]
     fn distinct_semantic_snapshots_remain_distinct() {
         let mut table = FlowStateTable::new(100, 100);
-        table.bind(ValueId::from_test(1), ObjectId::from_test(1));
+        table.bind(ValueId::from_test(1), FlowObjectId::from_test(1));
         let first = table.semantic_snapshot();
 
-        table.bind(ValueId::from_test(2), ObjectId::from_test(2));
+        table.bind(ValueId::from_test(2), FlowObjectId::from_test(2));
         let second = table.semantic_snapshot();
 
         assert_ne!(first, second);
@@ -1297,7 +1300,7 @@ mod tests {
         let key = ReportEvidenceKey::new(
             RuleIndex::new(0),
             0,
-            ObjectId::from_test(1),
+            FlowObjectId::from_test(1),
             FactId::from_test(1),
         );
 
@@ -1314,13 +1317,13 @@ mod tests {
         let first = ReportEvidenceKey::new(
             RuleIndex::new(0),
             0,
-            ObjectId::from_test(1),
+            FlowObjectId::from_test(1),
             FactId::from_test(1),
         );
         let second = ReportEvidenceKey::new(
             RuleIndex::new(0),
             0,
-            ObjectId::from_test(2),
+            FlowObjectId::from_test(2),
             FactId::from_test(2),
         );
 
@@ -1336,57 +1339,57 @@ mod tests {
     fn fine_grained_state_edits_restore_across_checkpoints() {
         let mut table = FlowStateTable::new(100, 100);
         let flow = FlowId::new(RuleIndex::new(0), 0);
-        let state = FlowState::new(flow, FactId::from_test(1), ObjectId::from_test(10));
+        let state = FlowState::new(flow, FactId::from_test(1), FlowObjectId::from_test(10));
         table.insert_state(state);
         let base = table.capture(true);
         assert!(table.record_requirement(
-            ObjectId::from_test(10),
+            FlowObjectId::from_test(10),
             flow,
             RequirementIndex::new(0).unwrap(),
             FactId::from_test(5),
         ));
         assert!(table.record_requirement(
-            ObjectId::from_test(10),
+            FlowObjectId::from_test(10),
             flow,
             RequirementIndex::new(0).unwrap(),
             FactId::from_test(7),
         ));
         assert!(table.record_sink(
-            ObjectId::from_test(10),
+            FlowObjectId::from_test(10),
             flow,
             SinkIndex::new(0).unwrap(),
             FactId::from_test(6),
         ));
-        let retrieved = table.state(ObjectId::from_test(10), flow).unwrap();
+        let retrieved = table.state(FlowObjectId::from_test(10), flow).unwrap();
         assert_eq!(retrieved.source_event(), FactId::from_test(1));
         assert_eq!(retrieved.requirement_entries().count(), 1);
         assert_eq!(retrieved.sink_entries().count(), 1);
 
         let configured = table.capture(true);
         assert!(table.clear_requirement(
-            ObjectId::from_test(10),
+            FlowObjectId::from_test(10),
             flow,
             RequirementIndex::new(0).unwrap(),
         ));
         assert_eq!(
             table
-                .state(ObjectId::from_test(10), flow)
+                .state(FlowObjectId::from_test(10), flow)
                 .unwrap()
                 .requirement_entries()
                 .count(),
             0
         );
         assert!(table.restore(configured));
-        let restored = table.state(ObjectId::from_test(10), flow).unwrap();
+        let restored = table.state(FlowObjectId::from_test(10), flow).unwrap();
         assert_eq!(restored.requirement_entries().next().unwrap().1.len(), 2);
 
         assert!(table.restore(base));
-        let restored = table.state(ObjectId::from_test(10), flow).unwrap();
+        let restored = table.state(FlowObjectId::from_test(10), flow).unwrap();
         assert_eq!(restored.requirement_entries().count(), 0);
         assert_eq!(restored.sink_entries().count(), 0);
 
         assert!(table.record_requirement(
-            ObjectId::from_test(10),
+            FlowObjectId::from_test(10),
             flow,
             RequirementIndex::new(1).unwrap(),
             FactId::from_test(7),
@@ -1394,7 +1397,7 @@ mod tests {
         assert!(table.restore(base));
         assert_eq!(
             table
-                .state(ObjectId::from_test(10), flow)
+                .state(FlowObjectId::from_test(10), flow)
                 .unwrap()
                 .requirement_entries()
                 .count(),

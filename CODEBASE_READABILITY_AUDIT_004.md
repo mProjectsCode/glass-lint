@@ -49,7 +49,7 @@ tests. Verified with `cargo test -p glass-lint-core analysis::model::module --li
 
 ### [analysis/model/value.rs, analysis/resolution, analysis/flow/projector]
 
-#### [ ] READ-013 — Separate resolver object identities from flow-projector object identities
+#### [x] READ-013 — Separate resolver object identities from flow-projector object identities
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -79,7 +79,11 @@ checkpoint/rollback identity, deterministic evidence keys, and independent
 per-phase exhaustion limits. Add compile-time-facing tests or constructors
 that prevent IDs from the two domains being interchanged.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Resolver values now use `ResolvedObjectId`, while flow
+projection state, history, and evidence use the distinct `FlowObjectId`. Their
+allocators and test constructors are separate, so the two identity domains
+cannot be interchanged accidentally. Verified with the resolver and flow
+projector test suites.
 
 ## Systemic Themes
 

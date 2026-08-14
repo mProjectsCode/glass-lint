@@ -27,9 +27,25 @@ impl ValueId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ObjectId(u32);
+pub struct ResolvedObjectId(u32);
 
-impl ObjectId {
+impl ResolvedObjectId {
+    pub(in crate::analysis) const fn new(raw: u32) -> Self {
+        Self(raw)
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) const fn from_test(raw: u32) -> Self {
+        Self::new(raw)
+    }
+}
+
+/// Identity allocated by one object-flow projection run. It is intentionally
+/// distinct from [`ResolvedObjectId`], whose allocator belongs to `ValueTable`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct FlowObjectId(u32);
+
+impl FlowObjectId {
     pub(in crate::analysis) const fn new(raw: u32) -> Self {
         Self(raw)
     }
@@ -112,7 +128,7 @@ pub enum Value {
     StaticArray(Vec<ValueId>),
     StaticObject(StaticObject),
     Callable(CallableValue),
-    Object(ObjectId),
+    Object(ResolvedObjectId),
     Binding { key: BindingKey, target: ValueId },
 }
 
@@ -143,7 +159,7 @@ pub(in crate::analysis) enum ValueConstruction<'a> {
     },
     RootedMember(NamePath),
     Callable(ValueId),
-    Object(ObjectId),
+    Object(ResolvedObjectId),
     StaticString(String),
     StaticNumber(usize),
     StaticArray(Vec<ValueId>),
@@ -291,13 +307,13 @@ impl ValueTable {
         )
     }
 
-    pub fn allocate_object_id(&mut self) -> Option<ObjectId> {
+    pub fn allocate_object_id(&mut self) -> Option<ResolvedObjectId> {
         const MAX_OBJECTS: u32 = 65_536;
         if self.next_object >= MAX_OBJECTS {
             self.exhausted = true;
             return None;
         }
-        let object = ObjectId::new(self.next_object);
+        let object = ResolvedObjectId::new(self.next_object);
         self.next_object += 1;
         Some(object)
     }
@@ -551,8 +567,8 @@ mod tests {
         let mut table = ValueTable::default();
         let a = table.allocate_object_id().expect("first id");
         let b = table.allocate_object_id().expect("second id");
-        assert_eq!(ObjectId::from_test(0), a);
-        assert_eq!(ObjectId::from_test(1), b);
+        assert_eq!(ResolvedObjectId::from_test(0), a);
+        assert_eq!(ResolvedObjectId::from_test(1), b);
     }
 
     #[test]
