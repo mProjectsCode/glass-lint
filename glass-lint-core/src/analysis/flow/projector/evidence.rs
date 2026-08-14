@@ -71,37 +71,30 @@ impl ObjectFlowProjector<'_, '_, '_> {
         args: &[CallArgInfo],
         sink_fact: FactId,
     ) {
-        let candidates = self
-            .inputs
-            .plan
-            .sink_candidates_for_call(call)
-            .map(<[_]>::to_vec)
-            .unwrap_or_default();
-        if candidates.is_empty() {
-            return;
-        }
         for (argument_index, argument) in args.iter().enumerate() {
             let Some(object) = self.object_for(argument.value) else {
                 continue;
             };
-            let pairs: SmallVec<[(FlowStateKey, FlowId); 8]> = self
-                .flow_state
-                .states_for(object)
-                .filter(|(key, _)| {
-                    candidates.iter().any(|sink| {
-                        sink.flow_id() == key.flow() && sink.matches_argument(argument_index)
+            let matches: SmallVec<[(FlowStateKey, FlowId, SmallVec<[_; 4]>); 8]> = {
+                let Some(candidates) = self.inputs.plan.sink_candidates_for_call(call) else {
+                    return;
+                };
+                self.flow_state
+                    .states_for(object)
+                    .filter_map(|(key, _)| {
+                        let matching_sinks = candidates
+                            .iter()
+                            .filter(|sink| {
+                                sink.flow_id() == key.flow()
+                                    && sink.matches_argument(argument_index)
+                            })
+                            .map(crate::analysis::flow::planning::BoundSink::index)
+                            .collect::<SmallVec<[_; 4]>>();
+                        (!matching_sinks.is_empty()).then_some((key, key.flow(), matching_sinks))
                     })
-                })
-                .map(|(key, _)| (key, key.flow()))
-                .collect();
-            for (key, flow_id) in pairs {
-                let matching_sinks: SmallVec<[_; 4]> = candidates
-                    .iter()
-                    .filter(|sink| {
-                        sink.flow_id() == flow_id && sink.matches_argument(argument_index)
-                    })
-                    .map(crate::analysis::flow::planning::BoundSink::index)
-                    .collect();
+                    .collect()
+            };
+            for (key, flow_id, matching_sinks) in matches {
                 if !matching_sinks.is_empty() {
                     for index in matching_sinks {
                         self.flow_state
@@ -130,27 +123,29 @@ impl ObjectFlowProjector<'_, '_, '_> {
         ) {
             return;
         }
-        let summary = summary_ref.clone();
-        let Some(parameters) = summary.parameter_bindings(self.inputs.stream) else {
-            return;
-        };
-        let parameters = parameters.to_vec();
-        #[allow(clippy::needless_collect)]
-        let values: Vec<(FlowId, ValueId)> = summary
-            .sinks()
-            .into_iter()
-            .filter_map(|sink| {
-                let value = {
+        let values: Vec<(FlowId, ValueId)> = {
+            let Some(parameters) = summary_ref.parameter_bindings(self.inputs.stream) else {
+                return;
+            };
+            summary_ref
+                .sinks()
+                .into_iter()
+                .filter_map(|sink| {
                     let paths = self.inputs.helpers.path_interner();
                     let parameter = parameters.iter().find(|parameter| {
                         parameter.parameter_index() == sink.parameter_index()
                             && parameter.matches_sink_path(sink.path(), paths)
                     })?;
-                    parameter.project_argument_at(self.inputs.stream, args, paths, sink.path())?
-                };
-                Some((sink.flow(), value))
-            })
-            .collect();
+                    let value = parameter.project_argument_at(
+                        self.inputs.stream,
+                        args,
+                        paths,
+                        sink.path(),
+                    )?;
+                    Some((sink.flow(), value))
+                })
+                .collect()
+        };
         let ready: Vec<(ObjectId, FlowId)> = values
             .into_iter()
             .filter_map(|(flow_id, value)| {

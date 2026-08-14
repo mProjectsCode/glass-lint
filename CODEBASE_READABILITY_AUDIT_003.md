@@ -81,7 +81,11 @@ borrow-safe phase split. Guard candidate ordering, helper path projection,
 duplicate flow suppression, and emission only after all matching values have
 been collected.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Sink candidates remain borrowed from `BoundFlowPlan`, and
+helper summaries/parameter bindings remain borrowed only while lightweight
+ready values are collected. Emission occurs after those borrows end, removing
+the candidate, summary, and parameter copies. Verified with
+`cargo test -p glass-lint-core analysis::flow::projector --lib`.
 
 ### [analysis/flow/effect]
 
