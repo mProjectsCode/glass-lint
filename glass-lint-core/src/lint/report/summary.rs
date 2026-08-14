@@ -1,23 +1,18 @@
-use std::collections::BTreeMap;
-
 use crate::{
     REPORT_VERSION,
     analysis::{ProjectSemanticModel, project::projection::ProjectionOutcome},
     lint::report::ProjectReportSession,
-    project::{
-        AnalysisReport, Diagnostic, FileReport, ProjectRelativePath, ReportCompletion,
-        types::ReportPathMetrics,
-    },
+    project::{AnalysisReport, Diagnostic, FileReport, ReportCompletion, types::ReportPathMetrics},
 };
 
 pub(super) fn assemble_project_report(
     project: &ProjectSemanticModel,
     session: &ProjectReportSession,
-    files: BTreeMap<ProjectRelativePath, FileReport>,
-    diagnostics: Vec<Diagnostic>,
+    files: Vec<FileReport>,
+    mut diagnostics: Vec<Diagnostic>,
     outcome: &ProjectionOutcome,
 ) -> AnalysisReport {
-    let files: Vec<FileReport> = files.into_values().collect();
+    diagnostics.sort_by(|left, right| left.code().cmp(right.code()));
     let aggregate = AnalysisReport::aggregate(&files, &diagnostics);
 
     let mut operations = project.operation_counts();

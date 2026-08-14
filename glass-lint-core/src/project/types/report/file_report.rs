@@ -37,6 +37,10 @@ impl FileReport {
         self.diagnostics.push(diagnostic);
     }
 
+    pub(crate) fn replace_findings(&mut self, findings: Vec<Finding>) {
+        self.findings = findings;
+    }
+
     #[must_use]
     pub fn has_parse_diagnostics(&self) -> bool {
         self.diagnostics

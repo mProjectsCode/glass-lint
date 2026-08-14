@@ -12,12 +12,15 @@ use crate::{
     },
     api::classification::{ClassificationResult, RuleIndex},
     lint::catalog::RuleCatalog,
-    project::{AnalysisReport, Diagnostic, FileReport, ModuleId, ProjectRelativePath, SourceTable},
+    project::{AnalysisReport, ModuleId, ProjectRelativePath, SourceTable},
 };
 
 mod diagnostics;
 mod evidence;
+mod files;
 mod summary;
+
+use files::ReportFiles;
 
 /// Result of linking and matching a resolved project, including phase timings.
 pub struct ProjectAnalysis {
@@ -132,7 +135,7 @@ impl ProjectReportSession {
 pub struct ProjectReportAssembler {
     project: ProjectSemanticModel,
     session: ProjectReportSession,
-    files: BTreeMap<ProjectRelativePath, FileReport>,
+    files: ReportFiles,
     linking: Duration,
 }
 
@@ -143,8 +146,7 @@ impl ProjectReportAssembler {
         parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
         limits: &AnalysisLimits,
     ) -> Self {
-        let (files, parse_failures) =
-            diagnostics::initialize_project_files(sources, parse_diagnostics);
+        let (files, parse_failures) = ReportFiles::initialize(sources, parse_diagnostics);
         let linking_start = Instant::now();
         let project = ProjectSemanticModel::link_with_limits(link_input, limits);
         let mut session = ProjectReportSession::new(&project);
@@ -179,8 +181,8 @@ impl ProjectReportAssembler {
     ) -> ProjectAnalysis {
         let (classifications, projection_outcome, matching) =
             self.match_project(catalog, enabled, evidence_limit);
-        let diagnostics = self.render_findings(catalog, &classifications);
-        self.finish(diagnostics, &projection_outcome, matching)
+        self.render_findings(catalog, &classifications);
+        self.finish(&projection_outcome, matching)
     }
 
     fn match_project(
@@ -219,7 +221,7 @@ impl ProjectReportAssembler {
         &mut self,
         catalog: &RuleCatalog,
         classifications: &BTreeMap<ModuleId, ClassificationResult>,
-    ) -> Vec<Diagnostic> {
+    ) {
         evidence::populate_project_files(
             catalog,
             &self.project,
@@ -227,15 +229,10 @@ impl ProjectReportAssembler {
             classifications,
             &mut self.files,
         );
-        diagnostics::attach_project_diagnostics(&self.project, &self.session, &mut self.files)
+        diagnostics::attach_project_diagnostics(&self.project, &self.session, &mut self.files);
     }
 
-    fn finish(
-        self,
-        diagnostics: Vec<Diagnostic>,
-        projection_outcome: &ProjectionOutcome,
-        matching: Duration,
-    ) -> ProjectAnalysis {
+    fn finish(self, projection_outcome: &ProjectionOutcome, matching: Duration) -> ProjectAnalysis {
         let Self {
             project,
             session,
@@ -243,6 +240,7 @@ impl ProjectReportAssembler {
             linking,
             ..
         } = self;
+        let (files, diagnostics) = files.into_parts();
         let report = summary::assemble_project_report(
             &project,
             &session,

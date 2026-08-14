@@ -76,7 +76,7 @@ truncation, and `Definite`/`Possible` certainty joins.
 
 ### File and diagnostic assembly
 
-#### [ ] READ-003 — Encapsulate the report file collection instead of passing a raw map
+#### [x] READ-003 — Encapsulate the report file collection instead of passing a raw map
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -101,6 +101,13 @@ those operations, then delete the raw-map parameters and the repeated
 `FileReport::new` assembly. Preserve parse diagnostics for failed sources,
 route located diagnostics to their file and unlocated diagnostics to the
 project list, and keep the final normalized path order stable.
+
+**Fix Applied:** Added private `ReportFiles` ownership for source-file
+initialization, finding replacement, file/project diagnostic routing, and
+deterministic final conversion. Finding replacement now preserves existing
+file diagnostics, with focused unit coverage for both file-local and
+project-level retention. Verified with the requested `make fmt && make ci`
+gate.
 
 ## Systemic Themes
 

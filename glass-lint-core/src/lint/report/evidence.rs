@@ -9,10 +9,13 @@ use crate::{
         MatchedCapability,
     },
     diagnostic::SourceLineIndex,
-    lint::{catalog::RuleCatalog, report::ProjectReportSession},
+    lint::{
+        catalog::RuleCatalog,
+        report::{ProjectReportSession, files::ReportFiles},
+    },
     project::{
-        EvidenceRole, EvidenceStep, EvidenceTrace, EvidenceTraces, FileReport, Finding,
-        MatchCertainty, ModuleId, ProjectRelativePath, SourceLocation,
+        EvidenceRole, EvidenceStep, EvidenceTrace, EvidenceTraces, Finding, MatchCertainty,
+        ModuleId, ProjectRelativePath, SourceLocation,
     },
 };
 
@@ -94,7 +97,7 @@ pub(super) fn populate_project_files(
     project: &ProjectSemanticModel,
     session: &ProjectReportSession,
     classifications: &BTreeMap<ModuleId, ClassificationResult>,
-    files: &mut BTreeMap<ProjectRelativePath, FileReport>,
+    files: &mut ReportFiles,
 ) {
     for module in project.modules() {
         let Some(classification) = classifications.get(&module.id()) else {
@@ -102,10 +105,7 @@ pub(super) fn populate_project_files(
         };
         let findings = findings_for_module(catalog, project, session, module, classification);
         let findings = merge_duplicate_findings(findings);
-        files.insert(
-            module.path().clone(),
-            FileReport::new(module.path().clone(), findings, Vec::new()),
-        );
+        files.replace_findings(module.path(), findings);
     }
 }
 

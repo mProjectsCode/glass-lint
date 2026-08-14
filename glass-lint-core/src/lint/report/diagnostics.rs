@@ -1,54 +1,16 @@
-use std::collections::BTreeMap;
-
 use glass_lint_datastructures::{Position, SourceRange};
 
 use crate::{
-    ParseDiagnostic,
     analysis::ProjectSemanticModel,
-    lint::report::ProjectReportSession,
-    parse::ParseFailureKind,
-    project::{Diagnostic, FileReport, ProjectRelativePath, SourceLocation, SourceTable},
+    lint::report::{ProjectReportSession, files::ReportFiles},
+    project::{Diagnostic, SourceLocation},
 };
-
-pub(super) fn initialize_project_files(
-    sources: &SourceTable,
-    mut parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
-) -> (
-    BTreeMap<ProjectRelativePath, FileReport>,
-    BTreeMap<ProjectRelativePath, ParseFailureKind>,
-) {
-    let mut files = BTreeMap::new();
-    let mut parse_failures = BTreeMap::new();
-    for (path, source) in sources.in_normalized_path_order() {
-        let path = path.clone();
-        match parse_diagnostics.remove(&path) {
-            Some(diagnostic) => {
-                parse_failures.insert(path.clone(), diagnostic.failure);
-                files.insert(
-                    path,
-                    FileReport::new(
-                        source.path().clone(),
-                        Vec::new(),
-                        vec![Diagnostic::parse(source.path().clone(), diagnostic)],
-                    ),
-                );
-            }
-            None => {
-                files.insert(path.clone(), FileReport::new(path, Vec::new(), Vec::new()));
-            }
-        }
-    }
-    for (path, diagnostic) in parse_diagnostics {
-        parse_failures.insert(path, diagnostic.failure);
-    }
-    (files, parse_failures)
-}
 
 pub(super) fn attach_project_diagnostics(
     project: &ProjectSemanticModel,
     session: &ProjectReportSession,
-    files: &mut BTreeMap<ProjectRelativePath, FileReport>,
-) -> Vec<Diagnostic> {
+    files: &mut ReportFiles,
+) {
     let (status_files, status_project) = session.status_diagnostics();
     for (path, mut diagnostic) in status_files {
         diagnostic.set_location(Some(SourceLocation::new(
@@ -59,25 +21,20 @@ pub(super) fn attach_project_diagnostics(
             )
             .expect("ordered source range"),
         )));
-        if let Some(file) = files.get_mut(&path) {
-            file.push_diagnostic(Diagnostic::project(diagnostic));
-        }
+        files.push_file_diagnostic(&path, Diagnostic::project(diagnostic));
     }
 
-    let mut diagnostics = Vec::new();
     for diagnostic in project.diagnostics().iter().cloned() {
         if let Some(path) = diagnostic
             .location()
             .map(|location| location.path().clone())
         {
-            if let Some(file) = files.get_mut(&path) {
-                file.push_diagnostic(Diagnostic::project(diagnostic));
-            }
+            files.push_file_diagnostic(&path, Diagnostic::project(diagnostic));
         } else {
-            diagnostics.push(Diagnostic::project(diagnostic));
+            files.push_project_diagnostic(Diagnostic::project(diagnostic));
         }
     }
-    diagnostics.extend(status_project.into_iter().map(Diagnostic::project));
-    diagnostics.sort_by(|left, right| left.code().cmp(right.code()));
-    diagnostics
+    for diagnostic in status_project {
+        files.push_project_diagnostic(Diagnostic::project(diagnostic));
+    }
 }
