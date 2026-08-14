@@ -4,7 +4,7 @@ use crate::api::{
     classification::MatchKind,
     compiler::{
         physical,
-        rule::{CompiledMatcherPlan, EventPredicate, IdentityConstraint},
+        rule::{CompiledMatcherPlan, EventSpec, IdentityConstraint},
     },
     rule::{EventQuery, QueryDecl, ValueMatcher},
 };
@@ -103,21 +103,21 @@ fn query_plan_compiles_declarations_into_physical_roots() {
         root,
         physical::PhysicalRoot::IndexedScan {
             identity: IdentityConstraint::Global { name },
-            event: EventPredicate::Call, ..
+            event: EventSpec::Call, ..
         } if name == "fetch"
     )));
     assert!(roots.iter().any(|root| matches!(
         root,
         physical::PhysicalRoot::IndexedScan {
             identity: IdentityConstraint::Rooted { path },
-            event: EventPredicate::MemberCall { member }, ..
+            event: EventSpec::MemberCall { member }, ..
         } if *path == SymbolPath::from("window.open") && member.eq_chain("window.open")
     )));
     assert!(roots.iter().any(|root| matches!(
         root,
         physical::PhysicalRoot::ReturnedSubject {
             producer: IdentityConstraint::Rooted { path },
-            event: EventPredicate::MemberRead { member }, ..
+            event: EventSpec::MemberRead { member }, ..
         } if path.eq_chain("create") && member.eq_chain("token")
     )));
     assert!(roots.iter().any(|root| matches!(
@@ -130,14 +130,14 @@ fn query_plan_compiles_declarations_into_physical_roots() {
     assert!(roots.iter().any(|root| matches!(
         root,
         physical::PhysicalRoot::IndexedScan {
-            event: EventPredicate::Import,
+            event: EventSpec::Import,
             ..
         }
     )));
     assert!(roots.iter().any(|root| matches!(
         root,
         physical::PhysicalRoot::IndexedScan {
-            event: EventPredicate::StringReference,
+            event: EventSpec::StringReference,
             ..
         }
     )));

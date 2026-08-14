@@ -13,7 +13,7 @@ use crate::{
     },
     api::compiler::{
         physical::PhysicalRoot,
-        rule::{CompiledMatcherPlan, EventPredicate, IdentityConstraint},
+        rule::{CompiledMatcherPlan, EventSpec, IdentityConstraint},
     },
 };
 
@@ -124,7 +124,7 @@ impl OccurrenceIndexes {
     pub(in crate::analysis) fn occurrences_for_indexed<'a>(
         &'a self,
         identity: &'a IdentityConstraint,
-        event: &'a EventPredicate,
+        event: &'a EventSpec,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
         names: &NameTable,
     ) -> Option<OccurrenceSelection<'a>> {
@@ -137,7 +137,7 @@ impl OccurrenceIndexes {
         &'a self,
         identity: &'a IdentityConstraint,
         member: &SymbolPath,
-        event: &EventPredicate,
+        event: &EventSpec,
         names: &'a NameTable,
     ) -> Option<OccurrenceSelection<'a>> {
         let rooted_path = match identity {
@@ -153,8 +153,8 @@ impl OccurrenceIndexes {
                 && member_path == *key.member()
         };
         match event {
-            EventPredicate::MemberCall { .. } => self.members.returned_calls().matching(predicate),
-            EventPredicate::MemberRead { .. } => self.members.returned_reads().matching(predicate),
+            EventSpec::MemberCall { .. } => self.members.returned_calls().matching(predicate),
+            EventSpec::MemberRead { .. } => self.members.returned_reads().matching(predicate),
             _ => None,
         }
     }
@@ -192,48 +192,48 @@ impl OccurrenceIndexes {
     // directly, and returned/instance subject lookups use
     // occurrences_for_returned / occurrences_for_instance.
 
-    fn build_event_view<'a>(&'a self, event: &'a EventPredicate) -> EventIndexView<'a> {
+    fn build_event_view<'a>(&'a self, event: &'a EventSpec) -> EventIndexView<'a> {
         let env = &self.environment;
         match event {
-            EventPredicate::Call => EventIndexView::Call {
+            EventSpec::Call => EventIndexView::Call {
                 names: self.call_indexes.calls(),
                 module: self.call_indexes.module_calls(),
                 global: self.call_indexes.global_calls(),
             },
-            EventPredicate::MemberCall { member } => EventIndexView::MemberCall {
+            EventSpec::MemberCall { member } => EventIndexView::MemberCall {
                 member,
                 paths: self.members.calls(),
                 module: self.members.module_calls(),
                 rooted: self.members.rooted_calls(),
                 environment: env,
             },
-            EventPredicate::MemberRead { member } => EventIndexView::MemberRead {
+            EventSpec::MemberRead { member } => EventIndexView::MemberRead {
                 member,
                 paths: self.members.reads(),
                 module: self.members.module_reads(),
                 rooted: self.members.rooted_reads(),
                 environment: env,
             },
-            EventPredicate::PropertyWrite { property } => EventIndexView::PropertyWrite {
+            EventSpec::PropertyWrite { property } => EventIndexView::PropertyWrite {
                 property,
                 writes: self.members.rooted_writes(),
                 environment: env,
             },
-            EventPredicate::ClassReference => EventIndexView::ClassReference {
+            EventSpec::ClassReference => EventIndexView::ClassReference {
                 strings: self.constructions.classes(),
                 module: self.constructions.module_classes(),
             },
-            EventPredicate::Construct => EventIndexView::Construct {
+            EventSpec::Construct => EventIndexView::Construct {
                 names: self.constructions.constructors(),
                 module: self.constructions.module_constructors(),
                 global: self.constructions.global_constructors(),
                 rooted: self.constructions.rooted_constructors(),
                 environment: env,
             },
-            EventPredicate::Import => EventIndexView::Import {
+            EventSpec::Import => EventIndexView::Import {
                 literals: self.literals.imports(),
             },
-            EventPredicate::StringReference => EventIndexView::StringReference {
+            EventSpec::StringReference => EventIndexView::StringReference {
                 literals: self.literals.strings(),
             },
         }

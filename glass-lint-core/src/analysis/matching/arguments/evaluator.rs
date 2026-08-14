@@ -16,7 +16,7 @@ use crate::{
     },
     api::compiler::{
         normalized::CanonicalArgumentConstraints,
-        rule::{EventPredicate, IdentityConstraint},
+        rule::{EventSpec, IdentityConstraint},
     },
 };
 
@@ -27,15 +27,11 @@ pub(super) struct PreparedClausePaths {
 }
 
 impl PreparedClausePaths {
-    pub(super) fn new(
-        identity: &IdentityConstraint,
-        event: &EventPredicate,
-        names: &NameTable,
-    ) -> Self {
+    pub(super) fn new(identity: &IdentityConstraint, event: &EventSpec, names: &NameTable) -> Self {
         let member = match event {
-            EventPredicate::MemberCall { member }
-            | EventPredicate::MemberRead { member }
-            | EventPredicate::PropertyWrite { property: member } => names.lookup_path(member),
+            EventSpec::MemberCall { member }
+            | EventSpec::MemberRead { member }
+            | EventSpec::PropertyWrite { property: member } => names.lookup_path(member),
             _ => None,
         };
         let rooted = match identity {
@@ -177,7 +173,7 @@ impl<'a> MatcherEvaluator<'a> {
         &self,
         fact: &SemanticFact,
         identity: &IdentityConstraint,
-        event: &EventPredicate,
+        event: &EventSpec,
         constraints: &CanonicalArgumentConstraints,
         paths: &PreparedClausePaths,
         ops: &mut EvaluationOperations,
@@ -199,7 +195,7 @@ impl<'a> MatcherEvaluator<'a> {
         let call_provenance = self.identity.call_provenance(call_provenance, *callee);
 
         match event {
-            EventPredicate::Call => {
+            EventSpec::Call => {
                 if !call_identity_matches(
                     identity,
                     &call_provenance,
@@ -211,7 +207,7 @@ impl<'a> MatcherEvaluator<'a> {
                 }
                 self.check_constrained_args(&fact.payload, constraints, ops)
             }
-            EventPredicate::MemberCall { .. } => {
+            EventSpec::MemberCall { .. } => {
                 let Some(ref member) = paths.member else {
                     return false;
                 };

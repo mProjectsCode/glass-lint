@@ -20,7 +20,7 @@ use crate::api::{
         },
         object_flow::CompiledObjectFlow,
         physical::{PhysicalPlan, PhysicalRoot},
-        rule::{EventPredicate, IdentityConstraint, lower_event, lower_identity},
+        rule::{IdentityConstraint, lower_identity},
     },
     rule::{
         ArgumentConstraint, ArgumentIndex, ArgumentMatcher, ArgumentMatcherKind,
@@ -418,13 +418,13 @@ fn evaluate_physical_root(root: &PhysicalRoot, rows: &[ReferenceRow]) -> Vec<Ref
 
 fn evaluate_scan(
     identity: &IdentityConstraint,
-    event: &EventPredicate,
+    event: &EventSpec,
     constraints: Option<&CanonicalArgumentConstraints>,
     rows: &[ReferenceRow],
 ) -> Vec<ReferenceWitness> {
     rows.iter()
         .filter(|row| {
-            lower_event(&row.event_kind) == *event
+            row.event_kind == *event
                 && lower_identity(&row.identity) == *identity
                 && constraints
                     .is_none_or(|constraints| matches_arguments(constraints, &row.arguments))

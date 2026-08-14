@@ -13,9 +13,7 @@ use crate::api::{
         },
         object_flow::CompiledObjectFlow,
         requirements::PlanRequirements,
-        rule::{
-            EventPredicate, EvidenceDescriptor, IdentityConstraint, lower_event, lower_identity,
-        },
+        rule::{EventSpec, EvidenceDescriptor, IdentityConstraint, lower_identity},
         validate::{SubjectRelation, classify_subject_relation},
     },
     rule::{
@@ -42,12 +40,12 @@ pub(crate) fn compile_argument_constraints(
 pub(crate) enum PhysicalRoot {
     IndexedScan {
         identity: IdentityConstraint,
-        event: EventPredicate,
+        event: EventSpec,
         evidence: EvidenceDescriptor,
     },
     ConstrainedScan {
         identity: IdentityConstraint,
-        event: EventPredicate,
+        event: EventSpec,
         constraints: CanonicalArgumentConstraints,
         evidence: EvidenceDescriptor,
     },
@@ -55,7 +53,7 @@ pub(crate) enum PhysicalRoot {
         producer: IdentityConstraint,
         object_slot: ObjectSlot,
         member: SymbolPath,
-        event: EventPredicate,
+        event: EventSpec,
         evidence: EvidenceDescriptor,
     },
     InstanceSubject {
@@ -89,7 +87,7 @@ impl std::fmt::Display for ObjectSlot {
 impl PhysicalRoot {
     fn indexed_scan(
         identity: IdentityConstraint,
-        event: EventPredicate,
+        event: EventSpec,
         evidence: EvidenceDescriptor,
     ) -> Self {
         Self::IndexedScan {
@@ -101,7 +99,7 @@ impl PhysicalRoot {
 
     fn constrained_scan(
         identity: IdentityConstraint,
-        event: EventPredicate,
+        event: EventSpec,
         constraints: CanonicalArgumentConstraints,
         evidence: EvidenceDescriptor,
     ) -> Self {
@@ -117,7 +115,7 @@ impl PhysicalRoot {
         producer: IdentityConstraint,
         object_slot: NormalizedObjectSlot,
         member: SymbolPath,
-        event: EventPredicate,
+        event: EventSpec,
         evidence: EvidenceDescriptor,
     ) -> Result<Self, PhysicalPlanValidationError> {
         Ok(Self::ReturnedSubject {
@@ -185,10 +183,7 @@ impl PhysicalRoot {
                 if identity.is_empty() {
                     return Err(PhysicalPlanValidationError::ImpossibleDimensions);
                 }
-                if !matches!(
-                    event,
-                    EventPredicate::Call | EventPredicate::MemberCall { .. }
-                ) {
+                if !matches!(event, EventSpec::Call | EventSpec::MemberCall { .. }) {
                     return Err(PhysicalPlanValidationError::ConstraintsRequireCallEvent);
                 }
                 if constraints.is_empty() {
@@ -213,8 +208,8 @@ impl PhysicalRoot {
                 {
                     return Err(PhysicalPlanValidationError::ImpossibleDimensions);
                 }
-                if !matches!(event, EventPredicate::MemberCall { member: event_member }
-                    | EventPredicate::MemberRead { member: event_member } if event_member == member)
+                if !matches!(event, EventSpec::MemberCall { member: event_member }
+                    | EventSpec::MemberRead { member: event_member } if event_member == member)
                 {
                     return Err(PhysicalPlanValidationError::ImpossibleDimensions);
                 }
@@ -529,13 +524,13 @@ fn plan_event(
             if ev.arguments().is_empty() {
                 Ok(PhysicalRoot::indexed_scan(
                     lower_identity(identity),
-                    lower_event(ev.event()),
+                    ev.event().clone(),
                     evidence,
                 ))
             } else {
                 Ok(PhysicalRoot::constrained_scan(
                     lower_identity(identity),
-                    lower_event(ev.event()),
+                    ev.event().clone(),
                     ev.arguments().clone(),
                     evidence,
                 ))
@@ -550,7 +545,7 @@ fn plan_event(
             lower_identity(producer),
             object_slot,
             member.clone(),
-            lower_event(event),
+            event.clone(),
             evidence,
         )?),
         SubjectRelation::Instance {

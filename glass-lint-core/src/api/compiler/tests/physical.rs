@@ -16,7 +16,7 @@ use crate::api::{
             validate_physical_plan,
         },
         requirements::PlanRequirements,
-        rule::{EventPredicate, EvidenceDescriptor, IdentityConstraint},
+        rule::{EventSpec, EvidenceDescriptor, IdentityConstraint},
     },
     rule::{
         ArgumentIndex, ArgumentMatcher, EventQuery, QueryDecl, ValueMatcher,
@@ -373,7 +373,7 @@ fn plan_summary_shows_no_project_overlay_for_global_queries() {
 fn empty_identity_fails_validation() {
     let roots = Box::new([PhysicalRoot::IndexedScan {
         identity: IdentityConstraint::Global { name: "".into() },
-        event: EventPredicate::Call,
+        event: EventSpec::Call,
         evidence: EvidenceDescriptor {
             kind: MatchKind::Call,
             symbol: "test".into(),
@@ -399,7 +399,7 @@ fn object_slot_sentinel_is_rejected_by_relation_constructor() {
             },
             NormalizedObjectSlot::from_raw(u32::MAX),
             SymbolPath::from("send"),
-            EventPredicate::MemberCall {
+            EventSpec::MemberCall {
                 member: SymbolPath::from("send"),
             },
             EvidenceDescriptor {
@@ -417,7 +417,7 @@ fn valid_roots_pass_validation() {
         identity: IdentityConstraint::Global {
             name: "fetch".into(),
         },
-        event: EventPredicate::Call,
+        event: EventSpec::Call,
         evidence: EvidenceDescriptor {
             kind: MatchKind::Call,
             symbol: "fetch".into(),
@@ -433,7 +433,7 @@ fn requirements_must_match_executable_roots() {
         identity: IdentityConstraint::Global {
             name: "fetch".into(),
         },
-        event: EventPredicate::Call,
+        event: EventSpec::Call,
         evidence: EvidenceDescriptor {
             kind: MatchKind::Call,
             symbol: "fetch".into(),
@@ -573,7 +573,7 @@ fn excessive_groups_fails_validation() {
             identity: IdentityConstraint::Global {
                 name: "fetch".into(),
             },
-            event: EventPredicate::Call,
+            event: EventSpec::Call,
             constraints,
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,
@@ -607,7 +607,7 @@ fn excessive_predicate_count_fails_validation() {
             identity: IdentityConstraint::Global {
                 name: "fetch".into(),
             },
-            event: EventPredicate::Call,
+            event: EventSpec::Call,
             constraints,
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,

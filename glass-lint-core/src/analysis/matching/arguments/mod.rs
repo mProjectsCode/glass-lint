@@ -17,7 +17,7 @@ use crate::{
         compiler::{
             normalized::CanonicalArgumentConstraints,
             physical::PhysicalRoot,
-            rule::{EventPredicate, EvidenceDescriptor, IdentityConstraint},
+            rule::{EventSpec, EvidenceDescriptor, IdentityConstraint},
         },
     },
 };
@@ -30,7 +30,7 @@ use evaluator::{EvaluationOperations, MatcherEvaluator, PreparedClausePaths};
 struct ConstrainedRoot<'a> {
     rule: RuleIndex,
     identity: &'a IdentityConstraint,
-    event: &'a EventPredicate,
+    event: &'a EventSpec,
     constraints: &'a CanonicalArgumentConstraints,
     evidence: &'a EvidenceDescriptor,
 }
@@ -463,9 +463,7 @@ mod tests {
             classification::MatchKind,
             compiler::{
                 physical::{PhysicalRoot, compile_argument_constraints},
-                rule::{
-                    CompiledMatcherPlan, EventPredicate, EvidenceDescriptor, IdentityConstraint,
-                },
+                rule::{CompiledMatcherPlan, EventSpec, EvidenceDescriptor, IdentityConstraint},
             },
             rule::{ArgumentConstraint, ArgumentMatcher, EventQuery, ValueMatcher},
         },
@@ -497,7 +495,7 @@ mod tests {
             IdentityConstraint::Any {
                 name: "fetch".into(),
             },
-            EventPredicate::Call,
+            EventSpec::Call,
             "fetch",
         );
         let mut evidence = RuleEvidenceTable::new_for_test(0);
@@ -521,7 +519,7 @@ mod tests {
 
     fn constrained_root(
         identity: IdentityConstraint,
-        event: EventPredicate,
+        event: EventSpec,
         symbol: &str,
     ) -> PhysicalRoot {
         PhysicalRoot::ConstrainedScan {
@@ -548,14 +546,14 @@ mod tests {
             IdentityConstraint::Any {
                 name: "fetch".into(),
             },
-            EventPredicate::Call,
+            EventSpec::Call,
             "fetch",
         );
         let member = constrained_root(
             IdentityConstraint::Any {
                 name: "client.open".into(),
             },
-            EventPredicate::MemberCall {
+            EventSpec::MemberCall {
                 member: "client.open".into(),
             },
             "client.open",
@@ -628,7 +626,7 @@ mod tests {
             IdentityConstraint::Any {
                 name: "fetch".into(),
             },
-            EventPredicate::Call,
+            EventSpec::Call,
             "fetch",
         );
         // Patch the root to reference argument index 5 (out of bounds).
@@ -636,7 +634,7 @@ mod tests {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
             },
-            event: EventPredicate::Call,
+            event: EventSpec::Call,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(5),
                 ValueMatcher::static_string().try_equals("/api").unwrap(),
@@ -667,7 +665,7 @@ mod tests {
             IdentityConstraint::Any {
                 name: "fetch".into(),
             },
-            EventPredicate::Call,
+            EventSpec::Call,
             "fetch",
         );
         let index = build_index(&stream);
@@ -692,7 +690,7 @@ mod tests {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
             },
-            event: EventPredicate::Call,
+            event: EventSpec::Call,
             constraints: compile_argument_constraints(&[
                 ArgumentConstraint::new(
                     crate::api::rule::ArgumentIndex::new_unchecked(0),
@@ -727,7 +725,7 @@ mod tests {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
             },
-            event: EventPredicate::Call,
+            event: EventSpec::Call,
             constraints: compile_argument_constraints(&[
                 ArgumentConstraint::new(
                     crate::api::rule::ArgumentIndex::new_unchecked(0),
@@ -747,7 +745,7 @@ mod tests {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
             },
-            event: EventPredicate::Call,
+            event: EventSpec::Call,
             constraints: compile_argument_constraints(&[
                 ArgumentConstraint::new(
                     crate::api::rule::ArgumentIndex::new_unchecked(1),
@@ -789,7 +787,7 @@ mod tests {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
             },
-            event: EventPredicate::Call,
+            event: EventSpec::Call,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ValueMatcher::static_string()
@@ -819,7 +817,7 @@ mod tests {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
             },
-            event: EventPredicate::Call,
+            event: EventSpec::Call,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ValueMatcher::static_string()
@@ -852,7 +850,7 @@ mod tests {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
             },
-            event: EventPredicate::Call,
+            event: EventSpec::Call,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ValueMatcher::static_string()
@@ -888,7 +886,7 @@ mod tests {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
             },
-            event: EventPredicate::Call,
+            event: EventSpec::Call,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ValueMatcher::static_string()
@@ -924,7 +922,7 @@ mod tests {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
             },
-            event: EventPredicate::Call,
+            event: EventSpec::Call,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ArgumentMatcher::object_keys(["url", "method"]).unwrap(),
@@ -955,7 +953,7 @@ mod tests {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
             },
-            event: EventPredicate::Call,
+            event: EventSpec::Call,
             constraints: compile_argument_constraints(&[ArgumentConstraint::new(
                 crate::api::rule::ArgumentIndex::new_unchecked(0),
                 ArgumentMatcher::object_property_value(
@@ -1068,7 +1066,7 @@ mod tests {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
             },
-            event: EventPredicate::Call,
+            event: EventSpec::Call,
             constraints,
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,
@@ -1111,7 +1109,7 @@ mod tests {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
             },
-            event: EventPredicate::Call,
+            event: EventSpec::Call,
             constraints,
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,
@@ -1149,7 +1147,7 @@ mod tests {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
             },
-            event: EventPredicate::Call,
+            event: EventSpec::Call,
             constraints,
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,
@@ -1206,7 +1204,7 @@ mod tests {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
             },
-            event: EventPredicate::Call,
+            event: EventSpec::Call,
             constraints,
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,
@@ -1244,7 +1242,7 @@ mod tests {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
             },
-            event: EventPredicate::Call,
+            event: EventSpec::Call,
             constraints,
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,
@@ -1275,7 +1273,7 @@ mod tests {
             identity: IdentityConstraint::Any {
                 name: "fetch".into(),
             },
-            event: EventPredicate::Call,
+            event: EventSpec::Call,
             constraints,
             evidence: EvidenceDescriptor {
                 kind: MatchKind::CallArgument,

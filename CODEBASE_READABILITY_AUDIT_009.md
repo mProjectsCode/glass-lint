@@ -46,9 +46,9 @@ constructors, and classes, including deterministic ordering and physical
 root equality.
 
 **Fix Applied:** Physical matcher roots now carry the normalized `EventSpec`
-directly through an alias; the field-for-field `EventPredicate` enum and
-variant-by-variant lowering match were removed. Compiler plan and reference
-matching behavior remain unchanged. Verified with
+directly. The field-for-field `EventPredicate` enum, its re-export, and the
+variant-by-variant lowering function were removed; compiler, matcher, and
+reference call sites use `EventSpec` directly. Verified with
 `cargo test -p glass-lint-core api::compiler`.
 
 ### [api/compiler/validate, api/compiler/normalize.rs, and api/compiler/physical.rs]

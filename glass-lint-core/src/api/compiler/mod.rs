@@ -57,7 +57,7 @@ use crate::api::{
     },
     rule::{
         CompilerInvariantDiagnostic, MatcherBuildError, ModuleSpecifierPattern, QueryDiagnostic,
-        query::{EventSpec, IdentitySpec, QueryDecl},
+        query::{IdentitySpec, QueryDecl},
     },
 };
 
@@ -116,10 +116,6 @@ impl IdentityConstraint {
     }
 }
 
-/// Physical matching uses the normalized declaration event directly. The
-/// compiler does not need a second field-for-field event vocabulary.
-pub(crate) use crate::api::rule::query::EventSpec as EventPredicate;
-
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) struct EvidenceDescriptor {
     pub(crate) kind: MatchKind,
@@ -158,10 +154,6 @@ pub(crate) fn lower_identity(spec: &IdentitySpec) -> IdentityConstraint {
             pattern: pattern.clone(),
         },
     }
-}
-
-pub(crate) fn lower_event(spec: &EventSpec) -> EventPredicate {
-    spec.clone()
 }
 
 struct QueryPlanAccumulator {
