@@ -273,6 +273,47 @@ pub(in crate::analysis) struct FunctionEffect {
 }
 
 impl FunctionEffect {
+    fn empty(id: FunctionId) -> Self {
+        Self {
+            id,
+            calls: Vec::new(),
+            uses: Vec::new(),
+            returns: Vec::new(),
+            invalid: false,
+            value_roots: HashMap::new(),
+            parameter_index: HashMap::new(),
+        }
+    }
+
+    fn invalid(id: FunctionId) -> Self {
+        Self {
+            invalid: true,
+            ..Self::empty(id)
+        }
+    }
+
+    fn with_parameters(id: FunctionId, parameters: &[ParameterBinding]) -> Self {
+        Self {
+            value_roots: parameters
+                .iter()
+                .map(|parameter| (parameter.value(), parameter.value()))
+                .collect(),
+            parameter_index: parameters
+                .iter()
+                .map(|parameter| {
+                    (
+                        parameter.value(),
+                        ParameterRef {
+                            index: parameter.parameter_index(),
+                            path: parameter.path(),
+                        },
+                    )
+                })
+                .collect(),
+            ..Self::empty(id)
+        }
+    }
+
     fn record_property_write(
         &mut self,
         event: FactId,
@@ -565,15 +606,7 @@ impl<'stream> FunctionEffectsBuilder<'stream> {
         if builder.availability.is_enabled() && builder.budget.try_push() {
             let _ = builder.by_id.insert(
                 FunctionId::new(0),
-                FunctionEffect {
-                    id: FunctionId::new(0),
-                    calls: Vec::new(),
-                    uses: Vec::new(),
-                    returns: Vec::new(),
-                    invalid: false,
-                    value_roots: HashMap::new(),
-                    parameter_index: HashMap::new(),
-                },
+                FunctionEffect::empty(FunctionId::new(0)),
             );
         }
         builder
@@ -593,43 +626,12 @@ impl<'stream> FunctionEffectsBuilder<'stream> {
                 return;
             }
             let Some(params) = self.stream.function_parameters(*id) else {
-                let _ = self.by_id.insert(
-                    *id,
-                    FunctionEffect {
-                        id: *id,
-                        calls: Vec::new(),
-                        uses: Vec::new(),
-                        returns: Vec::new(),
-                        invalid: true,
-                        value_roots: HashMap::new(),
-                        parameter_index: HashMap::new(),
-                    },
-                );
+                let _ = self.by_id.insert(*id, FunctionEffect::invalid(*id));
                 return;
             };
-            let _ = self.by_id.insert(
-                *id,
-                FunctionEffect {
-                    id: *id,
-                    calls: Vec::new(),
-                    uses: Vec::new(),
-                    returns: Vec::new(),
-                    invalid: false,
-                    value_roots: params.iter().map(|p| (p.value(), p.value())).collect(),
-                    parameter_index: params
-                        .iter()
-                        .map(|p| {
-                            (
-                                p.value(),
-                                ParameterRef {
-                                    index: p.parameter_index(),
-                                    path: p.path(),
-                                },
-                            )
-                        })
-                        .collect(),
-                },
-            );
+            let _ = self
+                .by_id
+                .insert(*id, FunctionEffect::with_parameters(*id, params));
             return;
         }
 

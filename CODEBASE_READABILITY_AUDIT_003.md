@@ -109,7 +109,11 @@ delete their repeated storage setup. Preserve the synthetic function-zero
 entry, invalid-summary behavior when parameters are missing, parameter-root
 mapping, and all effect-budget accounting in the builder.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `FunctionEffect::empty`, `invalid`, and `with_parameters`
+now own the shared effect-record initialization. The synthetic function-zero,
+missing-parameter, and normal parameterized paths use those constructors, so
+their collection storage cannot drift. Verified with
+`cargo test -p glass-lint-core analysis::flow::effect --lib`.
 
 ### [analysis/flow/cross/sources.rs, analysis/flow/planning.rs]
 
