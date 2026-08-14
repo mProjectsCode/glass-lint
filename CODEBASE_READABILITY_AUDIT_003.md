@@ -139,7 +139,10 @@ source-candidate argument matching behavior; the cleanup should remove only
 the forwarding layer, not consolidate artifact-local name paths across
 modules.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The private cross-flow source-index forwarding function was
+deleted; `FlowSources::collect_candidates` now calls the canonical planning
+builder directly with its module-local names and `BoundSource` conversion.
+Verified with `cargo test -p glass-lint-core analysis::flow::cross --lib`.
 
 ## Systemic Themes
 

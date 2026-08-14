@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use glass_lint_datastructures::{Budget, NameTable};
+use glass_lint_datastructures::Budget;
 use hashbrown::HashMap;
 
 use crate::{
@@ -13,10 +13,7 @@ use crate::{
                 MAX_PENDING, QualifiedCallGraph,
                 worklist::{BoundedFifo, FifoAdmission},
             },
-            planning::{
-                BoundSource, BoundTargetIndex, FlowMatchView,
-                build_source_index as build_bound_source_index,
-            },
+            planning::{BoundSource, FlowMatchView, build_source_index},
         },
         model::{flow::FlowId, scope::FunctionId, value::ValueId},
         trace::QualifiedEvent,
@@ -194,18 +191,6 @@ impl FlowSources {
     }
 }
 
-/// Build a per-module source index retaining each source's bound arguments.
-fn build_source_index(
-    flows: &HashMap<FlowId, &CompiledObjectFlow>,
-    names: &NameTable,
-) -> BoundTargetIndex<BoundSource> {
-    build_bound_source_index(
-        flows.iter().map(|(id, flow)| (*id, *flow)),
-        names,
-        |id, source| BoundSource::new(id, source.argument_constraints().clone()),
-    )
-}
-
 impl FlowSources {
     pub(super) fn collect(
         project: &ProjectSemanticModel,
@@ -231,7 +216,11 @@ impl FlowSources {
             // Build a per-module source index so that candidate discovery
             // looks up flows by chain instead of scanning every flow for
             // every call.
-            let source_index = build_source_index(flows, names);
+            let source_index = build_source_index(
+                flows.iter().map(|(id, flow)| (*id, *flow)),
+                names,
+                |id, source| BoundSource::new(id, source.argument_constraints().clone()),
+            );
             for effect in module.local().effects().iter_effects() {
                 if effect.is_invalid() {
                     continue;
