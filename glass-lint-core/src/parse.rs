@@ -158,7 +158,6 @@ pub struct ParsedSource {
 pub struct SourceParser {
     source: SourceFile,
     file: Lrc<swc_common::SourceFile>,
-    lines: SourceLineIndex,
     syntax: Syntax,
     depth_guard: SyntaxDepthGuard,
 }
@@ -186,7 +185,6 @@ impl SourceParser {
         Ok(Self {
             source: source.clone(),
             file,
-            lines: SourceLineIndex::from_text(source.source().clone()),
             syntax: source.language().syntax(),
             depth_guard: SyntaxDepthGuard::new(
                 DepthScanner::raw_bound(source.source()),
@@ -209,11 +207,20 @@ impl SourceParser {
 
     pub(crate) fn parse(self) -> Result<ParsedSource, ParseDiagnostic> {
         let program = self.parse_program()?;
+        let lines = SourceLineIndex::from_text(self.source.source().clone());
         Ok(ParsedSource {
             program: self.lower_program(program),
             source_start: self.file.start_pos,
-            lines: self.lines,
+            lines,
         })
+    }
+
+    /// Parse and lower a program for consumers that do not need source
+    /// coordinates. Parser diagnostics still construct an index on demand;
+    /// successful syntax-only analysis does not.
+    pub(crate) fn parse_program_only(self) -> Result<Program, ParseDiagnostic> {
+        let program = self.parse_program()?;
+        Ok(self.lower_program(program))
     }
 
     fn parse_program(&self) -> Result<Program, ParseDiagnostic> {
@@ -298,7 +305,9 @@ impl SourceParser {
 
         let start = span.lo.0.checked_sub(self.file.start_pos.0)?;
         let end = span.hi.0.checked_sub(self.file.start_pos.0)?;
-        self.lines.range_from_offsets(start, end).ok()
+        SourceLineIndex::from_text(self.source.source().clone())
+            .range_from_offsets(start, end)
+            .ok()
     }
 }
 

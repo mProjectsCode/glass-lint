@@ -210,9 +210,9 @@ pub fn analyze_ecma_version_with_limits(
     source: &SourceFile,
     limits: &AnalysisLimits,
 ) -> Result<EcmaVersionReport, ParseDiagnostic> {
-    let parsed =
-        crate::parse::SourceParser::with_syntax_depth(source, limits.syntax_depth())?.parse()?;
-    Ok(EcmaVersionReport::from_program(&parsed.program))
+    let program = crate::parse::SourceParser::with_syntax_depth(source, limits.syntax_depth())?
+        .parse_program_only()?;
+    Ok(EcmaVersionReport::from_program(&program))
 }
 
 #[derive(Default)]

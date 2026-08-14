@@ -15,7 +15,7 @@ would add lifecycle complexity without evidence that construction is material.
 
 ### [parse.rs and ecma_version.rs]
 
-#### [ ] READ-026 — Avoid building discarded source coordinates
+#### [x] READ-026 — Avoid building discarded source coordinates
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -42,7 +42,12 @@ standalone `EcmaVersionReport` feature ordering, and the semantic path’s exact
 span conversion behavior. Add allocation-focused coverage or a construction
 counter in tests to prove syntax-only analysis does not initialize coordinates.
 
-**Fix Applied:** None so far.
+**Fix Applied:** The parser now builds `SourceLineIndex` only for the
+coordinate-bearing semantic result, while standalone ECMAScript analysis uses
+a shared parse/lower path that returns the program directly. Parser-error
+locations remain available through lazy index construction. Verified with
+`cargo test -p glass-lint-core parse` and
+`cargo test -p glass-lint-core ecma_version`.
 
 ## Systemic Themes
 
