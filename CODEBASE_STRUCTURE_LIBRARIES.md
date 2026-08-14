@@ -55,6 +55,7 @@ provider-neutral engine.
 - `path_trie::types::PathId` — Identifies a path in one path store.
 - `path_trie::types::PathSegment` — Represents one normalized path segment.
 - `path_trie::types::PathSegmentInput` — Represents caller input that can become a path segment.
+- `table::IdIndex` — Defines dense index identifiers accepted by an index table.
 - `table::IndexTable` — Stores optional values in a dense typed-indexed table.
 - `table::InsertOutcome` — Reports whether a table insertion added or replaced a value.
 
@@ -98,8 +99,6 @@ module-resolution outcomes for core.
 - `discovery::TsconfigGraphWalker` — Walks the bounded graph of referenced configurations.
 - `error::ProjectLoadError` — Classifies failures encountered while loading a project.
 - `error::ProjectOptionError` — Classifies invalid project-loading options.
-- `loader::ClosedFrontier` — Records that no more project paths can be admitted.
-- `loader::FinishMode` — Selects how the loader completes normal or partial work.
 - `loader::LoadDeadline` — Tracks the deadline imposed on one project load.
 - `loader::ProjectLoadOutcome` — Returns the loaded core project together with partial status and metrics.
 - `loader::ProjectLoadState` — Holds mutable state for the multi-phase loading loop.
@@ -107,7 +106,6 @@ module-resolution outcomes for core.
 - `loader::ProjectLoader` — Coordinates the complete filesystem-to-core loading workflow.
 - `loader::ProjectPaths` — Groups the canonical paths relevant to one load.
 - `loader::ReadWaveOutcome` — Summarizes one bounded wave of source reads.
-- `loader::RequestResolutionOutcome` — Summarizes resolution requests produced or completed by a wave.
 - `loader_metrics::ProjectLoadMetrics` — Aggregates project loading counters and timings.
 - `loader_metrics::ProjectPhaseTimings` — Records elapsed time for each loading phase.
 - `loader_phases::PathWorkQueue` — Maintains deterministic pending path work.
@@ -120,6 +118,8 @@ module-resolution outcomes for core.
 - `options::ValidatedProjectLoadOptions` — Stores options after all boundary checks pass.
 - `resolver::ProjectResolver` — Resolves core module requests within project filesystem rules.
 - `tsconfig::ConfigTraversalBudget` — Bounds recursive configuration traversal.
+- `tsconfig::FieldState` — Reports validation errors for parsed configuration fields.
+- `tsconfig::FromValue` — Converts JSON values into typed parsed fields.
 - `tsconfig::ParsedField` — Records the parsed state of a configuration field.
 - `tsconfig::ParsedTsconfig` — Holds the supported fields from one parsed configuration.
 - `tsconfig::ReferenceEntry` — Describes one referenced configuration path.
@@ -323,6 +323,7 @@ normalized adapter and report boundaries.
 
 ### Structs and enums
 
+- `adapters::Adapter` — Defines the normalized analysis-tool adapter boundary.
 - `adapters::ExternalAdapter` — Runs an external tool process for one case.
 - `adapters::GlassLintAdapter` — Adapts the built-in Glass Lint engine to the harness protocol.
 - `builtins::BuiltinProfile` — Selects a built-in profiling configuration.
@@ -330,6 +331,7 @@ normalized adapter and report boundaries.
 - `bundler::BundleOutput` — Stores generated bundle source and transformation metadata.
 - `bundler::BundleRequest` — Carries a validated bundle transformation request.
 - `bundler::BundleResponse` — Carries the normalized response from a bundle transformer.
+- `bundler::Bundler` — Defines the normalized bundle transformation boundary.
 - `bundler::ProcessBundler` — Runs the external bundle transformer process.
 - `cases::project::ManifestResolutionOutcome` — Records how a project manifest resolution entry was interpreted.
 - `cases::project::ProjectManifest` — Holds the normalized project case manifest.
@@ -349,7 +351,6 @@ normalized adapter and report boundaries.
 - `profile::runner::files::PreparedCorpus` — Holds corpus inputs ready for worker execution.
 - `profile::types::MeasuredRepetitionAccumulator` — Accumulates measurements across one profile repetition.
 - `profile::types::PreparedFile` — Stores a file prepared for profile execution.
-- `profile::types::ProfileOperationCounts` — Counts semantic operations during profiling.
 - `profile::types::ProfilePhaseTimings` — Records profiling phase durations.
 - `profile::types::ProfileProjectRun` — Stores one project profiling run.
 - `profile::types::ProfileProjectRunAccumulator` — Accumulates repeated project-run measurements.
