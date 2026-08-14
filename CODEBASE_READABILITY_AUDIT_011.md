@@ -78,7 +78,12 @@ reduction, and deterministic ordering. Add tests for equal ranges, nested
 ranges, overlapping non-contained ranges, disjoint ranges, and evidence with
 invalid/empty source spans before removing either pass.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `PendingBatch::complete` now returns an explicit protocol
+result. Unknown and duplicate completions close the sender and convert every
+pending entry to the existing deterministic `WorkerPanic` execution error,
+preventing ordered iteration from waiting indefinitely. Regression tests cover
+unknown and duplicate indexes. Verified with
+`cargo test -p glass-lint-core lint::batch --lib`.
 
 ### [lint/batch.rs]
 

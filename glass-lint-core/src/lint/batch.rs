@@ -142,14 +142,22 @@ impl PendingBatch {
         index
     }
 
-    fn complete(&mut self, completed: CompletedBatch) {
+    fn complete(&mut self, completed: CompletedBatch) -> Result<(), ()> {
         let Some(entry) = self.entries.get_mut(&completed.index) else {
-            debug_assert!(false, "completion was not submitted");
-            return;
+            return Err(());
         };
-        debug_assert!(entry.result.is_none(), "completion was received twice");
-        if entry.result.is_none() {
-            entry.result = Some(completed.result);
+        if entry.result.is_some() {
+            return Err(());
+        }
+        entry.result = Some(completed.result);
+        Ok(())
+    }
+
+    fn fail_protocol(&mut self) {
+        for entry in self.entries.values_mut() {
+            entry.result = Some(Err(ProjectError::Execution(ProjectExecutionError::Local(
+                LocalExecutionError::WorkerPanic,
+            ))));
         }
     }
 
@@ -272,7 +280,12 @@ where
 
     fn receive_completion(&mut self) {
         match self.receiver.recv() {
-            Ok(completed) => self.pending.complete(completed),
+            Ok(completed) => {
+                if self.pending.complete(completed).is_err() {
+                    self.pending.fail_protocol();
+                    self.sender.take();
+                }
+            }
             Err(_) => self.pending.synthesize_missing(),
         }
     }
@@ -392,9 +405,9 @@ mod tests {
         for name in ["a.js", "b.js", "c.js"] {
             pending.submit(path(name));
         }
-        pending.complete(completed(2, "c.js"));
-        pending.complete(completed(0, "a.js"));
-        pending.complete(completed(1, "b.js"));
+        let _ = pending.complete(completed(2, "c.js"));
+        let _ = pending.complete(completed(0, "a.js"));
+        let _ = pending.complete(completed(1, "b.js"));
         assert_eq!(pending.in_flight(), 3);
         assert_eq!(pending.take_ready().unwrap().index(), 0);
         assert_eq!(pending.in_flight(), 2);
@@ -408,7 +421,7 @@ mod tests {
         let mut pending = PendingBatch::new(NonZeroUsize::new(2).unwrap());
         pending.submit(path("a.js"));
         pending.submit(path("b.js"));
-        pending.complete(completed(1, "b.js"));
+        let _ = pending.complete(completed(1, "b.js"));
         pending.synthesize_missing();
         assert!(matches!(
             pending.take_ready().unwrap().into_result(),
@@ -417,6 +430,40 @@ mod tests {
             )))
         ));
         assert_eq!(pending.take_ready().unwrap().path().as_str(), "b.js");
+    }
+
+    #[test]
+    fn invalid_completion_protocol_fails_all_pending_entries() {
+        let mut pending = PendingBatch::new(NonZeroUsize::new(2).unwrap());
+        pending.submit(path("a.js"));
+        pending.submit(path("b.js"));
+
+        assert!(pending.complete(completed(9, "unknown.js")).is_err());
+        pending.fail_protocol();
+        for _ in 0..2 {
+            assert!(matches!(
+                pending.take_ready().unwrap().into_result(),
+                Err(ProjectError::Execution(ProjectExecutionError::Local(
+                    LocalExecutionError::WorkerPanic,
+                )))
+            ));
+        }
+        assert_eq!(pending.in_flight(), 0);
+    }
+
+    #[test]
+    fn duplicate_completion_protocol_fails_without_waiting() {
+        let mut pending = PendingBatch::new(NonZeroUsize::new(1).unwrap());
+        pending.submit(path("a.js"));
+        assert!(pending.complete(completed(0, "a.js")).is_ok());
+        assert!(pending.complete(completed(0, "a.js")).is_err());
+        pending.fail_protocol();
+        assert!(matches!(
+            pending.take_ready().unwrap().into_result(),
+            Err(ProjectError::Execution(ProjectExecutionError::Local(
+                LocalExecutionError::WorkerPanic,
+            )))
+        ));
     }
 
     #[test]
