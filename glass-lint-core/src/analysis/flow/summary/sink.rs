@@ -44,10 +44,6 @@ pub(in crate::analysis::flow) struct SinkSet {
 }
 
 impl SinkSet {
-    pub(super) fn push_unique(&mut self, sink: FunctionSinkSummary) {
-        self.set.insert(sink);
-    }
-
     pub(super) fn extend_unique(&mut self, sinks: impl IntoIterator<Item = FunctionSinkSummary>) {
         for sink in sinks {
             self.set.insert(sink);
@@ -170,10 +166,6 @@ impl FunctionSummary {
     #[cfg(test)]
     pub(super) fn parameter_count(&self) -> usize {
         self.signature.parameter_count
-    }
-
-    pub(super) fn add_sink(&mut self, sink: FunctionSinkSummary) {
-        self.sinks.push_unique(sink)
     }
 
     pub(super) fn add_sinks(&mut self, sinks: impl IntoIterator<Item = FunctionSinkSummary>) {
@@ -320,9 +312,9 @@ mod tests {
 
         let s1 = FunctionSinkSummary::new(FlowId::new(ri(0), 0), 0, sp0);
         let s2 = FunctionSinkSummary::new(FlowId::new(ri(0), 0), 1, sp0);
-        set.push_unique(s1);
+        set.extend_unique([s1]);
         assert_eq!((&set).into_iter().count(), 1);
-        set.push_unique(s2);
+        set.extend_unique([s2]);
         assert_eq!((&set).into_iter().count(), 2);
     }
 
@@ -331,8 +323,8 @@ mod tests {
         let mut set = SinkSet::default();
         let sp0 = SummaryPathId::from_frozen_path(PathId::EMPTY);
         let s1 = FunctionSinkSummary::new(FlowId::new(ri(0), 0), 0, sp0);
-        set.push_unique(s1.clone());
-        set.push_unique(s1);
+        set.extend_unique([s1.clone()]);
+        set.extend_unique([s1]);
         assert_eq!((&set).into_iter().count(), 1);
     }
 
@@ -354,8 +346,8 @@ mod tests {
         let sp0 = SummaryPathId::from_frozen_path(PathId::EMPTY);
         let s2 = FunctionSinkSummary::new(FlowId::new(ri(0), 1), 1, sp0);
         let s1 = FunctionSinkSummary::new(FlowId::new(ri(0), 0), 0, sp0);
-        set.push_unique(s2.clone());
-        set.push_unique(s1.clone());
+        set.extend_unique([s2.clone()]);
+        set.extend_unique([s1.clone()]);
         set.sort_and_dedup();
         let sinks: Vec<&FunctionSinkSummary> = (&set).into_iter().collect();
         assert_eq!(sinks, vec![&s1, &s2]);
@@ -366,7 +358,7 @@ mod tests {
         let mut set = SinkSet::default();
         let sp0 = SummaryPathId::from_frozen_path(PathId::EMPTY);
         let s1 = FunctionSinkSummary::new(FlowId::new(ri(0), 0), 0, sp0);
-        set.push_unique(s1);
+        set.extend_unique([s1]);
         assert_eq!(set.into_iter().count(), 1);
     }
 
@@ -410,8 +402,8 @@ mod tests {
         );
         let s1 = FunctionSinkSummary::new(FlowId::new(ri(1), 0), 0, sp1);
         let s2 = FunctionSinkSummary::new(FlowId::new(ri(0), 0), 0, sp0);
-        summary.add_sink(s2);
-        summary.add_sink(s1);
+        summary.add_sinks([s2]);
+        summary.add_sinks([s1]);
         summary.sort_sinks();
         assert_eq!(summary.sinks().into_iter().count(), 2);
     }
