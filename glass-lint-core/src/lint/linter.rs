@@ -233,6 +233,13 @@ impl Linter {
         &self,
         source: crate::project::SourceFile,
     ) -> Result<AnalysisReport, ProjectError> {
+        self.run_single_source(source)
+    }
+
+    pub(crate) fn run_single_source(
+        &self,
+        source: crate::project::SourceFile,
+    ) -> Result<AnalysisReport, ProjectError> {
         let mut collection = self.begin_project();
         collection.analyze_source(source)?;
         Ok(collection.finish([])?.into_report())

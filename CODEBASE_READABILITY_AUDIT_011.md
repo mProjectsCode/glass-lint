@@ -14,7 +14,7 @@ debug assertions.
 
 ### [lint/linter.rs and lint/batch.rs]
 
-#### [ ] READ-028 — Separate independent batch execution from project sessions
+#### [x] READ-028 — Separate independent batch execution from project sessions
 
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -44,15 +44,14 @@ in-flight/input-ordered protocol. Add equivalence tests comparing single and
 batch results for ordinary files, parse failures, imports, and incomplete
 analysis statuses before deleting any duplicated path.
 
-**Fix Applied:** `FindingRangeBuilder` now retains sorted entry indexes rather
-than cloning every source range into a second collection. Grouping still scans
-the canonical BTree-ordered entries, preserving containment, overlap,
-occurrence, trace, and deterministic ordering behavior. Verified with
-`cargo test -p glass-lint-core lint --lib`.
+**Fix Applied:** Direct single-source linting and batch workers now share the
+private `Linter::run_single_source` report executor. The public API and batch
+ordering/error semantics remain unchanged, while project-session ownership is
+defined in one place. Verified with the lint batch and linter test suites.
 
 ### [lint/report/evidence.rs and lint/ranges.rs]
 
-#### [ ] READ-029 — Avoid duplicate range materialization during report grouping
+#### [x] READ-029 — Avoid duplicate range materialization during report grouping
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -87,7 +86,7 @@ unknown and duplicate indexes. Verified with
 
 ### [lint/batch.rs]
 
-#### [ ] READ-030 — Make batch completion protocol failures recoverable
+#### [x] READ-030 — Make batch completion protocol failures recoverable
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium

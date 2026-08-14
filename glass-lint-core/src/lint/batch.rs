@@ -261,7 +261,7 @@ where
                 if cancellation.load(Ordering::Acquire) {
                     return;
                 }
-                let result = catch_unwind(AssertUnwindSafe(|| linter.lint_source(source)))
+                let result = catch_unwind(AssertUnwindSafe(|| linter.run_single_source(source)))
                     .unwrap_or({
                         Err(ProjectError::Execution(ProjectExecutionError::Local(
                             LocalExecutionError::WorkerPanic,
