@@ -244,7 +244,7 @@ impl FrozenScopeGraph {
         span: Span,
     ) -> Option<SymbolCallProvenance> {
         let (root, export) = chain.split_once('.')?;
-        match self.binding_at(root, span)? {
+        match self.definite_binding_at(root, span)? {
             BindingProvenance::DefaultImport { module }
             | BindingProvenance::ModuleNamespace { module } => {
                 Some(SymbolCallProvenance::ModuleExport {
@@ -279,7 +279,7 @@ impl FrozenScopeGraph {
             .map(SmolStr::as_str)
             .collect::<Vec<_>>()
             .join(".");
-        match self.binding_at(root.sym.as_ref(), root.span) {
+        match self.definite_binding_at(root.sym.as_ref(), root.span) {
             Some(
                 BindingProvenance::DefaultImport { module }
                 | BindingProvenance::ModuleNamespace { module },

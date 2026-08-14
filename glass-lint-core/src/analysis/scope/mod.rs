@@ -145,7 +145,7 @@ mod tests {
         collector.values.sort_by_key(|ident| ident.span.lo);
 
         assert!(matches!(
-            graph.binding_at("value", collector.values[2].span),
+            graph.preferred_binding_witness_at("value", collector.values[2].span),
             Some(BindingProvenance::Local)
         ));
     }
@@ -215,7 +215,7 @@ mod tests {
         assert_eq!(identifiers.len(), 2);
         assert!(
             graph
-                .binding_at("PluginSettingTab", identifiers[1].span)
+                .preferred_binding_witness_at("PluginSettingTab", identifiers[1].span)
                 .is_some()
         );
     }

@@ -28,7 +28,7 @@ impl Lookup for FrozenScopeGraph {
             return ConstValue::Unknown;
         }
         let resolve = |key| self.resolve_name_id(key).map(SmolStr::new);
-        self.binding_at(ident.sym.as_ref(), ident.span)
+        self.definite_binding_at(ident.sym.as_ref(), ident.span)
             .map_or(ConstValue::Unknown, |provenance| {
                 provenance_to_const_value(provenance, &resolve)
             })

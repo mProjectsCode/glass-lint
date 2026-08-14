@@ -20,7 +20,7 @@ impl FrozenScopeGraph {
         &self,
         ident: &Ident,
     ) -> Option<(smol_str::SmolStr, smol_str::SmolStr)> {
-        match self.binding_at(ident.sym.as_ref(), ident.span)? {
+        match self.definite_binding_at(ident.sym.as_ref(), ident.span)? {
             BindingProvenance::ConstructedInstance { module, export } => {
                 Some((module.clone(), export.clone()))
             }
@@ -33,12 +33,26 @@ impl FrozenScopeGraph {
     /// This is a convenience projection that intentionally discards joined
     /// and incomplete status. Callers making fallback or certainty decisions
     /// must use [`Self::binding_resolution_at`] instead.
-    pub(in crate::analysis) fn binding_at(
+    pub(in crate::analysis) fn preferred_binding_witness_at(
         &self,
         name: &str,
         span: Span,
     ) -> Option<&BindingProvenance> {
         self.binding_resolution_at(name, span).preferred_witness()
+    }
+
+    /// Resolve a binding only when its provenance is complete at the use
+    /// position. Joined or incomplete alternatives cannot establish a
+    /// definite positive classification.
+    pub(in crate::analysis) fn definite_binding_at(
+        &self,
+        name: &str,
+        span: Span,
+    ) -> Option<&BindingProvenance> {
+        let resolution = self.binding_resolution_at(name, span);
+        (resolution.status() == BindingResolutionStatus::Complete)
+            .then(|| resolution.preferred_witness())
+            .flatten()
     }
 
     /// Resolve a binding while retaining completeness and fallback status.

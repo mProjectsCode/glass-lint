@@ -339,7 +339,7 @@ impl ScopeGraph {
             .into_iter()
             .filter_map(|eval| {
                 let (scope, effect) = eval.into_parts();
-                self.binding_at("eval", effect.span())
+                self.preferred_binding_witness_at("eval", effect.span())
                     .is_none()
                     .then_some((scope, effect))
             })
@@ -353,7 +353,11 @@ impl ScopeGraph {
     /// Ambiguous joins are handled by callers that need to evaluate every
     /// alternative; this compatibility query returns the first non-local
     /// witness only.
-    pub(super) fn binding_at(&self, name: &str, span: Span) -> Option<&BindingProvenance> {
+    pub(super) fn preferred_binding_witness_at(
+        &self,
+        name: &str,
+        span: Span,
+    ) -> Option<&BindingProvenance> {
         let (scope, declaration) = self.binding_with_scope_at(name, span)?;
         let parameter = self.parameter_alias_for(scope, name);
         self.assignment_at(scope, name, span)

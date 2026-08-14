@@ -50,7 +50,13 @@ freeze-handoff wrapper. Preserve the current ordering, receiver-key lookup,
 dynamic-`eval` filter, and deterministic mutation-index insertion with focused
 property-artifact tests.
 
-Fix Applied: None so far.
+Fix Applied: Scope lookup now distinguishes the explicitly named
+`preferred_binding_witness_at` compatibility projection from
+`definite_binding_at`, which requires `BindingResolutionStatus::Complete`.
+Module export/member, returned-object, constructed-instance, and constant
+classifiers use the definite query; shadowing checks retain the preferred
+witness query. The mutable collection graph uses the same vocabulary. Verified
+with `cargo test -p glass-lint-core analysis::scope --lib`.
 
 ### [analysis/scope/query/bindings.rs, analysis/scope/query/provenance]
 

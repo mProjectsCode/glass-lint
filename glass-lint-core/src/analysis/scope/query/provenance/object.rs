@@ -48,7 +48,7 @@ impl FrozenScopeGraph {
     ) -> Option<(SmolStr, Option<SmolStr>)> {
         match normalize_scope_expression(expr)? {
             ScopeExpression::Ident(ident) => {
-                match self.binding_at(ident.sym.as_ref(), ident.span)? {
+                match self.definite_binding_at(ident.sym.as_ref(), ident.span)? {
                     BindingProvenance::ModuleExport { module, export } => {
                         Some((module.clone(), Some(export.clone())))
                     }
@@ -68,7 +68,7 @@ impl FrozenScopeGraph {
                 };
                 if require.sym != *"require"
                     || self
-                        .binding_at(require.sym.as_ref(), require.span)
+                        .preferred_binding_witness_at(require.sym.as_ref(), require.span)
                         .is_some()
                 {
                     return None;
@@ -106,7 +106,7 @@ impl FrozenScopeGraph {
             }
             | ScopeExpression::OptionalCall { callee } => self.returned_object_call_source(callee),
             ScopeExpression::Ident(ident) => {
-                match self.binding_at(ident.sym.as_ref(), ident.span)? {
+                match self.definite_binding_at(ident.sym.as_ref(), ident.span)? {
                     BindingProvenance::ReturnedObject { source } => self.symbol_path(source),
                     _ => None,
                 }
