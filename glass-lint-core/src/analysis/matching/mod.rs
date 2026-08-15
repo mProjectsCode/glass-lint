@@ -357,13 +357,10 @@ pub(super) fn push_owned_evidence(
     symbol: String,
     occurrences: OccurrenceSelection<'_>,
 ) {
-    if let Some(group) = EvidenceGroup::from_occurrences(
-        kind,
-        symbol,
-        crate::project::MatchCertainty::Definite,
-        occurrences.into_ordered(),
-    ) {
-        evidence.push(group.into_classification());
+    if let Some(item) =
+        EvidenceGroup::definite_classification(kind, symbol, occurrences.into_ordered())
+    {
+        evidence.push(item);
     }
 }
 

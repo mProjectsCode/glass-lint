@@ -36,6 +36,17 @@ impl EvidenceGroup {
         ClassificationEvidence::from_occurrences(kind, symbol, occurrences, certainty).map(Self)
     }
 
+    /// Build a definite classification from occurrences, shared by the direct
+    /// and constrained evidence-push paths.
+    pub(super) fn definite_classification(
+        kind: MatchKind,
+        symbol: String,
+        occurrences: impl IntoIterator<Item = Occurrence>,
+    ) -> Option<ClassificationEvidence> {
+        Self::from_occurrences(kind, symbol, MatchCertainty::Definite, occurrences)
+            .map(Self::into_classification)
+    }
+
     pub(super) fn into_classification(self) -> ClassificationEvidence {
         self.0
     }

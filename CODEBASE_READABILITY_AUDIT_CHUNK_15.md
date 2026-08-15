@@ -227,7 +227,7 @@ preserving a phase label with no current meaning.
 
 ### Matching / evidence accumulation
 
-#### [ ] READ-007 — Parallel evidence-push helpers `push_owned_evidence` and `push_owned_rule_evidence`
+#### [x] READ-007 — Parallel evidence-push helpers `push_owned_evidence` and `push_owned_rule_evidence`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -257,7 +257,7 @@ differ, so only the conversion should be shared — do not inline it at the four
 call sites. Guardrails: keep the `RuleEvidenceTable::record` fallible path
 (capacity errors must stay typed) and the `Definite` certainty.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `EvidenceGroup::definite_classification` (wrapping `from_occurrences` + `into_classification`) and both `push_owned_evidence` and `push_owned_rule_evidence` now delegate to it before pushing or recording; the fallible `RuleEvidenceTable::record` path and the `Definite` certainty are unchanged.
 
 ## Systemic Themes
 

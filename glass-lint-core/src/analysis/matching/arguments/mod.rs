@@ -280,13 +280,8 @@ fn push_owned_rule_evidence(
     symbol: String,
     occurrences: impl IntoIterator<Item = Occurrence>,
 ) -> Result<(), RuleEvidenceError> {
-    if let Some(group) = EvidenceGroup::from_occurrences(
-        kind,
-        symbol,
-        crate::project::MatchCertainty::Definite,
-        occurrences,
-    ) {
-        evidence.record(rule, group.into_classification())?;
+    if let Some(item) = EvidenceGroup::definite_classification(kind, symbol, occurrences) {
+        evidence.record(rule, item)?;
     }
     Ok(())
 }
