@@ -132,7 +132,7 @@ keep the deterministic base-then-overlay iteration order and the fail-closed
 
 ### Query view and private-network scan (`analysis/matching/query`)
 
-#### [ ] READ-004 — `EventIndexCapabilities` is a parallel, 1:1 representation of `EventIndexView`
+#### [x] READ-004 — `EventIndexCapabilities` is a parallel, 1:1 representation of `EventIndexView`
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -168,7 +168,7 @@ overlay-consult order (`resolve_global`/`resolve_module_key`,
 `view.rs:273-283,367-382`), and keep the identity dispatch for all nine
 `IdentityConstraint` variants exactly as it is today.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `EventIndexCapabilities`, `AnyIndex`, `LiteralIndex`, `ModuleIndex`, and `RootedIndex` and moved all `resolve_*` methods onto `EventIndexView` (via `resolve`/`resolve_any`/`resolve_global`/`resolve_module_export`/`resolve_package_export`/`resolve_module_namespace`/`resolve_package_namespace`/`resolve_rooted`/`resolve_literal`/`resolve_package_specifier`/`resolve_module_key`/`resolve_package`) with small per-variant accessors (`members`, `member`, `global`, `module`, `rooted`). The per-event index restriction, overlay-consult order, and nine-way identity dispatch are unchanged.
 
 #### [ ] READ-005 — The `"*"` namespace-export sentinel is duplicated as a raw literal while `NAMESPACE_EXPORT` already exists
 
