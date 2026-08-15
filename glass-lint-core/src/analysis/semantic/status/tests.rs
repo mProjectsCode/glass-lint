@@ -8,7 +8,7 @@ fn file() -> ProjectRelativePath {
 fn status_diagnostics_are_deduplicated_and_stable() {
     let mut status = AnalysisStatus::default();
     let reason = IncompleteReason::BudgetExhausted {
-        component: AnalysisComponent::Facts,
+        component: AnalysisComponent::Effects,
         limit: 2,
         observed: Some(2),
     };
@@ -17,7 +17,7 @@ fn status_diagnostics_are_deduplicated_and_stable() {
     let (files, project) = status.diagnostics();
     assert_eq!(files.len(), 1);
     assert_eq!(project.len(), 0);
-    assert_eq!(files[0].1.code().as_str(), "semantic_budget_exhausted");
+    assert_eq!(files[0].1.code().as_str(), "effect_size_budget_exhausted");
     assert!(files[0].1.message().contains("limit=2"));
 }
 

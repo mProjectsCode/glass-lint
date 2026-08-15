@@ -23,7 +23,7 @@ use crate::{
         model::module,
         resolution::Resolver,
         scope::{ScopeCollectionIssue, ScopeGraph, ScopedProgram},
-        semantic::status::{AnalysisComponent, IncompleteReason, LocalAnalysisStatus},
+        semantic::status::{IncompleteReason, LocalAnalysisStatus},
         syntax::{SymbolCallProvenance, name::MAX_NAMES},
     },
     parse::SourceParser,
@@ -226,13 +226,6 @@ fn check_facts_budget(
     }
     if resolver.value_arena_exhausted() && !resolver.name_table_exhausted() {
         return Some(IncompleteReason::ValueArenaExhausted);
-    }
-    if !stream.is_structurally_valid() && !stream.name_exhausted() {
-        return Some(IncompleteReason::BudgetExhausted {
-            component: AnalysisComponent::Facts,
-            limit: limits.semantic_operations(),
-            observed: Some(budget.used()),
-        });
     }
     None
 }

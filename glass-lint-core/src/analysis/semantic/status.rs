@@ -9,7 +9,6 @@ use crate::{
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum AnalysisComponent {
-    Facts,
     Effects,
     Flow,
     Linking,
@@ -201,10 +200,6 @@ impl AnalysisStatus {
 impl AnalysisComponent {
     fn budget_diagnostic(self) -> (DiagnosticKind, &'static str) {
         match self {
-            Self::Facts => (
-                DiagnosticKind::FactsBudgetExhausted,
-                "semantic analysis exceeded its bounded fact budget",
-            ),
             Self::Effects => (
                 DiagnosticKind::EffectsBudgetExhausted,
                 "function-effect extraction exceeded its bounded budget",

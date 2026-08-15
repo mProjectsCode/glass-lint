@@ -212,7 +212,7 @@ program-level `FunctionId::new(0)` slot behavior must be preserved.
 
 **Fix Applied:** Replaced the panicking `usize::try_from(...).expect(...)` in `register_function_parameters` with the infallible `id.raw() as usize` and documented the invariant; the fail-closed read path and program-level slot behavior are unchanged.
 
-#### [ ] READ-007 — `FactStream` invalidity is tracked by two overlapping signals
+#### [x] READ-007 — `FactStream` invalidity is tracked by two overlapping signals
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -245,7 +245,7 @@ and fail-closed; a budget-exhausted stream must still report `!is_valid()` so
 are unaffected; preserve the diagnostic boundary that retains invalid streams
 for reporting.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `append` (and test-only `push`) now `mark_budget_exhausted()` without clearing the structural `valid` latch; deleted the now-unreachable `!is_structurally_valid() && !name_exhausted()` branch and the now-unused `is_structurally_valid()`/`name_exhausted()` accessors, updated the `valid` field doc, and removed the no-longer-constructed `AnalysisComponent::Facts` variant (updating its test to `Effects`).
 
 ### Interface / exports
 

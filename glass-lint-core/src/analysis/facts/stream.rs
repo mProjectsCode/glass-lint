@@ -115,7 +115,9 @@ pub(in crate::analysis) struct FactStream<Phase: FactPhase = Building> {
     /// during building; effects and summaries look up bindings here instead of
     /// cloning from inline fact payloads.
     function_parameters: Vec<Vec<ParameterBinding>>,
-    /// False after any ID, budget, or append invariant is violated.
+    /// Structural-corruption latch: false only after a dense-ID or sequence
+    /// violation. Bounded-construction outcomes are tracked in `issues`
+    /// instead, so a budget-exhausted stream stays structurally valid.
     valid: bool,
     /// Typed construction outcomes that make the retained stream incomplete.
     issues: FactStreamIssueSet,
@@ -129,14 +131,6 @@ impl<T: FactPhase> FactStream<T> {
     /// Whether every appended fact has satisfied the stream invariants.
     pub(in crate::analysis) fn is_valid(&self) -> bool {
         self.valid && self.issues.is_empty()
-    }
-
-    pub(in crate::analysis) fn is_structurally_valid(&self) -> bool {
-        self.valid
-    }
-
-    pub(in crate::analysis) fn name_exhausted(&self) -> bool {
-        self.issues.contains(FactStreamIssue::NameExhausted)
     }
 
     pub(in crate::analysis) fn budget_exhausted(&self) -> bool {
@@ -245,15 +239,18 @@ impl FactStream<Building> {
         function: FunctionId,
         payload: FactPayload,
     ) {
-        // Once an invariant is broken, discard subsequent input rather than
-        // exposing a partially trustworthy stream to matcher indexes.
-        if !self.valid || self.facts.len() >= self.max_facts {
-            self.valid = false;
+        // Once the structural latch is broken, discard subsequent input rather
+        // than exposing a partially trustworthy stream to matcher indexes.
+        if !self.valid {
+            return;
+        }
+        // Hitting the fact cap or the dense-ID space is a bounded-construction
+        // outcome, not structural corruption.
+        if self.facts.len() >= self.max_facts {
             self.mark_budget_exhausted();
             return;
         }
         let Ok(raw_id) = u32::try_from(self.facts.len()) else {
-            self.valid = false;
             self.mark_budget_exhausted();
             return;
         };
@@ -264,8 +261,11 @@ impl FactStream<Building> {
 
     #[cfg(test)]
     pub(super) fn push(&mut self, fact: SemanticFact) {
-        if !self.valid || self.facts.len() >= self.max_facts {
-            self.valid = false;
+        if !self.valid {
+            return;
+        }
+        if self.facts.len() >= self.max_facts {
+            self.mark_budget_exhausted();
             return;
         }
         if fact.id().raw() as usize != self.facts.len() {

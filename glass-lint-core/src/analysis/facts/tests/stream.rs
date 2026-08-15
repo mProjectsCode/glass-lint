@@ -20,9 +20,8 @@ fn failed_path_interning_is_recorded_as_incomplete() {
 #[test]
 fn name_exhaustion_is_recorded_and_invalidates_stream() {
     let mut stream = FactStream::<Building>::new();
-    assert!(!stream.name_exhausted());
+    assert!(stream.is_valid());
     stream.mark_name_exhausted();
-    assert!(stream.name_exhausted());
     assert!(!stream.is_valid());
 }
 
@@ -33,7 +32,7 @@ fn freeze_transitions_to_frozen_phase_with_both_tables() {
     let tables = FrozenFactTables::for_test(NameTable::default(), values);
     let stream = FactStream::<Building>::new().freeze(tables);
 
-    assert!(!stream.name_exhausted());
+    assert!(stream.is_valid());
     assert_eq!(stream.values().static_string(string), Some("from-arena"));
     assert!(stream.values().get(ValueId::from_test(u32::MAX)).is_none());
 }
