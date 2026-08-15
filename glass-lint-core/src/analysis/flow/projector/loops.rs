@@ -10,8 +10,7 @@ use std::collections::BTreeSet;
 use crate::analysis::{
     facts::FactId,
     flow::projector::{
-        AlternativeCompleteness, FlowEnvironment, ObjectFlowProjector, PathAdmission,
-        state::FlowSemanticSnapshot,
+        FlowEnvironment, ObjectFlowProjector, PathAdmission, state::FlowSemanticSnapshot,
     },
 };
 
@@ -83,25 +82,42 @@ impl LoopFixedPoint {
         admission
     }
 
-    /// Admit an environment to the next replay when its semantic shape has not
+    /// Admit one environment to a shape set when its semantic shape has not
     /// been seen before.
-    fn admit_replay(
-        &mut self,
+    fn admit(
         projector: &mut ObjectFlowProjector<'_, '_, '_>,
+        seen: &mut BTreeSet<FlowSemanticSnapshot>,
+        complete: &mut bool,
         environment: FlowEnvironment,
     ) -> PathAdmission {
-        let admission = projector.admit_path(&mut self.seen, environment);
-        Self::incomplete(admission, &mut self.complete)
+        let admission = projector.admit_path(seen, environment);
+        Self::incomplete(admission, complete)
     }
 
-    /// Admit one exit environment to the final exit set.
-    fn admit_exit(
-        &mut self,
+    /// Admit each candidate environment to `seen`, keeping only the admitted
+    /// ones in order. Admission stops at the first exhausted path.
+    fn collect_admitted(
         projector: &mut ObjectFlowProjector<'_, '_, '_>,
-        environment: FlowEnvironment,
-    ) -> PathAdmission {
-        let admission = projector.admit_path(&mut self.exit_shapes, environment);
-        Self::incomplete(admission, &mut self.complete)
+        seen: &mut BTreeSet<FlowSemanticSnapshot>,
+        complete: &mut bool,
+        candidates: Vec<FlowEnvironment>,
+    ) -> Vec<FlowEnvironment> {
+        let mut admitted = Vec::with_capacity(candidates.len());
+        for environment in candidates {
+            match Self::admit(projector, seen, complete, environment) {
+                PathAdmission::Admitted => admitted.push(environment),
+                PathAdmission::Exhausted => break,
+                PathAdmission::Duplicate | PathAdmission::RestoreFailed => {}
+            }
+        }
+        admitted
+    }
+
+    /// Record a control-frame failure that prevents the fixed point from
+    /// completing.
+    fn fail(&mut self, projector: &mut ObjectFlowProjector<'_, '_, '_>) {
+        self.complete = false;
+        projector.mark_control_stack_incomplete();
     }
 
     /// Drive the fixed point until the replay frontier converges or the bounds
@@ -114,7 +130,9 @@ impl LoopFixedPoint {
     ) {
         let entrance = std::mem::take(&mut self.frontier);
         for environment in &entrance {
-            if self.admit_replay(projector, *environment) == PathAdmission::Exhausted {
+            if Self::admit(projector, &mut self.seen, &mut self.complete, *environment)
+                == PathAdmission::Exhausted
+            {
                 break;
             }
         }
@@ -123,7 +141,7 @@ impl LoopFixedPoint {
         while !self.frontier.is_empty() {
             if self.iterations >= self.iteration_limit {
                 self.complete = false;
-                projector.run.alternatives_complete = AlternativeCompleteness::Incomplete;
+                projector.mark_incomplete();
                 break;
             }
             if !projector.run.charge_operation() {
@@ -134,16 +152,14 @@ impl LoopFixedPoint {
             projector.run.fixed_point_iterations =
                 projector.run.fixed_point_iterations.saturating_add(1);
             let Ok(break_count) = projector.paths.control.loop_break_count() else {
-                self.complete = false;
-                projector.mark_control_stack_incomplete();
+                self.fail(projector);
                 break;
             };
             let inputs = std::mem::take(&mut self.frontier);
             let outputs = projector.replay_loop_body(body_start, body_end, inputs);
             let mut next = outputs;
             let Ok(mut continues) = projector.paths.control.take_loop_continues() else {
-                self.complete = false;
-                projector.mark_control_stack_incomplete();
+                self.fail(projector);
                 break;
             };
             next.append(&mut continues);
@@ -152,21 +168,13 @@ impl LoopFixedPoint {
             self.exits.extend(candidate.iter().copied());
 
             let Ok(new_breaks) = projector.paths.control.new_loop_breaks_since(break_count) else {
-                self.complete = false;
-                projector.mark_control_stack_incomplete();
+                self.fail(projector);
                 break;
             };
             self.exits.extend(new_breaks);
 
-            let mut next_frontier = Vec::new();
-            for environment in candidate {
-                match self.admit_replay(projector, environment) {
-                    PathAdmission::Admitted => next_frontier.push(environment),
-                    PathAdmission::Exhausted => break,
-                    PathAdmission::Duplicate | PathAdmission::RestoreFailed => {}
-                }
-            }
-            self.frontier = next_frontier;
+            self.frontier =
+                Self::collect_admitted(projector, &mut self.seen, &mut self.complete, candidate);
         }
     }
 
@@ -176,15 +184,9 @@ impl LoopFixedPoint {
         &mut self,
         projector: &mut ObjectFlowProjector<'_, '_, '_>,
     ) -> LoopFixedPointOutcome {
-        let mut unique_exits = Vec::with_capacity(self.exits.len());
         let exits = std::mem::take(&mut self.exits);
-        for environment in exits {
-            match self.admit_exit(projector, environment) {
-                PathAdmission::Admitted => unique_exits.push(environment),
-                PathAdmission::Exhausted => break,
-                PathAdmission::Duplicate | PathAdmission::RestoreFailed => {}
-            }
-        }
+        let unique_exits =
+            Self::collect_admitted(projector, &mut self.exit_shapes, &mut self.complete, exits);
         LoopFixedPointOutcome {
             exits: unique_exits,
             complete: self.complete,

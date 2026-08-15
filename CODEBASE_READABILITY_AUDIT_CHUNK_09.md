@@ -136,7 +136,7 @@ passes the `transfer_fact` closure with `finalize = true`;
 `transfer_function`'s `Enter` branch passes its clear/reachable closure with
 `finalize = false`; `transfer_paths_without_finalization` is deleted.
 
-#### [ ] READ-004 — `loops.rs` duplicates the admit/deduplicate admission loop for replays and exits
+#### [x] READ-004 — `loops.rs` duplicates the admit/deduplicate admission loop for replays and exits
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -162,7 +162,13 @@ replay admission and exit admission on their own shape sets (they intentionally
 converge on different collections), and keep every failure path setting both
 `self.complete = false` and the projector's incomplete marker.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `LoopFixedPoint` now has one shared `admit` and one shared
+`collect_admitted` helper used by both the replay frontier and the exit set,
+plus a `fail` helper for the repeated control-frame error blocks (each still
+sets `self.complete = false` and marks the projector incomplete via
+`mark_control_stack_incomplete`). The iteration-limit path marks incompleteness
+through the new projector `mark_incomplete` method instead of reaching into
+`projector.run.*`; `admit_replay`/`admit_exit` are deleted.
 
 ### Unnecessary work and dead logic
 

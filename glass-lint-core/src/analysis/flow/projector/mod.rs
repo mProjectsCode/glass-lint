@@ -472,11 +472,15 @@ impl ProjectionRunState {
         }
     }
 
+    fn mark_incomplete(&mut self) {
+        self.alternatives_complete = AlternativeCompleteness::Incomplete;
+    }
+
     fn charge_operation(&mut self) -> bool {
         if self.operation_budget.try_push() {
             true
         } else {
-            self.alternatives_complete = AlternativeCompleteness::Incomplete;
+            self.mark_incomplete();
             false
         }
     }

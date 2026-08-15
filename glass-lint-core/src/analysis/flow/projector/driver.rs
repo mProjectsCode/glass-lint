@@ -62,8 +62,12 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         self.run.max_live_alternatives = self.run.max_live_alternatives.max(count);
     }
 
+    pub(super) fn mark_incomplete(&mut self) {
+        self.run.mark_incomplete();
+    }
+
     pub(super) fn mark_control_stack_incomplete(&mut self) {
-        self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
+        self.run.mark_incomplete();
     }
 
     pub(super) fn transfer(&mut self, fact: &crate::analysis::facts::SemanticFact) {
