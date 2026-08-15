@@ -276,7 +276,7 @@ update are unchanged.
 
 ### Encapsulation
 
-#### [ ] READ-008 — `ProjectionRunState::alternatives_complete` is toggled by direct field writes from several modules instead of one method
+#### [x] READ-008 — `ProjectionRunState::alternatives_complete` is toggled by direct field writes from several modules instead of one method
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -302,7 +302,13 @@ projector method so `loops.rs` stops reaching into `projector.run.*`. Owner:
 be cleared mid-run; `FlowCompletion::from_sources` (mod.rs:76-78) already reads
 it as the single source of the `Alternatives` reason.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `ProjectionRunState::mark_incomplete` and routed every
+assignment through it (`charge_operation`, `replay_loop_body`, `finish_loop`,
+`restore_path`, `admit_path`, `join_paths`). `mark_control_stack_incomplete`
+delegates to it, and `LoopFixedPoint` uses the narrow `mark_incomplete`
+projector method instead of reaching into `projector.run.*`. The marker stays
+sticky and is never cleared mid-run; `FlowCompletion::from_sources` remains the
+single reader for the `Alternatives` reason.
 
 ## Systemic Themes
 

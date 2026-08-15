@@ -1,10 +1,10 @@
 use std::collections::BTreeSet;
 
 use super::{
-    AbruptExit, AlternativeCompleteness, ControlFrame, FlowEnvironment, FlowEvidence,
-    FlowSemanticSnapshot, FlowStateTable, LocalFlowProjectionOutcome, ObjectFlowProjector,
-    PendingFlowKey, PendingState, ProjectionInputs, ProjectionPathMachine, ProjectionRunState,
-    PropertyWriteUpdate, loops::LoopFixedPoint, state::LoopSeed,
+    AbruptExit, ControlFrame, FlowEnvironment, FlowEvidence, FlowSemanticSnapshot, FlowStateTable,
+    LocalFlowProjectionOutcome, ObjectFlowProjector, PendingFlowKey, PendingState,
+    ProjectionInputs, ProjectionPathMachine, ProjectionRunState, PropertyWriteUpdate,
+    loops::LoopFixedPoint, state::LoopSeed,
 };
 use crate::{
     analysis::{
@@ -161,11 +161,11 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         input: Vec<FlowEnvironment>,
     ) -> Vec<FlowEnvironment> {
         let (Some(start), Some(end)) = (body_start.index(), body_end.index()) else {
-            self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
+            self.run.mark_incomplete();
             return Vec::new();
         };
         if start >= end || end > self.inputs.stream.facts().len() {
-            self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
+            self.run.mark_incomplete();
             return Vec::new();
         }
         let stream = self.inputs.stream;
@@ -206,7 +206,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
 
         let outcome = fixed_point.collect_exits(self);
         if !outcome.complete {
-            self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
+            self.run.mark_incomplete();
         }
         self.join_paths(outcome.exits);
     }
@@ -236,7 +236,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             return PathRestoration::Exhausted;
         }
         if !self.flow_state.restore(environment) {
-            self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
+            self.run.mark_incomplete();
             return PathRestoration::Failed;
         }
         self.run.reachable = environment.is_reachable();
@@ -291,7 +291,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
             return PathAdmission::Exhausted;
         }
         if !self.flow_state.restore(environment) {
-            self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
+            self.run.mark_incomplete();
             return PathAdmission::RestoreFailed;
         }
         if seen.insert(self.flow_state.semantic_snapshot()) {
@@ -322,7 +322,7 @@ impl<'rules, 'stream, 'arena> ObjectFlowProjector<'rules, 'stream, 'arena> {
         paths = unique;
         if paths.len() > self.run.limits.alternative_limit() {
             paths.truncate(self.run.limits.alternative_limit());
-            self.run.alternatives_complete = AlternativeCompleteness::Incomplete;
+            self.run.mark_incomplete();
         }
         self.paths.frontier.replace_paths(paths);
         self.observe_alternatives(self.paths.frontier.path_count());
