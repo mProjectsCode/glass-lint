@@ -247,7 +247,7 @@ read at multiple phases (`outcome.rs`, `flow/cross/mod.rs`, `projection.rs`)
 
 ### Module-qualified ID newtypes (`analysis/project/model.rs`, `state.rs`)
 
-#### [ ] READ-008 — The three module-qualified ID newtypes expose inconsistent accessor surfaces
+#### [x] READ-008 — The three module-qualified ID newtypes expose inconsistent accessor surfaces
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -273,7 +273,7 @@ workspace conventions discourage; if symmetry is still wanted, add read-only
 accessors without touching the fields. Guardrails: keep the fields private; do
 not expose `ModuleRequestId` beyond `pub(in crate::analysis)`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Documented `QualifiedRequestId` as a key-only token whose fields are never decomposed; no accessors added to keep the fields private and `ModuleRequestId` unexposed.
 
 ### Star-export ambiguity policy (`analysis/project/identities.rs`, `resolver.rs`, `matching/identity_map.rs`)
 

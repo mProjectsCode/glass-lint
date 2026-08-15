@@ -43,6 +43,8 @@ pub(super) const MAX_PROJECT_REQUESTS: usize = 500_000;
 // QualifiedRequestId
 // ---------------------------------------------------------------------------
 
+/// A public map-key token for the project request-resolution tables. Its
+/// fields are never decomposed; every lookup passes the whole value as a key.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct QualifiedRequestId {
     module: ModuleId,
