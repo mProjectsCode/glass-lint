@@ -6,11 +6,12 @@ use swc_ecma_ast::{
 };
 
 use crate::analysis::{
-    facts::interface::ModuleInterfaceBuilder, model::module::ModuleExport, resolution::Resolver,
+    model::module::{ModuleExport, ModuleInterface},
+    resolution::Resolver,
     syntax::module_export_name,
 };
 
-impl ModuleInterfaceBuilder {
+impl ModuleInterface {
     /// The `(original, exported)` name pair of a named export specifier, with
     /// the exported name falling back to the original when no alias is given.
     fn original_exported_pair(specifier: &ExportNamedSpecifier) -> (SmolStr, SmolStr) {
@@ -185,7 +186,7 @@ impl ModuleInterfaceBuilder {
         match &export.decl {
             DefaultDecl::Fn(function) => {
                 if let Some(ident) = &function.ident {
-                    self.record_local(ident.sym.to_string());
+                    self.add_local(ident.sym.to_string());
                     if let Some(id) = resolver.function_id_for_expr(&Expr::Ident(ident.clone())) {
                         self.add_function_export("default", id);
                     }
@@ -204,7 +205,7 @@ impl ModuleInterfaceBuilder {
             }
             DefaultDecl::Class(class) => {
                 if let Some(ident) = &class.ident {
-                    self.record_local(ident.sym.to_string());
+                    self.add_local(ident.sym.to_string());
                     self.add_export(
                         "default",
                         ModuleExport::Local {

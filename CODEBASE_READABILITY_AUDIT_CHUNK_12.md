@@ -61,7 +61,7 @@ observations.
 
 **Fix Applied:** Deleted `ExportObservation` and `ExportMerge`; the three `add_*` methods pass their single channel to `observe_export`, which inserts a fresh `ExportEntry` for vacant names and otherwise calls `ExportEntry::observe` with the same merge semantics and no classification return.
 
-#### [ ] READ-002 — `ModuleInterfaceBuilder` facade forwards a `ModuleInterface` surface that is already `pub`
+#### [x] READ-002 — `ModuleInterfaceBuilder` facade forwards a `ModuleInterface` surface that is already `pub`
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -91,7 +91,7 @@ model stays free of AST/SWC parsing and request-recognition logic — the
 is deleted, and `ModuleInterface`'s read surface (iterators, lookups) stays
 unchanged for `semantic`, `project`, and `flow` consumers.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `ModuleInterfaceBuilder`; `FactBuilder` now owns a `ModuleInterface` directly, the `record_*` methods (pattern locals, local imports, module request) and the exports/commonjs record impls live on `ModuleInterface` inside `facts/interface`, and the construction mutators were narrowed to `pub(in crate::analysis)`.
 
 #### [ ] READ-007 — `ModuleRequest.kind` is a total function of `ModuleRequest.role`, stored and guarded by a test
 

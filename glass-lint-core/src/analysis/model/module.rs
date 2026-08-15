@@ -161,7 +161,7 @@ impl ModuleRequest {
 }
 
 impl ModuleInterface {
-    pub fn add_local(&mut self, name: impl Into<SmolStr>) {
+    pub(in crate::analysis) fn add_local(&mut self, name: impl Into<SmolStr>) {
         self.locals.insert(name.into());
     }
 
@@ -186,7 +186,7 @@ impl ModuleInterface {
         index
     }
 
-    pub fn add_import_request(
+    pub(in crate::analysis) fn add_import_request(
         &mut self,
         span: ByteRange,
         specifier: impl Into<SmolStr>,
@@ -200,7 +200,7 @@ impl ModuleInterface {
         )
     }
 
-    pub fn add_reexport_request(
+    pub(in crate::analysis) fn add_reexport_request(
         &mut self,
         span: ByteRange,
         specifier: impl Into<SmolStr>,
@@ -213,7 +213,7 @@ impl ModuleInterface {
         )
     }
 
-    pub fn add_dynamic_import_request(
+    pub(in crate::analysis) fn add_dynamic_import_request(
         &mut self,
         span: ByteRange,
         specifier: impl Into<SmolStr>,
@@ -226,7 +226,7 @@ impl ModuleInterface {
         )
     }
 
-    pub fn add_require_request(
+    pub(in crate::analysis) fn add_require_request(
         &mut self,
         span: ByteRange,
         specifier: impl Into<SmolStr>,
@@ -239,15 +239,27 @@ impl ModuleInterface {
         )
     }
 
-    pub fn add_export(&mut self, name: impl Into<SmolStr>, export: ModuleExport) {
+    pub(in crate::analysis) fn add_export(
+        &mut self,
+        name: impl Into<SmolStr>,
+        export: ModuleExport,
+    ) {
         self.observe_export(name.into(), Some(export), None, None);
     }
 
-    pub fn add_function_export(&mut self, name: impl Into<SmolStr>, function: FunctionId) {
+    pub(in crate::analysis) fn add_function_export(
+        &mut self,
+        name: impl Into<SmolStr>,
+        function: FunctionId,
+    ) {
         self.observe_export(name.into(), None, Some(function), None);
     }
 
-    pub fn add_static_string(&mut self, name: impl Into<SmolStr>, value: impl Into<String>) {
+    pub(in crate::analysis) fn add_static_string(
+        &mut self,
+        name: impl Into<SmolStr>,
+        value: impl Into<String>,
+    ) {
         self.observe_export(name.into(), None, None, Some(value.into()));
     }
 
@@ -277,7 +289,7 @@ impl ModuleInterface {
         }
     }
 
-    pub fn add_star_export_request(
+    pub(in crate::analysis) fn add_star_export_request(
         &mut self,
         span: ByteRange,
         specifier: impl Into<SmolStr>,
@@ -301,7 +313,7 @@ impl ModuleInterface {
         }
     }
 
-    pub fn mark_unknown_exports(&mut self) {
+    pub(in crate::analysis) fn mark_unknown_exports(&mut self) {
         self.exports.clear();
         self.star_exports.clear();
         self.unknown_exports = true;

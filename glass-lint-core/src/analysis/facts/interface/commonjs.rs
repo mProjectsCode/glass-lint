@@ -3,13 +3,12 @@ use swc_common::{Span, Spanned};
 use swc_ecma_ast::{AssignExpr, Expr, Lit, ObjectLit, Prop, PropOrSpread};
 
 use crate::analysis::{
-    facts::interface::ModuleInterfaceBuilder,
-    model::module::{COMMONJS_EXPORTS, COMMONJS_MODULE, ModuleExport},
+    model::module::{COMMONJS_EXPORTS, COMMONJS_MODULE, ModuleExport, ModuleInterface},
     resolution::Resolver,
     syntax::{literal_member_property_name, literal_property_name},
 };
 
-impl ModuleInterfaceBuilder {
+impl ModuleInterface {
     pub(in crate::analysis::facts) fn record_commonjs_export(
         &mut self,
         assignment: &AssignExpr,
@@ -210,7 +209,7 @@ fn is_commonjs_name(expr: &Expr, name: &str, resolver: &Resolver) -> bool {
 }
 
 fn add_function_export_if_name(
-    interface: &mut ModuleInterfaceBuilder,
+    interface: &mut ModuleInterface,
     export: &str,
     local: &str,
     span: Span,
@@ -222,7 +221,7 @@ fn add_function_export_if_name(
 }
 
 fn add_function_export_if_expr(
-    interface: &mut ModuleInterfaceBuilder,
+    interface: &mut ModuleInterface,
     export: &str,
     expr: &Expr,
     resolver: &Resolver,
@@ -231,7 +230,7 @@ fn add_function_export_if_expr(
 }
 
 fn add_function_export_if_span(
-    interface: &mut ModuleInterfaceBuilder,
+    interface: &mut ModuleInterface,
     export: &str,
     span: Span,
     resolver: &Resolver,

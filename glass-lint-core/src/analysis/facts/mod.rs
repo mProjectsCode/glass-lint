@@ -91,8 +91,8 @@ pub(in crate::analysis) struct FactBuilder<'builder, 'resolver> {
     /// Provenance and instance state with checkpoint/rollback semantics.
     provenance: FactProvenanceState,
     /// Module requests and export slots collected during the same canonical
-    /// walk as the semantic facts, owned by a focused interface builder.
-    interface: interface::ModuleInterfaceBuilder,
+    /// walk as the semantic facts.
+    interface: ModuleInterface,
 }
 
 impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
@@ -140,7 +140,7 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
             traversal: state::TraversalState::default(),
             call_results: call_results::CallResultTable::default(),
             provenance: FactProvenanceState::new(),
-            interface: interface::ModuleInterfaceBuilder::new(),
+            interface: ModuleInterface::default(),
         }
     }
 
@@ -232,12 +232,12 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
     pub(in crate::analysis) fn into_built_facts(self) -> BuiltFacts {
         BuiltFacts {
             stream: self.stream,
-            interface: self.interface.finish(),
+            interface: self.interface,
         }
     }
 
     pub(super) fn record_local(&mut self, name: impl Into<SmolStr>) {
-        self.interface.record_local(name);
+        self.interface.add_local(name);
     }
 
     pub(super) fn record_pattern_locals(&mut self, pattern: &Pat) {
