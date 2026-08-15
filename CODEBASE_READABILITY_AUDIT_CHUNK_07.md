@@ -91,7 +91,7 @@ only the totalized projection.
 
 **Fix Applied:** Added `FunctionEffect::root_value` (identity fallback over `value_root`, still returning `Option` for the raw lookup) and routed the four cross call sites through it; also converted the two identical lookups inside `effect/mod.rs` (`copy_root`, `parameter_for`) to keep one canonical path.
 
-#### [ ] READ-003 — `ContextAdmission` is a parallel copy of `FifoAdmission` with a 1:1 mapping
+#### [x] READ-003 — `ContextAdmission` is a parallel copy of `FifoAdmission` with a 1:1 mapping
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -114,7 +114,7 @@ distinguishes deduplication from a rejected new context at the retained bound,
 and `cross/tests.rs` asserts on it; `FifoAdmission` already provides both
 variants. Production callers discard the result, so no other call site changes.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `ContextAdmission`; `ContextWorklist::push` now returns `BoundedFifo`'s `FifoAdmission` directly (the `Duplicate`/`Full` distinction is preserved on the retained enum). `cross/tests.rs` updated to assert `worklist::FifoAdmission`.
 
 #### [ ] READ-004 — `EmissionContext` is an immediately-consumed facade over a slice of `CrossProjectionSession`
 

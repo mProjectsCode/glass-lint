@@ -86,13 +86,6 @@ pub(super) struct ContextWorklist {
     fifo: BoundedFifo<CallContext>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ContextAdmission {
-    Inserted,
-    Duplicate,
-    Full,
-}
-
 impl ContextWorklist {
     pub(super) fn new(max_retained: usize) -> Self {
         Self {
@@ -104,12 +97,8 @@ impl ContextWorklist {
     ///
     /// Admit one context, distinguishing deduplication from a rejected new
     /// context at the retained bound.
-    pub(super) fn push(&mut self, context: CallContext) -> ContextAdmission {
-        match self.fifo.push(context) {
-            FifoAdmission::Inserted => ContextAdmission::Inserted,
-            FifoAdmission::Duplicate => ContextAdmission::Duplicate,
-            FifoAdmission::Full => ContextAdmission::Full,
-        }
+    pub(super) fn push(&mut self, context: CallContext) -> FifoAdmission {
+        self.fifo.push(context)
     }
 
     pub(super) fn pop_front(&mut self) -> Option<CallContext> {
