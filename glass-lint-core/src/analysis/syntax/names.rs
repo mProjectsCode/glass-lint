@@ -47,7 +47,7 @@ pub fn effective_callee_expr(expr: &Expr) -> &Expr {
 /// Walk every `Ident` binding introduced by a destructuring pattern.
 /// The walker handles all standard JavaScript pattern forms (Ident, Assign,
 /// Rest, Array, Object, Expr, Invalid) and calls `f` for each name.
-pub fn walk_pat_ident_bindings(pat: &Pat, f: &mut impl FnMut(&Ident)) {
+fn walk_pat_ident_bindings(pat: &Pat, f: &mut impl FnMut(&Ident)) {
     match pat {
         Pat::Ident(ident) => f(&ident.id),
         Pat::Assign(assign) => walk_pat_ident_bindings(&assign.left, f),

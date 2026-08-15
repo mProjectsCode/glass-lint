@@ -158,7 +158,7 @@ must not be collapsed.
 
 ### [analysis/syntax — names module surface]
 
-#### [ ] READ-005 — Public `walk_pat_ident_bindings` has a single consumer and speculative callback surface
+#### [x] READ-005 — Public `walk_pat_ident_bindings` has a single consumer and speculative callback surface
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -180,7 +180,7 @@ Guardrail: no other caller depends on the callback form today; if a future
 caller needs to emit binding events, promote the walker back to `pub` at that
 point.
 
-**Fix Applied:** None so far.
+**Fix Applied:** `walk_pat_ident_bindings` was made private; `collect_pat_bindings` remains the public operation. Its only consumer is the sibling `collect_pat_bindings`, and no other workspace caller references the callback form.
 
 ### [analysis/trace]
 
