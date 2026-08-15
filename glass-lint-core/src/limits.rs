@@ -139,8 +139,10 @@ impl ProjectAdmissionLimits {
     }
 }
 
+pub const DEFAULT_SYNTAX_DEPTH: usize = 512;
+
 const fn default_syntax_depth() -> usize {
-    512
+    DEFAULT_SYNTAX_DEPTH
 }
 const fn default_semantic_operations() -> usize {
     1_048_576

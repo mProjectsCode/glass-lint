@@ -23,7 +23,7 @@ use crate::{
 /// visitor machinery. This is deliberately checked on source text so a
 /// hostile tree cannot first force an unbounded AST allocation.
 #[cfg(test)]
-const MAX_SYNTAX_DEPTH: usize = 512;
+const MAX_SYNTAX_DEPTH: usize = crate::limits::DEFAULT_SYNTAX_DEPTH;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]

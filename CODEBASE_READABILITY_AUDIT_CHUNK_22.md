@@ -211,7 +211,7 @@ must be preserved.
 
 **Fix Applied:** Deleted `SyntaxDepthError`; `DepthScanner::observe`/`push_delimiter` and `SyntaxDepthGuard::check_before_parse`/`check_after_parse` now return plain `bool`, keeping `SyntaxDepthOutcome` for the test helper. Early-abort and phase selection are unchanged.
 
-#### [ ] READ-002 — Test-only `MAX_SYNTAX_DEPTH` duplicates `limits::default_syntax_depth`
+#### [x] READ-002 — Test-only `MAX_SYNTAX_DEPTH` duplicates `limits::default_syntax_depth`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -233,7 +233,7 @@ from `AnalysisLimits::default().syntax_depth()` (or a shared
 default cannot drift. Guardrail: keep the tests' rejection threshold (limit + 1
 parens) exactly aligned with whatever bound is used.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Added `limits::DEFAULT_SYNTAX_DEPTH` as the single source of the depth bound; `default_syntax_depth()` returns it and the test `MAX_SYNTAX_DEPTH` in `parse.rs` derives from it, so test and production bounds cannot drift.
 
 ## Systemic Themes
 
