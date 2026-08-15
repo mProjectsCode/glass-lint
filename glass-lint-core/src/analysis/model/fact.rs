@@ -2,7 +2,7 @@ use glass_lint_datastructures::{ByteRange, NameId, NamePath, PathId};
 use smol_str::SmolStr;
 
 use crate::analysis::{
-    facts::stream::FactStreamToken,
+    facts::{ResolvedCallee, stream::FactStreamToken},
     model::{
         scope::FunctionId,
         value::{StaticObject, ValueId},
@@ -287,41 +287,6 @@ impl CallEvent {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub(in crate::analysis) fn resolved(
-        callee: ValueId,
-        receiver: Option<ValueId>,
-        result: ValueId,
-        callee_span: ByteRange,
-        callee_name: Option<NameId>,
-        call_provenance: SymbolCallProvenance,
-        syntactic_path: Option<NamePath>,
-        rooted_chain: Option<NamePath>,
-        module_member: Option<SymbolMemberProvenance>,
-        returned_member: Option<(NamePath, NamePath)>,
-        instance_class: Option<ClassIdentity>,
-        target_function: Option<FunctionId>,
-        args: Vec<CallArgInfo>,
-        unwrap: Option<Box<CallUnwrap>>,
-    ) -> Self {
-        Self {
-            callee,
-            receiver,
-            result,
-            callee_span,
-            callee_name,
-            call_provenance,
-            syntactic_path,
-            rooted_chain,
-            module_member,
-            returned_member,
-            instance_class,
-            target_function,
-            args,
-            unwrap,
-        }
-    }
-
     pub(in crate::analysis) fn callee(&self) -> ValueId {
         self.callee
     }
@@ -391,6 +356,38 @@ impl FactPayload {
     pub(in crate::analysis) fn effective_call_args(&self) -> Option<&[CallArgInfo]> {
         let Self::Call(call) = self else { return None };
         Some(call.effective_args())
+    }
+}
+
+impl ResolvedCallee {
+    /// Lower a resolved callee into the retained call event. The producer
+    /// interns names and paths first and passes the derived call outputs, so
+    /// the model stays free of the resolver and interner.
+    pub(in crate::analysis) fn into_call_event(
+        self,
+        result: ValueId,
+        callee_name: Option<NameId>,
+        rooted_chain: Option<NamePath>,
+        returned_member: Option<(NamePath, NamePath)>,
+        effective_args: Vec<CallArgInfo>,
+        unwrap: Option<Box<CallUnwrap>>,
+    ) -> CallEvent {
+        CallEvent {
+            callee: self.value,
+            receiver: self.receiver,
+            result,
+            callee_span: self.callee_span,
+            callee_name,
+            call_provenance: self.call_provenance,
+            syntactic_path: self.syntactic_path,
+            rooted_chain,
+            module_member: self.module_member,
+            returned_member,
+            instance_class: self.instance_class,
+            target_function: self.target_function,
+            args: effective_args,
+            unwrap,
+        }
     }
 }
 

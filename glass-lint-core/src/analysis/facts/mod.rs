@@ -37,6 +37,7 @@ mod state;
 pub(in crate::analysis) mod stream;
 mod visitor;
 
+pub(in crate::analysis) use calls::ResolvedCallee;
 use glass_lint_datastructures::{ByteRange, NamePath, PathId, PathSegmentInput, SymbolPath};
 pub(in crate::analysis) use origin_map::{OriginCheckpoint, OriginMap, OriginSnapshot};
 use provenance::{FactProvenanceState, TargetProvenance};

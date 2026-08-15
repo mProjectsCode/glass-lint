@@ -12,20 +12,20 @@ use crate::analysis::{
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(in crate::analysis::facts) struct ResolvedCallee {
-    pub(in crate::analysis::facts) value: ValueId,
-    pub(in crate::analysis::facts) receiver: Option<ValueId>,
-    pub(in crate::analysis::facts) callee_span: glass_lint_datastructures::ByteRange,
-    pub(in crate::analysis::facts) callee_name: Option<SmolStr>,
-    pub(in crate::analysis::facts) call_provenance: SymbolCallProvenance,
-    pub(in crate::analysis::facts) syntactic_path: Option<NamePath>,
-    pub(in crate::analysis::facts) rooted_chain: Option<SymbolPath>,
-    pub(in crate::analysis::facts) module_member: Option<SymbolMemberProvenance>,
-    pub(in crate::analysis::facts) returned_member: Option<(SymbolPath, SymbolPath)>,
-    pub(in crate::analysis::facts) bound_arguments:
+pub(in crate::analysis) struct ResolvedCallee {
+    pub(in crate::analysis) value: ValueId,
+    pub(in crate::analysis) receiver: Option<ValueId>,
+    pub(in crate::analysis) callee_span: glass_lint_datastructures::ByteRange,
+    pub(in crate::analysis) callee_name: Option<SmolStr>,
+    pub(in crate::analysis) call_provenance: SymbolCallProvenance,
+    pub(in crate::analysis) syntactic_path: Option<NamePath>,
+    pub(in crate::analysis) rooted_chain: Option<SymbolPath>,
+    pub(in crate::analysis) module_member: Option<SymbolMemberProvenance>,
+    pub(in crate::analysis) returned_member: Option<(SymbolPath, SymbolPath)>,
+    pub(in crate::analysis) bound_arguments:
         Option<Vec<Option<crate::analysis::scope::BoundArgument>>>,
-    pub(in crate::analysis::facts) instance_class: Option<ClassIdentity>,
-    pub(in crate::analysis::facts) target_function: Option<FunctionId>,
+    pub(in crate::analysis) instance_class: Option<ClassIdentity>,
+    pub(in crate::analysis) target_function: Option<FunctionId>,
 }
 
 impl ResolvedCallee {

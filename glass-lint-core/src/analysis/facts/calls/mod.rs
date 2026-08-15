@@ -10,6 +10,8 @@ use crate::analysis::{
 mod callee;
 mod wrapper;
 
+pub(in crate::analysis) use callee::ResolvedCallee;
+
 impl FactBuilder<'_, '_> {
     pub(in crate::analysis::facts) fn record_call_expr(&mut self, call: &CallExpr) {
         let module_call = self.observe_module_call(call);
@@ -83,25 +85,17 @@ impl FactBuilder<'_, '_> {
         let result = self.call_result(span);
         let effective_args = self.effective_call_args(&resolved, args);
         let callee_name = self.intern_name(resolved.callee_name.as_deref());
-        self.emit(
-            span,
-            FactPayload::Call(CallEvent::resolved(
-                resolved.value,
-                resolved.receiver,
-                result,
-                resolved.callee_span,
-                callee_name,
-                resolved.call_provenance,
-                resolved.syntactic_path,
-                self.rooted_path(resolved.rooted_chain.as_ref()),
-                resolved.module_member,
-                self.returned_path(resolved.returned_member.as_ref()),
-                resolved.instance_class,
-                resolved.target_function,
-                effective_args,
-                unwrap,
-            )),
+        let rooted_chain = self.rooted_path(resolved.rooted_chain.as_ref());
+        let returned_member = self.returned_path(resolved.returned_member.as_ref());
+        let event = resolved.into_call_event(
+            result,
+            callee_name,
+            rooted_chain,
+            returned_member,
+            effective_args,
+            unwrap,
         );
+        self.emit(span, FactPayload::Call(event));
     }
 
     fn effective_call_args(

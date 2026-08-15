@@ -29,7 +29,7 @@ identity and fail-closed bounded analysis are respected and must be preserved.
 
 ### Model fact types — call model and argument views
 
-#### [ ] READ-001 — `CallEvent::resolved` is a 14-argument positional constructor fed by a hand-written mapping from the parallel `ResolvedCallee`
+#### [x] READ-001 — `CallEvent::resolved` is a 14-argument positional constructor fed by a hand-written mapping from the parallel `ResolvedCallee`
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -60,7 +60,7 @@ immutable-retained. Guardrails: keep interning in the producer that holds the
 `Resolver`; do not expose `CallEvent`'s storage or an interner from the model;
 keep the two lifecycle phases (buildable vs. retained) distinct.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Removed the 14-arg `CallEvent::resolved` constructor and added `ResolvedCallee::into_call_event` (`model/fact.rs`), which lowers the resolved callee into `CallEvent` from one mapping site. `emit_call` interns `callee_name`/`rooted_chain`/`returned_member` via the `FactBuilder` and passes the derived `result`/`effective_args`/`unwrap`; `CallEvent` fields stay private and `ResolvedCallee` was widened to `pub(in crate::analysis)` and re-exported from `facts`.
 
 #### [ ] READ-002 — `ArgumentView` duplicates the argument-derived-data logic of `ArgumentData` and its prepared overlays only partially memoize
 
