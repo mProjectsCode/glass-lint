@@ -100,28 +100,32 @@ fn branches_with_distinct_subjects_have_a_total_order() {
     let identity = IdentitySpec::Global {
         name: SmolStr::new("create"),
     };
-    let event = NormalizedEvent {
-        slot: EventSlot::from_raw(0),
-        event: EventSpec::Call,
-        subject: NormalizedSubject::Direct {
+    let event = NormalizedEvent::new(
+        EventSlot::from_raw(0),
+        EventSpec::Call,
+        NormalizedSubject::Direct {
             identity: identity.clone(),
         },
-        arguments: CanonicalArgumentConstraints::default(),
-    };
-    let returned = NormalizedEvent {
-        subject: NormalizedSubject::Returned {
+        CanonicalArgumentConstraints::default(),
+    );
+    let returned = NormalizedEvent::new(
+        event.slot(),
+        event.event().clone(),
+        NormalizedSubject::Returned {
             producer: identity.clone(),
             object_slot: ObjectSlot::from_raw(1),
         },
-        ..event.clone()
-    };
-    let constructed = NormalizedEvent {
-        subject: NormalizedSubject::Instance {
+        event.arguments().clone(),
+    );
+    let constructed = NormalizedEvent::new(
+        event.slot(),
+        event.event().clone(),
+        NormalizedSubject::Instance {
             constructor: identity,
             object_slot: ObjectSlot::from_raw(1),
         },
-        ..event.clone()
-    };
+        event.arguments().clone(),
+    );
     let mut roots = vec![
         NormalizedRoot::Event(constructed),
         NormalizedRoot::Event(returned),
@@ -132,27 +136,16 @@ fn branches_with_distinct_subjects_have_a_total_order() {
     roots.dedup();
 
     assert_eq!(roots.len(), 3);
-    assert!(matches!(
-        &roots[0],
-        NormalizedRoot::Event(NormalizedEvent {
-            subject: NormalizedSubject::Direct { .. },
-            ..
+    let subjects: Vec<&NormalizedSubject> = roots
+        .iter()
+        .map(|root| match root {
+            NormalizedRoot::Event(event) => event.subject(),
+            _ => panic!("expected Event root"),
         })
-    ));
-    assert!(matches!(
-        &roots[1],
-        NormalizedRoot::Event(NormalizedEvent {
-            subject: NormalizedSubject::Returned { .. },
-            ..
-        })
-    ));
-    assert!(matches!(
-        &roots[2],
-        NormalizedRoot::Event(NormalizedEvent {
-            subject: NormalizedSubject::Instance { .. },
-            ..
-        })
-    ));
+        .collect();
+    assert!(matches!(subjects[0], NormalizedSubject::Direct { .. }));
+    assert!(matches!(subjects[1], NormalizedSubject::Returned { .. }));
+    assert!(matches!(subjects[2], NormalizedSubject::Instance { .. }));
 }
 
 trait SlotAccess {
@@ -161,7 +154,7 @@ trait SlotAccess {
 impl SlotAccess for NormalizedRoot {
     fn slot_or_zero(&self) -> u32 {
         match self {
-            Self::Event(ev) => ev.slot.get(),
+            Self::Event(ev) => ev.slot().get(),
             _ => 0,
         }
     }
@@ -188,7 +181,7 @@ fn normalization_is_idempotent() {
     ];
     let d = decl(QueryExpr::any(AnyExpr::new(branches).unwrap()), 0, "test");
     let normalized = normalize_ok(&d);
-    let slots = normalize::collect_normalized_slots(normalized.root());
+    let slots = normalized.root().collect_slots();
     assert_eq!(slots, vec![0, 1, 2]);
     let plan = super::plan_requirements(&normalized);
     assert!(plan.value_resolution().is_empty());
@@ -221,7 +214,7 @@ fn same_event_all_merges_into_one_normalized_event() {
     let nq = normalize_ok(&d);
     match nq.root() {
         NormalizedRoot::Event(ev) => {
-            assert_eq!(ev.arguments.to_flat_vec().len(), 1);
+            assert_eq!(ev.arguments().to_flat_vec().len(), 1);
         }
         other => panic!("expected Event, got {other:?}"),
     }
@@ -242,7 +235,7 @@ fn same_event_all_with_multiple_constraints_merges_all_constraints() {
     let nq = normalize_ok(&d);
     match nq.root() {
         NormalizedRoot::Event(ev) => {
-            assert_eq!(ev.arguments.to_flat_vec().len(), 2);
+            assert_eq!(ev.arguments().to_flat_vec().len(), 2);
         }
         other => panic!("expected Event, got {other:?}"),
     }

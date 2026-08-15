@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use smol_str::SmolStr;
 
 use crate::api::{
@@ -14,14 +16,19 @@ use crate::api::{
 ///
 /// Normalization merges same-event conjunctions into one event node,
 /// detects contradictions, and assigns dense deterministic variable slots.
-/// Fields are private to `api/compiler`.
+/// Fields are private to `api/compiler`; read and construction go through the
+/// accessors and [`Self::new`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NormalizedQuery {
-    pub(crate) root: NormalizedRoot,
-    pub(crate) emission: NormalizedEmission,
+    root: NormalizedRoot,
+    emission: NormalizedEmission,
 }
 
 impl NormalizedQuery {
+    pub(crate) fn new(root: NormalizedRoot, emission: NormalizedEmission) -> Self {
+        Self { root, emission }
+    }
+
     pub(crate) fn root(&self) -> &NormalizedRoot {
         &self.root
     }
@@ -34,11 +41,15 @@ impl NormalizedQuery {
 /// Evidence emission for a normalized query.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NormalizedEmission {
-    pub(crate) kind: MatchKind,
-    pub(crate) symbol: String,
+    kind: MatchKind,
+    symbol: String,
 }
 
 impl NormalizedEmission {
+    pub(crate) fn new(kind: MatchKind, symbol: String) -> Self {
+        Self { kind, symbol }
+    }
+
     pub(crate) fn kind(&self) -> MatchKind {
         self.kind
     }
@@ -64,19 +75,27 @@ pub(crate) enum NormalizedRoot {
 /// - No group is empty.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub(crate) struct CanonicalArgumentConstraints {
-    pub(crate) groups: Box<[ArgumentConstraintGroup]>,
+    groups: Box<[ArgumentConstraintGroup]>,
 }
 
 /// A group of predicates all applying to the same argument index.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct ArgumentConstraintGroup {
-    pub(crate) index: ArgumentIndex,
-    pub(crate) predicates: Box<[ArgumentMatcher]>,
+    index: ArgumentIndex,
+    predicates: Box<[ArgumentMatcher]>,
 }
 
 impl CanonicalArgumentConstraints {
     pub(crate) fn groups(&self) -> &[ArgumentConstraintGroup] {
         &self.groups
+    }
+
+    /// Build raw grouped constraints bypassing canonicalization, for tests
+    /// that exercise the physical-validation boundary with non-canonical
+    /// shapes (excessive or unsorted groups).
+    #[cfg(test)]
+    pub(crate) fn from_groups_for_test(groups: Box<[ArgumentConstraintGroup]>) -> Self {
+        Self { groups }
     }
 
     pub(crate) fn iter(&self) -> impl Iterator<Item = (ArgumentIndex, &ArgumentMatcher)> + '_ {
@@ -158,6 +177,11 @@ impl ArgumentConstraintGroup {
     pub(crate) fn predicates(&self) -> &[ArgumentMatcher] {
         &self.predicates
     }
+
+    #[cfg(test)]
+    pub(crate) fn new_for_test(index: ArgumentIndex, predicates: Box<[ArgumentMatcher]>) -> Self {
+        Self { index, predicates }
+    }
 }
 
 /// Dense slot identifying the event variable bound by a normalized event.
@@ -199,13 +223,31 @@ impl ObjectSlot {
 /// A single normalized event node with merged subject and arguments.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct NormalizedEvent {
-    pub(crate) slot: EventSlot,
-    pub(crate) event: EventSpec,
-    pub(crate) subject: NormalizedSubject,
-    pub(crate) arguments: CanonicalArgumentConstraints,
+    slot: EventSlot,
+    event: EventSpec,
+    subject: NormalizedSubject,
+    arguments: CanonicalArgumentConstraints,
 }
 
 impl NormalizedEvent {
+    pub(crate) fn new(
+        slot: EventSlot,
+        event: EventSpec,
+        subject: NormalizedSubject,
+        arguments: CanonicalArgumentConstraints,
+    ) -> Self {
+        Self {
+            slot,
+            event,
+            subject,
+            arguments,
+        }
+    }
+
+    pub(crate) fn slot(&self) -> EventSlot {
+        self.slot
+    }
+
     pub(crate) fn event(&self) -> &EventSpec {
         &self.event
     }
@@ -282,12 +324,24 @@ pub(crate) enum NormalizedLifecycleCompletion {
 /// Normalized lifecycle — compiler-owned sources, conditions, and completion.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct NormalizedLifecycle {
-    pub(crate) sources: Vec<NormalizedEvent>,
-    pub(crate) condition: Option<NormalizedLifecycleCondition>,
-    pub(crate) completion: Option<NormalizedLifecycleCompletion>,
+    sources: Vec<NormalizedEvent>,
+    condition: Option<NormalizedLifecycleCondition>,
+    completion: Option<NormalizedLifecycleCompletion>,
 }
 
 impl NormalizedLifecycle {
+    pub(crate) fn new(
+        sources: Vec<NormalizedEvent>,
+        condition: Option<NormalizedLifecycleCondition>,
+        completion: Option<NormalizedLifecycleCompletion>,
+    ) -> Self {
+        Self {
+            sources,
+            condition,
+            completion,
+        }
+    }
+
     pub(crate) fn sources(&self) -> &[NormalizedEvent] {
         &self.sources
     }
@@ -298,5 +352,92 @@ impl NormalizedLifecycle {
 
     pub(crate) fn completion(&self) -> Option<&NormalizedLifecycleCompletion> {
         self.completion.as_ref()
+    }
+}
+
+// ── Slot traversal ─────────────────────────────────────────────────────────
+
+impl NormalizedRoot {
+    /// Collect every unique slot value present in the tree, in ascending
+    /// order.
+    pub(crate) fn collect_slots(&self) -> Vec<u32> {
+        let mut slots = Vec::new();
+        self.collect_slots_into(&mut slots);
+        slots.sort_unstable();
+        slots.dedup();
+        slots
+    }
+
+    fn collect_slots_into(&self, slots: &mut Vec<u32>) {
+        match self {
+            Self::Event(ev) => {
+                slots.push(ev.slot.get());
+                match &ev.subject {
+                    NormalizedSubject::Returned { object_slot, .. }
+                    | NormalizedSubject::Instance { object_slot, .. } => {
+                        slots.push(object_slot.get());
+                    }
+                    NormalizedSubject::Direct { .. } => {}
+                }
+            }
+            Self::Any(branches) => {
+                for branch in &**branches {
+                    branch.collect_slots_into(slots);
+                }
+            }
+            Self::Lifecycle(lifecycle) => {
+                for source in &lifecycle.sources {
+                    slots.push(source.slot.get());
+                }
+            }
+        }
+    }
+
+    /// Remap every slot in the tree using the given old→new mapping.
+    #[allow(clippy::cast_possible_truncation)]
+    fn remap_slots(&mut self, map: &BTreeMap<u32, u32>) {
+        match self {
+            Self::Event(ev) => {
+                if let Some(&new_slot) = map.get(&ev.slot.get()) {
+                    ev.slot = EventSlot::from_raw(new_slot);
+                }
+                match &mut ev.subject {
+                    NormalizedSubject::Returned { object_slot, .. }
+                    | NormalizedSubject::Instance { object_slot, .. } => {
+                        if let Some(&new_slot) = map.get(&object_slot.get()) {
+                            *object_slot = ObjectSlot::from_raw(new_slot);
+                        }
+                    }
+                    NormalizedSubject::Direct { .. } => {}
+                }
+            }
+            Self::Any(branches) => {
+                for branch in &mut **branches {
+                    branch.remap_slots(map);
+                }
+            }
+            Self::Lifecycle(lifecycle) => {
+                for source in &mut lifecycle.sources {
+                    if let Some(&new_slot) = map.get(&source.slot.get()) {
+                        source.slot = EventSlot::from_raw(new_slot);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Alpha-renumber: replace author-assigned slot values with dense 0..n
+    /// slots ordered by the original slot values (deterministic).
+    #[allow(clippy::cast_possible_truncation)]
+    pub(crate) fn alpha_renumber_slots(&mut self) {
+        let slots = self.collect_slots();
+        if slots.is_empty() {
+            return;
+        }
+        let mut map = BTreeMap::new();
+        for (new_index, &old) in slots.iter().enumerate() {
+            map.insert(old, new_index as u32);
+        }
+        self.remap_slots(&map);
     }
 }

@@ -275,12 +275,12 @@ impl SameEventMerge {
         }
         detect_event_contradictions(event_var, &event, &identity, &subject, &arguments)?;
 
-        Ok(NormalizedRoot::Event(NormalizedEvent {
-            slot: EventSlot::from_var(event_var),
+        Ok(NormalizedRoot::Event(NormalizedEvent::new(
+            EventSlot::from_var(event_var),
             event,
             subject,
             arguments,
-        }))
+        )))
     }
 }
 

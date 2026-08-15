@@ -91,7 +91,7 @@ into `RuleEvidenceTable`.
 
 ### [Compiler: normalized IR surface]
 
-#### [ ] READ-003 — Normalized IR types expose both raw `pub(crate)` fields and accessor methods, and callers mix both
+#### [x] READ-003 — Normalized IR types expose both raw `pub(crate)` fields and accessor methods, and callers mix both
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -127,7 +127,7 @@ the canonical-form invariants are guaranteed; keep `Ord`/`Hash` derives and
 that the physical planner and test oracle rely on without updating those callers in
 the same change; keep the `#[cfg(test)] to_flat_vec` seam.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made all normalized-IR fields private (`NormalizedQuery`, `NormalizedEmission`, `NormalizedEvent`, `NormalizedLifecycle`, `CanonicalArgumentConstraints`, `ArgumentConstraintGroup`) behind `new` constructors and the existing accessors, adding `NormalizedEvent::slot()` and the `#[cfg(test)]` seams `CanonicalArgumentConstraints::from_groups_for_test`/`ArgumentConstraintGroup::new_for_test` for non-canonical validation fixtures. Slot traversal (`collect_slots`/`remap_slots`/`alpha_renumber_slots`) moved onto `NormalizedRoot` where the internal state is owned. Migrated all in-crate consumers (normalize.rs, normalize_all.rs, and the normalize/physical test suites) to accessors and constructors; `Ord`/`Hash` derives, `from_constraints`, and `to_flat_vec` unchanged.
 
 ### [Compiler: identity model]
 

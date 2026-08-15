@@ -20,30 +20,25 @@ fn lifecycle_evidence_bound_is_validated_at_the_physical_boundary() {
 
 #[test]
 fn malformed_lifecycle_source_is_reported_instead_of_dropped() {
-    let query = crate::api::compiler::normalized::NormalizedQuery {
-        root: NormalizedRoot::Lifecycle(NormalizedLifecycle {
-            sources: vec![NormalizedEvent {
-                slot: EventSlot::from_raw(0),
-                event: crate::api::rule::query::EventSpec::PropertyWrite {
+    let query = crate::api::compiler::normalized::NormalizedQuery::new(
+        NormalizedRoot::Lifecycle(NormalizedLifecycle::new(
+            vec![NormalizedEvent::new(
+                EventSlot::from_raw(0),
+                crate::api::rule::query::EventSpec::PropertyWrite {
                     property: SymbolPath::from("config.mode"),
                 },
-                subject: crate::api::compiler::normalized::NormalizedSubject::Direct {
+                crate::api::compiler::normalized::NormalizedSubject::Direct {
                     identity: crate::api::rule::query::IdentitySpec::Global {
                         name: "config".into(),
                     },
                 },
-                arguments: CanonicalArgumentConstraints::default(),
-            }],
-            condition: None,
-            completion: Some(
-                crate::api::compiler::normalized::NormalizedLifecycleCompletion::Configuration,
-            ),
-        }),
-        emission: NormalizedEmission {
-            kind: MatchKind::Call,
-            symbol: "lifecycle".into(),
-        },
-    };
+                CanonicalArgumentConstraints::default(),
+            )],
+            None,
+            Some(crate::api::compiler::normalized::NormalizedLifecycleCompletion::Configuration),
+        )),
+        NormalizedEmission::new(MatchKind::Call, "lifecycle".into()),
+    );
 
     assert_eq!(
         plan_normalized(&query),
@@ -112,14 +107,14 @@ fn plan_summary_shows_no_flow_for_module_query() {
 #[allow(clippy::cast_possible_truncation)]
 fn excessive_groups_fails_validation() {
     let groups: Vec<ArgumentConstraintGroup> = (0..=limits::MAX_ARGUMENT_GROUPS)
-        .map(|i| ArgumentConstraintGroup {
-            index: ArgumentIndex::new_unchecked(i as u8),
-            predicates: Box::new([ArgumentMatcher::from(ValueMatcher::static_string())]),
+        .map(|i| {
+            ArgumentConstraintGroup::new_for_test(
+                ArgumentIndex::new_unchecked(i as u8),
+                Box::new([ArgumentMatcher::from(ValueMatcher::static_string())]),
+            )
         })
         .collect();
-    let constraints = CanonicalArgumentConstraints {
-        groups: groups.into_boxed_slice(),
-    };
+    let constraints = CanonicalArgumentConstraints::from_groups_for_test(groups.into_boxed_slice());
     let plan = PhysicalPlan::new(
         Box::new([PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Global {
@@ -148,12 +143,12 @@ fn excessive_predicate_count_fails_validation() {
     let predicates: Vec<ArgumentMatcher> = (0..=limits::MAX_PREDICATES_PER_ARGUMENT)
         .map(|_| ArgumentMatcher::from(ValueMatcher::static_string()))
         .collect();
-    let constraints = CanonicalArgumentConstraints {
-        groups: Box::new([ArgumentConstraintGroup {
-            index: ArgumentIndex::new_unchecked(0),
-            predicates: predicates.into_boxed_slice(),
-        }]),
-    };
+    let constraints = CanonicalArgumentConstraints::from_groups_for_test(Box::new([
+        ArgumentConstraintGroup::new_for_test(
+            ArgumentIndex::new_unchecked(0),
+            predicates.into_boxed_slice(),
+        ),
+    ]));
     let plan = PhysicalPlan::new(
         Box::new([PhysicalRoot::ConstrainedScan {
             identity: IdentityConstraint::Global {

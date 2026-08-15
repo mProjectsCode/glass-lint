@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use super::normalized::{NormalizedEmission, NormalizedQuery};
 use crate::api::{
     compiler::{
@@ -9,7 +7,7 @@ use crate::api::{
         normalized::{
             CanonicalArgumentConstraints, EventSlot, NormalizedEvent, NormalizedLifecycle,
             NormalizedLifecycleCompletion, NormalizedLifecycleCondition, NormalizedLifecycleEvent,
-            NormalizedLifecycleSink, NormalizedRoot, NormalizedSubject, ObjectSlot,
+            NormalizedLifecycleSink, NormalizedRoot, NormalizedSubject,
         },
         validate::{QueryCompileError, classify_lifecycle_source, validate_subject_relation},
     },
@@ -37,15 +35,12 @@ pub(crate) fn normalize_query_decl(decl: &QueryDecl) -> Result<NormalizedQuery, 
 
     // Step 8: Alpha-normalize — renumber object slots to dense 0..n order
     // independent of author-assigned VarId values.
-    alpha_renumber_slots(&mut root);
+    root.alpha_renumber_slots();
 
-    let nq = NormalizedQuery {
+    let nq = NormalizedQuery::new(
         root,
-        emission: NormalizedEmission {
-            kind: decl.emission().kind(),
-            symbol: decl.emission().symbol().to_owned(),
-        },
-    };
+        NormalizedEmission::new(decl.emission().kind(), decl.emission().symbol().to_owned()),
+    );
 
     // Post-normalization invariant validation.
     validate_normalized(&nq)?;
@@ -60,8 +55,8 @@ pub(crate) fn normalize_query_decl(decl: &QueryDecl) -> Result<NormalizedQuery, 
 /// - Variable slots are dense (0..n) without gaps.
 /// - `Any` branches are non-empty.
 fn validate_normalized(nq: &NormalizedQuery) -> Result<(), QueryCompileError> {
-    validate_normalized_root(&nq.root, true)?;
-    let slots = collect_normalized_slots(&nq.root);
+    validate_normalized_root(nq.root(), true)?;
+    let slots = nq.root().collect_slots();
     if slots
         .iter()
         .enumerate()
@@ -71,7 +66,7 @@ fn validate_normalized(nq: &NormalizedQuery) -> Result<(), QueryCompileError> {
             detail: "normalized variable slots are not dense".into(),
         });
     }
-    if nq.emission.symbol.trim().is_empty() {
+    if nq.emission().symbol().trim().is_empty() {
         return Err(QueryCompileError::InternalInvariant {
             detail: "normalized evidence symbol is empty".into(),
         });
@@ -101,7 +96,7 @@ fn validate_normalized_root(root: &NormalizedRoot, is_top: bool) -> Result<(), Q
             // each group's predicates are sorted and deduplicated. Verify
             // that groups are in ascending index order.
             if ev
-                .arguments
+                .arguments()
                 .groups()
                 .windows(2)
                 .any(|pair| pair[0].index() > pair[1].index())
@@ -110,7 +105,7 @@ fn validate_normalized_root(root: &NormalizedRoot, is_top: bool) -> Result<(), Q
                     detail: "normalized argument constraint groups are not canonical".into(),
                 });
             }
-            if let Err(error) = validate_subject_relation(&ev.event, &ev.subject) {
+            if let Err(error) = validate_subject_relation(ev.event(), ev.subject()) {
                 return Err(QueryCompileError::InternalInvariant {
                     detail: error.detail().into(),
                 });
@@ -122,12 +117,12 @@ fn validate_normalized_root(root: &NormalizedRoot, is_top: bool) -> Result<(), Q
                     detail: "lifecycle root nested inside Any".into(),
                 });
             }
-            if lifecycle.sources.is_empty() || lifecycle.completion.is_none() {
+            if lifecycle.sources().is_empty() || lifecycle.completion().is_none() {
                 return Err(QueryCompileError::InternalInvariant {
                     detail: "normalized lifecycle is missing a required stage".into(),
                 });
             }
-            for source in &lifecycle.sources {
+            for source in lifecycle.sources() {
                 if let Err(error) = classify_lifecycle_source(source.identity(), source.event()) {
                     return Err(QueryCompileError::InternalInvariant {
                         detail: error.detail().into(),
@@ -137,88 +132,6 @@ fn validate_normalized_root(root: &NormalizedRoot, is_top: bool) -> Result<(), Q
         }
     }
     Ok(())
-}
-
-/// Collect every unique slot value present in the normalised tree.
-pub(crate) fn collect_normalized_slots(root: &NormalizedRoot) -> Vec<u32> {
-    let mut slots = Vec::new();
-    collect_slots_rec(root, &mut slots);
-    slots.sort_unstable();
-    slots.dedup();
-    slots
-}
-
-fn collect_slots_rec(root: &NormalizedRoot, slots: &mut Vec<u32>) {
-    match root {
-        NormalizedRoot::Event(ev) => {
-            slots.push(ev.slot.get());
-            match &ev.subject {
-                NormalizedSubject::Returned { object_slot, .. }
-                | NormalizedSubject::Instance { object_slot, .. } => {
-                    slots.push(object_slot.get());
-                }
-                NormalizedSubject::Direct { .. } => {}
-            }
-        }
-        NormalizedRoot::Any(branches) => {
-            for b in &**branches {
-                collect_slots_rec(b, slots);
-            }
-        }
-        NormalizedRoot::Lifecycle(lc) => {
-            for src in &lc.sources {
-                slots.push(src.slot.get());
-            }
-        }
-    }
-}
-
-/// Remap every slot in the tree using the given old→new mapping.
-#[allow(clippy::cast_possible_truncation)]
-fn apply_slot_map(root: &mut NormalizedRoot, map: &BTreeMap<u32, u32>) {
-    match root {
-        NormalizedRoot::Event(ev) => {
-            if let Some(&new_slot) = map.get(&ev.slot.get()) {
-                ev.slot = EventSlot::from_raw(new_slot);
-            }
-            match &mut ev.subject {
-                NormalizedSubject::Returned { object_slot, .. }
-                | NormalizedSubject::Instance { object_slot, .. } => {
-                    if let Some(&new_slot) = map.get(&object_slot.get()) {
-                        *object_slot = ObjectSlot::from_raw(new_slot);
-                    }
-                }
-                NormalizedSubject::Direct { .. } => {}
-            }
-        }
-        NormalizedRoot::Any(branches) => {
-            for b in &mut **branches {
-                apply_slot_map(b, map);
-            }
-        }
-        NormalizedRoot::Lifecycle(lc) => {
-            for src in &mut lc.sources {
-                if let Some(&new_slot) = map.get(&src.slot.get()) {
-                    src.slot = EventSlot::from_raw(new_slot);
-                }
-            }
-        }
-    }
-}
-
-/// Alpha-renumber: replace author-assigned slot values with dense 0..n slots
-/// ordered by the original slot values (deterministic).
-#[allow(clippy::cast_possible_truncation)]
-fn alpha_renumber_slots(root: &mut NormalizedRoot) {
-    let slots = collect_normalized_slots(root);
-    if slots.is_empty() {
-        return;
-    }
-    let mut map = BTreeMap::new();
-    for (new_idx, &old) in slots.iter().enumerate() {
-        map.insert(old, new_idx as u32);
-    }
-    apply_slot_map(root, &map);
 }
 
 /// Normalize a [`QueryExpr`] into a [`NormalizedRoot`].
@@ -329,7 +242,7 @@ impl BranchVarType {
 
 fn branch_var_type(root: &NormalizedRoot) -> Option<BranchVarType> {
     match root {
-        NormalizedRoot::Event(ev) => Some(BranchVarType::Event(ev.event.variable_type())),
+        NormalizedRoot::Event(ev) => Some(BranchVarType::Event(ev.event().variable_type())),
         NormalizedRoot::Any(_) => None,
         NormalizedRoot::Lifecycle(_) => Some(BranchVarType::Lifecycle),
     }
@@ -354,15 +267,19 @@ fn normalize_lifecycle_root(
         let mut seen: BTreeSet<(EventSpec, IdentitySpec, CanonicalArgumentConstraints)> =
             BTreeSet::new();
         sources.retain(|s| {
-            let key = (s.event.clone(), s.identity().clone(), s.arguments.clone());
+            let key = (
+                s.event().clone(),
+                s.identity().clone(),
+                s.arguments().clone(),
+            );
             seen.insert(key)
         });
         sources.sort_by(|a, b| {
-            a.slot
-                .cmp(&b.slot)
-                .then_with(|| a.event.cmp(&b.event))
+            a.slot()
+                .cmp(&b.slot())
+                .then_with(|| a.event().cmp(b.event()))
                 .then_with(|| a.identity().cmp(b.identity()))
-                .then_with(|| a.arguments.cmp(&b.arguments))
+                .then_with(|| a.arguments().cmp(b.arguments()))
         });
     }
 
@@ -413,11 +330,9 @@ fn normalize_lifecycle_root(
         }
     });
 
-    Ok(NormalizedRoot::Lifecycle(NormalizedLifecycle {
-        sources,
-        condition,
-        completion,
-    }))
+    Ok(NormalizedRoot::Lifecycle(NormalizedLifecycle::new(
+        sources, condition, completion,
+    )))
 }
 
 fn normalize_lifecycle_event(
@@ -472,12 +387,12 @@ fn normalize_event_from_query(
     };
     detect_event_contradictions(eq.var(), eq.event(), eq.identity(), &subject, &arguments)?;
 
-    Ok(NormalizedEvent {
-        slot: EventSlot::from_var(eq.var()),
-        event: eq.event().clone(),
+    Ok(NormalizedEvent::new(
+        EventSlot::from_var(eq.var()),
+        eq.event().clone(),
         subject,
         arguments,
-    })
+    ))
 }
 
 // ── Sorting and deduplication helpers ──────────────────────────────────────
