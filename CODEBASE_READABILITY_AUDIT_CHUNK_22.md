@@ -129,7 +129,7 @@ current alias/promoted-member behavior; the existing environment tests
 
 **Fix Applied:** Deleted `is_promoted_global_member` and the private `is_global_object`; `is_promoted_global_member_path` now calls the public `is_global_member`, which already returns `false` for unconfigured objects.
 
-#### [ ] READ-008 — `add_globals` and `add_global_object_with_members` repeat the same validate-and-collect sequence
+#### [x] READ-008 — `add_globals` and `add_global_object_with_members` repeat the same validate-and-collect sequence
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -147,7 +147,7 @@ destination (`global_bindings` vs a `Restricted` member set).
 semantics (all-or-nothing on validation failure), asserted by
 `environment/tests.rs:176-180`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Extracted `Environment::validated_identifiers` and both `add_globals` and `add_global_object_with_members` now use it, preserving the atomic all-or-nothing validation.
 
 ### [limits]
 

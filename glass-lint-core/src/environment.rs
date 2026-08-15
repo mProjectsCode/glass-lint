@@ -158,6 +158,17 @@ impl Environment {
             .ok_or_else(|| EnvironmentError { name: name.into() })
     }
 
+    fn validated_identifiers<I, S>(names: I) -> Result<BTreeSet<SmolStr>, EnvironmentError>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        names
+            .into_iter()
+            .map(Self::validated_identifier)
+            .collect::<Result<BTreeSet<_>, _>>()
+    }
+
     fn register_global(&mut self, name: SmolStr, object: Option<GlobalObjectMembers>) {
         let inner = self.inner_mut();
         inner.global_bindings.insert(name.clone());
@@ -198,10 +209,7 @@ impl Environment {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
-        let names = names
-            .into_iter()
-            .map(Self::validated_identifier)
-            .collect::<Result<BTreeSet<_>, _>>()?;
+        let names = Self::validated_identifiers(names)?;
         self.inner_mut().global_bindings.extend(names);
         Ok(())
     }
@@ -232,10 +240,7 @@ impl Environment {
         S: AsRef<str>,
     {
         let name = Self::validated_identifier(name)?;
-        let members = members
-            .into_iter()
-            .map(Self::validated_identifier)
-            .collect::<Result<BTreeSet<_>, _>>()?;
+        let members = Self::validated_identifiers(members)?;
         self.register_global(name, Some(GlobalObjectMembers::Restricted(members)));
         Ok(())
     }
