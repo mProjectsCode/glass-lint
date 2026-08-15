@@ -4,7 +4,6 @@ use hashbrown::HashMap;
 
 use crate::{
     analysis::{
-        ProjectSemanticModel,
         facts::FactId,
         flow::{
             cross::state::{CallContext, CrossFlowState},
@@ -168,12 +167,6 @@ pub(super) fn mark_nonmatching(
     );
 }
 
-pub(super) struct EmissionContext<'a> {
-    pub(super) project: &'a ProjectSemanticModel,
-    pub(super) evidence: &'a mut HashMap<ModuleId, ModuleEvidence>,
-    pub(super) arena: &'a mut TraceArena,
-}
-
 fn assemble_trace(
     arena: &mut TraceArena,
     state: &CrossFlowState,
@@ -193,19 +186,14 @@ fn assemble_trace(
 }
 
 pub(super) fn emit(
-    context: EmissionContext<'_>,
+    session: &mut super::CrossProjectionSession<'_>,
     module: ModuleId,
     flow_id: FlowId,
     state: &CrossFlowState,
     event: FactId,
     flow: &CompiledObjectFlow,
 ) {
-    let EmissionContext {
-        project,
-        evidence,
-        arena,
-    } = context;
-    let Some(values) = evidence.get_mut(&module) else {
+    let Some(values) = session.evidence.get_mut(&module) else {
         return;
     };
     let rule_idx = flow_id.rule_index();
@@ -214,7 +202,8 @@ pub(super) fn emit(
         symbol: flow.evidence_symbol().as_str().to_owned(),
         fact: event,
     };
-    let span = project
+    let span = session
+        .project
         .fact(QualifiedEvent::new(module, event))
         .map_or_else(glass_lint_datastructures::ByteRange::empty, |fact| {
             fact.span
@@ -222,7 +211,7 @@ pub(super) fn emit(
 
     // Trace construction keeps execution order and the terminal sink separate
     // from finding deduplication and certainty policy.
-    let trace_head = assemble_trace(arena, state, module, event);
+    let trace_head = assemble_trace(&mut *session.arena, state, module, event);
 
     let certainty = if values.is_nonmatching(rule_idx, &key) {
         crate::project::MatchCertainty::Possible

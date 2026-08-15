@@ -8,7 +8,7 @@ use crate::{
         facts::FactId,
         flow::{
             cross::{
-                evidence::{self, emit, mark_nonmatching, usage_matches_context},
+                evidence::{emit, mark_nonmatching, usage_matches_context},
                 state::{CallContext, CrossFlowState, EvidenceTransition},
             },
             effect::{EffectUse, FunctionEffect},
@@ -186,11 +186,7 @@ impl UsageProjector<'_, '_> {
             }
             if transition.is_ready() {
                 emit(
-                    evidence::EmissionContext {
-                        project: self.session.project,
-                        evidence: self.session.evidence,
-                        arena: self.session.arena,
-                    },
+                    self.session,
                     self.context.module(),
                     self.context.state().flow_id(),
                     self.state,
@@ -220,11 +216,7 @@ impl UsageProjector<'_, '_> {
             && self.context.is_crossed()
         {
             emit(
-                evidence::EmissionContext {
-                    project: self.session.project,
-                    evidence: self.session.evidence,
-                    arena: self.session.arena,
-                },
+                self.session,
                 self.context.module(),
                 self.context.state().flow_id(),
                 state,

@@ -116,7 +116,7 @@ variants. Production callers discard the result, so no other call site changes.
 
 **Fix Applied:** Deleted `ContextAdmission`; `ContextWorklist::push` now returns `BoundedFifo`'s `FifoAdmission` directly (the `Duplicate`/`Full` distinction is preserved on the retained enum). `cross/tests.rs` updated to assert `worklist::FifoAdmission`.
 
-#### [ ] READ-004 — `EmissionContext` is an immediately-consumed facade over a slice of `CrossProjectionSession`
+#### [x] READ-004 — `EmissionContext` is an immediately-consumed facade over a slice of `CrossProjectionSession`
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -138,7 +138,7 @@ visibility is needed. Guardrails: `emit` must not reach into the session's
 `call_graph`, `worklist`, or `names`; evidence emission stays a separate phase
 from worklist mutation.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Deleted `EmissionContext`; `emit` now takes `&mut CrossProjectionSession` and reads only `session.project`/`session.evidence`/`session.arena` (never the call graph, worklist, or names). Both `propagation.rs` call sites updated.
 
 #### [ ] READ-005 — `EvidenceKey` construction is duplicated and its invariants unencoded
 
