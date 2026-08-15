@@ -54,7 +54,7 @@ constructors; its non-`Option` shape is the deliberate single-occurrence guarant
 
 ### [Classification: evidence accumulation boundary]
 
-#### [ ] READ-002 — `RuleEvidenceTable` callers must handle structurally-impossible capacity errors; `ModuleEvidence::into_evidence` fails open
+#### [x] READ-002 — `RuleEvidenceTable` callers must handle structurally-impossible capacity errors; `ModuleEvidence::into_evidence` fails open
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -87,7 +87,7 @@ modeled error. Guardrail: preserve the two-lifecycle split (in-flow accumulation
 with `nonmatching` keys vs. final report storage) — do not collapse `ModuleEvidence`
 into `RuleEvidenceTable`.
 
-**Fix Applied:** None so far.
+**Fix Applied:** Made `ModuleEvidence::into_evidence` infallible by replacing the fail-open `is_err()` early return with an `expect` naming the invariant that `rule_mut` already bounds every stored rule key below the table capacity, so a capacity regression now fails loudly instead of silently dropping remaining rules. The `Result` surface on `RuleEvidenceTable::record`/`replace`/`mark_event_truncated`/`merge_equal_capacity` and the in-flow rollback/discard callers are unchanged.
 
 ### [Compiler: normalized IR surface]
 

@@ -155,12 +155,9 @@ impl ModuleEvidence {
     pub(super) fn into_evidence(self) -> RuleEvidenceTable {
         let mut evidence = RuleEvidenceTable::new(self.capacity);
         for (rule_index, rule) in self.rules {
-            if evidence
+            evidence
                 .replace(rule_index, rule.items.into_values().collect())
-                .is_err()
-            {
-                return evidence;
-            }
+                .expect("every stored rule key is below the table capacity");
         }
         evidence
     }
