@@ -18,6 +18,8 @@ imports_granularity = "Crate"
 group_imports = "StdExternalCrate"
 reorder_imports = true
 
+reorder_modules = true
+
 blank_lines_upper_bound = 1
 
 unstable_features = true

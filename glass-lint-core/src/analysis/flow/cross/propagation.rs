@@ -9,11 +9,12 @@ use crate::{
         flow::{
             cross::{
                 evidence::{self, emit, mark_nonmatching, usage_matches_context},
-                state::{CallContext, CrossFlowState, EvidenceTransition, QualifiedEvent},
+                state::{CallContext, CrossFlowState, EvidenceTransition},
             },
             effect::{EffectUse, FunctionEffect},
             planning::{BoundFlowPlan, FlowMatchView},
         },
+        trace::QualifiedEvent,
     },
     api::compiler::{CompiledObjectFlow, object_flow::CompletionMode},
     project::ModuleId,

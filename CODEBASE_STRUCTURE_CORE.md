@@ -45,7 +45,6 @@ deterministic findings.
 - `analysis::facts::interface::commonjs` — Interprets CommonJS export assignments.
 - `facts::interface::commonjs::CommonJsExportEntry` — Records one CommonJS export entry.
 - `analysis::facts::interface::exports` — Interprets general export declarations.
-- `analysis::facts::model` — Defines temporary fact-building state models.
 - `analysis::facts::origin_map` — Preserves source origins while facts are traversed.
 - `facts::origin_map::LogEntry` — Describes one origin-map checkpoint or restore event.
 - `facts::origin_map::OriginCheckpoint` — Marks a reversible source-origin state.

@@ -7,9 +7,10 @@ use crate::{
             MAX_CONTEXTS,
             graph::QualifiedCallGraph,
             sources::{FlowSources, SourceKey},
-            state::{CallContext, CrossFlowState, QualifiedEvent},
+            state::{CallContext, CrossFlowState},
         },
         model::{flow::FlowId, scope::FunctionId},
+        trace::QualifiedEvent,
     },
     project::ModuleId,
 };

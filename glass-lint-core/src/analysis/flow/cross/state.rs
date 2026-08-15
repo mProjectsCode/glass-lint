@@ -1,7 +1,6 @@
 #[cfg(test)]
 use glass_lint_datastructures::Budget;
 
-pub(super) use crate::analysis::trace::QualifiedEvent;
 #[cfg(test)]
 use crate::api::classification::RuleIndex;
 use crate::{
@@ -13,6 +12,7 @@ use crate::{
             scope::FunctionId,
             value::ValueId,
         },
+        trace::QualifiedEvent,
     },
     project::ModuleId,
 };

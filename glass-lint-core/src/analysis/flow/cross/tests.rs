@@ -4,9 +4,10 @@ use crate::{
         facts::FactId,
         flow::cross::{
             sources::{SourceCandidate, SourceKey},
-            state::{CallContext, CrossFlowState, QualifiedEvent, SourceBudget},
+            state::{CallContext, CrossFlowState, SourceBudget},
         },
         model::{flow::FlowId, scope::FunctionId, value::ValueId},
+        trace::QualifiedEvent,
     },
     api::classification::RuleIndex,
     project::ModuleId,

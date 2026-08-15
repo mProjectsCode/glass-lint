@@ -2,8 +2,8 @@ use super::*;
 use crate::{
     analysis::{
         facts::FactId,
-        flow::cross::state::QualifiedEvent,
         model::flow::{FlowId, RequirementIndex, SinkIndex},
+        trace::QualifiedEvent,
     },
     api::classification::{ClassificationEvidenceOccurrence, RuleEvidenceCapacity, RuleIndex},
 };

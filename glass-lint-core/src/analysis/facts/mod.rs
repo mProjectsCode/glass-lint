@@ -29,7 +29,6 @@ mod control;
 mod functions;
 mod instance;
 mod interface;
-mod model;
 mod origin_map;
 mod pattern;
 mod provenance;
@@ -38,7 +37,6 @@ pub(in crate::analysis) mod stream;
 mod visitor;
 
 use glass_lint_datastructures::{ByteRange, NamePath, PathId, PathSegmentInput, SymbolPath};
-pub(in crate::analysis) use model::*;
 pub(in crate::analysis) use origin_map::{OriginCheckpoint, OriginMap, OriginSnapshot};
 use provenance::{FactProvenanceState, TargetProvenance};
 use smol_str::{SmolStr, ToSmolStr};
@@ -54,6 +52,10 @@ use swc_ecma_ast::{
 use swc_ecma_visit::{Visit, VisitWith};
 
 use self::instance::InstanceCallable;
+pub(in crate::analysis) use crate::analysis::model::fact::{
+    ArgumentView, Building, CallArgInfo, CallUnwrap, ClassFactRole, ControlKind, ControlRegionId,
+    FactId, FactPayload, Frozen, FunctionBoundary, MAX_FACTS, ParameterBinding, SemanticFact,
+};
 #[cfg(test)]
 use crate::analysis::resolution::FrozenFactTables;
 #[cfg(test)]
